@@ -18,6 +18,7 @@ async function postHandler() {
         triggeredBy: result.triggeredBy,
         dryRun: true,
         durationMs: result.durationMs,
+        warnings: result.warnings,
         decisions: result.decisions.map((decision) => ({
           hash: decision.torrent.hash,
           torrentName: decision.torrent.name,

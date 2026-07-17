@@ -84,7 +84,8 @@ describe('migration readiness', () => {
     expect(names).toContain('0001_init');
     expect(names).toContain('20260714140000_unified_operation_audit');
     expect(names).toContain('20260714170000_retention_session_index');
+    expect(names).toContain('20260716100157_recommendation_events_taste_profile');
     expect(names).not.toContain('migration_lock.toml');
-    expect(names).toHaveLength(7);
+    expect(names).toHaveLength(8);
   });
 });

@@ -17,6 +17,9 @@ export interface FailedImportConfig {
   maxStrikes: number; // 0 = disabled, else >= 3
   ignorePrivate: boolean;
   deletePrivate: boolean;
+  // Legacy, no longer surfaced in the UI: evaluation is client-driven, so a
+  // queue item missing from qBittorrent is never processed regardless of this
+  // flag. Retained so stored configs and settings exports keep validating.
   skipIfNotFoundInClient: boolean;
   patternMode: PatternMode;
   patterns: string[];
@@ -165,6 +168,10 @@ export interface QueueEvaluationResult {
   failed: number;
   outcomes: CleanupItemOutcome[];
   binding: CleanupExecutionBinding;
+  // Human-readable reasons the cycle evaluated less than the full picture
+  // (upstream unavailable, aborted fail-safe, torrents skipped). Surfaced in
+  // the manual preview dialog and the dashboard's last-cycle status.
+  warnings: string[];
 }
 
 export interface DownloadEvaluationResult {
@@ -176,6 +183,8 @@ export interface DownloadEvaluationResult {
   failed: number;
   outcomes: CleanupItemOutcome[];
   binding: CleanupExecutionBinding;
+  // See QueueEvaluationResult.warnings.
+  warnings: string[];
 }
 
 export type CleanupOutcomeStatus = 'succeeded' | 'partial' | 'failed' | 'stale' | 'skipped';

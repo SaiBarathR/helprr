@@ -24,8 +24,10 @@ export default async function DashboardPage() {
     // whose capability the user explicitly holds qualify — capability-less
     // items (e.g. library-gaps) can still 403 on their data routes — with
     // Settings (accessible to everyone) as the final fallback.
-    const fallback = NAV_ITEMS.find(
-      (item) => item.requiredCapability && can(user, item.requiredCapability)
+    const fallback = NAV_ITEMS.find((item) =>
+      item.requiredAnyCapability
+        ? item.requiredAnyCapability.some((cap) => can(user, cap))
+        : item.requiredCapability && can(user, item.requiredCapability)
     );
     redirect(fallback?.href ?? '/settings');
   }

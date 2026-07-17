@@ -10,6 +10,11 @@ type FadeInImageProps = Omit<ImageProps, 'loading' | 'priority' | 'onLoad' | 'on
   onError?: ImageProps['onError'];
 };
 
+// Srcs that finished loading at least once this session. Virtualized grids
+// unmount/remount cards on scroll; without this, every remount restarted the
+// fade from opacity 0 and cached posters visibly flickered back in.
+const loadedSrcs = new Set<string>();
+
 /**
  * Poster `<Image>` with decode fade-in. Uses `loading="lazy"` by default;
  * pass `priority` for the first few above-the-fold items only.
@@ -21,10 +26,15 @@ export function FadeInImage({
   onError,
   ...props
 }: FadeInImageProps) {
-  const [loaded, setLoaded] = useState(false);
+  const srcKey = typeof props.src === 'string' ? props.src : null;
+  const [loaded, setLoaded] = useState(() => (srcKey ? loadedSrcs.has(srcKey) : false));
+  const markLoaded = useCallback(() => {
+    if (srcKey) loadedSrcs.add(srcKey);
+    setLoaded(true);
+  }, [srcKey]);
   const imageRef = useCallback((node: HTMLImageElement | null) => {
-    if (node?.complete) setLoaded(true);
-  }, []);
+    if (node?.complete) markLoaded();
+  }, [markLoaded]);
 
   return (
     <Image
@@ -33,9 +43,9 @@ export function FadeInImage({
       alt={alt}
       priority={priority}
       loading={priority ? undefined : 'lazy'}
-      onLoad={() => setLoaded(true)}
+      onLoad={markLoaded}
       onError={(event) => {
-        setLoaded(true);
+        markLoaded();
         onError?.(event);
       }}
       className={cn(

@@ -19,6 +19,7 @@ async function postHandler() {
         dryRun: true,
         durationMs: result.durationMs,
         skippedFailedImport: result.skippedFailedImport,
+        warnings: result.warnings,
         pendingStrikes: result.pendingStrikes,
         decisions: result.decisions.map((decision) => ({
           hash: decision.torrent.hash,

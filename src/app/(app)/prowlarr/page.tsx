@@ -35,10 +35,13 @@ import {
   Download,
   Database,
   Info,
+  Copy,
 } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { fmtNum } from '@/components/widgets/prowlarr-stats-shared';
 import { Skeleton } from '@/components/ui/skeleton';
+import { QuickContextMenu } from '@/components/ui/quick-context-menu';
+import { useCan } from '@/components/permission-provider';
 
 // Recharts is heavy and only the Stats tab renders charts, so load the chart
 // module on demand (client-only) instead of bundling it into the page chunk.
@@ -206,6 +209,7 @@ function BlockedStatusTrigger({ status }: { status: ProwlarrIndexerStatus }) {
 
 function IndexersTab() {
   const queryClient = useQueryClient();
+  const canManage = useCan('prowlarr.manage');
   const [testingId, setTestingId] = useState<number | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<{ id: number; name: string } | null>(null);
@@ -309,11 +313,39 @@ function IndexersTab() {
           {indexers.map((indexer) => {
             const blockedStatus = getActiveBlockedStatus(indexer.id, statuses);
             return (
-              <div key={indexer.id} className="px-4 py-3 flex items-center gap-3">
-                <IndexerStatusDot indexer={indexer} statuses={statuses} />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">{indexer.name}</p>
-                  <div className="flex items-center gap-1.5 mt-0.5">
+              <QuickContextMenu
+                key={indexer.id}
+                label={`Actions for ${indexer.name}`}
+                groups={[
+                  {
+                    id: 'manage',
+                    actions: canManage
+                      ? [
+                          {
+                            id: 'test-indexer',
+                            label: 'Test indexer',
+                            icon: <CheckCircle className="h-4 w-4" />,
+                            pending: testingId === indexer.id,
+                            onSelect: () => void handleTest(indexer.id),
+                          },
+                          {
+                            id: 'delete-indexer',
+                            label: 'Delete indexer',
+                            icon: <Trash2 className="h-4 w-4" />,
+                            pending: deletingId === indexer.id,
+                            destructive: true,
+                            onSelect: () => setConfirmDelete({ id: indexer.id, name: indexer.name }),
+                          },
+                        ]
+                      : [],
+                  },
+                ]}
+              >
+                <div className="px-4 py-3 flex items-center gap-3">
+                  <IndexerStatusDot indexer={indexer} statuses={statuses} />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{indexer.name}</p>
+                    <div className="flex items-center gap-1.5 mt-0.5">
                     <Badge
                       variant="outline"
                       className={`text-[10px] px-1.5 py-0 ${indexer.protocol === 'torrent' ? 'border-green-500/50 text-green-400' : 'border-blue-500/50 text-blue-400'}`}
@@ -337,37 +369,40 @@ function IndexersTab() {
                         <BlockedStatusTrigger status={blockedStatus} />
                       </>
                     )}
+                    </div>
                   </div>
+                  {canManage && (
+                    <div className="flex items-center gap-1 shrink-0">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 px-2 text-xs"
+                        onClick={() => handleTest(indexer.id)}
+                        disabled={testingId === indexer.id}
+                      >
+                        {testingId === indexer.id ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          'Test'
+                        )}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 px-2 text-destructive hover:text-destructive"
+                        onClick={() => setConfirmDelete({ id: indexer.id, name: indexer.name })}
+                        disabled={deletingId === indexer.id}
+                      >
+                        {deletingId === indexer.id ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-3.5 w-3.5" />
+                        )}
+                      </Button>
+                    </div>
+                  )}
                 </div>
-                <div className="flex items-center gap-1 shrink-0">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-8 px-2 text-xs"
-                    onClick={() => handleTest(indexer.id)}
-                    disabled={testingId === indexer.id}
-                  >
-                    {testingId === indexer.id ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      'Test'
-                    )}
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-8 px-2 text-destructive hover:text-destructive"
-                    onClick={() => setConfirmDelete({ id: indexer.id, name: indexer.name })}
-                    disabled={deletingId === indexer.id}
-                  >
-                    {deletingId === indexer.id ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <Trash2 className="h-3.5 w-3.5" />
-                    )}
-                  </Button>
-                </div>
-              </div>
+              </QuickContextMenu>
             );
           })}
         </div>
@@ -900,6 +935,15 @@ function HistoryTab() {
   const loading = historyQuery.isLoading;
   const loadingMore = historyQuery.isFetchingNextPage;
 
+  const copyHistoryValue = async (value: string, label: string) => {
+    try {
+      await navigator.clipboard.writeText(value);
+      toast.success(`${label} copied`);
+    } catch {
+      toast.error('Copy failed');
+    }
+  };
+
   return (
     <div className="space-y-3">
       {/* Filter pills */}
@@ -946,11 +990,41 @@ function HistoryTab() {
               const uniqueCategories = [...new Set(categoryIds.map((id) => categoryLabel(id)))];
 
               return (
-                <button
+                <QuickContextMenu
                   key={record.id}
-                  onClick={() => setSelectedRecord(record)}
-                  className="w-full px-4 py-3 flex items-start gap-2.5 text-left hover:bg-accent/50 transition-colors"
+                  label={`Actions for ${query || indexerMap[record.indexerId] || 'history record'}`}
+                  groups={[
+                    {
+                      id: 'record',
+                      actions: [
+                        {
+                          id: 'view-details',
+                          label: 'View details',
+                          icon: <Info className="h-4 w-4" />,
+                          onSelect: () => setSelectedRecord(record),
+                        },
+                        ...(query
+                          ? [{
+                              id: 'copy-query',
+                              label: 'Copy query',
+                              icon: <Copy className="h-4 w-4" />,
+                              onSelect: () => void copyHistoryValue(query, 'Query'),
+                            }]
+                          : []),
+                        {
+                          id: 'copy-json',
+                          label: 'Copy record JSON',
+                          icon: <Copy className="h-4 w-4" />,
+                          onSelect: () => void copyHistoryValue(JSON.stringify(record, null, 2), 'Record JSON'),
+                        },
+                      ],
+                    },
+                  ]}
                 >
+                  <button
+                    onClick={() => setSelectedRecord(record)}
+                    className="w-full px-4 py-3 flex items-start gap-2.5 text-left hover:bg-accent/50 transition-colors"
+                  >
                   <div className="mt-0.5 shrink-0">
                     <EventIcon eventType={record.eventType} />
                   </div>
@@ -989,7 +1063,8 @@ function HistoryTab() {
                         ))}
                     </div>
                   </div>
-                </button>
+                  </button>
+                </QuickContextMenu>
               );
             })}
           </div>
@@ -1030,6 +1105,7 @@ function HistoryTab() {
 
 export default function ProwlarrPage() {
   const queryClient = useQueryClient();
+  const canManage = useCan('prowlarr.manage');
   const [syncing, setSyncing] = useState(false);
   const [testingAll, setTestingAll] = useState(false);
   const [testAllResults, setTestAllResults] = useState<ProwlarrTestAllResponse | null>(null);
@@ -1131,41 +1207,44 @@ export default function ProwlarrPage() {
     }
   }
 
-  return (
-    <div className="space-y-4 animate-content-in">
-      <PullToRefresh onRefresh={() => queryClient.invalidateQueries({ queryKey: ['prowlarr'] })} />
-      {/* Action buttons */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-9 gap-1.5"
-          onClick={() => sendCommand('ApplicationIndexerSync', 'Sync All', setSyncing)}
-          disabled={syncing}
-        >
-          {syncing ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <RefreshCw className="h-4 w-4" />
-          )}
-          Sync All
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-9 gap-1.5"
-          onClick={handleTestAll}
-          disabled={testingAll}
-        >
-          {testingAll ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <CheckCircle className="h-4 w-4" />
-          )}
-          Test All
-        </Button>
-      </div>
+  // Sync/Test controls live inside the Indexers tab, below the sticky tabs
+  // header, so nothing renders above the page header.
+  const manageActions = canManage && (
+    <div className="flex items-center gap-2 flex-wrap">
+      <Button
+        variant="outline"
+        size="sm"
+        className="h-9 gap-1.5"
+        onClick={() => sendCommand('ApplicationIndexerSync', 'Sync All', setSyncing)}
+        disabled={syncing}
+      >
+        {syncing ? (
+          <Loader2 className="h-4 w-4 animate-spin" />
+        ) : (
+          <RefreshCw className="h-4 w-4" />
+        )}
+        Sync All
+      </Button>
+      <Button
+        variant="outline"
+        size="sm"
+        className="h-9 gap-1.5"
+        onClick={handleTestAll}
+        disabled={testingAll}
+      >
+        {testingAll ? (
+          <Loader2 className="h-4 w-4 animate-spin" />
+        ) : (
+          <CheckCircle className="h-4 w-4" />
+        )}
+        Test All
+      </Button>
+    </div>
+  );
 
+  return (
+    <div className="animate-content-in">
+      <PullToRefresh onRefresh={() => queryClient.invalidateQueries({ queryKey: ['prowlarr'] })} />
       <Dialog
         open={!!testAllResults}
         onOpenChange={(open) => {
@@ -1213,7 +1292,7 @@ export default function ProwlarrPage() {
 
       {/* Tabs */}
       <Tabs defaultValue="indexers">
-        <div className="page-toolbar pb-2 app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+        <div className="page-toolbar page-toolbar-flush pb-2 app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
           <TabsList className="w-full">
             <TabsTrigger value="indexers" className="flex-1">Indexers</TabsTrigger>
             <TabsTrigger value="stats" className="flex-1">Stats</TabsTrigger>
@@ -1221,7 +1300,8 @@ export default function ProwlarrPage() {
           </TabsList>
         </div>
 
-        <TabsContent value="indexers" className="mt-4">
+        <TabsContent value="indexers" className="mt-4 space-y-4">
+          {manageActions}
           <IndexersTab />
         </TabsContent>
 

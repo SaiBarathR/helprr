@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import Link from 'next/link';
-import { ArrowDownWideNarrow, ArrowUpNarrowWide, Scale, X } from 'lucide-react';
+import { ArrowDownWideNarrow, ArrowUpNarrowWide, ExternalLink, Scale, X } from 'lucide-react';
 import { HPR, mix } from '@/components/widgets/bento-primitives';
 import { formatBytes } from '@/lib/format';
 import { Input } from '@/components/ui/input';
@@ -11,6 +11,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { PageControls } from '@/components/ui/page-controls';
+import { QuickContextMenu, type ContextAction } from '@/components/ui/quick-context-menu';
 import { Panel, PanelLoading, PanelEmpty, useInsightsResource } from './insights-shared';
 import { type MediaAnalysisKindFilter } from './technical-breakdown-card';
 import { ScoreBadge } from './quality-score-card';
@@ -142,6 +143,23 @@ function FileRow({ file, selected, selectable, onToggle }: {
     file.dynamicRange && file.dynamicRange !== 'SDR' ? file.dynamicRange : null,
     file.audioCodec && file.audioChannels !== null ? `${file.audioCodec} ${file.audioChannels}` : file.audioCodec,
   ].filter((c): c is string => !!c);
+  const contextActions: ContextAction[] = file.href
+    ? [
+        {
+          id: 'open',
+          label: 'Open details',
+          icon: <ExternalLink className="h-4 w-4" />,
+          href: file.href,
+        },
+        {
+          id: 'select',
+          label: selected ? 'Deselect from comparison' : 'Select for comparison',
+          icon: <Scale className="h-4 w-4" />,
+          onSelect: () => onToggle(file, !selected),
+          disabled: !selected && !selectable,
+        },
+      ]
+    : [];
 
   return (
     <div className="flex items-center gap-2.5 py-2">
@@ -152,35 +170,43 @@ function FileRow({ file, selected, selectable, onToggle }: {
         aria-label={`Select ${file.title} for comparison`}
         className="shrink-0"
       />
-      <div className="min-w-0 flex-1">
-        <div className="flex items-baseline gap-1.5 text-xs">
-          {file.href ? (
-            <Link href={file.href} className="truncate font-medium hover:underline" style={{ color: HPR.fg }}>
-              {file.title}
-            </Link>
-          ) : (
-            <span className="truncate font-medium" style={{ color: HPR.fg }}>{file.title}</span>
-          )}
-          {file.subtitle && (
-            <span className="truncate shrink-[2] text-[10px]" style={{ color: HPR.fgSubtle }}>{file.subtitle}</span>
-          )}
+      <QuickContextMenu
+        label={`${file.title} actions`}
+        actions={contextActions}
+        disabled={!file.href}
+      >
+        <div className="flex min-w-0 flex-1 items-center gap-2.5">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-baseline gap-1.5 text-xs">
+              {file.href ? (
+                <Link href={file.href} className="truncate font-medium hover:underline" style={{ color: HPR.fg }}>
+                  {file.title}
+                </Link>
+              ) : (
+                <span className="truncate font-medium" style={{ color: HPR.fg }}>{file.title}</span>
+              )}
+              {file.subtitle && (
+                <span className="truncate shrink-[2] text-[10px]" style={{ color: HPR.fgSubtle }}>{file.subtitle}</span>
+              )}
+            </div>
+            <div className="mt-0.5 flex flex-wrap items-center gap-1">
+              {chips.map((chip) => (
+                <span
+                  key={chip}
+                  className="rounded px-1 py-px text-[9px] tabular-nums"
+                  style={{ background: mix(HPR.fgMute, 12), color: HPR.fgMute, fontFamily: 'var(--hpr-font-mono)' }}
+                >
+                  {chip}
+                </span>
+              ))}
+            </div>
+          </div>
+          <span className="tabular-nums text-[10px] shrink-0" style={{ color: HPR.fgMute }}>
+            {formatBytes(file.size)}
+          </span>
+          {file.score !== null && <ScoreBadge score={file.score} />}
         </div>
-        <div className="mt-0.5 flex flex-wrap items-center gap-1">
-          {chips.map((chip) => (
-            <span
-              key={chip}
-              className="rounded px-1 py-px text-[9px] tabular-nums"
-              style={{ background: mix(HPR.fgMute, 12), color: HPR.fgMute, fontFamily: 'var(--hpr-font-mono)' }}
-            >
-              {chip}
-            </span>
-          ))}
-        </div>
-      </div>
-      <span className="tabular-nums text-[10px] shrink-0" style={{ color: HPR.fgMute }}>
-        {formatBytes(file.size)}
-      </span>
-      {file.score !== null && <ScoreBadge score={file.score} />}
+      </QuickContextMenu>
     </div>
   );
 }

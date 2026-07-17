@@ -41,6 +41,58 @@ async function mutate(path: string, method: 'POST' | 'PUT', body: unknown): Prom
   }
 }
 
+export async function setCollectionMonitoring(collection: CollectionSummary, monitored: boolean): Promise<void> {
+  await mutate('/api/radarr/collections', 'PUT', {
+    collectionId: collection.id,
+    monitored,
+    instanceId: collection.instanceId,
+  });
+}
+
+export async function addCollectionMovie(collection: CollectionSummary, tmdbId: number): Promise<void> {
+  await mutate('/api/radarr/collections', 'POST', {
+    collectionId: collection.id,
+    tmdbId,
+    instanceId: collection.instanceId,
+    search: true,
+  });
+}
+
+export async function addMissingCollectionMovies(
+  collection: CollectionSummary,
+  movies: CollectionMovieSummary[],
+): Promise<{ addedTmdbIds: number[]; failed: number; firstError?: unknown }> {
+  const targets = movies.filter((movie) => !movie.inLibrary).map((movie) => movie.tmdbId);
+  const results = await Promise.allSettled(targets.map((tmdbId) => addCollectionMovie(collection, tmdbId)));
+  const addedTmdbIds = targets.filter((_, index) => results[index].status === 'fulfilled');
+  const firstRejected = results.find((result) => result.status === 'rejected') as PromiseRejectedResult | undefined;
+  return {
+    addedTmdbIds,
+    failed: results.length - addedTmdbIds.length,
+    firstError: firstRejected?.reason,
+  };
+}
+
+export function getCollectionSearchMovieIds(movies: CollectionMovieSummary[]): number[] {
+  const fileless = movies.filter((movie) => movie.inLibrary && movie.movieId && !movie.hasFile).map((movie) => movie.movieId!);
+  return fileless.length
+    ? fileless
+    : movies.filter((movie) => movie.inLibrary && movie.movieId).map((movie) => movie.movieId!);
+}
+
+export async function searchCollectionMovies(
+  collection: CollectionSummary,
+  movies: CollectionMovieSummary[],
+): Promise<number> {
+  const ids = getCollectionSearchMovieIds(movies);
+  if (ids.length === 0) return 0;
+  const instanceQuery = collection.instanceId
+    ? `?instanceId=${encodeURIComponent(collection.instanceId)}`
+    : '';
+  await mutate(`/api/radarr/command${instanceQuery}`, 'POST', { name: 'MoviesSearch', movieIds: ids });
+  return ids.length;
+}
+
 export function CollectionDetailDrawer({ collection, multiInstance, onClose }: Props) {
   const open = collection !== null;
   const qc = useQueryClient();
@@ -65,8 +117,6 @@ export function CollectionDetailDrawer({ collection, multiInstance, onClose }: P
   }, [collection]);
 
   const instanceId = collection?.instanceId;
-  const instanceQuery = instanceId ? `?instanceId=${encodeURIComponent(instanceId)}` : '';
-
   const inLibraryCount = useMemo(() => movies.filter((m) => m.inLibrary).length, [movies]);
   const missingMovies = useMemo(() => movies.filter((m) => !m.inLibrary), [movies]);
   const yearRange = useMemo(() => {
@@ -88,7 +138,7 @@ export function CollectionDetailDrawer({ collection, multiInstance, onClose }: P
     setMonitored(next); // optimistic
     setMonitorPending(true);
     try {
-      await mutate('/api/radarr/collections', 'PUT', { collectionId: collection.id, monitored: next, instanceId });
+      await setCollectionMonitoring(collection, next);
       invalidateCollections(qc);
       toast.success(next ? 'Collection monitored' : 'Collection unmonitored');
     } catch (error) {
@@ -103,7 +153,7 @@ export function CollectionDetailDrawer({ collection, multiInstance, onClose }: P
     if (!collection) return;
     setAddingTmdb((prev) => new Set(prev).add(tmdbId));
     try {
-      await mutate('/api/radarr/collections', 'POST', { collectionId: collection.id, tmdbId, instanceId, search: true });
+      await addCollectionMovie(collection, tmdbId);
       setMovies((prev) => prev.map((m) => (m.tmdbId === tmdbId ? { ...m, inLibrary: true } : m)));
       invalidateCollections(qc);
       toast.success('Added to Radarr');
@@ -121,41 +171,30 @@ export function CollectionDetailDrawer({ collection, multiInstance, onClose }: P
   async function addAllMissing() {
     if (!collection || addAllPending || missingMovies.length === 0) return;
     setAddAllPending(true);
-    const targets = missingMovies.map((m) => m.tmdbId);
-    const results = await Promise.allSettled(
-      targets.map((tmdbId) =>
-        mutate('/api/radarr/collections', 'POST', { collectionId: collection.id, tmdbId, instanceId, search: true })
-      )
-    );
-    const added = targets.filter((_, i) => results[i].status === 'fulfilled');
-    const failed = results.length - added.length;
-    if (added.length) {
-      const addedSet = new Set(added);
+    const result = await addMissingCollectionMovies(collection, movies);
+    if (result.addedTmdbIds.length) {
+      const addedSet = new Set(result.addedTmdbIds);
       setMovies((prev) => prev.map((m) => (addedSet.has(m.tmdbId) ? { ...m, inLibrary: true } : m)));
       invalidateCollections(qc);
     }
-    const firstError = results.find((r) => r.status === 'rejected') as PromiseRejectedResult | undefined;
-    if (firstError) handleAuthError(firstError.reason);
-    if (failed === 0) toast.success(`Added ${added.length} ${added.length === 1 ? 'movie' : 'movies'}`);
-    else if (added.length) toast.warning(`Added ${added.length}, ${failed} failed`);
+    if (result.firstError) handleAuthError(result.firstError);
+    if (result.failed === 0) toast.success(`Added ${result.addedTmdbIds.length} ${result.addedTmdbIds.length === 1 ? 'movie' : 'movies'}`);
+    else if (result.addedTmdbIds.length) toast.warning(`Added ${result.addedTmdbIds.length}, ${result.failed} failed`);
     else toast.error('Failed to add movies');
     setAddAllPending(false);
   }
 
   async function searchMissing() {
     if (!collection || searchPending) return;
-    const fileless = movies.filter((m) => m.inLibrary && m.movieId && !m.hasFile).map((m) => m.movieId!);
-    const ids = fileless.length
-      ? fileless
-      : movies.filter((m) => m.inLibrary && m.movieId).map((m) => m.movieId!);
-    if (ids.length === 0) {
+    const count = getCollectionSearchMovieIds(movies).length;
+    if (count === 0) {
       toast.info('Nothing in this collection to search');
       return;
     }
     setSearchPending(true);
     try {
-      await mutate(`/api/radarr/command${instanceQuery}`, 'POST', { name: 'MoviesSearch', movieIds: ids });
-      toast.success(`Searching ${ids.length} ${ids.length === 1 ? 'movie' : 'movies'}`);
+      await searchCollectionMovies(collection, movies);
+      toast.success(`Searching ${count} ${count === 1 ? 'movie' : 'movies'}`);
     } catch (error) {
       reportError(error, 'Failed to start search');
     } finally {

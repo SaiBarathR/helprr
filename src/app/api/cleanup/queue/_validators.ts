@@ -30,7 +30,9 @@ function commonRuleValidation(b: Record<string, unknown>): { ok: true; common: P
   const maxPctRaw = Number(b.maxCompletionPercentage ?? 100);
   if (!Number.isFinite(minPctRaw) || minPctRaw < 0 || minPctRaw > 100) return { ok: false, error: 'minCompletionPercentage out of range' };
   if (!Number.isFinite(maxPctRaw) || maxPctRaw <= 0 || maxPctRaw > 100) return { ok: false, error: 'maxCompletionPercentage out of range (1-100)' };
-  if (maxPctRaw < minPctRaw) return { ok: false, error: 'maxCompletionPercentage must be >= minCompletionPercentage' };
+  // The engine's lower bound is strictly-greater for a non-zero min, so
+  // min === max (e.g. 50–50) could never match any torrent.
+  if (minPctRaw > 0 && maxPctRaw <= minPctRaw) return { ok: false, error: 'maxCompletionPercentage must be greater than minCompletionPercentage' };
 
   const changeCategory = Boolean(b.changeCategory);
   const deletePrivate = Boolean(b.deletePrivate);

@@ -469,6 +469,23 @@ html {
   border-bottom: none;
 }
 
+/* Stacked variants. `.grouped-row` is unlayered so it outranks Tailwind's
+   layered `items-*`/`justify-*` utilities — these modifiers restore full-width
+   stacking. `-stack-mobile` stacks below the `sm` breakpoint only. */
+.grouped-row.grouped-row-stacked {
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+}
+
+@media (width < 40rem) {
+  .grouped-row.grouped-row-stack-mobile {
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+  }
+}
+
 /* Pill button style (used for Automatic / Interactive) */
 .pill-btn {
   display: inline-flex;
@@ -619,6 +636,13 @@ html {
     animation: none !important;
     opacity: 1 !important;
   }
+}
+
+/* Like-button pop on the recommendations feed (TikTok-style feedback) */
+@keyframes like-pop {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.45); }
+  100% { transform: scale(1); }
 }
 
 /* Shimmer animation for skeleton loaders */
@@ -1019,6 +1043,7 @@ html[data-glass] [data-slot='drawer-content'],
 html[data-glass] [data-slot='popover-content'],
 html[data-glass] [data-slot='dropdown-menu-content'],
 html[data-glass] [data-slot='dropdown-menu-sub-content'],
+html[data-glass] [data-slot='context-menu-content'],
 html[data-glass] [data-slot='select-content'],
 html[data-glass] [data-sonner-toast],
 html[data-glass] .app-glass-overlay {
@@ -1080,6 +1105,7 @@ html[data-glass] [data-bento-cell] {
   html[data-glass] [data-slot='popover-content'],
   html[data-glass] [data-slot='dropdown-menu-content'],
   html[data-glass] [data-slot='dropdown-menu-sub-content'],
+  html[data-glass] [data-slot='context-menu-content'],
   html[data-glass] [data-slot='select-content'],
   html[data-glass] [data-sonner-toast],
   html[data-glass] .app-glass-overlay {
@@ -1107,6 +1133,7 @@ html[data-glass] [data-bento-cell] {
   html[data-glass] [data-slot='popover-content'],
   html[data-glass] [data-slot='dropdown-menu-content'],
   html[data-glass] [data-slot='dropdown-menu-sub-content'],
+  html[data-glass] [data-slot='context-menu-content'],
   html[data-glass] [data-slot='select-content'],
   html[data-glass] [data-sonner-toast],
   html[data-glass] .app-glass-overlay {
@@ -1122,5 +1149,50 @@ html[data-glass] [data-bento-cell] {
 
   html[data-glass] [data-bento-cell] {
     background: var(--hpr-surfaceHi) !important;
+  }
+}
+
+/* Touch keeps the dense compact menu; fine-pointer desktop gets roomier
+   padding, type, and icons from the component defaults. */
+@media (pointer: coarse) {
+  [data-slot='context-menu-content'] {
+    min-width: 0;
+    max-width: min(16rem, calc(100vw - 1rem));
+    padding: 0.125rem;
+  }
+
+  [data-slot='context-menu-item'] {
+    min-height: 2rem;
+    gap: 0.375rem;
+    padding-block: 0.25rem;
+    padding-inline: 0.5rem;
+    font-size: 0.8125rem;
+    line-height: 1.25;
+  }
+
+  [data-slot='context-menu-item'] svg {
+    width: 0.875rem;
+    height: 0.875rem;
+  }
+
+  [data-slot='context-menu-separator'] {
+    margin-block: 0.25rem;
+  }
+
+  [data-slot='context-menu-content'] [data-context-toolbar] {
+    gap: 0;
+  }
+
+  [data-slot='context-menu-content'] [data-context-toolbar] [data-slot='context-menu-item'] {
+    min-width: 2rem;
+    min-height: 2rem;
+    padding-block: 0.375rem;
+    padding-inline: 0.25rem;
+  }
+}
+
+@media (pointer: fine) {
+  [data-slot='context-menu-content'] [data-context-toolbar] [data-slot='context-menu-item'] {
+    min-height: 2.25rem;
   }
 }

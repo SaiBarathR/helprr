@@ -7,6 +7,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-07-17
+
+### Added
+
+- A learning recommendation engine with personalized rails, a dedicated feed,
+  trailer-aware suggestions, event-driven taste profiles, and a refreshed random
+  watch experience.
+- Context actions across media, anime, watchlist, activity, and management surfaces,
+  including quick add, request, watch-state, and destructive actions where permitted.
+- Reusable multi-instance selectors on the Radarr, Sonarr, and Lidarr add pages that
+  preserve the selected service instance while resetting instance-local choices.
+- Cleanup scope discovery and clearer per-instance targeting for queue and download
+  cleaner configuration and previews.
+- CI: pull requests now build the amd64 image and run the same pinned,
+  blocking Trivy scan as publishes, so vulnerabilities surface at review time.
+- Branch protection on `main` (PR + passing `lint-and-build` and `image-scan`
+  checks required, admins included) and on `development` (force pushes and
+  deletion blocked).
+
+### Changed
+
+- Cleanup configuration now uses searchable token inputs, responsive field layouts,
+  clearer run previews, and more truthful labels for destructive options.
+- Sticky toolbars, horizontal media rails, logs, service instances, sessions, users,
+  torrents, and library pages have improved mobile and desktop interaction polish.
+- Maintainer documentation now records the protected-branch release flow, exact
+  edge-to-stable qualification gates, and the application's architecture and context
+  action conventions.
+
+### Security
+
+- Cleanup execution revalidates queue and download candidates immediately before
+  deletion, binds previews more tightly to the selected scope, and preserves accurate
+  per-item results when upstream state changes.
+
+### Fixed
+
+- Add pages preserve the selected instance.
+- Comma-containing ignored-download entries remain intact when cleanup settings are
+  edited or saved.
+- Sticky page controls no longer interfere with media scrolling and mobile layout
+  geometry across supported screen sizes.
+- Re-running the publish workflow on an existing tag no longer fails the
+  release-draft job; it skips creation when the release already exists.
+- Uninstall docs referenced the `edge` image tag; the stable stack uses
+  `stable` (or a pinned version).
+- `.env.example` no longer suggests pointing the stable stack's
+  `HELPRR_VERSION` at `edge`; development builds belong to the isolated dev
+  stack.
+
 ## [1.1.0] - 2026-07-14
 
 ### Added

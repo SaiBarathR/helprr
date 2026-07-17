@@ -15,7 +15,7 @@ import { ThemeInspector } from './theme-inspector';
 const MOBILE_COLS = 4;
 const ResponsiveGrid = WidthProvider(GridLayout);
 
-export function WidgetGridMobile() {
+export function WidgetGridMobile({ onConfigureRefresh }: { onConfigureRefresh: () => void }) {
   const { widgets: dashboardLayout, removeWidget, updateMobileWidgetPositions } = useDashboardLayout();
   const editMode = useUIStore((s) => s.dashboardEditMode);
   const discoverLayout = useUIStore((s) => s.discoverLayout);
@@ -105,6 +105,7 @@ export function WidgetGridMobile() {
                 rowSpan={row}
                 narrow={narrow}
                 mobileGrid
+                onConfigureRefresh={onConfigureRefresh}
               />
             </div>
           );

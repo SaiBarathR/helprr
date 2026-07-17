@@ -21,9 +21,9 @@ import { SearchBar } from '@/components/media/search-bar';
 import { PullToRefresh } from '@/components/ui/pull-to-refresh';
 import { useRefreshAction } from '@/lib/hooks/use-refresh-action';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
-import { Filter, ArrowUpDown, Plus, RefreshCw, ListChecks } from 'lucide-react';
+import { Filter, ArrowUpDown, Plus, RefreshCw, ListChecks, Eye, EyeOff, Search, Trash2, Pencil, FileStack, FileEdit } from 'lucide-react';
 import { useCan, useMe, hasCapability } from '@/components/permission-provider';
-import { useWatchLookup, useWatchMapReady } from '@/components/jellyfin/watch-status-provider';
+import { useWatchLookup, useWatchMapReady, useWatchStatus } from '@/components/jellyfin/watch-status-provider';
 import { useUIStore } from '@/lib/store';
 import { matchesWatchFilter } from '@/lib/watch-status-filter';
 import { useBulkSelection } from '@/lib/use-bulk-selection';
@@ -34,6 +34,11 @@ import { queryKeys } from '@/lib/query-keys';
 import { jsonFetcher, ensureArray } from '@/lib/query-fetch';
 import { bulkFanOut, parseSeriesSearchTallies, reportBulk } from '@/lib/bulk-fan-out';
 import { useUnionTags } from '@/lib/hooks/use-reference-data';
+import { type ContextActionGroup } from '@/components/ui/quick-context-menu';
+import { SingleMediaDeleteDialog } from '@/components/media/single-media-delete-dialog';
+import { RenamePreviewDialog } from '@/components/media/rename-preview-dialog';
+import { arrEditHref, arrManageHref } from '@/lib/arr-edit-href';
+import { buildMarkWatchedContextAction } from '@/lib/mark-watched-context-action';
 import type { SonarrSeriesListItem } from '@/types';
 
 import type { MediaViewMode } from '@/lib/store';
@@ -144,8 +149,12 @@ export default function SeriesPage() {
   const canAddSeries = useCan('series.add');
   const canMonitor = useCan('series.editMonitoring');
   const canTag = useCan('series.editTags');
+  const canChangePath = useCan('series.changePath');
+  const canEditSeries = canMonitor || canTag || canChangePath;
+  const canManageFiles = useCan('series.manageFiles');
   const canDelete = useCan('series.delete');
   const canSearch = useCan('activity.manage');
+  const { setWatched, canWrite: canSetWatched, isWriting: isWritingWatched } = useWatchStatus();
   const canBulk = canMonitor || canTag || canDelete || canSearch;
   const {
     selectionMode, selectedKeys, count: selectedCount,
@@ -176,6 +185,13 @@ export default function SeriesPage() {
   const [viewportWidth, setViewportWidth] = useState(1280);
   const [containerWidth, setContainerWidth] = useState(0);
   const [contentOffsetTop, setContentOffsetTop] = useState(0);
+  const [deleteTarget, setDeleteTarget] = useState<SonarrSeriesListItem | null>(null);
+  const [renameTarget, setRenameTarget] = useState<{
+    title: string;
+    seriesId: number;
+    instanceId?: string;
+  } | null>(null);
+  const [deletingTarget, setDeletingTarget] = useState(false);
   const contentRef = useRef<HTMLDivElement | null>(null);
   const hasRestoredScrollRef = useRef(false);
   const hasRestoredSearchRef = useRef(false);
@@ -420,37 +436,48 @@ export default function SeriesPage() {
     else selectMany(filtered.map(keyOf));
   }, [allFilteredSelected, deselectMany, selectMany, filtered, keyOf]);
 
-  // Selected series grouped by instance so each bulk request hits the right one.
-  const groupSelectedByInstance = useCallback(() => {
-    const groups = new Map<string | undefined, number[]>();
+  const selectedSeries = useMemo(() => {
+    const selected: SonarrSeriesListItem[] = [];
     for (const key of selectedKeys) {
-      const s = seriesByKey.get(key);
-      if (!s) continue;
-      const list = groups.get(s.instanceId) ?? [];
-      list.push(s.id);
-      groups.set(s.instanceId, list);
+      const item = seriesByKey.get(key);
+      if (item) selected.push(item);
     }
-    return groups;
+    return selected;
   }, [selectedKeys, seriesByKey]);
 
-  const fanOut = useCallback(async (
+  const fanOutItems = useCallback(async (
+    items: SonarrSeriesListItem[],
     run: (instanceId: string | undefined, ids: number[]) => Promise<Response>,
     opts?: Parameters<typeof bulkFanOut>[2],
-  ) => bulkFanOut(groupSelectedByInstance(), run, opts), [groupSelectedByInstance]);
+  ) => {
+    const groups = new Map<string | undefined, number[]>();
+    for (const item of items) {
+      const list = groups.get(item.instanceId) ?? [];
+      list.push(item.id);
+      groups.set(item.instanceId, list);
+    }
+    return bulkFanOut(groups, run, opts);
+  }, []);
 
-  const handleMonitor = useCallback(async (monitored: boolean) => {
-    const { ok, fail, firstError } = await fanOut((instanceId, ids) =>
+  const runMonitor = useCallback(async (items: SonarrSeriesListItem[], monitored: boolean, leaveSelection = false) => {
+    const { ok, fail, firstError } = await fanOutItems(items, (instanceId, ids) =>
       fetch(`/api/sonarr/editor${instanceId ? `?instanceId=${encodeURIComponent(instanceId)}` : ''}`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ids, monitored }),
       }));
     reportBulk(monitored ? 'Monitoring' : 'Unmonitoring', ok, fail, { noun: 'series', pluralNoun: 'series', reason: firstError });
     await refetchSeries();
-    if (fail === 0) exit();
-  }, [fanOut, refetchSeries, exit]);
+    if (fail === 0 && leaveSelection) exit();
+    return fail === 0;
+  }, [fanOutItems, refetchSeries, exit]);
+
+  const handleMonitor = useCallback(
+    (monitored: boolean) => runMonitor(selectedSeries, monitored, true).then(() => undefined),
+    [runMonitor, selectedSeries],
+  );
 
   const handleApplyTags = useCallback(async (labels: string[], mode: 'add' | 'remove' | 'replace') => {
-    const { ok, fail, firstError } = await fanOut((instanceId, ids) =>
+    const { ok, fail, firstError } = await fanOutItems(selectedSeries, (instanceId, ids) =>
       fetch(`/api/sonarr/editor${instanceId ? `?instanceId=${encodeURIComponent(instanceId)}` : ''}`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ids, tags: labels, applyTags: mode }),
@@ -463,10 +490,10 @@ export default function SeriesPage() {
     );
     await refetchSeries();
     if (fail === 0) exit();
-  }, [fanOut, refetchSeries, exit]);
+  }, [fanOutItems, selectedSeries, refetchSeries, exit]);
 
-  const handleBulkSearch = useCallback(async () => {
-    const { ok, fail, firstError } = await fanOut(
+  const runSearch = useCallback(async (items: SonarrSeriesListItem[], leaveSelection = false) => {
+    const { ok, fail, firstError } = await fanOutItems(items,
       (instanceId, ids) =>
         fetch(`/api/sonarr/command${instanceId ? `?instanceId=${encodeURIComponent(instanceId)}` : ''}`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -475,19 +502,177 @@ export default function SeriesPage() {
       { countResult: parseSeriesSearchTallies },
     );
     reportBulk('Searching', ok, fail, { noun: 'series', pluralNoun: 'series', reason: firstError });
-    if (fail === 0) exit();
-  }, [fanOut, exit]);
+    if (fail === 0 && leaveSelection) exit();
+    return fail === 0;
+  }, [fanOutItems, exit]);
 
-  const handleDelete = useCallback(async (deleteFiles: boolean) => {
-    const { ok, fail, firstError } = await fanOut((instanceId, ids) =>
+  const handleBulkSearch = useCallback(
+    () => runSearch(selectedSeries, true).then(() => undefined),
+    [runSearch, selectedSeries],
+  );
+
+  const runDelete = useCallback(async (items: SonarrSeriesListItem[], deleteFiles: boolean, leaveSelection = false) => {
+    const { ok, fail, firstError } = await fanOutItems(items, (instanceId, ids) =>
       fetch(`/api/sonarr/editor${instanceId ? `?instanceId=${encodeURIComponent(instanceId)}` : ''}`, {
         method: 'DELETE', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ids, deleteFiles }),
       }));
     reportBulk('Deleted', ok, fail, { noun: 'series', pluralNoun: 'series', reason: firstError });
     await refetchSeries();
-    if (fail === 0) exit();
-  }, [fanOut, refetchSeries, exit]);
+    if (fail === 0 && leaveSelection) exit();
+    return fail === 0;
+  }, [fanOutItems, refetchSeries, exit]);
+
+  const handleDelete = useCallback(
+    (deleteFiles: boolean) => runDelete(selectedSeries, deleteFiles, true).then(() => undefined),
+    [runDelete, selectedSeries],
+  );
+
+  const confirmSingleDelete = useCallback(async (deleteFiles: boolean) => {
+    if (!deleteTarget || deletingTarget) return;
+    setDeletingTarget(true);
+    try {
+      if (await runDelete([deleteTarget], deleteFiles)) setDeleteTarget(null);
+    } finally {
+      setDeletingTarget(false);
+    }
+  }, [deleteTarget, deletingTarget, runDelete]);
+
+  const contextActionsByKey = useMemo(() => {
+    const result = new Map<string, ContextActionGroup[]>();
+    for (const item of series) {
+      const key = keyOf(item);
+      const seriesWatch = watchLookup({
+        scope: 'sonarr',
+        instanceId: item.instanceId,
+        arrId: item.id,
+        kind: 'series',
+      });
+      const watchedAction = buildMarkWatchedContextAction({
+        status: seriesWatch,
+        canWrite: canSetWatched,
+        isWriting: isWritingWatched,
+        setWatched,
+      });
+      result.set(key, [
+        {
+          id: 'navigation',
+          actions: [
+            { id: 'open', label: 'Open details', href: hrefForSeries(item), onNavigate: handleNavigateToDetail },
+            ...(canEditSeries
+              ? [{
+                  id: 'edit',
+                  label: 'Edit',
+                  icon: <Pencil className="h-4 w-4" />,
+                  href: arrEditHref('series', item.id, item.instanceId),
+                }]
+              : []),
+          ],
+        },
+        {
+          id: 'state',
+          actions: [
+            ...(watchedAction ? [watchedAction] : []),
+            ...(canMonitor
+              ? [{
+                  id: 'monitor',
+                  label: item.monitored ? 'Unmonitor' : 'Monitor',
+                  icon: item.monitored ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />,
+                  onSelect: () => { void runMonitor([item], !item.monitored); },
+                }]
+              : []),
+          ],
+        },
+        {
+          id: 'organize',
+          actions: [
+            ...(canSearch
+              ? [{
+                  id: 'search',
+                  label: 'Automatic search',
+                  icon: <Search className="h-4 w-4" />,
+                  onSelect: () => { void runSearch([item]); },
+                }]
+              : []),
+            ...(canManageFiles
+              ? [{
+                  id: 'files',
+                  label: 'Manage episodes',
+                  icon: <FileStack className="h-4 w-4" />,
+                  href: arrManageHref('series', item.id, item.title, item.instanceId),
+                }]
+              : []),
+            ...(canSearch
+              ? [{
+                  id: 'rename',
+                  label: 'Preview rename…',
+                  icon: <FileEdit className="h-4 w-4" />,
+                  onSelect: () => {
+                    setRenameTarget({
+                      title: item.title,
+                      seriesId: item.id,
+                      instanceId: item.instanceId,
+                    });
+                  },
+                }]
+              : []),
+          ],
+        },
+        {
+          id: 'actions',
+          actions: [
+            ...(canBulk
+              ? [{
+                  id: 'select',
+                  label: 'Select',
+                  icon: <ListChecks className="h-4 w-4" />,
+                  onSelect: () => { enter(); toggle(key); },
+                }]
+              : []),
+            ...(canDelete
+              ? [{
+                  id: 'delete',
+                  label: 'Delete series',
+                  icon: <Trash2 className="h-4 w-4" />,
+                  onSelect: () => setDeleteTarget(item),
+                  destructive: true,
+                }]
+              : []),
+          ],
+        },
+      ]);
+    }
+    return result;
+  }, [
+    series,
+    keyOf,
+    hrefForSeries,
+    handleNavigateToDetail,
+    watchLookup,
+    canSetWatched,
+    isWritingWatched,
+    setWatched,
+    canEditSeries,
+    canMonitor,
+    canSearch,
+    canManageFiles,
+    canBulk,
+    canDelete,
+    runMonitor,
+    runSearch,
+    enter,
+    toggle,
+  ]);
+
+  const contextActionsForSeries = useCallback(
+    (item: SonarrSeriesListItem) => contextActionsByKey.get(keyOf(item)) ?? [],
+    [contextActionsByKey, keyOf],
+  );
+
+  const contextActionsForTableRow = useCallback(
+    (row: { id: number; instanceId?: string }) => contextActionsByKey.get(`${row.instanceId ?? ''}:${row.id}`) ?? [],
+    [contextActionsByKey],
+  );
 
   const isDesktop = viewportWidth >= 768;
   const effectiveView = viewMode === 'table' ? 'table' : viewMode;
@@ -855,6 +1040,7 @@ export default function SeriesPage() {
                     selectable={selectionMode}
                     selected={selectedKeys.has(keyOf(s))}
                     onToggleSelect={() => toggle(keyOf(s))}
+                    contextActionGroups={contextActionsForSeries(s)}
                   />
                 ))}
               </div>
@@ -905,6 +1091,7 @@ export default function SeriesPage() {
                   selectable={selectionMode}
                   selected={selectedKeys.has(keyOf(s))}
                   onToggleSelect={() => toggle(keyOf(s))}
+                  contextActionGroups={contextActionsForSeries(s)}
                 />
               ))}
               {bottomSpacerHeight > 0 && <div style={{ height: bottomSpacerHeight }} />}
@@ -936,6 +1123,7 @@ export default function SeriesPage() {
                 selectable={selectionMode}
                 selectedKeys={selectedKeys}
                 onToggleSelect={(row) => toggle(`${row.instanceId ?? ''}:${row.id}`)}
+                getContextActionGroups={contextActionsForTableRow}
               />
             </div>
           );
@@ -982,12 +1170,32 @@ export default function SeriesPage() {
                 selectable={selectionMode}
                 selected={selectedKeys.has(keyOf(s))}
                 onToggleSelect={() => toggle(keyOf(s))}
+                contextActionGroups={contextActionsForSeries(s)}
               />
             ))}
             {bottomSpacerHeight > 0 && <div style={{ height: bottomSpacerHeight }} />}
           </div>
         );
       })()}
+
+      <RenamePreviewDialog
+        open={renameTarget !== null}
+        onOpenChange={(open) => { if (!open) setRenameTarget(null); }}
+        service="sonarr"
+        mediaId={renameTarget?.seriesId ?? 0}
+        mediaTitle={renameTarget?.title ?? ''}
+        instanceId={renameTarget?.instanceId}
+      />
+
+      <SingleMediaDeleteDialog
+        key={deleteTarget ? keyOf(deleteTarget) : 'no-delete-target'}
+        open={deleteTarget !== null}
+        onOpenChange={(open) => { if (!open && !deletingTarget) setDeleteTarget(null); }}
+        title={deleteTarget?.title ?? ''}
+        itemNoun="series"
+        busy={deletingTarget}
+        onConfirm={confirmSingleDelete}
+      />
 
       {selectionMode && (
         <>

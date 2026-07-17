@@ -22,9 +22,9 @@ import { PullToRefresh } from '@/components/ui/pull-to-refresh';
 import { useRefreshAction } from '@/lib/hooks/use-refresh-action';
 import { MoviesSubNav } from '@/components/media/movies-subnav';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
-import { Filter, ArrowUpDown, Plus, RefreshCw, ListChecks } from 'lucide-react';
+import { Filter, ArrowUpDown, Plus, RefreshCw, ListChecks, Eye, EyeOff, Search, Trash2, Pencil, FileStack, FileEdit } from 'lucide-react';
 import { useCan, useMe, hasCapability } from '@/components/permission-provider';
-import { useWatchLookup, useWatchMapReady } from '@/components/jellyfin/watch-status-provider';
+import { useWatchLookup, useWatchMapReady, useWatchStatus } from '@/components/jellyfin/watch-status-provider';
 import { useUIStore } from '@/lib/store';
 import { matchesWatchFilter } from '@/lib/watch-status-filter';
 import { useBulkSelection } from '@/lib/use-bulk-selection';
@@ -35,6 +35,12 @@ import { queryKeys } from '@/lib/query-keys';
 import { jsonFetcher, ensureArray } from '@/lib/query-fetch';
 import { bulkFanOut, reportBulk } from '@/lib/bulk-fan-out';
 import { useUnionTags } from '@/lib/hooks/use-reference-data';
+import { type ContextActionGroup } from '@/components/ui/quick-context-menu';
+import { SingleMediaDeleteDialog } from '@/components/media/single-media-delete-dialog';
+import { InteractiveSearchDialog } from '@/components/media/interactive-search-dialog';
+import { RenamePreviewDialog } from '@/components/media/rename-preview-dialog';
+import { arrEditHref, arrManageHref } from '@/lib/arr-edit-href';
+import { buildMarkWatchedContextAction } from '@/lib/mark-watched-context-action';
 import type { RadarrMovieListItem } from '@/types';
 
 import type { MediaViewMode } from '@/lib/store';
@@ -195,8 +201,12 @@ export default function MoviesPage() {
   const canAddMovies = useCan('movies.add');
   const canMonitor = useCan('movies.editMonitoring');
   const canTag = useCan('movies.editTags');
+  const canChangePath = useCan('movies.changePath');
+  const canEditMovie = canMonitor || canTag || canChangePath;
+  const canManageFiles = useCan('movies.manageFiles');
   const canDelete = useCan('movies.delete');
   const canSearch = useCan('activity.manage');
+  const { setWatched, canWrite: canSetWatched, isWriting: isWritingWatched } = useWatchStatus();
   const canBulk = canMonitor || canTag || canDelete || canSearch;
   const {
     selectionMode, selectedKeys, count: selectedCount,
@@ -227,6 +237,18 @@ export default function MoviesPage() {
   const [viewportWidth, setViewportWidth] = useState(1280);
   const [containerWidth, setContainerWidth] = useState(0);
   const [contentOffsetTop, setContentOffsetTop] = useState(0);
+  const [deleteTarget, setDeleteTarget] = useState<RadarrMovieListItem | null>(null);
+  const [interactiveSearchTarget, setInteractiveSearchTarget] = useState<{
+    title: string;
+    movieId: number;
+    instanceId?: string;
+  } | null>(null);
+  const [renameTarget, setRenameTarget] = useState<{
+    title: string;
+    movieId: number;
+    instanceId?: string;
+  } | null>(null);
+  const [deletingTarget, setDeletingTarget] = useState(false);
   const contentRef = useRef<HTMLDivElement | null>(null);
   const hasRestoredScrollRef = useRef(false);
   const hasRestoredSearchRef = useRef(false);
@@ -492,37 +514,48 @@ export default function MoviesPage() {
     else selectMany(filtered.map(keyOf));
   }, [allFilteredSelected, deselectMany, selectMany, filtered, keyOf]);
 
-  // Selected movies grouped by instance so each bulk request hits the right one.
-  const groupSelectedByInstance = useCallback(() => {
-    const groups = new Map<string | undefined, number[]>();
+  const selectedMovies = useMemo(() => {
+    const selected: RadarrMovieListItem[] = [];
     for (const key of selectedKeys) {
       const movie = movieByKey.get(key);
-      if (!movie) continue;
+      if (movie) selected.push(movie);
+    }
+    return selected;
+  }, [selectedKeys, movieByKey]);
+
+  const fanOutItems = useCallback(async (
+    items: RadarrMovieListItem[],
+    run: (instanceId: string | undefined, ids: number[]) => Promise<Response>,
+    opts?: Parameters<typeof bulkFanOut>[2],
+  ) => {
+    const groups = new Map<string | undefined, number[]>();
+    for (const movie of items) {
       const list = groups.get(movie.instanceId) ?? [];
       list.push(movie.id);
       groups.set(movie.instanceId, list);
     }
-    return groups;
-  }, [selectedKeys, movieByKey]);
+    return bulkFanOut(groups, run, opts);
+  }, []);
 
-  const fanOut = useCallback(async (
-    run: (instanceId: string | undefined, ids: number[]) => Promise<Response>,
-    opts?: Parameters<typeof bulkFanOut>[2],
-  ) => bulkFanOut(groupSelectedByInstance(), run, opts), [groupSelectedByInstance]);
-
-  const handleMonitor = useCallback(async (monitored: boolean) => {
-    const { ok, fail, firstError } = await fanOut((instanceId, ids) =>
+  const runMonitor = useCallback(async (items: RadarrMovieListItem[], monitored: boolean, leaveSelection = false) => {
+    const { ok, fail, firstError } = await fanOutItems(items, (instanceId, ids) =>
       fetch(`/api/radarr/editor${instanceId ? `?instanceId=${encodeURIComponent(instanceId)}` : ''}`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ids, monitored }),
       }));
     reportBulk(monitored ? 'Monitoring' : 'Unmonitoring', ok, fail, { noun: 'movie', pluralNoun: 'movies', reason: firstError });
     await refetchMovies();
-    if (fail === 0) exit();
-  }, [fanOut, refetchMovies, exit]);
+    if (fail === 0 && leaveSelection) exit();
+    return fail === 0;
+  }, [fanOutItems, refetchMovies, exit]);
+
+  const handleMonitor = useCallback(
+    (monitored: boolean) => runMonitor(selectedMovies, monitored, true).then(() => undefined),
+    [runMonitor, selectedMovies],
+  );
 
   const handleApplyTags = useCallback(async (labels: string[], mode: 'add' | 'remove' | 'replace') => {
-    const { ok, fail, firstError } = await fanOut((instanceId, ids) =>
+    const { ok, fail, firstError } = await fanOutItems(selectedMovies, (instanceId, ids) =>
       fetch(`/api/radarr/editor${instanceId ? `?instanceId=${encodeURIComponent(instanceId)}` : ''}`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ids, tags: labels, applyTags: mode }),
@@ -535,28 +568,200 @@ export default function MoviesPage() {
     );
     await refetchMovies();
     if (fail === 0) exit();
-  }, [fanOut, refetchMovies, exit]);
+  }, [fanOutItems, selectedMovies, refetchMovies, exit]);
 
-  const handleBulkSearch = useCallback(async () => {
-    const { ok, fail, firstError } = await fanOut((instanceId, ids) =>
+  const runSearch = useCallback(async (items: RadarrMovieListItem[], leaveSelection = false) => {
+    const { ok, fail, firstError } = await fanOutItems(items, (instanceId, ids) =>
       fetch(`/api/radarr/command${instanceId ? `?instanceId=${encodeURIComponent(instanceId)}` : ''}`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: 'MoviesSearch', movieIds: ids }),
       }));
     reportBulk('Searching', ok, fail, { noun: 'movie', pluralNoun: 'movies', reason: firstError });
-    if (fail === 0) exit();
-  }, [fanOut, exit]);
+    if (fail === 0 && leaveSelection) exit();
+    return fail === 0;
+  }, [fanOutItems, exit]);
 
-  const handleDelete = useCallback(async (deleteFiles: boolean) => {
-    const { ok, fail, firstError } = await fanOut((instanceId, ids) =>
+  const handleBulkSearch = useCallback(
+    () => runSearch(selectedMovies, true).then(() => undefined),
+    [runSearch, selectedMovies],
+  );
+
+  const runDelete = useCallback(async (items: RadarrMovieListItem[], deleteFiles: boolean, leaveSelection = false) => {
+    const { ok, fail, firstError } = await fanOutItems(items, (instanceId, ids) =>
       fetch(`/api/radarr/editor${instanceId ? `?instanceId=${encodeURIComponent(instanceId)}` : ''}`, {
         method: 'DELETE', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ids, deleteFiles }),
       }));
     reportBulk('Deleted', ok, fail, { noun: 'movie', pluralNoun: 'movies', reason: firstError });
     await refetchMovies();
-    if (fail === 0) exit();
-  }, [fanOut, refetchMovies, exit]);
+    if (fail === 0 && leaveSelection) exit();
+    return fail === 0;
+  }, [fanOutItems, refetchMovies, exit]);
+
+  const handleDelete = useCallback(
+    (deleteFiles: boolean) => runDelete(selectedMovies, deleteFiles, true).then(() => undefined),
+    [runDelete, selectedMovies],
+  );
+
+  const confirmSingleDelete = useCallback(async (deleteFiles: boolean) => {
+    if (!deleteTarget || deletingTarget) return;
+    setDeletingTarget(true);
+    try {
+      if (await runDelete([deleteTarget], deleteFiles)) setDeleteTarget(null);
+    } finally {
+      setDeletingTarget(false);
+    }
+  }, [deleteTarget, deletingTarget, runDelete]);
+
+  const contextActionsByKey = useMemo(() => {
+    const result = new Map<string, ContextActionGroup[]>();
+    for (const movie of movies) {
+      const key = keyOf(movie);
+      const movieWatch = watchLookup({
+        scope: 'radarr',
+        instanceId: movie.instanceId,
+        arrId: movie.id,
+        kind: 'movie',
+      });
+      const watchedAction = buildMarkWatchedContextAction({
+        status: movieWatch,
+        canWrite: canSetWatched,
+        isWriting: isWritingWatched,
+        setWatched,
+      });
+      result.set(key, [
+        {
+          id: 'navigation',
+          actions: [
+            { id: 'open', label: 'Open details', href: hrefForMovie(movie), onNavigate: handleNavigateToDetail },
+            ...(canEditMovie
+              ? [{
+                  id: 'edit',
+                  label: 'Edit',
+                  icon: <Pencil className="h-4 w-4" />,
+                  href: arrEditHref('movie', movie.id, movie.instanceId),
+                }]
+              : []),
+          ],
+        },
+        {
+          id: 'state',
+          actions: [
+            ...(watchedAction ? [watchedAction] : []),
+            ...(canMonitor
+              ? [{
+                  id: 'monitor',
+                  label: movie.monitored ? 'Unmonitor' : 'Monitor',
+                  icon: movie.monitored ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />,
+                  onSelect: () => { void runMonitor([movie], !movie.monitored); },
+                }]
+              : []),
+          ],
+        },
+        {
+          id: 'organize',
+          actions: [
+            ...(canSearch
+              ? [{
+                  id: 'search',
+                  label: 'Automatic search',
+                  icon: <Search className="h-4 w-4" />,
+                  onSelect: () => { void runSearch([movie]); },
+                }]
+              : []),
+            ...(canSearch
+              ? [{
+                  id: 'interactive',
+                  label: 'Interactive search…',
+                  icon: <Search className="h-4 w-4" />,
+                  onSelect: () => {
+                    setInteractiveSearchTarget({
+                      title: movie.title,
+                      movieId: movie.id,
+                      instanceId: movie.instanceId,
+                    });
+                  },
+                }]
+              : []),
+            ...(canManageFiles
+              ? [{
+                  id: 'files',
+                  label: 'Manage files',
+                  icon: <FileStack className="h-4 w-4" />,
+                  href: arrManageHref('movie', movie.id, movie.title, movie.instanceId),
+                }]
+              : []),
+            ...(canSearch
+              ? [{
+                  id: 'rename',
+                  label: 'Preview rename…',
+                  icon: <FileEdit className="h-4 w-4" />,
+                  onSelect: () => {
+                    setRenameTarget({
+                      title: movie.title,
+                      movieId: movie.id,
+                      instanceId: movie.instanceId,
+                    });
+                  },
+                }]
+              : []),
+          ],
+        },
+        {
+          id: 'actions',
+          actions: [
+            ...(canBulk
+              ? [{
+                  id: 'select',
+                  label: 'Select',
+                  icon: <ListChecks className="h-4 w-4" />,
+                  onSelect: () => { enter(); toggle(key); },
+                }]
+              : []),
+            ...(canDelete
+              ? [{
+                  id: 'delete',
+                  label: 'Delete movie',
+                  icon: <Trash2 className="h-4 w-4" />,
+                  onSelect: () => setDeleteTarget(movie),
+                  destructive: true,
+                }]
+              : []),
+          ],
+        },
+      ]);
+    }
+    return result;
+  }, [
+    movies,
+    keyOf,
+    hrefForMovie,
+    handleNavigateToDetail,
+    watchLookup,
+    canSetWatched,
+    isWritingWatched,
+    setWatched,
+    canEditMovie,
+    canMonitor,
+    canSearch,
+    canManageFiles,
+    canBulk,
+    canDelete,
+    runMonitor,
+    runSearch,
+    enter,
+    toggle,
+  ]);
+
+  const contextActionsForMovie = useCallback(
+    (movie: RadarrMovieListItem) => contextActionsByKey.get(keyOf(movie)) ?? [],
+    [contextActionsByKey, keyOf],
+  );
+
+  const contextActionsForTableRow = useCallback(
+    (row: { id: number; instanceId?: string }) => contextActionsByKey.get(`${row.instanceId ?? ''}:${row.id}`) ?? [],
+    [contextActionsByKey],
+  );
 
   const effectiveView = viewMode === 'table' ? 'table' : viewMode;
   const useVirtualization = !loading && filtered.length > 0;
@@ -932,6 +1137,7 @@ export default function MoviesPage() {
                     selectable={selectionMode}
                     selected={selectedKeys.has(keyOf(movie))}
                     onToggleSelect={() => toggle(keyOf(movie))}
+                    contextActionGroups={contextActionsForMovie(movie)}
                   />
                 ))}
               </div>
@@ -983,6 +1189,7 @@ export default function MoviesPage() {
                   selectable={selectionMode}
                   selected={selectedKeys.has(keyOf(movie))}
                   onToggleSelect={() => toggle(keyOf(movie))}
+                  contextActionGroups={contextActionsForMovie(movie)}
                 />
               ))}
               {bottomSpacerHeight > 0 && <div style={{ height: bottomSpacerHeight }} />}
@@ -1014,6 +1221,7 @@ export default function MoviesPage() {
                 selectable={selectionMode}
                 selectedKeys={selectedKeys}
                 onToggleSelect={(row) => toggle(`${row.instanceId ?? ''}:${row.id}`)}
+                getContextActionGroups={contextActionsForTableRow}
               />
             </div>
           );
@@ -1061,12 +1269,45 @@ export default function MoviesPage() {
                 selectable={selectionMode}
                 selected={selectedKeys.has(keyOf(movie))}
                 onToggleSelect={() => toggle(keyOf(movie))}
+                contextActionGroups={contextActionsForMovie(movie)}
               />
             ))}
             {bottomSpacerHeight > 0 && <div style={{ height: bottomSpacerHeight }} />}
           </div>
         );
       })()}
+
+      <RenamePreviewDialog
+        open={renameTarget !== null}
+        onOpenChange={(open) => { if (!open) setRenameTarget(null); }}
+        service="radarr"
+        mediaId={renameTarget?.movieId ?? 0}
+        mediaTitle={renameTarget?.title ?? ''}
+        instanceId={renameTarget?.instanceId}
+      />
+
+      <InteractiveSearchDialog
+        open={interactiveSearchTarget !== null}
+        onOpenChange={(open) => { if (!open) setInteractiveSearchTarget(null); }}
+        title={interactiveSearchTarget?.title ?? ''}
+        service="radarr"
+        searchParams={{
+          movieId: interactiveSearchTarget?.movieId ?? 0,
+          ...(interactiveSearchTarget?.instanceId
+            ? { instanceId: interactiveSearchTarget.instanceId }
+            : {}),
+        }}
+      />
+
+      <SingleMediaDeleteDialog
+        key={deleteTarget ? keyOf(deleteTarget) : 'no-delete-target'}
+        open={deleteTarget !== null}
+        onOpenChange={(open) => { if (!open && !deletingTarget) setDeleteTarget(null); }}
+        title={deleteTarget?.title ?? ''}
+        itemNoun="movie"
+        busy={deletingTarget}
+        onConfirm={confirmSingleDelete}
+      />
 
       {selectionMode && (
         <>

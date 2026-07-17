@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { FadeInImage } from '@/components/media/fade-in-image';
 import {
@@ -19,6 +19,12 @@ import { useListFetchSize } from '@/lib/widgets/use-list-fetch-size';
 import { formatDistanceToNowSafe } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/skeleton';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import {
+  QuickContextMenu,
+  type ContextAction,
+  type ContextActionGroup,
+} from '@/components/ui/quick-context-menu';
 import type { WidgetProps } from '@/lib/widgets/types';
 import { SectionHeader } from './bento-primitives';
 import {
@@ -131,6 +137,48 @@ function requesterLabel(req: EnrichedSeerrRequest): string {
     u?.email ??
     `User ${u?.id ?? '?'}`
   );
+}
+
+function RequestDropdownItems({ groups }: { groups: ContextActionGroup[] }) {
+  return groups.map((group, groupIndex) => (
+    <Fragment key={group.id ?? groupIndex}>
+      {groupIndex > 0 ? <DropdownMenuSeparator /> : null}
+      {group.actions.map((action) => {
+        const item = (
+          <>
+            {action.icon}
+            <span>{action.label}</span>
+            {action.external ? <ExternalLink size={11} className="ml-auto opacity-60" /> : null}
+          </>
+        );
+
+        if (action.href) {
+          return (
+            <DropdownMenuItem key={action.id} asChild disabled={action.disabled || action.pending}>
+              {action.external ? (
+                <a href={action.href} target="_blank" rel="noopener noreferrer">
+                  {item}
+                </a>
+              ) : (
+                <Link href={action.href}>{item}</Link>
+              )}
+            </DropdownMenuItem>
+          );
+        }
+
+        return (
+          <DropdownMenuItem
+            key={action.id}
+            disabled={action.disabled || action.pending}
+            variant={action.destructive ? 'destructive' : 'default'}
+            onSelect={() => action.onSelect?.()}
+          >
+            {item}
+          </DropdownMenuItem>
+        );
+      })}
+    </Fragment>
+  ));
 }
 
 export function RequestsListWidget({
@@ -292,6 +340,7 @@ export function RequestsListWidget({
   const [busy, setBusy] = useState<Set<number>>(new Set());
   // Approve/edit open the full Seerr modal (overrides, seasons, Request As).
   const [modal, setModal] = useState<{ req: EnrichedSeerrRequest; mode: 'approve' | 'edit' } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<EnrichedSeerrRequest | null>(null);
   // Only approvers see request-management actions (approve/decline/edit/retry/delete).
   const canManageRequests = useCan('requests.approve');
   const { adjustBadge } = useBadgeActions();
@@ -334,8 +383,10 @@ export function RequestsListWidget({
           setExtraPages((prev) => prev.filter((r) => r.id !== id));
         }
         await refresh();
+        return true;
       } catch (e) {
         toast.error(e instanceof Error ? e.message : `Failed to ${action} request`);
+        return false;
       } finally {
         setBusy((prev) => {
           const next = new Set(prev);
@@ -361,7 +412,9 @@ export function RequestsListWidget({
   // Helprr-side pending requests (the approval gate). Renders above the Seerr
   // list in every state — including when there are no Seerr requests yet — and
   // returns null when there are none. Approving here refreshes the Seerr list.
-  const pendingNode = <PendingApprovalSection onChanged={refresh} grid={unbounded} />;
+  const pendingNode = (
+    <PendingApprovalSection onChanged={refresh} grid={unbounded} contextMenuDisabled={editMode} />
+  );
 
   // Shell: fills the bento cell height in widget mode (inner list scrolls);
   // grows with content in unbounded mode (the page itself scrolls).
@@ -482,19 +535,83 @@ export function RequestsListWidget({
             seerrExternal && req.media?.tmdbId
               ? `${seerrExternal}/${req.type === 'tv' ? 'tv' : 'movie'}/${req.media.tmdbId}`
               : null;
-          const hasOpenLink = !!(helprrHref || jellyfinHref || seerrHref);
-          const hasActionAboveDelete = canApprove || canDecline || canRetry;
+          const openActions: ContextAction[] = [
+            ...(helprrHref ? [{
+              id: 'open-helprr',
+              label: 'Open in Helprr',
+              icon: req.enriched.helprr?.type === 'series' ? <Tv size={14} /> : <Film size={14} />,
+              href: helprrHref,
+            }] : []),
+            ...(jellyfinHref ? [{
+              id: 'open-jellyfin',
+              label: 'Open in Jellyfin',
+              icon: <MonitorPlay size={14} />,
+              href: jellyfinHref,
+              external: true,
+            }] : []),
+            ...(seerrHref ? [{
+              id: 'open-seerr',
+              label: 'Open in Seerr',
+              icon: <Inbox size={14} />,
+              href: seerrHref,
+              external: true,
+            }] : []),
+          ];
+          const manageActions: ContextAction[] = [
+            ...(canApprove ? [{
+              id: 'approve',
+              label: 'Approve…',
+              icon: <Check size={14} />,
+              onSelect: () => setModal({ req, mode: 'approve' as const }),
+            }, {
+              id: 'edit',
+              label: 'Edit Request',
+              icon: <Pencil size={14} />,
+              onSelect: () => setModal({ req, mode: 'edit' as const }),
+            }] : []),
+            ...(canDecline ? [{
+              id: 'decline',
+              label: 'Decline',
+              icon: <X size={14} />,
+              onSelect: () => void runAction(req.id, 'decline'),
+            }] : []),
+            ...(canRetry ? [{
+              id: 'retry',
+              label: 'Retry',
+              icon: <RefreshCw size={14} />,
+              onSelect: () => void runAction(req.id, 'retry'),
+            }] : []),
+          ];
+          const actionGroups: ContextActionGroup[] = [
+            ...(openActions.length > 0 ? [{ id: 'open', actions: openActions }] : []),
+            ...(manageActions.length > 0 ? [{ id: 'manage', actions: manageActions }] : []),
+            ...(canManageRequests ? [{
+              id: 'danger',
+              actions: [{
+                id: 'delete',
+                label: 'Delete…',
+                icon: <Trash2 size={14} />,
+                destructive: true,
+                onSelect: () => setDeleteTarget(req),
+              }],
+            }] : []),
+          ];
           return (
-            <div
+            <QuickContextMenu
               key={req.id}
-              className={cn(
-                'flex border transition-opacity',
-                unbounded
-                  ? 'items-center gap-3 rounded-xl border-border/60 bg-card p-2.5 hover:bg-accent/40 sm:p-3'
-                  : 'gap-2 rounded-lg border-[color:var(--hpr-hairline)] bg-[color:var(--hpr-ink)] p-2',
-                isBusy && 'pointer-events-none opacity-50'
-              )}
+              label={`Actions for ${title}`}
+              groups={actionGroups}
+              disabled={editMode || isBusy}
             >
+              <div
+                className={cn(
+                  'flex border transition-opacity',
+                  unbounded
+                    ? 'items-center gap-3 rounded-xl border-border/60 bg-card p-2.5 hover:bg-accent/40 sm:p-3'
+                    : 'gap-2 rounded-lg border-[color:var(--hpr-hairline)] bg-[color:var(--hpr-ink)] p-2',
+                  isBusy && 'pointer-events-none opacity-50'
+                )}
+              >
               <div
                 className={cn(
                   'relative shrink-0 overflow-hidden rounded-md bg-muted',
@@ -583,76 +700,12 @@ export function RequestsListWidget({
                     </button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    {helprrHref ? (
-                      <DropdownMenuItem asChild>
-                        <Link href={helprrHref}>
-                          {req.enriched.helprr?.type === 'series' ? (
-                            <Tv size={14} />
-                          ) : (
-                            <Film size={14} />
-                          )}{' '}
-                          Open in Helprr
-                        </Link>
-                      </DropdownMenuItem>
-                    ) : null}
-                    {jellyfinHref ? (
-                      <DropdownMenuItem asChild>
-                        <a
-                          href={jellyfinHref}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                        >
-                          <MonitorPlay size={14} /> Open in Jellyfin
-                          <ExternalLink size={11} className="ml-auto opacity-60" />
-                        </a>
-                      </DropdownMenuItem>
-                    ) : null}
-                    {seerrHref ? (
-                      <DropdownMenuItem asChild>
-                        <a
-                          href={seerrHref}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                        >
-                          <Inbox size={14} /> Open in Seerr
-                          <ExternalLink size={11} className="ml-auto opacity-60" />
-                        </a>
-                      </DropdownMenuItem>
-                    ) : null}
-                    {hasOpenLink ? <DropdownMenuSeparator /> : null}
-                    {canApprove ? (
-                      <DropdownMenuItem onClick={() => setModal({ req, mode: 'approve' })}>
-                        <Check size={14} /> Approve…
-                      </DropdownMenuItem>
-                    ) : null}
-                    {canApprove ? (
-                      <DropdownMenuItem onClick={() => setModal({ req, mode: 'edit' })}>
-                        <Pencil size={14} /> Edit Request
-                      </DropdownMenuItem>
-                    ) : null}
-                    {canDecline ? (
-                      <DropdownMenuItem onClick={() => void runAction(req.id, 'decline')}>
-                        <X size={14} /> Decline
-                      </DropdownMenuItem>
-                    ) : null}
-                    {canRetry ? (
-                      <DropdownMenuItem onClick={() => void runAction(req.id, 'retry')}>
-                        <RefreshCw size={14} /> Retry
-                      </DropdownMenuItem>
-                    ) : null}
-                    {hasActionAboveDelete && canManageRequests ? <DropdownMenuSeparator /> : null}
-                    {canManageRequests ? (
-                      <DropdownMenuItem
-                        variant="destructive"
-                        onClick={() => void runAction(req.id, 'delete')}
-                      >
-                        <Trash2 size={14} /> Delete
-                      </DropdownMenuItem>
-                    ) : null}
+                    <RequestDropdownItems groups={actionGroups} />
                   </DropdownMenuContent>
                 </DropdownMenu>
               )}
-            </div>
+              </div>
+            </QuickContextMenu>
           );
         })}
 
@@ -700,6 +753,24 @@ export function RequestsListWidget({
           }}
         />
       )}
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => {
+          if (!open && !(deleteTarget && busy.has(deleteTarget.id))) setDeleteTarget(null);
+        }}
+        title="Delete request?"
+        description={deleteTarget
+          ? `Delete the request for ${deleteTarget.enriched.title ?? `TMDB ${deleteTarget.media?.tmdbId ?? deleteTarget.id}`}? This cannot be undone.`
+          : undefined}
+        confirmLabel="Delete request"
+        destructive
+        busy={deleteTarget ? busy.has(deleteTarget.id) : false}
+        onConfirm={async () => {
+          if (!deleteTarget) return;
+          const deleted = await runAction(deleteTarget.id, 'delete');
+          if (deleted) setDeleteTarget(null);
+        }}
+      />
     </div>
   );
 }

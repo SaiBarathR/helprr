@@ -72,9 +72,12 @@ import { RenamePreviewDialog } from '@/components/media/rename-preview-dialog';
 import { WatchlistAddDialog } from '@/components/watchlist/watchlist-add-dialog';
 import { ScheduledAlertDialog } from '@/components/scheduled-alerts/scheduled-alert-dialog';
 import { useCan } from '@/components/permission-provider';
-import { useWatchLookup } from '@/components/jellyfin/watch-status-provider';
+import { useWatchLookup, useWatchStatus } from '@/components/jellyfin/watch-status-provider';
 import { MarkWatchedMenuItem } from '@/components/jellyfin/mark-watched-button';
+import { buildMarkWatchedContextAction } from '@/lib/mark-watched-context-action';
+import { arrEditHref, arrManageHref } from '@/lib/arr-edit-href';
 import { WatchStatusInline } from '@/components/jellyfin/watch-status-indicator';
+import { QuickContextMenu, type ContextActionGroup } from '@/components/ui/quick-context-menu';
 
 type RatingItem = {
   label: string;
@@ -174,7 +177,16 @@ export default function MovieDetailPage() {
   const canManageFiles = useCan('movies.manageFiles');
   const canScheduleAlert = useCan('scheduledAlerts.edit');
   const lookupWatch = useWatchLookup();
+  const { setWatched, canWrite: canSetWatched, isWriting: isWritingWatched } = useWatchStatus();
   const movieWatch = lookupWatch({ kind: 'movie', tmdbId: movie?.tmdbId, imdbId: movie?.imdbId });
+  const watchedContextAction = movie
+    ? buildMarkWatchedContextAction({
+        status: movieWatch,
+        canWrite: canSetWatched,
+        isWriting: isWritingWatched,
+        setWatched,
+      })
+    : null;
   const canEditMovie = canEditMonitoring || canEditTags || canChangePath;
 
   // Reference data — shared (and deduped) with the list / edit pages.
@@ -481,6 +493,43 @@ export default function MovieDetailPage() {
     },
   ];
 
+  const contextActionGroups: ContextActionGroup[] = [
+    {
+      id: 'activity',
+      actions: [
+        ...(watchedContextAction ? [watchedContextAction] : []),
+        ...(canEditMonitoring ? [{
+          id: 'monitor', label: movie.monitored ? 'Unmonitor' : 'Monitor',
+          icon: movie.monitored ? <Bookmark className="h-4 w-4" /> : <BookmarkCheck className="h-4 w-4" />,
+          onSelect: () => { void handleToggleMonitored(); }, disabled: actionLoading === 'monitor',
+        }] : []),
+        ...(canManageActivity ? [
+          { id: 'refresh', label: 'Refresh', icon: <RefreshCw className="h-4 w-4" />, onSelect: () => { void handleRefresh(); }, disabled: !!actionLoading },
+          { id: 'search', label: 'Automatic Search', icon: <Search className="h-4 w-4" />, onSelect: () => { void handleSearch(); }, disabled: !!actionLoading },
+          { id: 'interactive', label: 'Interactive Search', icon: <Search className="h-4 w-4" />, onSelect: () => setInteractiveSearch(true), disabled: !!actionLoading },
+        ] : []),
+      ],
+    },
+    {
+      id: 'organize',
+      actions: [
+        ...(canEditMovie ? [{ id: 'edit', label: 'Edit', icon: <Pencil className="h-4 w-4" />, href: arrEditHref('movie', movie.id, instance) }] : []),
+        ...(canManageActivity ? [{ id: 'rename', label: 'Preview Rename', icon: <FileEdit className="h-4 w-4" />, onSelect: () => setShowRenamePreview(true) }] : []),
+        ...(canManageFiles ? [{ id: 'files', label: 'Manage Files', icon: <FileStack className="h-4 w-4" />, href: arrManageHref('movie', movie.id, movie.title, instance) }] : []),
+      ],
+    },
+    {
+      id: 'links',
+      actions: [
+        ...(movie.genres?.includes('Animation') ? [{ id: 'anilist', label: 'Search on AniList', icon: <Sparkles className="h-4 w-4" />, href: `/anime/explore?search=${encodeURIComponent(movie.title)}` }] : []),
+        ...(movie.imdbId ? [{ id: 'imdb', label: 'Open in IMDb', icon: <ExternalLink className="h-4 w-4" />, href: `https://www.imdb.com/title/${movie.imdbId}`, external: true }] : []),
+        ...(radarrExternalUrl && movie.tmdbId ? [{ id: 'radarr', label: 'Open in Radarr', icon: <Film className="h-4 w-4" />, href: `${radarrExternalUrl}/movie/${movie.tmdbId}`, external: true }] : []),
+        ...(externalUrls.JELLYFIN && (movie.imdbId || movie.tmdbId) ? [{ id: 'jellyfin', label: 'Open in Jellyfin', icon: <ExternalLink className="h-4 w-4" />, onSelect: () => { void handleOpenInJellyfin(); }, disabled: jellyfinLoading }] : []),
+      ],
+    },
+    ...(canDeleteMovie ? [{ id: 'danger', actions: [{ id: 'delete', label: 'Delete', icon: <Trash2 className="h-4 w-4" />, onSelect: () => setShowDelete(true), destructive: true }] }] : []),
+  ];
+
   return (
     <>
       {/* Header */}
@@ -661,6 +710,7 @@ export default function MovieDetailPage() {
             {/* Poster + info overlapping backdrop */}
             <div className="relative -mt-[90px] px-2 md:px-6 flex gap-3.5">
               <div className="w-[100px] shrink-0">
+                <QuickContextMenu label={`${movie.title} actions`} groups={contextActionGroups}>
                 <div className="relative aspect-[2/3] rounded-lg overflow-hidden bg-muted shadow-lg ring-1 ring-border/20">
                   {poster ? (
                     <Image
@@ -677,6 +727,7 @@ export default function MovieDetailPage() {
                     </div>
                   )}
                 </div>
+                </QuickContextMenu>
               </div>
               <div className="flex-1 min-w-0 pt-[60px]">
                 <Badge
@@ -721,6 +772,7 @@ export default function MovieDetailPage() {
         ) : (
           <div className="flex gap-4">
             <div className="w-[120px] shrink-0">
+              <QuickContextMenu label={`${movie.title} actions`} groups={contextActionGroups}>
               <div className="relative aspect-[2/3] rounded-lg overflow-hidden bg-muted">
                 {poster ? (
                   <Image
@@ -749,6 +801,7 @@ export default function MovieDetailPage() {
                   <Bookmark className="h-3.5 w-3.5" />
                 </button>
               </div>
+              </QuickContextMenu>
             </div>
             <div className="flex-1 min-w-0 pt-1">
               <Badge
@@ -783,8 +836,8 @@ export default function MovieDetailPage() {
                     </div>
                   ))}
                 </div>
-              )}
-            </div>
+                )}
+              </div>
           </div>
         )}
 

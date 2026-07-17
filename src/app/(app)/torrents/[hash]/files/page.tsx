@@ -5,8 +5,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError, jsonFetcher } from '@/lib/query-fetch';
 import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import { toast } from 'sonner';
-import { ArrowLeft, ChevronRight, ChevronDown, Folder, File, Loader2 } from 'lucide-react';
+import { ArrowLeft, ChevronRight, ChevronDown, Download, Folder, File, Gauge, Loader2, X } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
+import { QuickContextMenu } from '@/components/ui/quick-context-menu';
 import {
   Select,
   SelectContent,
@@ -16,6 +17,7 @@ import {
 } from '@/components/ui/select';
 import { formatBytes } from '@/lib/format';
 import { getRefreshIntervalMs } from '@/lib/client-refresh-settings';
+import { useCan } from '@/components/permission-provider';
 import type { TorrentFile } from '@/lib/qbittorrent-client';
 import {
   buildFileTree,
@@ -39,6 +41,7 @@ export default function TorrentFilesPage() {
   const router = useRouter();
   const hash = params.hash;
   const torrentName = searchParams.get('name') || 'Torrent Files';
+  const canManage = useCan('torrents.manage');
 
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
   const [refreshIntervalMs, setRefreshIntervalMs] = useState(5000);
@@ -136,7 +139,7 @@ export default function TorrentFilesPage() {
   if (loading && files.length === 0) {
     return (
       <div className="space-y-3">
-        <PageHeader name={torrentName} onBack={() => router.back()} />
+        <PageHeader name={torrentName} canManage={canManage} onBack={() => router.back()} />
         <div className="flex items-center justify-center py-20">
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
         </div>
@@ -147,7 +150,7 @@ export default function TorrentFilesPage() {
   if (error && files.length === 0) {
     return (
       <div className="space-y-3">
-        <PageHeader name={torrentName} onBack={() => router.back()} />
+        <PageHeader name={torrentName} canManage={canManage} onBack={() => router.back()} />
         <div className="rounded-xl bg-card p-8 text-center text-muted-foreground">
           <p>{error?.message ?? 'Failed to fetch files'}</p>
         </div>
@@ -157,7 +160,7 @@ export default function TorrentFilesPage() {
 
   return (
     <div className="space-y-3 animate-content-in">
-      <PageHeader name={torrentName} onBack={() => router.back()} />
+      <PageHeader name={torrentName} canManage={canManage} onBack={() => router.back()} />
 
       {/* Summary bar */}
       <div className="rounded-xl bg-card p-3 space-y-2">
@@ -181,6 +184,7 @@ export default function TorrentFilesPage() {
             node={node}
             depth={0}
             expandedDirs={expandedDirs}
+            canManage={canManage}
             onToggleDir={toggleDir}
             onToggleDownload={toggleFileDownload}
             onSetPriority={setPriority}
@@ -191,7 +195,7 @@ export default function TorrentFilesPage() {
   );
 }
 
-function PageHeader({ name, onBack }: { name: string; onBack: () => void }) {
+function PageHeader({ name, canManage, onBack }: { name: string; canManage: boolean; onBack: () => void }) {
   return (
     <div className="flex items-start gap-3">
       <button
@@ -203,7 +207,7 @@ function PageHeader({ name, onBack }: { name: string; onBack: () => void }) {
       </button>
       <div className="min-w-0 pt-2">
         <h1 className="text-sm font-medium break-all line-clamp-2 leading-snug">{name}</h1>
-        <p className="text-xs text-muted-foreground mt-0.5">Manage Files</p>
+        <p className="text-xs text-muted-foreground mt-0.5">{canManage ? 'Manage Files' : 'Files'}</p>
       </div>
     </div>
   );
@@ -213,6 +217,7 @@ interface TreeNodeRowProps {
   node: TreeNode;
   depth: number;
   expandedDirs: Set<string>;
+  canManage: boolean;
   onToggleDir: (path: string) => void;
   onToggleDownload: (fileIds: number[], currentlySelected: boolean) => void;
   onSetPriority: (fileIds: number[], priority: number) => void;
@@ -222,6 +227,7 @@ function TreeNodeRow({
   node,
   depth,
   expandedDirs,
+  canManage,
   onToggleDir,
   onToggleDownload,
   onSetPriority,
@@ -231,6 +237,7 @@ function TreeNodeRow({
       <FileRow
         node={node}
         depth={depth}
+        canManage={canManage}
         onToggleDownload={onToggleDownload}
         onSetPriority={onSetPriority}
       />
@@ -242,6 +249,7 @@ function TreeNodeRow({
       node={node}
       depth={depth}
       expandedDirs={expandedDirs}
+      canManage={canManage}
       onToggleDir={onToggleDir}
       onToggleDownload={onToggleDownload}
       onSetPriority={onSetPriority}
@@ -253,6 +261,7 @@ function DirRow({
   node,
   depth,
   expandedDirs,
+  canManage,
   onToggleDir,
   onToggleDownload,
   onSetPriority,
@@ -261,9 +270,9 @@ function DirRow({
   const checkState = getCheckState(node);
   const progress = node.totalSize > 0 ? node.weightedProgress / node.totalSize : 0;
   const indent = Math.min(depth, 4) * 16;
+  const allIndices = getAllFileIndices(node);
 
   const handleCheckboxChange = () => {
-    const allIndices = getAllFileIndices(node);
     onToggleDownload(allIndices, checkState === 'all');
   };
 
@@ -275,32 +284,74 @@ function DirRow({
           style={{ paddingLeft: `${12 + indent}px` }}
         >
           {/* Checkbox */}
-          <span className="relative flex items-center justify-center shrink-0">
-            <input
-              type="checkbox"
-              checked={checkState === 'all'}
-              aria-label={`Select ${node.name}`}
-              ref={(el) => {
-                if (el) el.indeterminate = checkState === 'indeterminate';
-              }}
-              onChange={handleCheckboxChange}
-              className="rounded border-border h-4 w-4"
-            />
-          </span>
+          {canManage && (
+            <span className="relative flex items-center justify-center shrink-0">
+              <input
+                type="checkbox"
+                checked={checkState === 'all'}
+                aria-label={`Select ${node.name}`}
+                ref={(el) => {
+                  if (el) el.indeterminate = checkState === 'indeterminate';
+                }}
+                onChange={handleCheckboxChange}
+                className="rounded border-border h-4 w-4"
+              />
+            </span>
+          )}
 
           {/* Expand toggle + folder icon + name */}
-          <button
-            className="flex items-center gap-1.5 min-w-0 flex-1"
-            onClick={() => onToggleDir(node.path)}
+          <QuickContextMenu
+            label={`Actions for ${node.name}`}
+            groups={[
+              {
+                id: 'folder',
+                actions: [
+                  {
+                    id: 'toggle-folder',
+                    label: expanded ? 'Collapse folder' : 'Expand folder',
+                    icon: expanded
+                      ? <ChevronDown className="h-4 w-4" />
+                      : <ChevronRight className="h-4 w-4" />,
+                    onSelect: () => onToggleDir(node.path),
+                  },
+                  ...(canManage
+                    ? [{
+                        id: 'toggle-download',
+                        label: checkState === 'all' ? 'Skip all files' : 'Download all files',
+                        icon: checkState === 'all'
+                          ? <X className="h-4 w-4" />
+                          : <Download className="h-4 w-4" />,
+                        onSelect: () => onToggleDownload(allIndices, checkState === 'all'),
+                      }]
+                    : []),
+                ],
+              },
+              {
+                id: 'priority',
+                actions: canManage
+                  ? PRIORITY_OPTIONS.filter((option) => option.value !== '0').map((option) => ({
+                      id: `priority-${option.value}`,
+                      label: `${option.label} priority`,
+                      icon: <Gauge className="h-4 w-4" />,
+                      onSelect: () => onSetPriority(allIndices, Number(option.value)),
+                    }))
+                  : [],
+              },
+            ]}
           >
-            {expanded ? (
-              <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
-            ) : (
-              <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
-            )}
-            <Folder className="h-4 w-4 shrink-0 text-muted-foreground" />
-            <span className="text-xs font-medium truncate">{node.name}</span>
-          </button>
+            <button
+              className="flex items-center gap-1.5 min-w-0 flex-1"
+              onClick={() => onToggleDir(node.path)}
+            >
+              {expanded ? (
+                <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+              ) : (
+                <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+              )}
+              <Folder className="h-4 w-4 shrink-0 text-muted-foreground" />
+              <span className="text-xs font-medium truncate">{node.name}</span>
+            </button>
+          </QuickContextMenu>
 
           {/* Stats */}
           <div className="flex items-center gap-2 shrink-0">
@@ -324,6 +375,7 @@ function DirRow({
             node={child}
             depth={depth + 1}
             expandedDirs={expandedDirs}
+            canManage={canManage}
             onToggleDir={onToggleDir}
             onToggleDownload={onToggleDownload}
             onSetPriority={onSetPriority}
@@ -336,11 +388,13 @@ function DirRow({
 function FileRow({
   node,
   depth,
+  canManage,
   onToggleDownload,
   onSetPriority,
 }: {
   node: FileNode;
   depth: number;
+  canManage: boolean;
   onToggleDownload: (fileIds: number[], currentlySelected: boolean) => void;
   onSetPriority: (fileIds: number[], priority: number) => void;
 }) {
@@ -356,20 +410,53 @@ function FileRow({
         style={{ paddingLeft: `${12 + indent}px` }}
       >
         {/* Row 1: checkbox + icon + name */}
-        <div className="flex items-start gap-2">
-          <input
-            type="checkbox"
-            checked={isSelected}
-            aria-label={`Select ${node.name}`}
-            onChange={() => onToggleDownload([file.index], isSelected)}
-            className="rounded border-border h-4 w-4 mt-0.5 shrink-0"
-          />
-          <File className="h-4 w-4 shrink-0 text-muted-foreground mt-0.5" />
-          <span className="text-xs break-all line-clamp-2 leading-snug flex-1">{node.name}</span>
-          <span className="text-[10px] text-muted-foreground shrink-0 mt-0.5">
-            {formatBytes(file.size)}
-          </span>
-        </div>
+        <QuickContextMenu
+          label={`Actions for ${node.name}`}
+          groups={[
+            {
+              id: 'download',
+              actions: canManage
+                ? [{
+                    id: 'toggle-download',
+                    label: isSelected ? 'Skip file' : 'Download file',
+                    icon: isSelected
+                      ? <X className="h-4 w-4" />
+                      : <Download className="h-4 w-4" />,
+                    onSelect: () => onToggleDownload([file.index], isSelected),
+                  }]
+                : [],
+            },
+            {
+              id: 'priority',
+              actions: canManage
+                ? PRIORITY_OPTIONS.filter((option) => option.value !== '0').map((option) => ({
+                    id: `priority-${option.value}`,
+                    label: `${option.label} priority`,
+                    icon: <Gauge className="h-4 w-4" />,
+                    disabled: Number(option.value) === file.priority,
+                    onSelect: () => onSetPriority([file.index], Number(option.value)),
+                  }))
+                : [],
+            },
+          ]}
+        >
+          <div className="flex items-start gap-2">
+            {canManage && (
+              <input
+                type="checkbox"
+                checked={isSelected}
+                aria-label={`Select ${node.name}`}
+                onChange={() => onToggleDownload([file.index], isSelected)}
+                className="rounded border-border h-4 w-4 mt-0.5 shrink-0"
+              />
+            )}
+            <File className="h-4 w-4 shrink-0 text-muted-foreground mt-0.5" />
+            <span className="text-xs break-all line-clamp-2 leading-snug flex-1">{node.name}</span>
+            <span className="text-[10px] text-muted-foreground shrink-0 mt-0.5">
+              {formatBytes(file.size)}
+            </span>
+          </div>
+        </QuickContextMenu>
 
         {/* Row 2: progress bar */}
         <div className="flex items-center gap-2 ml-[calc(16px+8px)]">
@@ -398,6 +485,7 @@ function FileRow({
           )}
 
           <div className="ml-auto">
+            {canManage ? (
             <Select
               value={String(file.priority)}
               onValueChange={(val) => {
@@ -422,6 +510,11 @@ function FileRow({
                 ))}
               </SelectContent>
             </Select>
+            ) : (
+              <span className="text-[10px] text-muted-foreground">
+                {PRIORITY_OPTIONS.find((option) => Number(option.value) === file.priority)?.label ?? `Priority ${file.priority}`}
+              </span>
+            )}
           </div>
         </div>
       </div>

@@ -1,10 +1,12 @@
 'use client';
 
 import Link from 'next/link';
-import { Star, Film, Tv, Check } from 'lucide-react';
+import { Star, Film, Tv, Check, ExternalLink, Plus } from 'lucide-react';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import type { DiscoverItem } from '@/types';
 import { FadeInImage } from '@/components/media/fade-in-image';
+import { QuickContextMenu } from '@/components/ui/quick-context-menu';
+import { useCan } from '@/components/permission-provider';
 
 interface DiscoverMediaRailProps {
   title: string;
@@ -12,6 +14,8 @@ interface DiscoverMediaRailProps {
 }
 
 export function DiscoverMediaRail({ title, items }: DiscoverMediaRailProps) {
+  const canAddMovies = useCan('movies.add');
+  const canAddSeries = useCan('series.add');
   if (!items.length) return null;
 
   return (
@@ -23,13 +27,42 @@ export function DiscoverMediaRail({ title, items }: DiscoverMediaRailProps) {
             ? toCachedImageSrc(item.posterPath, 'tmdb') || item.posterPath
             : null;
           const href = `/discover/${item.mediaType === 'movie' ? 'movie' : 'tv'}/${item.tmdbId}`;
+          const libraryInstance = item.library?.instances?.[0]
+            ?? (item.library?.id ? {
+              id: item.library.id,
+              instanceId: item.library.instanceId ?? '',
+            } : null);
+          const libraryHref = libraryInstance
+            ? `/${item.mediaType === 'movie' ? 'movies' : 'series'}/${libraryInstance.id}${libraryInstance.instanceId ? `?instance=${libraryInstance.instanceId}` : ''}`
+            : null;
+          const canAdd = item.mediaType === 'movie' ? canAddMovies : canAddSeries;
+          const params = new URLSearchParams({ term: item.title, tmdbId: String(item.tmdbId) });
+          if (item.mediaType !== 'movie') params.set('seriesType', 'standard');
+          const addHref = `/${item.mediaType === 'movie' ? 'movies' : 'series'}/add?${params.toString()}`;
           return (
-            <Link
+            <QuickContextMenu
               key={`${item.mediaType}-${item.tmdbId}`}
-              href={href}
-              className="group relative min-w-[110px] w-[110px] sm:min-w-[140px] sm:w-[140px] md:min-w-[150px] md:w-[150px] lg:min-w-[164px] lg:w-[164px] xl:min-w-[180px] xl:w-[180px] 2xl:min-w-[196px] 2xl:w-[196px] text-left shrink-0"
+              label={`${item.title} actions`}
+              actions={[
+                { id: 'open', label: 'Open details', icon: <ExternalLink />, href },
+                ...(libraryHref ? [{
+                  id: 'library',
+                  label: 'Open in library',
+                  icon: <Check />,
+                  href: libraryHref,
+                }] : canAdd ? [{
+                  id: 'add',
+                  label: `Add to ${item.mediaType === 'movie' ? 'Radarr' : 'Sonarr'}`,
+                  icon: <Plus />,
+                  href: addHref,
+                }] : []),
+              ]}
             >
-              <div className="relative aspect-[2/3] rounded-xl overflow-hidden bg-muted/60 border border-border/40">
+              <Link
+                href={href}
+                className="group relative min-w-[110px] w-[110px] sm:min-w-[140px] sm:w-[140px] md:min-w-[150px] md:w-[150px] lg:min-w-[164px] lg:w-[164px] xl:min-w-[180px] xl:w-[180px] 2xl:min-w-[196px] 2xl:w-[196px] text-left shrink-0"
+              >
+                <div className="relative aspect-[2/3] rounded-xl overflow-hidden bg-muted/60 border border-border/40">
                 {posterSrc ? (
                   <FadeInImage
                     src={posterSrc}
@@ -66,8 +99,9 @@ export function DiscoverMediaRail({ title, items }: DiscoverMediaRailProps) {
                     </span>
                   </div>
                 </div>
-              </div>
-            </Link>
+                </div>
+              </Link>
+            </QuickContextMenu>
           );
         })}
       </div>

@@ -21,7 +21,7 @@ import { SearchBar } from '@/components/media/search-bar';
 import { PullToRefresh } from '@/components/ui/pull-to-refresh';
 import { useRefreshAction } from '@/lib/hooks/use-refresh-action';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
-import { Filter, ArrowUpDown, Plus, RefreshCw, ListChecks } from 'lucide-react';
+import { Filter, ArrowUpDown, Plus, RefreshCw, ListChecks, Eye, EyeOff, Search, Trash2, Pencil, FileText, FileEdit } from 'lucide-react';
 import { useCan } from '@/components/permission-provider';
 import { useUIStore } from '@/lib/store';
 import { useBulkSelection } from '@/lib/use-bulk-selection';
@@ -32,6 +32,10 @@ import { queryKeys } from '@/lib/query-keys';
 import { jsonFetcher, ensureArray } from '@/lib/query-fetch';
 import { bulkFanOut, reportBulk } from '@/lib/bulk-fan-out';
 import { useUnionTags } from '@/lib/hooks/use-reference-data';
+import { type ContextActionGroup } from '@/components/ui/quick-context-menu';
+import { SingleMediaDeleteDialog } from '@/components/media/single-media-delete-dialog';
+import { RenamePreviewDialog } from '@/components/media/rename-preview-dialog';
+import { arrEditHref, arrFilesHref } from '@/lib/arr-edit-href';
 import type { LidarrArtistListItem } from '@/types';
 import type { MediaViewMode } from '@/lib/store';
 
@@ -40,10 +44,12 @@ const EMPTY_ARTISTS: LidarrArtistListItem[] = [];
 
 const FIELD_OPTIONS_BY_MODE: Record<MediaViewMode, { value: string; label: string }[]> = {
   posters: [
+    { value: 'title', label: 'Name' },
     { value: 'rating', label: 'Rating' },
     { value: 'monitored', label: 'Monitored' },
   ],
   overview: [
+    { value: 'title', label: 'Name' },
     { value: 'qualityProfile', label: 'Quality Profile' },
     { value: 'metadataProfile', label: 'Metadata Profile' },
     { value: 'rating', label: 'Rating' },
@@ -58,6 +64,7 @@ const FIELD_OPTIONS_BY_MODE: Record<MediaViewMode, { value: string; label: strin
   ],
   table: [
     { value: 'monitored', label: 'Monitored' },
+    { value: 'title', label: 'Name' },
     { value: 'artistType', label: 'Artist Type' },
     { value: 'qualityProfile', label: 'Quality Profile' },
     { value: 'albumCount', label: 'Album Count' },
@@ -168,6 +175,8 @@ export default function MusicPage() {
   const canAddMusic = useCan('music.add');
   const canMonitor = useCan('music.editMonitoring');
   const canTag = useCan('music.editTags');
+  const canChangePath = useCan('music.changePath');
+  const canEditArtist = canMonitor || canTag || canChangePath;
   const canDelete = useCan('music.delete');
   const canSearch = useCan('activity.manage');
   const canBulk = canMonitor || canTag || canDelete || canSearch;
@@ -199,6 +208,13 @@ export default function MusicPage() {
   const [viewportWidth, setViewportWidth] = useState(1280);
   const [containerWidth, setContainerWidth] = useState(0);
   const [contentOffsetTop, setContentOffsetTop] = useState(0);
+  const [deleteTarget, setDeleteTarget] = useState<LidarrArtistListItem | null>(null);
+  const [renameTarget, setRenameTarget] = useState<{
+    title: string;
+    artistId: number;
+    instanceId?: string;
+  } | null>(null);
+  const [deletingTarget, setDeletingTarget] = useState(false);
   const contentRef = useRef<HTMLDivElement | null>(null);
   const hasRestoredScrollRef = useRef(false);
   const hasRestoredSearchRef = useRef(false);
@@ -420,37 +436,48 @@ export default function MusicPage() {
     else selectMany(filtered.map(keyOf));
   }, [allFilteredSelected, deselectMany, selectMany, filtered, keyOf]);
 
-  // Selected artists grouped by instance so each bulk request hits the right one.
-  const groupSelectedByInstance = useCallback(() => {
-    const groups = new Map<string | undefined, number[]>();
+  const selectedArtists = useMemo(() => {
+    const selected: LidarrArtistListItem[] = [];
     for (const key of selectedKeys) {
-      const artist = artistByKey.get(key);
-      if (!artist) continue;
+      const item = artistByKey.get(key);
+      if (item) selected.push(item);
+    }
+    return selected;
+  }, [selectedKeys, artistByKey]);
+
+  const fanOutItems = useCallback(async (
+    items: LidarrArtistListItem[],
+    run: (instanceId: string | undefined, ids: number[]) => Promise<Response>,
+    opts?: Parameters<typeof bulkFanOut>[2],
+  ) => {
+    const groups = new Map<string | undefined, number[]>();
+    for (const artist of items) {
       const list = groups.get(artist.instanceId) ?? [];
       list.push(artist.id);
       groups.set(artist.instanceId, list);
     }
-    return groups;
-  }, [selectedKeys, artistByKey]);
+    return bulkFanOut(groups, run, opts);
+  }, []);
 
-  const fanOut = useCallback(async (
-    run: (instanceId: string | undefined, ids: number[]) => Promise<Response>,
-    opts?: Parameters<typeof bulkFanOut>[2],
-  ) => bulkFanOut(groupSelectedByInstance(), run, opts), [groupSelectedByInstance]);
-
-  const handleMonitor = useCallback(async (monitored: boolean) => {
-    const { ok, fail, firstError } = await fanOut((instanceId, ids) =>
+  const runMonitor = useCallback(async (items: LidarrArtistListItem[], monitored: boolean, leaveSelection = false) => {
+    const { ok, fail, firstError } = await fanOutItems(items, (instanceId, ids) =>
       fetch(`/api/lidarr/editor${instanceId ? `?instanceId=${encodeURIComponent(instanceId)}` : ''}`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ids, monitored }),
       }));
     reportBulk(monitored ? 'Monitoring' : 'Unmonitoring', ok, fail, { noun: 'artist', pluralNoun: 'artists', reason: firstError });
     await refetchArtists();
-    if (fail === 0) exit();
-  }, [fanOut, refetchArtists, exit]);
+    if (fail === 0 && leaveSelection) exit();
+    return fail === 0;
+  }, [fanOutItems, refetchArtists, exit]);
+
+  const handleMonitor = useCallback(
+    (monitored: boolean) => runMonitor(selectedArtists, monitored, true).then(() => undefined),
+    [runMonitor, selectedArtists],
+  );
 
   const handleApplyTags = useCallback(async (labels: string[], mode: 'add' | 'remove' | 'replace') => {
-    const { ok, fail, firstError } = await fanOut((instanceId, ids) =>
+    const { ok, fail, firstError } = await fanOutItems(selectedArtists, (instanceId, ids) =>
       fetch(`/api/lidarr/editor${instanceId ? `?instanceId=${encodeURIComponent(instanceId)}` : ''}`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ids, tags: labels, applyTags: mode }),
@@ -463,28 +490,158 @@ export default function MusicPage() {
     );
     await refetchArtists();
     if (fail === 0) exit();
-  }, [fanOut, refetchArtists, exit]);
+  }, [fanOutItems, selectedArtists, refetchArtists, exit]);
 
-  const handleBulkSearch = useCallback(async () => {
-    const { ok, fail, firstError } = await fanOut((instanceId, ids) =>
+  const runSearch = useCallback(async (items: LidarrArtistListItem[], leaveSelection = false) => {
+    const { ok, fail, firstError } = await fanOutItems(items, (instanceId, ids) =>
       fetch(`/api/lidarr/command${instanceId ? `?instanceId=${encodeURIComponent(instanceId)}` : ''}`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: 'ArtistSearch', artistIds: ids }),
       }));
     reportBulk('Searching', ok, fail, { noun: 'artist', pluralNoun: 'artists', reason: firstError });
-    if (fail === 0) exit();
-  }, [fanOut, exit]);
+    if (fail === 0 && leaveSelection) exit();
+    return fail === 0;
+  }, [fanOutItems, exit]);
 
-  const handleDelete = useCallback(async (deleteFiles: boolean) => {
-    const { ok, fail, firstError } = await fanOut((instanceId, ids) =>
+  const handleBulkSearch = useCallback(
+    () => runSearch(selectedArtists, true).then(() => undefined),
+    [runSearch, selectedArtists],
+  );
+
+  const runDelete = useCallback(async (items: LidarrArtistListItem[], deleteFiles: boolean, leaveSelection = false) => {
+    const { ok, fail, firstError } = await fanOutItems(items, (instanceId, ids) =>
       fetch(`/api/lidarr/editor${instanceId ? `?instanceId=${encodeURIComponent(instanceId)}` : ''}`, {
         method: 'DELETE', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ids, deleteFiles }),
       }));
     reportBulk('Deleted', ok, fail, { noun: 'artist', pluralNoun: 'artists', reason: firstError });
     await refetchArtists();
-    if (fail === 0) exit();
-  }, [fanOut, refetchArtists, exit]);
+    if (fail === 0 && leaveSelection) exit();
+    return fail === 0;
+  }, [fanOutItems, refetchArtists, exit]);
+
+  const handleDelete = useCallback(
+    (deleteFiles: boolean) => runDelete(selectedArtists, deleteFiles, true).then(() => undefined),
+    [runDelete, selectedArtists],
+  );
+
+  const confirmSingleDelete = useCallback(async (deleteFiles: boolean) => {
+    if (!deleteTarget || deletingTarget) return;
+    setDeletingTarget(true);
+    try {
+      if (await runDelete([deleteTarget], deleteFiles)) setDeleteTarget(null);
+    } finally {
+      setDeletingTarget(false);
+    }
+  }, [deleteTarget, deletingTarget, runDelete]);
+
+  const contextActionsByKey = useMemo(() => {
+    const result = new Map<string, ContextActionGroup[]>();
+    for (const item of artists) {
+      const key = keyOf(item);
+      result.set(key, [
+        {
+          id: 'navigation',
+          actions: [
+            { id: 'open', label: 'Open details', href: hrefForArtist(item), onNavigate: handleNavigateToDetail },
+            ...(canEditArtist
+              ? [{
+                  id: 'edit',
+                  label: 'Edit',
+                  icon: <Pencil className="h-4 w-4" />,
+                  href: arrEditHref('music', item.id, item.instanceId),
+                }]
+              : []),
+          ],
+        },
+        {
+          id: 'actions',
+          actions: [
+            ...(canMonitor
+              ? [{
+                  id: 'monitor',
+                  label: item.monitored ? 'Unmonitor' : 'Monitor',
+                  icon: item.monitored ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />,
+                  onSelect: () => { void runMonitor([item], !item.monitored); },
+                }]
+              : []),
+            ...(canSearch
+              ? [{
+                  id: 'search',
+                  label: 'Automatic search',
+                  icon: <Search className="h-4 w-4" />,
+                  onSelect: () => { void runSearch([item]); },
+                }]
+              : []),
+            ...(canEditArtist
+              ? [{
+                  id: 'files',
+                  label: 'Files',
+                  icon: <FileText className="h-4 w-4" />,
+                  href: arrFilesHref('music', item.id, item.instanceId),
+                }]
+              : []),
+            ...(canSearch
+              ? [{
+                  id: 'rename',
+                  label: 'Preview rename…',
+                  icon: <FileEdit className="h-4 w-4" />,
+                  onSelect: () => {
+                    setRenameTarget({
+                      title: item.artistName,
+                      artistId: item.id,
+                      instanceId: item.instanceId,
+                    });
+                  },
+                }]
+              : []),
+            ...(canBulk
+              ? [{
+                  id: 'select',
+                  label: 'Select',
+                  icon: <ListChecks className="h-4 w-4" />,
+                  onSelect: () => { enter(); toggle(key); },
+                }]
+              : []),
+            ...(canDelete
+              ? [{
+                  id: 'delete',
+                  label: 'Delete artist',
+                  icon: <Trash2 className="h-4 w-4" />,
+                  onSelect: () => setDeleteTarget(item),
+                  destructive: true,
+                }]
+              : []),
+          ],
+        },
+      ]);
+    }
+    return result;
+  }, [
+    artists,
+    keyOf,
+    hrefForArtist,
+    handleNavigateToDetail,
+    canEditArtist,
+    canMonitor,
+    canSearch,
+    canBulk,
+    canDelete,
+    runMonitor,
+    runSearch,
+    enter,
+    toggle,
+  ]);
+
+  const contextActionsForArtist = useCallback(
+    (item: LidarrArtistListItem) => contextActionsByKey.get(keyOf(item)) ?? [],
+    [contextActionsByKey, keyOf],
+  );
+
+  const contextActionsForTableRow = useCallback(
+    (row: { id: number; instanceId?: string }) => contextActionsByKey.get(`${row.instanceId ?? ''}:${row.id}`) ?? [],
+    [contextActionsByKey],
+  );
 
   const effectiveView = viewMode === 'table' ? 'table' : viewMode;
   const useVirtualization = !loading && filtered.length > 0;
@@ -614,6 +771,7 @@ export default function MusicPage() {
         selectable={selectionMode}
         selected={selectedKeys.has(keyOf(artist))}
         onToggleSelect={() => toggle(keyOf(artist))}
+        contextActionGroups={contextActionsForArtist(artist)}
       />
     );
   }
@@ -849,6 +1007,7 @@ export default function MusicPage() {
                     selectable={selectionMode}
                     selected={selectedKeys.has(keyOf(artist))}
                     onToggleSelect={() => toggle(keyOf(artist))}
+                    contextActionGroups={contextActionsForArtist(artist)}
                   />
                 ))}
               </div>
@@ -901,6 +1060,7 @@ export default function MusicPage() {
                 selectable={selectionMode}
                 selectedKeys={selectedKeys}
                 onToggleSelect={(row) => toggle(`${row.instanceId ?? ''}:${row.id}`)}
+                getContextActionGroups={contextActionsForTableRow}
               />
             </div>
           );
@@ -925,6 +1085,25 @@ export default function MusicPage() {
           </div>
         );
       })()}
+
+      <RenamePreviewDialog
+        open={renameTarget !== null}
+        onOpenChange={(open) => { if (!open) setRenameTarget(null); }}
+        service="lidarr"
+        mediaId={renameTarget?.artistId ?? 0}
+        mediaTitle={renameTarget?.title ?? ''}
+        instanceId={renameTarget?.instanceId}
+      />
+
+      <SingleMediaDeleteDialog
+        key={deleteTarget ? keyOf(deleteTarget) : 'no-delete-target'}
+        open={deleteTarget !== null}
+        onOpenChange={(open) => { if (!open && !deletingTarget) setDeleteTarget(null); }}
+        title={deleteTarget?.artistName ?? ''}
+        itemNoun="artist"
+        busy={deletingTarget}
+        onConfirm={confirmSingleDelete}
+      />
 
       {selectionMode && (
         <>

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -10,15 +10,25 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Filter, ArrowUpDown } from 'lucide-react';
+import { ArrowUpDown, Bookmark, Filter, Layers, Plus, Search as SearchIcon } from 'lucide-react';
+import { toast } from 'sonner';
 import { Skeleton } from '@/components/ui/skeleton';
 import { SearchBar } from '@/components/media/search-bar';
 import { MoviesSubNav } from '@/components/media/movies-subnav';
 import { CollectionCard } from '@/components/media/collection-card';
-import { CollectionDetailDrawer } from '@/components/media/collection-detail-drawer';
+import {
+  addMissingCollectionMovies,
+  CollectionDetailDrawer,
+  getCollectionSearchMovieIds,
+  searchCollectionMovies,
+  setCollectionMonitoring,
+} from '@/components/media/collection-detail-drawer';
+import { useCan } from '@/components/permission-provider';
 import { useUIStore } from '@/lib/store';
 import { queryKeys } from '@/lib/query-keys';
-import { jsonFetcher } from '@/lib/query-fetch';
+import { ApiError, jsonFetcher } from '@/lib/query-fetch';
+import { handleAuthError } from '@/lib/query-client';
+import { invalidateCollections } from '@/lib/query-invalidation';
 import type { CollectionSummary } from '@/types';
 
 const EMPTY: CollectionSummary[] = [];
@@ -39,6 +49,10 @@ const SORT_LABELS: Record<SortMode, string> = {
 };
 
 export default function MovieCollectionsPage() {
+  const queryClient = useQueryClient();
+  const canMonitor = useCan('movies.editMonitoring');
+  const canAdd = useCan('movies.add');
+  const canSearch = useCan('activity.manage');
   const instanceFilter = useUIStore((s) => s.moviesInstanceFilter);
   const setInstanceFilter = useUIStore((s) => s.setMoviesInstanceFilter);
 
@@ -46,6 +60,7 @@ export default function MovieCollectionsPage() {
   const [filter, setFilter] = useState<FilterMode>('all');
   const [sort, setSort] = useState<SortMode>('title');
   const [selected, setSelected] = useState<CollectionSummary | null>(null);
+  const [pendingActions, setPendingActions] = useState<Set<string>>(new Set());
 
   // Fetch every instance's collections once and filter client-side (mirrors the Library
   // tab) so the instance picker always lists every connection — not just the active one.
@@ -64,6 +79,101 @@ export default function MovieCollectionsPage() {
     return [...m].map(([id, label]) => ({ id, label }));
   }, [collections]);
   const multiInstance = instances.length > 1;
+
+  const collectionKey = (collection: CollectionSummary) => `${collection.instanceId ?? ''}:${collection.id}`;
+  const actionKey = (collection: CollectionSummary, action: string) => `${collectionKey(collection)}:${action}`;
+  const isActionPending = (collection: CollectionSummary, action: string) => pendingActions.has(actionKey(collection, action));
+
+  function patchCollection(collection: CollectionSummary, patch: Partial<CollectionSummary>) {
+    queryClient.setQueryData<CollectionSummary[]>(queryKeys.collections('radarr'), (current) =>
+      Array.isArray(current)
+        ? current.map((item) => (
+            item.id === collection.id && item.instanceId === collection.instanceId
+              ? { ...item, ...patch }
+              : item
+          ))
+        : current,
+    );
+  }
+
+  function reportActionError(error: unknown, fallback: string) {
+    handleAuthError(error);
+    if (error instanceof ApiError && error.status === 401) return;
+    toast.error(error instanceof Error ? error.message : fallback);
+  }
+
+  async function runCollectionAction(
+    collection: CollectionSummary,
+    action: string,
+    run: () => Promise<void>,
+  ) {
+    const key = actionKey(collection, action);
+    if (pendingActions.has(key)) return;
+    setPendingActions((current) => new Set(current).add(key));
+    try {
+      await run();
+    } finally {
+      setPendingActions((current) => {
+        const next = new Set(current);
+        next.delete(key);
+        return next;
+      });
+    }
+  }
+
+  function toggleCollectionMonitoring(collection: CollectionSummary) {
+    const next = !collection.monitored;
+    void runCollectionAction(collection, 'monitor', async () => {
+      patchCollection(collection, { monitored: next });
+      try {
+        await setCollectionMonitoring(collection, next);
+        invalidateCollections(queryClient);
+        toast.success(next ? 'Collection monitored' : 'Collection unmonitored');
+      } catch (error) {
+        patchCollection(collection, { monitored: collection.monitored });
+        reportActionError(error, 'Failed to update monitoring');
+      }
+    });
+  }
+
+  function addAllMissing(collection: CollectionSummary) {
+    void runCollectionAction(collection, 'add-missing', async () => {
+      const result = await addMissingCollectionMovies(collection, collection.movies);
+      if (result.addedTmdbIds.length) {
+        const added = new Set(result.addedTmdbIds);
+        patchCollection(collection, {
+          movies: collection.movies.map((movie) => (
+            added.has(movie.tmdbId) ? { ...movie, inLibrary: true } : movie
+          )),
+          missingMovies: Math.max(0, collection.missingMovies - result.addedTmdbIds.length),
+        });
+        invalidateCollections(queryClient);
+      }
+      if (result.firstError) handleAuthError(result.firstError);
+      if (result.failed === 0) {
+        toast.success(`Added ${result.addedTmdbIds.length} ${result.addedTmdbIds.length === 1 ? 'movie' : 'movies'}`);
+      } else if (result.addedTmdbIds.length) {
+        toast.warning(`Added ${result.addedTmdbIds.length}, ${result.failed} failed`);
+      } else {
+        toast.error('Failed to add movies');
+      }
+    });
+  }
+
+  function searchMissing(collection: CollectionSummary) {
+    void runCollectionAction(collection, 'search-missing', async () => {
+      try {
+        const count = await searchCollectionMovies(collection, collection.movies);
+        if (count === 0) {
+          toast.info('Nothing in this collection to search');
+          return;
+        }
+        toast.success(`Searching ${count} ${count === 1 ? 'movie' : 'movies'}`);
+      } catch (error) {
+        reportActionError(error, 'Failed to start search');
+      }
+    });
+  }
 
   // Drop a stale instance filter if that instance is no longer connected.
   useEffect(() => {
@@ -215,6 +325,49 @@ export default function MovieCollectionsPage() {
               multiInstance={multiInstance}
               imagePriority={i < 4}
               onOpen={() => setSelected(c)}
+              contextActionGroups={[
+                {
+                  id: 'navigation',
+                  actions: [{
+                    id: 'view-details',
+                    label: 'View details',
+                    icon: <Layers className="h-4 w-4" />,
+                    onSelect: () => setSelected(c),
+                  }],
+                },
+                {
+                  id: 'manage',
+                  actions: [
+                    ...(canMonitor
+                      ? [{
+                          id: 'toggle-monitoring',
+                          label: c.monitored ? 'Unmonitor collection' : 'Monitor collection',
+                          icon: <Bookmark className="h-4 w-4" />,
+                          pending: isActionPending(c, 'monitor'),
+                          onSelect: () => toggleCollectionMonitoring(c),
+                        }]
+                      : []),
+                    ...(canAdd && c.missingMovies > 0
+                      ? [{
+                          id: 'add-missing',
+                          label: `Add ${c.missingMovies} missing`,
+                          icon: <Plus className="h-4 w-4" />,
+                          pending: isActionPending(c, 'add-missing'),
+                          onSelect: () => addAllMissing(c),
+                        }]
+                      : []),
+                    ...(canSearch && getCollectionSearchMovieIds(c.movies).length > 0
+                      ? [{
+                          id: 'search-missing',
+                          label: 'Search missing',
+                          icon: <SearchIcon className="h-4 w-4" />,
+                          pending: isActionPending(c, 'search-missing'),
+                          onSelect: () => searchMissing(c),
+                        }]
+                      : []),
+                  ],
+                },
+              ]}
             />
           ))}
         </div>

@@ -9,6 +9,47 @@ The central rule is:
 > GitHub Actions builds and publishes Helprr images. Deployment hosts pull and run
 > those images. Do not manually build the production image from the `main` branch.
 
+## How to use this guide
+
+Commands are run in three different places:
+
+- **Maintainer workstation:** the checked-out Helprr repository. Git, GitHub CLI,
+  versioning, tests, tags, release notes, and digest checks run here.
+- **Development/stable Docker host:** the directory containing the relevant Compose
+  file and its untracked env file. Backups, pulls, container replacement, and runtime
+  smoke tests run here.
+- **GitHub:** PR review, CI, Docker publication, digest promotion, and the final release
+  page. The `gh` commands in this guide are workstation shortcuts for those actions.
+
+Do not copy a command to the deployment host merely because the preceding command ran
+there. Each production section says explicitly when to change machines. Never put SSH
+passwords, registry credentials, or env-file contents in a command, script, issue, PR,
+or release note. Enter an SSH password only at its interactive prompt.
+
+At every stop gate, stop rather than improvising:
+
+1. A dirty tree contains changes you do not understand.
+2. A required CI, test, scan, backup, health, or readiness check fails.
+3. Rendered Compose names, images, volumes, or networks do not match the intended stack.
+4. The exact image digest differs from the digest being qualified or promoted.
+5. A production data-service container would be recreated or a migration target is
+   uncertain.
+
+The normal stable-release sequence is:
+
+1. Merge focused feature PRs into `development`.
+2. Qualify the resulting `edge` image on isolated development data.
+3. Prepare the package version and changelog on `development` through a focused PR.
+4. Review and merge `development` into `main` without changing the tested commit.
+5. Wait for `main` CI, then push an annotated `vX.Y.Z` tag.
+6. Wait for native amd64/arm64 builds and Trivy scans; record the exact manifest digest.
+7. Create and validate a production PostgreSQL backup.
+8. Deploy the exact `X.Y.Z` image to production, without recreating PostgreSQL or Redis.
+9. Smoke-test that exact image, then promote its digest to the channel aliases.
+10. Publish the draft GitHub release and verify every public asset.
+11. Refresh the isolated `edge` deployment and return the workstation to a clean,
+    up-to-date `development` branch.
+
 ## The three environments
 
 | Environment | Source | Image | Data |
@@ -62,20 +103,40 @@ arm64 image builds.
 - Helprr intentionally does not publish a `latest` tag.
 
 Changing a registry tag does not restart anyone's container. Users receive a newer
-image only after running `docker compose pull` and `docker compose up -d`, or through
-an external updater they configured themselves.
+image only after pulling and replacing the application container, or through an
+external updater they configured themselves. For the maintainer stack, use the scoped
+`pull helprr` and `up -d --no-build --no-deps helprr` commands in Part 7.
 
 ## What the GitHub workflows do
 
 | Workflow | Trigger | Result |
 |---|---|---|
-| [CI](../.github/workflows/ci.yml) | Any PR; pushes to `development` or `main` | Installs dependencies, generates Prisma, lints, tests, validates the schema, and builds |
+| [CI](../.github/workflows/ci.yml) | Any PR; pushes to `development` or `main` | Installs dependencies, generates Prisma, lints, tests, validates the schema, runs migration-upgrade tests, and builds |
+| CI (`image-scan` job) | Any PR only | Builds the amd64 image without pushing and runs the same pinned, blocking Trivy gate as publishes, so vulnerabilities surface at review time |
 | [Docker publish](../.github/workflows/docker-publish.yml) | Push to `development` | Builds and scans native amd64/arm64 images, then updates `edge` |
-| Docker publish | Push of a `vX.Y.Z` tag | Builds exact `X.Y.Z` image and creates a draft GitHub release with deployment assets |
+| Docker publish | Push of a `vX.Y.Z` tag | Builds exact `X.Y.Z` image and creates a draft GitHub release with deployment assets (re-running on an existing tag skips creation instead of failing) |
 | [Docker promote](../.github/workflows/docker-promote.yml) | Manual workflow dispatch | Verifies a qualified digest, then moves minor, major, and `stable` aliases to it |
 
 A push to `main` runs CI but does **not** publish an image. A version tag is required
 to publish an exact release image.
+
+### Branch protection
+
+Enforcement (configured 2026-07-16 in the repository settings; also enforced for
+administrators):
+
+- **`main`** — direct pushes are blocked: changes land only through a pull request
+  (no approval count required — solo maintainer), and the `lint-and-build` and
+  `image-scan` checks must pass before merging. Force pushes and deletion are
+  blocked. This means every release commit has passed the full gate, including the
+  PR-time image scan, before it can reach `main`.
+- **`development`** — force pushes and branch deletion are blocked. Direct pushes
+  remain allowed (this branch is the day-to-day integration target), so CI on
+  `development` stays advisory; the preferred feature-branch PR flow gets the full
+  required-check treatment.
+
+Version tags are not covered by branch protection; only the maintainer pushes tags,
+and the tag build re-runs the complete scan gate anyway.
 
 On a push to `development`, CI and Docker publish are separate workflows. Treat the
 new `edge` image as deployable only after both workflows are green. The preferred PR
@@ -206,7 +267,7 @@ git diff --cached
 Then stage, commit, and push:
 
 ```bash
-git add <changed-files>
+git add path/to/changed-file
 git commit -m "feat: add my new feature"
 git push -u origin feat/my-new-feature
 ```
@@ -272,8 +333,13 @@ Pull and replace only the isolated development app:
 
 ```bash
 ./scripts/backup.sh --dev
+docker compose --env-file .env.dev -f docker-compose.dev.yml config --services
+docker compose --env-file .env.dev -f docker-compose.dev.yml config --images
+docker inspect -f '{{.Name}} started={{.State.StartedAt}}' \
+  helprr-dev-db helprr-dev-redis
 docker compose --env-file .env.dev -f docker-compose.dev.yml pull helprr-dev
-docker compose --env-file .env.dev -f docker-compose.dev.yml up -d --no-build
+docker compose --env-file .env.dev -f docker-compose.dev.yml \
+  up -d --no-build --no-deps helprr-dev
 ```
 
 The helper selects only `helprr-dev-db`, validates the archive, and stores it separately
@@ -288,7 +354,15 @@ published `edge` modes. It is never the stable `helprr` database.
 docker compose --env-file .env.dev -f docker-compose.dev.yml ps
 docker compose --env-file .env.dev -f docker-compose.dev.yml logs --tail=200 helprr-dev
 curl -fsS http://localhost:3051/api/health
+curl -fsS http://localhost:3051/api/ready
+docker inspect -f 'revision={{index .Config.Labels "org.opencontainers.image.revision"}} version={{index .Config.Labels "org.opencontainers.image.version"}}' helprr-dev
+docker inspect -f '{{.Name}} started={{.State.StartedAt}}' \
+  helprr-dev-db helprr-dev-redis
 ```
+
+`/api/ready` must report `database`, `redis`, and `migrations` as `ok`. The PostgreSQL
+and Redis start times printed after the app replacement must match the pre-update
+values. If they changed unexpectedly, stop and investigate before testing further.
 
 The expected side-by-side layout is:
 
@@ -351,7 +425,21 @@ fixes can remain on `development` and `edge` until the next planned release.
 
 ## Part 4: prepare the release on development
 
-The examples below use `1.1.0`. Replace it with the real version.
+Set the intended version once in the current workstation shell. The examples use a
+future minor release; replace it with the actual semantic version:
+
+```bash
+VERSION=1.2.0
+TAG="v$VERSION"
+IMAGE=ghcr.io/saibarathr/helprr
+```
+
+If a shell is closed or a command is run on another machine, set the appropriate
+variables again. Before any tag or promotion command, print and visually check them:
+
+```bash
+printf 'VERSION=%s TAG=%s IMAGE=%s\n' "$VERSION" "$TAG" "$IMAGE"
+```
 
 Make sure all intended work is present and no unfinished work is included:
 
@@ -360,12 +448,14 @@ git switch development
 git pull --ff-only origin development
 git status
 git log --oneline origin/main..development
+RELEASE_BRANCH="chore/release-$VERSION"
+git switch -c "$RELEASE_BRANCH"
 ```
 
 Update `package.json` and `package-lock.json` without creating the Git tag yet:
 
 ```bash
-npm version 1.1.0 --no-git-tag-version
+npm version "$VERSION" --no-git-tag-version
 ```
 
 Update `CHANGELOG.md` with the release date and user-facing changes. Also verify:
@@ -376,7 +466,7 @@ Update `CHANGELOG.md` with the release date and user-facing changes. Also verify
 - `.env.example` includes new runtime variables without secrets.
 - `docker-compose.yml` passes any required runtime variables.
 - New Prisma migrations are committed and non-destructive for a patch release.
-- The displayed application version will be `1.1.0`.
+- The displayed application version matches `$VERSION`.
 
 Run the complete release gate:
 
@@ -385,21 +475,40 @@ npm run lint
 npm test
 npm run build
 npx prisma validate
-docker compose config --quiet
+docker compose --env-file .env.example -f docker-compose.yml config --quiet
+docker compose --env-file .env.dev.example -f docker-compose.dev.yml config --quiet
+sh -n scripts/setup-env.sh scripts/backup.sh
 npm audit --omit=dev --audit-level=high
+git diff --check
 ```
 
-Commit and push the release preparation:
+Commit and push the release preparation branch:
 
 ```bash
 git add package.json package-lock.json CHANGELOG.md README.md .env.example docker-compose.yml
 git add prisma/migrations 2>/dev/null || true
-git commit -m "chore(release): prepare Helprr 1.1.0"
-git push origin development
+git commit -m "chore(release): prepare Helprr $VERSION"
+git push -u origin "$RELEASE_BRANCH"
+gh pr create \
+  --base development \
+  --head "$RELEASE_BRANCH" \
+  --title "chore(release): prepare Helprr $VERSION" \
+  --body "Version/changelog preparation, complete release-gate evidence, migration notes, and deployment-impact summary."
 ```
 
 Only stage files that actually belong to the release. The explicit list above is a
 review prompt, not a requirement to commit unchanged files.
+
+Wait for CI and review, merge the focused PR into `development`, and then qualify the
+resulting `development` commit and `edge` publication again. Release metadata is part
+of the image labels, so the final `edge` workflow after release preparation must pass.
+
+```bash
+git switch development
+git pull --ff-only origin development
+test "$(node -p "require('./package.json').version")" = "$VERSION"
+gh run list --branch development --limit 10
+```
 
 ## Part 5: move the qualified source to main
 
@@ -409,12 +518,22 @@ Open a release PR from `development` into `main`:
 gh pr create \
   --base main \
   --head development \
-  --title "Release Helprr 1.1.0" \
+  --title "Release Helprr $VERSION" \
   --body "Release gate results, migration notes, manual tests, and planned production smoke checks."
 ```
 
 Wait for every PR check to pass. Review the complete diff from `main`—not only the
-last feature commit.
+last feature commit. Record the release PR URL and inspect its checks before merging:
+
+```bash
+gh pr list --base main --head development --state open
+gh pr checks --watch
+```
+
+Resolve valid review findings on a focused branch through `development`, then let the
+release PR refresh. Re-run the full gate after material changes. Do not apply a review
+suggestion that weakens a fail-closed authorization, ownership, cleanup-correlation, or
+data-safety guarantee merely to make the review disappear; document why it is unsafe.
 
 ### Preferred fast-forward method
 
@@ -443,7 +562,8 @@ git rev-parse origin/development
 gh pr view --json state,mergedAt,url
 ```
 
-The two commit hashes should match.
+The two commit hashes should match. Record that release commit; the tag, image label,
+deployment, and final branch state must all resolve to it.
 
 If a release PR is instead squash-merged or rebased through the GitHub UI, `main` and
 `development` will have different histories. Merge `main` back into `development`
@@ -472,8 +592,20 @@ git status
 Create an annotated tag and push it:
 
 ```bash
-git tag -a v1.1.0 -m "Helprr 1.1.0"
-git push origin v1.1.0
+test "$(node -p "require('./package.json').version")" = "$VERSION"
+test "$(git rev-parse origin/main)" = "$(git rev-parse origin/development)"
+git tag -a "$TAG" -m "Helprr $VERSION"
+git push origin "$TAG"
+```
+
+Wait for the tag run to appear, capture its ID, and monitor that exact run:
+
+```bash
+gh run list --workflow docker-publish.yml --branch "$TAG" --limit 5
+TAG_RUN_ID=$(gh run list --workflow docker-publish.yml --branch "$TAG" \
+  --limit 1 --json databaseId --jq '.[0].databaseId')
+test -n "$TAG_RUN_ID"
+gh run watch "$TAG_RUN_ID" --exit-status --compact
 ```
 
 Never move or reuse a published release tag. If a mistake is discovered after
@@ -482,7 +614,7 @@ publication, fix it in a new version such as `1.1.1`.
 The version-tag push causes Docker publish to:
 
 1. Build the exact commit natively for amd64 and arm64.
-2. Create the multi-architecture `ghcr.io/saibarathr/helprr:1.1.0` manifest.
+2. Create the multi-architecture `ghcr.io/saibarathr/helprr:$VERSION` manifest.
 3. Create a draft GitHub release.
 4. Attach `docker-compose.yml`, `env.example`, `setup-env.sh`, and `backup.sh` from
    that exact tag. These are the complete no-clone install and backup assets.
@@ -493,24 +625,118 @@ Wait for Docker publish to finish successfully. Obtain the exact manifest digest
 
 ```bash
 DIGEST=$(docker buildx imagetools inspect \
-  ghcr.io/saibarathr/helprr:1.1.0 \
+  "$IMAGE:$VERSION" \
   | awk '/^Digest:/ {print $2; exit}')
-echo "$DIGEST"
+printf 'Qualified candidate: %s@%s\n' "$IMAGE" "$DIGEST"
+test -n "$DIGEST"
+test "$(git rev-parse "$TAG^{}")" = "$(git rev-parse origin/main)"
 ```
 
-Record this digest in the release notes or release checklist.
+Record this digest in the release notes or release checklist. Inspect the manifest and
+draft release before touching production:
+
+```bash
+docker buildx imagetools inspect "$IMAGE:$VERSION"
+gh release view "$TAG" --json url,isDraft,isPrerelease,name,tagName,assets
+```
+
+The manifest must contain native `linux/amd64` and `linux/arm64` entries, and both
+platform jobs must have passed Trivy. The release must still be a draft and contain
+exactly these assets from the tagged commit:
+
+- `docker-compose.yml`
+- `env.example`
+- `setup-env.sh`
+- `backup.sh`
+
+Do not publish the draft merely to make its asset URLs public. Production qualification
+comes first.
 
 ## Part 7: qualify the exact image in production
 
 Do not qualify `stable`, because it still refers to the old release. Pin production to
-the new exact version first.
+the new exact version first. This is the only normal release section that mutates the
+stable installation. Announce the planned mutation, use an interactive SSH login, and
+do not print or copy the production `.env`.
 
-### 1. Take a protected PostgreSQL backup
+### 1. Inspect the stable target before changing it
 
-From the production Compose directory:
+On the **deployment host**, enter the stable Compose directory and run read-only
+inspection first:
 
 ```bash
-./scripts/backup.sh
+pwd
+docker ps --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}'
+docker compose config --services
+docker compose config --images
+docker compose config --volumes
+docker compose config --networks
+docker inspect -f '{{.Name}} started={{.State.StartedAt}}' \
+  helprr-db helprr-redis
+awk -F= '$1 == "HELPRR_VERSION" {print "HELPRR_VERSION=" $2}' .env
+```
+
+Do not run full `docker compose config` in copied logs because it renders environment
+values. The stable result must contain only `helprr`, `helprr-db`, and `helprr-redis`,
+with stable volumes/network. If any `helprr-dev-*` name appears, stop. Record the
+PostgreSQL and Redis start times so they can be compared after the app update.
+
+Optionally record simple data-preservation baselines without exposing row contents:
+
+```bash
+docker compose exec -T helprr-db sh -ceu '
+export PGPASSWORD="$POSTGRES_PASSWORD"
+psql --username="$POSTGRES_USER" --dbname="$POSTGRES_DB" --tuples-only <<SQL
+\echo users
+SELECT count(*) FROM "User";
+\echo service_connections
+SELECT count(*) FROM "ServiceConnection";
+\echo applied_migrations
+SELECT count(*) FROM "_prisma_migrations"
+WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL;
+SQL
+'
+```
+
+### 2. Ensure the exact backup helper is available
+
+Normal no-clone installations have `scripts/backup.sh`. If an older installation does
+not, remember that the new release is still a draft, so its public download URL does
+not work yet. Copy the helper from the exact tagged workstation checkout instead of
+publishing the release early.
+
+On the **workstation**, after confirming `main` and `$TAG` are the same commit:
+
+```bash
+DEPLOY_HOST=user@server
+DEPLOY_DIR=/path/to/helprr
+test "$(git rev-parse "$TAG^{}")" = "$(git rev-parse HEAD)"
+BACKUP_HELPER=$(mktemp /tmp/helprr-backup-helper.XXXXXX)
+trap 'rm -f "$BACKUP_HELPER"' EXIT
+git show "$TAG:scripts/backup.sh" > "$BACKUP_HELPER"
+chmod 700 "$BACKUP_HELPER"
+ssh "$DEPLOY_HOST" "mkdir -p '$DEPLOY_DIR/scripts'"
+scp "$BACKUP_HELPER" \
+  "${DEPLOY_HOST}:${DEPLOY_DIR}/scripts/backup.sh"
+shasum -a 256 "$BACKUP_HELPER"
+rm -f "$BACKUP_HELPER"
+trap - EXIT
+```
+
+Enter the SSH password only at the interactive prompts. Then, on the **deployment
+host**, restrict the helper and compare its printed SHA-256 with the workstation value:
+
+```bash
+chmod 700 scripts/backup.sh
+sha256sum scripts/backup.sh
+```
+
+### 3. Take a protected PostgreSQL backup
+
+From the stable Compose directory on the **deployment host**:
+
+```bash
+./scripts/backup.sh --stable
 ```
 
 The helper creates a transactionally consistent custom-format dump while Helprr stays
@@ -522,38 +748,69 @@ Keep the resulting backup until the release has been stable long enough for your
 tolerance. Database dumps contain API keys and password hashes and must be treated as
 secrets. Archive validation is not a substitute for periodic isolated restore tests.
 
-### 2. Pin the exact version
+### 4. Pin and verify the exact image
 
-Set this in the production `.env`:
+Set the release values again on the **deployment host**, copying `$DIGEST` exactly from
+the successful tag workflow:
+
+```bash
+VERSION=1.2.0
+IMAGE=ghcr.io/saibarathr/helprr
+EXPECTED_DIGEST=sha256:replace-with-qualified-digest
+printf 'Deploying %s:%s at %s\n' "$IMAGE" "$VERSION" "$EXPECTED_DIGEST"
+```
+
+Open `.env` in an editor and change only this line; never echo the full file:
 
 ```dotenv
-HELPRR_VERSION=1.1.0
+HELPRR_VERSION=1.2.0
 ```
 
-### 3. Pull and replace the application
+Confirm the safe value and rendered image, then pull without starting anything:
 
 ```bash
+awk -F= '$1 == "HELPRR_VERSION" {print "HELPRR_VERSION=" $2}' .env
+docker compose config --images
 docker compose pull helprr
-docker compose up -d
-docker compose ps
-docker compose logs --tail=250 helprr
+docker image inspect "$IMAGE:$VERSION" --format '{{json .RepoDigests}}'
+docker image inspect "$IMAGE:$VERSION" --format '{{json .RepoDigests}}' \
+  | grep -Fq "$IMAGE@$EXPECTED_DIGEST"
 ```
 
-The image entrypoint applies committed Prisma migrations before starting Next.js.
+The final command must succeed before replacement. It proves that the pulled platform
+image belongs to the qualified multi-architecture digest.
 
-### 4. Run the production smoke checklist
-
-Verify at minimum:
+### 5. Replace only the stable application
 
 ```bash
+docker compose up -d --no-build --no-deps helprr
+```
+
+Always name `helprr` and use `--no-deps` during a stable release. Do not use an
+unscoped `docker compose up -d`, and never use `down` or `down -v`. The image entrypoint
+applies committed Prisma migrations before starting Next.js; PostgreSQL and Redis must
+remain running throughout.
+
+Wait for the app healthcheck, then verify both probes and the image identity:
+
+```bash
+docker compose ps helprr
 curl -fsS http://localhost:3050/api/health
-docker compose ps
+curl -fsS http://localhost:3050/api/ready
+docker inspect -f 'revision={{index .Config.Labels "org.opencontainers.image.revision"}} version={{index .Config.Labels "org.opencontainers.image.version"}} started={{.State.StartedAt}}' helprr
+docker inspect -f '{{.Name}} started={{.State.StartedAt}}' \
+  helprr-db helprr-redis
 docker compose logs --tail=250 helprr
 ```
+
+Readiness must report `database`, `redis`, and `migrations` as `ok`. PostgreSQL and Redis
+start times must match the pre-update values. Re-run the baseline count command and
+confirm users and service connections are unchanged while the migration count is the
+expected current value.
 
 Also verify:
 
-- Settings → Status displays `1.1.0` and the tagged commit SHA.
+- Settings → Status displays `$VERSION` and the tagged commit SHA.
 - Existing users, service connections, preferences, and history remain present.
 - Admin and restricted-member login work.
 - Sonarr, Radarr, Lidarr, qBittorrent, Prowlarr, Jellyfin, and other configured services
@@ -579,20 +836,24 @@ the complete restore procedure.
 ## Part 8: promote the tested digest to stable
 
 Once the exact image has passed production verification, run the manual promotion
-workflow:
+workflow from the **workstation**. Re-set and print `VERSION`, `IMAGE`, and `DIGEST`
+before dispatching if this is a new shell:
 
 ```bash
-gh workflow run docker-promote.yml \
+PROMOTION_URL=$(gh workflow run docker-promote.yml \
   --ref main \
-  -f version=1.1.0 \
-  -f source_digest="$DIGEST"
+  -f version="$VERSION" \
+  -f source_digest="$DIGEST")
+printf '%s\n' "$PROMOTION_URL"
+PROMOTION_RUN_ID=${PROMOTION_URL##*/}
+gh run watch "$PROMOTION_RUN_ID" --exit-status --compact
 ```
 
-Watch it in GitHub Actions. The workflow first verifies that the `1.1.0` tag resolves
+The workflow first verifies that the exact version tag resolves
 to the supplied digest. It then moves these aliases to that exact manifest:
 
-- `1.1`
-- `1`
+- the matching minor alias, such as `1.2`
+- the matching major alias, such as `1`
 - `stable`
 
 It does not rebuild the image during promotion.
@@ -600,9 +861,12 @@ It does not rebuild the image during promotion.
 Verify the aliases manually if desired:
 
 ```bash
-for tag in 1.1.0 1.1 1 stable; do
+MAJOR=${VERSION%%.*}
+REST=${VERSION#*.}
+MINOR="$MAJOR.${REST%%.*}"
+for tag in "$VERSION" "$MINOR" "$MAJOR" stable; do
   docker buildx imagetools inspect \
-    "ghcr.io/saibarathr/helprr:$tag" \
+    "$IMAGE:$tag" \
     | awk -v tag="$tag" '/^Digest:/ {print tag, $2; exit}'
 done
 ```
@@ -613,7 +877,7 @@ Every printed digest must match `$DIGEST`.
 
 The tag workflow creates a draft release. Before publishing it:
 
-1. Give it a clear title such as `Helprr 1.1.0`.
+1. Give it a clear title such as `Helprr $VERSION`.
 2. Summarize user-visible features and fixes.
 3. Call out configuration changes and migrations.
 4. Include update and backup guidance.
@@ -622,34 +886,115 @@ The tag workflow creates a draft release. Before publishing it:
 6. Include the qualified multi-arch digest.
 7. Mark a stable release as the latest release, not as a prerelease.
 
-Publish through the GitHub Releases UI, or use `gh release edit` after preparing the
-notes. Verify the public release page and all four asset downloads after publication.
-
-## Part 10: close the release
-
-Confirm:
+Prepare the notes in a local file, then publish from the **workstation**:
 
 ```bash
+gh release edit "$TAG" \
+  --title "Helprr $VERSION" \
+  --notes-file /path/to/release-notes.md \
+  --draft=false \
+  --latest
+gh release view "$TAG" \
+  --json url,isDraft,isPrerelease,name,tagName,publishedAt,assets
+gh api repos/SaiBarathR/helprr/releases/latest --jq '.tag_name'
+```
+
+The release must be public, not a prerelease, and returned by the `latest` endpoint.
+Verify the public unauthenticated asset URLs—not only authenticated `gh` downloads—and
+compare every file with the tagged source:
+
+```bash
+ASSET_DIR=$(mktemp -d /tmp/helprr-release-assets.XXXXXX)
+ASSET_BASE="https://github.com/SaiBarathR/helprr/releases/download/$TAG"
+for asset in docker-compose.yml env.example setup-env.sh backup.sh; do
+  curl -fsSL -o "$ASSET_DIR/$asset" "$ASSET_BASE/$asset"
+done
+
+for mapping in \
+  docker-compose.yml:docker-compose.yml \
+  env.example:.env.example \
+  setup-env.sh:scripts/setup-env.sh \
+  backup.sh:scripts/backup.sh; do
+  asset_name=${mapping%%:*}
+  source_name=${mapping#*:}
+  actual=$(shasum -a 256 "$ASSET_DIR/$asset_name" | awk '{print $1}')
+  expected=$(git show "$TAG:$source_name" | shasum -a 256 | awk '{print $1}')
+  test "$actual" = "$expected"
+  printf '%s matches tagged source: %s\n' "$asset_name" "$actual"
+done
+
+sh -n "$ASSET_DIR/setup-env.sh" "$ASSET_DIR/backup.sh"
+docker compose --env-file "$ASSET_DIR/env.example" \
+  -f "$ASSET_DIR/docker-compose.yml" config --quiet
+```
+
+Only after publication can older no-clone installations use the public exact-version
+URLs for the new helpers. Remove the temporary directory after recording the successful
+checks.
+
+## Part 10: refresh isolated edge and close the release
+
+If the maintainer Docker host runs the isolated development stack, finish by ensuring
+it has the final `edge` image from the release commit. On the **deployment host**:
+
+```bash
+docker compose --env-file .env.dev -f docker-compose.dev.yml config --services
+docker compose --env-file .env.dev -f docker-compose.dev.yml config --images
+docker inspect -f '{{.Name}} started={{.State.StartedAt}}' \
+  helprr-dev-db helprr-dev-redis
+./scripts/backup.sh --dev
+docker compose --env-file .env.dev -f docker-compose.dev.yml pull helprr-dev
+docker compose --env-file .env.dev -f docker-compose.dev.yml \
+  up -d --no-build --no-deps helprr-dev
+curl -fsS http://localhost:3051/api/health
+curl -fsS http://localhost:3051/api/ready
+docker inspect -f 'revision={{index .Config.Labels "org.opencontainers.image.revision"}} version={{index .Config.Labels "org.opencontainers.image.version"}}' helprr-dev
+docker inspect -f '{{.Name}} started={{.State.StartedAt}}' \
+  helprr-dev-db helprr-dev-redis
+```
+
+Confirm the development PostgreSQL and Redis start times are unchanged. This step must
+use `docker-compose.dev.yml`, `.env.dev`, and the `helprr-dev` service only; never point
+`edge` at stable data.
+
+Finally, on the **workstation**, return to `development` and confirm the complete
+release state:
+
+```bash
+git switch development
+git pull --ff-only origin development
 git fetch origin --tags
+git status --short --branch
+git diff --check
 git rev-parse origin/main
 git rev-parse origin/development
-git rev-parse 'v1.1.0^{}'
-gh release view v1.1.0
+git rev-parse "$TAG^{}"
+test "$(git rev-parse origin/main)" = "$(git rev-parse origin/development)"
+test "$(git rev-parse origin/main)" = "$(git rev-parse "$TAG^{}")"
+gh release view "$TAG"
 gh run list --limit 10
 ```
 
 The normal completed state is:
 
 - `main` and `development` contain the release commit.
-- `v1.1.0` points to the intended release source commit.
+- `$TAG` points to the intended release source commit.
 - CI and Docker publish are green.
 - The exact version and stable aliases resolve to the qualified digest.
 - The production deployment remains pinned to the exact version used for the smoke
   test.
-- The GitHub release is public and has matching deployment assets.
+- The GitHub release is public and all four matching deployment assets work through
+  unauthenticated exact-version URLs.
+- Stable and isolated-development liveness/readiness pass, and neither data-service
+  pair was recreated during its application refresh.
 
 Leaving the maintainer production instance pinned to the exact version is recommended.
 End users who omit `HELPRR_VERSION` follow `stable` on their next pull.
+
+Record the completion date, release PR, release commit, CI/Docker run URLs, qualified
+digest, protected backup path, production/development smoke evidence, promotion result,
+and public asset verification in the current local release plan. Do not mark the plan
+complete before every applicable check above passes.
 
 ## Emergency patch workflow
 
@@ -690,7 +1035,8 @@ Wait for Docker publish to finish, then run:
 
 ```bash
 docker compose --env-file .env.dev -f docker-compose.dev.yml pull helprr-dev
-docker compose --env-file .env.dev -f docker-compose.dev.yml up -d --no-build
+docker compose --env-file .env.dev -f docker-compose.dev.yml \
+  up -d --no-build --no-deps helprr-dev
 ```
 
 Confirm `.env.dev` contains
@@ -703,8 +1049,27 @@ users pull and recreate them.
 
 ### "My exact version does not update after a new stable release"
 
-This is correct. A deployment pinned to `HELPRR_VERSION=1.0.0` remains on `1.0.0` until
-the owner changes that value.
+This is correct. A deployment pinned to `HELPRR_VERSION=X.Y.Z` remains on that version
+until the owner changes that value.
+
+### "The backup helper is missing while the release is still a draft"
+
+Do not publish early. Copy `scripts/backup.sh` from the exact tagged workstation
+checkout to the deployment directory, compare SHA-256 values, set mode `0700`, and run
+it before changing the stable env or image. Public release-asset URLs work only after
+the release is published.
+
+### "Updating Helprr also restarted PostgreSQL or Redis"
+
+The normal release command must name only the app:
+`docker compose up -d --no-build --no-deps helprr`. Record the data-service start times
+before and after. Never use `down` or `down -v` during an update.
+
+### "Health passes but readiness fails"
+
+`/api/health` proves only that the Node process responds. Do not qualify or promote the
+release until `/api/ready` also returns HTTP 200 with database, Redis, and migrations
+all `ok`.
 
 ### "My development stack collides with production"
 
@@ -747,8 +1112,15 @@ a new release.
 - [ ] Annotated `vX.Y.Z` tag points to the intended commit.
 - [ ] Exact multi-arch image build succeeds.
 - [ ] Qualified manifest digest recorded.
-- [ ] Protected production backup created.
-- [ ] Exact version deployed and production smoke test passes.
+- [ ] Draft release contains all four exact-tag assets.
+- [ ] Stable Compose services/images/volumes/networks inspected before mutation.
+- [ ] Protected production backup created and validated.
+- [ ] Pulled exact image resolves to the qualified digest before replacement.
+- [ ] Exact version deployed app-only; production liveness/readiness and smoke tests pass.
+- [ ] Stable PostgreSQL/Redis were not recreated and data baselines are preserved.
 - [ ] Tested digest promoted to minor, major, and `stable` aliases.
-- [ ] Draft GitHub release reviewed and published with both deployment assets.
-- [ ] Public release page, image aliases, and workflows verified.
+- [ ] Draft GitHub release reviewed and published with all four deployment assets.
+- [ ] Public assets match tagged files and downloaded Compose renders successfully.
+- [ ] Isolated `edge` refreshed app-only; development liveness/readiness pass.
+- [ ] Public release page, image aliases, workflows, branch/tag alignment, and local
+      release plan verified.

@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import { useCan } from '@/components/permission-provider';
 import { SeerrRequestModal } from '@/components/seerr/seerr-request-modal';
 import { useInfiniteScroll } from '@/lib/hooks/use-infinite-scroll';
+import { QuickContextMenu, type ContextAction } from '@/components/ui/quick-context-menu';
 
 interface PendingRow {
   id: string;
@@ -37,7 +38,15 @@ interface PendingRow {
  * approved (it then appears in Seerr). `grid` lays rows out as a responsive
  * card grid — only for full-page views; dashboard cells are too narrow.
  */
-export function PendingApprovalSection({ onChanged, grid = false }: { onChanged?: () => void; grid?: boolean }) {
+export function PendingApprovalSection({
+  onChanged,
+  grid = false,
+  contextMenuDisabled = false,
+}: {
+  onChanged?: () => void;
+  grid?: boolean;
+  contextMenuDisabled?: boolean;
+}) {
   const canApprove = useCan('requests.approve');
   const [modalRow, setModalRow] = useState<PendingRow | null>(null);
   // Keyed by focus id (not a boolean) so a second notification tap with a
@@ -113,73 +122,104 @@ export function PendingApprovalSection({ onChanged, grid = false }: { onChanged?
       {rows.map((r) => {
         const Icon = r.mediaType === 'tv' ? Tv : Film;
         const isBusy = removeMutation.isPending && removeMutation.variables === r.id;
+        const actions: ContextAction[] = canApprove
+          ? [
+              {
+                id: 'approve',
+                label: 'Approve…',
+                icon: <Check className="h-4 w-4" />,
+                onSelect: () => setModalRow(r),
+              },
+              {
+                id: 'decline',
+                label: 'Decline',
+                icon: <X className="h-4 w-4" />,
+                destructive: true,
+                onSelect: () => remove(r.id),
+              },
+            ]
+          : [
+              {
+                id: 'cancel',
+                label: 'Cancel request',
+                icon: <X className="h-4 w-4" />,
+                destructive: true,
+                onSelect: () => remove(r.id),
+              },
+            ];
         return (
-          <div
+          <QuickContextMenu
             key={r.id}
-            className="flex items-center gap-3 rounded-lg border border-border bg-card p-2"
-            style={{ opacity: isBusy ? 0.5 : 1 }}
+            label={`Actions for ${r.title ?? `TMDB ${r.tmdbId}`}`}
+            actions={actions}
+            disabled={contextMenuDisabled || isBusy}
           >
-            <div className="flex h-14 w-10 shrink-0 items-center justify-center overflow-hidden rounded bg-muted text-muted-foreground">
-              {r.posterUrl ? (
-                <FadeInImage
-                  src={r.posterUrl}
-                  alt=""
-                  width={40}
-                  height={56}
-                  unoptimized
-                  className="w-full h-full object-cover"
-                />
-              ) : (
-                <Icon className="h-4 w-4" />
-              )}
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="truncate text-sm font-medium">
-                {r.title ?? `TMDB ${r.tmdbId}`}
-                {r.year ? ` (${r.year})` : ''}
+            <div
+              className="flex items-center gap-3 rounded-lg border border-border bg-card p-2"
+              style={{ opacity: isBusy ? 0.5 : 1 }}
+            >
+              <div className="flex h-14 w-10 shrink-0 items-center justify-center overflow-hidden rounded bg-muted text-muted-foreground">
+                {r.posterUrl ? (
+                  <FadeInImage
+                    src={r.posterUrl}
+                    alt=""
+                    width={40}
+                    height={56}
+                    unoptimized
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <Icon className="h-4 w-4" />
+                )}
               </div>
-              <div className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
-                <Clock className="h-3 w-3" />
-                {canApprove && r.requester ? `${r.requester.displayName} · ` : ''}
-                {r.mediaType === 'tv' ? 'Series' : 'Movie'}
-                {r.seasons && r.seasons.length
-                  ? ` · ${r.seasons.length} season${r.seasons.length === 1 ? '' : 's'}`
-                  : ''}
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-sm font-medium">
+                  {r.title ?? `TMDB ${r.tmdbId}`}
+                  {r.year ? ` (${r.year})` : ''}
+                </div>
+                <div className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
+                  <Clock className="h-3 w-3" />
+                  {canApprove && r.requester ? `${r.requester.displayName} · ` : ''}
+                  {r.mediaType === 'tv' ? 'Series' : 'Movie'}
+                  {r.seasons && r.seasons.length
+                    ? ` · ${r.seasons.length} season${r.seasons.length === 1 ? '' : 's'}`
+                    : ''}
+                </div>
+              </div>
+              <div className="flex shrink-0 items-center gap-1.5">
+                {canApprove ? (
+                  <>
+                    <Button size="sm" className="h-8" disabled={isBusy} onClick={() => setModalRow(r)}>
+                      <Check className="mr-1 h-4 w-4" /> Approve…
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-8 text-destructive hover:text-destructive"
+                      disabled={isBusy}
+                      onClick={() => void remove(r.id)}
+                    >
+                      {isBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <X className="mr-1 h-4 w-4" />}
+                      Decline
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <span className="text-xs text-amber-500">Awaiting approval</span>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-8"
+                      disabled={isBusy}
+                      onClick={() => void remove(r.id)}
+                    >
+                      Cancel
+                    </Button>
+                  </>
+                )}
               </div>
             </div>
-            <div className="flex shrink-0 items-center gap-1.5">
-              {canApprove ? (
-                <>
-                  <Button size="sm" className="h-8" disabled={isBusy} onClick={() => setModalRow(r)}>
-                    <Check className="mr-1 h-4 w-4" /> Approve…
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-8 text-destructive hover:text-destructive"
-                    disabled={isBusy}
-                    onClick={() => void remove(r.id)}
-                  >
-                    {isBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <X className="mr-1 h-4 w-4" />}
-                    Decline
-                  </Button>
-                </>
-              ) : (
-                <>
-                  <span className="text-xs text-amber-500">Awaiting approval</span>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-8"
-                    disabled={isBusy}
-                    onClick={() => void remove(r.id)}
-                  >
-                    Cancel
-                  </Button>
-                </>
-              )}
-            </div>
-          </div>
+          </QuickContextMenu>
         );
       })}
       </div>

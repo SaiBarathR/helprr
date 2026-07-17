@@ -11,7 +11,7 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { useUIStore } from '@/lib/store';
-import { getActiveNavHref, getEnabledNavItems, getBottomNavLayout } from '@/lib/nav-config';
+import { getActiveNavHref, getEnabledNavItems, getBottomNavLayout, navItemAllowed } from '@/lib/nav-config';
 import { useNavPending } from '@/hooks/use-nav-pending';
 import { useMe, hasCapability } from '@/components/permission-provider';
 import { useBadgeCounts } from '@/components/layout/badge-provider';
@@ -31,7 +31,7 @@ export function BottomNav() {
 
   const { tabs, moreItems } = useMemo(() => {
     const enabled = getEnabledNavItems(navOrder, disabledNavItems).filter(
-      (item) => !item.requiredCapability || hasCapability(me, item.requiredCapability)
+      (item) => navItemAllowed(item, (cap) => hasCapability(me, cap))
     );
     return getBottomNavLayout(enabled);
   }, [navOrder, disabledNavItems, me]);

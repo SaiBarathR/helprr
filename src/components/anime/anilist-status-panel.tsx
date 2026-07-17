@@ -6,6 +6,7 @@ import { Sparkles, Pencil, Plus, Loader2, AlertTriangle } from 'lucide-react';
 import { AnilistStatusDrawer } from '@/components/anime/anilist-status-drawer';
 import { useMe } from '@/components/permission-provider';
 import type { AniListMediaListEntryBase, AniListMediaListStatus } from '@/lib/anilist-mutations';
+import { parseAnilistListEntryResponse } from '@/lib/anilist-list-entry-response';
 
 interface ViewerSummary {
   configured: boolean;
@@ -84,12 +85,7 @@ export function AnilistStatusPanel({
       }
       const data = await res.json();
       setLoadError(false);
-      const entry = data?.entry ?? null;
-      if (entry && viewData?.user?.scoreFormat === "POINT_10_DECIMAL" && entry.score != null && entry.score > 10) {
-        setEntry({ ...entry, score: entry.score / 10 });
-      } else {
-        setEntry(entry);
-      }
+      setEntry(parseAnilistListEntryResponse(data, viewData?.user?.scoreFormat));
     } catch {
       setLoadError(true);
     }

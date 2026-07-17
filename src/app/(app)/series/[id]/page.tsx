@@ -59,6 +59,7 @@ import { DiscoverVideoRail } from '@/components/discover/discover-video-rail';
 import { DiscoverMediaRail } from '@/components/discover/discover-media-rail';
 import { DiscoverWatchProvidersSection } from '@/components/discover/discover-watch-providers';
 import { RenamePreviewDialog } from '@/components/media/rename-preview-dialog';
+import { InteractiveSearchDialog } from '@/components/media/interactive-search-dialog';
 import { formatBytes } from '@/lib/format';
 import { formatAniListRankingLabel, formatFuzzyDate } from '@/lib/anilist-helpers';
 import { seasonTabLabel } from '@/lib/anilist-title-match';
@@ -67,11 +68,14 @@ import { WatchlistAddDialog } from '@/components/watchlist/watchlist-add-dialog'
 import { ScheduledAlertDialog } from '@/components/scheduled-alerts/scheduled-alert-dialog';
 import { AnimeTrailerRail } from '@/components/anime/anime-trailer-rail';
 import { useCan, useMe } from '@/components/permission-provider';
-import { useWatchLookup } from '@/components/jellyfin/watch-status-provider';
+import { useWatchLookup, useWatchStatus } from '@/components/jellyfin/watch-status-provider';
+import { buildMarkWatchedContextAction } from '@/lib/mark-watched-context-action';
+import { arrEditHref, arrManageHref } from '@/lib/arr-edit-href';
 import { useSeriesEpisodeWatch } from '@/components/jellyfin/use-series-episode-watch';
 import { EpisodeWatchIndicator } from '@/components/jellyfin/watch-status-indicator';
 import { MarkWatchedMenuItem } from '@/components/jellyfin/mark-watched-button';
 import { episodeKey, type EpisodeWatchStatus } from '@/types/watch-status';
+import { QuickContextMenu, type ContextActionGroup } from '@/components/ui/quick-context-menu';
 
 interface SeriesCredits {
   cast: { id: number; name: string; profilePath: string | null; character: string; episodeCount?: number }[];
@@ -208,6 +212,10 @@ export default function SeriesDetailPage() {
   const [showAddWatchlist, setShowAddWatchlist] = useState(false);
   const [showScheduleAlert, setShowScheduleAlert] = useState(false);
   const [expandedSeasons, setExpandedSeasons] = useState<Set<number>>(new Set());
+  const [seasonInteractiveTarget, setSeasonInteractiveTarget] = useState<{
+    seasonNumber: number;
+    label: string;
+  } | null>(null);
   const [animeNowMs, setAnimeNowMs] = useState(() => Date.now());
 
   const canManageActivity = useCan('activity.manage');
@@ -298,7 +306,16 @@ export default function SeriesDetailPage() {
 
   // Jellyfin watch status — series aggregate (shared map) + per-episode map (shared hook).
   const lookupWatch = useWatchLookup();
+  const { setWatched, canWrite: canSetWatched, isWriting: isWritingWatched } = useWatchStatus();
   const seriesWatch = lookupWatch({ kind: 'series', tvdbId: series?.tvdbId, tmdbId: series?.tmdbId, imdbId: series?.imdbId });
+  const watchedContextAction = series
+    ? buildMarkWatchedContextAction({
+        status: seriesWatch,
+        canWrite: canSetWatched,
+        isWriting: isWritingWatched,
+        setWatched,
+      })
+    : null;
   const { episodes: episodeWatch } = useSeriesEpisodeWatch({ tvdbId: series?.tvdbId, tmdbId: series?.tmdbId, imdbId: series?.imdbId });
   // Bucket watched episodes by season once (keys are `S{season}E{episode}`),
   // so each season header is an O(1) lookup instead of re-scanning the whole map.
@@ -1013,6 +1030,39 @@ export default function SeriesDetailPage() {
     },
   ];
 
+  const seriesContextGroups: ContextActionGroup[] = [
+    {
+      id: 'activity',
+      actions: [
+        ...(watchedContextAction ? [watchedContextAction] : []),
+        ...(canEditMonitoring ? [{ id: 'monitor-toggle', label: series.monitored ? 'Unmonitor' : 'Monitor', icon: <Bookmark className="h-4 w-4" />, onSelect: () => { void handleToggleMonitored(); }, disabled: actionLoading === 'monitor' }, { id: 'monitor-options', label: 'Monitoring options…', icon: <Eye className="h-4 w-4" />, onSelect: () => setShowMonitorEdit(true) }] : []),
+        ...(canManageActivity ? [
+          { id: 'refresh', label: 'Refresh', icon: <RefreshCw className="h-4 w-4" />, onSelect: () => { void handleRefresh(); }, disabled: actionLoading === 'refresh' },
+          { id: 'search', label: 'Search Monitored', icon: <Search className="h-4 w-4" />, onSelect: () => { void handleSearchAll(); }, disabled: actionLoading === 'search' },
+        ] : []),
+      ],
+    },
+    {
+      id: 'manage',
+      actions: [
+        ...(canEditSeries ? [{ id: 'edit', label: 'Edit', icon: <Pencil className="h-4 w-4" />, href: arrEditHref('series', seriesId, instance) }] : []),
+        ...(canManageActivity ? [{ id: 'rename', label: 'Preview Rename', icon: <FileEdit className="h-4 w-4" />, onSelect: () => setShowRenamePreview(true) }] : []),
+        ...(canManageFiles ? [{ id: 'files', label: 'Manage Episodes', icon: <FileStack className="h-4 w-4" />, href: arrManageHref('series', seriesId, series.title, instance) }] : []),
+      ],
+    },
+    {
+      id: 'links',
+      actions: [
+        ...(isAnimeSeries ? [{ id: 'anime', label: 'Open in Anime', icon: <Sparkles className="h-4 w-4" />, href: openInAnimeHref }] : []),
+        ...(series.imdbId ? [{ id: 'imdb', label: 'Open in IMDb', icon: <ExternalLink className="h-4 w-4" />, href: `https://www.imdb.com/title/${series.imdbId}`, external: true }] : []),
+        ...(series.tvdbId > 0 ? [{ id: 'tvdb', label: 'Open in TVDB', icon: <ExternalLink className="h-4 w-4" />, href: `https://www.thetvdb.com/?id=${series.tvdbId}&tab=series`, external: true }] : []),
+        ...(sonarrExternalUrl && series.titleSlug ? [{ id: 'sonarr', label: 'Open in Sonarr', icon: <Tv className="h-4 w-4" />, href: `${sonarrExternalUrl}/series/${series.titleSlug}`, external: true }] : []),
+        ...(externalUrls.JELLYFIN && (series.imdbId || series.tvdbId) ? [{ id: 'jellyfin', label: 'Open in Jellyfin', icon: <ExternalLink className="h-4 w-4" />, onSelect: () => { void handleOpenInJellyfin(); }, disabled: jellyfinLoading }] : []),
+      ],
+    },
+    ...(canDeleteSeries ? [{ id: 'danger', actions: [{ id: 'delete', label: 'Delete', icon: <Trash2 className="h-4 w-4" />, onSelect: () => setShowDelete(true), destructive: true }] }] : []),
+  ];
+
   return (
     <div
       className="flex flex-col min-h-0 animate-content-in -mx-2 md:-mx-6"
@@ -1297,6 +1347,7 @@ export default function SeriesDetailPage() {
             </div>
             <div className="relative -mt-[90px] px-2 md:px-6 flex gap-3.5">
               <div className="w-[100px] shrink-0">
+                <QuickContextMenu label={`${series.title} actions`} groups={seriesContextGroups}>
                 <div className="relative aspect-[2/3] rounded-lg overflow-hidden bg-muted shadow-lg ring-1 ring-border/20">
                   {poster ? (
                     <Image
@@ -1313,6 +1364,7 @@ export default function SeriesDetailPage() {
                     </div>
                   )}
                 </div>
+                </QuickContextMenu>
               </div>
               <div className="flex-1 min-w-0 pt-[60px]">
                 <span className={`inline-block text-[10px] font-bold tracking-wider px-1.5 py-0.5 rounded ${statusColor} mb-1.5`}>
@@ -1339,6 +1391,7 @@ export default function SeriesDetailPage() {
         ) : (
           <div className="flex gap-4 pt-3 pb-4">
             <div className="w-28 shrink-0">
+              <QuickContextMenu label={`${series.title} actions`} groups={seriesContextGroups}>
               <div className="relative aspect-[2/3] rounded-lg overflow-hidden bg-muted">
                 {poster ? (
                   <Image
@@ -1367,6 +1420,7 @@ export default function SeriesDetailPage() {
                   <Bookmark className="h-3.5 w-3.5" />
                 </button>
               </div>
+              </QuickContextMenu>
             </div>
             <div className="flex-1 min-w-0 pt-1">
               <span className={`inline-block text-[10px] font-bold tracking-wider px-1.5 py-0.5 rounded ${statusColor} mb-1.5`}>
@@ -1515,6 +1569,23 @@ export default function SeriesDetailPage() {
               const isAnime = series.seriesType === 'anime';
               const tmdbSeason = isAnime ? undefined : tmdbData?.seasons?.find((s) => s.seasonNumber === sn);
               const isExpanded = expandedSeasons.has(sn);
+              const seasonHref = `/series/${id}/season/${sn}${instance ? `?instance=${instance}` : ''}`;
+              const seasonActions = [
+                { id: 'open', label: 'Open season', href: seasonHref },
+                ...(canEditMonitoring ? [{ id: 'monitor', label: isMonitored ? 'Unmonitor season' : 'Monitor season', icon: <Bookmark className="h-4 w-4" />, onSelect: () => { void handleToggleSeasonMonitor(sn, !isMonitored); } }] : []),
+                ...(canManageActivity ? [{
+                  id: 'interactive',
+                  label: 'Interactive search…',
+                  icon: <Search className="h-4 w-4" />,
+                  onSelect: () => {
+                    setSeasonInteractiveTarget({
+                      seasonNumber: sn,
+                      label: sn === 0 ? 'Specials' : `Season ${sn}`,
+                    });
+                  },
+                }] : []),
+                ...(tmdbData && !isAnime ? [{ id: 'expand', label: isExpanded ? 'Collapse episodes' : 'Show episodes', icon: isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />, onSelect: () => toggleSeasonExpand(sn) }] : []),
+              ];
 
               return (
                 <div key={sn} className="border-b border-border/50">
@@ -1532,7 +1603,8 @@ export default function SeriesDetailPage() {
                         />
                       </div>
                     )}
-                    <Link href={`/series/${id}/season/${sn}${instance ? `?instance=${instance}` : ''}`} className="flex-1 min-w-0 flex items-center gap-2">
+                    <QuickContextMenu label={`${sn === 0 ? 'Specials' : `Season ${sn}`} actions`} actions={seasonActions}>
+                    <Link href={seasonHref} className="flex-1 min-w-0 flex items-center gap-2">
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
                           <span className="font-medium">{sn === 0 ? 'Specials' : `Season ${sn}`}</span>
@@ -1555,6 +1627,7 @@ export default function SeriesDetailPage() {
                       </div>
                       <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
                     </Link>
+                    </QuickContextMenu>
                     {/* Expand/collapse for TMDB episodes (not for anime) */}
                     {tmdbData && !isAnime && (
                       <button
@@ -2132,6 +2205,19 @@ export default function SeriesDetailPage() {
         mediaId={series.id}
         mediaTitle={series.title}
         instanceId={instance}
+      />
+
+      <InteractiveSearchDialog
+        open={seasonInteractiveTarget !== null}
+        onOpenChange={(open) => { if (!open) setSeasonInteractiveTarget(null); }}
+        title={seasonInteractiveTarget ? `${series.title} - ${seasonInteractiveTarget.label}` : ''}
+        service="sonarr"
+        searchParams={{
+          seriesId: series.id,
+          seasonNumber: seasonInteractiveTarget?.seasonNumber ?? 0,
+          ...(instance ? { instanceId: instance } : {}),
+        }}
+        showSeasonPackFilter
       />
     </div>
   );

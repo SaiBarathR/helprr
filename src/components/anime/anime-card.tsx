@@ -1,10 +1,19 @@
+'use client';
+
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Badge } from '@/components/ui/badge';
 import { FadeInImage } from '@/components/media/fade-in-image';
 import { WatchlistButton } from '@/components/watchlist/watchlist-button';
-import { ScheduledAlertButton } from '@/components/scheduled-alerts/scheduled-alert-dialog';
+import {
+  ScheduledAlertButton,
+} from '@/components/scheduled-alerts/scheduled-alert-dialog';
+import { QuickContextMenu, type ContextActionGroup } from '@/components/ui/quick-context-menu';
+import { useAnilistContextMenu } from '@/components/anime/anilist-context-menu';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
-import { Check, Star } from 'lucide-react';
+import { Check, ChevronRight, Plus, Star } from 'lucide-react';
+import { buildRadarrAddParams, buildSonarrAddParams, isMovieFormat } from '@/lib/anilist-helpers';
+import { hasCapability, useMe } from '@/components/permission-provider';
 import type { AniListListItem } from '@/types/anilist';
 import type { DiscoverLibraryStatus } from '@/types';
 
@@ -21,14 +30,75 @@ export function AnimeCard({
   imagePriority?: boolean;
   onNavigate?: () => void;
 }) {
+  const router = useRouter();
+  const me = useMe();
+  const { buildAnilistContextAction, drawerNode } = useAnilistContextMenu();
   const imgSrc = item.coverImage
     ? toCachedImageSrc(item.coverImage, 'anilist') || item.coverImage
     : null;
+  const href = `/anime/${item.id}`;
+  const libraryHref = item.library?.exists && item.library.id != null
+    ? `${item.library.type === 'movie' ? '/movies' : '/series'}/${item.library.id}${item.library.instanceId ? `?instance=${item.library.instanceId}` : ''}`
+    : null;
+  const isMovie = isMovieFormat(item.format);
+  const addService = isMovie ? 'Radarr' : 'Sonarr';
+  const canAdd = !item.library?.exists && hasCapability(me, isMovie ? 'movies.add' : 'series.add');
+  const canWatchlist = !item.library?.exists && hasCapability(me, 'watchlist.edit');
+  const canSchedule = !item.library?.exists && hasCapability(me, 'scheduledAlerts.edit');
+  const addHref = isMovie
+    ? `/movies/add?${buildRadarrAddParams({ title: item.title, tmdbId: null })}`
+    : `/series/add?${buildSonarrAddParams({ title: item.title, tvdbId: null })}`;
+  const watchlistDraft = {
+    source: 'ANILIST' as const,
+    externalId: String(item.id),
+    mediaType: 'anime' as const,
+    title: item.title,
+    year: item.year ?? item.seasonYear ?? null,
+    posterUrl: item.coverImage ?? null,
+    overview: null,
+    rating: item.averageScore ?? null,
+    releaseDate: null,
+  };
+  const scheduleDraft = {
+    source: 'ANILIST' as const,
+    externalId: String(item.id),
+    mediaType: 'anime' as const,
+    title: item.title,
+    year: item.year ?? item.seasonYear ?? null,
+    posterUrl: item.coverImage,
+    href,
+  };
+  const anilistAction = buildAnilistContextAction({
+    mediaId: item.id,
+    mediaTitle: item.title,
+    mediaType: 'ANIME',
+    totalEpisodes: item.episodes,
+  });
+  const contextGroups: ContextActionGroup[] = [
+    {
+      id: 'navigation',
+      actions: [
+        {
+          id: 'open-details',
+          label: 'Open details',
+          icon: <ChevronRight className="h-4 w-4" />,
+          onSelect: () => {
+            onNavigate?.();
+            router.push(href);
+          },
+        },
+        ...(libraryHref ? [{ id: 'open-library', label: 'Open in library', icon: <Check className="h-4 w-4" />, href: libraryHref }] : []),
+        ...(canAdd ? [{ id: 'add-library', label: `Add to ${addService}`, icon: <Plus className="h-4 w-4" />, href: addHref }] : []),
+      ],
+    },
+    ...(anilistAction ? [{ id: 'anilist', actions: [anilistAction] }] : []),
+  ];
 
   return (
     <div className={`${grid ? '' : 'flex-shrink-0 w-[110px]'} group relative`}>
+      <QuickContextMenu label={`${item.title} actions`} groups={contextGroups}>
       <Link
-        href={`/anime/${item.id}`}
+        href={href}
         className="block"
         onClick={onNavigate}
       >
@@ -78,38 +148,26 @@ export function AnimeCard({
           )}
         </div>
       </Link>
+      </QuickContextMenu>
       {!item.library?.exists && (
         <div className="absolute top-1 left-1 z-10 flex items-center gap-1">
-          <WatchlistButton
-            draft={{
-              source: 'ANILIST',
-              externalId: String(item.id),
-              mediaType: 'anime',
-              title: item.title,
-              year: item.year ?? item.seasonYear ?? null,
-              posterUrl: item.coverImage ?? null,
-              overview: null,
-              rating: item.averageScore ?? null,
-              releaseDate: null,
-            }}
-            variant="icon"
-            className="inline-flex h-5 w-5 items-center justify-center rounded-md bg-background/60 backdrop-blur-md text-foreground hover:bg-background/80"
-          />
+          {canWatchlist && (
+            <WatchlistButton
+              draft={watchlistDraft}
+              variant="icon"
+              className="inline-flex h-5 w-5 items-center justify-center rounded-md bg-background/60 backdrop-blur-md text-foreground hover:bg-background/80"
+            />
+          )}
+          {canSchedule && (
           <ScheduledAlertButton
-            draft={{
-              source: 'ANILIST',
-              externalId: String(item.id),
-              mediaType: 'anime',
-              title: item.title,
-              year: item.year ?? item.seasonYear ?? null,
-              posterUrl: item.coverImage ?? null,
-              href: `/anime/${item.id}`,
-            }}
+            draft={scheduleDraft}
             variant="icon"
             className="h-5 w-5"
           />
+          )}
         </div>
       )}
+      {drawerNode}
     </div>
   );
 }

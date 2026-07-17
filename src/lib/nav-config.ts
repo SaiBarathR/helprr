@@ -14,7 +14,7 @@ import {
   Sparkles,
   Sparkle,
   Bookmark,
-  Dices,
+  Popcorn,
   Inbox,
   LibraryBig,
   ChartLine,
@@ -54,6 +54,10 @@ export interface NavItemDef {
   // When set, the item is hidden from users who lack this capability (UX only;
   // the page + its API routes enforce server-side).
   requiredCapability?: Capability;
+  // Alternative gate: visible when the user holds ANY of these capabilities.
+  // Used by multi-mode pages (Recommendations hosts both the personalized
+  // rails and the old Random Watch, gated independently server-side).
+  requiredAnyCapability?: readonly Capability[];
   // When set, the item renders a live count badge from /api/badges.
   badgeArea?: BadgeArea;
 }
@@ -68,7 +72,10 @@ export const NAV_ITEMS: NavItemDef[] = [
   { id: 'music', href: '/music', icon: Disc3, label: 'Music', shortLabel: 'Music', requiredCapability: 'music.view' },
   { id: 'watchlist', href: '/watchlist', icon: Bookmark, label: 'Watchlist', shortLabel: 'Watchlist', requiredCapability: 'watchlist.view' },
   { id: 'requests', href: '/requests', icon: Inbox, label: 'Requests', shortLabel: 'Requests', requiredCapability: 'requests.view', badgeArea: 'requests' },
-  { id: 'random', href: '/random', icon: Dices, label: 'Random Watch', shortLabel: 'Random', requiredCapability: 'random.view' },
+  // Keeps the historical 'random' id so persisted nav orders / default-page
+  // preferences survive the rename to Recommendations. Visible with EITHER
+  // capability: a random.view-only user still reaches the Random mode.
+  { id: 'random', href: '/recommendations', icon: Popcorn, label: 'Recommendations', shortLabel: 'For You', requiredAnyCapability: ['recommendations.view', 'random.view'] },
   { id: 'calendar', href: '/calendar', icon: CalendarDays, label: 'Calendar', shortLabel: 'Calendar', requiredCapability: 'calendar.view' },
   { id: 'library-gaps', href: '/library-gaps', icon: LibraryBig, label: 'Library Gaps', shortLabel: 'Gaps' },
   { id: 'torrents', href: '/torrents', icon: HardDrive, label: 'Torrents', shortLabel: 'Torrents', requiredCapability: 'torrents.view', badgeArea: 'downloads' },
@@ -80,6 +87,13 @@ export const NAV_ITEMS: NavItemDef[] = [
   { id: 'notifications', href: '/notifications', icon: Bell, label: 'Notifications', shortLabel: 'Alerts', requiredCapability: 'notifications.view', badgeArea: 'notifications' },
   { id: 'settings', href: '/settings', icon: Settings, label: 'Settings', shortLabel: 'Settings', pinned: true },
 ];
+
+/** Capability gate shared by every nav surface (sidebar, bottom nav, dashboard
+ * fallback). `has` abstracts over client (hasCapability) and server (can). */
+export function navItemAllowed(item: NavItemDef, has: (cap: Capability) => boolean): boolean {
+  if (item.requiredAnyCapability) return item.requiredAnyCapability.some(has);
+  return !item.requiredCapability || has(item.requiredCapability);
+}
 
 /** Default ID ordering */
 export const DEFAULT_NAV_ORDER: NavItemId[] = NAV_ITEMS.map((item) => item.id);

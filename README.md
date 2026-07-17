@@ -83,6 +83,13 @@ These are the hand-picked captures from my current setup. They are not mockups�
 ### Desktop
 
 <p align="center">
+  <img src="docs/screenshots/desktop-slideshow.webp" alt="Animated preview of the Helprr desktop interface, including the dashboard, discovery, media details, search, anime, calendar, and cleanup views" width="100%" />
+</p>
+
+<details>
+<summary><strong>View all desktop screenshots</strong></summary>
+
+<p align="center">
   <img src="docs/screenshots/desktop-dashboard.jpg" alt="Helprr desktop dashboard with media, download, cleanup, service-health, Jellyfin, and scheduled-task widgets" width="49%" />
   <img src="docs/screenshots/desktop-discover.jpg" alt="Helprr desktop Discover page with search, trending rails, and movie status" width="49%" />
 </p>
@@ -122,7 +129,16 @@ These are the hand-picked captures from my current setup. They are not mockups�
 
 
 
+</details>
+
 ### iPhone PWA
+
+<p align="center">
+  <img src="docs/screenshots/mobile-slideshow.webp" alt="Animated preview of the Helprr iPhone PWA, including the dashboard, discovery, media details, anime, settings, and calendar views" width="320" />
+</p>
+
+<details>
+<summary><strong>View all iPhone PWA screenshots</strong></summary>
 
 <p align="center">
   <img src="docs/screenshots/mobile-dashboard.jpg" alt="Helprr iPhone dashboard with library, downloads, indexers, cleanup, and streaming widgets" width="31%" />
@@ -160,6 +176,8 @@ These are the hand-picked captures from my current setup. They are not mockups�
 
 
 
+
+</details>
 
 ### Video demos
 
@@ -301,16 +319,21 @@ To exercise the image published from `development`, set this in `.env.dev`:
 HELPRR_DEV_IMAGE=ghcr.io/saibarathr/helprr:edge
 ```
 
-Then pull and start without building local source:
+Before testing a migration or replacing the development image, create a backup of
+only the isolated development database. Development and stable dumps are written to
+separate private directories. Then pull and replace only the development app:
 
 ```bash
+./scripts/backup.sh --dev
 docker compose --env-file .env.dev -f docker-compose.dev.yml pull helprr-dev
-docker compose --env-file .env.dev -f docker-compose.dev.yml up -d --no-build
+docker compose --env-file .env.dev -f docker-compose.dev.yml \
+  up -d --no-build --no-deps helprr-dev
+curl -fsS http://localhost:3051/api/health
+curl -fsS http://localhost:3051/api/ready
 ```
 
-Before testing a migration or replacing the development image, create a backup of
-only the isolated development database with `./scripts/backup.sh --dev`. Development
-and stable dumps are written to separate private directories.
+The app replacement must not restart `helprr-dev-db` or `helprr-dev-redis`. Readiness
+must report the development database, Redis, and migrations as `ok`.
 
 See [Maintainer development and release workflow](docs/maintainer-development-release-workflow.md)
 for the complete feature, `edge`, release, promotion, rollback, and hotfix process.
@@ -321,7 +344,7 @@ for the complete feature, `edge`, release, promotion, rollback, and hotfix proce
 - Set `TRUST_FORWARDED_PROTO=true` only when that proxy strips and sets forwarded headers itself. This enables correct secure-cookie and client-IP decisions.
 - Set `APP_ORIGIN=https://helprr.example.com` when enabling AniList OAuth in production. It must be a valid HTTPS origin.
 - If the PostgreSQL password contains URL-reserved characters (`@`, `:`, `/`, `?`, `#`, …), set `DATABASE_URL` explicitly with the password percent-encoded.
-- The VAPID keys are runtime configuration: after adding or rotating them, `docker compose up -d` is enough — no rebuild. Already-subscribed devices re-subscribe automatically on their next endpoint rotation, or manually from **Settings → Notifications**.
+- The VAPID keys are runtime configuration: after adding or rotating them, run `docker compose up -d --no-build --no-deps helprr` — no rebuild or data-service restart is needed. Already-subscribed devices re-subscribe automatically on their next endpoint rotation, or manually from **Settings → Notifications**.
 
 
 
@@ -495,9 +518,11 @@ curl -fsSL -o scripts/setup-env.sh "$HELPRR_ASSET_BASE/setup-env.sh"
 curl -fsSL -o scripts/backup.sh "$HELPRR_ASSET_BASE/backup.sh"
 chmod 700 scripts/setup-env.sh scripts/backup.sh
 # Set HELPRR_VERSION=X.Y.Z in .env after reviewing the release notes.
-docker compose pull
-docker compose up -d
-docker compose ps
+docker compose pull helprr
+docker compose up -d --no-build --no-deps helprr
+docker compose ps helprr
+curl -fsS http://localhost:3050/api/health
+curl -fsS http://localhost:3050/api/ready
 ```
 
 The helper keeps Helprr online while `pg_dump` takes a consistent snapshot, verifies
@@ -507,7 +532,8 @@ fails, the update commands must not be run.
 
 Pending database migrations run automatically before the app starts. The
 container drains background work gracefully on replacement (bounded at 30
-seconds), so updating while downloads or cleanup are active is safe.
+seconds), so updating while downloads or cleanup are active is safe. The scoped
+`--no-deps helprr` command leaves PostgreSQL and Redis running during the update.
 
 To stay on an exact version instead of a channel, set `HELPRR_VERSION` in
 `.env` (for example `HELPRR_VERSION=1.0.0`) and re-run the two Docker commands
@@ -622,7 +648,7 @@ a later run. Log files continue to use the separate retention value in
 ```bash
 docker compose down          # stops and removes containers; your data volumes remain
 docker compose down -v       # ⚠ ALSO DELETES the database, Redis, and log volumes
-docker image rm ghcr.io/saibarathr/helprr:edge   # remove downloaded images
+docker image rm ghcr.io/saibarathr/helprr:stable   # or your pinned :X.Y.Z tag
 ```
 
 > [!CAUTION]
@@ -682,7 +708,8 @@ docker compose --env-file .env.dev -f docker-compose.dev.yml up -d --build
 
 # Docker (published edge image; set HELPRR_DEV_IMAGE=...:edge in .env.dev first)
 docker compose --env-file .env.dev -f docker-compose.dev.yml pull helprr-dev
-docker compose --env-file .env.dev -f docker-compose.dev.yml up -d --no-build
+docker compose --env-file .env.dev -f docker-compose.dev.yml \
+  up -d --no-build --no-deps helprr-dev
 ```
 
 

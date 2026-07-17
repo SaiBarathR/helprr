@@ -32,11 +32,13 @@ import {
   Calendar as CalendarIcon,
   Copy,
   Check,
+  Eye,
 } from 'lucide-react';
 import { useUIStore } from '@/lib/store';
 import type { CleanupHistoryFiltersState } from '@/lib/store';
 import { jsonOk } from '@/lib/http';
 import { resolveCleanupHistoryOutcomeStatus } from '@/lib/cleanup/history-status';
+import { QuickContextMenu } from '@/components/ui/quick-context-menu';
 
 interface HistoryRow {
   id: string;
@@ -576,6 +578,27 @@ function HistoryRowCard({
   const isStrikeAdded = row.action === 'strikeAdded';
   const isSkipped = row.action === 'skipped';
   return (
+    <QuickContextMenu
+      label={`${row.torrentName} cleanup history actions`}
+      actions={[
+        {
+          id: 'details',
+          label: 'View details',
+          icon: <Eye />,
+          onSelect: () => onSelect(row),
+        },
+        {
+          id: 'copy-hash',
+          label: 'Copy torrent hash',
+          icon: <Copy />,
+          onSelect: () => {
+            void navigator.clipboard.writeText(row.hash)
+              .then(() => toast.success('Torrent hash copied'))
+              .catch(() => toast.error('Could not copy torrent hash'));
+          },
+        },
+      ]}
+    >
     <button
       type="button"
       onClick={() => onSelect(row)}
@@ -622,6 +645,7 @@ function HistoryRowCard({
         </div>
       )}
     </button>
+    </QuickContextMenu>
   );
 }
 

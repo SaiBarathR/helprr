@@ -19,9 +19,10 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { GripVertical, RotateCcw } from 'lucide-react';
+import { ArrowDown, ArrowUp, Eye, EyeOff, GripVertical, RotateCcw } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
+import { QuickContextMenu } from '@/components/ui/quick-context-menu';
 import { useUIStore } from '@/lib/store';
 import {
   type AnimeCarouselId,
@@ -33,10 +34,18 @@ function SortableCarouselItem({
   id,
   isDisabled,
   onToggle,
+  onMoveUp,
+  onMoveDown,
+  canMoveUp,
+  canMoveDown,
 }: {
   id: AnimeCarouselId;
   isDisabled: boolean;
   onToggle: () => void;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
+  canMoveUp: boolean;
+  canMoveDown: boolean;
 }) {
   const item = ANIME_CAROUSEL_MAP[id];
   const {
@@ -54,29 +63,55 @@ function SortableCarouselItem({
   };
 
   return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      className={`flex items-center gap-3 px-3 py-2.5 min-h-[44px] border-b border-foreground/[0.06] last:border-b-0 ${
-        isDragging ? 'z-50 bg-card shadow-lg rounded-lg opacity-90' : ''
-      } ${isDisabled ? 'opacity-40' : ''}`}
+    <QuickContextMenu
+      label={`${item.label} carousel actions`}
+      actions={[
+        {
+          id: 'toggle',
+          label: isDisabled ? 'Enable carousel' : 'Disable carousel',
+          icon: isDisabled ? <Eye /> : <EyeOff />,
+          onSelect: onToggle,
+        },
+        {
+          id: 'move-up',
+          label: 'Move up',
+          icon: <ArrowUp />,
+          disabled: !canMoveUp,
+          onSelect: onMoveUp,
+        },
+        {
+          id: 'move-down',
+          label: 'Move down',
+          icon: <ArrowDown />,
+          disabled: !canMoveDown,
+          onSelect: onMoveDown,
+        },
+      ]}
     >
-      <button
-        className="touch-none p-1 -m-1 text-muted-foreground/50 cursor-grab active:cursor-grabbing"
-        aria-label="Drag to reorder"
-        {...attributes}
-        {...listeners}
+      <div
+        ref={setNodeRef}
+        style={style}
+        className={`flex items-center gap-3 px-3 py-2.5 min-h-[44px] border-b border-foreground/[0.06] last:border-b-0 ${
+          isDragging ? 'z-50 bg-card shadow-lg rounded-lg opacity-90' : ''
+        } ${isDisabled ? 'opacity-40' : ''}`}
       >
-        <GripVertical className="h-4 w-4" />
-      </button>
-      <span className="text-sm font-medium flex-1">{item.label}</span>
-      {item.requiresAniList && (
-        <span className="text-[10px] text-muted-foreground/60 bg-muted/60 px-1.5 py-0.5 rounded">
-          AniList
-        </span>
-      )}
-      <Switch checked={!isDisabled} onCheckedChange={onToggle} />
-    </div>
+        <button
+          className="touch-none p-1 -m-1 text-muted-foreground/50 cursor-grab active:cursor-grabbing"
+          aria-label="Drag to reorder"
+          {...attributes}
+          {...listeners}
+        >
+          <GripVertical className="h-4 w-4" />
+        </button>
+        <span className="text-sm font-medium flex-1">{item.label}</span>
+        {item.requiresAniList && (
+          <span className="text-[10px] text-muted-foreground/60 bg-muted/60 px-1.5 py-0.5 rounded">
+            AniList
+          </span>
+        )}
+        <Switch checked={!isDisabled} onCheckedChange={onToggle} />
+      </div>
+    </QuickContextMenu>
   );
 }
 
@@ -140,12 +175,16 @@ export function AnimeCarouselSettings() {
             items={reconciledOrder}
             strategy={verticalListSortingStrategy}
           >
-            {reconciledOrder.map((id) => (
+            {reconciledOrder.map((id, index) => (
               <SortableCarouselItem
                 key={id}
                 id={id}
                 isDisabled={disabledSet.has(id)}
                 onToggle={() => toggleAnimeCarousel(id)}
+                canMoveUp={index > 0}
+                canMoveDown={index < reconciledOrder.length - 1}
+                onMoveUp={() => setAnimeCarouselOrder(arrayMove(reconciledOrder, index, index - 1))}
+                onMoveDown={() => setAnimeCarouselOrder(arrayMove(reconciledOrder, index, index + 1))}
               />
             ))}
           </SortableContext>

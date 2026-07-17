@@ -13,7 +13,9 @@ import { AnimeReviewCard } from '@/components/anime/anime-review-card';
 import { DiscoverInfoRows } from '@/components/discover/discover-info-rows';
 import { Badge } from '@/components/ui/badge';
 import { PageSpinner } from '@/components/ui/page-spinner';
-import { ExternalLink } from 'lucide-react';
+import { QuickContextMenu, type ContextActionGroup } from '@/components/ui/quick-context-menu';
+import { ExternalLink, ListChecks } from 'lucide-react';
+import { useMe } from '@/components/permission-provider';
 import type { AniListMangaDetailResponse } from '@/types/anilist';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -50,6 +52,7 @@ export default function MangaDetailPage() {
       : 'Failed to load'
     : null;
   const [synopsisExpanded, setSynopsisExpanded] = useState(false);
+  const isAdmin = useMe()?.role === 'admin';
 
   // Reset scroll-restore guards when navigating to a different manga.
   useEffect(() => {
@@ -159,33 +162,57 @@ export default function MangaDetailPage() {
       .slice(0, 5)
       .map((l) => ({ label: l.site, url: l.url! })),
   ];
+  const heroContextGroups: ContextActionGroup[] = [
+    {
+      id: 'organize',
+      actions: [
+        ...(isAdmin ? [{ id: 'anilist-status', label: 'Update AniList status', icon: <ListChecks className="h-4 w-4" />, onSelect: () => document.getElementById('manga-anilist-status')?.scrollIntoView({ behavior: 'smooth', block: 'center' }) }] : []),
+      ],
+    },
+    {
+      id: 'links',
+      actions: importantLinks.map((link) => ({
+        id: link.url,
+        label: `Open in ${link.label}`,
+        icon: <ExternalLink className="h-4 w-4" />,
+        href: link.url,
+        external: true,
+      })),
+    },
+  ];
 
   return (
     <div className="animate-content-in" onClickCapture={() => setDetailViewState(detailViewKey, { scrollY: window.scrollY })}>
       <PageHeader title={detail.title} />
 
       {/* Hero */}
-      <AnimeHero
-        title={detail.title}
-        bannerImage={detail.bannerImage}
-        coverImage={detail.coverImage}
-        format={detail.format}
-        averageScore={detail.averageScore}
-        episodes={null}
-        status={detail.status}
-        season={null}
-        seasonYear={null}
-        studios={[]}
-      />
+      <QuickContextMenu label={`${detail.title} actions`} groups={heroContextGroups}>
+        <div>
+          <AnimeHero
+            title={detail.title}
+            bannerImage={detail.bannerImage}
+            coverImage={detail.coverImage}
+            format={detail.format}
+            averageScore={detail.averageScore}
+            episodes={null}
+            status={detail.status}
+            season={null}
+            seasonYear={null}
+            studios={[]}
+          />
+        </div>
+      </QuickContextMenu>
 
       <div className="space-y-5 mt-4">
-        <AnilistStatusPanel
-          mediaId={detail.id}
-          mediaTitle={detail.title}
-          mediaType="MANGA"
-          totalChapters={detail.chapters}
-          totalVolumes={detail.volumes}
-        />
+        <div id="manga-anilist-status" className="scroll-mt-20">
+          <AnilistStatusPanel
+            mediaId={detail.id}
+            mediaTitle={detail.title}
+            mediaType="MANGA"
+            totalChapters={detail.chapters}
+            totalVolumes={detail.volumes}
+          />
+        </div>
 
         {/* Synopsis */}
         {sanitizedDescription && (

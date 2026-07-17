@@ -13,6 +13,7 @@ export interface QueueDryRunDecision {
   reason: string;
   linkedArrSource: string | null;
   linkedArrTitle: string | null;
+  private: boolean;
   options: { reSearch: boolean; deletePrivate: boolean; changeCategory: boolean };
 }
 
@@ -50,6 +51,7 @@ interface Props {
   loading: boolean;
   decisions: QueueDryRunDecision[] | DownloadDryRunDecision[];
   pendingStrikes?: RunPreviewPendingStrike[];
+  warnings?: string[];
   onConfirm: () => void;
   confirming: boolean;
   cleaner: 'queue' | 'download';
@@ -57,14 +59,18 @@ interface Props {
 }
 
 export function RunPreviewDialog(props: Props) {
-  const { open, onOpenChange, title, loading, decisions, pendingStrikes, onConfirm, confirming, cleaner, outcomes = [] } = props;
+  const { open, onOpenChange, title, loading, decisions, pendingStrikes, warnings = [], onConfirm, confirming, cleaner, outcomes = [] } = props;
   const showingResults = outcomes.length > 0;
 
   // Identify destructive options for an extra warning banner.
   const hasDeleteSourceFiles = cleaner === 'download'
     && (decisions as DownloadDryRunDecision[]).some((d) => d.deleteSourceFiles);
+  // Only warn when a matched torrent is actually private — deletePrivate on a
+  // rule that matched only public torrents is not an H&R risk.
   const hasDeletePrivate = cleaner === 'queue'
-    && (decisions as QueueDryRunDecision[]).some((d) => d.options.deletePrivate);
+    && (decisions as QueueDryRunDecision[]).some((d) => d.private && d.options.deletePrivate);
+  const hasQueueDataDeletes = cleaner === 'queue'
+    && (decisions as QueueDryRunDecision[]).some((d) => !d.options.changeCategory && (!d.private || d.options.deletePrivate));
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -79,12 +85,24 @@ export function RunPreviewDialog(props: Props) {
           </div>
         ) : (
           <div className="space-y-4 flex-1 min-h-0 overflow-y-auto -mx-6 px-6">
-            {(hasDeleteSourceFiles || hasDeletePrivate) && (
+            {!loading && warnings.length > 0 && (
+              <div className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-xs text-amber-600 dark:text-amber-500">
+                <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+                <div>
+                  {warnings.map((w, i) => (
+                    <div key={i}>{w}</div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {(hasDeleteSourceFiles || hasDeletePrivate || hasQueueDataDeletes) && (
               <div className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs text-destructive-foreground/90 dark:text-destructive">
                 <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
                 <div>
                   {hasDeleteSourceFiles && <div>One or more rules will delete files from disk (not just remove from qBittorrent).</div>}
                   {hasDeletePrivate && <div>One or more rules will delete private torrents — this can affect your tracker H&amp;R standing.</div>}
+                  {hasQueueDataDeletes && <div>Queue removals also delete the downloaded data (via Sonarr/Radarr &quot;remove from client&quot; or qBittorrent delete).</div>}
                 </div>
               </div>
             )}
@@ -148,12 +166,19 @@ export function RunPreviewDialog(props: Props) {
               ) : (
                 <div className="rounded-md border sm:max-h-72 sm:overflow-y-auto">
                   <ul className="divide-y">
-                    {decisions.map((d, idx) => (
+                    {decisions.map((d, idx) => {
+                      const willDeleteData = cleaner === 'queue'
+                        && !(d as QueueDryRunDecision).options.changeCategory
+                        && (!(d as QueueDryRunDecision).private || (d as QueueDryRunDecision).options.deletePrivate);
+                      return (
                       <li key={idx} className="px-3 py-2 text-sm">
                         <div className="flex items-center justify-between gap-2">
                           <div className="font-medium truncate min-w-0 flex-1">{d.torrentName}</div>
                           <div className="flex items-center gap-1 shrink-0">
                             {cleaner === 'download' && (d as DownloadDryRunDecision).deleteSourceFiles && (
+                              <Badge variant="destructive" className="text-[10px]">files</Badge>
+                            )}
+                            {willDeleteData && (
                               <Badge variant="destructive" className="text-[10px]">files</Badge>
                             )}
                             <Badge variant="destructive" className="shrink-0">remove</Badge>
@@ -176,7 +201,8 @@ export function RunPreviewDialog(props: Props) {
                           )}
                         </div>
                       </li>
-                    ))}
+                      );
+                    })}
                   </ul>
                 </div>
               )}

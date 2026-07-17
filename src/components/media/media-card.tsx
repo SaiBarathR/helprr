@@ -10,6 +10,7 @@ import { FadeInImage } from '@/components/media/fade-in-image';
 import { SelectionCheck } from './selection-check';
 import { useWatchLookup, type WatchLookupQuery } from '@/components/jellyfin/watch-status-provider';
 import { PosterWatchOverlay } from '@/components/jellyfin/watch-status-indicator';
+import { QuickContextMenu, type ContextActionGroup } from '@/components/ui/quick-context-menu';
 
 interface MediaCardProps {
   title: string;
@@ -34,6 +35,8 @@ interface MediaCardProps {
   selectable?: boolean;
   selected?: boolean;
   onToggleSelect?: () => void;
+  /** Native-style actions shown on right-click or touch/pen long-press. */
+  contextActionGroups?: ContextActionGroup[];
 }
 
 function getImageUrl(
@@ -65,6 +68,7 @@ export const MediaCard = memo(function MediaCard({
   selectable,
   selected,
   onToggleSelect,
+  contextActionGroups,
 }: MediaCardProps) {
   const lookup = useWatchLookup();
   const watchStatus = watchLookup ? lookup(watchLookup) : undefined;
@@ -153,14 +157,19 @@ export const MediaCard = memo(function MediaCard({
           {posterInner}
         </button>
       ) : (
-        <Link
-          href={href}
-          onClick={onNavigate}
-          className="block"
-          aria-label={show('title') ? undefined : title}
+        <QuickContextMenu
+          label={`${title} actions`}
+          groups={contextActionGroups}
         >
-          {posterInner}
-        </Link>
+          <Link
+            href={href}
+            onClick={onNavigate}
+            className="block"
+            aria-label={show('title') ? undefined : title}
+          >
+            {posterInner}
+          </Link>
+        </QuickContextMenu>
       )}
       {/* The corner slot sits OUTSIDE the Link/button so its onClick isn't routed
           through the anchor (no nested-interactive markup). In selection mode it

@@ -32,6 +32,7 @@ const MEMBER_ALLOWED: readonly Capability[] = [
   'scheduledAlerts.view',
   'scheduledAlerts.edit',
   'random.view',
+  'recommendations.view',
   'calendar.view',
   // Requests — view + create their own; approval stays with admins.
   'requests.view',

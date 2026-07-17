@@ -8,7 +8,7 @@ import { PanelLeftClose, PanelLeft, Loader2, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { useUIStore } from '@/lib/store';
-import { getActiveNavHref, getEnabledNavItems } from '@/lib/nav-config';
+import { getActiveNavHref, getEnabledNavItems, navItemAllowed } from '@/lib/nav-config';
 import { useNavPending } from '@/hooks/use-nav-pending';
 import { useMe, hasCapability } from '@/components/permission-provider';
 import { useSearchPalette } from '@/components/search/search-store';
@@ -37,7 +37,7 @@ export function Sidebar() {
   const navItems = useMemo(
     () =>
       getEnabledNavItems(navOrder, disabledNavItems).filter(
-        (item) => !item.requiredCapability || hasCapability(me, item.requiredCapability)
+        (item) => navItemAllowed(item, (cap) => hasCapability(me, cap))
       ),
     [navOrder, disabledNavItems, me]
   );

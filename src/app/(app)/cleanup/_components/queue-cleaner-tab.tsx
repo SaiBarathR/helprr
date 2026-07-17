@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
-import { Textarea } from '@/components/ui/textarea';
+import { TokenInput, type TokenSuggestionGroup } from '@/components/ui/token-input';
 import {
   Select,
   SelectContent,
@@ -17,7 +17,8 @@ import {
 } from '@/components/ui/select';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
-import { Loader2, Plus, Save, Trash2, AlertTriangle, Info, Pencil, ChevronUp } from 'lucide-react';
+import { Loader2, Plus, Save, Trash2, AlertTriangle, Info, Pencil, ChevronUp, Power } from 'lucide-react';
+import { QuickContextMenu } from '@/components/ui/quick-context-menu';
 import type {
   AutoRunMode,
   FailedImportConfig,
@@ -28,6 +29,7 @@ import type {
 import { FieldRow, isNumericActive, isRangeActive } from './field-row';
 import { SizeInput } from './size-input';
 import { StallRuleSummary, SlowRuleSummary } from './rule-summary';
+import { useScopeOptions } from './use-scope-options';
 import { jsonOk } from '@/lib/http';
 
 interface SaveAllResponse {
@@ -59,6 +61,13 @@ export function QueueCleanerTab({ onDirtyChange }: Props) {
   const serverSnapshot = useRef<SaveAllResponse | null>(null);
   // Pinned card refs — used to scroll a newly-created rule into view.
   const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+
+  const scope = useScopeOptions();
+  const ignoreSuggestions = useMemo<TokenSuggestionGroup[]>(() => [
+    { label: 'Categories', options: scope.categories },
+    { label: 'Tags', options: scope.tags },
+    { label: 'Trackers', options: scope.trackerDomains },
+  ], [scope.categories, scope.tags, scope.trackerDomains]);
 
   const isDirty = useMemo(() => {
     if (!serverSnapshot.current || !cfg) return false;
@@ -316,8 +325,8 @@ export function QueueCleanerTab({ onDirtyChange }: Props) {
               <Switch checked={cfg.enabled} onCheckedChange={(v) => setCfg({ ...cfg, enabled: v })} />
             </div>
 
-            <div className="grouped-row">
-              <div>
+            <div className="grouped-row grouped-row-stack-mobile gap-2">
+              <div className="min-w-0 sm:flex-1">
                 <Label>Auto-run mode</Label>
                 <p className="text-xs text-muted-foreground mt-0.5">{autoRunHint(cfg.autoRunMode)}</p>
               </div>
@@ -325,7 +334,7 @@ export function QueueCleanerTab({ onDirtyChange }: Props) {
                 value={cfg.autoRunMode}
                 onValueChange={(v) => setCfg({ ...cfg, autoRunMode: v as AutoRunMode })}
               >
-                <SelectTrigger className="w-44 shrink-0"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="w-full sm:w-44 shrink-0"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="disabled">Off</SelectItem>
                   <SelectItem value="dryRun">Dry-run (log only)</SelectItem>
@@ -335,7 +344,7 @@ export function QueueCleanerTab({ onDirtyChange }: Props) {
             </div>
 
             <div className="grouped-row">
-              <div>
+              <div className="min-w-0 flex-1">
                 <Label>Run every</Label>
                 <p className="text-xs text-muted-foreground mt-0.5">How often auto-run cycles fire. Manual runs are unaffected.</p>
               </div>
@@ -343,11 +352,12 @@ export function QueueCleanerTab({ onDirtyChange }: Props) {
                 <Input
                   type="number"
                   min={1}
-                  className="w-24"
+                  max={10080}
+                  className="w-20 sm:w-24"
                   value={cfg.intervalMinutes}
-                  onChange={(e) => setCfg({ ...cfg, intervalMinutes: Math.max(1, Number(e.target.value) || 1) })}
+                  onChange={(e) => setCfg({ ...cfg, intervalMinutes: Math.min(10080, Math.max(1, Number(e.target.value) || 1)) })}
                 />
-                <span className="text-sm text-muted-foreground">minutes</span>
+                <span className="text-sm text-muted-foreground">min</span>
               </div>
             </div>
 
@@ -367,19 +377,20 @@ export function QueueCleanerTab({ onDirtyChange }: Props) {
               <Switch checked={cfg.processNoContentId} onCheckedChange={(v) => setCfg({ ...cfg, processNoContentId: v })} />
             </div>
 
-            <div className="grouped-row flex-col items-stretch gap-2">
+            <div className="grouped-row grouped-row-stacked gap-2">
               <Label>Ignored downloads</Label>
-              <p className="text-xs text-muted-foreground -mt-1">One per line. Matches torrent hash, qBittorrent category, qBittorrent tag, or tracker domain suffix.</p>
-              <Textarea
-                value={cfg.ignoredDownloads.join('\n')}
-                onChange={(e) => setCfg({ ...cfg, ignoredDownloads: e.target.value.split('\n').map((s) => s.trim()).filter(Boolean) })}
-                placeholder={'aabbccdd00112233\nsonarr\nprivate-tracker.example.org'}
-                className="font-mono text-sm min-h-[88px]"
+              <p className="text-xs text-muted-foreground -mt-1">Type and press Enter to add. Matches torrent hash, qBittorrent category, qBittorrent tag, or tracker domain suffix.</p>
+              <TokenInput
+                value={cfg.ignoredDownloads}
+                onChange={(next) => setCfg({ ...cfg, ignoredDownloads: next })}
+                suggestions={ignoreSuggestions}
+                splitCommas={false}
+                placeholder="Hash, category, tag, or tracker domain"
               />
             </div>
 
             <div className="grouped-row">
-              <div>
+              <div className="min-w-0 flex-1">
                 <Label>Stuck on metadata — max strikes</Label>
                 <p className="text-xs text-muted-foreground mt-0.5">Torrent state &quot;metaDL&quot;. 0 = disabled; minimum 3 strikes.</p>
               </div>
@@ -387,7 +398,7 @@ export function QueueCleanerTab({ onDirtyChange }: Props) {
                 <Input
                   type="number"
                   min={0}
-                  className="w-24"
+                  className="w-20 sm:w-24"
                   value={cfg.downloadingMetadataMaxStrikes}
                   onChange={(e) => setCfg({ ...cfg, downloadingMetadataMaxStrikes: Math.max(0, Number(e.target.value) || 0) })}
                 />
@@ -540,12 +551,12 @@ function FailedImportSection({ cfg, setCfg }: { cfg: QueueCleanerConfigShape; se
         </div>
 
         <div className="grouped-row">
-          <div>
+          <div className="min-w-0 flex-1">
             <Label>Pattern mode</Label>
             <p className="text-xs text-muted-foreground mt-0.5">&quot;Exclude&quot; never strikes if any message matches; &quot;Include&quot; only strikes if at least one message matches.</p>
           </div>
           <Select value={fi.patternMode} onValueChange={(v) => set({ patternMode: v as 'include' | 'exclude' })}>
-            <SelectTrigger className="w-36 shrink-0"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="w-32 sm:w-36 shrink-0"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="exclude">Exclude</SelectItem>
               <SelectItem value="include">Include</SelectItem>
@@ -553,14 +564,14 @@ function FailedImportSection({ cfg, setCfg }: { cfg: QueueCleanerConfigShape; se
           </Select>
         </div>
 
-        <div className="grouped-row flex-col items-stretch gap-2">
+        <div className="grouped-row grouped-row-stacked gap-2">
           <Label>Patterns</Label>
-          <p className="text-xs text-muted-foreground -mt-1">One per line. Substring match against Sonarr/Radarr status messages (case-insensitive).</p>
-          <Textarea
-            value={fi.patterns.join('\n')}
-            onChange={(e) => set({ patterns: e.target.value.split('\n').map((s) => s.trim()).filter(Boolean) })}
-            placeholder={'title mismatch\nmanual import required'}
-            className="font-mono text-sm min-h-[80px]"
+          <p className="text-xs text-muted-foreground -mt-1">Type and press Enter to add. Substring match against Sonarr/Radarr status messages (case-insensitive); commas are allowed inside a pattern.</p>
+          <TokenInput
+            value={fi.patterns}
+            onChange={(next) => set({ patterns: next })}
+            splitCommas={false}
+            placeholder="e.g. title mismatch"
           />
         </div>
 
@@ -570,14 +581,6 @@ function FailedImportSection({ cfg, setCfg }: { cfg: QueueCleanerConfigShape; se
             <p className="text-xs text-muted-foreground mt-0.5">Skip Failed Import handling entirely on private trackers.</p>
           </div>
           <Switch checked={fi.ignorePrivate} onCheckedChange={(v) => set({ ignorePrivate: v })} />
-        </div>
-
-        <div className="grouped-row">
-          <div>
-            <Label>Skip if not found in client</Label>
-            <p className="text-xs text-muted-foreground mt-0.5">If a queue item refers to a hash not currently in qBittorrent, leave it alone.</p>
-          </div>
-          <Switch checked={fi.skipIfNotFoundInClient} onCheckedChange={(v) => set({ skipIfNotFoundInClient: v })} />
         </div>
 
         <div className="grouped-row">
@@ -677,9 +680,37 @@ function RuleCard<R extends CommonRuleShape>({
   containerRef?: (el: HTMLDivElement | null) => void;
 }) {
   return (
+    <QuickContextMenu
+      label={`${rule.name || 'Untitled rule'} actions`}
+      disabled={editing}
+      groups={[
+        {
+          id: 'rule',
+          actions: [
+            { id: 'edit', label: 'Edit rule', icon: <Pencil />, onSelect: onEdit },
+            {
+              id: 'toggle',
+              label: rule.enabled ? 'Turn rule off' : 'Turn rule on',
+              icon: <Power />,
+              onSelect: () => onChange({ ...rule, enabled: !rule.enabled }),
+            },
+          ],
+        },
+        {
+          id: 'danger',
+          actions: [{
+            id: 'delete',
+            label: 'Delete rule',
+            icon: <Trash2 />,
+            destructive: true,
+            onSelect: onDelete,
+          }],
+        },
+      ]}
+    >
     <div
       ref={containerRef}
-      className={`grouped-row flex-col items-stretch gap-3 ${error ? 'bg-destructive/5' : ''} ${!rule.enabled ? 'opacity-60' : ''}`}
+      className={`grouped-row grouped-row-stacked gap-3 ${error ? 'bg-destructive/5' : ''} ${!rule.enabled ? 'opacity-60' : ''}`}
     >
       <div className="flex items-center gap-2 flex-wrap">
         {editing ? (
@@ -687,7 +718,7 @@ function RuleCard<R extends CommonRuleShape>({
             value={rule.name}
             onChange={(e) => onChange({ ...rule, name: e.target.value })}
             placeholder="Rule name"
-            className="font-medium max-w-xs flex-1 min-w-[10rem]"
+            className="font-medium w-full order-last sm:order-none sm:w-auto sm:max-w-xs sm:flex-1 sm:min-w-[10rem]"
             aria-invalid={!!error}
           />
         ) : (
@@ -723,6 +754,7 @@ function RuleCard<R extends CommonRuleShape>({
         </div>
       )}
     </div>
+    </QuickContextMenu>
   );
 }
 
@@ -832,7 +864,7 @@ function StallRuleFields({ rule, onChange }: { rule: StallRuleShape; onChange: (
       </FieldRow>
       <FieldRow
         label="Re-search override"
-        hint="Override the global &quot;Re-search after removal&quot; for matches of this rule."
+        hint="Override the global &quot;Re-search after removal&quot; for matches of this rule. Not applied when &quot;Change category&quot; is on."
         active={rule.reSearchOverride !== null}
       >
         <Select
@@ -922,8 +954,8 @@ function SlowRuleFields({ rule, onChange }: { rule: SlowRuleShape; onChange: (ne
           onChange={(e) => onChange({ ...rule, priority: Number(e.target.value) || 0 })}
         />
       </FieldRow>
-      <FieldRow label="Reset strikes on speed recovery" hint="Clears accumulated strikes if speed climbs back over the threshold." active={rule.resetStrikesOnProgress}>
-        <Switch checked={rule.resetStrikesOnProgress} onCheckedChange={(v) => onChange({ ...rule, resetStrikesOnProgress: v })} />
+      <FieldRow label="Reset strikes on speed recovery" hint="Clears accumulated strikes if speed climbs back over the threshold. Requires a Min speed value." active={rule.resetStrikesOnProgress}>
+        <Switch checked={rule.resetStrikesOnProgress} disabled={rule.minSpeedKbps == null} onCheckedChange={(v) => onChange({ ...rule, resetStrikesOnProgress: v })} />
       </FieldRow>
       <FieldRow label="Change category on removal" active={rule.changeCategory}>
         <Switch
@@ -939,7 +971,11 @@ function SlowRuleFields({ rule, onChange }: { rule: SlowRuleShape; onChange: (ne
           onCheckedChange={(v) => onChange({ ...rule, deletePrivate: v })}
         />
       </FieldRow>
-      <FieldRow label="Re-search override" active={rule.reSearchOverride !== null}>
+      <FieldRow
+        label="Re-search override"
+        hint="Override the global &quot;Re-search after removal&quot; for matches of this rule. Not applied when &quot;Change category&quot; is on."
+        active={rule.reSearchOverride !== null}
+      >
         <Select
           value={rule.reSearchOverride === null ? 'inherit' : rule.reSearchOverride ? 'true' : 'false'}
           onValueChange={(v) => onChange({ ...rule, reSearchOverride: v === 'inherit' ? null : v === 'true' })}

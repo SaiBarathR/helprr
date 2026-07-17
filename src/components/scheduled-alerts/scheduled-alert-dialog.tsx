@@ -357,11 +357,22 @@ interface ButtonProps {
   variant?: 'icon' | 'button';
   className?: string;
   onSaved?: () => void;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
-export function ScheduledAlertButton({ draft, variant = 'icon', className, onSaved }: ButtonProps) {
+export function ScheduledAlertButton({
+  draft,
+  variant = 'icon',
+  className,
+  onSaved,
+  open: controlledOpen,
+  onOpenChange,
+}: ButtonProps) {
   const canEdit = useCan('scheduledAlerts.edit');
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = controlledOpen ?? internalOpen;
+  const setOpen = onOpenChange ?? setInternalOpen;
 
   if (!canEdit) return null;
 

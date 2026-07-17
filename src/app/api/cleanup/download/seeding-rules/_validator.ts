@@ -36,13 +36,21 @@ export function validateSeedingRulePayload(body: unknown): { ok: true; value: Om
   const maxRatio = Number(b.maxRatio ?? -1);
   const minSeedTimeHours = Number(b.minSeedTimeHours ?? 0);
   const maxSeedTimeHours = Number(b.maxSeedTimeHours ?? -1);
-  if (!Number.isFinite(maxRatio)) return { ok: false, error: 'maxRatio invalid' };
+  // Only the documented `-1` sentinel disables a threshold; other negatives
+  // were previously accepted and silently produced rules that never fire.
+  if (!Number.isFinite(maxRatio) || (maxRatio < 0 && maxRatio !== -1)) return { ok: false, error: 'maxRatio must be >= 0, or -1 to disable' };
   if (!Number.isFinite(minSeedTimeHours) || minSeedTimeHours < 0) return { ok: false, error: 'minSeedTimeHours must be >= 0' };
-  if (!Number.isFinite(maxSeedTimeHours)) return { ok: false, error: 'maxSeedTimeHours invalid' };
+  if (!Number.isFinite(maxSeedTimeHours) || (maxSeedTimeHours < 0 && maxSeedTimeHours !== -1)) return { ok: false, error: 'maxSeedTimeHours must be >= 0, or -1 to disable' };
   // `-1` is the documented "unbounded" sentinel for maxSeedTimeHours, so we
   // only enforce the min/max ordering when the user has set an upper bound.
   if (maxSeedTimeHours >= 0 && minSeedTimeHours > maxSeedTimeHours) {
     return { ok: false, error: 'minSeedTimeHours cannot exceed maxSeedTimeHours' };
+  }
+  // With both thresholds disabled the predicate `(ratio && minTime) || maxTime`
+  // can never be satisfied — the rule would be permanently inert while still
+  // claiming (and shadowing) every torrent its filters match.
+  if (maxRatio === -1 && maxSeedTimeHours === -1) {
+    return { ok: false, error: 'rule can never trigger: set Max ratio >= 0 or Max seed time >= 0 (Min seed time only gates the ratio condition)' };
   }
 
   const deleteSourceFiles = b.deleteSourceFiles === undefined ? true : Boolean(b.deleteSourceFiles);

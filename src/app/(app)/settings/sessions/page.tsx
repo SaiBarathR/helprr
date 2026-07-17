@@ -11,6 +11,7 @@ import { jsonFetcher, ApiError } from '@/lib/query-fetch';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { GroupedSection } from '@/components/settings/grouped-section';
+import { QuickContextMenu } from '@/components/ui/quick-context-menu';
 import {
   Dialog,
   DialogContent,
@@ -216,52 +217,76 @@ export default function SessionsPage() {
         </GroupedSection>
       ) : (
         sessions?.map((s) => (
-          <GroupedSection
+          <QuickContextMenu
             key={s.id}
-            title={sessionTitle(s)}
-          >
-            <div className="grouped-row">
-              <span className="text-sm">Signed in</span>
-              <span className="text-sm text-muted-foreground">
-                {new Date(s.createdAt).toLocaleString()}
-              </span>
-            </div>
-            <div className="grouped-row">
-              <span className="text-sm">Last seen</span>
-              <span className="text-sm text-muted-foreground">{relativeTime(s.lastSeenAt)}</span>
-            </div>
-            {s.ip && (
-              <div className="grouped-row">
-                <span className="text-sm">IP</span>
-                <span className="text-sm text-muted-foreground">{s.ip}</span>
-              </div>
-            )}
-            <div className="px-4 py-3 flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                className="flex-1 h-9"
-                onClick={() => {
+            label={`${sessionTitle(s)} actions`}
+            actions={[
+              {
+                id: 'rename',
+                label: 'Rename session',
+                icon: <Pencil />,
+                disabled: busy,
+                onSelect: () => {
                   setRenameTarget(s);
                   setRenameValue(s.label ?? '');
-                }}
-                disabled={busy}
-              >
-                <Pencil className="mr-2 h-4 w-4" />
-                Rename
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="flex-1 h-9 text-destructive hover:text-destructive"
-                onClick={() => setConfirmTarget(s)}
-                disabled={busy}
-              >
-                <LogOut className="mr-2 h-4 w-4" />
-                {s.isCurrent ? 'Sign out' : 'Revoke'}
-              </Button>
+                },
+              },
+              {
+                id: 'revoke',
+                label: s.isCurrent ? 'Sign out this device' : 'Revoke session',
+                icon: <LogOut />,
+                destructive: true,
+                disabled: busy,
+                onSelect: () => setConfirmTarget(s),
+              },
+            ]}
+          >
+            <div>
+              <GroupedSection title={sessionTitle(s)}>
+                <div className="grouped-row">
+                  <span className="text-sm">Signed in</span>
+                  <span className="text-sm text-muted-foreground">
+                    {new Date(s.createdAt).toLocaleString()}
+                  </span>
+                </div>
+                <div className="grouped-row">
+                  <span className="text-sm">Last seen</span>
+                  <span className="text-sm text-muted-foreground">{relativeTime(s.lastSeenAt)}</span>
+                </div>
+                {s.ip && (
+                  <div className="grouped-row">
+                    <span className="text-sm">IP</span>
+                    <span className="text-sm text-muted-foreground">{s.ip}</span>
+                  </div>
+                )}
+                <div className="px-4 py-3 flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex-1 h-9"
+                    onClick={() => {
+                      setRenameTarget(s);
+                      setRenameValue(s.label ?? '');
+                    }}
+                    disabled={busy}
+                  >
+                    <Pencil className="mr-2 h-4 w-4" />
+                    Rename
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex-1 h-9 text-destructive hover:text-destructive"
+                    onClick={() => setConfirmTarget(s)}
+                    disabled={busy}
+                  >
+                    <LogOut className="mr-2 h-4 w-4" />
+                    {s.isCurrent ? 'Sign out' : 'Revoke'}
+                  </Button>
+                </div>
+              </GroupedSection>
             </div>
-          </GroupedSection>
+          </QuickContextMenu>
         ))
       )}
 

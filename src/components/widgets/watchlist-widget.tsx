@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { Bookmark, Film, Sparkles, Tv } from 'lucide-react';
+import { Bookmark, ExternalLink, Film, List, Sparkles, Tv } from 'lucide-react';
 import { ApiError } from '@/lib/query-fetch';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
 import { useElementSize } from '@/lib/widgets/use-element-size';
@@ -29,6 +29,7 @@ import {
   toneFromString,
 } from './bento-primitives';
 import { useDashboardLayout } from './dashboard-layout-context';
+import { QuickContextMenu } from '@/components/ui/quick-context-menu';
 
 interface WatchlistWidgetItem {
   id: string;
@@ -179,13 +180,21 @@ export function WatchlistWidget({
             return editMode || !item.href ? (
               row
             ) : (
-              <Link
+              <QuickContextMenu
                 key={item.id}
-                href={item.href}
-                style={{ textDecoration: 'none', color: 'inherit', display: 'block' }}
+                label={`${item.title} watchlist actions`}
+                actions={[
+                  { id: 'open', label: 'Open details', icon: <ExternalLink />, href: item.href },
+                  { id: 'watchlist', label: 'View watchlist', icon: <List />, href: '/watchlist' },
+                ]}
               >
-                <WatchlistRow item={item} />
-              </Link>
+                <Link
+                  href={item.href}
+                  style={{ textDecoration: 'none', color: 'inherit', display: 'block' }}
+                >
+                  <WatchlistRow item={item} />
+                </Link>
+              </QuickContextMenu>
             );
           })}
         </div>
@@ -238,18 +247,26 @@ export function WatchlistWidget({
               {card}
             </div>
           ) : (
-            <Link
+            <QuickContextMenu
               key={item.id}
-              href={item.href}
-              style={{
-                width: CAROUSEL_CARD_WIDTH,
-                flexShrink: 0,
-                textDecoration: 'none',
-                color: 'inherit',
-              }}
+              label={`${item.title} watchlist actions`}
+              actions={[
+                { id: 'open', label: 'Open details', icon: <ExternalLink />, href: item.href },
+                { id: 'watchlist', label: 'View watchlist', icon: <List />, href: '/watchlist' },
+              ]}
             >
-              {card}
-            </Link>
+              <Link
+                href={item.href}
+                style={{
+                  width: CAROUSEL_CARD_WIDTH,
+                  flexShrink: 0,
+                  textDecoration: 'none',
+                  color: 'inherit',
+                }}
+              >
+                {card}
+              </Link>
+            </QuickContextMenu>
           );
         })}
       </div>

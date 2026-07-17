@@ -1,16 +1,20 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
-import { Plus } from 'lucide-react';
+import { Inbox, Plus, Check } from 'lucide-react';
 import type { DiscoverDetail } from '@/types';
 import { WatchlistButton } from '@/components/watchlist/watchlist-button';
 import { RequestMediaButton } from '@/components/discover/request-media-button';
 import { OpenInInstances } from '@/components/discover/open-in-instances';
 import { useMe, hasCapability } from '@/components/permission-provider';
 import { ScheduledAlertButton } from '@/components/scheduled-alerts/scheduled-alert-dialog';
+import { useRequestedMedia } from '@/components/seerr/requested-media-provider';
+import type { ContextActionGroup } from '@/components/ui/quick-context-menu';
 
 interface DiscoverAddButtonProps {
   detail: DiscoverDetail;
+  controller: DiscoverAddController;
 }
 
 function buildAddHref(detail: DiscoverDetail): string | null {
@@ -38,17 +42,50 @@ function buildAddHref(detail: DiscoverDetail): string | null {
   return `/series/add?${params.toString()}`;
 }
 
-export function DiscoverAddButton({ detail }: DiscoverAddButtonProps) {
-  const me = useMe();
-  const href = buildAddHref(detail);
-  if (!href) return null;
+export interface DiscoverAddController {
+  href: string | null;
+  service: 'Radarr' | 'Sonarr';
+  seerrMediaType: 'movie' | 'tv';
+  canAddDirectly: boolean;
+  canRequest: boolean;
+  canSchedule: boolean;
+  requested: boolean;
+  watchlistDraft: {
+    source: 'TMDB';
+    externalId: string;
+    mediaType: 'movie' | 'series';
+    title: string;
+    year: number | null;
+    posterUrl: string | null;
+    overview: string | null;
+    rating: number | null;
+    releaseDate: string | null;
+  };
+  instances: Array<{ instanceId: string; instanceLabel: string; id: number; titleSlug?: string }>;
+  watchlistOpen: boolean;
+  setWatchlistOpen: (open: boolean) => void;
+  scheduleOpen: boolean;
+  setScheduleOpen: (open: boolean) => void;
+  requestOpen: boolean;
+  setRequestOpen: (open: boolean) => void;
+  contextGroups: ContextActionGroup[];
+}
 
-  const service = detail.mediaType === 'movie' ? 'Radarr' : 'Sonarr';
-  const seerrMediaType = detail.mediaType === 'movie' ? 'movie' : 'tv';
+export function useDiscoverAddController(detail: DiscoverDetail): DiscoverAddController {
+  const me = useMe();
+  const { isRequested } = useRequestedMedia();
+  const [watchlistOpen, setWatchlistOpen] = useState(false);
+  const [scheduleOpen, setScheduleOpen] = useState(false);
+  const [requestOpen, setRequestOpen] = useState(false);
+  const href = buildAddHref(detail);
+  const service = detail.mediaType === 'movie' ? 'Radarr' as const : 'Sonarr' as const;
+  const seerrMediaType = detail.mediaType === 'movie' ? 'movie' as const : 'tv' as const;
   // Admins can add directly (Radarr/Sonarr); anyone with requests.create can
   // also request via Seerr when it's configured. Members only get Request.
   const canAddDirectly = hasCapability(me, detail.mediaType === 'movie' ? 'movies.add' : 'series.add');
   const canRequest = !!me?.seerrConfigured && hasCapability(me, 'requests.create');
+  const canSchedule = hasCapability(me, 'scheduledAlerts.edit');
+  const requested = isRequested(seerrMediaType, detail.tmdbId);
   const watchlistDraft = {
     source: 'TMDB' as const,
     externalId: String(detail.tmdbId),
@@ -61,25 +98,91 @@ export function DiscoverAddButton({ detail }: DiscoverAddButtonProps) {
     releaseDate: detail.releaseDate ?? null,
   };
 
+  const instances = detail.library?.instances?.length
+    ? detail.library.instances
+    : detail.addTarget.id
+      ? [{ instanceId: detail.addTarget.instanceId ?? '', instanceLabel: '', id: detail.addTarget.id, titleSlug: detail.library?.titleSlug }]
+      : [];
+  const targetService = detail.addTarget.service === 'radarr' ? 'Radarr' : 'Sonarr';
+  const type: 'movie' | 'series' = detail.addTarget.service === 'radarr' ? 'movie' : 'series';
+  const contextGroups: ContextActionGroup[] = [
+    {
+      id: 'library',
+      actions: detail.addTarget.exists
+        ? instances.map((instance) => ({
+            id: `open-${instance.instanceId || instance.id}`,
+            label: instances.length > 1 && instance.instanceLabel
+              ? `Open in ${targetService} · ${instance.instanceLabel}`
+              : `Open in ${targetService}`,
+            icon: <Check className="h-4 w-4" />,
+            href: `${type === 'movie' ? '/movies' : '/series'}/${instance.id}${instance.instanceId ? `?instance=${instance.instanceId}` : ''}`,
+          }))
+        : [
+            ...(canAddDirectly && href ? [{ id: 'add', label: `Add to ${service}`, icon: <Plus className="h-4 w-4" />, href }] : []),
+            ...(canRequest ? [{ id: 'request', label: requested ? 'Requested' : 'Request', icon: requested ? <Check className="h-4 w-4" /> : <Inbox className="h-4 w-4" />, onSelect: () => setRequestOpen(true), disabled: requested }] : []),
+          ],
+    },
+  ];
+
+  return {
+    href,
+    service,
+    seerrMediaType,
+    canAddDirectly,
+    canRequest,
+    canSchedule,
+    requested,
+    watchlistDraft,
+    instances,
+    watchlistOpen,
+    setWatchlistOpen,
+    scheduleOpen,
+    setScheduleOpen,
+    requestOpen,
+    setRequestOpen,
+    contextGroups,
+  };
+}
+
+export function DiscoverAddButton({ detail, controller }: DiscoverAddButtonProps) {
+  const {
+    href,
+    service,
+    seerrMediaType,
+    canAddDirectly,
+    canRequest,
+    canSchedule,
+    watchlistDraft,
+    instances,
+    watchlistOpen,
+    setWatchlistOpen,
+    scheduleOpen,
+    setScheduleOpen,
+    requestOpen,
+    setRequestOpen,
+  } = controller;
+  if (!href) return null;
+
   if (detail.addTarget.exists) {
     const targetService = detail.addTarget.service === 'radarr' ? 'Radarr' : 'Sonarr';
     const type: 'movie' | 'series' = detail.addTarget.service === 'radarr' ? 'movie' : 'series';
-    // The matched title may live in more than one instance (DiscoverDetail already
-    // carries the full library); fall back to the addTarget when the list is absent.
-    const instances = detail.library?.instances?.length
-      ? detail.library.instances
-      : detail.addTarget.id
-        ? [{ instanceId: detail.addTarget.instanceId ?? '', instanceLabel: '', id: detail.addTarget.id, titleSlug: detail.library?.titleSlug }]
-        : [];
     return (
       <div className="absolute top-1 right-1 md:top-2 md:right-1.5 hero-meta-fade flex items-center gap-1.5">
         <WatchlistButton
           draft={watchlistDraft}
           variant="icon"
           className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-background/55 backdrop-blur-md text-foreground hover:bg-background/70"
+          open={watchlistOpen}
+          onOpenChange={setWatchlistOpen}
         />
-        {hasCapability(me, 'scheduledAlerts.edit') && (
-          <ScheduledAlertButton draft={watchlistDraft} variant="icon" className="h-7 w-7" />
+        {canSchedule && (
+          <ScheduledAlertButton
+            draft={watchlistDraft}
+            variant="icon"
+            className="h-7 w-7"
+            open={scheduleOpen}
+            onOpenChange={setScheduleOpen}
+          />
         )}
         <OpenInInstances
           type={type}
@@ -109,6 +212,8 @@ export function DiscoverAddButton({ detail }: DiscoverAddButtonProps) {
             mediaType={seerrMediaType}
             title={detail.title}
             className={pillClass}
+            open={requestOpen}
+            onOpenChange={setRequestOpen}
           />
         )}
       </div>
@@ -117,9 +222,17 @@ export function DiscoverAddButton({ detail }: DiscoverAddButtonProps) {
           draft={watchlistDraft}
           variant="icon"
           className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-background/25 backdrop-blur-md text-foreground hover:bg-background/70"
+          open={watchlistOpen}
+          onOpenChange={setWatchlistOpen}
         />
-        {hasCapability(me, 'scheduledAlerts.edit') && (
-          <ScheduledAlertButton draft={watchlistDraft} variant="icon" className="h-7 w-7" />
+        {canSchedule && (
+          <ScheduledAlertButton
+            draft={watchlistDraft}
+            variant="icon"
+            className="h-7 w-7"
+            open={scheduleOpen}
+            onOpenChange={setScheduleOpen}
+          />
         )}
       </div>
     </div>

@@ -59,9 +59,9 @@ const DEFAULT_SERIES_FIELDS: VisibleFieldsByMode = {
 };
 
 const DEFAULT_MUSIC_FIELDS: VisibleFieldsByMode = {
-  posters: ['rating', 'monitored'],
-  overview: ['qualityProfile', 'metadataProfile', 'rating', 'artistType', 'albumCount', 'trackProgress', 'sizeOnDisk', 'monitored', 'genres', 'overview', 'images'],
-  table: ['monitored', 'artistType', 'qualityProfile', 'albumCount', 'trackProgress', 'rating', 'sizeOnDisk'],
+  posters: ['title', 'rating', 'monitored'],
+  overview: ['title', 'qualityProfile', 'metadataProfile', 'rating', 'artistType', 'albumCount', 'trackProgress', 'sizeOnDisk', 'monitored', 'genres', 'overview', 'images'],
+  table: ['monitored', 'title', 'artistType', 'qualityProfile', 'albumCount', 'trackProgress', 'rating', 'sizeOnDisk'],
 };
 
 export const DEFAULT_DISCOVER_FILTERS: DiscoverFiltersState = {
@@ -233,7 +233,7 @@ function cloneDiscoverFilters(filters: DiscoverFiltersState): DiscoverFiltersSta
   };
 }
 
-export const STORE_VERSION = 42;
+export const STORE_VERSION = 43;
 
 // Matches the calendar backdrop's previously hardcoded Tailwind `opacity-35`.
 export const DEFAULT_CALENDAR_IMAGE_OPACITY = 35;
@@ -436,6 +436,20 @@ export function migrateUiPrefs(persisted: unknown, version: number): Record<stri
   }
   if (version < 42) {
     state.calendarImageOpacity = DEFAULT_CALENDAR_IMAGE_OPACITY;
+  }
+  if (version < 43) {
+    // Music list/table/poster views render the artist name via the shared `title`
+    // field key (same as movies/series). Ensure existing prefs include it.
+    const fields = state.musicVisibleFields;
+    if (isVisibleFieldsByMode(fields)) {
+      state.musicVisibleFields = {
+        posters: fields.posters.includes('title') ? fields.posters : ['title', ...fields.posters],
+        overview: fields.overview.includes('title') ? fields.overview : ['title', ...fields.overview],
+        table: fields.table.includes('title')
+          ? fields.table
+          : [...fields.table.slice(0, 1), 'title', ...fields.table.slice(1)],
+      };
+    }
   }
   if (!isMediaWatchFilterPreference(state.moviesWatchFilter)) {
     state.moviesWatchFilter = 'all';
