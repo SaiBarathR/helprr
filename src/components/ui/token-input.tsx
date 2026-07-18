@@ -69,6 +69,11 @@ export function TokenInput({
   const [highlight, setHighlight] = React.useState(-1);
   const inputRef = React.useRef<HTMLInputElement | null>(null);
   const listRef = React.useRef<HTMLDivElement | null>(null);
+  const suggestionPointerRef = React.useRef<{
+    pointerId: number;
+    x: number;
+    y: number;
+  } | null>(null);
   const listboxId = React.useId();
 
   const commitTokens = React.useCallback((raw: string) => {
@@ -292,11 +297,43 @@ export function TokenInput({
                       aria-selected={idx === highlight}
                       data-index={idx}
                       onPointerDown={(e) => {
-                        // iOS Safari: content-level preventDefault suppresses click, and
-                        // blur still closes the list shortly after — select on pointerdown
-                        // so the token commits before the menu unmounts.
+                        if (!e.isPrimary || e.button !== 0) {
+                          suggestionPointerRef.current = null;
+                          return;
+                        }
+                        // Keep focus (and the mobile keyboard) in the input, but
+                        // wait for pointerup before committing so a scroll gesture
+                        // does not select the option it started over.
                         e.preventDefault();
-                        addToken(opt);
+                        suggestionPointerRef.current = {
+                          pointerId: e.pointerId,
+                          x: e.clientX,
+                          y: e.clientY,
+                        };
+                      }}
+                      onPointerMove={(e) => {
+                        const origin = suggestionPointerRef.current;
+                        if (!origin || origin.pointerId !== e.pointerId) return;
+                        const deltaX = e.clientX - origin.x;
+                        const deltaY = e.clientY - origin.y;
+                        if ((deltaX * deltaX) + (deltaY * deltaY) > 100) {
+                          suggestionPointerRef.current = null;
+                        }
+                      }}
+                      onPointerCancel={() => {
+                        suggestionPointerRef.current = null;
+                      }}
+                      onPointerUp={(e) => {
+                        const origin = suggestionPointerRef.current;
+                        suggestionPointerRef.current = null;
+                        if (
+                          origin
+                          && origin.pointerId === e.pointerId
+                          && e.isPrimary
+                          && e.button === 0
+                        ) {
+                          addToken(opt);
+                        }
                       }}
                       onMouseMove={() => setHighlight(idx)}
                       className={cn(
