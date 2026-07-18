@@ -523,7 +523,7 @@ export default function ArtistDetailPage() {
                 priority
                 unoptimized={isProtectedApiImageSrc(fanart)}
               />
-              <div className="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent" />
+              <div className="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent light:via-background/25" />
             </div>
             <div className="relative -mt-[90px] px-2 md:px-6 flex gap-3.5">
               <div className="w-[100px] shrink-0">
@@ -698,7 +698,7 @@ export default function ArtistDetailPage() {
                           ) : (
                             <div className="absolute inset-0 flex items-center justify-center text-muted-foreground"><Disc3 className="h-5 w-5" /></div>
                           )}
-                          {album.monitored === false && <div className="absolute inset-0 bg-background/40" />}
+                          {album.monitored === false && <div className="absolute inset-0 bg-black/35" />}
                         </Link>
                         <QuickContextMenu label={`${album.title} actions`} actions={albumActions}>
                         <Link href={albumHref} className="flex-1 min-w-0">

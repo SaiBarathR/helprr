@@ -127,7 +127,7 @@ function GapCard({
         onClick={handleSearch}
         disabled={searching}
         aria-label="Search"
-        className="absolute right-1.5 top-1.5 z-10 flex h-7 w-7 items-center justify-center rounded-md bg-background/70 text-foreground backdrop-blur-sm transition-colors hover:bg-background/90 disabled:opacity-60"
+        className="absolute right-1.5 top-1.5 z-10 flex h-7 w-7 items-center justify-center rounded-md bg-black/55 text-white backdrop-blur-sm transition-colors hover:bg-black/70 disabled:opacity-60"
       >
         {searching ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Search className="h-3.5 w-3.5" />}
       </button>
@@ -137,7 +137,7 @@ function GapCard({
     action = (
       <div
         aria-hidden="true"
-        className="absolute right-1.5 top-1.5 z-10 flex h-7 w-7 items-center justify-center rounded-md bg-background/70 text-foreground backdrop-blur-sm"
+        className="absolute right-1.5 top-1.5 z-10 flex h-7 w-7 items-center justify-center rounded-md bg-black/55 text-white backdrop-blur-sm"
       >
         <Layers className="h-3.5 w-3.5" />
       </div>
@@ -148,7 +148,7 @@ function GapCard({
     action = (
       <div
         aria-hidden="true"
-        className="absolute right-1.5 top-1.5 z-10 flex h-7 w-7 items-center justify-center rounded-md bg-background/70 text-foreground backdrop-blur-sm"
+        className="absolute right-1.5 top-1.5 z-10 flex h-7 w-7 items-center justify-center rounded-md bg-black/55 text-white backdrop-blur-sm"
       >
         <Plus className="h-3.5 w-3.5" />
       </div>
@@ -183,10 +183,10 @@ function GapCard({
           <FallbackIcon className="h-7 w-7" />
         </div>
       )}
-      <div className="absolute inset-0 bg-gradient-to-t from-background/75 via-background/20 to-transparent" />
+      <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/20 to-transparent" />
       <div className="absolute bottom-0 left-0 right-0 p-2">
-        <p className="line-clamp-2 text-xs font-medium leading-tight text-foreground">{item.title}</p>
-        {meta && <p className="mt-1 line-clamp-1 text-[10px] text-foreground/80">{meta}</p>}
+        <p className="line-clamp-2 text-xs font-medium leading-tight text-white">{item.title}</p>
+        {meta && <p className="mt-1 line-clamp-1 text-[10px] text-white/80">{meta}</p>}
       </div>
     </div>
   );

@@ -1322,7 +1322,7 @@ export default function SeriesDetailPage() {
                 priority
                 unoptimized
               />
-              <div className="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent" />
+              <div className="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent light:via-background/25" />
               {/* Watchlist + schedule alert icons — top right, mirrors discover hero */}
               <div className="absolute top-2 right-2 flex items-center gap-1.5">
                 <button

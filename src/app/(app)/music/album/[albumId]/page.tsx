@@ -459,7 +459,7 @@ export default function AlbumDetailPage() {
               ) : (
                 <div className="absolute inset-0 flex items-center justify-center text-muted-foreground"><Disc3 className="h-10 w-10" /></div>
               )}
-              {album.monitored === false && <div className="absolute inset-0 bg-background/40" />}
+              {album.monitored === false && <div className="absolute inset-0 bg-black/35" />}
             </div>
             </QuickContextMenu>
           </div>

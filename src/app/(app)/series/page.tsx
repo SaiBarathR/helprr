@@ -674,7 +674,6 @@ export default function SeriesPage() {
     [contextActionsByKey],
   );
 
-  const isDesktop = viewportWidth >= 768;
   const effectiveView = viewMode === 'table' ? 'table' : viewMode;
   const useVirtualization = !loading && filtered.length > 0;
 
@@ -740,29 +739,17 @@ export default function SeriesPage() {
     genres: s.genres,
   })), [filtered, multiInstance, hrefForSeries]);
 
-  const tableVirtualizer = useWindowVirtualizer({
-    count: tableRows.length,
-    estimateSize: () => 44,
-    enabled: useVirtualization && effectiveView === 'table' && isDesktop,
-    overscan: 12,
-    scrollMargin: contentOffsetTop,
-  });
-
-  const mobileOverviewFields = visibleFieldsByMode.overview;
-  const tableMobileOverviewRowHeight = useMemo(() => {
-    let base = posterSize === 'small' ? 92 : posterSize === 'large' ? 168 : 124;
-    if (mobileOverviewFields.includes('overview')) base += 24;
-    if (!mobileOverviewFields.includes('images')) base -= 20;
-    return base;
-  }, [mobileOverviewFields, posterSize]);
-
-  const tableMobileVirtualizer = useWindowVirtualizer({
-    count: filtered.length,
-    estimateSize: () => tableMobileOverviewRowHeight,
-    enabled: useVirtualization && effectiveView === 'table' && !isDesktop,
-    overscan: 6,
-    scrollMargin: contentOffsetTop,
-  });
+  // Table headers sort through the same store state as the toolbar dropdown:
+  // picking the active key toggles direction; a new key gets its natural default.
+  const handleHeaderSort = useCallback((key: string) => {
+    if (sort === key) {
+      setSortDir(sortDir === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSort(key as typeof sort);
+      const alphabetic = ['title', 'network', 'qualityProfile', 'path', 'originalLanguage', 'tags'];
+      setSortDir(alphabetic.includes(key) ? 'asc' : 'desc');
+    }
+  }, [sort, sortDir, setSort, setSortDir]);
 
   const activeFilterLabel = useMemo(() => {
     const arrLabel = filter.length === 0
@@ -1099,81 +1086,33 @@ export default function SeriesPage() {
           );
         }
 
-        if (isDesktop) {
-          const virtualRows = tableVirtualizer.getVirtualItems();
-          const firstRow = virtualRows[0];
-          const lastRow = virtualRows[virtualRows.length - 1];
-          const startIndex = firstRow?.index ?? 0;
-          const endIndex = (lastRow?.index ?? 0) + 1;
-          const visibleRows = tableRows.slice(startIndex, endIndex);
-          const topSpacerHeight = firstRow ? Math.max(0, firstRow.start - contentOffsetTop) : 0;
-          const bottomSpacerHeight = lastRow
-            ? Math.max(0, tableVirtualizer.getTotalSize() - (lastRow.end - contentOffsetTop))
-            : 0;
-          return (
-            <div ref={contentRef}>
-              <MediaTable
-                type="series"
-                watchScope="sonarr"
-                visibleFields={visibleFields}
-                rows={visibleRows}
-                topSpacerHeight={topSpacerHeight}
-                bottomSpacerHeight={bottomSpacerHeight}
-                onNavigate={handleNavigateToDetail}
-                selectable={selectionMode}
-                selectedKeys={selectedKeys}
-                onToggleSelect={(row) => toggle(`${row.instanceId ?? ''}:${row.id}`)}
-                getContextActionGroups={contextActionsForTableRow}
-              />
-            </div>
-          );
-        }
-
-        const virtualRows = tableMobileVirtualizer.getVirtualItems();
-        const firstRow = virtualRows[0];
-        const lastRow = virtualRows[virtualRows.length - 1];
-        const startIndex = firstRow?.index ?? 0;
-        const endIndex = (lastRow?.index ?? 0) + 1;
-        const visibleSeries = filtered.slice(startIndex, endIndex);
-        const topSpacerHeight = firstRow ? Math.max(0, firstRow.start - contentOffsetTop) : 0;
-        const bottomSpacerHeight = lastRow
-          ? Math.max(0, tableMobileVirtualizer.getTotalSize() - (lastRow.end - contentOffsetTop))
-          : 0;
-
         return (
-          <div ref={contentRef} className="space-y-2">
-            {topSpacerHeight > 0 && <div style={{ height: topSpacerHeight }} />}
-            {visibleSeries.map((s, i) => (
-              <MediaOverviewItem
-                key={`${s.instanceId ?? ''}:${s.id}`}
-                title={s.title}
-                year={s.year}
-                images={s.images}
-                href={hrefForSeries(s)}
-                type="series"
-                monitored={s.monitored}
-                status={s.status}
-                visibleFields={mobileOverviewFields}
-                posterSize={posterSize}
-                watchLookup={{ scope: 'sonarr', instanceId: s.instanceId, arrId: s.id }}
-                qualityProfile={s.qualityProfileName}
-                network={s.network}
-                overview={s.overview}
-                rating={s.ratings?.value}
-                sizeOnDisk={s.statistics.sizeOnDisk}
-                runtime={s.runtime}
-                episodeProgress={`${s.statistics.episodeCount}/${s.statistics.totalEpisodeCount}`}
-                genres={s.genres}
-                instanceLabel={multiInstance ? s.instanceLabel : undefined}
-                onNavigate={handleNavigateToDetail}
-                imagePriority={startIndex + i < 6}
-                selectable={selectionMode}
-                selected={selectedKeys.has(keyOf(s))}
-                onToggleSelect={() => toggle(keyOf(s))}
-                contextActionGroups={contextActionsForSeries(s)}
-              />
-            ))}
-            {bottomSpacerHeight > 0 && <div style={{ height: bottomSpacerHeight }} />}
+          <div ref={contentRef}>
+            <MediaTable
+              type="series"
+              watchScope="sonarr"
+              visibleFields={visibleFields}
+              rows={tableRows}
+              onNavigate={handleNavigateToDetail}
+              selectable={selectionMode}
+              selectedKeys={selectedKeys}
+              onToggleSelect={(row) => toggle(`${row.instanceId ?? ''}:${row.id}`)}
+              getContextActionGroups={contextActionsForTableRow}
+              sortKey={sort}
+              sortDir={sortDir}
+              onSort={handleHeaderSort}
+              sortKeys={{
+                title: 'title',
+                year: 'year',
+                qualityProfile: 'qualityProfile',
+                network: 'network',
+                sizeOnDisk: 'sizeOnDisk',
+                monitored: 'monitored',
+                rating: 'rating',
+                episodeProgress: 'episodes',
+              }}
+              resetPageKey={`${search}|${filter.join(',')}|${instanceFilter}|${watchFilter}|${sort}|${sortDir}`}
+            />
           </div>
         );
       })()}

@@ -285,7 +285,7 @@ function DiscoverHeroSlide({ item, priority = false }: { item: DiscoverItem; pri
         ) : (
           <div className="absolute inset-0 bg-muted" />
         )}
-        <div className="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent light:via-background/25" />
         {/* Extra bottom padding keeps badges clear of the carousel dots */}
         <div className="absolute bottom-0 left-0 right-0 px-4 pt-4 pb-9 flex flex-col gap-1.5">
           <h2 className="text-xl font-bold leading-tight line-clamp-2 drop-shadow-lg">{item.title}</h2>
@@ -425,11 +425,11 @@ function MediaPoster({
               {item.mediaType === 'movie' ? <Film className="h-7 w-7" /> : <Tv className="h-7 w-7" />}
             </div>
           )}
-          <div className="absolute inset-0 bg-gradient-to-t from-background/75 via-background/20 to-transparent" />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/20 to-transparent" />
           <div className="absolute top-1.5 left-1.5">{cardTypeIcon(item.mediaType)}</div>
           <div className="absolute bottom-0 left-0 right-0 p-2">
-            <p className="text-xs text-foreground font-medium line-clamp-2 leading-tight">{item.title}</p>
-            <div className="mt-1 flex items-center justify-between text-[10px] text-foreground/80">
+            <p className="text-xs text-white font-medium line-clamp-2 leading-tight">{item.title}</p>
+            <div className="mt-1 flex items-center justify-between text-[10px] text-white/80">
               <span>{item.year ?? '----'}</span>
               <span className="inline-flex items-center gap-1">
                 <Star className="h-2.5 w-2.5 fill-yellow-400 text-yellow-400" />

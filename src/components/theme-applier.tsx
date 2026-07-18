@@ -6,6 +6,7 @@ import {
   buildDashboardThemeStyle,
   buildGlassThemeStyle,
   glassThemeColor,
+  schemeFromBackground,
   THEME_VAR_KEYS,
   THEME_VARS_STORAGE_KEY,
   type GlassScheme,
@@ -80,6 +81,14 @@ export function ThemeApplier() {
       root.removeAttribute('data-glass');
       root.removeAttribute('data-glass-scheme');
     }
+
+    // data-scheme backs the Tailwind `light:` variant (over-image scrims,
+    // hero blends). Custom themes derive it from the page background's
+    // luminance — e.g. the cream palette is a light theme without glass.
+    root.setAttribute(
+      'data-scheme',
+      liquidGlass ? resolvedScheme : schemeFromBackground(String(activeStyle['--hpr-inkSoft'] ?? '')),
+    );
 
     // Keep the status/tab bar color in sync (SSR renders a static dark value).
     const themeColor = liquidGlass

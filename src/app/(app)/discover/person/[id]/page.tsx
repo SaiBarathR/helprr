@@ -218,15 +218,15 @@ export default function PersonDetailPage() {
               {credit.mediaType === 'movie' ? <Film className="h-6 w-6" /> : <Tv className="h-6 w-6" />}
             </div>
           )}
-          <div className="absolute inset-0 bg-gradient-to-t from-background/75 via-background/20 to-transparent" />
-          <div className="absolute top-1.5 left-1.5 flex items-center justify-center h-5 w-5 rounded-md bg-background/60">
+          <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/20 to-transparent" />
+          <div className="absolute top-1.5 left-1.5 flex items-center justify-center h-5 w-5 rounded-md bg-black/55">
             {credit.mediaType === 'movie'
               ? <Film className="h-3 w-3 text-blue-400" />
               : <Tv className="h-3 w-3 text-violet-400" />}
           </div>
           <div className="absolute bottom-0 left-0 right-0 p-1.5">
-            <p className="text-[10px] text-foreground font-medium line-clamp-2 leading-tight">{credit.title}</p>
-            <div className="mt-0.5 flex items-center justify-between text-[9px] text-foreground/80">
+            <p className="text-[10px] text-white font-medium line-clamp-2 leading-tight">{credit.title}</p>
+            <div className="mt-0.5 flex items-center justify-between text-[9px] text-white/80">
               <span>{credit.year ?? '----'}</span>
               {credit.rating > 0 && (
                 <span className="inline-flex items-center gap-0.5">

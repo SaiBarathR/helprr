@@ -26,19 +26,19 @@ export function PosterWatchOverlay({ status }: { status: WatchStatus | undefined
 
   return (
     <>
-      <div className="absolute top-1.5 left-1.5 z-[1] flex items-center gap-0.5 rounded bg-background/70 px-1 py-0.5 backdrop-blur-sm">
+      <div className="absolute top-1.5 left-1.5 z-[1] flex items-center gap-0.5 rounded bg-black/55 px-1 py-0.5 backdrop-blur-sm">
         {fullyWatched ? (
           <Check className="h-2.5 w-2.5 text-[var(--hpr-amber)]" strokeWidth={3} />
         ) : status.kind === 'series' ? (
-          <span className="text-[9px] font-semibold leading-none text-foreground">
-            {status.watchedEpisodeCount}<span className="text-foreground/50">/{status.totalEpisodeCount}</span>
+          <span className="text-[9px] font-semibold leading-none text-white">
+            {status.watchedEpisodeCount}<span className="text-white/50">/{status.totalEpisodeCount}</span>
           </span>
         ) : (
           <span className="text-[9px] font-semibold leading-none text-[var(--hpr-amber)]">{moviePercent}%</span>
         )}
       </div>
       {!fullyWatched && moviePercent > 0 && (
-        <div className="absolute bottom-0 left-0 right-0 z-[1] h-[3px] bg-background/50">
+        <div className="absolute bottom-0 left-0 right-0 z-[1] h-[3px] bg-black/45">
           <div className="h-full bg-[var(--hpr-amber)]" style={{ width: `${moviePercent}%` }} />
         </div>
       )}

@@ -161,8 +161,8 @@ export function RandomWatchView() {
                     unoptimized={isProtectedApiImageSrc(backdrop)}
                     priority
                   />
-                  <div className="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent" />
-                  <div className="absolute inset-0 bg-gradient-to-r from-background/50 to-transparent" />
+                  <div className="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent light:via-background/25" />
+                  <div className="absolute inset-0 bg-gradient-to-r from-background/50 to-transparent light:from-background/30" />
                   <div className="absolute top-1.5 right-1.5 md:top-5 md:right-6 hero-meta-fade flex flex-col items-end gap-2">
                     <Link
                       className="inline-flex items-center gap-1.5 rounded-full bg-background/55 backdrop-blur-lg text-foreground px-3 py-1.5 text-[14px] font-medium hover:bg-background/70 transition-colors"
