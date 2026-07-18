@@ -291,7 +291,13 @@ export function TokenInput({
                       role="option"
                       aria-selected={idx === highlight}
                       data-index={idx}
-                      onClick={() => addToken(opt)}
+                      onPointerDown={(e) => {
+                        // iOS Safari: content-level preventDefault suppresses click, and
+                        // blur still closes the list shortly after — select on pointerdown
+                        // so the token commits before the menu unmounts.
+                        e.preventDefault();
+                        addToken(opt);
+                      }}
                       onMouseMove={() => setHighlight(idx)}
                       className={cn(
                         'px-2 py-1.5 text-sm rounded-sm cursor-pointer break-all',
