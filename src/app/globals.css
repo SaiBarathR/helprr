@@ -669,12 +669,19 @@ html {
   }
 }
 
+/* Entrance animations fill `backwards` (not `both`): their end state equals
+   the natural style, and a completed-but-still-filling transform animation
+   keeps the element on its own composited layer in iOS WebKit. WebKit defers
+   compositing-order updates while a touch is active, so a fixed layer opened
+   mid-gesture (context-menu long-press) painted BEHIND these filling page
+   containers until the finger lifted. `hero-zoom` is the one exception: its
+   end state differs from the natural style, so it must keep filling. */
 .animate-content-in {
-  animation: content-in 0.3s ease-out both;
+  animation: content-in 0.3s ease-out backwards;
 }
 
 .animate-content-in>* {
-  animation: content-in 0.3s ease-out both;
+  animation: content-in 0.3s ease-out backwards;
 }
 
 .animate-content-in>*:nth-child(1) {
@@ -701,6 +708,15 @@ html {
   animation-delay: 180ms;
 }
 
+/* Radix floating layers (context/dropdown menus, popovers) mount while a
+   long-press touch is still active. Promote them to their own composited
+   layer at insertion so iOS WebKit stacks them above content that is already
+   composited (backdrop-blur bars, the filling hero-zoom backdrop) without
+   waiting for the touch to end. */
+[data-radix-popper-content-wrapper] {
+  will-change: transform;
+}
+
 /* List item entrance animation — faster, tighter stagger for non-virtualized lists */
 @keyframes list-in {
   from {
@@ -715,7 +731,7 @@ html {
 }
 
 .animate-list-in>* {
-  animation: list-in 0.2s ease-out both;
+  animation: list-in 0.2s ease-out backwards;
 }
 
 .animate-list-in>*:nth-child(1) {
@@ -776,7 +792,7 @@ html {
 }
 
 .animate-rail-in>* {
-  animation: rail-in 0.25s ease-out both;
+  animation: rail-in 0.25s ease-out backwards;
 }
 
 .animate-rail-in>*:nth-child(1) {
@@ -891,7 +907,7 @@ html {
 
 .hairline-grow {
   transform-origin: left center;
-  animation: hairline-grow 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.2s both;
+  animation: hairline-grow 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.2s backwards;
 }
 
 @keyframes hero-title-rise {
@@ -908,7 +924,7 @@ html {
 }
 
 .hero-title-rise {
-  animation: hero-title-rise 0.65s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: hero-title-rise 0.65s cubic-bezier(0.16, 1, 0.3, 1) backwards;
 }
 
 @keyframes hero-meta-fade {
@@ -923,7 +939,7 @@ html {
 }
 
 .hero-meta-fade {
-  animation: hero-meta-fade 0.5s ease-out 0.35s both;
+  animation: hero-meta-fade 0.5s ease-out 0.35s backwards;
 }
 
 /* Status pill — used for "In Library" indicator on hero */
