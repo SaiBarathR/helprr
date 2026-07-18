@@ -80,12 +80,9 @@ const PRIMARY_OPEN_ACTION_IDS = new Set([
   'view-details',
 ]);
 
-/** Prevents native text selection / iOS callout from fighting the long-press menu.
- * `-webkit-user-drag` must also be off for the trigger AND its images: iOS long-press
- * otherwise starts a native drag whose "lift" preview renders above all web content,
- * so the held card floated over the open menu until the finger released. */
+/** Prevents native text selection / iOS callout from fighting the long-press menu. */
 const TRIGGER_GESTURE_CLASS =
-  'select-none [-webkit-touch-callout:none] [-webkit-user-select:none] [-webkit-user-drag:none] [&_img]:[-webkit-user-drag:none] [&_a]:[-webkit-user-drag:none]';
+  'select-none [-webkit-touch-callout:none] [-webkit-user-select:none]';
 
 const TOOLBAR_ITEM_CLASS =
   'min-w-9 flex-1 justify-center px-1.5 py-1.5';
@@ -209,6 +206,7 @@ export function QuickContextMenu({
   const pointerOriginRef = useRef<{ x: number; y: number } | null>(null);
   const suppressNextClickRef = useRef(false);
   const selectGuardCleanupRef = useRef<(() => void) | null>(null);
+  const dragGuardCleanupRef = useRef<(() => void) | null>(null);
   const menuOpenRef = useRef(false);
   const [nestedControlActive, setNestedControlActive] = useState(false);
   const [historyNav, setHistoryNav] = useState<HistoryNavState>({
@@ -232,8 +230,32 @@ export function QuickContextMenu({
     };
   };
 
+  const disarmDragGuard = () => {
+    dragGuardCleanupRef.current?.();
+    dragGuardCleanupRef.current = null;
+  };
+
+  const armDragGuard = (trigger: HTMLElement) => {
+    disarmDragGuard();
+    const targets = [trigger, ...trigger.querySelectorAll<HTMLElement>('img, a')];
+    const originalValues = targets.map((element) => ({
+      element,
+      draggable: element.getAttribute('draggable'),
+    }));
+
+    for (const { element } of originalValues) element.setAttribute('draggable', 'false');
+
+    dragGuardCleanupRef.current = () => {
+      for (const { element, draggable } of originalValues) {
+        if (draggable === null) element.removeAttribute('draggable');
+        else element.setAttribute('draggable', draggable);
+      }
+    };
+  };
+
   useEffect(() => () => {
     disarmSelectGuard();
+    disarmDragGuard();
   }, []);
 
   if (disabled || enabledActionCount < 2) return children;
@@ -254,6 +276,7 @@ export function QuickContextMenu({
       pointerTypeRef.current = null;
       pointerOriginRef.current = null;
       disarmSelectGuard();
+      disarmDragGuard();
       clearTextSelection();
     }
     onOpenChange?.(next);
@@ -265,6 +288,7 @@ export function QuickContextMenu({
     // lifecycle while temporarily disabling Radix's parent long-press timer.
     suppressNextClickRef.current = false;
     disarmSelectGuard();
+    disarmDragGuard();
     if (isNestedInteractiveTarget(event.target, event.currentTarget)) {
       setNestedControlActive(true);
       pointerTypeRef.current = null;
@@ -276,6 +300,10 @@ export function QuickContextMenu({
     if (event.pointerType === 'touch' || event.pointerType === 'pen') {
       // Arm before the browser's long-press selection timer (~300–500ms).
       armSelectGuard();
+      // iOS can lift an image/link into a native layer above all page content.
+      // Disable HTML dragging only for this touch/pen gesture, then restore the
+      // original attributes on release so mouse dragging remains untouched.
+      armDragGuard(event.currentTarget);
       clearTextSelection();
     }
   };
@@ -288,7 +316,10 @@ export function QuickContextMenu({
     if ((deltaX * deltaX) + (deltaY * deltaY) > 100) {
       pointerTypeRef.current = null;
       pointerOriginRef.current = null;
-      if (!menuOpenRef.current) disarmSelectGuard();
+      if (!menuOpenRef.current) {
+        disarmSelectGuard();
+        disarmDragGuard();
+      }
     }
   };
 
@@ -304,6 +335,7 @@ export function QuickContextMenu({
   const clearPointer = () => {
     pointerTypeRef.current = null;
     pointerOriginRef.current = null;
+    disarmDragGuard();
     setNestedControlActive(false);
     // If the menu already opened, keep blocking selection until it closes.
     // Otherwise release immediately so a normal tap does not leave the page
