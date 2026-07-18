@@ -80,9 +80,12 @@ const PRIMARY_OPEN_ACTION_IDS = new Set([
   'view-details',
 ]);
 
-/** Prevents native text selection / iOS callout from fighting the long-press menu. */
+/** Prevents native text selection / iOS callout from fighting the long-press menu.
+ * `-webkit-user-drag` must also be off for the trigger AND its images: iOS long-press
+ * otherwise starts a native drag whose "lift" preview renders above all web content,
+ * so the held card floated over the open menu until the finger released. */
 const TRIGGER_GESTURE_CLASS =
-  'select-none [-webkit-touch-callout:none] [-webkit-user-select:none]';
+  'select-none [-webkit-touch-callout:none] [-webkit-user-select:none] [-webkit-user-drag:none] [&_img]:[-webkit-user-drag:none] [&_a]:[-webkit-user-drag:none]';
 
 const TOOLBAR_ITEM_CLASS =
   'min-w-9 flex-1 justify-center px-1.5 py-1.5';
@@ -323,6 +326,14 @@ export function QuickContextMenu({
         onPointerMove={preserveLongPressThroughJitter}
         onPointerUpCapture={clearPointer}
         onPointerCancelCapture={clearPointer}
+        onDragStartCapture={(event) => {
+          // iOS starts a native drag on long-press of images/links; its "lift"
+          // preview is a native layer that floats above the open menu for the
+          // whole hold. Cancel it for touch/pen; mouse drags stay untouched.
+          if (pointerTypeRef.current === 'touch' || pointerTypeRef.current === 'pen') {
+            event.preventDefault();
+          }
+        }}
         onContextMenuCapture={(event) => {
           // Keyboard-triggered context menus may not have a preceding pointer
           // event. Stop only this bubbling contextmenu event so the nested
