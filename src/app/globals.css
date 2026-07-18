@@ -1,6 +1,12 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
+/* `light:` utility variant — active when the resolved theme is light
+   (Liquid Glass light, or a custom palette with a light background).
+   ThemeApplier + THEME_BOOTSTRAP_SCRIPT stamp data-scheme on <html>;
+   no attribute (SSR first paint, legacy caches) means dark, the default. */
+@custom-variant light (&:where(html[data-scheme='light'], html[data-scheme='light'] *));
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -885,6 +891,18 @@ html {
     radial-gradient(ellipse at center, transparent 35%, rgba(0,0,0,0.45) 100%);
 }
 
+/* Light themes: black mid-stops over a light page read as a muddy gray wash,
+   so blend with the page background itself and drop the heavy vignette. */
+html[data-scheme='light'] .cinema-gradient {
+  background:
+    linear-gradient(180deg, transparent 0%, transparent 45%, color-mix(in oklab, var(--background) 40%, transparent) 72%, var(--background) 100%),
+    radial-gradient(ellipse at center, transparent 55%, color-mix(in oklab, var(--background) 35%, transparent) 100%);
+}
+
+html[data-scheme='light'] .cinema-grain {
+  opacity: 0.08;
+}
+
 /* A thin tracked-out small-caps style for editorial metadata */
 .tracked-caps {
   font-size: 0.6875rem;
@@ -990,11 +1008,13 @@ html {
    override rules). Materials go on chrome bars + floating overlays only;
    cards get a translucent fill without blur to keep iPhone GPU cost sane. */
 
-html[data-glass][data-glass-scheme='light'] {
+html[data-glass][data-glass-scheme='light'],
+html[data-scheme='light'] {
   color-scheme: light;
 }
 
-html[data-glass][data-glass-scheme='dark'] {
+html[data-glass][data-glass-scheme='dark'],
+html[data-scheme='dark'] {
   color-scheme: dark;
 }
 

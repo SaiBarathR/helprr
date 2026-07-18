@@ -241,7 +241,6 @@ export default function MusicPage() {
     (fields: string[]) => setVisibleFieldsForMode(viewMode, fields),
     [viewMode, setVisibleFieldsForMode]
   );
-  const isDesktop = viewportWidth >= 768;
 
   const persistViewState = useCallback((scrollY = window.scrollY, searchValue = search) => {
     setListViewState('music', { scrollY, search: searchValue });
@@ -282,7 +281,7 @@ export default function MusicPage() {
       observer.disconnect();
       window.removeEventListener('resize', measure);
     };
-  }, [viewMode, posterSize, loading, artists.length, search, filter, isDesktop]);
+  }, [viewMode, posterSize, loading, artists.length, search, filter]);
 
   useEffect(() => {
     if (loading || hasRestoredScrollRef.current) return;
@@ -689,7 +688,6 @@ export default function MusicPage() {
     scrollMargin: contentOffsetTop,
   });
 
-  const tableRowHeight = 44;
   const tableRows = useMemo(() => (
     filtered.map((artist) => ({
       id: artist.id,
@@ -712,29 +710,17 @@ export default function MusicPage() {
     }))
   ), [filtered, multiInstance, hrefForArtist]);
 
-  const tableVirtualizer = useWindowVirtualizer({
-    count: tableRows.length,
-    estimateSize: () => tableRowHeight,
-    enabled: useVirtualization && effectiveView === 'table' && isDesktop,
-    overscan: 12,
-    scrollMargin: contentOffsetTop,
-  });
-
-  const mobileOverviewFields = visibleFieldsByMode.overview;
-  const tableMobileOverviewRowHeight = useMemo(() => {
-    let base = posterSize === 'small' ? 92 : posterSize === 'large' ? 168 : 124;
-    if (mobileOverviewFields.includes('overview')) base += 24;
-    if (!mobileOverviewFields.includes('images')) base -= 20;
-    return base;
-  }, [mobileOverviewFields, posterSize]);
-
-  const tableMobileVirtualizer = useWindowVirtualizer({
-    count: filtered.length,
-    estimateSize: () => tableMobileOverviewRowHeight,
-    enabled: useVirtualization && effectiveView === 'table' && !isDesktop,
-    overscan: 6,
-    scrollMargin: contentOffsetTop,
-  });
+  // Table headers sort through the same store state as the toolbar dropdown:
+  // picking the active key toggles direction; a new key gets its natural default.
+  const handleHeaderSort = useCallback((key: string) => {
+    if (sort === key) {
+      setSortDir(sortDir === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSort(key as typeof sort);
+      const alphabetic = ['sortName', 'qualityProfile', 'artistType', 'path'];
+      setSortDir(alphabetic.includes(key) ? 'asc' : 'desc');
+    }
+  }, [sort, sortDir, setSort, setSortDir]);
 
   const activeFilterLabel = filter.length === 0
     ? 'All'
@@ -1037,51 +1023,32 @@ export default function MusicPage() {
           );
         }
 
-        if (isDesktop) {
-          const virtualRows = tableVirtualizer.getVirtualItems();
-          const firstRow = virtualRows[0];
-          const lastRow = virtualRows[virtualRows.length - 1];
-          const startIndex = firstRow?.index ?? 0;
-          const endIndex = (lastRow?.index ?? 0) + 1;
-          const visibleRows = tableRows.slice(startIndex, endIndex);
-          const topSpacerHeight = firstRow ? Math.max(0, firstRow.start - contentOffsetTop) : 0;
-          const bottomSpacerHeight = lastRow
-            ? Math.max(0, tableVirtualizer.getTotalSize() - (lastRow.end - contentOffsetTop))
-            : 0;
-          return (
-            <div ref={contentRef}>
-              <MediaTable
-                type="artist"
-                visibleFields={visibleFields}
-                rows={visibleRows}
-                topSpacerHeight={topSpacerHeight}
-                bottomSpacerHeight={bottomSpacerHeight}
-                onNavigate={handleNavigateToDetail}
-                selectable={selectionMode}
-                selectedKeys={selectedKeys}
-                onToggleSelect={(row) => toggle(`${row.instanceId ?? ''}:${row.id}`)}
-                getContextActionGroups={contextActionsForTableRow}
-              />
-            </div>
-          );
-        }
-
-        const virtualRows = tableMobileVirtualizer.getVirtualItems();
-        const firstRow = virtualRows[0];
-        const lastRow = virtualRows[virtualRows.length - 1];
-        const startIndex = firstRow?.index ?? 0;
-        const endIndex = (lastRow?.index ?? 0) + 1;
-        const visibleArtists = filtered.slice(startIndex, endIndex);
-        const topSpacerHeight = firstRow ? Math.max(0, firstRow.start - contentOffsetTop) : 0;
-        const bottomSpacerHeight = lastRow
-          ? Math.max(0, tableMobileVirtualizer.getTotalSize() - (lastRow.end - contentOffsetTop))
-          : 0;
-
         return (
-          <div ref={contentRef} className="space-y-2">
-            {topSpacerHeight > 0 && <div style={{ height: topSpacerHeight }} />}
-            {visibleArtists.map((artist, i) => renderOverviewItem(artist, mobileOverviewFields, startIndex + i))}
-            {bottomSpacerHeight > 0 && <div style={{ height: bottomSpacerHeight }} />}
+          <div ref={contentRef}>
+            <MediaTable
+              type="artist"
+              visibleFields={visibleFields}
+              rows={tableRows}
+              onNavigate={handleNavigateToDetail}
+              selectable={selectionMode}
+              selectedKeys={selectedKeys}
+              onToggleSelect={(row) => toggle(`${row.instanceId ?? ''}:${row.id}`)}
+              getContextActionGroups={contextActionsForTableRow}
+              sortKey={sort}
+              sortDir={sortDir}
+              onSort={handleHeaderSort}
+              sortKeys={{
+                title: 'sortName',
+                qualityProfile: 'qualityProfile',
+                sizeOnDisk: 'sizeOnDisk',
+                monitored: 'monitored',
+                rating: 'rating',
+                artistType: 'artistType',
+                albumCount: 'albumCount',
+                trackProgress: 'trackCount',
+              }}
+              resetPageKey={`${search}|${filter.join(',')}|${instanceFilter}|${sort}|${sortDir}`}
+            />
           </div>
         );
       })()}

@@ -64,11 +64,11 @@ export function DiscoverHero({
             <div className="cinema-grain" aria-hidden />
             <div
               aria-hidden
-              className="absolute inset-y-0 left-0 w-1/4 bg-gradient-to-r from-background/40 to-transparent pointer-events-none"
+              className="absolute inset-y-0 left-0 w-1/4 bg-gradient-to-r from-background/40 to-transparent light:from-background/25 pointer-events-none"
             />
             <div
               aria-hidden
-              className="absolute inset-y-0 right-0 w-1/4 bg-gradient-to-l from-background/40 to-transparent pointer-events-none"
+              className="absolute inset-y-0 right-0 w-1/4 bg-gradient-to-l from-background/40 to-transparent light:from-background/25 pointer-events-none"
             />
           </>
         ) : (

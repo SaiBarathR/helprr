@@ -285,15 +285,15 @@ export default function CharacterDetailPage() {
                           {edge.node.title}
                         </div>
                       )}
-                      <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-background/60 to-transparent pointer-events-none" />
+                      <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/60 to-transparent pointer-events-none" />
                       {edge.node.averageScore != null && edge.node.averageScore > 0 && (
-                        <Badge className="absolute top-1 right-1 text-[9px] bg-background/60 text-foreground gap-0.5">
+                        <Badge className="absolute top-1 right-1 text-[9px] bg-black/55 text-white gap-0.5">
                           <Star className="h-2 w-2 fill-yellow-400 text-yellow-400" />
                           {edge.node.averageScore}%
                         </Badge>
                       )}
                       <Badge
-                        className={`absolute top-1 left-1 text-[9px] ${edge.characterRole === 'MAIN' ? 'bg-blue-500/80 text-foreground' : 'bg-background/60 text-foreground'}`}
+                        className={`absolute top-1 left-1 text-[9px] ${edge.characterRole === 'MAIN' ? 'bg-blue-500/80 text-white' : 'bg-black/55 text-white'}`}
                       >
                         {edge.characterRole}
                       </Badge>

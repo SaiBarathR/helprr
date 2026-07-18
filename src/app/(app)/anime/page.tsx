@@ -119,7 +119,7 @@ function HeroBanner({ anime, priority = false }: { anime: AnimeItemWithLibrary; 
           <div className="absolute inset-0 bg-muted" />
         )}
         {/* Gradient overlays */}
-        <div className="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent light:via-background/25" />
         <div
           className="absolute inset-0 opacity-20"
           style={{ background: `linear-gradient(135deg, ${accentColor}40, transparent 60%)` }}

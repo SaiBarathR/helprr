@@ -153,7 +153,7 @@ export const MediaOverviewItem = memo(function MediaOverviewItem({
               {type === 'movie' ? <Film className="h-6 w-6" /> : type === 'artist' ? <Disc3 className="h-6 w-6" /> : <Tv className="h-6 w-6" />}
             </div>
           )}
-          {monitored === false && <div className="absolute inset-0 bg-background/40" />}
+          {monitored === false && <div className="absolute inset-0 bg-black/35" />}
         </div>
       ) : null}
 

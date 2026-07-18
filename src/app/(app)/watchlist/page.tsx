@@ -1232,10 +1232,10 @@ function WatchlistCard({
           <Bookmark className="h-8 w-8" />
         </div>
       )}
-      <div className="absolute inset-0 bg-gradient-to-t from-background/80 via-transparent to-transparent" />
+      <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/15 to-transparent" />
       <div className="absolute bottom-0 left-0 right-0 p-2">
-        <p className="text-xs font-semibold text-foreground truncate leading-tight">{item.title}</p>
-        <div className="flex items-center gap-1.5 text-[10px] text-foreground/70">
+        <p className="text-xs font-semibold text-white truncate leading-tight">{item.title}</p>
+        <div className="flex items-center gap-1.5 text-[10px] text-white/75">
           {item.year !== null && <span>{item.year}</span>}
           {item.rating !== null && (
             <span className="tabular-nums">★ {(item.rating / 10).toFixed(1)}</span>
@@ -1260,7 +1260,7 @@ function WatchlistCard({
             </span>
           ))}
           {item.tags.length > 2 && (
-            <span className="rounded-full bg-background/70 px-1.5 py-0.5 text-[9px] text-foreground">
+            <span className="rounded-full bg-black/55 px-1.5 py-0.5 text-[9px] text-white">
               +{item.tags.length - 2}
             </span>
           )}
@@ -1302,7 +1302,7 @@ function WatchlistCard({
             <button
               type="button"
               aria-label="Item actions"
-              className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-background/70 backdrop-blur-sm hover:bg-background text-foreground"
+              className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-black/55 backdrop-blur-sm hover:bg-black/70 text-white"
             >
               <MoreVertical className="h-4 w-4" />
             </button>
@@ -1330,7 +1330,7 @@ function WatchlistCard({
             type="button"
             onClick={() => setScheduleOpen(true)}
             aria-label="Schedule alert"
-            className="flex h-7 w-7 items-center justify-center rounded-full bg-background/55 backdrop-blur-md text-foreground hover:bg-background/80 transition-colors"
+            className="flex h-7 w-7 items-center justify-center rounded-full bg-black/45 backdrop-blur-md text-white hover:bg-black/60 transition-colors"
           >
             <Bell className="h-3.5 w-3.5" />
           </button>
@@ -1340,7 +1340,7 @@ function WatchlistCard({
             type="button"
             onClick={() => onRemove()}
             aria-label="Remove from watchlist"
-            className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-background/70 backdrop-blur-sm hover:bg-background text-foreground"
+            className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-black/55 backdrop-blur-sm hover:bg-black/70 text-white"
           >
             <Trash2 className="h-3 w-3" />
           </button>

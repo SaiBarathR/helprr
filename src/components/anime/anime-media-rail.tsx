@@ -157,7 +157,7 @@ function RailCard({ item, priority }: { item: MediaItem; priority: boolean }) {
   ].filter((group) => group.actions.length > 0);
 
   const iconClass =
-    'inline-flex h-5 w-5 items-center justify-center rounded-md bg-background/60 backdrop-blur-md text-foreground hover:bg-background/80 transition-colors';
+    'inline-flex h-5 w-5 items-center justify-center rounded-md bg-black/55 backdrop-blur-md text-white hover:bg-black/70 transition-colors';
 
   return (
     <div className="relative shrink-0 min-w-[110px] w-[110px] sm:min-w-[140px] sm:w-[140px] md:min-w-[150px] md:w-[150px] lg:min-w-[164px] lg:w-[164px] xl:min-w-[180px] xl:w-[180px] 2xl:min-w-[196px] 2xl:w-[196px] group snap-start">
@@ -173,7 +173,7 @@ function RailCard({ item, priority }: { item: MediaItem; priority: boolean }) {
             <Link
               href={libraryHref}
               aria-label="Open in library"
-              className="inline-flex h-5 w-5 items-center justify-center rounded-md bg-background/60 backdrop-blur-md text-green-400 hover:bg-background/80 transition-colors"
+              className="inline-flex h-5 w-5 items-center justify-center rounded-md bg-black/55 backdrop-blur-md text-green-400 hover:bg-black/70 transition-colors"
             >
               <Check className="h-3 w-3" strokeWidth={3} />
             </Link>
@@ -219,7 +219,7 @@ function RailCard({ item, priority }: { item: MediaItem; priority: boolean }) {
               </div>
             )}
             {item.averageScore != null && item.averageScore > 0 && (
-              <Badge className="absolute bottom-1 right-1 text-[9px] bg-background/60 text-foreground gap-0.5">
+              <Badge className="absolute bottom-1 right-1 text-[9px] bg-black/55 text-white gap-0.5">
                 <Star className="h-2 w-2 fill-yellow-400 text-yellow-400" />
                 {item.averageScore}%
               </Badge>

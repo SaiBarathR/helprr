@@ -46,7 +46,7 @@ export const CollectionCard = memo(function CollectionCard({
             </div>
           )}
 
-          <div className="absolute inset-0 bg-gradient-to-t from-background/80 via-background/10 to-transparent" />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/15 to-transparent" />
 
           {/* Monitored bookmark — top-left */}
           {collection.monitored && (
@@ -71,10 +71,10 @@ export const CollectionCard = memo(function CollectionCard({
 
           {/* Title + meta over the gradient */}
           <div className="absolute inset-x-0 bottom-0 p-2">
-            <p className="text-xs font-semibold text-foreground leading-tight line-clamp-2">
+            <p className="text-xs font-semibold text-white leading-tight line-clamp-2">
               {collection.title}
             </p>
-            <p className="mt-0.5 text-[10px] text-foreground/70 truncate">
+            <p className="mt-0.5 text-[10px] text-white/75 truncate">
               {collection.movieCount} {collection.movieCount === 1 ? 'film' : 'films'}
               {multiInstance && collection.instanceLabel && (
                 <span className={cn('font-medium text-[var(--hpr-amber)]')}> · {collection.instanceLabel}</span>

@@ -277,7 +277,6 @@ export default function MoviesPage() {
     (fields: string[]) => setVisibleFieldsForMode(viewMode, fields),
     [viewMode, setVisibleFieldsForMode]
   );
-  const isDesktop = viewportWidth >= 768;
 
   const persistViewState = useCallback((scrollY = window.scrollY, searchValue = search) => {
     setListViewState('movies', { scrollY, search: searchValue });
@@ -318,7 +317,7 @@ export default function MoviesPage() {
       observer.disconnect();
       window.removeEventListener('resize', measure);
     };
-  }, [viewMode, posterSize, loading, movies.length, search, filter, watchFilter, isDesktop]);
+  }, [viewMode, posterSize, loading, movies.length, search, filter, watchFilter]);
 
   useEffect(() => {
     if (loading || hasRestoredScrollRef.current) return;
@@ -809,7 +808,6 @@ export default function MoviesPage() {
     scrollMargin: contentOffsetTop,
   });
 
-  const tableRowHeight = 44;
   const tableRows = useMemo(() => (
     filtered.map((movie) => ({
       id: movie.id,
@@ -832,29 +830,17 @@ export default function MoviesPage() {
     }))
   ), [filtered, multiInstance, hrefForMovie]);
 
-  const tableVirtualizer = useWindowVirtualizer({
-    count: tableRows.length,
-    estimateSize: () => tableRowHeight,
-    enabled: useVirtualization && effectiveView === 'table' && isDesktop,
-    overscan: 12,
-    scrollMargin: contentOffsetTop,
-  });
-
-  const mobileOverviewFields = visibleFieldsByMode.overview;
-  const tableMobileOverviewRowHeight = useMemo(() => {
-    let base = posterSize === 'small' ? 92 : posterSize === 'large' ? 168 : 124;
-    if (mobileOverviewFields.includes('overview')) base += 24;
-    if (!mobileOverviewFields.includes('images')) base -= 20;
-    return base;
-  }, [mobileOverviewFields, posterSize]);
-
-  const tableMobileVirtualizer = useWindowVirtualizer({
-    count: filtered.length,
-    estimateSize: () => tableMobileOverviewRowHeight,
-    enabled: useVirtualization && effectiveView === 'table' && !isDesktop,
-    overscan: 6,
-    scrollMargin: contentOffsetTop,
-  });
+  // Table headers sort through the same store state as the toolbar dropdown:
+  // picking the active key toggles direction; a new key gets its natural default.
+  const handleHeaderSort = useCallback((key: string) => {
+    if (sort === key) {
+      setSortDir(sortDir === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSort(key as typeof sort);
+      const alphabetic = ['title', 'originalTitle', 'studio', 'qualityProfile', 'path', 'certification', 'originalLanguage', 'tags'];
+      setSortDir(alphabetic.includes(key) ? 'asc' : 'desc');
+    }
+  }, [sort, sortDir, setSort, setSortDir]);
 
   const activeFilterLabel = useMemo(() => {
     const arrLabel = filter.length === 0
@@ -1197,82 +1183,32 @@ export default function MoviesPage() {
           );
         }
 
-        if (isDesktop) {
-          const virtualRows = tableVirtualizer.getVirtualItems();
-          const firstRow = virtualRows[0];
-          const lastRow = virtualRows[virtualRows.length - 1];
-          const startIndex = firstRow?.index ?? 0;
-          const endIndex = (lastRow?.index ?? 0) + 1;
-          const visibleRows = tableRows.slice(startIndex, endIndex);
-          const topSpacerHeight = firstRow ? Math.max(0, firstRow.start - contentOffsetTop) : 0;
-          const bottomSpacerHeight = lastRow
-            ? Math.max(0, tableVirtualizer.getTotalSize() - (lastRow.end - contentOffsetTop))
-            : 0;
-          return (
-            <div ref={contentRef}>
-              <MediaTable
-                type="movie"
-                watchScope="radarr"
-                visibleFields={visibleFields}
-                rows={visibleRows}
-                topSpacerHeight={topSpacerHeight}
-                bottomSpacerHeight={bottomSpacerHeight}
-                onNavigate={handleNavigateToDetail}
-                selectable={selectionMode}
-                selectedKeys={selectedKeys}
-                onToggleSelect={(row) => toggle(`${row.instanceId ?? ''}:${row.id}`)}
-                getContextActionGroups={contextActionsForTableRow}
-              />
-            </div>
-          );
-        }
-
-        const virtualRows = tableMobileVirtualizer.getVirtualItems();
-        const firstRow = virtualRows[0];
-        const lastRow = virtualRows[virtualRows.length - 1];
-        const startIndex = firstRow?.index ?? 0;
-        const endIndex = (lastRow?.index ?? 0) + 1;
-        const visibleMovies = filtered.slice(startIndex, endIndex);
-        const topSpacerHeight = firstRow ? Math.max(0, firstRow.start - contentOffsetTop) : 0;
-        const bottomSpacerHeight = lastRow
-          ? Math.max(0, tableMobileVirtualizer.getTotalSize() - (lastRow.end - contentOffsetTop))
-          : 0;
-
         return (
-          <div ref={contentRef} className="space-y-2">
-            {topSpacerHeight > 0 && <div style={{ height: topSpacerHeight }} />}
-            {visibleMovies.map((movie, i) => (
-              <MediaOverviewItem
-                key={`${movie.instanceId ?? ''}:${movie.id}`}
-                title={movie.title}
-                year={movie.year}
-                images={movie.images}
-                href={hrefForMovie(movie)}
-                type="movie"
-                monitored={movie.monitored}
-                hasFile={movie.hasFile}
-                status={movie.status}
-                visibleFields={mobileOverviewFields}
-                posterSize={posterSize}
-                watchLookup={{ scope: 'radarr', instanceId: movie.instanceId, arrId: movie.id }}
-                qualityProfile={movie.qualityProfileName}
-                studio={movie.studio}
-                certification={movie.certification}
-                overview={movie.overview}
-                rating={movie.ratings?.imdb?.value || movie.ratings?.tmdb?.value}
-                sizeOnDisk={movie.sizeOnDisk}
-                runtime={movie.runtime}
-                genres={movie.genres}
-                instanceLabel={multiInstance ? movie.instanceLabel : undefined}
-                onNavigate={handleNavigateToDetail}
-                imagePriority={startIndex + i < 6}
-                selectable={selectionMode}
-                selected={selectedKeys.has(keyOf(movie))}
-                onToggleSelect={() => toggle(keyOf(movie))}
-                contextActionGroups={contextActionsForMovie(movie)}
-              />
-            ))}
-            {bottomSpacerHeight > 0 && <div style={{ height: bottomSpacerHeight }} />}
+          <div ref={contentRef}>
+            <MediaTable
+              type="movie"
+              watchScope="radarr"
+              visibleFields={visibleFields}
+              rows={tableRows}
+              onNavigate={handleNavigateToDetail}
+              selectable={selectionMode}
+              selectedKeys={selectedKeys}
+              onToggleSelect={(row) => toggle(`${row.instanceId ?? ''}:${row.id}`)}
+              getContextActionGroups={contextActionsForTableRow}
+              sortKey={sort}
+              sortDir={sortDir}
+              onSort={handleHeaderSort}
+              sortKeys={{
+                title: 'title',
+                year: 'year',
+                qualityProfile: 'qualityProfile',
+                studio: 'studio',
+                sizeOnDisk: 'sizeOnDisk',
+                monitored: 'monitored',
+                rating: 'imdbRating',
+              }}
+              resetPageKey={`${search}|${filter.join(',')}|${instanceFilter}|${watchFilter}|${sort}|${sortDir}`}
+            />
           </div>
         );
       })()}

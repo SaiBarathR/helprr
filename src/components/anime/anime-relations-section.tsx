@@ -92,11 +92,11 @@ export function AnimeRelationsSection({ relations }: AnimeRelationsSectionProps)
                     {rel.title}
                   </div>
                 )}
-                <Badge className="absolute top-1 left-1 text-[9px] bg-background/60 text-foreground">
+                <Badge className="absolute top-1 left-1 text-[9px] bg-black/55 text-white">
                   {formatRelationType(rel.relationType)}
                 </Badge>
                 {rel.format && (
-                  <Badge className="absolute top-1 right-1 text-[9px] bg-background/60 text-foreground">
+                  <Badge className="absolute top-1 right-1 text-[9px] bg-black/55 text-white">
                     {rel.format.replace('_', ' ')}
                   </Badge>
                 )}

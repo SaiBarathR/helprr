@@ -52,7 +52,7 @@ function HeroSlide({ item, railTitle, priority, tracker }: {
           unoptimized={isProtectedApiImageSrc(backdrop)}
           priority={priority}
         />
-        <div className="absolute inset-0 bg-gradient-to-t from-background via-background/50 to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-t from-background via-background/50 to-transparent light:via-background/25" />
         {/* pb-9 keeps the meta clear of the carousel dots */}
         <div className="absolute inset-x-0 bottom-0 flex flex-col gap-1.5 px-4 pt-4 pb-9">
           <p className="text-xs font-semibold uppercase tracking-wide text-primary drop-shadow">

@@ -160,7 +160,7 @@ export function RecCard({ item, railId, position, mode, tracker, onNotInterested
               )}
               {item.exploration && (
                 <span
-                  className="inline-flex items-center rounded-full bg-background/75 px-1.5 py-0.5 text-[10px] font-semibold text-amber-400 backdrop-blur"
+                  className="inline-flex items-center rounded-full bg-background/75 px-1.5 py-0.5 text-[10px] font-semibold text-amber-400 light:text-amber-600 backdrop-blur"
                   title="Something different"
                 >
                   <Sparkles className="h-3 w-3" />

@@ -228,6 +228,20 @@ export function glassThemeColor(scheme: GlassScheme): string {
   return scheme === 'dark' ? '#000000' : '#F2F2F7';
 }
 
+/**
+ * Scheme implied by a page background color. Drives html[data-scheme], the
+ * hook behind the Tailwind `light:` variant (globals.css) so over-image
+ * scrims/heros can adapt to light themes. Non-hex/unknown values fall back to
+ * dark — the safe default, since every built-in palette except cream is dark.
+ */
+export function schemeFromBackground(color: string): GlassScheme {
+  const m = /^#([0-9a-f]{6})$/i.exec(color.trim());
+  if (!m) return 'dark';
+  const x = parseInt(m[1], 16);
+  const luma = 0.2126 * ((x >> 16) & 255) + 0.7152 * ((x >> 8) & 255) + 0.0722 * (x & 255);
+  return luma > 140 ? 'light' : 'dark';
+}
+
 const round3 = (n: number) => Math.round(n * 1000) / 1000;
 
 /**
@@ -403,6 +417,12 @@ export type PersistedThemeVars =
  * their saved custom theme; ThemeApplier repopulates the cache after
  * hydration.
  *
+ * v5: also stamps data-scheme ('light' | 'dark') on <html> — glass mode from
+ * the resolved scheme, custom themes from the persisted --hpr-inkSoft
+ * luminance — so the `light:` Tailwind variant (and light-scheme CSS
+ * overrides) apply from the first paint. Unparseable colors leave the
+ * attribute unset, which the CSS treats as dark.
+ *
  * v4: also replays the persisted navPosition onto <html> as
  * data-nav-position pre-paint. The bottom-nav geometry in globals.css keys
  * on that attribute, and AppShell only sets it in a useEffect — without the
@@ -425,7 +445,7 @@ export const THEME_BOOTSTRAP_SCRIPT = `(function(){try{var e=document.documentEl
   UI_PREFS_STORAGE_KEY,
 )});try{if(p&&JSON.parse(p).state.navPosition==='bottom')e.dataset.navPosition='bottom';}catch(n){}var r=localStorage.getItem(${JSON.stringify(
   THEME_VARS_STORAGE_KEY,
-)});var v;if(r){v=JSON.parse(r);}else{if(p)return;v=${DEFAULT_BOOT_PAYLOAD};}if(!v||typeof v!=='object')return;var g=v.__glass,m=v;if(g&&typeof g==='object'){var s=g.scheme==='light'?'light':g.scheme==='dark'?'dark':(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');m=v[s==='dark'?'__dark':'__light'];if(!m||typeof m!=='object')return;e.setAttribute('data-glass','');e.setAttribute('data-glass-scheme',s);var t=document.querySelector('meta[name="theme-color"]');var c=s==='dark'?g.tcDark:g.tcLight;if(t&&typeof c==='string')t.setAttribute('content',c);}for(var k in m){if(k.indexOf('--hpr-')===0&&m[k]!=null)e.style.setProperty(k,String(m[k]));}}catch(e){}})();`;
+)});var v;if(r){v=JSON.parse(r);}else{if(p)return;v=${DEFAULT_BOOT_PAYLOAD};}if(!v||typeof v!=='object')return;var g=v.__glass,m=v;if(g&&typeof g==='object'){var s=g.scheme==='light'?'light':g.scheme==='dark'?'dark':(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');m=v[s==='dark'?'__dark':'__light'];if(!m||typeof m!=='object')return;e.setAttribute('data-glass','');e.setAttribute('data-glass-scheme',s);e.setAttribute('data-scheme',s);var t=document.querySelector('meta[name="theme-color"]');var c=s==='dark'?g.tcDark:g.tcLight;if(t&&typeof c==='string')t.setAttribute('content',c);}for(var k in m){if(k.indexOf('--hpr-')===0&&m[k]!=null)e.style.setProperty(k,String(m[k]));}if(!e.hasAttribute('data-scheme')){var b=m['--hpr-inkSoft'],M=typeof b==='string'?b.match(/^#([0-9a-f]{6})$/i):null;if(M){var x=parseInt(M[1],16);e.setAttribute('data-scheme',(0.2126*((x>>16)&255)+0.7152*((x>>8)&255)+0.0722*(x&255))>140?'light':'dark');}}}catch(e){}})();`;
 
 /** Write a full set of --hpr-* variables onto `el`. */
 export function applyDashboardTheme(el: HTMLElement | null, prefs: DashboardThemePrefs): void {

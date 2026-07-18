@@ -436,18 +436,18 @@ function AddArtistPageContent() {
                           <Disc3 className="h-8 w-8 text-muted-foreground" />
                         </div>
                       )}
-                      <div className="absolute inset-0 bg-gradient-to-t from-background/80 via-transparent to-transparent" />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/15 to-transparent" />
                       {r.library?.exists && (
                         <div className="absolute top-1.5 right-1.5">
-                          <Badge className="bg-green-600/90 text-foreground text-[10px]">
+                          <Badge className="bg-green-600/90 text-white text-[10px]">
                             <Check className="mr-1 h-3 w-3" />
                             Added
                           </Badge>
                         </div>
                       )}
                       <div className="absolute bottom-0 p-1.5">
-                        <p className="text-[11px] font-medium text-foreground truncate leading-tight">{r.artistName}</p>
-                        {r.artistType && <p className="text-[10px] text-foreground/70">{r.artistType}</p>}
+                        <p className="text-[11px] font-medium text-white truncate leading-tight">{r.artistName}</p>
+                        {r.artistType && <p className="text-[10px] text-white/75">{r.artistType}</p>}
                       </div>
                     </div>
                   </button>

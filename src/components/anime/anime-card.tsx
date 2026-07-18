@@ -119,20 +119,20 @@ export function AnimeCard({
             </div>
           )}
           {/* Bottom gradient for readability */}
-          <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-background/60 to-transparent pointer-events-none" />
+          <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/60 to-transparent pointer-events-none" />
           {item.averageScore != null && item.averageScore > 0 && (
-            <Badge className="absolute top-1 right-1 text-[9px] bg-background/60 text-foreground gap-0.5">
+            <Badge className="absolute top-1 right-1 text-[9px] bg-black/55 text-white gap-0.5">
               <Star className="h-2 w-2 fill-yellow-400 text-yellow-400" />
               {item.averageScore}%
             </Badge>
           )}
           {item.library?.exists && (
-            <Badge className="absolute top-1 left-1 text-[9px] bg-background/60 backdrop-blur-md text-green-400">
+            <Badge className="absolute top-1 left-1 text-[9px] bg-black/55 backdrop-blur-md text-green-400">
               <Check className="h-2 w-2" strokeWidth={3} />
             </Badge>
           )}
           {item.format && (
-            <Badge className="absolute bottom-1 left-1 text-[9px] bg-background/60 text-foreground">
+            <Badge className="absolute bottom-1 left-1 text-[9px] bg-black/55 text-white">
               {item.format.replace(/_/g, ' ')}
             </Badge>
           )}
@@ -155,7 +155,7 @@ export function AnimeCard({
             <WatchlistButton
               draft={watchlistDraft}
               variant="icon"
-              className="inline-flex h-5 w-5 items-center justify-center rounded-md bg-background/60 backdrop-blur-md text-foreground hover:bg-background/80"
+              className="inline-flex h-5 w-5 items-center justify-center rounded-md bg-black/55 backdrop-blur-md text-white hover:bg-black/70"
             />
           )}
           {canSchedule && (

@@ -367,7 +367,7 @@ function CollectionMoviePoster({
           </span>
         </div>
       ) : (
-        <div className="absolute inset-0 flex items-center justify-center bg-background/45">
+        <div className="absolute inset-0 flex items-center justify-center bg-black/35">
           {canAdd ? (
             <button
               type="button"
@@ -379,7 +379,7 @@ function CollectionMoviePoster({
               {adding || bulkAdding ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
             </button>
           ) : (
-            <span className="rounded-full bg-background/70 px-1.5 py-0.5 text-[9px] font-medium text-muted-foreground">
+            <span className="rounded-full bg-black/55 px-1.5 py-0.5 text-[9px] font-medium text-white/85">
               Missing
             </span>
           )}

@@ -100,16 +100,18 @@ export const MediaCard = memo(function MediaCard({
               {type === 'movie' ? <Film className="h-10 w-10" /> : type === 'artist' ? <Disc3 className="h-10 w-10" /> : <Tv className="h-10 w-10" />}
             </div>
           )}
+          {/* Over-image scrims stay black-based (with white text) in every theme —
+              background-based fills turn into a white fog in light mode. */}
           {(show('title') || show('year') || instanceLabel) && (
-          <div className="absolute inset-0 bg-gradient-to-t from-background/70 via-transparent to-transparent" />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/15 to-transparent" />
           )}
           {(show('title') || show('year') || instanceLabel) && (
           <div className="absolute bottom-0 left-0 right-0 p-2">
             {show('title') && (
-              <p className="text-xs font-semibold text-foreground truncate leading-tight">{title}</p>
+              <p className="text-xs font-semibold text-white truncate leading-tight">{title}</p>
             )}
             {(show('year') || instanceLabel) && (
-              <p className="text-[10px] text-foreground/70 truncate">
+              <p className="text-[10px] text-white/75 truncate">
                 {show('year') && year}
                 {instanceLabel && (
                   <span className="text-[var(--hpr-amber)] font-medium">{show('year') ? ' · ' : ''}{instanceLabel}</span>
@@ -120,9 +122,9 @@ export const MediaCard = memo(function MediaCard({
           )}
           {/* Rating badge - top right */}
           {show('rating') && rating !== undefined && rating > 0 && (
-            <div className="absolute top-1.5 right-1.5 flex items-center gap-0.5 bg-background/60 rounded px-1 py-0.5">
+            <div className="absolute top-1.5 right-1.5 flex items-center gap-0.5 bg-black/55 rounded px-1 py-0.5">
               <Star className="h-2.5 w-2.5 text-yellow-400 fill-yellow-400" />
-              <span className="text-[9px] text-foreground font-medium">{rating.toFixed(1)}</span>
+              <span className="text-[9px] text-white font-medium">{rating.toFixed(1)}</span>
             </div>
           )}
           {/* Status dot - bottom right */}
@@ -135,9 +137,10 @@ export const MediaCard = memo(function MediaCard({
               />
             </div>
           )}
-      {/* Unmonitored overlay */}
+      {/* Unmonitored overlay — dark dim in both themes (a background-based
+          fill whitewashes the poster in light mode) */}
       {show('monitored') && monitored === false && (
-        <div className="absolute inset-0 bg-background/40" />
+        <div className="absolute inset-0 bg-black/35" />
       )}
       {/* Jellyfin watch status — hidden in selection mode to avoid the top-left check clash */}
       {!selectable && show('watchStatus') && <PosterWatchOverlay status={watchStatus} />}
