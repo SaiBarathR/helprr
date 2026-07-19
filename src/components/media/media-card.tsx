@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { Film, Tv, Disc3, Star } from 'lucide-react';
-import { memo, type ReactNode } from 'react';
+import { memo, useState, type ReactNode } from 'react';
 import type { MediaImage } from '@/types';
 import { isProtectedApiImageSrc, toCachedImageSrc, type ImageServiceHint } from '@/lib/image';
 import { cn, shallowEqualExcept } from '@/lib/utils';
@@ -78,6 +78,11 @@ export const MediaCard = memo(function MediaCard({
   const poster = getImageUrl(images, 'poster', posterHint, { width: 360 });
   const show = (field: string) => !visibleFields || visibleFields.includes(field);
 
+  // Broken poster URLs flip to the icon fallback instead of an empty box.
+  // Keyed by URL (render-guarded reset) so a changed poster retries.
+  const [failedPoster, setFailedPoster] = useState<string | null>(null);
+  const posterFailed = poster !== null && failedPoster === poster;
+
   const posterInner = (
     <div
       className={cn(
@@ -85,7 +90,7 @@ export const MediaCard = memo(function MediaCard({
         selectable && selected && 'ring-2 ring-primary ring-offset-2 ring-offset-background'
       )}
     >
-      {poster ? (
+      {poster && !posterFailed ? (
             <FadeInImage
               src={poster}
               alt={title}
@@ -94,6 +99,7 @@ export const MediaCard = memo(function MediaCard({
               priority={imagePriority}
               className="object-cover transition-transform duration-300 group-hover:scale-105"
               unoptimized={isProtectedApiImageSrc(poster)}
+              onError={() => setFailedPoster(poster)}
             />
           ) : (
             <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
