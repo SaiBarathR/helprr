@@ -1,17 +1,20 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
 import { toast } from 'sonner';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChevronLeft, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { ErrorState } from '@/components/ui/error-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { GroupedSection } from '@/components/settings/grouped-section';
 import { DiskLowSpaceAlerts } from '@/components/settings/disk-low-space-alerts';
 import { useAppSettings } from '@/lib/hooks/use-app-settings';
+import { jsonFetcher } from '@/lib/query-fetch';
 
 interface CacheUsageStats {
   imageBytes: number;
@@ -32,23 +35,12 @@ function formatBytes(bytes: number): string {
   return `${value.toFixed(value >= 10 ? 0 : 1)} ${units[exponent]}`;
 }
 
-function emptyUsage(): CacheUsageStats {
-  return {
-    imageBytes: 0,
-    tmdbApiBytes: 0,
-    anilistApiBytes: 0,
-    apiBytes: 0,
-    totalBytes: 0,
-    imageFiles: 0,
-    tmdbEntries: 0,
-    anilistEntries: 0,
-    apiEntries: 0,
-  };
-}
-
 function parseUsage(raw: unknown): CacheUsageStats | null {
   if (!raw || typeof raw !== 'object') return null;
   const u = raw as Partial<CacheUsageStats>;
+  // A payload without a numeric total is malformed — treat as unavailable
+  // rather than rendering it as a healthy 0 B.
+  if (typeof u.totalBytes !== 'number') return null;
   return {
     imageBytes: typeof u.imageBytes === 'number' ? u.imageBytes : 0,
     tmdbApiBytes: typeof u.tmdbApiBytes === 'number' ? u.tmdbApiBytes : 0,
@@ -62,72 +54,56 @@ function parseUsage(raw: unknown): CacheUsageStats | null {
   };
 }
 
+const CACHE_USAGE_KEY = ['settings', 'cache-usage'] as const;
+const CLEANUP_SUMMARY_KEY = ['cleanup', 'history-summary'] as const;
+
+interface CacheApiResponse {
+  usage?: unknown;
+  status?: unknown;
+  lastPurgedAt?: unknown;
+}
+
 export default function StorageSettingsPage() {
   const { settings, loading, update } = useAppSettings();
+  const queryClient = useQueryClient();
   const cacheImagesEnabled = settings?.cacheImagesEnabled ?? true;
 
-  const [cacheUsage, setCacheUsage] = useState<CacheUsageStats | null>(null);
-  const [cacheStatus, setCacheStatus] = useState<'idle' | 'purging'>('idle');
-  const [cacheLastPurgedAt, setCacheLastPurgedAt] = useState<string | null>(null);
-  const [loadingCacheUsage, setLoadingCacheUsage] = useState(false);
   const [purgingCache, setPurgingCache] = useState(false);
-
-  const [cleanupSummary, setCleanupSummary] = useState<{ total: number; oldestAt: string | null } | null>(null);
   const [olderThanDays, setOlderThanDays] = useState('30');
   const [confirmOlder, setConfirmOlder] = useState(false);
   const [confirmAll, setConfirmAll] = useState(false);
   const [deletingHistory, setDeletingHistory] = useState(false);
 
-  const loadCacheUsage = useCallback(async () => {
-    if (!cacheImagesEnabled) {
-      setCacheUsage(null);
-      setCacheStatus('idle');
-      return;
-    }
-    setLoadingCacheUsage(true);
-    try {
-      const res = await fetch('/api/settings/cache');
-      if (!res.ok) return;
-      const data = await res.json();
-      const usage = parseUsage(data.usage);
-      if (usage) setCacheUsage(usage);
-      setCacheStatus(data.status === 'purging' ? 'purging' : 'idle');
-      setCacheLastPurgedAt(typeof data.lastPurgedAt === 'string' ? data.lastPurgedAt : null);
-    } catch {
-      // noop
-    } finally {
-      setLoadingCacheUsage(false);
-    }
-  }, [cacheImagesEnabled]);
+  // Explicit loading/error/data states: a failed load must never render as a
+  // healthy "0 B" or leave the page stuck on "Loading…" with no recovery.
+  const cacheQuery = useQuery({
+    queryKey: CACHE_USAGE_KEY,
+    queryFn: jsonFetcher<CacheApiResponse>('/api/settings/cache'),
+    enabled: cacheImagesEnabled,
+    refetchInterval: 30_000,
+    refetchIntervalInBackground: false,
+  });
+  const cacheUsage = cacheQuery.data ? parseUsage(cacheQuery.data.usage) : null;
+  const cacheStatus: 'idle' | 'purging' =
+    cacheQuery.data?.status === 'purging' ? 'purging' : 'idle';
+  const cacheLastPurgedAt =
+    typeof cacheQuery.data?.lastPurgedAt === 'string' ? cacheQuery.data.lastPurgedAt : null;
 
-  useEffect(() => {
-    if (!cacheImagesEnabled) {
-      setCacheUsage(null);
-      setCacheStatus('idle');
-      return;
-    }
-    void loadCacheUsage();
-    const id = setInterval(() => void loadCacheUsage(), 30_000);
-    return () => clearInterval(id);
-  }, [cacheImagesEnabled, loadCacheUsage]);
+  // Zero is only rendered when a successful response actually says zero;
+  // absent/malformed data reads "Unavailable" instead of "0 B".
+  const usageValue = (fmt: (u: CacheUsageStats) => string): string =>
+    cacheQuery.isLoading ? 'Loading…' : cacheUsage ? fmt(cacheUsage) : 'Unavailable';
 
-  const loadCleanupSummary = useCallback(async () => {
-    try {
-      const res = await fetch('/api/cleanup/history?summary=true');
-      if (!res.ok) return;
-      const data = (await res.json()) as { total?: unknown; oldestAt?: unknown };
-      setCleanupSummary({
-        total: typeof data.total === 'number' ? data.total : 0,
-        oldestAt: typeof data.oldestAt === 'string' ? data.oldestAt : null,
-      });
-    } catch {
-      // noop
-    }
-  }, []);
-
-  useEffect(() => {
-    void loadCleanupSummary();
-  }, [loadCleanupSummary]);
+  const summaryQuery = useQuery({
+    queryKey: CLEANUP_SUMMARY_KEY,
+    queryFn: jsonFetcher<{ total?: unknown; oldestAt?: unknown }>('/api/cleanup/history?summary=true'),
+  });
+  const cleanupSummary = summaryQuery.data
+    ? {
+        total: typeof summaryQuery.data.total === 'number' ? summaryQuery.data.total : 0,
+        oldestAt: typeof summaryQuery.data.oldestAt === 'string' ? summaryQuery.data.oldestAt : null,
+      }
+    : null;
 
   async function handleToggleCache(next: boolean) {
     const updated = await update(
@@ -145,12 +121,9 @@ export default function StorageSettingsPage() {
       },
     );
     if (!updated) return;
-    if (!next) {
-      // server purges when disabled; reset local view
-      setCacheUsage(emptyUsage());
-    } else {
-      void loadCacheUsage();
-    }
+    // Server purges when disabled; drop the cached snapshot either way so a
+    // re-enable starts from a fresh fetch instead of stale numbers.
+    queryClient.removeQueries({ queryKey: CACHE_USAGE_KEY });
   }
 
   async function handleDeleteCache() {
@@ -167,9 +140,7 @@ export default function StorageSettingsPage() {
       } else {
         toast.success('Cache deleted');
       }
-      const usage = parseUsage(payload?.usage);
-      if (usage) setCacheUsage(usage);
-      else void loadCacheUsage();
+      void queryClient.invalidateQueries({ queryKey: CACHE_USAGE_KEY });
     } catch {
       toast.error('Failed to delete cache');
     } finally {
@@ -188,7 +159,7 @@ export default function StorageSettingsPage() {
       }
       const deleted = typeof payload?.deleted === 'number' ? payload.deleted : 0;
       toast.success(deleted === 0 ? 'No matching rows to delete' : `Deleted ${deleted} row${deleted === 1 ? '' : 's'}`);
-      await loadCleanupSummary();
+      await queryClient.invalidateQueries({ queryKey: CLEANUP_SUMMARY_KEY });
     } catch {
       toast.error('Failed to delete cleanup history');
     } finally {
@@ -226,44 +197,48 @@ export default function StorageSettingsPage() {
           />
         </div>
 
-        {cacheImagesEnabled && (
+        {cacheImagesEnabled && cacheQuery.isError && !cacheQuery.data ? (
+          <ErrorState
+            compact
+            message="Couldn't load cache usage."
+            onRetry={() => cacheQuery.refetch()}
+            retrying={cacheQuery.isFetching}
+          />
+        ) : cacheImagesEnabled ? (
           <>
+            {cacheQuery.isError && (
+              <div className="px-4 py-2 text-xs text-destructive">
+                Refresh failed — showing last known values.
+              </div>
+            )}
             <div className="grouped-row">
               <span className="text-sm">Total usage</span>
               <span className="text-sm text-muted-foreground">
-                {loadingCacheUsage ? 'Loading…' : formatBytes(cacheUsage?.totalBytes ?? 0)}
+                {usageValue((u) => formatBytes(u.totalBytes))}
               </span>
             </div>
             <div className="grouped-row">
               <span className="text-sm">Images</span>
               <span className="text-sm text-muted-foreground">
-                {loadingCacheUsage
-                  ? 'Loading…'
-                  : `${formatBytes(cacheUsage?.imageBytes ?? 0)} (${cacheUsage?.imageFiles ?? 0} files)`}
+                {usageValue((u) => `${formatBytes(u.imageBytes)} (${u.imageFiles} files)`)}
               </span>
             </div>
             <div className="grouped-row">
               <span className="text-sm">TMDB API</span>
               <span className="text-sm text-muted-foreground">
-                {loadingCacheUsage
-                  ? 'Loading…'
-                  : `${formatBytes(cacheUsage?.tmdbApiBytes ?? 0)} (${cacheUsage?.tmdbEntries ?? 0} entries)`}
+                {usageValue((u) => `${formatBytes(u.tmdbApiBytes)} (${u.tmdbEntries} entries)`)}
               </span>
             </div>
             <div className="grouped-row">
               <span className="text-sm">AniList API</span>
               <span className="text-sm text-muted-foreground">
-                {loadingCacheUsage
-                  ? 'Loading…'
-                  : `${formatBytes(cacheUsage?.anilistApiBytes ?? 0)} (${cacheUsage?.anilistEntries ?? 0} entries)`}
+                {usageValue((u) => `${formatBytes(u.anilistApiBytes)} (${u.anilistEntries} entries)`)}
               </span>
             </div>
             <div className="grouped-row">
               <span className="text-sm">API responses</span>
               <span className="text-sm text-muted-foreground">
-                {loadingCacheUsage
-                  ? 'Loading…'
-                  : `${formatBytes(cacheUsage?.apiBytes ?? 0)} (${cacheUsage?.apiEntries ?? 0} entries)`}
+                {usageValue((u) => `${formatBytes(u.apiBytes)} (${u.apiEntries} entries)`)}
               </span>
             </div>
             <div className="grouped-row">
@@ -296,16 +271,28 @@ export default function StorageSettingsPage() {
               </Button>
             </div>
           </>
-        )}
+        ) : null}
       </GroupedSection>
 
       <DiskLowSpaceAlerts />
 
       <GroupedSection title="Cleanup history" footer="Server action — affects all devices">
+        {/* A failed summary load must not sit on "Loading…" forever with the
+            cleanup actions silently disabled — surface it with a Retry. */}
+        {summaryQuery.isError && !summaryQuery.data && (
+          <ErrorState
+            compact
+            message="Couldn't load cleanup history."
+            onRetry={() => summaryQuery.refetch()}
+            retrying={summaryQuery.isFetching}
+          />
+        )}
         <div className="grouped-row">
           <span className="text-sm">Stored rows</span>
           <span className="text-sm text-muted-foreground">
-            {cleanupSummary == null
+            {summaryQuery.isError && cleanupSummary == null
+              ? 'Unavailable'
+              : cleanupSummary == null
               ? 'Loading…'
               : cleanupSummary.total === 0
               ? 'No history yet'
