@@ -28,6 +28,10 @@ export function FadeInImage({
 }: FadeInImageProps) {
   const srcKey = typeof props.src === 'string' ? props.src : null;
   const [loaded, setLoaded] = useState(() => (srcKey ? loadedSrcs.has(srcKey) : false));
+  // Keyed by src so a prop change to a new URL automatically retries instead
+  // of staying hidden.
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
+  const failed = srcKey !== null && failedSrc === srcKey;
   const markLoaded = useCallback(() => {
     if (srcKey) loadedSrcs.add(srcKey);
     setLoaded(true);
@@ -35,6 +39,11 @@ export function FadeInImage({
   const imageRef = useCallback((node: HTMLImageElement | null) => {
     if (node?.complete) markLoaded();
   }, [markLoaded]);
+
+  // A broken src must not fade in as a broken-image glyph — drop the <img>
+  // (the container's background shows through) and let the consumer's
+  // onError swap in its own fallback.
+  if (failed) return null;
 
   return (
     <Image
@@ -45,7 +54,7 @@ export function FadeInImage({
       loading={priority ? undefined : 'lazy'}
       onLoad={markLoaded}
       onError={(event) => {
-        markLoaded();
+        if (srcKey) setFailedSrc(srcKey);
         onError?.(event);
       }}
       className={cn(

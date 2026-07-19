@@ -390,12 +390,14 @@ function AgendaView({ events, showImages }: { events: CalendarEvent[]; showImage
               data-agenda-date={isFirstOfDay ? dateKey : undefined}
               className="relative overflow-hidden flex items-start gap-1 border-b border-border/30"
             >
-              {showImages && <RowBackdrop src={backdropFromEvent(event)} />}
+              {/* Downloaded rows skip the backdrop: history doesn't need the
+                  ambiance and it roughly halves images per screen. */}
+              {showImages && !event.hasFile && <RowBackdrop src={backdropFromEvent(event)} />}
               <CalendarEventContext event={event}>
               <Link href={href} className="relative flex flex-1 min-w-0 active:bg-muted/30">
                 <div
                   className={`flex items-start gap-4 py-3 px-1 w-full ${!event.monitored ? 'opacity-50' : ''
-                    } ${event.hasFile ? 'opacity-60' : ''}`}
+                    }`}
                 >
                 {/* Date column - only show for first event of the day */}
                 <div className="w-10 shrink-0 text-center">
@@ -434,8 +436,9 @@ function AgendaView({ events, showImages }: { events: CalendarEvent[]; showImage
                   </div>
                 )}
 
-                {/* Event info */}
-                <div className="flex-1 min-w-0">
+                {/* Event info — downloaded rows dim the text only; artwork
+                    stays at full opacity so titles don't go faint. */}
+                <div className={`flex-1 min-w-0 ${event.hasFile ? 'opacity-60' : ''}`}>
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-1.5 min-w-0">
                       {event.type === 'episode' ? (
@@ -646,7 +649,7 @@ function DayEventRow({ event, showImages }: { event: CalendarEvent; showImages: 
 
   return (
     <div className="relative overflow-hidden flex items-center gap-1 border-b border-border/30 last:border-b-0">
-      {showImages && <RowBackdrop src={backdropFromEvent(event)} />}
+      {showImages && !event.hasFile && <RowBackdrop src={backdropFromEvent(event)} />}
       <CalendarEventContext event={event}>
         <Link
           href={href}
@@ -654,7 +657,7 @@ function DayEventRow({ event, showImages }: { event: CalendarEvent; showImages: 
         >
         <div
           className={`flex items-center gap-3 py-2.5 px-3 w-full ${!event.monitored ? 'opacity-50' : ''
-            } ${event.hasFile ? 'opacity-60' : ''}`}
+            }`}
         >
           {showImages && (
             <div className="w-8 shrink-0">
@@ -671,7 +674,7 @@ function DayEventRow({ event, showImages }: { event: CalendarEvent; showImages: 
               )}
             </div>
           )}
-          <div className="flex-1 min-w-0">
+          <div className={`flex-1 min-w-0 ${event.hasFile ? 'opacity-60' : ''}`}>
             <div className="flex items-center gap-1.5">
               {event.type === 'episode' ? (
                 <Tv className="h-3 w-3 text-blue-400 shrink-0" />
@@ -1013,7 +1016,7 @@ function WeekView({
                   return (
                     <CalendarEventContext key={event.id} event={event}>
                     <Link href={href} className="relative block overflow-hidden">
-                      {showImages && <RowBackdrop src={backdropFromEvent(event)} />}
+                      {showImages && !event.hasFile && <RowBackdrop src={backdropFromEvent(event)} />}
                       <div
                         className={`relative flex items-center gap-3 px-3 py-2 transition-colors hover:bg-muted/30 active:bg-muted/50 ${!event.monitored ? 'opacity-50' : ''
                           }`}

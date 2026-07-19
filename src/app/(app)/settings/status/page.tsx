@@ -124,7 +124,7 @@ export default function ServiceStatusPage() {
                   )}
                 </div>
                 {!s.ok && s.error && (
-                  <div className="text-xs text-red-400/90 mt-0.5 break-words">{s.error}</div>
+                  <div className="text-xs text-red-400/90 light:text-red-600 mt-0.5 break-words">{s.error}</div>
                 )}
               </div>
               <div className="flex items-center gap-2 shrink-0">
@@ -132,7 +132,12 @@ export default function ServiceStatusPage() {
                   className={cn('h-2 w-2 rounded-full', s.ok ? 'bg-emerald-500' : 'bg-red-500')}
                   aria-hidden
                 />
-                <span className={cn('text-xs font-medium', s.ok ? 'text-emerald-400' : 'text-red-400')}>
+                <span
+                  className={cn(
+                    'text-xs font-medium',
+                    s.ok ? 'text-emerald-400 light:text-emerald-700' : 'text-red-400 light:text-red-600',
+                  )}
+                >
                   {s.ok ? 'Online' : 'Offline'}
                 </span>
               </div>
@@ -156,7 +161,7 @@ export default function ServiceStatusPage() {
                 <div className="text-xs text-muted-foreground font-mono">{GIT_SHA.slice(0, 7)}</div>
               )}
               {isAdmin && updateCheck?.status === 'up_to_date' && (
-                <div className="mt-0.5 text-xs text-emerald-400">Up to date</div>
+                <div className="mt-0.5 text-xs text-emerald-400 light:text-emerald-700">Up to date</div>
               )}
               {isAdmin && updateCheck?.status === 'development' && (
                 <div className="mt-0.5 text-xs text-muted-foreground">Development build</div>
@@ -169,7 +174,7 @@ export default function ServiceStatusPage() {
           {isAdmin && updateCheck?.status === 'update_available' && updateCheck.latestVersion && (
             <div className="grouped-row items-start bg-amber-500/[0.06]">
               <div className="min-w-0 flex-1 pr-3">
-                <div className="text-sm font-medium text-amber-300">
+                <div className="text-sm font-medium text-amber-300 light:text-amber-700">
                   Helprr {updateCheck.latestVersion} is available
                 </div>
                 <div className="mt-0.5 text-xs text-muted-foreground">
