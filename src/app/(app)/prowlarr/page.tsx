@@ -1292,6 +1292,7 @@ export default function ProwlarrPage() {
 
       {/* Tabs */}
       <Tabs defaultValue="indexers">
+        <h1 className="sr-only">Prowlarr</h1>
         <div className="page-toolbar page-toolbar-flush pb-2 app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
           <TabsList className="w-full">
             <TabsTrigger value="indexers" className="flex-1">Indexers</TabsTrigger>

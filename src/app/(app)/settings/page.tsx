@@ -77,6 +77,7 @@ export default function SettingsIndexPage() {
 
   return (
     <div className="animate-content-in pb-12">
+      <h1 className="px-4 pt-2 pb-3 text-2xl font-semibold">Settings</h1>
       {canInstances && (
         <GroupedSection>
           <CategoryRow

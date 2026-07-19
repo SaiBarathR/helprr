@@ -441,6 +441,7 @@ export default function LibraryGapsPage() {
 
   return (
     <div className="animate-content-in space-y-4">
+      <h1 className="sr-only">Library Gaps</h1>
       <div className="page-toolbar page-toolbar-flush app-chrome-bar bg-background/95 pb-2 backdrop-blur supports-[backdrop-filter]:bg-background/80">
         <div className="flex gap-2 overflow-x-auto scrollbar-hide">
           {data.sections.map((section) => (

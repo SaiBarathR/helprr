@@ -658,6 +658,7 @@ export default function WatchlistPage() {
   return (
     <div className="animate-content-in pb-12">
       <PullToRefresh onRefresh={refresh} disabled={selectionMode} />
+      <h1 className="sr-only">Watchlist</h1>
       <div
         className="page-toolbar page-toolbar-flush space-y-2 app-chrome-bar bg-background/95 pb-2 backdrop-blur supports-[backdrop-filter]:bg-background/80"
       >

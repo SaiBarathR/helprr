@@ -1319,6 +1319,7 @@ export default function CalendarPage() {
 
   return (
     <div className="space-y-3 animate-content-in">
+      <h1 className="sr-only">Calendar</h1>
       <div className="page-toolbar page-toolbar-flush pb-2 app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 space-y-2">
         {/* Top bar: title + view tabs. Wraps so the filter cluster drops to
             its own line on narrow screens instead of overflowing. */}

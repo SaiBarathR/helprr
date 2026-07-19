@@ -148,6 +148,7 @@ export default function JellyfinPage() {
 
   return (
     <div className="flex flex-col min-h-0 animate-content-in">
+      <h1 className="sr-only">Jellyfin</h1>
       <PullToRefresh onRefresh={() => pageQueryClient.invalidateQueries({ queryKey: ['jellyfin'] })} />
       <div className="page-toolbar page-toolbar-flush pb-3 app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
         <div role="tablist" aria-label="Jellyfin sections" className="flex bg-muted/50 rounded-lg p-0.5 gap-0.5">
