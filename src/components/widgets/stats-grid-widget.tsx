@@ -31,7 +31,11 @@ export function StatsGridWidget({
 }: WidgetProps) {
   const { ref, width, height } = useElementSize<HTMLDivElement>();
   const isVertical = height > 0 && height < ICON_HIDE_HEIGHT_THRESHOLD;
-  const compact = narrow || isVertical;
+  // A small desktop-grid span (e.g. colSpan 4 in a ~600px tablet content area)
+  // gives ~95px tiles — switch to compact from measured width, not just the
+  // narrow prop, so values ellipsize later instead of clipping.
+  const isNarrowContainer = width > 0 && width < 240;
+  const compact = narrow || isVertical || isNarrowContainer;
   // In vertical mode the four tiles share a single horizontal row, so each
   // tile gets ~1/4 of the widget width instead of ~1/2.
   const tileDivisor = isVertical ? 4 : 2;

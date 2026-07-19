@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
@@ -26,8 +26,31 @@ import { NavBadge } from '@/components/layout/nav-badge';
 export function Sidebar() {
   const pathname = usePathname();
   const { pendingHref, beginPending } = useNavPending();
-  const sidebarCollapsed = useUIStore((s) => s.sidebarCollapsed);
+  const persistedCollapsed = useUIStore((s) => s.sidebarCollapsed);
   const toggleSidebar = useUIStore((s) => s.toggleSidebar);
+
+  // Tablet band (768–1023px): an expanded 224px sidebar squeezes the desktop
+  // dashboard grid into unreadable columns, so default to collapsed there
+  // without touching the persisted desktop preference. A manual toggle inside
+  // the band wins for the rest of the visit; leaving the band resets it.
+  const [inTabletBand, setInTabletBand] = useState(false);
+  const [bandOverride, setBandOverride] = useState<boolean | null>(null);
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 768px) and (max-width: 1023px)');
+    const apply = () => {
+      setInTabletBand(mq.matches);
+      if (!mq.matches) setBandOverride(null);
+    };
+    apply();
+    mq.addEventListener('change', apply);
+    return () => mq.removeEventListener('change', apply);
+  }, []);
+
+  const sidebarCollapsed = inTabletBand ? (bandOverride ?? true) : persistedCollapsed;
+  const handleToggle = () => {
+    if (inTabletBand) setBandOverride(sidebarCollapsed ? false : true);
+    else toggleSidebar();
+  };
   const navOrder = useUIStore((s) => s.navOrder);
   const disabledNavItems = useUIStore((s) => s.disabledNavItems);
   const me = useMe();
@@ -128,7 +151,7 @@ export function Sidebar() {
         <Button
           variant="ghost"
           size="sm"
-          onClick={toggleSidebar}
+          onClick={handleToggle}
           className={cn('w-full', sidebarCollapsed ? 'justify-center' : 'justify-start')}
         >
           {sidebarCollapsed ? <PanelLeft className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
