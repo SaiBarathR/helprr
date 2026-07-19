@@ -30,6 +30,7 @@
   --color-input: var(--input);
   --color-border: var(--border);
   --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);
@@ -71,6 +72,9 @@
   --accent: var(--hpr-surfaceHi);
   --accent-foreground: var(--hpr-fg);
   --destructive: oklch(0.577 0.245 27.325);
+  /* Near-white on the red base in every scheme — several components already
+     reference text-destructive-foreground expecting this token to exist. */
+  --destructive-foreground: oklch(0.985 0 0);
   --border: var(--hpr-hairline2);
   --input: var(--hpr-hairline2);
   --ring: var(--hpr-amber);
@@ -94,13 +98,12 @@
     @apply border-border outline-ring/50;
   }
 
-  /* Touch devices only (phones + tablets): suppress the browser's default
-     focus outline. Navigation is by tap, not keyboard, so the system focus
-     ring around buttons, links, and fields is just visual noise. Desktop
-     keeps it for keyboard accessibility. */
+  /* Touch devices (phones + tablets): suppress the default outline for tap
+     focus only. :focus-visible stays intact — iPads and phones driven by a
+     hardware keyboard, switch, or other assistive input still need a visible
+     focus indicator; taps don't match :focus-visible so they stay quiet. */
   @media (hover: none) and (pointer: coarse) {
-    *:focus,
-    *:focus-visible {
+    *:focus:not(:focus-visible) {
       outline: none;
     }
   }
@@ -125,20 +128,22 @@
   }
 }
 
-/* Touch devices only (phones + tablets): strip shadcn's amber focus ring (the
-   box-shadow "glow" + amber border) on inputs, buttons, and every other
-   component. Zeroing only the --tw-ring-* vars keeps real elevation shadows
-   (e.g. shadow-xs) intact. Unlayered + !important so it beats the
-   focus-visible:ring utility classes. The amber border reset skips invalid
-   fields so their red error border still shows. Desktop keeps the ring. */
+/* Touch devices only (phones + tablets): strip shadcn's amber focus ring for
+   TAP focus only (:focus without :focus-visible). Keyboard/switch focus keeps
+   its ring — pointer: coarse also matches iPads with hardware keyboards, so a
+   blanket :focus-visible wipe removed the only focus indicator for assistive
+   input. Zeroing only the --tw-ring-* vars keeps real elevation shadows
+   (e.g. shadow-xs) intact. Unlayered + !important so it beats ring utility
+   classes. The amber border reset skips invalid fields so their red error
+   border still shows. */
 @media (hover: none) and (pointer: coarse) {
-  *:focus-visible {
+  *:focus:not(:focus-visible) {
     --tw-ring-shadow: 0 0 #0000 !important;
     --tw-ring-offset-shadow: 0 0 #0000 !important;
     --tw-inset-ring-shadow: 0 0 #0000 !important;
   }
 
-  *:focus-visible:not([aria-invalid="true"]) {
+  *:focus:not(:focus-visible):not([aria-invalid="true"]) {
     border-color: var(--border) !important;
   }
 }

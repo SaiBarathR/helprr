@@ -389,7 +389,7 @@ export function ScheduledAlertButton({
           }}
           className={cn(
             'flex items-center justify-center rounded-full bg-background/55 backdrop-blur-md text-foreground hover:bg-background/80 transition-colors',
-            'h-7 w-7',
+            'h-9 w-9',
             className,
           )}
         >
