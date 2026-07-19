@@ -7,6 +7,7 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { PageSpinner } from '@/components/ui/page-spinner';
+import { ErrorState } from '@/components/ui/error-state';
 import { PageHeader } from '@/components/layout/page-header';
 import { RenamePreviewDialog } from '@/components/media/rename-preview-dialog';
 import { InteractiveSearchDialog } from '@/components/media/interactive-search-dialog';
@@ -51,7 +52,7 @@ import { isProtectedApiImageSrc } from '@/lib/image';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/query-keys';
 import { invalidateMusic } from '@/lib/query-invalidation';
-import { ApiError, arrMutationFetch } from '@/lib/query-fetch';
+import { ApiError, arrMutationFetch, ensureArray, jsonFetcher } from '@/lib/query-fetch';
 import { handleAuthError } from '@/lib/query-client';
 import { useQualityProfiles, useMetadataProfiles, useTags } from '@/lib/hooks/use-reference-data';
 import { pollCommand } from '@/lib/arr-command';
@@ -126,12 +127,11 @@ export default function ArtistDetailPage() {
   });
   const albumsQuery = useQuery({
     queryKey: albumsKey,
-    queryFn: async ({ signal }): Promise<LidarrAlbum[]> => {
-      const r = await arrMutationFetch(instance, `/api/lidarr/${artistId}/albums`, { signal });
-      return r.ok ? ((await r.json()) as LidarrAlbum[]) : [];
-    },
+    // Throw on !ok (instead of coercing to []) so a dead Lidarr renders the
+    // discography error state below rather than "No albums found".
+    queryFn: jsonFetcher<LidarrAlbum[]>(`/api/lidarr/${artistId}/albums`, instance),
     enabled: Number.isFinite(artistId),
-    select: (d) => (Array.isArray(d) ? d : []),
+    select: ensureArray,
   });
   const artist = artistQuery.data ?? null;
   const albums = useMemo(() => albumsQuery.data ?? [], [albumsQuery.data]);
@@ -365,6 +365,20 @@ export default function ArtistDetailPage() {
 
   if (loading && !artist) {
     return <><PageHeader title="Artist" /><PageSpinner /></>;
+  }
+
+  // Fetch failure is not "not found": only a confirmed 404 resolves to null.
+  if (artistQuery.isError && !artist) {
+    return (
+      <>
+        <PageHeader title="Artist" />
+        <ErrorState
+          message="Couldn't load this artist. Lidarr may be unreachable."
+          onRetry={() => artistQuery.refetch()}
+          retrying={artistQuery.isFetching}
+        />
+      </>
+    );
   }
 
   if (!artist) {
@@ -663,7 +677,17 @@ export default function ArtistDetailPage() {
         {/* Discography */}
         <div className="space-y-5">
           <h2 className="text-base font-semibold">Discography</h2>
-          {groupedAlbums.length === 0 ? (
+          {/* Albums failing must not read as an artist with no releases. */}
+          {albumsQuery.isError && albums.length === 0 ? (
+            <ErrorState
+              compact
+              message="Couldn't load this artist's albums."
+              onRetry={() => albumsQuery.refetch()}
+              retrying={albumsQuery.isFetching}
+            />
+          ) : albumsQuery.isLoading ? (
+            <p className="text-sm text-muted-foreground">Loading albums…</p>
+          ) : groupedAlbums.length === 0 ? (
             <p className="text-sm text-muted-foreground">No albums found for this artist.</p>
           ) : (
             groupedAlbums.map((group) => (

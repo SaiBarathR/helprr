@@ -8,6 +8,7 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { PageSpinner } from '@/components/ui/page-spinner';
+import { ErrorState } from '@/components/ui/error-state';
 import { PageHeader } from '@/components/layout/page-header';
 import { VirtualizedPersonRail } from '@/components/media/virtualized-person-rail';
 import { InteractiveSearchDialog } from '@/components/media/interactive-search-dialog';
@@ -405,6 +406,20 @@ export default function MovieDetailPage() {
 
   if (loading && !movie) {
     return <><PageHeader title="Movie" /><PageSpinner /></>;
+  }
+
+  // Fetch failure is not "not found": only a confirmed 404 resolves to null.
+  if (movieQuery.isError && !movie) {
+    return (
+      <>
+        <PageHeader title="Movie" />
+        <ErrorState
+          message="Couldn't load this movie. Radarr may be unreachable."
+          onRetry={() => movieQuery.refetch()}
+          retrying={movieQuery.isFetching}
+        />
+      </>
+    );
   }
 
   if (!movie) {

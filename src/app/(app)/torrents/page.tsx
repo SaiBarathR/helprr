@@ -1723,7 +1723,29 @@ export default function TorrentsPage() {
         </div>
       ) : filteredTorrents.length === 0 ? (
         <div className="rounded-xl bg-card p-8 text-center text-muted-foreground">
-          {search ? 'No torrents match your search.' : 'No torrents found.'}
+          {/* A filtered-out list must not read like an empty client. */}
+          <p>
+            {search.trim() && filter.length > 0
+              ? 'No torrents match your search and filters.'
+              : search.trim()
+                ? 'No torrents match your search.'
+                : filter.length > 0
+                  ? 'No torrents match the active filters.'
+                  : 'No torrents yet.'}
+          </p>
+          {(search.trim() || filter.length > 0) && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="mt-3"
+              onClick={() => {
+                setSearch('');
+                setFilter([]);
+              }}
+            >
+              Clear search & filters
+            </Button>
+          )}
         </div>
       ) : (
         <div className="space-y-0">

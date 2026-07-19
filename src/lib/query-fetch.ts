@@ -54,6 +54,20 @@ export async function arrMutationFetch(
 }
 
 /**
+ * Map a 404 ApiError to `null` ("confirmed missing"), rethrowing everything
+ * else. Detail pages use this so only a real 404 renders "not found" while
+ * outages/5xx surface as a query error with retry.
+ */
+export async function nullOn404<T>(promise: Promise<T>): Promise<T | null> {
+  try {
+    return await promise;
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 404) return null;
+    throw e;
+  }
+}
+
+/**
  * queryFn factory: GET `<path>` (+ optional instanceId), throw on !ok, return
  * typed JSON. `signal` is threaded through so TanStack cancels in-flight
  * requests on unmount/refetch.
