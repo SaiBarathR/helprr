@@ -3,6 +3,7 @@
 import {
   Fragment,
   useCallback,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -89,6 +90,15 @@ export interface DataTableProps<T> {
   /** Reset to page 1 whenever this value changes (search / filter changes). */
   resetPageKey?: unknown;
   emptyMessage?: ReactNode;
+  /**
+   * Keep the header row visible while the page scrolls. Only active while the
+   * table fits its container: sticky needs the wrapper to not be a scroll
+   * container, so when columns overflow horizontally the wrapper falls back
+   * to overflow-x scrolling and the header scrolls with it.
+   */
+  stickyHeader?: boolean;
+  /** CSS `top` for the sticky header (defaults to below the sticky page toolbar). */
+  stickyHeaderTop?: string;
 }
 
 /**
@@ -112,6 +122,8 @@ export function DataTable<T>({
   defaultPageSize = DEFAULT_PAGE_SIZE,
   resetPageKey,
   emptyMessage,
+  stickyHeader = false,
+  stickyHeaderTop = 'calc(var(--header-height, 0px) + 2.75rem)',
 }: DataTableProps<T>) {
   // Lazy initializers read the persisted prefs; the SSR guard keeps them inert
   // on the server (in practice the table only mounts client-side, after the
@@ -215,6 +227,23 @@ export function DataTable<T>({
     writeStoredPrefs(tableId, { pageSize: size });
   }, [tableId]);
 
+  // Sticky headers only work while the wrapper is NOT a scroll container, so
+  // measure horizontal overflow and fall back to scrolling when columns don't
+  // fit (narrow viewports, wide manual column widths).
+  const scrollWrapRef = useRef<HTMLDivElement>(null);
+  const [overflowsX, setOverflowsX] = useState(false);
+  useEffect(() => {
+    if (!stickyHeader) return;
+    const el = scrollWrapRef.current;
+    if (!el) return;
+    const check = () => setOverflowsX(el.scrollWidth > el.clientWidth + 1);
+    check();
+    const ro = new ResizeObserver(check);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [stickyHeader, totalWidth]);
+  const stickyActive = stickyHeader && !overflowsX;
+
   const alignClass = (align?: 'left' | 'right' | 'center') =>
     align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left';
 
@@ -224,10 +253,16 @@ export function DataTable<T>({
   return (
     <div
       ref={containerRef}
-      className="rounded-xl bg-card overflow-hidden"
+      // overflow-clip (not hidden) when sticky: overflow:hidden creates a
+      // scroll container, which would anchor the sticky header to this box
+      // instead of the viewport.
+      className={cn('rounded-xl bg-card', stickyActive ? 'overflow-clip' : 'overflow-hidden')}
       style={{ scrollMarginTop: 'calc(var(--header-height, 0px) + 7rem)' }}
     >
-      <div className="overflow-x-auto overscroll-x-contain">
+      <div
+        ref={scrollWrapRef}
+        className={stickyActive ? 'overflow-x-clip' : 'overflow-x-auto overscroll-x-contain'}
+      >
         <table className="w-full text-sm table-fixed" style={{ minWidth: totalWidth }}>
           <colgroup>
             {columns.map((col) => (
@@ -239,7 +274,13 @@ export function DataTable<T>({
               {columns.map((col) => (
                 <th
                   key={col.id}
-                  className={cn('relative px-3 py-2 font-medium select-none', alignClass(col.align), col.headerClassName)}
+                  className={cn(
+                    'relative px-3 py-2 font-medium select-none',
+                    stickyActive && 'sticky z-20 bg-card border-b border-border/50',
+                    alignClass(col.align),
+                    col.headerClassName,
+                  )}
+                  style={stickyActive ? { top: stickyHeaderTop } : undefined}
                 >
                   {col.sortKey && onSort ? (
                     <button
