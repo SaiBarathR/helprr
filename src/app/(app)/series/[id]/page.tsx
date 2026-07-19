@@ -8,6 +8,7 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { PageSpinner } from '@/components/ui/page-spinner';
+import { ErrorState } from '@/components/ui/error-state';
 import {
   Drawer, DrawerContent, DrawerHeader, DrawerTitle,
   DrawerDescription, DrawerFooter, DrawerClose,
@@ -42,7 +43,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/query-keys';
 import { invalidateSeries } from '@/lib/query-invalidation';
-import { ApiError, arrMutationFetch, ensureArray, jsonFetcher } from '@/lib/query-fetch';
+import { ApiError, arrMutationFetch, ensureArray, jsonFetcher, nullOn404 } from '@/lib/query-fetch';
 import { handleAuthError } from '@/lib/query-client';
 import { episodesWithFileKey, tvSeasonKey } from '@/lib/series-query-cache';
 import { useQualityProfiles, useRootFolders, useTags } from '@/lib/hooks/use-reference-data';
@@ -177,7 +178,10 @@ export default function SeriesDetailPage() {
   // a monitor change on the season or episode view reflects here and vice-versa.
   const seriesQuery = useQuery({
     queryKey: queryKeys.detail('sonarr', seriesId, instance),
-    queryFn: jsonFetcher<SonarrSeries | null>(`/api/sonarr/${seriesId}`, instance),
+    // 404 → null (not an error) so "not found" renders, matching movies/music;
+    // every other failure stays an error so it can't masquerade as missing.
+    queryFn: (ctx): Promise<SonarrSeries | null> =>
+      nullOn404(jsonFetcher<SonarrSeries>(`/api/sonarr/${seriesId}`, instance)(ctx)),
     enabled: Number.isFinite(seriesId),
   });
   const series = seriesQuery.data ?? null;
@@ -809,6 +813,20 @@ export default function SeriesDetailPage() {
   // Loading skeleton
   if (loading && !series) {
     return <><PageHeader title="Series" /><PageSpinner /></>;
+  }
+
+  // Fetch failure is not "not found": only a confirmed 404 resolves to null.
+  if (seriesQuery.isError && !series) {
+    return (
+      <>
+        <PageHeader title="Series" />
+        <ErrorState
+          message="Couldn't load this series. Sonarr may be unreachable."
+          onRetry={() => seriesQuery.refetch()}
+          retrying={seriesQuery.isFetching}
+        />
+      </>
+    );
   }
 
   if (!series) {
@@ -1559,6 +1577,15 @@ export default function SeriesDetailPage() {
         {/* Seasons list */}
         <div className="mt-4">
           <h2 className="text-lg font-bold mb-2">Seasons</h2>
+          {/* Episodes failing must not render as a series with no seasons. */}
+          {episodesQuery.isError && episodes.length === 0 && (
+            <ErrorState
+              compact
+              message="Couldn't load episodes for this series."
+              onRetry={() => episodesQuery.refetch()}
+              retrying={episodesQuery.isFetching}
+            />
+          )}
           <div>
             {seasonNumbers.map((sn) => {
               const seasonEps = episodes.filter((e) => e.seasonNumber === sn);
