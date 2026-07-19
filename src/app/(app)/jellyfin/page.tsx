@@ -149,6 +149,7 @@ export default function JellyfinPage() {
 
   return (
     <div className="flex flex-col min-h-0 animate-content-in">
+      <h1 className="sr-only">Jellyfin</h1>
       <PullToRefresh onRefresh={() => pageQueryClient.invalidateQueries({ queryKey: ['jellyfin'] })} />
       {/* Radix Tabs: same segmented look, plus roving focus + arrow-key nav. */}
       <Tabs

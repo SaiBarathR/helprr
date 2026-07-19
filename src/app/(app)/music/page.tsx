@@ -765,6 +765,7 @@ export default function MusicPage() {
   return (
     <div className="space-y-3 animate-content-in">
       <PullToRefresh onRefresh={() => refetchArtists()} disabled={selectionMode} />
+      <h1 className="sr-only">Music</h1>
       <div className="page-toolbar page-toolbar-flush pb-2 app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 space-y-2">
         <div className="flex items-center gap-2">
           <DropdownMenu>

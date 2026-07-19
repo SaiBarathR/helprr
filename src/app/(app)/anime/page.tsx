@@ -126,7 +126,8 @@ function HeroBanner({ anime, priority = false }: { anime: AnimeItemWithLibrary; 
         />
         {/* Content — extra bottom padding keeps badges clear of the carousel dots */}
         <div className="absolute bottom-0 left-0 right-0 px-4 pt-4 pb-9 flex flex-col gap-1.5">
-          <h1 className="text-xl font-bold leading-tight line-clamp-2 drop-shadow-lg">{anime.title}</h1>
+          {/* Hero shows the featured title; the page-name h1 is sr-only at the root. */}
+          <h2 className="text-xl font-bold leading-tight line-clamp-2 drop-shadow-lg">{anime.title}</h2>
           <div className="flex items-center gap-2 flex-wrap">
             {anime.averageScore != null && anime.averageScore > 0 && (
               <Badge className="bg-background/50 text-foreground text-[10px] gap-0.5 backdrop-blur-sm">
@@ -310,6 +311,7 @@ export default function AnimeHomePage() {
 
   return (
     <div className="flex flex-col animate-content-in">
+      <h1 className="sr-only">Anime</h1>
       {/* Search bar (in-place live search) + Browse — always visible, pinned on scroll */}
       <div className="page-toolbar page-toolbar-flush pb-2 mb-3 app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 flex items-center justify-between gap-2">
         <AnimeSearchOverlay onExpandedChange={setSearchExpanded} />

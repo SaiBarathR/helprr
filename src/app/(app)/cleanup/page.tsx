@@ -26,6 +26,7 @@ export default function CleanupPage() {
 
   return (
     <div className="pb-6 max-w-screen-2xl mx-auto animate-content-in">
+      <h1 className="sr-only">Cleanup</h1>
       <Tabs value={activeTab} onValueChange={(v) => setTab(v as typeof tab)}>
         <div
           className="page-toolbar page-toolbar-flush mb-4 app-chrome-bar bg-background/95 pb-2 backdrop-blur supports-[backdrop-filter]:bg-background/80"

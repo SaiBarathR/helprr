@@ -67,6 +67,7 @@ export default function RequestsPage() {
   return (
     <div className="animate-content-in">
       <PullToRefresh onRefresh={handleRefresh} />
+      <h1 className="sr-only">Requests</h1>
       <div
         className="page-toolbar page-toolbar-flush flex items-center gap-1.5 app-chrome-bar bg-background/95 pb-2 backdrop-blur supports-[backdrop-filter]:bg-background/80"
       >

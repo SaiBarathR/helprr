@@ -1232,6 +1232,7 @@ export default function DiscoverPage() {
 
   return (
     <div className="space-y-4 animate-content-in">
+      <h1 className="sr-only">Discover</h1>
       <div className="page-toolbar page-toolbar-flush pb-2 app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
         <div className="flex items-center gap-2">
           <div className="flex-1">

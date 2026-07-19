@@ -58,7 +58,8 @@ function HeroSlide({ item, railTitle, priority, tracker }: {
           <p className="text-xs font-semibold uppercase tracking-wide text-primary drop-shadow">
             {item.reason ?? railTitle}
           </p>
-          <h1 className="line-clamp-2 text-2xl font-bold leading-tight drop-shadow-lg md:text-3xl">{item.title}</h1>
+          {/* Hero shows the featured title; the page-name h1 is sr-only at the root. */}
+          <h2 className="line-clamp-2 text-2xl font-bold leading-tight drop-shadow-lg md:text-3xl">{item.title}</h2>
           <div className="flex flex-wrap items-center gap-2.5 text-sm text-muted-foreground">
             {item.matchPct != null && (
               <span className="font-semibold text-[#46d369]">{item.matchPct}% match</span>
@@ -177,6 +178,7 @@ function RecommendationsPageInner() {
 
   return (
     <div className="animate-content-in pb-12">
+      <h1 className="sr-only">Recommendations</h1>
       {/* Sticky glass mode switcher — same page-toolbar convention as the
           library pages, so the chips stay reachable mid-feed. */}
       <div className="page-toolbar page-toolbar-flush pb-2 app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">

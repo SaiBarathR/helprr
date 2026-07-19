@@ -420,6 +420,7 @@ export default function ActivityPage() {
       <div className="page-toolbar page-toolbar-flush flex items-center app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
         {/* Top bar */}
         <div className="flex items-center justify-between pt-2 pb-2 w-full">
+          <h1 className="text-xl font-bold leading-tight">Activity</h1>
           <div className="flex items-center gap-1">
             {/* Filter */}
             <DropdownMenu>
