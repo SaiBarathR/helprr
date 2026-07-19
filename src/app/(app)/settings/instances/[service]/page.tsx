@@ -117,6 +117,18 @@ function hasControlChar(s: string): boolean {
   return false;
 }
 
+type FieldKey = 'label' | 'url' | 'apiKey' | 'jellyfinUser';
+
+/** Inline field error, referenced by the input's aria-describedby. */
+function FieldError({ id, message }: { id: string; message?: string }) {
+  if (!message) return null;
+  return (
+    <p id={id} role="alert" className="text-xs text-destructive">
+      {message}
+    </p>
+  );
+}
+
 export default function ServiceDetailPage({ params }: { params: Promise<{ service: string }> }) {
   const { service: slug } = use(params);
   const config = findServiceBySlug(slug);
@@ -143,7 +155,14 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
   const [label, setLabel] = useState('');
   const [isDefault, setIsDefault] = useState(false);
   const [headers, setHeaders] = useState<HeaderRow[]>([]);
+  // Field-level validation (set by Test/Save, cleared per-field on change) so
+  // correctable errors mark the offending input instead of only toasting.
+  const [fieldErrors, setFieldErrors] = useState<Partial<Record<FieldKey, string>>>({});
+  const [headerErrors, setHeaderErrors] = useState<Record<string, { name?: string; value?: string }>>({});
   const queryClient = useQueryClient();
+
+  const clearFieldError = (key: FieldKey) =>
+    setFieldErrors((prev) => (prev[key] ? { ...prev, [key]: undefined } : prev));
 
   const canEditHeaders =
     useMe()?.customHeadersEnabled === true && config.supportsCustomHeaders === true;
@@ -377,6 +396,7 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
   }
   function patchHeader(id: string, patch: Partial<Omit<HeaderRow, 'id'>>) {
     setHeaders((prev) => prev.map((h) => (h.id === id ? { ...h, ...patch } : h)));
+    setHeaderErrors((prev) => (prev[id] ? { ...prev, [id]: {} } : prev));
   }
   function removeHeader(id: string) {
     setHeaders((prev) => prev.filter((h) => h.id !== id));
@@ -391,68 +411,73 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
     return obj;
   }
 
-  function handleTest() {
-    const trimmedUrl = url.trim();
-    const trimmedKey = apiKey.trim();
-    const trimmedUser = username?.trim() ?? '';
-    if (!trimmedUrl || !trimmedKey) {
-      toast.error(isQbt ? 'Please enter URL and Password' : 'Please enter both URL and API Key');
-      return;
-    }
-    testMutation.mutate({ url: trimmedUrl, apiKey: trimmedKey, username: trimmedUser });
-  }
-
-  function handleSave() {
-    const trimmedUrl = url.trim();
-    const trimmedKey = apiKey.trim();
-    const trimmedUser = username?.trim() ?? '';
-    if (!trimmedUrl || !trimmedKey) {
-      toast.error(isQbt ? 'Please enter URL and Password' : 'Please enter both URL and API Key');
-      return;
-    }
-    if (isJellyfin && !jellyfinValidated) {
-      toast.error('Please test Jellyfin with an admin API key before saving');
-      return;
-    }
-    if (isJellyfin && !trimmedUser) {
-      toast.error('Please select a Jellyfin user');
-      return;
-    }
-
-    const body: Record<string, unknown> = { type, url: trimmedUrl, apiKey: trimmedKey };
-    if (isMultiInstance) {
-      if (!label.trim()) {
-        toast.error('Please name this instance');
-        return;
+  // Shared by Test and Save (headers included in both — Test previously
+  // skipped local header validation and surfaced it as a generic connection
+  // failure). Sets field/header errors and returns whether the form is valid.
+  function validateConnection(forSave: boolean): boolean {
+    const errors: Partial<Record<FieldKey, string>> = {};
+    const hdrErrors: Record<string, { name?: string; value?: string }> = {};
+    if (!url.trim()) errors.url = 'URL is required';
+    if (!apiKey.trim()) errors.apiKey = isQbt ? 'Password is required' : 'API key is required';
+    if (forSave) {
+      if (isMultiInstance && !label.trim()) errors.label = 'Name this instance';
+      if (isJellyfin && jellyfinValidated && !(username?.trim())) {
+        errors.jellyfinUser = 'Select a Jellyfin user';
       }
-      body.label = label.trim();
-      if (editingConnId) body.id = editingConnId;
     }
-    if (isQbt) body.username = trimmedUser || 'admin';
-    else if (isJellyfin && jellyfinValidated) body.username = trimmedUser || jellyfinValidated.userId;
     if (canEditHeaders) {
       // Surface what the server would otherwise silently drop.
       for (const h of headers) {
         const name = h.name.trim();
         if (!name) continue; // blank rows are ignored, not an error
         if (!HEADER_NAME_PATTERN.test(name)) {
-          toast.error(`Invalid header name "${name}" — letters, numbers, and hyphens only`);
-          return;
+          hdrErrors[h.id] = { name: 'Letters, numbers, and hyphens only' };
+          continue;
         }
         const value = h.value.trim();
-        if (!value) {
-          toast.error(`Header "${name}" needs a value`);
-          return;
-        }
-        if (value.length > MAX_HEADER_VALUE_LENGTH) {
-          toast.error(`Header "${name}" value is too long (max ${MAX_HEADER_VALUE_LENGTH} characters)`);
-          return;
-        }
-        if (hasControlChar(h.value)) {
-          toast.error(`Header "${name}" has an invalid value`);
-          return;
+        if (!value) hdrErrors[h.id] = { value: 'Value required' };
+        else if (value.length > MAX_HEADER_VALUE_LENGTH) {
+          hdrErrors[h.id] = { value: `Too long (max ${MAX_HEADER_VALUE_LENGTH} characters)` };
+        } else if (hasControlChar(h.value)) {
+          hdrErrors[h.id] = { value: 'Contains invalid characters' };
         }
       }
+    }
+    setFieldErrors(errors);
+    setHeaderErrors(hdrErrors);
+    const firstError = (Object.keys(errors) as FieldKey[]).find((k) => errors[k]);
+    if (firstError) document.getElementById(`conn-${firstError}`)?.focus();
+    return Object.keys(errors).length === 0 && Object.keys(hdrErrors).length === 0;
+  }
+
+  function handleTest() {
+    if (!validateConnection(false)) return;
+    testMutation.mutate({
+      url: url.trim(),
+      apiKey: apiKey.trim(),
+      username: username?.trim() ?? '',
+    });
+  }
+
+  function handleSave() {
+    if (!validateConnection(true)) return;
+    const trimmedUrl = url.trim();
+    const trimmedKey = apiKey.trim();
+    const trimmedUser = username?.trim() ?? '';
+    // Flow-level (not a correctable field): Jellyfin must be probed first.
+    if (isJellyfin && !jellyfinValidated) {
+      toast.error('Please test Jellyfin with an admin API key before saving');
+      return;
+    }
+
+    const body: Record<string, unknown> = { type, url: trimmedUrl, apiKey: trimmedKey };
+    if (isMultiInstance) {
+      body.label = label.trim();
+      if (editingConnId) body.id = editingConnId;
+    }
+    if (isQbt) body.username = trimmedUser || 'admin';
+    else if (isJellyfin && jellyfinValidated) body.username = trimmedUser || jellyfinValidated.userId;
+    if (canEditHeaders) {
       body.customHeaders = buildHeadersObject();
     }
 
@@ -509,23 +534,32 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
       >
         {isMultiInstance && (
           <div className="px-4 py-3 border-b border-foreground/[0.06] space-y-1.5">
-            <Label className="text-xs text-muted-foreground">Name</Label>
+            <Label htmlFor="conn-label" className="text-xs text-muted-foreground">Name</Label>
             <Input
+              id="conn-label"
               placeholder="e.g. 4K, Anime, Main"
               value={label}
-              onChange={(e) => setLabel(e.target.value)}
+              onChange={(e) => {
+                setLabel(e.target.value);
+                clearFieldError('label');
+              }}
               className="h-10"
+              aria-invalid={fieldErrors.label ? true : undefined}
+              aria-describedby={fieldErrors.label ? 'conn-label-error' : undefined}
             />
+            <FieldError id="conn-label-error" message={fieldErrors.label} />
           </div>
         )}
 
         <div className="px-4 py-3 border-b border-foreground/[0.06] space-y-1.5">
-          <Label className="text-xs text-muted-foreground">URL</Label>
+          <Label htmlFor="conn-url" className="text-xs text-muted-foreground">URL</Label>
           <Input
+            id="conn-url"
             placeholder={config.placeholder}
             value={url}
             onChange={(e) => {
               setUrl(e.target.value);
+              clearFieldError('url');
               if (isJellyfin) {
                 setJellyfinValidated(null);
                 setJellyfinUsers([]);
@@ -533,14 +567,18 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
               }
             }}
             className="h-10"
+            aria-invalid={fieldErrors.url ? true : undefined}
+            aria-describedby={fieldErrors.url ? 'conn-url-error' : undefined}
           />
+          <FieldError id="conn-url-error" message={fieldErrors.url} />
         </div>
 
         {isQbt ? (
           <>
             <div className="px-4 py-3 border-b border-foreground/[0.06] space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Username</Label>
+              <Label htmlFor="conn-username" className="text-xs text-muted-foreground">Username</Label>
               <Input
+                id="conn-username"
                 placeholder="admin"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
@@ -548,28 +586,37 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
               />
             </div>
             <div className="px-4 py-3 border-b border-foreground/[0.06] space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Password</Label>
+              <Label htmlFor="conn-apiKey" className="text-xs text-muted-foreground">Password</Label>
               <Input
+                id="conn-apiKey"
                 type="password"
                 placeholder="Enter password"
                 value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
+                onChange={(e) => {
+                  setApiKey(e.target.value);
+                  clearFieldError('apiKey');
+                }}
                 className="h-10"
+                aria-invalid={fieldErrors.apiKey ? true : undefined}
+                aria-describedby={fieldErrors.apiKey ? 'conn-apiKey-error' : undefined}
               />
+              <FieldError id="conn-apiKey-error" message={fieldErrors.apiKey} />
             </div>
           </>
         ) : (
           <>
             <div className="px-4 py-3 border-b border-foreground/[0.06] space-y-1.5">
-              <Label className="text-xs text-muted-foreground">
+              <Label htmlFor="conn-apiKey" className="text-xs text-muted-foreground">
                 {isJellyfin ? 'API Key (Admin)' : 'API Key'}
               </Label>
               <Input
+                id="conn-apiKey"
                 type="password"
                 placeholder={isJellyfin ? 'Enter Jellyfin API key' : 'Enter API key'}
                 value={apiKey}
                 onChange={(e) => {
                   setApiKey(e.target.value);
+                  clearFieldError('apiKey');
                   if (isJellyfin) {
                     setJellyfinValidated(null);
                     setJellyfinUsers([]);
@@ -577,17 +624,28 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
                   }
                 }}
                 className="h-10"
+                aria-invalid={fieldErrors.apiKey ? true : undefined}
+                aria-describedby={fieldErrors.apiKey ? 'conn-apiKey-error' : undefined}
               />
+              <FieldError id="conn-apiKey-error" message={fieldErrors.apiKey} />
             </div>
             {isJellyfin && (
               <div className="px-4 py-3 border-b border-foreground/[0.06] space-y-1.5">
                 <Label className="text-xs text-muted-foreground">Primary Default User</Label>
                 <Select
                   value={username ?? ''}
-                  onValueChange={setUsername}
+                  onValueChange={(v) => {
+                    setUsername(v);
+                    clearFieldError('jellyfinUser');
+                  }}
                   disabled={!jellyfinValidated || jellyfinUsers.length === 0}
                 >
-                  <SelectTrigger className="h-10">
+                  <SelectTrigger
+                    id="conn-jellyfinUser"
+                    className="h-10"
+                    aria-invalid={fieldErrors.jellyfinUser ? true : undefined}
+                    aria-describedby={fieldErrors.jellyfinUser ? 'conn-jellyfinUser-error' : undefined}
+                  >
                     <SelectValue
                       placeholder={
                         jellyfinUsers.length > 0
@@ -604,6 +662,7 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
                     ))}
                   </SelectContent>
                 </Select>
+                <FieldError id="conn-jellyfinUser-error" message={fieldErrors.jellyfinUser} />
                 {jellyfinValidated ? (
                   <p className="text-xs text-green-500">Admin API key validated — ready to save</p>
                 ) : apiKey ? (
@@ -624,31 +683,41 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
               Authelia, basic auth). Saved with the connection below.
             </p>
             {headers.map((h) => (
-              <div key={h.id} className="flex items-center gap-2">
-                <Input
-                  placeholder="Header name"
-                  aria-label={h.name ? `Header name: ${h.name}` : 'Header name'}
-                  value={h.name}
-                  onChange={(e) => patchHeader(h.id, { name: e.target.value })}
-                  className="h-9 flex-1"
+              <div key={h.id} className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <Input
+                    placeholder="Header name"
+                    aria-label={h.name ? `Header name: ${h.name}` : 'Header name'}
+                    value={h.name}
+                    onChange={(e) => patchHeader(h.id, { name: e.target.value })}
+                    className="h-9 flex-1"
+                    aria-invalid={headerErrors[h.id]?.name ? true : undefined}
+                    aria-describedby={headerErrors[h.id]?.name ? `header-${h.id}-error` : undefined}
+                  />
+                  <Input
+                    type="password"
+                    placeholder="Value"
+                    aria-label={h.name ? `Value for ${h.name}` : 'Header value'}
+                    value={h.value}
+                    onChange={(e) => patchHeader(h.id, { value: e.target.value })}
+                    className="h-9 flex-1"
+                    aria-invalid={headerErrors[h.id]?.value ? true : undefined}
+                    aria-describedby={headerErrors[h.id]?.value ? `header-${h.id}-error` : undefined}
+                  />
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-9 w-9 shrink-0 text-muted-foreground"
+                    onClick={() => removeHeader(h.id)}
+                    aria-label={h.name ? `Remove header ${h.name}` : 'Remove header'}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+                <FieldError
+                  id={`header-${h.id}-error`}
+                  message={headerErrors[h.id]?.name ?? headerErrors[h.id]?.value}
                 />
-                <Input
-                  type="password"
-                  placeholder="Value"
-                  aria-label={h.name ? `Value for ${h.name}` : 'Header value'}
-                  value={h.value}
-                  onChange={(e) => patchHeader(h.id, { value: e.target.value })}
-                  className="h-9 flex-1"
-                />
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-9 w-9 shrink-0 text-muted-foreground"
-                  onClick={() => removeHeader(h.id)}
-                  aria-label={h.name ? `Remove header ${h.name}` : 'Remove header'}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
               </div>
             ))}
             <Button
