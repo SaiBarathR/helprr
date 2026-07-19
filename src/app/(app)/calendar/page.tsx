@@ -253,6 +253,8 @@ function CompactFilters({
             : 'text-muted-foreground hover:text-foreground hover:bg-muted'
             }`}
           title="All"
+          aria-label="Show all types"
+          aria-pressed={typeFilter === 'all'}
         >
           <span className="text-[10px] font-bold leading-none">ALL</span>
         </button>
@@ -263,6 +265,8 @@ function CompactFilters({
             : 'text-muted-foreground hover:text-foreground hover:bg-muted'
             }`}
           title="Episodes"
+          aria-label="Show episodes only"
+          aria-pressed={typeFilter === 'episode'}
         >
           <Tv className="h-3.5 w-3.5" />
         </button>
@@ -273,6 +277,8 @@ function CompactFilters({
             : 'text-muted-foreground hover:text-foreground hover:bg-muted'
             }`}
           title="Movies"
+          aria-label="Show movies only"
+          aria-pressed={typeFilter === 'movie'}
         >
           <Film className="h-3.5 w-3.5" />
         </button>
@@ -283,6 +289,8 @@ function CompactFilters({
             : 'text-muted-foreground hover:text-foreground hover:bg-muted'
             }`}
           title="Music"
+          aria-label="Show music only"
+          aria-pressed={typeFilter === 'album'}
         >
           <Disc3 className="h-3.5 w-3.5" />
         </button>
@@ -293,11 +301,13 @@ function CompactFilters({
       {/* Monitored toggle */}
       <button
         onClick={() => setMonitoredOnly(!monitoredOnly)}
-        className={`p-1.5 rounded-md transition-colors ${monitoredOnly
+        className={`p-1.5 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-md transition-colors ${monitoredOnly
           ? 'bg-primary/15 text-primary'
           : 'text-muted-foreground hover:text-foreground hover:bg-muted'
           }`}
         title={monitoredOnly ? 'Showing monitored only' : 'Showing all'}
+        aria-label="Monitored only"
+        aria-pressed={monitoredOnly}
       >
         {monitoredOnly ? (
           <Eye className="h-3.5 w-3.5" />
@@ -310,11 +320,13 @@ function CompactFilters({
 
       <button
         onClick={() => setShowScheduled(!showScheduled)}
-        className={`p-1.5 rounded-md transition-colors ${showScheduled
+        className={`p-1.5 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-md transition-colors ${showScheduled
           ? 'bg-violet-500/15 text-violet-400'
           : 'text-muted-foreground hover:text-foreground hover:bg-muted'
           }`}
         title={showScheduled ? 'Showing scheduled alerts' : 'Hiding scheduled alerts'}
+        aria-label="Scheduled alerts"
+        aria-pressed={showScheduled}
       >
         <Bell className="h-3.5 w-3.5" />
       </button>
@@ -322,11 +334,13 @@ function CompactFilters({
       {/* Poster/backdrop visibility (agenda + week views) */}
       <button
         onClick={() => setShowImages(!showImages)}
-        className={`p-1.5 rounded-md transition-colors ${showImages
+        className={`p-1.5 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-md transition-colors ${showImages
           ? 'bg-muted text-foreground'
           : 'text-muted-foreground hover:text-foreground hover:bg-muted'
           }`}
         title={showImages ? 'Showing artwork' : 'Artwork hidden'}
+        aria-label="Show artwork"
+        aria-pressed={showImages}
       >
         {showImages ? (
           <ImageIcon className="h-3.5 w-3.5" />
@@ -1350,7 +1364,8 @@ export default function CalendarPage() {
               variant="ghost"
               size="icon"
               onClick={goBack}
-              className="h-7 w-7 shrink-0"
+              className="h-10 w-10 shrink-0"
+              aria-label="Previous period"
             >
               <ChevronLeft className="h-4 w-4" />
             </Button>
@@ -1358,7 +1373,8 @@ export default function CalendarPage() {
               variant="ghost"
               size="icon"
               onClick={goForward}
-              className="h-7 w-7 shrink-0"
+              className="h-10 w-10 shrink-0"
+              aria-label="Next period"
             >
               <ChevronRight className="h-4 w-4" />
             </Button>

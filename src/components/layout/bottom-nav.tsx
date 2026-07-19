@@ -79,7 +79,7 @@ export function BottomNav() {
                 beginPending(href);
               }}
               className={cn(
-                'flex flex-col items-center justify-center gap-0.5 flex-1 h-full min-h-[48px] text-[10px] font-medium transition-colors',
+                'flex flex-col items-center justify-center gap-0.5 flex-1 h-full min-h-[48px] text-[11px] font-medium transition-colors',
                 isActive ? 'text-primary' : 'text-muted-foreground',
                 isPending && 'opacity-70'
               )}
@@ -90,7 +90,7 @@ export function BottomNav() {
                 ) : (
                   <Icon className="h-5 w-5" strokeWidth={isActive ? 2.5 : 2} />
                 )}
-                <NavBadge slice={slice} className="absolute -right-2.5 -top-1.5 h-4 min-w-[1rem] px-1 text-[9px]" />
+                <NavBadge slice={slice} className="absolute -right-2.5 -top-1.5 h-4 min-w-[1rem] px-1 text-[10px]" />
               </span>
               {shortLabel}
             </Link>
@@ -102,7 +102,7 @@ export function BottomNav() {
             <PopoverTrigger asChild>
               <button
                 className={cn(
-                  'flex flex-col items-center justify-center gap-0.5 flex-1 h-full min-h-[48px] text-[10px] font-medium transition-colors',
+                  'flex flex-col items-center justify-center gap-0.5 flex-1 h-full min-h-[48px] text-[11px] font-medium transition-colors',
                   isMoreActive ? 'text-primary' : 'text-muted-foreground'
                 )}
               >

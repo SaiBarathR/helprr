@@ -24,13 +24,14 @@ export function ViewSelector({
           key={v}
           onClick={() => onChange(v)}
           className={cn(
-            'p-1.5 rounded-md transition-colors',
+            'p-1.5 min-h-[40px] min-w-[40px] items-center justify-center rounded-md transition-colors',
             value === v
               ? 'bg-background text-foreground shadow-sm'
               : 'text-muted-foreground hover:text-foreground',
-            hideOnMobile && 'hidden md:block'
+            hideOnMobile ? 'hidden md:flex' : 'flex'
           )}
           aria-label={label}
+          aria-pressed={value === v}
           title={label}
         >
           <Icon className="h-4 w-4" />

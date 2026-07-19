@@ -423,7 +423,7 @@ export default function ActivityPage() {
             {/* Filter */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-8 w-8">
+                <Button variant="ghost" size="icon" className="h-11 w-11" aria-label="Filter">
                   <Filter className="h-4 w-4" />
                 </Button>
               </DropdownMenuTrigger>
@@ -480,7 +480,7 @@ export default function ActivityPage() {
             {availableSortOptions.length > 0 && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-8 w-8">
+                  <Button variant="ghost" size="icon" className="h-11 w-11" aria-label="Sort">
                     <ArrowUpDown className="h-4 w-4" />
                   </Button>
                 </DropdownMenuTrigger>
@@ -502,8 +502,9 @@ export default function ActivityPage() {
             <Button
               variant="ghost"
               size="icon"
-              className="h-8 w-8"
+              className="h-11 w-11"
               onClick={() => router.push('/activity/history')}
+              aria-label="History"
             >
               <Clock className="h-4 w-4" />
             </Button>
@@ -514,9 +515,10 @@ export default function ActivityPage() {
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-8 w-8"
+                  className="h-11 w-11"
                   onClick={handleRefreshActivity}
                   disabled={refreshing}
+                  aria-label="Refresh"
                 >
                   {refreshing ? (
                     <Loader2 className="h-4 w-4 animate-spin" />

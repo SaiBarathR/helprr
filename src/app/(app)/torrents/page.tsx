@@ -600,7 +600,12 @@ function TorrentRowActions({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" className={triggerClassName ?? 'h-7 w-7 shrink-0'}>
+        <Button
+          variant="ghost"
+          size="icon"
+          className={triggerClassName ?? 'h-7 w-7 shrink-0'}
+          aria-label="Torrent actions"
+        >
           <MoreVertical className="h-4 w-4" />
         </Button>
       </DropdownMenuTrigger>
@@ -703,6 +708,7 @@ const TorrentRow = memo(function TorrentRow({
           checked={selected}
           onChange={() => onToggleSelect(torrent.hash)}
           className="mt-1 rounded border-border"
+          aria-label={`Select ${torrent.name}`}
         />
         <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between gap-2">
@@ -1734,6 +1740,7 @@ export default function TorrentsPage() {
                 checked={selectedTorrents.size === filteredTorrents.length && filteredTorrents.length > 0}
                 onChange={selectAll}
                 className="rounded border-border"
+                aria-label="Select all"
               />
             )}
             <span className="text-xs text-muted-foreground">
