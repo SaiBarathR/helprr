@@ -13,6 +13,7 @@ import { PageSpinner } from '@/components/ui/page-spinner';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Separator } from '@/components/ui/separator';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Drawer,
   DrawerContent,
@@ -911,21 +912,24 @@ export default function NotificationsPage() {
             {/* Read state */}
             <div className="space-y-2">
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Read state</p>
-              <div className="grid grid-cols-3 gap-1 p-1 rounded-md bg-muted/40">
-                {(['all', 'unread', 'read'] as const).map((opt) => (
-                  <button
-                    key={opt}
-                    type="button"
-                    onClick={() => setReadState(opt)}
-                    className={`py-2 rounded text-xs font-medium capitalize transition-colors ${filters.readState === opt
-                      ? 'bg-background text-foreground shadow-sm'
-                      : 'text-muted-foreground'
-                      }`}
-                  >
-                    {opt}
-                  </button>
-                ))}
-              </div>
+              {/* Radix Tabs: segmented look + roving focus / arrow-key nav. */}
+              <Tabs
+                value={filters.readState}
+                onValueChange={(v) => setReadState(v as 'all' | 'unread' | 'read')}
+                className="gap-0"
+              >
+                <TabsList className="grid w-full grid-cols-3 h-auto gap-1 p-1 rounded-md bg-muted/40" aria-label="Read state">
+                  {(['all', 'unread', 'read'] as const).map((opt) => (
+                    <TabsTrigger
+                      key={opt}
+                      value={opt}
+                      className="py-2 rounded text-xs font-medium capitalize data-[state=active]:shadow-sm"
+                    >
+                      {opt}
+                    </TabsTrigger>
+                  ))}
+                </TabsList>
+              </Tabs>
             </div>
 
             <Separator />

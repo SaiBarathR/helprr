@@ -7,6 +7,7 @@ import { FadeInImage } from '@/components/media/fade-in-image';
 import Image from 'next/image';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { PullToRefresh } from '@/components/ui/pull-to-refresh';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useRefreshAction } from '@/lib/hooks/use-refresh-action';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
@@ -149,35 +150,33 @@ export default function JellyfinPage() {
   return (
     <div className="flex flex-col min-h-0 animate-content-in">
       <PullToRefresh onRefresh={() => pageQueryClient.invalidateQueries({ queryKey: ['jellyfin'] })} />
-      <div className="page-toolbar page-toolbar-flush pb-3 app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
-        <div role="tablist" aria-label="Jellyfin sections" className="flex bg-muted/50 rounded-lg p-0.5 gap-0.5">
-          {visibleTabs.map((t) => (
-            <button
-              key={t.key}
-              id={`tab-${t.key}`}
-              role="tab"
-              type="button"
-              aria-selected={tab === t.key}
-              aria-controls={`panel-${t.key}`}
-              tabIndex={tab === t.key ? 0 : -1}
-              onClick={() => setTab(t.key)}
-              className={`flex-1 text-xs font-medium py-1.5 px-2 rounded-md transition-colors ${tab === t.key ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
-                }`}
-            >
-              {t.label}
-            </button>
-          ))}
+      {/* Radix Tabs: same segmented look, plus roving focus + arrow-key nav. */}
+      <Tabs
+        value={tab}
+        onValueChange={(v) => setTab(v as TabKey)}
+        className="flex flex-1 min-h-0 flex-col gap-0"
+      >
+        <div className="page-toolbar page-toolbar-flush pb-3 app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+          <TabsList aria-label="Jellyfin sections" className="flex w-full h-auto bg-muted/50 p-0.5 gap-0.5">
+            {visibleTabs.map((t) => (
+              <TabsTrigger
+                key={t.key}
+                value={t.key}
+                className="flex-1 text-xs font-medium py-1.5 px-2 data-[state=active]:shadow-sm"
+              >
+                {t.label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
         </div>
-      </div>
 
-      <div className="flex-1 overflow-y-auto px-2 pt-3 pb-4">
-        <div id={`panel-${tab}`} role="tabpanel" aria-labelledby={`tab-${tab}`}>
-          {tab === 'overview' && <OverviewTab />}
-          {tab === 'users' && <UsersTab />}
-          {tab === 'history' && <HistoryTab />}
-          {tab === 'stats' && <StatsTab />}
+        <div className="flex-1 overflow-y-auto px-2 pt-3 pb-4">
+          <TabsContent value="overview"><OverviewTab /></TabsContent>
+          {canSessions && <TabsContent value="users"><UsersTab /></TabsContent>}
+          <TabsContent value="history"><HistoryTab /></TabsContent>
+          {canStats && <TabsContent value="stats"><StatsTab /></TabsContent>}
         </div>
-      </div>
+      </Tabs>
     </div>
   );
 }
