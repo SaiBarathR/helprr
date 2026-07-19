@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Input } from '@/components/ui/input';
@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/select';
 import { GroupedSection } from '@/components/settings/grouped-section';
 import { useAppSettings } from '@/lib/hooks/use-app-settings';
+import { useDebouncedCommit } from '@/lib/hooks/use-debounced-commit';
 
 interface RegionOption {
   code: string;
@@ -55,7 +56,6 @@ const REFRESH_OPTIONS = [
 export default function PreferencesPage() {
   const { settings, loading, update } = useAppSettings();
   const [draft, setDraft] = useState<string | null>(null);
-  const tzTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const displayedTz = draft ?? settings?.timeZone ?? '';
 
   const [regions, setRegions] = useState<RegionOption[] | null>(null);
@@ -84,25 +84,21 @@ export default function PreferencesPage() {
     return [{ code: currentCode, name: currentCode }, ...base];
   }, [regions, settings?.watchProviderRegion]);
 
+  // Debounced commit that flushes (instead of cancelling) on unmount, so a
+  // quick back-nav can't silently drop the last edit.
+  const tzCommit = useDebouncedCommit<string>((value) => {
+    void update(
+      { timeZone: value },
+      {
+        successMessage: (state) => `Timezone set to ${state.timeZone}`,
+      },
+    ).then(() => setDraft(null));
+  }, 600);
+
   function onTimeZoneChange(value: string) {
     setDraft(value);
-    if (tzTimer.current) clearTimeout(tzTimer.current);
-    tzTimer.current = setTimeout(async () => {
-      await update(
-        { timeZone: value },
-        {
-          successMessage: (state) => `Timezone set to ${state.timeZone}`,
-        },
-      );
-      setDraft(null);
-    }, 600);
+    tzCommit.schedule(value);
   }
-
-  useEffect(() => {
-    return () => {
-      if (tzTimer.current) clearTimeout(tzTimer.current);
-    };
-  }, []);
 
   return (
     <div className="animate-content-in pb-12">
@@ -130,6 +126,7 @@ export default function PreferencesPage() {
             placeholder={settings?.envTimeZone ?? 'UTC'}
             value={displayedTz}
             onChange={(event) => onTimeZoneChange(event.target.value)}
+            onBlur={() => tzCommit.flush()}
             disabled={loading}
             className="h-10"
           />

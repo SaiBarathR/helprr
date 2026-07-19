@@ -18,6 +18,7 @@ import {
 } from '@/components/ui/select';
 import { GroupedSection } from '@/components/settings/grouped-section';
 import { useAppSettings, type AppSettingsState } from '@/lib/hooks/use-app-settings';
+import { useDebouncedCommit } from '@/lib/hooks/use-debounced-commit';
 import {
   CLIENT_LOG_SETTINGS_EVENT,
   type ClientLogCaptureSettingsEvent,
@@ -44,8 +45,6 @@ export default function LoggingSettingsPage() {
   const [retentionDaysDraft, setRetentionDaysDraft] = useState('');
   const lastSyncedMaxFileMb = useRef<number | null>(null);
   const lastSyncedRetentionDays = useRef<number | null>(null);
-  const maxFileMbTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const retentionDaysTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!settings) return;
@@ -62,12 +61,33 @@ export default function LoggingSettingsPage() {
     }
   }, [settings]);
 
-  useEffect(() => {
-    return () => {
-      if (maxFileMbTimer.current) clearTimeout(maxFileMbTimer.current);
-      if (retentionDaysTimer.current) clearTimeout(retentionDaysTimer.current);
-    };
-  }, []);
+  // Debounced commits that flush (instead of cancelling) on unmount, so a
+  // quick back-nav can't silently drop the last edit. Validation runs in the
+  // commit so timer, blur, and unmount all share it; an invalid draft at
+  // unmount is dropped silently (no toast/reset from an unmounting page).
+  const maxFileMbCommit = useDebouncedCommit<string>((value, reason) => {
+    const parsed = parseInt(value, 10);
+    if (!Number.isFinite(parsed) || parsed < 1 || parsed > 1024) {
+      if (reason !== 'unmount') {
+        toast.error('Rotate at must be between 1 and 1024 MB');
+        if (settings) setMaxFileMbDraft(String(settings.logMaxFileMb));
+      }
+      return;
+    }
+    void update({ logMaxFileMb: parsed });
+  }, 700);
+
+  const retentionDaysCommit = useDebouncedCommit<string>((value, reason) => {
+    const parsed = parseInt(value, 10);
+    if (!Number.isFinite(parsed) || parsed < 1 || parsed > 3650) {
+      if (reason !== 'unmount') {
+        toast.error('Retention must be between 1 and 3650 days');
+        if (settings) setRetentionDaysDraft(String(settings.logRetentionDays));
+      }
+      return;
+    }
+    void update({ logRetentionDays: parsed });
+  }, 700);
 
   async function handleToggleEnabled(next: boolean) {
     const wasEnabled = previousLogEnabled.current;
@@ -94,30 +114,12 @@ export default function LoggingSettingsPage() {
 
   function handleMaxFileMbDraft(value: string) {
     setMaxFileMbDraft(value);
-    if (maxFileMbTimer.current) clearTimeout(maxFileMbTimer.current);
-    maxFileMbTimer.current = setTimeout(() => {
-      const parsed = parseInt(value, 10);
-      if (!Number.isFinite(parsed) || parsed < 1 || parsed > 1024) {
-        toast.error('Rotate at must be between 1 and 1024 MB');
-        if (settings) setMaxFileMbDraft(String(settings.logMaxFileMb));
-        return;
-      }
-      void update({ logMaxFileMb: parsed });
-    }, 700);
+    maxFileMbCommit.schedule(value);
   }
 
   function handleRetentionDaysDraft(value: string) {
     setRetentionDaysDraft(value);
-    if (retentionDaysTimer.current) clearTimeout(retentionDaysTimer.current);
-    retentionDaysTimer.current = setTimeout(() => {
-      const parsed = parseInt(value, 10);
-      if (!Number.isFinite(parsed) || parsed < 1 || parsed > 3650) {
-        toast.error('Retention must be between 1 and 3650 days');
-        if (settings) setRetentionDaysDraft(String(settings.logRetentionDays));
-        return;
-      }
-      void update({ logRetentionDays: parsed });
-    }, 700);
+    retentionDaysCommit.schedule(value);
   }
 
   async function purgeAllLogs() {
@@ -209,6 +211,7 @@ export default function LoggingSettingsPage() {
               max={1024}
               value={maxFileMbDraft}
               onChange={(e) => handleMaxFileMbDraft(e.target.value)}
+              onBlur={() => maxFileMbCommit.flush()}
               className="h-10"
               disabled={!logEnabled}
             />
@@ -222,6 +225,7 @@ export default function LoggingSettingsPage() {
               max={3650}
               value={retentionDaysDraft}
               onChange={(e) => handleRetentionDaysDraft(e.target.value)}
+              onBlur={() => retentionDaysCommit.flush()}
               className="h-10"
               disabled={!logEnabled}
             />
