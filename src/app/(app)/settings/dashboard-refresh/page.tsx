@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError, jsonFetcher } from '@/lib/query-fetch';
-import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import {
   ChevronLeft, ChevronDown, RotateCcw, AlertTriangle, Loader2,
@@ -15,7 +15,9 @@ import {
 } from 'lucide-react';
 import { useUIStore } from '@/lib/store';
 import { Button } from '@/components/ui/button';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Input } from '@/components/ui/input';
+import { useUnsavedChangesGuard } from '@/lib/hooks/use-unsaved-changes-guard';
 import { getWidgetDefinition } from '@/lib/widgets/registry';
 import {
   WIDGET_REFRESH_MIN_SECS,
@@ -51,9 +53,11 @@ function getIcon(name: string): LucideIcon {
 }
 
 export default function DashboardRefreshSettingsPage() {
+  const router = useRouter();
   const [overrides, setOverrides] = useState<OverrideMap>({});
   const [drafts, setDrafts] = useState<Record<string, Record<string, string>>>({});
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [confirmLeave, setConfirmLeave] = useState(false);
   const discoverLayout = useUIStore((s) => s.discoverLayout);
   const queryClient = useQueryClient();
 
@@ -105,6 +109,7 @@ export default function DashboardRefreshSettingsPage() {
     }
     return false;
   }, [data, overrides]);
+  useUnsavedChangesGuard(dirty);
 
   const dirtyLayoutIds = useMemo(() => {
     if (!data) return new Set<string>();
@@ -255,11 +260,15 @@ export default function DashboardRefreshSettingsPage() {
   return (
     <div className="px-4 sm:px-6 py-4 max-w-3xl mx-auto pb-32">
       <div className="flex items-center gap-2 mb-4">
-        <Button variant="ghost" size="sm" asChild className="h-8 -ml-2 px-2">
-          <Link href="/settings/preferences">
-            <ChevronLeft className="h-4 w-4" />
-            Preferences
-          </Link>
+        {/* Guarded back-nav: unsaved interval edits confirm before discarding. */}
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-8 -ml-2 px-2"
+          onClick={() => (dirty ? setConfirmLeave(true) : router.push('/settings/preferences'))}
+        >
+          <ChevronLeft className="h-4 w-4" />
+          Preferences
         </Button>
       </div>
 
@@ -449,6 +458,17 @@ export default function DashboardRefreshSettingsPage() {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={confirmLeave}
+        onOpenChange={setConfirmLeave}
+        title="Discard unsaved changes?"
+        description="Your refresh interval edits haven't been saved. Leaving now will discard them."
+        confirmLabel="Discard changes"
+        cancelLabel="Keep editing"
+        destructive
+        onConfirm={() => router.push('/settings/preferences')}
+      />
     </div>
   );
 }

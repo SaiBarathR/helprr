@@ -3,10 +3,12 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { ApiError, jsonFetcher } from '@/lib/query-fetch';
-import Link from 'next/link';
-import { ChevronLeft, Plus, Trash2, Save, Loader2, Zap } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { ChevronLeft, Plus, Trash2, Loader2, Zap } from 'lucide-react';
 import { toast } from 'sonner';
 import { GroupedSection } from '@/components/settings/grouped-section';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { useUnsavedChangesGuard } from '@/lib/hooks/use-unsaved-changes-guard';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
@@ -74,10 +76,14 @@ function formatWindow(rule: BandwidthRule): string {
 }
 
 export default function DownloadsSettingsPage() {
+  const router = useRouter();
   const [rules, setRules] = useState<BandwidthRule[]>([]);
   const [timeZone, setTimeZone] = useState<string>('UTC');
   const [activeRuleId, setActiveRuleId] = useState<string | null>(null);
-  const [dirty, setDirty] = useState(false);
+  // Last loaded/saved rules — dirty is derived by comparison, so reverting an
+  // edit back to its original value counts as clean again.
+  const [baseline, setBaseline] = useState<BandwidthRule[]>([]);
+  const [confirmLeave, setConfirmLeave] = useState(false);
 
   const scheduleQuery = useQuery({
     queryKey: ['qbittorrent', 'bandwidth-schedule'],
@@ -93,9 +99,16 @@ export default function DownloadsSettingsPage() {
   if (!seeded && scheduleQuery.data) {
     setSeeded(true);
     setRules(scheduleQuery.data.schedule.rules);
+    setBaseline(scheduleQuery.data.schedule.rules);
     setTimeZone(scheduleQuery.data.timeZone);
     setActiveRuleId(scheduleQuery.data.activeRuleId);
   }
+
+  const dirty = useMemo(
+    () => JSON.stringify(rules) !== JSON.stringify(baseline),
+    [rules, baseline],
+  );
+  useUnsavedChangesGuard(dirty);
 
   const saveMutation = useMutation({
     mutationFn: async (rulesToSave: BandwidthRule[]) => {
@@ -114,9 +127,9 @@ export default function DownloadsSettingsPage() {
     },
     onSuccess: (payload) => {
       setRules(payload.schedule.rules);
+      setBaseline(payload.schedule.rules);
       setTimeZone(payload.timeZone);
       setActiveRuleId(payload.activeRuleId);
-      setDirty(false);
       toast.success('Schedule saved');
     },
     onError: (err) => {
@@ -134,29 +147,28 @@ export default function DownloadsSettingsPage() {
 
   function patchRule(id: string, patch: Partial<BandwidthRule>) {
     setRules((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)));
-    setDirty(true);
   }
 
   function addRule() {
     setRules((prev) => [...prev, newRule()]);
-    setDirty(true);
   }
 
   function removeRule(id: string) {
     setRules((prev) => prev.filter((r) => r.id !== id));
-    setDirty(true);
   }
 
   return (
-    <div className="animate-content-in pb-12">
+    <div className="animate-content-in pb-32">
       <div className="px-1 pt-1 pb-2">
-        <Link
-          href="/settings"
+        {/* Guarded back-nav: unsaved rule edits confirm before discarding. */}
+        <button
+          type="button"
+          onClick={() => (dirty ? setConfirmLeave(true) : router.push('/settings'))}
           className="inline-flex items-center gap-1 text-sm text-primary -ml-1 min-h-[44px] px-1"
         >
           <ChevronLeft className="h-5 w-5" />
           Settings
-        </Link>
+        </button>
       </div>
 
       <div className="px-4 mb-4">
@@ -222,20 +234,34 @@ export default function DownloadsSettingsPage() {
           <Plus className="mr-2 h-4 w-4" />
           Add rule
         </Button>
-        <Button
-          type="button"
-          onClick={() => saveMutation.mutate(rules)}
-          disabled={!dirty || saving || loading}
-          className="h-9"
-        >
-          {saving ? (
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          ) : (
-            <Save className="mr-2 h-4 w-4" />
-          )}
-          Save schedule
-        </Button>
       </div>
+
+      {dirty && (
+        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-foreground/[0.08] app-chrome-bar bg-background/95 backdrop-blur px-4 py-3">
+          <div className="max-w-3xl mx-auto flex items-center justify-between gap-3">
+            <span className="text-sm text-muted-foreground">You have unsaved changes</span>
+            <div className="flex items-center gap-2">
+              <Button variant="ghost" size="sm" onClick={() => setRules(baseline)} disabled={saving}>
+                Discard
+              </Button>
+              <Button size="sm" onClick={() => saveMutation.mutate(rules)} disabled={saving || loading}>
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save changes'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <ConfirmDialog
+        open={confirmLeave}
+        onOpenChange={setConfirmLeave}
+        title="Discard unsaved changes?"
+        description="Your bandwidth rule edits haven't been saved. Leaving now will discard them."
+        confirmLabel="Discard changes"
+        cancelLabel="Keep editing"
+        destructive
+        onConfirm={() => router.push('/settings')}
+      />
     </div>
   );
 }
