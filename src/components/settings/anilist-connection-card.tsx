@@ -41,6 +41,8 @@ export function AnilistConnectionCard() {
   const [expanded, setExpanded] = useState(false);
   const [clientId, setClientId] = useState('');
   const [clientSecret, setClientSecret] = useState('');
+  // Field-level validation (set by Connect, cleared per-field on change).
+  const [fieldErrors, setFieldErrors] = useState<{ clientId?: string; clientSecret?: string }>({});
   const [redirectUri, setRedirectUri] = useState('');
 
   useEffect(() => {
@@ -127,8 +129,12 @@ export function AnilistConnectionCard() {
   const submitting = connectMutation.isPending;
 
   function handleConnect() {
-    if (!clientId.trim() || !clientSecret.trim()) {
-      toast.error('Client ID and Client Secret are required');
+    const errors: { clientId?: string; clientSecret?: string } = {};
+    if (!clientId.trim()) errors.clientId = 'Client ID is required';
+    if (!clientSecret.trim()) errors.clientSecret = 'Client Secret is required';
+    setFieldErrors(errors);
+    if (errors.clientId || errors.clientSecret) {
+      document.getElementById(errors.clientId ? 'anilist-client-id' : 'anilist-client-secret')?.focus();
       return;
     }
     connectMutation.mutate({ clientId: clientId.trim(), clientSecret: clientSecret.trim() });
@@ -286,23 +292,45 @@ export function AnilistConnectionCard() {
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label className="text-xs text-muted-foreground">Client ID</Label>
+                  <Label htmlFor="anilist-client-id" className="text-xs text-muted-foreground">Client ID</Label>
                   <Input
+                    id="anilist-client-id"
                     placeholder="e.g. 12345"
                     value={clientId}
-                    onChange={(e) => setClientId(e.target.value)}
+                    onChange={(e) => {
+                      setClientId(e.target.value);
+                      setFieldErrors((prev) => (prev.clientId ? { ...prev, clientId: undefined } : prev));
+                    }}
                     className="h-10"
+                    aria-invalid={fieldErrors.clientId ? true : undefined}
+                    aria-describedby={fieldErrors.clientId ? 'anilist-client-id-error' : undefined}
                   />
+                  {fieldErrors.clientId && (
+                    <p id="anilist-client-id-error" role="alert" className="text-xs text-destructive">
+                      {fieldErrors.clientId}
+                    </p>
+                  )}
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs text-muted-foreground">Client Secret</Label>
+                  <Label htmlFor="anilist-client-secret" className="text-xs text-muted-foreground">Client Secret</Label>
                   <Input
+                    id="anilist-client-secret"
                     type="password"
                     placeholder="Paste secret"
                     value={clientSecret}
-                    onChange={(e) => setClientSecret(e.target.value)}
+                    onChange={(e) => {
+                      setClientSecret(e.target.value);
+                      setFieldErrors((prev) => (prev.clientSecret ? { ...prev, clientSecret: undefined } : prev));
+                    }}
                     className="h-10"
+                    aria-invalid={fieldErrors.clientSecret ? true : undefined}
+                    aria-describedby={fieldErrors.clientSecret ? 'anilist-client-secret-error' : undefined}
                   />
+                  {fieldErrors.clientSecret && (
+                    <p id="anilist-client-secret-error" role="alert" className="text-xs text-destructive">
+                      {fieldErrors.clientSecret}
+                    </p>
+                  )}
                 </div>
 
                 <div className="flex gap-2 pt-1">
