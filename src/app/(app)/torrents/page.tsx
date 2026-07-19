@@ -1785,6 +1785,7 @@ export default function TorrentsPage() {
               onSort={(key) => handleHeaderSort(key as SortKey)}
               wrapRow={wrapTableRow}
               resetPageKey={`${search}|${filter.join(',')}|${sortKey}|${sortDir}`}
+              stickyHeader
             />
           ) : (
             <div ref={listRef}>

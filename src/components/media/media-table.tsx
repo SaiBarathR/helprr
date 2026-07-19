@@ -289,6 +289,7 @@ export function MediaTable({
       sortDir={sortDir}
       onSort={onSort}
       resetPageKey={resetPageKey}
+      stickyHeader
       onRowClick={selectable ? (row) => onToggleSelect?.(row) : undefined}
       rowClassName={(row) => (isSelected(row) ? 'bg-primary/10 hover:bg-primary/10' : undefined)}
       wrapRow={
