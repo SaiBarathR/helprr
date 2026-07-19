@@ -33,6 +33,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -1106,20 +1107,20 @@ function ViewTabs({
   views: { key: ViewType; label: string }[];
 }) {
   return (
-    <div className="flex items-center rounded-lg bg-muted/60 p-0.5">
-      {views.map((v) => (
-        <button
-          key={v.key}
-          onClick={() => onChange(v.key)}
-          className={`px-2.5 py-1 text-[11px] font-medium rounded-md transition-all ${value === v.key
-            ? 'bg-background text-foreground shadow-sm'
-            : 'text-muted-foreground hover:text-foreground'
-            }`}
-        >
-          {v.label}
-        </button>
-      ))}
-    </div>
+    // Radix Tabs: same segmented look, plus roving focus + arrow-key nav.
+    <Tabs value={value} onValueChange={(v) => onChange(v as ViewType)} className="gap-0">
+      <TabsList className="flex h-auto bg-muted/60 p-0.5" aria-label="Calendar view">
+        {views.map((v) => (
+          <TabsTrigger
+            key={v.key}
+            value={v.key}
+            className="px-2.5 py-1 text-[11px] font-medium flex-none data-[state=active]:shadow-sm"
+          >
+            {v.label}
+          </TabsTrigger>
+        ))}
+      </TabsList>
+    </Tabs>
   );
 }
 

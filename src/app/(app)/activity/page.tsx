@@ -24,6 +24,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { PullToRefresh } from '@/components/ui/pull-to-refresh';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { SwipeRow } from '@/components/ui/swipe-row';
 import { QuickContextMenu } from '@/components/ui/quick-context-menu';
 import { useRefreshAction } from '@/lib/hooks/use-refresh-action';
@@ -530,21 +531,20 @@ export default function ActivityPage() {
           </div>
         </div>
 
-        {/* Segmented control tabs */}
-        <div className="flex bg-muted/50 rounded-lg p-0.5 gap-0.5">
-          {TABS.map((t) => (
-            <button
-              key={t.key}
-              onClick={() => handleTabChange(t.key)}
-              className={`flex-1 text-xs font-medium py-1.5 px-2 rounded-md transition-colors ${tab === t.key
-                ? 'bg-background text-foreground shadow-sm'
-                : 'text-muted-foreground hover:text-foreground'
-                }`}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
+        {/* Segmented control tabs — Radix for tab semantics + arrow-key nav */}
+        <Tabs value={tab} onValueChange={(v) => isTabKey(v) && handleTabChange(v)} className="gap-0">
+          <TabsList className="flex w-full h-auto bg-muted/50 p-0.5 gap-0.5">
+            {TABS.map((t) => (
+              <TabsTrigger
+                key={t.key}
+                value={t.key}
+                className="flex-1 text-xs font-medium py-1.5 px-2 data-[state=active]:shadow-sm"
+              >
+                {t.label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
       </div>
 
       {/* Queue count */}

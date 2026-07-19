@@ -14,6 +14,7 @@ import { RequestsSortMenu } from '@/components/seerr/requests-sort-menu';
 import { RequestsListWidget } from '@/components/widgets/requests-list-widget';
 import { RequestsUsersWidget } from '@/components/widgets/requests-users-widget';
 import { PullToRefresh } from '@/components/ui/pull-to-refresh';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useRefreshAction } from '@/lib/hooks/use-refresh-action';
 import type { SeerrRequestCount, SeerrUserSummary } from '@/types/seerr';
 
@@ -69,27 +70,29 @@ export default function RequestsPage() {
       <div
         className="page-toolbar page-toolbar-flush flex items-center gap-1.5 app-chrome-bar bg-background/95 pb-2 backdrop-blur supports-[backdrop-filter]:bg-background/80"
       >
-        <div className="flex flex-1 items-center gap-0.5 rounded-lg bg-muted/50 p-0.5 sm:flex-none">
-          {TABS.map((t) => (
-            <button
-              key={t.key}
-              type="button"
-              onClick={() => setTab(t.key)}
-              className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-1 text-xs font-medium transition-colors sm:flex-none ${
-                tab === t.key
-                  ? 'bg-background text-foreground shadow-sm'
-                  : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              {t.label}
-              {t.key === 'requests' && pendingBadge > 0 ? (
-                <span className="rounded-full bg-amber-500/15 px-1.5 text-[10px] font-semibold tabular-nums text-amber-500">
-                  {pendingBadge}
-                </span>
-              ) : null}
-            </button>
-          ))}
-        </div>
+        {/* Radix Tabs: same segmented look, plus roving focus + arrow-key nav. */}
+        <Tabs
+          value={tab}
+          onValueChange={(v) => setTab(v as (typeof TABS)[number]['key'])}
+          className="flex-1 gap-0 sm:flex-none"
+        >
+          <TabsList className="flex w-full h-auto bg-muted/50 p-0.5 gap-0.5 sm:w-fit">
+            {TABS.map((t) => (
+              <TabsTrigger
+                key={t.key}
+                value={t.key}
+                className="flex-1 gap-1.5 px-3 py-1 text-xs font-medium data-[state=active]:shadow-sm sm:flex-none"
+              >
+                {t.label}
+                {t.key === 'requests' && pendingBadge > 0 ? (
+                  <span className="rounded-full bg-amber-500/15 px-1.5 text-[10px] font-semibold tabular-nums text-amber-500">
+                    {pendingBadge}
+                  </span>
+                ) : null}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
 
         {tab === 'requests' ? (
           <>

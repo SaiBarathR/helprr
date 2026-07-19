@@ -26,6 +26,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { toast } from 'sonner';
 import type { HistoryItem } from '@/types';
 import { InstanceFilter, type InstanceOption } from '@/components/instance-filter';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 // --- Event type config ---
 
@@ -422,28 +423,21 @@ export default function HistoryPage() {
               </DrawerHeader>
 
               <div className="px-4 pb-3">
-                <div className="flex bg-muted/50 rounded-lg p-0.5 gap-0.5">
-                  <button
-                    onClick={() => setDrawerMode('basic')}
-                    className={`flex-1 text-xs font-medium py-1.5 px-2 rounded-md transition-colors ${
-                      drawerMode === 'basic'
-                        ? 'bg-background text-foreground shadow-sm'
-                        : 'text-muted-foreground hover:text-foreground'
-                    }`}
-                  >
-                    Basic
-                  </button>
-                  <button
-                    onClick={() => setDrawerMode('detailed')}
-                    className={`flex-1 text-xs font-medium py-1.5 px-2 rounded-md transition-colors ${
-                      drawerMode === 'detailed'
-                        ? 'bg-background text-foreground shadow-sm'
-                        : 'text-muted-foreground hover:text-foreground'
-                    }`}
-                  >
-                    Detailed
-                  </button>
-                </div>
+                {/* Radix Tabs: segmented look + roving focus / arrow-key nav. */}
+                <Tabs
+                  value={drawerMode}
+                  onValueChange={(v) => setDrawerMode(v as 'basic' | 'detailed')}
+                  className="gap-0"
+                >
+                  <TabsList className="flex w-full h-auto bg-muted/50 p-0.5 gap-0.5" aria-label="Detail level">
+                    <TabsTrigger value="basic" className="flex-1 text-xs font-medium py-1.5 px-2 data-[state=active]:shadow-sm">
+                      Basic
+                    </TabsTrigger>
+                    <TabsTrigger value="detailed" className="flex-1 text-xs font-medium py-1.5 px-2 data-[state=active]:shadow-sm">
+                      Detailed
+                    </TabsTrigger>
+                  </TabsList>
+                </Tabs>
               </div>
 
               {drawerMode === 'basic' ? (

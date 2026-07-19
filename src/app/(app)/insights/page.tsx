@@ -12,6 +12,7 @@ import { KpiRow } from '@/components/insights/kpi-row';
 import { ServiceHealthStrip } from '@/components/insights/service-health-strip';
 import dynamic from 'next/dynamic';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { LibraryGapsCard } from '@/components/insights/library-gaps-card';
 import { StorageInsightsCard } from '@/components/insights/storage-insights-card';
 import { SeedingEconomicsCard } from '@/components/insights/seeding-economics-card';
@@ -148,30 +149,32 @@ export default function InsightsPage() {
 
       <div className="flex-1 overflow-y-auto px-2 pt-3 pb-6 space-y-4">
         {tabs.length > 1 && (
-          <div role="tablist" className="flex items-center gap-2 overflow-x-auto scrollbar-hide -mx-2 px-2">
-            {tabs.map((id) => {
-              const meta = TAB_META[id];
-              const Icon = meta.icon;
-              const active = id === activeTab;
-              return (
-                <button
-                  key={id}
-                  type="button"
-                  role="tab"
-                  onClick={() => setTab(id)}
-                  aria-selected={active}
-                  className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap inline-flex items-center gap-1.5 transition-colors ${
-                    active
-                      ? 'bg-primary/20 text-primary border border-primary/40'
-                      : 'bg-accent/40 text-muted-foreground border border-transparent hover:text-foreground'
-                  }`}
-                >
-                  <Icon className="h-3.5 w-3.5" />
-                  {meta.label}
-                </button>
-              );
-            })}
-          </div>
+          // Radix Tabs: keeps the pill styling, adds roving focus + arrow keys.
+          <Tabs
+            value={activeTab ?? undefined}
+            onValueChange={(v) => setTab(v as (typeof tabs)[number])}
+            className="gap-0"
+          >
+            <TabsList
+              aria-label="Insight sections"
+              className="flex h-auto w-full justify-start gap-2 bg-transparent p-0 overflow-x-auto scrollbar-hide -mx-2 px-2"
+            >
+              {tabs.map((id) => {
+                const meta = TAB_META[id];
+                const Icon = meta.icon;
+                return (
+                  <TabsTrigger
+                    key={id}
+                    value={id}
+                    className="flex-none rounded-full border border-transparent bg-accent/40 px-3 py-1.5 text-xs font-semibold whitespace-nowrap gap-1.5 text-muted-foreground hover:text-foreground data-[state=active]:border-primary/40 data-[state=active]:bg-primary/20 data-[state=active]:text-primary data-[state=active]:shadow-none"
+                  >
+                    <Icon className="h-3.5 w-3.5" />
+                    {meta.label}
+                  </TabsTrigger>
+                );
+              })}
+            </TabsList>
+          </Tabs>
         )}
 
         {/* Health + KPIs live in the Library tab; when that tab isn't permitted
