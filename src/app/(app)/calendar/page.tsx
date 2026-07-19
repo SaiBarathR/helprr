@@ -299,10 +299,11 @@ function CompactFilters({
 
       <div className="w-px h-4 bg-border/50 mx-0.5" />
 
-      {/* Monitored toggle */}
+      {/* Monitored toggle — compact by owner preference: the calendar toolbar
+          must fit one line on mobile, so no 44px minimums here. */}
       <button
         onClick={() => setMonitoredOnly(!monitoredOnly)}
-        className={`p-1.5 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-md transition-colors ${monitoredOnly
+        className={`p-1.5 rounded-md transition-colors ${monitoredOnly
           ? 'bg-primary/15 text-primary'
           : 'text-muted-foreground hover:text-foreground hover:bg-muted'
           }`}
@@ -321,7 +322,7 @@ function CompactFilters({
 
       <button
         onClick={() => setShowScheduled(!showScheduled)}
-        className={`p-1.5 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-md transition-colors ${showScheduled
+        className={`p-1.5 rounded-md transition-colors ${showScheduled
           ? 'bg-violet-500/15 text-violet-400'
           : 'text-muted-foreground hover:text-foreground hover:bg-muted'
           }`}
@@ -335,7 +336,7 @@ function CompactFilters({
       {/* Poster/backdrop visibility (agenda + week views) */}
       <button
         onClick={() => setShowImages(!showImages)}
-        className={`p-1.5 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-md transition-colors ${showImages
+        className={`p-1.5 rounded-md transition-colors ${showImages
           ? 'bg-muted text-foreground'
           : 'text-muted-foreground hover:text-foreground hover:bg-muted'
           }`}
@@ -1369,7 +1370,7 @@ export default function CalendarPage() {
               variant="ghost"
               size="icon"
               onClick={goBack}
-              className="h-10 w-10 shrink-0"
+              className="h-7 w-7 shrink-0"
               aria-label="Previous period"
             >
               <ChevronLeft className="h-4 w-4" />
@@ -1378,7 +1379,7 @@ export default function CalendarPage() {
               variant="ghost"
               size="icon"
               onClick={goForward}
-              className="h-10 w-10 shrink-0"
+              className="h-7 w-7 shrink-0"
               aria-label="Next period"
             >
               <ChevronRight className="h-4 w-4" />
