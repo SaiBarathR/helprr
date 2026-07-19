@@ -36,7 +36,7 @@ import { jsonFetcher, ensureArray } from '@/lib/query-fetch';
 import { bulkFanOut, reportBulk } from '@/lib/bulk-fan-out';
 import { useUnionTags } from '@/lib/hooks/use-reference-data';
 import { type ContextActionGroup } from '@/components/ui/quick-context-menu';
-import { SingleMediaDeleteDialog } from '@/components/media/single-media-delete-dialog';
+import { MediaDeleteConfirmDialog } from '@/components/media/media-delete-confirm-dialog';
 import { InteractiveSearchDialog } from '@/components/media/interactive-search-dialog';
 import { RenamePreviewDialog } from '@/components/media/rename-preview-dialog';
 import { arrEditHref, arrManageHref } from '@/lib/arr-edit-href';
@@ -1235,12 +1235,12 @@ export default function MoviesPage() {
         }}
       />
 
-      <SingleMediaDeleteDialog
+      <MediaDeleteConfirmDialog
         key={deleteTarget ? keyOf(deleteTarget) : 'no-delete-target'}
         open={deleteTarget !== null}
         onOpenChange={(open) => { if (!open && !deletingTarget) setDeleteTarget(null); }}
-        title={deleteTarget?.title ?? ''}
-        itemNoun="movie"
+        title={`Delete “${deleteTarget?.title ?? ''}”?`}
+        description={`This removes the movie from its connected service.`}
         busy={deletingTarget}
         onConfirm={confirmSingleDelete}
       />

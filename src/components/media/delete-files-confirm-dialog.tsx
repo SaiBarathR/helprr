@@ -28,7 +28,7 @@ const LARGE_DELETE_BYTES = 20 * 1024 * 1024 * 1024; // 20 GiB
 // fixed (not the title) so it's tappable on an iPhone keyboard.
 const CONFIRM_PHRASE = 'DELETE';
 
-export interface DeleteFilesConfirmDrawerProps {
+export interface DeleteFilesConfirmDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   service: 'sonarr' | 'radarr';
@@ -45,7 +45,7 @@ export interface DeleteFilesConfirmDrawerProps {
   onConfirm: () => void | Promise<void>;
 }
 
-export function DeleteFilesConfirmDrawer({
+export function DeleteFilesConfirmDialog({
   open,
   onOpenChange,
   service,
@@ -54,7 +54,7 @@ export function DeleteFilesConfirmDrawer({
   config,
   busy = false,
   onConfirm,
-}: DeleteFilesConfirmDrawerProps) {
+}: DeleteFilesConfirmDialogProps) {
   const [acknowledged, setAcknowledged] = React.useState(false);
   const [typed, setTyped] = React.useState('');
 

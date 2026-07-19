@@ -22,7 +22,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { DeleteFilesConfirmDrawer } from '@/components/media/delete-files-confirm-drawer';
+import { DeleteFilesConfirmDialog } from '@/components/media/delete-files-confirm-dialog';
 import { jsonFetcher, ensureArray, withInstanceQuery, arrMutationFetch, ApiError } from '@/lib/query-fetch';
 import { queryKeys } from '@/lib/query-keys';
 import { invalidateSeries, invalidateMovies } from '@/lib/query-invalidation';
@@ -592,7 +592,7 @@ export function ManageMediaFlow({ service, mediaId, mediaTitle, instanceId }: Ma
         />
       )}
 
-      <DeleteFilesConfirmDrawer
+      <DeleteFilesConfirmDialog
         open={deleteOpen}
         onOpenChange={(o) => !submitting && setDeleteOpen(o)}
         service={service}

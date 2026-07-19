@@ -33,7 +33,7 @@ import { jsonFetcher, ensureArray } from '@/lib/query-fetch';
 import { bulkFanOut, reportBulk } from '@/lib/bulk-fan-out';
 import { useUnionTags } from '@/lib/hooks/use-reference-data';
 import { type ContextActionGroup } from '@/components/ui/quick-context-menu';
-import { SingleMediaDeleteDialog } from '@/components/media/single-media-delete-dialog';
+import { MediaDeleteConfirmDialog } from '@/components/media/media-delete-confirm-dialog';
 import { RenamePreviewDialog } from '@/components/media/rename-preview-dialog';
 import { arrEditHref, arrFilesHref } from '@/lib/arr-edit-href';
 import type { LidarrArtistListItem } from '@/types';
@@ -1062,12 +1062,12 @@ export default function MusicPage() {
         instanceId={renameTarget?.instanceId}
       />
 
-      <SingleMediaDeleteDialog
+      <MediaDeleteConfirmDialog
         key={deleteTarget ? keyOf(deleteTarget) : 'no-delete-target'}
         open={deleteTarget !== null}
         onOpenChange={(open) => { if (!open && !deletingTarget) setDeleteTarget(null); }}
-        title={deleteTarget?.artistName ?? ''}
-        itemNoun="artist"
+        title={`Delete “${deleteTarget?.artistName ?? ''}”?`}
+        description={`This removes the artist from its connected service.`}
         busy={deletingTarget}
         onConfirm={confirmSingleDelete}
       />

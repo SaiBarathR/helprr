@@ -9,18 +9,8 @@ import {
 import { cn } from '@/lib/utils';
 import { useUIStore } from '@/lib/store';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import {
-  AlertDialog,
-  AlertDialogContent,
-  AlertDialogHeader,
-  AlertDialogFooter,
-  AlertDialogTitle,
-  AlertDialogDescription,
-  AlertDialogAction,
-  AlertDialogCancel,
-} from '@/components/ui/alert-dialog';
-import { Checkbox } from '@/components/ui/checkbox';
 import { buttonVariants } from '@/components/ui/button';
+import { MediaDeleteConfirmDialog } from '@/components/media/media-delete-confirm-dialog';
 
 export interface BulkTag {
   id: number;
@@ -157,9 +147,8 @@ export function BulkActionBar({
     setNewLabel('');
   }, [tagStrategy]);
 
-  // Delete dialog state
+  // Delete dialog state (the delete-files checkbox lives in the dialog).
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const [deleteFiles, setDeleteFiles] = useState(false);
 
   const disabled = count === 0 || busy !== null;
 
@@ -424,10 +413,7 @@ export function BulkActionBar({
                 label={deleteVerb}
                 destructive
                 disabled={disabled}
-                onClick={() => {
-                  setDeleteFiles(false);
-                  setDeleteOpen(true);
-                }}
+                onClick={() => setDeleteOpen(true)}
               />
             )}
           </div>
@@ -435,43 +421,24 @@ export function BulkActionBar({
       </div>
 
       {variant === 'full' && onDelete && (
-        <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>{deleteVerb} {count} {plural}?</AlertDialogTitle>
-              <AlertDialogDescription>
-                {deleteDescription ??
-                  `This removes ${count === 1 ? 'it' : 'them'} from your library. This cannot be undone.`}
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            {deleteFilesOption && (
-              <label className="flex items-center gap-2 text-sm">
-                <Checkbox
-                  checked={deleteFiles}
-                  onCheckedChange={(v) => setDeleteFiles(v === true)}
-                />
-                Also delete files from disk
-              </label>
-            )}
-            <AlertDialogFooter>
-              <AlertDialogCancel disabled={busy === 'delete'}>Cancel</AlertDialogCancel>
-              <AlertDialogAction
-                disabled={busy === 'delete'}
-                className={buttonVariants({ variant: 'destructive' })}
-                onClick={(event) => {
-                  event.preventDefault();
-                  void run('delete', async () => {
-                    await onDelete(deleteFiles);
-                    setDeleteOpen(false);
-                  });
-                }}
-              >
-                {busy === 'delete' && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                {deleteVerb}
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
+        <MediaDeleteConfirmDialog
+          open={deleteOpen}
+          onOpenChange={setDeleteOpen}
+          title={`${deleteVerb} ${count} ${plural}?`}
+          description={
+            deleteDescription ??
+            `This removes ${count === 1 ? 'it' : 'them'} from your library. This cannot be undone.`
+          }
+          confirmLabel={deleteVerb}
+          showDeleteFiles={deleteFilesOption}
+          busy={busy === 'delete'}
+          onConfirm={(deleteFiles) =>
+            run('delete', async () => {
+              await onDelete(deleteFiles);
+              setDeleteOpen(false);
+            })
+          }
+        />
       )}
     </>,
     document.body
