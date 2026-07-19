@@ -139,7 +139,7 @@ export default function TorrentFilesPage() {
   if (loading && files.length === 0) {
     return (
       <div className="space-y-3">
-        <PageHeader name={torrentName} canManage={canManage} onBack={() => router.back()} />
+        <PageHeader name={torrentName} canManage={canManage} onBack={() => router.push('/torrents')} />
         <div className="flex items-center justify-center py-20">
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
         </div>
@@ -150,7 +150,7 @@ export default function TorrentFilesPage() {
   if (error && files.length === 0) {
     return (
       <div className="space-y-3">
-        <PageHeader name={torrentName} canManage={canManage} onBack={() => router.back()} />
+        <PageHeader name={torrentName} canManage={canManage} onBack={() => router.push('/torrents')} />
         <div className="rounded-xl bg-card p-8 text-center text-muted-foreground">
           <p>{error?.message ?? 'Failed to fetch files'}</p>
         </div>
@@ -160,37 +160,49 @@ export default function TorrentFilesPage() {
 
   return (
     <div className="space-y-3 animate-content-in">
-      <PageHeader name={torrentName} canManage={canManage} onBack={() => router.back()} />
+      <PageHeader name={torrentName} canManage={canManage} onBack={() => router.push('/torrents')} />
 
-      {/* Summary bar */}
-      <div className="rounded-xl bg-card p-3 space-y-2">
-        <div className="flex items-center justify-between text-xs text-muted-foreground">
-          <span>{files.length} file{files.length !== 1 ? 's' : ''}</span>
-          <span>{formatBytes(totalSize)}</span>
+      {files.length === 0 ? (
+        // Metadata not fetched yet (magnet still resolving) or a file-less
+        // torrent — say so instead of a "0 files" summary over an empty card.
+        <div className="rounded-xl bg-card p-8 text-center text-muted-foreground">
+          <File className="h-8 w-8 mx-auto mb-2 opacity-40" />
+          <p>No files in this torrent yet.</p>
+          <p className="text-sm mt-1">Metadata may still be downloading.</p>
         </div>
-        <div className="flex items-center gap-2">
-          <Progress value={weightedProgress * 100} className="h-1.5 flex-1" />
-          <span className="text-xs text-muted-foreground shrink-0">
-            {(weightedProgress * 100).toFixed(1)}%
-          </span>
-        </div>
-      </div>
+      ) : (
+        <>
+          {/* Summary bar */}
+          <div className="rounded-xl bg-card p-3 space-y-2">
+            <div className="flex items-center justify-between text-xs text-muted-foreground">
+              <span>{files.length} file{files.length !== 1 ? 's' : ''}</span>
+              <span>{formatBytes(totalSize)}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Progress value={weightedProgress * 100} className="h-1.5 flex-1" />
+              <span className="text-xs text-muted-foreground shrink-0">
+                {(weightedProgress * 100).toFixed(1)}%
+              </span>
+            </div>
+          </div>
 
-      {/* File tree */}
-      <div className="rounded-xl bg-card overflow-hidden">
-        {tree.map((node) => (
-          <TreeNodeRow
-            key={node.type === 'file' ? `f-${node.file.index}` : `d-${node.path}`}
-            node={node}
-            depth={0}
-            expandedDirs={expandedDirs}
-            canManage={canManage}
-            onToggleDir={toggleDir}
-            onToggleDownload={toggleFileDownload}
-            onSetPriority={setPriority}
-          />
-        ))}
-      </div>
+          {/* File tree */}
+          <div className="rounded-xl bg-card overflow-hidden">
+            {tree.map((node) => (
+              <TreeNodeRow
+                key={node.type === 'file' ? `f-${node.file.index}` : `d-${node.path}`}
+                node={node}
+                depth={0}
+                expandedDirs={expandedDirs}
+                canManage={canManage}
+                onToggleDir={toggleDir}
+                onToggleDownload={toggleFileDownload}
+                onSetPriority={setPriority}
+              />
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 }
