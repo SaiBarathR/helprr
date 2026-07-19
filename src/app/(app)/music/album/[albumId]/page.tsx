@@ -449,8 +449,8 @@ export default function AlbumDetailPage() {
       />
 
       <div className="space-y-6 animate-content-in">
-        {/* Hero */}
-        <div className="flex gap-4">
+        {/* Hero — pt-3 keeps the cover clear of the flush page header. */}
+        <div className="flex gap-4 pt-3">
           <div className="w-[130px] shrink-0">
             <QuickContextMenu label={`${album.title} actions`} groups={albumContextGroups}>
             <div className="relative aspect-square rounded-lg overflow-hidden bg-muted shadow-sm">

@@ -785,7 +785,9 @@ export default function MovieDetailPage() {
             )}
           </div>
         ) : (
-          <div className="flex gap-4">
+          // pt-3 keeps the poster clear of the flush page header (matches the
+          // series no-backdrop layout).
+          <div className="flex gap-4 pt-3">
             <div className="w-[120px] shrink-0">
               <QuickContextMenu label={`${movie.title} actions`} groups={contextActionGroups}>
               <div className="relative aspect-[2/3] rounded-lg overflow-hidden bg-muted">
