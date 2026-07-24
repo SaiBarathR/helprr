@@ -16,9 +16,10 @@ import {
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuItem,
   DropdownMenuCheckboxItem,
   DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
@@ -31,7 +32,7 @@ import { useRefreshAction } from '@/lib/hooks/use-refresh-action';
 import {
   Download, Trash2, AlertTriangle,
   Upload, Loader2, RefreshCw, FileWarning, Search, Tv, Film, Disc3, Scissors,
-  Clock, Filter, ArrowUpDown, ChevronRight, Layers,
+  Clock, SlidersHorizontal, ChevronRight, Layers, ArrowDown, ArrowUp,
   ExternalLink, Info,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
@@ -47,6 +48,8 @@ import { type InstanceOption } from '@/components/instance-filter';
 import { useCan } from '@/components/permission-provider';
 import { useBadgeActions } from '@/components/layout/badge-provider';
 import { RemoveQueueDialog, type RemoveQueueOptions } from './_components/remove-queue-dialog';
+import { compareActivityQueueItems } from '@/lib/activity-queue-sort';
+import type { ActivitySortDirectionPreference } from '@/lib/store';
 
 // --- Status helpers ---
 
@@ -292,6 +295,8 @@ export default function ActivityPage() {
   const setActivityTab = useUIStore((s) => s.setActivityTab);
   const sortBy = useUIStore((s) => s.activitySortBy);
   const setSortBy = useUIStore((s) => s.setActivitySortBy);
+  const sortDirection = useUIStore((s) => s.activitySortDirection);
+  const setSortDirection = useUIStore((s) => s.setActivitySortDirection);
   const filterBy = useUIStore((s) => s.activityFilterBy);
   const setFilterBy = useUIStore((s) => s.setActivityFilterBy);
   const instanceFilter = useUIStore((s) => s.activityInstanceFilter);
@@ -383,6 +388,14 @@ export default function ActivityPage() {
     window.history.replaceState(null, '', query ? `/activity?${query}` : '/activity');
   }
 
+  function handleSortSelect(nextSort: SortKey) {
+    if (nextSort === sortBy) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+      return;
+    }
+    setSortBy(nextSort);
+  }
+
   /**
    * Trigger a refresh of monitored downloads in Sonarr and Radarr and notify the user of the outcome.
    *
@@ -420,16 +433,17 @@ export default function ActivityPage() {
       <div className="page-toolbar page-toolbar-flush flex items-center app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
         {/* Top bar — page name stays sr-only; toolbar space is for controls. */}
         <h1 className="sr-only">Activity</h1>
-        <div className="flex items-center justify-between pt-2 pb-2 w-full">
-          <div className="flex items-center gap-1">
+        <div className="flex items-center justify-between pt-2 md:pt-0 pb-2 md:pb-1 w-full">
+          <div className="flex items-center md:gap-1 gap-2">
             {/* Filter */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-11 w-11" aria-label="Filter">
-                  <Filter className="h-4 w-4" />
+                <Button variant="ghost" size="icon" className="md:h-11 md:w-11 w-7 h-7" aria-label="Filter and sort">
+                  <SlidersHorizontal className="h-4 w-4" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
+                <DropdownMenuLabel>Sources</DropdownMenuLabel>
                 <DropdownMenuCheckboxItem
                   checked={filterBy.length === 0}
                   onCheckedChange={() => setFilterBy([])}
@@ -475,36 +489,46 @@ export default function ActivityPage() {
                     ))}
                   </>
                 )}
+                {availableSortOptions.length > 0 && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuLabel>Sort by</DropdownMenuLabel>
+                    <DropdownMenuRadioGroup
+                      value={sortBy}
+                    >
+                      {availableSortOptions.map((opt) => {
+                        const selected = sortBy === opt.key;
+                        const DirectionIcon = sortDirection === 'asc' ? ArrowUp : ArrowDown;
+                        return (
+                          <DropdownMenuRadioItem
+                            key={opt.key}
+                            value={opt.key}
+                            aria-label={
+                              selected
+                                ? `${opt.label}, ${sortDirection === 'asc' ? 'ascending' : 'descending'}. Select again to reverse.`
+                                : opt.label
+                            }
+                            onSelect={(e) => {
+                              e.preventDefault();
+                              handleSortSelect(opt.key);
+                            }}
+                          >
+                            {opt.label}
+                            {selected && <DirectionIcon className="ml-auto h-3.5 w-3.5" />}
+                          </DropdownMenuRadioItem>
+                        );
+                      })}
+                    </DropdownMenuRadioGroup>
+                  </>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
-
-            {/* Sort */}
-            {availableSortOptions.length > 0 && (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-11 w-11" aria-label="Sort">
-                    <ArrowUpDown className="h-4 w-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  {availableSortOptions.map((opt) => (
-                    <DropdownMenuItem
-                      key={opt.key}
-                      onClick={() => setSortBy(opt.key)}
-                      className={sortBy === opt.key ? 'bg-accent' : ''}
-                    >
-                      {opt.label}
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
 
             {/* History */}
             <Button
               variant="ghost"
               size="icon"
-              className="h-11 w-11"
+              className="md:h-11 md:w-11 w-7 h-7"
               onClick={() => router.push('/activity/history')}
               aria-label="History"
             >
@@ -517,7 +541,7 @@ export default function ActivityPage() {
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-11 w-11"
+                  className="md:h-11 md:w-11 w-7 h-7"
                   onClick={handleRefreshActivity}
                   disabled={refreshing}
                   aria-label="Refresh"
@@ -562,6 +586,7 @@ export default function ActivityPage() {
         {tab === 'queue' && (
           <QueueTab
             sortBy={sortBy}
+            sortDirection={sortDirection}
             filterBy={filterBy}
             instanceFilter={instanceFilter}
             onCountChange={setQueueCount}
@@ -582,6 +607,7 @@ export default function ActivityPage() {
  * reports the visible item count via `onCountChange`, and exposes per-item details and removal from the queue.
  *
  * @param sortBy - Key used to sort visible queue items (title, progress, timeleft, or size)
+ * @param sortDirection - Direction applied to the selected queue sort
  * @param filterBy - Selected sources to limit items to (`'sonarr'`, `'radarr'`, `'lidarr'`); an empty array means all sources.
  * @param onCountChange - Callback invoked with the current number of visible items after filtering and sorting
  * @returns The rendered Queue tab content as a JSX element
@@ -589,11 +615,13 @@ export default function ActivityPage() {
 
 function QueueTab({
   sortBy,
+  sortDirection,
   filterBy,
   instanceFilter,
   onCountChange,
 }: {
   sortBy: SortKey;
+  sortDirection: ActivitySortDirectionPreference;
   filterBy: string[];
   instanceFilter: string;
   onCountChange: (count: number) => void;
@@ -650,23 +678,7 @@ function QueueTab({
   // groups by their representative record so a pack sorts as a single task.
   const groups = groupQueueByDownload(filtered);
   const sorted = [...groups].sort((a, b) => {
-    const ra = a.rep;
-    const rb = b.rep;
-    switch (sortBy) {
-      case 'title':
-        return (ra.title || '').localeCompare(rb.title || '');
-      case 'progress': {
-        const pA = ra.size > 0 ? (ra.size - ra.sizeleft) / ra.size : 0;
-        const pB = rb.size > 0 ? (rb.size - rb.sizeleft) / rb.size : 0;
-        return pB - pA;
-      }
-      case 'timeleft':
-        return (ra.timeleft || 'zz').localeCompare(rb.timeleft || 'zz');
-      case 'size':
-        return rb.size - ra.size;
-      default:
-        return 0;
-    }
+    return compareActivityQueueItems(a.rep, b.rep, sortBy, sortDirection);
   });
 
   useEffect(() => {
@@ -697,9 +709,9 @@ function QueueTab({
       delta = teardown
         ? queueRemovalDelta(siblings)
         : {
-            count: 1,
-            attention: classifyQueueIssue(item.trackedDownloadState, item.trackedDownloadStatus) !== null ? 1 : 0,
-          };
+          count: 1,
+          attention: classifyQueueIssue(item.trackedDownloadState, item.trackedDownloadStatus) !== null ? 1 : 0,
+        };
       toDelete = [item];
       uiRemove = siblings;
     }
@@ -804,94 +816,94 @@ function QueueTab({
                   onAction: () => setRemoveTarget({ kind: 'item', item: rep }),
                 } : undefined}
               >
-              <QuickContextMenu
-                label={`Actions for ${rep.title}`}
-                groups={[
-                  {
-                    id: 'navigation',
-                    actions: [
-                      {
-                        id: 'view-details',
-                        label: 'View details',
-                        icon: <Info className="h-4 w-4" />,
-                        onSelect: () => setSelectedItem(rep),
-                      },
-                      ...(mediaHref
-                        ? [{
+                <QuickContextMenu
+                  label={`Actions for ${rep.title}`}
+                  groups={[
+                    {
+                      id: 'navigation',
+                      actions: [
+                        {
+                          id: 'view-details',
+                          label: 'View details',
+                          icon: <Info className="h-4 w-4" />,
+                          onSelect: () => setSelectedItem(rep),
+                        },
+                        ...(mediaHref
+                          ? [{
                             id: 'open-media',
                             label: 'Open related media',
                             icon: <ExternalLink className="h-4 w-4" />,
                             href: mediaHref,
                           }]
-                        : []),
-                    ],
-                  },
-                  {
-                    id: 'destructive',
-                    actions: canManageActivity
-                      ? [{
+                          : []),
+                      ],
+                    },
+                    {
+                      id: 'destructive',
+                      actions: canManageActivity
+                        ? [{
                           id: 'remove',
                           label: 'Remove from queue',
                           icon: <Trash2 className="h-4 w-4" />,
                           destructive: true,
                           onSelect: () => setRemoveTarget({ kind: 'item', item: rep }),
                         }]
-                      : [],
-                  },
-                ]}
-              >
-              <button
-                onClick={() => setSelectedItem(rep)}
-                className="w-full text-left rounded-xl bg-muted/30 p-3 space-y-2 active:bg-muted/50 transition-colors"
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium truncate">{rep.title}</p>
-                    <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-                      <Badge
-                        variant="secondary"
-                        className={`text-[10px] px-1.5 py-0 ${statusColor(rep.status, rep.trackedDownloadStatus)}`}
-                      >
-                        {statusLabel(rep)}
-                      </Badge>
-                      <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-                        {rep.source}
-                      </Badge>
-                      {qualityName && (
-                        <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-                          {qualityName}
-                        </Badge>
-                      )}
-                      {typeof rep.customFormatScore === 'number' && (
-                        <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-                          CF {rep.customFormatScore}
-                        </Badge>
-                      )}
-                      {rep.indexer && (
-                        <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-                          {rep.indexer}
-                        </Badge>
+                        : [],
+                    },
+                  ]}
+                >
+                  <button
+                    onClick={() => setSelectedItem(rep)}
+                    className="w-full text-left rounded-xl bg-muted/30 p-3 space-y-2 active:bg-muted/50 transition-colors"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium truncate">{rep.title}</p>
+                        <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                          <Badge
+                            variant="secondary"
+                            className={`text-[10px] px-1.5 py-0 ${statusColor(rep.status, rep.trackedDownloadStatus)}`}
+                          >
+                            {statusLabel(rep)}
+                          </Badge>
+                          <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                            {rep.source}
+                          </Badge>
+                          {qualityName && (
+                            <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                              {qualityName}
+                            </Badge>
+                          )}
+                          {typeof rep.customFormatScore === 'number' && (
+                            <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                              CF {rep.customFormatScore}
+                            </Badge>
+                          )}
+                          {rep.indexer && (
+                            <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                              {rep.indexer}
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+                      {rep.timeleft && (
+                        <span className="text-[10px] text-muted-foreground shrink-0 mt-0.5">
+                          {rep.timeleft}
+                        </span>
                       )}
                     </div>
-                  </div>
-                  {rep.timeleft && (
-                    <span className="text-[10px] text-muted-foreground shrink-0 mt-0.5">
-                      {rep.timeleft}
-                    </span>
-                  )}
-                </div>
-                <div className="flex items-center gap-2">
-                  <Progress value={progress} className="h-1.5 flex-1" />
-                  <span className="text-[10px] text-muted-foreground tabular-nums shrink-0">
-                    {progress.toFixed(0)}%
-                  </span>
-                </div>
-                <div className="flex items-center justify-between text-[10px] text-muted-foreground">
-                  <span>Left: {formatBytes(rep.sizeleft)}</span>
-                  <span>Total: {formatBytes(rep.size)}</span>
-                </div>
-              </button>
-              </QuickContextMenu>
+                    <div className="flex items-center gap-2">
+                      <Progress value={progress} className="h-1.5 flex-1" />
+                      <span className="text-[10px] text-muted-foreground tabular-nums shrink-0">
+                        {progress.toFixed(0)}%
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+                      <span>Left: {formatBytes(rep.sizeleft)}</span>
+                      <span>Total: {formatBytes(rep.size)}</span>
+                    </div>
+                  </button>
+                </QuickContextMenu>
               </SwipeRow>
             );
           }
@@ -931,182 +943,182 @@ function QueueTab({
                 onAction: () => setRemoveTarget({ kind: 'pack', group }),
               } : undefined}
             >
-            <div className="rounded-xl bg-muted/30 overflow-hidden">
-              <div className="flex items-stretch">
-                <QuickContextMenu
-                  label={`Actions for ${packTitle}`}
-                  groups={[
-                    {
-                      id: 'navigation',
-                      actions: [
-                        {
-                          id: 'view-details',
-                          label: 'View download details',
-                          icon: <Info className="h-4 w-4" />,
-                          onSelect: () => setSelectedItem(rep),
-                        },
-                        {
-                          id: 'toggle-pack',
-                          label: open ? 'Collapse pack' : 'Expand pack',
-                          icon: <ChevronRight className={`h-4 w-4 ${open ? 'rotate-90' : ''}`} />,
-                          onSelect: () => toggleExpand(group.key),
-                        },
-                        ...(packMediaHref
-                          ? [{
+              <div className="rounded-xl bg-muted/30 overflow-hidden">
+                <div className="flex items-stretch">
+                  <QuickContextMenu
+                    label={`Actions for ${packTitle}`}
+                    groups={[
+                      {
+                        id: 'navigation',
+                        actions: [
+                          {
+                            id: 'view-details',
+                            label: 'View download details',
+                            icon: <Info className="h-4 w-4" />,
+                            onSelect: () => setSelectedItem(rep),
+                          },
+                          {
+                            id: 'toggle-pack',
+                            label: open ? 'Collapse pack' : 'Expand pack',
+                            icon: <ChevronRight className={`h-4 w-4 ${open ? 'rotate-90' : ''}`} />,
+                            onSelect: () => toggleExpand(group.key),
+                          },
+                          ...(packMediaHref
+                            ? [{
                               id: 'open-media',
                               label: 'Open related media',
                               icon: <ExternalLink className="h-4 w-4" />,
                               href: packMediaHref,
                             }]
-                          : []),
-                      ],
-                    },
-                    {
-                      id: 'destructive',
-                      actions: canManageActivity
-                        ? [{
+                            : []),
+                        ],
+                      },
+                      {
+                        id: 'destructive',
+                        actions: canManageActivity
+                          ? [{
                             id: 'remove-pack',
                             label: 'Remove pack from queue',
                             icon: <Trash2 className="h-4 w-4" />,
                             destructive: true,
                             onSelect: () => setRemoveTarget({ kind: 'pack', group }),
                           }]
-                        : [],
-                    },
-                  ]}
-                >
-                <button
-                  onClick={() => toggleExpand(group.key)}
-                  aria-expanded={open}
-                  className="min-w-0 flex-1 text-left p-3 space-y-2 active:bg-muted/50 transition-colors"
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium truncate">{packTitle}</p>
-                      <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-                        <Badge
-                          variant="secondary"
-                          className={`text-[10px] px-1.5 py-0 ${statusColor(rep.status, rep.trackedDownloadStatus)}`}
-                        >
-                          {statusLabel(rep)}
-                        </Badge>
-                        {hasAttention && (
-                          <AlertTriangle className="h-3 w-3 text-amber-500" aria-label="Some items need attention" />
-                        )}
-                        <Badge variant="outline" className="text-[10px] px-1.5 py-0 gap-1">
-                          <Layers className="h-2.5 w-2.5" />
-                          {group.items.length} {packNoun(rep.source)}
-                        </Badge>
-                        <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-                          {rep.source}
-                        </Badge>
-                        {qualityName && (
-                          <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-                            {qualityName}
-                          </Badge>
-                        )}
-                        {rep.indexer && (
-                          <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-                            {rep.indexer}
-                          </Badge>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1 shrink-0 mt-0.5">
-                      {rep.timeleft && (
-                        <span className="text-[10px] text-muted-foreground">{rep.timeleft}</span>
-                      )}
-                      <ChevronRight
-                        className={`h-4 w-4 text-muted-foreground transition-transform ${open ? 'rotate-90' : ''}`}
-                      />
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Progress value={progress} className="h-1.5 flex-1" />
-                    <span className="text-[10px] text-muted-foreground tabular-nums shrink-0">
-                      {progress.toFixed(0)}%
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between text-[10px] text-muted-foreground">
-                    <span>Left: {formatBytes(rep.sizeleft)}</span>
-                    <span>Total: {formatBytes(rep.size)}</span>
-                  </div>
-                </button>
-                </QuickContextMenu>
-                {canManageActivity && (
-                  <button
-                    onClick={() => setRemoveTarget({ kind: 'pack', group })}
-                    aria-label="Remove pack from queue"
-                    className="shrink-0 px-3 flex items-center justify-center border-l border-border/40 text-muted-foreground active:bg-destructive/10 active:text-destructive transition-colors"
+                          : [],
+                      },
+                    ]}
                   >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                )}
-              </div>
+                    <button
+                      onClick={() => toggleExpand(group.key)}
+                      aria-expanded={open}
+                      className="min-w-0 flex-1 text-left p-3 space-y-2 active:bg-muted/50 transition-colors"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium truncate">{packTitle}</p>
+                          <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                            <Badge
+                              variant="secondary"
+                              className={`text-[10px] px-1.5 py-0 ${statusColor(rep.status, rep.trackedDownloadStatus)}`}
+                            >
+                              {statusLabel(rep)}
+                            </Badge>
+                            {hasAttention && (
+                              <AlertTriangle className="h-3 w-3 text-amber-500" aria-label="Some items need attention" />
+                            )}
+                            <Badge variant="outline" className="text-[10px] px-1.5 py-0 gap-1">
+                              <Layers className="h-2.5 w-2.5" />
+                              {group.items.length} {packNoun(rep.source)}
+                            </Badge>
+                            <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                              {rep.source}
+                            </Badge>
+                            {qualityName && (
+                              <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                                {qualityName}
+                              </Badge>
+                            )}
+                            {rep.indexer && (
+                              <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                                {rep.indexer}
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0 mt-0.5">
+                          {rep.timeleft && (
+                            <span className="text-[10px] text-muted-foreground">{rep.timeleft}</span>
+                          )}
+                          <ChevronRight
+                            className={`h-4 w-4 text-muted-foreground transition-transform ${open ? 'rotate-90' : ''}`}
+                          />
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Progress value={progress} className="h-1.5 flex-1" />
+                        <span className="text-[10px] text-muted-foreground tabular-nums shrink-0">
+                          {progress.toFixed(0)}%
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+                        <span>Left: {formatBytes(rep.sizeleft)}</span>
+                        <span>Total: {formatBytes(rep.size)}</span>
+                      </div>
+                    </button>
+                  </QuickContextMenu>
+                  {canManageActivity && (
+                    <button
+                      onClick={() => setRemoveTarget({ kind: 'pack', group })}
+                      aria-label="Remove pack from queue"
+                      className="shrink-0 px-3 flex items-center justify-center border-l border-border/40 text-muted-foreground active:bg-destructive/10 active:text-destructive transition-colors"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
 
-              {open && (
-                <div className="border-t border-border/40 divide-y divide-border/30">
-                  {episodes.map((ep) => {
-                    const label = episodeLabel(ep);
-                    const episodeHref = getQueueMediaHref(ep);
-                    return (
-                      <QuickContextMenu
-                        key={`${ep.source}-${ep.instanceId ?? ''}-${ep.id}`}
-                        label={`Actions for ${ep.episode?.title || ep.title}`}
-                        groups={[
-                          {
-                            id: 'navigation',
-                            actions: [
-                              {
-                                id: 'view-details',
-                                label: 'View details',
-                                icon: <Info className="h-4 w-4" />,
-                                onSelect: () => setSelectedItem(ep),
-                              },
-                              ...(episodeHref
-                                ? [{
+                {open && (
+                  <div className="border-t border-border/40 divide-y divide-border/30">
+                    {episodes.map((ep) => {
+                      const label = episodeLabel(ep);
+                      const episodeHref = getQueueMediaHref(ep);
+                      return (
+                        <QuickContextMenu
+                          key={`${ep.source}-${ep.instanceId ?? ''}-${ep.id}`}
+                          label={`Actions for ${ep.episode?.title || ep.title}`}
+                          groups={[
+                            {
+                              id: 'navigation',
+                              actions: [
+                                {
+                                  id: 'view-details',
+                                  label: 'View details',
+                                  icon: <Info className="h-4 w-4" />,
+                                  onSelect: () => setSelectedItem(ep),
+                                },
+                                ...(episodeHref
+                                  ? [{
                                     id: 'open-media',
                                     label: 'Open related media',
                                     icon: <ExternalLink className="h-4 w-4" />,
                                     href: episodeHref,
                                   }]
-                                : []),
-                            ],
-                          },
-                          {
-                            id: 'destructive',
-                            actions: canManageActivity
-                              ? [{
+                                  : []),
+                              ],
+                            },
+                            {
+                              id: 'destructive',
+                              actions: canManageActivity
+                                ? [{
                                   id: 'remove-item',
                                   label: 'Remove from queue',
                                   icon: <Trash2 className="h-4 w-4" />,
                                   destructive: true,
                                   onSelect: () => setRemoveTarget({ kind: 'item', item: ep }),
                                 }]
-                              : [],
-                          },
-                        ]}
-                      >
-                      <button
-                        onClick={() => setSelectedItem(ep)}
-                        className="w-full text-left px-3 py-2 flex items-center gap-2 active:bg-muted/50 transition-colors"
-                      >
-                        {label && (
-                          <span className="text-[10px] font-mono text-muted-foreground tabular-nums shrink-0 w-11">
-                            {label}
-                          </span>
-                        )}
-                        <span className="text-xs truncate flex-1">
-                          {ep.episode?.title || ep.title}
-                        </span>
-                        <ChevronRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                      </button>
-                      </QuickContextMenu>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
+                                : [],
+                            },
+                          ]}
+                        >
+                          <button
+                            onClick={() => setSelectedItem(ep)}
+                            className="w-full text-left px-3 py-2 flex items-center gap-2 active:bg-muted/50 transition-colors"
+                          >
+                            {label && (
+                              <span className="text-[10px] font-mono text-muted-foreground tabular-nums shrink-0 w-11">
+                                {label}
+                              </span>
+                            )}
+                            <span className="text-xs truncate flex-1">
+                              {ep.episode?.title || ep.title}
+                            </span>
+                            <ChevronRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                          </button>
+                        </QuickContextMenu>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             </SwipeRow>
           );
         })}
@@ -1350,57 +1362,57 @@ function FailedImportsTab({ filterBy, instanceFilter }: { filterBy: string[]; in
       {queue.map((item) => {
         const mediaHref = getQueueMediaHref(item);
         return (
-        <QuickContextMenu
-          key={`${item.source}-${item.instanceId ?? ''}-${item.id}`}
-          label={`Actions for ${item.title}`}
-          groups={[
-            {
-              id: 'actions',
-              actions: [
-                ...(mediaHref
-                  ? [{
+          <QuickContextMenu
+            key={`${item.source}-${item.instanceId ?? ''}-${item.id}`}
+            label={`Actions for ${item.title}`}
+            groups={[
+              {
+                id: 'actions',
+                actions: [
+                  ...(mediaHref
+                    ? [{
                       id: 'open-media',
                       label: 'Open related media',
                       icon: <ExternalLink className="h-4 w-4" />,
                       href: mediaHref,
                     }]
-                  : []),
-                ...(canManageActivity
-                  ? [{
+                    : []),
+                  ...(canManageActivity
+                    ? [{
                       id: 'manual-import',
                       label: 'Open Manual Import',
                       icon: <Upload className="h-4 w-4" />,
                       onSelect: () => openManualImport(item),
                     }]
-                  : []),
-              ],
-            },
-          ]}
-        >
-        <div className="rounded-xl bg-muted/30 p-3 space-y-2">
-          <div className="flex items-start justify-between gap-2">
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium truncate">{item.title}</p>
-              <Badge
-                variant="secondary"
-                className="bg-red-500/10 text-red-500 border-red-500/20 mt-1 text-[10px]"
-              >
-                <AlertTriangle className="h-3 w-3 mr-1" /> {statusLabel(item)}
-              </Badge>
-              {item.statusMessages?.map((msg, i) => (
-                <p key={i} className="text-xs text-muted-foreground mt-1 break-words">
-                  {msg.title}: {msg.messages?.join(', ')}
-                </p>
-              ))}
+                    : []),
+                ],
+              },
+            ]}
+          >
+            <div className="rounded-xl bg-muted/30 p-3 space-y-2">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium truncate">{item.title}</p>
+                  <Badge
+                    variant="secondary"
+                    className="bg-red-500/10 text-red-500 border-red-500/20 mt-1 text-[10px]"
+                  >
+                    <AlertTriangle className="h-3 w-3 mr-1" /> {statusLabel(item)}
+                  </Badge>
+                  {item.statusMessages?.map((msg, i) => (
+                    <p key={i} className="text-xs text-muted-foreground mt-1 break-words">
+                      {msg.title}: {msg.messages?.join(', ')}
+                    </p>
+                  ))}
+                </div>
+                {canManageActivity && (
+                  <Button size="sm" className="shrink-0 h-8 text-xs" onClick={() => openManualImport(item)}>
+                    <Upload className="mr-1.5 h-3.5 w-3.5" /> Import
+                  </Button>
+                )}
+              </div>
             </div>
-            {canManageActivity && (
-              <Button size="sm" className="shrink-0 h-8 text-xs" onClick={() => openManualImport(item)}>
-                <Upload className="mr-1.5 h-3.5 w-3.5" /> Import
-              </Button>
-            )}
-          </div>
-        </div>
-        </QuickContextMenu>
+          </QuickContextMenu>
         );
       })}
     </div>
@@ -1584,66 +1596,66 @@ function WantedTab({ type, filterBy, instanceFilter }: { type: 'missing' | 'cuto
                 actions: [
                   ...(href
                     ? [{
-                        id: 'open-media',
-                        label: 'Open related media',
-                        icon: <ExternalLink className="h-4 w-4" />,
-                        href,
-                      }]
+                      id: 'open-media',
+                      label: 'Open related media',
+                      icon: <ExternalLink className="h-4 w-4" />,
+                      href,
+                    }]
                     : []),
                   ...(canManageActivity
                     ? [{
-                        id: 'search-release',
-                        label: 'Search for release',
-                        icon: <Search className="h-4 w-4" />,
-                        pending: searching.has(key),
-                        onSelect: () => void handleSearch(record),
-                      }]
+                      id: 'search-release',
+                      label: 'Search for release',
+                      icon: <Search className="h-4 w-4" />,
+                      pending: searching.has(key),
+                      onSelect: () => void handleSearch(record),
+                    }]
                     : []),
                 ],
               },
             ]}
           >
-          <div className="flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-muted/50 active:bg-muted/50 transition-colors">
-            {href ? (
-              <Link href={href} className="p-1.5 rounded bg-muted hover:bg-muted/80 transition-colors">
-                {isEpisode ? <Tv className="h-3.5 w-3.5 text-muted-foreground" /> : isAlbum ? <Disc3 className="h-3.5 w-3.5 text-muted-foreground" /> : <Film className="h-3.5 w-3.5 text-muted-foreground" />}
-              </Link>
-            ) : (
-              <div className="p-1.5 rounded bg-muted">
-                {isEpisode ? <Tv className="h-3.5 w-3.5 text-muted-foreground" /> : isAlbum ? <Disc3 className="h-3.5 w-3.5 text-muted-foreground" /> : <Film className="h-3.5 w-3.5 text-muted-foreground" />}
-              </div>
-            )}
-            <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-muted/50 active:bg-muted/50 transition-colors">
               {href ? (
-                <Link href={href} className="block">
-                  <p className="text-sm truncate">{displayTitle}</p>
+                <Link href={href} className="p-1.5 rounded bg-muted hover:bg-muted/80 transition-colors">
+                  {isEpisode ? <Tv className="h-3.5 w-3.5 text-muted-foreground" /> : isAlbum ? <Disc3 className="h-3.5 w-3.5 text-muted-foreground" /> : <Film className="h-3.5 w-3.5 text-muted-foreground" />}
                 </Link>
               ) : (
-                <p className="text-sm truncate">{displayTitle}</p>
+                <div className="p-1.5 rounded bg-muted">
+                  {isEpisode ? <Tv className="h-3.5 w-3.5 text-muted-foreground" /> : isAlbum ? <Disc3 className="h-3.5 w-3.5 text-muted-foreground" /> : <Film className="h-3.5 w-3.5 text-muted-foreground" />}
+                </div>
               )}
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <Badge variant="outline" className="text-[10px] px-1.5 py-0">{record.source}</Badge>
-                {dateStr && (
-                  <span>{formatDistanceToNow(new Date(dateStr), { addSuffix: true })}</span>
-                )}
-              </div>
-            </div>
-            {canManageActivity && (
-              <Button
-                size="sm"
-                variant="ghost"
-                className="h-7 w-7 p-0 shrink-0"
-                onClick={() => handleSearch(record)}
-                disabled={searching.has(key)}
-              >
-                {searching.has(key) ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              <div className="flex-1 min-w-0">
+                {href ? (
+                  <Link href={href} className="block">
+                    <p className="text-sm truncate">{displayTitle}</p>
+                  </Link>
                 ) : (
-                  <Search className="h-3.5 w-3.5" />
+                  <p className="text-sm truncate">{displayTitle}</p>
                 )}
-              </Button>
-            )}
-          </div>
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Badge variant="outline" className="text-[10px] px-1.5 py-0">{record.source}</Badge>
+                  {dateStr && (
+                    <span>{formatDistanceToNow(new Date(dateStr), { addSuffix: true })}</span>
+                  )}
+                </div>
+              </div>
+              {canManageActivity && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 w-7 p-0 shrink-0"
+                  onClick={() => handleSearch(record)}
+                  disabled={searching.has(key)}
+                >
+                  {searching.has(key) ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Search className="h-3.5 w-3.5" />
+                  )}
+                </Button>
+              )}
+            </div>
           </QuickContextMenu>
         );
       })}

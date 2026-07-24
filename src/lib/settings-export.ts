@@ -80,7 +80,7 @@ export const UI_PREF_CATEGORY_FIELDS: Record<UiPrefCategoryId, readonly string[]
   discover: ['discoverContentType', 'discoverSort', 'discoverSortDirection', 'discoverFilters'],
   anime: ['animeSort', 'animeFilters', 'animeCarouselOrder', 'disabledAnimeCarousels'],
   torrents: ['torrentsFilter', 'torrentsSortKey', 'torrentsSortDir', 'torrentsView'],
-  activity: ['activityTab', 'activitySortBy', 'activityFilterBy', 'activityInstanceFilter'],
+  activity: ['activityTab', 'activitySortBy', 'activitySortDirection', 'activityFilterBy', 'activityInstanceFilter'],
   requests: ['requestsTab', 'requestsFilter', 'requestsUserFilter', 'requestsTypeFilter', 'requestsSort', 'requestsSortDirection'],
   notificationFilters: ['notificationsFilters'],
   calendar: [

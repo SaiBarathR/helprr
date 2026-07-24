@@ -122,6 +122,7 @@ export type TorrentsSortDirectionPreference = 'asc' | 'desc';
 export type TorrentsViewPreference = 'card' | 'table';
 export type ActivityTabPreference = 'queue' | 'failed' | 'missing' | 'cutoff';
 export type ActivitySortPreference = 'title' | 'progress' | 'timeleft' | 'size';
+export type ActivitySortDirectionPreference = 'asc' | 'desc';
 export type NotificationsReadStatePreference = 'all' | 'unread' | 'read';
 
 export type RequestsTabPreference = 'requests' | 'users';
@@ -233,7 +234,7 @@ function cloneDiscoverFilters(filters: DiscoverFiltersState): DiscoverFiltersSta
   };
 }
 
-export const STORE_VERSION = 43;
+export const STORE_VERSION = 44;
 
 // Matches the calendar backdrop's previously hardcoded Tailwind `opacity-35`.
 export const DEFAULT_CALENDAR_IMAGE_OPACITY = 35;
@@ -451,6 +452,14 @@ export function migrateUiPrefs(persisted: unknown, version: number): Record<stri
       };
     }
   }
+  if (version < 44) {
+    // Preserve the effective order used before direction became configurable:
+    // title/time-left were ascending, while progress/size were descending.
+    state.activitySortDirection =
+      state.activitySortBy === 'title' || state.activitySortBy === 'timeleft'
+        ? 'asc'
+        : 'desc';
+  }
   if (!isMediaWatchFilterPreference(state.moviesWatchFilter)) {
     state.moviesWatchFilter = 'all';
   }
@@ -552,6 +561,8 @@ interface UIState {
   setActivityTab: (tab: ActivityTabPreference) => void;
   activitySortBy: ActivitySortPreference;
   setActivitySortBy: (sortBy: ActivitySortPreference) => void;
+  activitySortDirection: ActivitySortDirectionPreference;
+  setActivitySortDirection: (direction: ActivitySortDirectionPreference) => void;
   // Empty array = all sources. Multi-select set of sources (sonarr/radarr/lidarr).
   activityFilterBy: string[];
   setActivityFilterBy: (filterBy: string[]) => void;
@@ -704,6 +715,7 @@ const PERSISTED_KEYS = [
   'torrentsView',
   'activityTab',
   'activitySortBy',
+  'activitySortDirection',
   'activityFilterBy',
   'activityInstanceFilter',
   'requestsTab',
@@ -887,6 +899,8 @@ export const useUIStore = create<UIState>()(
       setActivityTab: (tab) => set({ activityTab: tab }),
       activitySortBy: 'progress',
       setActivitySortBy: (sortBy) => set({ activitySortBy: sortBy }),
+      activitySortDirection: 'desc',
+      setActivitySortDirection: (direction) => set({ activitySortDirection: direction }),
       activityFilterBy: [],
       setActivityFilterBy: (filterBy) => set({ activityFilterBy: filterBy }),
       activityInstanceFilter: 'all',
