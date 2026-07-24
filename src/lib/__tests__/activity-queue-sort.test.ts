@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { compareActivityQueueItems, type ActivityQueueSortableItem } from '@/lib/activity-queue-sort';
+import {
+  compareActivityQueueItems,
+  getDefaultActivitySortDirection,
+  type ActivityQueueSortableItem,
+} from '@/lib/activity-queue-sort';
 import { migrateUiPrefs } from '@/lib/store';
 
 const smaller: ActivityQueueSortableItem = {
@@ -38,5 +42,16 @@ describe('activity sort direction migration', () => {
     const migrated = migrateUiPrefs({ activitySortBy }, 43);
 
     expect(migrated.activitySortDirection).toBe(expectedDirection);
+  });
+});
+
+describe('getDefaultActivitySortDirection', () => {
+  it.each([
+    ['title', 'asc'],
+    ['timeleft', 'asc'],
+    ['progress', 'desc'],
+    ['size', 'desc'],
+  ] as const)('defaults %s to %s', (sortBy, expectedDirection) => {
+    expect(getDefaultActivitySortDirection(sortBy)).toBe(expectedDirection);
   });
 });
