@@ -48,7 +48,10 @@ import { type InstanceOption } from '@/components/instance-filter';
 import { useCan } from '@/components/permission-provider';
 import { useBadgeActions } from '@/components/layout/badge-provider';
 import { RemoveQueueDialog, type RemoveQueueOptions } from './_components/remove-queue-dialog';
-import { compareActivityQueueItems } from '@/lib/activity-queue-sort';
+import {
+  compareActivityQueueItems,
+  getDefaultActivitySortDirection,
+} from '@/lib/activity-queue-sort';
 import type { ActivitySortDirectionPreference } from '@/lib/store';
 
 // --- Status helpers ---
@@ -369,10 +372,16 @@ export default function ActivityPage() {
     if (requestedSource && isFilterKey(requestedSource) && requestedSource !== 'all') {
       setFilterBy([requestedSource]);
     }
-    if (requestedSort && isSortKey(requestedSort) && requestedSort !== currentState.activitySortBy) {
-      setSortBy(requestedSort);
+    if (requestedSort && isSortKey(requestedSort)) {
+      const defaultDirection = getDefaultActivitySortDirection(requestedSort);
+      if (requestedSort !== currentState.activitySortBy) {
+        setSortBy(requestedSort);
+      }
+      if (defaultDirection !== currentState.activitySortDirection) {
+        setSortDirection(defaultDirection);
+      }
     }
-  }, [hasHydrated, searchParamsKey, setFilterBy, setSortBy]);
+  }, [hasHydrated, searchParamsKey, setFilterBy, setSortBy, setSortDirection]);
 
   function handleTabChange(nextTab: TabKey) {
     if (!isTabKey(nextTab)) return;
@@ -394,6 +403,7 @@ export default function ActivityPage() {
       return;
     }
     setSortBy(nextSort);
+    setSortDirection(getDefaultActivitySortDirection(nextSort));
   }
 
   /**

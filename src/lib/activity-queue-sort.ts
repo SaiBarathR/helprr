@@ -10,6 +10,12 @@ export interface ActivityQueueSortableItem {
   timeleft?: string;
 }
 
+export function getDefaultActivitySortDirection(
+  sortBy: ActivitySortPreference,
+): ActivitySortDirectionPreference {
+  return sortBy === 'title' || sortBy === 'timeleft' ? 'asc' : 'desc';
+}
+
 export function compareActivityQueueItems(
   a: ActivityQueueSortableItem,
   b: ActivityQueueSortableItem,

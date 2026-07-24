@@ -24,6 +24,7 @@ import {
   type DashboardPalette,
   type GlassMode,
 } from '@/lib/dashboard-theme';
+import { getDefaultActivitySortDirection } from '@/lib/activity-queue-sort';
 
 export type MediaViewMode = 'posters' | 'overview' | 'table';
 export type PosterSize = 'small' | 'medium' | 'large';
@@ -455,10 +456,8 @@ export function migrateUiPrefs(persisted: unknown, version: number): Record<stri
   if (version < 44) {
     // Preserve the effective order used before direction became configurable:
     // title/time-left were ascending, while progress/size were descending.
-    state.activitySortDirection =
-      state.activitySortBy === 'title' || state.activitySortBy === 'timeleft'
-        ? 'asc'
-        : 'desc';
+    const activitySortBy = state.activitySortBy as ActivitySortPreference | undefined;
+    state.activitySortDirection = getDefaultActivitySortDirection(activitySortBy ?? 'progress');
   }
   if (!isMediaWatchFilterPreference(state.moviesWatchFilter)) {
     state.moviesWatchFilter = 'all';
