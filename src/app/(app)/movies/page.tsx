@@ -865,7 +865,7 @@ export default function MoviesPage() {
       <PullToRefresh onRefresh={() => refetchMovies()} disabled={selectionMode} />
       <h1 className="sr-only">Movies</h1>
       <div className="page-toolbar page-toolbar-flush pb-2 app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 space-y-2">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center md:gap-2 w-full overflow-x-auto scrollbar-hide">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
@@ -1040,10 +1040,10 @@ export default function MoviesPage() {
               <TooltipTrigger asChild>
                 <Link
                   href="/movies/add"
-                  className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/80 transition-colors"
+                  className="md:p-2 md:min-h-[44px] md:min-w-[44px] p-1 min-h-[36px] min-w-[36px] flex items-center justify-center rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/80 transition-colors"
                   aria-label="Add Movie"
                 >
-                  <Plus className="h-5 w-5" />
+                  <Plus className="md:h-5 md:w-5 h-6 w-6" />
                 </Link>
               </TooltipTrigger>
               <TooltipContent>Add Movie</TooltipContent>

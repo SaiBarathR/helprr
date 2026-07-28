@@ -18,7 +18,7 @@
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
     "@prisma/client": "^6.19.2",
-    "@serwist/next": "^9.5.4",
+    "@serwist/next": "^9.5.12",
     "@tanstack/react-query": "^5.101.0",
     "@tanstack/react-virtual": "^3.13.19",
     "axios": "^1.13.4",
@@ -62,7 +62,7 @@
     "vitest": "^4.1.10"
   },
   "overrides": {
-    "postcss": "^8.5.16",
+    "postcss": "^8.5.18",
     "sharp": "$sharp",
     "brace-expansion@1": "1.1.16",
     "brace-expansion@2": "2.1.2"

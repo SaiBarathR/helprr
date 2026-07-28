@@ -36,9 +36,23 @@ const ENGAGE_SLOP = 6;
 export const REFRESH_MIN_MS = 600;
 
 /**
+ * A nested scroll target is only at the page's refresh boundary when both it
+ * and the document viewport are at the top. Some responsive layouts declare
+ * an overflow container without constraining its height, so the document
+ * remains the element that actually scrolls.
+ */
+export function isPullToRefreshAtTop(
+  scrollContainerTop: number | undefined,
+  documentTop: number,
+): boolean {
+  return Math.max(scrollContainerTop ?? 0, documentTop) <= 0;
+}
+
+/**
  * Pull-to-refresh for document-scrolled pages, or a provided scroll container.
- * Engages only when the target is at the top and the gesture starts as a
- * downward drag, on coarse-pointer (touch) devices only.
+ * Engages only when the document and optional target are both at the top and
+ * the gesture starts as a downward drag, on coarse-pointer (touch) devices
+ * only.
  */
 export function usePullToRefresh({
   onRefresh,
@@ -81,7 +95,16 @@ export function usePullToRefresh({
     if (typeof window === 'undefined') return;
     if (!window.matchMedia?.('(pointer: coarse)').matches) return;
 
-    const getScrollTop = () => scrollContainerRef?.current?.scrollTop ?? window.scrollY;
+    const getDocumentScrollTop = () => Math.max(
+      window.scrollY,
+      document.scrollingElement?.scrollTop ?? 0,
+      document.documentElement.scrollTop,
+      document.body.scrollTop,
+    );
+    const isAtTop = () => isPullToRefreshAtTop(
+      scrollContainerRef?.current?.scrollTop,
+      getDocumentScrollTop(),
+    );
 
     // An open modal layer (drawer/dialog/sheet) locks body scroll via
     // react-remove-scroll, which stamps this attribute on <body>. Touches while
@@ -92,7 +115,7 @@ export function usePullToRefresh({
       if (disabledRef.current || refreshingRef.current) return;
       if (e.touches.length !== 1) return;
       if (isModalLayerOpen()) return;
-      if (getScrollTop() > 0) return;
+      if (!isAtTop()) return;
       startYRef.current = e.touches[0].clientY;
       engagedRef.current = false;
     };
@@ -101,7 +124,7 @@ export function usePullToRefresh({
       if (startYRef.current === null) return;
       // A late scroll (e.g. content grew) or a modal layer opening mid-gesture
       // (e.g. long-press) cancels the pull.
-      if (getScrollTop() > 0 || isModalLayerOpen()) {
+      if (!isAtTop() || isModalLayerOpen()) {
         reset();
         return;
       }
