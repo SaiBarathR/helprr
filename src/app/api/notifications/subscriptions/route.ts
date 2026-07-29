@@ -4,6 +4,7 @@ import { requireUserCapability } from '@/lib/auth';
 import { ownerScope } from '@/lib/user-dto';
 import { withApiLogging } from '@/lib/api-logger';
 import { upstreamErrorResponse } from '@/lib/api-error';
+import { toNotificationDeviceSummary } from '@/lib/notification-subscriptions';
 
 async function getHandler(): Promise<NextResponse> {
   const auth = await requireUserCapability('settings.notifications');
@@ -23,7 +24,7 @@ async function getHandler(): Promise<NextResponse> {
         createdAt: true,
       },
     });
-    return NextResponse.json(rows);
+    return NextResponse.json(rows.map(toNotificationDeviceSummary));
   } catch (error) {
     return upstreamErrorResponse(error, 'Failed');
   }

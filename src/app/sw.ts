@@ -16,6 +16,7 @@ import {
   StaleWhileRevalidate,
 } from 'serwist';
 import { isImageResponseCacheable } from '@/lib/image-response-cache-policy';
+import { NOTIFICATION_SUBSCRIPTIONS_CHANGED } from '@/lib/notification-subscriptions';
 
 declare global {
   interface WorkerGlobalScope extends SerwistGlobalConfig {
@@ -245,6 +246,13 @@ function logToClients(level: 'debug' | 'info' | 'warn' | 'error', message: strin
     .catch(() => {});
 }
 
+async function notifySubscriptionListChanged(): Promise<void> {
+  const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+  for (const client of clients) {
+    client.postMessage({ type: NOTIFICATION_SUBSCRIPTIONS_CHANGED });
+  }
+}
+
 // Pull the live unread count for this device's session and mirror it onto the
 // home-screen app icon. Same-origin fetch carries the session cookie, so the
 // count is scoped to whoever is signed in here. Feature-detected.
@@ -363,7 +371,7 @@ async function rotateSubscription(event: {
     }
     const json = sub.toJSON();
     if (!json.keys?.p256dh || !json.keys?.auth) return;
-    await fetch('/api/push/subscribe', {
+    const res = await fetch('/api/push/subscribe', {
       method: 'POST',
       credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json' },
@@ -373,6 +381,7 @@ async function rotateSubscription(event: {
         oldEndpoint,
       }),
     });
+    if (res.ok) await notifySubscriptionListChanged();
   } catch (error) {
     logToClients('error', 'Service worker pushsubscriptionchange failed', { error: String(error) });
   }
