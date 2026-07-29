@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Inbox, Check } from 'lucide-react';
 import { SeerrRequestModal } from '@/components/seerr/seerr-request-modal';
 import { useRequestedMedia } from '@/components/seerr/requested-media-provider';
+import { hasCapability, useMe } from '@/components/permission-provider';
 
 interface RequestMediaButtonProps {
   tmdbId: number;
@@ -32,7 +33,9 @@ export function RequestMediaButton({
   const [internalOpen, setInternalOpen] = useState(false);
   const open = controlledOpen ?? internalOpen;
   const setOpen = onOpenChange ?? setInternalOpen;
-  const { isRequested, markRequested } = useRequestedMedia();
+  const me = useMe();
+  const canRequest = me?.seerrConfigured === true && hasCapability(me, 'requests.create');
+  const { isRequested, markRequested } = useRequestedMedia(canRequest && tmdbId > 0);
   // Persisted across remounts/navigation via the shared provider, so a request
   // held for approval keeps reading "Requested" until it's resolved.
   const requested = isRequested(mediaType, tmdbId);

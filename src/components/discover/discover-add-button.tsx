@@ -73,7 +73,8 @@ export interface DiscoverAddController {
 
 export function useDiscoverAddController(detail: DiscoverDetail): DiscoverAddController {
   const me = useMe();
-  const { isRequested } = useRequestedMedia();
+  const canRequest = !!me?.seerrConfigured && hasCapability(me, 'requests.create');
+  const { isRequested } = useRequestedMedia(canRequest && detail.tmdbId > 0);
   const [watchlistOpen, setWatchlistOpen] = useState(false);
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [requestOpen, setRequestOpen] = useState(false);
@@ -83,7 +84,6 @@ export function useDiscoverAddController(detail: DiscoverDetail): DiscoverAddCon
   // Admins can add directly (Radarr/Sonarr); anyone with requests.create can
   // also request via Seerr when it's configured. Members only get Request.
   const canAddDirectly = hasCapability(me, detail.mediaType === 'movie' ? 'movies.add' : 'series.add');
-  const canRequest = !!me?.seerrConfigured && hasCapability(me, 'requests.create');
   const canSchedule = hasCapability(me, 'scheduledAlerts.edit');
   const requested = isRequested(seerrMediaType, detail.tmdbId);
   const watchlistDraft = {

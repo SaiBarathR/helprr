@@ -329,12 +329,12 @@ function MediaPoster({
 }) {
   const isGrid = variant === 'grid';
   const me = useMe();
-  const { isRequested, markRequested } = useRequestedMedia();
   const canWatchlist = useCan('watchlist.edit');
   const canSchedule = useCan('scheduledAlerts.edit');
   const canAdd = useCan(item.mediaType === 'movie' ? 'movies.add' : 'series.add');
   const seerrMediaType = item.mediaType === 'movie' ? 'movie' as const : 'tv' as const;
   const canRequest = !!me?.seerrConfigured && hasCapability(me, 'requests.create');
+  const { isRequested, markRequested } = useRequestedMedia(canRequest && item.tmdbId > 0);
   const requested = isRequested(seerrMediaType, item.tmdbId);
   const showPosterOverlayActions = !item.library?.exists;
   const [requestOpen, setRequestOpen] = useState(false);

@@ -69,7 +69,11 @@ import { WatchlistAddDialog } from '@/components/watchlist/watchlist-add-dialog'
 import { ScheduledAlertDialog } from '@/components/scheduled-alerts/scheduled-alert-dialog';
 import { AnimeTrailerRail } from '@/components/anime/anime-trailer-rail';
 import { useCan, useMe } from '@/components/permission-provider';
-import { useWatchLookup, useWatchStatus } from '@/components/jellyfin/watch-status-provider';
+import {
+  hasWatchLookupIdentity,
+  useWatchLookup,
+  useWatchStatus,
+} from '@/components/jellyfin/watch-status-provider';
 import { buildMarkWatchedContextAction } from '@/lib/mark-watched-context-action';
 import { arrEditHref, arrManageHref } from '@/lib/arr-edit-href';
 import { useSeriesEpisodeWatch } from '@/components/jellyfin/use-series-episode-watch';
@@ -309,9 +313,15 @@ export default function SeriesDetailPage() {
   const tmdbData = tmdbQuery.data ?? null;
 
   // Jellyfin watch status — series aggregate (shared map) + per-episode map (shared hook).
-  const lookupWatch = useWatchLookup();
+  const seriesWatchQuery = {
+    kind: 'series' as const,
+    tvdbId: series?.tvdbId,
+    tmdbId: series?.tmdbId,
+    imdbId: series?.imdbId,
+  };
+  const lookupWatch = useWatchLookup(hasWatchLookupIdentity(seriesWatchQuery));
   const { setWatched, canWrite: canSetWatched, isWriting: isWritingWatched } = useWatchStatus();
-  const seriesWatch = lookupWatch({ kind: 'series', tvdbId: series?.tvdbId, tmdbId: series?.tmdbId, imdbId: series?.imdbId });
+  const seriesWatch = lookupWatch(seriesWatchQuery);
   const watchedContextAction = series
     ? buildMarkWatchedContextAction({
         status: seriesWatch,

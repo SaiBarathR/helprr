@@ -143,8 +143,8 @@ function getPosterColumns(width: number, posterSize: 'small' | 'medium' | 'large
 export default function SeriesPage() {
   const me = useMe();
   const canFilterByWatchStatus = me?.jellyfinLinked === true && hasCapability(me, 'jellyfin.view');
-  const watchLookup = useWatchLookup();
-  const watchMapReady = useWatchMapReady();
+  const watchLookup = useWatchLookup(canFilterByWatchStatus);
+  const watchMapReady = useWatchMapReady(canFilterByWatchStatus);
   // Members can't add directly to Sonarr — they request via Seerr from a detail page.
   const canAddSeries = useCan('series.add');
   const canMonitor = useCan('series.editMonitoring');
