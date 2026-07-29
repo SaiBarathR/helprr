@@ -276,6 +276,7 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
   'filtered-capability': [
     'GET /api/services/external-urls',
     'GET /api/services/health',
+    'GET /api/services/widget-availability',
   ],
   public: [
     'GET /api/health',
@@ -416,7 +417,7 @@ describe('GET API route capability matrix', () => {
   const assignments = policyAssignments();
 
   it('explicitly assigns every GET handler exactly once', () => {
-    expect(handlers.size).toBe(194);
+    expect(handlers.size).toBe(195);
     expect([...assignments.keys()].sort()).toEqual([...handlers.keys()].sort());
   });
 
@@ -460,7 +461,11 @@ describe('GET API route capability matrix', () => {
     for (const route of POLICY_GROUPS['filtered-capability']) {
       const evidence = handlers.get(route)!;
       expect(hasCall(evidence, 'requireUser'), route).toBe(true);
-      expect(evidence.handlerText, route).toContain('SERVICE_VIEW_CAPABILITY');
+      expect(
+        evidence.handlerText.includes('SERVICE_VIEW_CAPABILITY')
+          || evidence.handlerText.includes('filterVisibleServiceTypes'),
+        route,
+      ).toBe(true);
     }
   });
 });

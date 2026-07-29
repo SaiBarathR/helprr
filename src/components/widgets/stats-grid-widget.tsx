@@ -3,17 +3,11 @@
 import Link from 'next/link';
 import { Film, Tv, Download, HardDrive } from 'lucide-react';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
+import { fetchServicesStats } from '@/lib/widgets/widget-fetchers';
 import { useElementSize } from '@/lib/widgets/use-element-size';
 import { formatBytes } from '@/lib/format';
 import type { WidgetProps } from '@/lib/widgets/types';
-import type { ServicesStatsResponse } from '@/types/service-stats';
 import { Eyebrow, FONT_DISPLAY, FONT_MONO, HPR, ICON_HIDE_HEIGHT_THRESHOLD, ICON_HIDE_THRESHOLD, mix } from './bento-primitives';
-
-async function fetchStats(): Promise<ServicesStatsResponse> {
-  const res = await fetch('/api/services/stats');
-  if (!res.ok) throw new Error('Failed to fetch stats');
-  return res.json();
-}
 
 interface Tile {
   icon: React.ReactNode;
@@ -44,10 +38,11 @@ export function StatsGridWidget({
   const tileWidth = width > 0 ? (width - gap * (tileDivisor - 1)) / tileDivisor : 0;
   const hideIcon = tileWidth > 0 && height > 0 && (tileWidth < ICON_HIDE_THRESHOLD || height < ICON_HIDE_HEIGHT_THRESHOLD);
   const { data, loading } = useWidgetData({
-    fetchFn: fetchStats,
+    fetchFn: fetchServicesStats,
     refreshInterval,
     enabled: !editMode,
-    cacheKey: 'stats-grid',
+    cacheKey: 'services-stats',
+    staleTime: refreshInterval,
   });
 
   const free =

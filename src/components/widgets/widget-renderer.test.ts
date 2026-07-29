@@ -2,7 +2,9 @@
 
 import { act, createElement, lazy, type ComponentType } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { WidgetAvailabilityProvider } from '@/lib/widgets/widget-availability-context';
 import type { WidgetDefinition, WidgetInstance, WidgetProps } from '@/lib/widgets/types';
 
 const mocks = vi.hoisted(() => ({
@@ -44,6 +46,7 @@ const instance: WidgetInstance = {
 };
 
 let root: Root;
+let queryClient: QueryClient;
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -52,6 +55,9 @@ beforeEach(() => {
   }).IS_REACT_ACT_ENVIRONMENT = true;
   document.body.innerHTML = '<div id="root"></div>';
   root = createRoot(document.getElementById('root')!);
+  queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
   mocks.getWidgetDefinition.mockReturnValue(definition);
 });
 
@@ -61,9 +67,27 @@ afterEach(async () => {
   vi.restoreAllMocks();
 });
 
-async function renderWidget() {
+async function renderWidget({
+  editMode = false,
+  services = ['JELLYFIN', 'PROWLARR', 'QBITTORRENT', 'TMDB', 'SEERR'],
+}: {
+  editMode?: boolean;
+  services?: Array<'JELLYFIN' | 'PROWLARR' | 'QBITTORRENT' | 'TMDB' | 'SEERR'>;
+} = {}) {
+  vi.stubGlobal('fetch', vi.fn(async () =>
+    new Response(JSON.stringify({ services }))));
   await act(async () => {
-    root.render(createElement(WidgetRenderer, { instance, rowSpan: 2 }));
+    root.render(
+      createElement(
+        QueryClientProvider,
+        { client: queryClient },
+        createElement(
+          WidgetAvailabilityProvider,
+          { services },
+          createElement(WidgetRenderer, { instance, rowSpan: 2, editMode }),
+        ),
+      ),
+    );
   });
 }
 
@@ -144,6 +168,126 @@ describe('WidgetRenderer lazy states', () => {
     await renderWidget();
 
     expect(document.body.textContent).toContain('Unknown widget: stats-grid');
+    expect(mocks.getWidgetComponent).not.toHaveBeenCalled();
+  });
+
+  it('observes a temporarily unresolved widget so it can load after hydration', async () => {
+    let notify: IntersectionObserverCallback | undefined;
+    const observe = vi.fn();
+    vi.stubGlobal(
+      'IntersectionObserver',
+      class {
+        constructor(callback: IntersectionObserverCallback) {
+          notify = callback;
+        }
+        observe = observe;
+        disconnect() {}
+        unobserve() {}
+        takeRecords() {
+          return [];
+        }
+        root = null;
+        rootMargin = '';
+        thresholds = [];
+      },
+    );
+    const LoadedWidget: ComponentType<WidgetProps> = () =>
+      createElement('div', null, 'Hydrated widget');
+    mocks.getWidgetDefinition.mockReturnValue(undefined);
+    mocks.getWidgetComponent.mockReturnValue(lazy(async () => ({ default: LoadedWidget })));
+
+    await renderWidget();
+    expect(observe).toHaveBeenCalledOnce();
+
+    await act(async () => {
+      notify?.([{ isIntersecting: true } as IntersectionObserverEntry], {} as IntersectionObserver);
+      mocks.getWidgetDefinition.mockReturnValue(definition);
+      root.render(
+        createElement(
+          QueryClientProvider,
+          { client: queryClient },
+          createElement(
+            WidgetAvailabilityProvider,
+            { services: ['JELLYFIN', 'PROWLARR', 'QBITTORRENT', 'TMDB', 'SEERR'] },
+            createElement(WidgetRenderer, { instance, rowSpan: 2 }),
+          ),
+        ),
+      );
+    });
+
+    expect(document.body.textContent).toContain('Hydrated widget');
+  });
+
+  it('does not load an offscreen widget until it enters the prefetch margin', async () => {
+    let notify: IntersectionObserverCallback | undefined;
+    vi.stubGlobal(
+      'IntersectionObserver',
+      class {
+        constructor(callback: IntersectionObserverCallback) {
+          notify = callback;
+        }
+        observe() {}
+        disconnect() {}
+        unobserve() {}
+        takeRecords() {
+          return [];
+        }
+        root = null;
+        rootMargin = '';
+        thresholds = [];
+      },
+    );
+    const LoadedWidget: ComponentType<WidgetProps> = () =>
+      createElement('div', null, 'Viewport widget');
+    mocks.getWidgetComponent.mockReturnValue(lazy(async () => ({ default: LoadedWidget })));
+
+    await renderWidget();
+    expect(mocks.getWidgetComponent).not.toHaveBeenCalled();
+
+    await act(async () => {
+      notify?.([{ isIntersecting: true } as IntersectionObserverEntry], {} as IntersectionObserver);
+    });
+    expect(document.body.textContent).toContain('Viewport widget');
+
+    await act(async () => {
+      notify?.([{ isIntersecting: false } as IntersectionObserverEntry], {} as IntersectionObserver);
+    });
+    expect(document.body.textContent).toContain('Viewport widget');
+  });
+
+  it('renders offscreen widget implementations in edit mode', async () => {
+    vi.stubGlobal(
+      'IntersectionObserver',
+      class {
+        observe() {}
+        disconnect() {}
+        unobserve() {}
+        takeRecords() {
+          return [];
+        }
+        root = null;
+        rootMargin = '';
+        thresholds = [];
+      },
+    );
+    const LoadedWidget: ComponentType<WidgetProps> = () =>
+      createElement('div', null, 'Editable widget');
+    mocks.getWidgetComponent.mockReturnValue(lazy(async () => ({ default: LoadedWidget })));
+
+    await renderWidget({ editMode: true });
+
+    expect(document.body.textContent).toContain('Editable widget');
+  });
+
+  it('does not mount a widget whose required service is unavailable', async () => {
+    mocks.getWidgetDefinition.mockReturnValue({
+      ...definition,
+      requiredServices: ['JELLYFIN'],
+    });
+
+    await renderWidget({ services: [] });
+
+    expect(document.body.textContent).toContain('Configure JELLYFIN');
     expect(mocks.getWidgetComponent).not.toHaveBeenCalled();
   });
 });

@@ -17,6 +17,17 @@ export type WidgetCategory =
   | 'discover'
   | 'settings';
 
+export type WidgetService =
+  | 'SONARR'
+  | 'RADARR'
+  | 'LIDARR'
+  | 'QBITTORRENT'
+  | 'PROWLARR'
+  | 'JELLYFIN'
+  | 'TMDB'
+  | 'ANILIST'
+  | 'SEERR';
+
 export type WidgetLayoutVariant =
   | 'carousel'
   | 'list'
@@ -60,7 +71,9 @@ export interface WidgetDefinition {
   desktopLayout?: WidgetLayoutVariant;
   /** Layout variant chosen when narrow=true or row-stack is preferable. */
   mobileLayout?: WidgetLayoutVariant;
-  requiredServices?: ('SONARR' | 'RADARR' | 'QBITTORRENT' | 'PROWLARR' | 'JELLYFIN' | 'TMDB' | 'SEERR')[];
+  requiredServices?: WidgetService[];
+  /** How requiredServices is evaluated. Defaults to requiring all entries. */
+  requiredServiceMode?: 'all' | 'any';
   /** When set, the widget is hidden (dashboard + gallery) from users who lack
    *  this capability — so a member never sees cleanup/prowlarr/analytics tiles.
    *  An array requires ALL listed capabilities (mirror the data route's checks

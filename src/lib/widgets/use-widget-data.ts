@@ -2,6 +2,7 @@
 
 import { useId } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useWidgetVisibility } from './widget-visibility-context';
 
 interface UseWidgetDataOptions<T> {
   /** Receives TanStack Query's AbortSignal so fetchers that forward it to
@@ -17,6 +18,8 @@ interface UseWidgetDataOptions<T> {
    * keyed cache + request dedup; previously a hand-rolled Map.)
    */
   cacheKey?: string;
+  /** Keep a shared resource fresh across closely spaced consumer mounts. */
+  staleTime?: number;
   /**
    * Refetch immediately when the tab/window regains focus. Default `false`.
    * Opt-in for live widgets (queue, Jellyfin activity, continue-watching, service
@@ -52,26 +55,28 @@ export function useWidgetData<T>({
   refreshInterval,
   enabled = true,
   cacheKey,
+  staleTime = 0,
   refetchOnFocus = false,
 }: UseWidgetDataOptions<T>): UseWidgetDataResult<T> {
   // No cacheKey → a stable per-instance key so instances don't share (matches the
   // old behavior where keyless callers each fetched independently).
   const fallbackKey = useId();
+  const widgetVisible = useWidgetVisibility();
+  const queryEnabled = enabled && widgetVisible;
 
   const query = useQuery<T>({
     queryKey: ['widget-data', cacheKey ?? fallbackKey],
     // useQuery always invokes the latest queryFn from the most recent render,
     // so this picks up an updated fetchFn without a ref.
     queryFn: ({ signal }) => fetchFn(signal),
-    enabled,
-    refetchInterval: refreshInterval,
+    enabled: queryEnabled,
+    refetchInterval: queryEnabled ? refreshInterval : false,
     refetchIntervalInBackground: false,
     refetchOnWindowFocus: refetchOnFocus,
-    // Refetch on every mount (matching the old doFetch-on-mount), but the keyed
-    // cache still shows the previous value immediately during that refetch — so
-    // a remount (DragOverlay, a key-change refresh) gets fresh data with no
-    // loading flash.
-    staleTime: 0,
+    // Preserve the old refetch-on-mount behavior by default. Exact shared
+    // resources can opt into a short freshness window so a fast first response
+    // does not trigger another request while a sibling consumer mounts.
+    staleTime,
     gcTime: 5 * 60_000,
   });
 

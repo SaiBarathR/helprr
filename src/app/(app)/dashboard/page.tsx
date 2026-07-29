@@ -2,8 +2,10 @@ import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { seedInitialLayouts, getActiveLayoutForUser } from '@/lib/dashboard-layouts';
 import { getCurrentUser } from '@/lib/auth';
+import { prisma } from '@/lib/db';
 import { can } from '@/lib/permissions';
 import { NAV_ITEMS } from '@/lib/nav-config';
+import { filterVisibleServiceTypes } from '@/lib/server/service-capabilities';
 import { DashboardClient, type InitialDashboardLayout } from './dashboard-client';
 import type { WidgetInstance } from '@/lib/widgets/types';
 
@@ -35,7 +37,13 @@ export default async function DashboardPage() {
   // Global built-ins are seeded for admins; members get their own personal set
   // (seeded on first load) resolved inside getActiveLayoutForUser.
   await seedInitialLayouts();
-  const layout = await getActiveLayoutForUser({ id: user.id, role: user.role }, device);
+  const [layout, configuredServices] = await Promise.all([
+    getActiveLayoutForUser({ id: user.id, role: user.role }, device),
+    prisma.serviceConnection.findMany({
+      distinct: ['type'],
+      select: { type: true },
+    }),
+  ]);
 
   if (!layout) {
     // seedInitialLayouts guarantees at least two rows exist; if we somehow still
@@ -50,5 +58,14 @@ export default async function DashboardPage() {
     isBuiltIn: Boolean(layout.isBuiltIn),
   };
 
-  return <DashboardClient initialLayout={initialLayout} initialDevice={device} />;
+  return (
+    <DashboardClient
+      initialLayout={initialLayout}
+      initialDevice={device}
+      configuredServices={filterVisibleServiceTypes(
+        user,
+        configuredServices.map(({ type }) => type),
+      )}
+    />
+  );
 }

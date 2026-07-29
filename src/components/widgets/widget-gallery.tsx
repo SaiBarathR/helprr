@@ -53,6 +53,8 @@ import {
   Zap,
 } from 'lucide-react';
 import { getAllWidgetDefinitions } from '@/lib/widgets/registry';
+import { hasRequiredWidgetServices } from '@/lib/widgets/availability';
+import { useConfiguredWidgetServices } from '@/lib/widgets/widget-availability-context';
 import { useUIStore } from '@/lib/store';
 import { useMe, hasCapabilities } from '@/components/permission-provider';
 import { useDashboardLayout } from './dashboard-layout-context';
@@ -124,6 +126,7 @@ export function WidgetGallery({ open, onOpenChange }: WidgetGalleryProps) {
   const { widgets: dashboardLayout, addWidget } = useDashboardLayout();
   const discoverLayout = useUIStore((s) => s.discoverLayout);
   const me = useMe();
+  const configuredServices = useConfiguredWidgetServices();
   const [query, setQuery] = useState('');
 
   // Reset the query when the caller closes the drawer. Wrapping
@@ -172,7 +175,7 @@ export function WidgetGallery({ open, onOpenChange }: WidgetGalleryProps) {
 
   function handleAdd(widgetId: string) {
     const def = allDefinitions.find((d) => d.id === widgetId);
-    if (!def) return;
+    if (!def || !hasRequiredWidgetServices(def, configuredServices)) return;
     addWidget(widgetId);
   }
 
@@ -213,15 +216,16 @@ export function WidgetGallery({ open, onOpenChange }: WidgetGalleryProps) {
                 <div className="space-y-2">
                   {widgets.map((def) => {
                     const isAdded = addedWidgetIds.has(def.id);
+                    const isAvailable = hasRequiredWidgetServices(def, configuredServices);
                     const Icon = ICON_MAP[def.icon];
 
                     return (
                       <button
                         key={def.id}
                         onClick={() => handleAdd(def.id)}
-                        disabled={isAdded}
+                        disabled={isAdded || !isAvailable}
                         className={`w-full flex items-center gap-3 rounded-xl p-3 text-left transition-colors ${
-                          isAdded
+                          isAdded || !isAvailable
                             ? 'bg-muted/30 opacity-50'
                             : 'bg-card hover:bg-muted/30 active:bg-muted/50'
                         }`}
@@ -239,6 +243,11 @@ export function WidgetGallery({ open, onOpenChange }: WidgetGalleryProps) {
                         </span>
                         {isAdded && (
                           <span className="text-[10px] text-muted-foreground font-medium">Added</span>
+                        )}
+                        {!isAvailable && (
+                          <span className="text-[10px] text-muted-foreground font-medium">
+                            Not configured
+                          </span>
                         )}
                       </button>
                     );

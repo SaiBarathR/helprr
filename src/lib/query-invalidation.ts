@@ -57,4 +57,5 @@ export const invalidateActivity = (qc: QueryClient) =>
 export function invalidateInstances(qc: QueryClient) {
   qc.invalidateQueries({ queryKey: queryKeys.instances() });
   qc.invalidateQueries({ queryKey: ['arr-instances'] });
+  qc.invalidateQueries({ queryKey: queryKeys.widgetServiceAvailability() });
 }

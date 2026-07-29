@@ -14,8 +14,9 @@ import {
   DashboardLayoutProvider,
   useDashboardLayout,
 } from '@/components/widgets/dashboard-layout-context';
+import { WidgetAvailabilityProvider } from '@/lib/widgets/widget-availability-context';
 import { LayoutSwitcher } from '@/components/widgets/layout-switcher';
-import type { WidgetInstance } from '@/lib/widgets/types';
+import type { WidgetInstance, WidgetService } from '@/lib/widgets/types';
 
 export interface InitialDashboardLayout {
   id: string;
@@ -27,6 +28,7 @@ export interface InitialDashboardLayout {
 interface DashboardClientProps {
   initialLayout: InitialDashboardLayout;
   initialDevice: 'desktop' | 'mobile';
+  configuredServices: WidgetService[];
 }
 
 function setDeviceCookie(device: 'desktop' | 'mobile'): void {
@@ -65,19 +67,29 @@ function FullPageSpinner() {
   );
 }
 
-export function DashboardClient({ initialLayout, initialDevice }: DashboardClientProps) {
+export function DashboardClient({
+  initialLayout,
+  initialDevice,
+  configuredServices,
+}: DashboardClientProps) {
   // No `key` here — keying on initialLayout.id remounts the provider (and
   // every drawer / edit-mode flag below it) on every layout switch. The
   // provider now syncs its working set when activeLayoutId changes, so
   // staying mounted preserves the LayoutSwitcher drawer, edit mode, and
   // gallery state across the switch.
   return (
-    <DashboardLayoutProvider
-      initialWidgets={initialLayout.widgets}
-      activeLayoutId={initialLayout.id}
-    >
-      <DashboardInner initialLayout={initialLayout} initialDevice={initialDevice} />
-    </DashboardLayoutProvider>
+    <WidgetAvailabilityProvider services={configuredServices}>
+      <DashboardLayoutProvider
+        initialWidgets={initialLayout.widgets}
+        activeLayoutId={initialLayout.id}
+      >
+        <DashboardInner
+          initialLayout={initialLayout}
+          initialDevice={initialDevice}
+          configuredServices={configuredServices}
+        />
+      </DashboardLayoutProvider>
+    </WidgetAvailabilityProvider>
   );
 }
 
