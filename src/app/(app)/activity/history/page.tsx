@@ -122,7 +122,12 @@ function eventLabel(eventType: string) {
  */
 
 type HistoryRecord = HistoryItem & { source?: string };
-type HistoryResponse = { records?: HistoryRecord[]; totalRecords?: number };
+type HistoryResponse = {
+  records?: HistoryRecord[];
+  totalRecords?: number;
+  hasMore?: boolean;
+  truncated?: boolean;
+};
 
 function getHistoryMediaHref(item: HistoryRecord): string | null {
   const q = item.instanceId ? `?instance=${item.instanceId}` : '';
@@ -164,8 +169,8 @@ export default function HistoryPage() {
 
   // Infinite list: the filters live in the query key, so changing them swaps the
   // key and refetches from page 1 (no manual reset). "Load more" → fetchNextPage,
-  // gated on the raw totalRecords. Mirrors the notifications / activity WantedTab
-  // pattern so the whole list lives in the query cache, not a side state array.
+  // gated on the server's continuation contract. The total fallback preserves
+  // compatibility with older responses during a rolling update.
   const {
     data,
     isLoading: loading,
@@ -179,6 +184,9 @@ export default function HistoryPage() {
       jsonFetcher<HistoryResponse>(buildHistoryUrl(pageParam, eventFilter, instanceFilter))({ signal }),
     initialPageParam: 1,
     getNextPageParam: (lastPage, allPages) => {
+      if (typeof lastPage.hasMore === 'boolean') {
+        return lastPage.hasMore ? allPages.length + 1 : undefined;
+      }
       const loaded = allPages.reduce((sum, pg) => sum + (pg.records?.length ?? 0), 0);
       return loaded < (lastPage.totalRecords ?? 0) ? allPages.length + 1 : undefined;
     },
@@ -197,6 +205,7 @@ export default function HistoryPage() {
     () => data?.pages.flatMap((pg) => pg.records ?? []) ?? [],
     [data],
   );
+  const historyTruncated = data?.pages.some((page) => page.truncated) ?? false;
 
   // Load arr instances for the per-instance filter, independent of the (possibly
   // filtered) history so the options never collapse to the current selection.
@@ -269,6 +278,11 @@ export default function HistoryPage() {
         ) : history.length === 0 ? (
           <div className="text-center py-16 text-muted-foreground">
             <p className="text-sm">No history events</p>
+            {historyTruncated && (
+              <p className="mt-2 text-xs text-amber-400">
+                More matching history may exist beyond the scan limit.
+              </p>
+            )}
           </div>
         ) : (
           <div className="space-y-1 animate-list-in">
@@ -376,6 +390,11 @@ export default function HistoryPage() {
                 {isFetchingNextPage ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                 Load more
               </Button>
+            )}
+            {historyTruncated && !hasNextPage && (
+              <p className="px-3 py-2 text-center text-xs text-amber-400">
+                More matching history may exist beyond the scan limit.
+              </p>
             )}
           </div>
         )}
