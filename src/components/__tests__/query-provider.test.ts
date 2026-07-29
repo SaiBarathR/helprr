@@ -10,8 +10,10 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
+  cancelQueries: vi.fn(),
   clearBrowserCaches: vi.fn(),
   clearQueryClient: vi.fn(),
+  invalidateQueries: vi.fn(),
   invalidateExternalUrls: vi.fn(),
   subscribe: vi.fn(),
 }));
@@ -23,7 +25,11 @@ vi.mock('@tanstack/react-query-devtools', () => ({
   ReactQueryDevtools: () => null,
 }));
 vi.mock('@/lib/query-client', () => ({
-  getQueryClient: () => ({ clear: mocks.clearQueryClient }),
+  getQueryClient: () => ({
+    cancelQueries: mocks.cancelQueries,
+    clear: mocks.clearQueryClient,
+    invalidateQueries: mocks.invalidateQueries,
+  }),
 }));
 vi.mock('@/lib/hooks/use-external-urls', () => ({
   invalidateExternalUrls: mocks.invalidateExternalUrls,
@@ -54,6 +60,45 @@ beforeEach(() => {
 
 afterEach(async () => {
   await act(async () => root.unmount());
+  vi.unstubAllGlobals();
+});
+
+describe('QueryProvider service-worker synchronization', () => {
+  it('invalidates only the notification device list and removes its listener', async () => {
+    let messageListener: ((event: MessageEvent<unknown>) => void) | undefined;
+    const serviceWorker = {
+      addEventListener: vi.fn((
+        type: string,
+        listener: (event: MessageEvent<unknown>) => void,
+      ) => {
+        if (type === 'message') messageListener = listener;
+      }),
+      removeEventListener: vi.fn(),
+    };
+    vi.stubGlobal('navigator', { serviceWorker });
+
+    await act(async () => {
+      root.render(createElement(QueryProvider, null, 'Content'));
+    });
+    await act(async () => {
+      messageListener?.(new MessageEvent('message', {
+        data: { type: 'helprr-notification-subscriptions-changed' },
+      }));
+    });
+
+    expect(mocks.invalidateQueries).toHaveBeenCalledWith({
+      queryKey: ['notifications', 'subscriptions'],
+      exact: true,
+    });
+
+    await act(async () => root.unmount());
+    expect(serviceWorker.removeEventListener).toHaveBeenCalledWith(
+      'message',
+      messageListener,
+    );
+    document.body.innerHTML = '<div id="root"></div>';
+    root = createRoot(document.getElementById('root')!);
+  });
 });
 
 describe('QueryProvider authentication boundaries', () => {

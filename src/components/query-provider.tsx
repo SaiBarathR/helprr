@@ -9,6 +9,11 @@ import {
   subscribeToAuthenticationBoundaries,
 } from '@/lib/client-cache';
 import { invalidateExternalUrls } from '@/lib/hooks/use-external-urls';
+import { invalidateNotificationSubscriptions } from '@/lib/notification-subscription-cache';
+import {
+  isNotificationSubscriptionsChangedMessage,
+  NOTIFICATION_SUBSCRIPTIONS_CHANGED,
+} from '@/lib/notification-subscriptions';
 
 export function QueryProvider({ children }: { children: React.ReactNode }) {
   // Singleton on the client (see getQueryClient); safe to call during render.
@@ -28,6 +33,18 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
       queryClient.clear();
       invalidateExternalUrls();
     });
+  }, [queryClient]);
+  useEffect(() => {
+    const serviceWorker = navigator.serviceWorker;
+    if (!serviceWorker) return;
+    const onMessage = (event: MessageEvent<unknown>) => {
+      if (isNotificationSubscriptionsChangedMessage(event.data)) {
+        void invalidateNotificationSubscriptions(queryClient);
+        window.dispatchEvent(new Event(NOTIFICATION_SUBSCRIPTIONS_CHANGED));
+      }
+    };
+    serviceWorker.addEventListener('message', onMessage);
+    return () => serviceWorker.removeEventListener('message', onMessage);
   }, [queryClient]);
   useEffect(() => {
     if (!authenticationBoundaryActive || boundaryClearStarted.current) return;

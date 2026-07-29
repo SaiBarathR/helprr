@@ -1,7 +1,16 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef, useSyncExternalStore } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useIsStandalone } from '@/hooks/use-is-standalone';
+import {
+  syncRegisteredNotificationDevice,
+  syncRemovedNotificationDevices,
+} from '@/lib/notification-subscription-cache';
+import {
+  NOTIFICATION_SUBSCRIPTIONS_CHANGED,
+  type NotificationDeviceSummary,
+} from '@/lib/notification-subscriptions';
 
 const PUSH_ENABLED_FLAG = 'helprr-push-enabled';
 
@@ -45,7 +54,10 @@ function waitForServiceWorker(timeoutMs = 10000): Promise<ServiceWorkerRegistrat
   });
 }
 
-async function registerWithServer(sub: PushSubscription): Promise<boolean> {
+async function registerWithServer(
+  sub: PushSubscription,
+  oldEndpoint?: string,
+): Promise<NotificationDeviceSummary | null> {
   const json = sub.toJSON();
   const res = await fetch('/api/push/subscribe', {
     method: 'POST',
@@ -56,9 +68,11 @@ async function registerWithServer(sub: PushSubscription): Promise<boolean> {
         p256dh: json.keys?.p256dh,
         auth: json.keys?.auth,
       },
+      oldEndpoint,
     }),
   });
-  return res.ok;
+  if (!res.ok) return null;
+  return (await res.json()) as NotificationDeviceSummary;
 }
 
 // Environment facts that never change within a session — read them as external
@@ -72,6 +86,7 @@ const getPermission = (): NotificationPermission | null =>
   'Notification' in window ? Notification.permission : null;
 
 export function usePushNotifications() {
+  const queryClient = useQueryClient();
   const isSupported = useSyncExternalStore(emptySubscribe, getIsSupported, () => false);
   const [isSubscribed, setIsSubscribed] = useState(false);
   const isStandalone = useIsStandalone();
@@ -111,10 +126,13 @@ export function usePushNotifications() {
     }
     if (data.exists === false) {
       const reregistered = await registerWithServer(sub);
-      if (reregistered) setWasReregistered(true);
+      if (reregistered) {
+        await syncRegisteredNotificationDevice(queryClient, reregistered);
+        setWasReregistered(true);
+      }
     }
     return { done: true };
-  }, []);
+  }, [queryClient]);
 
   const checkSubscription = useCallback(async () => {
     try {
@@ -178,12 +196,30 @@ export function usePushNotifications() {
   }, [reconcileSubscription]);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- checkSubscription only sets state after await points (async SW/server reconcile), never synchronously; the rule can't see the async boundary
     if (isSupported) checkSubscription();
     return () => {
       if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
     };
   }, [isSupported, checkSubscription]);
+  useEffect(() => {
+    if (!isSupported) return;
+    const refreshEndpoint = () => {
+      void navigator.serviceWorker.ready
+        .then((registration) => registration.pushManager.getSubscription())
+        .then((subscription) => {
+          setIsSubscribed(Boolean(subscription));
+          setSubscriptionEndpoint(subscription?.endpoint ?? null);
+        })
+        .catch((err) => {
+          console.warn('[Push] could not refresh the rotated subscription:', err);
+        });
+    };
+    window.addEventListener(NOTIFICATION_SUBSCRIPTIONS_CHANGED, refreshEndpoint);
+    return () => window.removeEventListener(
+      NOTIFICATION_SUBSCRIPTIONS_CHANGED,
+      refreshEndpoint,
+    );
+  }, [isSupported]);
 
   const subscribe = useCallback(async (): Promise<{ success: boolean; error?: string }> => {
     setLoading(true);
@@ -233,7 +269,9 @@ export function usePushNotifications() {
       // subscribe() throws InvalidStateError forever — drop the stale one first.
       const appServerKey = urlBase64ToUint8Array(vapidKey);
       const existing = await registration.pushManager.getSubscription();
+      let oldEndpoint: string | undefined;
       if (existing && !appServerKeyMatches(existing.options.applicationServerKey, appServerKey)) {
+        oldEndpoint = existing.endpoint;
         await existing.unsubscribe();
       }
       const sub = await registration.pushManager.subscribe({
@@ -242,13 +280,14 @@ export function usePushNotifications() {
       });
 
       // 5. Send subscription to server
-      const ok = await registerWithServer(sub);
-      if (!ok) {
+      const registeredDevice = await registerWithServer(sub, oldEndpoint);
+      if (!registeredDevice) {
         const msg = 'Failed to save subscription on server.';
         setError(msg);
         setLoading(false);
         return { success: false, error: msg };
       }
+      await syncRegisteredNotificationDevice(queryClient, registeredDevice);
 
       setIsSubscribed(true);
       setSubscriptionEndpoint(sub.endpoint);
@@ -263,7 +302,7 @@ export function usePushNotifications() {
       setLoading(false);
       return { success: false, error: msg };
     }
-  }, []);
+  }, [queryClient]);
 
   const unsubscribe = useCallback(async (): Promise<{ success: boolean; error?: string }> => {
     setLoading(true);
@@ -273,11 +312,6 @@ export function usePushNotifications() {
       const sub = await registration.pushManager.getSubscription();
       if (sub) {
         await sub.unsubscribe();
-        await fetch('/api/push/subscribe', {
-          method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ endpoint: sub.endpoint }),
-        });
       }
       setIsSubscribed(false);
       setSubscriptionEndpoint(null);
@@ -285,6 +319,18 @@ export function usePushNotifications() {
       // Explicit opt-out: clear the flag so we don't nag them to re-enable.
       setPreviouslyEnabled(false);
       setPushEnabledFlag(false);
+      if (sub) {
+        const res = await fetch('/api/push/subscribe', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ endpoint: sub.endpoint }),
+        });
+        if (!res.ok) throw new Error('Failed to remove subscription from server.');
+        await syncRemovedNotificationDevices(
+          queryClient,
+          (device) => device.endpoint === sub.endpoint,
+        );
+      }
       setLoading(false);
       return { success: true };
     } catch (err) {
@@ -293,7 +339,7 @@ export function usePushNotifications() {
       setLoading(false);
       return { success: false, error: msg };
     }
-  }, []);
+  }, [queryClient]);
 
   const dismissReregisteredNotice = useCallback(() => setWasReregistered(false), []);
 

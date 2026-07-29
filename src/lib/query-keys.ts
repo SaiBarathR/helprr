@@ -45,6 +45,7 @@ export const queryKeys = {
   settings: () => ['settings'] as const,
   adminUpdate: () => ['admin', 'update-check'] as const,
   notifications: () => ['notifications'] as const,
+  notificationSubscriptions: () => ['notifications', 'subscriptions'] as const,
   sessions: () => ['sessions'] as const,
   users: () => ['users'] as const,
 

@@ -3,6 +3,7 @@ import { prisma } from '@/lib/db';
 import { requireUser } from '@/lib/auth';
 import { ensureNotificationPreferences } from '@/lib/notification-events';
 import { withApiLogging } from '@/lib/api-logger';
+import { toNotificationDeviceSummary } from '@/lib/notification-subscriptions';
 
 async function postHandler(request: NextRequest) {
   // Deliberately NOT gated on settings.notifications: the SW's
@@ -47,7 +48,7 @@ async function postHandler(request: NextRequest) {
           },
         });
         await ensureNotificationPreferences(migrated.id);
-        return NextResponse.json(migrated);
+        return NextResponse.json(toNotificationDeviceSummary(migrated));
       }
       // No matching old row (already pruned) — fall through to a normal upsert.
     }
@@ -70,7 +71,7 @@ async function postHandler(request: NextRequest) {
 
     await ensureNotificationPreferences(subscription.id);
 
-    return NextResponse.json(subscription);
+    return NextResponse.json(toNotificationDeviceSummary(subscription));
   } catch (error) {
     console.error('Failed to save push subscription:', error);
     return NextResponse.json({ error: 'Failed to save push subscription' }, { status: 500 });
@@ -89,12 +90,16 @@ async function deleteHandler(request: NextRequest) {
       // Members can only drop their own device; admins can drop any.
       const where =
         auth.user.role === 'admin' ? { endpoint } : { endpoint, userId: auth.user.id };
-      await prisma.pushSubscription.deleteMany({ where }).catch(() => {});
+      await prisma.pushSubscription.deleteMany({ where });
     }
 
     return NextResponse.json({ success: true });
-  } catch {
-    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error('Failed to remove push subscription:', error);
+    return NextResponse.json(
+      { error: 'Failed to remove push subscription' },
+      { status: 500 },
+    );
   }
 }
 

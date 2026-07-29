@@ -10,16 +10,11 @@ import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { GroupedSection } from '@/components/settings/grouped-section';
 import { usePushNotifications } from '@/hooks/use-push-notifications';
-
-interface Device {
-  id: string;
-  endpoint: string;
-  deviceName: string | null;
-  consecutiveFailures: number;
-  lastFailedAt: string | null;
-  lastSucceededAt: string | null;
-  createdAt: string;
-}
+import { queryKeys } from '@/lib/query-keys';
+import {
+  syncRemovedNotificationDevices,
+} from '@/lib/notification-subscription-cache';
+import type { NotificationDeviceSummary as Device } from '@/lib/notification-subscriptions';
 
 function djb2Hash(s: string): string {
   let h = 5381;
@@ -74,8 +69,10 @@ export default function NotificationDevicesPage() {
     isError,
     error: queryError,
   } = useQuery({
-    queryKey: ['notifications', 'subscriptions'],
+    queryKey: queryKeys.notificationSubscriptions(),
     queryFn: jsonFetcher<Device[]>('/api/notifications/subscriptions'),
+    staleTime: 0,
+    refetchOnMount: 'always',
   });
   const error = isError
     ? queryError instanceof ApiError
@@ -85,17 +82,17 @@ export default function NotificationDevicesPage() {
         : 'Failed to load devices'
     : null;
 
-  const load = () => queryClient.invalidateQueries({ queryKey: ['notifications', 'subscriptions'] });
-
   const isCurrent = (d: Device) => Boolean(subscriptionEndpoint && d.endpoint === subscriptionEndpoint);
 
-  async function revokeRemote(id: string): Promise<boolean> {
+  async function revokeRemote(device: Device): Promise<boolean> {
     const res = await fetch('/api/notifications/subscriptions', {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id }),
+      body: JSON.stringify({ id: device.id }),
     });
-    return res.ok;
+    if (!res.ok) return false;
+    await syncRemovedNotificationDevices(queryClient, (cached) => cached.id === device.id);
+    return true;
   }
 
   async function revokeAllRemote(): Promise<{ ok: boolean; revoked: number }> {
@@ -106,6 +103,7 @@ export default function NotificationDevicesPage() {
     });
     if (!res.ok) return { ok: false, revoked: 0 };
     const data = (await res.json().catch(() => ({}))) as { revoked?: number };
+    await syncRemovedNotificationDevices(queryClient, () => true);
     return { ok: true, revoked: data.revoked ?? 0 };
   }
 
@@ -120,14 +118,13 @@ export default function NotificationDevicesPage() {
         }
         toast.success('This device revoked');
       } else {
-        const ok = await revokeRemote(device.id);
+        const ok = await revokeRemote(device);
         if (!ok) {
           toast.error('Failed to revoke device');
           return;
         }
         toast.success(`Revoked ${displayName(device)}`);
       }
-      await load();
     } finally {
       setRevoking(false);
       setConfirmTarget(null);
@@ -151,7 +148,6 @@ export default function NotificationDevicesPage() {
         }
       }
       toast.success(revoked === 0 ? 'No active devices' : `Revoked ${revoked} device${revoked === 1 ? '' : 's'}`);
-      await load();
     } finally {
       setRevoking(false);
       setConfirmAll(false);
