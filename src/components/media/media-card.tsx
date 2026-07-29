@@ -8,7 +8,11 @@ import { isProtectedApiImageSrc, toCachedImageSrc, type ImageServiceHint } from 
 import { cn, shallowEqualExcept } from '@/lib/utils';
 import { FadeInImage } from '@/components/media/fade-in-image';
 import { SelectionCheck } from './selection-check';
-import { useWatchLookup, type WatchLookupQuery } from '@/components/jellyfin/watch-status-provider';
+import {
+  hasWatchLookupIdentity,
+  useWatchLookup,
+  type WatchLookupQuery,
+} from '@/components/jellyfin/watch-status-provider';
 import { PosterWatchOverlay } from '@/components/jellyfin/watch-status-indicator';
 import { QuickContextMenu, type ContextActionGroup } from '@/components/ui/quick-context-menu';
 
@@ -70,7 +74,7 @@ export const MediaCard = memo(function MediaCard({
   onToggleSelect,
   contextActionGroups,
 }: MediaCardProps) {
-  const lookup = useWatchLookup();
+  const lookup = useWatchLookup(hasWatchLookupIdentity(watchLookup));
   const watchStatus = watchLookup ? lookup(watchLookup) : undefined;
   const posterHint = type === 'movie' ? 'radarr' : type === 'artist' ? 'lidarr' : 'sonarr';
   // Grid posters render at ~120–180px CSS; 360px keeps them retina-crisp while

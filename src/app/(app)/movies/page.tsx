@@ -195,8 +195,8 @@ function ensurePaintedOrHeightReached(targetScrollY: number, timeoutMs = 1200, p
 export default function MoviesPage() {
   const me = useMe();
   const canFilterByWatchStatus = me?.jellyfinLinked === true && hasCapability(me, 'jellyfin.view');
-  const watchLookup = useWatchLookup();
-  const watchMapReady = useWatchMapReady();
+  const watchLookup = useWatchLookup(canFilterByWatchStatus);
+  const watchMapReady = useWatchMapReady(canFilterByWatchStatus);
   // Members can't add directly to Radarr — they request via Seerr from a detail page.
   const canAddMovies = useCan('movies.add');
   const canMonitor = useCan('movies.editMonitoring');

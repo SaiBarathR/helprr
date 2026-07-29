@@ -73,7 +73,11 @@ import { RenamePreviewDialog } from '@/components/media/rename-preview-dialog';
 import { WatchlistAddDialog } from '@/components/watchlist/watchlist-add-dialog';
 import { ScheduledAlertDialog } from '@/components/scheduled-alerts/scheduled-alert-dialog';
 import { useCan } from '@/components/permission-provider';
-import { useWatchLookup, useWatchStatus } from '@/components/jellyfin/watch-status-provider';
+import {
+  hasWatchLookupIdentity,
+  useWatchLookup,
+  useWatchStatus,
+} from '@/components/jellyfin/watch-status-provider';
 import { MarkWatchedMenuItem } from '@/components/jellyfin/mark-watched-button';
 import { buildMarkWatchedContextAction } from '@/lib/mark-watched-context-action';
 import { arrEditHref, arrManageHref } from '@/lib/arr-edit-href';
@@ -177,9 +181,14 @@ export default function MovieDetailPage() {
   const canDeleteMovie = useCan('movies.delete');
   const canManageFiles = useCan('movies.manageFiles');
   const canScheduleAlert = useCan('scheduledAlerts.edit');
-  const lookupWatch = useWatchLookup();
+  const movieWatchQuery = {
+    kind: 'movie' as const,
+    tmdbId: movie?.tmdbId,
+    imdbId: movie?.imdbId,
+  };
+  const lookupWatch = useWatchLookup(hasWatchLookupIdentity(movieWatchQuery));
   const { setWatched, canWrite: canSetWatched, isWriting: isWritingWatched } = useWatchStatus();
-  const movieWatch = lookupWatch({ kind: 'movie', tmdbId: movie?.tmdbId, imdbId: movie?.imdbId });
+  const movieWatch = lookupWatch(movieWatchQuery);
   const watchedContextAction = movie
     ? buildMarkWatchedContextAction({
         status: movieWatch,

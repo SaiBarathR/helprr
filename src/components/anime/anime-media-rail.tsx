@@ -46,7 +46,8 @@ interface AnimeMediaRailProps {
 
 function RailCard({ item, priority }: { item: MediaItem; priority: boolean }) {
   const me = useMe();
-  const lookup = useWatchLookup();
+  const isManga = item.type === 'MANGA' || item.format === 'MANGA' || item.chapters != null || item.volumes != null;
+  const lookup = useWatchLookup(!isManga && item.id > 0);
   const isMobile = useIsMobile();
   const { buildAnilistContextAction, drawerNode } = useAnilistContextMenu();
   const [watchlistOpen, setWatchlistOpen] = useState(false);
@@ -68,7 +69,6 @@ function RailCard({ item, priority }: { item: MediaItem; priority: boolean }) {
     ? toCachedImageSrc(item.coverImage, 'anilist') || item.coverImage
     : null;
 
-  const isManga = item.type === 'MANGA' || item.format === 'MANGA' || item.chapters != null || item.volumes != null;
   const href = isManga ? `/anime/manga/${item.id}` : `/anime/${item.id}`;
   const metadata: string[] = [];
 

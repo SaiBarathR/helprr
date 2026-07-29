@@ -10,7 +10,11 @@ import type { PosterSize } from '@/lib/store';
 import { isProtectedApiImageSrc, toCachedImageSrc, type ImageServiceHint } from '@/lib/image';
 import { FadeInImage } from '@/components/media/fade-in-image';
 import { SelectionCheck } from './selection-check';
-import { useWatchLookup, type WatchLookupQuery } from '@/components/jellyfin/watch-status-provider';
+import {
+  hasWatchLookupIdentity,
+  useWatchLookup,
+  type WatchLookupQuery,
+} from '@/components/jellyfin/watch-status-provider';
 import { WatchStatusInline } from '@/components/jellyfin/watch-status-indicator';
 import { QuickContextMenu, type ContextActionGroup } from '@/components/ui/quick-context-menu';
 
@@ -113,7 +117,7 @@ export const MediaOverviewItem = memo(function MediaOverviewItem({
   onToggleSelect,
   contextActionGroups,
 }: MediaOverviewItemProps) {
-  const lookup = useWatchLookup();
+  const lookup = useWatchLookup(hasWatchLookupIdentity(watchLookup));
   const watchStatus = watchLookup ? lookup(watchLookup) : undefined;
   const posterHint = type === 'movie' ? 'radarr' : type === 'artist' ? 'lidarr' : 'sonarr';
   // List thumbnails render at 80–112px CSS; 240px stays retina-crisp instead of

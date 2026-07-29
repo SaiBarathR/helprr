@@ -48,6 +48,12 @@ the existing helpers. A mutating route must independently verify the actor,
 capability or role, ownership where relevant, request shape, and selected
 instance before invoking an upstream mutation.
 
+The authenticated shell keeps the Jellyfin watch and Seerr request providers
+mounted so their React Query caches and optimistic updates survive navigation.
+Their network queries run only while an eligible media consumer has registered
+demand. The command-palette hotkey and mobile launcher remain in the shell, while
+the dialog implementation loads on first open.
+
 For multi-instance services, trace `instanceId` through all of these layers:
 
 ```text

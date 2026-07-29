@@ -12,9 +12,9 @@ import { WatchStatusProvider } from '@/components/jellyfin/watch-status-provider
 import { ImageCacheGenerationInit } from '@/components/image-cache-generation-init';
 import { getCurrentUser } from '@/lib/auth';
 import { effectiveCapabilities } from '@/lib/permissions';
+import { getAppShellServiceFlags } from '@/lib/app-shell-services';
 import { setImageCacheGeneration } from '@/lib/image';
 import { getCacheGeneration } from '@/lib/cache/state';
-import { prisma } from '@/lib/db';
 
 // Revocation is enforced server-side here (getSession() hits the DB on every
 // invocation). Force-dynamic guarantees this layout re-runs on every request
@@ -29,11 +29,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // effect for SSR navs, and so the permission provider is seeded server-side.
   // Independent of each other, so resolve in parallel to keep one DB round-trip
   // off the critical path of every authenticated navigation.
-  const [user, seerrCount, tmdbCount, jellyfinCount, imageCacheGeneration] = await Promise.all([
+  const [user, serviceFlags, imageCacheGeneration] = await Promise.all([
     getCurrentUser(),
-    prisma.serviceConnection.count({ where: { type: 'SEERR' } }),
-    prisma.serviceConnection.count({ where: { type: 'TMDB' } }),
-    prisma.serviceConnection.count({ where: { type: 'JELLYFIN' } }),
+    getAppShellServiceFlags(),
     getCacheGeneration(),
   ]);
   if (!user) {
@@ -44,11 +42,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // descendant server/client components) carry ?v=<generation>.
   setImageCacheGeneration(imageCacheGeneration);
 
-  const seerrConfigured = seerrCount > 0;
-  const tmdbConfigured = tmdbCount > 0;
   // Admins fall back to the connection's configured user, so "configured" ⇒
   // "linked" for them; members need their own jellyfinUserId.
-  const jellyfinLinked = jellyfinCount > 0 && (user.role === 'admin' || Boolean(user.jellyfinUserId));
+  const jellyfinLinked = serviceFlags.jellyfinConfigured
+    && (user.role === 'admin' || Boolean(user.jellyfinUserId));
 
   const me: MePayload = {
     id: user.id,
@@ -57,8 +54,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     role: user.role,
     template: user.template,
     capabilities: effectiveCapabilities(user),
-    seerrConfigured,
-    tmdbConfigured,
+    seerrConfigured: serviceFlags.seerrConfigured,
+    tmdbConfigured: serviceFlags.tmdbConfigured,
     seerrUserId: user.seerrUserId,
     jellyfinLinked,
     customHeadersEnabled: process.env.HELPRR_CUSTOM_HEADERS === 'true',

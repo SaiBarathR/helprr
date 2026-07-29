@@ -3,7 +3,12 @@
 import { createContext, useCallback, useContext, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { jsonFetcher } from '@/lib/query-fetch';
-import { useMe } from '@/components/permission-provider';
+import { hasCapability, useMe } from '@/components/permission-provider';
+import {
+  useDataDemand,
+  useDataDemandRegistry,
+  type RegisterDataDemand,
+} from '@/lib/hooks/use-data-demand';
 
 type MediaType = 'movie' | 'tv';
 type Key = string; // `${mediaType}:${tmdbId}`
@@ -29,6 +34,11 @@ interface RequestedMediaContextValue {
 }
 
 const RequestedMediaContext = createContext<RequestedMediaContextValue | null>(null);
+const RequestedMediaDemandContext = createContext<RegisterDataDemand>(() => () => {});
+const NO_REQUESTED_MEDIA: RequestedMediaContextValue = {
+  isRequested: () => false,
+  markRequested: () => {},
+};
 
 /**
  * Tracks which media the current user has an outstanding request for, so a
@@ -41,8 +51,9 @@ const RequestedMediaContext = createContext<RequestedMediaContextValue | null>(n
  */
 export function RequestedMediaProvider({ children }: { children: React.ReactNode }) {
   const me = useMe();
-  const seerrConfigured = me?.seerrConfigured ?? false;
+  const available = me?.seerrConfigured === true && hasCapability(me, 'requests.create');
   const queryClient = useQueryClient();
+  const { hasDemand, registerDemand } = useDataDemandRegistry();
 
   // The pending-requests fetch is best-effort: a failure should leave the set
   // empty rather than surface an error UI. `select` folds the response into the
@@ -51,7 +62,7 @@ export function RequestedMediaProvider({ children }: { children: React.ReactNode
   const { data: requested } = useQuery({
     queryKey: ['seerr', 'requested-media'],
     queryFn: jsonFetcher<PendingRequestsResponse>('/api/seerr/pending-requests?fields=keys'),
-    enabled: seerrConfigured,
+    enabled: available && hasDemand,
     select: toRequestedSet,
   });
 
@@ -75,15 +86,16 @@ export function RequestedMediaProvider({ children }: { children: React.ReactNode
 
   const value = useMemo(() => ({ isRequested, markRequested }), [isRequested, markRequested]);
 
-  return <RequestedMediaContext.Provider value={value}>{children}</RequestedMediaContext.Provider>;
+  return (
+    <RequestedMediaDemandContext.Provider value={registerDemand}>
+      <RequestedMediaContext.Provider value={value}>{children}</RequestedMediaContext.Provider>
+    </RequestedMediaDemandContext.Provider>
+  );
 }
 
 /** Read/update the current user's outstanding-request set. No-op outside the provider. */
-export function useRequestedMedia(): RequestedMediaContextValue {
-  return (
-    useContext(RequestedMediaContext) ?? {
-      isRequested: () => false,
-      markRequested: () => {},
-    }
-  );
+export function useRequestedMedia(enabled: boolean): RequestedMediaContextValue {
+  const registerDemand = useContext(RequestedMediaDemandContext);
+  useDataDemand(registerDemand, enabled);
+  return useContext(RequestedMediaContext) ?? NO_REQUESTED_MEDIA;
 }

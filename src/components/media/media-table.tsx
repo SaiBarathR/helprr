@@ -82,7 +82,9 @@ export function MediaTable({
   /** Bump to page 1 when the upstream filters/search change. */
   resetPageKey?: unknown;
 }) {
-  const lookup = useWatchLookup();
+  const lookup = useWatchLookup(Boolean(
+    watchScope && rows.some((row) => row.instanceId && row.id != null),
+  ));
   const keyOf = (row: MediaTableRow) => `${row.instanceId ?? ''}:${row.id}`;
   const isSelected = (row: MediaTableRow) => selectedKeys?.has(keyOf(row)) ?? false;
 

@@ -6,6 +6,11 @@ import { toast } from 'sonner';
 import { ApiError, jsonFetcher } from '@/lib/query-fetch';
 import { hasCapability, useMe } from '@/components/permission-provider';
 import {
+  useDataDemand,
+  useDataDemandRegistry,
+  type RegisterDataDemand,
+} from '@/lib/hooks/use-data-demand';
+import {
   anilistKey,
   arrKey,
   providerKey,
@@ -37,6 +42,16 @@ export interface WatchLookupQuery {
   imdbId?: string | null;
 }
 
+export function hasWatchLookupIdentity(query: WatchLookupQuery | undefined): boolean {
+  if (!query) return false;
+  if (query.scope && query.instanceId && query.arrId != null) return true;
+  if (query.anilistId != null) return true;
+  return Boolean(
+    query.kind
+    && (query.tvdbId != null || query.tmdbId != null || query.imdbId),
+  );
+}
+
 export interface SetWatchedArgs {
   jellyfinItemId: string;
   played: boolean;
@@ -56,7 +71,12 @@ interface WatchActionsValue {
 // flight — which flips `isWriting` — doesn't churn the lookup value and re-render
 // every grid card that only reads watch state.
 const WatchLookupContext = createContext<WatchLookupFn>(() => undefined);
-const WatchMapReadyContext = createContext(true);
+const WatchDemandContext = createContext<RegisterDataDemand>(() => () => {});
+const WatchMapStateContext = createContext({
+  available: false,
+  demanded: false,
+  loaded: false,
+});
 const WatchActionsContext = createContext<WatchActionsValue>({
   setWatched: () => {},
   canWrite: false,
@@ -96,20 +116,24 @@ function applyOptimistic(prev: WatchStatusMapResponse, args: SetWatchedArgs): Wa
 
 export function WatchStatusProvider({ children }: { children: React.ReactNode }) {
   const me = useMe();
-  const enabled = me?.jellyfinLinked === true && hasCapability(me, 'jellyfin.view');
+  const available = me?.jellyfinLinked === true && hasCapability(me, 'jellyfin.view');
   const canWrite = hasCapability(me, 'jellyfin.watchedState');
   const queryClient = useQueryClient();
+  const { hasDemand, registerDemand } = useDataDemandRegistry();
 
   const { data: map, isSuccess: mapLoaded } = useQuery({
     queryKey: WATCH_MAP_KEY,
     queryFn: jsonFetcher<WatchStatusMapResponse>('/api/jellyfin/watch-status'),
-    enabled,
+    enabled: available && hasDemand,
     select: toMap,
     // In-session navigation reuses the map; aligned with the server's 10m SWR.
     staleTime: 5 * 60_000,
   });
 
-  const mapReady = !enabled || mapLoaded;
+  const mapState = useMemo(
+    () => ({ available, demanded: hasDemand, loaded: mapLoaded }),
+    [available, hasDemand, mapLoaded],
+  );
 
   const mutation = useMutation({
     mutationFn: async (args: SetWatchedArgs) => {
@@ -205,22 +229,29 @@ export function WatchStatusProvider({ children }: { children: React.ReactNode })
   );
 
   return (
-    <WatchMapReadyContext.Provider value={mapReady}>
-      <WatchLookupContext.Provider value={lookup}>
-        <WatchActionsContext.Provider value={actions}>{children}</WatchActionsContext.Provider>
-      </WatchLookupContext.Provider>
-    </WatchMapReadyContext.Provider>
+    <WatchDemandContext.Provider value={registerDemand}>
+      <WatchMapStateContext.Provider value={mapState}>
+        <WatchLookupContext.Provider value={lookup}>
+          <WatchActionsContext.Provider value={actions}>{children}</WatchActionsContext.Provider>
+        </WatchLookupContext.Provider>
+      </WatchMapStateContext.Provider>
+    </WatchDemandContext.Provider>
   );
 }
 
 /** Read the current user's Jellyfin watch status. Stable across writes; returns undefined outside the provider. */
-export function useWatchLookup(): WatchLookupFn {
+export function useWatchLookup(enabled: boolean): WatchLookupFn {
+  const registerDemand = useContext(WatchDemandContext);
+  useDataDemand(registerDemand, enabled);
   return useContext(WatchLookupContext);
 }
 
-/** False while the watch map is still loading for a Jellyfin-linked user. */
-export function useWatchMapReady(): boolean {
-  return useContext(WatchMapReadyContext);
+/** False only while an eligible consumer is waiting for the demanded watch map. */
+export function useWatchMapReady(enabled: boolean): boolean {
+  const registerDemand = useContext(WatchDemandContext);
+  useDataDemand(registerDemand, enabled);
+  const state = useContext(WatchMapStateContext);
+  return !enabled || !state.available || state.loaded;
 }
 
 /** Toggle watch status / read write-capability + in-flight state. Inert no-op outside the provider. */
