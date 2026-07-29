@@ -21,6 +21,10 @@ import { buildActivityDigest, type ActivityDigestPeriod } from '@/lib/digests/bu
 import { parseBandwidthSchedule } from '@/lib/bandwidth-scheduler/parse';
 import { pickActiveRule } from '@/lib/bandwidth-scheduler/active-rule';
 import { logger } from '@/lib/logger';
+import {
+  createPollingCycleContext,
+  type PollingCycleContext,
+} from '@/lib/polling-cycle';
 import { refreshScheduledAlertOccurrences, checkScheduledAlerts } from '@/lib/scheduled-alerts/delivery';
 import { classifyQueueIssue } from '@/lib/queue-state';
 import { writeBadgeSlice } from '@/lib/cache/badge-counts';
@@ -37,6 +41,9 @@ import { PROFILE_VERSION } from '@/lib/recommendations/profile-types';
 import { can } from '@/lib/permissions';
 import type { QueueItem, QueueResponse, SonarrSeries, Tag } from '@/types';
 import crypto from 'crypto';
+
+type AppSettingsSnapshot = Awaited<ReturnType<typeof getOrCreateAppSettings>>;
+type CycleContext = PollingCycleContext<AppSettingsSnapshot>;
 
 // Tolerance (minutes) for the "before_air" firing window. Lets a sluggish poll
 // still catch an item that just slipped past its computed notify time —
@@ -209,9 +216,12 @@ const HISTORY_MAX_PAGES = 20;
 const HISTORY_SEEN_ID_CAP = 500;
 
 const POLL_SOURCE_TIMEOUT_MS: Record<string, number> = {
-  pollSonarr: 60_000,
-  pollRadarr: 60_000,
-  pollLidarr: 60_000,
+  // Allow the shared two-slot limiter to rotate across all three Arr families.
+  // The active-source marker remains until timed-out work actually settles, and
+  // cache warming is suppressed while any such work is still in flight.
+  pollSonarr: 180_000,
+  pollRadarr: 180_000,
+  pollLidarr: 180_000,
   pollQBittorrent: 45_000,
   pollJellyfin: 15_000,
   pollSeerr: 45_000,
@@ -539,7 +549,9 @@ export class PollingService {
       return;
     }
     this.activePollSources.add(source);
-    const timeoutMs = POLL_SOURCE_TIMEOUT_MS[source] ?? 45_000;
+    const timeoutMs = source in POLL_SOURCE_TIMEOUT_MS
+      ? POLL_SOURCE_TIMEOUT_MS[source]
+      : 45_000;
     let timer: ReturnType<typeof setTimeout> | null = null;
     const task = fn().finally(() => {
       this.activePollSources.delete(source);
@@ -563,47 +575,82 @@ export class PollingService {
     this.isPolling = true;
     try {
       const startedAt = performance.now();
+      const context = createPollingCycleContext(getOrCreateAppSettings, {
+        instanceConcurrency: 2,
+      });
+      const sourceTask = (
+        source: string,
+        run: () => Promise<void>,
+      ): { source: string; run: () => Promise<void> } => ({
+        source,
+        run: () => context.runSource(
+          source,
+          () => this.runPollSource(source, run),
+        ),
+      });
       const pollTasks: Array<{ source: string; run: () => Promise<void> }> = [
-        { source: 'pollSonarr', run: () => this.runPollSource('pollSonarr', () => this.pollSonarr()) },
-        { source: 'pollRadarr', run: () => this.runPollSource('pollRadarr', () => this.pollRadarr()) },
-        { source: 'pollLidarr', run: () => this.runPollSource('pollLidarr', () => this.pollLidarr()) },
-        { source: 'pollQBittorrent', run: () => this.runPollSource('pollQBittorrent', () => this.pollQBittorrent()) },
-        { source: 'pollJellyfin', run: () => this.runPollSource('pollJellyfin', () => this.pollJellyfin()) },
-        { source: 'pollSeerr', run: () => this.runPollSource('pollSeerr', () => this.pollSeerr()) },
-        { source: 'pollServiceReachability', run: () => this.runPollSource('pollServiceReachability', () => this.pollServiceReachability()) },
-        { source: 'checkDiskSpace', run: () => this.runPollSource('checkDiskSpace', () => this.checkDiskSpace()) },
+        sourceTask('pollSonarr', () => this.pollSonarr(context)),
+        sourceTask('pollRadarr', () => this.pollRadarr(context)),
+        sourceTask('pollLidarr', () => this.pollLidarr(context)),
+        sourceTask('pollQBittorrent', () => this.pollQBittorrent(context)),
+        sourceTask('pollJellyfin', () => this.pollJellyfin()),
+        sourceTask('pollSeerr', () => this.pollSeerr()),
+        sourceTask('pollServiceReachability', () => this.pollServiceReachability()),
+        sourceTask('checkDiskSpace', () => this.checkDiskSpace(context)),
+        sourceTask('snapshotDiskUsage', async () => {
+          if (await this.shouldSnapshotDiskUsage(context)) {
+            await this.snapshotDiskUsage(context);
+          }
+        }),
       ];
-      if (await this.shouldSnapshotDiskUsage()) {
-        pollTasks.push({ source: 'snapshotDiskUsage', run: () => this.runPollSource('snapshotDiskUsage', () => this.snapshotDiskUsage()) });
-      }
       pollTasks.push(
-        { source: 'checkUpcoming', run: () => this.runPollSource('checkUpcoming', () => this.checkUpcoming()) },
-        { source: 'refreshScheduledAlertOccurrences', run: () => this.runPollSource('refreshScheduledAlertOccurrences', () => refreshScheduledAlertOccurrences()) },
-        { source: 'checkScheduledAlerts', run: () => this.runPollSource('checkScheduledAlerts', () => checkScheduledAlerts()) },
-        { source: 'checkActivityDigest', run: () => this.runPollSource('checkActivityDigest', () => this.checkActivityDigest()) },
-        { source: 'applyBandwidthSchedule', run: () => this.runPollSource('applyBandwidthSchedule', () => this.applyBandwidthSchedule()) },
-        { source: 'checkRetention', run: () => this.runPollSource('checkRetention', () => this.checkRetention()) },
-        { source: 'checkAnimeAutoMap', run: () => this.runPollSource('checkAnimeAutoMap', () => this.checkAnimeAutoMap()) },
-        { source: 'sweepTasteProfiles', run: () => this.runPollSource('sweepTasteProfiles', () => this.sweepTasteProfiles()) },
+        sourceTask('checkUpcoming', () => this.checkUpcoming(context)),
+        sourceTask('refreshScheduledAlertOccurrences', () => refreshScheduledAlertOccurrences()),
+        sourceTask('checkScheduledAlerts', () => checkScheduledAlerts()),
+        sourceTask('checkActivityDigest', () => this.checkActivityDigest(context)),
+        sourceTask('applyBandwidthSchedule', () => this.applyBandwidthSchedule(context)),
+        sourceTask('checkRetention', () => this.checkRetention(context)),
+        sourceTask('checkAnimeAutoMap', () => this.checkAnimeAutoMap(context)),
+        sourceTask('sweepTasteProfiles', () => this.sweepTasteProfiles()),
       );
       const pollSources = pollTasks.map((task) => task.source);
-      logger.debug('Polling cycle started', { sources: pollSources }, { scope: 'polling' });
+      logger.debug('Polling cycle started', {
+        cycleId: context.id,
+        sources: pollSources,
+      }, { scope: 'polling' });
       const results = await Promise.allSettled(pollTasks.map((task) => task.run()));
 
       // Warm AFTER the polls: pollSonarr/Radarr/Lidarr invalidate the library
       // cache when they observe an import, and a warm fetch racing them could
       // write a pre-import snapshot back over that invalidation for the TTL.
-      await this.runPollSource('warmCaches', () => this.warmCaches()).catch((e) => {
-        logger.error('Cache warming failed', e, { scope: 'polling' });
-      });
+      const activeArrSources = ['pollSonarr', 'pollRadarr', 'pollLidarr']
+        .filter((source) => this.activePollSources.has(source));
+      if (activeArrSources.length === 0) {
+        await context.runSource(
+          'warmCaches',
+          () => this.runPollSource('warmCaches', () => this.warmCaches()),
+        ).catch((e) => {
+          logger.error('Cache warming failed', e, { scope: 'polling' });
+        });
+      } else {
+        logger.warn('Cache warming skipped: Arr polling still active', {
+          sources: activeArrSources,
+        }, { scope: 'polling' });
+      }
 
       const rejected = results.flatMap((result, index) => {
         if (result.status !== 'rejected') return [];
         return [{ source: pollSources[index], reason: errorMessage(result.reason) }];
       });
       const durationMs = Math.round((performance.now() - startedAt) * 10) / 10;
+      const cycleMetrics = context.getMetrics();
       logger.debug('Polling cycle completed', {
+        cycleId: context.id,
         durationMs,
+        settingsReadCount: cycleMetrics.settingsReadCount,
+        maxInstanceConcurrency: cycleMetrics.maxInstanceConcurrency,
+        instanceFailures: cycleMetrics.instanceFailures,
+        sourceDurationsMs: cycleMetrics.sourceDurationsMs,
         sources: results.map((result, index) => ({
           source: pollSources[index],
           status: result.status,
@@ -710,7 +757,8 @@ export class PollingService {
    * detached loop at one series per minute. Never throws.
    */
   async startAnimeAutoMapRun(
-    reason: 'manual' | 'scheduled'
+    reason: 'manual' | 'scheduled',
+    cycleSettings?: AppSettingsSnapshot,
   ): Promise<{ started: boolean; queued?: number; reason?: string }> {
     // Claim synchronously before any await so a poll-tick scheduled start and
     // a manual Run-now in the same tick can't both spin up loops.
@@ -727,7 +775,7 @@ export class PollingService {
 
     let queue: Array<{ instanceId: string; series: SonarrSeries }>;
     try {
-      const settings = await getOrCreateAppSettings();
+      const settings = cycleSettings ?? await getOrCreateAppSettings();
       // The toggle governs the nightly schedule only — a manual Run-now is
       // always allowed. (checkAnimeAutoMap already gates scheduled starts;
       // this is defense-in-depth.)
@@ -942,18 +990,18 @@ export class PollingService {
   // day. Catch-up style: a server that was off at the hour still runs on its
   // next poll that day. Toggling the setting off prevents the next scheduled
   // run but doesn't kill an in-flight one (Stop is the halt control).
-  private async checkAnimeAutoMap(): Promise<void> {
+  private async checkAnimeAutoMap(context: CycleContext): Promise<void> {
     if (this.animeMapRun) return;
-    const settings = await getOrCreateAppSettings();
+    const settings = await context.getSettings();
     if (!settings.animeAutoMapEnabled) return;
 
     const timeZone = settings.timeZone;
-    const now = new Date();
+    const now = new Date(context.startedAtMs);
     if (toZonedDate(now, timeZone).getHours() < settings.animeAutoMapHour) return;
     const lastRun = settings.animeAutoMapLastRunAt;
     if (lastRun && getLocalDateKey(lastRun, timeZone) === getLocalDateKey(now, timeZone)) return;
 
-    void this.startAnimeAutoMapRun('scheduled').catch((error) =>
+    void this.startAnimeAutoMapRun('scheduled', settings).catch((error) =>
       logger.error('Anime auto-map scheduled start failed', {
         error: errorMessage(error),
       }, { scope: 'polling' })
@@ -1033,8 +1081,8 @@ export class PollingService {
   // disk live in AppSettings.diskAlertState (aggregated, cross-connection — so
   // PollingState, which is keyed per connection, is the wrong store). notifyEvent
   // does NOT suppress repeats, so this state is what prevents a push every cycle.
-  private async checkDiskSpace(): Promise<void> {
-    const settings = await getOrCreateAppSettings();
+  private async checkDiskSpace(context: CycleContext): Promise<void> {
+    const settings = await context.getSettings();
     const thresholds = parseDiskThresholds(settings.diskThresholds).filter((t) => t.enabled);
     if (thresholds.length === 0) return; // feature unused → zero cost
 
@@ -1052,8 +1100,8 @@ export class PollingService {
     const diskById = new Map(disks.map((d) => [diskId(d), d]));
     const prevState = parseDiskAlertState(settings.diskAlertState);
     const nextState: DiskAlertState = {};
-    const nowMs = Date.now();
-    const nowIso = new Date().toISOString();
+    const nowMs = context.startedAtMs;
+    const nowIso = new Date(context.startedAtMs).toISOString();
 
     for (const threshold of thresholds) {
       const disk = diskById.get(threshold.diskId);
@@ -1108,9 +1156,9 @@ export class PollingService {
     }
   }
 
-  private async shouldSnapshotDiskUsage(): Promise<boolean> {
-    const settings = await getOrCreateAppSettings();
-    const capturedDate = localDateOnly(new Date(), settings.timeZone);
+  private async shouldSnapshotDiskUsage(context: CycleContext): Promise<boolean> {
+    const settings = await context.getSettings();
+    const capturedDate = localDateOnly(new Date(context.startedAtMs), settings.timeZone);
     const existing = await prisma.diskUsageSnapshot.findFirst({
       where: { capturedDate },
       select: { id: true },
@@ -1121,8 +1169,8 @@ export class PollingService {
   // Daily disk-usage history powering the storage widget's trend + days-until-full.
   // The poll cycle gates this before external disk API calls once today's snapshot exists.
   // Independent of checkDiskSpace (which early-returns when no thresholds are set).
-  private async snapshotDiskUsage(): Promise<void> {
-    const now = new Date();
+  private async snapshotDiskUsage(context: CycleContext): Promise<void> {
+    const now = new Date(context.startedAtMs);
     let disks;
     try {
       disks = await getAggregatedDiskSpace();
@@ -1134,7 +1182,7 @@ export class PollingService {
     }
     if (disks.length === 0) return;
 
-    const settings = await getOrCreateAppSettings();
+    const settings = await context.getSettings();
     const capturedDate = localDateOnly(now, settings.timeZone);
 
     const todays = await prisma.diskUsageSnapshot.findMany({
@@ -1158,33 +1206,42 @@ export class PollingService {
         skipDuplicates: true,
       });
 
-      const cutoff = new Date(Date.now() - DISK_SNAPSHOT_RETENTION_MS);
+      const cutoff = new Date(context.startedAtMs - DISK_SNAPSHOT_RETENTION_MS);
       await prisma.diskUsageSnapshot.deleteMany({ where: { capturedAt: { lt: cutoff } } });
     }
   }
 
-  private async pollSonarr() {
+  private async pollSonarr(context: CycleContext) {
+    context.registerInstanceSource('sonarr');
     let instances;
     try {
       instances = await getSonarrClients();
     } catch (error) {
+      context.markInstanceSourceReady('sonarr');
       logger.debug('Skipping Sonarr poll because clients are unavailable', { error }, { scope: 'polling' });
       return;
     }
-    if (instances.length === 0) return;
+    if (instances.length === 0) {
+      context.markInstanceSourceReady('sonarr');
+      return;
+    }
 
     const n = instances.length;
-    const groupingEnabled = (await getOrCreateAppSettings()).notificationGroupingEnabled;
-    let badgeTotal = 0;
-    let badgeAttention = 0;
-
-    for (const { connection, client } of instances) {
+    let groupingEnabled: boolean;
+    try {
+      groupingEnabled = (await context.getSettings()).notificationGroupingEnabled;
+    } catch (error) {
+      context.markInstanceSourceReady('sonarr');
+      throw error;
+    }
+    const instanceTasks = instances.map(({ connection, client }) => {
+      const counts = { total: 0, attention: 0 };
       const instanceId = connection.id;
       // Per-instance so a failed instance can't bleed its buffered events into
       // the next instance's flush (and re-fire next cycle as duplicates).
       const collector = new PollNotificationCollector();
       const instanceLabel = connection.label;
-      try {
+      return context.runInstance('sonarr', async () => {
         const { state, firstRun } = await getPollingState(instanceId);
 
         // Queue polling
@@ -1293,9 +1350,9 @@ export class PollingService {
           downloadFailedCount,
         }, { scope: 'polling' });
 
-        // Nav badge: summed across instances; written once after the loop.
-        badgeTotal += queue.totalRecords;
-        badgeAttention += queue.records.filter(
+        // Keep badge counts isolated so concurrent workers aggregate deterministically.
+        counts.total = queue.totalRecords;
+        counts.attention = queue.records.filter(
           (r) => classifyQueueIssue(r.trackedDownloadState, r.trackedDownloadStatus) !== null,
         ).length;
 
@@ -1380,36 +1437,52 @@ export class PollingService {
           lastHistoryDate: cursor.lastHistoryDate,
           healthHash,
         }, { scope: 'polling' });
-      } catch (error) {
+        return counts;
+      }).catch((error) => {
         logger.warn('Sonarr instance poll failed', { instanceId, error: errorMessage(error) }, { scope: 'polling' });
-      }
-    }
+        return counts;
+      });
+    });
+    context.markInstanceSourceReady('sonarr');
+    const instanceCounts = await Promise.all(instanceTasks);
 
-    await writeBadgeSlice('activity', 'sonarr', { total: badgeTotal, attention: badgeAttention });
+    await writeBadgeSlice('activity', 'sonarr', {
+      total: instanceCounts.reduce((sum, counts) => sum + counts.total, 0),
+      attention: instanceCounts.reduce((sum, counts) => sum + counts.attention, 0),
+    });
   }
 
-  private async pollRadarr() {
+  private async pollRadarr(context: CycleContext) {
+    context.registerInstanceSource('radarr');
     let instances;
     try {
       instances = await getRadarrClients();
     } catch (error) {
+      context.markInstanceSourceReady('radarr');
       logger.debug('Skipping Radarr poll because clients are unavailable', { error }, { scope: 'polling' });
       return;
     }
-    if (instances.length === 0) return;
+    if (instances.length === 0) {
+      context.markInstanceSourceReady('radarr');
+      return;
+    }
 
     const n = instances.length;
-    const groupingEnabled = (await getOrCreateAppSettings()).notificationGroupingEnabled;
-    let badgeTotal = 0;
-    let badgeAttention = 0;
-
-    for (const { connection, client } of instances) {
+    let groupingEnabled: boolean;
+    try {
+      groupingEnabled = (await context.getSettings()).notificationGroupingEnabled;
+    } catch (error) {
+      context.markInstanceSourceReady('radarr');
+      throw error;
+    }
+    const instanceTasks = instances.map(({ connection, client }) => {
+      const counts = { total: 0, attention: 0 };
       const instanceId = connection.id;
       // Per-instance so a failed instance can't bleed its buffered events into
       // the next instance's flush (and re-fire next cycle as duplicates).
       const collector = new PollNotificationCollector();
       const instanceLabel = connection.label;
-      try {
+      return context.runInstance('radarr', async () => {
         const { state, firstRun } = await getPollingState(instanceId);
 
         const tagMap = await buildTagMap(client);
@@ -1511,9 +1584,9 @@ export class PollingService {
           downloadFailedCount,
         }, { scope: 'polling' });
 
-        // Nav badge: summed across instances; written once after the loop.
-        badgeTotal += queue.totalRecords;
-        badgeAttention += queue.records.filter(
+        // Keep badge counts isolated so concurrent workers aggregate deterministically.
+        counts.total = queue.totalRecords;
+        counts.attention = queue.records.filter(
           (r) => classifyQueueIssue(r.trackedDownloadState, r.trackedDownloadStatus) !== null,
         ).length;
 
@@ -1590,36 +1663,52 @@ export class PollingService {
           lastHistoryDate: cursor.lastHistoryDate,
           healthHash,
         }, { scope: 'polling' });
-      } catch (error) {
+        return counts;
+      }).catch((error) => {
         logger.warn('Radarr instance poll failed', { instanceId, error: errorMessage(error) }, { scope: 'polling' });
-      }
-    }
+        return counts;
+      });
+    });
+    context.markInstanceSourceReady('radarr');
+    const instanceCounts = await Promise.all(instanceTasks);
 
-    await writeBadgeSlice('activity', 'radarr', { total: badgeTotal, attention: badgeAttention });
+    await writeBadgeSlice('activity', 'radarr', {
+      total: instanceCounts.reduce((sum, counts) => sum + counts.total, 0),
+      attention: instanceCounts.reduce((sum, counts) => sum + counts.attention, 0),
+    });
   }
 
-  private async pollLidarr() {
+  private async pollLidarr(context: CycleContext) {
+    context.registerInstanceSource('lidarr');
     let instances;
     try {
       instances = await getLidarrClients();
     } catch (error) {
+      context.markInstanceSourceReady('lidarr');
       logger.debug('Skipping Lidarr poll because clients are unavailable', { error }, { scope: 'polling' });
       return;
     }
-    if (instances.length === 0) return;
+    if (instances.length === 0) {
+      context.markInstanceSourceReady('lidarr');
+      return;
+    }
 
     const n = instances.length;
-    const groupingEnabled = (await getOrCreateAppSettings()).notificationGroupingEnabled;
-    let badgeTotal = 0;
-    let badgeAttention = 0;
-
-    for (const { connection, client } of instances) {
+    let groupingEnabled: boolean;
+    try {
+      groupingEnabled = (await context.getSettings()).notificationGroupingEnabled;
+    } catch (error) {
+      context.markInstanceSourceReady('lidarr');
+      throw error;
+    }
+    const instanceTasks = instances.map(({ connection, client }) => {
+      const counts = { total: 0, attention: 0 };
       const instanceId = connection.id;
       // Per-instance so a failed instance can't bleed its buffered events into
       // the next instance's flush (and re-fire next cycle as duplicates).
       const collector = new PollNotificationCollector();
       const instanceLabel = connection.label;
-      try {
+      return context.runInstance('lidarr', async () => {
         const { state, firstRun } = await getPollingState(instanceId);
 
         const tagMap = await buildTagMap(client);
@@ -1701,9 +1790,9 @@ export class PollingService {
           }
         }
 
-        // Nav badge: summed across instances; written once after the loop.
-        badgeTotal += queue.totalRecords;
-        badgeAttention += queue.records.filter(
+        // Keep badge counts isolated so concurrent workers aggregate deterministically.
+        counts.total = queue.totalRecords;
+        counts.attention = queue.records.filter(
           (r) => classifyQueueIssue(r.trackedDownloadState, r.trackedDownloadStatus) !== null,
         ).length;
 
@@ -1767,15 +1856,22 @@ export class PollingService {
           instanceId,
           queueCount: currentSnapshots.length,
         }, { scope: 'polling' });
-      } catch (error) {
+        return counts;
+      }).catch((error) => {
         logger.warn('Lidarr instance poll failed', { instanceId, error: errorMessage(error) }, { scope: 'polling' });
-      }
-    }
+        return counts;
+      });
+    });
+    context.markInstanceSourceReady('lidarr');
+    const instanceCounts = await Promise.all(instanceTasks);
 
-    await writeBadgeSlice('activity', 'lidarr', { total: badgeTotal, attention: badgeAttention });
+    await writeBadgeSlice('activity', 'lidarr', {
+      total: instanceCounts.reduce((sum, counts) => sum + counts.total, 0),
+      attention: instanceCounts.reduce((sum, counts) => sum + counts.attention, 0),
+    });
   }
 
-  private async pollQBittorrent() {
+  private async pollQBittorrent(context: CycleContext) {
     let client;
     try {
       client = await getQBittorrentClient();
@@ -1789,7 +1885,7 @@ export class PollingService {
 
     const { state, firstRun } = await getPollingState(connection.id);
 
-    const groupingEnabled = (await getOrCreateAppSettings()).notificationGroupingEnabled;
+    const groupingEnabled = (await context.getSettings()).notificationGroupingEnabled;
     const collector = new PollNotificationCollector();
 
     const torrents = await client.getTorrents();
@@ -2206,13 +2302,13 @@ export class PollingService {
     }
   }
 
-  private async checkUpcoming() {
-    const settings = await getOrCreateAppSettings();
+  private async checkUpcoming(context: CycleContext) {
+    const settings = await context.getSettings();
     const timeZone = settings.timeZone;
 
     const mode: 'before_air' | 'daily_digest' =
       settings.upcomingNotifyMode === 'daily_digest' ? 'daily_digest' : 'before_air';
-    const now = new Date();
+    const now = new Date(context.startedAtMs);
     logger.debug('Upcoming poll started', {
       mode,
       timeZone,
@@ -2562,11 +2658,11 @@ export class PollingService {
   // Run bounded database and image-cache retention once/day. Database errors
   // leave the throttle untouched so a later poll retries; image cleanup fails
   // independently so Redis/filesystem trouble cannot block database pruning.
-  private async checkRetention(): Promise<void> {
-    const now = Date.now();
+  private async checkRetention(context: CycleContext): Promise<void> {
+    const now = context.startedAtMs;
     if (now - this.lastRetentionPruneAt < 86_400_000) return;
 
-    const settings = await getOrCreateAppSettings();
+    const settings = await context.getSettings();
     const result = await runRetentionSweep({
       notificationRetentionDays: settings.notificationHistoryRetentionDays,
       nowMs: now,
@@ -2601,14 +2697,14 @@ export class PollingService {
     }
   }
 
-  private async checkActivityDigest(): Promise<void> {
-    const settings = await getOrCreateAppSettings();
+  private async checkActivityDigest(context: CycleContext): Promise<void> {
+    const settings = await context.getSettings();
     const mode = settings.activityDigestMode;
     if (mode !== 'daily' && mode !== 'weekly') return;
 
     const period: ActivityDigestPeriod = mode;
     const timeZone = settings.timeZone;
-    const now = new Date();
+    const now = new Date(context.startedAtMs);
     const zoned = toZonedDate(now, timeZone);
     const localHour = zoned.getHours();
     const localDow = zoned.getDay(); // 0=Sun..6=Sat
@@ -2750,8 +2846,8 @@ export class PollingService {
     }
   }
 
-  private async applyBandwidthSchedule(): Promise<void> {
-    const settings = await getOrCreateAppSettings();
+  private async applyBandwidthSchedule(context: CycleContext): Promise<void> {
+    const settings = await context.getSettings();
     const schedule = parseBandwidthSchedule(settings.qbtBandwidthSchedule);
     if (schedule.rules.length === 0) {
       // No rules (or all deleted). Release any throttle we applied so the limit
@@ -2760,7 +2856,11 @@ export class PollingService {
       return;
     }
 
-    const active = pickActiveRule(schedule.rules, new Date(), settings.timeZone);
+    const active = pickActiveRule(
+      schedule.rules,
+      new Date(context.startedAtMs),
+      settings.timeZone,
+    );
 
     // No active rule — the window has ended. Release the throttle we applied.
     if (!active) {
