@@ -32,6 +32,10 @@ function getRequest(input: unknown): Request | null {
   return input instanceof Request ? input : null;
 }
 
+function requestMayHaveBody(request: Request): boolean {
+  return request.method !== 'GET' && request.method !== 'HEAD';
+}
+
 async function readBodyPreview(requestOrResponse: Request | Response): Promise<unknown> {
   const contentType = requestOrResponse.headers.get('content-type') || '';
   if (!contentType.includes('application/json') && !contentType.startsWith('text/')) {
@@ -96,6 +100,7 @@ export function withApiLogging<T extends (...args: never[]) => Promise<Response>
       && allowBodies
       && prefs.failedRequestBodies
       && request
+      && requestMayHaveBody(request)
     ) ? request.clone() : null;
     const startedAt = performance.now();
     const requestId = crypto.randomUUID();
