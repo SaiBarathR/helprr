@@ -9,6 +9,7 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import type { JellyfinScheduledTask, JellyfinSystemInfo } from '@/types/jellyfin';
 import type { WidgetProps } from '@/lib/widgets/types';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
+import { fetchJellyfinTasks } from '@/lib/widgets/widget-fetchers';
 import { SectionHeader, HPR } from './bento-primitives';
 import { useElementSize } from '@/lib/widgets/use-element-size';
 
@@ -20,44 +21,37 @@ const SERVER_ACTION_LABELS: Record<ServerAction, string> = {
   'scan-libraries': 'scan all libraries',
 };
 
-interface ServerData {
-  system: JellyfinSystemInfo | null;
-  tasks: JellyfinScheduledTask[];
-}
-
-async function fetchServerData(): Promise<ServerData> {
-  const [sysRes, taskRes] = await Promise.allSettled([
-    fetch('/api/jellyfin/system'),
-    fetch('/api/jellyfin/tasks'),
-  ]);
-  let system: JellyfinSystemInfo | null = null;
-  let tasks: JellyfinScheduledTask[] = [];
-  if (sysRes.status === 'fulfilled' && sysRes.value.ok) {
-    const d = await sysRes.value.json();
-    system = d.system ?? null;
-  }
-  if (taskRes.status === 'fulfilled' && taskRes.value.ok) {
-    const d = await taskRes.value.json();
-    tasks = d.tasks ?? [];
-  }
-  return { system, tasks };
+async function fetchSystem(signal?: AbortSignal): Promise<JellyfinSystemInfo | null> {
+  const response = await fetch('/api/jellyfin/system', { signal });
+  if (!response.ok) return null;
+  const data = await response.json();
+  return data.system ?? null;
 }
 
 export function JellyfinServerWidget({ refreshInterval, editMode = false }: WidgetProps) {
   const { ref, width } = useElementSize<HTMLDivElement>();
   const compactView = useMemo(() => width > 0 && width < 300, [width]);
-  const { data, loading, refresh } = useWidgetData<ServerData>({
-    fetchFn: fetchServerData,
+  const { data: system, loading, refresh: refreshSystem } = useWidgetData({
+    fetchFn: fetchSystem,
     refreshInterval,
     enabled: !editMode,
-    cacheKey: 'jellyfin-server',
+    cacheKey: 'jellyfin-system',
+  });
+  const { data: tasks, refresh: refreshTasks } = useWidgetData<JellyfinScheduledTask[]>({
+    fetchFn: fetchJellyfinTasks,
+    refreshInterval,
+    enabled: !editMode,
+    cacheKey: 'jellyfin-tasks',
+    staleTime: refreshInterval,
   });
 
-  const system = data?.system ?? null;
   const scanRunning = useMemo(
-    () => (data?.tasks ?? []).some((t) => t.Key === 'RefreshLibrary' && t.State === 'Running'),
-    [data?.tasks],
+    () => (tasks ?? []).some((task) => task.Key === 'RefreshLibrary' && task.State === 'Running'),
+    [tasks],
   );
+  const refresh = useCallback(async () => {
+    await Promise.all([refreshSystem(), refreshTasks()]);
+  }, [refreshSystem, refreshTasks]);
 
   const [serverAction, setServerAction] = useState<ServerAction | null>(null);
   const [pendingServerAction, setPendingServerAction] = useState<ServerAction | null>(null);
@@ -141,7 +135,7 @@ export function JellyfinServerWidget({ refreshInterval, editMode = false }: Widg
               variant="ghost"
               size="sm"
               className="h-7 flex-1 text-[11px] gap-1.5 text-muted-foreground hover:text-[var(--hpr-cyan)] hover:bg-[var(--hpr-cyan)]/10"
-              disabled={editMode || serverAction !== null || scanRunning}
+              disabled={editMode || serverAction !== null || tasks === null || scanRunning}
               onClick={() => handleServerAction('scan-libraries')}
             >
               {serverAction === 'scan-libraries' || scanRunning ? (

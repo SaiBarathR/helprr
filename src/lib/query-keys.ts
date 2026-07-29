@@ -38,6 +38,7 @@ export const queryKeys = {
   // ── Activity / live ──────────────────────────────────────────────
   calendar: (range: string) => ['calendar', range] as const,
   health: () => ['services', 'health'] as const,
+  widgetServiceAvailability: () => ['services', 'widget-availability'] as const,
   libraryGaps: () => ['library-gaps'] as const,
 
   // ── Config / account ─────────────────────────────────────────────

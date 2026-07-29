@@ -7,6 +7,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { jsonFetcher, ensureArray } from '@/lib/query-fetch';
 import { queryKeys } from '@/lib/query-keys';
+import { invalidateInstances } from '@/lib/query-invalidation';
 import { GroupedSection } from '@/components/settings/grouped-section';
 import { AnilistConnectionCard } from '@/components/settings/anilist-connection-card';
 import { SERVICE_CONFIG } from '@/lib/settings/service-config';
@@ -50,7 +51,7 @@ export default function InstancesIndexPage() {
     onSuccess: (_data, connection) => {
       toast.success(`Deleted ${connection.label}`);
       setConfirmDelete(null);
-      void queryClient.invalidateQueries({ queryKey: queryKeys.instances() });
+      invalidateInstances(queryClient);
     },
     onError: (error) => toast.error(error instanceof Error ? error.message : 'Failed to delete instance'),
   });

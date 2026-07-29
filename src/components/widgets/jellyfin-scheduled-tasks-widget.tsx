@@ -1,5 +1,4 @@
 'use client';
-import { ApiError } from '@/lib/query-fetch';
 
 import { useCallback, useMemo, useState } from 'react';
 import {
@@ -21,15 +20,9 @@ import { Progress } from '@/components/ui/progress';
 import type { JellyfinScheduledTask } from '@/types/jellyfin';
 import type { WidgetProps } from '@/lib/widgets/types';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
+import { fetchJellyfinTasks } from '@/lib/widgets/widget-fetchers';
 import { formatTriggerSchedule, taskRunDuration, timeAgo } from '@/lib/jellyfin-helpers';
 import { SectionHeader, HPR } from './bento-primitives';
-
-async function fetchTasks(): Promise<JellyfinScheduledTask[]> {
-  const res = await fetch('/api/jellyfin/tasks');
-  if (!res.ok) throw new ApiError(res.status, 'Request failed');
-  const data = await res.json();
-  return Array.isArray(data.tasks) ? data.tasks : [];
-}
 
 function TaskStatusIcon({ status, state }: { status?: string; state: string }) {
   if (state === 'Running') return <Loader2 className="h-3.5 w-3.5 animate-spin text-[var(--hpr-cyan)] shrink-0" />;
@@ -45,12 +38,13 @@ export function JellyfinScheduledTasksWidget({ refreshInterval, editMode = false
   const [manualRefreshing, setManualRefreshing] = useState(false);
 
   const { data, loading, refresh } = useWidgetData<JellyfinScheduledTask[]>({
-    fetchFn: fetchTasks,
+    fetchFn: fetchJellyfinTasks,
     refreshInterval,
     enabled: !editMode,
     // Stable key — a task action refetches via the hook's refresh() rather than
     // bumping a counter into the key, which orphaned the previous cache slot.
-    cacheKey: 'jellyfin-scheduled-tasks',
+    cacheKey: 'jellyfin-tasks',
+    staleTime: refreshInterval,
   });
 
   const tasks = useMemo(() => data ?? [], [data]);

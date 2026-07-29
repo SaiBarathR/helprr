@@ -3,17 +3,11 @@ import { ApiError } from '@/lib/query-fetch';
 import { ArrowDown, ArrowRight, ArrowUp } from 'lucide-react';
 
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
+import { fetchServicesStats } from '@/lib/widgets/widget-fetchers';
 import { formatBytes } from '@/lib/format';
 import type { WidgetProps } from '@/lib/widgets/types';
-import type { DiskSpace, DiskTrend, ServicesStatsResponse, StorageTrendResponse } from '@/types/service-stats';
+import type { DiskTrend, StorageTrendResponse } from '@/types/service-stats';
 import { Bar, Eyebrow, FONT_MONO, HPR } from './bento-primitives';
-
-async function fetchStorage(): Promise<DiskSpace[]> {
-  const res = await fetch('/api/services/stats');
-  if (!res.ok) throw new ApiError(res.status, 'Request failed');
-  const data: ServicesStatsResponse = await res.json();
-  return data.diskSpace || [];
-}
 
 async function fetchStorageTrend(): Promise<Record<string, DiskTrend>> {
   const res = await fetch('/api/storage/trend');
@@ -65,11 +59,12 @@ function TrendIndicator({ trend }: { trend: DiskTrend }) {
 }
 
 export function StorageUsageWidget({ refreshInterval, narrow = false, editMode = false }: WidgetProps) {
-  const { data: disks } = useWidgetData({
-    fetchFn: fetchStorage,
+  const { data: stats } = useWidgetData({
+    fetchFn: fetchServicesStats,
     refreshInterval,
     enabled: !editMode,
-    cacheKey: 'storage-usage',
+    cacheKey: 'services-stats',
+    staleTime: refreshInterval,
   });
   const { data: trends } = useWidgetData({
     fetchFn: fetchStorageTrend,
@@ -77,7 +72,7 @@ export function StorageUsageWidget({ refreshInterval, narrow = false, editMode =
     enabled: !editMode,
     cacheKey: 'storage-trend',
   });
-  const list = disks ?? [];
+  const list = stats?.diskSpace ?? [];
   const trendMap = trends ?? {};
 
   return (
