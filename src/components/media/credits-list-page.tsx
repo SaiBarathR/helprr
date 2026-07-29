@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useWindowVirtualizer } from '@tanstack/react-virtual';
 import { PageHeader } from '@/components/layout/page-header';
 import { PersonRow } from '@/components/media/person-row';
+import { ErrorState } from '@/components/ui/error-state';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import type { ImageServiceHint } from '@/lib/image';
 
@@ -24,7 +25,9 @@ interface CreditsListPageProps {
   cacheService: ImageServiceHint;
   loading?: boolean;
   initialTab?: 'cast' | 'crew';
-  error?: string | null;
+  errorMessage?: string | null;
+  onRetry?: () => void;
+  retrying?: boolean;
 }
 
 const ROW_HEIGHT = 72;
@@ -36,7 +39,9 @@ export function CreditsListPage({
   cacheService,
   loading,
   initialTab = 'cast',
-  error = null,
+  errorMessage = null,
+  onRetry,
+  retrying,
 }: CreditsListPageProps) {
   const [tab, setTab] = useState<'cast' | 'crew'>(initialTab);
   const [scrollMargin, setScrollMargin] = useState(0);
@@ -90,10 +95,13 @@ export function CreditsListPage({
         })}
       </div>
 
-      {error ? (
-        <div className="py-12 text-center text-sm text-destructive">
-          {error}
-        </div>
+      {errorMessage ? (
+        <ErrorState
+          message={errorMessage}
+          onRetry={onRetry}
+          retrying={retrying}
+          compact
+        />
       ) : items.length === 0 ? (
         <div className="py-12 text-center text-sm text-muted-foreground">
           No {tab} credits found

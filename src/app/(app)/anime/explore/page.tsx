@@ -8,6 +8,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { SearchBar } from '@/components/media/search-bar';
 import { AnimeCard } from '@/components/anime/anime-card';
 import { Button } from '@/components/ui/button';
+import { ErrorState } from '@/components/ui/error-state';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import {
   Drawer,
@@ -309,16 +310,30 @@ export default function AnimePage() {
     () => active.data?.pages.flatMap((p) => p.items) ?? [],
     [active.data],
   );
-  const loading = active.isLoading || (!urlInitialized && !active.data);
+  const loading =
+    (active.isLoading || !urlInitialized) && active.data === undefined;
+  const initialError = active.isError && active.data === undefined;
   const loadingMore = active.isFetchingNextPage;
-  const { hasNextPage, isFetchingNextPage, isLoading: activeIsLoading, fetchNextPage } = active;
+  const {
+    hasNextPage,
+    isFetchingNextPage,
+    isFetchNextPageError,
+    isLoading: activeIsLoading,
+    fetchNextPage,
+  } = active;
 
   // Infinite scroll — fetch the active query's next page when the sentinel shows.
   useEffect(() => {
     if (!sentinelRef.current) return;
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries[0]?.isIntersecting && hasNextPage && !isFetchingNextPage && !activeIsLoading) {
+        if (
+          entries[0]?.isIntersecting
+          && hasNextPage
+          && !isFetchingNextPage
+          && !isFetchNextPageError
+          && !activeIsLoading
+        ) {
           void fetchNextPage();
         }
       },
@@ -326,7 +341,13 @@ export default function AnimePage() {
     );
     observer.observe(sentinelRef.current);
     return () => observer.disconnect();
-  }, [hasNextPage, isFetchingNextPage, activeIsLoading, fetchNextPage]);
+  }, [
+    hasNextPage,
+    isFetchingNextPage,
+    isFetchNextPageError,
+    activeIsLoading,
+    fetchNextPage,
+  ]);
 
   const resetExploreScroll = useCallback(() => {
     setListViewState(EXPLORE_CACHE_KEY, { scrollY: 0, search: '' });
@@ -465,6 +486,12 @@ export default function AnimePage() {
       {/* Content */}
       {loading ? (
         <PageSpinner />
+      ) : initialError ? (
+        <ErrorState
+          message="Couldn't load anime. Try again."
+          onRetry={() => void active.refetch()}
+          retrying={active.isFetching}
+        />
       ) : (
         <div className="pt-2">
           {items.length === 0 ? (
@@ -492,6 +519,18 @@ export default function AnimePage() {
             <div className="flex justify-center py-4">
               <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
             </div>
+          )}
+          {isFetchNextPageError && (
+            <ErrorState
+              message="Couldn't load more results."
+              onRetry={() => {
+                if (hasNextPage && !isFetchingNextPage) {
+                  void fetchNextPage();
+                }
+              }}
+              retrying={isFetchingNextPage}
+              compact
+            />
           )}
         </div>
       )}

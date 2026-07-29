@@ -34,8 +34,9 @@ export default function MovieCreditsPage() {
   const credits = useMemo(() => creditsQuery.data ?? [], [creditsQuery.data]);
   // First-load-only: once credits are cached, a background refetch must not
   // re-blank CreditsListPage to a full-screen spinner.
-  const loading = (movieQuery.isLoading || creditsQuery.isLoading) && !creditsQuery.data;
-  const error = creditsQuery.error;
+  const loading =
+    (movieQuery.isLoading || creditsQuery.isLoading) && creditsQuery.data === undefined;
+  const initialError = creditsQuery.isError && creditsQuery.data === undefined;
 
   const { cast, crew } = useMemo((): { cast: CreditPerson[]; crew: CreditPerson[] } => {
     const castItems: CreditPerson[] = credits
@@ -77,7 +78,9 @@ export default function MovieCreditsPage() {
       cacheService="radarr"
       loading={loading}
       initialTab={initialTab}
-      error={error?.message ?? null}
+      errorMessage={initialError ? "Couldn't load credits. Try again." : null}
+      onRetry={() => void creditsQuery.refetch()}
+      retrying={creditsQuery.isFetching}
     />
   );
 }

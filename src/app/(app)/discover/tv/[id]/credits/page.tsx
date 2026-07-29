@@ -17,11 +17,13 @@ export default function DiscoverTvCreditsPage() {
   const tvId = Number(id);
   const initialTab = searchParams.get('type') === 'crew' ? 'crew' : 'cast';
 
-  const { data, isLoading } = useQuery({
+  const creditsQuery = useQuery({
     queryKey: queryKeys.discoverCredits('tv', tvId),
     queryFn: jsonFetcher<DiscoverTvFullDetail>(`/api/discover/tv/${tvId}`),
     enabled: Number.isFinite(tvId) && tvId > 0,
   });
+  const { data } = creditsQuery;
+  const initialError = creditsQuery.isError && data === undefined;
 
   const cast = useMemo<CreditPerson[]>(
     () =>
@@ -52,8 +54,11 @@ export default function DiscoverTvCreditsPage() {
       cast={cast}
       crew={crew}
       cacheService="tmdb"
-      loading={isLoading && !data}
+      loading={creditsQuery.isLoading && data === undefined}
       initialTab={initialTab}
+      errorMessage={initialError ? "Couldn't load credits. Try again." : null}
+      onRetry={() => void creditsQuery.refetch()}
+      retrying={creditsQuery.isFetching}
     />
   );
 }
