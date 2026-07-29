@@ -1,7 +1,8 @@
 'use client';
 
-import { Suspense } from 'react';
+import { createElement, Suspense } from 'react';
 import { getWidgetDefinition } from '@/lib/widgets/registry';
+import { getWidgetComponent, resetWidgetComponent } from './widget-loaders';
 import { WidgetWrapper, WidgetSkeleton } from './widget-wrapper';
 import { useUIStore } from '@/lib/store';
 import type { WidgetInstance, WidgetLayoutVariant, WidgetProps } from '@/lib/widgets/types';
@@ -44,7 +45,6 @@ export function WidgetRenderer({
   }
 
   const effectiveSecs = instance.refreshIntervalSecs ?? definition.defaultRefreshIntervalSecs;
-  const WidgetComponent = definition.component;
   const widgetProps: WidgetProps = {
     refreshInterval: effectiveSecs * 1000,
     editMode,
@@ -57,10 +57,31 @@ export function WidgetRenderer({
   };
 
   return (
-    <WidgetWrapper widgetId={instance.id}>
-      <Suspense fallback={<WidgetSkeleton rowSpan={rowSpan} />}>
-        <WidgetComponent {...widgetProps} />
-      </Suspense>
+    <WidgetWrapper
+      widgetId={instance.id}
+      onRetry={() => resetWidgetComponent(instance.widgetId)}
+    >
+      {() => {
+        const WidgetComponent = getWidgetComponent(instance.widgetId);
+        if (!WidgetComponent) {
+          return (
+            <div
+              style={{
+                fontSize: 11,
+                color: HPR.fgSubtle,
+                padding: 12,
+              }}
+            >
+              Widget unavailable: {instance.widgetId}
+            </div>
+          );
+        }
+        return (
+          <Suspense fallback={<WidgetSkeleton rowSpan={rowSpan} />}>
+            {createElement(WidgetComponent, widgetProps)}
+          </Suspense>
+        );
+      }}
     </WidgetWrapper>
   );
 }

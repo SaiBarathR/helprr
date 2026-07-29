@@ -1,4 +1,3 @@
-import type { ComponentType } from 'react';
 import type { Capability } from '@/lib/capabilities';
 
 export type ColSpan = number;
@@ -61,7 +60,6 @@ export interface WidgetDefinition {
   desktopLayout?: WidgetLayoutVariant;
   /** Layout variant chosen when narrow=true or row-stack is preferable. */
   mobileLayout?: WidgetLayoutVariant;
-  component: ComponentType<WidgetProps>;
   requiredServices?: ('SONARR' | 'RADARR' | 'QBITTORRENT' | 'PROWLARR' | 'JELLYFIN' | 'TMDB' | 'SEERR')[];
   /** When set, the widget is hidden (dashboard + gallery) from users who lack
    *  this capability — so a member never sees cleanup/prowlarr/analytics tiles.

@@ -1,79 +1,6 @@
-import type { WidgetDefinition, WidgetProps, WidgetSpan } from './types';
+import type { WidgetDefinition, WidgetSpan } from './types';
 import type { Capability } from '@/lib/capabilities';
-import * as React from 'react';
-
-// Existing widgets (refactored from dashboard)
-import { StatsGridWidget } from '@/components/widgets/stats-grid-widget';
-import { ProwlarrIndexersWidget } from '@/components/widgets/prowlarr-indexers-widget';
-import { NowStreamingWidget } from '@/components/widgets/now-streaming-widget';
-import { ContinueWatchingWidget } from '@/components/widgets/continue-watching-widget';
-import { ActiveDownloadsWidget } from '@/components/widgets/active-downloads-widget';
-import { RecentlyAddedWidget } from '@/components/widgets/recently-added-widget';
-import { UpcomingWidget } from '@/components/widgets/upcoming-widget';
-
-// New widgets
-import { ServiceHealthWidget } from '@/components/widgets/service-health-widget';
-import { TorrentWidget } from '@/components/widgets/torrent-widget';
-import { WantedItemsWidget } from '@/components/widgets/wanted-items-widget';
-import { NotificationsWidget } from '@/components/widgets/notifications-widget';
-import { TodayCalendarWidget } from '@/components/widgets/today-calendar-widget';
-import { StorageUsageWidget } from '@/components/widgets/storage-usage-widget';
-import { ActivityHistoryWidget } from '@/components/widgets/activity-history-widget';
-import { CleanupStatusWidget } from '@/components/widgets/cleanup-status-widget';
-import { CleanupHistoryWidget } from '@/components/widgets/cleanup-history-widget';
-
-// Prowlarr stats widgets
-import { ProwlarrStatsSummaryWidget } from '@/components/widgets/prowlarr-stats-summary-widget';
-import { ProwlarrResponseTimeWidget } from '@/components/widgets/prowlarr-response-time-widget';
-import { ProwlarrFailureRateWidget } from '@/components/widgets/prowlarr-failure-rate-widget';
-import { ProwlarrQueriesByIndexerWidget } from '@/components/widgets/prowlarr-queries-widget';
-import { ProwlarrGrabsByIndexerWidget } from '@/components/widgets/prowlarr-grabs-widget';
-import { ProwlarrUserAgentQueriesWidget } from '@/components/widgets/prowlarr-ua-queries-widget';
-import { ProwlarrUserAgentGrabsWidget } from '@/components/widgets/prowlarr-ua-grabs-widget';
-
-// Jellyfin stats/history widgets
-import { JellyfinUserActivityWidget } from '@/components/widgets/jellyfin-user-activity-widget';
-import { JellyfinPlayHistoryWidget } from '@/components/widgets/jellyfin-play-history-widget';
-import { JellyfinPlaybackMethodsWidget } from '@/components/widgets/jellyfin-playback-methods-widget';
-import { JellyfinTopTvShowsWidget } from '@/components/widgets/jellyfin-top-tv-shows-widget';
-import { JellyfinTopMoviesWidget } from '@/components/widgets/jellyfin-top-movies-widget';
-import { JellyfinTopClientsWidget } from '@/components/widgets/jellyfin-top-clients-widget';
-import { JellyfinTopDevicesWidget } from '@/components/widgets/jellyfin-top-devices-widget';
-import { JellyfinPlayActivityWidget } from '@/components/widgets/jellyfin-play-activity-widget';
-import { JellyfinHourlyActivityWidget } from '@/components/widgets/jellyfin-hourly-activity-widget';
-
-// Jellyfin overview widgets
-import { JellyfinServerWidget } from '@/components/widgets/jellyfin-server-widget';
-import { JellyfinScheduledTasksWidget } from '@/components/widgets/jellyfin-scheduled-tasks-widget';
-import { JellyfinDevicesWidget } from '@/components/widgets/jellyfin-devices-widget';
-import { JellyfinActivityWidget } from '@/components/widgets/jellyfin-activity-widget';
-import { JellyfinAlertsWidget } from '@/components/widgets/jellyfin-alerts-widget';
-
-// Seerr widgets
-import { RequestsListWidget } from '@/components/widgets/requests-list-widget';
-import { RequestsUsersWidget } from '@/components/widgets/requests-users-widget';
-
-import { AnimeCarouselWidget } from '@/components/widgets/anime-carousel-widget';
 import { ANIME_CAROUSEL_MAP, DEFAULT_ANIME_CAROUSEL_ORDER } from '@/lib/anime-carousel-config';
-
-// For You recommendations
-import { ForYouWidget } from '@/components/widgets/for-you-widget';
-
-// Insights-derived analytics widgets
-import { LibraryGrowthWidget } from '@/components/widgets/library-growth-widget';
-import { LibraryCompletenessWidget } from '@/components/widgets/library-completeness-widget';
-import { DownloadReliabilityWidget } from '@/components/widgets/download-reliability-widget';
-import { DownloadPipelineWidget } from '@/components/widgets/download-pipeline-widget';
-import { StorageBreakdownWidget } from '@/components/widgets/storage-breakdown-widget';
-import { SeedingEconomicsWidget } from '@/components/widgets/seeding-economics-widget';
-import { MediaTechnicalBreakdownWidget } from '@/components/widgets/media-technical-breakdown-widget';
-import { MediaQualityScoresWidget } from '@/components/widgets/media-quality-scores-widget';
-
-// Page features surfaced as widgets
-import { WatchlistWidget } from '@/components/widgets/watchlist-widget';
-import { LibraryGapsWidget } from '@/components/widgets/library-gaps-widget';
-import { RandomWatchWidget } from '@/components/widgets/random-watch-widget';
-import { SettingsShortcutWidget } from '@/components/widgets/settings-shortcut-widget';
 import { SETTINGS_SHORTCUTS } from '@/lib/widgets/settings-shortcuts';
 
 const span = (colSpan: WidgetSpan['colSpan'], rowSpan: WidgetSpan['rowSpan']): WidgetSpan => ({
@@ -98,7 +25,6 @@ export const ALL_WIDGET_DEFINITIONS: WidgetDefinition[] = [
     defaultRefreshIntervalSecs: 30,
     desktopLayout: 'default',
     mobileLayout: 'vertical',
-    component: StatsGridWidget,
   },
 
   // ── Downloads / service indicators ──
@@ -114,7 +40,6 @@ export const ALL_WIDGET_DEFINITIONS: WidgetDefinition[] = [
     supportsNarrow: true,
     desktopLayout: 'default',
     mobileLayout: 'vertical',
-    component: ProwlarrIndexersWidget,
     requiredServices: ['PROWLARR'],
   },
   {
@@ -129,7 +54,6 @@ export const ALL_WIDGET_DEFINITIONS: WidgetDefinition[] = [
     supportsNarrow: true,
     desktopLayout: 'default',
     mobileLayout: 'vertical',
-    component: WantedItemsWidget,
   },
   {
     id: 'torrent-overview',
@@ -143,7 +67,6 @@ export const ALL_WIDGET_DEFINITIONS: WidgetDefinition[] = [
     supportsNarrow: true,
     desktopLayout: 'default',
     mobileLayout: 'vertical',
-    component: TorrentWidget,
     requiredServices: ['QBITTORRENT'],
   },
   // ── Streaming ──
@@ -158,7 +81,6 @@ export const ALL_WIDGET_DEFINITIONS: WidgetDefinition[] = [
     defaultRefreshIntervalSecs: 15,
     desktopLayout: 'carousel',
     mobileLayout: 'list',
-    component: NowStreamingWidget,
     requiredServices: ['JELLYFIN'],
   },
   {
@@ -172,7 +94,6 @@ export const ALL_WIDGET_DEFINITIONS: WidgetDefinition[] = [
     defaultRefreshIntervalSecs: 30,
     desktopLayout: 'posters',
     mobileLayout: 'posters',
-    component: ContinueWatchingWidget,
     requiredServices: ['JELLYFIN'],
   },
   // ── Downloads ──
@@ -187,7 +108,6 @@ export const ALL_WIDGET_DEFINITIONS: WidgetDefinition[] = [
     defaultRefreshIntervalSecs: 15,
     desktopLayout: 'cards',
     mobileLayout: 'list',
-    component: ActiveDownloadsWidget,
   },
 
   // ── Media ──
@@ -202,7 +122,6 @@ export const ALL_WIDGET_DEFINITIONS: WidgetDefinition[] = [
     defaultRefreshIntervalSecs: 60,
     desktopLayout: 'posters',
     mobileLayout: 'posters',
-    component: RecentlyAddedWidget,
   },
   {
     id: 'for-you',
@@ -215,7 +134,6 @@ export const ALL_WIDGET_DEFINITIONS: WidgetDefinition[] = [
     defaultRefreshIntervalSecs: 300,
     desktopLayout: 'carousel',
     mobileLayout: 'carousel',
-    component: ForYouWidget,
     requiredServices: ['TMDB'],
   },
   {
@@ -229,7 +147,6 @@ export const ALL_WIDGET_DEFINITIONS: WidgetDefinition[] = [
     defaultRefreshIntervalSecs: 60,
     desktopLayout: 'posters',
     mobileLayout: 'posters',
-    component: UpcomingWidget,
   },
   {
     id: 'today-calendar',
@@ -242,7 +159,6 @@ export const ALL_WIDGET_DEFINITIONS: WidgetDefinition[] = [
     defaultRefreshIntervalSecs: 30,
     desktopLayout: 'list',
     mobileLayout: 'list',
-    component: TodayCalendarWidget,
   },
   {
     id: 'activity-history',
@@ -255,7 +171,6 @@ export const ALL_WIDGET_DEFINITIONS: WidgetDefinition[] = [
     defaultRefreshIntervalSecs: 60,
     desktopLayout: 'detailed',
     mobileLayout: 'detailed',
-    component: ActivityHistoryWidget,
   },
 
   // ── Monitoring ──
@@ -271,7 +186,6 @@ export const ALL_WIDGET_DEFINITIONS: WidgetDefinition[] = [
     supportsNarrow: true,
     desktopLayout: 'default',
     mobileLayout: 'vertical',
-    component: ServiceHealthWidget,
   },
   {
     id: 'storage-usage',
@@ -283,7 +197,6 @@ export const ALL_WIDGET_DEFINITIONS: WidgetDefinition[] = [
     defaultMobileSpan: span(1, 1),
     defaultRefreshIntervalSecs: 30,
     supportsNarrow: true,
-    component: StorageUsageWidget,
   },
   {
     id: 'notifications',
@@ -294,7 +207,6 @@ export const ALL_WIDGET_DEFINITIONS: WidgetDefinition[] = [
     defaultDesktopSpan: span(4, 4),
     defaultMobileSpan: span(2, 1),
     defaultRefreshIntervalSecs: 30,
-    component: NotificationsWidget,
   },
   {
     id: 'cleanup-status',
@@ -305,7 +217,6 @@ export const ALL_WIDGET_DEFINITIONS: WidgetDefinition[] = [
     defaultDesktopSpan: span(4, 3),
     defaultMobileSpan: span(2, 1),
     defaultRefreshIntervalSecs: 30,
-    component: CleanupStatusWidget,
     requiredServices: ['QBITTORRENT'],
   },
   {
@@ -317,7 +228,6 @@ export const ALL_WIDGET_DEFINITIONS: WidgetDefinition[] = [
     defaultDesktopSpan: span(4, 3),
     defaultMobileSpan: span(2, 1),
     defaultRefreshIntervalSecs: 60,
-    component: CleanupHistoryWidget,
     requiredServices: ['QBITTORRENT'],
   },
 
@@ -331,7 +241,6 @@ export const ALL_WIDGET_DEFINITIONS: WidgetDefinition[] = [
     defaultDesktopSpan: span(4, 2),
     defaultMobileSpan: span(2, 1),
     defaultRefreshIntervalSecs: 60,
-    component: ProwlarrStatsSummaryWidget,
     requiredServices: ['PROWLARR'],
   },
   {
@@ -343,7 +252,6 @@ export const ALL_WIDGET_DEFINITIONS: WidgetDefinition[] = [
     defaultDesktopSpan: span(6, 3),
     defaultMobileSpan: span(2, 2),
     defaultRefreshIntervalSecs: 60,
-    component: ProwlarrResponseTimeWidget,
     requiredServices: ['PROWLARR'],
   },
   {
@@ -355,7 +263,6 @@ export const ALL_WIDGET_DEFINITIONS: WidgetDefinition[] = [
     defaultDesktopSpan: span(6, 3),
     defaultMobileSpan: span(2, 2),
     defaultRefreshIntervalSecs: 60,
-    component: ProwlarrFailureRateWidget,
     requiredServices: ['PROWLARR'],
   },
   {
@@ -367,7 +274,6 @@ export const ALL_WIDGET_DEFINITIONS: WidgetDefinition[] = [
     defaultDesktopSpan: span(6, 3),
     defaultMobileSpan: span(2, 2),
     defaultRefreshIntervalSecs: 60,
-    component: ProwlarrQueriesByIndexerWidget,
     requiredServices: ['PROWLARR'],
   },
   {
@@ -379,7 +285,6 @@ export const ALL_WIDGET_DEFINITIONS: WidgetDefinition[] = [
     defaultDesktopSpan: span(6, 3),
     defaultMobileSpan: span(2, 2),
     defaultRefreshIntervalSecs: 60,
-    component: ProwlarrGrabsByIndexerWidget,
     requiredServices: ['PROWLARR'],
   },
   {
@@ -391,7 +296,6 @@ export const ALL_WIDGET_DEFINITIONS: WidgetDefinition[] = [
     defaultDesktopSpan: span(6, 3),
     defaultMobileSpan: span(2, 2),
     defaultRefreshIntervalSecs: 60,
-    component: ProwlarrUserAgentQueriesWidget,
     requiredServices: ['PROWLARR'],
   },
   {
@@ -403,7 +307,6 @@ export const ALL_WIDGET_DEFINITIONS: WidgetDefinition[] = [
     defaultDesktopSpan: span(6, 3),
     defaultMobileSpan: span(2, 2),
     defaultRefreshIntervalSecs: 60,
-    component: ProwlarrUserAgentGrabsWidget,
     requiredServices: ['PROWLARR'],
   },
 
@@ -417,7 +320,6 @@ export const ALL_WIDGET_DEFINITIONS: WidgetDefinition[] = [
     defaultDesktopSpan: span(4, 4),
     defaultMobileSpan: span(2, 2),
     defaultRefreshIntervalSecs: 60,
-    component: JellyfinUserActivityWidget,
     requiredServices: ['JELLYFIN'],
   },
   {
@@ -429,7 +331,6 @@ export const ALL_WIDGET_DEFINITIONS: WidgetDefinition[] = [
     defaultDesktopSpan: span(6, 4),
     defaultMobileSpan: span(2, 2),
     defaultRefreshIntervalSecs: 60,
-    component: JellyfinPlayHistoryWidget,
     requiredServices: ['JELLYFIN'],
   },
   {
@@ -441,7 +342,6 @@ export const ALL_WIDGET_DEFINITIONS: WidgetDefinition[] = [
     defaultDesktopSpan: span(4, 3),
     defaultMobileSpan: span(2, 2),
     defaultRefreshIntervalSecs: 60,
-    component: JellyfinPlaybackMethodsWidget,
     requiredServices: ['JELLYFIN'],
   },
   {
@@ -453,7 +353,6 @@ export const ALL_WIDGET_DEFINITIONS: WidgetDefinition[] = [
     defaultDesktopSpan: span(4, 4),
     defaultMobileSpan: span(2, 2),
     defaultRefreshIntervalSecs: 60,
-    component: JellyfinTopTvShowsWidget,
     requiredServices: ['JELLYFIN'],
   },
   {
@@ -465,7 +364,6 @@ export const ALL_WIDGET_DEFINITIONS: WidgetDefinition[] = [
     defaultDesktopSpan: span(4, 4),
     defaultMobileSpan: span(2, 2),
     defaultRefreshIntervalSecs: 60,
-    component: JellyfinTopMoviesWidget,
     requiredServices: ['JELLYFIN'],
   },
   {
@@ -477,7 +375,6 @@ export const ALL_WIDGET_DEFINITIONS: WidgetDefinition[] = [
     defaultDesktopSpan: span(4, 3),
     defaultMobileSpan: span(2, 2),
     defaultRefreshIntervalSecs: 60,
-    component: JellyfinTopClientsWidget,
     requiredServices: ['JELLYFIN'],
   },
   {
@@ -489,7 +386,6 @@ export const ALL_WIDGET_DEFINITIONS: WidgetDefinition[] = [
     defaultDesktopSpan: span(4, 3),
     defaultMobileSpan: span(2, 2),
     defaultRefreshIntervalSecs: 60,
-    component: JellyfinTopDevicesWidget,
     requiredServices: ['JELLYFIN'],
   },
   {
@@ -501,7 +397,6 @@ export const ALL_WIDGET_DEFINITIONS: WidgetDefinition[] = [
     defaultDesktopSpan: span(6, 3),
     defaultMobileSpan: span(2, 2),
     defaultRefreshIntervalSecs: 60,
-    component: JellyfinPlayActivityWidget,
     requiredServices: ['JELLYFIN'],
   },
   {
@@ -513,7 +408,6 @@ export const ALL_WIDGET_DEFINITIONS: WidgetDefinition[] = [
     defaultDesktopSpan: span(6, 3),
     defaultMobileSpan: span(2, 2),
     defaultRefreshIntervalSecs: 60,
-    component: JellyfinHourlyActivityWidget,
     requiredServices: ['JELLYFIN'],
   },
   {
@@ -525,7 +419,6 @@ export const ALL_WIDGET_DEFINITIONS: WidgetDefinition[] = [
     defaultDesktopSpan: span(4, 2),
     defaultMobileSpan: span(2, 2),
     defaultRefreshIntervalSecs: 30,
-    component: JellyfinServerWidget,
     requiredServices: ['JELLYFIN'],
   },
   {
@@ -537,7 +430,6 @@ export const ALL_WIDGET_DEFINITIONS: WidgetDefinition[] = [
     defaultDesktopSpan: span(6, 4),
     defaultMobileSpan: span(2, 3),
     defaultRefreshIntervalSecs: 30,
-    component: JellyfinScheduledTasksWidget,
     requiredServices: ['JELLYFIN'],
   },
   {
@@ -551,7 +443,6 @@ export const ALL_WIDGET_DEFINITIONS: WidgetDefinition[] = [
     defaultRefreshIntervalSecs: 60,
     desktopLayout: 'carousel',
     mobileLayout: 'list',
-    component: JellyfinDevicesWidget,
     requiredServices: ['JELLYFIN'],
   },
   {
@@ -565,7 +456,6 @@ export const ALL_WIDGET_DEFINITIONS: WidgetDefinition[] = [
     defaultRefreshIntervalSecs: 30,
     desktopLayout: 'carousel',
     mobileLayout: 'list',
-    component: JellyfinActivityWidget,
     requiredServices: ['JELLYFIN'],
   },
   {
@@ -579,7 +469,6 @@ export const ALL_WIDGET_DEFINITIONS: WidgetDefinition[] = [
     defaultRefreshIntervalSecs: 30,
     desktopLayout: 'carousel',
     mobileLayout: 'list',
-    component: JellyfinAlertsWidget,
     requiredServices: ['JELLYFIN'],
   },
 
@@ -593,8 +482,6 @@ export const ALL_WIDGET_DEFINITIONS: WidgetDefinition[] = [
     defaultDesktopSpan: span(6, 3),
     defaultMobileSpan: span(2, 2),
     defaultRefreshIntervalSecs: 60,
-    component: (props: WidgetProps) =>
-      React.createElement(RequestsListWidget, { filter: 'pending', ...props }),
     requiredServices: ['SEERR'],
   },
   {
@@ -606,8 +493,6 @@ export const ALL_WIDGET_DEFINITIONS: WidgetDefinition[] = [
     defaultDesktopSpan: span(6, 3),
     defaultMobileSpan: span(2, 2),
     defaultRefreshIntervalSecs: 60,
-    component: (props: WidgetProps) =>
-      React.createElement(RequestsListWidget, { filter: 'all', ...props }),
     requiredServices: ['SEERR'],
   },
   {
@@ -619,7 +504,6 @@ export const ALL_WIDGET_DEFINITIONS: WidgetDefinition[] = [
     defaultDesktopSpan: span(4, 3),
     defaultMobileSpan: span(2, 2),
     defaultRefreshIntervalSecs: 120,
-    component: RequestsUsersWidget,
     requiredServices: ['SEERR'],
   },
 
@@ -633,7 +517,6 @@ export const ALL_WIDGET_DEFINITIONS: WidgetDefinition[] = [
     defaultDesktopSpan: span(6, 3),
     defaultMobileSpan: span(2, 2),
     defaultRefreshIntervalSecs: 300,
-    component: LibraryGrowthWidget,
   },
   {
     id: 'library-completeness',
@@ -644,7 +527,6 @@ export const ALL_WIDGET_DEFINITIONS: WidgetDefinition[] = [
     defaultDesktopSpan: span(4, 3),
     defaultMobileSpan: span(2, 2),
     defaultRefreshIntervalSecs: 300,
-    component: LibraryCompletenessWidget,
   },
   {
     id: 'download-reliability',
@@ -655,7 +537,6 @@ export const ALL_WIDGET_DEFINITIONS: WidgetDefinition[] = [
     defaultDesktopSpan: span(6, 3),
     defaultMobileSpan: span(2, 2),
     defaultRefreshIntervalSecs: 300,
-    component: DownloadReliabilityWidget,
   },
   {
     id: 'download-pipeline',
@@ -666,7 +547,6 @@ export const ALL_WIDGET_DEFINITIONS: WidgetDefinition[] = [
     defaultDesktopSpan: span(6, 4),
     defaultMobileSpan: span(2, 3),
     defaultRefreshIntervalSecs: 300,
-    component: DownloadPipelineWidget,
   },
   {
     id: 'storage-breakdown',
@@ -677,7 +557,6 @@ export const ALL_WIDGET_DEFINITIONS: WidgetDefinition[] = [
     defaultDesktopSpan: span(4, 4),
     defaultMobileSpan: span(2, 2),
     defaultRefreshIntervalSecs: 300,
-    component: StorageBreakdownWidget,
   },
   {
     id: 'seeding-economics',
@@ -688,7 +567,6 @@ export const ALL_WIDGET_DEFINITIONS: WidgetDefinition[] = [
     defaultDesktopSpan: span(4, 3),
     defaultMobileSpan: span(2, 2),
     defaultRefreshIntervalSecs: 120,
-    component: SeedingEconomicsWidget,
     requiredServices: ['QBITTORRENT'],
   },
   {
@@ -700,7 +578,6 @@ export const ALL_WIDGET_DEFINITIONS: WidgetDefinition[] = [
     defaultDesktopSpan: span(8, 4),
     defaultMobileSpan: span(2, 3),
     defaultRefreshIntervalSecs: 300,
-    component: MediaTechnicalBreakdownWidget,
   },
   {
     id: 'media-quality-scores',
@@ -711,7 +588,6 @@ export const ALL_WIDGET_DEFINITIONS: WidgetDefinition[] = [
     defaultDesktopSpan: span(6, 4),
     defaultMobileSpan: span(2, 3),
     defaultRefreshIntervalSecs: 300,
-    component: MediaQualityScoresWidget,
   },
 
   // ── Page features as widgets ──
@@ -727,7 +603,6 @@ export const ALL_WIDGET_DEFINITIONS: WidgetDefinition[] = [
     supportsNarrow: true,
     desktopLayout: 'posters',
     mobileLayout: 'list',
-    component: WatchlistWidget,
   },
   {
     id: 'library-gaps',
@@ -738,7 +613,6 @@ export const ALL_WIDGET_DEFINITIONS: WidgetDefinition[] = [
     defaultDesktopSpan: span(6, 3),
     defaultMobileSpan: span(2, 2),
     defaultRefreshIntervalSecs: 300,
-    component: LibraryGapsWidget,
   },
   {
     id: 'random-watch',
@@ -750,7 +624,6 @@ export const ALL_WIDGET_DEFINITIONS: WidgetDefinition[] = [
     defaultMobileSpan: span(2, 2),
     defaultRefreshIntervalSecs: 300,
     supportsNarrow: true,
-    component: RandomWatchWidget,
   },
 ];
 
@@ -772,8 +645,6 @@ for (const shortcut of SETTINGS_SHORTCUTS) {
     mobileLayout: 'vertical',
     requiredCapability: shortcut.capability,
     adminOnly: shortcut.adminOnly,
-    component: (props: WidgetProps) =>
-      React.createElement(SettingsShortcutWidget, { shortcut, ...props }),
   } as WidgetDefinition);
 }
 
@@ -794,8 +665,6 @@ for (const id of DEFAULT_ANIME_CAROUSEL_ORDER) {
     // continue-watching / plan-to-watch read the shared operator's AniList
     // account (admin-only endpoints), so hide them from members.
     adminOnly: id === 'continueWatching' || id === 'planToWatch',
-    component: (props: WidgetProps) =>
-      React.createElement(AnimeCarouselWidget, { carouselId: id, ...props }),
   } as WidgetDefinition);
 }
 
