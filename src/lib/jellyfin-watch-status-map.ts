@@ -1,42 +1,15 @@
 import type { User } from '@prisma/client';
 import {
   getJellyfinUserContext,
-  getRadarrClients,
-  getSonarrClients,
   isJellyfinUnavailable,
 } from '@/lib/service-helpers';
-import { getCachedTaggedLibrary, type Tagged } from '@/lib/cache/tagged-library';
-import type { RadarrMovie, SonarrSeries } from '@/types';
+import { loadCachedArrLibrary } from '@/lib/cache/arr-library';
 import { loadAnilistIdsBySeries } from '@/lib/anilist-series-mapping';
 import { buildWatchStatusMap } from '@/lib/jellyfin-watch-status';
 import { getWatchStatusJson, watchStatusMapSeed } from '@/lib/cache/jellyfin-watch-status-cache';
 import type { WatchStatus } from '@/types/watch-status';
 
 export type WatchStatusMapPayload = { items: WatchStatus[]; keys: Record<string, number> };
-
-// Reuse the same cached arr-library entries the /api/radarr and /api/sonarr list
-// routes populate (scope + seed 'all'), so a warm library serves the watch map
-// instead of an uncached full re-fetch on every map (re)build.
-export async function loadCachedArrLibrary(): Promise<{
-  movies: Tagged<RadarrMovie>[];
-  series: Tagged<SonarrSeries>[];
-}> {
-  const [movies, series] = await Promise.all([
-    getCachedTaggedLibrary({
-      scope: 'radarr',
-      cacheKeySeed: 'all',
-      getInstances: getRadarrClients,
-      fetchOne: (c) => c.getMovies(),
-    }),
-    getCachedTaggedLibrary({
-      scope: 'sonarr',
-      cacheKeySeed: 'all',
-      getInstances: getSonarrClients,
-      fetchOne: (c) => c.getSeries(),
-    }),
-  ]);
-  return { movies: movies.items, series: series.items };
-}
 
 /**
  * Load the per-user Jellyfin watch-status map (Redis SWR cached). Returns null
