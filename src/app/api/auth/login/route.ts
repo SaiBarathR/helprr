@@ -11,35 +11,29 @@ import {
   clearUsernameBackoff,
   enforceGlobalLoginBackstop,
   recordGlobalLoginFailure,
+  enforceMalformedLoginBackstop,
+  recordMalformedLoginRequest,
 } from '@/lib/login-rate-limit';
 import { withApiLogging } from '@/lib/api-logger';
 import { isHttpsRequest } from '@/lib/request-utils';
+import { readLoginCredentials } from '@/lib/server/login-input';
 
 // Generic so a probe can't tell "no such user" from "wrong password".
 const INVALID_CREDENTIALS = 'Invalid username or password';
 
 async function postHandler(request: NextRequest): Promise<NextResponse> {
+  const malformedBackstop = await enforceMalformedLoginBackstop();
+  if (malformedBackstop) return malformedBackstop;
+
+  const input = await readLoginCredentials(request);
+  if (!input.ok) {
+    return (await recordMalformedLoginRequest()) ?? input.response;
+  }
+  const { username, password } = input.credentials;
   const ip = getClientIp(request);
 
   const limited = await enforceLoginRateLimit(ip);
   if (limited) return limited;
-
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
-  }
-
-  const username = (body as { username?: unknown })?.username;
-  const password = (body as { password?: unknown })?.password;
-
-  if (typeof password !== 'string') {
-    return NextResponse.json({ error: 'Password is required' }, { status: 400 });
-  }
-  if (typeof username !== 'string' || username.trim() === '') {
-    return NextResponse.json({ error: 'Username is required' }, { status: 400 });
-  }
 
   // Layer 2: per-username backoff (always on, even without a trusted proxy IP).
   const backoff = await enforceUsernameBackoff(username);
@@ -52,7 +46,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   if (globalBackstop) return globalBackstop;
 
   const user = await prisma.user.findFirst({
-    where: { username: username.trim(), status: 'active' },
+    where: { username, status: 'active' },
     select: { id: true, role: true, passwordHash: true },
   });
 

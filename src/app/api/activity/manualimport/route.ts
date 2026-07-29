@@ -19,6 +19,8 @@ import { withApiLogging } from '@/lib/api-logger';
 async function getHandler(request: NextRequest) {
   const authError = await requireAuth();
   if (authError) return authError;
+  const capError = await requireCapability('activity.manage');
+  if (capError) return capError;
 
   try {
     const { searchParams } = new URL(request.url);

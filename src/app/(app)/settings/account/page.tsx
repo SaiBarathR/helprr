@@ -1,42 +1,52 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { ChevronLeft, Loader2 } from 'lucide-react';
 import { GroupedSection } from '@/components/settings/grouped-section';
 import { getQueryClient } from '@/lib/query-client';
+import { invalidateExternalUrls } from '@/lib/hooks/use-external-urls';
+import {
+  broadcastAuthenticationBoundary,
+  clearUserScopedBrowserCaches,
+  requestSessionLogout,
+} from '@/lib/client-cache';
 
 export default function AccountSettingsPage() {
-  const router = useRouter();
   const [signingOut, setSigningOut] = useState(false);
+  const [authenticationBoundaryActive, setAuthenticationBoundaryActive] = useState(false);
+  const [authenticationBoundaryError, setAuthenticationBoundaryError] = useState(false);
+  const boundaryClearStarted = useRef(false);
+
+  useEffect(() => {
+    if (!authenticationBoundaryActive || boundaryClearStarted.current) return;
+    boundaryClearStarted.current = true;
+    // Start only after the neutral boundary screen commits, matching the
+    // cross-tab path in QueryProvider.
+    void clearUserScopedBrowserCaches()
+      .then(() => window.location.replace('/login'))
+      .catch(() => setAuthenticationBoundaryError(true));
+  }, [authenticationBoundaryActive]);
 
   async function handleSignOut() {
     setSigningOut(true);
     try {
-      const res = await fetch('/api/auth/logout', { method: 'POST' });
-      if (res.ok) {
+      const logoutResult = await requestSessionLogout();
+      if (logoutResult !== 'failed') {
+        // A timeout or network error is indeterminate: the server may have
+        // revoked the session before its response was lost. Treat it as an
+        // authentication boundary and reconcile every browser realm.
+        setAuthenticationBoundaryActive(true);
         // Drop the in-memory TanStack cache so a different user signing in on this
         // device can't see this session's cached data (the QueryClient is a
         // persistent browser singleton). Login also clears, as a backstop.
         getQueryClient().clear();
-        // Best-effort: drop this device's cached shell + read data so the next
-        // sign-in starts clean. Fire-and-forget; don't block the redirect.
-        const clearMsg = { type: 'helprr-clear-user-caches' };
-        if (navigator.serviceWorker?.controller) {
-          navigator.serviceWorker.controller.postMessage(clearMsg);
-        } else {
-          // No controlling worker yet (e.g. after a hard reload / first load) —
-          // reach any registered worker directly so the caches still get cleared.
-          void navigator.serviceWorker
-            ?.getRegistrations()
-            .then((regs) => {
-              for (const reg of regs) (reg.active ?? reg.installing)?.postMessage(clearMsg);
-            })
-            .catch(() => {});
-        }
-        router.push('/login');
+        invalidateExternalUrls();
+        // The response cleared the origin-wide cookie. Notify other tabs before
+        // touching Cache Storage so they cannot keep mounted authenticated state
+        // if the browser cache operation stalls or fails.
+        broadcastAuthenticationBoundary();
       } else {
         toast.error('Failed to sign out');
         setSigningOut(false);
@@ -45,6 +55,18 @@ export default function AccountSettingsPage() {
       toast.error('Failed to sign out');
       setSigningOut(false);
     }
+  }
+
+  if (authenticationBoundaryActive) {
+    return (
+      <main className="min-h-[50vh] flex items-center justify-center p-6">
+        <p className="max-w-md text-center text-sm text-muted-foreground" role="status">
+          {authenticationBoundaryError
+            ? 'Browser data could not be cleared. Clear this site’s browser data, then reload.'
+            : 'Securing this browser session…'}
+        </p>
+      </main>
+    );
   }
 
   return (

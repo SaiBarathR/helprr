@@ -2,13 +2,15 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
 const mocks = vi.hoisted(() => ({
-  requireAuth: vi.fn(),
+  requireUser: vi.fn(),
   findMany: vi.fn(),
   fetchImageWithServerCache: vi.fn(),
   getConnectionHeaders: vi.fn(),
 }));
 
-vi.mock('@/lib/auth', () => ({ requireAuth: mocks.requireAuth }));
+vi.mock('@/lib/auth', () => ({
+  requireUser: mocks.requireUser,
+}));
 vi.mock('@/lib/db', () => ({
   prisma: {
     serviceConnection: {
@@ -57,8 +59,10 @@ function imageRequest(src: string, service: 'lidarr' | 'radarr' = 'lidarr'): Nex
 }
 
 function lastUpstreamOptions(): {
+  cacheKey: string;
   upstreamUrl: string;
   upstreamHeaders?: Record<string, string>;
+  requesterId?: string;
   timeoutMs?: number;
 } {
   const call = mocks.fetchImageWithServerCache.mock.lastCall;
@@ -69,7 +73,11 @@ function lastUpstreamOptions(): {
 describe('Lidarr image proxy', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.requireAuth.mockResolvedValue(null);
+    mocks.requireUser.mockResolvedValue({
+      ok: true,
+      user: { id: 'image-user' },
+      session: {},
+    });
     mocks.findMany.mockResolvedValue(connections);
     mocks.getConnectionHeaders.mockImplementation(
       (connection: { customHeaders: Record<string, string> | null }) =>
@@ -93,6 +101,7 @@ describe('Lidarr image proxy', () => {
       upstreamUrl:
         'http://lidarr.internal:8686/api/v1/mediacover/artist/4/poster.jpg?lastWrite=123',
       upstreamHeaders: { 'X-Api-Key': 'lidarr-api-key' },
+      requesterId: 'image-user',
       timeoutMs: 20_000,
     });
   });
@@ -136,6 +145,35 @@ describe('Lidarr image proxy', () => {
       upstreamHeaders: undefined,
       timeoutMs: undefined,
     });
+  });
+
+  it('removes URL fragments before fetch and cache-key construction', async () => {
+    await GET(imageRequest(
+      'https://images.lidarr.audio/cover/artist.jpg?size=large#free-cache-variant',
+    ));
+
+    expect(lastUpstreamOptions()).toMatchObject({
+      upstreamUrl: 'https://images.lidarr.audio/cover/artist.jpg?size=large',
+      cacheKey:
+        'lidarr:https://images.lidarr.audio/cover/artist.jpg?size=large:w600:webp',
+    });
+  });
+
+  it('marks validated Redis-accounting bypasses as no-store', async () => {
+    mocks.fetchImageWithServerCache.mockResolvedValue({
+      status: 200,
+      body: Buffer.from('validated-image'),
+      contentType: 'image/webp',
+      cacheStatus: 'BYPASS',
+    });
+
+    const response = await GET(imageRequest(
+      'https://images.lidarr.audio/cover/artist.jpg',
+    ));
+
+    expect(response.headers.get('cache-control')).toBe('private, no-store');
+    expect(response.headers.get('content-type')).toBe('image/webp');
+    expect(response.headers.get('vary')).toBe('Cookie');
   });
 
   it('does not change existing Radarr media-cover behavior', async () => {

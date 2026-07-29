@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Local agent worktrees are separate checkouts with their own lint state.
+    ".claude/**",
     // Generated Serwist bundle (build artifact, gitignored but present after `npm run build`)
     "public/sw.js",
   ]),

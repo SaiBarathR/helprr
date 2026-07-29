@@ -4,6 +4,10 @@ import { prisma } from '@/lib/db';
 import { requireAdmin } from '@/lib/auth';
 import { hashPassword } from '@/lib/password';
 import { localPasswordValidationError } from '@/lib/password-policy';
+import {
+  localUsernameValidationError,
+  normalizeLocalUsername,
+} from '@/lib/username-policy';
 import { toSafeUser } from '@/lib/user-dto';
 import { withApiLogging } from '@/lib/api-logger';
 
@@ -29,7 +33,9 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
   }
 
-  const username = typeof body.username === 'string' ? body.username.trim() : '';
+  const username = typeof body.username === 'string'
+    ? normalizeLocalUsername(body.username)
+    : '';
   const displayName = typeof body.displayName === 'string' ? body.displayName.trim() : '';
   const password = typeof body.password === 'string' ? body.password : '';
   const role = typeof body.role === 'string' && ROLES.has(body.role) ? body.role : 'member';
@@ -42,8 +48,10 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   const seerrUserId =
     typeof body.seerrUserId === 'string' && body.seerrUserId.trim() ? body.seerrUserId.trim() : null;
 
-  if (!username) return NextResponse.json({ error: 'Username is required' }, { status: 400 });
-  if (username.length > 64) return NextResponse.json({ error: 'Username too long' }, { status: 400 });
+  const usernameError = localUsernameValidationError(username);
+  if (usernameError) {
+    return NextResponse.json({ error: usernameError }, { status: 400 });
+  }
   if (!displayName) return NextResponse.json({ error: 'Display name is required' }, { status: 400 });
   // A local password OR a Jellyfin link is required, else the account can never sign in.
   if (!password && !jellyfinUserId) {

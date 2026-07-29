@@ -26,6 +26,18 @@ interface CacheUsageStats {
   tmdbEntries: number;
   anilistEntries: number;
   apiEntries: number;
+  imageDiagnostics: {
+    accountingAvailable: boolean;
+    quotaBytes: number | null;
+    quotaEntries: number | null;
+    maxBytes: number;
+    maxEntries: number;
+    evictions: number | null;
+    oversizedRejections: number | null;
+    invalidImageRejections: number | null;
+    upstreamFetches: number | null;
+    cacheHits: number | null;
+  } | null;
 }
 function formatBytes(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';
@@ -51,6 +63,12 @@ function parseUsage(raw: unknown): CacheUsageStats | null {
     tmdbEntries: typeof u.tmdbEntries === 'number' ? u.tmdbEntries : 0,
     anilistEntries: typeof u.anilistEntries === 'number' ? u.anilistEntries : 0,
     apiEntries: typeof u.apiEntries === 'number' ? u.apiEntries : 0,
+    imageDiagnostics:
+      u.imageDiagnostics
+      && typeof u.imageDiagnostics === 'object'
+      && typeof u.imageDiagnostics.accountingAvailable === 'boolean'
+        ? u.imageDiagnostics
+        : null,
   };
 }
 
@@ -221,6 +239,26 @@ export default function StorageSettingsPage() {
               <span className="text-sm">Images</span>
               <span className="text-sm text-muted-foreground">
                 {usageValue((u) => `${formatBytes(u.imageBytes)} (${u.imageFiles} files)`)}
+              </span>
+            </div>
+            <div className="grouped-row">
+              <span className="text-sm">Image quota</span>
+              <span className="text-sm text-muted-foreground text-right">
+                {usageValue((u) => {
+                  const diagnostics = u.imageDiagnostics;
+                  if (!diagnostics?.accountingAvailable) return 'Accounting unavailable';
+                  return `${formatBytes(diagnostics.quotaBytes ?? 0)} / ${formatBytes(diagnostics.maxBytes)} · ${(diagnostics.quotaEntries ?? 0).toLocaleString()} / ${diagnostics.maxEntries.toLocaleString()} entries`;
+                })}
+              </span>
+            </div>
+            <div className="grouped-row">
+              <span className="text-sm">Image safeguards</span>
+              <span className="text-sm text-muted-foreground text-right">
+                {usageValue((u) => {
+                  const diagnostics = u.imageDiagnostics;
+                  if (!diagnostics?.accountingAvailable) return 'Unavailable';
+                  return `${(diagnostics.evictions ?? 0).toLocaleString()} evictions · ${(diagnostics.oversizedRejections ?? 0).toLocaleString()} oversized · ${(diagnostics.invalidImageRejections ?? 0).toLocaleString()} invalid`;
+                })}
               </span>
             </div>
             <div className="grouped-row">

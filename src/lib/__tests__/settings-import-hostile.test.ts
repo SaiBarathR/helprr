@@ -193,4 +193,27 @@ describe('hostile settings imports', () => {
     expect(mocks.sessionUpdateMany).not.toHaveBeenCalled();
     expect(body.skipped).toContain('User "victim": invalid password hash dropped');
   });
+
+  it('skips imported usernames that the login boundary cannot accept', async () => {
+    const response = await importSettings(request(JSON.stringify({
+      users: {
+        accounts: [{
+          username: 'a'.repeat(65),
+          displayName: 'Unreachable Account',
+          role: 'member',
+          status: 'active',
+          template: 'member',
+          permissions: {},
+        }],
+      },
+    })));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.skipped).toContain(
+      'User skipped: username must be at most 64 characters',
+    );
+    expect(mocks.userFindUnique).not.toHaveBeenCalled();
+    expect(mocks.userUpdate).not.toHaveBeenCalled();
+  });
 });
