@@ -7,6 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-07-29
+
+### Added
+
+- A shared data-table experience for movies, series, music, and torrents with
+  resizable columns, persisted widths and page sizes, sortable headers,
+  pagination, and horizontal mobile scrolling.
+- Branded loading, error, retry, and not-found states across primary routes, with
+  clearer separation between an upstream failure and a genuinely empty result.
+- Field-level connection validation and accessible page, tab, control, and touch
+  semantics across administration and media-management surfaces.
+
+### Changed
+
+- Light mode now uses scheme-aware image scrims, hero blends, status colors, and
+  custom-theme detection instead of washed-out overlays.
+- Activity queue sorting now lives in the filter menu, preserves the selected
+  field and direction, and reverses direction when the active sort is selected
+  again.
+- Settings with automatic or deferred saves now flush pending edits, expose
+  unsaved state where appropriate, and guard navigation away from dirty forms.
+- Media deletion prompts use a consistent dialog flow, segmented controls use
+  proper tab semantics, and shared tables support opt-in sticky headers.
+- Tablet navigation, mobile toolbar geometry, page spacing, image fallbacks, and
+  responsive controls received a broad interaction and visual-polish pass.
+
+### Fixed
+
+- iOS Safari and installed PWAs no longer lift long-pressed poster cards above
+  context menus, and TokenInput suggestions reliably select without accidental
+  follow-up choices.
+- Activity pull-to-refresh no longer captures normal downward scrolling when the
+  document or nested content is away from the top.
+- Failed storage, media-detail, episode, album, and torrent requests no longer
+  render misleading zero, empty, or not-found states; affected views provide a
+  truthful retry path.
+- Torrent file navigation and zero-file messaging, calendar control sizing,
+  no-backdrop header spacing, tablet sidebar defaults, and mobile media toolbars
+  now behave consistently at their supported breakpoints.
+
+### Security
+
+- Next.js, Serwist, Sharp, PostCSS, and both supported `brace-expansion` lines
+  were updated or pinned to patched versions, clearing the blocking
+  high/critical release-image scan findings.
+
 ## [1.2.0] - 2026-07-17
 
 ### Added
