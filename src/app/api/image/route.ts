@@ -4,6 +4,7 @@ import { prisma } from '@/lib/db';
 import { requireAuth } from '@/lib/auth';
 import { fetchImageWithServerCache } from '@/lib/cache/image-cache';
 import { getConnectionHeaders } from '@/lib/service-connection-secrets';
+import { toAuthenticatedLidarrImageUrl } from '@/lib/lidarr-image';
 import { withApiLogging } from '@/lib/api-logger';
 
 type ServiceHint = 'tmdb' | 'radarr' | 'sonarr' | 'jellyfin' | 'anilist' | 'lidarr';
@@ -34,6 +35,12 @@ type ImageProxyConnectionRow = Pick<ConnectionLike, 'type' | 'url' | 'apiKey' | 
 // after editing a service is one TTL window of a stale auth header — harmless,
 // since image URLs keep their identity and only the token would briefly lag.
 const CONNECTIONS_CACHE_TTL_MS = 30_000;
+// Lidarr can serialize or heavily throttle cold media-cover reads. A library
+// grid issues many requests together, and remote/Tailscale connections can
+// exceed the general external-image timeout even though individual requests
+// complete successfully. Keep the higher bound scoped to authenticated Lidarr
+// images so arbitrary external hosts retain the stricter global limit.
+const LIDARR_IMAGE_FETCH_TIMEOUT_MS = 20_000;
 let connectionsCache: { at: number; rows: ImageProxyConnectionRow[] } | null = null;
 let connectionsInflight: Promise<ImageProxyConnectionRow[]> | null = null;
 
@@ -290,12 +297,19 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
     const upstreamHeaders = matchedConnectionPathAllowed
       ? resolveAuthHeaders(matchedConnection)
       : undefined;
+    const matchedBase = matchedConnection ? normalizeBaseUrl(matchedConnection.url) : null;
+    const upstreamUrl = matchedConnection?.type === 'LIDARR' && matchedBase
+      ? toAuthenticatedLidarrImageUrl(targetUrl, matchedBase)
+      : targetUrl;
 
     const baseCacheKey = `${hint ?? matchedConnection?.type.toLowerCase() ?? 'unknown'}:${targetUrl.toString()}`;
     const result = await fetchImageWithServerCache({
       cacheKey: `${baseCacheKey}:w${width}:webp`,
-      upstreamUrl: targetUrl.toString(),
+      upstreamUrl: upstreamUrl.toString(),
       upstreamHeaders,
+      timeoutMs: matchedConnection?.type === 'LIDARR'
+        ? LIDARR_IMAGE_FETCH_TIMEOUT_MS
+        : undefined,
       transform: { width },
       isRedirectTargetAllowed: (target) => isProxyTargetAllowed(target, connections),
     });
