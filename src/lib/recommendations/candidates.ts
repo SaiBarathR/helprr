@@ -1,6 +1,7 @@
 import type { User } from '@prisma/client';
 import { getTMDBClient } from '@/lib/service-helpers';
-import { loadCachedArrLibrary, fetchUserWatchStatusMap, lookupWatchStatus, type WatchStatusMapPayload } from '@/lib/jellyfin-watch-status-map';
+import { loadCachedArrLibrary } from '@/lib/cache/arr-library';
+import { fetchUserWatchStatusMap, lookupWatchStatus, type WatchStatusMapPayload } from '@/lib/jellyfin-watch-status-map';
 import { arrKey, isFullyWatched } from '@/types/watch-status';
 import { getTrending as getAnilistTrending } from '@/lib/anilist-client';
 import type { TmdbClient, TmdbListItem } from '@/lib/tmdb-client';

@@ -1,4 +1,4 @@
-import { loadTaggedLibrary } from '@/lib/service-helpers';
+import { loadCachedArrLibrary } from '@/lib/cache/arr-library';
 import { searchAnime, AniListRateLimitError } from '@/lib/anilist-client';
 import { normalizeAniListItem, isMovieFormat } from '@/lib/anilist-helpers';
 import {
@@ -8,21 +8,24 @@ import {
   seriesLibraryStatusFromMatches,
   type Tagged,
 } from '@/lib/discover';
-import { loadLibraryLinksForAnilistIds } from '@/lib/anilist-series-mapping';
+import {
+  loadLibraryLinksForAnilistIds,
+  type AnilistLibraryLink,
+} from '@/lib/anilist-series-mapping';
 import type { RadarrMovie, SonarrSeries } from '@/types';
 import type { AniListListItem } from '@/types/anilist';
 import type { ProviderHandler } from '@/lib/search/providers/types';
 import type { SearchProviderResult } from '@/lib/search/types';
 
-async function annotateItems(
+function annotateItems(
   items: AniListListItem[],
   movies: Tagged<RadarrMovie>[],
-  series: Tagged<SonarrSeries>[]
-): Promise<AniListListItem[]> {
+  series: Tagged<SonarrSeries>[],
+  mappingLinks: Map<number, AnilistLibraryLink[]>,
+): AniListListItem[] {
   if (!movies.length && !series.length) return items;
 
   const lookups = buildLibraryLookups(movies, series);
-  const mappingLinks = await loadLibraryLinksForAnilistIds(items.map((item) => item.id));
   const seriesByKey = new Map<string, Tagged<SonarrSeries>>();
   for (const show of series) seriesByKey.set(`${show.instanceId}:${show.id}`, show);
 
@@ -46,10 +49,20 @@ async function annotateItems(
 
 export const searchAnilist: ProviderHandler = async ({ query, limit }) => {
   try {
+    const libraryPromise = loadCachedArrLibrary();
+    void libraryPromise.catch(() => undefined);
     const result = await searchAnime(query, 1, Math.min(limit, 20));
-    const { movies, series } = await loadTaggedLibrary();
     const normalized = result.media.map(normalizeAniListItem);
-    const annotated = await annotateItems(normalized, movies, series);
+    const mappingPromise = loadLibraryLinksForAnilistIds(
+      normalized
+        .filter((item) => !isMovieFormat(item.format))
+        .map((item) => item.id),
+    );
+    const [{ movies, series }, mappingLinks] = await Promise.all([
+      libraryPromise,
+      mappingPromise,
+    ]);
+    const annotated = annotateItems(normalized, movies, series, mappingLinks);
 
     const results: SearchProviderResult[] = annotated.map((item) => {
       const lib = (item as AniListListItem & { library?: { exists: boolean } }).library;
