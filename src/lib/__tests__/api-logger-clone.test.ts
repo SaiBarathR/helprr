@@ -89,6 +89,22 @@ describe('API request logging clones', () => {
     expect(clone).not.toHaveBeenCalled();
   });
 
+  it('does not clone methods that cannot have a request body', async () => {
+    configureApiLogging({ failedRequestBodies: true });
+    const input = new Request('http://localhost/api/test');
+    const clone = vi.spyOn(input, 'clone');
+    const handler = withApiLogging(
+      async (handlerRequest: Request) => {
+        void handlerRequest;
+        return new Response(null, { status: 400 });
+      },
+    );
+
+    await handler(input as never);
+
+    expect(clone).not.toHaveBeenCalled();
+  });
+
   it('clones once and logs a bounded preview only when every gate is enabled', async () => {
     configureApiLogging({ failedRequestBodies: true });
     const input = request();

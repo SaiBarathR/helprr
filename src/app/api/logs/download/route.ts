@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, requireCapability } from '@/lib/auth';
-import { getSafeLogFilePath, streamFilteredLogs } from '@/lib/logger';
+import { flushPendingWrites, getSafeLogFilePath, streamFilteredLogs } from '@/lib/logger';
 import { withApiLogging } from '@/lib/api-logger';
 
 const ALLOWED_LEVELS = new Set(['debug', 'info', 'warn', 'error']);
@@ -32,6 +32,7 @@ async function getHandler(request: NextRequest) {
   const hasSingleFile = Boolean(file && file !== 'all');
 
   if (!hasFilters && hasSingleFile) {
+    await flushPendingWrites();
     let fullPath: string;
     try {
       fullPath = getSafeLogFilePath(file!);

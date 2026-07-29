@@ -47,6 +47,15 @@ export interface LogSearchFilters {
   limit?: number;
 }
 
+export interface LoggerMetrics {
+  queueDepth: number;
+  pendingBytes: number;
+  flushCount: number;
+  writeFailures: number;
+  droppedEntries: number;
+  maxQueueDepth: number;
+}
+
 const LEVEL_PRIORITY: Record<LogLevel, number> = {
   debug: 10,
   info: 20,
@@ -57,6 +66,11 @@ const LEVEL_PRIORITY: Record<LogLevel, number> = {
 const LOG_FILE = 'helprr.jsonl';
 const MAX_LOG_VALUE_LENGTH = 8_000;
 const MAX_SEARCH_LINE_LENGTH = 500_000;
+const LOG_BATCH_MAX_ENTRIES = 100;
+const LOG_BATCH_MAX_BYTES = 128 * 1024;
+const LOG_BATCH_FLUSH_MS = 100;
+const MAX_OUTSTANDING_LOG_BYTES = 8 * 1024 * 1024;
+const RETENTION_INTERVAL_MS = 6 * 60 * 60 * 1000;
 const EXACT_SENSITIVE_KEYS = new Set([
   'endpoint', 'auth', 'authorization', 'cookie', 'session', 'p256dh',
   'password', 'passwd', 'pwd', 'secret', 'token', 'jwt',
@@ -81,6 +95,23 @@ const originalConsole = {
 type LoggerSingleton = {
   config: LoggerConfig;
   writeQueue: Promise<void>;
+  pendingLines: Array<{ value: string; bytes: number }>;
+  pendingBytes: number;
+  queuedEntries: number;
+  queuedBytes: number;
+  flushTimer?: ReturnType<typeof setTimeout>;
+  retentionTimer?: ReturnType<typeof setInterval>;
+  retentionPromise?: Promise<void>;
+  sinkReady?: Promise<void>;
+  currentFileBytes: number;
+  lastRotationStamp?: string;
+  rotationSequence: number;
+  metrics: {
+    flushCount: number;
+    writeFailures: number;
+    droppedEntries: number;
+    maxQueueDepth: number;
+  };
   initialized: boolean;
   cleaning: boolean;
 };
@@ -99,10 +130,34 @@ const singleton: LoggerSingleton = globalScope[SINGLETON_KEY] ?? {
     enabled: true,
   },
   writeQueue: Promise.resolve(),
+  pendingLines: [],
+  pendingBytes: 0,
+  queuedEntries: 0,
+  queuedBytes: 0,
+  currentFileBytes: 0,
+  rotationSequence: 0,
+  metrics: {
+    flushCount: 0,
+    writeFailures: 0,
+    droppedEntries: 0,
+    maxQueueDepth: 0,
+  },
   initialized: false,
   cleaning: false,
 };
 globalScope[SINGLETON_KEY] = singleton;
+singleton.pendingLines ??= [];
+singleton.pendingBytes ??= 0;
+singleton.queuedEntries ??= 0;
+singleton.queuedBytes ??= 0;
+singleton.currentFileBytes ??= 0;
+singleton.rotationSequence ??= 0;
+singleton.metrics ??= {
+  flushCount: 0,
+  writeFailures: 0,
+  droppedEntries: 0,
+  maxQueueDepth: 0,
+};
 
 function getLogDir(): string {
   return process.env.LOG_DIR || path.join(process.cwd(), 'logs');
@@ -201,21 +256,14 @@ function serializeEntry(entry: LogEntry): string {
 
 function rotatedName(now = new Date()): string {
   const stamp = now.toISOString().replace(/[:.]/g, '-');
-  return `helprr-${stamp}.jsonl`;
-}
-
-async function rotateIfNeeded(bytesToWrite: number): Promise<void> {
-  const logPath = getCurrentLogPath();
-  const maxBytes = singleton.config.maxFileMb * 1024 * 1024;
-  try {
-    const stat = await fs.promises.stat(logPath);
-    if (stat.size + bytesToWrite < maxBytes) return;
-    await fs.promises.rename(logPath, path.join(getLogDir(), rotatedName()));
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
-      originalConsole.warn('[Logger] Rotation failed:', error);
-    }
+  if (singleton.lastRotationStamp === stamp) {
+    singleton.rotationSequence += 1;
+  } else {
+    singleton.lastRotationStamp = stamp;
+    singleton.rotationSequence = 0;
   }
+  const suffix = singleton.rotationSequence === 0 ? '' : `-${singleton.rotationSequence}`;
+  return `helprr-${stamp}${suffix}.jsonl`;
 }
 
 async function cleanupOldLogs(): Promise<void> {
@@ -239,13 +287,161 @@ async function cleanupOldLogs(): Promise<void> {
   }
 }
 
-async function appendEntry(entry: LogEntry): Promise<void> {
-  const dir = getLogDir();
-  await fs.promises.mkdir(dir, { recursive: true });
-  const line = `${serializeEntry(entry)}\n`;
-  await rotateIfNeeded(Buffer.byteLength(line));
-  await fs.promises.appendFile(getCurrentLogPath(), line, 'utf8');
-  void cleanupOldLogs();
+function scheduleRetentionCleanup(): void {
+  if (singleton.retentionPromise) return;
+  const promise = cleanupOldLogs().catch((error) => {
+    originalConsole.warn('[Logger] Retention cleanup failed:', error);
+  });
+  singleton.retentionPromise = promise;
+  void promise.finally(() => {
+    if (singleton.retentionPromise === promise) singleton.retentionPromise = undefined;
+  });
+}
+
+function startRetentionTimer(): void {
+  if (singleton.retentionTimer) return;
+  singleton.retentionTimer = setInterval(() => {
+    scheduleRetentionCleanup();
+  }, RETENTION_INTERVAL_MS);
+  singleton.retentionTimer.unref?.();
+}
+
+async function ensureSinkReady(): Promise<void> {
+  if (!singleton.sinkReady) {
+    singleton.sinkReady = (async () => {
+      await fs.promises.mkdir(getLogDir(), { recursive: true });
+      try {
+        singleton.currentFileBytes = (await fs.promises.stat(getCurrentLogPath())).size;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+        singleton.currentFileBytes = 0;
+      }
+      startRetentionTimer();
+      scheduleRetentionCleanup();
+    })().catch((error) => {
+      singleton.sinkReady = undefined;
+      throw error;
+    });
+  }
+  await singleton.sinkReady;
+}
+
+async function rotateCurrentFile(): Promise<void> {
+  try {
+    await fs.promises.rename(
+      getCurrentLogPath(),
+      path.join(getLogDir(), rotatedName()),
+    );
+    singleton.currentFileBytes = 0;
+    scheduleRetentionCleanup();
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      singleton.currentFileBytes = 0;
+      return;
+    }
+    originalConsole.warn('[Logger] Rotation failed:', error);
+  }
+}
+
+async function appendLines(lines: Array<{ value: string; bytes: number }>): Promise<void> {
+  await ensureSinkReady();
+  const maxBytes = singleton.config.maxFileMb * 1024 * 1024;
+  let chunk = '';
+  let chunkBytes = 0;
+
+  const appendChunk = async () => {
+    if (chunkBytes === 0) return;
+    await fs.promises.appendFile(getCurrentLogPath(), chunk, 'utf8');
+    singleton.currentFileBytes += chunkBytes;
+    chunk = '';
+    chunkBytes = 0;
+  };
+
+  for (const line of lines) {
+    if (
+      singleton.currentFileBytes + chunkBytes > 0
+      && singleton.currentFileBytes + chunkBytes + line.bytes >= maxBytes
+    ) {
+      await appendChunk();
+      await rotateCurrentFile();
+    }
+    chunk += line.value;
+    chunkBytes += line.bytes;
+  }
+  await appendChunk();
+}
+
+function clearFlushTimer(): void {
+  if (!singleton.flushTimer) return;
+  clearTimeout(singleton.flushTimer);
+  singleton.flushTimer = undefined;
+}
+
+function flushBatch(): Promise<void> {
+  if (singleton.pendingLines.length === 0) return singleton.writeQueue;
+  clearFlushTimer();
+
+  const lines = singleton.pendingLines;
+  const bytes = singleton.pendingBytes;
+  const entries = lines.length;
+  singleton.pendingLines = [];
+  singleton.pendingBytes = 0;
+  singleton.queuedEntries += entries;
+  singleton.queuedBytes += bytes;
+
+  singleton.writeQueue = singleton.writeQueue.then(async () => {
+    try {
+      await appendLines(lines);
+      singleton.metrics.flushCount += 1;
+    } catch (error) {
+      singleton.metrics.writeFailures += 1;
+      singleton.sinkReady = undefined;
+      originalConsole.warn('[Logger] Write failed:', error);
+    } finally {
+      singleton.queuedEntries -= entries;
+      singleton.queuedBytes -= bytes;
+    }
+  });
+  return singleton.writeQueue;
+}
+
+function scheduleFlush(): void {
+  if (singleton.flushTimer) return;
+  singleton.flushTimer = setTimeout(() => {
+    singleton.flushTimer = undefined;
+    void flushBatch();
+  }, LOG_BATCH_FLUSH_MS);
+  singleton.flushTimer.unref?.();
+}
+
+function enqueueLine(line: string): void {
+  const bytes = Buffer.byteLength(line);
+  if (singleton.pendingBytes + singleton.queuedBytes + bytes > MAX_OUTSTANDING_LOG_BYTES) {
+    singleton.metrics.droppedEntries += 1;
+    if (
+      singleton.metrics.droppedEntries === 1
+      || singleton.metrics.droppedEntries % 100 === 0
+    ) {
+      originalConsole.warn(
+        `[Logger] Dropped ${singleton.metrics.droppedEntries} entries because the write queue is full`,
+      );
+    }
+    return;
+  }
+
+  singleton.pendingLines.push({ value: line, bytes });
+  singleton.pendingBytes += bytes;
+  const queueDepth = singleton.pendingLines.length + singleton.queuedEntries;
+  singleton.metrics.maxQueueDepth = Math.max(singleton.metrics.maxQueueDepth, queueDepth);
+
+  if (
+    singleton.pendingLines.length >= LOG_BATCH_MAX_ENTRIES
+    || singleton.pendingBytes >= LOG_BATCH_MAX_BYTES
+  ) {
+    void flushBatch();
+  } else {
+    scheduleFlush();
+  }
 }
 
 export function writeLog(
@@ -282,9 +478,7 @@ export function writeLog(
     metadata: metadata === undefined ? undefined : redact(metadata),
   };
 
-  singleton.writeQueue = singleton.writeQueue.then(() => appendEntry(entry)).catch((error) => {
-    originalConsole.warn('[Logger] Write failed:', error);
-  });
+  enqueueLine(`${serializeEntry(entry)}\n`);
 }
 
 export const logger = {
@@ -340,11 +534,43 @@ export function initializeServerLogging(next?: Partial<LoggerConfig>): void {
 }
 
 export async function flushPendingWrites(): Promise<void> {
-  try {
-    await singleton.writeQueue;
-  } catch {
-    // Errors are already surfaced via the queue's catch handler.
-  }
+  await flushBatch();
+}
+
+export function getLoggerMetrics(): LoggerMetrics {
+  return {
+    queueDepth: singleton.pendingLines.length + singleton.queuedEntries,
+    pendingBytes: singleton.pendingBytes + singleton.queuedBytes,
+    flushCount: singleton.metrics.flushCount,
+    writeFailures: singleton.metrics.writeFailures,
+    droppedEntries: singleton.metrics.droppedEntries,
+    maxQueueDepth: singleton.metrics.maxQueueDepth,
+  };
+}
+
+export async function __resetLoggerForTests(): Promise<void> {
+  await flushPendingWrites();
+  await singleton.retentionPromise;
+  clearFlushTimer();
+  if (singleton.retentionTimer) clearInterval(singleton.retentionTimer);
+  singleton.retentionTimer = undefined;
+  singleton.pendingLines = [];
+  singleton.pendingBytes = 0;
+  singleton.queuedEntries = 0;
+  singleton.queuedBytes = 0;
+  singleton.writeQueue = Promise.resolve();
+  singleton.retentionPromise = undefined;
+  singleton.sinkReady = undefined;
+  singleton.currentFileBytes = 0;
+  singleton.lastRotationStamp = undefined;
+  singleton.rotationSequence = 0;
+  singleton.cleaning = false;
+  singleton.metrics = {
+    flushCount: 0,
+    writeFailures: 0,
+    droppedEntries: 0,
+    maxQueueDepth: 0,
+  };
 }
 
 function assertSafeLogFile(file: string): string {
@@ -355,6 +581,7 @@ function assertSafeLogFile(file: string): string {
 }
 
 export async function listLogFiles(): Promise<LogFileInfo[]> {
+  await flushPendingWrites();
   const dir = getLogDir();
   const files = await fs.promises.readdir(dir).catch(() => []);
   const infos = await Promise.all(files
@@ -375,8 +602,10 @@ export function getSafeLogFilePath(file: string): string {
 }
 
 export async function deleteLogFile(file: string): Promise<void> {
+  await flushPendingWrites();
   const fullPath = assertSafeLogFile(file);
   await fs.promises.unlink(fullPath);
+  if (path.basename(fullPath) === LOG_FILE) singleton.currentFileBytes = 0;
 }
 
 function filterMatches(filter: string | string[] | undefined, value: string): boolean {
@@ -427,6 +656,7 @@ export async function streamFilteredLogs(
   filters: LogSearchFilters,
   onLine: (line: string) => void | Promise<void>
 ): Promise<void> {
+  await flushPendingWrites();
   const files = filters.file
     ? [filters.file]
     : (await listLogFiles()).map((file) => file.name);
@@ -457,6 +687,7 @@ export async function streamFilteredLogs(
 }
 
 export async function searchLogs(filters: LogSearchFilters): Promise<LogEntry[]> {
+  await flushPendingWrites();
   const limit = clampInt(filters.limit, 200, 1, 1_000);
   const files = filters.file
     ? [filters.file]
