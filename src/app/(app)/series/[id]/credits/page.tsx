@@ -35,7 +35,9 @@ export default function SeriesCreditsPage() {
   const title = seriesQuery.data?.title ?? '';
   // First-load-only: once credits are cached, a background refetch must not
   // re-blank CreditsListPage to a full-screen spinner.
-  const loading = (seriesQuery.isLoading || creditsQuery.isLoading) && !creditsQuery.data;
+  const loading =
+    (seriesQuery.isLoading || creditsQuery.isLoading) && creditsQuery.data === undefined;
+  const initialError = creditsQuery.isError && creditsQuery.data === undefined;
 
   const { cast, crew } = useMemo((): { cast: CreditPerson[]; crew: CreditPerson[] } => {
     const credits = creditsQuery.data;
@@ -65,6 +67,9 @@ export default function SeriesCreditsPage() {
       cacheService="tmdb"
       loading={loading}
       initialTab={initialTab}
+      errorMessage={initialError ? "Couldn't load credits. Try again." : null}
+      onRetry={() => void creditsQuery.refetch()}
+      retrying={creditsQuery.isFetching}
     />
   );
 }
