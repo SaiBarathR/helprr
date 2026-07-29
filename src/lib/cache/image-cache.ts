@@ -27,6 +27,7 @@ export interface FetchCachedImageOptions {
   cacheKey: string;
   upstreamUrl: string;
   upstreamHeaders?: HeadersInit;
+  timeoutMs?: number;
   ttlSeconds?: number;
   staleSeconds?: number;
   transform?: ImageTransform;
@@ -161,9 +162,10 @@ async function fetchUpstreamImage(
   url: string,
   headers?: HeadersInit,
   isRedirectTargetAllowed?: (target: URL) => boolean,
+  timeoutMs = IMAGE_UPSTREAM_FETCH_TIMEOUT_MS,
 ): Promise<{ status: number; ok: boolean; body: Buffer | null; contentType: string | null }> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), IMAGE_UPSTREAM_FETCH_TIMEOUT_MS);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     let currentUrl = url;
@@ -283,8 +285,9 @@ async function fetchBypass(
   headers: HeadersInit | undefined,
   transform: ImageTransform | undefined,
   isRedirectTargetAllowed?: (target: URL) => boolean,
+  timeoutMs?: number,
 ): Promise<FetchCachedImageResult> {
-  const upstream = await fetchUpstreamImage(url, headers, isRedirectTargetAllowed);
+  const upstream = await fetchUpstreamImage(url, headers, isRedirectTargetAllowed, timeoutMs);
   if (!upstream.ok || !upstream.body) {
     return {
       status: upstream.status,
@@ -309,7 +312,13 @@ export async function fetchImageWithServerCache(options: FetchCachedImageOptions
     // Caching is off: every request re-fetches AND re-transcodes (sharp) with no
     // memoization — the cost the cache normally amortizes is paid each time. This is
     // an explicit admin opt-out (debugging / reclaiming disk), not a hot-path default.
-    return fetchBypass(options.upstreamUrl, options.upstreamHeaders, options.transform, options.isRedirectTargetAllowed);
+    return fetchBypass(
+      options.upstreamUrl,
+      options.upstreamHeaders,
+      options.transform,
+      options.isRedirectTargetAllowed,
+      options.timeoutMs,
+    );
   }
 
   const generation = await getCacheGeneration();
@@ -349,7 +358,12 @@ export async function fetchImageWithServerCache(options: FetchCachedImageOptions
   }
 
   try {
-    const upstream = await fetchUpstreamImage(options.upstreamUrl, options.upstreamHeaders, options.isRedirectTargetAllowed);
+    const upstream = await fetchUpstreamImage(
+      options.upstreamUrl,
+      options.upstreamHeaders,
+      options.isRedirectTargetAllowed,
+      options.timeoutMs,
+    );
     if (upstream.ok && upstream.body) {
       const transformed = await applyImageTransform(upstream.body, upstream.contentType || 'image/jpeg', options.transform);
       const relativePath = await saveCachedImage(generation, keyHash, transformed.body);
