@@ -6,6 +6,24 @@ const withSerwist = withSerwistInit({
   swSrc: 'src/app/sw.ts',
   swDest: 'public/sw.js',
   disable: process.env.NODE_ENV === 'development',
+  exclude: [
+    /\.map$/,
+    /^manifest.*\.js$/,
+    ({ asset, compilation }) => {
+      // Lazy widget entries are runtime-cached on first use; precaching them
+      // would download every widget during each PWA install or update.
+      const chunk = [...compilation.chunks].find(({ files }) => files.has(asset.name));
+      if (!chunk || chunk.canBeInitial()) return false;
+
+      return [...compilation.chunkGraph.getChunkModulesIterable(chunk)].some((module) => {
+        const sourcePath = module.nameForCondition();
+        return (
+          sourcePath?.includes('/src/components/widgets/') === true &&
+          /-widget\.[tj]sx?$/.test(sourcePath)
+        );
+      });
+    },
+  ],
 });
 
 const nextConfig: NextConfig = {

@@ -1,13 +1,10 @@
-import * as React from 'react';
-import type { ComponentType } from 'react';
-import type { WidgetDefinition, WidgetInstance, WidgetProps } from './types';
+import type { WidgetDefinition, WidgetInstance } from './types';
 import { ALL_WIDGET_DEFINITIONS } from './definitions';
 import {
   BUILTIN_DISCOVER_SECTIONS,
   type DiscoverLayoutConfig,
   type DiscoverLayoutSection,
 } from '@/lib/discover-layout-config';
-import { DiscoverSectionWidget } from '@/components/widgets/discover-section-widget';
 
 const staticMap = new Map<string, WidgetDefinition>();
 
@@ -37,18 +34,6 @@ function descriptionForSection(section: DiscoverLayoutSection): string {
   return 'Discover carousel';
 }
 
-const sectionComponentCache = new Map<string, ComponentType<WidgetProps>>();
-
-function getSectionComponent(sectionId: string): ComponentType<WidgetProps> {
-  let cached = sectionComponentCache.get(sectionId);
-  if (!cached) {
-    cached = (props: WidgetProps) =>
-      React.createElement(DiscoverSectionWidget, { sectionId, ...props });
-    sectionComponentCache.set(sectionId, cached);
-  }
-  return cached;
-}
-
 function buildDefinitionForSection(section: DiscoverLayoutSection): WidgetDefinition {
   const sectionId = section.id;
   return {
@@ -62,7 +47,6 @@ function buildDefinitionForSection(section: DiscoverLayoutSection): WidgetDefini
     defaultRefreshIntervalSecs: 300,
     desktopLayout: 'carousel',
     mobileLayout: 'carousel',
-    component: getSectionComponent(sectionId),
     requiredServices: ['TMDB'],
   };
 }

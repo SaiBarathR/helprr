@@ -1,9 +1,45 @@
 'use client';
 
 import Link from 'next/link';
+import {
+  Activity,
+  Bell,
+  Download,
+  FileStack,
+  Gauge,
+  HardDrive,
+  Link2,
+  Palette,
+  ScrollText,
+  Server,
+  Shield,
+  Sliders,
+  Terminal,
+  UserCircle,
+  Users,
+  type LucideIcon,
+} from 'lucide-react';
 import type { SettingsShortcut } from '@/lib/widgets/settings-shortcuts';
 import type { WidgetProps } from '@/lib/widgets/types';
 import { FONT_DISPLAY, HPR } from './bento-primitives';
+
+const ICONS: Record<string, LucideIcon> = {
+  Activity,
+  Bell,
+  Download,
+  FileStack,
+  Gauge,
+  HardDrive,
+  Link2,
+  Palette,
+  ScrollText,
+  Server,
+  Shield,
+  Sliders,
+  Terminal,
+  UserCircle,
+  Users,
+};
 
 /**
  * Static launcher tile for one settings destination. No data fetching — the
@@ -16,7 +52,7 @@ export function SettingsShortcutWidget({
   shortcut,
   editMode = false,
 }: WidgetProps & { shortcut: SettingsShortcut }) {
-  const Icon = shortcut.icon;
+  const Icon = ICONS[shortcut.iconName];
 
   const inner = (
     <div style={{ height: '100%', minWidth: 0 }}>
