@@ -11,9 +11,12 @@ import {
   clearUsernameBackoff,
   enforceGlobalLoginBackstop,
   recordGlobalLoginFailure,
+  enforceMalformedLoginBackstop,
+  recordMalformedLoginRequest,
 } from '@/lib/login-rate-limit';
 import { withApiLogging } from '@/lib/api-logger';
 import { isHttpsRequest } from '@/lib/request-utils';
+import { readLoginCredentials } from '@/lib/server/login-input';
 
 const INVALID_CREDENTIALS = 'Invalid Jellyfin username or password';
 // Distinct steering message: Jellyfin is unreachable/changed, so the user
@@ -22,27 +25,18 @@ const INVALID_CREDENTIALS = 'Invalid Jellyfin username or password';
 const JELLYFIN_UNAVAILABLE = 'Jellyfin sign-in is unavailable right now. Use your Helprr password instead.';
 
 async function postHandler(request: NextRequest): Promise<NextResponse> {
+  const malformedBackstop = await enforceMalformedLoginBackstop();
+  if (malformedBackstop) return malformedBackstop;
+
+  const input = await readLoginCredentials(request);
+  if (!input.ok) {
+    return (await recordMalformedLoginRequest()) ?? input.response;
+  }
+  const { username, password } = input.credentials;
   const ip = getClientIp(request);
 
   const limited = await enforceLoginRateLimit(ip);
   if (limited) return limited;
-
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
-  }
-
-  const username = (body as { username?: unknown })?.username;
-  const password = (body as { password?: unknown })?.password;
-
-  if (typeof username !== 'string' || username.trim() === '') {
-    return NextResponse.json({ error: 'Username is required' }, { status: 400 });
-  }
-  if (typeof password !== 'string') {
-    return NextResponse.json({ error: 'Password is required' }, { status: 400 });
-  }
 
   // Layer 2: per-username backoff (shared key with /api/auth/login so an attacker
   // can't alternate endpoints to dodge the cap).
@@ -61,7 +55,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: JELLYFIN_UNAVAILABLE }, { status: 502 });
   }
 
-  const auth = await JellyfinClient.authenticateByName(connection.url, username.trim(), password);
+  const auth = await JellyfinClient.authenticateByName(connection.url, username, password);
   if (!auth.ok) {
     if (auth.reason === 'invalid_credentials') {
       // Only a wrong password counts toward backoff — a Jellyfin outage (502) is

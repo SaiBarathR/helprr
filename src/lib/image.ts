@@ -1,4 +1,4 @@
-export type ImageServiceHint = 'tmdb' | 'radarr' | 'sonarr' | 'jellyfin' | 'anilist' | 'lidarr';
+export type ImageServiceHint = 'tmdb' | 'radarr' | 'sonarr' | 'anilist' | 'lidarr';
 
 // Cache-busting token mirrored from the server-side cache generation
 // (`getCacheGeneration()`). Appended to proxied image URLs so that bumping the

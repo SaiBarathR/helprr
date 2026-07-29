@@ -4,6 +4,10 @@ import { prisma } from '@/lib/db';
 import { requireAdmin } from '@/lib/auth';
 import { hashPassword } from '@/lib/password';
 import { localPasswordValidationError } from '@/lib/password-policy';
+import {
+  localUsernameValidationError,
+  normalizeLocalUsername,
+} from '@/lib/username-policy';
 import { toSafeUser } from '@/lib/user-dto';
 import { parsePermissions } from '@/lib/permissions';
 import { withApiLogging } from '@/lib/api-logger';
@@ -58,10 +62,11 @@ async function patchHandler(
     passwordHash: string;
   }> = {};
 
-  if (typeof body.username === 'string' && body.username.trim()) {
-    const next = body.username.trim();
-    if (next.length > 64) {
-      return NextResponse.json({ error: 'Username too long' }, { status: 400 });
+  if (typeof body.username === 'string') {
+    const next = normalizeLocalUsername(body.username);
+    const usernameError = localUsernameValidationError(next);
+    if (usernameError) {
+      return NextResponse.json({ error: usernameError }, { status: 400 });
     }
     data.username = next;
   }

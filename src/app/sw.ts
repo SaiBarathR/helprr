@@ -1,6 +1,11 @@
 /// <reference lib="webworker" />
 
-import type { PrecacheEntry, RuntimeCaching, SerwistGlobalConfig } from 'serwist';
+import type {
+  PrecacheEntry,
+  RuntimeCaching,
+  SerwistGlobalConfig,
+  SerwistPlugin,
+} from 'serwist';
 import {
   CacheableResponsePlugin,
   CacheFirst,
@@ -10,6 +15,7 @@ import {
   Serwist,
   StaleWhileRevalidate,
 } from 'serwist';
+import { isImageResponseCacheable } from '@/lib/image-response-cache-policy';
 
 declare global {
   interface WorkerGlobalScope extends SerwistGlobalConfig {
@@ -37,6 +43,12 @@ declare const self: ServiceWorkerGlobalScope & typeof globalThis;
 // cached body is exactly the stale data this allowlist must never serve.
 const READONLY_API_NETWORK_FIRST =
   /^\/api\/(?:(?:sonarr|radarr|lidarr)(?!\/(?:command|rename|manualimport|release|lookup|moviefile|episodefile|trackfile|history|wanted)\b)|calendar|library-gaps|dashboard-layouts|watchlist|discover|recommendations\/for-you|activity\/(?:history|wanted))(?:\/.*)?$/;
+
+const cacheValidatedImageResponses: SerwistPlugin = {
+  cacheWillUpdate: async ({ response }) => (
+    response && isImageResponseCacheable(response) ? response : null
+  ),
+};
 
 const runtimeCaching: RuntimeCaching[] =
   process.env.NODE_ENV !== 'production'
@@ -81,7 +93,9 @@ const runtimeCaching: RuntimeCaching[] =
           handler: new CacheFirst({
             cacheName: 'api-images',
             plugins: [
-              new CacheableResponsePlugin({ statuses: [200] }),
+              // A Redis/accounting bypass is returned with no-store and must
+              // remain uncached even though the image bytes were validated.
+              cacheValidatedImageResponses,
               new ExpirationPlugin({
                 maxEntries: 500,
                 maxAgeSeconds: 7 * 24 * 60 * 60,
@@ -488,10 +502,17 @@ self.addEventListener('unhandledrejection', (event) => {
 const USER_SCOPED_CACHES = ['pages', 'api-readonly', 'api-images'];
 self.addEventListener('message', (event) => {
   if ((event.data as { type?: string } | undefined)?.type === 'helprr-clear-user-caches') {
+    const replyPort = event.ports[0];
     event.waitUntil(
       Promise.all(USER_SCOPED_CACHES.map((name) => caches.delete(name)))
-        .then(() => logToClients('info', 'Cleared user-scoped caches on logout'))
-        .catch((error) => logToClients('error', 'Cache clear failed', { error: String(error) }))
+        .then(() => {
+          replyPort?.postMessage({ ok: true });
+          return logToClients('info', 'Cleared user-scoped caches on logout');
+        })
+        .catch((error) => {
+          replyPort?.postMessage({ ok: false });
+          return logToClients('error', 'Cache clear failed', { error: String(error) });
+        })
     );
   }
 });

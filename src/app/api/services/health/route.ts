@@ -3,10 +3,10 @@ import type { ServiceType } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { requireUser } from '@/lib/auth';
 import { can } from '@/lib/permissions';
-import type { Capability } from '@/lib/capabilities';
 import { probeServiceHealth, SERVICE_LABELS } from '@/lib/service-health';
 import { withApiLogging } from '@/lib/api-logger';
 import { getCachedJson, setCachedJson } from '@/lib/cache/json-cache';
+import { SERVICE_VIEW_CAPABILITY } from '@/lib/server/service-capabilities';
 
 const HEALTH_CACHE_HEADERS = {
   'Cache-Control': 'private, max-age=60, stale-while-revalidate=120',
@@ -25,21 +25,6 @@ interface ServiceHealthStatus {
   ok: boolean;
   error?: string;
 }
-
-// The view capability that gates each service's health. Members only see the
-// services they're allowed to view; admins short-circuit can() and see all.
-// qBittorrent/Prowlarr are admin-only (privacy), so members never learn they exist.
-const SERVICE_VIEW_CAP: Record<ServiceType, Capability> = {
-  SONARR: 'series.view',
-  RADARR: 'movies.view',
-  LIDARR: 'music.view',
-  QBITTORRENT: 'torrents.view',
-  PROWLARR: 'prowlarr.view',
-  JELLYFIN: 'jellyfin.view',
-  TMDB: 'discover.view',
-  ANILIST: 'anime.view',
-  SEERR: 'requests.view',
-};
 
 async function getHandler() {
   const auth = await requireUser();
@@ -68,7 +53,7 @@ async function getHandler() {
       await setCachedJson('health', '', statuses, 60);
     }
 
-    const visible = statuses.filter((status) => can(auth.user, SERVICE_VIEW_CAP[status.type]));
+    const visible = statuses.filter((status) => can(auth.user, SERVICE_VIEW_CAPABILITY[status.type]));
     return NextResponse.json(visible, { headers: HEALTH_CACHE_HEADERS });
   } catch {
     return NextResponse.json(

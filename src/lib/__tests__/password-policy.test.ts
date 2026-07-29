@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  LOCAL_PASSWORD_MAX_BYTES,
   LOCAL_PASSWORD_MIN_LENGTH,
   countPasswordCodePoints,
   localPasswordValidationError,
@@ -22,5 +23,15 @@ describe('local password policy', () => {
 
   it('does not impose character-class composition rules', () => {
     expect(localPasswordValidationError('correct horse battery staple')).toBeNull();
+  });
+
+  it('rejects passwords that the login boundary cannot accept', () => {
+    expect(localPasswordValidationError('a'.repeat(LOCAL_PASSWORD_MAX_BYTES))).toBeNull();
+    expect(localPasswordValidationError('a'.repeat(LOCAL_PASSWORD_MAX_BYTES + 1))).toBe(
+      `Password must be at most ${LOCAL_PASSWORD_MAX_BYTES} bytes`,
+    );
+    expect(localPasswordValidationError('🧪'.repeat(257))).toBe(
+      `Password must be at most ${LOCAL_PASSWORD_MAX_BYTES} bytes`,
+    );
   });
 });

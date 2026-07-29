@@ -28,6 +28,20 @@ export function buildImageMetaKey(generation: number, keySeed: string): string {
   return `helprr:cache:image:v${generation}:${sha256Hex(keySeed)}`;
 }
 
+export function buildImageIndexKey(generation: number): string {
+  return `helprr:cache:image-index:v${generation}`;
+}
+
+export function buildImageLruKey(generation: number): string {
+  return `helprr:cache:image-lru:v${generation}`;
+}
+
+export function buildImageUsageKey(generation: number): string {
+  return `helprr:cache:image-usage:v${generation}`;
+}
+
+export const IMAGE_CACHE_OBSERVABILITY_KEY = 'helprr:cache:image-observability';
+
 export function buildTmdbDataKey(generation: number, keySeed: string): string {
   return `helprr:cache:tmdb:v${generation}:${sha256Hex(keySeed)}`;
 }

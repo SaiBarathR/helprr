@@ -27,6 +27,15 @@ const LOGIN_WINDOW_SECONDS = Math.max(1, Math.ceil(LOGIN_WINDOW_MS / 1000));
 const LOGIN_MAX_ATTEMPTS = 5;
 const LOGIN_ATTEMPTS_KEY_PREFIX = 'login:attempts:';
 
+// Invalid content types, malformed JSON, and invalid credential shapes do not
+// have a safe username key. Track them in a separate high-ceiling fixed window
+// so a default deployment without trusted proxy headers cannot submit an
+// unlimited stream of application-level junk. The deliberate tradeoff is a
+// short global login brownout if one caller exhausts this bucket.
+const MALFORMED_LOGIN_WINDOW_MS = 60_000;
+const MALFORMED_LOGIN_MAX = 120;
+const MALFORMED_LOGIN_KEY = 'login:malformed:global';
+
 // Per-username backoff tuning (mirrors AWS Cognito: 5 failures → 1s, doubling,
 // capped at 15 min).
 const USER_LOCK_THRESHOLD = 5;
@@ -126,6 +135,58 @@ export async function enforceLoginRateLimit(ip: string | undefined): Promise<Nex
   }
 
   return null;
+}
+
+export async function enforceMalformedLoginBackstop(): Promise<NextResponse | null> {
+  try {
+    const redis = await getRedisClient();
+    const [countRaw, pttl] = await Promise.all([
+      redis.get(MALFORMED_LOGIN_KEY),
+      redis.pTTL(MALFORMED_LOGIN_KEY),
+    ]);
+    const count = countRaw ? Number(countRaw) : 0;
+    if (Number.isFinite(count) && count >= MALFORMED_LOGIN_MAX) {
+      const retryMs = typeof pttl === 'number' && pttl > 0
+        ? pttl
+        : MALFORMED_LOGIN_WINDOW_MS;
+      return lockedResponse(retryMs);
+    }
+    return null;
+  } catch {
+    return NextResponse.json({ error: 'Login service unavailable' }, { status: 503 });
+  }
+}
+
+export async function recordMalformedLoginRequest(): Promise<NextResponse | null> {
+  try {
+    const redis = await getRedisClient();
+    const result = await redis.eval(
+      `local count = redis.call('INCR', KEYS[1])
+if count == 1 then
+  redis.call('PEXPIRE', KEYS[1], ARGV[1])
+end
+local ttl = redis.call('PTTL', KEYS[1])
+return {tostring(count), tostring(ttl)}`,
+      {
+        keys: [MALFORMED_LOGIN_KEY],
+        arguments: [String(MALFORMED_LOGIN_WINDOW_MS)],
+      },
+    );
+    const values = Array.isArray(result) ? result : [];
+    const count = Number(values[0]);
+    const ttl = Number(values[1]);
+    if (!Number.isFinite(count)) {
+      return NextResponse.json({ error: 'Login service unavailable' }, { status: 503 });
+    }
+    if (count > MALFORMED_LOGIN_MAX) {
+      return lockedResponse(
+        Number.isFinite(ttl) && ttl > 0 ? ttl : MALFORMED_LOGIN_WINDOW_MS,
+      );
+    }
+    return null;
+  } catch {
+    return NextResponse.json({ error: 'Login service unavailable' }, { status: 503 });
+  }
 }
 
 // ─── Per-username exponential backoff (layer 2) ──────────────────────────────

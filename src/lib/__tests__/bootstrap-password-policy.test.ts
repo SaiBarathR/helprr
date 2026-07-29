@@ -57,6 +57,18 @@ afterEach(() => {
 });
 
 describe('bootstrap local-password policy', () => {
+  it('rejects a bootstrap username that the login boundary cannot accept', async () => {
+    process.env.APP_PASSWORD = 'a'.repeat(15);
+    process.env.HELPRR_ADMIN_USERNAME = 'a'.repeat(65);
+
+    await expect(ensureBootstrapAdmin()).rejects.toThrow(
+      'HELPRR_ADMIN_USERNAME must be at most 64 characters',
+    );
+    expect(mocks.findUnique).not.toHaveBeenCalled();
+    expect(mocks.upsert).not.toHaveBeenCalled();
+    expect(mocks.update).not.toHaveBeenCalled();
+  });
+
   it('does not reject an unused legacy env password after the admin is configured', async () => {
     mocks.findUnique.mockResolvedValue({
       id: 'user-bootstrap-admin',

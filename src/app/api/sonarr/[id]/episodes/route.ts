@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSonarrClient } from '@/lib/service-helpers';
-import { requireAuth } from '@/lib/auth';
+import { requireAuth, requireCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { upstreamErrorResponse } from '@/lib/api-error';
 
@@ -10,6 +10,8 @@ async function getHandler(
 ) {
   const authError = await requireAuth();
   if (authError) return authError;
+  const capError = await requireCapability('series.view');
+  if (capError) return capError;
 
   try {
     const { id } = await params;

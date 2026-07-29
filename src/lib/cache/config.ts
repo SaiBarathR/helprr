@@ -22,6 +22,26 @@ export const IMAGE_UPSTREAM_FETCH_TIMEOUT_MS = parsePositiveInt(
   5_000
 );
 
+export const IMAGE_UPSTREAM_MAX_BYTES = parsePositiveInt(
+  process.env.IMAGE_UPSTREAM_MAX_BYTES,
+  10 * 1024 * 1024
+);
+
+export const IMAGE_UPSTREAM_MAX_PIXELS = parsePositiveInt(
+  process.env.IMAGE_UPSTREAM_MAX_PIXELS,
+  40_000_000
+);
+
+export const IMAGE_CACHE_MAX_BYTES = parsePositiveInt(
+  process.env.IMAGE_CACHE_MAX_BYTES,
+  1024 * 1024 * 1024
+);
+
+export const IMAGE_CACHE_MAX_ENTRIES = parsePositiveInt(
+  process.env.IMAGE_CACHE_MAX_ENTRIES,
+  5_000
+);
+
 export const TMDB_CACHE_DEFAULT_TTL_SECONDS = parsePositiveInt(
   process.env.TMDB_CACHE_DEFAULT_TTL_SECONDS,
   10 * 60

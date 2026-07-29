@@ -55,9 +55,15 @@ async function readBodyPreview(requestOrResponse: Request | Response): Promise<u
   return { body: redact(body), truncated };
 }
 
-function requestMetadata(request: Request | null) {
+function requestMetadata(
+  request: Request | null,
+  redactQueryParams: readonly string[] = [],
+) {
   if (!request) return {};
   const url = new URL(request.url);
+  for (const name of redactQueryParams) {
+    if (url.searchParams.has(name)) url.searchParams.set(name, '[redacted]');
+  }
   return {
     method: request.method,
     path: `${url.pathname}${url.search}`,
@@ -70,6 +76,10 @@ export interface ApiLoggingOptions {
   // of the global pref. Use for credential-handling routes (auth, service config,
   // OAuth callbacks).
   logBodies?: boolean;
+  // Query parameters that must not be copied into request logs. Image source
+  // URLs and other credential-bearing nested URLs should use this even when
+  // request-body logging is disabled.
+  redactQueryParams?: readonly string[];
 }
 
 export function withApiLogging<T extends (...args: never[]) => Promise<Response> | Response>(
@@ -81,10 +91,15 @@ export function withApiLogging<T extends (...args: never[]) => Promise<Response>
   return (async (...args: Parameters<T>) => {
     const requestArg = (args as unknown[])[0];
     const request = getRequest(requestArg);
-    const requestClone = request ? request.clone() : null;
+    const requestClone = (
+      prefs.enabled
+      && allowBodies
+      && prefs.failedRequestBodies
+      && request
+    ) ? request.clone() : null;
     const startedAt = performance.now();
     const requestId = crypto.randomUUID();
-    const meta = requestMetadata(request);
+    const meta = requestMetadata(request, options.redactQueryParams);
 
     try {
       const response = await handler(...args);

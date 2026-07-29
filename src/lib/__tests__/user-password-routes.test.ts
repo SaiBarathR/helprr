@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import { LOCAL_PASSWORD_MAX_BYTES } from '@/lib/password-policy';
+import { LOGIN_PASSWORD_MAX_BYTES } from '@/lib/server/login-input';
+import { LOCAL_USERNAME_MAX_CODE_POINTS } from '@/lib/username-policy';
 
 const mocks = vi.hoisted(() => {
   const tx = {
@@ -123,6 +126,66 @@ describe('user local-password boundaries', () => {
     expect(mocks.userCreate).toHaveBeenLastCalledWith({
       data: expect.objectContaining({ passwordHash: null, jellyfinUserId: 'jf-1' }),
     });
+  });
+
+  it('uses the login byte ceiling for account creation and password resets', async () => {
+    expect(LOCAL_PASSWORD_MAX_BYTES).toBe(LOGIN_PASSWORD_MAX_BYTES);
+    const oversized = 'a'.repeat(LOCAL_PASSWORD_MAX_BYTES + 1);
+
+    const createResponse = await createUser(
+      jsonRequest('/api/users', 'POST', {
+        username: 'oversized-password',
+        displayName: 'Oversized Password',
+        password: oversized,
+      }),
+    );
+    const resetResponse = await updateUser(
+      jsonRequest('/api/users/user-1', 'PATCH', { password: oversized }),
+      params,
+    );
+
+    expect(createResponse.status).toBe(400);
+    expect(resetResponse.status).toBe(400);
+    expect(mocks.hashPassword).not.toHaveBeenCalled();
+    expect(mocks.userCreate).not.toHaveBeenCalled();
+    expect(mocks.transaction).not.toHaveBeenCalled();
+  });
+
+  it('uses the login username ceiling for account creation and renames', async () => {
+    const oversized = 'a'.repeat(LOCAL_USERNAME_MAX_CODE_POINTS + 1);
+
+    const createResponse = await createUser(
+      jsonRequest('/api/users', 'POST', {
+        username: oversized,
+        displayName: 'Oversized Username',
+        password: 'a'.repeat(15),
+      }),
+    );
+    const updateResponse = await updateUser(
+      jsonRequest('/api/users/user-1', 'PATCH', { username: oversized }),
+      params,
+    );
+
+    expect(createResponse.status).toBe(400);
+    expect(updateResponse.status).toBe(400);
+    await expect(createResponse.json()).resolves.toEqual({
+      error: `Username must be at most ${LOCAL_USERNAME_MAX_CODE_POINTS} characters`,
+    });
+    expect(mocks.userCreate).not.toHaveBeenCalled();
+    expect(mocks.transaction).not.toHaveBeenCalled();
+  });
+
+  it('rejects a whitespace-only username update before opening a transaction', async () => {
+    const response = await updateUser(
+      jsonRequest('/api/users/user-1', 'PATCH', { username: '   ' }),
+      params,
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: 'Username is required',
+    });
+    expect(mocks.transaction).not.toHaveBeenCalled();
   });
 
   it('rejects a short password reset before opening a transaction', async () => {

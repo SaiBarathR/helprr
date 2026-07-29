@@ -3,6 +3,17 @@ import path from 'path';
 import { getRedisClient } from '@/lib/redis';
 import { IMAGE_CACHE_DIR } from '@/lib/cache/config';
 import {
+  getImageCacheDiagnostics,
+  type ImageCacheDiagnostics,
+  type ImageAccountingRedis,
+  unavailableImageCacheDiagnostics,
+} from '@/lib/cache/image-cache-accounting';
+import {
+  buildImageIndexKey,
+  buildImageLruKey,
+  buildImageUsageKey,
+} from '@/lib/cache/keys';
+import {
   bumpCacheGeneration,
   getCacheGeneration,
   getCachePurgeStatus,
@@ -21,6 +32,7 @@ export interface CacheUsageSummary {
   tmdbEntries: number;
   anilistEntries: number;
   apiEntries: number;
+  imageDiagnostics: ImageCacheDiagnostics;
 }
 
 export interface CachePurgeResult {
@@ -149,7 +161,12 @@ async function purgeGeneration(generation: number): Promise<CachePurgeResult> {
 
   await Promise.all([
     rm(imageDir, { recursive: true, force: true }).catch(() => undefined),
-    deleteRedisKeys(imageMetaKeys),
+    deleteRedisKeys([
+      ...imageMetaKeys,
+      buildImageIndexKey(generation),
+      buildImageLruKey(generation),
+      buildImageUsageKey(generation),
+    ]),
     deleteRedisKeys(tmdbKeys),
     deleteRedisKeys(anilistKeys),
     deleteRedisKeys(apiKeys),
@@ -183,6 +200,14 @@ export async function getActiveCacheUsage(): Promise<CacheUsageSummary> {
   const tmdbUsage = await getRedisKeysUsage(tmdbKeys);
   const anilistUsage = await getRedisKeysUsage(anilistKeys);
   const apiUsage = await getRedisKeysUsage(apiKeys);
+  let imageDiagnostics = unavailableImageCacheDiagnostics();
+  try {
+    const redis = await getRedisClient() as unknown as ImageAccountingRedis;
+    imageDiagnostics = await getImageCacheDiagnostics(redis, generation);
+  } catch {
+    // The filesystem totals remain useful, while the explicit availability
+    // field prevents missing Redis accounting from looking like healthy zeroes.
+  }
 
   return {
     imageBytes: imageUsage.bytes,
@@ -194,6 +219,7 @@ export async function getActiveCacheUsage(): Promise<CacheUsageSummary> {
     tmdbEntries: tmdbUsage.entries,
     anilistEntries: anilistUsage.entries,
     apiEntries: apiUsage.entries,
+    imageDiagnostics,
   };
 }
 

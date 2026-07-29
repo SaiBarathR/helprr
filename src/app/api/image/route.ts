@@ -1,28 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { ServiceConnection } from '@prisma/client';
 import { prisma } from '@/lib/db';
-import { requireAuth } from '@/lib/auth';
+import { requireUser } from '@/lib/auth';
 import { fetchImageWithServerCache } from '@/lib/cache/image-cache';
 import { getConnectionHeaders } from '@/lib/service-connection-secrets';
 import { toAuthenticatedLidarrImageUrl } from '@/lib/lidarr-image';
 import { withApiLogging } from '@/lib/api-logger';
 
-type ServiceHint = 'tmdb' | 'radarr' | 'sonarr' | 'jellyfin' | 'anilist' | 'lidarr';
+type ServiceHint = 'tmdb' | 'radarr' | 'sonarr' | 'anilist' | 'lidarr';
 
 interface ConnectionLike {
-  type: 'RADARR' | 'SONARR' | 'JELLYFIN' | 'TMDB' | 'LIDARR';
+  type: 'RADARR' | 'SONARR' | 'TMDB' | 'LIDARR';
   url: string;
   apiKey: string;
   customHeaders: ServiceConnection['customHeaders'];
 }
 
-const IMAGE_PATH_EXTENSION_RE = /\.(avif|bmp|gif|heic|heif|ico|jpe?g|png|svg|webp)$/i;
+const IMAGE_PATH_EXTENSION_RE = /\.(jpe?g|png|webp)$/i;
+const JELLYFIN_IMAGE_PATH_RE = /(?:^|\/)items\/[^/]+\/images\/[^/]+(?:\/\d+)?\/?$/i;
 
 const SERVICE_IMAGE_PATH_PATTERNS: Record<ConnectionLike['type'], RegExp[]> = {
   RADARR: [/^\/(?:api\/v\d+\/)?mediacover\//i],
   SONARR: [/^\/(?:api\/v\d+\/)?mediacover\//i],
   LIDARR: [/^\/(?:api\/v\d+\/)?mediacover\//i],
-  JELLYFIN: [/^\/items\/[^/]+\/images\/[^/]+(?:\/\d+)?$/i],
   TMDB: [/^\/t\/p\//i],
 };
 
@@ -53,7 +53,7 @@ async function getImageProxyConnections(): Promise<ImageProxyConnectionRow[]> {
 
   connectionsInflight = prisma.serviceConnection
     .findMany({
-      where: { type: { in: ['RADARR', 'SONARR', 'JELLYFIN', 'TMDB', 'LIDARR'] } },
+      where: { type: { in: ['RADARR', 'SONARR', 'TMDB', 'LIDARR'] } },
       select: { type: true, url: true, apiKey: true, customHeaders: true },
     })
     .then((rows) => {
@@ -68,7 +68,7 @@ async function getImageProxyConnections(): Promise<ImageProxyConnectionRow[]> {
 }
 
 function parseServiceHint(value: string | null): ServiceHint | null {
-  if (value === 'tmdb' || value === 'radarr' || value === 'sonarr' || value === 'jellyfin' || value === 'anilist' || value === 'lidarr') {
+  if (value === 'tmdb' || value === 'radarr' || value === 'sonarr' || value === 'anilist' || value === 'lidarr') {
     return value;
   }
   return null;
@@ -137,6 +137,7 @@ function isAllowedKnownExternalImageHost(target: URL): boolean {
 function normalizeBaseUrl(url: string): URL | null {
   try {
     const parsed = new URL(url);
+    parsed.hash = '';
     parsed.pathname = parsed.pathname.replace(/\/+$/, '');
     return parsed;
   } catch {
@@ -195,14 +196,6 @@ function resolveAuthHeaders(connection: ConnectionLike | null): HeadersInit | un
     };
   }
 
-  if (connection.type === 'JELLYFIN') {
-    return {
-      ...custom,
-      Authorization: `MediaBrowser Token="${connection.apiKey}"`,
-      'X-Emby-Token': connection.apiKey,
-    };
-  }
-
   return undefined;
 }
 
@@ -233,8 +226,8 @@ function sortConnectionsByHint(connections: ConnectionLike[], hint: ServiceHint 
 }
 
 async function getHandler(request: NextRequest): Promise<NextResponse> {
-  const authError = await requireAuth();
-  if (authError) return authError;
+  const auth = await requireUser();
+  if (!auth.ok) return auth.response;
 
   try {
     const { searchParams } = new URL(request.url);
@@ -255,6 +248,17 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
 
     if (targetUrl.protocol !== 'http:' && targetUrl.protocol !== 'https:') {
       return NextResponse.json({ error: 'Unsupported image protocol' }, { status: 400 });
+    }
+    targetUrl.hash = '';
+
+    // Jellyfin artwork is intentionally available only through the dedicated
+    // endpoint, which enforces jellyfin.view and per-user item access before
+    // attaching the server-wide administrative token.
+    if (JELLYFIN_IMAGE_PATH_RE.test(targetUrl.pathname)) {
+      return NextResponse.json(
+        { error: 'Jellyfin images must use the dedicated image endpoint' },
+        { status: 403 },
+      );
     }
 
     const isTmdbImageHost = targetUrl.hostname === 'image.tmdb.org';
@@ -301,12 +305,12 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
     const upstreamUrl = matchedConnection?.type === 'LIDARR' && matchedBase
       ? toAuthenticatedLidarrImageUrl(targetUrl, matchedBase)
       : targetUrl;
-
     const baseCacheKey = `${hint ?? matchedConnection?.type.toLowerCase() ?? 'unknown'}:${targetUrl.toString()}`;
     const result = await fetchImageWithServerCache({
       cacheKey: `${baseCacheKey}:w${width}:webp`,
       upstreamUrl: upstreamUrl.toString(),
       upstreamHeaders,
+      requesterId: auth.user.id,
       timeoutMs: matchedConnection?.type === 'LIDARR'
         ? LIDARR_IMAGE_FETCH_TIMEOUT_MS
         : undefined,
@@ -319,6 +323,9 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
         status: result.status,
         headers: {
           'X-Helprr-Cache': result.cacheStatus,
+          ...(result.retryAfterSeconds
+            ? { 'Retry-After': String(result.retryAfterSeconds) }
+            : {}),
         },
       });
     }
@@ -326,18 +333,20 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
     return new NextResponse(new Uint8Array(result.body), {
       status: 200,
       headers: {
-        'Content-Type': result.contentType || 'image/jpeg',
-        'Cache-Control': 'private, max-age=86400, stale-while-revalidate=604800, stale-if-error=2592000',
+        'Content-Type': result.contentType!,
+        'Cache-Control': result.cacheStatus === 'BYPASS'
+          ? 'private, no-store'
+          : 'private, max-age=86400, stale-while-revalidate=604800, stale-if-error=2592000',
+        Vary: 'Cookie',
         'X-Helprr-Cache': result.cacheStatus,
       },
     });
-  } catch (error) {
-    console.error('Failed to proxy image', {
-      message: error instanceof Error ? error.message : String(error),
-      stack: error instanceof Error ? error.stack : undefined,
-    });
+  } catch {
+    console.error('Failed to proxy image');
     return NextResponse.json({ error: 'Failed to proxy image' }, { status: 500 });
   }
 }
 
-export const GET = withApiLogging(getHandler, 'api/image');
+export const GET = withApiLogging(getHandler, 'api/image', {
+  redactQueryParams: ['src'],
+});

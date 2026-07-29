@@ -67,6 +67,10 @@ import {
   resolveImportedPasswordHash,
   validateSettingsImportComplexity,
 } from '@/lib/settings-import-validation';
+import {
+  localUsernameValidationError,
+  normalizeLocalUsername,
+} from '@/lib/username-policy';
 
 const LOG_LEVELS = new Set(['debug', 'info', 'warn', 'error']);
 const UPCOMING_NOTIFY_MODES = new Set(['before_air', 'daily_digest']);
@@ -1323,9 +1327,12 @@ async function applyUsersInTxn(
   let applied = 0;
   for (const acc of data.accounts) {
     if (!acc || typeof acc !== 'object') continue;
-    const username = typeof acc.username === 'string' ? acc.username.trim() : '';
-    if (!username) {
-      skipped.push('User skipped: missing username');
+    const username = typeof acc.username === 'string'
+      ? normalizeLocalUsername(acc.username)
+      : '';
+    const usernameError = localUsernameValidationError(username);
+    if (usernameError) {
+      skipped.push(`User skipped: ${usernameError.toLowerCase()}`);
       continue;
     }
     const exportedId = typeof acc.id === 'string' && acc.id.length > 0 ? acc.id : null;

@@ -205,10 +205,8 @@ export async function tryAcquireCacheLock(scope: string, keySeed: string, ttlMs 
   } catch (error) {
     console.error('Failed to acquire cache lock', {
       scope,
-      keySeed,
       ttlMs,
       message: error instanceof Error ? error.message : String(error),
-      stack: error instanceof Error ? error.stack : undefined,
     });
     return null;
   }

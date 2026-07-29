@@ -453,7 +453,11 @@ All values below are optional positive integers; invalid or non-positive values 
 | `IMAGE_CACHE_DIR`                 | `/tmp/helprr-image-cache` | Directory for server-side cached image bytes. Choose a writable, persistent path only if you provision one. |
 | `IMAGE_CACHE_TTL_SECONDS`         | `604800` (7 days)         | How long a successful image is considered fresh.                                                            |
 | `IMAGE_CACHE_STALE_SECONDS`       | `2592000` (30 days)       | How long a stale cached image may be served when its upstream fails.                                        |
+| `IMAGE_CACHE_MAX_BYTES`           | `1073741824` (1 GiB)      | Maximum bytes in the active image-cache generation; least-recently-used entries are evicted first.          |
+| `IMAGE_CACHE_MAX_ENTRIES`         | `5000`                    | Maximum entries in the active image-cache generation.                                                       |
 | `IMAGE_UPSTREAM_FETCH_TIMEOUT_MS` | `5000`                    | Timeout for fetching an upstream image.                                                                     |
+| `IMAGE_UPSTREAM_MAX_BYTES`        | `10485760` (10 MiB)       | Maximum declared and actually streamed bytes accepted from one upstream image response.                    |
+| `IMAGE_UPSTREAM_MAX_PIXELS`       | `40000000` (40 MP)        | Maximum decoded input pixels Sharp will accept before transform or storage.                                |
 | `TMDB_CACHE_DEFAULT_TTL_SECONDS`  | `600` (10 minutes)        | Default TTL for TMDb data without a more specific category.                                                 |
 | `TMDB_CACHE_DISCOVER_TTL_SECONDS` | `600` (10 minutes)        | TTL for TMDb discovery responses.                                                                           |
 | `TMDB_CACHE_DETAILS_TTL_SECONDS`  | `86400` (1 day)           | TTL for TMDb title/detail responses.                                                                        |
@@ -462,7 +466,11 @@ All values below are optional positive integers; invalid or non-positive values 
 | `CACHE_LOCK_TTL_MS`               | `10000`                   | Cache-fill lock duration; change only when diagnosing unusually slow or long-running upstream requests.     |
 
 
-The bundled Compose file now passes these advanced values through when they are set in `.env`. The default image-cache directory is inside the app container, so it is ephemeral if that container is recreated unless you add your own persistent mount.
+The bundled Compose file passes these advanced values through when they are set in `.env`. The image proxy accepts validated JPEG, PNG, and WebP raster bytes; HTML, XML/SVG, malformed, unknown, oversized, pixel-heavy, and MIME-confused responses are rejected. Redis maintains per-generation byte/entry accounting and LRU order. If Redis accounting is unavailable, a bounded validated upstream image can still be served with `no-store`, but Helprr does not create a cache file.
+
+The default image-cache directory is inside the app container, so it is ephemeral if that container is recreated unless you add your own persistent mount. The per-user upstream-fetch rate limiter is intentionally generous enough for poster-grid bursts and runs only after a cache miss; browser/PWA and server-cache hits do not consume it. Decode work is separately capped at four concurrent images per user and sixteen per app instance, with the same limits coordinated through Redis across replicas.
+
+**Settings → Storage** reports Redis accounting availability, current image quota usage, entry count, evictions, and oversized/invalid-image rejection counters without recording source URLs or credentials.
 
 ## First-run checklist
 
@@ -633,12 +641,14 @@ scheduled-alert occurrences are kept for 90 days, operation-audit records for
 lifetime. Pending alerts and pending Seerr approvals are live state and are not
 removed by history retention.
 
-The same sweep removes image-cache files that have had no Redis metadata for at
-least 24 hours, temporary image files older than one hour, and cache-generation
-directories abandoned for at least 24 hours. It reads Redis successfully and
-re-checks the active generation before touching files; if Redis is unavailable or
-an admin cache purge races the sweep, filesystem cleanup fails closed and waits for
-a later run. Log files continue to use the separate retention value in
+The same sweep reconciles image metadata, the per-generation Redis quota/LRU
+index, and immutable cache files; enforces the configured byte and entry limits;
+removes unreferenced files after 24 hours and temporary files after one hour; and
+removes cache-generation directories abandoned for at least 24 hours. It reads
+Redis successfully, takes the narrowly scoped image-quota lock, and re-checks the
+active generation before touching files. If Redis is unavailable, the lock is
+busy, or an admin cache purge races the sweep, filesystem cleanup fails closed
+and waits for a later run. Log files continue to use the separate retention value in
 **Settings → Logging**. Database backups are never removed by Helprr retention.
 
 
@@ -718,6 +728,8 @@ docker compose --env-file .env.dev -f docker-compose.dev.yml \
 
 - Use unique, long secrets and a private network or HTTPS reverse proxy. Do not expose Helprr directly to the public internet without understanding the security implications.
 - Passwords are stored as per-user scrypt hashes. `APP_PASSWORD` seeds/resets only the bootstrap admin; it is not a universal login password.
+- Local and Jellyfin credential requests are limited to 8 KiB; usernames are limited to 64 Unicode characters and passwords to 1,024 UTF-8 bytes. New and reset local passwords use the same byte ceiling. A separate 120-request-per-minute malformed-login backstop deliberately fails closed, so a sufficiently large malformed flood can briefly return 429 to otherwise valid sign-in attempts.
+- Web Share Target requests accept only multipart or URL-encoded form bodies up to 16 KiB. Shared titles are limited to 256 Unicode characters, and shared text and URL fields are each limited to 2,048 UTF-8 bytes.
 - Resetting the bootstrap password does not invalidate active sessions. Revoke sessions from **Settings → Sessions** when access needs to be removed.
 - Service credentials and custom headers are sensitive. Restrict administrator accounts and protect backups/log exports.
 - Verify AI-generated changes before deploying them. Keep your service containers and this project up to date, and test upgrades against a backup.

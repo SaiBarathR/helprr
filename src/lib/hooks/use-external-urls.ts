@@ -11,8 +11,10 @@ const EMPTY: ExternalUrlMaps = { byType: {}, byInstance: {} };
 
 let cached: ExternalUrlMaps | null = null;
 let pending: Promise<ExternalUrlMaps> | null = null;
+let cacheVersion = 0;
 
 export function invalidateExternalUrls(): void {
+  cacheVersion += 1;
   cached = null;
   pending = null;
 }
@@ -23,7 +25,8 @@ function isEmpty(value: ExternalUrlMaps | null): boolean {
 
 function fetchExternalUrls(): Promise<ExternalUrlMaps> {
   if (!pending) {
-    pending = fetch('/api/services/external-urls')
+    const requestedVersion = cacheVersion;
+    const request = fetch('/api/services/external-urls')
       .then((res) => (res.ok ? res.json() : []))
       .then((rows: ExternalUrlRow[]) => {
         // The endpoint returns one row per connection (default instance first per
@@ -38,13 +41,16 @@ function fetchExternalUrls(): Promise<ExternalUrlMaps> {
             byInstance[row.id] = row.externalUrl;
           }
         }
-        cached = { byType, byInstance };
-        return cached;
+        const maps = { byType, byInstance };
+        if (requestedVersion !== cacheVersion) return EMPTY;
+        cached = maps;
+        return maps;
       })
       .catch(() => EMPTY)
       .finally(() => {
-        pending = null;
+        if (pending === request) pending = null;
       });
+    pending = request;
   }
   return pending;
 }

@@ -7,6 +7,12 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Clapperboard, Loader2 } from 'lucide-react';
 import { getQueryClient } from '@/lib/query-client';
+import { invalidateExternalUrls } from '@/lib/hooks/use-external-urls';
+import {
+  broadcastAuthenticationBoundary,
+  clearUserScopedBrowserCaches,
+  requestSessionLogout,
+} from '@/lib/client-cache';
 
 const DEVICE_COOKIE = 'helprr-device';
 const DEVICE_COOKIE_MAX_AGE = 60 * 60 * 24 * 365; // 1 year
@@ -92,6 +98,29 @@ export default function LoginPage() {
         // this a different user signing in on the same browser could briefly see
         // the previous user's cached lists/sessions/widgets.
         getQueryClient().clear();
+        invalidateExternalUrls();
+        // The successful response changed the origin-wide cookie. Notify other
+        // tabs immediately so their mounted state cannot keep running under the
+        // newly authenticated identity while persistent caches are cleared.
+        broadcastAuthenticationBoundary();
+        try {
+          await clearUserScopedBrowserCaches();
+        } catch {
+          // The server already issued a session. Roll it back and stay on the
+          // login screen rather than entering the app with another user's
+          // persistent browser caches still available.
+          const rollbackResult = await requestSessionLogout();
+          // Rollback is itself an origin-wide authentication boundary. Broadcast
+          // even when it cannot be confirmed so every other tab reloads instead
+          // of retaining state from whichever identity its cookie now represents.
+          broadcastAuthenticationBoundary();
+          if (rollbackResult !== 'success') {
+            throw new Error(
+              'Browser data could not be cleared and sign-in rollback could not be confirmed. Close this browser and revoke the session before retrying.',
+            );
+          }
+          throw new Error('Could not safely clear browser data. Please retry.');
+        }
         router.replace(getPostLoginTarget());
         router.refresh();
         return;
@@ -115,8 +144,8 @@ export default function LoginPage() {
         // keep the generic fallback
       }
       setError(message);
-    } catch {
-      setError('Something went wrong');
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Something went wrong');
     } finally {
       setPending(null);
     }

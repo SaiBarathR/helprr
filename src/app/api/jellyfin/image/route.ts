@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { User } from '@prisma/client';
 import { prisma } from '@/lib/db';
-import { getCurrentUser, requireAuth, requireCapability } from '@/lib/auth';
+import { requireUserCapability } from '@/lib/auth';
 import { can } from '@/lib/permissions';
 import { fetchImageWithServerCache } from '@/lib/cache/image-cache';
 import { getConnectionHeaders } from '@/lib/service-connection-secrets';
@@ -57,10 +57,8 @@ async function canUserAccessItem(user: User, itemId: string): Promise<boolean> {
 }
 
 async function getHandler(request: NextRequest): Promise<NextResponse> {
-  const authError = await requireAuth();
-  if (authError) return authError;
-  const capError = await requireCapability('jellyfin.view');
-  if (capError) return capError;
+  const auth = await requireUserCapability('jellyfin.view');
+  if (!auth.ok) return auth.response;
 
   try {
     const { searchParams } = new URL(request.url);
@@ -82,10 +80,7 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
     const maxWidth = Number.isFinite(maxWidthParsed) ? Math.min(Math.max(maxWidthParsed, 1), 2000) : 300;
     const quality = Number.isFinite(qualityParsed) ? Math.min(Math.max(qualityParsed, 1), 100) : 90;
 
-    const user = await getCurrentUser();
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const { user } = auth;
     // jellyfin.sessions and jellyfin.stats deliberately expose server-wide
     // playback metadata (every user's now-playing and history), so artwork for
     // those items is no more privileged than what those routes already reveal
@@ -105,12 +100,18 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
       return new NextResponse(null, { status: 404 });
     }
 
-    const url = `${connection.url.replace(/\/+$/, '')}/Items/${encodeURIComponent(itemId)}/Images/${encodeURIComponent(type)}?maxWidth=${maxWidth}&quality=${quality}`;
-    const connectionOrigin = new URL(connection.url).origin;
+    const connectionBase = new URL(connection.url);
+    connectionBase.hash = '';
+    const connectionBasePath = connectionBase.pathname.replace(/\/+$/, '');
+    const url = new URL(
+      `${connectionBasePath}/Items/${encodeURIComponent(itemId)}/Images/${encodeURIComponent(type)}?maxWidth=${maxWidth}&quality=${quality}`,
+      `${connectionBase.origin}/`,
+    );
+    const connectionOrigin = connectionBase.origin;
 
     const result = await fetchImageWithServerCache({
       cacheKey: `jellyfin:${itemId}:${type}:${maxWidth}:${quality}`,
-      upstreamUrl: url,
+      upstreamUrl: url.toString(),
       upstreamHeaders: {
         // Custom headers first so Helprr's own token headers win; no-op unless
         // HELPRR_CUSTOM_HEADERS is enabled.
@@ -118,6 +119,7 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
         Authorization: `MediaBrowser Token="${connection.apiKey}"`,
         'X-Emby-Token': connection.apiKey,
       },
+      requesterId: user.id,
       // Only follow redirects that stay on the configured Jellyfin server.
       isRedirectTargetAllowed: (target) => target.origin === connectionOrigin,
     });
@@ -127,14 +129,22 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
         status: result.status,
         headers: {
           'X-Helprr-Cache': result.cacheStatus,
+          ...(result.retryAfterSeconds
+            ? { 'Retry-After': String(result.retryAfterSeconds) }
+            : {}),
         },
       });
     }
 
     return new NextResponse(new Uint8Array(result.body), {
       headers: {
-        'Content-Type': result.contentType || 'image/jpeg',
-        'Cache-Control': 'private, max-age=86400, stale-while-revalidate=604800, stale-if-error=2592000',
+        'Content-Type': result.contentType!,
+        // Revalidate the jellyfin.view and per-item authorization boundary on
+        // every use while still allowing the browser to retain validated bytes.
+        'Cache-Control': result.cacheStatus === 'BYPASS'
+          ? 'private, no-store'
+          : 'private, no-cache',
+        Vary: 'Cookie',
         'X-Helprr-Cache': result.cacheStatus,
       },
     });

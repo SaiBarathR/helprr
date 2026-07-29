@@ -1,6 +1,22 @@
 import { lstat, readdir, rm, unlink } from 'fs/promises';
 import path from 'path';
-import { IMAGE_CACHE_DIR } from '@/lib/cache/config';
+import {
+  acquireImageQuotaLock,
+  deleteImageGenerationAccounting,
+  type ImageAccountingRedis,
+  type ImageIndexEntry,
+  ImageCacheGenerationChangedError,
+  ImageQuotaLockLostError,
+  parseImageIndexEntry,
+  reconcileImageCacheAccounting,
+  releaseImageQuotaLock,
+} from '@/lib/cache/image-cache-accounting';
+import {
+  IMAGE_CACHE_DIR,
+  IMAGE_CACHE_MAX_BYTES,
+  IMAGE_CACHE_MAX_ENTRIES,
+} from '@/lib/cache/config';
+import { buildImageIndexKey } from '@/lib/cache/keys';
 import { getRedisClient } from '@/lib/redis';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -14,9 +30,18 @@ const IMAGE_FILE_RE = new RegExp(`^(${HASH_PATTERN})(?:-(${UUID_PATTERN}))?\\.bi
 const TEMP_FILE_RE = new RegExp(`^${HASH_PATTERN}(?:-${UUID_PATTERN})?\\.bin\\.tmp-${UUID_PATTERN}$`, 'i');
 const GENERATION_DIR_RE = /^v([1-9][0-9]*)$/;
 
-interface ImageRetentionRedis {
-  get(key: string): Promise<string | null>;
-  scan(cursor: string, options: { MATCH: string; COUNT: number }): Promise<{ cursor: string; keys: string[] }>;
+export interface ImageRetentionRedis extends ImageAccountingRedis {
+  scan(
+    cursor: string,
+    options: { MATCH: string; COUNT: number },
+  ): Promise<{ cursor: string; keys: string[] }>;
+}
+
+interface ReferencedMeta {
+  entryKey: string;
+  relativePath: string;
+  sizeBytes: number;
+  fetchedAt: number;
 }
 
 interface FileCandidate {
@@ -37,9 +62,18 @@ interface GenerationCandidate {
 
 export interface ImageCacheRetentionResult {
   status: 'completed' | 'skipped';
-  reason?: 'generation-uninitialized' | 'purge-in-progress' | 'generation-changed';
+  reason?:
+    | 'generation-uninitialized'
+    | 'purge-in-progress'
+    | 'generation-changed'
+    | 'quota-lock-busy'
+    | 'quota-lock-lost';
   generation: number | null;
   metadataEntries: number;
+  reconciledEntries: number;
+  quotaBytes: number;
+  quotaEntries: number;
+  evictedEntries: number;
   deletedFiles: number;
   deletedBytes: number;
   deletedGenerations: number;
@@ -49,6 +83,8 @@ export interface ImageCacheRetentionOptions {
   rootDir?: string;
   nowMs?: number;
   redis?: ImageRetentionRedis;
+  maxBytes?: number;
+  maxEntries?: number;
 }
 
 function isMissing(error: unknown): boolean {
@@ -64,62 +100,88 @@ function parseGeneration(raw: string | null): number | null {
 async function scanKeys(redis: ImageRetentionRedis, pattern: string): Promise<string[]> {
   let cursor = '0';
   const keys = new Set<string>();
-
   do {
     const result = await redis.scan(cursor, { MATCH: pattern, COUNT: 200 });
     cursor = result.cursor;
     for (const key of result.keys) keys.add(key);
   } while (cursor !== '0');
-
   return [...keys];
 }
 
-function validReferencedPath(raw: string | null, generation: number, key: string): string | null {
+function parseReferencedMeta(
+  raw: string | null,
+  generation: number,
+  entryKey: string,
+): ReferencedMeta | null {
   if (!raw || raw.length > 16_384) return null;
-
   const prefix = `helprr:cache:image:v${generation}:`;
-  const keyHash = key.startsWith(prefix) ? key.slice(prefix.length) : '';
+  const keyHash = entryKey.startsWith(prefix) ? entryKey.slice(prefix.length) : '';
   if (!new RegExp(`^${HASH_PATTERN}$`, 'i').test(keyHash)) return null;
 
   try {
-    const value = JSON.parse(raw) as { generation?: unknown; relativePath?: unknown };
-    if (value.generation !== generation || typeof value.relativePath !== 'string') return null;
+    const value = JSON.parse(raw) as {
+      generation?: unknown;
+      relativePath?: unknown;
+      sizeBytes?: unknown;
+      fetchedAt?: unknown;
+      contentType?: unknown;
+      format?: unknown;
+    };
+    if (
+      value.generation !== generation
+      || typeof value.relativePath !== 'string'
+      || !Number.isSafeInteger(value.sizeBytes)
+      || (value.sizeBytes as number) < 0
+      || !Number.isSafeInteger(value.fetchedAt)
+      || (value.fetchedAt as number) < 0
+      || (value.format !== 'jpeg' && value.format !== 'png' && value.format !== 'webp')
+      || (
+        value.contentType !== 'image/jpeg'
+        && value.contentType !== 'image/png'
+        && value.contentType !== 'image/webp'
+      )
+    ) {
+      return null;
+    }
 
     const normalized = path.normalize(value.relativePath);
-    const expectedDirectory = `v${generation}`;
-    if (path.dirname(normalized) !== expectedDirectory) return null;
-
+    if (path.dirname(normalized) !== `v${generation}`) return null;
     const match = IMAGE_FILE_RE.exec(path.basename(normalized));
     if (!match || match[1].toLowerCase() !== keyHash.toLowerCase()) return null;
-    return normalized;
+    return {
+      entryKey,
+      relativePath: normalized,
+      sizeBytes: value.sizeBytes as number,
+      fetchedAt: value.fetchedAt as number,
+    };
   } catch {
     return null;
   }
 }
 
-async function readReferencedPaths(
+async function readMetadata(
   redis: ImageRetentionRedis,
   generation: number,
-): Promise<{ paths: Set<string>; entries: number }> {
+): Promise<{ keys: string[]; entries: Map<string, ReferencedMeta> }> {
   const keys = await scanKeys(redis, `helprr:cache:image:v${generation}:*`);
-  const paths = new Set<string>();
-
+  const entries = new Map<string, ReferencedMeta>();
   for (let index = 0; index < keys.length; index += 100) {
     const chunk = keys.slice(index, index + 100);
     const values = await Promise.all(chunk.map((key) => redis.get(key)));
     values.forEach((raw, offset) => {
-      const relativePath = validReferencedPath(raw, generation, chunk[offset]);
-      if (relativePath) paths.add(relativePath);
+      const entryKey = chunk[offset];
+      if (!entryKey) return;
+      const meta = parseReferencedMeta(raw, generation, entryKey);
+      if (meta) entries.set(entryKey, meta);
     });
   }
-
-  return { paths, entries: keys.length };
+  return { keys, entries };
 }
 
 async function collectCandidates(
   rootDir: string,
   generation: number,
-  referencedPaths: Set<string>,
+  initiallyReferencedPaths: Set<string>,
   nowMs: number,
 ): Promise<Array<FileCandidate | GenerationCandidate>> {
   let entries;
@@ -134,7 +196,6 @@ async function collectCandidates(
   for (const entry of entries) {
     const match = GENERATION_DIR_RE.exec(entry.name);
     if (!match || !entry.isDirectory()) continue;
-
     const entryGeneration = Number.parseInt(match[1], 10);
     const absolutePath = path.join(rootDir, entry.name);
     const info = await lstat(absolutePath).catch((error: unknown) => {
@@ -161,7 +222,12 @@ async function collectCandidates(
       const relativePath = path.join(entry.name, file.name);
       const isImage = IMAGE_FILE_RE.test(file.name);
       const isTemp = TEMP_FILE_RE.test(file.name);
-      if ((!isImage && !isTemp) || (isImage && referencedPaths.has(relativePath))) continue;
+      if (
+        (!isImage && !isTemp)
+        || (isImage && initiallyReferencedPaths.has(relativePath))
+      ) {
+        continue;
+      }
 
       const filePath = path.join(absolutePath, file.name);
       const fileInfo = await lstat(filePath).catch((error: unknown) => {
@@ -169,7 +235,6 @@ async function collectCandidates(
         throw error;
       });
       if (!fileInfo || !fileInfo.isFile() || fileInfo.isSymbolicLink()) continue;
-
       const graceMs = isTemp ? IMAGE_TEMP_GRACE_MS : IMAGE_ORPHAN_GRACE_MS;
       if (fileInfo.mtimeMs >= nowMs - graceMs) continue;
       candidates.push({
@@ -182,7 +247,6 @@ async function collectCandidates(
       });
     }
   }
-
   return candidates;
 }
 
@@ -213,11 +277,7 @@ async function getDirectoryUsage(directory: string): Promise<{ bytes: number; fi
 }
 
 async function productionRedis(): Promise<ImageRetentionRedis> {
-  const redis = await getRedisClient();
-  return {
-    get: (key) => redis.get(key),
-    scan: (cursor, options) => redis.scan(cursor, options),
-  };
+  return await getRedisClient() as unknown as ImageRetentionRedis;
 }
 
 function skipped(
@@ -230,21 +290,92 @@ function skipped(
     reason,
     generation,
     metadataEntries,
+    reconciledEntries: 0,
+    quotaBytes: 0,
+    quotaEntries: 0,
+    evictedEntries: 0,
     deletedFiles: 0,
     deletedBytes: 0,
     deletedGenerations: 0,
   };
 }
 
+function lruTimestamp(
+  indexed: Record<string, string>,
+  meta: ReferencedMeta,
+): number {
+  const entry = parseImageIndexEntry(indexed[meta.entryKey] ?? null);
+  if (
+    entry
+    && entry.entryKey === meta.entryKey
+    && entry.relativePath === meta.relativePath
+    && entry.sizeBytes === meta.sizeBytes
+  ) {
+    return entry.lastUsedAt;
+  }
+  return meta.fetchedAt;
+}
+
+function enforceQuota(
+  entries: ImageIndexEntry[],
+  maxBytes: number,
+  maxEntries: number,
+): {
+  retained: ImageIndexEntry[];
+  evicted: ImageIndexEntry[];
+  bytes: number;
+} {
+  const byLru = [...entries].sort((left, right) => (
+    left.lastUsedAt - right.lastUsedAt
+    || left.entryKey.localeCompare(right.entryKey)
+  ));
+  let bytes = byLru.reduce((total, entry) => total + entry.sizeBytes, 0);
+  const evicted: ImageIndexEntry[] = [];
+  while (bytes > maxBytes || byLru.length > maxEntries) {
+    const oldest = byLru.shift();
+    if (!oldest) break;
+    evicted.push(oldest);
+    bytes -= oldest.sizeBytes;
+  }
+  return { retained: byLru, evicted, bytes };
+}
+
+async function unlinkCandidate(candidate: FileCandidate): Promise<boolean> {
+  const current = await lstat(candidate.absolutePath).catch((error: unknown) => {
+    if (isMissing(error)) return null;
+    throw error;
+  });
+  if (
+    !current
+    || !current.isFile()
+    || current.isSymbolicLink()
+    || current.ino !== candidate.ino
+    || current.mtimeMs !== candidate.mtimeMs
+    || current.size !== candidate.size
+  ) {
+    return false;
+  }
+  try {
+    await unlink(candidate.absolutePath);
+    return true;
+  } catch (error) {
+    if (isMissing(error)) return false;
+    throw error;
+  }
+}
+
 /**
- * Remove files no active Redis image metadata can reference. Redis is treated
- * as authoritative and must be readable before any filesystem mutation.
+ * Reconcile Redis metadata, the per-generation quota index, and immutable
+ * files. Redis and the quota lock must be available before any filesystem
+ * mutation; metadata is removed before quota/corrupt files are unlinked.
  */
 export async function pruneOrphanImageCache(
   options: ImageCacheRetentionOptions = {},
 ): Promise<ImageCacheRetentionResult> {
   const rootDir = path.resolve(options.rootDir ?? IMAGE_CACHE_DIR);
   const nowMs = options.nowMs ?? Date.now();
+  const maxBytes = options.maxBytes ?? IMAGE_CACHE_MAX_BYTES;
+  const maxEntries = options.maxEntries ?? IMAGE_CACHE_MAX_ENTRIES;
   const redis = options.redis ?? await productionRedis();
   const generation = parseGeneration(await redis.get(CACHE_GENERATION_KEY));
   if (!generation) return skipped('generation-uninitialized', null);
@@ -252,51 +383,148 @@ export async function pruneOrphanImageCache(
     return skipped('purge-in-progress', generation);
   }
 
-  // Read twice around the filesystem scan. The union is deliberately
-  // conservative: metadata created during the sweep always protects its file.
-  const firstReferences = await readReferencedPaths(redis, generation);
-  const candidates = await collectCandidates(rootDir, generation, firstReferences.paths, nowMs);
-  const secondReferences = await readReferencedPaths(redis, generation);
-  const referencedPaths = new Set([...firstReferences.paths, ...secondReferences.paths]);
+  // Read twice around the filesystem scan. Metadata created during the sweep
+  // is included by the second read before the quota lock freezes registrations.
+  const first = await readMetadata(redis, generation);
+  const firstPaths = new Set([...first.entries.values()].map((entry) => entry.relativePath));
+  const candidates = await collectCandidates(rootDir, generation, firstPaths, nowMs);
+  const second = await readMetadata(redis, generation);
 
-  const currentGeneration = parseGeneration(await redis.get(CACHE_GENERATION_KEY));
-  if (currentGeneration !== generation) {
-    return skipped('generation-changed', generation, secondReferences.entries);
+  if (parseGeneration(await redis.get(CACHE_GENERATION_KEY)) !== generation) {
+    return skipped('generation-changed', generation, second.keys.length);
   }
   if (await redis.get(CACHE_PURGE_STATUS_KEY) === 'purging') {
-    return skipped('purge-in-progress', generation, secondReferences.entries);
+    return skipped('purge-in-progress', generation, second.keys.length);
   }
 
-  let deletedFiles = 0;
-  let deletedBytes = 0;
-  let deletedGenerations = 0;
+  const quotaToken = await acquireImageQuotaLock(redis, generation);
+  if (!quotaToken) return skipped('quota-lock-busy', generation, second.keys.length);
 
-  for (const candidate of candidates) {
-    if (candidate.kind === 'file') {
-      if (referencedPaths.has(candidate.relativePath)) continue;
+  let retained: ImageIndexEntry[] = [];
+  let quotaEvicted: ImageIndexEntry[] = [];
+  const invalidReferencedFiles = new Map<string, number>();
+  let lockedMetadata = second;
+  let quotaBytes = 0;
 
-      const current = await lstat(candidate.absolutePath).catch((error: unknown) => {
+  try {
+    if (parseGeneration(await redis.get(CACHE_GENERATION_KEY)) !== generation) {
+      return skipped('generation-changed', generation, second.keys.length);
+    }
+    if (await redis.get(CACHE_PURGE_STATUS_KEY) === 'purging') {
+      return skipped('purge-in-progress', generation, second.keys.length);
+    }
+
+    // Registration uses the same quota lock. Re-read after acquiring it so a
+    // fill that committed between the pre-lock scan and lock acquisition is
+    // included rather than being dropped from the rebuilt index.
+    lockedMetadata = await readMetadata(redis, generation);
+    if (parseGeneration(await redis.get(CACHE_GENERATION_KEY)) !== generation) {
+      return skipped('generation-changed', generation, lockedMetadata.keys.length);
+    }
+    if (await redis.get(CACHE_PURGE_STATUS_KEY) === 'purging') {
+      return skipped('purge-in-progress', generation, lockedMetadata.keys.length);
+    }
+
+    const invalidMetadataKeys = new Set<string>(
+      lockedMetadata.keys.filter((key) => !lockedMetadata.entries.has(key)),
+    );
+    const indexed = await redis.hGetAll(buildImageIndexKey(generation));
+    const validEntries: ImageIndexEntry[] = [];
+    for (const meta of lockedMetadata.entries.values()) {
+      const absolutePath = path.resolve(rootDir, meta.relativePath);
+      if (!absolutePath.startsWith(`${rootDir}${path.sep}`)) {
+        invalidMetadataKeys.add(meta.entryKey);
+        continue;
+      }
+      const info = await lstat(absolutePath).catch((error: unknown) => {
         if (isMissing(error)) return null;
         throw error;
       });
-      // A writer changed or replaced the file after discovery; leave it for a
-      // later sweep rather than deleting uncertain state.
       if (
-        !current
-        || !current.isFile()
-        || current.isSymbolicLink()
-        || current.ino !== candidate.ino
-        || current.mtimeMs !== candidate.mtimeMs
-        || current.size !== candidate.size
+        !info
+        || !info.isFile()
+        || info.isSymbolicLink()
+        || info.size !== meta.sizeBytes
+      ) {
+        invalidMetadataKeys.add(meta.entryKey);
+        if (info?.isFile() && !info.isSymbolicLink()) {
+          invalidReferencedFiles.set(meta.relativePath, info.size);
+        }
+        continue;
+      }
+      validEntries.push({
+        entryKey: meta.entryKey,
+        relativePath: meta.relativePath,
+        sizeBytes: meta.sizeBytes,
+        lastUsedAt: lruTimestamp(indexed, meta),
+      });
+    }
+
+    const quota = enforceQuota(validEntries, maxBytes, maxEntries);
+    retained = quota.retained;
+    quotaEvicted = quota.evicted;
+    quotaBytes = quota.bytes;
+    for (const entry of quotaEvicted) invalidMetadataKeys.add(entry.entryKey);
+
+    await reconcileImageCacheAccounting(
+      redis,
+      generation,
+      retained,
+      [...invalidMetadataKeys],
+      quotaEvicted.length,
+      quotaToken,
+    );
+  } catch (error) {
+    if (error instanceof ImageQuotaLockLostError) {
+      return skipped('quota-lock-lost', generation, lockedMetadata.keys.length);
+    }
+    if (error instanceof ImageCacheGenerationChangedError) {
+      return skipped('generation-changed', generation, lockedMetadata.keys.length);
+    }
+    throw error;
+  } finally {
+    await releaseImageQuotaLock(redis, generation, quotaToken).catch(() => undefined);
+  }
+
+  const retainedPaths = new Set(retained.map((entry) => entry.relativePath));
+  let deletedFiles = 0;
+  let deletedBytes = 0;
+  let deletedGenerations = 0;
+  const immediatelyUnlinked = new Set<string>();
+
+  // These files lost metadata in the reconciliation transaction above, so
+  // deletion failures are safe orphan-retention work.
+  const immediateFiles = new Map<string, number>(invalidReferencedFiles);
+  for (const entry of quotaEvicted) {
+    immediateFiles.set(entry.relativePath, entry.sizeBytes);
+  }
+  for (const [relativePath, size] of immediateFiles) {
+    const absolutePath = path.resolve(rootDir, relativePath);
+    if (!absolutePath.startsWith(`${rootDir}${path.sep}`)) continue;
+    try {
+      await unlink(absolutePath);
+      deletedFiles += 1;
+      deletedBytes += size;
+      immediatelyUnlinked.add(relativePath);
+    } catch (error) {
+      if (!isMissing(error)) {
+        // Leave the metadata-free immutable file for the next orphan sweep.
+      }
+    }
+  }
+
+  for (const candidate of candidates) {
+    if (candidate.kind === 'file') {
+      if (
+        retainedPaths.has(candidate.relativePath)
+        || immediatelyUnlinked.has(candidate.relativePath)
       ) {
         continue;
       }
-
-      await unlink(candidate.absolutePath).catch((error: unknown) => {
-        if (!isMissing(error)) throw error;
-      });
-      deletedFiles += 1;
-      deletedBytes += candidate.size;
+      if (await unlinkCandidate(candidate)) {
+        deletedFiles += 1;
+        deletedBytes += candidate.size;
+      }
       continue;
     }
 
@@ -312,8 +540,16 @@ export async function pruneOrphanImageCache(
     ) {
       continue;
     }
-
     const usage = await getDirectoryUsage(candidate.absolutePath);
+    const abandonedMetadata = await scanKeys(
+      redis,
+      `helprr:cache:image:v${candidate.generation}:*`,
+    );
+    await deleteImageGenerationAccounting(
+      redis,
+      candidate.generation,
+      abandonedMetadata,
+    );
     await rm(candidate.absolutePath, { recursive: true, force: true });
     deletedFiles += usage.files;
     deletedBytes += usage.bytes;
@@ -323,7 +559,11 @@ export async function pruneOrphanImageCache(
   return {
     status: 'completed',
     generation,
-    metadataEntries: secondReferences.entries,
+    metadataEntries: lockedMetadata.keys.length,
+    reconciledEntries: retained.length,
+    quotaBytes,
+    quotaEntries: retained.length,
+    evictedEntries: quotaEvicted.length,
     deletedFiles,
     deletedBytes,
     deletedGenerations,

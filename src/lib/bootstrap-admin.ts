@@ -1,6 +1,10 @@
 import { prisma } from '@/lib/db';
 import { hashPassword } from '@/lib/password';
 import { localPasswordValidationError } from '@/lib/password-policy';
+import {
+  localUsernameValidationError,
+  normalizeLocalUsername,
+} from '@/lib/username-policy';
 
 // The single admin every Helprr install starts with. Migration 0015 seeds this
 // row (passwordHash NULL); this module hashes APP_PASSWORD into it on boot. The
@@ -29,8 +33,15 @@ export async function ensureBootstrapAdmin(): Promise<void> {
   const forceReset = process.env.HELPRR_ADMIN_PASSWORD_RESET === 'true';
   // The admin's login username is configurable; defaults to 'admin'. Strip stray
   // surrounding quotes (a common mistake when set via docker-compose `environment:`).
-  const adminUsername =
-    process.env.HELPRR_ADMIN_USERNAME?.trim().replace(/^["']|["']$/g, '').trim() || 'admin';
+  const adminUsername = normalizeLocalUsername(
+    process.env.HELPRR_ADMIN_USERNAME?.trim().replace(/^["']|["']$/g, '').trim() || 'admin',
+  );
+  const usernameError = localUsernameValidationError(adminUsername);
+  if (usernameError) {
+    throw new Error(
+      `HELPRR_ADMIN_USERNAME ${usernameError.slice('Username '.length).toLowerCase()}`,
+    );
+  }
   console.log(`[Helprr] Bootstrap admin username resolves to "${adminUsername}"`);
 
   const existing = await prisma.user.findUnique({
