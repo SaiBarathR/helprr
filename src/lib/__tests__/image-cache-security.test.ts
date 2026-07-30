@@ -58,7 +58,7 @@ class CacheRedis {
       this.rateCalls += 1;
       return [String(this.rateCalls), '60000'];
     }
-    if (script.includes('image-cache-register-v2')) {
+    if (script.includes('image-cache-register-v3')) {
       if (this.failRegister) throw new Error('Redis write failed');
       if (this.values.get(options.keys[4]) !== options.arguments[6]) {
         return ['GENERATION_CHANGED'];
@@ -460,13 +460,18 @@ describe('bounded upstream image validation', () => {
       })
     ));
 
+    // The cap holds: a fifth concurrent fill does not reach upstream while four
+    // are in flight.
     await vi.waitFor(() => expect(upstreamFetch).toHaveBeenCalledTimes(4));
-    await expect(requests[4]).resolves.toMatchObject({
-      status: 429,
-      retryAfterSeconds: 1,
-    });
+    expect(upstreamFetch).toHaveBeenCalledTimes(4);
+
+    // Overflow waits for a free slot instead of resolving 429. Browsers never
+    // retry a failed image response, so rejecting here left the poster
+    // permanently blank rather than merely late.
     releaseFetches();
-    await expect(Promise.all(requests.slice(0, 4))).resolves.toHaveLength(4);
+    const results = await Promise.all(requests);
+    expect(results.map((result) => result.status)).toEqual([200, 200, 200, 200, 200]);
+    expect(upstreamFetch).toHaveBeenCalledTimes(5);
   });
 
   it('charges the per-user limiter only for the upstream fill, not the cache hit', async () => {

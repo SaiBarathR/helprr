@@ -66,6 +66,7 @@ export interface FetchCachedImageResult {
 
 const LOCAL_IMAGE_PROCESSING_GLOBAL_MAX = 16;
 const LOCAL_IMAGE_PROCESSING_PER_USER_MAX = 4;
+const IMAGE_PROCESSING_WAIT_POLL_MS = 25;
 const LOCAL_IMAGE_PROCESSING_STATE_KEY = '__helprrImageProcessingState' as const;
 interface LocalImageProcessingState {
   count: number;
@@ -109,7 +110,7 @@ function releaseLocalImageProcessingLease(userKey: string): void {
   else localImageProcessingState.byUser.set(userKey, next);
 }
 
-async function acquireBoundedImageProcessingLease(
+async function tryAcquireBoundedImageProcessingLease(
   redis: ImageAccountingRedis | null,
   requesterId: string | undefined,
 ): Promise<BoundedImageProcessingLease | null> {
@@ -129,6 +130,27 @@ async function acquireBoundedImageProcessingLease(
     }
   }
   return { localUserKey, redisLease };
+}
+
+// A saturated concurrency limit has to slow requests down, not fail them: a 429
+// reaches the browser as a permanently broken <img>, because browsers never
+// retry a failed image response. Overflow therefore waits for a free slot and
+// only gives up once its own upstream budget is gone, which keeps 429 as a
+// genuine overload signal instead of the routine outcome for a cold grid.
+async function acquireBoundedImageProcessingLease(
+  redis: ImageAccountingRedis | null,
+  requesterId: string | undefined,
+  waitMs: number,
+): Promise<BoundedImageProcessingLease | null> {
+  const deadline = Date.now() + Math.max(0, waitMs);
+  for (;;) {
+    const lease = await tryAcquireBoundedImageProcessingLease(redis, requesterId);
+    if (lease) return lease;
+    if (Date.now() >= deadline) return null;
+    await new Promise((resolve) => {
+      setTimeout(resolve, IMAGE_PROCESSING_WAIT_POLL_MS);
+    });
+  }
 }
 
 async function releaseBoundedImageProcessingLease(
@@ -661,6 +683,7 @@ async function fetchValidatedBypass(
   const processingLease = await acquireBoundedImageProcessingLease(
     redis,
     options.requesterId,
+    options.timeoutMs ?? IMAGE_UPSTREAM_FETCH_TIMEOUT_MS,
   );
   if (!processingLease) {
     return imageProcessingLimitResult(redis, host, 'BYPASS');
@@ -897,6 +920,7 @@ export async function fetchImageWithServerCache(
     const processingLease = await acquireBoundedImageProcessingLease(
       redis,
       normalizedOptions.requesterId,
+      normalizedOptions.timeoutMs ?? IMAGE_UPSTREAM_FETCH_TIMEOUT_MS,
     );
     if (!processingLease) {
       return (await staleResult(
@@ -1049,6 +1073,18 @@ export async function fetchImageWithServerCache(
     }
 
     if (!mutation) {
+      // Registration failed, so the file written above was already unlinked and
+      // this fill stored nothing. Counting it keeps cacheBypasses reconcilable
+      // against upstreamFetches — an uncounted return here hid a total caching
+      // outage behind healthy-looking diagnostics.
+      await bestEffortObservation(redis, {
+        outcome: 'served',
+        validatedBytes: upstream.validatedBytes,
+        format: transformed.format,
+        cacheStatus: 'BYPASS',
+        host: upstream.host,
+        counter: 'cacheBypasses',
+      });
       return {
         status: 200,
         body: transformed.body,

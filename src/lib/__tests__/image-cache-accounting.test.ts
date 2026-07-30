@@ -23,11 +23,15 @@ class AccountingRedis {
     return { ...(this.hashes.get(key) ?? {}) };
   }
 
+  // This reimplements each Lua script in JavaScript, so it exercises the
+  // accounting contract but NOT real Lua/cjson semantics. Anything that depends
+  // on how Redis serializes a Lua value needs its own explicit test — see
+  // "tolerates cjson encoding an empty eviction list as an object".
   async eval(
     script: string,
     options: { keys: string[]; arguments: string[] },
   ): Promise<unknown> {
-    if (script.includes('image-cache-register-v2')) {
+    if (script.includes('image-cache-register-v3')) {
       const [metaKey, indexKey, lruKey, usageKey] = options.keys;
       if (this.values.get(options.keys[4]) !== options.arguments[6]) {
         return ['GENERATION_CHANGED'];
@@ -184,6 +188,34 @@ describe('per-generation image-cache quota accounting', () => {
       bytes: 7,
       entries: 2,
     });
+  });
+
+  // Redis' cjson cannot tell an empty Lua array from an empty Lua dict, so
+  // `cjson.encode({})` yields "{}" rather than "[]". Registration must treat
+  // that as "nothing was evicted"; rejecting it made every uncached image fill
+  // throw, which deleted the file just written and left the cache permanently
+  // empty while the quota ledger kept accruing entries.
+  it('tolerates cjson encoding an empty eviction list as an object', async () => {
+    const accounting = await loadAccounting();
+    const generation = 4;
+    const entryKey = `helprr:cache:image:v${generation}:${'a'.repeat(64)}`;
+    const redis = {
+      get: async () => null,
+      set: async () => 'OK',
+      hGetAll: async () => ({}),
+      eval: async () => ['', '{}', '4', '1'],
+    };
+
+    const mutation = await accounting.registerImageCacheEntry(
+      redis,
+      generation,
+      { entryKey, relativePath: `v${generation}/a.bin`, sizeBytes: 4, lastUsedAt: 1 },
+      '{"a":1}',
+      60,
+      'quota-token',
+    );
+
+    expect(mutation).toMatchObject({ previous: null, evicted: [], bytes: 4, entries: 1 });
   });
 
   it('serializes quota writers with one narrowly scoped generation lock', async () => {

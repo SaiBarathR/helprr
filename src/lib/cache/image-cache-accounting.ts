@@ -103,7 +103,7 @@ export interface ImageCacheDiagnostics {
   lastHost: string | null;
 }
 
-const REGISTER_SCRIPT = `-- image-cache-register-v2
+const REGISTER_SCRIPT = `-- image-cache-register-v3
 if redis.call('GET', KEYS[5]) ~= ARGV[7] then
   return {'GENERATION_CHANGED'}
 end
@@ -152,7 +152,12 @@ if #evicted > 0 then
   local count = tonumber(redis.call('HGET', KEYS[7], 'evictions') or '0')
   redis.call('HSET', KEYS[7], 'evictions', math.min(tonumber(ARGV[12]), count + #evicted))
 end
-return {previous or '', cjson.encode(evicted), tostring(bytes), tostring(entries)}`;
+-- cjson encodes an empty Lua table as "{}", so the empty case is spelled out
+-- rather than left to cjson. The reader rejects a malformed eviction list, and
+-- an "{}" there would fail every fill that evicted nothing (the normal case).
+local encodedEvicted = '[]'
+if #evicted > 0 then encodedEvicted = cjson.encode(evicted) end
+return {previous or '', encodedEvicted, tostring(bytes), tostring(entries)}`;
 
 const ACQUIRE_PROCESSING_LEASE_SCRIPT = `-- image-cache-acquire-processing-lease-v1
 local now = tonumber(ARGV[1])
@@ -461,9 +466,18 @@ export async function registerImageCacheEntry(
     throw new Error('Invalid Redis image-accounting eviction list');
   }
   if (!Array.isArray(rawEvicted)) {
-    throw new Error('Invalid Redis image-accounting eviction list');
+    // cjson renders an empty Lua table as "{}". The script now sends '[]' for
+    // that case, but accepting both keeps a version-skewed script from failing
+    // a fill and discarding the image file that was just written.
+    const isEmptyObject = typeof rawEvicted === 'object'
+      && rawEvicted !== null
+      && Object.keys(rawEvicted).length === 0;
+    if (!isEmptyObject) {
+      throw new Error('Invalid Redis image-accounting eviction list');
+    }
+    rawEvicted = [];
   }
-  const evicted = rawEvicted
+  const evicted = (rawEvicted as unknown[])
     .map((raw) => parseImageIndexEntry(typeof raw === 'string' ? raw : null))
     .filter((value): value is ImageIndexEntry => value !== null);
   const bytes = parseRequiredNonNegativeInteger(values[2], 'byte count');
