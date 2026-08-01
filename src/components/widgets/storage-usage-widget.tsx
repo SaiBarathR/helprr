@@ -76,9 +76,19 @@ export function StorageUsageWidget({ refreshInterval, narrow = false, editMode =
   const trendMap = trends ?? {};
 
   return (
-    <div>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
       <Eyebrow style={{ marginBottom: 10 }}>Storage Usage</Eyebrow>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div
+        className="no-scrollbar scroll-fade-y"
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 12,
+          flex: 1,
+          minHeight: 0,
+          overflowY: 'auto',
+        }}
+      >
         {list.length === 0 && (
           <div style={{ fontSize: 11, color: HPR.fgSubtle }}>No disk stats</div>
         )}
