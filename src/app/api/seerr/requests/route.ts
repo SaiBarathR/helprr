@@ -27,6 +27,8 @@ const VALID_FILTERS: SeerrRequestFilter[] = [
   'processing',
   'unavailable',
   'failed',
+  'completed',
+  'deleted',
 ];
 
 function parseFilter(value: string | null): SeerrRequestFilter | undefined {

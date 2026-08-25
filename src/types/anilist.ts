@@ -182,6 +182,7 @@ export interface AniListMedia {
   title: AniListTitle;
   coverImage: AniListCoverImage;
   bannerImage: string | null;
+  countryOfOrigin: string | null;
   format: AniListMediaFormat | null;
   status: AniListMediaStatus | null;
   season: AniListMediaSeason | null;
@@ -263,6 +264,7 @@ export interface AniListListItem {
   titleNative: string | null;
   coverImage: string | null;
   bannerImage: string | null;
+  countryOfOrigin: string | null;
   format: AniListMediaFormat | null;
   status: AniListMediaStatus | null;
   season: AniListMediaSeason | null;
@@ -388,6 +390,7 @@ export interface AniListDetailResponse {
   description: string | null;
   coverImage: string | null;
   bannerImage: string | null;
+  countryOfOrigin: string | null;
   format: AniListMediaFormat | null;
   status: AniListMediaStatus | null;
   season: AniListMediaSeason | null;

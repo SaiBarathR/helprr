@@ -27,7 +27,9 @@ export type SeerrRequestFilter =
   | 'available'
   | 'processing'
   | 'unavailable'
-  | 'failed';
+  | 'failed'
+  | 'completed'
+  | 'deleted';
 
 export type SeerrRequestSort = 'added' | 'modified';
 export type SeerrSortDirection = 'asc' | 'desc';

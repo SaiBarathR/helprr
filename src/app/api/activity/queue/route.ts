@@ -3,6 +3,11 @@ import { requireAuth, requireCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { getQueueCached } from '@/lib/activity-queue';
 import { parsePageParams } from '@/lib/pagination';
+import { resolveConnection } from '@/lib/arr-instances';
+import {
+  filterQueueItemsForMedia,
+  type MediaQueueSource,
+} from '@/lib/media-download-progress';
 
 // no-cache (not max-age): a browser HTTP cache can't be busted by the queue
 // version bump on removal, so it would serve a pre-delete body to the reconcile
@@ -28,6 +33,36 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
   try {
     const { searchParams } = new URL(request.url);
     const { page, pageSize } = parsePageParams(searchParams, { defaultSize: 50, maxSize: 200 });
+
+    const sourceValue = searchParams.get('source');
+    const mediaIdValue = searchParams.get('mediaId');
+    const instanceId = searchParams.get('instanceId') || undefined;
+    const hasMediaFilter = sourceValue !== null || mediaIdValue !== null || instanceId !== undefined;
+
+    if (hasMediaFilter) {
+      const source = sourceValue === 'sonarr' || sourceValue === 'radarr'
+        ? sourceValue as MediaQueueSource
+        : null;
+      const mediaId = mediaIdValue && /^\d+$/.test(mediaIdValue) ? Number(mediaIdValue) : NaN;
+      if (!source || !Number.isSafeInteger(mediaId) || mediaId <= 0) {
+        return NextResponse.json({ error: 'source and a positive mediaId are required' }, { status: 400 });
+      }
+
+      let resolvedInstanceId: string;
+      try {
+        const connection = await resolveConnection(source === 'sonarr' ? 'SONARR' : 'RADARR', instanceId);
+        resolvedInstanceId = connection.id;
+      } catch {
+        return NextResponse.json({ error: 'Invalid or unavailable media instance' }, { status: 400 });
+      }
+
+      const result = await getQueueCached(1, 200);
+      const records = filterQueueItemsForMedia(result.records, source, mediaId, resolvedInstanceId);
+      return NextResponse.json(
+        { records, totalRecords: records.length },
+        { headers: QUEUE_CACHE_HEADERS },
+      );
+    }
 
     const result = await getQueueCached(page, pageSize);
     return NextResponse.json(result, { headers: QUEUE_CACHE_HEADERS });

@@ -26,6 +26,8 @@ const STATUS_FILTERS: { value: RequestsFilterPreference; label: string }[] = [
   { value: 'available', label: 'Available' },
   { value: 'unavailable', label: 'Unavailable' },
   { value: 'failed', label: 'Failed' },
+  { value: 'completed', label: 'Completed' },
+  { value: 'deleted', label: 'Deleted' },
   { value: 'all', label: 'All' },
 ];
 

@@ -130,6 +130,9 @@ async function getHandler(
       genres: details.genres.map((g) => g.id),
       genreNames: details.genres.map((g) => g.name),
       originalLanguage: details.original_language,
+      originCountry: details.production_countries
+        .map((country) => country.iso_3166_1)
+        .filter(Boolean),
       runtime: details.runtime,
       status: details.status,
       imdbId: externalIds.imdb_id || details.imdb_id || null,
