@@ -28,6 +28,12 @@ export async function register() {
     getJwtSecret();
     registerShutdownHandlers();
 
+    const { initializeImageCacheStorage } = await import('@/lib/cache/image-cache-health');
+    const imageCacheHealth = await initializeImageCacheStorage();
+    if (imageCacheHealth.status !== 'healthy') {
+      console.warn(`[Helprr] Image cache started in ${imageCacheHealth.status} mode; validated bypass remains available.`);
+    }
+
     try {
       const { ensureBootstrapAdmin } = await import('@/lib/bootstrap-admin');
       await ensureBootstrapAdmin();

@@ -12,6 +12,10 @@ const mocks = vi.hoisted(() => {
     configureLogger: event('configure-logger'),
     getJwtSecret: event('jwt'),
     registerShutdownHandlers: event('shutdown-handlers'),
+    initializeImageCacheStorage: vi.fn(async () => {
+      events.push('image-cache');
+      return { status: 'healthy', checkedAt: new Date().toISOString() };
+    }),
     ensureBootstrapAdmin: vi.fn(async () => void events.push('bootstrap')),
     pollingStart: event('polling'),
     configureApiLogging: event('configure-api-logging'),
@@ -37,6 +41,9 @@ vi.mock('@/lib/logger', () => ({
 }));
 vi.mock('@/lib/jwt-secret', () => ({ getJwtSecret: mocks.getJwtSecret }));
 vi.mock('@/lib/shutdown', () => ({ registerShutdownHandlers: mocks.registerShutdownHandlers }));
+vi.mock('@/lib/cache/image-cache-health', () => ({
+  initializeImageCacheStorage: mocks.initializeImageCacheStorage,
+}));
 vi.mock('@/lib/bootstrap-admin', () => ({ ensureBootstrapAdmin: mocks.ensureBootstrapAdmin }));
 vi.mock('@/lib/polling-service', () => ({
   pollingService: { start: mocks.pollingStart },
@@ -91,7 +98,7 @@ describe('server startup ordering', () => {
   it('validates before logging, bootstrap, polling, push, and cleanup startup', async () => {
     await register();
 
-    for (const later of ['logging', 'bootstrap', 'vapid', 'polling', 'cleanup']) {
+    for (const later of ['logging', 'image-cache', 'bootstrap', 'vapid', 'polling', 'cleanup']) {
       expect(mocks.events.indexOf('validate')).toBeLessThan(mocks.events.indexOf(later));
     }
     expect(mocks.pollingStart).toHaveBeenCalledWith(30_000);

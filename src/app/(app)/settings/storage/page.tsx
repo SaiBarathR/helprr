@@ -4,7 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { toast } from 'sonner';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ChevronLeft, Loader2 } from 'lucide-react';
+import { ChevronLeft, Copy, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { ErrorState } from '@/components/ui/error-state';
@@ -15,6 +15,11 @@ import { GroupedSection } from '@/components/settings/grouped-section';
 import { DiskLowSpaceAlerts } from '@/components/settings/disk-low-space-alerts';
 import { useAppSettings } from '@/lib/hooks/use-app-settings';
 import { jsonFetcher } from '@/lib/query-fetch';
+import type { ImageCacheDiagnostics } from '@/lib/cache/image-cache-accounting';
+import {
+  imageCacheHealthLabel,
+  toSafeImageCacheDiagnostics,
+} from '@/lib/cache/image-cache-support';
 
 interface CacheUsageStats {
   imageBytes: number;
@@ -26,18 +31,7 @@ interface CacheUsageStats {
   tmdbEntries: number;
   anilistEntries: number;
   apiEntries: number;
-  imageDiagnostics: {
-    accountingAvailable: boolean;
-    quotaBytes: number | null;
-    quotaEntries: number | null;
-    maxBytes: number;
-    maxEntries: number;
-    evictions: number | null;
-    oversizedRejections: number | null;
-    invalidImageRejections: number | null;
-    upstreamFetches: number | null;
-    cacheHits: number | null;
-  } | null;
+  imageDiagnostics: ImageCacheDiagnostics | null;
 }
 function formatBytes(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';
@@ -91,6 +85,7 @@ export default function StorageSettingsPage() {
   const [confirmOlder, setConfirmOlder] = useState(false);
   const [confirmAll, setConfirmAll] = useState(false);
   const [deletingHistory, setDeletingHistory] = useState(false);
+  const [copyingDiagnostics, setCopyingDiagnostics] = useState(false);
 
   // Explicit loading/error/data states: a failed load must never render as a
   // healthy "0 B" or leave the page stuck on "Loading…" with no recovery.
@@ -185,6 +180,20 @@ export default function StorageSettingsPage() {
     }
   }
 
+  async function copyImageDiagnostics(diagnostics: ImageCacheDiagnostics) {
+    setCopyingDiagnostics(true);
+    try {
+      await navigator.clipboard.writeText(
+        JSON.stringify(toSafeImageCacheDiagnostics(diagnostics), null, 2),
+      );
+      toast.success('Image diagnostics copied');
+    } catch {
+      toast.error('Could not copy image diagnostics');
+    } finally {
+      setCopyingDiagnostics(false);
+    }
+  }
+
   return (
     <div className="animate-content-in pb-12">
       <div className="px-1 pt-1 pb-2">
@@ -252,6 +261,34 @@ export default function StorageSettingsPage() {
               </span>
             </div>
             <div className="grouped-row">
+              <span className="text-sm">Image cache health</span>
+              <span className="text-sm text-muted-foreground text-right">
+                {usageValue((u) => u.imageDiagnostics
+                  ? imageCacheHealthLabel(u.imageDiagnostics)
+                  : 'Unavailable')}
+              </span>
+            </div>
+            <div className="grouped-row">
+              <span className="text-sm">Image processing</span>
+              <span className="text-sm text-muted-foreground text-right">
+                {usageValue((u) => {
+                  const diagnostics = u.imageDiagnostics;
+                  if (!diagnostics) return 'Unavailable';
+                  return `${diagnostics.queueDepth.toLocaleString()} queued · ${diagnostics.currentRunning.toLocaleString()} running`;
+                })}
+              </span>
+            </div>
+            <div className="grouped-row">
+              <span className="text-sm">Image results</span>
+              <span className="text-sm text-muted-foreground text-right">
+                {usageValue((u) => {
+                  const diagnostics = u.imageDiagnostics;
+                  if (!diagnostics?.accountingAvailable) return 'Unavailable';
+                  return `${(diagnostics.cacheHits ?? 0).toLocaleString()} hit · ${(diagnostics.staleResponses ?? 0).toLocaleString()} stale · ${(diagnostics.trueMisses ?? 0).toLocaleString()} miss`;
+                })}
+              </span>
+            </div>
+            <div className="grouped-row">
               <span className="text-sm">Image safeguards</span>
               <span className="text-sm text-muted-foreground text-right">
                 {usageValue((u) => {
@@ -261,6 +298,38 @@ export default function StorageSettingsPage() {
                 })}
               </span>
             </div>
+            {cacheUsage?.imageDiagnostics && (
+              <details className="border-t border-border/50 px-4 py-3 text-sm">
+                <summary className="cursor-pointer text-muted-foreground">
+                  Image diagnostics
+                </summary>
+                <div className="mt-3 space-y-2 text-xs text-muted-foreground">
+                  <p>
+                    Queue failures {(cacheUsage.imageDiagnostics.queueCapacityRejections ?? 0).toLocaleString()}
+                    {' · '}rate failures {(cacheUsage.imageDiagnostics.rateLimitRejections ?? 0).toLocaleString()}
+                    {' · '}recoveries {(cacheUsage.imageDiagnostics.missingFileRecoveries ?? 0).toLocaleString()}
+                    {' · '}bypasses {(cacheUsage.imageDiagnostics.cacheBypasses ?? 0).toLocaleString()}
+                  </p>
+                  <p>
+                    Queue wait p50 {cacheUsage.imageDiagnostics.queueWaitP50Ms ?? 0} ms
+                    {' · '}p95 {cacheUsage.imageDiagnostics.queueWaitP95Ms ?? 0} ms
+                    {' · '}max {cacheUsage.imageDiagnostics.queueWaitMaxMs ?? 0} ms
+                  </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 w-full"
+                    disabled={copyingDiagnostics}
+                    onClick={() => copyImageDiagnostics(cacheUsage.imageDiagnostics!)}
+                  >
+                    {copyingDiagnostics
+                      ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                      : <Copy className="mr-2 h-3.5 w-3.5" />}
+                    Copy safe diagnostics
+                  </Button>
+                </div>
+              </details>
+            )}
             <div className="grouped-row">
               <span className="text-sm">TMDB API</span>
               <span className="text-sm text-muted-foreground">

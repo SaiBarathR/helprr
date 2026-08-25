@@ -49,7 +49,8 @@ ENV NEXT_TELEMETRY_DISABLED=1
 
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
-RUN mkdir -p /app/logs && chown nextjs:nodejs /app/logs
+RUN mkdir -p /app/logs /app/image-cache \
+    && chown nextjs:nodejs /app/logs /app/image-cache
 
 # npm/Corepack are build tools, not runtime requirements. Prisma is invoked via
 # its project-local executable below, so remove the global package managers from
@@ -76,6 +77,7 @@ EXPOSE 3050
 ENV PORT=3050
 ENV HOSTNAME="0.0.0.0"
 ENV LOG_DIR=/app/logs
+ENV IMAGE_CACHE_DIR=/app/image-cache
 # Our shutdown coordinator (src/lib/shutdown.ts) owns SIGTERM/SIGINT and drains
 # background work; without this Next.js exits immediately on the first signal.
 ENV NEXT_MANUAL_SIG_HANDLE=true

@@ -21,6 +21,11 @@ async function drain(signal: string): Promise<void> {
   // Stop new work first: no new polling/cleanup cycles start after this.
   pollingService.stop();
   stopCleanupJobs();
+  const {
+    awaitImageCacheBackgroundWork,
+    beginImageCacheShutdown,
+  } = await import('@/lib/cache/image-cache');
+  beginImageCacheShutdown();
 
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timedOut = await Promise.race([
@@ -28,6 +33,7 @@ async function drain(signal: string): Promise<void> {
       awaitInFlightQueue(),
       awaitInFlightDownload(),
       pollingService.awaitInFlightPoll(),
+      awaitImageCacheBackgroundWork(),
     ]).then(() => false),
     new Promise<boolean>((resolve) => {
       timer = setTimeout(() => resolve(true), DRAIN_TIMEOUT_MS);

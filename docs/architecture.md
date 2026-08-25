@@ -76,6 +76,13 @@ bootstrap admin, loads settings, configures timezone/API logging, initializes
 push, starts polling, seeds dashboard layouts, and starts the cleanup scheduler.
 Transient database failures during background startup retry with capped backoff.
 
+Image-cache startup is fail-soft and precedes background services. It probes a
+randomized zero-secret file in the configured directory, creates the active
+generation directory, and reconciles Redis metadata with immutable files. An
+unwritable mount or unavailable Redis is reported as degraded diagnostics but
+does not make liveness depend on optional cache storage; validated bounded
+images continue through the no-store bypass path.
+
 `src/lib/polling-service.ts` coordinates bounded, isolated poll sources for
 Sonarr, Radarr, Lidarr, qBittorrent, Jellyfin, Seerr, and service reachability.
 It also drives release and scheduled alerts, activity digests, disk snapshots,
@@ -199,6 +206,32 @@ Persistent runtime data is bounded through the relevant subsystem:
 - Disk samples and log files use their own retention windows.
 - Image-cache retention reconciles database/Redis generations and orphan files.
 
+The bundled stable and development Compose stacks persist image bytes in the
+distinct `helprr-image-cache` and `helprr-dev-image-cache` named volumes, both
+mounted at `/app/image-cache`. Authorization decisions are never stored there:
+both image routes reauthorize before cache lookup, and the Jellyfin route also
+rechecks per-item access. A generation bump remains authoritative over browser,
+PWA, Redis, foreground fills, and background refreshes.
+
+Fresh files are returned without queue or rate accounting. Expired files inside
+the stale window are returned immediately and schedule one low-priority,
+generation-safe refresh. True misses enter a bounded per-instance fair queue,
+coordinate five-per-user/sixteen-global running leases through Redis, and charge
+the per-user token bucket only immediately before a real upstream start. Local
+promise coalescing and the Redis fill lock prevent duplicate fetches. Successful
+transforms are written to randomized immutable files before a short, bounded
+quota-lock transaction registers metadata and performs deterministic LRU
+eviction. Retention uses a separate renewable-duration maintenance lease.
+Settings and administrator support bundles expose only bounded aggregate image
+diagnostics; source URLs, cache keys, filesystem paths, credentials, and raw
+user identifiers are excluded.
+
+`/api/image` always re-encodes, so Sharp metadata validation is followed by one
+full transform decode; pass-through `/api/jellyfin/image` keeps the separate
+full-decode validation. TMDB URLs are right-sized server-side without changing
+the logical cache key. The PWA caches only non-stale `/api/image` responses for
+a fixed seven days from fetch and never caches Jellyfin artwork.
+
 When adding a new history or audit table, define and test its retention behavior
 instead of leaving it unbounded.
 
@@ -224,7 +257,7 @@ preserve secret-handling behavior before applying any imported configuration.
 ## Docker and Release Boundaries
 
 The stable and development Compose files are standalone stacks. They use
-different container names, networks, volumes, databases, credentials, and host
+different container names, networks, image-cache/database/Redis/log volumes, databases, credentials, and host
 ports. Source and `edge` builds belong only in the development stack. Stable
 application replacement must target only `helprr`; PostgreSQL and Redis remain
 running unless a separately authorized recovery procedure requires otherwise.

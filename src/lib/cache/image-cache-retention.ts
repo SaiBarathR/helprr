@@ -1,7 +1,7 @@
 import { lstat, readdir, rm, unlink } from 'fs/promises';
 import path from 'path';
 import {
-  acquireImageQuotaLock,
+  acquireImageMaintenanceLock,
   deleteImageGenerationAccounting,
   type ImageAccountingRedis,
   type ImageIndexEntry,
@@ -9,6 +9,7 @@ import {
   ImageQuotaLockLostError,
   parseImageIndexEntry,
   reconcileImageCacheAccounting,
+  renewImageMaintenanceLock,
   releaseImageQuotaLock,
 } from '@/lib/cache/image-cache-accounting';
 import {
@@ -397,8 +398,19 @@ export async function pruneOrphanImageCache(
     return skipped('purge-in-progress', generation, second.keys.length);
   }
 
-  const quotaToken = await acquireImageQuotaLock(redis, generation);
+  const quotaToken = await acquireImageMaintenanceLock(redis, generation);
   if (!quotaToken) return skipped('quota-lock-busy', generation, second.keys.length);
+  let maintenanceLockLost = false;
+  const renewal = setInterval(() => {
+    void renewImageMaintenanceLock(redis, generation, quotaToken)
+      .then((renewed) => {
+        if (!renewed) maintenanceLockLost = true;
+      })
+      .catch(() => {
+        maintenanceLockLost = true;
+      });
+  }, 60_000);
+  renewal.unref?.();
 
   let retained: ImageIndexEntry[] = [];
   let quotaEvicted: ImageIndexEntry[] = [];
@@ -466,6 +478,12 @@ export async function pruneOrphanImageCache(
     quotaBytes = quota.bytes;
     for (const entry of quotaEvicted) invalidMetadataKeys.add(entry.entryKey);
 
+    if (
+      maintenanceLockLost
+      || !(await renewImageMaintenanceLock(redis, generation, quotaToken))
+    ) {
+      return skipped('quota-lock-lost', generation, lockedMetadata.keys.length);
+    }
     await reconcileImageCacheAccounting(
       redis,
       generation,
@@ -483,6 +501,7 @@ export async function pruneOrphanImageCache(
     }
     throw error;
   } finally {
+    clearInterval(renewal);
     await releaseImageQuotaLock(redis, generation, quotaToken).catch(() => undefined);
   }
 

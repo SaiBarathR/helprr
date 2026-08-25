@@ -1,4 +1,4 @@
-import { mkdtempSync, readdirSync, rmSync } from 'fs';
+import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'fs';
 import os from 'os';
 import path from 'path';
 import sharp from 'sharp';
@@ -54,9 +54,12 @@ class CacheRedis {
       }
       return 0;
     }
-    if (script.includes('image-cache-rate-limit-v1')) {
+    if (script.includes('image-cache-renew-fill-lock-v1')) return 1;
+    if (script.includes('image-cache-acquire-processing-lease-v1')) return 1;
+    if (script.includes('image-cache-release-processing-lease-v1')) return 1;
+    if (script.includes('image-cache-rate-limit-v2')) {
       this.rateCalls += 1;
-      return [String(this.rateCalls), '60000'];
+      return ['1', '0'];
     }
     if (script.includes('image-cache-register-v3')) {
       if (this.failRegister) throw new Error('Redis write failed');
@@ -77,6 +80,7 @@ class CacheRedis {
     }
     if (script.includes('image-cache-touch-v1')) return 1;
     if (script.includes('image-cache-observe-v1')) return 1;
+    if (script.includes('image-cache-queue-wait-v1')) return 1;
     if (script.includes('image-cache-remove-v1')) return '';
     throw new Error('Unexpected fake Redis script');
   }
@@ -86,11 +90,17 @@ async function loadImageCache(options: {
   maxBytes?: number;
   maxPixels?: number;
   cacheDir?: string;
+  queueMax?: number;
+  queueWaitMs?: number;
 } = {}) {
   process.env.IMAGE_UPSTREAM_MAX_BYTES = String(options.maxBytes ?? 1024);
   process.env.IMAGE_UPSTREAM_MAX_PIXELS = String(options.maxPixels ?? 100);
   if (options.cacheDir) process.env.IMAGE_CACHE_DIR = options.cacheDir;
   else delete process.env.IMAGE_CACHE_DIR;
+  if (options.queueMax) process.env.IMAGE_PROCESSING_QUEUE_MAX = String(options.queueMax);
+  else delete process.env.IMAGE_PROCESSING_QUEUE_MAX;
+  if (options.queueWaitMs) process.env.IMAGE_PROCESSING_QUEUE_WAIT_MS = String(options.queueWaitMs);
+  else delete process.env.IMAGE_PROCESSING_QUEUE_WAIT_MS;
   vi.resetModules();
   return import('@/lib/cache/image-cache');
 }
@@ -139,6 +149,8 @@ afterEach(() => {
   delete process.env.IMAGE_UPSTREAM_MAX_BYTES;
   delete process.env.IMAGE_UPSTREAM_MAX_PIXELS;
   delete process.env.IMAGE_CACHE_DIR;
+  delete process.env.IMAGE_PROCESSING_QUEUE_MAX;
+  delete process.env.IMAGE_PROCESSING_QUEUE_WAIT_MS;
   for (const root of temporaryRoots.splice(0)) {
     rmSync(root, { recursive: true, force: true });
   }
@@ -157,6 +169,10 @@ describe('bounded upstream image validation', () => {
       status: 200,
       headers: { 'x-helprr-cache': 'MISS' },
     }))).toBe(true);
+    expect(isImageResponseCacheable(new Response(null, {
+      status: 200,
+      headers: { 'x-helprr-cache': 'STALE' },
+    }))).toBe(false);
     expect(isImageResponseCacheable(new Response(null, { status: 403 }))).toBe(false);
   });
 
@@ -437,6 +453,32 @@ describe('bounded upstream image validation', () => {
     expect(readdirSync(root)).toEqual([]);
   });
 
+  it('bounds the Redis connection wait before using the validated bypass path', async () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), 'helprr-image-redis-timeout-'));
+    temporaryRoots.push(root);
+    const jpeg = await fixture('jpeg');
+    mocks.getCacheImagesEnabled.mockResolvedValue(true);
+    mocks.getRedisClient.mockImplementation(() => new Promise(() => undefined));
+    const { fetchImageWithServerCache } = await loadImageCache({
+      maxBytes: 2048,
+      cacheDir: root,
+    });
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(responseBody(jpeg), {
+      headers: { 'content-type': 'image/jpeg' },
+    })));
+
+    const startedAt = performance.now();
+    const result = await fetchImageWithServerCache({
+      cacheKey: 'redis-connect-timeout',
+      upstreamUrl: 'https://images.example.com/image.jpg',
+      requesterId: 'user-1',
+    });
+
+    expect(performance.now() - startedAt).toBeLessThan(1_000);
+    expect(result).toMatchObject({ status: 200, cacheStatus: 'BYPASS' });
+    expect(readdirSync(root)).toEqual([]);
+  });
+
   it('bounds concurrent image fetch and decode work per authenticated user', async () => {
     const jpeg = await fixture('jpeg');
     const { fetchImageWithServerCache } = await loadImageCache({ maxBytes: 2048 });
@@ -452,7 +494,7 @@ describe('bounded upstream image validation', () => {
     });
     vi.stubGlobal('fetch', upstreamFetch);
 
-    const requests = Array.from({ length: 5 }, (_, index) => (
+    const requests = Array.from({ length: 6 }, (_, index) => (
       fetchImageWithServerCache({
         cacheKey: `concurrent-${index}`,
         upstreamUrl: `https://images.example.com/image-${index}.jpg`,
@@ -460,18 +502,97 @@ describe('bounded upstream image validation', () => {
       })
     ));
 
-    // The cap holds: a fifth concurrent fill does not reach upstream while four
+    // The cap holds: a sixth concurrent fill does not reach upstream while five
     // are in flight.
-    await vi.waitFor(() => expect(upstreamFetch).toHaveBeenCalledTimes(4));
-    expect(upstreamFetch).toHaveBeenCalledTimes(4);
+    await vi.waitFor(() => expect(upstreamFetch).toHaveBeenCalledTimes(5));
+    expect(upstreamFetch).toHaveBeenCalledTimes(5);
 
     // Overflow waits for a free slot instead of resolving 429. Browsers never
     // retry a failed image response, so rejecting here left the poster
     // permanently blank rather than merely late.
     releaseFetches();
     const results = await Promise.all(requests);
-    expect(results.map((result) => result.status)).toEqual([200, 200, 200, 200, 200]);
+    expect(results.map((result) => result.status)).toEqual([200, 200, 200, 200, 200, 200]);
+    expect(upstreamFetch).toHaveBeenCalledTimes(6);
+  });
+
+  it('removes an aborted virtual row from the queue before it reaches upstream', async () => {
+    const jpeg = await fixture('jpeg');
+    const { fetchImageWithServerCache } = await loadImageCache({ maxBytes: 2048 });
+    let releaseFetches!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      releaseFetches = resolve;
+    });
+    const upstreamFetch = vi.fn(async () => {
+      await gate;
+      return new Response(responseBody(jpeg), {
+        headers: { 'content-type': 'image/jpeg' },
+      });
+    });
+    vi.stubGlobal('fetch', upstreamFetch);
+
+    const running = Array.from({ length: 5 }, (_, index) => fetchImageWithServerCache({
+      cacheKey: `running-${index}`,
+      upstreamUrl: `https://images.example.com/running-${index}.jpg`,
+      requesterId: 'same-user',
+    }));
+    await vi.waitFor(() => expect(upstreamFetch).toHaveBeenCalledTimes(5));
+
+    const controller = new AbortController();
+    const queued = fetchImageWithServerCache({
+      cacheKey: 'scrolled-away',
+      upstreamUrl: 'https://images.example.com/scrolled-away.jpg',
+      requesterId: 'same-user',
+      signal: controller.signal,
+    });
+    controller.abort();
+    await expect(queued).resolves.toMatchObject({ status: 499, body: null });
     expect(upstreamFetch).toHaveBeenCalledTimes(5);
+
+    releaseFetches();
+    await Promise.all(running);
+  });
+
+  it('uses 503 for a genuinely full bounded queue while preserving 429 for abuse', async () => {
+    const jpeg = await fixture('jpeg');
+    const imageCache = await loadImageCache({
+      maxBytes: 2048,
+      queueMax: 1,
+    });
+    const { fetchImageWithServerCache } = imageCache;
+    let releaseFetches!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      releaseFetches = resolve;
+    });
+    const upstreamFetch = vi.fn(async () => {
+      await gate;
+      return new Response(responseBody(jpeg), {
+        headers: { 'content-type': 'image/jpeg' },
+      });
+    });
+    vi.stubGlobal('fetch', upstreamFetch);
+
+    const running = Array.from({ length: 5 }, (_, index) => fetchImageWithServerCache({
+      cacheKey: `capacity-running-${index}`,
+      upstreamUrl: `https://images.example.com/capacity-${index}.jpg`,
+      requesterId: 'capacity-user',
+    }));
+    await vi.waitFor(() => expect(upstreamFetch).toHaveBeenCalledTimes(5));
+    const queued = fetchImageWithServerCache({
+      cacheKey: 'capacity-queued',
+      upstreamUrl: 'https://images.example.com/capacity-queued.jpg',
+      requesterId: 'capacity-user',
+    });
+    await vi.waitFor(() => expect(imageCache.getImageProcessingSnapshot().queueDepth).toBe(1));
+    const rejected = await fetchImageWithServerCache({
+      cacheKey: 'capacity-rejected',
+      upstreamUrl: 'https://images.example.com/capacity-rejected.jpg',
+      requesterId: 'capacity-user',
+    });
+    expect(rejected).toMatchObject({ status: 503, retryAfterSeconds: 1 });
+
+    releaseFetches();
+    await Promise.all([...running, queued]);
   });
 
   it('charges the per-user limiter only for the upstream fill, not the cache hit', async () => {
@@ -502,6 +623,209 @@ describe('bounded upstream image validation', () => {
     expect(second.cacheStatus).toBe('HIT');
     expect(upstreamFetch).toHaveBeenCalledOnce();
     expect(redis.rateCalls).toBe(1);
+  });
+
+  it('removes corrupt cached bytes and recovers them as a true miss', async () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), 'helprr-image-cache-corrupt-'));
+    temporaryRoots.push(root);
+    const jpeg = await fixture('jpeg');
+    const redis = new CacheRedis();
+    mocks.getCacheImagesEnabled.mockResolvedValue(true);
+    mocks.getRedisClient.mockResolvedValue(redis);
+    const { fetchImageWithServerCache } = await loadImageCache({
+      maxBytes: 2048,
+      cacheDir: root,
+    });
+    const upstreamFetch = vi.fn(async () => new Response(responseBody(jpeg), {
+      headers: { 'content-type': 'image/jpeg' },
+    }));
+    vi.stubGlobal('fetch', upstreamFetch);
+    const options = {
+      cacheKey: 'corrupt-cache-entry',
+      upstreamUrl: 'https://images.example.com/corrupt.jpg',
+      requesterId: 'user-1',
+    };
+
+    await fetchImageWithServerCache(options);
+    const metaKey = [...redis.values.keys()].find((key) => (
+      key.startsWith('helprr:cache:image:v1:')
+    ))!;
+    const original = JSON.parse(redis.values.get(metaKey)!) as { relativePath: string; sizeBytes: number };
+    const originalPath = path.join(root, original.relativePath);
+    writeFileSync(originalPath, Buffer.alloc(original.sizeBytes, 0));
+
+    await expect(fetchImageWithServerCache(options)).resolves.toMatchObject({
+      status: 200,
+      cacheStatus: 'MISS',
+      body: jpeg,
+    });
+    expect(upstreamFetch).toHaveBeenCalledTimes(2);
+    expect(existsSync(originalPath)).toBe(false);
+    expect(readdirSync(path.join(root, 'v1'))).toHaveLength(1);
+  });
+
+  it('coalesces simultaneous true misses for the same generation and cache key', async () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), 'helprr-image-dedupe-'));
+    temporaryRoots.push(root);
+    const jpeg = await fixture('jpeg');
+    const redis = new CacheRedis();
+    mocks.getCacheImagesEnabled.mockResolvedValue(true);
+    mocks.getRedisClient.mockResolvedValue(redis);
+    const { fetchImageWithServerCache } = await loadImageCache({
+      maxBytes: 2048,
+      cacheDir: root,
+    });
+    let releaseFetch!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      releaseFetch = resolve;
+    });
+    const upstreamFetch = vi.fn(async () => {
+      await gate;
+      return new Response(responseBody(jpeg), {
+        headers: { 'content-type': 'image/jpeg' },
+      });
+    });
+    vi.stubGlobal('fetch', upstreamFetch);
+    const options = {
+      cacheKey: 'same-cold-key',
+      upstreamUrl: 'https://images.example.com/same-cold-key.jpg',
+      requesterId: 'user-1',
+    };
+
+    const requests = Array.from({ length: 10 }, () => fetchImageWithServerCache(options));
+    await vi.waitFor(() => expect(upstreamFetch).toHaveBeenCalledOnce());
+    releaseFetch();
+    const results = await Promise.all(requests);
+
+    expect(results.every((result) => result.status === 200)).toBe(true);
+    expect(upstreamFetch).toHaveBeenCalledOnce();
+    expect(redis.rateCalls).toBe(1);
+  });
+
+  it('serves stale bytes immediately, deduplicates refresh, then promotes the refresh to a hit', async () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), 'helprr-image-stale-'));
+    temporaryRoots.push(root);
+    const jpeg = await fixture('jpeg');
+    const refreshed = await sharp(jpeg).tint({ r: 120, g: 80, b: 40 }).jpeg().toBuffer();
+    const redis = new CacheRedis();
+    mocks.getCacheImagesEnabled.mockResolvedValue(true);
+    mocks.getRedisClient.mockResolvedValue(redis);
+    const imageCache = await loadImageCache({ maxBytes: 4096, cacheDir: root });
+    let releaseRefresh!: () => void;
+    const refreshGate = new Promise<void>((resolve) => {
+      releaseRefresh = resolve;
+    });
+    const upstreamFetch = vi.fn(async () => {
+      if (upstreamFetch.mock.calls.length > 1) await refreshGate;
+      const body = upstreamFetch.mock.calls.length > 1 ? refreshed : jpeg;
+      return new Response(responseBody(body), {
+        headers: { 'content-type': 'image/jpeg' },
+      });
+    });
+    vi.stubGlobal('fetch', upstreamFetch);
+    const options = {
+      cacheKey: 'stale-key',
+      upstreamUrl: 'https://images.example.com/stale.jpg',
+      requesterId: 'user-1',
+      ttlSeconds: 1,
+      staleSeconds: 60,
+    };
+
+    await expect(imageCache.fetchImageWithServerCache(options)).resolves.toMatchObject({
+      cacheStatus: 'MISS',
+    });
+    const metaKey = [...redis.values.keys()].find((key) => key.startsWith('helprr:cache:image:v1:'))!;
+    const original = JSON.parse(redis.values.get(metaKey)!) as Record<string, number | string>;
+    redis.values.set(metaKey, JSON.stringify({
+      ...original,
+      expiresAt: Date.now() - 1,
+      staleUntil: Date.now() + 60_000,
+    }));
+
+    const staleResults = await Promise.all(Array.from({ length: 10 }, () => (
+      imageCache.fetchImageWithServerCache(options)
+    )));
+    expect(staleResults.every((result) => result.cacheStatus === 'STALE')).toBe(true);
+    await vi.waitFor(() => expect(upstreamFetch).toHaveBeenCalledTimes(2));
+
+    releaseRefresh();
+    await imageCache.awaitImageCacheBackgroundWork();
+    await expect(imageCache.fetchImageWithServerCache(options)).resolves.toMatchObject({
+      cacheStatus: 'HIT',
+      body: refreshed,
+    });
+    expect(upstreamFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps stale metadata and bytes when a background refresh fails', async () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), 'helprr-image-stale-failure-'));
+    temporaryRoots.push(root);
+    const jpeg = await fixture('jpeg');
+    const redis = new CacheRedis();
+    mocks.getCacheImagesEnabled.mockResolvedValue(true);
+    mocks.getRedisClient.mockResolvedValue(redis);
+    const imageCache = await loadImageCache({ maxBytes: 2048, cacheDir: root });
+    const upstreamFetch = vi.fn(async () => (
+      upstreamFetch.mock.calls.length === 1
+        ? new Response(responseBody(jpeg), { headers: { 'content-type': 'image/jpeg' } })
+        : new Response(null, { status: 502 })
+    ));
+    vi.stubGlobal('fetch', upstreamFetch);
+    const options = {
+      cacheKey: 'stale-failure',
+      upstreamUrl: 'https://images.example.com/stale-failure.jpg',
+      requesterId: 'user-1',
+      ttlSeconds: 1,
+      staleSeconds: 60,
+    };
+
+    await imageCache.fetchImageWithServerCache(options);
+    const metaKey = [...redis.values.keys()].find((key) => key.startsWith('helprr:cache:image:v1:'))!;
+    const originalRaw = redis.values.get(metaKey)!;
+    const original = JSON.parse(originalRaw) as Record<string, number | string>;
+    redis.values.set(metaKey, JSON.stringify({
+      ...original,
+      expiresAt: Date.now() - 1,
+      staleUntil: Date.now() + 60_000,
+    }));
+
+    await expect(imageCache.fetchImageWithServerCache(options)).resolves.toMatchObject({
+      cacheStatus: 'STALE',
+      body: jpeg,
+    });
+    await imageCache.awaitImageCacheBackgroundWork();
+    expect(JSON.parse(redis.values.get(metaKey)!)).toMatchObject({
+      relativePath: original.relativePath,
+    });
+    expect(readdirSync(path.join(root, 'v1'))).toHaveLength(1);
+  });
+
+  it('persists every healthy concurrent fill despite quota-lock contention', async () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), 'helprr-image-quota-wait-'));
+    temporaryRoots.push(root);
+    const jpeg = await fixture('jpeg');
+    const redis = new CacheRedis();
+    mocks.getCacheImagesEnabled.mockResolvedValue(true);
+    mocks.getRedisClient.mockResolvedValue(redis);
+    const { fetchImageWithServerCache } = await loadImageCache({
+      maxBytes: 4096,
+      cacheDir: root,
+    });
+    const upstreamFetch = vi.fn(async () => new Response(responseBody(jpeg), {
+      headers: { 'content-type': 'image/jpeg' },
+    }));
+    vi.stubGlobal('fetch', upstreamFetch);
+    const options = Array.from({ length: 50 }, (_, index) => ({
+      cacheKey: `quota-fill-${index}`,
+      upstreamUrl: `https://images.example.com/quota-${index}.jpg`,
+      requesterId: 'quota-user',
+    }));
+
+    const cold = await Promise.all(options.map((option) => fetchImageWithServerCache(option)));
+    expect(cold.every((result) => result.cacheStatus === 'MISS')).toBe(true);
+    const warm = await Promise.all(options.map((option) => fetchImageWithServerCache(option)));
+    expect(warm.every((result) => result.cacheStatus === 'HIT')).toBe(true);
+    expect(upstreamFetch).toHaveBeenCalledTimes(50);
   });
 
   it('removes a just-written file when Redis registration fails', async () => {
@@ -567,5 +891,79 @@ describe('bounded upstream image validation', () => {
       cacheStatus: 'BYPASS',
     });
     expect(readdirSync(path.join(root, 'v1'))).toEqual([]);
+  });
+
+  it('right-sizes TMDB originals without changing the logical cache key and falls back safely', async () => {
+    const jpeg = await fixture('jpeg');
+    const { fetchImageWithServerCache } = await loadImageCache({ maxBytes: 2048 });
+    const calls: string[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      calls.push(url);
+      if (calls.length === 1) return new Response(null, { status: 404 });
+      return new Response(responseBody(jpeg), {
+        headers: { 'content-type': 'image/jpeg' },
+      });
+    }));
+
+    const result = await fetchImageWithServerCache({
+      cacheKey: 'tmdb-logical-original:w360:webp',
+      upstreamUrl: 'https://image.tmdb.org/t/p/original/poster.jpg',
+      transform: { width: 360 },
+    });
+
+    expect(result).toMatchObject({ status: 200, contentType: 'image/webp' });
+    expect(calls).toEqual([
+      'https://image.tmdb.org/t/p/w500/poster.jpg',
+      'https://image.tmdb.org/t/p/original/poster.jpg',
+    ]);
+  });
+
+  it('falls back to the TMDB original when a sized variant fails image validation', async () => {
+    const jpeg = await fixture('jpeg', 20, 20);
+    const truncated = jpeg.subarray(0, Math.max(1, jpeg.byteLength - 20));
+    const { fetchImageWithServerCache } = await loadImageCache({
+      maxBytes: 4096,
+      maxPixels: 1_000,
+    });
+    const calls: string[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      calls.push(url);
+      const body = calls.length === 1 ? truncated : jpeg;
+      return new Response(responseBody(body), {
+        headers: { 'content-type': 'image/jpeg' },
+      });
+    }));
+
+    await expect(fetchImageWithServerCache({
+      cacheKey: 'tmdb-validation-fallback:w360:webp',
+      upstreamUrl: 'https://image.tmdb.org/t/p/original/poster.jpg',
+      transform: { width: 360 },
+    })).resolves.toMatchObject({ status: 200, contentType: 'image/webp' });
+    expect(calls).toEqual([
+      'https://image.tmdb.org/t/p/w500/poster.jpg',
+      'https://image.tmdb.org/t/p/original/poster.jpg',
+    ]);
+  });
+
+  it('rejects truncated bytes on both pass-through and transformed paths', async () => {
+    const jpeg = await fixture('jpeg', 20, 20);
+    const truncated = jpeg.subarray(0, Math.max(1, jpeg.byteLength - 20));
+    const { fetchImageWithServerCache } = await loadImageCache({
+      maxBytes: 4096,
+      maxPixels: 1_000,
+    });
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(responseBody(truncated), {
+      headers: { 'content-type': 'image/jpeg' },
+    })));
+
+    await expect(fetchImageWithServerCache({
+      cacheKey: 'truncated-pass-through',
+      upstreamUrl: 'https://images.example.com/truncated.jpg',
+    })).resolves.toMatchObject({ body: null });
+    await expect(fetchImageWithServerCache({
+      cacheKey: 'truncated-transform',
+      upstreamUrl: 'https://images.example.com/truncated.jpg',
+      transform: { width: 10 },
+    })).resolves.toMatchObject({ body: null });
   });
 });

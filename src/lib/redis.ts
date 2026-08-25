@@ -23,6 +23,9 @@ export async function getRedisClient(): Promise<HelprrRedisClient> {
     const client = createClient({
       url: redisUrl,
       password: redisPassword,
+      // Callers define their own fail-soft or fail-closed outage behavior.
+      // Queuing commands until reconnect would make those request paths hang.
+      disableOfflineQueue: true,
     });
     client.on('error', (error) => {
       const message = error instanceof Error ? error.message : String(error);

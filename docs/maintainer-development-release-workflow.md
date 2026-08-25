@@ -65,6 +65,7 @@ cannot reverse.
 The development and production environments should also have separate:
 
 - PostgreSQL and Redis volumes.
+- Image-cache volumes (`helprr-image-cache` versus `helprr-dev-image-cache`).
 - `.env` files and secrets.
 - VAPID key pairs and push subscriptions.
 - Ports, hostnames, and reverse-proxy routes.
@@ -234,6 +235,84 @@ npm test
 npm run build
 ```
 
+Image-cache changes also have a real-Lua Redis gate and an opt-in cold-grid
+qualification harness:
+
+```bash
+# Starts a uniquely named Redis container, runs the focused integration suite,
+# and removes the container without addressing either Helprr Compose scope.
+npm run test:image-cache:redis
+
+# In one terminal, start the deterministic local image upstream.
+npm run image-cache:harness-upstream
+
+# Recreate only the isolated dev app with that host explicitly allowlisted.
+HELPRR_DEV_EXTRA_ALLOWED_IMAGE_HOSTS=host.docker.internal \
+docker compose --env-file .env.dev -f docker-compose.dev.yml \
+  up -d --build --no-deps helprr-dev
+
+# The harness logs in from .env.dev without printing the session cookie.
+HELPRR_IMAGE_HARNESS_ORIGIN=http://localhost:3051 \
+HELPRR_IMAGE_HARNESS_UPSTREAM_TEMPLATE='http://host.docker.internal:39091/poster/{id}.jpg?delay=500' \
+node --env-file=.env.dev scripts/image-cold-grid-harness.mjs
+```
+
+The harness builds at least 1,000 distinct logical poster sources, requests only
+configured virtual windows (including middle/end jumps), and prints aggregate
+status, cache-status, total, queue, and upstream timing data. It does not print
+the cookie or source URLs. Replace the template with a controlled test upstream;
+never run it against production or a third-party service without permission.
+
+Measure the runtime's real libuv/Sharp layout before changing image concurrency:
+
+```bash
+# Local Node runtime
+npm run image-cache:measure-runtime
+
+# Exact running app container (the standalone image intentionally omits scripts)
+docker cp scripts/measure-image-runtime.mjs helprr-dev:/tmp/measure-image-runtime.mjs
+docker exec --workdir /app helprr-dev node /tmp/measure-image-runtime.mjs
+```
+
+### Image cold-load reference qualification (2026-08-25)
+
+The isolated development host exposed 10 logical CPUs and 7.8 GiB of memory. The
+Node 24.19 runtime used the default four-thread libuv pool, Sharp concurrency 10,
+and SIMD. Three 16-transform batches of a 1.56 MB noisy JPEG measured median batch
+times of 150 ms at libuv 4/Sharp 10, 168 ms at libuv 16/Sharp 10, and 109 ms at
+libuv 8/Sharp 2. The alternative synthetic layout was faster, but the end-to-end
+cold target passed without changing process-wide libuv or Sharp defaults, so those
+global knobs remain unchanged.
+
+The same run measured the following application behavior:
+
+| Check | Result |
+| --- | --- |
+| 1,000-item grid, five 24-card jumps, 500 ms upstream | 120/120 succeeded, no capacity/rate failures, p95 2.85 s, max 2.93 s |
+| Cold browser, warm server | 120/120 hits, p95 67 ms, zero upstream requests |
+| Ten simultaneous stale reads | All returned in 40 ms; exactly one background fetch; next request was a hit |
+| Redis outage | Liveness 200, readiness 503, validated bypass 160 ms, no unaccounted file write |
+| Purge during a fill | Old fill bypassed registration; new generation missed once and then hit |
+| App-container recreation | PostgreSQL/Redis container IDs stayed fixed; files survived; next request hit with no upstream call |
+| Representative 360 px posters | 34,174 image bytes plus about 520 Redis bytes per entry |
+| Android-Chrome PWA emulation | 760/760 succeeded; LRU settled at 750; cached poster worked offline; logout cleared in 1.08 s |
+| iPhone-WebKit emulation | 760/760 succeeded; LRU settled at 750; logout cleared in 0.19 s; Cache Storage retained the offline entry |
+
+At the measured poster size, 20,000 entries would consume only about 0.64 GiB and
+would still bind before the one-GiB quota. The finalized default is therefore
+32,000 entries: about 1.02 GiB of representative image bytes and 15.9 MiB of Redis
+metadata, making the byte quota authoritative while retaining a metadata/file-count
+safety ceiling.
+
+Desktop Chrome, Android-Chrome emulation, and iPhone-WebKit reduced-motion
+emulation loaded the visible posters on Movies, Collections, Series, Music,
+Discover, and Recommendations without a failed or opacity-zero visible image.
+WebKit's automation offline switch produced an internal fetch error even though a
+direct Cache Storage lookup still returned the cached 200 response. Retain physical
+iPhone Safari/installed-PWA evidence for offline fetch, background/resume, touch
+scrolling, and user-switch behavior before promotion; WebKit emulation is not a
+substitute for that primary-device gate.
+
 CI also starts a disposable PostgreSQL 16 database and runs
 `npm run test:migrations`. The migration runner reconstructs every recorded release
 snapshot, seeds representative rows, applies the current migrations, and checks both
@@ -370,6 +449,8 @@ The expected side-by-side layout is:
 - Development app: `http://localhost:3051`.
 - Development PostgreSQL: `127.0.0.1:5433` only.
 - Development Redis: `127.0.0.1:6380` only.
+- Stable/development image bytes: separate named volumes mounted at
+  `/app/image-cache`; never copy or layer them.
 
 The database and Redis ports are exposed only on loopback for local debugging tools;
 they are not reachable from the LAN.

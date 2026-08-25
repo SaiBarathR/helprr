@@ -4,6 +4,7 @@ class AccountingRedis {
   readonly values = new Map<string, string>();
   readonly hashes = new Map<string, Record<string, string>>();
   readonly lru = new Map<string, Map<string, number>>();
+  readonly rateTokens = new Map<string, number>();
 
   async get(key: string): Promise<string | null> {
     return this.values.get(key) ?? null;
@@ -112,7 +113,17 @@ class AccountingRedis {
       }
       return 0;
     }
+    if (script.includes('image-cache-renew-maintenance-lock-v1')) {
+      return this.values.get(options.keys[0]) === options.arguments[0] ? 1 : 0;
+    }
     if (script.includes('image-cache-observe-v1')) return 1;
+    if (script.includes('image-cache-rate-limit-v2')) {
+      const burst = Number(options.arguments[1]);
+      const tokens = this.rateTokens.get(options.keys[0]) ?? burst;
+      const allowed = tokens >= 1;
+      this.rateTokens.set(options.keys[0], allowed ? tokens - 1 : tokens);
+      return [allowed ? '1' : '0', allowed ? '0' : '60000'];
+    }
     throw new Error('Unexpected fake Redis script');
   }
 }
@@ -120,6 +131,8 @@ class AccountingRedis {
 async function loadAccounting() {
   process.env.IMAGE_CACHE_MAX_BYTES = '8';
   process.env.IMAGE_CACHE_MAX_ENTRIES = '2';
+  process.env.IMAGE_FETCH_RATE_BURST = '2';
+  process.env.IMAGE_FETCH_RATE_REFILL_PER_MINUTE = '1';
   vi.resetModules();
   return import('@/lib/cache/image-cache-accounting');
 }
@@ -127,9 +140,22 @@ async function loadAccounting() {
 afterEach(() => {
   delete process.env.IMAGE_CACHE_MAX_BYTES;
   delete process.env.IMAGE_CACHE_MAX_ENTRIES;
+  delete process.env.IMAGE_FETCH_RATE_BURST;
+  delete process.env.IMAGE_FETCH_RATE_REFILL_PER_MINUTE;
 });
 
 describe('per-generation image-cache quota accounting', () => {
+  it('permits a configured cold burst while rejecting sustained upstream starts', async () => {
+    const accounting = await loadAccounting();
+    const redis = new AccountingRedis();
+
+    await expect(accounting.enforceImageFetchRateLimit(redis, 'user-1'))
+      .resolves.toMatchObject({ allowed: true });
+    await expect(accounting.enforceImageFetchRateLimit(redis, 'user-1'))
+      .resolves.toMatchObject({ allowed: true });
+    await expect(accounting.enforceImageFetchRateLimit(redis, 'user-1'))
+      .resolves.toMatchObject({ allowed: false, retryAfterSeconds: 60 });
+  });
   it('evicts by LRU under byte and entry limits and reports safe replacement paths', async () => {
     const accounting = await loadAccounting();
     const redis = new AccountingRedis();
@@ -350,7 +376,13 @@ describe('per-generation image-cache quota accounting', () => {
       upstreamFetches: '6',
       cacheHits: '7',
       cacheBypasses: '8',
-      rateLimited: '9',
+      rateLimitRejections: '9',
+      queueWaitCount: '4',
+      queueWaitLe100: '1',
+      queueWaitLe500: '1',
+      queueWaitLe5000: '1',
+      queueWaitGt15000: '1',
+      queueWaitMaxMs: '20000',
       lastOutcome: 'invalid-image',
       lastValidatedBytes: '512',
       lastDetectedFormat: 'png',
@@ -362,6 +394,15 @@ describe('per-generation image-cache quota accounting', () => {
 
     expect(diagnostics).toEqual({
       accountingAvailable: true,
+      health: 'healthy',
+      healthCheckedAt: null,
+      queueDepth: 0,
+      currentRunning: 0,
+      maxQueueDepth: 256,
+      maxRunning: 16,
+      queueWaitLimitMs: 30000,
+      rateBurst: 2,
+      rateRefillPerMinute: 1,
       quotaBytes: 7,
       quotaEntries: 2,
       maxBytes: 8,
@@ -372,7 +413,24 @@ describe('per-generation image-cache quota accounting', () => {
       upstreamFetches: 6,
       cacheHits: 7,
       cacheBypasses: 8,
-      rateLimited: 9,
+      healthyBypasses: 0,
+      registrations: 0,
+      staleResponses: 0,
+      trueMisses: 0,
+      queueCapacityRejections: 0,
+      clientAborts: 0,
+      upstreamTimeouts: 0,
+      upstreamErrors: 0,
+      rateLimitRejections: 9,
+      quotaLockWaits: 0,
+      quotaLockTimeouts: 0,
+      missingFileRecoveries: 0,
+      backgroundRevalidationsStarted: 0,
+      backgroundRevalidationsSucceeded: 0,
+      backgroundRevalidationsFailed: 0,
+      queueWaitP50Ms: 500,
+      queueWaitP95Ms: 20000,
+      queueWaitMaxMs: 20000,
       lastOutcome: 'invalid-image',
       lastValidatedBytes: 512,
       lastDetectedFormat: 'png',

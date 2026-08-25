@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   StartupConfigurationError,
   getValidatedJwtSecret,
+  invalidImageTuningVariables,
   isKnownPlaceholderSecret,
   validateRuntimeConfig,
 } from '@/lib/runtime-config';
@@ -30,6 +31,39 @@ describe('runtime startup configuration', () => {
     const env: Record<string, string | undefined> = { ...VALID_ENV };
     delete env.APP_PASSWORD;
     expect(() => validateRuntimeConfig(env)).not.toThrow();
+  });
+
+  it('warns and falls back for invalid image tuning without making boot fatal', () => {
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const env = {
+      ...VALID_ENV,
+      IMAGE_CACHE_MAX_ENTRIES: '-1',
+      IMAGE_PROCESSING_QUEUE_WAIT_MS: 'secretly-invalid',
+      IMAGE_FETCH_RATE_BURST: '600',
+    };
+
+    expect(invalidImageTuningVariables(env)).toEqual([
+      'IMAGE_CACHE_MAX_ENTRIES',
+      'IMAGE_PROCESSING_QUEUE_WAIT_MS',
+    ]);
+    expect(() => validateRuntimeConfig(env)).not.toThrow();
+    expect(warning).toHaveBeenCalledTimes(2);
+    expect(warning.mock.calls.flat().join(' ')).not.toContain('secretly-invalid');
+    warning.mockRestore();
+  });
+
+  it('uses the documented fallback rather than a numeric prefix from invalid tuning', async () => {
+    const previous = process.env.IMAGE_CACHE_MAX_ENTRIES;
+    process.env.IMAGE_CACHE_MAX_ENTRIES = '123-invalid';
+    vi.resetModules();
+    try {
+      const config = await import('@/lib/cache/config');
+      expect(config.IMAGE_CACHE_MAX_ENTRIES).toBe(32_000);
+    } finally {
+      if (previous === undefined) delete process.env.IMAGE_CACHE_MAX_ENTRIES;
+      else process.env.IMAGE_CACHE_MAX_ENTRIES = previous;
+      vi.resetModules();
+    }
   });
 
   it('reports every missing required runtime variable in one error', () => {

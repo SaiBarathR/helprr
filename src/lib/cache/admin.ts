@@ -2,6 +2,8 @@ import { rm, readdir, stat } from 'fs/promises';
 import path from 'path';
 import { getRedisClient } from '@/lib/redis';
 import { IMAGE_CACHE_DIR } from '@/lib/cache/config';
+import { getImageCacheStorageHealth } from '@/lib/cache/image-cache-health';
+import { getImageProcessingSnapshot } from '@/lib/cache/image-cache';
 import {
   getImageCacheDiagnostics,
   type ImageCacheDiagnostics,
@@ -200,10 +202,21 @@ export async function getActiveCacheUsage(): Promise<CacheUsageSummary> {
   const tmdbUsage = await getRedisKeysUsage(tmdbKeys);
   const anilistUsage = await getRedisKeysUsage(anilistKeys);
   const apiUsage = await getRedisKeysUsage(apiKeys);
-  let imageDiagnostics = unavailableImageCacheDiagnostics();
+  const storageHealth = getImageCacheStorageHealth();
+  const runtimeDiagnostics = {
+    ...getImageProcessingSnapshot(),
+    health: storageHealth.status,
+    healthCheckedAt: storageHealth.checkedAt,
+  };
+  let imageDiagnostics = unavailableImageCacheDiagnostics({
+    ...runtimeDiagnostics,
+    health: storageHealth.status === 'degraded-storage'
+      ? 'degraded-storage'
+      : 'accounting-unavailable',
+  });
   try {
     const redis = await getRedisClient() as unknown as ImageAccountingRedis;
-    imageDiagnostics = await getImageCacheDiagnostics(redis, generation);
+    imageDiagnostics = await getImageCacheDiagnostics(redis, generation, runtimeDiagnostics);
   } catch {
     // The filesystem totals remain useful, while the explicit availability
     // field prevents missing Redis accounting from looking like healthy zeroes.
