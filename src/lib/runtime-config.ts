@@ -15,6 +15,22 @@ const DOCUMENTED_PLACEHOLDERS = new Set([
   'paste-the-32-or-more-character-value-generated-above',
 ]);
 
+const IMAGE_TUNING_VARIABLES = [
+  'IMAGE_CACHE_TTL_SECONDS',
+  'IMAGE_CACHE_STALE_SECONDS',
+  'IMAGE_CACHE_MAX_BYTES',
+  'IMAGE_CACHE_MAX_ENTRIES',
+  'IMAGE_UPSTREAM_FETCH_TIMEOUT_MS',
+  'IMAGE_UPSTREAM_MAX_BYTES',
+  'IMAGE_UPSTREAM_MAX_PIXELS',
+  'IMAGE_PROCESSING_QUEUE_WAIT_MS',
+  'IMAGE_PROCESSING_QUEUE_MAX',
+  'IMAGE_PROCESSING_QUEUE_PER_USER_MAX',
+  'IMAGE_FETCH_RATE_BURST',
+  'IMAGE_FETCH_RATE_REFILL_PER_MINUTE',
+  'IMAGE_QUOTA_LOCK_WAIT_MS',
+] as const;
+
 function isBlank(value: string | undefined): boolean {
   return value === undefined || value.trim().length === 0;
 }
@@ -91,8 +107,25 @@ export function getValidatedJwtSecret(value: string | undefined): string {
   return value!;
 }
 
+export function invalidImageTuningVariables(
+  env: RuntimeEnvironment = process.env,
+): string[] {
+  return IMAGE_TUNING_VARIABLES.filter((variable) => {
+    const value = env[variable];
+    if (value === undefined || value.trim() === '') return false;
+    return !/^[1-9][0-9]*$/.test(value.trim())
+      || !Number.isSafeInteger(Number(value.trim()));
+  });
+}
+
 export function validateRuntimeConfig(env: RuntimeEnvironment = process.env): void {
   const issues: StartupConfigurationIssue[] = [];
+
+  for (const variable of invalidImageTuningVariables(env)) {
+    // Image caching is optional and fail-soft. Keep booting with the documented
+    // fallback, but make the ignored setting visible without printing its value.
+    console.warn(`[Helprr] Ignoring invalid ${variable}; using the default image-cache value.`);
+  }
 
   const databaseUrl = validateUrl(
     issues,

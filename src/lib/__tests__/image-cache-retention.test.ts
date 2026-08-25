@@ -64,6 +64,9 @@ class FakeRedis implements RetentionRedis {
       }
       return 0;
     }
+    if (script.includes('image-cache-renew-maintenance-lock-v1')) {
+      return this.values.get(options.keys[0]) === options.arguments[0] ? 1 : 0;
+    }
     if (script.includes('image-cache-reconcile-v1')) {
       const lockKey = options.keys[4];
       const lockToken = options.arguments[4];

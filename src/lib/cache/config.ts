@@ -1,11 +1,13 @@
 function parsePositiveInt(value: string | undefined, fallback: number): number {
   if (!value) return fallback;
-  const parsed = Number.parseInt(value, 10);
-  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  const normalized = value.trim();
+  if (!/^[1-9][0-9]*$/.test(normalized)) return fallback;
+  const parsed = Number(normalized);
+  if (!Number.isSafeInteger(parsed)) return fallback;
   return parsed;
 }
 
-export const IMAGE_CACHE_DIR = process.env.IMAGE_CACHE_DIR || '/tmp/helprr-image-cache';
+export const IMAGE_CACHE_DIR = process.env.IMAGE_CACHE_DIR || '/app/image-cache';
 
 export const IMAGE_CACHE_TTL_SECONDS = parsePositiveInt(
   process.env.IMAGE_CACHE_TTL_SECONDS,
@@ -39,7 +41,40 @@ export const IMAGE_CACHE_MAX_BYTES = parsePositiveInt(
 
 export const IMAGE_CACHE_MAX_ENTRIES = parsePositiveInt(
   process.env.IMAGE_CACHE_MAX_ENTRIES,
-  5_000
+  32_000
+);
+
+export const IMAGE_PROCESSING_QUEUE_WAIT_MS = parsePositiveInt(
+  process.env.IMAGE_PROCESSING_QUEUE_WAIT_MS,
+  30_000
+);
+
+export const IMAGE_PROCESSING_QUEUE_MAX = parsePositiveInt(
+  process.env.IMAGE_PROCESSING_QUEUE_MAX,
+  256
+);
+
+export const IMAGE_PROCESSING_QUEUE_PER_USER_MAX = parsePositiveInt(
+  process.env.IMAGE_PROCESSING_QUEUE_PER_USER_MAX,
+  64
+);
+
+export const IMAGE_PROCESSING_GLOBAL_MAX = 16;
+export const IMAGE_PROCESSING_PER_USER_MAX = 5;
+
+export const IMAGE_FETCH_RATE_BURST = parsePositiveInt(
+  process.env.IMAGE_FETCH_RATE_BURST,
+  600
+);
+
+export const IMAGE_FETCH_RATE_REFILL_PER_MINUTE = parsePositiveInt(
+  process.env.IMAGE_FETCH_RATE_REFILL_PER_MINUTE,
+  300
+);
+
+export const IMAGE_QUOTA_LOCK_WAIT_MS = parsePositiveInt(
+  process.env.IMAGE_QUOTA_LOCK_WAIT_MS,
+  2_000
 );
 
 export const TMDB_CACHE_DEFAULT_TTL_SECONDS = parsePositiveInt(

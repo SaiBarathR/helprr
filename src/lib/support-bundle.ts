@@ -1,5 +1,6 @@
 import { assessReadiness, readExpectedMigrationNames, type ReadinessReport } from '@/lib/readiness';
 import { redact, searchLogs, type LogEntry } from '@/lib/logger';
+import type { SafeImageCacheDiagnostics } from '@/lib/cache/image-cache-support';
 
 const MAX_SUPPORT_LOG_ENTRIES = 250;
 const REDACTED = '[REDACTED]';
@@ -57,6 +58,7 @@ export interface SupportBundleDependencies {
   loadDatabase?: () => Promise<SupportDatabaseSnapshot>;
   readReadiness?: () => Promise<ReadinessReport>;
   readLogs?: () => Promise<LogEntry[]>;
+  loadImageCacheDiagnostics?: () => Promise<SafeImageCacheDiagnostics>;
 }
 
 export interface SupportBundle {
@@ -98,11 +100,23 @@ export interface SupportBundle {
       customHeaders: number;
     };
   }>;
+  imageCache:
+    | { status: 'included'; diagnostics: SafeImageCacheDiagnostics }
+    | { status: 'unavailable' };
   logs: {
     status: 'included' | 'unavailable' | 'omitted';
     reason?: string;
     entries?: unknown[];
   };
+}
+
+async function loadSafeImageCacheDiagnostics(): Promise<SafeImageCacheDiagnostics> {
+  const [{ getActiveCacheUsage }, { toSafeImageCacheDiagnostics }] = await Promise.all([
+    import('@/lib/cache/admin'),
+    import('@/lib/cache/image-cache-support'),
+  ]);
+  const usage = await getActiveCacheUsage();
+  return toSafeImageCacheDiagnostics(usage.imageDiagnostics);
 }
 
 function addSecret(target: Set<string>, value: unknown): void {
@@ -362,10 +376,13 @@ export async function buildSupportBundle(
 ): Promise<SupportBundle> {
   const now = dependencies.now?.() ?? new Date();
   const environment = dependencies.environment ?? process.env;
-  const [readiness, expectedMigrations, databaseResult] = await Promise.all([
+  const [readiness, expectedMigrations, databaseResult, imageCacheResult] = await Promise.all([
     (dependencies.readReadiness ?? assessReadiness)().catch(safeReadinessFailure),
     readExpectedMigrationNames().catch(() => []),
     (dependencies.loadDatabase ?? loadDatabaseSnapshot)()
+      .then((value) => ({ ok: true as const, value }))
+      .catch(() => ({ ok: false as const })),
+    (dependencies.loadImageCacheDiagnostics ?? loadSafeImageCacheDiagnostics)()
       .then((value) => ({ ok: true as const, value }))
       .catch(() => ({ ok: false as const })),
   ]);
@@ -427,6 +444,9 @@ export async function buildSupportBundle(
           migrations: { expected: expectedMigrations },
         },
     services: services.map(configuredService),
+    imageCache: imageCacheResult.ok
+      ? { status: 'included', diagnostics: imageCacheResult.value }
+      : { status: 'unavailable' },
     logs,
   };
 

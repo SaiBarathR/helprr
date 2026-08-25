@@ -311,6 +311,7 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
       upstreamUrl: upstreamUrl.toString(),
       upstreamHeaders,
       requesterId: auth.user.id,
+      signal: request.signal,
       timeoutMs: matchedConnection?.type === 'LIDARR'
         ? LIDARR_IMAGE_FETCH_TIMEOUT_MS
         : undefined,
@@ -326,6 +327,9 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
           ...(result.retryAfterSeconds
             ? { 'Retry-After': String(result.retryAfterSeconds) }
             : {}),
+          ...(result.timings
+            ? { 'Server-Timing': `helprr-queue;dur=${result.timings.queueMs}, helprr-upstream;dur=${result.timings.upstreamMs}` }
+            : {}),
         },
       });
     }
@@ -336,9 +340,14 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
         'Content-Type': result.contentType!,
         'Cache-Control': result.cacheStatus === 'BYPASS'
           ? 'private, no-store'
-          : 'private, max-age=86400, stale-while-revalidate=604800, stale-if-error=2592000',
+          : result.cacheStatus === 'STALE'
+            ? 'private, no-cache'
+            : 'private, max-age=86400, stale-while-revalidate=604800, stale-if-error=2592000',
         Vary: 'Cookie',
         'X-Helprr-Cache': result.cacheStatus,
+        ...(result.timings
+          ? { 'Server-Timing': `helprr-queue;dur=${result.timings.queueMs}, helprr-upstream;dur=${result.timings.upstreamMs}` }
+          : {}),
       },
     });
   } catch {

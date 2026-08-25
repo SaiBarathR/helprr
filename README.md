@@ -292,7 +292,8 @@ network, database, Redis, volumes, secrets, and ports:
 | PostgreSQL | `helprr-db` | `helprr-dev-db`, loopback port `5433` |
 | Redis | `helprr-redis` | `helprr-dev-redis`, loopback port `6380` |
 | Database | `helprr` | `helprr_dev` |
-| Volumes/network | Stable names | Dedicated `helprr-dev-*` names |
+| Image cache | `helprr-image-cache` | `helprr-dev-image-cache` |
+| Other volumes/network | Stable names | Dedicated `helprr-dev-*` names |
 
 Generate the development-only env file. The helper refuses to overwrite an existing
 `.env.dev`; do not copy the production database, Redis, JWT, or VAPID secrets:
@@ -450,14 +451,20 @@ All values below are optional positive integers; invalid or non-positive values 
 
 | Variable                          | Default                   | Scenario                                                                                                    |
 | --------------------------------- | ------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `IMAGE_CACHE_DIR`                 | `/tmp/helprr-image-cache` | Directory for server-side cached image bytes. Choose a writable, persistent path only if you provision one. |
+| `IMAGE_CACHE_DIR`                 | `/app/image-cache`        | Directory for server-side cached image bytes. Bundled Compose mounts its stack-specific named volume here. |
 | `IMAGE_CACHE_TTL_SECONDS`         | `604800` (7 days)         | How long a successful image is considered fresh.                                                            |
 | `IMAGE_CACHE_STALE_SECONDS`       | `2592000` (30 days)       | How long a stale cached image may be served when its upstream fails.                                        |
 | `IMAGE_CACHE_MAX_BYTES`           | `1073741824` (1 GiB)      | Maximum bytes in the active image-cache generation; least-recently-used entries are evicted first.          |
-| `IMAGE_CACHE_MAX_ENTRIES`         | `5000`                    | Maximum entries in the active image-cache generation.                                                       |
+| `IMAGE_CACHE_MAX_ENTRIES`         | `32000`                   | Maximum entries in the active image-cache generation; sized so the 1 GiB byte quota remains authoritative for representative posters. |
 | `IMAGE_UPSTREAM_FETCH_TIMEOUT_MS` | `5000`                    | Timeout for fetching an upstream image.                                                                     |
 | `IMAGE_UPSTREAM_MAX_BYTES`        | `10485760` (10 MiB)       | Maximum declared and actually streamed bytes accepted from one upstream image response.                    |
 | `IMAGE_UPSTREAM_MAX_PIXELS`       | `40000000` (40 MP)        | Maximum decoded input pixels Sharp will accept before transform or storage.                                |
+| `IMAGE_PROCESSING_QUEUE_WAIT_MS`  | `30000`                   | Maximum fair-queue wait for visible image work, separate from the upstream timeout.                         |
+| `IMAGE_PROCESSING_QUEUE_MAX`      | `256`                     | Maximum queued image jobs per app instance.                                                                 |
+| `IMAGE_PROCESSING_QUEUE_PER_USER_MAX` | `64`                  | Maximum queued image jobs for one user per app instance.                                                    |
+| `IMAGE_FETCH_RATE_BURST`          | `600`                     | Per-user token-bucket burst available to actual upstream image starts.                                      |
+| `IMAGE_FETCH_RATE_REFILL_PER_MINUTE` | `300`                  | Sustained per-user upstream-start refill rate.                                                              |
+| `IMAGE_QUOTA_LOCK_WAIT_MS`        | `2000`                    | Bounded wait for the short quota/accounting commit lock.                                                    |
 | `TMDB_CACHE_DEFAULT_TTL_SECONDS`  | `600` (10 minutes)        | Default TTL for TMDb data without a more specific category.                                                 |
 | `TMDB_CACHE_DISCOVER_TTL_SECONDS` | `600` (10 minutes)        | TTL for TMDb discovery responses.                                                                           |
 | `TMDB_CACHE_DETAILS_TTL_SECONDS`  | `86400` (1 day)           | TTL for TMDb title/detail responses.                                                                        |
@@ -468,9 +475,26 @@ All values below are optional positive integers; invalid or non-positive values 
 
 The bundled Compose file passes these advanced values through when they are set in `.env`. The image proxy accepts validated JPEG, PNG, and WebP raster bytes; HTML, XML/SVG, malformed, unknown, oversized, pixel-heavy, and MIME-confused responses are rejected. Redis maintains per-generation byte/entry accounting and LRU order. If Redis accounting is unavailable, a bounded validated upstream image can still be served with `no-store`, but Helprr does not create a cache file.
 
-The default image-cache directory is inside the app container, so it is ephemeral if that container is recreated unless you add your own persistent mount. The per-user upstream-fetch rate limiter is intentionally generous enough for poster-grid bursts and runs only after a cache miss; browser/PWA and server-cache hits do not consume it. Decode work is separately capped at four concurrent images per user and sixteen per app instance, with the same limits coordinated through Redis across replicas.
+The bundled stable and development stacks mount separate named volumes at
+`/app/image-cache`, so replacing only the app container preserves validated
+image bytes. A custom `IMAGE_CACHE_DIR` is persistent only if you provision a
+matching bind or named mount. Existing operators upgrading from an explicit
+`IMAGE_CACHE_DIR=/tmp/helprr-image-cache` must remove that setting or change it
+to `/app/image-cache`; the first upgrade may perform one final cold rebuild
+while startup reconciles persistent Redis metadata with the new volume.
 
-**Settings → Storage** reports Redis accounting availability, current image quota usage, entry count, evictions, and oversized/invalid-image rejection counters without recording source URLs or credentials.
+Fresh hits and stale delivery do not enter the processing queue or consume
+upstream rate budget. Expired but valid bytes are returned immediately as
+`STALE` while one lower-priority refresh runs. True misses use a bounded fair
+queue, five-running-per-user and sixteen-running-per-instance limits, Redis
+cross-replica leases, cancellation, duplicate-fill coalescing, and a burstable
+token bucket charged only when an upstream request actually starts. TMDB poster
+fetches use an appropriate server-derived size before Helprr transcodes them.
+
+**Settings → Storage** reports cache health, queue/running work, hit/stale/miss
+counts, capacity/rate/upstream failures, recoveries, quota behavior, and a
+copy-safe diagnostic summary without recording source URLs or credentials. The
+same bounded image-cache summary is included in administrator support bundles.
 
 ## First-run checklist
 
@@ -701,6 +725,15 @@ in the operation-audit entry.
 npm run dev
 npm run build
 npm run lint
+npm test
+
+# Image-cache qualification (the Redis command creates and removes a disposable container)
+npm run test:image-cache:redis
+# Deterministic local upstream and libuv/Sharp runtime measurement
+npm run image-cache:harness-upstream
+npm run image-cache:measure-runtime
+# Authenticated isolated-dev load run; configure HELPRR_IMAGE_HARNESS_* first
+npm run test:image-cache:cold-grid
 
 # Prisma
 npm run db:generate

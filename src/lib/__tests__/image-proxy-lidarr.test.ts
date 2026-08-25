@@ -176,6 +176,25 @@ describe('Lidarr image proxy', () => {
     expect(response.headers.get('vary')).toBe('Cookie');
   });
 
+  it('serves stale bytes without extending client freshness and exposes safe timings', async () => {
+    mocks.fetchImageWithServerCache.mockResolvedValue({
+      status: 200,
+      body: Buffer.from('stale-image'),
+      contentType: 'image/webp',
+      cacheStatus: 'STALE',
+      timings: { queueMs: 4, upstreamMs: 12 },
+    });
+
+    const response = await GET(imageRequest(
+      'https://images.lidarr.audio/cover/artist.jpg',
+    ));
+
+    expect(response.headers.get('cache-control')).toBe('private, no-cache');
+    expect(response.headers.get('server-timing')).toBe(
+      'helprr-queue;dur=4, helprr-upstream;dur=12',
+    );
+  });
+
   it('does not change existing Radarr media-cover behavior', async () => {
     const src = 'http://radarr.internal:7878/MediaCover/3/poster.jpg?lastWrite=321';
 

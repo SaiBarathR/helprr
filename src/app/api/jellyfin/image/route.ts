@@ -120,6 +120,7 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
         'X-Emby-Token': connection.apiKey,
       },
       requesterId: user.id,
+      signal: request.signal,
       // Only follow redirects that stay on the configured Jellyfin server.
       isRedirectTargetAllowed: (target) => target.origin === connectionOrigin,
     });
@@ -131,6 +132,9 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
           'X-Helprr-Cache': result.cacheStatus,
           ...(result.retryAfterSeconds
             ? { 'Retry-After': String(result.retryAfterSeconds) }
+            : {}),
+          ...(result.timings
+            ? { 'Server-Timing': `helprr-queue;dur=${result.timings.queueMs}, helprr-upstream;dur=${result.timings.upstreamMs}` }
             : {}),
         },
       });
@@ -146,6 +150,9 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
           : 'private, no-cache',
         Vary: 'Cookie',
         'X-Helprr-Cache': result.cacheStatus,
+        ...(result.timings
+          ? { 'Server-Timing': `helprr-queue;dur=${result.timings.queueMs}, helprr-upstream;dur=${result.timings.upstreamMs}` }
+          : {}),
       },
     });
   } catch {

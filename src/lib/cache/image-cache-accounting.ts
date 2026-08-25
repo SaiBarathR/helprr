@@ -2,6 +2,12 @@ import { randomUUID } from 'crypto';
 import {
   IMAGE_CACHE_MAX_BYTES,
   IMAGE_CACHE_MAX_ENTRIES,
+  IMAGE_FETCH_RATE_BURST,
+  IMAGE_FETCH_RATE_REFILL_PER_MINUTE,
+  IMAGE_PROCESSING_GLOBAL_MAX,
+  IMAGE_PROCESSING_PER_USER_MAX,
+  IMAGE_PROCESSING_QUEUE_MAX,
+  IMAGE_PROCESSING_QUEUE_WAIT_MS,
   CACHE_LOCK_TTL_MS,
 } from '@/lib/cache/config';
 import {
@@ -12,13 +18,10 @@ import {
   sha256Hex,
 } from '@/lib/cache/keys';
 
-const IMAGE_FETCH_RATE_WINDOW_MS = 60_000;
-const IMAGE_FETCH_RATE_MAX = 300;
 const IMAGE_PROCESSING_LEASE_TTL_MS = 5 * 60_000;
-const IMAGE_PROCESSING_GLOBAL_MAX = 16;
-const IMAGE_PROCESSING_PER_USER_MAX = 4;
 const MAX_COUNTER = Number.MAX_SAFE_INTEGER;
-const IMAGE_QUOTA_LOCK_TTL_MS = Math.max(CACHE_LOCK_TTL_MS, 5 * 60_000);
+const IMAGE_QUOTA_LOCK_TTL_MS = Math.max(CACHE_LOCK_TTL_MS, 1_000);
+const IMAGE_MAINTENANCE_LOCK_TTL_MS = 5 * 60_000;
 const CACHE_GENERATION_KEY = 'helprr:cache:generation';
 
 const ACQUIRE_FILL_LOCK_OPTIONS = {
@@ -29,6 +32,11 @@ const ACQUIRE_FILL_LOCK_OPTIONS = {
 const ACQUIRE_QUOTA_LOCK_OPTIONS = {
   NX: true,
   PX: IMAGE_QUOTA_LOCK_TTL_MS,
+} as const;
+
+const ACQUIRE_MAINTENANCE_LOCK_OPTIONS = {
+  NX: true,
+  PX: IMAGE_MAINTENANCE_LOCK_TTL_MS,
 } as const;
 
 export interface ImageAccountingRedis {
@@ -66,15 +74,40 @@ export interface ImageProcessingLease {
 
 export type ImageObservationCounter =
   | 'cacheHits'
+  | 'staleResponses'
+  | 'trueMisses'
   | 'upstreamFetches'
   | 'cacheBypasses'
+  | 'healthyBypasses'
+  | 'registrations'
   | 'evictions'
   | 'oversizedRejections'
   | 'invalidImageRejections'
-  | 'rateLimited';
+  | 'queueCapacityRejections'
+  | 'clientAborts'
+  | 'upstreamTimeouts'
+  | 'upstreamErrors'
+  | 'rateLimitRejections'
+  | 'quotaLockWaits'
+  | 'quotaLockTimeouts'
+  | 'missingFileRecoveries'
+  | 'backgroundRevalidationsStarted'
+  | 'backgroundRevalidationsSucceeded'
+  | 'backgroundRevalidationsFailed';
 
 export interface ImageObservation {
-  outcome: 'served' | 'upstream-error' | 'oversized' | 'invalid-image' | 'rate-limited';
+  outcome:
+    | 'served'
+    | 'upstream-error'
+    | 'upstream-timeout'
+    | 'oversized'
+    | 'invalid-image'
+    | 'rate-limited'
+    | 'queue-capacity'
+    | 'client-abort'
+    | 'quota-lock-timeout'
+    | 'missing-file'
+    | 'background-revalidation';
   validatedBytes: number;
   format: string | null;
   cacheStatus: string;
@@ -85,6 +118,15 @@ export interface ImageObservation {
 
 export interface ImageCacheDiagnostics {
   accountingAvailable: boolean;
+  health: 'healthy' | 'revalidating' | 'degraded-storage' | 'accounting-unavailable';
+  healthCheckedAt: string | null;
+  queueDepth: number;
+  currentRunning: number;
+  maxQueueDepth: number;
+  maxRunning: number;
+  queueWaitLimitMs: number;
+  rateBurst: number;
+  rateRefillPerMinute: number;
   quotaBytes: number | null;
   quotaEntries: number | null;
   maxBytes: number;
@@ -95,7 +137,24 @@ export interface ImageCacheDiagnostics {
   upstreamFetches: number | null;
   cacheHits: number | null;
   cacheBypasses: number | null;
-  rateLimited: number | null;
+  healthyBypasses: number | null;
+  registrations: number | null;
+  staleResponses: number | null;
+  trueMisses: number | null;
+  queueCapacityRejections: number | null;
+  clientAborts: number | null;
+  upstreamTimeouts: number | null;
+  upstreamErrors: number | null;
+  rateLimitRejections: number | null;
+  quotaLockWaits: number | null;
+  quotaLockTimeouts: number | null;
+  missingFileRecoveries: number | null;
+  backgroundRevalidationsStarted: number | null;
+  backgroundRevalidationsSucceeded: number | null;
+  backgroundRevalidationsFailed: number | null;
+  queueWaitP50Ms: number | null;
+  queueWaitP95Ms: number | null;
+  queueWaitMaxMs: number | null;
   lastOutcome: string | null;
   lastValidatedBytes: number | null;
   lastDetectedFormat: string | null;
@@ -214,11 +273,37 @@ if redis.call('GET', KEYS[1]) == ARGV[1] then
 end
 return 0`;
 
-const RATE_LIMIT_SCRIPT = `-- image-cache-rate-limit-v1
-local count = redis.call('INCR', KEYS[1])
-if count == 1 then redis.call('PEXPIRE', KEYS[1], ARGV[1]) end
-local ttl = redis.call('PTTL', KEYS[1])
-return {tostring(count), tostring(ttl)}`;
+const RENEW_MAINTENANCE_LOCK_SCRIPT = `-- image-cache-renew-maintenance-lock-v1
+if redis.call('GET', KEYS[1]) ~= ARGV[1] then return 0 end
+redis.call('PEXPIRE', KEYS[1], ARGV[2])
+return 1`;
+
+const RENEW_FILL_LOCK_SCRIPT = `-- image-cache-renew-fill-lock-v1
+if redis.call('GET', KEYS[1]) ~= ARGV[1] then return 0 end
+redis.call('PEXPIRE', KEYS[1], ARGV[2])
+return 1`;
+
+const RATE_LIMIT_SCRIPT = `-- image-cache-rate-limit-v2
+local now = tonumber(ARGV[1])
+local burst = tonumber(ARGV[2])
+local refillPerMs = tonumber(ARGV[3])
+local tokens = tonumber(redis.call('HGET', KEYS[1], 'tokens') or tostring(burst))
+local updatedAt = tonumber(redis.call('HGET', KEYS[1], 'updatedAt') or tostring(now))
+tokens = math.min(burst, tokens + math.max(0, now - updatedAt) * refillPerMs)
+local allowed = 0
+local retryMs = 0
+if tokens >= 1 then
+  tokens = tokens - 1
+  allowed = 1
+elseif refillPerMs > 0 then
+  retryMs = math.ceil((1 - tokens) / refillPerMs)
+else
+  retryMs = 60000
+end
+redis.call('HSET', KEYS[1], 'tokens', tokens, 'updatedAt', now)
+local lifetime = math.max(60000, math.ceil((burst / math.max(refillPerMs, 0.000001)) * 2))
+redis.call('PEXPIRE', KEYS[1], lifetime)
+return {tostring(allowed), tostring(retryMs)}`;
 
 const OBSERVE_SCRIPT = `-- image-cache-observe-v1
 if ARGV[1] ~= '' then
@@ -235,6 +320,28 @@ redis.call(
   'lastCacheStatus', ARGV[7],
   'lastHost', ARGV[8]
 )
+return 1`;
+
+const QUEUE_WAIT_SCRIPT = `-- image-cache-queue-wait-v1
+local wait = tonumber(ARGV[1]) or 0
+local count = tonumber(redis.call('HGET', KEYS[1], 'queueWaitCount') or '0')
+local total = tonumber(redis.call('HGET', KEYS[1], 'queueWaitTotalMs') or '0')
+local maximum = tonumber(redis.call('HGET', KEYS[1], 'queueWaitMaxMs') or '0')
+redis.call(
+  'HSET', KEYS[1],
+  'queueWaitCount', math.min(tonumber(ARGV[2]), count + 1),
+  'queueWaitTotalMs', math.min(tonumber(ARGV[2]), total + wait),
+  'queueWaitMaxMs', math.max(maximum, wait)
+)
+local bucket = 'queueWaitGt15000'
+if wait <= 100 then bucket = 'queueWaitLe100'
+elseif wait <= 500 then bucket = 'queueWaitLe500'
+elseif wait <= 1000 then bucket = 'queueWaitLe1000'
+elseif wait <= 5000 then bucket = 'queueWaitLe5000'
+elseif wait <= 15000 then bucket = 'queueWaitLe15000'
+end
+local bucketCount = tonumber(redis.call('HGET', KEYS[1], bucket) or '0')
+redis.call('HSET', KEYS[1], bucket, math.min(tonumber(ARGV[2]), bucketCount + 1))
 return 1`;
 
 const RECONCILE_SCRIPT = `-- image-cache-reconcile-v1
@@ -372,6 +479,19 @@ export async function acquireImageQuotaLock(
   return result === 'OK' ? token : null;
 }
 
+export async function acquireImageMaintenanceLock(
+  redis: ImageAccountingRedis,
+  generation: number,
+): Promise<string | null> {
+  const token = randomUUID();
+  const result = await redis.set(
+    quotaLockKey(generation),
+    token,
+    ACQUIRE_MAINTENANCE_LOCK_OPTIONS,
+  );
+  return result === 'OK' ? token : null;
+}
+
 export async function acquireImageFillLock(
   redis: ImageAccountingRedis,
   generation: number,
@@ -395,6 +515,31 @@ export async function releaseImageQuotaLock(
     keys: [quotaLockKey(generation)],
     arguments: [token],
   });
+}
+
+export async function renewImageMaintenanceLock(
+  redis: ImageAccountingRedis,
+  generation: number,
+  token: string,
+): Promise<boolean> {
+  const renewed = await redis.eval(RENEW_MAINTENANCE_LOCK_SCRIPT, {
+    keys: [quotaLockKey(generation)],
+    arguments: [token, String(IMAGE_MAINTENANCE_LOCK_TTL_MS)],
+  });
+  return Number(renewed) === 1;
+}
+
+export async function renewImageFillLock(
+  redis: ImageAccountingRedis,
+  generation: number,
+  keyHash: string,
+  token: string,
+): Promise<boolean> {
+  const renewed = await redis.eval(RENEW_FILL_LOCK_SCRIPT, {
+    keys: [fillLockKey(generation, keyHash)],
+    arguments: [token, String(CACHE_LOCK_TTL_MS)],
+  });
+  return Number(renewed) === 1;
 }
 
 export async function releaseImageFillLock(
@@ -522,16 +667,21 @@ export async function enforceImageFetchRateLimit(
 ): Promise<{ allowed: boolean; retryAfterSeconds: number }> {
   if (!userId) return { allowed: true, retryAfterSeconds: 0 };
   const key = `helprr:cache:image-fetch-rate:${sha256Hex(userId)}`;
+  const refillPerMs = IMAGE_FETCH_RATE_REFILL_PER_MINUTE / 60_000;
   const result = await redis.eval(RATE_LIMIT_SCRIPT, {
     keys: [key],
-    arguments: [String(IMAGE_FETCH_RATE_WINDOW_MS)],
+    arguments: [
+      String(Date.now()),
+      String(IMAGE_FETCH_RATE_BURST),
+      String(refillPerMs),
+    ],
   });
   const values = Array.isArray(result) ? result : [];
-  const count = parseNonNegativeInteger(values[0]);
-  const ttlMs = parseNonNegativeInteger(values[1]);
+  const allowed = Number(values[0]) === 1;
+  const retryMs = parseNonNegativeInteger(values[1]);
   return {
-    allowed: count <= IMAGE_FETCH_RATE_MAX,
-    retryAfterSeconds: Math.max(1, Math.ceil((ttlMs || IMAGE_FETCH_RATE_WINDOW_MS) / 1000)),
+    allowed,
+    retryAfterSeconds: allowed ? 0 : Math.max(1, Math.ceil(retryMs / 1000)),
   };
 }
 
@@ -554,6 +704,19 @@ export async function recordImageObservation(
       (observation.format ?? '').slice(0, 16),
       observation.cacheStatus.slice(0, 16),
       observation.host.toLowerCase().slice(0, 255),
+    ],
+  });
+}
+
+export async function recordImageQueueWait(
+  redis: ImageAccountingRedis,
+  waitMs: number,
+): Promise<void> {
+  await redis.eval(QUEUE_WAIT_SCRIPT, {
+    keys: [IMAGE_CACHE_OBSERVABILITY_KEY],
+    arguments: [
+      String(Math.max(0, Math.min(MAX_COUNTER, Math.trunc(waitMs)))),
+      String(MAX_COUNTER),
     ],
   });
 }
@@ -581,7 +744,7 @@ export async function reconcileImageCacheAccounting(
       String(Math.max(0, Math.trunc(evictionCount))),
       String(MAX_COUNTER),
       quotaLockToken,
-      String(IMAGE_QUOTA_LOCK_TTL_MS),
+      String(IMAGE_MAINTENANCE_LOCK_TTL_MS),
       String(generation),
     ],
   });
@@ -624,9 +787,41 @@ function diagnosticCounter(values: Record<string, string>, field: string): numbe
   return parseNonNegativeInteger(values[field]);
 }
 
+function queueWaitPercentile(
+  observations: Record<string, string>,
+  percentile: number,
+): number {
+  const buckets = [
+    ['queueWaitLe100', 100],
+    ['queueWaitLe500', 500],
+    ['queueWaitLe1000', 1_000],
+    ['queueWaitLe5000', 5_000],
+    ['queueWaitLe15000', 15_000],
+    ['queueWaitGt15000', diagnosticCounter(observations, 'queueWaitMaxMs')],
+  ] as const;
+  const count = diagnosticCounter(observations, 'queueWaitCount');
+  if (count === 0) return 0;
+  const target = Math.max(1, Math.ceil(count * percentile));
+  let seen = 0;
+  for (const [field, upperBound] of buckets) {
+    seen += diagnosticCounter(observations, field);
+    if (seen >= target) return upperBound;
+  }
+  return diagnosticCounter(observations, 'queueWaitMaxMs');
+}
+
 export async function getImageCacheDiagnostics(
   redis: ImageAccountingRedis,
   generation: number,
+  runtime: Partial<Pick<
+    ImageCacheDiagnostics,
+    | 'health'
+    | 'healthCheckedAt'
+    | 'queueDepth'
+    | 'currentRunning'
+    | 'maxQueueDepth'
+    | 'maxRunning'
+  >> = {},
 ): Promise<ImageCacheDiagnostics> {
   const [usage, observations] = await Promise.all([
     redis.hGetAll(buildImageUsageKey(generation)),
@@ -635,6 +830,15 @@ export async function getImageCacheDiagnostics(
   const lastValidatedBytes = observations.lastValidatedBytes;
   return {
     accountingAvailable: true,
+    health: runtime.health ?? 'healthy',
+    healthCheckedAt: runtime.healthCheckedAt ?? null,
+    queueDepth: runtime.queueDepth ?? 0,
+    currentRunning: runtime.currentRunning ?? 0,
+    maxQueueDepth: runtime.maxQueueDepth ?? IMAGE_PROCESSING_QUEUE_MAX,
+    maxRunning: runtime.maxRunning ?? 16,
+    queueWaitLimitMs: IMAGE_PROCESSING_QUEUE_WAIT_MS,
+    rateBurst: IMAGE_FETCH_RATE_BURST,
+    rateRefillPerMinute: IMAGE_FETCH_RATE_REFILL_PER_MINUTE,
     quotaBytes: diagnosticCounter(usage, 'bytes'),
     quotaEntries: diagnosticCounter(usage, 'entries'),
     maxBytes: IMAGE_CACHE_MAX_BYTES,
@@ -645,7 +849,33 @@ export async function getImageCacheDiagnostics(
     upstreamFetches: diagnosticCounter(observations, 'upstreamFetches'),
     cacheHits: diagnosticCounter(observations, 'cacheHits'),
     cacheBypasses: diagnosticCounter(observations, 'cacheBypasses'),
-    rateLimited: diagnosticCounter(observations, 'rateLimited'),
+    healthyBypasses: diagnosticCounter(observations, 'healthyBypasses'),
+    registrations: diagnosticCounter(observations, 'registrations'),
+    staleResponses: diagnosticCounter(observations, 'staleResponses'),
+    trueMisses: diagnosticCounter(observations, 'trueMisses'),
+    queueCapacityRejections: diagnosticCounter(observations, 'queueCapacityRejections'),
+    clientAborts: diagnosticCounter(observations, 'clientAborts'),
+    upstreamTimeouts: diagnosticCounter(observations, 'upstreamTimeouts'),
+    upstreamErrors: diagnosticCounter(observations, 'upstreamErrors'),
+    rateLimitRejections: diagnosticCounter(observations, 'rateLimitRejections'),
+    quotaLockWaits: diagnosticCounter(observations, 'quotaLockWaits'),
+    quotaLockTimeouts: diagnosticCounter(observations, 'quotaLockTimeouts'),
+    missingFileRecoveries: diagnosticCounter(observations, 'missingFileRecoveries'),
+    backgroundRevalidationsStarted: diagnosticCounter(
+      observations,
+      'backgroundRevalidationsStarted',
+    ),
+    backgroundRevalidationsSucceeded: diagnosticCounter(
+      observations,
+      'backgroundRevalidationsSucceeded',
+    ),
+    backgroundRevalidationsFailed: diagnosticCounter(
+      observations,
+      'backgroundRevalidationsFailed',
+    ),
+    queueWaitP50Ms: queueWaitPercentile(observations, 0.5),
+    queueWaitP95Ms: queueWaitPercentile(observations, 0.95),
+    queueWaitMaxMs: diagnosticCounter(observations, 'queueWaitMaxMs'),
     lastOutcome: observations.lastOutcome || null,
     lastValidatedBytes: lastValidatedBytes === undefined
       ? null
@@ -656,9 +886,28 @@ export async function getImageCacheDiagnostics(
   };
 }
 
-export function unavailableImageCacheDiagnostics(): ImageCacheDiagnostics {
+export function unavailableImageCacheDiagnostics(
+  runtime: Partial<Pick<
+    ImageCacheDiagnostics,
+    | 'health'
+    | 'healthCheckedAt'
+    | 'queueDepth'
+    | 'currentRunning'
+    | 'maxQueueDepth'
+    | 'maxRunning'
+  >> = {},
+): ImageCacheDiagnostics {
   return {
     accountingAvailable: false,
+    health: runtime.health ?? 'accounting-unavailable',
+    healthCheckedAt: runtime.healthCheckedAt ?? null,
+    queueDepth: runtime.queueDepth ?? 0,
+    currentRunning: runtime.currentRunning ?? 0,
+    maxQueueDepth: runtime.maxQueueDepth ?? IMAGE_PROCESSING_QUEUE_MAX,
+    maxRunning: runtime.maxRunning ?? 16,
+    queueWaitLimitMs: IMAGE_PROCESSING_QUEUE_WAIT_MS,
+    rateBurst: IMAGE_FETCH_RATE_BURST,
+    rateRefillPerMinute: IMAGE_FETCH_RATE_REFILL_PER_MINUTE,
     quotaBytes: null,
     quotaEntries: null,
     maxBytes: IMAGE_CACHE_MAX_BYTES,
@@ -669,7 +918,24 @@ export function unavailableImageCacheDiagnostics(): ImageCacheDiagnostics {
     upstreamFetches: null,
     cacheHits: null,
     cacheBypasses: null,
-    rateLimited: null,
+    healthyBypasses: null,
+    registrations: null,
+    staleResponses: null,
+    trueMisses: null,
+    queueCapacityRejections: null,
+    clientAborts: null,
+    upstreamTimeouts: null,
+    upstreamErrors: null,
+    rateLimitRejections: null,
+    quotaLockWaits: null,
+    quotaLockTimeouts: null,
+    missingFileRecoveries: null,
+    backgroundRevalidationsStarted: null,
+    backgroundRevalidationsSucceeded: null,
+    backgroundRevalidationsFailed: null,
+    queueWaitP50Ms: null,
+    queueWaitP95Ms: null,
+    queueWaitMaxMs: null,
     lastOutcome: null,
     lastValidatedBytes: null,
     lastDetectedFormat: null,

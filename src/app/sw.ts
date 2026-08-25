@@ -98,9 +98,11 @@ const runtimeCaching: RuntimeCaching[] =
               // remain uncached even though the image bytes were validated.
               cacheValidatedImageResponses,
               new ExpirationPlugin({
-                maxEntries: 500,
+                maxEntries: 750,
                 maxAgeSeconds: 7 * 24 * 60 * 60,
-                maxAgeFrom: 'last-used',
+                // Fixed from the network fetch, rather than extended on every
+                // read, so frequently viewed artwork still refreshes.
+                maxAgeFrom: 'last-fetched',
               }),
             ],
           }),

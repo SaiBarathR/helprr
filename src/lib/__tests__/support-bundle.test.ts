@@ -6,12 +6,52 @@ import {
   type SupportDatabaseSnapshot,
 } from '@/lib/support-bundle';
 import type { LogEntry } from '@/lib/logger';
+import type { SafeImageCacheDiagnostics } from '@/lib/cache/image-cache-support';
 
 const readiness = {
   status: 'ready' as const,
   checks: { database: 'ok' as const, redis: 'ok' as const, migrations: 'ok' as const },
 };
 const testServiceApiKey = ['sonarr', 'api', 'key', 'value'].join('-');
+
+const imageCacheDiagnostics: SafeImageCacheDiagnostics = {
+  health: 'Healthy',
+  accountingAvailable: true,
+  quota: { bytes: 10, maxBytes: 100, entries: 1, maxEntries: 20_000 },
+  processing: {
+    queued: 0,
+    running: 0,
+    maxQueued: 256,
+    maxRunning: 16,
+    queueWaitLimitMs: 30_000,
+    queueWaitP50Ms: 0,
+    queueWaitP95Ms: 100,
+    queueWaitMaxMs: 100,
+  },
+  cache: {
+    hits: 1,
+    stale: 0,
+    misses: 1,
+    registrations: 1,
+    bypasses: 0,
+    healthyBypasses: 0,
+    evictions: 0,
+    missingFileRecoveries: 0,
+  },
+  failures: {
+    queueCapacity: 0,
+    rateLimit: 0,
+    clientAborts: 0,
+    upstreamTimeouts: 0,
+    upstreamErrors: 0,
+    quotaLockWaits: 0,
+    quotaLockTimeouts: 0,
+    oversized: 0,
+    invalidImages: 0,
+  },
+  backgroundRevalidation: { started: 0, succeeded: 0, failed: 0 },
+  rateBounds: { burst: 600, refillPerMinute: 300 },
+};
 
 function databaseFixture(): SupportDatabaseSnapshot {
   return {
@@ -82,6 +122,7 @@ describe('support bundle', () => {
       loadDatabase: async () => database,
       readReadiness: async () => readiness,
       readLogs: async () => logFixture(),
+      loadImageCacheDiagnostics: async () => imageCacheDiagnostics,
     };
 
     const bundle = await buildSupportBundle(dependencies);
@@ -106,6 +147,10 @@ describe('support bundle', () => {
       },
     }]);
     expect(bundle.logs.status).toBe('included');
+    expect(bundle.imageCache).toEqual({
+      status: 'included',
+      diagnostics: imageCacheDiagnostics,
+    });
     for (const secret of [
       'database-password-value',
       'redis-password-value',
@@ -138,6 +183,7 @@ describe('support bundle', () => {
       loadDatabase: async () => { throw new Error('database unavailable'); },
       readReadiness: async () => readiness,
       readLogs,
+      loadImageCacheDiagnostics: async () => imageCacheDiagnostics,
     });
 
     expect(bundle.database.status).toBe('unavailable');
@@ -164,6 +210,7 @@ describe('support bundle', () => {
       loadDatabase: async () => databaseFixture(),
       readReadiness: async () => readiness,
       readLogs: async () => logs,
+      loadImageCacheDiagnostics: async () => imageCacheDiagnostics,
     });
 
     expect(bundle.logs.status).toBe('included');
