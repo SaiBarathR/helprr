@@ -134,7 +134,9 @@ export type RequestsFilterPreference =
   | 'processing'
   | 'available'
   | 'unavailable'
-  | 'failed';
+  | 'failed'
+  | 'completed'
+  | 'deleted';
 
 /** Empty = all types. Values match Seerr request `type` field. */
 export type RequestsTypeFilterPreference = ('movie' | 'tv')[];

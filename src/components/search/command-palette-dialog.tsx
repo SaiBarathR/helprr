@@ -169,9 +169,9 @@ export function CommandPaletteDialog() {
     [router, setOpen, addHistory]
   );
 
-  const applyScope = useCallback((def: SearchProviderUiDef) => {
+  const applyScope = useCallback((def: SearchProviderUiDef, preserveQuery = false) => {
     setActiveScope(def);
-    setQuery('');
+    if (!preserveQuery) setQuery('');
   }, []);
 
   // Scoped history is stored as `alias: query` — the colon keeps it
@@ -330,7 +330,23 @@ export function CommandPaletteDialog() {
                 </div>
               )}
 
-              {showEmptyLocal && <CommandEmpty>No matches found.</CommandEmpty>}
+              {showEmptyLocal && (
+                <>
+                  <div className="px-4 py-3 text-center text-sm text-muted-foreground">
+                    No library matches found for &ldquo;{trimmedQuery}&rdquo;.
+                  </div>
+                  <CommandGroup heading="Try searching in">
+                    {availableProviders.map((def) => (
+                      <ScopeHelpItem
+                        key={def.id}
+                        def={def}
+                        onSelect={() => applyScope(def, true)}
+                        hint={`Search ${def.label} for “${trimmedQuery}”`}
+                      />
+                    ))}
+                  </CommandGroup>
+                </>
+              )}
               {showEmptyScoped && <CommandEmpty>No matches in this scope.</CommandEmpty>}
 
               {hasLocalResults &&

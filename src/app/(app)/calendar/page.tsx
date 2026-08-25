@@ -1,7 +1,18 @@
 'use client';
 
-import { useState, useMemo, useEffect, useRef, type ReactElement } from 'react';
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactElement,
+} from 'react';
 import Link from 'next/link';
+import { useWindowVirtualizer } from '@tanstack/react-virtual';
 import {
   startOfMonth,
   endOfMonth,
@@ -367,18 +378,93 @@ function CompactFilters({
  * @returns A JSX element containing the grouped agenda view.
  */
 
-function AgendaView({ events, showImages }: { events: CalendarEvent[]; showImages: boolean }) {
-  const grouped = useMemo(() => {
+interface AgendaRow {
+  dateKey: string;
+  date: Date;
+  event: CalendarEvent;
+  isFirstOfDay: boolean;
+  today: boolean;
+}
+
+interface AgendaViewHandle {
+  scrollToDate: (dateKey: string) => boolean;
+}
+
+const AgendaView = forwardRef<AgendaViewHandle, { events: CalendarEvent[]; showImages: boolean }>(
+function AgendaView({ events, showImages }, ref) {
+  'use no memo';
+
+  const rows = useMemo<AgendaRow[]>(() => {
     const groups: Record<string, CalendarEvent[]> = {};
     for (const event of events) {
       const key = format(new Date(event.date), 'yyyy-MM-dd');
       if (!groups[key]) groups[key] = [];
       groups[key].push(event);
     }
-    return Object.entries(groups).sort(([a], [b]) => a.localeCompare(b));
+    return Object.entries(groups)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .flatMap(([dateKey, dayEvents]) => {
+        const date = new Date(`${dateKey}T00:00:00`);
+        const today = isToday(date);
+        return dayEvents.map((event, index) => ({
+          dateKey,
+          date,
+          event,
+          isFirstOfDay: index === 0,
+          today,
+        }));
+      });
   }, [events]);
 
-  if (grouped.length === 0) {
+  const [scrollMargin, setScrollMargin] = useState(0);
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const handleListRef = useCallback((node: HTMLDivElement | null) => {
+    listRef.current = node;
+    if (node) setScrollMargin(node.getBoundingClientRect().top + window.scrollY);
+  }, []);
+
+  useLayoutEffect(() => {
+    const node = listRef.current;
+    if (!node) return;
+    const measure = () => setScrollMargin(node.getBoundingClientRect().top + window.scrollY);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    window.addEventListener('resize', measure);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', measure);
+    };
+  }, [rows.length, showImages]);
+
+  const virtualizer = useWindowVirtualizer({
+    count: rows.length,
+    estimateSize: () => showImages ? 78 : 62,
+    overscan: 5,
+    scrollMargin,
+    scrollPaddingStart: 80,
+    getItemKey: (index) => {
+      const row = rows[index];
+      return row
+        ? `${row.dateKey}:${row.event.instanceId ?? ''}:${row.event.id}`
+        : index;
+    },
+  });
+
+  useEffect(() => {
+    virtualizer.measure();
+  }, [virtualizer, rows, showImages]);
+
+  useImperativeHandle(ref, () => ({
+    scrollToDate(dateKey: string) {
+      const index = rows.findIndex((row) => row.isFirstOfDay && row.dateKey === dateKey);
+      if (index < 0) return false;
+      virtualizer.scrollToIndex(index, { align: 'start', behavior: 'auto' });
+      return true;
+    },
+  }), [rows, virtualizer]);
+
+  if (rows.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
         <p className="text-sm">No events in this period.</p>
@@ -387,126 +473,122 @@ function AgendaView({ events, showImages }: { events: CalendarEvent[]; showImage
   }
 
   return (
-    <div>
-      {grouped.map(([dateKey, dayEvents]) => {
-        const date = new Date(dateKey + 'T00:00:00');
-        const today = isToday(date);
+    <div
+      ref={handleListRef}
+      className="relative w-full"
+      style={{ height: virtualizer.getTotalSize() }}
+    >
+      {virtualizer.getVirtualItems().map((virtualItem) => {
+        const row = rows[virtualItem.index];
+        return (
+          <div
+            key={virtualItem.key}
+            data-index={virtualItem.index}
+            ref={virtualizer.measureElement}
+            className="absolute left-0 top-0 w-full"
+            style={{
+              transform: `translateY(${virtualItem.start - (virtualizer.options.scrollMargin ?? 0)}px)`,
+            }}
+          >
+            <AgendaEventRow row={row} showImages={showImages} />
+          </div>
+        );
+      })}
+    </div>
+  );
+});
 
-        return dayEvents.map((event, idx) => {
-          const isFirstOfDay = idx === 0;
-          const href = eventHref(event);
-          const eventDate = new Date(event.date);
-          const scheduleDraft =
-            event.origin !== 'scheduled' ? scheduleDraftFromEvent(event) : null;
-          const poster = posterFromEvent(event);
+AgendaView.displayName = 'AgendaView';
 
-          return (
-            <div
-              key={event.id}
-              data-agenda-date={isFirstOfDay ? dateKey : undefined}
-              className="relative overflow-hidden flex items-start gap-1 border-b border-border/30"
-            >
-              {/* Downloaded rows skip the backdrop: history doesn't need the
-                  ambiance and it roughly halves images per screen. */}
-              {showImages && !event.hasFile && <RowBackdrop src={backdropFromEvent(event)} />}
-              <CalendarEventContext event={event}>
-              <Link href={href} className="relative flex flex-1 min-w-0 active:bg-muted/30">
-                <div
-                  className={`flex items-start gap-4 py-3 px-1 w-full ${!event.monitored ? 'opacity-50' : ''
-                    }`}
-                >
-                {/* Date column - only show for first event of the day */}
-                <div className="w-10 shrink-0 text-center">
-                  {isFirstOfDay && (
-                    <>
-                      <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
-                        {format(date, 'EEE')}
-                      </p>
-                      <p
-                        className={`text-2xl font-bold leading-tight ${today ? 'text-primary' : 'text-foreground'
-                          }`}
-                      >
-                        {format(date, 'd')}
-                      </p>
-                      <p className="text-[10px] text-muted-foreground uppercase tracking-wide">
-                        {format(date, 'MMM')}
-                      </p>
-                    </>
-                  )}
-                </div>
+function AgendaEventRow({ row, showImages }: { row: AgendaRow; showImages: boolean }) {
+  const { dateKey, date, event, isFirstOfDay, today } = row;
+  const href = eventHref(event);
+  const eventDate = new Date(event.date);
+  const scheduleDraft = event.origin !== 'scheduled' ? scheduleDraftFromEvent(event) : null;
+  const poster = posterFromEvent(event);
 
-                {/* Poster (desktop only — mobile relies on the row backdrop) */}
-                {showImages && (
-                  <div className="hidden md:block w-9 shrink-0">
-                    {poster ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={poster}
-                        alt=""
-                        loading="lazy"
-                        className="w-9 aspect-[2/3] rounded object-cover bg-muted/40"
-                      />
-                    ) : (
-                      <div className="w-9 aspect-[2/3] rounded bg-muted/30" />
-                    )}
-                  </div>
-                )}
-
-                {/* Event info — downloaded rows dim the text only; artwork
-                    stays at full opacity so titles don't go faint. */}
-                <div className={`flex-1 min-w-0 ${event.hasFile ? 'opacity-60' : ''}`}>
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      {event.type === 'episode' ? (
-                        <Tv className="h-3 w-3 text-blue-400 shrink-0" />
-                      ) : event.type === 'album' ? (
-                        <Disc3 className="h-3 w-3 text-emerald-400 shrink-0" />
-                      ) : (
-                        <Film className="h-3 w-3 text-orange-400 shrink-0" />
-                      )}
-                      <p
-                        className={`text-sm font-semibold truncate ${event.hasFile
-                          ? 'line-through text-muted-foreground'
-                          : 'text-foreground'
-                          }`}
-                      >
-                        {event.title}
-                      </p>
-                    </div>
-                    <span className="text-xs text-muted-foreground shrink-0 ml-2 tabular-nums">
-                      {format(eventDate, 'h:mm a')}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-1.5 mt-0.5 pl-[18px]">
-                    {event.releaseType && <ReleaseTypeBadge type={event.releaseType} />}
-                    {event.finaleType && <FinaleBadge type={event.finaleType} />}
-                    {(event.origin === 'scheduled' || event.scheduleLabel) && (
-                      <Badge variant="secondary" className="text-[9px] px-1 py-0 h-4 shrink-0">
-                        Scheduled
-                      </Badge>
-                    )}
-                    <p className="text-xs text-muted-foreground truncate min-w-0">
-                      {event.subtitle}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Monitored indicator */}
-                {event.monitored && (
-                  <Bookmark className="h-3.5 w-3.5 text-muted-foreground/50 shrink-0 mt-0.5" />
-                )}
-              </div>
-              </Link>
-              </CalendarEventContext>
-              {scheduleDraft && (
-                <div className="relative shrink-0 pt-3 pr-1">
-                  <ScheduledAlertButton draft={scheduleDraft} />
-                </div>
+  return (
+    <div
+      data-agenda-date={isFirstOfDay ? dateKey : undefined}
+      className="relative flex items-start gap-1 overflow-hidden border-b border-border/30"
+    >
+      {showImages && !event.hasFile && <RowBackdrop src={backdropFromEvent(event)} />}
+      <CalendarEventContext event={event}>
+        <Link href={href} className="relative flex min-w-0 flex-1 active:bg-muted/30">
+          <div className={`flex w-full items-start gap-4 px-1 py-3 ${!event.monitored ? 'opacity-50' : ''}`}>
+            <div className="w-10 shrink-0 text-center">
+              {isFirstOfDay && (
+                <>
+                  <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                    {format(date, 'EEE')}
+                  </p>
+                  <p className={`text-2xl font-bold leading-tight ${today ? 'text-primary' : 'text-foreground'}`}>
+                    {format(date, 'd')}
+                  </p>
+                  <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                    {format(date, 'MMM')}
+                  </p>
+                </>
               )}
             </div>
-          );
-        });
-      })}
+
+            {showImages && (
+              <div className="hidden w-9 shrink-0 md:block">
+                {poster ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={poster}
+                    alt=""
+                    loading="lazy"
+                    className="aspect-[2/3] w-9 rounded bg-muted/40 object-cover"
+                  />
+                ) : (
+                  <div className="aspect-[2/3] w-9 rounded bg-muted/30" />
+                )}
+              </div>
+            )}
+
+            <div className={`min-w-0 flex-1 ${event.hasFile ? 'opacity-60' : ''}`}>
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex min-w-0 items-center gap-1.5">
+                  {event.type === 'episode' ? (
+                    <Tv className="h-3 w-3 shrink-0 text-blue-400" />
+                  ) : event.type === 'album' ? (
+                    <Disc3 className="h-3 w-3 shrink-0 text-emerald-400" />
+                  ) : (
+                    <Film className="h-3 w-3 shrink-0 text-orange-400" />
+                  )}
+                  <p className={`truncate text-sm font-semibold ${event.hasFile ? 'text-muted-foreground line-through' : 'text-foreground'}`}>
+                    {event.title}
+                  </p>
+                </div>
+                <span className="ml-2 shrink-0 text-xs tabular-nums text-muted-foreground">
+                  {format(eventDate, 'h:mm a')}
+                </span>
+              </div>
+              <div className="mt-0.5 flex items-center gap-1.5 pl-[18px]">
+                {event.releaseType && <ReleaseTypeBadge type={event.releaseType} />}
+                {event.finaleType && <FinaleBadge type={event.finaleType} />}
+                {(event.origin === 'scheduled' || event.scheduleLabel) && (
+                  <Badge variant="secondary" className="h-4 shrink-0 px-1 py-0 text-[9px]">
+                    Scheduled
+                  </Badge>
+                )}
+                <p className="min-w-0 truncate text-xs text-muted-foreground">{event.subtitle}</p>
+              </div>
+            </div>
+
+            {event.monitored && (
+              <Bookmark className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground/50" />
+            )}
+          </div>
+        </Link>
+      </CalendarEventContext>
+      {scheduleDraft && (
+        <div className="relative shrink-0 pr-1 pt-3">
+          <ScheduledAlertButton draft={scheduleDraft} />
+        </div>
+      )}
     </div>
   );
 }
@@ -1171,6 +1253,7 @@ export default function CalendarPage() {
   const autoFocusWaitForLoadRef = useRef(true);
   const autoFocusSawLoadingRef = useRef(false);
   const lastViewRef = useRef<ViewType | null>(null);
+  const agendaViewRef = useRef<AgendaViewHandle>(null);
 
   useEffect(() => {
     if (lastViewRef.current !== calendarView) {
@@ -1264,13 +1347,7 @@ export default function CalendarPage() {
         if (!agendaTargetDateKey) {
           done = true;
         } else {
-          const target = document.querySelector<HTMLElement>(
-            `[data-agenda-date="${agendaTargetDateKey}"]`
-          );
-          if (target) {
-            target.scrollIntoView({ behavior: 'instant', block: 'start' });
-            done = true;
-          }
+          done = agendaViewRef.current?.scrollToDate(agendaTargetDateKey) ?? false;
         }
       } else if (calendarView === 'week') {
         const todayKey = format(new Date(), 'yyyy-MM-dd');
@@ -1433,7 +1510,7 @@ export default function CalendarPage() {
       {(!loading || events.length > 0) && (
         <>
           {calendarView === 'agenda' && (
-            <AgendaView events={filteredEvents} showImages={showImages} />
+            <AgendaView ref={agendaViewRef} events={filteredEvents} showImages={showImages} />
           )}
           {calendarView === 'month' && (
             <MonthView currentDate={currentDate} events={filteredEvents} showImages={showImages} />

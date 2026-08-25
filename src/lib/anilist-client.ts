@@ -129,6 +129,7 @@ export const MEDIA_LIST_FRAGMENT = `
   title { romaji english native }
   coverImage { extraLarge large medium color }
   bannerImage
+  countryOfOrigin
   format
   status
   season

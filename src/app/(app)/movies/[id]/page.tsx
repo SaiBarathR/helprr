@@ -83,6 +83,8 @@ import { buildMarkWatchedContextAction } from '@/lib/mark-watched-context-action
 import { arrEditHref, arrManageHref } from '@/lib/arr-edit-href';
 import { WatchStatusInline } from '@/components/jellyfin/watch-status-indicator';
 import { QuickContextMenu, type ContextActionGroup } from '@/components/ui/quick-context-menu';
+import { MediaDownloadProgress } from '@/components/media/media-download-progress';
+import { formatLanguageCode, formatRegionCodes } from '@/lib/media-locale';
 
 type RatingItem = {
   label: string;
@@ -489,6 +491,10 @@ export default function MovieDetailPage() {
     metadataRows.push({ label: 'SUBTITLES', value: mediaInfo.mediaInfo.subtitles });
   }
 
+  const originalLanguage = movie.originalLanguage?.name
+    || formatLanguageCode(tmdbData?.originalLanguage);
+  const productionCountries = formatRegionCodes(tmdbData?.originCountry);
+
   const infoRows: { label: string; value: string }[] = [
     { label: 'Quality Profile', value: qualityProfile?.name || 'Unknown' },
     {
@@ -497,6 +503,8 @@ export default function MovieDetailPage() {
     },
     ...(movie.certification ? [{ label: 'Certification', value: movie.certification }] : []),
     ...(movie.runtime > 0 ? [{ label: 'Runtime', value: `${movie.runtime} min` }] : []),
+    ...(originalLanguage ? [{ label: 'Original Language', value: originalLanguage }] : []),
+    ...(productionCountries ? [{ label: 'Production Countries', value: productionCountries }] : []),
     ...(movieTags.length > 0
       ? [{ label: 'Tags', value: movieTags.map((t) => t.label).join(', ') }]
       : []),
@@ -866,6 +874,8 @@ export default function MovieDetailPage() {
               </div>
           </div>
         )}
+
+        <MediaDownloadProgress source="radarr" mediaId={movie.id} instanceId={instance} />
 
         {/* Metadata rows - borderless key-value */}
         {metadataRows.length > 0 && (

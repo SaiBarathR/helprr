@@ -68,6 +68,8 @@ import { AnilistStatusPanel } from '@/components/anime/anilist-status-panel';
 import { WatchlistAddDialog } from '@/components/watchlist/watchlist-add-dialog';
 import { ScheduledAlertDialog } from '@/components/scheduled-alerts/scheduled-alert-dialog';
 import { AnimeTrailerRail } from '@/components/anime/anime-trailer-rail';
+import { MediaDownloadProgress } from '@/components/media/media-download-progress';
+import { formatLanguageCode, formatRegionCode, formatRegionCodes } from '@/lib/media-locale';
 import { useCan, useMe } from '@/components/permission-provider';
 import {
   hasWatchLookupIdentity,
@@ -887,6 +889,8 @@ export default function SeriesDetailPage() {
   const animeDescription = animeDetail?.description ? DOMPurify.sanitize(animeDetail.description) : '';
   const animeInfoRows: Array<{ label: string; value: string; valueNode?: ReactNode }> = [];
   if (animeDetail?.format) animeInfoRows.push({ label: 'Format', value: animeDetail.format.replace(/_/g, ' ') });
+  const animeOriginCountry = formatRegionCode(animeDetail?.countryOfOrigin);
+  if (animeOriginCountry) animeInfoRows.push({ label: 'Country of Origin', value: animeOriginCountry });
   if (animeDetail?.episodes != null) animeInfoRows.push({ label: 'Episodes', value: String(animeDetail.episodes) });
   if (animeDetail?.duration != null) animeInfoRows.push({ label: 'Episode Duration', value: `${animeDetail.duration} mins` });
   if (animeDetail?.status) animeInfoRows.push({ label: 'Status', value: animeDetail.status.charAt(0) + animeDetail.status.slice(1).toLowerCase().replace(/_/g, ' ') });
@@ -970,7 +974,9 @@ export default function SeriesDetailPage() {
   const releaseDate = formatDateValue(tmdbData?.releaseDate ?? series.releaseDate ?? null) ?? animeStartDate;
   const alertReleaseDate =
     tmdbData?.releaseDate ?? series.releaseDate ?? series.firstAired ?? null;
-  const originCountry = tmdbData?.originCountry?.filter(Boolean)?.join(', ') || null;
+  const originCountry = formatRegionCodes(tmdbData?.originCountry);
+  const originalLanguage = series.originalLanguage?.name
+    || formatLanguageCode(tmdbData?.originalLanguage);
   const showType = tmdbData?.showType ?? (isAnimeSeries && animeDetail?.format ? animeDetail.format.replace(/_/g, ' ') : null);
   const runtimeValue = series.runtime > 0 ? `${series.runtime} min` : null;
   const tmdbNextEpisode = tmdbData?.nextEpisode
@@ -1044,6 +1050,7 @@ export default function SeriesDetailPage() {
     ...(lastAired ? [{ label: 'Last Aired', value: lastAired }] : []),
     ...(previousAiring ? [{ label: 'Previous Airing', value: previousAiring }] : []),
     ...(releaseDate ? [{ label: 'Release Date', value: releaseDate }] : []),
+    ...(originalLanguage ? [{ label: 'Original Language', value: originalLanguage }] : []),
     ...(originCountry ? [{ label: 'Origin Country', value: originCountry }] : []),
     ...(nextEpisode ? [{ label: 'Next Episode', value: nextEpisode }] : []),
     ...(seriesTags.length > 0 ? [{ label: 'Tags', value: seriesTags.map((t) => t.label).join(', ') }] : []),
@@ -1469,6 +1476,8 @@ export default function SeriesDetailPage() {
             </div>
           </div>
         )}
+
+        <MediaDownloadProgress source="sonarr" mediaId={series.id} instanceId={instance} />
 
         {isAnimeSeries && (
           <div className="pt-3 space-y-3">

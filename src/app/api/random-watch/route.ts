@@ -13,6 +13,13 @@ const VALID_TYPES: ReadonlySet<RandomType> = new Set(['movie', 'series', 'any'])
 type WatchScope = 'all' | 'unwatched';
 const VALID_WATCH: ReadonlySet<WatchScope> = new Set(['all', 'unwatched']);
 
+const RANDOM_RESPONSE_OPTIONS = {
+  headers: {
+    'Cache-Control': 'private, no-store',
+    'Vary': 'Cookie',
+  },
+} as const;
+
 type TaggedMovie = RadarrMovie & { instanceId: string };
 type TaggedSeries = SonarrSeries & { instanceId: string };
 
@@ -163,10 +170,10 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
 
   const pool: RandomPick[] = [...filteredMovies.map(pickMovie), ...filteredSeries.map(pickSeries)];
   if (pool.length === 0) {
-    return NextResponse.json({ pick: null, poolSize: 0 });
+    return NextResponse.json({ pick: null, poolSize: 0 }, RANDOM_RESPONSE_OPTIONS);
   }
   const pick = pool[Math.floor(Math.random() * pool.length)];
-  return NextResponse.json({ pick, poolSize: pool.length });
+  return NextResponse.json({ pick, poolSize: pool.length }, RANDOM_RESPONSE_OPTIONS);
 }
 
 export const GET = withApiLogging(getHandler, 'api/random-watch');

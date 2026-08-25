@@ -33,7 +33,10 @@ async function fetchRandomWatch(
   watch: 'all' | 'unwatched',
   signal?: AbortSignal,
 ): Promise<RandomWatchResponse> {
-  const res = await fetch(`/api/random-watch?type=${type}&watch=${watch}`, { signal });
+  const res = await fetch(`/api/random-watch?type=${type}&watch=${watch}`, {
+    signal,
+    cache: 'no-store',
+  });
   if (!res.ok) throw new ApiError(res.status, 'Request failed');
   return res.json();
 }
@@ -149,7 +152,12 @@ export function RandomWatchWidget({
           Nothing downloaded matches this filter.
         </EmptyState>
       ) : (
-        <PickHero pick={pick} narrow={narrow} editMode={editMode} />
+        <PickHero
+          key={`${filters.type}:${watch}:${pick.mediaType}:${pick.instanceId}:${pick.id}`}
+          pick={pick}
+          narrow={narrow}
+          editMode={editMode}
+        />
       )}
     </div>
   );
