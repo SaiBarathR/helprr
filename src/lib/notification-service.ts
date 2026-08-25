@@ -37,36 +37,60 @@ const webPushAgent = new https.Agent({
   timeout: PUSH_TIMEOUT_MS,
 });
 
+// Floor is one hour, not 60s: Android Chrome delivers via FCM, which treats
+// omitted/normal urgency as Doze-batchable and discards the message when TTL
+// expires while the screen is off. iOS/APNs usually delivers immediately, so
+// the same event can land on iPhone and vanish on a locked Android phone.
+// Calendar-style events may wait a full day.
+const DEFAULT_PUSH_TTL_SECONDS = 3600;
+const LONG_PUSH_TTL_SECONDS = 86400;
 const TTL_BY_EVENT: Record<string, number> = {
-  grabbed: 60,
-  imported: 60,
-  downloadFailed: 300,
-  importFailed: 300,
-  torrentAdded: 60,
-  torrentCompleted: 60,
-  torrentDeleted: 60,
-  jellyfinPlaybackStart: 60,
-  jellyfinItemAdded: 3600,
-  healthWarning: 3600,
-  serviceDown: 3600,
-  serviceRestored: 3600,
-  diskLowSpace: 3600,
-  upcomingPremiere: 86400,
-  cleanupStrike: 60,
-  cleanupRemoved: 60,
-  watchlistReminder: 86400,
-  scheduledAlert: 86400,
-  requestCreated: 60,
-  requestApproved: 60,
-  requestAvailable: 300,
-  requestDeclined: 60,
-  requestFailed: 300,
+  grabbed: DEFAULT_PUSH_TTL_SECONDS,
+  imported: DEFAULT_PUSH_TTL_SECONDS,
+  downloadFailed: DEFAULT_PUSH_TTL_SECONDS,
+  importFailed: DEFAULT_PUSH_TTL_SECONDS,
+  torrentAdded: DEFAULT_PUSH_TTL_SECONDS,
+  torrentCompleted: DEFAULT_PUSH_TTL_SECONDS,
+  torrentDeleted: DEFAULT_PUSH_TTL_SECONDS,
+  jellyfinPlaybackStart: DEFAULT_PUSH_TTL_SECONDS,
+  jellyfinItemAdded: DEFAULT_PUSH_TTL_SECONDS,
+  healthWarning: DEFAULT_PUSH_TTL_SECONDS,
+  serviceDown: DEFAULT_PUSH_TTL_SECONDS,
+  serviceRestored: DEFAULT_PUSH_TTL_SECONDS,
+  diskLowSpace: DEFAULT_PUSH_TTL_SECONDS,
+  upcomingPremiere: LONG_PUSH_TTL_SECONDS,
+  cleanupStrike: DEFAULT_PUSH_TTL_SECONDS,
+  cleanupRemoved: DEFAULT_PUSH_TTL_SECONDS,
+  watchlistReminder: LONG_PUSH_TTL_SECONDS,
+  scheduledAlert: LONG_PUSH_TTL_SECONDS,
+  requestCreated: DEFAULT_PUSH_TTL_SECONDS,
+  requestApproved: DEFAULT_PUSH_TTL_SECONDS,
+  requestAvailable: DEFAULT_PUSH_TTL_SECONDS,
+  requestDeclined: DEFAULT_PUSH_TTL_SECONDS,
+  requestFailed: DEFAULT_PUSH_TTL_SECONDS,
 };
 
 function ttlForTag(tag: string | undefined): number {
-  if (!tag) return 300;
+  if (!tag) return DEFAULT_PUSH_TTL_SECONDS;
   const base = tag.split('-')[0];
-  return TTL_BY_EVENT[base] ?? 300;
+  return TTL_BY_EVENT[base] ?? DEFAULT_PUSH_TTL_SECONDS;
+}
+
+// High urgency maps to FCM priority=high so Chrome can wake a dozing Android
+// device. web-push defaults to "normal", which Android holds until the next
+// maintenance window (often: unlock) and then drops if TTL already expired.
+export function webPushDeliveryOptions(tag: string | undefined): {
+  timeout: number;
+  TTL: number;
+  urgency: 'high';
+  agent: https.Agent;
+} {
+  return {
+    timeout: PUSH_TIMEOUT_MS,
+    TTL: ttlForTag(tag),
+    urgency: 'high',
+    agent: webPushAgent,
+  };
 }
 
 function isRetriableUpstream(statusCode?: number): boolean {
@@ -336,7 +360,7 @@ export async function sendPushNotification(
         keys: { p256dh: subscription.p256dh, auth: subscription.auth },
       },
       JSON.stringify(payload),
-      { timeout: PUSH_TIMEOUT_MS, TTL: ttlForTag(payload.tag), agent: webPushAgent }
+      webPushDeliveryOptions(payload.tag),
     );
     logger.debug('Push notification sent', {
       endpointHash,

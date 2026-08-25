@@ -309,6 +309,10 @@ self.addEventListener('push', (event) => {
     icon: '/icons/icon-192.png',
     badge: '/icons/icon-192.png',
     tag: data.tag || 'helprr-notification',
+    // Same-tag replacements stay silent on Android Chrome unless renotify is set.
+    // vibrate is ignored on iOS; on Android it helps the heads-up banner appear.
+    renotify: true,
+    vibrate: [200, 100, 200],
     // Action buttons (Approve/Decline, Retry) render on Android/desktop Chrome.
     // iOS Web Push ignores `actions`, so iPhone users fall back to tapping the
     // notification body, which deep-links straight to the relevant action view.

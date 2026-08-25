@@ -176,6 +176,14 @@ VAPID is runtime configuration. `VAPID_PUBLIC_KEY` is served by
 fallback. Subscriptions and preferences are per user/device, and notification
 capabilities are an outer gate around per-device event preferences.
 
+Push sends always use `urgency: high` and a minimum TTL of one hour
+(`webPushDeliveryOptions` in `src/lib/notification-service.ts`). Android
+Chrome delivers through FCM, which treats the web-push default of `normal`
+as Doze-batchable and drops the payload when TTL expires while the screen is
+off. iOS/APNs typically delivers immediately, so the same event can appear
+on iPhone and never surface on a locked Android phone. In-app history is
+written before fan-out and is not proof the device displayed the push.
+
 ## Persistence, Migrations, and Retention
 
 Prisma 6 and PostgreSQL are intentional. Prisma migrations are the only schema
