@@ -1,11 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { QueueItem } from '@/types';
 import {
-  SPEED_HOLD_MS,
   filterQueueItemsForMedia,
   humanizeTimeLeft,
   summarizeMediaDownloads,
-  trackTransferSpeeds,
 } from './media-download-progress';
 
 function queueItem(overrides: Partial<QueueItem>): QueueItem {
@@ -83,30 +81,6 @@ describe('media download progress', () => {
       quality: 'WEBDL-1080p',
       message: 'The download is stalled',
     });
-  });
-
-  it('derives transfer speed from byte deltas, holds it across unchanged polls, and expires it', () => {
-    const itemsAt = (sizeleft: number) =>
-      summarizeMediaDownloads([
-        queueItem({ source: 'radarr', instanceId: 'one', movieId: 7, sizeleft }),
-      ])!.items;
-    const key = itemsAt(50)[0].key;
-
-    const first = trackTransferSpeeds(undefined, itemsAt(50), 1_000);
-    expect(first[key].speed).toBeNull();
-
-    const measured = trackTransferSpeeds(first, itemsAt(40), 6_000);
-    expect(measured[key].speed).toBe(2); // 10 bytes over 5 seconds
-
-    // Upstream stats unchanged on the next poll: the speed is held, and the
-    // delta baseline is kept so the next real change averages across the gap.
-    const held = trackTransferSpeeds(measured, itemsAt(40), 11_000);
-    expect(held[key].speed).toBe(2);
-    expect(held[key].at).toBe(6_000);
-
-    // Unchanged beyond the hold window: the download reads as stalled.
-    const expired = trackTransferSpeeds(held, itemsAt(40), 6_000 + SPEED_HOLD_MS + 5_000);
-    expect(expired[key].speed).toBeNull();
   });
 
   it('humanizes .NET TimeSpan values to the two largest units', () => {

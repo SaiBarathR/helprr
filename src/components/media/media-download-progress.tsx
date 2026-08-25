@@ -1,7 +1,8 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
-import { ArrowUpRight, Download } from 'lucide-react';
+import { ArrowUpRight, ChevronDown, Download } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { useCan } from '@/components/permission-provider';
 import { Badge } from '@/components/ui/badge';
@@ -10,12 +11,9 @@ import { jsonFetcher } from '@/lib/query-fetch';
 import { formatBytes } from '@/lib/format';
 import {
   summarizeMediaDownloads,
-  trackTransferSpeeds,
   type MediaDownloadItem,
-  type MediaDownloadSummary,
   type MediaDownloadTone,
   type MediaQueueSource,
-  type SpeedSample,
 } from '@/lib/media-download-progress';
 import type { QueueItem } from '@/types';
 
@@ -23,15 +21,6 @@ interface MediaQueueResponse {
   records: QueueItem[];
   totalRecords: number;
 }
-
-interface MediaQueueView {
-  summary: MediaDownloadSummary | null;
-  speeds: Record<string, number>;
-}
-
-// Previous poll per media target, kept outside React so speed survives
-// remounts and needs no render-time ref access.
-const speedSamples = new Map<string, Record<string, SpeedSample>>();
 
 const TONE_BADGE: Record<MediaDownloadTone, string> = {
   downloading: 'bg-blue-500/10 text-blue-500 border-blue-500/20',
@@ -51,82 +40,74 @@ export function MediaDownloadProgress({
   instanceId?: string;
 }) {
   const canViewActivity = useCan('activity.view');
+  const [expanded, setExpanded] = useState(false);
   const params = new URLSearchParams({ source, mediaId: String(mediaId) });
   if (instanceId) params.set('instanceId', instanceId);
 
   const queueQuery = useQuery({
     queryKey: ['activity', 'queue', 'media', source, mediaId, instanceId ?? 'default'],
-    queryFn: async (context): Promise<MediaQueueView> => {
-      const data = await jsonFetcher<MediaQueueResponse>(
-        `/api/activity/queue?${params.toString()}`,
-      )(context);
-      const summary = summarizeMediaDownloads(data.records ?? []);
-      const sampleKey = `${source}:${instanceId ?? 'default'}:${mediaId}`;
-      const samples = trackTransferSpeeds(
-        speedSamples.get(sampleKey),
-        summary?.items ?? [],
-        Date.now(),
-      );
-      speedSamples.set(sampleKey, samples);
-      const speeds: Record<string, number> = {};
-      for (const [key, sample] of Object.entries(samples)) {
-        if (sample.speed !== null) speeds[key] = sample.speed;
-      }
-      return { summary, speeds };
-    },
+    queryFn: jsonFetcher<MediaQueueResponse>(`/api/activity/queue?${params.toString()}`),
     enabled: canViewActivity && Number.isInteger(mediaId) && mediaId > 0,
     staleTime: 2_000,
     refetchInterval: 5_000,
     refetchOnWindowFocus: true,
   });
 
-  const summary = queueQuery.data?.summary ?? null;
-  const speeds = queueQuery.data?.speeds ?? {};
+  const summary = summarizeMediaDownloads(queueQuery.data?.records ?? []);
   if (!canViewActivity || !summary) return null;
 
   return (
     <section className="overflow-hidden rounded-xl border border-primary/20 bg-primary/[0.04]">
-      <div className="flex items-center justify-between gap-3 border-b border-primary/10 px-3 py-2">
-        <div className="flex min-w-0 items-center gap-2">
+      <button
+        type="button"
+        onClick={() => setExpanded((value) => !value)}
+        aria-expanded={expanded}
+        className="block w-full px-3 py-2.5 text-left active:bg-primary/[0.06]"
+      >
+        <div className="flex items-center gap-2">
           <span className="relative flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/15">
             <Download className="h-3.5 w-3.5 text-primary" />
             <span className="absolute inset-0 animate-ping rounded-full bg-primary/20 [animation-duration:2.5s]" />
           </span>
-          <p className="truncate text-sm font-medium">
-            {summary.count === 1 ? 'Downloading' : `Downloading · ${summary.count} releases`}
-          </p>
-        </div>
-        <div className="flex shrink-0 items-center gap-3">
-          {summary.progress !== null && summary.count > 1 && (
-            <span className="text-xs tabular-nums text-muted-foreground">
-              {formatPercent(summary.progress)} overall
+          <span className="min-w-0 flex-1 truncate text-sm font-medium">
+            Downloading
+            {summary.count > 1 && (
+              <span className="ml-1.5 text-xs font-normal text-muted-foreground">
+                {summary.count} releases
+              </span>
+            )}
+          </span>
+          {summary.progress !== null && (
+            <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+              {formatPercent(summary.progress)}
             </span>
           )}
+          <ChevronDown
+            className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${expanded ? 'rotate-180' : ''}`}
+          />
+        </div>
+        <Progress value={summary.progress ?? 0} className="mt-2 h-1" />
+      </button>
+      {expanded && (
+        <div className="divide-y divide-primary/10 border-t border-primary/10">
+          {summary.items.map((item) => (
+            <DownloadRow key={item.key} item={item} />
+          ))}
           <Link
             href="/activity?tab=queue"
-            className="inline-flex items-center gap-0.5 text-xs font-medium text-primary hover:underline"
+            className="flex items-center justify-center gap-1 px-3 py-2 text-xs font-medium text-primary active:bg-primary/[0.06]"
           >
-            Activity
+            Open Activity
             <ArrowUpRight className="h-3 w-3" />
           </Link>
         </div>
-      </div>
-      <div className="divide-y divide-primary/10">
-        {summary.items.map((item) => (
-          <DownloadRow key={item.key} item={item} speed={speeds[item.key] ?? null} />
-        ))}
-      </div>
+      )}
     </section>
   );
 }
 
-function DownloadRow({ item, speed }: { item: MediaDownloadItem; speed: number | null }) {
+function DownloadRow({ item }: { item: MediaDownloadItem }) {
   const downloaded = Math.max(0, item.size - item.sizeleft);
-  const stats = [
-    item.size > 0 ? `${formatBytes(downloaded)} of ${formatBytes(item.size)}` : null,
-    speed !== null && speed > 0 ? `${formatBytes(speed)}/s` : null,
-    item.downloadClient,
-  ].filter((value): value is string => Boolean(value));
 
   return (
     <div className="px-3 py-2.5">
@@ -145,7 +126,7 @@ function DownloadRow({ item, speed }: { item: MediaDownloadItem; speed: number |
           </Badge>
         )}
       </div>
-      <p className="mt-1.5 truncate text-xs text-muted-foreground" title={item.title}>
+      <p className="mt-1.5 hidden truncate text-xs text-muted-foreground sm:block" title={item.title}>
         {item.title}
       </p>
       <div className="mt-1.5 flex items-center gap-2">
@@ -154,9 +135,11 @@ function DownloadRow({ item, speed }: { item: MediaDownloadItem; speed: number |
           {formatPercent(item.progress)}
         </span>
       </div>
-      <div className="mt-1 flex items-center justify-between gap-3 text-[11px] text-muted-foreground">
-        <span className="truncate">{stats.join(' · ')}</span>
-        {item.timeLeft && <span className="shrink-0 tabular-nums">{item.timeLeft} left</span>}
+      <div className="mt-1 flex flex-wrap items-center justify-between gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground">
+        <span>
+          {item.size > 0 ? `${formatBytes(downloaded)} / ${formatBytes(item.size)}` : null}
+        </span>
+        {item.timeLeft && <span className="tabular-nums">{item.timeLeft} left</span>}
       </div>
       {item.message && (
         <p className="mt-1 line-clamp-2 text-[11px] text-orange-500/90">{item.message}</p>
@@ -169,4 +152,3 @@ function formatPercent(progress: number): string {
   if (progress > 0 && progress < 1) return '<1%';
   return `${Math.round(progress)}%`;
 }
-
