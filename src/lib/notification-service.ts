@@ -37,36 +37,30 @@ const webPushAgent = new https.Agent({
   timeout: PUSH_TIMEOUT_MS,
 });
 
+// TTL is how long the push service stores a message it could not deliver yet
+// (device offline or dozing). Android delivery goes through FCM, which parks
+// normal-urgency pushes until the device's next Doze maintenance window —
+// often more than an hour away on a locked phone. The previous 60–300s TTLs
+// expired long before that window, so FCM silently discarded most events and
+// Android never showed them, while iPhone (APNs, no Doze equivalent) got every
+// one. High urgency (set at the send call below) makes delivery immediate on a
+// reachable device; these TTLs only bound how stale a push may arrive after
+// the device was offline.
+const DEFAULT_PUSH_TTL_SECONDS = 4 * 60 * 60;
+
 const TTL_BY_EVENT: Record<string, number> = {
-  grabbed: 60,
-  imported: 60,
-  downloadFailed: 300,
-  importFailed: 300,
-  torrentAdded: 60,
-  torrentCompleted: 60,
-  torrentDeleted: 60,
-  jellyfinPlaybackStart: 60,
-  jellyfinItemAdded: 3600,
-  healthWarning: 3600,
-  serviceDown: 3600,
-  serviceRestored: 3600,
-  diskLowSpace: 3600,
+  // Only meaningful while the stream is actually live.
+  jellyfinPlaybackStart: 15 * 60,
+  // Calendar-style events stay relevant for the whole day.
   upcomingPremiere: 86400,
-  cleanupStrike: 60,
-  cleanupRemoved: 60,
   watchlistReminder: 86400,
   scheduledAlert: 86400,
-  requestCreated: 60,
-  requestApproved: 60,
-  requestAvailable: 300,
-  requestDeclined: 60,
-  requestFailed: 300,
 };
 
 function ttlForTag(tag: string | undefined): number {
-  if (!tag) return 300;
+  if (!tag) return DEFAULT_PUSH_TTL_SECONDS;
   const base = tag.split('-')[0];
-  return TTL_BY_EVENT[base] ?? 300;
+  return TTL_BY_EVENT[base] ?? DEFAULT_PUSH_TTL_SECONDS;
 }
 
 function isRetriableUpstream(statusCode?: number): boolean {
@@ -336,7 +330,16 @@ export async function sendPushNotification(
         keys: { p256dh: subscription.p256dh, auth: subscription.auth },
       },
       JSON.stringify(payload),
-      { timeout: PUSH_TIMEOUT_MS, TTL: ttlForTag(payload.tag), agent: webPushAgent }
+      {
+        timeout: PUSH_TIMEOUT_MS,
+        TTL: ttlForTag(payload.tag),
+        // web-push defaults to "normal", which FCM maps to a priority that
+        // does not wake a device in Doze. High urgency delivers immediately.
+        // Compliant with FCM's visible-notification policy: the service
+        // worker shows a notification for every push (src/app/sw.ts).
+        urgency: 'high',
+        agent: webPushAgent,
+      }
     );
     logger.debug('Push notification sent', {
       endpointHash,
