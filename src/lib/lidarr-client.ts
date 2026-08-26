@@ -1,4 +1,5 @@
 import axios, { AxiosInstance } from 'axios';
+import { ARR_RELEASE_TIMEOUT_MS } from '@/lib/arr-release-timeout';
 import { keepAliveHttpAgent, keepAliveHttpsAgent } from '@/lib/http-agents';
 import type {
   LidarrArtist,
@@ -130,13 +131,13 @@ export class LidarrClient {
     return data;
   }
 
-  private async get<T>(endpoint: string, params?: Record<string, unknown>): Promise<T> {
-    const response = await this.client.get<T>(endpoint, { params });
+  private async get<T>(endpoint: string, params?: Record<string, unknown>, config?: { timeout?: number }): Promise<T> {
+    const response = await this.client.get<T>(endpoint, { params, ...config });
     return this.fixImages(response.data);
   }
 
-  private async post<T>(endpoint: string, body?: unknown): Promise<T> {
-    const response = await this.client.post<T>(endpoint, body);
+  private async post<T>(endpoint: string, body?: unknown, config?: { timeout?: number }): Promise<T> {
+    const response = await this.client.post<T>(endpoint, body, config);
     return this.fixImages(response.data);
   }
 
@@ -245,13 +246,13 @@ export class LidarrClient {
 
   // Release (Interactive Search)
   async getReleases(params: { artistId?: number; albumId?: number }): Promise<Release[]> {
-    return this.get<Release[]>('/api/v1/release', params);
+    return this.get<Release[]>('/api/v1/release', params, { timeout: ARR_RELEASE_TIMEOUT_MS });
   }
 
   async grabRelease(guid: string, indexerId: number, downloadClientId?: number): Promise<void> {
     const body: Record<string, unknown> = { guid, indexerId };
     if (downloadClientId !== undefined) body.downloadClientId = downloadClientId;
-    await this.post('/api/v1/release', body);
+    await this.post('/api/v1/release', body, { timeout: ARR_RELEASE_TIMEOUT_MS });
   }
 
   async getDownloadClients(): Promise<DownloadClient[]> {

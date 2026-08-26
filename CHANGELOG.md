@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Interactive search and grab wait up to 300 seconds for Radarr, Sonarr, and
+  Lidarr indexer queries instead of aborting at the default 30-second HTTP
+  timeout.
+
 ## [1.4.0] - 2026-08-26
 
 ### Added
