@@ -7,6 +7,74 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-08-26
+
+### Added
+
+- Movie and series detail pages show a live download card for that title, with
+  per-release status, season or episode labeling, quality, progress, sizes,
+  download client, and a humanized time remaining. The card starts collapsed so
+  it does not dominate mobile space.
+- Seerr request filters now include `completed` and `deleted`, matching the full
+  upstream Jellyseerr status set.
+- Detail pages show locale metadata: original language and production or origin
+  country for movies, series, and anime.
+- Unscoped search with no library matches offers scoped TMDB, AniList, and other
+  fallbacks while preserving the typed query.
+- Calendar agenda is window-virtualized so only nearby rows mount and artwork
+  outside the viewport is not fetched.
+- Settings → Storage reports image-cache health, queue and running work,
+  hit/stale/miss counts, and a copy-safe diagnostic summary. The same bounded
+  summary is included in administrator support bundles.
+
+### Changed
+
+- Dashboard widgets lazy-load, gate work by capability, configured service, and
+  viewport proximity, and pause polling when offscreen.
+- The authenticated shell fetches watch-status and pending-request data only
+  while a consumer needs it. The command palette dialog loads on first open.
+- Search reuses the cached Arr library instead of refetching it on every query.
+- Activity history fetches a bounded upstream window for common filters and
+  reports when a local-only scan was truncated.
+- Image-cache bytes persist across app-container replacement on dedicated
+  Compose volumes. Fresh and stale hits skip the processing queue; true misses
+  use a fair queue, per-user and global running limits, and stale-while-revalidate.
+- Logging persists in ordered batches, caps outstanding log memory, and
+  coalesces retention scans.
+
+### Fixed
+
+- Android PWA pushes now send with high urgency and Doze-safe TTLs so FCM can
+  deliver while the device is asleep.
+- Lidarr artist and album covers load through Lidarr's authenticated media-cover
+  API, including reverse-proxy bases and custom headers.
+- Image caching works again after a Redis Lua empty-eviction encoding bug that
+  discarded successful fills and left posters blank.
+- Cold poster loading is retryable on the client, bounded on the server, and no
+  longer returns 429 merely because the processing limiter is busy.
+- Storage Usage widget rows scroll inside the dashboard card instead of being
+  clipped.
+- Anime Explore and credits pages distinguish failed requests from empty
+  results, keep cached data after a background-refetch failure, and stop
+  infinite-scroll auto-retry after a failed next page.
+- Notification device lists stay in sync after register, reconcile, revoke,
+  unsubscribe, and service-worker endpoint rotation, without exposing push key
+  material in API DTOs.
+
+### Security
+
+- Authenticated GET routes enforce capabilities and filtered service reads
+  before upstream work.
+- Login, Jellyfin auth, and Web Share Target bodies are bounded. Usernames are
+  limited to 64 Unicode characters and passwords to 1,024 UTF-8 bytes; the
+  15-character local-password minimum is unchanged.
+- The image proxy accepts only validated JPEG, PNG, and WebP within byte and
+  pixel limits, with atomic quota and LRU accounting, generation-safe purge, and
+  fail-soft Redis bypass.
+- Cross-tab auth cache boundaries and sensitive request logging were tightened.
+- Transitive production dependencies were pinned to patched `brace-expansion@5`,
+  `deepmerge-ts`, `nanoid@3`, and `undici@7`.
+
 ## [1.3.0] - 2026-07-29
 
 ### Added
