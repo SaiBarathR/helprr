@@ -1327,6 +1327,28 @@ html[data-watch-skin='cinematic']:has(.hpr-watch) [data-app-sidebar] {
   display: none;
 }
 
+/* ...and on a phone the app's own tab bar goes too. Cinematic is a full-screen
+   mode; leaving Helprr's navigation framing a streaming home is exactly the
+   "it isn't really full screen" complaint. The Watch masthead carries an Exit
+   on every viewport, so there is always a way back. */
+html[data-watch-skin='cinematic']:has(.hpr-watch) [data-app-bottom-nav] {
+  display: none;
+}
+
+/* The shell reserves room for that tab bar; with the bar gone the reservation
+   is just a dead strip at the foot of every Watch page. */
+html[data-watch-skin='cinematic']:has(.hpr-watch) .app-main {
+  padding-bottom: 0;
+}
+
+/* Bottom-nav mode pushes content below the notch for a bar that is no longer
+   there. */
+@media (max-width: 767.98px) {
+  :root[data-nav-position="bottom"][data-watch-skin='cinematic']:has(.hpr-watch) .app-main {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+}
+
 /* Tailwind's rounded-lg/xl/2xl/3xl are fixed rem values, not derived from
    --radius, so squaring the skin's corners in the token block above does not
    reach them. Normalise the long tail of one-off panels, sheets, info tables

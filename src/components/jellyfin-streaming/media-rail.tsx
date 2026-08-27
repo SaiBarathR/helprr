@@ -64,7 +64,11 @@ export function MediaRail({
 
   return (
     <section className={cn('group/row relative', cinematic ? undefined : 'space-y-2')}>
-      <div className={cn('flex items-baseline gap-2', cinematic && 'mb-2')}>
+      {/* relative + z-10: the scroller below carries a negative margin for the
+          hover expand's headroom, and without a stacking bump it covered this
+          row — the "Explore all" link was unclickable because the tiles were
+          hit-testing on top of it. */}
+      <div className={cn('flex items-baseline gap-2', cinematic && 'relative z-10 mb-1')}>
         {cinematic && href ? (
           <Link href={href} className="inline-flex items-baseline gap-1.5">
             <h2 className="text-lg font-medium tracking-tight md:text-2xl">{title}</h2>
@@ -121,7 +125,10 @@ export function MediaRail({
               // A 1.5x expand on a ~148px-tall card needs ~37px of clearance
               // on each side; the scroller's own padding is the only place it
               // can come from, and -my pulls the rows back together.
-              ? 'hpr-cine-row gap-2 py-10 -my-6'
+              // Headroom for the 1.5x expand comes from the scroller's own
+              // padding; only the bottom is pulled back, so the heading above
+              // stays clickable.
+              ? 'hpr-cine-row gap-2 py-10 -mt-4 -mb-6'
               : 'animate-rail-in gap-3 pb-2',
           )}
         >

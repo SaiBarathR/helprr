@@ -17,11 +17,7 @@ import { cn } from '@/lib/utils';
 interface NavEntry {
   href: string;
   label: string;
-  isActive: (pathname: string, search: string) => boolean;
-}
-
-function libraryHref(id: string, name: string, type: string): string {
-  return `/jellyfin/library/v/${id}?name=${encodeURIComponent(name)}&type=${encodeURIComponent(type)}`;
+  isActive: (pathname: string) => boolean;
 }
 
 /**
@@ -65,26 +61,19 @@ export function CinematicHeader() {
 
   const entries = useMemo<NavEntry[]>(() => {
     const views = home.data?.views ?? [];
-    const pick = (type: string) => views.find((view) => (view.CollectionType || '').toLowerCase() === type);
-    const shows = pick('tvshows');
-    const movies = pick('movies');
+    const has = (type: string) => views.some((view) => (view.CollectionType || '').toLowerCase() === type);
 
     const list: NavEntry[] = [
       { href: '/jellyfin/library', label: 'Home', isActive: (path) => path === '/jellyfin/library' },
     ];
-    if (shows) {
-      list.push({
-        href: libraryHref(shows.Id, shows.Name, shows.CollectionType || 'tvshows'),
-        label: 'TV Shows',
-        isActive: (path, search) => path.startsWith('/jellyfin/library/v/') && search.includes(shows.Id),
-      });
+    // TV Shows and Movies are the browsing hubs — a billboard and genre rails,
+    // the way the site presents them. The exhaustive grid lives under Browse,
+    // which is where you go when you actually want the whole list.
+    if (has('tvshows')) {
+      list.push({ href: '/jellyfin/library/shows', label: 'TV Shows', isActive: (path) => path.startsWith('/jellyfin/library/shows') });
     }
-    if (movies) {
-      list.push({
-        href: libraryHref(movies.Id, movies.Name, movies.CollectionType || 'movies'),
-        label: 'Movies',
-        isActive: (path, search) => path.startsWith('/jellyfin/library/v/') && search.includes(movies.Id),
-      });
+    if (has('movies')) {
+      list.push({ href: '/jellyfin/library/movies', label: 'Movies', isActive: (path) => path.startsWith('/jellyfin/library/movies') });
     }
     list.push(
       { href: '/jellyfin/library/new', label: 'New & Popular', isActive: (path) => path.startsWith('/jellyfin/library/new') },
@@ -96,10 +85,6 @@ export function CinematicHeader() {
   }, [home.data?.views]);
 
   if (skin !== 'cinematic') return null;
-
-  // The path the active check needs, minus the query string React Router-style
-  // hooks would give us; useSearchParams would suspend the whole header.
-  const search = typeof window === 'undefined' ? '' : window.location.search;
 
   if (compact) {
     // The app puts its header above the hero card, not over it: a wordmark row
@@ -127,7 +112,7 @@ export function CinematicHeader() {
 
         <nav aria-label="Watch sections" className="flex items-center gap-2 overflow-x-auto pt-1 scrollbar-hide">
           {entries.map((entry) => {
-            const active = entry.isActive(pathname, search);
+            const active = entry.isActive(pathname);
             return (
               <Link
                 key={entry.label}
@@ -157,7 +142,9 @@ export function CinematicHeader() {
         'sticky top-0 z-50 h-[4.5rem] md:-mb-[4.5rem]',
         '-mx-[var(--main-pad-x)] px-[var(--main-pad-x)]',
         'flex items-center gap-4 transition-colors duration-300 md:gap-6',
-        scrolled ? 'bg-[#141414]' : 'bg-gradient-to-b from-black/80 to-transparent',
+        // Transparent at rest: the billboard paints its own top ramp, and a
+        // second gradient here stacked into a visible band across the page.
+        scrolled ? 'bg-[#141414]' : 'bg-transparent',
       )}
     >
       <Link
@@ -170,7 +157,7 @@ export function CinematicHeader() {
 
       <nav aria-label="Watch sections" className="flex min-w-0 flex-1 items-center gap-4 overflow-x-auto scrollbar-hide md:gap-5">
         {entries.map((entry) => {
-          const active = entry.isActive(pathname, search);
+          const active = entry.isActive(pathname);
           return (
             <Link
               key={entry.label}
@@ -218,6 +205,11 @@ export function CinematicPageHeading() {
   const pathname = usePathname();
   if (skin !== 'cinematic') return null;
   if (pathname === '/jellyfin/library') return null;
+
+  // Hubs and detail pages set their own headings.
+  if (pathname.startsWith('/jellyfin/library/shows') || pathname.startsWith('/jellyfin/library/movies')) {
+    return <div aria-hidden className="hidden md:block md:h-[4.5rem]" />;
+  }
 
   const label = pathname.startsWith('/jellyfin/library/new') ? 'New & Popular'
     : pathname.startsWith('/jellyfin/library/favorites') ? 'My List'

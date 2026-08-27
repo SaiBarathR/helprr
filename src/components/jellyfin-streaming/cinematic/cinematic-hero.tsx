@@ -107,8 +107,12 @@ export function CinematicHero({
           synopsis sitting on near-white with no contrast at all. The
           left-to-right ramp is the one the site relies on, and it is opaque
           enough here to carry any artwork. */}
-      <span className="absolute inset-0 bg-gradient-to-r from-black from-5% via-black/75 via-45% to-transparent to-80%" />
-      <span className="absolute inset-0 bg-gradient-to-t from-black from-2% via-black/45 via-40% to-transparent to-75%" />
+      <span className="absolute inset-0 bg-gradient-to-r from-black from-10% via-black/80 via-50% to-transparent to-85%" />
+      <span className="absolute inset-0 bg-gradient-to-t from-black from-2% via-black/50 via-38% to-transparent to-72%" />
+      {/* The masthead floats over the billboard, so the billboard has to give
+          it a dark ground of its own — otherwise the nav lands on whatever the
+          artwork happens to put in its top-left corner. */}
+      <span className="absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-black/85 to-transparent" />
 
       <div className="relative flex h-full flex-col justify-end gap-4 p-6 pb-8 md:p-9 md:pb-12">
         <div className="max-w-[36rem] space-y-4">
