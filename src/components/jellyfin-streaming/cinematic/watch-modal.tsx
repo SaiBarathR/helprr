@@ -172,7 +172,13 @@ function WatchDetailModal({ itemId, onClose }: { itemId: string | null; onClose:
         // `flex flex-col` overrides DialogContent's own `grid`. It matters:
         // a stretched grid item ignores aspect-ratio for its height, so the
         // 16:9 hero collapsed and the metadata landed on top of it.
-        className="hpr-watch top-8 flex max-h-[calc(100vh-4rem)] w-[92vw] max-w-[882px] translate-y-0 flex-col gap-0 overflow-x-hidden overflow-y-auto rounded-[6px] border-0 bg-[#181818] p-0 shadow-2xl sm:max-w-[882px]"
+        // Deliberately NOT .hpr-watch. That class carries the Watch section's
+        // *layout* — min-height:100dvh and position:relative for the ambient
+        // wash — and putting it on a portalled dialog overrode Radix's
+        // position:fixed, dropping the panel into normal flow at the foot of
+        // the page where it was invisible. The palette does not need it: the
+        // tokens live on the root, which the portal is still inside.
+        className="top-8 flex max-h-[calc(100vh-4rem)] w-[92vw] max-w-[882px] translate-y-0 flex-col gap-0 overflow-x-hidden overflow-y-auto rounded-[6px] border-0 bg-[#181818] p-0 shadow-2xl sm:max-w-[882px]"
       >
         {!item ? (
           <div className="min-h-64">
