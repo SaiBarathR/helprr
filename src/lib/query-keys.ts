@@ -61,4 +61,12 @@ export const queryKeys = {
     ['discover', kind, id] as const,
   discoverCredits: (kind: 'movie' | 'tv', id: number) =>
     ['discover', kind, id, 'credits'] as const,
+
+  jellyfinHome: () => ['jellyfin', 'catalog', 'home'] as const,
+  jellyfinItems: (params: Record<string, unknown>) => ['jellyfin', 'catalog', 'items', params] as const,
+  jellyfinItem: (itemId: string, expand?: string) => ['jellyfin', 'catalog', 'item', itemId, expand ?? ''] as const,
+  jellyfinSearch: (q: string) => ['jellyfin', 'catalog', 'search', q] as const,
+  jellyfinLive: () => ['jellyfin', 'catalog', 'live'] as const,
+  jellyfinLyrics: (itemId: string) => ['jellyfin', 'catalog', 'lyrics', itemId] as const,
+  jellyfinFilters: (parentId?: string) => ['jellyfin', 'catalog', 'filters', parentId ?? 'all'] as const,
 } as const;

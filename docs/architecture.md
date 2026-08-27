@@ -22,7 +22,7 @@ The `ServiceType` enum currently covers:
 | Lidarr | Music library, albums/tracks, files, and monitoring |
 | qBittorrent | Torrents, files, transfer controls, cleanup, and schedules |
 | Prowlarr | Indexers, tests, history, sync, and statistics |
-| Jellyfin | Library/watch state, playback, sessions, devices, and control |
+| Jellyfin | Library/watch state, in-app playback (direct play, remux, HLS transcode, subtitles), sessions, devices, and control |
 | TMDB | Movie/TV discovery, metadata, collections, people, and images |
 | AniList | Anime/manga discovery, schedules, tracking, and mappings |
 | Seerr | Request creation, approval, state, users, and quotas |
@@ -47,6 +47,16 @@ Routes resolve stored `ServiceConnection` records and construct clients through
 the existing helpers. A mutating route must independently verify the actor,
 capability or role, ownership where relevant, request shape, and selected
 instance before invoking an upstream mutation.
+
+Jellyfin in-app playback follows the same boundary. The browser never talks to
+Jellyfin with an API key. Catalog and `PlaybackInfo` go through authenticated
+Helprr routes (`jellyfin.view`). Stream, subtitle, HLS, Live TV, and fallback
+font bytes go through `/api/jellyfin/media/...` after an allowlisted path check
+and the same per-item access rule as `/api/jellyfin/image`. The proxy rewrites
+HLS playlists onto Helprr URLs and strips `api_key`. Playback DeviceId is
+per-browser so Helprr users do not clobber one shared Jellyfin session. PGS
+bitmaps are not advertised for client-side overlay so the server can burn them
+in; ASS/SSA uses the same libass worker as jellyfin-web.
 
 The authenticated shell keeps the Jellyfin watch and Seerr request providers
 mounted so their React Query caches and optimistic updates survive navigation.

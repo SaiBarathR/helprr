@@ -9,6 +9,7 @@ import { QueryProvider } from '@/components/query-provider';
 import { BadgeProvider } from '@/components/layout/badge-provider';
 import { RequestedMediaProvider } from '@/components/seerr/requested-media-provider';
 import { WatchStatusProvider } from '@/components/jellyfin/watch-status-provider';
+import { JellyfinStreamingRoot } from '@/components/jellyfin-streaming/streaming-root';
 import { ImageCacheGenerationInit } from '@/components/image-cache-generation-init';
 import { getCurrentUser } from '@/lib/auth';
 import { effectiveCapabilities } from '@/lib/permissions';
@@ -67,7 +68,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <ImageCacheGenerationInit value={imageCacheGeneration} />
         <RequestedMediaProvider>
           <WatchStatusProvider>
-            <BadgeProvider>
+            <JellyfinStreamingRoot>
+              <BadgeProvider>
             <div className="flex min-h-screen bg-background">
               <StandaloneLaunchRedirect />
               <DiscoverLayoutHydrator />
@@ -75,7 +77,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               <Sidebar />
               <AppShell>{children}</AppShell>
             </div>
-            </BadgeProvider>
+              </BadgeProvider>
+            </JellyfinStreamingRoot>
           </WatchStatusProvider>
         </RequestedMediaProvider>
       </PermissionProvider>

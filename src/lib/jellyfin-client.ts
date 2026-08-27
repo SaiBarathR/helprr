@@ -22,6 +22,13 @@ import type {
   PlaybackActivityItem,
   PlaybackBreakdownEntry,
 } from '@/types/jellyfin';
+import type {
+  PlaybackInfoRequest,
+  PlaybackInfoResponse,
+  PlaybackProgressPayload,
+  MediaSegment,
+} from '@/types/jellyfin-streaming';
+import { CATALOG_ITEM_FIELDS, CATALOG_LIST_FIELDS } from '@/types/jellyfin-streaming';
 
 const CLIENT_NAME = 'Helprr';
 const CLIENT_VERSION = '1.0.0';
@@ -32,10 +39,12 @@ export class JellyfinClient {
   private client: AxiosInstance;
   private serverUrl: string;
   private userId: string;
+  private token: string;
 
   constructor(url: string, token: string, userId: string = '', customHeaders?: Record<string, string>) {
     this.serverUrl = url.replace(/\/+$/, '');
     this.userId = userId;
+    this.token = token;
     this.client = axios.create({
       baseURL: this.serverUrl,
       headers: {
@@ -206,7 +215,7 @@ export class JellyfinClient {
   async getSeriesEpisodes(seriesId: string): Promise<JellyfinItemsResponse> {
     return this.get<JellyfinItemsResponse>(`/Shows/${seriesId}/Episodes`, {
       userId: this.requireUserId(),
-      Fields: 'ProviderIds',
+      Fields: CATALOG_LIST_FIELDS,
       EnableUserData: true,
       EnableImages: false,
     });
@@ -237,8 +246,9 @@ export class JellyfinClient {
     return this.get<JellyfinItem[]>(`/Users/${this.requireUserId()}/Items/Latest`, {
       Limit: params.limit ?? 15,
       ...(params.parentId && { ParentId: params.parentId }),
-      Fields: 'Overview,DateCreated,ImageTags',
-      EnableImageTypes: 'Primary,Backdrop',
+      Fields: CATALOG_LIST_FIELDS,
+      EnableImageTypes: 'Primary,Backdrop,Thumb',
+      EnableUserData: true,
     });
   }
 
@@ -247,8 +257,42 @@ export class JellyfinClient {
       UserId: this.requireUserId(),
       Limit: params.limit ?? 10,
       Fields: params.extraFields ? `Overview,ImageTags,${params.extraFields}` : 'Overview,ImageTags',
-      EnableImageTypes: 'Primary,Backdrop',
+      EnableImageTypes: 'Primary,Backdrop,Thumb',
+      EnableUserData: true,
       MediaTypes: 'Video',
+    });
+  }
+
+  async getUpcoming(limit = 24): Promise<JellyfinItemsResponse> {
+    return this.get<JellyfinItemsResponse>('/Shows/Upcoming', {
+      UserId: this.requireUserId(),
+      Limit: limit,
+      Fields: CATALOG_LIST_FIELDS,
+      EnableImageTypes: 'Primary,Backdrop,Thumb',
+      EnableUserData: true,
+    });
+  }
+
+  async getMovieRecommendations(): Promise<Array<{ BaselineItemName?: string; RecommendationType?: string; Items?: JellyfinItem[] }>> {
+    return this.get(`/Movies/Recommendations`, {
+      userId: this.requireUserId(),
+      categoryLimit: 6,
+      itemLimit: 16,
+      Fields: CATALOG_LIST_FIELDS,
+    });
+  }
+
+  async getLocalTrailers(itemId: string): Promise<JellyfinItem[]> {
+    return this.get<JellyfinItem[]>(`/Users/${this.requireUserId()}/Items/${itemId}/LocalTrailers`);
+  }
+
+  async getLiveTvRecordings(limit = 40): Promise<JellyfinItemsResponse> {
+    return this.get<JellyfinItemsResponse>('/LiveTv/Recordings', {
+      UserId: this.requireUserId(),
+      IsInProgress: false,
+      Limit: limit,
+      Fields: CATALOG_LIST_FIELDS,
+      EnableUserData: true,
     });
   }
 
@@ -594,5 +638,221 @@ export class JellyfinClient {
       if (this.isPluginMissingError(error)) return null;
       throw error;
     }
+  }
+
+  private playbackHeaders(deviceId: string, deviceName = 'Helprr'): Record<string, string> {
+    return {
+      Authorization: `MediaBrowser Token="${this.token}", Client="${CLIENT_NAME}", Device="${deviceName}", DeviceId="${deviceId}", Version="${CLIENT_VERSION}"`,
+      'X-Emby-Token': this.token,
+    };
+  }
+
+  async getItem(itemId: string, fields: string = CATALOG_ITEM_FIELDS): Promise<JellyfinItem> {
+    return this.get<JellyfinItem>(`/Users/${this.requireUserId()}/Items/${itemId}`, {
+      Fields: fields,
+    });
+  }
+
+  async getCatalogItems(params: Record<string, unknown> = {}): Promise<JellyfinItemsResponse> {
+    return this.get<JellyfinItemsResponse>(`/Users/${this.requireUserId()}/Items`, {
+      Fields: CATALOG_LIST_FIELDS,
+      EnableImageTypes: 'Primary,Backdrop,Thumb,Logo,Banner',
+      ...params,
+    });
+  }
+
+  async getNextUp(params: { limit?: number; parentId?: string } = {}): Promise<JellyfinItemsResponse> {
+    return this.get<JellyfinItemsResponse>('/Shows/NextUp', {
+      UserId: this.requireUserId(),
+      Limit: params.limit ?? 20,
+      Fields: CATALOG_LIST_FIELDS,
+      EnableImageTypes: 'Primary,Backdrop,Thumb',
+      ...(params.parentId ? { ParentId: params.parentId } : {}),
+    });
+  }
+
+  async getSeasons(seriesId: string): Promise<JellyfinItemsResponse> {
+    return this.get<JellyfinItemsResponse>(`/Shows/${seriesId}/Seasons`, {
+      userId: this.requireUserId(),
+      Fields: CATALOG_LIST_FIELDS,
+      EnableUserData: true,
+      EnableImages: true,
+    });
+  }
+
+  async getSimilarItems(itemId: string, limit = 16): Promise<JellyfinItemsResponse> {
+    return this.get<JellyfinItemsResponse>(`/Items/${itemId}/Similar`, {
+      userId: this.requireUserId(),
+      Limit: limit,
+      Fields: CATALOG_LIST_FIELDS,
+    });
+  }
+
+  async getSpecialFeatures(itemId: string): Promise<JellyfinItem[]> {
+    return this.get<JellyfinItem[]>(`/Users/${this.requireUserId()}/Items/${itemId}/SpecialFeatures`);
+  }
+
+  async getInstantMix(itemId: string, limit = 50): Promise<JellyfinItemsResponse> {
+    return this.get<JellyfinItemsResponse>(`/Items/${itemId}/InstantMix`, {
+      UserId: this.requireUserId(),
+      Limit: limit,
+      Fields: CATALOG_LIST_FIELDS,
+    });
+  }
+
+  async getThemeMedia(itemId: string): Promise<{
+    ThemeSongsResult?: JellyfinItemsResponse;
+    ThemeVideosResult?: JellyfinItemsResponse;
+    SoundtrackSongsResult?: JellyfinItemsResponse;
+  }> {
+    return this.get(`/Items/${itemId}/ThemeMedia`, {
+      UserId: this.requireUserId(),
+      InheritFromParent: true,
+    });
+  }
+
+  async getMediaSegments(itemId: string): Promise<{ Items?: MediaSegment[] }> {
+    return this.get<{ Items?: MediaSegment[] }>(`/MediaSegments/${itemId}`);
+  }
+
+  async getLiveTvChannels(params: { limit?: number } = {}): Promise<JellyfinItemsResponse> {
+    return this.get<JellyfinItemsResponse>('/LiveTv/Channels', {
+      UserId: this.requireUserId(),
+      AddCurrentProgram: true,
+      EnableUserData: true,
+      Limit: params.limit ?? 200,
+    });
+  }
+
+  async getLiveTvPrograms(params: Record<string, unknown> = {}): Promise<JellyfinItemsResponse> {
+    return this.get<JellyfinItemsResponse>('/LiveTv/Programs', {
+      UserId: this.requireUserId(),
+      EnableUserData: true,
+      ...params,
+    });
+  }
+
+  async getLyrics(itemId: string): Promise<unknown> {
+    return this.get(`/Audio/${itemId}/Lyrics`);
+  }
+
+  async getItemFilters(parentId?: string): Promise<{
+    Genres?: string[];
+    Tags?: string[];
+    OfficialRatings?: string[];
+    Years?: number[];
+  }> {
+    return this.get('/Items/Filters', {
+      UserId: this.requireUserId(),
+      ...(parentId ? { ParentId: parentId } : {}),
+    });
+  }
+
+  async setFavorite(itemId: string, favorite: boolean): Promise<JellyfinUserData> {
+    if (favorite) {
+      const res = await this.client.post<JellyfinUserData>(`/UserFavoriteItems/${itemId}`, null, {
+        params: { userId: this.requireUserId() },
+      });
+      return res.data;
+    }
+    const res = await this.client.delete<JellyfinUserData>(`/UserFavoriteItems/${itemId}`, {
+      params: { userId: this.requireUserId() },
+    });
+    return res.data;
+  }
+
+  async getPlaybackInfo(request: PlaybackInfoRequest): Promise<PlaybackInfoResponse> {
+    const params: Record<string, unknown> = {
+      userId: this.requireUserId(),
+      startTimeTicks: request.startTimeTicks ?? 0,
+      isPlayback: request.isPlayback ?? true,
+      autoOpenLiveStream: true,
+      maxStreamingBitrate: request.maxStreamingBitrate,
+    };
+    if (request.audioStreamIndex != null) params.audioStreamIndex = request.audioStreamIndex;
+    if (request.subtitleStreamIndex != null) params.subtitleStreamIndex = request.subtitleStreamIndex;
+    if (request.mediaSourceId) params.mediaSourceId = request.mediaSourceId;
+    if (request.liveStreamId) params.liveStreamId = request.liveStreamId;
+    if (request.enableDirectPlay != null) params.enableDirectPlay = request.enableDirectPlay;
+    if (request.enableDirectStream != null) params.enableDirectStream = request.enableDirectStream;
+    if (request.allowVideoStreamCopy != null) params.allowVideoStreamCopy = request.allowVideoStreamCopy;
+    if (request.allowAudioStreamCopy != null) params.allowAudioStreamCopy = request.allowAudioStreamCopy;
+
+    const body = {
+      DeviceProfile: request.deviceProfile,
+      UserId: this.requireUserId(),
+      StartTimeTicks: request.startTimeTicks ?? 0,
+      IsPlayback: request.isPlayback ?? true,
+      AutoOpenLiveStream: true,
+      MaxStreamingBitrate: request.maxStreamingBitrate,
+      AudioStreamIndex: request.audioStreamIndex,
+      SubtitleStreamIndex: request.subtitleStreamIndex,
+      MediaSourceId: request.mediaSourceId,
+      LiveStreamId: request.liveStreamId,
+      EnableDirectPlay: request.enableDirectPlay,
+      EnableDirectStream: request.enableDirectStream,
+      AllowVideoStreamCopy: request.allowVideoStreamCopy,
+      AllowAudioStreamCopy: request.allowAudioStreamCopy,
+      AlwaysBurnInSubtitleWhenTranscoding: request.alwaysBurnInSubtitleWhenTranscoding ?? false,
+    };
+
+    const res = await this.client.post<PlaybackInfoResponse>(
+      `/Items/${request.itemId}/PlaybackInfo`,
+      body,
+      {
+        params,
+        headers: this.playbackHeaders(request.deviceId, request.deviceName),
+      },
+    );
+    return res.data;
+  }
+
+  async reportPlayback(payload: PlaybackProgressPayload): Promise<void> {
+    const path = payload.event === 'playing'
+      ? '/Sessions/Playing'
+      : payload.event === 'stopped'
+        ? '/Sessions/Playing/Stopped'
+        : '/Sessions/Playing/Progress';
+    await this.client.post(path, {
+      ItemId: payload.itemId,
+      MediaSourceId: payload.mediaSourceId,
+      PlaySessionId: payload.playSessionId,
+      PositionTicks: payload.positionTicks ?? 0,
+      IsPaused: payload.isPaused ?? false,
+      IsMuted: payload.isMuted ?? false,
+      VolumeLevel: payload.volumeLevel ?? 100,
+      PlaybackRate: payload.playbackRate ?? 1,
+      PlayMethod: payload.playMethod,
+      AudioStreamIndex: payload.audioStreamIndex,
+      SubtitleStreamIndex: payload.subtitleStreamIndex,
+      LiveStreamId: payload.liveStreamId,
+      RepeatMode: payload.repeatMode ?? 'RepeatNone',
+      ShuffleMode: payload.shuffleMode ?? 'Sorted',
+      CanSeek: payload.canSeek ?? true,
+      PlaybackStartTimeTicks: payload.playbackStartTimeTicks,
+      MaxStreamingBitrate: payload.maxStreamingBitrate,
+      EventName: payload.event === 'progress' ? 'timeupdate' : undefined,
+    }, {
+      headers: this.playbackHeaders(payload.deviceId, payload.deviceName),
+    });
+  }
+
+  async stopActiveEncodings(playSessionId: string, deviceId: string, deviceName?: string): Promise<void> {
+    await this.client.post('/Videos/ActiveEncodings/Stop', null, {
+      params: { playSessionId },
+      headers: this.playbackHeaders(deviceId, deviceName),
+    });
+  }
+
+  buildUpstreamUrl(path: string, search: URLSearchParams): string {
+    const qs = search.toString();
+    return `${this.serverUrl}${path}${qs ? `?${qs}` : ''}`;
+  }
+
+  tokenHeader(): Record<string, string> {
+    return {
+      Authorization: `MediaBrowser Token="${this.token}", Client="${CLIENT_NAME}", Device="${DEVICE_NAME}", DeviceId="${DEVICE_ID}", Version="${CLIENT_VERSION}"`,
+      'X-Emby-Token': this.token,
+    };
   }
 }

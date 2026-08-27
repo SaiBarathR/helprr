@@ -1,60 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
-import type { User } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { requireUserCapability } from '@/lib/auth';
 import { can } from '@/lib/permissions';
 import { fetchImageWithServerCache } from '@/lib/cache/image-cache';
 import { getConnectionHeaders } from '@/lib/service-connection-secrets';
-import { getJellyfinUserContext } from '@/lib/service-helpers';
-import { getRedisClient } from '@/lib/redis';
+import { canUserAccessItem } from '@/lib/jellyfin-playback/item-access';
 import { withApiLogging } from '@/lib/api-logger';
 
 const ITEM_ID_RE = /^[a-f0-9-]+$/i;
 const ALLOWED_IMAGE_TYPES = new Set(['Primary', 'Backdrop', 'Banner', 'Thumb', 'Logo']);
-const ITEM_ACCESS_TTL_SECONDS = 15 * 60;
 
-/**
- * Images are fetched with the connection's admin API key, which can read
- * artwork for any item server-wide. Members are therefore checked against
- * their own Jellyfin account first (same per-user scoping as every other
- * Jellyfin route); the verdict is cached in Redis so a poster grid doesn't
- * pay an upstream round-trip per image. Fails closed: no linked account or
- * an upstream error denies access.
- */
-async function canUserAccessItem(user: User, itemId: string): Promise<boolean> {
-  let context: Awaited<ReturnType<typeof getJellyfinUserContext>>;
-  try {
-    context = await getJellyfinUserContext(user);
-  } catch {
-    return false;
-  }
-
-  const cacheKey = `jellyfin:item-access:${context.connectionFingerprint}:${context.jellyfinUserId}:${itemId.toLowerCase()}`;
-  try {
-    const redis = await getRedisClient();
-    const cached = await redis.get(cacheKey);
-    if (cached !== null) return cached === '1';
-  } catch {
-    // Redis unavailable — fall through to a live check.
-  }
-
-  let allowed: boolean;
-  try {
-    const result = await context.client.getItems({ ids: itemId, limit: 1 });
-    allowed = (result.Items?.length ?? 0) > 0;
-  } catch {
-    return false;
-  }
-
-  try {
-    const redis = await getRedisClient();
-    await redis.set(cacheKey, allowed ? '1' : '0', { EX: ITEM_ACCESS_TTL_SECONDS });
-  } catch {
-    // Best-effort cache write.
-  }
-
-  return allowed;
-}
 
 async function getHandler(request: NextRequest): Promise<NextResponse> {
   const auth = await requireUserCapability('jellyfin.view');

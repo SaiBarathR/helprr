@@ -96,7 +96,15 @@ const POLICY_GROUPS: Record<string, readonly string[]> = {
     'POST /api/jellyfin/tasks/[taskId]',
     'DELETE /api/jellyfin/tasks/[taskId]',
   ],
-  'cap:jellyfin.watchedState': ['POST /api/jellyfin/watch-status'],
+  'cap:jellyfin.watchedState': [
+    'POST /api/jellyfin/catalog/favorite',
+    'POST /api/jellyfin/watch-status',
+  ],
+  'cap:jellyfin.view': [
+    'POST /api/jellyfin/stream/info',
+    'POST /api/jellyfin/stream/session',
+    'POST /api/jellyfin/stream/stop-encodings',
+  ],
   'cap:logs.manage': ['DELETE /api/logs/files'],
   'cap:movies.add': [
     'POST /api/radarr/collections',
@@ -402,7 +410,7 @@ describe('mutating API route capability matrix', () => {
   const assignments = policyAssignments();
 
   it('explicitly assigns every mutating handler exactly once', () => {
-    expect(handlers.size).toBe(150);
+    expect(handlers.size).toBe(154);
     expect([...assignments.keys()].sort()).toEqual([...handlers.keys()].sort());
   });
 
