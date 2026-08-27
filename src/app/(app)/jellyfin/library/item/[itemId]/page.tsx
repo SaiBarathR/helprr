@@ -27,6 +27,7 @@ import type { JellyfinMediaStream } from '@/types/jellyfin';
 import { FadeInImage } from '@/components/media/fade-in-image';
 import { HeroTitle } from '@/components/jellyfin-streaming/hero-title';
 import { CatalogTrailerRail } from '@/components/jellyfin-streaming/catalog-trailer-rail';
+import { CatalogElsewhere } from '@/components/jellyfin-streaming/catalog-elsewhere';
 import { cn } from '@/lib/utils';
 
 /** Clock time the title would finish if started now — the reference shows this. */
@@ -122,6 +123,12 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
     ['Studios', (item.Studios ?? []).map((studio) => studio.Name).filter(Boolean).join(', ')],
     ['Released', item.PremiereDate ? new Date(item.PremiereDate).toLocaleDateString() : ''],
   ] as Array<[string, string]>).filter(([, value]) => value);
+
+  // Jellyfin carries provider ids, which is the bridge to Helprr's own TMDB data.
+  const providerTmdb = Number(item.ProviderIds?.Tmdb ?? item.ProviderIds?.tmdb ?? NaN);
+  const discoverTmdbId = Number.isFinite(providerTmdb) && providerTmdb > 0 ? providerTmdb : undefined;
+  const discoverMediaType = item.Type === 'Movie' ? 'movie' as const : 'tv' as const;
+  const supportsElsewhere = item.Type === 'Movie' || item.Type === 'Series';
 
   const isMusic = item.MediaType === 'Audio' || item.Type === 'MusicAlbum' || item.Type === 'MusicArtist';
   const source = item.MediaSources?.[0];
@@ -301,6 +308,10 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
               </div>
             )}
           </div>
+        )}
+
+        {supportsElsewhere && (
+          <CatalogElsewhere tmdbId={discoverTmdbId} mediaType={discoverMediaType} />
         )}
 
         {item.Type === 'Series' && (nextUpQuery.data?.items.length ?? 0) > 0 && (

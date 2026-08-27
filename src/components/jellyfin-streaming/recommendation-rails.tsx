@@ -5,6 +5,10 @@ import { useQuery } from '@tanstack/react-query';
 import { Check } from 'lucide-react';
 import { jsonFetcher } from '@/lib/query-fetch';
 import { useCan } from '@/components/permission-provider';
+import { useRequestedMedia } from '@/components/seerr/requested-media-provider';
+import { useWatchLookup } from '@/components/jellyfin/watch-status-provider';
+import { isFullyWatched } from '@/types/watch-status';
+import { useArrQueueLookup, type ArrQueueState } from '@/components/jellyfin-streaming/use-arr-queue-lookup';
 import { FadeInImage } from '@/components/media/fade-in-image';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import type { RecommendationsResponse } from '@/lib/recommendations/rec-types';
@@ -37,6 +41,14 @@ export function RecommendationRails({ limit = 6 }: { limit?: number }) {
   const rails = (query.data?.rails ?? [])
     .filter((rail) => rail.items.length > 0 && !ALREADY_ON_HOME.has(rail.id))
     .slice(0, limit);
+
+  // Three cross-app signals, resolved once for the whole set of rails: what
+  // Jellyfin says you have watched, what is downloading in arr right now, and
+  // what you have already requested through Seerr.
+  const watchLookup = useWatchLookup(rails.length > 0);
+  const queueLookup = useArrQueueLookup();
+  const requested = useRequestedMedia(rails.length > 0);
+
   if (!canSee || rails.length === 0) return null;
 
   return (
@@ -48,7 +60,19 @@ export function RecommendationRails({ limit = 6 }: { limit?: number }) {
             {rail.reason && <p className="truncate text-[11px] text-muted-foreground">{rail.reason}</p>}
           </div>
           <div className="animate-rail-in flex gap-3 overflow-x-auto pb-2 scrollbar-hide -mx-[var(--main-pad-x)] px-[var(--main-pad-x)]">
-            {rail.items.map((item) => <RecCard key={item.itemKey} item={item} />)}
+            {rail.items.map((item) => (
+              <RecCard
+                key={item.itemKey}
+                item={item}
+                watch={watchLookup({ tmdbId: item.tmdbId, anilistId: item.anilistId })}
+                queue={queueLookup(item.arr)}
+                requested={
+                  item.tmdbId && (item.mediaType === 'movie' || item.mediaType === 'tv')
+                    ? requested.isRequested(item.mediaType, item.tmdbId)
+                    : false
+                }
+              />
+            ))}
           </div>
         </section>
       ))}
@@ -56,9 +80,22 @@ export function RecommendationRails({ limit = 6 }: { limit?: number }) {
   );
 }
 
-function RecCard({ item }: { item: RecItem }) {
+function RecCard({
+  item,
+  watch,
+  queue,
+  requested,
+}: {
+  item: RecItem;
+  watch?: ReturnType<ReturnType<typeof useWatchLookup>>;
+  queue?: ArrQueueState;
+  requested: boolean;
+}) {
   const poster = toCachedImageSrc(item.posterUrl, item.source === 'anilist' ? 'anilist' : 'tmdb');
-  const progress = item.watch?.progressPct;
+  // The watch-status overlay is authoritative — it accounts for every leaf
+  // episode — so prefer it over the snapshot baked into the rec item.
+  const played = watch ? isFullyWatched(watch) : Boolean(item.watch?.played);
+  const progress = watch?.kind === 'movie' ? watch.playedPercentage : item.watch?.progressPct;
 
   return (
     <div className="group relative w-[110px] shrink-0 sm:w-[140px] md:w-[150px] lg:w-[164px] xl:w-[180px] 2xl:w-[196px]">
@@ -90,11 +127,20 @@ function RecCard({ item }: { item: RecItem }) {
             {item.mediaType === 'movie' ? 'Movie' : item.mediaType === 'tv' ? 'Series' : 'Anime'}
           </span>
         )}
-        {item.watch?.played && (
+        {played && (
           <span className="absolute top-2 right-2 z-20 flex size-5 items-center justify-center rounded-full border border-white/15 bg-black/45 text-[var(--hpr-green)] backdrop-blur-md">
             <Check className="size-3.5" strokeWidth={3} />
           </span>
         )}
+        {queue ? (
+          <span className="absolute bottom-2 left-2 z-20 rounded-md border border-white/15 bg-black/45 px-1.5 py-0.5 text-[10px] font-semibold text-[var(--hpr-amber)] backdrop-blur-md">
+            {Math.round(queue.progressPct)}%
+          </span>
+        ) : requested && !item.owned ? (
+          <span className="absolute bottom-2 left-2 z-20 rounded-md border border-white/15 bg-black/45 px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-[var(--hpr-purple)] uppercase backdrop-blur-md">
+            Requested
+          </span>
+        ) : null}
         {typeof progress === 'number' && progress > 0 && progress < 100 && (
           <div className="absolute inset-x-0 bottom-0 z-20 h-1.5 bg-black/45 backdrop-blur-sm">
             <div className="h-full bg-[var(--hpr-amber)]" style={{ width: `${progress}%` }} />
