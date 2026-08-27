@@ -16,14 +16,14 @@ describe('youtubeTrailerKey', () => {
     expect(youtubeTrailerKey(url)).toBe(key);
   });
 
-  it.each([
+  it.each<[string | undefined, string]>([
     ['https://vimeo.com/12345', 'a non-YouTube host'],
     ['https://www.dailymotion.com/video/x8abcde', 'Dailymotion, which has no player API'],
     ['not a url', 'an unparseable value'],
     ['https://www.youtube.com/watch', 'a URL with no key'],
     [undefined, 'a missing trailer'],
   ])('returns null for %s (%s)', (url) => {
-    expect(youtubeTrailerKey(url as string | undefined)).toBeNull();
+    expect(youtubeTrailerKey(url)).toBeNull();
   });
 });
 

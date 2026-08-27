@@ -64,10 +64,10 @@ export function MediaRail({
 
   return (
     <section className={cn('group/row relative', cinematic ? undefined : 'space-y-2')}>
-      <div className={cn('flex items-baseline gap-2', cinematic && 'mb-1.5')}>
+      <div className={cn('flex items-baseline gap-2', cinematic && 'mb-2')}>
         {cinematic && href ? (
           <Link href={href} className="inline-flex items-baseline gap-1.5">
-            <h2 className="text-[15px] font-semibold tracking-tight md:text-lg">{title}</h2>
+            <h2 className="text-lg font-medium tracking-tight md:text-2xl">{title}</h2>
             {/* "Explore all" only on row hover, as the streaming apps do — a
                 shortcut, not a permanent piece of furniture. */}
             <span className="translate-x-[-4px] text-[11px] font-medium text-[var(--hpr-blue)] opacity-0 transition-all group-hover/row:translate-x-0 group-hover/row:opacity-100 group-focus-within/row:translate-x-0 group-focus-within/row:opacity-100">
@@ -75,7 +75,12 @@ export function MediaRail({
             </span>
           </Link>
         ) : (
-          <h2 className={cn('font-semibold tracking-tight', cinematic ? 'text-[15px] md:text-lg' : 'text-base')}>
+          <h2
+            className={cn(
+              'tracking-tight',
+              cinematic ? 'text-lg font-medium md:text-2xl' : 'text-base font-semibold',
+            )}
+          >
             {title}
           </h2>
         )}
@@ -113,7 +118,10 @@ export function MediaRail({
               // A scroll container clips both axes, so the hover expand takes
               // its headroom from the scroller's own padding; -my cancels the
               // gap that padding would otherwise add between rows.
-              ? 'hpr-cine-row gap-1.5 py-5 -my-3'
+              // A 1.5x expand on a ~148px-tall card needs ~37px of clearance
+              // on each side; the scroller's own padding is the only place it
+              // can come from, and -my pulls the rows back together.
+              ? 'hpr-cine-row gap-2 py-10 -my-6'
               : 'animate-rail-in gap-3 pb-2',
           )}
         >
@@ -163,7 +171,7 @@ function RailEdge({ side, hidden, onClick }: { side: 'left' | 'right'; hidden: b
       aria-label={side === 'left' ? 'Scroll left' : 'Scroll right'}
       onClick={onClick}
       className={cn(
-        'absolute inset-y-5 z-30 hidden w-[var(--main-pad-x)] min-w-9 items-center justify-center',
+        'absolute inset-y-10 z-30 hidden w-[var(--main-pad-x)] min-w-9 items-center justify-center',
         'bg-black/50 text-white opacity-0 transition-opacity',
         'group-hover/row:opacity-100 focus-visible:opacity-100 focus-visible:outline-none',
         '[@media(hover:hover)]:flex',

@@ -51,7 +51,7 @@ export function CinematicTopBar({ className }: { className?: string }) {
     <div
       className={cn(
         'sticky top-[var(--header-height,0px)] z-40 -mx-[var(--main-pad-x)] px-[var(--main-pad-x)]',
-        'flex items-center gap-3 py-2 transition-colors duration-300',
+        'flex items-center gap-2 py-2 transition-colors duration-300 md:gap-3',
         scrolled ? 'bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80' : 'bg-transparent',
         className,
       )}
@@ -68,7 +68,7 @@ export function CinematicTopBar({ className }: { className?: string }) {
         </button>
       )}
 
-      <nav aria-label="Watch sections" className="flex min-w-0 items-center gap-4 overflow-x-auto scrollbar-hide sm:gap-6">
+      <nav aria-label="Watch sections" className="flex min-w-0 items-center gap-2 overflow-x-auto scrollbar-hide md:gap-6">
         {ITEMS.map(({ href, label, icon: Icon, match }) => {
           const isActive = match(pathname);
           return (
@@ -77,12 +77,17 @@ export function CinematicTopBar({ className }: { className?: string }) {
               href={href}
               aria-current={isActive ? 'page' : undefined}
               className={cn(
-                'inline-flex shrink-0 items-center gap-1.5 text-sm transition-colors',
-                isActive ? 'font-semibold text-white' : 'font-normal text-white/65 hover:text-white',
+                'inline-flex shrink-0 items-center gap-1.5 transition-colors',
+                // Phones get labelled chips, which is what the Netflix app
+                // shows under its header; desktop gets plain text links.
+                'rounded-full border border-white/25 px-3.5 py-1.5 text-[13px] md:border-0 md:px-0 md:py-0 md:text-base',
+                isActive
+                  ? 'border-white bg-white/95 font-medium text-black md:bg-transparent md:font-medium md:text-white'
+                  : 'bg-white/5 font-normal text-white/85 hover:text-white md:bg-transparent md:text-white/65',
               )}
             >
-              <Icon className="size-4 shrink-0 sm:hidden" />
-              <span className="hidden sm:inline">{label}</span>
+              <Icon className="size-4 shrink-0 md:hidden" />
+              {label}
             </Link>
           );
         })}

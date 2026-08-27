@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { CatalogRail } from '@/components/jellyfin-streaming/catalog-rail';
 import { HeroTitle } from '@/components/jellyfin-streaming/hero-title';
-import { TrailerBackdrop } from '@/components/jellyfin-streaming/cinematic/trailer-backdrop';
+import { PreviewBackdrop } from '@/components/jellyfin-streaming/cinematic/preview-backdrop';
 import { useJellyfinPlayback } from '@/components/jellyfin-streaming/playback-provider';
 import { jellyfinBackdropUrl, jellyfinImageUrl } from '@/lib/jellyfin-playback/image';
 import { formatCertificate, formatCommunityRating } from '@/lib/jellyfin-playback/metadata';
@@ -24,6 +24,8 @@ interface WatchModalApi {
    * navigate — classic skin, small screens, or before hydration settles.
    */
   open: (itemId: string) => boolean;
+  /** True while the overlay is up, so the page behind can pause its preview. */
+  isOpen: boolean;
 }
 
 const WatchModalContext = createContext<WatchModalApi | null>(null);
@@ -89,7 +91,7 @@ export function WatchModalProvider({ children }: { children: React.ReactNode }) 
     return () => window.removeEventListener('popstate', onPopState);
   }, []);
 
-  const api = useMemo<WatchModalApi>(() => ({ open }), [open]);
+  const api = useMemo<WatchModalApi>(() => ({ open, isOpen: itemId !== null }), [open, itemId]);
 
   return (
     <WatchModalContext.Provider value={api}>
@@ -159,8 +161,10 @@ function WatchDetailModal({ itemId, onClose }: { itemId: string | null; onClose:
                 off-screen. A viewport-relative height also matches the
                 proportions these services actually use for a detail card. */}
             <div className="relative h-[42vh] max-h-[26rem] min-h-[14rem] w-full shrink-0 overflow-hidden">
-              <TrailerBackdrop
+              <PreviewBackdrop
                 backdropUrl={backdrop}
+                itemId={item.Id}
+                runtimeTicks={item.RunTimeTicks}
                 trailerUrl={item.RemoteTrailers?.[0]?.Url}
                 enabled
                 priority

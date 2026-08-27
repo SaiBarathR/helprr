@@ -1244,49 +1244,63 @@ html[data-glass] [data-bento-cell] {
    THEME_BOOTSTRAP_SCRIPT; `.hpr-watch` (the Watch route layout) scopes it, so
    the skin never leaks into the rest of Helprr.
 
-   This block is the ground: palette, accent, radius, chrome. The layout
-   itself — captionless art, the billboard, hover-expand rails — lives in the
-   cinematic components, which pick themselves via useWatchSkin(). */
+   The values below are measured from netflix.com at a 1440px viewport rather
+   than eyeballed: ground #141414, a 48px content inset, 24px on the billboard
+   and 12px on cards, an 8px rail gap, and pill CTAs. The first pass guessed a
+   full-bleed, square-cornered layout — that is the *old* Netflix; the current
+   one is inset and rounded. */
+
+/* The inset belongs on <main>, not inside the scope: rails cancel the shell
+   padding with -mx and re-apply it, so the bleed and the padding have to be
+   the same number or rows sit crooked. :has() keeps it to Watch routes. */
+html[data-watch-skin='cinematic']:has(.hpr-watch) {
+  --main-pad-x: 1rem;
+}
+
+@media (min-width: 768px) {
+  html[data-watch-skin='cinematic']:has(.hpr-watch) {
+    --main-pad-x: 3rem;
+  }
+}
 
 html[data-watch-skin='cinematic'] .hpr-watch {
   /* Near-black regardless of the app theme. Every streaming service is dark
      for the same reason: artwork becomes the only source of colour in frame.
      Overriding the shadcn tokens (rather than the components) means the
      existing bg-background / text-muted-foreground / border-border classes
-     all follow, including WatchHero's from-background scrim gradients. */
+     all follow, including the hero's from-background scrim gradients. */
   color-scheme: dark;
-  --background: #0a0a0b;
-  --foreground: #f5f5f7;
-  --card: #141416;
-  --card-foreground: #f5f5f7;
-  --popover: #18181b;
-  --popover-foreground: #f5f5f7;
-  --secondary: rgb(255 255 255 / 0.14);
-  --secondary-foreground: #f5f5f7;
-  --muted: #1c1c1f;
-  --muted-foreground: #a1a1aa;
-  --foreground-subtle: #71717a;
+  --background: #141414;
+  --foreground: #ffffff;
+  --card: #181818;
+  --card-foreground: #ffffff;
+  --popover: #181818;
+  --popover-foreground: #ffffff;
+  --secondary: rgb(128 128 128 / 0.4);
+  --secondary-foreground: #ffffff;
+  --muted: #232323;
+  --muted-foreground: #b3b3b3;
+  --foreground-subtle: #808080;
   --accent: rgb(255 255 255 / 0.1);
-  --accent-foreground: #f5f5f7;
+  --accent-foreground: #ffffff;
   --border: rgb(255 255 255 / 0.1);
   --input: rgb(255 255 255 / 0.14);
 
-  /* One dominant CTA, in white — the Netflix/Disney+ Play button. The amber
-     accent is Helprr's dashboard identity and reads as "app chrome" here. */
-  --primary: #f5f5f7;
-  --primary-foreground: #0a0a0b;
+  /* One dominant CTA, in white — the measured Play button. */
+  --primary: #ffffff;
+  --primary-foreground: #000000;
   --ring: rgb(255 255 255 / 0.6);
 
-  /* Streaming artwork is square-ish; a 10px radius reads as a card UI. */
-  --radius: 0.25rem;
+  /* 12px, the measured card radius. */
+  --radius: 0.75rem;
 
-  /* Several Watch components reach for the raw accent token directly (the
-     sub-nav active pill, card progress bars, the play affordance) and so never
-     see --primary. The scope has to neutralise the accent itself. Status
-     colours — green watched, blue unplayed — are deliberately left alone:
-     they carry meaning rather than brand. */
-  --hpr-amber: #f5f5f7;
-  --hpr-ink: #0a0a0b;
+  /* Components that reach for the raw accent token directly (the sub-nav
+     active pill, card progress bars, the play affordance) never see --primary,
+     so the scope has to neutralise the accent itself. Status colours — green
+     watched, blue unplayed — are deliberately left alone: they carry meaning
+     rather than brand. */
+  --hpr-amber: #ffffff;
+  --hpr-ink: #141414;
 
   background-color: var(--background);
   color: var(--foreground);
@@ -1297,7 +1311,7 @@ html[data-watch-skin='cinematic'] .hpr-watch {
    without this the shell's amber-tinted gradient shows through around the
    content column. */
 html[data-watch-skin='cinematic']:has(.hpr-watch) body {
-  background: #0a0a0b;
+  background: #141414;
 }
 
 /* Chrome recedes: on desktop and tablet the sidebar would keep the page from
@@ -1309,48 +1323,46 @@ html[data-watch-skin='cinematic']:has(.hpr-watch) [data-app-sidebar] {
 
 /* Tailwind's rounded-lg/xl/2xl/3xl are fixed rem values, not derived from
    --radius, so squaring the skin's corners in the token block above does not
-   reach them. The Watch section has a long tail of one-off panels, sheets,
-   info tables and episode rows using them; rather than touch every call site
-   (and re-open the same drift the next time one is added), normalise them all
-   inside the scope. rounded-full is deliberately excluded — avatars, play
-   affordances and pills are meant to stay round. */
-html[data-watch-skin='cinematic'] .hpr-watch :is(.rounded-lg, .rounded-xl, .rounded-2xl, .rounded-3xl) {
+   reach them. Normalise the long tail of one-off panels, sheets, info tables
+   and episode rows to the card radius. rounded-full is deliberately excluded —
+   pills, avatars and play affordances are meant to stay round, and so is
+   .hpr-cine-billboard, which carries the larger 24px hero radius. */
+html[data-watch-skin='cinematic'] .hpr-watch
+  :is(.rounded-lg, .rounded-xl, .rounded-2xl, .rounded-3xl):not(.hpr-cine-billboard) {
   border-radius: var(--radius);
 }
 
 /* ── Cinematic rail hover ──────────────────────────────────────────────
-   The push-aside expand, which needs sibling combinators Tailwind can't
-   express. Recipe per the Netflix teardown: a tile scaling by N% is given
-   half of the extra space on each side, so the row shifts left by N/2 and
-   everything after the hovered tile shifts right by N/2.
+   The push-aside expand. Netflix's measured preview is 394x222 against a
+   262x148 card — exactly 1.5x — and the recipe gives a scaling tile half of
+   its extra width on each side, so the row shifts left by 25% and everything
+   after the hovered tile shifts right by 25%.
 
-   Scale is deliberately modest (1.14, not Netflix's 1.5). A horizontal
-   scroll container clips BOTH axes — there is no overflow-x:auto with
-   overflow-y:visible — so a large scale either gets guillotined or forces
-   enough vertical padding to wreck the row rhythm. 14% reads clearly as an
-   expand, keeps text crisp, and fits inside the scroller's own padding.
+   A horizontal scroll container clips BOTH axes — there is no overflow-x:auto
+   with overflow-y:visible — so the headroom for that growth has to come from
+   the scroller's own vertical padding (see MediaRail).
 
-   transition-delay on the :hover state is the intent gate: brushing past a
-   row does nothing, and it costs no JS timers. */
+   transition-delay on the :hover state is the intent gate: brushing past a row
+   does nothing, and it costs no JS timers. */
 @media (hover: hover) {
   html[data-watch-skin='cinematic'] .hpr-cine-tile {
     transition: transform 300ms cubic-bezier(0.22, 0.61, 0.36, 1);
   }
 
   html[data-watch-skin='cinematic'] .hpr-cine-row:hover > .hpr-cine-tile {
-    transform: translateX(-7%);
-    transition-delay: 250ms;
+    transform: translateX(-25%);
+    transition-delay: 300ms;
   }
 
   html[data-watch-skin='cinematic'] .hpr-cine-tile:hover ~ .hpr-cine-tile {
-    transform: translateX(7%);
-    transition-delay: 250ms;
+    transform: translateX(25%);
+    transition-delay: 300ms;
   }
 
   html[data-watch-skin='cinematic'] .hpr-cine-row > .hpr-cine-tile:hover,
   html[data-watch-skin='cinematic'] .hpr-cine-row > .hpr-cine-tile:focus-within {
-    transform: scale(1.14);
-    transition-delay: 250ms;
+    transform: scale(1.5);
+    transition-delay: 300ms;
     z-index: 20;
   }
 
@@ -1359,7 +1371,7 @@ html[data-watch-skin='cinematic'] .hpr-watch :is(.rounded-lg, .rounded-xl, .roun
   html[data-watch-skin='cinematic'] .hpr-cine-tile:hover .hpr-cine-reveal,
   html[data-watch-skin='cinematic'] .hpr-cine-tile:focus-within .hpr-cine-reveal {
     opacity: 1;
-    transition-delay: 250ms;
+    transition-delay: 300ms;
   }
 }
 

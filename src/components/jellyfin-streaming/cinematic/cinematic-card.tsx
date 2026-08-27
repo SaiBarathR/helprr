@@ -5,6 +5,7 @@ import { Check, Play } from 'lucide-react';
 import type { JellyfinItem } from '@/types/jellyfin';
 import { FadeInImage } from '@/components/media/fade-in-image';
 import { catalogHref, type CatalogCardProps } from '@/components/jellyfin-streaming/card-shared';
+import { useCompactViewport } from '@/lib/hooks/use-compact-viewport';
 import { useWatchModal } from '@/components/jellyfin-streaming/cinematic/watch-modal';
 import {
   cardAspectClass,
@@ -21,9 +22,9 @@ import { cn } from '@/lib/utils';
  * across a desktop viewport, not the nine or ten a management UI fits.
  */
 const WIDTH_CLASS: Record<CatalogCardShape, string> = {
-  portrait: 'w-[132px] sm:w-[156px] md:w-[172px] lg:w-[188px] xl:w-[204px] 2xl:w-[220px]',
-  square: 'w-[132px] sm:w-[156px] md:w-[172px] lg:w-[188px] xl:w-[204px] 2xl:w-[220px]',
-  landscape: 'w-[212px] sm:w-[248px] md:w-[272px] lg:w-[296px] xl:w-[320px] 2xl:w-[344px]',
+  portrait: 'w-[112px] sm:w-[132px] md:w-[148px] lg:w-[160px] xl:w-[176px] 2xl:w-[196px]',
+  square: 'w-[112px] sm:w-[132px] md:w-[148px] lg:w-[160px] xl:w-[176px] 2xl:w-[196px]',
+  landscape: 'w-[168px] sm:w-[196px] md:w-[220px] lg:w-[240px] xl:w-[262px] 2xl:w-[292px]',
 };
 
 const SIZES: Record<CatalogCardShape, string> = {
@@ -60,14 +61,22 @@ export function CinematicCard({
   onPlay,
   priority = false,
   className,
-  shape = 'landscape',
+  shape: requestedShape = 'landscape',
   upcoming = false,
   subtitle,
   identity = 'item',
 }: CatalogCardProps) {
   const modal = useWatchModal();
+  const compact = useCompactViewport();
+  // The Netflix app puts portrait posters in its phone rails; 16:9 stills only
+  // appear from tablet up. The frame decides which artwork is fetched, so this
+  // cannot be a media query.
+  const shape = compact && requestedShape === 'landscape' ? 'portrait' : requestedShape;
   const asSeries = identity === 'series' && item.Type === 'Episode' && Boolean(item.SeriesName);
-  const image = (asSeries ? jellyfinSeriesCardImage(item, 600) : null)
+  // The series-level art is a 16:9 thumb, so it only belongs in a 16:9 frame;
+  // dropping it into a portrait tile crops most of the picture away. For
+  // portrait, jellyfinCardImage already borrows the series *poster*.
+  const image = (asSeries && shape === 'landscape' ? jellyfinSeriesCardImage(item, 600) : null)
     ?? jellyfinCardImage(item, 600, shape);
   const progress = item.UserData?.PlayedPercentage;
   const unplayed = item.UserData?.UnplayedItemCount;
@@ -78,7 +87,7 @@ export function CinematicCard({
 
   return (
     <div className={cn('hpr-cine-tile group relative shrink-0', WIDTH_CLASS[shape], className)}>
-      <div className={cn('relative overflow-hidden rounded-sm bg-white/5', cardAspectClass(shape))}>
+      <div className={cn('relative overflow-hidden rounded-xl bg-white/5', cardAspectClass(shape))}>
         {image ? (
           <FadeInImage
             src={image}
@@ -95,17 +104,20 @@ export function CinematicCard({
           </div>
         )}
 
-        {/* Touch has no hover, so the title has to be permanently legible
-            there. On pointer devices this scrim stays out of the way and the
-            reveal below does the work. */}
-        <span className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-2/5 bg-gradient-to-t from-black/85 to-transparent [@media(hover:hover)]:hidden" />
-        {/* pr-12 keeps the title clear of the touch play affordance. */}
-        <span className="pointer-events-none absolute inset-x-0 bottom-0 z-10 p-2 pr-12 text-[11px] font-medium text-white [@media(hover:hover)]:hidden">
-          <span className="line-clamp-2">{title}</span>
-        </span>
+        {/* Touch has no hover, so a 16:9 still needs its title written on it.
+            A portrait poster does not: the title is part of the artwork, which
+            is exactly why the Netflix app runs bare posters on phones. */}
+        {shape === 'landscape' && (
+          <>
+            <span className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-2/5 bg-gradient-to-t from-black/85 to-transparent [@media(hover:hover)]:hidden" />
+            <span className="pointer-events-none absolute inset-x-0 bottom-0 z-10 p-2 text-[11px] font-medium text-white [@media(hover:hover)]:hidden">
+              <span className="line-clamp-2">{title}</span>
+            </span>
+          </>
+        )}
 
         {upcoming && (
-          <span className="absolute top-2 left-2 z-20 rounded-sm bg-black/60 px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-white uppercase backdrop-blur-md">
+          <span className="absolute top-2 left-2 z-20 rounded bg-black/60 px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-white uppercase backdrop-blur-md">
             Upcoming
           </span>
         )}
@@ -118,7 +130,7 @@ export function CinematicCard({
           </span>
         )}
         {typeof unplayed === 'number' && unplayed > 0 && (
-          <span className="absolute top-2 right-2 z-20 min-w-5 rounded-sm bg-black/60 px-1.5 text-center text-[11px] font-semibold text-white backdrop-blur-md">
+          <span className="absolute top-2 right-2 z-20 min-w-5 rounded bg-black/60 px-1.5 text-center text-[11px] font-semibold text-white backdrop-blur-md">
             {unplayed}
           </span>
         )}
@@ -151,9 +163,10 @@ export function CinematicCard({
           </div>
         )}
 
-        {/* Touch devices get the play affordance permanently, since they never
-            reach the hover reveal that carries it on pointer devices. */}
-        {playable && (
+        {/* Touch devices get a play affordance on 16:9 tiles, which have room
+            for it. Portrait posters do not carry one in the Netflix app —
+            tapping the poster opens the title, and that is the whole gesture. */}
+        {playable && shape === 'landscape' && (
           <button
             type="button"
             aria-label={`Play ${title}`}
@@ -179,7 +192,7 @@ export function CinematicCard({
           // overlay; the anchor then navigates as normal.
           if (modal?.open(item.Id)) event.preventDefault();
         }}
-        className="absolute inset-0 z-10 rounded-sm focus-visible:ring-2 focus-visible:ring-white focus-visible:outline-none"
+        className="absolute inset-0 z-10 rounded-xl focus-visible:ring-2 focus-visible:ring-white focus-visible:outline-none"
       />
     </div>
   );

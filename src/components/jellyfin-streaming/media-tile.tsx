@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { Check, Play } from 'lucide-react';
 import { FadeInImage } from '@/components/media/fade-in-image';
 import { useWatchSkin } from '@/lib/hooks/use-watch-skin';
+import { useCompactViewport } from '@/lib/hooks/use-compact-viewport';
 import { cardAspectClass, type CatalogCardShape } from '@/lib/jellyfin-playback/image';
 import { cn } from '@/lib/utils';
 
@@ -27,9 +28,9 @@ const WIDTH: Record<'classic' | 'cinematic', Record<CatalogCardShape, string>> =
     landscape: 'w-[184px] sm:w-[224px] md:w-[240px] lg:w-[264px] xl:w-[288px] 2xl:w-[312px]',
   },
   cinematic: {
-    portrait: 'w-[132px] sm:w-[156px] md:w-[172px] lg:w-[188px] xl:w-[204px] 2xl:w-[220px]',
-    square: 'w-[132px] sm:w-[156px] md:w-[172px] lg:w-[188px] xl:w-[204px] 2xl:w-[220px]',
-    landscape: 'w-[212px] sm:w-[248px] md:w-[272px] lg:w-[296px] xl:w-[320px] 2xl:w-[344px]',
+    portrait: 'w-[112px] sm:w-[132px] md:w-[148px] lg:w-[160px] xl:w-[176px] 2xl:w-[196px]',
+    square: 'w-[112px] sm:w-[132px] md:w-[148px] lg:w-[160px] xl:w-[176px] 2xl:w-[196px]',
+    landscape: 'w-[168px] sm:w-[196px] md:w-[220px] lg:w-[240px] xl:w-[262px] 2xl:w-[292px]',
   },
 };
 
@@ -73,7 +74,7 @@ export function MediaTile({
   lines = [],
   href,
   onActivate,
-  shape = 'portrait',
+  shape: requestedShape = 'portrait',
   unoptimized = true,
   priority = false,
   topLeftBadge,
@@ -85,8 +86,11 @@ export function MediaTile({
 }: MediaTileProps) {
   const skin = useWatchSkin();
   const cinematic = skin === 'cinematic';
+  const compact = useCompactViewport();
+  // Phone rails are portrait in the Netflix app; 16:9 starts at tablet.
+  const shape = cinematic && compact && requestedShape === 'landscape' ? 'portrait' : requestedShape;
   const captions = lines.filter((line): line is string => Boolean(line));
-  const badgeShape = cinematic ? 'rounded-sm bg-black/60' : 'rounded-md border border-white/15 bg-black/45';
+  const badgeShape = cinematic ? 'rounded bg-black/60' : 'rounded-md border border-white/15 bg-black/45';
 
   return (
     <div
@@ -101,7 +105,7 @@ export function MediaTile({
         className={cn(
           'relative overflow-hidden',
           cardAspectClass(shape),
-          cinematic ? 'rounded-sm bg-white/5' : 'rounded-xl border border-border/40 bg-muted/60',
+          cinematic ? 'rounded-xl bg-white/5' : 'rounded-xl border border-border/40 bg-muted/60',
         )}
       >
         {imageUrl ? (
@@ -247,7 +251,7 @@ export function MediaTile({
           className={cn(
             'absolute inset-0 z-10 focus-visible:outline-none',
             cinematic
-              ? 'rounded-sm focus-visible:ring-2 focus-visible:ring-white'
+              ? 'rounded-xl focus-visible:ring-2 focus-visible:ring-white'
               : 'rounded-xl focus-visible:ring-2 focus-visible:ring-[var(--hpr-amber)]',
           )}
         />
@@ -259,7 +263,7 @@ export function MediaTile({
           className={cn(
             'absolute inset-0 z-10 focus-visible:outline-none',
             cinematic
-              ? 'rounded-sm focus-visible:ring-2 focus-visible:ring-white'
+              ? 'rounded-xl focus-visible:ring-2 focus-visible:ring-white'
               : 'rounded-xl focus-visible:ring-2 focus-visible:ring-[var(--hpr-amber)]',
           )}
         />

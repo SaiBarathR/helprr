@@ -30,7 +30,7 @@ import { HeroTitle } from '@/components/jellyfin-streaming/hero-title';
 import { CatalogTrailerRail } from '@/components/jellyfin-streaming/catalog-trailer-rail';
 import { CatalogElsewhere } from '@/components/jellyfin-streaming/catalog-elsewhere';
 import { CatalogRatingsStrip } from '@/components/jellyfin-streaming/catalog-ratings-strip';
-import { TrailerBackdrop } from '@/components/jellyfin-streaming/cinematic/trailer-backdrop';
+import { PreviewBackdrop } from '@/components/jellyfin-streaming/cinematic/preview-backdrop';
 import { useWatchSkin } from '@/lib/hooks/use-watch-skin';
 import { cn } from '@/lib/utils';
 
@@ -149,8 +149,10 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
   return (
     <div className="pb-28">
       <section className="relative -mx-[var(--main-pad-x)] -mt-[var(--main-pad-top)] flex min-h-[68vh] flex-col overflow-hidden">
-        <TrailerBackdrop
+        <PreviewBackdrop
           backdropUrl={backdrop}
+          itemId={item.IsFolder ? undefined : item.Id}
+          runtimeTicks={item.RunTimeTicks}
           trailerUrl={trailers[0]?.Url}
           // Autoplay is a cinematic-skin behaviour; classic stays still art.
           enabled={skin === 'cinematic'}
