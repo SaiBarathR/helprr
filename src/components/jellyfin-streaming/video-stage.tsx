@@ -7,12 +7,12 @@ import {
   Gauge,
   ListMusic,
   Maximize,
-  MoreHorizontal,
   Pause,
   PictureInPicture2,
   Play,
   Repeat,
   Repeat1,
+  Settings,
   Shuffle,
   SkipBack,
   SkipForward,
@@ -143,6 +143,24 @@ export function VideoStage() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [expanded]);
+
+  // Buffered range for the seek bar. Read from the element rather than the
+  // context because the provider does not track it.
+  const [bufferedSeconds, setBufferedSeconds] = useState(0);
+  useEffect(() => {
+    const el = mediaRef.current;
+    if (!el || !expanded) return undefined;
+    const read = () => {
+      const ranges = el.buffered;
+      setBufferedSeconds(ranges.length > 0 ? ranges.end(ranges.length - 1) : 0);
+    };
+    el.addEventListener('progress', read);
+    el.addEventListener('timeupdate', read);
+    return () => {
+      el.removeEventListener('progress', read);
+      el.removeEventListener('timeupdate', read);
+    };
+  }, [expanded, mediaRef]);
 
   const audios = audioStreams(playback.stream);
   const subs = subtitleStreams(playback.stream);
@@ -305,7 +323,6 @@ export function VideoStage() {
                       {playback.item?.SeriesName
                         ? `${playback.item.SeriesName} · S${playback.item.ParentIndexNumber ?? 0}E${playback.item.IndexNumber ?? 0}`
                         : playback.item?.ProductionYear}
-                      {playback.stream ? ` · ${playMethodLabel(playback.stream.playMethod)}` : ''}
                     </p>
                   </div>
                   <Button variant="ghost" size="icon" className="text-white" onClick={() => playback.setVideoExpanded(false)} aria-label="Minimize player">
@@ -313,81 +330,8 @@ export function VideoStage() {
                   </Button>
                 </div>
 
-                <div className="space-y-3 p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
-                  <SeekBar
-                    positionSeconds={playback.positionSeconds}
-                    durationSeconds={playback.durationSeconds}
-                    onSeek={playback.seek}
-                    trickplayAt={trickplayAt}
-                  />
-                  <div className="flex items-center justify-between text-[11px] text-white/70">
-                    <span>{formatClock(playback.positionSeconds)}</span>
-                    <span>{formatClock(playback.durationSeconds)}</span>
-                  </div>
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-1">
-                      <Button variant="ghost" size="icon" className="text-white" onClick={() => playback.skip(-10)} aria-label="Back 10 seconds">
-                        <SkipBack />
-                      </Button>
-                      <Button variant="ghost" size="icon" className="text-white" onClick={playback.togglePause} aria-label={playback.status === 'paused' ? 'Play' : 'Pause'}>
-                        {playback.status === 'paused' ? <Play className="fill-current" /> : <Pause className="fill-current" />}
-                      </Button>
-                      <Button variant="ghost" size="icon" className="text-white" onClick={() => playback.skip(10)} aria-label="Forward 10 seconds">
-                        <SkipForward />
-                      </Button>
-                      <Button variant="ghost" size="icon" className="text-white" onClick={() => playback.setMuted(!playback.muted)} aria-label={playback.muted ? 'Unmute' : 'Mute'}>
-                        {playback.muted || playback.volume === 0 ? <VolumeX /> : <Volume2 />}
-                      </Button>
-                      <input
-                        type="range"
-                        min={0}
-                        max={1}
-                        step={0.01}
-                        value={playback.muted ? 0 : playback.volume}
-                        aria-label="Volume"
-                        className="hidden w-20 accent-[var(--hpr-amber)] sm:block"
-                        onChange={(event) => {
-                          playback.setMuted(false);
-                          playback.setVolume(Number(event.target.value));
-                        }}
-                      />
-                    </div>
-                    <div className="flex items-center justify-end gap-1">
-                      {/* Twelve controls in one wrapping row filled 40% of a
-                          phone screen, so the low-frequency half moves behind
-                          this overflow below sm and stays inline above it. */}
-                      <span className="hidden items-center gap-1 sm:inline-flex">{secondaryControls}</span>
-                      <Button variant="ghost" size="icon" className="text-white" onClick={() => setPanel(panel === 'subs' ? 'none' : 'subs')} aria-label="Subtitles">
-                        <Subtitles />
-                      </Button>
-                      <Button variant="ghost" size="icon" className="text-white" onClick={() => playback.setQueueOpen(!playback.queueOpen)} aria-label="Queue">
-                        <ListMusic />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="text-white"
-                        aria-label="Fullscreen"
-                        onClick={() => {
-                          const root = document.documentElement;
-                          if (document.fullscreenElement) void document.exitFullscreen();
-                          else void root.requestFullscreen?.();
-                        }}
-                      >
-                        <Maximize />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="text-white sm:hidden"
-                        aria-label="More controls"
-                        aria-expanded={panel === 'more'}
-                        onClick={() => setPanel(panel === 'more' ? 'none' : 'more')}
-                      >
-                        <MoreHorizontal />
-                      </Button>
-                    </div>
-                  </div>
+                <div className="space-y-2 p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+                  {/* Panels sit above the controls, which are now the top row. */}
                   {panel === 'more' && (
                     <Panel>
                       <div className="flex flex-wrap items-center gap-1">{secondaryControls}</div>
@@ -479,6 +423,96 @@ export function VideoStage() {
                       </p>
                     </Panel>
                   )}
+                  {/* Reference order: controls, then the bar, then the clock. */}
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-1">
+                      <Button variant="ghost" size="icon" className="text-white" onClick={() => playback.skip(-10)} aria-label="Back 10 seconds">
+                        <SkipBack />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon-lg"
+                        className="text-white"
+                        onClick={playback.togglePause}
+                        aria-label={playback.status === 'paused' ? 'Play' : 'Pause'}
+                      >
+                        {playback.status === 'paused'
+                          ? <Play className="size-7 fill-current" />
+                          : <Pause className="size-7 fill-current" />}
+                      </Button>
+                      <Button variant="ghost" size="icon" className="text-white" onClick={() => playback.skip(10)} aria-label="Forward 10 seconds">
+                        <SkipForward />
+                      </Button>
+                      <Button variant="ghost" size="icon" className="text-white" onClick={() => playback.setMuted(!playback.muted)} aria-label={playback.muted ? 'Unmute' : 'Mute'}>
+                        {playback.muted || playback.volume === 0 ? <VolumeX /> : <Volume2 />}
+                      </Button>
+                      <input
+                        type="range"
+                        min={0}
+                        max={1}
+                        step={0.01}
+                        value={playback.muted ? 0 : playback.volume}
+                        aria-label="Volume"
+                        className="hidden w-20 accent-[var(--hpr-amber)] sm:block"
+                        onChange={(event) => {
+                          playback.setMuted(false);
+                          playback.setVolume(Number(event.target.value));
+                        }}
+                      />
+                    </div>
+                    <div className="flex items-center justify-end gap-1">
+                      <Button variant="ghost" size="icon" className="text-white" onClick={() => setPanel(panel === 'subs' ? 'none' : 'subs')} aria-label="Subtitles">
+                        <Subtitles />
+                      </Button>
+                      <Button variant="ghost" size="icon" className="text-white" onClick={() => playback.setQueueOpen(!playback.queueOpen)} aria-label="Queue">
+                        <ListMusic />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="text-white"
+                        aria-label="Fullscreen"
+                        onClick={() => {
+                          const root = document.documentElement;
+                          if (document.fullscreenElement) void document.exitFullscreen();
+                          else void root.requestFullscreen?.();
+                        }}
+                      >
+                        <Maximize />
+                      </Button>
+                      {/* Everything low-frequency lives behind one gear, on every
+                          breakpoint — twelve inline controls was a debug toolbar. */}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="text-white"
+                        aria-label="Player settings"
+                        aria-expanded={panel === 'more'}
+                        onClick={() => setPanel(panel === 'more' ? 'none' : 'more')}
+                      >
+                        <Settings />
+                      </Button>
+                    </div>
+                  </div>
+
+                  <SeekBar
+                    positionSeconds={playback.positionSeconds}
+                    durationSeconds={playback.durationSeconds}
+                    bufferedSeconds={bufferedSeconds}
+                    chapters={chapters}
+                    onSeek={playback.seek}
+                    trickplayAt={trickplayAt}
+                  />
+
+                  <div className="flex items-center justify-between text-[11px] tabular-nums text-white/70">
+                    <span>{formatClock(playback.positionSeconds)}</span>
+                    <span>
+                      {playback.durationSeconds > 0
+                        ? `-${formatClock(Math.max(0, playback.durationSeconds - playback.positionSeconds))}`
+                        : formatClock(playback.durationSeconds)}
+                    </span>
+                  </div>
+
                 </div>
               </div>
             )}
@@ -522,6 +556,7 @@ export function VideoStage() {
             </div>
             <div className="w-full max-w-md space-y-2">
               <SeekBar
+                bare
                 positionSeconds={playback.positionSeconds}
                 durationSeconds={playback.durationSeconds}
                 onSeek={playback.seek}
@@ -615,15 +650,18 @@ function SeekBar({
   durationSeconds,
   onSeek,
   trickplayAt,
-  className,
-  accentClassName = 'accent-[var(--hpr-amber)]',
+  bufferedSeconds = 0,
+  chapters = [],
+  bare = false,
 }: {
   positionSeconds: number;
   durationSeconds: number;
   onSeek: (seconds: number) => void;
   trickplayAt?: (seconds: number) => TrickplayTile | null;
-  className?: string;
-  accentClassName?: string;
+  bufferedSeconds?: number;
+  chapters?: Array<{ Name?: string; StartPositionTicks?: number }>;
+  /** Audio player uses the plain native control; video draws its own track. */
+  bare?: boolean;
 }) {
   const [dragSeconds, setDragSeconds] = useState<number | null>(null);
   const [previewSeconds, setPreviewSeconds] = useState<number | null>(null);
@@ -689,24 +727,62 @@ function SeekBar({
           </p>
         </div>
       )}
-      <input
-        type="range"
-        min={0}
-        max={max}
-        step={0.1}
-        value={value}
-        aria-label="Seek"
-        aria-valuetext={formatClock(value)}
-        className={cn('w-full', accentClassName, className)}
-        onChange={(event) => {
-          const next = Number(event.target.value);
-          dragRef.current = next;
-          setDragSeconds(next);
-        }}
-        onPointerUp={commit}
-        onKeyUp={commit}
-        onBlur={commit}
-      />
+      <span className={cn('relative block', bare ? '' : 'h-4')}>
+        {!bare && (
+          <>
+            <span className="pointer-events-none absolute inset-x-0 top-1/2 h-1 -translate-y-1/2 overflow-hidden rounded-full bg-white/25">
+              <span
+                className="absolute inset-y-0 left-0 bg-white/40"
+                style={{ width: `${Math.min(100, (bufferedSeconds / max) * 100)}%` }}
+              />
+              <span
+                className="absolute inset-y-0 left-0 bg-[var(--hpr-amber)]"
+                style={{ width: `${Math.min(100, (value / max) * 100)}%` }}
+              />
+            </span>
+            {chapters.map((chapter, chapterIndex) => {
+              const at = ticksToSeconds(chapter.StartPositionTicks);
+              if (at <= 0 || at >= max) return null;
+              return (
+                <span
+                  key={`${chapter.StartPositionTicks}-${chapterIndex}`}
+                  aria-hidden
+                  className="pointer-events-none absolute top-1/2 h-2 w-px -translate-y-1/2 bg-white/70"
+                  style={{ left: `${(at / max) * 100}%` }}
+                />
+              );
+            })}
+            <span
+              aria-hidden
+              className="pointer-events-none absolute top-1/2 size-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[var(--hpr-amber)] shadow"
+              style={{ left: `${Math.min(100, (value / max) * 100)}%` }}
+            />
+          </>
+        )}
+        <input
+          type="range"
+          min={0}
+          max={max}
+          step={0.1}
+          value={value}
+          aria-label="Seek"
+          aria-valuetext={formatClock(value)}
+          className={cn(
+            'w-full',
+            bare
+              ? 'accent-[var(--hpr-amber)]'
+              : 'absolute inset-0 h-full cursor-pointer appearance-none bg-transparent [&::-moz-range-thumb]:size-3 [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-transparent [&::-webkit-slider-thumb]:size-3 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:bg-transparent',
+          )}
+          onChange={(event) => {
+            const next = Number(event.target.value);
+            dragRef.current = next;
+            setDragSeconds(next);
+          }}
+          onPointerUp={commit}
+          onKeyUp={commit}
+          onBlur={commit}
+        />
+      </span>
     </div>
   );
 }
