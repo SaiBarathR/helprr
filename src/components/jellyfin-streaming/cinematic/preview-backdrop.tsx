@@ -11,6 +11,7 @@ import {
   trailerPlayerLayout,
   youtubeTrailerKey,
 } from '@/lib/jellyfin-playback/youtube-embed';
+import { useUIStore } from '@/lib/store';
 import { cn } from '@/lib/utils';
 
 /** How long the artwork holds before a preview is attempted. */
@@ -75,7 +76,10 @@ export function PreviewBackdrop({
 
   const reducedMotion = typeof window !== 'undefined'
     && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const active = enabled && !paused && !reducedMotion;
+  // Opt-out lives in Settings → Appearance → Watch: a preview can cost the
+  // server a transcode, which is the owner's call on their own hardware.
+  const previewsAllowed = useUIStore((s) => s.watchPreviews);
+  const active = enabled && previewsAllowed && !paused && !reducedMotion;
   const videoKey = active ? youtubeTrailerKey(trailerUrl) : null;
 
   // Hold the artwork briefly before spending anything on a preview.

@@ -251,7 +251,7 @@ function cloneDiscoverFilters(filters: DiscoverFiltersState): DiscoverFiltersSta
   };
 }
 
-export const STORE_VERSION = 46;
+export const STORE_VERSION = 47;
 
 // Matches the calendar backdrop's previously hardcoded Tailwind `opacity-35`.
 export const DEFAULT_CALENDAR_IMAGE_OPACITY = 35;
@@ -481,6 +481,9 @@ export function migrateUiPrefs(persisted: unknown, version: number): Record<stri
   if (version < 46) {
     state.watchSkin = 'classic';
   }
+  if (version < 47) {
+    state.watchPreviews = true;
+  }
   if (!isMediaWatchFilterPreference(state.moviesWatchFilter)) {
     state.moviesWatchFilter = 'all';
   }
@@ -638,6 +641,9 @@ interface UIState {
   // Watch section presentation skin (drives data-watch-skin on <html>)
   watchSkin: WatchSkinPreference;
   setWatchSkin: (skin: WatchSkinPreference) => void;
+  // Autoplay muted previews in the cinematic skin's hero and detail overlay
+  watchPreviews: boolean;
+  setWatchPreviews: (v: boolean) => void;
   // Navigation preferences
   navPosition: 'top' | 'bottom';
   setNavPosition: (position: 'top' | 'bottom') => void;
@@ -763,6 +769,7 @@ const PERSISTED_KEYS = [
   'calendarShowImages',
   'calendarImageOpacity',
   'watchSkin',
+  'watchPreviews',
   'navPosition',
   'navOrder',
   'disabledNavItems',
@@ -998,6 +1005,8 @@ export const useUIStore = create<UIState>()(
       // Watch skin
       watchSkin: 'classic',
       setWatchSkin: (skin) => set({ watchSkin: skin }),
+      watchPreviews: true,
+      setWatchPreviews: (v) => set({ watchPreviews: v }),
       // Navigation
       navPosition: 'top',
       setNavPosition: (position: 'top' | 'bottom') => set({ navPosition: position }),

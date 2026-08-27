@@ -25,6 +25,30 @@ const ITEMS = [
  * item is marked by weight and colour alone, as on every service.
  */
 export function CinematicTopBar({ className }: { className?: string }) {
+  return (
+    <>
+      <CinematicNavBar className={className} />
+      <CinematicPageHeading />
+    </>
+  );
+}
+
+/**
+ * The section name, shown large under the nav.
+ *
+ * Helprr's house rule is sr-only page titles, and the classic skin keeps it.
+ * The cinematic skin is a deliberate exception: every page on the site except
+ * Home leads with its name set large, and without it the grids opened on a
+ * bare row of tiles with no sense of where you were.
+ */
+function CinematicPageHeading() {
+  const pathname = usePathname();
+  const active = ITEMS.find((entry) => entry.match(pathname));
+  if (!active || active.href === '/jellyfin/library') return null;
+  return <h1 className="mt-2 mb-4 text-2xl font-medium tracking-tight md:text-3xl">{active.label}</h1>;
+}
+
+function CinematicNavBar({ className }: { className?: string }) {
   const pathname = usePathname();
   const router = useRouter();
   const [scrolled, setScrolled] = useState(false);
@@ -50,7 +74,7 @@ export function CinematicTopBar({ className }: { className?: string }) {
   return (
     <div
       className={cn(
-        'sticky top-[var(--header-height,0px)] z-40 -mx-[var(--main-pad-x)] px-[var(--main-pad-x)]',
+        'sticky top-[var(--header-height,0px)] z-40 w-full -mx-[var(--main-pad-x)] px-[var(--main-pad-x)]',
         'flex items-center gap-2 py-2 transition-colors duration-300 md:gap-3',
         scrolled ? 'bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80' : 'bg-transparent',
         className,

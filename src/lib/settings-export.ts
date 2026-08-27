@@ -100,7 +100,7 @@ export const UI_PREF_CATEGORY_FIELDS: Record<UiPrefCategoryId, readonly string[]
     'liquidGlass', 'glassMode', 'glassIntensity',
   ],
   interaction: ['hapticsEnabled'],
-  watch: ['watchSkin'],
+  watch: ['watchSkin', 'watchPreviews'],
   playback: ['subtitleAppearance'],
   search: ['searchHistory'],
 };

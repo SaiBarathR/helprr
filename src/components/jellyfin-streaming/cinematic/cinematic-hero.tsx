@@ -94,12 +94,18 @@ export function CinematicHero({
         controlsClassName="absolute top-4 right-4 md:top-auto md:bottom-12 md:right-9"
       />
 
-      {/* Black-based scrims only, per the project's image-scrim convention. */}
-      <span className="absolute inset-0 bg-gradient-to-t from-background from-12% via-background/70 via-52% to-transparent" />
-      <span className="absolute inset-0 bg-gradient-to-r from-background/90 via-background/25 to-transparent" />
+      {/* Black-based scrims only, per the project's image-scrim convention.
+          These are load-bearing, not decoration: library artwork is not
+          curated for text overlay the way a streaming service's is, and a
+          light backdrop (a pale poster, a snow scene) left the title and
+          synopsis sitting on near-white with no contrast at all. The
+          left-to-right ramp is the one the site relies on, and it is opaque
+          enough here to carry any artwork. */}
+      <span className="absolute inset-0 bg-gradient-to-r from-black from-5% via-black/75 via-45% to-transparent to-80%" />
+      <span className="absolute inset-0 bg-gradient-to-t from-black from-2% via-black/45 via-40% to-transparent to-75%" />
 
       <div className="relative flex h-full flex-col justify-end gap-4 p-6 pb-8 md:p-9 md:pb-12">
-        <div className="max-w-xl space-y-4">
+        <div className="max-w-[36rem] space-y-4">
           <HeroTitle
             name={item.Name}
             logoUrl={logo}
@@ -108,7 +114,7 @@ export function CinematicHero({
           />
 
           {item.Overview && (
-            <p className="line-clamp-3 max-w-lg text-sm text-white/85 md:text-base">{item.Overview}</p>
+            <p className="line-clamp-3 max-w-[30rem] text-sm text-white/90 md:text-base">{item.Overview}</p>
           )}
 
           <div className="flex flex-wrap items-center gap-2 pt-1">
