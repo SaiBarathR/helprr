@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { LogOut, Search } from 'lucide-react';
+import { useCompactViewport } from '@/lib/hooks/use-compact-viewport';
 import { jsonFetcher } from '@/lib/query-fetch';
 import { queryKeys } from '@/lib/query-keys';
 import { useUIStore } from '@/lib/store';
@@ -39,6 +40,7 @@ function libraryHref(id: string, name: string, type: string): string {
 export function CinematicHeader() {
   const skin = useWatchSkin();
   const pathname = usePathname();
+  const compact = useCompactViewport();
   const [scrolled, setScrolled] = useState(false);
 
   const navOrder = useUIStore((s) => s.navOrder);
@@ -98,12 +100,60 @@ export function CinematicHeader() {
   // hooks would give us; useSearchParams would suspend the whole header.
   const search = typeof window === 'undefined' ? '' : window.location.search;
 
+  if (compact) {
+    // The app puts its header above the hero card, not over it: a wordmark row
+    // and then a row of chips. Overlaying a portrait poster the way the
+    // desktop billboard is overlaid buries the artwork's own title.
+    return (
+      <header className="sticky top-0 z-50 -mx-[var(--main-pad-x)] bg-[#141414] px-[var(--main-pad-x)] pt-1 pb-2">
+        <div className="flex items-center gap-3 py-1">
+          <Link
+            href="/jellyfin/library"
+            aria-label="Watch home"
+            className="text-xl font-extrabold tracking-[-0.04em] text-[#e50914] uppercase"
+          >
+            Helprr
+          </Link>
+          <span className="ml-auto flex items-center gap-4">
+            <Link href="/jellyfin/library/search" aria-label="Search" className="text-white">
+              <Search className="size-[22px]" />
+            </Link>
+            <Link href={exitHref} aria-label="Leave the Watch section" className="text-white">
+              <LogOut className="size-[22px]" />
+            </Link>
+          </span>
+        </div>
+
+        <nav aria-label="Watch sections" className="flex items-center gap-2 overflow-x-auto pt-1 scrollbar-hide">
+          {entries.map((entry) => {
+            const active = entry.isActive(pathname, search);
+            return (
+              <Link
+                key={entry.label}
+                href={entry.href}
+                aria-current={active ? 'page' : undefined}
+                className={cn(
+                  'shrink-0 rounded-full border px-3.5 py-1.5 text-[13px] whitespace-nowrap transition-colors',
+                  active
+                    ? 'border-white bg-white font-medium text-black'
+                    : 'border-white/25 bg-white/5 font-normal text-white/85',
+                )}
+              >
+                {entry.label}
+              </Link>
+            );
+          })}
+        </nav>
+      </header>
+    );
+  }
+
   return (
     <header
       className={cn(
         // Sticky and pulled back over the content, so the billboard runs to the
         // very top of the page with the header floating on it — as on the site.
-        'sticky top-0 z-50 -mb-[4.5rem] h-[4.5rem]',
+        'sticky top-0 z-50 h-[4.5rem] md:-mb-[4.5rem]',
         '-mx-[var(--main-pad-x)] px-[var(--main-pad-x)]',
         'flex items-center gap-4 transition-colors duration-300 md:gap-6',
         scrolled ? 'bg-[#141414]' : 'bg-gradient-to-b from-black/80 to-transparent',
@@ -175,9 +225,9 @@ export function CinematicPageHeading() {
           : null;
 
   // Detail pages have their own hero, so they only need the clearance.
-  if (!label) return <div aria-hidden className="h-[4.5rem]" />;
+  if (!label) return <div aria-hidden className="hidden md:block md:h-[4.5rem]" />;
 
   return (
-    <h1 className="pt-[5.5rem] pb-4 text-2xl font-medium tracking-tight md:text-3xl">{label}</h1>
+    <h1 className="pt-4 pb-4 text-2xl font-medium tracking-tight md:pt-[5.5rem] md:text-3xl">{label}</h1>
   );
 }
