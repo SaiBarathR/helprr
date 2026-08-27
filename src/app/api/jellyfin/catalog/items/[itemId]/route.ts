@@ -28,13 +28,19 @@ async function getHandler(
     const payload: CatalogItemDetailResponse = { linked: true, item };
 
     const jobs: Array<Promise<void>> = [];
-    if (item.Type === 'Series') {
-      jobs.push(client.getSeasons(itemId).then((data) => { payload.seasons = data.Items ?? []; }).catch(() => {
+    if (item.Type === 'Series' || item.Type === 'Season' || item.Type === 'Episode') {
+      // Season and episode pages need the sibling seasons to offer a picker.
+      const seriesId = item.Type === 'Series' ? itemId : (item.SeriesId || item.ParentId || itemId);
+      jobs.push(client.getSeasons(seriesId).then((data) => { payload.seasons = data.Items ?? []; }).catch(() => {
         payload.seasons = [];
       }));
     }
-    if (expand.has('episodes') && (item.Type === 'Season' || item.Type === 'Series')) {
-      jobs.push(client.getSeriesEpisodes(item.Type === 'Season' ? item.SeriesId || item.ParentId || itemId : itemId).then((data) => {
+    if (expand.has('episodes') && (item.Type === 'Season' || item.Type === 'Series' || item.Type === 'Episode')) {
+      // A season lists only its own episodes; an episode lists its season's, so
+      // the page can offer "More from Season N".
+      const seriesId = item.Type === 'Series' ? itemId : (item.SeriesId || item.ParentId || itemId);
+      const seasonId = item.Type === 'Season' ? itemId : item.Type === 'Episode' ? item.SeasonId : undefined;
+      jobs.push(client.getSeriesEpisodes(seriesId, seasonId).then((data) => {
         payload.episodes = data.Items ?? [];
       }).catch(() => {
         payload.episodes = [];

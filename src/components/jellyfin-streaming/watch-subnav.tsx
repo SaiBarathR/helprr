@@ -16,7 +16,7 @@ const ITEMS = [
 export function WatchSubNav() {
   const pathname = usePathname();
   return (
-    <nav aria-label="Watch sections" className="inline-flex items-center gap-0.5 rounded-lg border border-border bg-card/60 p-0.5">
+    <nav aria-label="Watch sections" className="inline-flex items-center gap-0.5 rounded-lg border border-border p-0.5 app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
       {ITEMS.map(({ href, label, icon: Icon, match }) => {
         const isActive = match(pathname);
         return (

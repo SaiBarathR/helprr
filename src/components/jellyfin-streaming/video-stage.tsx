@@ -583,7 +583,7 @@ export function VideoStage() {
       )}
 
       {playback.queueOpen && (
-        <div className="fixed inset-y-0 right-0 z-[90] flex w-full max-w-sm flex-col border-l bg-background shadow-2xl">
+        <div className="app-glass-overlay fixed inset-y-0 right-0 z-[90] flex w-full max-w-sm flex-col border-l bg-background shadow-2xl">
           <div className="flex items-center justify-between border-b p-3">
             <p className="text-sm font-semibold">Queue · {playback.queue.length}</p>
             <Button variant="ghost" size="icon-sm" onClick={() => playback.setQueueOpen(false)} aria-label="Close queue">
@@ -912,7 +912,7 @@ function SubtitleAppearanceControls({
 
 function Panel({ children }: { children: React.ReactNode }) {
   return (
-    <div className="max-h-48 overflow-y-auto rounded-lg bg-black/70 p-2">
+    <div className="app-glass-overlay max-h-48 overflow-y-auto rounded-lg border border-white/10 bg-black/70 p-2">
       <div className="flex flex-col gap-1">{children}</div>
     </div>
   );

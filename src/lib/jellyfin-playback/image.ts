@@ -12,12 +12,15 @@ export function jellyfinImageUrl(
   return `/api/jellyfin/image?${params.toString()}`;
 }
 
-export function jellyfinBackdropUrl(item: { Id: string; BackdropImageTags?: string[]; ParentId?: string; SeriesId?: string }): string | null {
+export function jellyfinBackdropUrl(
+  item: { Id: string; BackdropImageTags?: string[]; ParentId?: string; SeriesId?: string },
+  width = 1920,
+): string | null {
   if (item.BackdropImageTags && item.BackdropImageTags.length > 0) {
-    return jellyfinImageUrl(item.Id, 'Backdrop', 1920);
+    return jellyfinImageUrl(item.Id, 'Backdrop', width);
   }
-  if (item.SeriesId) return jellyfinImageUrl(item.SeriesId, 'Backdrop', 1920);
-  if (item.ParentId) return jellyfinImageUrl(item.ParentId, 'Backdrop', 1920);
+  if (item.SeriesId) return jellyfinImageUrl(item.SeriesId, 'Backdrop', width);
+  if (item.ParentId) return jellyfinImageUrl(item.ParentId, 'Backdrop', width);
   // No tags and no parent to borrow from: requesting it anyway is a guaranteed
   // 404 that FadeInImage then retries three times.
   return null;

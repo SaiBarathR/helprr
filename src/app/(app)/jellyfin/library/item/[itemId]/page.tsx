@@ -24,6 +24,7 @@ import type { CatalogItemDetailResponse } from '@/types/jellyfin-streaming';
 import type { JellyfinMediaStream } from '@/types/jellyfin';
 import { FadeInImage } from '@/components/media/fade-in-image';
 import { HeroTitle } from '@/components/jellyfin-streaming/hero-title';
+import { cn } from '@/lib/utils';
 
 /** Clock time the title would finish if started now — the reference shows this. */
 function endsAt(remainingSeconds: number): string | null {
@@ -56,8 +57,30 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
   if (query.isError) return <ErrorState message="Couldn't load this title." onRetry={() => void query.refetch()} />;
   if (!item) return <ErrorState message="This title isn't in your Jellyfin library." />;
 
+  // Season and episode pages lead with the *series* identity, as the reference
+  // does: series logo and backdrop up top, the specific season or episode as a
+  // subtitle beneath it.
+  const isChildOfSeries = item.Type === 'Season' || item.Type === 'Episode';
+  const seriesId = isChildOfSeries ? (item.SeriesId ?? item.ParentId) : undefined;
+  const heroName = isChildOfSeries ? (item.SeriesName ?? item.Name) : item.Name;
+  const heroSubtitle = item.Type === 'Season'
+    ? item.Name
+    : item.Type === 'Episode'
+      ? [item.SeasonName ?? (item.ParentIndexNumber != null ? `Season ${item.ParentIndexNumber}` : null),
+         item.IndexNumber != null ? `${item.IndexNumber}. ${item.Name}` : item.Name]
+          .filter(Boolean).join(' · ')
+      : item.OriginalTitle && item.OriginalTitle !== item.Name
+        ? item.OriginalTitle
+        : null;
+
   const backdrop = jellyfinBackdropUrl(item);
-  const logo = item.ImageTags?.Logo ? jellyfinImageUrl(item.Id, 'Logo', 720) : null;
+  // Borrow the series logo for a season or episode — they rarely have their own.
+  const logoOwnerId = item.ImageTags?.Logo ? item.Id : (isChildOfSeries ? seriesId : undefined);
+  const logo = item.ImageTags?.Logo
+    ? jellyfinImageUrl(item.Id, 'Logo', 720)
+    : logoOwnerId
+      ? jellyfinImageUrl(logoOwnerId, 'Logo', 720)
+      : null;
   const runtimeSeconds = ticksToSeconds(item.RunTimeTicks);
   const resumeSeconds = ticksToSeconds(item.UserData?.PlaybackPositionTicks);
   const canResume = resumeSeconds > 0;
@@ -91,12 +114,24 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
           </div>
 
           <HeroTitle
-            name={item.Name}
+            name={heroName}
             logoUrl={logo}
             align="center"
             frameClassName="mt-16 h-20 w-64 md:h-28 md:w-96"
             textClassName="mt-16 text-3xl font-semibold tracking-tight text-balance md:text-4xl"
           />
+
+          {heroSubtitle && (
+            <p className="text-sm font-medium text-foreground/90">
+              {seriesId ? (
+                <Link href={`/jellyfin/library/item/${seriesId}`} className="text-muted-foreground hover:text-foreground">
+                  {heroName}
+                </Link>
+              ) : null}
+              {seriesId ? <span className="text-muted-foreground"> · </span> : null}
+              {heroSubtitle}
+            </p>
+          )}
 
           <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
             {certificate && (
@@ -104,7 +139,9 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
                 {certificate}
               </span>
             )}
-            {item.ProductionYear && <span>{item.ProductionYear}</span>}
+            {item.Type === 'Episode' && item.PremiereDate
+              ? <span>{new Date(item.PremiereDate).toLocaleDateString()}</span>
+              : item.ProductionYear ? <span>{item.ProductionYear}</span> : null}
             {runtimeSeconds > 0 && <span>{formatClock(runtimeSeconds)}</span>}
             {rating && <span className="font-medium text-foreground">{rating}</span>}
             {typeof item.CriticRating === 'number' && item.CriticRating > 0 && (
@@ -216,12 +253,38 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
           </div>
         )}
 
-        {query.data?.seasons && query.data.seasons.length > 0 && (
+        {item.Type === 'Series' && query.data?.seasons && query.data.seasons.length > 0 && (
           <CatalogRail title="Seasons" items={query.data.seasons} onPlay={(next) => void playback.playItem(next)} />
+        )}
+
+        {/* Season picker on season and episode pages, so you can move sideways
+            without going back up to the series. */}
+        {isChildOfSeries && (query.data?.seasons?.length ?? 0) > 1 && (
+          <div className="flex flex-wrap gap-1.5">
+            {query.data!.seasons!.map((season) => (
+              <Link
+                key={season.Id}
+                href={`/jellyfin/library/item/${season.Id}`}
+                aria-current={season.Id === (item.Type === 'Season' ? item.Id : item.SeasonId) ? 'page' : undefined}
+                className={cn(
+                  'rounded-full border px-3 py-1 text-xs transition-colors',
+                  season.Id === (item.Type === 'Season' ? item.Id : item.SeasonId)
+                    ? 'border-[var(--hpr-amber)] bg-[var(--hpr-amber)] text-[var(--hpr-ink)]'
+                    : 'border-border text-muted-foreground hover:border-foreground hover:text-foreground',
+                )}
+              >
+                {season.Name}
+              </Link>
+            ))}
+          </div>
         )}
         {query.data?.episodes && query.data.episodes.length > 0 && (
           <section className="space-y-2">
-            <h2 className="text-base font-semibold">Episodes</h2>
+            <h2 className="text-base font-semibold">
+              {item.Type === 'Episode'
+                ? `More from ${item.SeasonName ?? 'this season'}`
+                : 'Episodes'}
+            </h2>
             <div className="flex flex-col gap-2">
               {query.data.episodes.map((episode) => {
                 const still = jellyfinCardImage(episode, 320, 'landscape');
@@ -231,7 +294,10 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
                     key={episode.Id}
                     type="button"
                     onClick={() => void playback.playItem(episode)}
-                    className="flex items-center gap-3 rounded-xl border bg-card/60 p-2 text-left transition-colors hover:bg-accent"
+                    className={cn(
+                      'flex items-center gap-3 rounded-xl border bg-card/60 p-2 text-left transition-colors hover:bg-accent',
+                      episode.Id === item.Id && 'border-[var(--hpr-amber)]',
+                    )}
                   >
                     <div className="relative aspect-video w-32 shrink-0 overflow-hidden rounded-lg bg-muted">
                       {still && (

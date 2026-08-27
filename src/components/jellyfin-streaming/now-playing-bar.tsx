@@ -15,7 +15,7 @@ export function NowPlayingBar() {
   const poster = jellyfinPosterUrl(playback.item, 120);
 
   return (
-    <div className="fixed inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] z-40 border-t bg-background/95 px-3 py-2 backdrop-blur md:bottom-0">
+    <div className="fixed inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] z-40 border-t px-3 py-2 md:bottom-0 app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
       <div className="mx-auto flex max-w-5xl items-center gap-3">
         <button
           type="button"

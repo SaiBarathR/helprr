@@ -196,7 +196,7 @@ export default function LibraryBrowserPage() {
         </div>
 
         {availableViews.length > 1 && (
-          <div className="inline-flex items-center gap-0.5 rounded-lg border border-border bg-card/60 p-0.5">
+          <div className="inline-flex items-center gap-0.5 rounded-lg border border-border p-0.5 app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
             {availableViews.map((option) => (
               <button
                 key={option.id}

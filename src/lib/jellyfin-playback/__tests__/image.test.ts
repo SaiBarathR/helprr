@@ -80,4 +80,9 @@ describe('jellyfinBackdropUrl', () => {
   it('returns null rather than a url that is certain to 404', () => {
     expect(jellyfinBackdropUrl({ Id: 'a' })).toBeNull();
   });
+
+  it('honours a narrower width so the hero can mount several layers', () => {
+    expect(jellyfinBackdropUrl({ Id: 'a', BackdropImageTags: ['t'] }, 1280)).toContain('maxWidth=1280');
+    expect(jellyfinBackdropUrl({ Id: 'a', BackdropImageTags: ['t'] })).toContain('maxWidth=1920');
+  });
 });

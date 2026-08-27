@@ -212,12 +212,21 @@ export class JellyfinClient {
    * ParentIndexNumber = season, IndexNumber = episode — the keys we match on
    * (episodes rarely carry provider ids). UserData carries Played / progress.
    */
-  async getSeriesEpisodes(seriesId: string): Promise<JellyfinItemsResponse> {
+  /**
+   * Episodes for a series, optionally scoped to one season.
+   *
+   * Season pages must pass `seasonId`; without it Jellyfin returns every
+   * episode in the series, which made a season page list the whole show.
+   * Images stay enabled because episode rows render 16:9 stills.
+   */
+  async getSeriesEpisodes(seriesId: string, seasonId?: string): Promise<JellyfinItemsResponse> {
     return this.get<JellyfinItemsResponse>(`/Shows/${seriesId}/Episodes`, {
       userId: this.requireUserId(),
       Fields: CATALOG_LIST_FIELDS,
       EnableUserData: true,
-      EnableImages: false,
+      EnableImages: true,
+      EnableImageTypes: 'Primary,Thumb',
+      ...(seasonId ? { SeasonId: seasonId } : {}),
     });
   }
 

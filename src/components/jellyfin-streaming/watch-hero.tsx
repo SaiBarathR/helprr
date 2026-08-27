@@ -40,8 +40,13 @@ export function WatchHero({
 
   if (items.length === 0) return null;
   const item = items[Math.min(index, items.length - 1)]!;
-  const backdrop = jellyfinBackdropUrl(item);
   const logo = item.ImageTags?.Logo ? jellyfinImageUrl(item.Id, 'Logo', 640) : null;
+  // Every slide stays mounted in a fixed order. Keying one <img> on the item
+  // reset its load state and flashed the shimmer; mounting only a moving window
+  // reordered the DOM, and reordered nodes drop their CSS transition. A stable
+  // list of five layers is the only version that actually crossfades. Widths are
+  // capped below 1920 to keep five backdrops affordable.
+  const layers = items;
   const runtime = ticksToSeconds(item.RunTimeTicks) > 0 ? formatClock(ticksToSeconds(item.RunTimeTicks)) : null;
   const certificate = formatCertificate(item.OfficialRating);
   const rating = formatCommunityRating(item.CommunityRating);
@@ -55,18 +60,30 @@ export function WatchHero({
       onFocusCapture={() => setPaused(true)}
       onBlurCapture={() => setPaused(false)}
     >
-      {backdrop && (
-        <FadeInImage
-          key={item.Id}
-          src={backdrop}
-          alt=""
-          fill
-          sizes="100vw"
-          priority
-          unoptimized
-          className="object-cover"
-        />
-      )}
+      {layers.map((slide, slideIndex) => {
+        const src = jellyfinBackdropUrl(slide, 1280);
+        if (!src) return null;
+        return (
+          <span
+            key={slide.Id}
+            aria-hidden={slideIndex !== index}
+            className={cn(
+              'absolute inset-0 transition-opacity duration-700 motion-reduce:transition-none',
+              slideIndex === index ? 'opacity-100' : 'opacity-0',
+            )}
+          >
+            <FadeInImage
+              src={src}
+              alt=""
+              fill
+              sizes="100vw"
+              priority={slideIndex === 0}
+              unoptimized
+              className="object-cover"
+            />
+          </span>
+        );
+      })}
       {/* Black-based scrims only, per the project's image-scrim convention. */}
       <span className="absolute inset-0 bg-gradient-to-t from-background from-30% via-background/80 via-60% to-transparent" />
       <span className="absolute inset-0 bg-gradient-to-r from-background/85 via-background/20 to-transparent" />
