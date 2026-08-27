@@ -1,7 +1,8 @@
 'use client';
 
-import { use, useMemo, useState } from 'react';
+import { use, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, Film, HardDrive, Heart, ListPlus, Play, RotateCcw, Shuffle, User } from 'lucide-react';
 import { jsonFetcher } from '@/lib/query-fetch';
@@ -21,7 +22,7 @@ import {
 import { formatClock, ticksToSeconds } from '@/lib/jellyfin-playback/device';
 import { formatBytes } from '@/lib/format';
 import { formatCertificate, formatCommunityRating } from '@/lib/jellyfin-playback/metadata';
-import type { CatalogItemDetailResponse } from '@/types/jellyfin-streaming';
+import type { CatalogItemDetailResponse, CatalogItemsResponse } from '@/types/jellyfin-streaming';
 import type { JellyfinMediaStream } from '@/types/jellyfin';
 import { FadeInImage } from '@/components/media/fade-in-image';
 import { HeroTitle } from '@/components/jellyfin-streaming/hero-title';
@@ -49,6 +50,25 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
   });
 
   const item = query.data?.item;
+
+  // ?play=1 lets other pages hand off straight into playback.
+  const searchParams = useSearchParams();
+  const autoPlayRequested = searchParams.get('play') === '1';
+  const autoPlayedRef = useRef(false);
+  useEffect(() => {
+    if (!autoPlayRequested || autoPlayedRef.current) return;
+    const target = query.data?.item;
+    if (!target || target.IsFolder) return;
+    autoPlayedRef.current = true;
+    void playback.playItem(target);
+  }, [autoPlayRequested, playback, query.data?.item]);
+
+  // The reference series page leads its sections with Next Up.
+  const nextUpQuery = useQuery({
+    queryKey: ['jellyfin', 'catalog', 'next-up', itemId],
+    queryFn: jsonFetcher<CatalogItemsResponse>(`/api/jellyfin/catalog/next-up?parentId=${encodeURIComponent(itemId)}`),
+    enabled: query.data?.item?.Type === 'Series',
+  });
   const streams = useMemo(() => item?.MediaStreams ?? [], [item]);
   const audioStreams = useMemo(() => streams.filter((s) => s.Type === 'Audio'), [streams]);
   const subtitleStreams = useMemo(() => streams.filter((s) => s.Type === 'Subtitle'), [streams]);
@@ -281,6 +301,15 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
           </div>
         )}
 
+        {item.Type === 'Series' && (nextUpQuery.data?.items.length ?? 0) > 0 && (
+          <CatalogRail
+            title="Next up"
+            shape="landscape"
+            items={nextUpQuery.data!.items}
+            onPlay={(next) => void playback.playItem(next)}
+          />
+        )}
+
         {item.Type === 'Series' && query.data?.seasons && query.data.seasons.length > 0 && (
           <CatalogRail title="Seasons" items={query.data.seasons} onPlay={(next) => void playback.playItem(next)} />
         )}
@@ -306,7 +335,7 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
             ))}
           </div>
         )}
-        {query.data?.episodes && query.data.episodes.length > 0 && (
+        {item.Type !== 'Series' && query.data?.episodes && query.data.episodes.length > 0 && (
           <section className="space-y-2">
             <h2 className="text-base font-semibold">
               {item.Type === 'Episode'

@@ -79,6 +79,7 @@ import {
   useWatchStatus,
 } from '@/components/jellyfin/watch-status-provider';
 import { MarkWatchedMenuItem } from '@/components/jellyfin/mark-watched-button';
+import { PlayInHelprrButton } from '@/components/jellyfin/play-in-helprr-button';
 import { buildMarkWatchedContextAction } from '@/lib/mark-watched-context-action';
 import { arrEditHref, arrManageHref } from '@/lib/arr-edit-href';
 import { WatchStatusInline } from '@/components/jellyfin/watch-status-indicator';
@@ -917,6 +918,13 @@ export default function MovieDetailPage() {
 
         {/* Cast & Crew */}
         {credits.length > 0 && <MovieCreditsSection credits={credits} movieId={movieId} instance={instance} />}
+
+        {/* Straight into Helprr's own player when the title is in Jellyfin. */}
+        <PlayInHelprrButton
+          imdbId={movie.imdbId}
+          tmdbId={movie.tmdbId}
+          className="h-10 w-full rounded-full"
+        />
 
         {/* Pill buttons */}
         <div className="flex gap-3">
