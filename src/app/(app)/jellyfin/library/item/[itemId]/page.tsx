@@ -49,6 +49,7 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
   const { itemId } = use(params);
   const playback = useJellyfinPlayback();
   const skin = useWatchSkin();
+  const cinematic = skin === 'cinematic';
   const [audioIndex, setAudioIndex] = useState<number | null>(null);
   const [subtitleIndex, setSubtitleIndex] = useState<number | null>(null);
   const query = useQuery({
@@ -161,9 +162,24 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
           // section nav and the Exit link, and the toggle collided with them.
           controlsClassName="absolute right-4 bottom-4 md:right-6 md:bottom-6"
         />
-        <span className="absolute inset-0 bg-gradient-to-t from-background from-28% via-background/80 via-58% to-transparent" />
+        {/* Cinematic uses the site's left-to-right ramp so the copy column
+            always has a dark ground, whatever the artwork happens to be.
+            Classic keeps the centred bottom fade it was designed around. */}
+        {cinematic ? (
+          <>
+            <span className="absolute inset-0 bg-gradient-to-r from-black from-5% via-black/75 via-45% to-transparent to-80%" />
+            <span className="absolute inset-0 bg-gradient-to-t from-black from-2% via-black/45 via-40% to-transparent to-75%" />
+          </>
+        ) : (
+          <span className="absolute inset-0 bg-gradient-to-t from-background from-28% via-background/80 via-58% to-transparent" />
+        )}
 
-        <div className="relative z-10 flex flex-1 flex-col items-center justify-end gap-3 p-[var(--main-pad-x)] pb-6 text-center">
+        <div
+          className={cn(
+            'relative z-10 flex flex-1 flex-col justify-end gap-3 p-[var(--main-pad-x)] pb-6',
+            cinematic ? 'items-start text-left' : 'items-center text-center',
+          )}
+        >
           <div className="absolute inset-x-4 top-4 md:inset-x-6 md:top-6">
             <WatchTopBar />
           </div>
@@ -171,9 +187,12 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
           <HeroTitle
             name={heroName}
             logoUrl={logo}
-            align="center"
+            align={cinematic ? 'left' : 'center'}
             frameClassName="mt-16 h-20 w-64 md:h-28 md:w-96"
-            textClassName="mt-16 text-3xl font-semibold tracking-tight text-balance md:text-4xl"
+            textClassName={cn(
+              'mt-16 tracking-tight text-balance',
+              cinematic ? 'text-4xl font-bold md:text-5xl' : 'text-3xl font-semibold md:text-4xl',
+            )}
           />
 
           {heroSubtitle && (
@@ -188,7 +207,12 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
             </p>
           )}
 
-          <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
+          <div
+            className={cn(
+              'flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground',
+              cinematic ? 'justify-start' : 'justify-center',
+            )}
+          >
             {certificate && (
               <span className="rounded border border-current px-1.5 py-px text-[11px] font-medium tracking-wide">
                 {certificate}
@@ -212,7 +236,12 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
             <CatalogRatingsStrip tmdbId={discoverTmdbId} mediaType={discoverMediaType} />
           )}
 
-          <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
+          <div
+            className={cn(
+              'flex flex-wrap items-center gap-2 pt-1',
+              cinematic ? 'justify-start' : 'justify-center',
+            )}
+          >
             <Button size="lg" className="rounded-full px-6" onClick={() => void playback.playItem(item, trackOptions)}>
               <Play className="fill-current" data-icon="inline-start" />
               {canResume ? `Resume · ${formatClock(resumeSeconds)}` : 'Play'}
@@ -250,7 +279,18 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
 
           {item.Taglines?.[0] && <p className="text-sm italic text-muted-foreground">{item.Taglines[0]}</p>}
           {item.Overview && (
-            <p className="max-w-3xl text-sm leading-relaxed text-muted-foreground">{item.Overview}</p>
+            <p
+              className={cn(
+                'leading-relaxed',
+                // The site keeps its synopsis in a narrow column so it stays
+                // inside the scrim rather than running out over bright art.
+                cinematic
+                  ? 'max-w-[36rem] text-base text-white/90'
+                  : 'max-w-3xl text-sm text-muted-foreground',
+              )}
+            >
+              {item.Overview}
+            </p>
           )}
         </div>
       </section>
