@@ -4,7 +4,7 @@ import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { jsonFetcher } from '@/lib/query-fetch';
 import { queryKeys } from '@/lib/query-keys';
-import { WatchSubNav } from '@/components/jellyfin-streaming/watch-subnav';
+import { WatchTopBar } from '@/components/jellyfin-streaming/watch-top-bar';
 import { CatalogRail } from '@/components/jellyfin-streaming/catalog-rail';
 import { useJellyfinPlayback } from '@/components/jellyfin-streaming/playback-provider';
 import { jellyfinPosterUrl } from '@/lib/jellyfin-playback/image';
@@ -59,13 +59,13 @@ export default function LiveTvPage() {
   const recordings = query.data?.recordings ?? [];
 
   return (
-    <div className="space-y-6 p-4 pb-28">
+    <div className="space-y-6 py-4 pb-28">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="sr-only">Live TV</h1>
           <p className="text-xs text-muted-foreground">{channels.length} channels</p>
         </div>
-        <WatchSubNav />
+        <WatchTopBar />
       </div>
       {channels.length === 0 && (
         <p className="text-sm text-muted-foreground">No Live TV tuners are configured on this Jellyfin server.</p>

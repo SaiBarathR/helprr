@@ -3,13 +3,13 @@
 import { use, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Check, Heart, ListPlus, Play, RotateCcw, Shuffle, User } from 'lucide-react';
+import { Check, Film, HardDrive, Heart, ListPlus, Play, RotateCcw, Shuffle, User } from 'lucide-react';
 import { jsonFetcher } from '@/lib/query-fetch';
 import { queryKeys } from '@/lib/query-keys';
 import { Button } from '@/components/ui/button';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { ErrorState } from '@/components/ui/error-state';
-import { WatchSubNav } from '@/components/jellyfin-streaming/watch-subnav';
+import { WatchTopBar } from '@/components/jellyfin-streaming/watch-top-bar';
 import { CatalogRail } from '@/components/jellyfin-streaming/catalog-rail';
 import { useJellyfinPlayback } from '@/components/jellyfin-streaming/playback-provider';
 import {
@@ -19,6 +19,7 @@ import {
   jellyfinPersonImageUrl,
 } from '@/lib/jellyfin-playback/image';
 import { formatClock, ticksToSeconds } from '@/lib/jellyfin-playback/device';
+import { formatBytes } from '@/lib/format';
 import { formatCertificate, formatCommunityRating } from '@/lib/jellyfin-playback/metadata';
 import type { CatalogItemDetailResponse } from '@/types/jellyfin-streaming';
 import type { JellyfinMediaStream } from '@/types/jellyfin';
@@ -93,24 +94,35 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
 
   const directors = people.filter((p) => p.Type === 'Director').map((p) => p.Name).filter(Boolean);
   const writers = people.filter((p) => p.Type === 'Writer').map((p) => p.Name).filter(Boolean);
-  const info: Array<[string, string]> = [
+  const infoRows: Array<[string, string]> = ([
     ['Genres', (item.Genres ?? []).join(', ')],
     ['Director', directors.join(', ')],
     ['Writers', writers.join(', ')],
-    ['Studios', (item.Studios ?? []).map((s) => s.Name).filter(Boolean).join(', ')],
-  ];
+    ['Studios', (item.Studios ?? []).map((studio) => studio.Name).filter(Boolean).join(', ')],
+    ['Released', item.PremiereDate ? new Date(item.PremiereDate).toLocaleDateString() : ''],
+  ] as Array<[string, string]>).filter(([, value]) => value);
+
+  const source = item.MediaSources?.[0];
+  const fileLine = [
+    source?.Container?.toUpperCase(),
+    typeof source?.Size === 'number' && source.Size > 0 ? formatBytes(source.Size) : null,
+    typeof source?.Bitrate === 'number' && source.Bitrate > 0
+      ? `${(source.Bitrate / 1_000_000).toFixed(1)} Mbps`
+      : null,
+  ].filter(Boolean).join(' · ');
+  const hasMediaDetail = Boolean(videoStream) || audioStreams.length > 0 || subtitleStreams.length > 0 || Boolean(fileLine);
 
   return (
     <div className="pb-28">
-      <section className="relative -mx-4 -mt-4 flex min-h-[68vh] flex-col overflow-hidden md:-mx-6 md:-mt-6">
+      <section className="relative -mx-[var(--main-pad-x)] -mt-[var(--main-pad-top)] flex min-h-[68vh] flex-col overflow-hidden">
         {backdrop && (
           <FadeInImage src={backdrop} alt="" fill sizes="100vw" priority unoptimized className="object-cover" />
         )}
         <span className="absolute inset-0 bg-gradient-to-t from-background from-28% via-background/80 via-58% to-transparent" />
 
-        <div className="relative z-10 flex flex-1 flex-col items-center justify-end gap-3 p-4 pb-6 text-center md:p-6">
-          <div className="absolute top-4 left-4 md:top-6 md:left-6">
-            <WatchSubNav />
+        <div className="relative z-10 flex flex-1 flex-col items-center justify-end gap-3 p-[var(--main-pad-x)] pb-6 text-center">
+          <div className="absolute inset-x-4 top-4 md:inset-x-6 md:top-6">
+            <WatchTopBar />
           </div>
 
           <HeroTitle
@@ -196,59 +208,75 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
         </div>
       </section>
 
-      <div className="space-y-6 p-4 md:p-6">
-        {(info.some(([, value]) => value) || videoStream || audioStreams.length > 0) && (
+      <div className="space-y-6 py-6">
+        {(infoRows.length > 0 || hasMediaDetail) && (
           <div className="grid gap-3 md:grid-cols-2">
-            <dl className="divide-y divide-border overflow-hidden rounded-xl border bg-card/60">
-              {info.filter(([, value]) => value).map(([label, value]) => (
-                <div key={label} className="flex gap-3 p-3 text-sm">
-                  <dt className="w-24 shrink-0 font-medium">{label}</dt>
-                  <dd className="min-w-0 flex-1 text-right text-muted-foreground">{value}</dd>
-                </div>
-              ))}
-            </dl>
+            {/* Both panels are omitted entirely when empty — an outlined box
+                with nothing in it reads as a loading failure. */}
+            {infoRows.length > 0 && (
+              <dl className="divide-y divide-border overflow-hidden rounded-xl border bg-card/60">
+                {infoRows.map(([label, value]) => (
+                  <div key={label} className="flex gap-3 p-3 text-sm">
+                    <dt className="w-24 shrink-0 font-medium">{label}</dt>
+                    <dd className="min-w-0 flex-1 text-right text-muted-foreground">{value}</dd>
+                  </div>
+                ))}
+              </dl>
+            )}
 
-            {(videoStream || audioStreams.length > 0) && (
-            <div className="space-y-2 rounded-xl border bg-card/60 p-3">
-              {videoStream && (
-                <p className="text-sm font-medium">
-                  {[
-                    videoStream.Height ? `${videoStream.Height}p` : null,
-                    videoStream.Codec?.toUpperCase(),
-                    videoStream.VideoRange && videoStream.VideoRange !== 'SDR' ? videoStream.VideoRange : null,
-                  ].filter(Boolean).join(' · ')}
-                </p>
-              )}
-              {audioStreams.length > 0 && (
-                <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-                  Audio
-                  <select
-                    className="h-9 rounded-md border bg-background px-2 text-sm text-foreground"
-                    value={audioIndex ?? ''}
-                    onChange={(event) => setAudioIndex(event.target.value === '' ? null : Number(event.target.value))}
-                  >
-                    <option value="">Default</option>
-                    {audioStreams.map((stream) => (
-                      <option key={stream.Index} value={stream.Index}>{streamLabel(stream)}</option>
-                    ))}
-                  </select>
-                </label>
-              )}
-              <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-                Subtitles
-                <select
-                  className="h-9 rounded-md border bg-background px-2 text-sm text-foreground"
-                  value={subtitleIndex ?? ''}
-                  onChange={(event) => setSubtitleIndex(event.target.value === '' ? null : Number(event.target.value))}
-                >
-                  <option value="">Default</option>
-                  <option value={-1}>Off</option>
-                  {subtitleStreams.map((stream) => (
-                    <option key={stream.Index} value={stream.Index}>{streamLabel(stream)}</option>
-                  ))}
-                </select>
-              </label>
-            </div>
+            {hasMediaDetail && (
+              <div className="space-y-2 rounded-xl border bg-card/60 p-3">
+                {videoStream && (
+                  <p className="flex items-center gap-2 text-sm font-medium">
+                    <Film className="size-4 shrink-0 text-muted-foreground" />
+                    {[
+                      videoStream.DisplayTitle
+                        ?? [videoStream.Height ? `${videoStream.Height}p` : null, videoStream.Codec?.toUpperCase()]
+                          .filter(Boolean).join(' '),
+                      videoStream.AverageFrameRate
+                        ? `${Math.round(videoStream.AverageFrameRate * 1000) / 1000} fps`
+                        : null,
+                    ].filter(Boolean).join(' · ')}
+                  </p>
+                )}
+                {fileLine && (
+                  <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <HardDrive className="size-4 shrink-0" />
+                    {fileLine}
+                  </p>
+                )}
+                {audioStreams.length > 0 && (
+                  <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+                    Audio
+                    <select
+                      className="h-9 rounded-md border bg-background px-2 text-sm text-foreground"
+                      value={audioIndex ?? ''}
+                      onChange={(event) => setAudioIndex(event.target.value === '' ? null : Number(event.target.value))}
+                    >
+                      <option value="">Default</option>
+                      {audioStreams.map((stream) => (
+                        <option key={stream.Index} value={stream.Index}>{streamLabel(stream)}</option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+                {subtitleStreams.length > 0 && (
+                  <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+                    Subtitles
+                    <select
+                      className="h-9 rounded-md border bg-background px-2 text-sm text-foreground"
+                      value={subtitleIndex ?? ''}
+                      onChange={(event) => setSubtitleIndex(event.target.value === '' ? null : Number(event.target.value))}
+                    >
+                      <option value="">Default</option>
+                      <option value={-1}>Off</option>
+                      {subtitleStreams.map((stream) => (
+                        <option key={stream.Index} value={stream.Index}>{streamLabel(stream)}</option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+              </div>
             )}
           </div>
         )}

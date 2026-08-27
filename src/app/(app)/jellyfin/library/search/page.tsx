@@ -6,7 +6,7 @@ import { useQuery } from '@tanstack/react-query';
 import { jsonFetcher } from '@/lib/query-fetch';
 import { queryKeys } from '@/lib/query-keys';
 import { Input } from '@/components/ui/input';
-import { WatchSubNav } from '@/components/jellyfin-streaming/watch-subnav';
+import { WatchTopBar } from '@/components/jellyfin-streaming/watch-top-bar';
 import { CatalogPosterCard } from '@/components/jellyfin-streaming/poster-card';
 import { useJellyfinPlayback } from '@/components/jellyfin-streaming/playback-provider';
 import { ErrorState } from '@/components/ui/error-state';
@@ -71,10 +71,10 @@ export default function JellyfinSearchPage() {
   const groups = useMemo(() => groupItems(query.data?.items ?? []), [query.data?.items]);
 
   return (
-    <div className="space-y-4 p-4 pb-28 md:p-6">
+    <div className="space-y-4 py-4 pb-28 md:py-6">
       <h1 className="sr-only">Search</h1>
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <WatchSubNav />
+        <WatchTopBar />
       </div>
 
       <Input

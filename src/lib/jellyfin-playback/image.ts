@@ -97,6 +97,26 @@ export function jellyfinCardImage(
   return jellyfinPosterUrl(item, width);
 }
 
+/**
+ * Series-level 16:9 art for an episode, which is what Continue Watching and
+ * Next Up show in the reference install — the series thumb (usually carrying
+ * the title treatment), not the episode still.
+ */
+export function jellyfinSeriesCardImage(
+  item: { Id: string; Type?: string; SeriesId?: string; ParentId?: string; SeriesThumbImageTag?: string; ParentThumbImageTag?: string; ParentBackdropImageTags?: string[] },
+  width = 400,
+): string | null {
+  const seriesId = item.SeriesId ?? item.ParentId;
+  if (!seriesId) return null;
+  if (item.SeriesThumbImageTag || item.ParentThumbImageTag) {
+    return jellyfinImageUrl(seriesId, 'Thumb', width);
+  }
+  if (item.ParentBackdropImageTags && item.ParentBackdropImageTags.length > 0) {
+    return jellyfinImageUrl(seriesId, 'Backdrop', width);
+  }
+  return null;
+}
+
 /** Aspect ratio class for a card frame. */
 export function cardAspectClass(shape: CatalogCardShape): string {
   if (shape === 'landscape') return 'aspect-video';

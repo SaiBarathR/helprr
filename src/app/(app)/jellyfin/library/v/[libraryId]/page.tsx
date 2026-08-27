@@ -10,7 +10,7 @@ import { PullToRefresh } from '@/components/ui/pull-to-refresh';
 import { useRefreshAction } from '@/lib/hooks/use-refresh-action';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { ErrorState } from '@/components/ui/error-state';
-import { WatchSubNav } from '@/components/jellyfin-streaming/watch-subnav';
+import { WatchTopBar } from '@/components/jellyfin-streaming/watch-top-bar';
 import { CatalogPosterCard } from '@/components/jellyfin-streaming/poster-card';
 import { useJellyfinPlayback } from '@/components/jellyfin-streaming/playback-provider';
 import { Button } from '@/components/ui/button';
@@ -187,12 +187,12 @@ export default function LibraryBrowserPage() {
   return (
     <>
       <PullToRefresh onRefresh={query.refetch} />
-      <div className="space-y-4 p-4 pb-28 md:p-6">
+      <div className="space-y-4 py-4 pb-28 md:py-6">
         <h1 className="sr-only">{name}</h1>
 
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-base font-semibold tracking-tight">{name}</p>
-          <WatchSubNav />
+          <WatchTopBar />
         </div>
 
         {availableViews.length > 1 && (

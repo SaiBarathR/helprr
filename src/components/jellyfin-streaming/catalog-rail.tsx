@@ -16,6 +16,7 @@ export function CatalogRail({
   shape = 'portrait',
   upcoming = false,
   subtitleFor,
+  identity,
 }: {
   title: string;
   items: JellyfinItem[];
@@ -24,6 +25,7 @@ export function CatalogRail({
   shape?: CatalogCardShape;
   upcoming?: boolean;
   subtitleFor?: (item: JellyfinItem) => string | undefined;
+  identity?: 'item' | 'series';
 }) {
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   const [atStart, setAtStart] = useState(true);
@@ -81,7 +83,9 @@ export function CatalogRail({
       <div
         ref={scrollerRef}
         onScroll={sync}
-        className="animate-rail-in flex gap-3 overflow-x-auto pb-2 scrollbar-hide -mx-4 px-4 md:-mx-6 md:px-6"
+        // Bleed by exactly the shell padding so cards reach the viewport edge
+        // without the page adding a second inset on top of it.
+        className="animate-rail-in flex gap-3 overflow-x-auto pb-2 scrollbar-hide -mx-[var(--main-pad-x)] px-[var(--main-pad-x)]"
       >
         {items.map((item, index) => (
           <CatalogPosterCard
@@ -92,6 +96,7 @@ export function CatalogRail({
             shape={shape}
             upcoming={upcoming}
             subtitle={subtitleFor?.(item)}
+            identity={identity}
           />
         ))}
       </div>

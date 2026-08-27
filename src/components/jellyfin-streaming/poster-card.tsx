@@ -4,7 +4,12 @@ import Link from 'next/link';
 import { Check, Play } from 'lucide-react';
 import type { JellyfinItem } from '@/types/jellyfin';
 import { FadeInImage } from '@/components/media/fade-in-image';
-import { cardAspectClass, jellyfinCardImage, type CatalogCardShape } from '@/lib/jellyfin-playback/image';
+import {
+  cardAspectClass,
+  jellyfinCardImage,
+  jellyfinSeriesCardImage,
+  type CatalogCardShape,
+} from '@/lib/jellyfin-playback/image';
 import { cn } from '@/lib/utils';
 
 /**
@@ -52,6 +57,7 @@ export function CatalogPosterCard({
   shape = 'portrait',
   upcoming = false,
   subtitle,
+  identity = 'item',
 }: {
   item: JellyfinItem;
   onPlay?: (item: JellyfinItem) => void;
@@ -63,12 +69,24 @@ export function CatalogPosterCard({
   upcoming?: boolean;
   /** Overrides the derived subtitle (upcoming rails pass a countdown). */
   subtitle?: string;
+  /**
+   * `series` makes an episode card read as its show: series art and series
+   * name, with the episode in the subtitle. That is how Continue Watching and
+   * Next Up present episodes in the reference install.
+   */
+  identity?: 'item' | 'series';
 }) {
-  const image = jellyfinCardImage(item, 400, shape);
+  const asSeries = identity === 'series' && item.Type === 'Episode' && Boolean(item.SeriesName);
+  const image = (asSeries ? jellyfinSeriesCardImage(item, 400) : null)
+    ?? jellyfinCardImage(item, 400, shape);
   const progress = item.UserData?.PlayedPercentage;
   const unplayed = item.UserData?.UnplayedItemCount;
   const href = catalogHref(item);
-  const line2 = subtitle ?? cardSubtitle(item);
+  const title = asSeries ? item.SeriesName! : item.Name;
+  const line2 = subtitle
+    ?? (asSeries
+      ? `S${item.ParentIndexNumber ?? 0}:E${item.IndexNumber ?? 0} · ${item.Name}`
+      : cardSubtitle(item));
   const playable = Boolean(onPlay) && !upcoming;
 
   return (
@@ -82,7 +100,7 @@ export function CatalogPosterCard({
         {image ? (
           <FadeInImage
             src={image}
-            alt={item.Name}
+            alt={title}
             fill
             sizes={SIZES[shape]}
             priority={priority}
@@ -127,7 +145,7 @@ export function CatalogPosterCard({
           <span className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center">
             <button
               type="button"
-              aria-label={`Play ${item.Name}`}
+              aria-label={`Play ${title}`}
               onClick={() => onPlay?.(item)}
               className="pointer-events-auto flex size-11 items-center justify-center rounded-full bg-[var(--hpr-amber)] text-[var(--hpr-ink)] opacity-0 shadow-lg transition-opacity group-hover:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-85"
             >
@@ -137,14 +155,14 @@ export function CatalogPosterCard({
         )}
       </div>
 
-      <p className="mt-2 truncate text-sm font-medium">{item.Name}</p>
+      <p className="mt-2 truncate text-sm font-medium">{title}</p>
       {line2 && <p className="truncate text-[11px] text-muted-foreground">{line2}</p>}
 
       {/* Stretched link: one tab stop for the whole card, and no interactive
           element nested inside an anchor. */}
       <Link
         href={href}
-        aria-label={item.Name}
+        aria-label={title}
         className="absolute inset-0 z-10 rounded-xl focus-visible:ring-2 focus-visible:ring-[var(--hpr-amber)] focus-visible:outline-none"
       />
     </div>

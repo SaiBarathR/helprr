@@ -266,6 +266,9 @@ export const CATALOG_ITEM_FIELDS = [
   'NormalizationGain',
   'ProductionLocations',
   'DateCreated',
+  'ParentThumbImageTag',
+  'ParentBackdropImageTags',
+  'SeriesThumbImageTag',
 ].join(',');
 
 export const CATALOG_LIST_FIELDS = [
@@ -295,9 +298,17 @@ export const CATALOG_LIST_FIELDS = [
   'Artists',
   'Status',
   'EndDate',
+  'ParentThumbImageTag',
+  'ParentBackdropImageTags',
+  'SeriesThumbImageTag',
 ].join(',');
 
 export type CatalogBrowseKind = 'genres' | 'studios' | 'persons';
+
+export interface CatalogViewsResponse {
+  linked: boolean;
+  views: JellyfinLibrary[];
+}
 
 export interface CatalogBrowseResponse {
   linked: boolean;

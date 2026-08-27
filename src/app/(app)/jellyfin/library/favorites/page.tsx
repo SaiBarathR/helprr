@@ -2,7 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { jsonFetcher } from '@/lib/query-fetch';
-import { WatchSubNav } from '@/components/jellyfin-streaming/watch-subnav';
+import { WatchTopBar } from '@/components/jellyfin-streaming/watch-top-bar';
 import { CatalogPosterCard } from '@/components/jellyfin-streaming/poster-card';
 import { useJellyfinPlayback } from '@/components/jellyfin-streaming/playback-provider';
 import { PageSpinner } from '@/components/ui/page-spinner';
@@ -20,10 +20,10 @@ export default function FavoritesPage() {
   if (query.isError) return <ErrorState message="Couldn't load favorites." onRetry={() => void query.refetch()} />;
 
   return (
-    <div className="space-y-4 p-4 pb-28">
+    <div className="space-y-4 py-4 pb-28">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="sr-only">Favorites</h1>
-        <WatchSubNav />
+        <WatchTopBar />
       </div>
       <div className="flex flex-wrap gap-3">
         {(query.data?.items ?? []).map((item) => (

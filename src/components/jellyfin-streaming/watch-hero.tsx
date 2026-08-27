@@ -54,7 +54,7 @@ export function WatchHero({
   return (
     <section
       aria-label="Featured"
-      className="relative -mx-4 -mt-4 mb-2 h-[62vh] min-h-[22rem] overflow-hidden md:-mx-6 md:-mt-6"
+      className="relative -mx-[var(--main-pad-x)] -mt-[var(--main-pad-top)] mb-2 h-[62vh] min-h-[22rem] overflow-hidden"
       onPointerEnter={() => setPaused(true)}
       onPointerLeave={() => setPaused(false)}
       onFocusCapture={() => setPaused(true)}
@@ -88,7 +88,7 @@ export function WatchHero({
       <span className="absolute inset-0 bg-gradient-to-t from-background from-30% via-background/80 via-60% to-transparent" />
       <span className="absolute inset-0 bg-gradient-to-r from-background/85 via-background/20 to-transparent" />
 
-      <div className="relative flex h-full flex-col justify-end gap-3 p-4 pb-6 md:p-6 md:pb-8">
+      <div className="relative flex h-full flex-col justify-end gap-3 p-[var(--main-pad-x)] pb-6 md:pb-8">
         <div className="max-w-xl space-y-3">
           <HeroTitle
             name={item.Name}

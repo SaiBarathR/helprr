@@ -141,6 +141,9 @@ export interface JellyfinItem {
   ChildCount?: number;
   ParentId?: string;
   SeasonId?: string;
+  SeriesThumbImageTag?: string;
+  ParentThumbImageTag?: string;
+  ParentBackdropImageTags?: string[];
   CollectionType?: string;
   OfficialRating?: string;
   CriticRating?: number;

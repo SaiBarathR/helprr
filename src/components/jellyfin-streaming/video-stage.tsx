@@ -98,6 +98,14 @@ export function VideoStage() {
     }, 3500);
   }, []);
 
+  // Browser back used to leave the video fullscreen over whatever route it
+  // landed on. Collapse to the mini player instead, so back reveals the page.
+  useEffect(() => {
+    const collapse = () => playbackRef.current.setVideoExpanded(false);
+    window.addEventListener('popstate', collapse);
+    return () => window.removeEventListener('popstate', collapse);
+  }, []);
+
   useEffect(() => {
     if (!expanded) return undefined;
     // Arm the first hide without touching state — controlsVisible is reset to

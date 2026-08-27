@@ -7,7 +7,7 @@ import { PullToRefresh } from '@/components/ui/pull-to-refresh';
 import { useRefreshAction } from '@/lib/hooks/use-refresh-action';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { ErrorState } from '@/components/ui/error-state';
-import { WatchSubNav } from '@/components/jellyfin-streaming/watch-subnav';
+import { WatchTopBar } from '@/components/jellyfin-streaming/watch-top-bar';
 import { CatalogRail } from '@/components/jellyfin-streaming/catalog-rail';
 import { WatchHero } from '@/components/jellyfin-streaming/watch-hero';
 import { useJellyfinPlayback } from '@/components/jellyfin-streaming/playback-provider';
@@ -54,7 +54,7 @@ export default function WatchHomePage() {
     return (
       <div className="p-4">
         <h1 className="sr-only">Watch</h1>
-        <WatchSubNav />
+        <WatchTopBar />
         <p className="mt-8 text-sm text-muted-foreground">Link a Jellyfin account to browse and play your library here.</p>
       </div>
     );
@@ -69,11 +69,11 @@ export default function WatchHomePage() {
         <h1 className="sr-only">Watch</h1>
         <WatchHero items={data.spotlight ?? []} onPlay={play} />
 
-        <div className="space-y-6 p-4 md:p-6">
-          <WatchSubNav />
+        <div className="space-y-6 py-4 md:py-6">
+          <WatchTopBar />
 
-          <CatalogRail shape="landscape" title="Continue watching" items={data.resume} onPlay={play} />
-          <CatalogRail shape="landscape" title="Next up" items={data.nextUp} onPlay={play} />
+          <CatalogRail shape="landscape" identity="series" title="Continue watching" items={data.resume} onPlay={play} />
+          <CatalogRail shape="landscape" identity="series" title="Next up" items={data.nextUp} onPlay={play} />
 
           {data.latest.map((row) => (
             <CatalogRail
