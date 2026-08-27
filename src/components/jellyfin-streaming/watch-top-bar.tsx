@@ -4,7 +4,6 @@ import { useRouter } from 'next/navigation';
 import { ChevronLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { WatchSubNav } from '@/components/jellyfin-streaming/watch-subnav';
-import { CinematicTopBar } from '@/components/jellyfin-streaming/cinematic/cinematic-top-bar';
 import { useWatchSkin } from '@/lib/hooks/use-watch-skin';
 import { cn } from '@/lib/utils';
 
@@ -13,10 +12,15 @@ import { cn } from '@/lib/utils';
  * section nav centred. Centring the nav needs the back button's slot mirrored
  * on the right, otherwise the nav drifts left by the button's width.
  */
-/** Skin switch — see use-watch-skin. */
+/**
+ * Skin switch — see use-watch-skin.
+ *
+ * Cinematic renders nothing: its masthead lives in the Watch layout so it sits
+ * at the top of every route. Pages still mount this for the classic skin.
+ */
 export function WatchTopBar({ className }: { className?: string }) {
   const skin = useWatchSkin();
-  if (skin === 'cinematic') return <CinematicTopBar className={className} />;
+  if (skin === 'cinematic') return null;
   return <ClassicTopBar className={className} />;
 }
 

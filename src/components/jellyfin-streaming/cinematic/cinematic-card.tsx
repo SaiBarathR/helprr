@@ -1,11 +1,15 @@
 'use client';
 
+import { useId, useRef, useState } from 'react';
 import Link from 'next/link';
 import { Check, Play } from 'lucide-react';
 import type { JellyfinItem } from '@/types/jellyfin';
 import { FadeInImage } from '@/components/media/fade-in-image';
 import { catalogHref, type CatalogCardProps } from '@/components/jellyfin-streaming/card-shared';
 import { useCompactViewport } from '@/lib/hooks/use-compact-viewport';
+import { useMediaPreview } from '@/components/jellyfin-streaming/cinematic/media-preview';
+import { useHoverPreviewSlot } from '@/components/jellyfin-streaming/cinematic/hover-preview-slot';
+import { useUIStore } from '@/lib/store';
 import { useWatchModal } from '@/components/jellyfin-streaming/cinematic/watch-modal';
 import {
   cardAspectClass,
@@ -68,6 +72,14 @@ export function CinematicCard({
 }: CatalogCardProps) {
   const modal = useWatchModal();
   const compact = useCompactViewport();
+  const previewsAllowed = useUIStore((state) => state.watchPreviews);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [hovering, setHovering] = useState(false);
+  const hoverTimer = useRef<number | undefined>(undefined);
+  // Exactly one card may hold the preview slot, so brushing across a row can
+  // never leave a trail of transcodes running on the server.
+  const cardId = useId();
+  const holdsSlot = useHoverPreviewSlot(cardId, hovering);
   // The Netflix app puts portrait posters in its phone rails; 16:9 stills only
   // appear from tablet up. The frame decides which artwork is fetched, so this
   // cannot be a media query.
@@ -85,8 +97,31 @@ export function CinematicCard({
   const line2 = subtitle ?? metaLine(item, asSeries);
   const playable = Boolean(onPlay) && !upcoming;
 
+  const previewEnabled = holdsSlot && previewsAllowed && !compact && !upcoming && !item.IsFolder;
+  const previewState = useMediaPreview({
+    itemId: item.Id,
+    runtimeTicks: item.RunTimeTicks,
+    enabled: previewEnabled,
+    videoRef,
+  });
+  const showPreview = previewEnabled && previewState === 'playing';
+
   return (
-    <div className={cn('hpr-cine-tile group relative shrink-0', WIDTH_CLASS[shape], className)}>
+    <div
+      className={cn('hpr-cine-tile group relative shrink-0', WIDTH_CLASS[shape], className)}
+      onPointerEnter={(event) => {
+        // Pointer only: a touch "hover" would start a stream on tap.
+        if (event.pointerType !== 'mouse') return;
+        window.clearTimeout(hoverTimer.current);
+        // Long enough that scanning a row costs nothing; the expand itself
+        // lands at 300ms, so the clip arrives once you have clearly stopped.
+        hoverTimer.current = window.setTimeout(() => setHovering(true), 1400);
+      }}
+      onPointerLeave={() => {
+        window.clearTimeout(hoverTimer.current);
+        setHovering(false);
+      }}
+    >
       <div className={cn('relative overflow-hidden rounded-xl bg-white/5', cardAspectClass(shape))}>
         {image ? (
           <FadeInImage
@@ -102,6 +137,22 @@ export function CinematicCard({
           <div className="flex h-full items-center justify-center p-2 text-center text-xs text-white/60">
             {item.Name}
           </div>
+        )}
+
+        {/* Always mounted while the slot is held so the player has somewhere to
+            attach; revealed only once it reports playing, so a failure simply
+            leaves the artwork. */}
+        {previewEnabled && (
+          <video
+            ref={videoRef}
+            muted
+            playsInline
+            aria-hidden
+            className={cn(
+              'pointer-events-none absolute inset-0 h-full w-full object-cover transition-opacity duration-500',
+              showPreview ? 'opacity-100' : 'opacity-0',
+            )}
+          />
         )}
 
         {/* Touch has no hover, so a 16:9 still needs its title written on it.

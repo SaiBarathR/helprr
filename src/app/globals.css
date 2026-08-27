@@ -1263,12 +1263,14 @@ html[data-watch-skin='cinematic']:has(.hpr-watch) {
   }
 }
 
-html[data-watch-skin='cinematic'] .hpr-watch {
-  /* Near-black regardless of the app theme. Every streaming service is dark
-     for the same reason: artwork becomes the only source of colour in frame.
-     Overriding the shadcn tokens (rather than the components) means the
-     existing bg-background / text-muted-foreground / border-border classes
-     all follow, including the hero's from-background scrim gradients. */
+/* The palette is applied at the ROOT, not on .hpr-watch.
+   Scoping it to the wrapper was the "grey background" bug: .hpr-watch painted
+   #141414 while the app shell around it kept the user's own theme ground,
+   which on a dark/glass theme is near-black. The result was a lighter panel
+   inset 48px on a black page — visible on every Watch route, and most obvious
+   before the artwork loaded. Applying the tokens where the shell can see them
+   makes the whole viewport one ground, as the site has. */
+html[data-watch-skin='cinematic']:has(.hpr-watch) {
   color-scheme: dark;
   --background: #141414;
   --foreground: #ffffff;
@@ -1294,24 +1296,28 @@ html[data-watch-skin='cinematic'] .hpr-watch {
   /* 12px, the measured card radius. */
   --radius: 0.75rem;
 
-  /* Components that reach for the raw accent token directly (the sub-nav
-     active pill, card progress bars, the play affordance) never see --primary,
-     so the scope has to neutralise the accent itself. Status colours — green
-     watched, blue unplayed — are deliberately left alone: they carry meaning
-     rather than brand. */
+  /* Components that reach for the raw accent token directly never see
+     --primary, so the scope has to neutralise the accent itself. Status
+     colours — green watched, blue unplayed — carry meaning, not brand, and
+     are deliberately left alone. */
   --hpr-amber: #ffffff;
   --hpr-ink: #141414;
 
-  background-color: var(--background);
-  color: var(--foreground);
-  min-height: 100dvh;
+  /* The shell's gradient wash is part of Helprr's dashboard identity and has
+     no place on a streaming ground. */
+  --hpr-bg-grad: none;
 }
 
-/* The page ground is painted by <body>, which sits outside .hpr-watch — so
-   without this the shell's amber-tinted gradient shows through around the
-   content column. */
+/* Every layer that paints a ground has to agree, or the disagreement shows as
+   a panel floating on a different colour. */
+html[data-watch-skin='cinematic']:has(.hpr-watch),
 html[data-watch-skin='cinematic']:has(.hpr-watch) body {
   background: #141414;
+  background-image: none;
+}
+
+html[data-watch-skin='cinematic'] .hpr-watch {
+  min-height: 100dvh;
 }
 
 /* Chrome recedes: on desktop and tablet the sidebar would keep the page from
@@ -1364,6 +1370,27 @@ html[data-watch-skin='cinematic'] .hpr-watch
     transform: scale(1.5);
     transition-delay: 300ms;
     z-index: 20;
+  }
+
+  /* A row is a scroll container, so it clips: a centre-origin scale on the
+     first or last tile pushes half the growth outside and the tile is cut in
+     half. Anchoring those two to their own outer edge keeps the growth
+     inward, which is what the site does. */
+  html[data-watch-skin='cinematic'] .hpr-cine-row > .hpr-cine-tile:first-child {
+    transform-origin: left center;
+  }
+
+  html[data-watch-skin='cinematic'] .hpr-cine-row > .hpr-cine-tile:last-child {
+    transform-origin: right center;
+  }
+
+  /* Nothing needs to shift for a tile that grows inward from the left edge. */
+  html[data-watch-skin='cinematic'] .hpr-cine-row:hover > .hpr-cine-tile:first-child:not(:hover) {
+    transform: translateX(-25%);
+  }
+
+  html[data-watch-skin='cinematic'] .hpr-cine-row > .hpr-cine-tile:first-child:hover {
+    transform: scale(1.5);
   }
 
   /* The detail overlay rides the same intent delay so art and text arrive

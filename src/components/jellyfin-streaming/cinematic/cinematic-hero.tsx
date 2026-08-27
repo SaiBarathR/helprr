@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { FadeInImage } from '@/components/media/fade-in-image';
 import { PreviewBackdrop } from '@/components/jellyfin-streaming/cinematic/preview-backdrop';
 import { useWatchModal } from '@/components/jellyfin-streaming/cinematic/watch-modal';
+import { useHoverPreviewActive } from '@/components/jellyfin-streaming/cinematic/hover-preview-slot';
 import { useCompactViewport } from '@/lib/hooks/use-compact-viewport';
 import { jellyfinPosterUrl } from '@/lib/jellyfin-playback/image';
 import { jellyfinBackdropUrl, jellyfinImageUrl } from '@/lib/jellyfin-playback/image';
@@ -38,6 +39,7 @@ export function CinematicHero({
   const item = items[0];
   const modal = useWatchModal();
   const compact = useCompactViewport();
+  const hoverPreviewActive = useHoverPreviewActive();
 
   // Trailers are not in the home payload's field set, so they cost one extra
   // request — fired only for the single billboard title.
@@ -83,8 +85,9 @@ export function CinematicHero({
         runtimeTicks={item.RunTimeTicks}
         trailerUrl={detail.data?.item?.RemoteTrailers?.[0]?.Url}
         enabled
-        // Two previews playing at once is both noisy and a second transcode.
-        paused={modal?.isOpen ?? false}
+        // Two previews at once is both noisy and a second transcode, so the
+        // billboard stands down for the overlay and for a card being hovered.
+        paused={(modal?.isOpen ?? false) || hoverPreviewActive}
         priority
         // Stacked above the maturity flag on desktop rather than beside it —
         // the flag's width varies with the rating, so side-by-side either
