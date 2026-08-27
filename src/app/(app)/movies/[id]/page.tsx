@@ -80,19 +80,13 @@ import {
 } from '@/components/jellyfin/watch-status-provider';
 import { MarkWatchedMenuItem } from '@/components/jellyfin/mark-watched-button';
 import { PlayInHelprrButton } from '@/components/jellyfin/play-in-helprr-button';
+import { formatRatingVotes, movieRatingItems, type RatingItem } from '@/lib/arr-ratings';
 import { buildMarkWatchedContextAction } from '@/lib/mark-watched-context-action';
 import { arrEditHref, arrManageHref } from '@/lib/arr-edit-href';
 import { WatchStatusInline } from '@/components/jellyfin/watch-status-indicator';
 import { QuickContextMenu, type ContextActionGroup } from '@/components/ui/quick-context-menu';
 import { MediaDownloadProgress } from '@/components/media/media-download-progress';
 import { formatLanguageCode, formatRegionCodes } from '@/lib/media-locale';
-
-type RatingItem = {
-  label: string;
-  score: string;
-  votes: number;
-  color: string;
-};
 
 function waitForElementScrollY(
   element: HTMLElement,
@@ -113,14 +107,6 @@ function waitForElementScrollY(
     tick();
   });
 }
-
-function formatRatingVotes(votes: number): string {
-  if (!votes) return '';
-  if (votes >= 1_000_000) return `${(votes / 1_000_000).toFixed(1)}M`;
-  if (votes >= 1_000) return `${(votes / 1_000).toFixed(votes >= 10_000 ? 0 : 1)}K`;
-  return String(votes);
-}
-
 
 export default function MovieDetailPage() {
   const { id } = useParams();
@@ -330,18 +316,7 @@ export default function MovieDetailPage() {
     }
   }
 
-  const ratingItems = useMemo<RatingItem[]>(() => {
-    const ratings = movie?.ratings;
-    if (!ratings) return [];
-
-    const items: RatingItem[] = [];
-    if (ratings.imdb && ratings.imdb.value > 0) items.push({ label: 'IMDb', score: ratings.imdb.value.toFixed(1), votes: ratings.imdb.votes, color: 'text-yellow-500 fill-yellow-500' });
-    if (ratings.tmdb && ratings.tmdb.value > 0) items.push({ label: 'TMDb', score: ratings.tmdb.value.toFixed(1), votes: ratings.tmdb.votes, color: 'text-sky-500 fill-sky-500' });
-    if (ratings.metacritic && ratings.metacritic.value > 0) items.push({ label: 'MC', score: String(Math.round(ratings.metacritic.value)), votes: ratings.metacritic.votes, color: 'text-emerald-500 fill-emerald-500' });
-    if (ratings.rottenTomatoes && ratings.rottenTomatoes.value > 0) items.push({ label: 'RT', score: `${Math.round(ratings.rottenTomatoes.value)}%`, votes: ratings.rottenTomatoes.votes, color: 'text-red-500 fill-red-500' });
-    if (ratings.trakt && ratings.trakt.value > 0) items.push({ label: 'Trakt', score: ratings.trakt.value.toFixed(1), votes: ratings.trakt.votes, color: 'text-purple-500 fill-purple-500' });
-    return items;
-  }, [movie?.ratings]);
+  const ratingItems = useMemo<RatingItem[]>(() => movieRatingItems(movie?.ratings), [movie?.ratings]);
 
   async function handleSearch() {
     if (!movie) return;

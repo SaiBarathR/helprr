@@ -28,6 +28,7 @@ import { FadeInImage } from '@/components/media/fade-in-image';
 import { HeroTitle } from '@/components/jellyfin-streaming/hero-title';
 import { CatalogTrailerRail } from '@/components/jellyfin-streaming/catalog-trailer-rail';
 import { CatalogElsewhere } from '@/components/jellyfin-streaming/catalog-elsewhere';
+import { CatalogRatingsStrip } from '@/components/jellyfin-streaming/catalog-ratings-strip';
 import { cn } from '@/lib/utils';
 
 /** Clock time the title would finish if started now — the reference shows this. */
@@ -193,6 +194,10 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
             {(item.Genres ?? []).length > 0 && <span>{item.Genres!.slice(0, 3).join(' · ')}</span>}
             {finishes && <span>{finishes}</span>}
           </div>
+
+          {supportsElsewhere && (
+            <CatalogRatingsStrip tmdbId={discoverTmdbId} mediaType={discoverMediaType} />
+          )}
 
           <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
             <Button size="lg" className="rounded-full px-6" onClick={() => void playback.playItem(item, trackOptions)}>
