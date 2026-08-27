@@ -7,6 +7,26 @@ import { upstreamErrorResponse } from '@/lib/api-error';
 import type { JellyfinPlayMethod, PlaybackProgressPayload } from '@/types/jellyfin-streaming';
 
 const ITEM_ID_RE = /^[a-f0-9-]+$/i;
+
+/**
+ * Jellyfin rejects /Sessions/Playing/Progress when the session has no user, and
+ * Helprr authenticates with the admin API key, so it always will. Resume position
+ * is persisted separately and correctly via the user-scoped user-data write in
+ * `reportPlayback`, so this only costs the live position bar in Jellyfin's own
+ * dashboard. Log it once per process instead of every 10s progress tick.
+ */
+const loggedReportFailures = new Set<string>();
+
+function logReportFailureOnce(event: string, status: number, message: string): void {
+  const key = `${event}:${status}`;
+  if (loggedReportFailures.has(key)) return;
+  loggedReportFailures.add(key);
+  console.warn(
+    `[api] Jellyfin rejected '${event}' playback reporting (${status}: ${message}). `
+    + 'Resume position is unaffected — it is written per-user via /UserItems/{id}/UserData. '
+    + 'This is logged once per process.',
+  );
+}
 const EVENTS = new Set(['playing', 'progress', 'stopped']);
 const PLAY_METHODS = new Set(['DirectPlay', 'DirectStream', 'Transcode']);
 
@@ -65,7 +85,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     }
     // Progress is best-effort: a Jellyfin 400 must not fail the player.
     if (isAxiosError(error) && (error.response?.status === 400 || error.response?.status === 404)) {
-      console.error('[api] Failed to report playback:', error.message);
+      logReportFailureOnce(event, error.response.status, error.message);
       return NextResponse.json({ ok: true, reported: false });
     }
     return upstreamErrorResponse(error, 'Failed to report playback');

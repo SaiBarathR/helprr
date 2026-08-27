@@ -2,7 +2,8 @@
 
 import Link from 'next/link';
 import { notFound, useParams, useSearchParams } from 'next/navigation';
-import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
+import { useDeferredValue, useState } from 'react';
+import { useInfiniteQuery } from '@tanstack/react-query';
 import { jsonFetcher } from '@/lib/query-fetch';
 import { queryKeys } from '@/lib/query-keys';
 import { PullToRefresh } from '@/components/ui/pull-to-refresh';
@@ -46,18 +47,34 @@ export default function BrowsePage() {
     : <EntityList kind={kind} />;
 }
 
+const ENTITY_PAGE_SIZE = 100;
+
 function EntityList({ kind }: { kind: CatalogBrowseKind }) {
   const config = KINDS[kind];
-  const query = useQuery({
-    queryKey: queryKeys.jellyfinBrowse(kind),
-    queryFn: jsonFetcher<CatalogBrowseResponse>(`/api/jellyfin/catalog/browse?kind=${kind}&limit=200`),
+  const [search, setSearch] = useState('');
+  const searchTerm = useDeferredValue(search.trim());
+
+  // A large library can hold thousands of studios or people, so this pages
+  // rather than capping — a truncated list would read as "that's all of them".
+  const query = useInfiniteQuery({
+    queryKey: queryKeys.jellyfinBrowse(kind, searchTerm),
+    initialPageParam: 0,
+    queryFn: ({ pageParam }) => jsonFetcher<CatalogBrowseResponse>(
+      `/api/jellyfin/catalog/browse?kind=${kind}&limit=${ENTITY_PAGE_SIZE}&startIndex=${pageParam}`
+      + (searchTerm ? `&searchTerm=${encodeURIComponent(searchTerm)}` : ''),
+    )(),
+    getNextPageParam: (lastPage, pages) => {
+      const loaded = pages.reduce((sum, page) => sum + page.items.length, 0);
+      return loaded < lastPage.total ? loaded : undefined;
+    },
   });
   useRefreshAction(query.refetch);
 
   if (query.isPending && !query.data) return <PageSpinner />;
   if (query.isError) return <ErrorState message={`Couldn't load ${config.title.toLowerCase()}.`} onRetry={() => void query.refetch()} />;
 
-  const items = query.data?.items ?? [];
+  const items = query.data?.pages.flatMap((page) => page.items) ?? [];
+  const total = query.data?.pages[0]?.total ?? items.length;
 
   return (
     <>
@@ -66,14 +83,32 @@ function EntityList({ kind }: { kind: CatalogBrowseKind }) {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h1 className="text-xl font-semibold tracking-tight">{config.title}</h1>
-            <p className="text-xs text-muted-foreground">{items.length} in your libraries</p>
+            <p className="text-xs text-muted-foreground">
+              {searchTerm
+                ? `${total} matching "${searchTerm}"`
+                : `${items.length} of ${total} in your libraries`}
+            </p>
           </div>
           <WatchSubNav />
         </div>
 
-        <BrowseKindTabs active={kind} />
+        <div className="flex flex-wrap items-center gap-2">
+          <BrowseKindTabs active={kind} />
+          <input
+            type="search"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder={`Filter ${config.title.toLowerCase()}…`}
+            aria-label={`Filter ${config.title.toLowerCase()}`}
+            className="h-8 min-w-40 flex-1 rounded-md border bg-card px-2 text-sm"
+          />
+        </div>
 
-        {items.length === 0 && <p className="text-sm text-muted-foreground">{config.empty}</p>}
+        {items.length === 0 && (
+          <p className="text-sm text-muted-foreground">
+            {searchTerm ? `Nothing matching "${searchTerm}".` : config.empty}
+          </p>
+        )}
 
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
           {items.map((item) => {
@@ -87,14 +122,24 @@ function EntityList({ kind }: { kind: CatalogBrowseKind }) {
                 href={href}
                 className="flex items-center gap-3 rounded-lg border bg-card p-2 hover:bg-accent"
               >
-                <div className="relative size-12 shrink-0 overflow-hidden rounded bg-muted">
-                  {image && <FadeInImage src={image} alt="" fill sizes="48px" unoptimized className="object-cover" />}
+                <div className="relative flex size-12 shrink-0 items-center justify-center overflow-hidden rounded bg-muted text-sm font-semibold text-muted-foreground">
+                  {image
+                    ? <FadeInImage src={image} alt="" fill sizes="48px" unoptimized className="object-cover" />
+                    : (item.Name?.[0] ?? '?').toUpperCase()}
                 </div>
                 <span className="min-w-0 flex-1 truncate text-sm font-medium">{item.Name}</span>
               </Link>
             );
           })}
         </div>
+
+        {query.hasNextPage && (
+          <div className="flex justify-center">
+            <Button variant="outline" onClick={() => void query.fetchNextPage()} disabled={query.isFetchingNextPage}>
+              {query.isFetchingNextPage ? 'Loading…' : `Load more (${items.length} of ${total})`}
+            </Button>
+          </div>
+        )}
       </div>
     </>
   );

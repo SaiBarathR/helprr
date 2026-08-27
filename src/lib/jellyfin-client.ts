@@ -830,39 +830,91 @@ export class JellyfinClient {
     return res.data;
   }
 
-  async reportPlayback(payload: PlaybackProgressPayload): Promise<void> {
-    const path = payload.event === 'playing'
-      ? '/Sessions/Playing'
-      : payload.event === 'stopped'
-        ? '/Sessions/Playing/Stopped'
-        : '/Sessions/Playing/Progress';
-    await this.client.post(path, {
-      ItemId: payload.itemId,
-      MediaSourceId: payload.mediaSourceId,
-      PlaySessionId: payload.playSessionId,
-      PositionTicks: payload.positionTicks ?? 0,
-      IsPaused: payload.isPaused ?? false,
-      IsMuted: payload.isMuted ?? false,
-      VolumeLevel: payload.volumeLevel ?? 100,
-      PlaybackRate: payload.playbackRate ?? 1,
-      PlayMethod: payload.playMethod,
-      AudioStreamIndex: payload.audioStreamIndex,
-      SubtitleStreamIndex: payload.subtitleStreamIndex,
-      LiveStreamId: payload.liveStreamId,
-      RepeatMode: payload.repeatMode ?? 'RepeatNone',
-      ShuffleMode: payload.shuffleMode ?? 'Sorted',
-      CanSeek: payload.canSeek ?? true,
-      PlaybackStartTimeTicks: payload.playbackStartTimeTicks,
-      MaxStreamingBitrate: payload.maxStreamingBitrate,
-      EventName: payload.event === 'progress' ? 'timeupdate' : undefined,
-    }, {
-      headers: this.playbackHeaders(payload.deviceId, payload.deviceName),
+  /**
+   * Persist resume position on the member's own account.
+   *
+   * The /Sessions/Playing* endpoints attribute progress to the *session's* user,
+   * and Helprr authenticates with the admin API key, so those sessions carry no
+   * user and Jellyfin saves nothing — playing a title for minutes left
+   * PlaybackPositionTicks at 0. This is the same explicit-userId escape hatch
+   * `markPlayed` documents, and it is what actually makes Resume work.
+   */
+  async updateUserItemData(
+    itemId: string,
+    data: { PlaybackPositionTicks?: number; Played?: boolean; PlayCount?: number },
+  ): Promise<void> {
+    await this.client.post(`/UserItems/${itemId}/UserData`, data, {
+      params: { userId: this.requireUserId() },
     });
   }
 
+  /**
+   * Report playback state.
+   *
+   * Two things happen per event, and they are not interchangeable:
+   *  - /Sessions/Playing* drives Jellyfin's Now Playing / Active Devices view.
+   *    Each event takes a *different* model and Jellyfin 400s the whole payload
+   *    on any undeclared property, so each branch sends only what its schema
+   *    allows. `PlaybackRate` and `MaxStreamingBitrate` have no Jellyfin
+   *    equivalent and are dropped; shuffle travels as `PlaybackOrder`
+   *    ('Default' | 'Shuffle'), not `ShuffleMode`.
+   *  - updateUserItemData persists the resume position against the member's
+   *    account, which the session path cannot do under admin-key auth.
+   */
+  async reportPlayback(payload: PlaybackProgressPayload): Promise<void> {
+    const headers = this.playbackHeaders(payload.deviceId, payload.deviceName);
+    const positionTicks = Math.round(payload.positionTicks ?? 0);
+
+    if (payload.event !== 'playing') {
+      // Best-effort: a Now Playing hiccup must not lose the resume point.
+      await this.updateUserItemData(payload.itemId, { PlaybackPositionTicks: positionTicks })
+        .catch(() => undefined);
+    }
+
+    // PlaybackStopInfo is much narrower than the start/progress models.
+    if (payload.event === 'stopped') {
+      await this.client.post('/Sessions/Playing/Stopped', {
+        ItemId: payload.itemId,
+        MediaSourceId: payload.mediaSourceId,
+        PlaySessionId: payload.playSessionId,
+        PositionTicks: positionTicks,
+        LiveStreamId: payload.liveStreamId,
+        Failed: false,
+      }, { headers });
+      return;
+    }
+
+    await this.client.post(
+      payload.event === 'playing' ? '/Sessions/Playing' : '/Sessions/Playing/Progress',
+      {
+        ItemId: payload.itemId,
+        MediaSourceId: payload.mediaSourceId,
+        PlaySessionId: payload.playSessionId,
+        PositionTicks: positionTicks,
+        IsPaused: payload.isPaused ?? false,
+        IsMuted: payload.isMuted ?? false,
+        VolumeLevel: payload.volumeLevel ?? 100,
+        PlayMethod: payload.playMethod,
+        AudioStreamIndex: payload.audioStreamIndex,
+        SubtitleStreamIndex: payload.subtitleStreamIndex,
+        LiveStreamId: payload.liveStreamId,
+        RepeatMode: payload.repeatMode ?? 'RepeatNone',
+        PlaybackOrder: payload.shuffleMode === 'Shuffle' ? 'Shuffle' : 'Default',
+        CanSeek: payload.canSeek ?? true,
+        PlaybackStartTimeTicks: payload.playbackStartTimeTicks,
+      },
+      { headers },
+    );
+  }
+
+  /**
+   * Release a transcode. Jellyfin exposes this as DELETE /Videos/ActiveEncodings
+   * with deviceId and playSessionId both required — a POST to
+   * /Videos/ActiveEncodings/Stop returns 405 and leaves ffmpeg running.
+   */
   async stopActiveEncodings(playSessionId: string, deviceId: string, deviceName?: string): Promise<void> {
-    await this.client.post('/Videos/ActiveEncodings/Stop', null, {
-      params: { playSessionId },
+    await this.client.delete('/Videos/ActiveEncodings', {
+      params: { deviceId, playSessionId },
       headers: this.playbackHeaders(deviceId, deviceName),
     });
   }
