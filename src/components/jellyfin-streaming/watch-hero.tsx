@@ -7,6 +7,7 @@ import type { JellyfinItem } from '@/types/jellyfin';
 import { Button } from '@/components/ui/button';
 import { FadeInImage } from '@/components/media/fade-in-image';
 import { jellyfinBackdropUrl, jellyfinImageUrl } from '@/lib/jellyfin-playback/image';
+import { HeroTitle } from '@/components/jellyfin-streaming/hero-title';
 import { formatCertificate, formatCommunityRating } from '@/lib/jellyfin-playback/metadata';
 import { formatClock, ticksToSeconds } from '@/lib/jellyfin-playback/device';
 import { cn } from '@/lib/utils';
@@ -67,18 +68,17 @@ export function WatchHero({
         />
       )}
       {/* Black-based scrims only, per the project's image-scrim convention. */}
-      <span className="absolute inset-0 bg-gradient-to-t from-background via-background/55 to-transparent" />
+      <span className="absolute inset-0 bg-gradient-to-t from-background from-30% via-background/80 via-60% to-transparent" />
       <span className="absolute inset-0 bg-gradient-to-r from-background/85 via-background/20 to-transparent" />
 
       <div className="relative flex h-full flex-col justify-end gap-3 p-4 pb-6 md:p-6 md:pb-8">
         <div className="max-w-xl space-y-3">
-          {logo ? (
-            <div className="relative h-16 w-56 md:h-20 md:w-72">
-              <FadeInImage src={logo} alt={item.Name} fill sizes="288px" unoptimized className="object-contain object-left" />
-            </div>
-          ) : (
-            <h2 className="text-3xl font-semibold tracking-tight text-balance md:text-4xl">{item.Name}</h2>
-          )}
+          <HeroTitle
+            name={item.Name}
+            logoUrl={logo}
+            frameClassName="h-16 w-56 md:h-20 md:w-72"
+            textClassName="text-3xl font-semibold tracking-tight text-balance md:text-4xl"
+          />
 
           <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
             {certificate && (
