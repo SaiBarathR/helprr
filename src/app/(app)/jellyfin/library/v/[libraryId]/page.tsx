@@ -16,6 +16,10 @@ import { Button } from '@/components/ui/button';
 import type { CatalogFiltersResponse, CatalogItemsResponse } from '@/types/jellyfin-streaming';
 
 const PAGE_SIZE = 50;
+/** Route caps a single request at 200, so Play all pages up to this ceiling
+ *  rather than silently queueing only the 50 rows on screen. */
+const PLAY_ALL_MAX = 500;
+const PLAY_ALL_PAGE = 200;
 
 function defaultInclude(collectionType: string, view: string): string | undefined {
   const type = collectionType.toLowerCase();
@@ -64,14 +68,15 @@ export default function LibraryBrowserPage() {
   const [year, setYear] = useState('');
   const [rating, setRating] = useState('');
   const [tag, setTag] = useState('');
+  const [queueing, setQueueing] = useState(false);
   const includeItemTypes = defaultInclude(collectionType, view);
-  const queryString = (() => {
+  const buildQuery = (limit: number): string => {
     const next = new URLSearchParams({
       parentId: params.libraryId,
       recursive: 'true',
       sortBy,
       sortOrder,
-      limit: String(PAGE_SIZE),
+      limit: String(limit),
     });
     if (includeItemTypes) next.set('includeItemTypes', includeItemTypes);
     if (filter) next.set('filters', filter);
@@ -81,7 +86,8 @@ export default function LibraryBrowserPage() {
     if (tag) next.set('tags', tag);
     if (view === 'artists') next.set('artistType', 'AlbumArtist');
     return next.toString();
-  })();
+  };
+  const queryString = buildQuery(PAGE_SIZE);
 
   const filtersQuery = useQuery({
     queryKey: queryKeys.jellyfinFilters(params.libraryId),
@@ -102,6 +108,29 @@ export default function LibraryBrowserPage() {
 
   const items = query.data?.pages.flatMap((page) => page.items) ?? [];
 
+  // "Play all" used to queue whatever happened to be loaded — 50 of 492 —
+  // while the header advertised the full count.
+  const playEverything = async (shuffle: boolean) => {
+    setQueueing(true);
+    try {
+      const collected: typeof items = [];
+      let startIndex = 0;
+      let total = Number.POSITIVE_INFINITY;
+      while (collected.length < Math.min(total, PLAY_ALL_MAX)) {
+        const page = await jsonFetcher<CatalogItemsResponse>(
+          `/api/jellyfin/catalog/items?${buildQuery(PLAY_ALL_PAGE)}&startIndex=${startIndex}`,
+        )();
+        total = page.total;
+        if (page.items.length === 0) break;
+        collected.push(...page.items);
+        startIndex += page.items.length;
+      }
+      if (collected.length > 0) await playback.playItems(collected, 0, shuffle ? { shuffle: true } : undefined);
+    } finally {
+      setQueueing(false);
+    }
+  };
+
   if (query.isPending && items.length === 0) return <PageSpinner />;
   if (query.isError) {
     return <ErrorState message="Couldn't load this library." onRetry={() => void query.refetch()} />;
@@ -113,12 +142,15 @@ export default function LibraryBrowserPage() {
       <div className="space-y-4 p-4 pb-28">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h1 className="text-xl font-semibold tracking-tight">{name}</h1>
+            <h1 className="sr-only">{name}</h1>
+            <p className="text-base font-semibold tracking-tight">{name}</p>
             <p className="text-xs text-muted-foreground">{query.data?.pages[0]?.total ?? items.length} titles</p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button size="sm" variant="outline" onClick={() => void playback.playItems(items)}>Play all</Button>
-            <Button size="sm" variant="outline" onClick={() => void playback.playItems(items, 0, { shuffle: true })}>Shuffle</Button>
+            <Button size="sm" variant="outline" disabled={queueing} onClick={() => void playEverything(false)}>
+              {queueing ? 'Queueing…' : 'Play all'}
+            </Button>
+            <Button size="sm" variant="outline" disabled={queueing} onClick={() => void playEverything(true)}>Shuffle</Button>
             <WatchSubNav />
           </div>
         </div>
@@ -207,7 +239,7 @@ function FilterRow({
   options: Array<{ id: string; label: string }>;
 }) {
   return (
-    <div className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:thin]">
+    <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
       <Button size="sm" variant={value === '' ? 'default' : 'outline'} onClick={() => onChange('')}>All {label.toLowerCase()}</Button>
       {options.map((option) => (
         <Button key={option.id} size="sm" variant={value === option.id ? 'default' : 'outline'} onClick={() => onChange(option.id)}>

@@ -3,7 +3,7 @@
 import { use } from 'react';
 import Link from 'next/link';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Check, Heart, ListPlus, Play, RotateCcw, Shuffle } from 'lucide-react';
+import { Check, Heart, ListPlus, Play, RotateCcw, Shuffle, User } from 'lucide-react';
 import { jsonFetcher } from '@/lib/query-fetch';
 import { queryKeys } from '@/lib/query-keys';
 import { Button } from '@/components/ui/button';
@@ -13,8 +13,9 @@ import { WatchSubNav } from '@/components/jellyfin-streaming/watch-subnav';
 import { CatalogRail } from '@/components/jellyfin-streaming/catalog-rail';
 import { CatalogPosterCard } from '@/components/jellyfin-streaming/poster-card';
 import { useJellyfinPlayback } from '@/components/jellyfin-streaming/playback-provider';
-import { jellyfinBackdropUrl, jellyfinImageUrl, jellyfinPosterUrl } from '@/lib/jellyfin-playback/image';
+import { jellyfinBackdropUrl, jellyfinPersonImageUrl, jellyfinPosterUrl } from '@/lib/jellyfin-playback/image';
 import { formatClock, ticksToSeconds } from '@/lib/jellyfin-playback/device';
+import { formatCertificate, formatCommunityRating } from '@/lib/jellyfin-playback/metadata';
 import type { CatalogItemDetailResponse } from '@/types/jellyfin-streaming';
 import { FadeInImage } from '@/components/media/fade-in-image';
 
@@ -37,6 +38,7 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
   const canResume = Boolean(item.UserData?.PlaybackPositionTicks && item.UserData.PlaybackPositionTicks > 0);
   const people = item.People ?? [];
   const trailers = item.RemoteTrailers ?? [];
+  const certificate = formatCertificate(item.OfficialRating);
 
   return (
     <div className="pb-28">
@@ -53,11 +55,18 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
             )}
             <div className="min-w-0 space-y-3">
               <h1 className="text-2xl font-semibold tracking-tight">{item.Name}</h1>
-              <p className="text-sm text-muted-foreground">
-                {[item.ProductionYear, item.OfficialRating, runtime !== '0:00' ? runtime : null, item.CommunityRating ? `★ ${item.CommunityRating.toFixed(1)}` : null, item.Genres?.slice(0, 3).join(', ')]
-                  .filter(Boolean)
-                  .join(' · ')}
-              </p>
+              <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+                {certificate && (
+                  <span className="rounded border border-current px-1.5 py-px text-[11px] font-medium tracking-wide">
+                    {certificate}
+                  </span>
+                )}
+                <span>
+                  {[item.ProductionYear, runtime !== '0:00' ? runtime : null, formatCommunityRating(item.CommunityRating), item.Genres?.slice(0, 3).join(', ')]
+                    .filter(Boolean)
+                    .join(' · ')}
+                </span>
+              </div>
               {item.Taglines?.[0] && <p className="text-sm italic text-muted-foreground">{item.Taglines[0]}</p>}
               {item.Overview && <p className="max-w-3xl text-sm leading-relaxed text-muted-foreground">{item.Overview}</p>}
               <div className="flex flex-wrap gap-2">
@@ -161,14 +170,14 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
         {people.length > 0 && (
           <section className="space-y-2">
             <h2 className="text-base font-semibold">Cast & crew</h2>
-            <div className="flex gap-3 overflow-x-auto pb-2 [scrollbar-width:thin]">
+            <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
               {people.slice(0, 20).map((person) => (
                 person.Id ? (
                   <Link key={`${person.Id}-${person.Role}`} href={`/jellyfin/library/item/${person.Id}`} className="w-24 shrink-0">
-                    <div className="relative aspect-square overflow-hidden rounded-full bg-muted">
-                      {jellyfinImageUrl(person.Id, 'Primary', 160) && (
-                        <FadeInImage src={jellyfinImageUrl(person.Id, 'Primary', 160)!} alt="" fill sizes="96px" unoptimized className="object-cover" />
-                      )}
+                    <div className="relative flex aspect-square items-center justify-center overflow-hidden rounded-full bg-muted">
+                      {jellyfinPersonImageUrl(person, 160)
+                        ? <FadeInImage src={jellyfinPersonImageUrl(person, 160)!} alt={person.Name ?? ''} fill sizes="96px" unoptimized className="object-cover" />
+                        : <User className="size-5 text-muted-foreground" />}
                     </div>
                     <p className="mt-1 truncate text-xs font-medium">{person.Name}</p>
                     <p className="truncate text-[11px] text-muted-foreground">{person.Role || person.Type}</p>

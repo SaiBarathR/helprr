@@ -1,6 +1,7 @@
 'use client';
 
 import { use, useEffect, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { jsonFetcher } from '@/lib/query-fetch';
 import { queryKeys } from '@/lib/query-keys';
@@ -12,6 +13,7 @@ import type { CatalogItemDetailResponse } from '@/types/jellyfin-streaming';
 export default function WatchPage({ params }: { params: Promise<{ itemId: string }> }) {
   const { itemId } = use(params);
   const playback = useJellyfinPlayback();
+  const router = useRouter();
   const startedId = useRef<string | null>(null);
   const query = useQuery({
     queryKey: queryKeys.jellyfinItem(itemId),
@@ -23,7 +25,12 @@ export default function WatchPage({ params }: { params: Promise<{ itemId: string
     if (!next || startedId.current === next.Id) return;
     startedId.current = next.Id;
     void playback.playItem(next);
-  }, [playback, query.data?.item]);
+    // The player is mounted above the page, so hand the route somewhere real
+    // to sit behind it — minimising used to land on a blank dead end.
+    router.replace(next.Type === 'TvChannel'
+      ? '/jellyfin/library/live'
+      : `/jellyfin/library/item/${next.Id}`);
+  }, [playback, query.data?.item, router]);
 
   if (query.isPending && !query.data) return <PageSpinner />;
   if (query.isError || !query.data?.item) {

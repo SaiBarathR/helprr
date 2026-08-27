@@ -64,7 +64,7 @@ export default function JellyfinSearchPage() {
   return (
     <div className="space-y-4 p-4 pb-28">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold tracking-tight">Search</h1>
+        <h1 className="sr-only">Search</h1>
         <WatchSubNav />
       </div>
       <Input

@@ -22,7 +22,7 @@ export default function FavoritesPage() {
   return (
     <div className="space-y-4 p-4 pb-28">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold tracking-tight">Favorites</h1>
+        <h1 className="sr-only">Favorites</h1>
         <WatchSubNav />
       </div>
       <div className="flex flex-wrap gap-3">

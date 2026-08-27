@@ -7,6 +7,7 @@ import {
   Gauge,
   ListMusic,
   Maximize,
+  MoreHorizontal,
   Pause,
   PictureInPicture2,
   Play,
@@ -65,39 +66,53 @@ export function VideoStage() {
   const playback = useJellyfinPlayback();
   const mediaRef = useJellyfinMediaRef();
   const [controlsVisible, setControlsVisible] = useState(true);
-  const [panel, setPanel] = useState<'none' | 'audio' | 'subs' | 'quality' | 'speed' | 'chapters' | 'stats'>('none');
+  const [panel, setPanel] = useState<'none' | 'audio' | 'subs' | 'quality' | 'speed' | 'chapters' | 'stats' | 'more'>('none');
   const isAudio = playback.item?.MediaType === 'Audio';
   const isActive = playback.status !== 'idle' && Boolean(playback.item);
   const isVideo = isActive && !isAudio;
   const expanded = playback.videoExpanded && isActive;
 
-  useEffect(() => {
-    if (!expanded) return undefined;
-    const hide = () => {
-      if (playback.status === 'playing') setControlsVisible(false);
-    };
-    const show = () => setControlsVisible(true);
-    let timer = window.setTimeout(hide, 3500);
-    const bump = () => {
-      show();
-      window.clearTimeout(timer);
-      timer = window.setTimeout(hide, 3500);
-    };
-    window.addEventListener('pointermove', bump);
-    window.addEventListener('keydown', bump);
-    return () => {
-      window.clearTimeout(timer);
-      window.removeEventListener('pointermove', bump);
-      window.removeEventListener('keydown', bump);
-    };
-  }, [expanded, playback.status]);
+  // Re-opening the player should always start with the chrome up. Adjusting
+  // state during render avoids the cascading re-render an effect would cause.
+  const [chromeWasOpen, setChromeWasOpen] = useState(expanded);
+  if (expanded !== chromeWasOpen) {
+    setChromeWasOpen(expanded);
+    if (expanded) setControlsVisible(true);
+  }
 
-  // Shortcuts belong to the open player only. Binding them app-wide meant a
-  // stray `n` on any page started the next episode, and space stopped scrolling
-  // the page. Reading the live context through a ref keeps this bound once per
-  // open instead of re-binding on every timeupdate.
+  // Reading the live context through a ref keeps window listeners bound once
+  // per open instead of re-binding on every timeupdate.
   const playbackRef = useRef(playback);
   useEffect(() => { playbackRef.current = playback; });
+
+  // `pointermove` alone left touch users stranded: a stationary tap fires no
+  // move event, so once the chrome auto-hid there was no way to get it back.
+  // reveal() is therefore also wired to the surface tap below, and it re-arms
+  // the hide timer itself so repeat activity keeps the chrome up.
+  const hideTimerRef = useRef<number | null>(null);
+  const revealControls = useCallback(() => {
+    setControlsVisible(true);
+    if (hideTimerRef.current) window.clearTimeout(hideTimerRef.current);
+    hideTimerRef.current = window.setTimeout(() => {
+      if (playbackRef.current.status === 'playing') setControlsVisible(false);
+    }, 3500);
+  }, []);
+
+  useEffect(() => {
+    if (!expanded) return undefined;
+    // Arm the first hide without touching state — controlsVisible is reset to
+    // true during render whenever the player opens (below).
+    hideTimerRef.current = window.setTimeout(() => {
+      if (playbackRef.current.status === 'playing') setControlsVisible(false);
+    }, 3500);
+    window.addEventListener('pointermove', revealControls);
+    window.addEventListener('keydown', revealControls);
+    return () => {
+      if (hideTimerRef.current) window.clearTimeout(hideTimerRef.current);
+      window.removeEventListener('pointermove', revealControls);
+      window.removeEventListener('keydown', revealControls);
+    };
+  }, [expanded, revealControls]);
 
   useEffect(() => {
     if (!expanded) return undefined;
@@ -115,6 +130,10 @@ export function VideoStage() {
         p.setQueueOpen(false);
       }
       if (event.key === 'm') p.setMuted(!p.muted);
+      if (event.key === 'f') {
+        if (document.fullscreenElement) void document.exitFullscreen();
+        else void document.documentElement.requestFullscreen?.();
+      }
       if (event.key === 'n') void p.next();
       if (event.key === 'p') void p.previous();
       if (event.key >= '0' && event.key <= '9' && p.durationSeconds > 0) {
@@ -180,19 +199,76 @@ export function VideoStage() {
   const video = playback.stream?.mediaSource.MediaStreams?.find((stream) => stream.Type === 'Video');
   const showChrome = expanded && (controlsVisible || panel !== 'none' || playback.status !== 'playing');
 
+  // Rendered inline on sm+ and inside the `more` panel below it, so there is
+  // one definition of these controls rather than two.
+  const secondaryControls = (
+    <>
+      <Button variant="ghost" size="icon" className="text-white" onClick={playback.toggleShuffle} aria-label="Shuffle" aria-pressed={playback.shuffled}>
+        <Shuffle className={playback.shuffled ? 'text-[var(--hpr-amber)]' : undefined} />
+      </Button>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="text-white"
+        onClick={() => playback.setRepeat(playback.repeat === 'RepeatNone' ? 'RepeatAll' : playback.repeat === 'RepeatAll' ? 'RepeatOne' : 'RepeatNone')}
+        aria-label="Repeat"
+      >
+        {playback.repeat === 'RepeatOne' ? <Repeat1 className="text-[var(--hpr-amber)]" /> : <Repeat className={playback.repeat === 'RepeatAll' ? 'text-[var(--hpr-amber)]' : undefined} />}
+      </Button>
+      {audios.length > 1 && (
+        <Button variant="ghost" size="sm" className="text-white" onClick={() => setPanel(panel === 'audio' ? 'none' : 'audio')}>Audio</Button>
+      )}
+      {chapters.length > 0 && (
+        <Button variant="ghost" size="sm" className="text-white" onClick={() => setPanel(panel === 'chapters' ? 'none' : 'chapters')}>Chapters</Button>
+      )}
+      <Button variant="ghost" size="icon" className="text-white" onClick={() => setPanel(panel === 'quality' ? 'none' : 'quality')} aria-label="Quality">
+        <Gauge />
+      </Button>
+      <Button variant="ghost" size="sm" className="text-white" onClick={() => setPanel(panel === 'speed' ? 'none' : 'speed')}>
+        {playback.playbackRate}x
+      </Button>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="text-white"
+        aria-label="Picture in picture"
+        onClick={() => {
+          const el = mediaRef.current;
+          if (el && document.pictureInPictureElement) void document.exitPictureInPicture();
+          else if (el) void el.requestPictureInPicture?.();
+        }}
+      >
+        <PictureInPicture2 />
+      </Button>
+      <Button variant="ghost" size="sm" className="text-white" onClick={() => setPanel(panel === 'stats' ? 'none' : 'stats')}>Stats</Button>
+      <Button variant="ghost" size="icon" className="text-white" onClick={() => void playback.stop()} aria-label="Stop">
+        <X />
+      </Button>
+    </>
+  );
+
   return (
     <>
       <div
         className={cn(
           'overflow-hidden bg-black',
           !isVideo && 'pointer-events-none fixed h-px w-px opacity-0',
-          mini && 'fixed right-3 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] z-50 h-36 w-64 rounded-xl border shadow-2xl md:bottom-4',
+          // Sits above the now-playing bar (62px) rather than on top of it —
+          // at md:bottom-4 it used to cover Pause/Next/Repeat/Queue/Stop.
+          mini && 'fixed right-3 bottom-[calc(9.5rem+env(safe-area-inset-bottom))] z-30 h-36 w-64 rounded-xl border shadow-2xl md:bottom-[5.5rem]',
           isVideo && expanded && 'fixed inset-0 z-[80]',
         )}
       >
         <div
-          className={cn('relative h-full w-full', mini && 'cursor-pointer')}
-          onClick={() => mini && playback.setVideoExpanded(true)}
+          className={cn('relative h-full w-full', (mini || expanded) && 'cursor-pointer')}
+          onClick={(event) => {
+            if (mini) { playback.setVideoExpanded(true); return; }
+            if (!expanded) return;
+            // Controls handle their own clicks; only the bare surface toggles.
+            if ((event.target as HTMLElement | null)?.closest('button, a, input, select, label')) return;
+            if (controlsVisible) playback.togglePause();
+            else revealControls();
+          }}
         >
           <style>{cueCss}</style>
           <video
@@ -202,18 +278,6 @@ export function VideoStage() {
             preload="metadata"
           />
 
-            {expanded && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="absolute top-4 right-4 z-20 text-white"
-                onClick={() => playback.setVideoExpanded(false)}
-                aria-label="Minimize player"
-              >
-                <ChevronDown />
-              </Button>
-            )}
-
             {playback.status === 'loading' && (
               <div className="absolute inset-0 flex items-center justify-center text-sm text-white/80">Loading stream…</div>
             )}
@@ -222,12 +286,12 @@ export function VideoStage() {
             )}
 
             {intro && expanded && (
-              <Button className="absolute right-4 bottom-28 z-10" onClick={() => playback.skipSegment(intro)}>
+              <Button className="absolute right-4 bottom-36 z-10" onClick={() => playback.skipSegment(intro)}>
                 Skip {intro.Type}
               </Button>
             )}
             {credits && expanded && (
-              <Button variant="secondary" className="absolute right-4 bottom-28 z-10" onClick={() => void playback.next()}>
+              <Button variant="secondary" className="absolute right-4 bottom-36 z-10" onClick={() => void playback.next()}>
                 Next episode
               </Button>
             )}
@@ -281,56 +345,23 @@ export function VideoStage() {
                         step={0.01}
                         value={playback.muted ? 0 : playback.volume}
                         aria-label="Volume"
-                        className="w-20 accent-[var(--hpr-amber)]"
+                        className="hidden w-20 accent-[var(--hpr-amber)] sm:block"
                         onChange={(event) => {
                           playback.setMuted(false);
                           playback.setVolume(Number(event.target.value));
                         }}
                       />
                     </div>
-                    <div className="flex flex-wrap items-center justify-end gap-1">
-                      <Button variant="ghost" size="icon" className="text-white" onClick={playback.toggleShuffle} aria-label="Shuffle" aria-pressed={playback.shuffled}>
-                        <Shuffle className={playback.shuffled ? 'text-[var(--hpr-amber)]' : undefined} />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="text-white"
-                        onClick={() => playback.setRepeat(playback.repeat === 'RepeatNone' ? 'RepeatAll' : playback.repeat === 'RepeatAll' ? 'RepeatOne' : 'RepeatNone')}
-                        aria-label="Repeat"
-                      >
-                        {playback.repeat === 'RepeatOne' ? <Repeat1 className="text-[var(--hpr-amber)]" /> : <Repeat className={playback.repeat === 'RepeatAll' ? 'text-[var(--hpr-amber)]' : undefined} />}
-                      </Button>
-                      {audios.length > 1 && (
-                        <Button variant="ghost" size="sm" className="text-white" onClick={() => setPanel(panel === 'audio' ? 'none' : 'audio')}>Audio</Button>
-                      )}
+                    <div className="flex items-center justify-end gap-1">
+                      {/* Twelve controls in one wrapping row filled 40% of a
+                          phone screen, so the low-frequency half moves behind
+                          this overflow below sm and stays inline above it. */}
+                      <span className="hidden items-center gap-1 sm:inline-flex">{secondaryControls}</span>
                       <Button variant="ghost" size="icon" className="text-white" onClick={() => setPanel(panel === 'subs' ? 'none' : 'subs')} aria-label="Subtitles">
                         <Subtitles />
                       </Button>
-                      {chapters.length > 0 && (
-                        <Button variant="ghost" size="sm" className="text-white" onClick={() => setPanel(panel === 'chapters' ? 'none' : 'chapters')}>Chapters</Button>
-                      )}
-                      <Button variant="ghost" size="icon" className="text-white" onClick={() => setPanel(panel === 'quality' ? 'none' : 'quality')} aria-label="Quality">
-                        <Gauge />
-                      </Button>
-                      <Button variant="ghost" size="sm" className="text-white" onClick={() => setPanel(panel === 'speed' ? 'none' : 'speed')}>
-                        {playback.playbackRate}x
-                      </Button>
                       <Button variant="ghost" size="icon" className="text-white" onClick={() => playback.setQueueOpen(!playback.queueOpen)} aria-label="Queue">
                         <ListMusic />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="text-white"
-                        aria-label="Picture in picture"
-                        onClick={() => {
-                          const el = mediaRef.current;
-                          if (el && document.pictureInPictureElement) void document.exitPictureInPicture();
-                          else if (el) void el.requestPictureInPicture?.();
-                        }}
-                      >
-                        <PictureInPicture2 />
                       </Button>
                       <Button
                         variant="ghost"
@@ -345,12 +376,23 @@ export function VideoStage() {
                       >
                         <Maximize />
                       </Button>
-                      <Button variant="ghost" size="sm" className="text-white" onClick={() => setPanel(panel === 'stats' ? 'none' : 'stats')}>Stats</Button>
-                      <Button variant="ghost" size="icon" className="text-white" onClick={() => void playback.stop()} aria-label="Stop">
-                        <X />
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="text-white sm:hidden"
+                        aria-label="More controls"
+                        aria-expanded={panel === 'more'}
+                        onClick={() => setPanel(panel === 'more' ? 'none' : 'more')}
+                      >
+                        <MoreHorizontal />
                       </Button>
                     </div>
                   </div>
+                  {panel === 'more' && (
+                    <Panel>
+                      <div className="flex flex-wrap items-center gap-1">{secondaryControls}</div>
+                    </Panel>
+                  )}
                   {panel === 'audio' && (
                     <Panel>
                       {audios.map((stream) => (

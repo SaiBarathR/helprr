@@ -3,17 +3,20 @@
 import Link from 'next/link';
 import type { JellyfinItem } from '@/types/jellyfin';
 import { CatalogPosterCard } from '@/components/jellyfin-streaming/poster-card';
+import type { CatalogCardShape } from '@/lib/jellyfin-playback/image';
 
 export function CatalogRail({
   title,
   items,
   onPlay,
   href,
+  shape,
 }: {
   title: string;
   items: JellyfinItem[];
   onPlay?: (item: JellyfinItem) => void;
   href?: string;
+  shape?: CatalogCardShape;
 }) {
   if (items.length === 0) return null;
   return (
@@ -24,9 +27,9 @@ export function CatalogRail({
           <Link href={href} className="text-xs text-muted-foreground hover:text-foreground">See all</Link>
         )}
       </div>
-      <div className="flex gap-3 overflow-x-auto pb-2 [scrollbar-width:thin]">
+      <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
         {items.map((item, index) => (
-          <CatalogPosterCard key={item.Id} item={item} onPlay={onPlay} priority={index < 4} />
+          <CatalogPosterCard key={item.Id} item={item} onPlay={onPlay} priority={index < 4} shape={shape} />
         ))}
       </div>
     </section>

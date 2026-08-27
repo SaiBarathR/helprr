@@ -42,15 +42,12 @@ export default function WatchHomePage() {
       <PullToRefresh onRefresh={query.refetch} />
       <div className="space-y-6 p-4 pb-28">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h1 className="text-xl font-semibold tracking-tight">Watch</h1>
-            <p className="text-xs text-muted-foreground">Play your Jellyfin library in Helprr — direct play, transcoding, and subtitles.</p>
-          </div>
+          <h1 className="sr-only">Watch</h1>
           <WatchSubNav />
         </div>
 
         {data.views.length > 0 && (
-          <div className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:thin]">
+          <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
             {data.views.map((view) => (
               <Link
                 key={view.Id}
@@ -67,9 +64,9 @@ export default function WatchHomePage() {
           </div>
         )}
 
-        <CatalogRail title="Continue watching" items={data.resume} onPlay={(item) => void playback.playItem(item)} />
-        <CatalogRail title="Next up" items={data.nextUp} onPlay={(item) => void playback.playItem(item)} />
-        <CatalogRail title="Upcoming" items={data.upcoming ?? []} onPlay={(item) => void playback.playItem(item)} />
+        <CatalogRail shape="thumb" title="Continue watching" items={data.resume} onPlay={(item) => void playback.playItem(item)} />
+        <CatalogRail shape="thumb" title="Next up" items={data.nextUp} onPlay={(item) => void playback.playItem(item)} />
+        <CatalogRail shape="thumb" title="Upcoming" items={data.upcoming ?? []} onPlay={(item) => void playback.playItem(item)} />
         {(data.suggestions ?? []).map((row) => (
           <CatalogRail
             key={row.title}

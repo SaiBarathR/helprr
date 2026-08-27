@@ -62,7 +62,7 @@ export default function LiveTvPage() {
     <div className="space-y-6 p-4 pb-28">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight">Live TV</h1>
+          <h1 className="sr-only">Live TV</h1>
           <p className="text-xs text-muted-foreground">{channels.length} channels</p>
         </div>
         <WatchSubNav />

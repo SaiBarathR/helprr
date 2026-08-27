@@ -82,7 +82,7 @@ function EntityList({ kind }: { kind: CatalogBrowseKind }) {
       <div className="space-y-4 p-4 pb-28">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h1 className="text-xl font-semibold tracking-tight">{config.title}</h1>
+            <h1 className="sr-only">{config.title}</h1>
             <p className="text-xs text-muted-foreground">
               {searchTerm
                 ? `${total} matching "${searchTerm}"`
@@ -112,7 +112,9 @@ function EntityList({ kind }: { kind: CatalogBrowseKind }) {
 
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
           {items.map((item) => {
-            const image = jellyfinImageUrl(item.Id, 'Primary', 240);
+            // Only ask for art the entity actually has; otherwise the
+            // initial-letter fallback below never gets a chance to render.
+            const image = item.ImageTags?.Primary ? jellyfinImageUrl(item.Id, 'Primary', 240) : null;
             const href = config.filterParam
               ? `/jellyfin/library/browse/${kind}?id=${encodeURIComponent(item.Id)}&name=${encodeURIComponent(item.Name)}`
               : `/jellyfin/library/item/${item.Id}`;
@@ -210,7 +212,8 @@ function FilteredItems({
       <div className="space-y-4 p-4 pb-28">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h1 className="text-xl font-semibold tracking-tight">{name || KINDS[kind].title}</h1>
+            <h1 className="sr-only">{name || KINDS[kind].title}</h1>
+            <p className="text-base font-semibold tracking-tight">{name || KINDS[kind].title}</p>
             <Link href={`/jellyfin/library/browse/${kind}`} className="text-xs text-muted-foreground hover:underline">
               ← All {KINDS[kind].title.toLowerCase()}
             </Link>
