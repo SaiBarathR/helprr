@@ -1318,6 +1318,9 @@ html[data-watch-skin='cinematic']:has(.hpr-watch) body {
 
 html[data-watch-skin='cinematic'] .hpr-watch {
   min-height: 100dvh;
+  /* Containing block for the billboard's ambient wash, which is absolutely
+     positioned and bleeds past the shell's content inset. */
+  position: relative;
 }
 
 /* Chrome recedes: on desktop and tablet the sidebar would keep the page from

@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Info, Play } from 'lucide-react';
 import type { JellyfinItem } from '@/types/jellyfin';
@@ -12,6 +13,7 @@ import { PreviewBackdrop } from '@/components/jellyfin-streaming/cinematic/previ
 import { useWatchModal } from '@/components/jellyfin-streaming/cinematic/watch-modal';
 import { useHoverPreviewActive } from '@/components/jellyfin-streaming/cinematic/hover-preview-slot';
 import { useCompactViewport } from '@/lib/hooks/use-compact-viewport';
+import { sampleWashColor, washGradient } from '@/lib/jellyfin-playback/ambient-color';
 import { jellyfinPosterUrl } from '@/lib/jellyfin-playback/image';
 import { jellyfinBackdropUrl, jellyfinImageUrl } from '@/lib/jellyfin-playback/image';
 import { HeroTitle } from '@/components/jellyfin-streaming/hero-title';
@@ -40,6 +42,7 @@ export function CinematicHero({
   const modal = useWatchModal();
   const compact = useCompactViewport();
   const hoverPreviewActive = useHoverPreviewActive();
+  const [wash, setWash] = useState<string | null>(null);
 
   // Trailers are not in the home payload's field set, so they cost one extra
   // request — fired only for the single billboard title.
@@ -51,6 +54,18 @@ export function CinematicHero({
     enabled: Boolean(item?.Id),
     staleTime: 30 * 60_000,
   });
+
+  const backdropForWash = item ? jellyfinBackdropUrl(item, 640) : null;
+  useEffect(() => {
+    if (!backdropForWash) return undefined;
+    let cancelled = false;
+    // A small copy of the same artwork; the browser has it cached by the time
+    // the billboard has painted, so this costs nothing extra in practice.
+    void sampleWashColor(backdropForWash).then((color) => {
+      if (!cancelled) setWash(color);
+    });
+    return () => { cancelled = true; };
+  }, [backdropForWash]);
 
   if (!item) return null;
 
@@ -70,6 +85,24 @@ export function CinematicHero({
   }
 
   return (
+    <>
+      {/* The ambient wash: a radial gradient in a colour taken from this
+          title's artwork, anchored above the top edge and gone by 65%. The
+          site rebuilds this per title — it is why the whole page reads as lit
+          by the billboard rather than pasted on a flat ground. Full-bleed, so
+          it escapes the shell's content inset. */}
+      {wash && (
+        <div
+          aria-hidden
+          className="pointer-events-none absolute top-0 -z-10 h-[110vh] max-h-[56rem]"
+          style={{
+            left: 'calc(-1 * var(--main-pad-x))',
+            right: 'calc(-1 * var(--main-pad-x))',
+            background: washGradient(wash),
+          }}
+        />
+      )}
+
     <section
       aria-label="Featured"
       // An inset rounded card, not a full-bleed banner: netflix.com measures a
@@ -107,10 +140,28 @@ export function CinematicHero({
           synopsis sitting on near-white with no contrast at all. The
           left-to-right ramp is the one the site relies on, and it is opaque
           enough here to carry any artwork. */}
-      <span className="absolute inset-0 bg-gradient-to-r from-black from-10% via-black/80 via-50% to-transparent to-85%" />
-      <span className="absolute inset-0 bg-gradient-to-t from-black from-2% via-black/50 via-38% to-transparent to-72%" />
+      {/* Measured from the site, and much lighter than the near-black ramps
+          this replaced: 0.6 alpha gone by 60% across, 0.5 gone by 70% up. The
+          artwork is meant to stay visible; the wash behind carries the mood. */}
+      <span
+        aria-hidden
+        className="absolute inset-0"
+        style={{ background: 'linear-gradient(90deg, rgba(0,0,0,0.6) 0%, rgba(0,0,0,0) 60%)' }}
+      />
+      <span
+        aria-hidden
+        className="absolute inset-0"
+        style={{ background: 'linear-gradient(0deg, rgba(0,0,0,0.5) 0%, rgba(0,0,0,0.1) 35%, rgba(0,0,0,0) 70%)' }}
+      />
 
-      <div className="relative flex h-full flex-col justify-end gap-4 p-6 pb-8 md:p-9 md:pb-12">
+      {/* The site's scrims are tuned for curated key art with a dark left
+          third. A Jellyfin library has no such guarantee, so legibility is
+          bought from the type rather than by darkening the artwork further —
+          which would lose the very thing the scrims are keeping visible. */}
+      <div
+        className="relative flex h-full flex-col justify-end gap-4 p-6 pb-8 md:p-9 md:pb-12"
+        style={{ textShadow: '0 1px 12px rgba(0,0,0,0.85), 0 1px 3px rgba(0,0,0,0.9)' }}
+      >
         <div className="max-w-[36rem] space-y-4">
           <HeroTitle
             name={item.Name}
@@ -165,6 +216,7 @@ export function CinematicHero({
       )}
 
     </section>
+    </>
   );
 }
 
