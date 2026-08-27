@@ -10,6 +10,7 @@ import { ErrorState } from '@/components/ui/error-state';
 import { WatchTopBar } from '@/components/jellyfin-streaming/watch-top-bar';
 import { CatalogRail } from '@/components/jellyfin-streaming/catalog-rail';
 import { WatchHero } from '@/components/jellyfin-streaming/watch-hero';
+import { UpcomingRails } from '@/components/jellyfin-streaming/upcoming-rails';
 import { useJellyfinPlayback } from '@/components/jellyfin-streaming/playback-provider';
 import type { CatalogHomeResponse } from '@/types/jellyfin-streaming';
 import type { JellyfinItem } from '@/types/jellyfin';
@@ -24,17 +25,6 @@ function shapeForCollection(collectionType: string): 'landscape' | 'portrait' | 
   if (type === 'music') return 'square';
   if (type === 'books' || type === 'audiobooks') return 'portrait';
   return 'landscape';
-}
-
-/** "Today", "1 day", "2 weeks" — the countdown the reference shows on upcoming cards. */
-function upcomingSubtitle(item: JellyfinItem): string | undefined {
-  const raw = item.PremiereDate ?? item.StartDate;
-  if (!raw) return undefined;
-  const date = new Date(raw);
-  if (Number.isNaN(date.getTime())) return undefined;
-  const days = Math.ceil((date.getTime() - Date.now()) / 86_400_000);
-  const when = days <= 0 ? 'Today' : days === 1 ? '1 day' : days < 30 ? `${days} days` : `${Math.round(days / 30)} months`;
-  return `${when} · ${date.toLocaleDateString()}`;
 }
 
 export default function WatchHomePage() {
@@ -86,13 +76,7 @@ export default function WatchHomePage() {
             />
           ))}
 
-          <CatalogRail
-            shape="portrait"
-            upcoming
-            title="Upcoming"
-            items={data.upcoming ?? []}
-            subtitleFor={upcomingSubtitle}
-          />
+          <UpcomingRails />
 
           {(data.suggestions ?? []).map((row) => (
             <CatalogRail key={row.title} shape="landscape" title={row.title} items={row.items} onPlay={play} />
