@@ -87,6 +87,7 @@ export function CinematicHeader() {
       });
     }
     list.push(
+      { href: '/jellyfin/library/new', label: 'New & Popular', isActive: (path) => path.startsWith('/jellyfin/library/new') },
       { href: '/jellyfin/library/favorites', label: 'My List', isActive: (path) => path.startsWith('/jellyfin/library/favorites') },
       { href: '/jellyfin/library/browse/libraries', label: 'Browse', isActive: (path) => path.startsWith('/jellyfin/library/browse') },
       { href: '/jellyfin/library/live', label: 'Live', isActive: (path) => path.startsWith('/jellyfin/library/live') },
@@ -218,7 +219,8 @@ export function CinematicPageHeading() {
   if (skin !== 'cinematic') return null;
   if (pathname === '/jellyfin/library') return null;
 
-  const label = pathname.startsWith('/jellyfin/library/favorites') ? 'My List'
+  const label = pathname.startsWith('/jellyfin/library/new') ? 'New & Popular'
+    : pathname.startsWith('/jellyfin/library/favorites') ? 'My List'
     : pathname.startsWith('/jellyfin/library/browse') ? 'Browse'
       : pathname.startsWith('/jellyfin/library/live') ? 'Live TV'
         : pathname.startsWith('/jellyfin/library/search') ? 'Search'

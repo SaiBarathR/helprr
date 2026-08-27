@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { jsonFetcher } from '@/lib/query-fetch';
@@ -89,19 +88,21 @@ export default function JellyfinSearchPage() {
 
       {!debounced && (suggestions.data?.items.length ?? 0) > 0 && (
         <section className="space-y-2">
-          <h2 className="text-center text-base font-semibold">Suggestions</h2>
-          <ul className="space-y-1 text-center">
-            {(suggestions.data?.items ?? []).map((item) => (
-              <li key={item.Id}>
-                <Link
-                  href={`/jellyfin/library/item/${item.Id}`}
-                  className="text-sm text-muted-foreground transition-colors hover:text-foreground"
-                >
-                  {item.Name}
-                </Link>
-              </li>
+          <h2 className="text-base font-semibold">Suggestions</h2>
+          {/* Artwork, not a centred list of links. An empty search on the site
+              is still a wall of titles you can open — a column of text names
+              gives you nothing to recognise a film by. */}
+          <div className="flex flex-wrap gap-3">
+            {(suggestions.data?.items ?? []).map((item, index) => (
+              <CatalogPosterCard
+                key={item.Id}
+                item={item}
+                shape="portrait"
+                priority={index < 6}
+                onPlay={(next) => void playback.playItem(next)}
+              />
             ))}
-          </ul>
+          </div>
         </section>
       )}
 

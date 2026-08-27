@@ -32,6 +32,7 @@ import { CatalogElsewhere } from '@/components/jellyfin-streaming/catalog-elsewh
 import { CatalogRatingsStrip } from '@/components/jellyfin-streaming/catalog-ratings-strip';
 import { PreviewBackdrop } from '@/components/jellyfin-streaming/cinematic/preview-backdrop';
 import { useWatchSkin } from '@/lib/hooks/use-watch-skin';
+import { useCompactViewport } from '@/lib/hooks/use-compact-viewport';
 import { cn } from '@/lib/utils';
 
 /** Clock time the title would finish if started now — the reference shows this. */
@@ -50,6 +51,10 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
   const playback = useJellyfinPlayback();
   const skin = useWatchSkin();
   const cinematic = skin === 'cinematic';
+  const compact = useCompactViewport();
+  // The app's phone detail screen is not a scaled-down billboard: a 16:9 still
+  // sits on top and everything else flows beneath it.
+  const stacked = cinematic && compact;
   const [audioIndex, setAudioIndex] = useState<number | null>(null);
   const [subtitleIndex, setSubtitleIndex] = useState<number | null>(null);
   const query = useQuery({
@@ -149,7 +154,13 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
 
   return (
     <div className="pb-28">
-      <section className="relative -mx-[var(--main-pad-x)] -mt-[var(--main-pad-top)] flex min-h-[68vh] flex-col overflow-hidden">
+      <section
+        className={cn(
+          'relative -mx-[var(--main-pad-x)] -mt-[var(--main-pad-top)] flex flex-col overflow-hidden',
+          stacked ? 'min-h-0' : 'min-h-[68vh]',
+        )}
+      >
+        <div className={cn(stacked ? 'relative aspect-video w-full overflow-hidden' : 'contents')}>
         <PreviewBackdrop
           backdropUrl={backdrop}
           itemId={item.IsFolder ? undefined : item.Id}
@@ -173,10 +184,12 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
         ) : (
           <span className="absolute inset-0 bg-gradient-to-t from-background from-28% via-background/80 via-58% to-transparent" />
         )}
+        </div>
 
         <div
           className={cn(
-            'relative z-10 flex flex-1 flex-col justify-end gap-3 p-[var(--main-pad-x)] pb-6',
+            'relative z-10 flex flex-col gap-3 p-[var(--main-pad-x)] pb-6',
+            stacked ? 'pt-4' : 'flex-1 justify-end',
             cinematic ? 'items-start text-left' : 'items-center text-center',
           )}
         >
@@ -186,12 +199,16 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
 
           <HeroTitle
             name={heroName}
-            logoUrl={logo}
+            // The app sets the title in plain type on its phone detail screen;
+            // a logo treatment only appears over the desktop billboard.
+            logoUrl={stacked ? null : logo}
             align={cinematic ? 'left' : 'center'}
-            frameClassName="mt-16 h-20 w-64 md:h-28 md:w-96"
+            frameClassName={cn('h-20 w-64 md:h-28 md:w-96', stacked ? 'mt-0' : 'mt-16')}
             textClassName={cn(
-              'mt-16 tracking-tight text-balance',
-              cinematic ? 'text-4xl font-bold md:text-5xl' : 'text-3xl font-semibold md:text-4xl',
+              'tracking-tight text-balance',
+              stacked ? 'mt-0 text-[28px] font-bold' : 'mt-16',
+              cinematic && !stacked ? 'text-4xl font-bold md:text-5xl' : '',
+              !cinematic ? 'text-3xl font-semibold md:text-4xl' : '',
             )}
           />
 
@@ -239,10 +256,15 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
           <div
             className={cn(
               'flex flex-wrap items-center gap-2 pt-1',
+              stacked && 'w-full',
               cinematic ? 'justify-start' : 'justify-center',
             )}
           >
-            <Button size="lg" className="rounded-full px-6" onClick={() => void playback.playItem(item, trackOptions)}>
+            <Button
+              size="lg"
+              className={cn('rounded-full px-6', stacked && 'w-full rounded')}
+              onClick={() => void playback.playItem(item, trackOptions)}
+            >
               <Play className="fill-current" data-icon="inline-start" />
               {canResume ? `Resume · ${formatClock(resumeSeconds)}` : 'Play'}
             </Button>

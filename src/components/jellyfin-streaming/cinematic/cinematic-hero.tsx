@@ -94,7 +94,10 @@ export function CinematicHero({
         // collides or needs a magic offset. A phone is too narrow for the
         // toggle and the CTAs on one line, so there it moves to the top
         // corner, where the streaming apps put it on mobile anyway.
-        controlsClassName="absolute top-4 right-4 md:top-auto md:bottom-12 md:right-9"
+        // Stacked above the maturity strip, not beside it: the strip's width
+        // varies with the rating and runtime, so side-by-side either collides
+        // outright — it did — or needs a magic offset.
+        controlsClassName="absolute top-4 right-4 md:top-auto md:right-9 md:bottom-[6.5rem]"
       />
 
       {/* Black-based scrims only, per the project's image-scrim convention.
