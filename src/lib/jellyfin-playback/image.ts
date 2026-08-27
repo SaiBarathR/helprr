@@ -30,7 +30,14 @@ export function jellyfinPosterUrl(item: { Id: string; ImageTags?: Record<string,
   return null;
 }
 
-export type CatalogCardShape = 'poster' | 'thumb';
+/**
+ * Card frame shapes, mirroring the vocabulary the reference install uses.
+ *
+ * The shape carries meaning and belongs to the *rail*, not the item:
+ * landscape = watchable library content, portrait = unreleased/upcoming and
+ * artists, square = albums.
+ */
+export type CatalogCardShape = 'landscape' | 'portrait' | 'square';
 
 function isWideByNature(type?: string): boolean {
   return type === 'Episode' || type === 'Program';
@@ -59,10 +66,11 @@ function jellyfinWideImageUrl(
  * grid or rail with mixed aspect ratios has ragged rows. So the image bends to
  * the frame, never the other way round.
  *
- * - `thumb` (16:9, e.g. continue watching): the episode still, or a movie's
- *   thumb/backdrop, and only a poster as a last resort.
- * - `poster` (2:3, e.g. library grids): an episode's own art is a 16:9 still,
- *   so borrow the series poster rather than cropping 62% of the width away.
+ * - `landscape` (16:9): the episode still, or a movie's thumb/backdrop, and
+ *   only a poster as a last resort.
+ * - `portrait` (2:3): an episode's own art is a 16:9 still, so borrow the
+ *   series poster rather than cropping 62% of the width away.
+ * - `square` (1:1): album/artist Primary art is already square.
  */
 export function jellyfinCardImage(
   item: {
@@ -74,16 +82,23 @@ export function jellyfinCardImage(
     ParentId?: string;
   },
   width = 400,
-  shape: CatalogCardShape = 'poster',
+  shape: CatalogCardShape = 'portrait',
 ): string | null {
-  if (shape === 'thumb') {
+  if (shape === 'landscape') {
     return jellyfinWideImageUrl(item, width) ?? jellyfinPosterUrl(item, width);
   }
-  if (isWideByNature(item.Type)) {
+  if (shape === 'portrait' && isWideByNature(item.Type)) {
     const parentId = item.SeriesId ?? item.ParentId;
     if (parentId) return jellyfinImageUrl(parentId, 'Primary', width);
   }
   return jellyfinPosterUrl(item, width);
+}
+
+/** Aspect ratio class for a card frame. */
+export function cardAspectClass(shape: CatalogCardShape): string {
+  if (shape === 'landscape') return 'aspect-video';
+  if (shape === 'square') return 'aspect-square';
+  return 'aspect-2/3';
 }
 
 /** Null unless the person actually has an image, so the caller's initial/icon

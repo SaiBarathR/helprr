@@ -64,9 +64,9 @@ export default function WatchHomePage() {
           </div>
         )}
 
-        <CatalogRail shape="thumb" title="Continue watching" items={data.resume} onPlay={(item) => void playback.playItem(item)} />
-        <CatalogRail shape="thumb" title="Next up" items={data.nextUp} onPlay={(item) => void playback.playItem(item)} />
-        <CatalogRail shape="thumb" title="Upcoming" items={data.upcoming ?? []} onPlay={(item) => void playback.playItem(item)} />
+        <CatalogRail shape="landscape" title="Continue watching" items={data.resume} onPlay={(item) => void playback.playItem(item)} />
+        <CatalogRail shape="landscape" title="Next up" items={data.nextUp} onPlay={(item) => void playback.playItem(item)} />
+        <CatalogRail shape="portrait" upcoming title="Upcoming" items={data.upcoming ?? []} />
         {(data.suggestions ?? []).map((row) => (
           <CatalogRail
             key={row.title}

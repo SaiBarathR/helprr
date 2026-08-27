@@ -5,16 +5,16 @@ import {
   jellyfinPersonImageUrl,
 } from '@/lib/jellyfin-playback/image';
 
-describe('jellyfinCardImage — thumb frames', () => {
+describe('jellyfinCardImage — landscape frames', () => {
   it('uses an episode still', () => {
-    expect(jellyfinCardImage({ Id: 'ep1', Type: 'Episode', ImageTags: { Primary: 't' } }, 400, 'thumb'))
+    expect(jellyfinCardImage({ Id: 'ep1', Type: 'Episode', ImageTags: { Primary: 't' } }, 400, 'landscape'))
       .toContain('itemId=ep1');
   });
 
   it('uses a movie thumb so mixed rails stay one height', () => {
     // Continue Watching mixes movies and episodes; a 2:3 movie card among 16:9
     // episode cards left the rail with ragged heights.
-    expect(jellyfinCardImage({ Id: 'm1', Type: 'Movie', ImageTags: { Primary: 'p', Thumb: 't' } }, 400, 'thumb'))
+    expect(jellyfinCardImage({ Id: 'm1', Type: 'Movie', ImageTags: { Primary: 'p', Thumb: 't' } }, 400, 'landscape'))
       .toContain('type=Thumb');
   });
 
@@ -22,17 +22,17 @@ describe('jellyfinCardImage — thumb frames', () => {
     expect(jellyfinCardImage(
       { Id: 'm2', Type: 'Movie', ImageTags: { Primary: 'p' }, BackdropImageTags: ['b'] },
       400,
-      'thumb',
+      'landscape',
     )).toContain('type=Backdrop');
   });
 
   it('accepts poster art as a last resort rather than leaving a hole', () => {
-    expect(jellyfinCardImage({ Id: 'm3', Type: 'Movie', ImageTags: { Primary: 'p' } }, 400, 'thumb'))
+    expect(jellyfinCardImage({ Id: 'm3', Type: 'Movie', ImageTags: { Primary: 'p' } }, 400, 'landscape'))
       .toContain('type=Primary');
   });
 });
 
-describe('jellyfinCardImage — poster frames', () => {
+describe('jellyfinCardImage — portrait frames', () => {
   it('borrows the series poster for an episode instead of cropping the still', () => {
     expect(jellyfinCardImage({ Id: 'ep1', Type: 'Episode', ImageTags: { Primary: 't' }, SeriesId: 's1' }))
       .toContain('itemId=s1');
