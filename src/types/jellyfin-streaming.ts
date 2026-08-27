@@ -144,6 +144,8 @@ export interface PlaybackProgressPayload {
 export interface CatalogHomeResponse {
   linked: boolean;
   views: JellyfinLibrary[];
+  /** Random backdrop-bearing titles for the home hero carousel. */
+  spotlight: JellyfinItem[];
   resume: JellyfinItem[];
   nextUp: JellyfinItem[];
   latest: Array<{

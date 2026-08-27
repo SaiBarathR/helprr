@@ -9,6 +9,7 @@ import type { CatalogHomeResponse } from '@/types/jellyfin-streaming';
 const EMPTY_HOME: CatalogHomeResponse = {
   linked: false,
   views: [],
+  spotlight: [],
   resume: [],
   nextUp: [],
   latest: [],
@@ -29,7 +30,7 @@ async function getHandler(): Promise<NextResponse> {
 
   try {
     const client = await getJellyfinClientForUser(auth.user);
-    const [views, resume, nextUp, favorites, upcoming, recommendations] = await Promise.all([
+    const [views, resume, nextUp, favorites, upcoming, recommendations, spotlight] = await Promise.all([
       client.getLibraries(),
       client.getResumeItems({ limit: 24, extraFields: CATALOG_LIST_FIELDS }),
       client.getNextUp({ limit: 24 }),
@@ -43,6 +44,15 @@ async function getHandler(): Promise<NextResponse> {
       }),
       client.getUpcoming(24).catch(() => ({ Items: [] })),
       client.getMovieRecommendations().catch(() => []),
+      // Over-fetch and filter: Jellyfin has no "must have a backdrop" filter,
+      // and a hero slide without one has nothing to show.
+      client.getCatalogItems({
+        Recursive: true,
+        IncludeItemTypes: 'Movie,Series',
+        Limit: 24,
+        SortBy: 'Random',
+        Fields: `${CATALOG_LIST_FIELDS},Taglines`,
+      }).catch(() => ({ Items: [] })),
     ]);
 
     const videoViews = views.filter((view) => {
@@ -65,6 +75,9 @@ async function getHandler(): Promise<NextResponse> {
     const payload: CatalogHomeResponse = {
       linked: true,
       views,
+      spotlight: (spotlight.Items ?? [])
+        .filter((item) => (item.BackdropImageTags?.length ?? 0) > 0 && Boolean(item.Overview))
+        .slice(0, 5),
       resume: resume.Items ?? [],
       nextUp: nextUp.Items ?? [],
       latest: latest.filter((row) => row.items.length > 0),
