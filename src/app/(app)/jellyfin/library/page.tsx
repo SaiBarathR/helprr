@@ -11,6 +11,7 @@ import { WatchTopBar } from '@/components/jellyfin-streaming/watch-top-bar';
 import { CatalogRail } from '@/components/jellyfin-streaming/catalog-rail';
 import { WatchHero } from '@/components/jellyfin-streaming/watch-hero';
 import { UpcomingRails } from '@/components/jellyfin-streaming/upcoming-rails';
+import { RecommendationRails } from '@/components/jellyfin-streaming/recommendation-rails';
 import { useJellyfinPlayback } from '@/components/jellyfin-streaming/playback-provider';
 import type { CatalogHomeResponse } from '@/types/jellyfin-streaming';
 import type { JellyfinItem } from '@/types/jellyfin';
@@ -78,9 +79,7 @@ export default function WatchHomePage() {
 
           <UpcomingRails />
 
-          {(data.suggestions ?? []).map((row) => (
-            <CatalogRail key={row.title} shape="landscape" title={row.title} items={row.items} onPlay={play} />
-          ))}
+          <RecommendationRails />
 
           <CatalogRail
             shape="landscape"

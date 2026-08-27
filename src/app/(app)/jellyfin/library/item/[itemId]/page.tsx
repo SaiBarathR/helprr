@@ -26,6 +26,7 @@ import type { CatalogItemDetailResponse, CatalogItemsResponse } from '@/types/je
 import type { JellyfinMediaStream } from '@/types/jellyfin';
 import { FadeInImage } from '@/components/media/fade-in-image';
 import { HeroTitle } from '@/components/jellyfin-streaming/hero-title';
+import { CatalogTrailerRail } from '@/components/jellyfin-streaming/catalog-trailer-rail';
 import { cn } from '@/lib/utils';
 
 /** Clock time the title would finish if started now — the reference shows this. */
@@ -122,6 +123,7 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
     ['Released', item.PremiereDate ? new Date(item.PremiereDate).toLocaleDateString() : ''],
   ] as Array<[string, string]>).filter(([, value]) => value);
 
+  const isMusic = item.MediaType === 'Audio' || item.Type === 'MusicAlbum' || item.Type === 'MusicArtist';
   const source = item.MediaSources?.[0];
   const fileLine = [
     source?.Container?.toUpperCase(),
@@ -342,7 +344,7 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
                 ? `More from ${item.SeasonName ?? 'this season'}`
                 : 'Episodes'}
             </h2>
-            <div className="flex flex-col gap-2">
+            <div className="grid gap-2 lg:grid-cols-2 2xl:grid-cols-3">
               {query.data.episodes.map((episode) => {
                 const still = jellyfinCardImage(episode, 320, 'landscape');
                 const progress = episode.UserData?.PlayedPercentage;
@@ -395,7 +397,9 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
         {query.data?.themeMedia?.themeVideos && query.data.themeMedia.themeVideos.length > 0 && (
           <CatalogRail title="Theme videos" shape="landscape" items={query.data.themeMedia.themeVideos} onPlay={(next) => void playback.playItem(next)} />
         )}
-        {query.data?.instantMix && query.data.instantMix.length > 0 && (
+        {/* Instant mix is a music feature; the route returns it for anything, so
+            a TV season was showing a rail of unrelated songs. */}
+        {isMusic && query.data?.instantMix && query.data.instantMix.length > 0 && (
           <CatalogRail
             title="Instant mix"
             shape="square"
@@ -433,22 +437,7 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
           </section>
         )}
 
-        {trailers.length > 0 && (
-          <section className="space-y-2">
-            <h2 className="text-base font-semibold">Trailers</h2>
-            <ul className="space-y-1 text-sm">
-              {trailers.map((trailer) => (
-                trailer.Url ? (
-                  <li key={trailer.Url}>
-                    <a href={trailer.Url} target="_blank" rel="noreferrer" className="text-primary hover:underline">
-                      {trailer.Name || 'Trailer'}
-                    </a>
-                  </li>
-                ) : null
-              ))}
-            </ul>
-          </section>
-        )}
+        <CatalogTrailerRail trailers={trailers} />
       </div>
     </div>
   );

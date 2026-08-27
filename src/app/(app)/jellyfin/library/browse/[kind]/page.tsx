@@ -87,8 +87,9 @@ function LibraryList() {
               {art && (
                 <FadeInImage src={art} alt="" fill sizes="480px" unoptimized className="object-cover transition-transform duration-300 group-hover:scale-[1.04]" />
               )}
-              <span className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
-              <span className="absolute bottom-3 left-3 text-base font-semibold text-white">{view.Name}</span>
+              {/* Jellyfin's generated library art already carries the name, so
+                  a caption on top of it just says everything twice. */}
+              <span className="absolute inset-0 bg-gradient-to-t from-black/45 to-transparent" />
             </Link>
           );
         })}

@@ -24,6 +24,21 @@ function posterFor(event: CalendarEvent): string | null {
   return toCachedImageSrc(image?.remoteUrl || image?.url || null, hint);
 }
 
+/**
+ * Airtimes come from Sonarr/Radarr with real precision, so show them. Midnight
+ * usually means "date only" upstream rather than an actual 00:00 broadcast.
+ */
+function airsAt(iso: string): string | null {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return null;
+  const midnight = date.getHours() === 0 && date.getMinutes() === 0;
+  return date.toLocaleString([], {
+    day: 'numeric',
+    month: 'short',
+    ...(midnight ? {} : { hour: 'numeric', minute: '2-digit' }),
+  });
+}
+
 function countdown(iso: string): string {
   const days = Math.ceil((new Date(iso).getTime() - Date.now()) / DAY_MS);
   if (days <= 0) return 'Today';
@@ -115,14 +130,15 @@ export function UpcomingRails() {
                         {event.title}
                       </div>
                     )}
-                    <span className="absolute top-2 left-2 z-20 rounded-md bg-[var(--hpr-green)] px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-[var(--hpr-ink)] uppercase">
+                    <span className="absolute top-2 left-2 z-20 rounded-md border border-white/15 bg-black/45 px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-[var(--hpr-green)] uppercase backdrop-blur-md">
                       {countdown(event.date)}
                     </span>
                   </div>
                   <p className="mt-2 truncate text-sm font-medium">{event.title}</p>
-                  <p className="truncate text-[11px] text-muted-foreground">
-                    {event.subtitle || new Date(event.date).toLocaleDateString()}
-                  </p>
+                  {event.subtitle && <p className="truncate text-[11px] text-muted-foreground">{event.subtitle}</p>}
+                  {airsAt(event.date) && (
+                    <p className="truncate text-[11px] font-medium text-foreground/80">{airsAt(event.date)}</p>
+                  )}
                 </div>
               );
             })}

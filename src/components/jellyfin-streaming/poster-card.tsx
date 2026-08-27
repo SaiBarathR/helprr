@@ -118,25 +118,25 @@ export function CatalogPosterCard({
         <span className="pointer-events-none absolute inset-0 z-20 bg-black/0 transition-colors group-hover:bg-black/35" />
 
         {upcoming && (
-          <span className="absolute top-2 left-2 z-20 rounded-md bg-[var(--hpr-green)] px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-[var(--hpr-ink)] uppercase">
+          <span className="absolute top-2 left-2 z-20 rounded-md border border-white/15 bg-black/45 px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-[var(--hpr-green)] uppercase backdrop-blur-md">
             Upcoming
           </span>
         )}
         {typeof progress === 'number' && progress > 0 && progress < 100 && (
-          <div className="absolute inset-x-0 bottom-0 z-20 h-1.5 bg-black/50">
+          <div className="absolute inset-x-0 bottom-0 z-20 h-1.5 bg-black/45 backdrop-blur-sm">
             <div className="h-full bg-[var(--hpr-amber)]" style={{ width: `${Math.min(progress, 100)}%` }} />
           </div>
         )}
         {item.UserData?.Played && (
           <span
-            className="absolute top-2 right-2 z-20 flex size-5 items-center justify-center rounded-full bg-[var(--hpr-green)] text-[var(--hpr-ink)] shadow"
+            className="absolute top-2 right-2 z-20 flex size-5 items-center justify-center rounded-full border border-white/15 bg-black/45 text-[var(--hpr-green)] backdrop-blur-md"
             title="Watched"
           >
             <Check className="size-3.5" strokeWidth={3} />
           </span>
         )}
         {typeof unplayed === 'number' && unplayed > 0 && (
-          <span className="absolute top-2 right-2 z-20 min-w-5 rounded-full bg-[var(--hpr-blue)] px-1.5 text-center text-[11px] font-semibold text-[var(--hpr-ink)] shadow">
+          <span className="absolute top-2 right-2 z-20 min-w-5 rounded-full border border-white/15 bg-black/45 px-1.5 text-center text-[11px] font-semibold text-[var(--hpr-blue)] backdrop-blur-md">
             {unplayed}
           </span>
         )}
