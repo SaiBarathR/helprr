@@ -8,6 +8,8 @@ import { Button } from '@/components/ui/button';
 import { FadeInImage } from '@/components/media/fade-in-image';
 import { jellyfinBackdropUrl, jellyfinImageUrl } from '@/lib/jellyfin-playback/image';
 import { HeroTitle } from '@/components/jellyfin-streaming/hero-title';
+import { CinematicHero } from '@/components/jellyfin-streaming/cinematic/cinematic-hero';
+import { useWatchSkin } from '@/lib/hooks/use-watch-skin';
 import { formatCertificate, formatCommunityRating } from '@/lib/jellyfin-playback/metadata';
 import { formatClock, ticksToSeconds } from '@/lib/jellyfin-playback/device';
 import { cn } from '@/lib/utils';
@@ -21,13 +23,19 @@ const ROTATE_MS = 10_000;
  * Trailer playback (the reference has `EnableTrailers`) is deliberately out of
  * scope here — this is the layout, not the video layer.
  */
-export function WatchHero({
-  items,
-  onPlay,
-}: {
+interface WatchHeroProps {
   items: JellyfinItem[];
   onPlay: (item: JellyfinItem) => void;
-}) {
+}
+
+/** Skin switch — see use-watch-skin. */
+export function WatchHero(props: WatchHeroProps) {
+  const skin = useWatchSkin();
+  if (skin === 'cinematic') return <CinematicHero {...props} />;
+  return <ClassicHero {...props} />;
+}
+
+function ClassicHero({ items, onPlay }: WatchHeroProps) {
   const [index, setIndex] = useState(0);
   const [paused, setPaused] = useState(false);
   useEffect(() => {

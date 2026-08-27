@@ -4,9 +4,9 @@ import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { jsonFetcher } from '@/lib/query-fetch';
 import { useCan } from '@/components/permission-provider';
-import { FadeInImage } from '@/components/media/fade-in-image';
+import { MediaRail } from '@/components/jellyfin-streaming/media-rail';
+import { MediaTile } from '@/components/jellyfin-streaming/media-tile';
 import { toCachedImageSrc, type ImageServiceHint } from '@/lib/image';
-import { cn } from '@/lib/utils';
 import type { CalendarEvent } from '@/types';
 
 const DAY_MS = 86_400_000;
@@ -103,47 +103,19 @@ export function UpcomingRails() {
   return (
     <>
       {rails.map((rail) => (
-        <section key={rail.key} className="space-y-2">
-          <h2 className="text-base font-semibold tracking-tight">{rail.title}</h2>
-          <div className="animate-rail-in flex gap-3 overflow-x-auto pb-2 scrollbar-hide -mx-[var(--main-pad-x)] px-[var(--main-pad-x)]">
-            {rail.items.map((event) => {
-              const poster = posterFor(event);
-              return (
-                <div
-                  key={event.id}
-                  className="group relative w-[110px] shrink-0 sm:w-[140px] md:w-[150px] lg:w-[164px] xl:w-[180px] 2xl:w-[196px]"
-                >
-                  <div className={cn('relative aspect-2/3 overflow-hidden rounded-xl border border-border/40 bg-muted/60')}>
-                    {poster ? (
-                      <FadeInImage
-                        src={poster}
-                        alt={event.title}
-                        fill
-                        sizes="196px"
-                        // Arr art comes through Helprr's own image proxy, which
-                        // next/image will not optimize.
-                        unoptimized
-                        className="object-cover"
-                      />
-                    ) : (
-                      <div className="flex h-full items-center justify-center p-2 text-center text-xs text-muted-foreground">
-                        {event.title}
-                      </div>
-                    )}
-                    <span className="absolute top-2 left-2 z-20 rounded-md border border-white/15 bg-black/45 px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-[var(--hpr-green)] uppercase backdrop-blur-md">
-                      {countdown(event.date)}
-                    </span>
-                  </div>
-                  <p className="mt-2 truncate text-sm font-medium">{event.title}</p>
-                  {event.subtitle && <p className="truncate text-[11px] text-muted-foreground">{event.subtitle}</p>}
-                  {airsAt(event.date) && (
-                    <p className="truncate text-[11px] font-medium text-foreground/80">{airsAt(event.date)}</p>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </section>
+        <MediaRail key={rail.key} title={rail.title} count={rail.items.length}>
+          {rail.items.map((event) => (
+            <MediaTile
+              key={event.id}
+              title={event.title}
+              // Arr art comes through Helprr's own image proxy, which
+              // next/image will not optimize.
+              imageUrl={posterFor(event)}
+              lines={[event.subtitle, airsAt(event.date)]}
+              topLeftBadge={{ label: countdown(event.date), tone: 'green' }}
+            />
+          ))}
+        </MediaRail>
       ))}
     </>
   );

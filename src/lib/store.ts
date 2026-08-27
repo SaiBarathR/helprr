@@ -150,6 +150,16 @@ export type RequestsSortDirectionPreference = 'asc' | 'desc';
 /** Jellyfin watch filter for movies/series list pages. */
 export type MediaWatchFilterPreference = 'all' | 'watched' | 'unwatched';
 
+/**
+ * Presentation skin for the Watch section.
+ *
+ * `classic` is the Jellyfin-shaped layout (captioned cards, app chrome in
+ * place). `cinematic` is the streaming-service layout: captionless art, a
+ * billboard hero, and receding chrome. Presentation only — both skins read the
+ * same catalog API.
+ */
+export type WatchSkinPreference = 'classic' | 'cinematic';
+
 const WATCH_FILTER_PERSISTED_KEYS: ReadonlySet<string> = new Set([
   'moviesWatchFilter',
   'seriesWatchFilter',
@@ -241,7 +251,7 @@ function cloneDiscoverFilters(filters: DiscoverFiltersState): DiscoverFiltersSta
   };
 }
 
-export const STORE_VERSION = 45;
+export const STORE_VERSION = 46;
 
 // Matches the calendar backdrop's previously hardcoded Tailwind `opacity-35`.
 export const DEFAULT_CALENDAR_IMAGE_OPACITY = 35;
@@ -468,6 +478,9 @@ export function migrateUiPrefs(persisted: unknown, version: number): Record<stri
   if (version < 45) {
     state.subtitleAppearance = { ...DEFAULT_SUBTITLE_APPEARANCE };
   }
+  if (version < 46) {
+    state.watchSkin = 'classic';
+  }
   if (!isMediaWatchFilterPreference(state.moviesWatchFilter)) {
     state.moviesWatchFilter = 'all';
   }
@@ -622,6 +635,9 @@ interface UIState {
   // 0-100 backdrop artwork opacity behind calendar rows
   calendarImageOpacity: number;
   setCalendarImageOpacity: (n: number) => void;
+  // Watch section presentation skin (drives data-watch-skin on <html>)
+  watchSkin: WatchSkinPreference;
+  setWatchSkin: (skin: WatchSkinPreference) => void;
   // Navigation preferences
   navPosition: 'top' | 'bottom';
   setNavPosition: (position: 'top' | 'bottom') => void;
@@ -746,6 +762,7 @@ const PERSISTED_KEYS = [
   'calendarShowScheduled',
   'calendarShowImages',
   'calendarImageOpacity',
+  'watchSkin',
   'navPosition',
   'navOrder',
   'disabledNavItems',
@@ -978,6 +995,9 @@ export const useUIStore = create<UIState>()(
       calendarImageOpacity: DEFAULT_CALENDAR_IMAGE_OPACITY,
       setCalendarImageOpacity: (n) =>
         set({ calendarImageOpacity: Math.min(100, Math.max(0, Math.round(n))) }),
+      // Watch skin
+      watchSkin: 'classic',
+      setWatchSkin: (skin) => set({ watchSkin: skin }),
       // Navigation
       navPosition: 'top',
       setNavPosition: (position: 'top' | 'bottom') => set({ navPosition: position }),

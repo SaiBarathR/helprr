@@ -12,6 +12,7 @@ import { PageSpinner } from '@/components/ui/page-spinner';
 import { ErrorState } from '@/components/ui/error-state';
 import { WatchTopBar } from '@/components/jellyfin-streaming/watch-top-bar';
 import { CatalogRail } from '@/components/jellyfin-streaming/catalog-rail';
+import { MediaRail } from '@/components/jellyfin-streaming/media-rail';
 import { useJellyfinPlayback } from '@/components/jellyfin-streaming/playback-provider';
 import {
   jellyfinBackdropUrl,
@@ -29,6 +30,8 @@ import { HeroTitle } from '@/components/jellyfin-streaming/hero-title';
 import { CatalogTrailerRail } from '@/components/jellyfin-streaming/catalog-trailer-rail';
 import { CatalogElsewhere } from '@/components/jellyfin-streaming/catalog-elsewhere';
 import { CatalogRatingsStrip } from '@/components/jellyfin-streaming/catalog-ratings-strip';
+import { TrailerBackdrop } from '@/components/jellyfin-streaming/cinematic/trailer-backdrop';
+import { useWatchSkin } from '@/lib/hooks/use-watch-skin';
 import { cn } from '@/lib/utils';
 
 /** Clock time the title would finish if started now — the reference shows this. */
@@ -45,6 +48,7 @@ function streamLabel(stream: JellyfinMediaStream): string {
 export default function JellyfinItemPage({ params }: { params: Promise<{ itemId: string }> }) {
   const { itemId } = use(params);
   const playback = useJellyfinPlayback();
+  const skin = useWatchSkin();
   const [audioIndex, setAudioIndex] = useState<number | null>(null);
   const [subtitleIndex, setSubtitleIndex] = useState<number | null>(null);
   const query = useQuery({
@@ -145,9 +149,16 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
   return (
     <div className="pb-28">
       <section className="relative -mx-[var(--main-pad-x)] -mt-[var(--main-pad-top)] flex min-h-[68vh] flex-col overflow-hidden">
-        {backdrop && (
-          <FadeInImage src={backdrop} alt="" fill sizes="100vw" priority unoptimized className="object-cover" />
-        )}
+        <TrailerBackdrop
+          backdropUrl={backdrop}
+          trailerUrl={trailers[0]?.Url}
+          // Autoplay is a cinematic-skin behaviour; classic stays still art.
+          enabled={skin === 'cinematic'}
+          priority
+          // Bottom of the hero, not the top: the top row belongs to the
+          // section nav and the Exit link, and the toggle collided with them.
+          controlsClassName="absolute right-4 bottom-4 md:right-6 md:bottom-6"
+        />
         <span className="absolute inset-0 bg-gradient-to-t from-background from-28% via-background/80 via-58% to-transparent" />
 
         <div className="relative z-10 flex flex-1 flex-col items-center justify-end gap-3 p-[var(--main-pad-x)] pb-6 text-center">
@@ -431,9 +442,7 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
         )}
 
         {people.length > 0 && (
-          <section className="space-y-2">
-            <h2 className="text-base font-semibold">Cast &amp; crew</h2>
-            <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide -mx-4 px-4 md:-mx-6 md:px-6">
+          <MediaRail title="Cast & crew" count={Math.min(people.length, 20)}>
               {people.slice(0, 20).map((person) => (
                 person.Id ? (
                   <Link key={`${person.Id}-${person.Role}`} href={`/jellyfin/library/item/${person.Id}`} className="w-24 shrink-0 text-center">
@@ -449,8 +458,7 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
                   </Link>
                 ) : null
               ))}
-            </div>
-          </section>
+          </MediaRail>
         )}
 
         <CatalogTrailerRail trailers={trailers} />

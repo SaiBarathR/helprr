@@ -1237,3 +1237,138 @@ html[data-glass] [data-bento-cell] {
     min-height: 2.25rem;
   }
 }
+
+/* ══ Cinematic Watch skin ═════════════════════════════════════════════════
+   Opt-in streaming-service presentation for the Watch section, toggled in
+   Settings → Appearance. `data-watch-skin` is stamped on <html> pre-paint by
+   THEME_BOOTSTRAP_SCRIPT; `.hpr-watch` (the Watch route layout) scopes it, so
+   the skin never leaks into the rest of Helprr.
+
+   This block is the ground: palette, accent, radius, chrome. The layout
+   itself — captionless art, the billboard, hover-expand rails — lives in the
+   cinematic components, which pick themselves via useWatchSkin(). */
+
+html[data-watch-skin='cinematic'] .hpr-watch {
+  /* Near-black regardless of the app theme. Every streaming service is dark
+     for the same reason: artwork becomes the only source of colour in frame.
+     Overriding the shadcn tokens (rather than the components) means the
+     existing bg-background / text-muted-foreground / border-border classes
+     all follow, including WatchHero's from-background scrim gradients. */
+  color-scheme: dark;
+  --background: #0a0a0b;
+  --foreground: #f5f5f7;
+  --card: #141416;
+  --card-foreground: #f5f5f7;
+  --popover: #18181b;
+  --popover-foreground: #f5f5f7;
+  --secondary: rgb(255 255 255 / 0.14);
+  --secondary-foreground: #f5f5f7;
+  --muted: #1c1c1f;
+  --muted-foreground: #a1a1aa;
+  --foreground-subtle: #71717a;
+  --accent: rgb(255 255 255 / 0.1);
+  --accent-foreground: #f5f5f7;
+  --border: rgb(255 255 255 / 0.1);
+  --input: rgb(255 255 255 / 0.14);
+
+  /* One dominant CTA, in white — the Netflix/Disney+ Play button. The amber
+     accent is Helprr's dashboard identity and reads as "app chrome" here. */
+  --primary: #f5f5f7;
+  --primary-foreground: #0a0a0b;
+  --ring: rgb(255 255 255 / 0.6);
+
+  /* Streaming artwork is square-ish; a 10px radius reads as a card UI. */
+  --radius: 0.25rem;
+
+  /* Several Watch components reach for the raw accent token directly (the
+     sub-nav active pill, card progress bars, the play affordance) and so never
+     see --primary. The scope has to neutralise the accent itself. Status
+     colours — green watched, blue unplayed — are deliberately left alone:
+     they carry meaning rather than brand. */
+  --hpr-amber: #f5f5f7;
+  --hpr-ink: #0a0a0b;
+
+  background-color: var(--background);
+  color: var(--foreground);
+  min-height: 100dvh;
+}
+
+/* The page ground is painted by <body>, which sits outside .hpr-watch — so
+   without this the shell's amber-tinted gradient shows through around the
+   content column. */
+html[data-watch-skin='cinematic']:has(.hpr-watch) body {
+  background: #0a0a0b;
+}
+
+/* Chrome recedes: on desktop and tablet the sidebar would keep the page from
+   ever reaching the viewport edge, which is most of what "cinematic" means.
+   The mobile bottom nav stays — Netflix's own app keeps its tab bar. */
+html[data-watch-skin='cinematic']:has(.hpr-watch) [data-app-sidebar] {
+  display: none;
+}
+
+/* Tailwind's rounded-lg/xl/2xl/3xl are fixed rem values, not derived from
+   --radius, so squaring the skin's corners in the token block above does not
+   reach them. The Watch section has a long tail of one-off panels, sheets,
+   info tables and episode rows using them; rather than touch every call site
+   (and re-open the same drift the next time one is added), normalise them all
+   inside the scope. rounded-full is deliberately excluded — avatars, play
+   affordances and pills are meant to stay round. */
+html[data-watch-skin='cinematic'] .hpr-watch :is(.rounded-lg, .rounded-xl, .rounded-2xl, .rounded-3xl) {
+  border-radius: var(--radius);
+}
+
+/* ── Cinematic rail hover ──────────────────────────────────────────────
+   The push-aside expand, which needs sibling combinators Tailwind can't
+   express. Recipe per the Netflix teardown: a tile scaling by N% is given
+   half of the extra space on each side, so the row shifts left by N/2 and
+   everything after the hovered tile shifts right by N/2.
+
+   Scale is deliberately modest (1.14, not Netflix's 1.5). A horizontal
+   scroll container clips BOTH axes — there is no overflow-x:auto with
+   overflow-y:visible — so a large scale either gets guillotined or forces
+   enough vertical padding to wreck the row rhythm. 14% reads clearly as an
+   expand, keeps text crisp, and fits inside the scroller's own padding.
+
+   transition-delay on the :hover state is the intent gate: brushing past a
+   row does nothing, and it costs no JS timers. */
+@media (hover: hover) {
+  html[data-watch-skin='cinematic'] .hpr-cine-tile {
+    transition: transform 300ms cubic-bezier(0.22, 0.61, 0.36, 1);
+  }
+
+  html[data-watch-skin='cinematic'] .hpr-cine-row:hover > .hpr-cine-tile {
+    transform: translateX(-7%);
+    transition-delay: 250ms;
+  }
+
+  html[data-watch-skin='cinematic'] .hpr-cine-tile:hover ~ .hpr-cine-tile {
+    transform: translateX(7%);
+    transition-delay: 250ms;
+  }
+
+  html[data-watch-skin='cinematic'] .hpr-cine-row > .hpr-cine-tile:hover,
+  html[data-watch-skin='cinematic'] .hpr-cine-row > .hpr-cine-tile:focus-within {
+    transform: scale(1.14);
+    transition-delay: 250ms;
+    z-index: 20;
+  }
+
+  /* The detail overlay rides the same intent delay so art and text arrive
+     together rather than the caption racing ahead of the expand. */
+  html[data-watch-skin='cinematic'] .hpr-cine-tile:hover .hpr-cine-reveal,
+  html[data-watch-skin='cinematic'] .hpr-cine-tile:focus-within .hpr-cine-reveal {
+    opacity: 1;
+    transition-delay: 250ms;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-watch-skin='cinematic'] .hpr-cine-tile,
+  html[data-watch-skin='cinematic'] .hpr-cine-row:hover > .hpr-cine-tile,
+  html[data-watch-skin='cinematic'] .hpr-cine-tile:hover ~ .hpr-cine-tile,
+  html[data-watch-skin='cinematic'] .hpr-cine-row > .hpr-cine-tile:hover {
+    transform: none;
+    transition: none;
+  }
+}

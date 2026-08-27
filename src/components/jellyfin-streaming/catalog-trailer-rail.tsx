@@ -1,8 +1,8 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import Image from 'next/image';
-import { Play } from 'lucide-react';
+import { MediaRail } from '@/components/jellyfin-streaming/media-rail';
+import { MediaTile } from '@/components/jellyfin-streaming/media-tile';
 import { VideoPlayerDialog, type PlayableVideo } from '@/components/media/video-player-dialog';
 
 /** Jellyfin stores remote trailers as bare URLs, so the key has to be parsed out. */
@@ -51,41 +51,25 @@ export function CatalogTrailerRail({
   if (playable.length === 0) return null;
 
   return (
-    <section className="space-y-2">
-      <h2 className="text-base font-semibold tracking-tight">{title}</h2>
-      <div className="animate-rail-in flex gap-3 overflow-x-auto pb-2 scrollbar-hide -mx-[var(--main-pad-x)] px-[var(--main-pad-x)]">
+    <>
+      <MediaRail title={title} count={playable.length}>
         {playable.map((video, index) => (
-          <button
+          <MediaTile
             key={video.id}
-            type="button"
-            onClick={() => setDialog({ open: true, index })}
-            className="group w-[220px] shrink-0 text-left sm:w-[260px]"
-          >
-            <div className="relative aspect-video overflow-hidden rounded-xl border border-border/40 bg-muted/60">
-              <Image
-                src={`https://img.youtube.com/vi/${video.videoKey}/mqdefault.jpg`}
-                alt={video.title || 'Trailer'}
-                fill
-                sizes="260px"
-                unoptimized
-                className="object-cover transition-transform duration-300 group-hover:scale-105"
-              />
-              <span className="absolute inset-0 flex items-center justify-center bg-background/25 transition-colors group-hover:bg-background/40">
-                <span className="flex size-10 items-center justify-center rounded-full border border-border/50 bg-background/70 backdrop-blur">
-                  <Play className="ml-0.5 size-5 fill-current" />
-                </span>
-              </span>
-            </div>
-            {video.title && <p className="mt-1.5 line-clamp-1 text-[11px] font-medium">{video.title}</p>}
-          </button>
+            shape="landscape"
+            title={video.title || 'Trailer'}
+            imageUrl={`https://img.youtube.com/vi/${video.videoKey}/mqdefault.jpg`}
+            onActivate={() => setDialog({ open: true, index })}
+            playAffordance
+          />
         ))}
-      </div>
+      </MediaRail>
       <VideoPlayerDialog
         open={dialog.open}
         onOpenChange={(open) => setDialog((current) => ({ ...current, open }))}
         videos={playable}
         initialIndex={dialog.index}
       />
-    </section>
+    </>
   );
 }

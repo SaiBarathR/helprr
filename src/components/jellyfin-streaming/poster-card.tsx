@@ -4,6 +4,9 @@ import Link from 'next/link';
 import { Check, Play } from 'lucide-react';
 import type { JellyfinItem } from '@/types/jellyfin';
 import { FadeInImage } from '@/components/media/fade-in-image';
+import { catalogHref, type CatalogCardProps } from '@/components/jellyfin-streaming/card-shared';
+import { CinematicCard } from '@/components/jellyfin-streaming/cinematic/cinematic-card';
+import { useWatchSkin } from '@/lib/hooks/use-watch-skin';
 import {
   cardAspectClass,
   jellyfinCardImage,
@@ -12,17 +15,8 @@ import {
 } from '@/lib/jellyfin-playback/image';
 import { cn } from '@/lib/utils';
 
-/**
- * Where the card body navigates.
- *
- * Everything with a detail page goes there; the play button on the card starts
- * playback in place. A live channel is the one exception — it has no detail
- * page, so it is only ever played.
- */
-export function catalogHref(item: JellyfinItem): string {
-  if (item.Type === 'TvChannel') return `/jellyfin/library/watch/${item.Id}`;
-  return `/jellyfin/library/item/${item.Id}`;
-}
+// Re-exported from its new shared home so existing importers keep working.
+export { catalogHref };
 
 /** Widths track DiscoverMediaRail's breakpoint scale so rails feel like one app. */
 const WIDTH_CLASS: Record<CatalogCardShape, string> = {
@@ -49,7 +43,17 @@ function cardSubtitle(item: JellyfinItem): string | undefined {
   return item.AlbumArtist || item.Type;
 }
 
-export function CatalogPosterCard({
+/**
+ * Skin switch. Every caller keeps importing CatalogPosterCard, so the eight
+ * Watch pages and the rails need no knowledge of which skin is active.
+ */
+export function CatalogPosterCard(props: CatalogCardProps) {
+  const skin = useWatchSkin();
+  if (skin === 'cinematic') return <CinematicCard {...props} />;
+  return <ClassicPosterCard {...props} />;
+}
+
+function ClassicPosterCard({
   item,
   onPlay,
   priority = false,
@@ -58,24 +62,7 @@ export function CatalogPosterCard({
   upcoming = false,
   subtitle,
   identity = 'item',
-}: {
-  item: JellyfinItem;
-  onPlay?: (item: JellyfinItem) => void;
-  priority?: boolean;
-  className?: string;
-  /** Rails that must stay one uniform height pass their shape. */
-  shape?: CatalogCardShape;
-  /** Renders the UPCOMING chip and suppresses the play affordance. */
-  upcoming?: boolean;
-  /** Overrides the derived subtitle (upcoming rails pass a countdown). */
-  subtitle?: string;
-  /**
-   * `series` makes an episode card read as its show: series art and series
-   * name, with the episode in the subtitle. That is how Continue Watching and
-   * Next Up present episodes in the reference install.
-   */
-  identity?: 'item' | 'series';
-}) {
+}: CatalogCardProps) {
   const asSeries = identity === 'series' && item.Type === 'Episode' && Boolean(item.SeriesName);
   const image = (asSeries ? jellyfinSeriesCardImage(item, 400) : null)
     ?? jellyfinCardImage(item, 400, shape);
