@@ -31,6 +31,7 @@ import { CatalogTrailerRail } from '@/components/jellyfin-streaming/catalog-trai
 import { CatalogElsewhere } from '@/components/jellyfin-streaming/catalog-elsewhere';
 import { CatalogRatingsStrip } from '@/components/jellyfin-streaming/catalog-ratings-strip';
 import { PreviewBackdrop } from '@/components/jellyfin-streaming/cinematic/preview-backdrop';
+import { MobileDetailTabs } from '@/components/jellyfin-streaming/cinematic/mobile-detail-tabs';
 import { useWatchSkin } from '@/lib/hooks/use-watch-skin';
 import { useCompactViewport } from '@/lib/hooks/use-compact-viewport';
 import { cn } from '@/lib/utils';
@@ -403,13 +404,23 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
           />
         )}
 
-        {item.Type === 'Series' && query.data?.seasons && query.data.seasons.length > 0 && (
+        {stacked && (
+          <MobileDetailTabs
+            episodes={query.data?.episodes ?? []}
+            seasons={query.data?.seasons ?? []}
+            similar={query.data?.similar ?? []}
+            currentSeasonId={item.Type === 'Season' ? item.Id : item.SeasonId}
+            onPlay={(next) => void playback.playItem(next)}
+          />
+        )}
+
+        {!stacked && item.Type === 'Series' && query.data?.seasons && query.data.seasons.length > 0 && (
           <CatalogRail title="Seasons" items={query.data.seasons} onPlay={(next) => void playback.playItem(next)} />
         )}
 
         {/* Season picker on season and episode pages, so you can move sideways
             without going back up to the series. */}
-        {isChildOfSeries && (query.data?.seasons?.length ?? 0) > 1 && (
+        {!stacked && isChildOfSeries && (query.data?.seasons?.length ?? 0) > 1 && (
           <div className="flex flex-wrap gap-1.5">
             {query.data!.seasons!.map((season) => (
               <Link
@@ -428,7 +439,7 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
             ))}
           </div>
         )}
-        {item.Type !== 'Series' && query.data?.episodes && query.data.episodes.length > 0 && (
+        {!stacked && item.Type !== 'Series' && query.data?.episodes && query.data.episodes.length > 0 && (
           <section className="space-y-2">
             <h2 className="text-base font-semibold">
               {item.Type === 'Episode'
@@ -501,7 +512,7 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
         {query.data?.filmography && query.data.filmography.length > 0 && (
           <CatalogRail title="Filmography" items={query.data.filmography} onPlay={(next) => void playback.playItem(next)} />
         )}
-        {query.data?.similar && query.data.similar.length > 0 && (
+        {!stacked && query.data?.similar && query.data.similar.length > 0 && (
           <CatalogRail title="More like this" items={query.data.similar} onPlay={(next) => void playback.playItem(next)} />
         )}
 
