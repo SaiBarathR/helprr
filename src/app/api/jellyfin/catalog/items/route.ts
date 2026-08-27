@@ -61,6 +61,8 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
     const mediaTypes = searchParams.get('mediaTypes') ?? undefined;
     const tags = searchParams.get('tags') ?? undefined;
     const artistType = searchParams.get('artistType') ?? undefined;
+    // Single letter (or '#') drives the A–Z jump rail in the library grid.
+    const nameStartsWith = searchParams.get('nameStartsWith') ?? undefined;
 
     const client = await getJellyfinClientForUser(auth.user);
     const data = await client.getCatalogItems({
@@ -85,6 +87,7 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
       ...(mediaTypes ? { MediaTypes: mediaTypes } : {}),
       ...(tags ? { Tags: tags } : {}),
       ...(artistType ? { ArtistType: artistType } : {}),
+      ...(nameStartsWith ? { NameStartsWith: nameStartsWith } : {}),
     });
 
     const payload: CatalogItemsResponse = {
