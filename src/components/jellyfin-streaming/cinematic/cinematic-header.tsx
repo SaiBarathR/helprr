@@ -204,11 +204,22 @@ export function CinematicPageHeading() {
   const skin = useWatchSkin();
   const pathname = usePathname();
   if (skin !== 'cinematic') return null;
-  if (pathname === '/jellyfin/library') return null;
 
-  // Hubs and detail pages set their own headings.
-  if (pathname.startsWith('/jellyfin/library/shows') || pathname.startsWith('/jellyfin/library/movies')) {
-    return <div aria-hidden className="hidden md:block md:h-[4.5rem]" />;
+  // Every route needs the clearance, home included. The header is pulled back
+  // over the content by its own negative margin so it can sit flush at the top
+  // of the viewport; this spacer cancels that pull, which is what puts the
+  // billboard *below* the header rather than under it. Home was the only page
+  // that returned early and skipped it, which is exactly why it was the only
+  // page where the two overlapped.
+  const clearance = <div aria-hidden className="hidden md:block md:h-[4.5rem]" />;
+
+  // Home, the hubs and the detail pages all set their own headings.
+  if (
+    pathname === '/jellyfin/library'
+    || pathname.startsWith('/jellyfin/library/shows')
+    || pathname.startsWith('/jellyfin/library/movies')
+  ) {
+    return clearance;
   }
 
   const label = pathname.startsWith('/jellyfin/library/new') ? 'New & Popular'
@@ -219,7 +230,7 @@ export function CinematicPageHeading() {
           : null;
 
   // Detail pages have their own hero, so they only need the clearance.
-  if (!label) return <div aria-hidden className="hidden md:block md:h-[4.5rem]" />;
+  if (!label) return clearance;
 
   return (
     <h1 className="pt-4 pb-4 text-2xl font-medium tracking-tight md:pt-[5.5rem] md:text-3xl">{label}</h1>
