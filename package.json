@@ -3,7 +3,9 @@
   "version": "1.4.0",
   "private": true,
   "scripts": {
+    "predev": "node scripts/copy-libass-assets.mjs",
     "dev": "next dev -p 3050",
+    "prebuild": "node scripts/copy-libass-assets.mjs",
     "build": "next build --webpack",
     "test": "vitest run",
     "test:image-cache:redis": "node scripts/test-image-cache-redis.mjs",

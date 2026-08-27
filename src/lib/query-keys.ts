@@ -69,4 +69,5 @@ export const queryKeys = {
   jellyfinLive: () => ['jellyfin', 'catalog', 'live'] as const,
   jellyfinLyrics: (itemId: string) => ['jellyfin', 'catalog', 'lyrics', itemId] as const,
   jellyfinFilters: (parentId?: string) => ['jellyfin', 'catalog', 'filters', parentId ?? 'all'] as const,
+  jellyfinBrowse: (kind: string) => ['jellyfin', 'catalog', 'browse', kind] as const,
 } as const;

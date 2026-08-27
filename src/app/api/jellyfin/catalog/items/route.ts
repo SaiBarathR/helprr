@@ -55,6 +55,8 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
     const sortOrder = searchParams.get('sortOrder') === 'Descending' ? 'Descending' : 'Ascending';
     const artistIds = searchParams.get('artistIds') ?? undefined;
     const personIds = searchParams.get('personIds') ?? undefined;
+    const genreIds = searchParams.get('genreIds') ?? undefined;
+    const studioIds = searchParams.get('studioIds') ?? undefined;
     const ids = searchParams.get('ids') ?? undefined;
     const mediaTypes = searchParams.get('mediaTypes') ?? undefined;
     const tags = searchParams.get('tags') ?? undefined;
@@ -77,6 +79,8 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
       ...(officialRatings ? { OfficialRatings: officialRatings } : {}),
       ...(artistIds ? { ArtistIds: artistIds } : {}),
       ...(personIds ? { PersonIds: personIds } : {}),
+      ...(genreIds ? { GenreIds: genreIds } : {}),
+      ...(studioIds ? { StudioIds: studioIds } : {}),
       ...(ids ? { Ids: ids } : {}),
       ...(mediaTypes ? { MediaTypes: mediaTypes } : {}),
       ...(tags ? { Tags: tags } : {}),

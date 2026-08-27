@@ -2,12 +2,13 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Clapperboard, Heart, Radio, Search } from 'lucide-react';
+import { Clapperboard, Heart, LayoutGrid, Radio, Search } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const ITEMS = [
   { href: '/jellyfin/library', label: 'Home', icon: Clapperboard, match: (path: string) => path === '/jellyfin/library' },
   { href: '/jellyfin/library/favorites', label: 'Favorites', icon: Heart, match: (path: string) => path.startsWith('/jellyfin/library/favorites') },
+  { href: '/jellyfin/library/browse/genres', label: 'Browse', icon: LayoutGrid, match: (path: string) => path.startsWith('/jellyfin/library/browse') },
   { href: '/jellyfin/library/live', label: 'Live TV', icon: Radio, match: (path: string) => path.startsWith('/jellyfin/library/live') },
   { href: '/jellyfin/library/search', label: 'Search', icon: Search, match: (path: string) => path.startsWith('/jellyfin/library/search') },
 ] as const;

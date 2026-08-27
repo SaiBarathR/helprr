@@ -16,6 +16,8 @@ import { getDeviceProfile } from '@/lib/jellyfin-playback/device-profile';
 import { getJellyfinPlaybackDeviceId, getJellyfinPlaybackDeviceName, secondsToTicks, ticksToSeconds } from '@/lib/jellyfin-playback/device';
 import { canPlayHlsWithMse, canPlayNativeHls, detectBrowser } from '@/lib/jellyfin-playback/browser';
 import { jellyfinPosterUrl } from '@/lib/jellyfin-playback/image';
+import { useUIStore } from '@/lib/store';
+import { subtitleCueLine } from '@/lib/jellyfin-playback/subtitle-appearance';
 
 export type RepeatMode = 'RepeatNone' | 'RepeatAll' | 'RepeatOne';
 
@@ -107,6 +109,45 @@ async function fetchStream(itemId: string, options: PlayOptions): Promise<Helprr
     throw new Error(typeof body.error === 'string' ? body.error : 'Playback failed');
   }
   return res.json() as Promise<HelprrStreamInfo>;
+}
+
+function reportBody(event: 'playing' | 'progress' | 'stopped', stream: HelprrStreamInfo, extra: Record<string, unknown>) {
+  return JSON.stringify({
+    event,
+    itemId: stream.item.Id,
+    deviceId: getJellyfinPlaybackDeviceId(),
+    deviceName: getJellyfinPlaybackDeviceName(),
+    mediaSourceId: stream.mediaSource.Id,
+    playSessionId: stream.playSessionId,
+    playMethod: stream.playMethod,
+    liveStreamId: stream.liveStreamId,
+    canSeek: true,
+    ...extra,
+  });
+}
+
+/**
+ * Best-effort Stopped report while the page is going away. jellyfin-web does
+ * the same thing from a `beforeunload` handler (playbackmanager.js
+ * `onAppClose`); `fetch` is not guaranteed to survive unload, so this uses
+ * sendBeacon with an explicit JSON blob — the default beacon content type is
+ * text/plain, which the route's `request.json()` would still parse, but being
+ * explicit keeps the API contract honest.
+ */
+function beaconStopped(stream: HelprrStreamInfo, positionTicks: number) {
+  if (typeof navigator === 'undefined' || typeof navigator.sendBeacon !== 'function') return;
+  const body = reportBody('stopped', stream, { positionTicks, isPaused: true });
+  navigator.sendBeacon('/api/jellyfin/stream/session', new Blob([body], { type: 'application/json' }));
+  if (stream.playSessionId) {
+    navigator.sendBeacon(
+      '/api/jellyfin/stream/stop-encodings',
+      new Blob([JSON.stringify({
+        playSessionId: stream.playSessionId,
+        deviceId: getJellyfinPlaybackDeviceId(),
+        deviceName: getJellyfinPlaybackDeviceName(),
+      })], { type: 'application/json' }),
+    );
+  }
 }
 
 async function report(event: 'playing' | 'progress' | 'stopped', stream: HelprrStreamInfo, extra: {
@@ -264,6 +305,8 @@ function fontUrls(stream: HelprrStreamInfo): string[] {
 
 export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) {
   const mediaRef = useRef<HTMLVideoElement | null>(null);
+  const subtitleAppearance = useUIStore((state) => state.subtitleAppearance);
+  const cueLineRef = useRef(subtitleCueLine(subtitleAppearance.verticalPosition));
   const hlsRef = useRef<{ destroy: () => void } | null>(null);
   const assRef = useRef<{ dispose?: () => void } | null>(null);
   const streamRef = useRef<HelprrStreamInfo | null>(null);
@@ -399,7 +442,15 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
       track.default = true;
       el.appendChild(track);
       const enable = () => {
-        if (el.textTracks[0]) el.textTracks[0].mode = 'showing';
+        const textTrack = el.textTracks[0];
+        if (!textTrack) return;
+        textTrack.mode = 'showing';
+        // jellyfin-web sets `cue.line` from the same vertical-position setting
+        // (htmlVideoPlayer/plugin.js ~line 1485). ::cue cannot express it.
+        const line = cueLineRef.current;
+        for (const cue of Array.from(textTrack.cues ?? [])) {
+          (cue as VTTCue).line = line;
+        }
       };
       track.addEventListener('load', enable);
       enable();
@@ -457,6 +508,9 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
       const canRetryDirect = options.enableDirectPlay !== false && !retryingRef.current;
       if (canRetryDirect) {
         retryingRef.current = true;
+        // Release whatever the failed attempt opened, or Jellyfin is left with
+        // an orphaned transcode for the lifetime of its idle timeout.
+        await stopEncodings(streamRef.current?.playSessionId ?? '');
         try {
           await startItem(nextItem, {
             ...request,
@@ -544,6 +598,16 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     setQueueOpen(false);
     setSegments([]);
     setError(null);
+    // Clear the queue too. `item` is derived from it, and anything keyed off a
+    // non-null `item` (player chrome, the now-playing bar, key handling) would
+    // otherwise stay armed indefinitely after the user stopped playback.
+    queueRef.current = [];
+    orderRef.current = [];
+    indexRef.current = 0;
+    setQueue([]);
+    setIndex(0);
+    setPositionSeconds(0);
+    setDurationSeconds(0);
   }, [audioStreamIndex, maxBitrate, muted, playbackRate, positionSeconds, subtitleStreamIndex, volume]);
 
   const togglePause = useCallback(() => {
@@ -725,6 +789,7 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
       }
       if (current.playMethod === 'DirectPlay' || current.playMethod === 'DirectStream') {
         retryingRef.current = true;
+        void stopEncodings(current.playSessionId);
         void startItem(nextItem, {
           startTimeTicks: secondsToTicks(el.currentTime || 0),
           audioStreamIndex,
@@ -777,6 +842,32 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     }, 10_000);
     return clearTimers;
   }, [audioStreamIndex, maxBitrate, status, subtitleStreamIndex]);
+
+  useEffect(() => {
+    cueLineRef.current = subtitleCueLine(subtitleAppearance.verticalPosition);
+    const textTrack = mediaRef.current?.textTracks?.[0];
+    if (!textTrack) return;
+    for (const cue of Array.from(textTrack.cues ?? [])) {
+      (cue as VTTCue).line = cueLineRef.current;
+    }
+  }, [subtitleAppearance.verticalPosition]);
+
+  // Report Stopped when the page goes away. Without this the Jellyfin session
+  // lingers in Active Devices and a transcode keeps running until Jellyfin's own
+  // idle timeout. `persisted` means the page went into the bfcache and may come
+  // back, so leave playback alone there. Deliberately not hooked to
+  // `visibilitychange`: backgrounding the PWA on iOS must not kill audio.
+  useEffect(() => {
+    const onPageHide = (event: PageTransitionEvent) => {
+      if (event.persisted) return;
+      const current = streamRef.current;
+      if (!current) return;
+      beaconStopped(current, secondsToTicks(mediaRef.current?.currentTime ?? 0));
+      streamRef.current = null;
+    };
+    window.addEventListener('pagehide', onPageHide);
+    return () => window.removeEventListener('pagehide', onPageHide);
+  }, []);
 
   useEffect(() => {
     const current = streamRef.current?.item;

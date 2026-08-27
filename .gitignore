@@ -66,3 +66,6 @@ next-env.d.ts
 *.har
 anilistCharts/
 postman/
+
+# Generated from @jellyfin/libass-wasm by scripts/copy-libass-assets.mjs (prebuild/predev).
+/public/libass

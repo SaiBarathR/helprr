@@ -53,7 +53,9 @@ async function forward(request: NextRequest, pathSegments: string[], user: User)
     if (!allowed) {
       return new NextResponse(null, { status: 404 });
     }
-  } else if (!/^\/(?:livetv|fallbackfont)\b/i.test(path)) {
+  } else if (!/^\/fallbackfont\b/i.test(path)) {
+    // Everything playback-related carries an item id and is access-checked
+    // above. The only exception is the static fallback font libass needs.
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
 

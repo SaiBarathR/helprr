@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   ChevronDown,
@@ -37,6 +37,29 @@ import { cn } from '@/lib/utils';
 import { jsonFetcher } from '@/lib/query-fetch';
 import { queryKeys } from '@/lib/query-keys';
 import type { LyricsResponse } from '@/types/jellyfin-streaming';
+import { useUIStore } from '@/lib/store';
+import {
+  subtitleCueCss,
+  type SubtitleAppearance,
+  type SubtitleDropShadow,
+  type SubtitleFont,
+  type SubtitleTextSize,
+} from '@/lib/jellyfin-playback/subtitle-appearance';
+import {
+  pickTrickplayResolution,
+  trickplayMaxWidth,
+  trickplayTileAt,
+  type TrickplayTile,
+} from '@/lib/jellyfin-playback/trickplay';
+
+/** Player element class the ::cue rule is scoped to. */
+const VIDEO_CLASS = 'hpr-jf-video';
+
+function isTypingTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  return target.isContentEditable
+    || Boolean(target.closest('input, textarea, select, [contenteditable="true"]'));
+}
 
 export function VideoStage() {
   const playback = useJellyfinPlayback();
@@ -69,33 +92,70 @@ export function VideoStage() {
     };
   }, [expanded, playback.status]);
 
+  // Shortcuts belong to the open player only. Binding them app-wide meant a
+  // stray `n` on any page started the next episode, and space stopped scrolling
+  // the page. Reading the live context through a ref keeps this bound once per
+  // open instead of re-binding on every timeupdate.
+  const playbackRef = useRef(playback);
+  useEffect(() => { playbackRef.current = playback; });
+
   useEffect(() => {
+    if (!expanded) return undefined;
     const onKey = (event: KeyboardEvent) => {
-      if (!playback.item || event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
-      if (event.key === ' ' || event.key === 'k') { event.preventDefault(); playback.togglePause(); }
-      if (event.key === 'ArrowLeft' || event.key === 'j') playback.skip(-10);
-      if (event.key === 'ArrowRight' || event.key === 'l') playback.skip(10);
-      if (event.key === 'ArrowUp') { event.preventDefault(); playback.setVolume(Math.min(1, playback.volume + 0.05)); }
-      if (event.key === 'ArrowDown') { event.preventDefault(); playback.setVolume(Math.max(0, playback.volume - 0.05)); }
-      if (event.key === 'f') playback.setVideoExpanded(true);
+      if (event.defaultPrevented || isTypingTarget(event.target)) return;
+      const p = playbackRef.current;
+      if (!p.item) return;
+      if (event.key === ' ' || event.key === 'k') { event.preventDefault(); p.togglePause(); }
+      if (event.key === 'ArrowLeft' || event.key === 'j') p.skip(-10);
+      if (event.key === 'ArrowRight' || event.key === 'l') p.skip(10);
+      if (event.key === 'ArrowUp') { event.preventDefault(); p.setVolume(Math.min(1, p.volume + 0.05)); }
+      if (event.key === 'ArrowDown') { event.preventDefault(); p.setVolume(Math.max(0, p.volume - 0.05)); }
       if (event.key === 'Escape') {
-        playback.setVideoExpanded(false);
-        playback.setQueueOpen(false);
+        p.setVideoExpanded(false);
+        p.setQueueOpen(false);
       }
-      if (event.key === 'm') playback.setMuted(!playback.muted);
-      if (event.key === 'n') void playback.next();
-      if (event.key === 'p') void playback.previous();
-      if (event.key >= '0' && event.key <= '9' && playback.durationSeconds > 0) {
-        playback.seek((Number(event.key) / 10) * playback.durationSeconds);
+      if (event.key === 'm') p.setMuted(!p.muted);
+      if (event.key === 'n') void p.next();
+      if (event.key === 'p') void p.previous();
+      if (event.key >= '0' && event.key <= '9' && p.durationSeconds > 0) {
+        p.seek((Number(event.key) / 10) * p.durationSeconds);
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [playback]);
+  }, [expanded]);
 
   const audios = audioStreams(playback.stream);
   const subs = subtitleStreams(playback.stream);
   const chapters = playback.item?.Chapters ?? playback.stream?.item.Chapters ?? [];
+  const subtitleAppearance = useUIStore((state) => state.subtitleAppearance);
+  const setSubtitleAppearance = useUIStore((state) => state.setSubtitleAppearance);
+  const resetSubtitleAppearance = useUIStore((state) => state.resetSubtitleAppearance);
+  const cueCss = useMemo(() => subtitleCueCss(subtitleAppearance, `.${VIDEO_CLASS}`), [subtitleAppearance]);
+
+  const trickplayInfo = useMemo(
+    () => pickTrickplayResolution(
+      playback.stream?.item ?? playback.item,
+      playback.stream?.mediaSource.Id,
+      trickplayMaxWidth(),
+    ),
+    [playback.item, playback.stream],
+  );
+  const trickplayItemId = playback.stream?.item.Id;
+  const trickplaySourceId = playback.stream?.mediaSource.Id;
+  const trickplayAt = useCallback(
+    (seconds: number) => (trickplayInfo && trickplayItemId
+      ? trickplayTileAt(trickplayInfo, trickplayItemId, trickplaySourceId, seconds)
+      : null),
+    [trickplayInfo, trickplayItemId, trickplaySourceId],
+  );
+
+  // The selected text track decides whether appearance controls do anything:
+  // libass renders ASS/SSA with the file's own styling, exactly as jellyfin-web
+  // does, so ::cue never reaches it.
+  const selectedSubFormat = playback.stream?.subtitleTracks
+    .find((track) => track.index === playback.subtitleStreamIndex)?.format ?? '';
+  const subtitleAppearanceApplies = selectedSubFormat !== 'ass' && selectedSubFormat !== 'ssa';
   const intro = useMemo(
     () => playback.segments.find((segment) => {
       const start = ticksToSeconds(segment.StartTicks);
@@ -134,9 +194,10 @@ export function VideoStage() {
           className={cn('relative h-full w-full', mini && 'cursor-pointer')}
           onClick={() => mini && playback.setVideoExpanded(true)}
         >
+          <style>{cueCss}</style>
           <video
             ref={mediaRef}
-            className="h-full w-full bg-black object-contain"
+            className={cn('h-full w-full bg-black object-contain', VIDEO_CLASS)}
             playsInline
             preload="metadata"
           />
@@ -189,15 +250,11 @@ export function VideoStage() {
                 </div>
 
                 <div className="space-y-3 p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
-                  <input
-                    type="range"
-                    min={0}
-                    max={playback.durationSeconds || 1}
-                    step={0.1}
-                    value={playback.positionSeconds}
-                    aria-label="Seek"
-                    className="w-full accent-[var(--hpr-amber)]"
-                    onChange={(event) => playback.seek(Number(event.target.value))}
+                  <SeekBar
+                    positionSeconds={playback.positionSeconds}
+                    durationSeconds={playback.durationSeconds}
+                    onSeek={playback.seek}
+                    trickplayAt={trickplayAt}
                   />
                   <div className="flex items-center justify-between text-[11px] text-white/70">
                     <span>{formatClock(playback.positionSeconds)}</span>
@@ -327,6 +384,12 @@ export function VideoStage() {
                           <button type="button" className="rounded bg-white/10 px-2 py-1" onClick={() => playback.setSubtitleOffset(playback.subtitleOffsetSeconds + 0.5)}>+0.5</button>
                         </span>
                       </div>
+                      <SubtitleAppearanceControls
+                        appearance={subtitleAppearance}
+                        onChange={setSubtitleAppearance}
+                        onReset={resetSubtitleAppearance}
+                        disabled={!subtitleAppearanceApplies}
+                      />
                     </Panel>
                   )}
                   {panel === 'chapters' && (
@@ -416,15 +479,10 @@ export function VideoStage() {
               <p className="text-sm text-muted-foreground">{playback.item.Artists?.join(', ') || playback.item.AlbumArtist}</p>
             </div>
             <div className="w-full max-w-md space-y-2">
-              <input
-                type="range"
-                min={0}
-                max={playback.durationSeconds || 1}
-                step={0.1}
-                value={playback.positionSeconds}
-                aria-label="Seek"
-                className="w-full accent-[var(--hpr-amber)]"
-                onChange={(event) => playback.seek(Number(event.target.value))}
+              <SeekBar
+                positionSeconds={playback.positionSeconds}
+                durationSeconds={playback.durationSeconds}
+                onSeek={playback.seek}
               />
               <div className="flex justify-between text-[11px] text-muted-foreground">
                 <span>{formatClock(playback.positionSeconds)}</span>
@@ -498,6 +556,238 @@ function AudioLyrics({ itemId, positionSeconds }: { itemId: string; positionSeco
           {line.text}
         </p>
       ))}
+    </div>
+  );
+}
+
+/**
+ * Seek bar that previews while you drag and commits once on release.
+ *
+ * Binding `value` straight to the live position made the thumb fight playback
+ * mid-drag, and because React maps range `onChange` to the `input` event, every
+ * intermediate value used to call `seek()` — which on a non-HLS transcode is a
+ * full stopEncodings + PlaybackInfo + restart cycle per drag step.
+ */
+function SeekBar({
+  positionSeconds,
+  durationSeconds,
+  onSeek,
+  trickplayAt,
+  className,
+  accentClassName = 'accent-[var(--hpr-amber)]',
+}: {
+  positionSeconds: number;
+  durationSeconds: number;
+  onSeek: (seconds: number) => void;
+  trickplayAt?: (seconds: number) => TrickplayTile | null;
+  className?: string;
+  accentClassName?: string;
+}) {
+  const [dragSeconds, setDragSeconds] = useState<number | null>(null);
+  const [previewSeconds, setPreviewSeconds] = useState<number | null>(null);
+  const dragRef = useRef<number | null>(null);
+  const max = durationSeconds > 0 ? durationSeconds : 1;
+  const value = Math.min(dragSeconds ?? positionSeconds, max);
+
+  const commit = useCallback(() => {
+    const pending = dragRef.current;
+    dragRef.current = null;
+    setDragSeconds(null);
+    setPreviewSeconds(null);
+    if (pending != null) onSeek(pending);
+  }, [onSeek]);
+
+  useEffect(() => {
+    if (dragSeconds == null) return undefined;
+    // The pointer can be released outside the input; still commit.
+    window.addEventListener('pointerup', commit);
+    window.addEventListener('pointercancel', commit);
+    return () => {
+      window.removeEventListener('pointerup', commit);
+      window.removeEventListener('pointercancel', commit);
+    };
+  }, [commit, dragSeconds]);
+
+  const hoverPreview = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!trickplayAt || dragRef.current != null || event.pointerType === 'touch') return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    if (rect.width === 0) return;
+    const fraction = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
+    setPreviewSeconds(fraction * max);
+  };
+
+  const bubbleSeconds = dragSeconds ?? previewSeconds;
+  const tile = trickplayAt && bubbleSeconds != null ? trickplayAt(bubbleSeconds) : null;
+
+  return (
+    <div
+      className="relative"
+      onPointerMove={hoverPreview}
+      onPointerLeave={() => { if (dragRef.current == null) setPreviewSeconds(null); }}
+    >
+      {bubbleSeconds != null && (tile || dragSeconds != null) && (
+        <div
+          className="pointer-events-none absolute bottom-full z-10 mb-2 -translate-x-1/2"
+          style={{ left: `${Math.min(92, Math.max(8, (bubbleSeconds / max) * 100))}%` }}
+        >
+          {tile && (
+            <div
+              className="overflow-hidden rounded border border-white/20 bg-black shadow-lg"
+              style={{
+                width: tile.width,
+                height: tile.height,
+                backgroundImage: `url('${tile.url}')`,
+                backgroundPositionX: `${tile.offsetX}px`,
+                backgroundPositionY: `${tile.offsetY}px`,
+              }}
+            />
+          )}
+          <p className="mt-1 rounded bg-black/80 px-1.5 py-0.5 text-center text-[11px] tabular-nums text-white">
+            {formatClock(bubbleSeconds)}
+          </p>
+        </div>
+      )}
+      <input
+        type="range"
+        min={0}
+        max={max}
+        step={0.1}
+        value={value}
+        aria-label="Seek"
+        aria-valuetext={formatClock(value)}
+        className={cn('w-full', accentClassName, className)}
+        onChange={(event) => {
+          const next = Number(event.target.value);
+          dragRef.current = next;
+          setDragSeconds(next);
+        }}
+        onPointerUp={commit}
+        onKeyUp={commit}
+        onBlur={commit}
+      />
+    </div>
+  );
+}
+
+const TEXT_SIZES: Array<{ value: SubtitleTextSize; label: string }> = [
+  { value: 'smaller', label: 'Smaller' },
+  { value: 'small', label: 'Small' },
+  { value: 'medium', label: 'Medium' },
+  { value: 'large', label: 'Large' },
+  { value: 'larger', label: 'Larger' },
+  { value: 'extralarge', label: 'Extra large' },
+];
+
+const SUBTITLE_FONTS: Array<{ value: SubtitleFont; label: string }> = [
+  { value: 'default', label: 'Default' },
+  { value: 'typewriter', label: 'Typewriter' },
+  { value: 'print', label: 'Print' },
+  { value: 'console', label: 'Console' },
+  { value: 'cursive', label: 'Cursive' },
+  { value: 'casual', label: 'Casual' },
+  { value: 'smallcaps', label: 'Small caps' },
+];
+
+const DROP_SHADOWS: Array<{ value: SubtitleDropShadow; label: string }> = [
+  { value: 'dropshadow', label: 'Drop shadow' },
+  { value: 'raised', label: 'Raised' },
+  { value: 'depressed', label: 'Depressed' },
+  { value: 'uniform', label: 'Uniform' },
+  { value: 'none', label: 'None' },
+];
+
+const TEXT_COLORS = ['#ffffff', '#ffff00', '#00ff00', '#00ffff', '#ff9900', '#000000'];
+const TEXT_BACKGROUNDS: Array<{ value: string; label: string }> = [
+  { value: 'transparent', label: 'None' },
+  { value: 'rgba(0,0,0,0.5)', label: 'Dim' },
+  { value: '#000000', label: 'Solid' },
+];
+
+/**
+ * Mirrors jellyfin-web's subtitle appearance settings. Disabled for ASS/SSA,
+ * where libass owns the styling and ::cue is never consulted.
+ */
+function SubtitleAppearanceControls({
+  appearance,
+  onChange,
+  onReset,
+  disabled,
+}: {
+  appearance: SubtitleAppearance;
+  onChange: (patch: Partial<SubtitleAppearance>) => void;
+  onReset: () => void;
+  disabled: boolean;
+}) {
+  const selectClass = 'rounded bg-white/10 px-1.5 py-1 text-xs text-white disabled:opacity-40 [&>option]:text-black';
+  return (
+    <div className="mt-2 space-y-1.5 border-t border-white/10 px-2 pt-2">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-medium text-white/80">Appearance</span>
+        <button type="button" className="rounded bg-white/10 px-2 py-0.5 text-[11px] text-white disabled:opacity-40" onClick={onReset} disabled={disabled}>
+          Reset
+        </button>
+      </div>
+      {disabled && (
+        <p className="text-[11px] text-white/50">
+          This track is ASS/SSA — libass renders its built-in styling, same as Jellyfin Web.
+        </p>
+      )}
+      <div className="grid grid-cols-2 gap-1.5">
+        <label className="flex flex-col gap-0.5 text-[11px] text-white/60">
+          Size
+          <select className={selectClass} value={appearance.textSize} disabled={disabled} onChange={(e) => onChange({ textSize: e.target.value as SubtitleTextSize })}>
+            {TEXT_SIZES.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
+        </label>
+        <label className="flex flex-col gap-0.5 text-[11px] text-white/60">
+          Font
+          <select className={selectClass} value={appearance.font} disabled={disabled} onChange={(e) => onChange({ font: e.target.value as SubtitleFont })}>
+            {SUBTITLE_FONTS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
+        </label>
+        <label className="flex flex-col gap-0.5 text-[11px] text-white/60">
+          Edge
+          <select className={selectClass} value={appearance.dropShadow} disabled={disabled} onChange={(e) => onChange({ dropShadow: e.target.value as SubtitleDropShadow })}>
+            {DROP_SHADOWS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
+        </label>
+        <label className="flex flex-col gap-0.5 text-[11px] text-white/60">
+          Background
+          <select className={selectClass} value={appearance.textBackground} disabled={disabled} onChange={(e) => onChange({ textBackground: e.target.value })}>
+            {TEXT_BACKGROUNDS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
+        </label>
+      </div>
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[11px] text-white/60">Colour</span>
+        <span className="flex gap-1">
+          {TEXT_COLORS.map((color) => (
+            <button
+              key={color}
+              type="button"
+              aria-label={`Subtitle colour ${color}`}
+              aria-pressed={appearance.textColor === color}
+              disabled={disabled}
+              onClick={() => onChange({ textColor: color })}
+              className={cn(
+                'size-5 rounded border disabled:opacity-40',
+                appearance.textColor === color ? 'border-[var(--hpr-amber)]' : 'border-white/30',
+              )}
+              style={{ backgroundColor: color }}
+            />
+          ))}
+        </span>
+      </div>
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[11px] text-white/60">Position {appearance.verticalPosition}</span>
+        <span className="flex gap-1">
+          <button type="button" className="rounded bg-white/10 px-2 py-0.5 text-[11px] text-white disabled:opacity-40" disabled={disabled} onClick={() => onChange({ verticalPosition: Math.max(-16, appearance.verticalPosition - 1) })}>Lower</button>
+          <button type="button" className="rounded bg-white/10 px-2 py-0.5 text-[11px] text-white disabled:opacity-40" disabled={disabled} onClick={() => onChange({ verticalPosition: Math.min(16, appearance.verticalPosition + 1) })}>Raise</button>
+        </span>
+      </div>
+      <p className="pb-1 text-center text-[11px]" style={{ color: appearance.textColor, backgroundColor: appearance.textBackground }}>
+        Preview subtitle text
+      </p>
     </div>
   );
 }

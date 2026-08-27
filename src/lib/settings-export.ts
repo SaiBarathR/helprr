@@ -44,6 +44,7 @@ export type UiPrefCategoryId =
   | 'cleanup'
   | 'dashboardTheme'
   | 'interaction'
+  | 'playback'
   | 'search';
 
 export const UI_PREF_CATEGORY_LABELS: Record<UiPrefCategoryId, string> = {
@@ -60,6 +61,7 @@ export const UI_PREF_CATEGORY_LABELS: Record<UiPrefCategoryId, string> = {
   cleanup: 'Cleanup history filters',
   dashboardTheme: 'Dashboard theme',
   interaction: 'Touch & interaction',
+  playback: 'Playback & subtitles',
   search: 'Search history',
 };
 
@@ -96,6 +98,7 @@ export const UI_PREF_CATEGORY_FIELDS: Record<UiPrefCategoryId, readonly string[]
     'liquidGlass', 'glassMode', 'glassIntensity',
   ],
   interaction: ['hapticsEnabled'],
+  playback: ['subtitleAppearance'],
   search: ['searchHistory'],
 };
 

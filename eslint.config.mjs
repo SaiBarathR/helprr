@@ -16,6 +16,9 @@ const eslintConfig = defineConfig([
     ".claude/**",
     // Generated Serwist bundle (build artifact, gitignored but present after `npm run build`)
     "public/sw.js",
+    // libass workers copied from @jellyfin/libass-wasm by prebuild/predev
+    // (gitignored, but present on disk as minified vendor bundles)
+    "public/libass/**",
   ]),
 ]);
 

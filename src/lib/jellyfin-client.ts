@@ -715,6 +715,29 @@ export class JellyfinClient {
     return this.get<{ Items?: MediaSegment[] }>(`/MediaSegments/${itemId}`);
   }
 
+  /**
+   * Genre / studio / person index for the Watch browse pages. All three are
+   * user-scoped on the Jellyfin side, so a restricted account only sees the
+   * entities its own libraries contain.
+   */
+  async getBrowseEntities(
+    kind: 'Genres' | 'Studios' | 'Persons',
+    params: { parentId?: string; limit?: number; startIndex?: number; searchTerm?: string } = {},
+  ): Promise<JellyfinItemsResponse> {
+    return this.get<JellyfinItemsResponse>(`/${kind}`, {
+      userId: this.requireUserId(),
+      Limit: params.limit ?? 100,
+      StartIndex: params.startIndex ?? 0,
+      SortBy: 'SortName',
+      SortOrder: 'Ascending',
+      Recursive: true,
+      EnableImages: true,
+      EnableTotalRecordCount: true,
+      ...(params.parentId ? { ParentId: params.parentId } : {}),
+      ...(params.searchTerm ? { SearchTerm: params.searchTerm } : {}),
+    });
+  }
+
   async getLiveTvChannels(params: { limit?: number } = {}): Promise<JellyfinItemsResponse> {
     return this.get<JellyfinItemsResponse>('/LiveTv/Channels', {
       UserId: this.requireUserId(),

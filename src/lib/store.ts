@@ -25,6 +25,10 @@ import {
   type GlassMode,
 } from '@/lib/dashboard-theme';
 import { getDefaultActivitySortDirection } from '@/lib/activity-queue-sort';
+import {
+  DEFAULT_SUBTITLE_APPEARANCE,
+  type SubtitleAppearance,
+} from '@/lib/jellyfin-playback/subtitle-appearance';
 
 export type MediaViewMode = 'posters' | 'overview' | 'table';
 export type PosterSize = 'small' | 'medium' | 'large';
@@ -237,7 +241,7 @@ function cloneDiscoverFilters(filters: DiscoverFiltersState): DiscoverFiltersSta
   };
 }
 
-export const STORE_VERSION = 44;
+export const STORE_VERSION = 45;
 
 // Matches the calendar backdrop's previously hardcoded Tailwind `opacity-35`.
 export const DEFAULT_CALENDAR_IMAGE_OPACITY = 35;
@@ -461,6 +465,9 @@ export function migrateUiPrefs(persisted: unknown, version: number): Record<stri
     const activitySortBy = state.activitySortBy as ActivitySortPreference | undefined;
     state.activitySortDirection = getDefaultActivitySortDirection(activitySortBy ?? 'progress');
   }
+  if (version < 45) {
+    state.subtitleAppearance = { ...DEFAULT_SUBTITLE_APPEARANCE };
+  }
   if (!isMediaWatchFilterPreference(state.moviesWatchFilter)) {
     state.moviesWatchFilter = 'all';
   }
@@ -661,6 +668,10 @@ interface UIState {
   // Haptic feedback on touch gestures (swipe actions, pull-to-refresh)
   hapticsEnabled: boolean;
   setHapticsEnabled: (v: boolean) => void;
+  // Jellyfin subtitle appearance (text subtitles only; libass owns ASS styling)
+  subtitleAppearance: SubtitleAppearance;
+  setSubtitleAppearance: (patch: Partial<SubtitleAppearance>) => void;
+  resetSubtitleAppearance: () => void;
   // Discover layout (server-side, cached locally for dashboard widget catalog)
   discoverLayout: DiscoverLayoutConfig | null;
   setDiscoverLayout: (config: DiscoverLayoutConfig | null) => void;
@@ -754,6 +765,7 @@ const PERSISTED_KEYS = [
   'glassMode',
   'glassIntensity',
   'hapticsEnabled',
+  'subtitleAppearance',
   'searchHistory',
 ] as const satisfies readonly (keyof UIState)[];
 
@@ -1060,6 +1072,12 @@ export const useUIStore = create<UIState>()(
       // Haptics
       hapticsEnabled: true,
       setHapticsEnabled: (v) => set({ hapticsEnabled: v }),
+      // Jellyfin subtitle appearance
+      subtitleAppearance: { ...DEFAULT_SUBTITLE_APPEARANCE },
+      setSubtitleAppearance: (patch) =>
+        set((state) => ({ subtitleAppearance: { ...state.subtitleAppearance, ...patch } })),
+      resetSubtitleAppearance: () =>
+        set({ subtitleAppearance: { ...DEFAULT_SUBTITLE_APPEARANCE } }),
       // Discover layout cache
       discoverLayout: null,
       setDiscoverLayout: (config) =>

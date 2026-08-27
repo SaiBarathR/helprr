@@ -158,6 +158,7 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
     'GET /api/jellyfin/playback/users',
   ],
   'cap:jellyfin.view': [
+    'GET /api/jellyfin/catalog/browse',
     'GET /api/jellyfin/catalog/filters',
     'GET /api/jellyfin/catalog/home',
     'GET /api/jellyfin/catalog/items',
@@ -426,7 +427,7 @@ describe('GET API route capability matrix', () => {
   const assignments = policyAssignments();
 
   it('explicitly assigns every GET handler exactly once', () => {
-    expect(handlers.size).toBe(204);
+    expect(handlers.size).toBe(205);
     expect([...assignments.keys()].sort()).toEqual([...handlers.keys()].sort());
   });
 

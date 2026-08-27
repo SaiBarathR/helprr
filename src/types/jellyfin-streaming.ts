@@ -294,3 +294,12 @@ export const CATALOG_LIST_FIELDS = [
   'Status',
   'EndDate',
 ].join(',');
+
+export type CatalogBrowseKind = 'genres' | 'studios' | 'persons';
+
+export interface CatalogBrowseResponse {
+  linked: boolean;
+  kind: CatalogBrowseKind;
+  items: JellyfinItem[];
+  total: number;
+}

@@ -29,6 +29,40 @@ describe('jellyfin media path allowlist', () => {
   });
 });
 
+describe('jellyfin media path allowlist — non-playback paths', () => {
+  it('rejects Live TV pseudo-paths; channels play through /videos/{id} with a LiveStreamId', () => {
+    // jellyfin-web's playbackmanager puts LiveStreamId on the channel item's own
+    // video URL rather than using a /LiveTv/ media path, so allowing one here
+    // would have been an unauthenticated hole with no caller.
+    expect(isAllowedMediaPath('/livetv/livestream')).toBe(false);
+    expect(isAllowedMediaPath('/LiveTv/LiveStreamFiles/abc/stream.mp4')).toBe(false);
+    expect(isAllowedMediaPath('/videos/abc123def456/master.m3u8?LiveStreamId=x')).toBe(true);
+  });
+
+  it('still allows the static fallback font libass needs', () => {
+    expect(isAllowedMediaPath('/FallbackFont/Fonts/whatever.woff2')).toBe(true);
+  });
+
+  it('rejects traversal, protocol-relative, and backslash paths', () => {
+    expect(isAllowedMediaPath('/videos/abc123def456/../../System/Info')).toBe(false);
+    expect(normalizeMediaPath('//evil.example/videos/abc/x.ts')).toBeNull();
+    expect(normalizeMediaPath('/videos/abc//x.ts')).toBeNull();
+  });
+
+  it('allows trickplay sheets, which share the /videos/{id} prefix', () => {
+    expect(isAllowedMediaPath('/Videos/abc123def456/Trickplay/320/0.jpg')).toBe(true);
+    expect(itemIdFromMediaPath('/Videos/abc123def456/Trickplay/320/0.jpg')).toBe('abc123def456');
+  });
+
+  it('strips token query keys regardless of casing', () => {
+    const params = stripSensitiveQuery(new URLSearchParams('ApiKey=a&API_KEY=b&X-Emby-Token=c&MediaSourceId=keep'));
+    expect(params.get('ApiKey')).toBeNull();
+    expect(params.get('API_KEY')).toBeNull();
+    expect(params.get('X-Emby-Token')).toBeNull();
+    expect(params.get('MediaSourceId')).toBe('keep');
+  });
+});
+
 describe('hls playlist rewrite', () => {
   it('rewrites segment URIs through the Helprr proxy without api keys', () => {
     const body = [
@@ -42,6 +76,42 @@ describe('hls playlist rewrite', () => {
     expect(rewritten).not.toContain('api_key');
     expect(rewritten).toContain('/api/jellyfin/media/videos/abc/init.mp4');
     expect(rewritten).toContain('/api/jellyfin/media/videos/abc/seg2.ts');
+  });
+});
+
+describe('hls playlist rewrite — edge cases', () => {
+  it('rewrites EXT-X-KEY and EXT-X-MEDIA URIs, not just segment lines', () => {
+    const body = [
+      '#EXTM3U',
+      '#EXT-X-KEY:METHOD=AES-128,URI="https://jellyfin.example/videos/abc/hls1/key?api_key=secret"',
+      '#EXT-X-MEDIA:TYPE=AUDIO,URI="audio/main.m3u8"',
+      'seg.ts',
+    ].join('\n');
+    const out = rewriteHlsPlaylist(body, 'https://jellyfin.example', '/videos/abc/master.m3u8');
+    expect(out).toContain('URI="/api/jellyfin/media/videos/abc/hls1/key"');
+    expect(out).toContain('URI="/api/jellyfin/media/videos/abc/audio/main.m3u8"');
+    expect(out).not.toContain('api_key');
+  });
+
+  it('handles CRLF playlists and preserves tags that carry no URI', () => {
+    const body = '#EXTM3U\r\n#EXT-X-TARGETDURATION:6\r\n#EXTINF:6.0,\r\nseg0.ts\r\n';
+    const out = rewriteHlsPlaylist(body, 'https://jellyfin.example', '/videos/abc/main.m3u8');
+    expect(out).toContain('#EXT-X-TARGETDURATION:6');
+    expect(out).toContain('#EXTINF:6.0,');
+    expect(out).toContain('/api/jellyfin/media/videos/abc/seg0.ts');
+  });
+
+  it('leaves URIs on other origins alone rather than proxying them', () => {
+    const body = '#EXTM3U\nhttps://cdn.elsewhere.example/seg.ts';
+    const out = rewriteHlsPlaylist(body, 'https://jellyfin.example', '/videos/abc/main.m3u8');
+    expect(out).toContain('https://cdn.elsewhere.example/seg.ts');
+    expect(out).not.toContain('/api/jellyfin/media/seg.ts');
+  });
+
+  it('resolves nested variant paths against the playlist directory', () => {
+    const body = '#EXTM3U\nhls1/main/0.mp4';
+    const out = rewriteHlsPlaylist(body, 'https://jellyfin.example', '/videos/abc/hls1/main.m3u8');
+    expect(out).toContain('/api/jellyfin/media/videos/abc/hls1/hls1/main/0.mp4');
   });
 });
 
