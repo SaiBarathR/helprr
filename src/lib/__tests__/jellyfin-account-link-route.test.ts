@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   invalidateJellyfinToken: vi.fn(),
   recordUsernameFailure: vi.fn(),
   recordGlobalLoginFailure: vi.fn(),
+  readJellyfinToken: vi.fn(),
 }));
 
 vi.mock('@/lib/auth', () => ({ requireUser: mocks.requireUser }));
@@ -25,6 +26,7 @@ vi.mock('@/lib/db', () => ({
 vi.mock('@/lib/jellyfin-token', () => ({
   storeJellyfinToken: mocks.storeJellyfinToken,
   invalidateJellyfinToken: mocks.invalidateJellyfinToken,
+  readJellyfinToken: mocks.readJellyfinToken,
 }));
 vi.mock('@/lib/login-rate-limit', () => ({
   getClientIp: () => '10.0.0.1',
@@ -40,7 +42,7 @@ vi.mock('@/lib/login-rate-limit', () => ({
 }));
 vi.mock('@/lib/api-logger', () => ({ withApiLogging: (handler: unknown) => handler }));
 
-import { DELETE, POST } from '@/app/api/account/jellyfin/link/route';
+import { DELETE, GET, POST } from '@/app/api/account/jellyfin/link/route';
 
 function request(body: unknown = { username: 'sai', password: 'pw' }) {
   return new NextRequest('http://localhost/api/account/jellyfin/link', {
@@ -166,5 +168,30 @@ describe('DELETE /api/account/jellyfin/link', () => {
     });
     expect((await DELETE()).status).toBe(401);
     expect(mocks.invalidateJellyfinToken).not.toHaveBeenCalled();
+  });
+});
+
+describe('GET /api/account/jellyfin/link', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('reports connected when a usable token decrypts', async () => {
+    signedInAs('jf-sai');
+    mocks.readJellyfinToken.mockReturnValue('a-token');
+    expect(await (await GET()).json()).toEqual({ connected: true });
+  });
+
+  it('reports disconnected when the token is gone — how the player tells a revoked token from a broken file', async () => {
+    signedInAs('jf-sai');
+    mocks.readJellyfinToken.mockReturnValue(null);
+    expect(await (await GET()).json()).toEqual({ connected: false });
+  });
+
+  it('rejects an unauthenticated caller', async () => {
+    mocks.requireUser.mockResolvedValue({
+      ok: false,
+      response: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }),
+    });
+    expect((await GET()).status).toBe(401);
+    expect(mocks.readJellyfinToken).not.toHaveBeenCalled();
   });
 });

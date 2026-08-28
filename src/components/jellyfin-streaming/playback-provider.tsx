@@ -381,6 +381,32 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     if (mediaRef.current) clearTextTracks(mediaRef.current);
   };
 
+  /**
+   * Fail playback, checking first whether the member is simply no longer
+   * connected.
+   *
+   * A media element error exposes no HTTP status, so a token revoked mid-stream
+   * looks exactly like an unplayable file. The media proxy drops the stored
+   * token when Jellyfin rejects it, so a disconnected answer here means
+   * revocation and the member should get the gate, not a dead end. Only runs on
+   * an actual failure, so the extra request costs nothing in the normal case.
+   */
+  const failPlayback = useCallback(async (fallbackMessage: string) => {
+    setStatus('error');
+    const connected = await fetch('/api/account/jellyfin/link')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((body) => (typeof body?.connected === 'boolean' ? body.connected : null))
+      .catch(() => null);
+
+    if (connected === false) {
+      setNeedsJellyfinConnect(true);
+      setVideoExpanded(true);
+      setError('Connect your Jellyfin account to watch.');
+      return;
+    }
+    setError(fallbackMessage);
+  }, []);
+
   const attachMedia = useCallback(async (next: HelprrStreamInfo, requestedSubtitleIndex?: number | null) => {
     const el = mediaRef.current;
     if (!el) throw new Error('Player is not ready');
@@ -412,6 +438,16 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
           },
         });
         hls.on(Hls.Events.ERROR, (_event, data) => {
+          // Checked before the fatal guard and before the retry below: a 409 is
+          // Helprr refusing to serve without a Jellyfin token, not a transient
+          // network fault. hls.js retries NETWORK_ERROR indefinitely, so left to
+          // the retry path a revoked token stalls the stream silently and no
+          // error ever reaches the media element.
+          if (data.response?.code === 409) {
+            hls.stopLoad();
+            void failPlayback('This title could not be played.');
+            return;
+          }
           if (!data.fatal) return;
           if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
             hls.startLoad();
@@ -481,7 +517,7 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     }
 
     await el.play();
-  }, [maxBitrate, muted, playbackRate, volume]);
+  }, [failPlayback, maxBitrate, muted, playbackRate, volume]);
 
   const startItem = useCallback(async (nextItem: JellyfinItem, options: PlayOptions = {}) => {
     setStatus('loading');
@@ -818,10 +854,9 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
       const current = streamRef.current;
       const nextItem = queueRef.current[indexRef.current];
       if (!current || !nextItem || retryingRef.current) {
-        if (current) {
-          setStatus('error');
-          setError('This title could not be played.');
-        }
+        // failPlayback, not a bare error: a token revoked mid-stream reaches the
+        // element as an indistinguishable media error.
+        if (current) void failPlayback('This title could not be played.');
         return;
       }
       if (current.playMethod === 'DirectPlay' || current.playMethod === 'DirectStream') {
@@ -836,8 +871,9 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
           enableDirectStream: false,
         }).finally(() => { retryingRef.current = false; });
       } else {
-        setStatus('error');
-        setError('This title could not be played.');
+        // Already transcoding, so there is no lower fallback to drop to. This is
+        // the path a revocation during an active transcode lands on.
+        void failPlayback('This title could not be played.');
       }
     };
     el.addEventListener('timeupdate', onTime);
@@ -854,7 +890,7 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
       el.removeEventListener('volumechange', onVolume);
       el.removeEventListener('error', onError);
     };
-  }, [audioStreamIndex, maxBitrate, next, startItem, subtitleStreamIndex]);
+  }, [audioStreamIndex, failPlayback, maxBitrate, next, startItem, subtitleStreamIndex]);
 
   useEffect(() => {
     clearTimers();

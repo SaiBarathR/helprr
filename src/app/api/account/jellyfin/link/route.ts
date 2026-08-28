@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { requireUser } from '@/lib/auth';
 import { JellyfinClient } from '@/lib/jellyfin-client';
-import { storeJellyfinToken, invalidateJellyfinToken } from '@/lib/jellyfin-token';
+import { storeJellyfinToken, invalidateJellyfinToken, readJellyfinToken } from '@/lib/jellyfin-token';
 import {
   getClientIp,
   enforceLoginRateLimit,
@@ -111,6 +111,20 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   return NextResponse.json({ connected: true, jellyfinUsername: result.userName });
 }
 
+/**
+ * Whether the member currently has a usable Jellyfin token.
+ *
+ * A media element error carries no HTTP status, so a token revoked mid-stream
+ * and a genuinely unplayable file look identical to the player. The media proxy
+ * drops the stored token when Jellyfin rejects it, so asking this afterwards is
+ * what tells the two apart.
+ */
+async function getHandler(): Promise<NextResponse> {
+  const auth = await requireUser();
+  if (!auth.ok) return auth.response;
+  return NextResponse.json({ connected: readJellyfinToken(auth.user) !== null });
+}
+
 async function deleteHandler(): Promise<NextResponse> {
   const auth = await requireUser();
   if (!auth.ok) return auth.response;
@@ -121,5 +135,6 @@ async function deleteHandler(): Promise<NextResponse> {
   return NextResponse.json({ connected: false });
 }
 
+export const GET = withApiLogging(getHandler, 'api/account/jellyfin/link');
 export const POST = withApiLogging(postHandler, 'api/account/jellyfin/link', { logBodies: false });
 export const DELETE = withApiLogging(deleteHandler, 'api/account/jellyfin/link');
