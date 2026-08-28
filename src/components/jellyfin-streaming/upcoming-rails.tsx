@@ -16,12 +16,27 @@ const MONTHS_AHEAD = 3;
 /** Season premieres are the signal for "a new season is coming". */
 const PREMIERE_RE = /^S(\d+)E0*1\b/i;
 
+function hintFor(event: CalendarEvent): ImageServiceHint {
+  return event.type === 'movie' ? 'radarr' : event.type === 'album' ? 'lidarr' : 'sonarr';
+}
+
 function posterFor(event: CalendarEvent): string | null {
-  const hint: ImageServiceHint = event.type === 'movie' ? 'radarr' : event.type === 'album' ? 'lidarr' : 'sonarr';
   const image = event.images?.find((i) => i.coverType === 'poster')
     ?? event.images?.find((i) => i.coverType === 'cover')
     ?? event.images?.find((i) => i.coverType === 'fanart');
-  return toCachedImageSrc(image?.remoteUrl || image?.url || null, hint);
+  return toCachedImageSrc(image?.remoteUrl || image?.url || null, hintFor(event));
+}
+
+/**
+ * Arr's 16:9 art is `fanart`; screenshots are the episode-level equivalent.
+ * Deliberately not `banner` — arr banners are about 5:1, so covering a 16:9
+ * frame with one magnifies a thin slice. Returning null instead lets the tile
+ * fall back to the poster, which crops far better.
+ */
+function backdropFor(event: CalendarEvent): string | null {
+  const image = event.images?.find((i) => i.coverType === 'fanart')
+    ?? event.images?.find((i) => i.coverType === 'screenshot');
+  return toCachedImageSrc(image?.remoteUrl || image?.url || null, hintFor(event));
 }
 
 /**
@@ -111,6 +126,7 @@ export function UpcomingRails() {
               // Arr art comes through Helprr's own image proxy, which
               // next/image will not optimize.
               imageUrl={posterFor(event)}
+              landscapeUrl={backdropFor(event)}
               lines={[event.subtitle, airsAt(event.date)]}
               topLeftBadge={{ label: countdown(event.date), tone: 'green' }}
             />

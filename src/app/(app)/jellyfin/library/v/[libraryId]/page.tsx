@@ -12,6 +12,7 @@ import { PageSpinner } from '@/components/ui/page-spinner';
 import { ErrorState } from '@/components/ui/error-state';
 import { WatchTopBar } from '@/components/jellyfin-streaming/watch-top-bar';
 import { CatalogPosterCard } from '@/components/jellyfin-streaming/poster-card';
+import { useWatchSkin } from '@/lib/hooks/use-watch-skin';
 import { useJellyfinPlayback } from '@/components/jellyfin-streaming/playback-provider';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
@@ -76,11 +77,15 @@ function viewsFor(collectionType: string): Array<{ id: string; label: string }> 
   return [];
 }
 
-function shapeFor(collectionType: string, view: string): CatalogCardShape {
+function shapeFor(collectionType: string, view: string, cinematic: boolean): CatalogCardShape {
   const type = collectionType.toLowerCase();
   if (type === 'music') return view === 'artists' ? 'portrait' : 'square';
   if (view === 'episodes') return 'landscape';
-  return 'portrait';
+  // The site's grid pages use the same 16:9 boxart as its rows — measured 63 of
+  // 63 cards at aspect 1.78 on My List, with no portrait anywhere. Portrait
+  // here made this grid disagree both with it and with our own rails one
+  // screen above. The classic skin keeps its posters.
+  return cinematic ? 'landscape' : 'portrait';
 }
 
 /** Individual years are unusable in a filter list; decades are not. */
@@ -92,6 +97,7 @@ export default function LibraryBrowserPage() {
   const params = useParams<{ libraryId: string }>();
   const searchParams = useSearchParams();
   const playback = useJellyfinPlayback();
+  const skin = useWatchSkin();
   const name = searchParams.get('name') || 'Library';
   const collectionType = searchParams.get('type') || '';
   const availableViews = viewsFor(collectionType);
@@ -109,7 +115,7 @@ export default function LibraryBrowserPage() {
   const [queueing, setQueueing] = useState(false);
 
   const includeItemTypes = defaultInclude(collectionType, view);
-  const shape = shapeFor(collectionType, view);
+  const shape = shapeFor(collectionType, view, skin === 'cinematic');
 
   const buildQuery = (limit: number, startIndex: number): string => {
     const next = new URLSearchParams({
@@ -191,7 +197,9 @@ export default function LibraryBrowserPage() {
         <h1 className="sr-only">{name}</h1>
 
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-base font-semibold tracking-tight">{name}</p>
+          {/* The compact masthead already carries this name; printing it again
+              here is the duplicate-title pattern, so it is desktop-only. */}
+          <p className="hidden text-base font-semibold tracking-tight md:block">{name}</p>
           <WatchTopBar />
         </div>
 

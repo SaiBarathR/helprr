@@ -1,14 +1,15 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
-import { usePathname } from 'next/navigation';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
-import { LogOut, Search } from 'lucide-react';
+import { ArrowLeft, Bell, LogOut, Search } from 'lucide-react';
 import { useCompactViewport } from '@/lib/hooks/use-compact-viewport';
 import { jsonFetcher } from '@/lib/query-fetch';
 import { queryKeys } from '@/lib/query-keys';
 import { useUIStore } from '@/lib/store';
+import { useMe } from '@/components/permission-provider';
 import { useWatchSkin } from '@/lib/hooks/use-watch-skin';
 import { resolveDefaultPageHref } from '@/lib/nav-config';
 import type { CatalogHomeResponse } from '@/types/jellyfin-streaming';
@@ -38,6 +39,11 @@ export function CinematicHeader() {
   const pathname = usePathname();
   const compact = useCompactViewport();
   const [scrolled, setScrolled] = useState(false);
+
+  const router = useRouter();
+  const me = useMe();
+  const chipsRef = useRef<HTMLElement | null>(null);
+  const activeChipRef = useRef<HTMLAnchorElement | null>(null);
 
   const navOrder = useUIStore((s) => s.navOrder);
   const disabledNavItems = useUIStore((s) => s.disabledNavItems);
@@ -84,14 +90,105 @@ export function CinematicHeader() {
     return list;
   }, [home.data?.views]);
 
+  // Screens that own their whole top edge: a detail page shows one back arrow,
+  // and search puts its field where the masthead would be.
+  const isDetail = pathname.startsWith('/jellyfin/library/item/');
+  const isSearch = pathname.startsWith('/jellyfin/library/search');
+  // The chip row is derived from the libraries, so it only settles once the
+  // home payload lands. Rendering it early and splicing TV Shows and Movies in
+  // afterwards made every chip after them jump.
+  const navReady = home.isSuccess;
+  const sectionLabel = entries.find((entry) => entry.isActive(pathname))?.label ?? null;
+  // A library grid and a filtered browse list are not nav destinations, so no
+  // entry matches and the bar used to read a bare "Watch" while the screen
+  // itself repeated its real name underneath. Both pass the name in the URL.
+  const nameParam = useSearchParams().get('name');
+  const isHome = pathname === '/jellyfin/library';
+
+  // Keep the current section's pill in view. On Live it sat 191px past the
+  // right edge, so the screen you were on had no visible marker at all.
+  useEffect(() => {
+    activeChipRef.current?.scrollIntoView({ inline: 'center', block: 'nearest' });
+  }, [pathname, navReady]);
+
   if (skin !== 'cinematic') return null;
 
   if (compact) {
+    if (isSearch) return null;
+
+    // A detail screen drops every piece of top-level chrome and shows one back
+    // arrow over the hero — the app never carries its chip row into a title.
+    if (isDetail) {
+      return (
+        // pb-8, not pb-3: the hero below pulls itself up by --main-pad-top, so
+        // a smaller pad left the arrow sitting on the video's top edge.
+        <header className="pointer-events-none sticky top-0 z-50 -mx-[var(--main-pad-x)] px-[var(--main-pad-x)] pt-2 pb-8">
+          <button
+            type="button"
+            aria-label="Go back"
+            onClick={() => router.back()}
+            className="pointer-events-auto -ml-1 flex size-10 items-center justify-center text-white drop-shadow-[0_1px_6px_rgba(0,0,0,0.9)]"
+          >
+            <ArrowLeft className="size-7" />
+          </button>
+        </header>
+      );
+    }
+
+    // Every screen but Home is a category: back arrow and the section name,
+    // and no chip row at all. The app only shows its chips on Home — carrying
+    // them into Shows or New & Hot is not something it does.
+    if (!isHome) {
+      return (
+        <header className="sticky top-0 z-50 -mx-[var(--main-pad-x)] px-[var(--main-pad-x)] pt-1 pb-2">
+          <span
+            aria-hidden
+            className={cn(
+              'pointer-events-none absolute inset-0 -z-10 transition-opacity duration-300',
+              scrolled ? 'bg-[#141414] opacity-100' : 'opacity-0',
+            )}
+          />
+          <div className="flex items-center gap-2 py-1">
+            <button
+              type="button"
+              aria-label="Go back"
+              onClick={() => router.back()}
+              className="-ml-2 flex size-10 shrink-0 items-center justify-center text-white"
+            >
+              <ArrowLeft className="size-7" />
+            </button>
+            <span className="min-w-0 truncate text-[26px] font-bold text-white">
+              {sectionLabel ?? nameParam ?? 'Watch'}
+            </span>
+            <span className="ml-auto flex items-center gap-4">
+              <Link href="/jellyfin/library/search" aria-label="Search" className="text-white">
+                <Search className="size-[22px]" />
+              </Link>
+              <Link href={exitHref} aria-label="Leave the Watch section" className="text-white">
+                <LogOut className="size-[22px]" />
+              </Link>
+            </span>
+          </div>
+        </header>
+      );
+    }
+
     // The app puts its header above the hero card, not over it: a wordmark row
     // and then a row of chips. Overlaying a portrait poster the way the
     // desktop billboard is overlaid buries the artwork's own title.
+    //
+    // Transparent, not a solid band: the ambient wash the hero paints runs up
+    // behind the header on the app's home, and a #141414 bar cut straight
+    // across it.
     return (
-      <header className="sticky top-0 z-50 -mx-[var(--main-pad-x)] bg-[#141414] px-[var(--main-pad-x)] pt-1 pb-2">
+      <header className="sticky top-0 z-50 -mx-[var(--main-pad-x)] px-[var(--main-pad-x)] pt-1 pb-2">
+        <span
+          aria-hidden
+          className={cn(
+            'pointer-events-none absolute inset-0 -z-10 transition-opacity duration-300',
+            scrolled ? 'bg-[#141414] opacity-100' : 'opacity-0',
+          )}
+        />
         <div className="flex items-center gap-3 py-1">
           <Link
             href="/jellyfin/library"
@@ -100,6 +197,10 @@ export function CinematicHeader() {
           >
             Helprr
           </Link>
+          {/* The app names the screen in the bar itself, beside the mark. */}
+          {sectionLabel && (
+            <span className="min-w-0 truncate text-[22px] font-medium text-white">{sectionLabel}</span>
+          )}
           <span className="ml-auto flex items-center gap-4">
             <Link href="/jellyfin/library/search" aria-label="Search" className="text-white">
               <Search className="size-[22px]" />
@@ -110,26 +211,36 @@ export function CinematicHeader() {
           </span>
         </div>
 
-        <nav aria-label="Watch sections" className="flex items-center gap-2 overflow-x-auto pt-1 scrollbar-hide">
-          {entries.map((entry) => {
-            const active = entry.isActive(pathname);
-            return (
-              <Link
-                key={entry.label}
-                href={entry.href}
-                aria-current={active ? 'page' : undefined}
-                className={cn(
-                  'shrink-0 rounded-full border px-3.5 py-1.5 text-[13px] whitespace-nowrap transition-colors',
-                  active
-                    ? 'border-white bg-white font-medium text-black'
-                    : 'border-white/25 bg-white/5 font-normal text-white/85',
-                )}
-              >
-                {entry.label}
-              </Link>
-            );
-          })}
-        </nav>
+        {/* Rendered only once the libraries have resolved. Building it from a
+            partial list and then splicing TV Shows and Movies in at position
+            two made every chip after them jump. */}
+        {navReady && (
+          <nav
+            ref={chipsRef}
+            aria-label="Watch sections"
+            className="flex items-center gap-2 overflow-x-auto pt-1 scrollbar-hide"
+          >
+            {entries.map((entry) => {
+              const active = entry.isActive(pathname);
+              return (
+                <Link
+                  key={entry.label}
+                  href={entry.href}
+                  ref={active ? activeChipRef : undefined}
+                  aria-current={active ? 'page' : undefined}
+                  className={cn(
+                    'shrink-0 rounded-full border px-3.5 py-1.5 text-[13px] whitespace-nowrap transition-colors',
+                    active
+                      ? 'border-white bg-white font-medium text-black'
+                      : 'border-white/25 bg-white/5 font-normal text-white/85',
+                  )}
+                >
+                  {entry.label}
+                </Link>
+              );
+            })}
+          </nav>
+        )}
       </header>
     );
   }
@@ -163,9 +274,13 @@ export function CinematicHeader() {
               key={entry.label}
               href={entry.href}
               aria-current={active ? 'page' : undefined}
+              // The site marks the current section with a filled pill behind
+              // the label, not weight alone.
               className={cn(
-                'shrink-0 text-sm whitespace-nowrap transition-colors md:text-base',
-                active ? 'font-medium text-white' : 'font-normal text-[#e5e5e5] hover:text-[#b3b3b3]',
+                'shrink-0 rounded-full px-3 py-1.5 text-sm whitespace-nowrap transition-colors md:text-base',
+                active
+                  ? 'bg-white/15 font-medium text-white'
+                  : 'font-normal text-[#e5e5e5] hover:text-[#b3b3b3]',
               )}
             >
               {entry.label}
@@ -177,6 +292,20 @@ export function CinematicHeader() {
       <div className="flex shrink-0 items-center gap-4">
         <Link href="/jellyfin/library/search" aria-label="Search" title="Search" className="text-white transition-opacity hover:opacity-80">
           <Search className="size-5" />
+        </Link>
+        {/* The site's right cluster is search, bell, avatar. Helprr has real
+            destinations for both, and keeps Exit on the end — there is no way
+            out of a full-screen skin otherwise. */}
+        <Link href="/notifications" aria-label="Notifications" title="Notifications" className="text-white transition-opacity hover:opacity-80">
+          <Bell className="size-5" />
+        </Link>
+        <Link
+          href="/settings"
+          aria-label="Account"
+          title={me?.name ?? 'Account'}
+          className="flex size-7 items-center justify-center rounded bg-[#e50914] text-[13px] font-semibold text-white transition-opacity hover:opacity-80"
+        >
+          {(me?.name ?? '?').slice(0, 1).toUpperCase()}
         </Link>
         <Link
           href={exitHref}
@@ -222,17 +351,28 @@ export function CinematicPageHeading() {
     return clearance;
   }
 
+  // Search carries no page title on the site — the field is the whole header.
   const label = pathname.startsWith('/jellyfin/library/new') ? 'New & Popular'
     : pathname.startsWith('/jellyfin/library/favorites') ? 'My List'
     : pathname.startsWith('/jellyfin/library/browse') ? 'Browse'
       : pathname.startsWith('/jellyfin/library/live') ? 'Live TV'
-        : pathname.startsWith('/jellyfin/library/search') ? 'Search'
-          : null;
+        : null;
 
   // Detail pages have their own hero, so they only need the clearance.
   if (!label) return clearance;
 
+  // A <p>, not a second <h1>: every Watch page already carries its own
+  // sr-only <h1> with this exact text, so an <h1> here left two of them in the
+  // landmark tree. aria-hidden keeps it out of the accessible name entirely.
+  //
+  // Hidden on phones, where the masthead already names the screen beside the
+  // wordmark; the desktop bar carries only the nav links.
   return (
-    <h1 className="pt-4 pb-4 text-2xl font-medium tracking-tight md:pt-[5.5rem] md:text-3xl">{label}</h1>
+    <p
+      aria-hidden
+      className="hidden pt-4 pb-4 text-2xl font-medium tracking-tight md:block md:pt-[5.5rem] md:text-3xl"
+    >
+      {label}
+    </p>
   );
 }

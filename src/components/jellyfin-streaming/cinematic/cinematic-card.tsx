@@ -2,10 +2,14 @@
 
 import { useId, useRef, useState } from 'react';
 import Link from 'next/link';
-import { Check, Play } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { Play } from 'lucide-react';
 import type { JellyfinItem } from '@/types/jellyfin';
 import { FadeInImage } from '@/components/media/fade-in-image';
+import { useCan } from '@/components/permission-provider';
 import { catalogHref, type CatalogCardProps } from '@/components/jellyfin-streaming/card-shared';
+import { TilePanel, type TilePanelContent } from '@/components/jellyfin-streaming/cinematic/tile-panel';
+import { useFavoriteToggle } from '@/components/jellyfin-streaming/cinematic/use-favorite-toggle';
 import { useCompactViewport } from '@/lib/hooks/use-compact-viewport';
 import { useMediaPreview } from '@/components/jellyfin-streaming/cinematic/media-preview';
 import { useHoverPreviewSlot } from '@/components/jellyfin-streaming/cinematic/hover-preview-slot';
@@ -17,6 +21,8 @@ import {
   jellyfinSeriesCardImage,
   type CatalogCardShape,
 } from '@/lib/jellyfin-playback/image';
+import { formatCertificate, formatRuntimeShort, isRecentlyAdded } from '@/lib/jellyfin-playback/metadata';
+import { ticksToSeconds } from '@/lib/jellyfin-playback/device';
 import { cn } from '@/lib/utils';
 
 /**
@@ -69,9 +75,13 @@ export function CinematicCard({
   upcoming = false,
   subtitle,
   identity = 'item',
+  flat = false,
 }: CatalogCardProps) {
   const modal = useWatchModal();
+  const router = useRouter();
   const compact = useCompactViewport();
+  const canFavorite = useCan('jellyfin.watchedState');
+  const favorite = useFavoriteToggle(item.Id, item.UserData?.IsFavorite ?? false);
   const previewsAllowed = useUIStore((state) => state.watchPreviews);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [hovering, setHovering] = useState(false);
@@ -91,10 +101,12 @@ export function CinematicCard({
   const image = (asSeries && shape === 'landscape' ? jellyfinSeriesCardImage(item, 600) : null)
     ?? jellyfinCardImage(item, 600, shape);
   const progress = item.UserData?.PlayedPercentage;
-  const unplayed = item.UserData?.UnplayedItemCount;
+  const unplayed = item.UserData?.UnplayedItemCount ?? 0;
+  // A series with unwatched leaves is the site's "New Episode" case.
+  const hasNewEpisodes = item.Type === 'Series' && unplayed > 0;
+  const recentlyAdded = isRecentlyAdded(item.DateCreated);
   const title = asSeries ? item.SeriesName! : item.Name;
   const href = catalogHref(item);
-  const line2 = subtitle ?? metaLine(item, asSeries);
   const playable = Boolean(onPlay) && !upcoming;
 
   const previewEnabled = holdsSlot && previewsAllowed && !compact && !upcoming && !item.IsFolder;
@@ -106,9 +118,51 @@ export function CinematicCard({
   });
   const showPreview = previewEnabled && previewState === 'playing';
 
+  // The panel's fact line, as the site writes it: a certificate box, then a
+  // season count for a series or a runtime for anything else. Episodes lead
+  // with their label and a resume bar instead.
+  const runtimeSeconds = ticksToSeconds(item.RunTimeTicks);
+  const resumeSeconds = ticksToSeconds(item.UserData?.PlaybackPositionTicks);
+  const seasons = item.Type === 'Series' ? item.ChildCount : undefined;
+  const facts = [
+    formatCertificate(item.OfficialRating),
+    seasons && seasons > 0
+      ? `${seasons} Season${seasons === 1 ? '' : 's'}`
+      : formatRuntimeShort(runtimeSeconds),
+  ].filter(Boolean);
+  const panel: TilePanelContent = {
+    // A caller-supplied subtitle (the upcoming rails pass a countdown) takes
+    // the prominent line; otherwise episodes lead with their own label.
+    episodeLabel: subtitle
+      ?? (item.Type === 'Episode' && item.ParentIndexNumber != null && item.IndexNumber != null
+        // The site quotes the episode name: S1:E9 "Trial by Fire".
+        ? `S${item.ParentIndexNumber}:E${item.IndexNumber} “${item.Name}”`
+        : null),
+    // Music has neither a certificate nor a useful runtime here, so it falls
+    // back to the artist line the classic caption used.
+    facts: facts.length > 0 ? facts : [metaLine(item, asSeries)],
+    tags: (item.Genres ?? []).slice(0, 3),
+    progressPct: progress ?? undefined,
+    resumeLabel: resumeSeconds > 0 && runtimeSeconds > 0
+      ? `${formatRuntimeShort(resumeSeconds)} of ${formatRuntimeShort(runtimeSeconds)}`
+      : null,
+  };
+
   return (
     <div
-      className={cn('hpr-cine-tile group relative shrink-0', WIDTH_CLASS[shape], className)}
+      className={cn(
+        // The tile is the layout box and never changes size — the popover
+        // grows out of .hpr-cine-face instead, so nothing around it moves.
+        // `flat` opts out of the popover entirely (grids, not rows).
+        'group relative shrink-0',
+        !flat && 'hpr-cine-tile',
+        cardAspectClass(shape),
+        // A rail sizes its own tiles; a grid sizes them from the column, and
+        // the responsive w-[...] ladder overrode a caller's w-full, so grid
+        // cells rendered 292px wide in a 240px column and overlapped.
+        !flat && WIDTH_CLASS[shape],
+        className,
+      )}
       onPointerEnter={(event) => {
         // Pointer only: a touch "hover" would start a stream on tap.
         if (event.pointerType !== 'mouse') return;
@@ -122,7 +176,8 @@ export function CinematicCard({
         setHovering(false);
       }}
     >
-      <div className={cn('relative overflow-hidden rounded-xl bg-white/5', cardAspectClass(shape))}>
+      <div className="hpr-cine-face bg-white/5">
+      <div className="hpr-cine-art">
         {image ? (
           <FadeInImage
             src={image}
@@ -160,8 +215,14 @@ export function CinematicCard({
             is exactly why the Netflix app runs bare posters on phones. */}
         {shape === 'landscape' && (
           <>
-            <span className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-2/5 bg-gradient-to-t from-black/85 to-transparent [@media(hover:hover)]:hidden" />
-            <span className="pointer-events-none absolute inset-x-0 bottom-0 z-10 p-2 text-[11px] font-medium text-white [@media(hover:hover)]:hidden">
+            <span className={cn(
+              'pointer-events-none absolute inset-x-0 bottom-0 z-10 h-2/5 bg-gradient-to-t from-black/85 to-transparent',
+              !flat && '[@media(hover:hover)]:hidden',
+            )} />
+            <span className={cn(
+              'pointer-events-none absolute inset-x-0 bottom-0 z-10 p-2 text-[11px] font-medium text-white',
+              !flat && '[@media(hover:hover)]:hidden',
+            )}>
               <span className="line-clamp-2">{title}</span>
             </span>
           </>
@@ -172,45 +233,48 @@ export function CinematicCard({
             Upcoming
           </span>
         )}
-        {item.UserData?.Played && (
-          <span
-            className="absolute top-2 right-2 z-20 flex size-5 items-center justify-center rounded-full bg-black/60 text-[var(--hpr-green)] backdrop-blur-md"
-            title="Watched"
-          >
-            <Check className="size-3.5" strokeWidth={3} />
-          </span>
-        )}
-        {typeof unplayed === 'number' && unplayed > 0 && (
-          <span className="absolute top-2 right-2 z-20 min-w-5 rounded bg-black/60 px-1.5 text-center text-[11px] font-semibold text-white backdrop-blur-md">
-            {unplayed}
-          </span>
-        )}
+        {/* The site's badge vocabulary, not a media manager's. A bare unplayed
+            count and a green tick have no equivalent on it; what it does show
+            is a red "Recently added" ribbon and a two-tier "New Episode /
+            Watch Now" flag, which is what an unwatched count on a series
+            actually means. Watched state is already carried by the resume bar
+            and by the panel, so the tick is dropped here entirely. */}
+        {/* Ribbons are rail furniture — in a grid they land on top of the
+            card's own title, and the site's overlay grid carries none.
 
-        {/* Pointer-only reveal. Opacity (and its intent delay) is driven by the
-            .hpr-cine-reveal rule in globals.css so it stays in lockstep with
-            the tile's expand instead of racing it. */}
-        <span className="hpr-cine-reveal pointer-events-none absolute inset-0 z-20 hidden flex-col justify-end bg-gradient-to-t from-black/90 via-black/35 to-transparent p-2.5 opacity-0 transition-opacity duration-300 [@media(hover:hover)]:flex">
-          <span className="flex items-end gap-2">
-            <span className="min-w-0 flex-1">
-              <span className="block truncate text-[13px] font-semibold text-white">{title}</span>
-              {line2 && <span className="block truncate text-[11px] text-white/70">{line2}</span>}
+            Measured off the site's artwork (the badges are baked into its
+            boxart, so there is no DOM to read): horizontally centred, inset a
+            few pixels from the bottom edge, laid out as a pair on 16:9 and
+            stacked on a poster, and sized to about 60% of the card's width.
+            It used to hug the bottom-left corner at one fixed size and ate a
+            chunk of the phone poster. */}
+        {flat || !(hasNewEpisodes || recentlyAdded) ? null : (
+          <span className="pointer-events-none absolute inset-x-0 bottom-1 z-20 flex justify-center">
+            <span
+              className={cn(
+                'flex overflow-hidden leading-none font-semibold *:text-center',
+                shape === 'landscape'
+                  ? 'flex-row text-[10px] *:px-2.5 *:py-[3px]'
+                  : 'flex-col text-[9px] *:px-1.5 *:py-[2px]',
+              )}
+            >
+              {hasNewEpisodes ? (
+                <>
+                  <span className="bg-[#e50914] text-white">New Episode</span>
+                  <span className="bg-white text-black">Watch Now</span>
+                </>
+              ) : (
+                <span className="bg-[#e50914] text-white">Recently added</span>
+              )}
             </span>
-            {playable && (
-              <button
-                type="button"
-                aria-label={`Play ${title}`}
-                onClick={() => onPlay?.(item)}
-                className="pointer-events-auto flex size-9 shrink-0 items-center justify-center rounded-full bg-white text-black shadow-lg transition-transform hover:scale-105"
-              >
-                <Play className="size-4 fill-current" />
-              </button>
-            )}
           </span>
-        </span>
+        )}
 
         {typeof progress === 'number' && progress > 0 && progress < 100 && (
           <div className="absolute inset-x-0 bottom-0 z-30 h-[3px] bg-white/25">
-            <div className="h-full bg-[var(--hpr-amber)]" style={{ width: `${Math.min(progress, 100)}%` }} />
+            {/* Netflix red, matching watch-modal and mobile-detail-tabs. The
+                skin's white accent belongs on chrome, not on the resume bar. */}
+            <div className="h-full bg-[#e50914]" style={{ width: `${Math.min(progress, 100)}%` }} />
           </div>
         )}
 
@@ -229,8 +293,20 @@ export function CinematicCard({
         )}
       </div>
 
+      {!flat && (
+      <TilePanel
+        title={title}
+        content={panel}
+        onPlay={playable ? () => onPlay?.(item) : undefined}
+        onToggleMyList={canFavorite ? () => favorite.toggle() : undefined}
+        inMyList={favorite.isFavorite}
+        onMoreInfo={() => { if (!modal?.open(item.Id)) router.push(href); }}
+      />
+      )}
+      </div>
+
       {/* Stretched link: one tab stop for the whole tile, and focus-within on
-          the tile is what opens the reveal for keyboard users. */}
+          the tile is what opens the popover for keyboard users. */}
       <Link
         href={href}
         aria-label={title}

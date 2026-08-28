@@ -15,6 +15,8 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { CatalogRail } from '@/components/jellyfin-streaming/catalog-rail';
 import { WatchHero } from '@/components/jellyfin-streaming/watch-hero';
+import { useCompactViewport } from '@/lib/hooks/use-compact-viewport';
+import { cn } from '@/lib/utils';
 import { useJellyfinPlayback } from '@/components/jellyfin-streaming/playback-provider';
 import type {
   CatalogFiltersResponse,
@@ -47,6 +49,7 @@ export function CollectionHub({
   includeItemTypes: string;
 }) {
   const playback = useJellyfinPlayback();
+  const compact = useCompactViewport();
   const [genre, setGenre] = useState<string | null>(null);
 
   const home = useQuery({
@@ -112,12 +115,46 @@ export function CollectionHub({
     .filter((item) => (item.BackdropImageTags?.length ?? 0) > 0 && Boolean(item.Overview))
     .slice(0, 1);
 
+  // The app puts a rounded "All Categories" pill directly under the header and
+  // *above* the hero on a phone, and never repeats the screen name below it —
+  // the header already carries it. Desktop keeps the title beside the picker.
+  const picker = genres.length > 0 && (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        className={cn(
+          'inline-flex items-center gap-2 text-white transition-colors',
+          compact
+            ? 'rounded-full border border-white/50 px-4 py-1.5 text-[15px] hover:border-white'
+            : 'border border-white/40 bg-black/40 px-3 py-1.5 text-sm hover:border-white',
+        )}
+      >
+        {genre ?? (compact ? 'All Categories' : 'Genres')}
+        <ChevronDown className="size-4" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="max-h-80 overflow-y-auto">
+        <DropdownMenuItem onSelect={() => setGenre(null)}>All genres</DropdownMenuItem>
+        {genres.map((name) => (
+          <DropdownMenuItem key={name} onSelect={() => setGenre(name)}>
+            {name}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+
   return (
     <div className="pb-28">
       <h1 className="sr-only">{title}</h1>
 
+      {/* Centred, not left-aligned. The header row above already carries the
+          back arrow, the section name and two icons; a 150px pill will not fit
+          beside them on a 360px phone without truncating the name, so it takes
+          its own row and centres there. */}
+      {compact && <div className="mb-3 flex justify-center">{picker}</div>}
+
       <WatchHero items={heroItems} onPlay={play} />
 
+      {!compact && (
       <div className="mb-4 flex items-center gap-4">
         <h2 className="text-2xl font-medium tracking-tight md:text-3xl">{title}</h2>
         {genres.length > 0 && (
@@ -137,6 +174,7 @@ export function CollectionHub({
           </DropdownMenu>
         )}
       </div>
+      )}
 
       <div className="space-y-6">
         {railGenres.map((name, index) => {

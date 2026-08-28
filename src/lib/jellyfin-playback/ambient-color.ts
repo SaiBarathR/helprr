@@ -9,11 +9,22 @@
  * lit by the artwork rather than pasted on top of it.
  */
 
-/** Netflix's measured stop lightness. Dark enough to stay a ground, not a tint. */
-const WASH_LIGHTNESS = 0.14;
-/** Keeps a grey still from producing a dead-flat wash, and a neon one from glowing. */
-const MIN_SATURATION = 0.12;
-const MAX_SATURATION = 0.45;
+/**
+ * Dark enough to stay a ground for white text, light enough to read as a
+ * colour rather than as the page's own #141414.
+ */
+const WASH_LIGHTNESS = 0.17;
+/**
+ * The floor is what makes the wash legible as a *derived* colour.
+ *
+ * At 0.12 a desaturated poster sampled to rgb(34,40,31) — a green in name only,
+ * indistinguishable from the ground, so the wash looked like it was not
+ * working at all. The site's washes read plainly as green, red or teal; this
+ * floor is what carries that. The ceiling still stops a neon key art from
+ * glowing.
+ */
+const MIN_SATURATION = 0.32;
+const MAX_SATURATION = 0.5;
 
 function rgbToHsl(r: number, g: number, b: number): [number, number, number] {
   const rn = r / 255;

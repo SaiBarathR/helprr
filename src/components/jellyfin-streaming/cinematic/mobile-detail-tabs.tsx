@@ -6,7 +6,8 @@ import { ChevronDown, Play, X } from 'lucide-react';
 import { FadeInImage } from '@/components/media/fade-in-image';
 import { catalogHref } from '@/components/jellyfin-streaming/card-shared';
 import { jellyfinCardImage } from '@/lib/jellyfin-playback/image';
-import { formatClock, ticksToSeconds } from '@/lib/jellyfin-playback/device';
+import { ticksToSeconds } from '@/lib/jellyfin-playback/device';
+import { formatRuntimeShort } from '@/lib/jellyfin-playback/metadata';
 import type { JellyfinItem } from '@/types/jellyfin';
 import { cn } from '@/lib/utils';
 
@@ -53,7 +54,9 @@ export function MobileDetailTabs({
   ];
 
   return (
-    <section className="-mx-[var(--main-pad-x)] mt-6">
+    // No top margin: the page wrapper's own py-6 already separates this from
+    // the hero, and stacking both left a 72px hole above the tab strip.
+    <section className="-mx-[var(--main-pad-x)]">
       {/* The rule runs the full width and the indicator sits on top of it. */}
       <div className="relative flex gap-6 border-t border-white/15 px-[var(--main-pad-x)]">
         {tabs.filter((entry) => entry.shown).map((entry) => (
@@ -152,7 +155,8 @@ function EpisodeRow({ episode, onPlay }: { episode: JellyfinItem; onPlay: () => 
           <span className="block text-base font-bold text-white">
             {episode.IndexNumber != null ? `${episode.IndexNumber}. ` : ''}{episode.Name}
           </span>
-          {runtime > 0 && <span className="mt-0.5 block text-sm text-[#b3b3b3]">{formatClock(runtime)}</span>}
+          {/* "44m", as the app writes it — not the player's H:MM:SS clock. */}
+          {runtime > 0 && <span className="mt-0.5 block text-sm text-[#b3b3b3]">{formatRuntimeShort(runtime)}</span>}
         </span>
       </button>
       {/* Full width under the row, not beside the still — the app's layout. */}

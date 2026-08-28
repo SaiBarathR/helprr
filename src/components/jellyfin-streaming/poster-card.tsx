@@ -63,6 +63,7 @@ function ClassicPosterCard({
   subtitle,
   identity = 'item',
 }: CatalogCardProps) {
+  // `flat` is a cinematic-only concern; the classic card has no popover.
   const asSeries = identity === 'series' && item.Type === 'Episode' && Boolean(item.SeriesName);
   const image = (asSeries ? jellyfinSeriesCardImage(item, 400) : null)
     ?? jellyfinCardImage(item, 400, shape);

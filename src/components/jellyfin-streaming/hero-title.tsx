@@ -19,17 +19,24 @@ export function HeroTitle({
   frameClassName,
   textClassName,
   align = 'left',
+  as: Tag = 'h1',
 }: {
   name: string;
   logoUrl: string | null;
   frameClassName: string;
   textClassName: string;
   align?: 'left' | 'center';
+  /**
+   * The element the title becomes. It is the page's <h1> on a detail screen,
+   * but a billboard sits *inside* a page that already has one — two <h1>s in
+   * one document is a duplicate landmark, so the hero passes 'p' there.
+   */
+  as?: 'h1' | 'p';
 }) {
   const [logoFailed, setLogoFailed] = useState(false);
 
   if (!logoUrl || logoFailed) {
-    return <h1 className={textClassName}>{name}</h1>;
+    return <Tag className={textClassName}>{name}</Tag>;
   }
 
   return (
@@ -47,7 +54,7 @@ export function HeroTitle({
           align === 'left' ? 'object-left' : 'object-center',
         )}
       />
-      <h1 className="sr-only">{name}</h1>
+      <Tag className="sr-only">{name}</Tag>
     </div>
   );
 }

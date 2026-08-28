@@ -10,6 +10,8 @@ import { useRefreshAction } from '@/lib/hooks/use-refresh-action';
 import { WatchTopBar } from '@/components/jellyfin-streaming/watch-top-bar';
 import { CatalogRail } from '@/components/jellyfin-streaming/catalog-rail';
 import { UpcomingRails } from '@/components/jellyfin-streaming/upcoming-rails';
+import { NewAndHot } from '@/components/jellyfin-streaming/cinematic/new-and-hot';
+import { useWatchSkin } from '@/lib/hooks/use-watch-skin';
 import { useJellyfinPlayback } from '@/components/jellyfin-streaming/playback-provider';
 import type { CatalogHomeResponse } from '@/types/jellyfin-streaming';
 import type { JellyfinItem } from '@/types/jellyfin';
@@ -23,6 +25,7 @@ import type { JellyfinItem } from '@/types/jellyfin';
  */
 export default function WatchNewPage() {
   const playback = useJellyfinPlayback();
+  const cinematic = useWatchSkin() === 'cinematic';
   const query = useQuery({
     queryKey: queryKeys.jellyfinHome(),
     queryFn: jsonFetcher<CatalogHomeResponse>('/api/jellyfin/catalog/home'),
@@ -36,6 +39,40 @@ export default function WatchNewPage() {
 
   const play = (item: JellyfinItem) => void playback.playItem(item);
   const latest = query.data?.latest ?? [];
+
+  // What has just landed and what you keep going back to — the site's
+  // "Everyone's Watching" half, kept as rails behind the second tab.
+  const watchingRails = (
+    <div className="space-y-6">
+      {latest.map((row) => (
+        <CatalogRail
+          key={row.libraryId}
+          shape="landscape"
+          title={`New in ${row.libraryName}`}
+          href={`/jellyfin/library/v/${row.libraryId}?name=${encodeURIComponent(row.libraryName)}&type=${encodeURIComponent(row.collectionType)}`}
+          items={row.items}
+          onPlay={play}
+        />
+      ))}
+      <CatalogRail
+        shape="landscape"
+        title="Popular with you"
+        href="/jellyfin/library/favorites"
+        items={query.data?.favorites ?? []}
+        onPlay={play}
+      />
+    </div>
+  );
+
+  if (cinematic) {
+    return (
+      <>
+        <PullToRefresh onRefresh={query.refetch} />
+        <h1 className="sr-only">New &amp; Popular</h1>
+        <NewAndHot railsFallback={watchingRails} />
+      </>
+    );
+  }
 
   return (
     <>

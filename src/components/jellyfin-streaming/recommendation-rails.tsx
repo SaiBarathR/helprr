@@ -9,6 +9,8 @@ import { isFullyWatched } from '@/types/watch-status';
 import { useArrQueueLookup, type ArrQueueState } from '@/components/jellyfin-streaming/use-arr-queue-lookup';
 import { MediaRail } from '@/components/jellyfin-streaming/media-rail';
 import { MediaTile, type TileBadge } from '@/components/jellyfin-streaming/media-tile';
+import { RankedTile } from '@/components/jellyfin-streaming/cinematic/ranked-tile';
+import { useWatchSkin } from '@/lib/hooks/use-watch-skin';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import type { RecommendationsResponse } from '@/lib/recommendations/rec-types';
 import type { RecItem } from '@/lib/recommendations/rec-types';
@@ -28,8 +30,17 @@ import type { RecItem } from '@/lib/recommendations/rec-types';
  */
 const ALREADY_ON_HOME = new Set(['continue-watching', 'next-up', 'favorites']);
 
+/**
+ * The engine's own ranked list is the only honest source for a Top 10 row —
+ * Helprr has no popularity chart, and dressing an arbitrary rail in numerals
+ * would make the number mean nothing.
+ */
+const RANKED_RAIL_ID = 'top-picks';
+const RANKED_LIMIT = 10;
+
 export function RecommendationRails({ limit = 6 }: { limit?: number }) {
   const canSee = useCan('recommendations.view');
+  const cinematic = useWatchSkin() === 'cinematic';
   const query = useQuery({
     queryKey: ['jellyfin', 'catalog', 'recommendation-rails'],
     queryFn: jsonFetcher<RecommendationsResponse>('/api/recommendations'),
@@ -52,23 +63,33 @@ export function RecommendationRails({ limit = 6 }: { limit?: number }) {
 
   return (
     <>
-      {rails.map((rail) => (
-        <MediaRail key={rail.id} title={rail.title} reason={rail.reason} count={rail.items.length}>
-          {rail.items.map((item) => (
-            <RecTile
-              key={item.itemKey}
-              item={item}
-              watch={watchLookup({ tmdbId: item.tmdbId, anilistId: item.anilistId })}
-              queue={queueLookup(item.arr)}
-              requested={
-                item.tmdbId && (item.mediaType === 'movie' || item.mediaType === 'tv')
-                  ? requested.isRequested(item.mediaType, item.tmdbId)
-                  : false
-              }
-            />
-          ))}
-        </MediaRail>
-      ))}
+      {rails.map((rail) => {
+        const ranked = cinematic && rail.id === RANKED_RAIL_ID;
+        const items = ranked ? rail.items.slice(0, RANKED_LIMIT) : rail.items;
+        return (
+          <MediaRail
+            key={rail.id}
+            title={ranked ? `Top ${items.length} on your server` : rail.title}
+            reason={ranked ? null : rail.reason}
+            count={items.length}
+          >
+            {items.map((item, index) => (
+              <RecTile
+                key={item.itemKey}
+                item={item}
+                rank={ranked ? index + 1 : undefined}
+                watch={watchLookup({ tmdbId: item.tmdbId, anilistId: item.anilistId })}
+                queue={queueLookup(item.arr)}
+                requested={
+                  item.tmdbId && (item.mediaType === 'movie' || item.mediaType === 'tv')
+                    ? requested.isRequested(item.mediaType, item.tmdbId)
+                    : false
+                }
+              />
+            ))}
+          </MediaRail>
+        );
+      })}
     </>
   );
 }
@@ -78,13 +99,20 @@ function RecTile({
   watch,
   queue,
   requested,
+  rank,
 }: {
   item: RecItem;
+  /** Set on the ranked row; draws the oversized numeral beside the poster. */
+  rank?: number;
   watch?: ReturnType<ReturnType<typeof useWatchLookup>>;
   queue?: ArrQueueState;
   requested: boolean;
 }) {
-  const poster = toCachedImageSrc(item.posterUrl, item.source === 'anilist' ? 'anilist' : 'tmdb');
+  const hint = item.source === 'anilist' ? 'anilist' : 'tmdb';
+  const poster = toCachedImageSrc(item.posterUrl, hint);
+  // The engine already carries a backdrop; the tile uses it whenever it
+  // resolves to a 16:9 frame, which on cinematic is every desktop rail.
+  const backdrop = toCachedImageSrc(item.backdropUrl, hint);
   // The watch-status overlay is authoritative — it accounts for every leaf
   // episode — so prefer it over the snapshot baked into the rec item.
   const played = watch ? isFullyWatched(watch) : Boolean(item.watch?.played);
@@ -104,21 +132,26 @@ function RecTile({
       ? { label: 'Requested', tone: 'purple' }
       : undefined;
 
-  return (
-    <MediaTile
-      title={item.title}
-      imageUrl={poster}
-      href={item.href}
-      unoptimized={poster ? isProtectedApiImageSrc(poster) : true}
-      lines={[
-        [item.year, typeof item.rating === 'number' && item.rating > 0 ? `★ ${item.rating.toFixed(1)}` : null]
-          .filter(Boolean)
-          .join(' · '),
-      ]}
-      topLeftBadge={topLeftBadge}
-      bottomLeftBadge={bottomLeftBadge}
-      watched={played}
-      progressPct={progress}
-    />
-  );
+  const tile = {
+    title: item.title,
+    imageUrl: poster,
+    landscapeUrl: backdrop,
+    href: item.href,
+    unoptimized: poster ? isProtectedApiImageSrc(poster) : true,
+    lines: [
+      [item.year, typeof item.rating === 'number' && item.rating > 0 ? `★ ${item.rating.toFixed(1)}` : null]
+        .filter(Boolean)
+        .join(' · '),
+    ],
+    // The popover shows genres the way the site shows its mood tags; the
+    // year/rating line stays the classic skin's caption.
+    tags: item.genres.slice(0, 3),
+    topLeftBadge,
+    bottomLeftBadge,
+    watched: played,
+    progressPct: progress,
+  };
+
+  if (rank != null) return <RankedTile rank={rank} {...tile} />;
+  return <MediaTile {...tile} />;
 }

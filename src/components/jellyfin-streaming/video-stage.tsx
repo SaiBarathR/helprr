@@ -225,6 +225,47 @@ export function VideoStage() {
   const video = playback.stream?.mediaSource.MediaStreams?.find((stream) => stream.Type === 'Video');
   const showChrome = expanded && (controlsVisible || panel !== 'none' || playback.status !== 'playing');
 
+  // Lift the subtitles clear of the chrome while it is on screen. Cues render
+  // at the bottom of the video by default, which is exactly where the scrubber,
+  // the control row and the centred title now sit, so a line of dialogue lands
+  // on top of them. The site raises its cues the same way.
+  //
+  // `line` is the only lever native ::cue rendering gives us — CSS cannot move
+  // a cue box. Jellyfin's cues arrive with snapToLines false, which makes
+  // `line` a percentage rather than a line count, so both have to be set. And
+  // `cuechange` fires on the TextTrack, not on the media element.
+  useEffect(() => {
+    const el = mediaRef.current;
+    if (!el) return undefined;
+    const line: number | 'auto' = showChrome ? -4 : 'auto';
+    const apply = () => {
+      for (const track of Array.from(el.textTracks)) {
+        if (track.mode === 'disabled') continue;
+        const cues = Array.from(track.cues ?? []) as VTTCue[];
+        // Every cue in a track gets the same treatment, so the first one is a
+        // reliable signal that the track is already positioned.
+        if (cues.length === 0 || cues[0].line === line) continue;
+        for (const cue of cues) {
+          cue.snapToLines = true;
+          cue.line = line;
+        }
+      }
+    };
+    const tracks = el.textTracks;
+    const listen = () => {
+      for (const track of Array.from(tracks)) track.addEventListener('cuechange', apply);
+    };
+    apply();
+    listen();
+    tracks.addEventListener('addtrack', apply);
+    tracks.addEventListener('addtrack', listen);
+    return () => {
+      tracks.removeEventListener('addtrack', apply);
+      tracks.removeEventListener('addtrack', listen);
+      for (const track of Array.from(tracks)) track.removeEventListener('cuechange', apply);
+    };
+  }, [showChrome, mediaRef, playback.subtitleStreamIndex])
+
   // Rendered inline on sm+ and inside the `more` panel below it, so there is
   // one definition of these controls rather than two.
   const secondaryControls = (
@@ -324,22 +365,28 @@ export function VideoStage() {
 
             {showChrome && (
               <div className="absolute inset-0 flex flex-col justify-between bg-gradient-to-t from-black/80 via-black/20 to-black/50">
-                <div className="flex items-start justify-between gap-3 p-4 pt-[max(1rem,env(safe-area-inset-top))]">
-                  <div>
-                    <p className="text-lg font-semibold text-white">{playback.item?.Name}</p>
-                    <p className="text-xs text-white/70">
+                {/* The site keeps a single control in the top-left of its
+                    player and nothing else up there. Ours is Minimize rather
+                    than its Back, so it keeps the chevron that says so — but it
+                    sits in the same corner, and the title moved down into the
+                    control row. A phone has no room for a centred title there,
+                    so it stays up here beside the button. */}
+                <div className="flex items-start gap-3 px-4 pt-[max(1rem,env(safe-area-inset-top))] pb-4 md:px-8">
+                  <Button variant="ghost" size="icon" className="shrink-0 text-white" onClick={() => playback.setVideoExpanded(false)} aria-label="Minimize player">
+                    <ChevronDown />
+                  </Button>
+                  <div className="min-w-0 md:hidden">
+                    <p className="truncate text-lg font-semibold text-white">{playback.item?.Name}</p>
+                    <p className="truncate text-xs text-white/70">
                       {playback.item?.SeriesName
                         ? `${playback.item.SeriesName} · S${playback.item.ParentIndexNumber ?? 0}E${playback.item.IndexNumber ?? 0}`
                         : playback.item?.ProductionYear}
                     </p>
                   </div>
-                  <Button variant="ghost" size="icon" className="text-white" onClick={() => playback.setVideoExpanded(false)} aria-label="Minimize player">
-                    <ChevronDown />
-                  </Button>
                 </div>
 
-                <div className="space-y-2 p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
-                  {/* Panels sit above the controls, which are now the top row. */}
+                <div className="space-y-2 px-4 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))] md:px-8">
+                  {/* Panels sit above the scrubber, which is the top row. */}
                   {panel === 'more' && (
                     <Panel>
                       <div className="flex flex-wrap items-center gap-1">{secondaryControls}</div>
@@ -431,7 +478,31 @@ export function VideoStage() {
                       </p>
                     </Panel>
                   )}
-                  {/* Reference order: controls, then the bar, then the clock. */}
+                  {/* Reference order: the bar first, then the controls beneath
+                      it. The site puts its scrubber above the control row with
+                      the clock at the bar's end; ours used to sit under the
+                      controls with the times on a third row of their own.
+                      The site shows remaining only — elapsed is kept here
+                      because dropping a readout is a loss, not a restyle. */}
+                  <div className="flex items-center gap-3 pb-1 text-[11px] tabular-nums text-white/70 md:pb-8">
+                    <span>{formatClock(playback.positionSeconds)}</span>
+                    <div className="min-w-0 flex-1">
+                      <SeekBar
+                        positionSeconds={playback.positionSeconds}
+                        durationSeconds={playback.durationSeconds}
+                        bufferedSeconds={bufferedSeconds}
+                        chapters={chapters}
+                        onSeek={playback.seek}
+                        trickplayAt={trickplayAt}
+                      />
+                    </div>
+                    <span>
+                      {playback.durationSeconds > 0
+                        ? `-${formatClock(Math.max(0, playback.durationSeconds - playback.positionSeconds))}`
+                        : formatClock(playback.durationSeconds)}
+                    </span>
+                  </div>
+
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-1">
                       <Button variant="ghost" size="icon" className="text-white" onClick={() => playback.skip(-10)} aria-label="Back 10 seconds">
@@ -468,6 +539,23 @@ export function VideoStage() {
                         }}
                       />
                     </div>
+                    {/* The site centres the title in its control row rather than
+                        parking it in a top corner. Desktop only: on a phone the
+                        two clusters already fill the row, so the top bar keeps
+                        the title there instead. */}
+                    <p className="hidden min-w-0 flex-1 truncate px-4 text-center text-sm text-white/90 md:block">
+                      {playback.item?.SeriesName ? (
+                        <>
+                          <span className="font-semibold">{playback.item.SeriesName}</span>
+                          <span className="text-white/60">
+                            {` S${playback.item.ParentIndexNumber ?? 0}E${playback.item.IndexNumber ?? 0} `}
+                          </span>
+                          {playback.item.Name}
+                        </>
+                      ) : (
+                        <span className="font-semibold">{playback.item?.Name}</span>
+                      )}
+                    </p>
                     <div className="flex items-center justify-end gap-1">
                       <Button variant="ghost" size="icon" className="text-white" onClick={() => setPanel(panel === 'subs' ? 'none' : 'subs')} aria-label="Subtitles">
                         <Subtitles />
@@ -503,24 +591,6 @@ export function VideoStage() {
                     </div>
                   </div>
 
-                  <SeekBar
-                    positionSeconds={playback.positionSeconds}
-                    durationSeconds={playback.durationSeconds}
-                    bufferedSeconds={bufferedSeconds}
-                    chapters={chapters}
-                    onSeek={playback.seek}
-                    trickplayAt={trickplayAt}
-                  />
-
-                  <div className="flex items-center justify-between text-[11px] tabular-nums text-white/70">
-                    <span>{formatClock(playback.positionSeconds)}</span>
-                    <span>
-                      {playback.durationSeconds > 0
-                        ? `-${formatClock(Math.max(0, playback.durationSeconds - playback.positionSeconds))}`
-                        : formatClock(playback.durationSeconds)}
-                    </span>
-                  </div>
-
                 </div>
               </div>
             )}
@@ -531,7 +601,7 @@ export function VideoStage() {
                   {playback.status === 'paused' ? <Play className="fill-current" /> : <Pause className="fill-current" />}
                 </Button>
                 <div className="h-0.5 flex-1 rounded bg-white/20">
-                  <div className="h-full rounded bg-[var(--hpr-amber)]" style={{ width: `${progress * 100}%` }} />
+                  <div className="h-full rounded bg-[var(--hpr-seek)]" style={{ width: `${progress * 100}%` }} />
                 </div>
                 <Button variant="ghost" size="icon-xs" className="text-white" onClick={(event) => { event.stopPropagation(); void playback.stop(); }}>
                   <X />
@@ -744,7 +814,7 @@ function SeekBar({
                 style={{ width: `${Math.min(100, (bufferedSeconds / max) * 100)}%` }}
               />
               <span
-                className="absolute inset-y-0 left-0 bg-[var(--hpr-amber)]"
+                className="absolute inset-y-0 left-0 bg-[var(--hpr-seek)]"
                 style={{ width: `${Math.min(100, (value / max) * 100)}%` }}
               />
             </span>
@@ -762,7 +832,7 @@ function SeekBar({
             })}
             <span
               aria-hidden
-              className="pointer-events-none absolute top-1/2 size-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[var(--hpr-amber)] shadow"
+              className="pointer-events-none absolute top-1/2 size-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[var(--hpr-seek)] shadow"
               style={{ left: `${Math.min(100, (value / max) * 100)}%` }}
             />
           </>
@@ -778,7 +848,7 @@ function SeekBar({
           className={cn(
             'w-full',
             bare
-              ? 'accent-[var(--hpr-amber)]'
+              ? 'accent-[var(--hpr-seek)]'
               : 'absolute inset-0 h-full cursor-pointer appearance-none bg-transparent [&::-moz-range-thumb]:size-3 [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-transparent [&::-webkit-slider-thumb]:size-3 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:bg-transparent',
           )}
           onChange={(event) => {

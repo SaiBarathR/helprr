@@ -82,14 +82,23 @@ function LibraryList() {
             <Link
               key={view.Id}
               href={`/jellyfin/library/v/${view.Id}?name=${encodeURIComponent(view.Name)}&type=${encodeURIComponent(view.CollectionType || '')}`}
+              aria-label={view.Name}
               className="group relative aspect-video overflow-hidden rounded-xl border border-border/40 bg-muted/60"
             >
               {art && (
                 <FadeInImage src={art} alt="" fill sizes="480px" unoptimized className="object-cover transition-transform duration-300 group-hover:scale-[1.04]" />
               )}
-              {/* Jellyfin's generated library art already carries the name, so
-                  a caption on top of it just says everything twice. */}
               <span className="absolute inset-0 bg-gradient-to-t from-black/45 to-transparent" />
+              {/* Jellyfin's generated library art already carries the name, so
+                  the caption only appears when there is no art — without it a
+                  server whose views carry no Primary image renders this whole
+                  screen as a row of blank grey rectangles you cannot tell
+                  apart. */}
+              {!art && (
+                <span className="absolute inset-0 flex items-center justify-center p-4 text-center text-lg font-medium">
+                  {view.Name}
+                </span>
+              )}
             </Link>
           );
         })}

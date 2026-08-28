@@ -4,7 +4,7 @@ import { use, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Check, Film, HardDrive, Heart, ListPlus, Play, RotateCcw, Shuffle, User } from 'lucide-react';
+import { Check, Film, HardDrive, Heart, ListPlus, Play, Plus, RotateCcw, Shuffle, User } from 'lucide-react';
 import { jsonFetcher } from '@/lib/query-fetch';
 import { queryKeys } from '@/lib/query-keys';
 import { Button } from '@/components/ui/button';
@@ -22,7 +22,7 @@ import {
 } from '@/lib/jellyfin-playback/image';
 import { formatClock, ticksToSeconds } from '@/lib/jellyfin-playback/device';
 import { formatBytes } from '@/lib/format';
-import { formatCertificate, formatCommunityRating } from '@/lib/jellyfin-playback/metadata';
+import { formatCertificate, formatCommunityRating, formatRuntimeShort } from '@/lib/jellyfin-playback/metadata';
 import type { CatalogItemDetailResponse, CatalogItemsResponse } from '@/types/jellyfin-streaming';
 import type { JellyfinMediaStream } from '@/types/jellyfin';
 import { FadeInImage } from '@/components/media/fade-in-image';
@@ -128,6 +128,10 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
 
   const directors = people.filter((p) => p.Type === 'Director').map((p) => p.Name).filter(Boolean);
   const writers = people.filter((p) => p.Type === 'Writer').map((p) => p.Name).filter(Boolean);
+  const actors = people.filter((p) => p.Type === 'Actor').map((p) => p.Name).filter(Boolean);
+  // Netflix's phone meta row: season count for a series, HD and CC badges.
+  const seasonCount = item.Type === 'Series' ? (item.ChildCount ?? 0) : 0;
+  const isHighDefinition = (videoStream?.Height ?? 0) >= 700;
   const infoRows: Array<[string, string]> = ([
     ['Genres', (item.Genres ?? []).join(', ')],
     ['Director', directors.join(', ')],
@@ -162,6 +166,16 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
         )}
       >
         <div className={cn(stacked ? 'relative aspect-video w-full overflow-hidden' : 'contents')}>
+        {stacked && resumeSeconds > 0 && runtimeSeconds > 0 && (
+          // The app rules the foot of the hero video in brand red, showing how
+          // far into the title you already are.
+          <span className="absolute inset-x-0 bottom-0 z-20 h-[3px] bg-white/25">
+            <span
+              className="block h-full bg-[#e50914]"
+              style={{ width: `${Math.min(100, (resumeSeconds / runtimeSeconds) * 100)}%` }}
+            />
+          </span>
+        )}
         <PreviewBackdrop
           backdropUrl={backdrop}
           itemId={item.IsFolder ? undefined : item.Id}
@@ -225,32 +239,57 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
             </p>
           )}
 
-          <div
-            className={cn(
-              'flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground',
-              cinematic ? 'justify-start' : 'justify-center',
-            )}
-          >
-            {certificate && (
-              <span className="rounded border border-current px-1.5 py-px text-[11px] font-medium tracking-wide">
-                {certificate}
-              </span>
-            )}
-            {item.Type === 'Episode' && item.PremiereDate
-              ? <span>{new Date(item.PremiereDate).toLocaleDateString()}</span>
-              : item.ProductionYear ? <span>{item.ProductionYear}</span> : null}
-            {runtimeSeconds > 0 && <span>{formatClock(runtimeSeconds)}</span>}
-            {rating && <span className="font-medium text-foreground">{rating}</span>}
-            {typeof item.CriticRating === 'number' && item.CriticRating > 0 && (
-              <span className="rounded-full bg-[var(--hpr-rose)]/15 px-2 py-0.5 text-[11px] font-medium text-[var(--hpr-rose)]">
-                Critics {Math.round(item.CriticRating)}%
-              </span>
-            )}
-            {(item.Genres ?? []).length > 0 && <span>{item.Genres!.slice(0, 3).join(' · ')}</span>}
-            {finishes && <span>{finishes}</span>}
-          </div>
+          {stacked ? (
+            // The app's phone meta row is release year, a filled maturity box,
+            // the season count (a series never shows an episode runtime here),
+            // then HD and CC. No star rating, no critics score, no genre list
+            // and no "Ends at" — none of that appears on a streaming detail
+            // screen, and the genres already run under the synopsis.
+            <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-sm text-[#b3b3b3]">
+              {item.Type === 'Episode' && item.PremiereDate
+                ? <span>{new Date(item.PremiereDate).getFullYear()}</span>
+                : item.ProductionYear ? <span>{item.ProductionYear}</span> : null}
+              {certificate && (
+                <span className="bg-[#3a3a3a] px-1.5 py-px text-[12px] text-white">{certificate}</span>
+              )}
+              {seasonCount > 0
+                ? <span>{seasonCount} Season{seasonCount === 1 ? '' : 's'}</span>
+                : runtimeSeconds > 0 ? <span>{formatRuntimeShort(runtimeSeconds)}</span> : null}
+              {isHighDefinition && (
+                <span className="border border-white/40 px-1 text-[10px] tracking-wide text-white/90">HD</span>
+              )}
+              {subtitleStreams.length > 0 && (
+                <span className="border border-white/40 px-1 text-[10px] tracking-wide text-white/90">CC</span>
+              )}
+            </div>
+          ) : (
+            <div
+              className={cn(
+                'flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground',
+                cinematic ? 'justify-start' : 'justify-center',
+              )}
+            >
+              {certificate && (
+                <span className="rounded border border-current px-1.5 py-px text-[11px] font-medium tracking-wide">
+                  {certificate}
+                </span>
+              )}
+              {item.Type === 'Episode' && item.PremiereDate
+                ? <span>{new Date(item.PremiereDate).toLocaleDateString()}</span>
+                : item.ProductionYear ? <span>{item.ProductionYear}</span> : null}
+              {runtimeSeconds > 0 && <span>{formatClock(runtimeSeconds)}</span>}
+              {rating && <span className="font-medium text-foreground">{rating}</span>}
+              {typeof item.CriticRating === 'number' && item.CriticRating > 0 && (
+                <span className="rounded-full bg-[var(--hpr-rose)]/15 px-2 py-0.5 text-[11px] font-medium text-[var(--hpr-rose)]">
+                  Critics {Math.round(item.CriticRating)}%
+                </span>
+              )}
+              {(item.Genres ?? []).length > 0 && <span>{item.Genres!.slice(0, 3).join(' · ')}</span>}
+              {finishes && <span>{finishes}</span>}
+            </div>
+          )}
 
-          {supportsElsewhere && (
+          {supportsElsewhere && !stacked && (
             <CatalogRatingsStrip tmdbId={discoverTmdbId} mediaType={discoverMediaType} />
           )}
 
@@ -281,10 +320,12 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
                 <RotateCcw />
               </Button>
             )}
-            <Button size="icon-lg" variant="secondary" className="rounded-full" aria-label="Add to queue" title="Add to queue" onClick={() => playback.addToQueue([item])}>
-              <ListPlus />
-            </Button>
-            {item.IsFolder && (
+            {!stacked && (
+              <Button size="icon-lg" variant="secondary" className="rounded-full" aria-label="Add to queue" title="Add to queue" onClick={() => playback.addToQueue([item])}>
+                <ListPlus />
+              </Button>
+            )}
+            {!stacked && item.IsFolder && (
               <Button
                 size="icon-lg"
                 variant="secondary"
@@ -296,11 +337,34 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
                 <Shuffle />
               </Button>
             )}
-            <FavoriteButton itemId={item.Id} favorite={Boolean(item.UserData?.IsFavorite)} />
-            <WatchedButton itemId={item.Id} played={Boolean(item.UserData?.Played)} seriesId={item.SeriesId} />
+            {!stacked && <FavoriteButton itemId={item.Id} favorite={Boolean(item.UserData?.IsFavorite)} />}
+            {!stacked && <WatchedButton itemId={item.Id} played={Boolean(item.UserData?.Played)} seriesId={item.SeriesId} />}
           </div>
 
-          {item.Taglines?.[0] && <p className="text-sm italic text-muted-foreground">{item.Taglines[0]}</p>}
+          {/* The app spreads its phone actions as icon-above-label columns, not
+              a row of bare circles — four unlabelled discs told you nothing
+              about what any of them did. */}
+          {stacked && (
+            <div className="flex w-full items-start gap-8 pt-1">
+              <FavoriteButton itemId={item.Id} favorite={Boolean(item.UserData?.IsFavorite)} stacked />
+              <WatchedButton itemId={item.Id} played={Boolean(item.UserData?.Played)} seriesId={item.SeriesId} stacked />
+              <StackedAction label="Queue" onClick={() => playback.addToQueue([item])}>
+                <ListPlus className="size-6" />
+              </StackedAction>
+              {item.IsFolder && (
+                <StackedAction
+                  label="Shuffle"
+                  onClick={() => void playback.playItem(item, { ...trackOptions, shuffle: true })}
+                >
+                  <Shuffle className="size-6" />
+                </StackedAction>
+              )}
+            </div>
+          )}
+
+          {item.Taglines?.[0] && !stacked && (
+            <p className="text-sm italic text-muted-foreground">{item.Taglines[0]}</p>
+          )}
           {item.Overview && (
             <p
               className={cn(
@@ -310,16 +374,40 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
                 cinematic
                   ? 'max-w-[36rem] text-base text-white/90'
                   : 'max-w-3xl text-sm text-muted-foreground',
+                // Three lines on a phone, as the app clamps it — an unclamped
+                // ten-line synopsis pushed the Episodes tab off the screen.
+                stacked && 'line-clamp-3',
               )}
             >
               {item.Overview}
+            </p>
+          )}
+
+          {/* The app follows the synopsis with cast and creator lines. */}
+          {stacked && actors.length > 0 && (
+            <p className="text-[13px] leading-snug text-[#777]">
+              Starring:{' '}
+              <span className="text-white/90">{actors.slice(0, 3).join(', ')}</span>
+              {actors.length > 3 && <span className="text-white/90">… more</span>}
+            </p>
+          )}
+          {stacked && (directors.length > 0 || writers.length > 0) && (
+            <p className="text-[13px] leading-snug text-[#777]">
+              {directors.length > 0 ? 'Director: ' : 'Creator: '}
+              <span className="text-white/90">
+                {(directors.length > 0 ? directors : writers).slice(0, 2).join(', ')}
+              </span>
             </p>
           )}
         </div>
       </section>
 
       <div className="space-y-6 py-6">
-        {(infoRows.length > 0 || hasMediaDetail) && (
+        {/* On a phone these sit *after* the tab strip — the app has no equivalent
+            of a spec table or a "where else to stream" card, and putting them
+            where its action row and tabs belong was the loudest non-Netflix
+            block on the screen. They stay reachable, just at the foot. */}
+        {!stacked && (infoRows.length > 0 || hasMediaDetail) && (
           <div className="grid gap-3 md:grid-cols-2">
             {/* Both panels are omitted entirely when empty — an outlined box
                 with nothing in it reads as a loading failure. */}
@@ -391,7 +479,7 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
           </div>
         )}
 
-        {supportsElsewhere && (
+        {supportsElsewhere && !stacked && (
           <CatalogElsewhere tmdbId={discoverTmdbId} mediaType={discoverMediaType} />
         )}
 
@@ -412,6 +500,21 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
             currentSeasonId={item.Type === 'Season' ? item.Id : item.SeasonId}
             onPlay={(next) => void playback.playItem(next)}
           />
+        )}
+
+        {/* Helprr's own detail, kept below the tabs on a phone. */}
+        {stacked && infoRows.length > 0 && (
+          <dl className="divide-y divide-border overflow-hidden rounded-xl border bg-card/60">
+            {infoRows.map(([label, value]) => (
+              <div key={label} className="flex gap-3 p-3 text-sm">
+                <dt className="w-24 shrink-0 font-medium">{label}</dt>
+                <dd className="min-w-0 flex-1 text-right text-muted-foreground">{value}</dd>
+              </div>
+            ))}
+          </dl>
+        )}
+        {stacked && supportsElsewhere && (
+          <CatalogElsewhere tmdbId={discoverTmdbId} mediaType={discoverMediaType} />
         )}
 
         {!stacked && item.Type === 'Series' && query.data?.seasons && query.data.seasons.length > 0 && (
@@ -466,7 +569,10 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
                       )}
                       {typeof progress === 'number' && progress > 0 && progress < 100 && (
                         <span className="absolute inset-x-0 bottom-0 h-1 bg-black/50">
-                          <span className="block h-full bg-[var(--hpr-amber)]" style={{ width: `${progress}%` }} />
+                          <span
+                            className={cn('block h-full', cinematic ? 'bg-[#e50914]' : 'bg-[var(--hpr-amber)]')}
+                            style={{ width: `${progress}%` }}
+                          />
                         </span>
                       )}
                     </div>
@@ -512,8 +618,18 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
         {query.data?.filmography && query.data.filmography.length > 0 && (
           <CatalogRail title="Filmography" items={query.data.filmography} onPlay={(next) => void playback.playItem(next)} />
         )}
+        {/* The site's More Like This is 16:9 on desktop, and the cinematic card
+            swaps back to a poster on phones. Classic keeps portrait. Seasons,
+            Filmography and Recordings above stay portrait on purpose: season
+            and person art is a poster, and cropping it to 16:9 loses the
+            subject. */}
         {!stacked && query.data?.similar && query.data.similar.length > 0 && (
-          <CatalogRail title="More like this" items={query.data.similar} onPlay={(next) => void playback.playItem(next)} />
+          <CatalogRail
+            title="More Like This"
+            shape={cinematic ? 'landscape' : 'portrait'}
+            items={query.data.similar}
+            onPlay={(next) => void playback.playItem(next)}
+          />
         )}
 
         {people.length > 0 && (
@@ -542,8 +658,51 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
   );
 }
 
-function FavoriteButton({ itemId, favorite }: { itemId: string; favorite: boolean }) {
+/**
+ * One phone action: an outline icon with its label beneath, spread across the
+ * row. The app labels every one of these; a bare circle is a guess.
+ */
+function StackedAction({
+  label,
+  onClick,
+  active = false,
+  children,
+}: {
+  label: string;
+  onClick: () => void;
+  active?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className="flex min-w-14 flex-col items-center gap-1.5 text-[11px] text-white/85"
+    >
+      <span className="flex h-7 items-center justify-center">{children}</span>
+      {label}
+    </button>
+  );
+}
+
+function FavoriteButton({ itemId, favorite, stacked = false }: { itemId: string; favorite: boolean; stacked?: boolean }) {
   const queryClient = useQueryClient();
+  const toggle = async () => {
+    await fetch('/api/jellyfin/catalog/favorite', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ itemId, favorite: !favorite }),
+    });
+    await queryClient.invalidateQueries({ queryKey: ['jellyfin', 'catalog'] });
+  };
+  if (stacked) {
+    return (
+      <StackedAction label="My List" onClick={() => void toggle()} active={favorite}>
+        {favorite ? <Check className="size-6" strokeWidth={3} /> : <Plus className="size-6" />}
+      </StackedAction>
+    );
+  }
   return (
     <Button
       size="icon-lg"
@@ -565,8 +724,23 @@ function FavoriteButton({ itemId, favorite }: { itemId: string; favorite: boolea
   );
 }
 
-function WatchedButton({ itemId, played, seriesId }: { itemId: string; played: boolean; seriesId?: string }) {
+function WatchedButton({ itemId, played, seriesId, stacked = false }: { itemId: string; played: boolean; seriesId?: string; stacked?: boolean }) {
   const queryClient = useQueryClient();
+  const toggle = async () => {
+    await fetch('/api/jellyfin/watch-status', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jellyfinItemId: itemId, played: !played, seriesId }),
+    });
+    await queryClient.invalidateQueries({ queryKey: ['jellyfin', 'catalog'] });
+  };
+  if (stacked) {
+    return (
+      <StackedAction label={played ? 'Watched' : 'Mark watched'} onClick={() => void toggle()} active={played}>
+        <Check className="size-6" strokeWidth={played ? 3 : 2} />
+      </StackedAction>
+    );
+  }
   return (
     <Button
       size="icon-lg"

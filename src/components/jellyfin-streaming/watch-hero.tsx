@@ -101,6 +101,7 @@ function ClassicHero({ items, onPlay }: WatchHeroProps) {
           <HeroTitle
             name={item.Name}
             logoUrl={logo}
+            as="p"
             frameClassName="h-16 w-56 md:h-20 md:w-72"
             textClassName="text-3xl font-semibold tracking-tight text-balance md:text-4xl"
           />

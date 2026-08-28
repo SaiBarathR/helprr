@@ -1,9 +1,11 @@
 'use client';
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Check, Play } from 'lucide-react';
 import { FadeInImage } from '@/components/media/fade-in-image';
 import { useWatchSkin } from '@/lib/hooks/use-watch-skin';
+import { TilePanel } from '@/components/jellyfin-streaming/cinematic/tile-panel';
 import { useCompactViewport } from '@/lib/hooks/use-compact-viewport';
 import { cardAspectClass, type CatalogCardShape } from '@/lib/jellyfin-playback/image';
 import { cn } from '@/lib/utils';
@@ -42,8 +44,16 @@ export interface TileBadge {
 export interface MediaTileProps {
   title: string;
   imageUrl: string | null;
+  /**
+   * 16:9 artwork, used when the tile resolves to a landscape frame. Rails that
+   * only have a poster can leave it out — the poster is then cropped, which is
+   * what the tile did for every shape before.
+   */
+  landscapeUrl?: string | null;
   /** Caption lines in the classic skin; hover-reveal lines in the cinematic one. */
   lines?: Array<string | null | undefined>;
+  /** Dot-separated tags for the cinematic popover, as the site shows genres. */
+  tags?: string[];
   href?: string;
   /** Tiles that act rather than navigate (a trailer thumbnail plays in place). */
   onActivate?: () => void;
@@ -71,10 +81,12 @@ export interface MediaTileProps {
 export function MediaTile({
   title,
   imageUrl,
+  landscapeUrl,
   lines = [],
+  tags,
   href,
   onActivate,
-  shape: requestedShape = 'portrait',
+  shape: requestedShape,
   unoptimized = true,
   priority = false,
   topLeftBadge,
@@ -87,30 +99,25 @@ export function MediaTile({
   const skin = useWatchSkin();
   const cinematic = skin === 'cinematic';
   const compact = useCompactViewport();
+  const router = useRouter();
+  // The site's desktop rows are 16:9 for everything; portrait is its phone
+  // treatment. Classic keeps the captioned portrait card it has always had.
+  // An explicit shape from the caller wins over both.
+  const requested = requestedShape ?? (cinematic ? 'landscape' : 'portrait');
   // Phone rails are portrait in the Netflix app; 16:9 starts at tablet.
-  const shape = cinematic && compact && requestedShape === 'landscape' ? 'portrait' : requestedShape;
+  const shape = cinematic && compact && requested === 'landscape' ? 'portrait' : requested;
+  const src = shape === 'landscape' ? (landscapeUrl ?? imageUrl) : imageUrl;
   const captions = lines.filter((line): line is string => Boolean(line));
   const badgeShape = cinematic ? 'rounded bg-black/60' : 'rounded-md border border-white/15 bg-black/45';
 
-  return (
-    <div
-      className={cn(
-        'group relative shrink-0',
-        cinematic && 'hpr-cine-tile',
-        WIDTH[cinematic ? 'cinematic' : 'classic'][shape],
-        className,
-      )}
-    >
-      <div
-        className={cn(
-          'relative overflow-hidden',
-          cardAspectClass(shape),
-          cinematic ? 'rounded-xl bg-white/5' : 'rounded-xl border border-border/40 bg-muted/60',
-        )}
-      >
-        {imageUrl ? (
+  // Cinematic splits the frame into face + art so the hover popover can grow
+  // out of it without disturbing the row; classic keeps the single frame it
+  // has always had. The contents are identical either way.
+  const frame = (
+    <>
+        {src ? (
           <FadeInImage
-            src={imageUrl}
+            src={src}
             alt={title}
             fill
             sizes={shape === 'landscape' ? '344px' : '220px'}
@@ -131,8 +138,11 @@ export function MediaTile({
           <span className="pointer-events-none absolute inset-0 z-20 bg-black/0 transition-colors group-hover:bg-black/35" />
         )}
 
-        {cinematic && (
-          // Touch has no hover, so the title has to be permanently legible there.
+        {cinematic && shape === 'landscape' && (
+          // Touch has no hover, so a 16:9 still needs its title written on it.
+          // A portrait poster does not — the title is part of the artwork,
+          // which is why the app runs bare posters on phones. Gated the same
+          // way as CinematicCard so the two never disagree on one screen.
           <>
             <span className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-2/5 bg-gradient-to-t from-black/85 to-transparent [@media(hover:hover)]:hidden" />
             {/* pr-12 keeps the title clear of the touch play affordance. */}
@@ -178,19 +188,6 @@ export function MediaTile({
           </span>
         )}
 
-        {cinematic && captions.length > 0 && (
-          // Pointer-only reveal, riding the same intent delay as the tile's
-          // expand (see .hpr-cine-reveal in globals.css).
-          <span className="hpr-cine-reveal pointer-events-none absolute inset-0 z-20 hidden flex-col justify-end bg-gradient-to-t from-black/90 via-black/35 to-transparent p-2.5 opacity-0 transition-opacity duration-300 [@media(hover:hover)]:flex">
-            <span className="block truncate text-[13px] font-semibold text-white">{title}</span>
-            {captions.map((line) => (
-              <span key={line} className="block truncate text-[11px] text-white/70">
-                {line}
-              </span>
-            ))}
-          </span>
-        )}
-
         {playAffordance && (
           <span className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center">
             <span
@@ -214,12 +211,44 @@ export function MediaTile({
             )}
           >
             <div
-              className="h-full bg-[var(--hpr-amber)]"
+              // Cinematic resume bars are Netflix red, as in watch-modal and
+              // mobile-detail-tabs; classic keeps the app's accent.
+              className={cn('h-full', cinematic ? 'bg-[#e50914]' : 'bg-[var(--hpr-amber)]')}
               style={{ width: `${Math.min(progressPct, 100)}%` }}
             />
           </div>
         )}
-      </div>
+    </>
+  );
+
+  return (
+    <div
+      className={cn(
+        'group relative shrink-0',
+        cinematic && ['hpr-cine-tile', cardAspectClass(shape)],
+        WIDTH[cinematic ? 'cinematic' : 'classic'][shape],
+        className,
+      )}
+    >
+      {cinematic ? (
+        <div className="hpr-cine-face bg-white/5">
+          <div className="hpr-cine-art">{frame}</div>
+          {/* Same panel component as the Jellyfin card, so a recommendation
+              row and a Continue watching row read identically. These rails
+              have no Jellyfin item behind them — an unreleased film is not in
+              the library at all — so there is nothing to play or expand, and
+              the panel renders facts only. */}
+          <TilePanel
+            title={title}
+            content={{ episodeLabel: title, tags: tags ?? captions, progressPct }}
+            onMoreInfo={href ? () => router.push(href) : undefined}
+          />
+        </div>
+      ) : (
+        <div className={cn('relative overflow-hidden rounded-xl border border-border/40 bg-muted/60', cardAspectClass(shape))}>
+          {frame}
+        </div>
+      )}
 
       {!cinematic && (
         <>

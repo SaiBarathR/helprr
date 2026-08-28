@@ -266,6 +266,9 @@ html {
   --hpr-fgMute: #b9a98c;
   --hpr-fgSubtle: #7a6c54;
   --hpr-amber: #f5b948;
+  /* Playback progress: its own token so the cinematic skin can paint the
+     scrubber the site's red without dragging every other accent with it. */
+  --hpr-seek: var(--hpr-amber);
   --hpr-green: #5ac893;
   --hpr-rose: #e36a7a;
   --hpr-blue: #6aa9ee;
@@ -1299,13 +1302,34 @@ html[data-watch-skin='cinematic']:has(.hpr-watch) {
   /* Components that reach for the raw accent token directly never see
      --primary, so the scope has to neutralise the accent itself. Status
      colours — green watched, blue unplayed — carry meaning, not brand, and
-     are deliberately left alone. */
-  --hpr-amber: #ffffff;
-  --hpr-ink: #141414;
+     are deliberately left alone.
+
+     !important is load-bearing, not defensive: THEME_BOOTSTRAP_SCRIPT stamps
+     the user's accent onto <html> as an *inline* style, and an inline style
+     beats any stylesheet rule. Without this the whole skin ran on the user's
+     personal accent — an iOS-blue progress bar under every card, blue season
+     and filter chips — while this block silently lost the cascade. */
+  --hpr-amber: #ffffff !important;
+  /* The site's scrubber is red, not its white accent. */
+  --hpr-seek: #e50914;
+  --hpr-ink: #141414 !important;
 
   /* The shell's gradient wash is part of Helprr's dashboard identity and has
      no place on a streaming ground. */
   --hpr-bg-grad: none;
+
+  /* Height of the hover popover's info panel — measured at 163px under a
+     405px-wide card on the site, which is a 38px button row, a fact line and a
+     tag line with generous breathing room. It is a fixed length rather than
+     `auto` so the popover's growth can transition (see .hpr-cine-face). */
+  --hpr-pop-panel: 118px;
+}
+
+/* Matches the xl: step where the tile and its type scale up. */
+@media (min-width: 1280px) {
+  html[data-watch-skin='cinematic']:has(.hpr-watch) {
+    --hpr-pop-panel: 158px;
+  }
 }
 
 /* Every layer that paints a ground has to agree, or the disagreement shows as
@@ -1324,11 +1348,17 @@ html[data-watch-skin='cinematic'] .hpr-watch:not([data-slot]) {
   /* Containing block for the billboard's ambient wash, which is absolutely
      positioned and bleeds past the shell's content inset. */
   position: relative;
+  /* And a stacking context, or the wash is invisible. The wash sits at
+     z-index -10 so it stays behind the page's own content; without an
+     isolate here no ancestor forms a stacking context, so it escapes to the
+     root and paints in the root's negative-z step — which is *before* the
+     shell's opaque `bg-background` block. The colour was always being
+     computed correctly and then covered over completely. */
+  isolation: isolate;
 }
 
 /* Chrome recedes: on desktop and tablet the sidebar would keep the page from
-   ever reaching the viewport edge, which is most of what "cinematic" means.
-   The mobile bottom nav stays — Netflix's own app keeps its tab bar. */
+   ever reaching the viewport edge, which is most of what "cinematic" means. */
 html[data-watch-skin='cinematic']:has(.hpr-watch) [data-app-sidebar] {
   display: none;
 }
@@ -1338,6 +1368,14 @@ html[data-watch-skin='cinematic']:has(.hpr-watch) [data-app-sidebar] {
    "it isn't really full screen" complaint. The Watch masthead carries an Exit
    on every viewport, so there is always a way back. */
 html[data-watch-skin='cinematic']:has(.hpr-watch) [data-app-bottom-nav] {
+  display: none;
+}
+
+/* ...and so does the command palette's edge handle, which is the same kind of
+   chrome. It is `bg-primary`, and cinematic makes primary white, so it rode
+   over the artwork on every phone Watch screen as a bright white slab. Search
+   stays reachable from the masthead. */
+html[data-watch-skin='cinematic']:has(.hpr-watch) [data-app-command-launcher] {
   display: none;
 }
 
@@ -1366,76 +1404,182 @@ html[data-watch-skin='cinematic'] .hpr-watch
   border-radius: var(--radius);
 }
 
+/* The detail overlay is a flat panel, not one of the app's glass surfaces.
+   `html[data-glass] [data-slot='dialog-content']` is (0,2,1) and outranked the
+   panel's own bg-[#181818] utility (0,1,0), so the overlay rendered at 55%
+   with a 22px blur and the rails showing through it. The site's panel is
+   opaque #181818 with no backdrop filter. This selector is (0,3,1) so it wins
+   regardless of where the glass block sits, including its
+   prefers-reduced-transparency and @supports fallbacks.
+
+   Not scoped to .hpr-watch: the dialog is portalled out of it. */
+html[data-watch-skin='cinematic'] [data-slot='dialog-content'].hpr-cine-modal {
+  background: #181818;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  border-color: transparent;
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.75);
+}
+
+/* Menus opened from the skin are flat panels too — the season picker sits on
+   top of the overlay, and a frosted menu over a flat one reads as two
+   different surfaces. */
+html[data-watch-skin='cinematic'] [data-slot='dropdown-menu-content'].hpr-cine-flat {
+  background: #242424;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.7);
+}
+
 /* ── Cinematic rail hover ──────────────────────────────────────────────
-   The push-aside expand. Netflix's measured preview is 394x222 against a
-   262x148 card — exactly 1.5x — and the recipe gives a scaling tile half of
-   its extra width on each side, so the row shifts left by 25% and everything
-   after the hovered tile shifts right by 25%.
+   Hovering a card on netflix.com moves *nothing*. Measured at 1440px: every
+   neighbour in the row keeps its exact rect, and the hovered card becomes a
+   separately-positioned popover that overlays them — 394x376 against a
+   262x148 tile, so the artwork is exactly 1.5x with an info panel below it,
+   centred on the tile, 6px radius, box-shadow 0 3px 10px rgba(0,0,0,.75).
 
-   A horizontal scroll container clips BOTH axes — there is no overflow-x:auto
-   with overflow-y:visible — so the headroom for that growth has to come from
-   the scroller's own vertical padding (see MediaRail).
+   The previous version scaled the tile in place and pushed its neighbours
+   aside with translateX(±25%). That is a different mechanism, and it is what
+   made a row lurch sideways whenever the pointer entered the row's padding
+   without landing on a tile.
 
-   transition-delay on the :hover state is the intent gate: brushing past a row
-   does nothing, and it costs no JS timers. */
+   Geometry: .hpr-cine-tile is the layout box and never changes size.
+   .hpr-cine-face covers it exactly at rest and, on hover, grows to 150% width
+   with the panel adding a fixed strip below the artwork. Every animated
+   property is a length, so the growth transitions rather than snapping —
+   which is why the panel has a fixed height instead of `auto`.
+
+   transition-delay on the hover state is the intent gate: brushing across a
+   row does nothing, and it costs no JS timers. */
+
+/* left/right/top/height rather than `inset: 0`, and never `height: auto`.
+   `auto` is not interpolatable, so a transition to calc(150% + panel) does not
+   run at all — the height snapped to full size at t=0 while left/right waited
+   out their 300ms intent delay, and the card spent that beat as a tall
+   narrow poster before springing sideways. Every value here is a length, so
+   all four animate together. */
+html[data-watch-skin='cinematic'] .hpr-cine-face {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: auto;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: var(--radius);
+}
+
+html[data-watch-skin='cinematic'] .hpr-cine-art {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Zero-height at rest so the artwork fills the tile exactly. The z-index puts
+   its controls above the tile's stretched link (z-10); the face is not a
+   stacking context, so they share the tile's. */
+html[data-watch-skin='cinematic'] .hpr-cine-panel {
+  position: relative;
+  z-index: 20;
+  flex: 0 0 auto;
+  height: 0;
+  overflow: hidden;
+  opacity: 0;
+}
+
 @media (hover: hover) {
-  html[data-watch-skin='cinematic'] .hpr-cine-tile {
-    transition: transform 300ms cubic-bezier(0.22, 0.61, 0.36, 1);
+  /* A scroll container clips both axes, so a popover could never escape the
+     row. `overflow-x: clip` is the exception — unlike auto/hidden it does not
+     force the other axis to clip as well, which is exactly what the site
+     relies on. Its row box is the tile plus 2px of padding, with no headroom
+     at all. The row then pages by transform rather than scrolling (see
+     MediaRail). Touch never hovers, so it keeps native overflow-x: auto. */
+  html[data-watch-skin='cinematic'] .hpr-cine-row {
+    overflow-x: clip;
+    overflow-y: visible;
   }
 
-  html[data-watch-skin='cinematic'] .hpr-cine-row:hover > .hpr-cine-tile {
-    transform: translateX(-25%);
+  /* Rows paint in document order, so a popover growing downward would be
+     covered by the row beneath it. Raising the row that owns the hover into
+     its own stacking context fixes that, and takes the tile badges below it
+     (z-20) and the rail's edge arrows (z-30) with it. 40 stays under the
+     sticky masthead at z-50, which the card must never cover.
+
+     `:has(.hpr-cine-tile:hover)` keeps this keyed to a real tile —
+     `.hpr-cine-row:hover` is what made the old rule fire on bare padding. */
+  html[data-watch-skin='cinematic'] .hpr-cine-row:has(.hpr-cine-tile:hover),
+  html[data-watch-skin='cinematic'] .hpr-cine-row:has(.hpr-cine-tile:focus-within) {
+    position: relative;
+    z-index: 40;
+  }
+
+  /* Above the rail's edge arrows (z-30), which the site also paints under
+     the expanded card. */
+  html[data-watch-skin='cinematic'] .hpr-cine-tile:hover,
+  html[data-watch-skin='cinematic'] .hpr-cine-tile:focus-within {
+    z-index: 40;
+  }
+
+  html[data-watch-skin='cinematic'] .hpr-cine-face {
+    transition:
+      left 300ms cubic-bezier(0.22, 0.61, 0.36, 1),
+      right 300ms cubic-bezier(0.22, 0.61, 0.36, 1),
+      top 300ms cubic-bezier(0.22, 0.61, 0.36, 1),
+      height 300ms cubic-bezier(0.22, 0.61, 0.36, 1),
+      box-shadow 300ms cubic-bezier(0.22, 0.61, 0.36, 1);
+  }
+
+  /* height = 150% (the 1.5x artwork) + the panel; top lifts by half the extra
+     so the popover ends up centred on the tile, as measured. */
+  html[data-watch-skin='cinematic'] .hpr-cine-tile:hover > .hpr-cine-face,
+  html[data-watch-skin='cinematic'] .hpr-cine-tile:focus-within > .hpr-cine-face {
+    left: -25%;
+    right: -25%;
+    top: calc(-25% - var(--hpr-pop-panel) / 2);
+    bottom: auto;
+    height: calc(150% + var(--hpr-pop-panel));
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.75);
     transition-delay: 300ms;
   }
 
-  html[data-watch-skin='cinematic'] .hpr-cine-tile:hover ~ .hpr-cine-tile {
-    transform: translateX(25%);
-    transition-delay: 300ms;
+  /* At either end the site clamps the popover to the row's inset rather than
+     centring it: hovering the leftmost card grows it entirely rightward, and
+     the rightmost *visible* card entirely leftward — measured on the site at
+     1130..1392, whose popover lands at 998..1392 rather than crossing 1440.
+
+     Which tile is at an edge depends on the current page, not on its position
+     in the DOM, so `:first-child`/`:last-child` cannot express it. MediaRail
+     stamps data-pop-align on pointer or focus entry instead. */
+  html[data-watch-skin='cinematic'] .hpr-cine-tile[data-pop-align='start']:hover > .hpr-cine-face,
+  html[data-watch-skin='cinematic'] .hpr-cine-tile[data-pop-align='start']:focus-within > .hpr-cine-face {
+    left: 0;
+    right: -50%;
   }
 
-  html[data-watch-skin='cinematic'] .hpr-cine-row > .hpr-cine-tile:hover,
-  html[data-watch-skin='cinematic'] .hpr-cine-row > .hpr-cine-tile:focus-within {
-    transform: scale(1.5);
-    transition-delay: 300ms;
-    z-index: 20;
+  html[data-watch-skin='cinematic'] .hpr-cine-tile[data-pop-align='end']:hover > .hpr-cine-face,
+  html[data-watch-skin='cinematic'] .hpr-cine-tile[data-pop-align='end']:focus-within > .hpr-cine-face {
+    left: -50%;
+    right: 0;
   }
 
-  /* A row is a scroll container, so it clips: a centre-origin scale on the
-     first or last tile pushes half the growth outside and the tile is cut in
-     half. Anchoring those two to their own outer edge keeps the growth
-     inward, which is what the site does. */
-  html[data-watch-skin='cinematic'] .hpr-cine-row > .hpr-cine-tile:first-child {
-    transform-origin: left center;
-  }
-
-  html[data-watch-skin='cinematic'] .hpr-cine-row > .hpr-cine-tile:last-child {
-    transform-origin: right center;
-  }
-
-  /* Nothing needs to shift for a tile that grows inward from the left edge. */
-  html[data-watch-skin='cinematic'] .hpr-cine-row:hover > .hpr-cine-tile:first-child:not(:hover) {
-    transform: translateX(-25%);
-  }
-
-  html[data-watch-skin='cinematic'] .hpr-cine-row > .hpr-cine-tile:first-child:hover {
-    transform: scale(1.5);
-  }
-
-  /* The detail overlay rides the same intent delay so art and text arrive
-     together rather than the caption racing ahead of the expand. */
-  html[data-watch-skin='cinematic'] .hpr-cine-tile:hover .hpr-cine-reveal,
-  html[data-watch-skin='cinematic'] .hpr-cine-tile:focus-within .hpr-cine-reveal {
+  html[data-watch-skin='cinematic'] .hpr-cine-tile:hover .hpr-cine-panel,
+  html[data-watch-skin='cinematic'] .hpr-cine-tile:focus-within .hpr-cine-panel {
+    height: var(--hpr-pop-panel);
     opacity: 1;
-    transition-delay: 300ms;
+    /* Both start on the same 300ms intent gate; the text fades in a beat
+       later so it does not smear while the card is still growing. */
+    transition:
+      height 300ms cubic-bezier(0.22, 0.61, 0.36, 1) 300ms,
+      opacity 200ms linear 450ms;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  html[data-watch-skin='cinematic'] .hpr-cine-tile,
-  html[data-watch-skin='cinematic'] .hpr-cine-row:hover > .hpr-cine-tile,
-  html[data-watch-skin='cinematic'] .hpr-cine-tile:hover ~ .hpr-cine-tile,
-  html[data-watch-skin='cinematic'] .hpr-cine-row > .hpr-cine-tile:hover {
-    transform: none;
+  html[data-watch-skin='cinematic'] .hpr-cine-face,
+  html[data-watch-skin='cinematic'] .hpr-cine-panel {
     transition: none;
   }
 }

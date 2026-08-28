@@ -273,6 +273,8 @@ export const CATALOG_ITEM_FIELDS = [
 
 export const CATALOG_LIST_FIELDS = [
   'Overview',
+  // Drives the "Recently added" ribbon the site puts on fresh titles.
+  'DateCreated',
   'Genres',
   'CommunityRating',
   'OfficialRating',

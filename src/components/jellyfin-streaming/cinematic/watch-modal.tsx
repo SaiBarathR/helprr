@@ -3,22 +3,28 @@
 import { createContext, useCallback, useContext, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
-import { Check, Play, Plus, RotateCcw, ThumbsUp, X } from 'lucide-react';
+import { Check, ChevronDown, Play, Plus, RotateCcw, ThumbsUp, X } from 'lucide-react';
 import { jsonFetcher } from '@/lib/query-fetch';
 import { queryKeys } from '@/lib/query-keys';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { HeroTitle } from '@/components/jellyfin-streaming/hero-title';
 import { PreviewBackdrop } from '@/components/jellyfin-streaming/cinematic/preview-backdrop';
 import { CatalogPosterCard } from '@/components/jellyfin-streaming/poster-card';
 import { useJellyfinPlayback } from '@/components/jellyfin-streaming/playback-provider';
 import { FadeInImage } from '@/components/media/fade-in-image';
-import { jellyfinBackdropUrl, jellyfinCardImage, jellyfinImageUrl } from '@/lib/jellyfin-playback/image';
+import { jellyfinBackdropUrl, jellyfinCardImage, jellyfinImageUrl, jellyfinPosterUrl } from '@/lib/jellyfin-playback/image';
 import { formatCertificate, formatCommunityRating } from '@/lib/jellyfin-playback/metadata';
 import { formatClock, ticksToSeconds } from '@/lib/jellyfin-playback/device';
 import type { JellyfinItem } from '@/types/jellyfin';
-import type { CatalogItemDetailResponse } from '@/types/jellyfin-streaming';
+import type { CatalogItemDetailResponse, CatalogItemsResponse } from '@/types/jellyfin-streaming';
 
 interface WatchModalApi {
   /**
@@ -109,12 +115,100 @@ function MetaFact({ label, value }: { label: string; value: string }) {
   );
 }
 
-function ModalSection({ title, children }: { title: string; children: React.ReactNode }) {
+function ModalSection({
+  title,
+  aside,
+  children,
+}: {
+  title: string;
+  /** Right-aligned control beside the heading — the season picker lives here. */
+  aside?: React.ReactNode;
+  children: React.ReactNode;
+}) {
   return (
     <section className="px-12 pb-8">
-      <h3 className="mb-4 text-2xl font-medium">{title}</h3>
+      <div className="mb-4 flex items-center justify-between gap-4">
+        <h3 className="text-2xl font-medium">{title}</h3>
+        {aside}
+      </div>
       {children}
     </section>
+  );
+}
+
+/**
+ * The season picker, as the site draws it: a bordered trigger carrying the
+ * current season, and a dark panel listing every season with its episode
+ * count. Deliberately not a native <select> — that renders the operating
+ * system's own menu, which looks nothing like the rest of the panel.
+ */
+function SeasonPicker({
+  seasons,
+  activeId,
+  onSelect,
+}: {
+  seasons: JellyfinItem[];
+  activeId: string | null;
+  onSelect: (id: string) => void;
+}) {
+  const active = seasons.find((entry) => entry.Id === activeId) ?? seasons[0];
+  const label = (entry: JellyfinItem) =>
+    entry.Name ?? (entry.IndexNumber != null ? `Season ${entry.IndexNumber}` : 'Season');
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        aria-label="Season"
+        className="flex shrink-0 items-center gap-3 rounded border border-white/40 bg-[#242424] px-4 py-2 text-lg font-medium text-white transition-colors hover:border-white focus-visible:outline-none data-[state=open]:border-white"
+      >
+        {active ? label(active) : 'Season'}
+        <ChevronDown className="size-4 shrink-0 transition-transform data-[state=open]:rotate-180" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="end"
+        // hpr-cine-flat opts the panel out of the app's glass material, the
+        // same way the overlay itself does.
+        className="hpr-cine-flat max-h-80 min-w-56 overflow-y-auto rounded-none border-white/15 p-0"
+      >
+        {seasons.map((entry) => (
+          <DropdownMenuItem
+            key={entry.Id}
+            onSelect={() => onSelect(entry.Id)}
+            className="cursor-pointer gap-2 px-4 py-2.5 text-base focus:bg-white/10"
+          >
+            <span className="font-semibold text-white">{label(entry)}</span>
+            {typeof entry.ChildCount === 'number' && entry.ChildCount > 0 && (
+              <span className="text-white/60">
+                ({entry.ChildCount} Episode{entry.ChildCount === 1 ? '' : 's'})
+              </span>
+            )}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+/** One track in an album or playlist: number, title, runtime. */
+function TrackRow({ track, index, onPlay }: { track: JellyfinItem; index: number; onPlay: () => void }) {
+  const runtime = ticksToSeconds(track.RunTimeTicks);
+  return (
+    <li>
+      <button
+        type="button"
+        onClick={onPlay}
+        className="group/track flex w-full items-center gap-4 rounded px-2 py-3 text-left transition-colors hover:bg-white/5"
+      >
+        <span className="w-6 shrink-0 text-center text-sm text-white/70 group-hover/track:hidden">
+          {track.IndexNumber ?? index}
+        </span>
+        <span className="hidden w-6 shrink-0 items-center justify-center group-hover/track:flex">
+          <Play className="size-4 fill-white text-white" />
+        </span>
+        <span className="min-w-0 flex-1 truncate text-base">{track.Name}</span>
+        {runtime > 0 && <span className="shrink-0 text-sm text-white/70">{formatClock(runtime)}</span>}
+      </button>
+    </li>
   );
 }
 
@@ -126,12 +220,79 @@ function WatchDetailModal({ itemId, onClose }: { itemId: string | null; onClose:
     // visiting the page (or vice versa) is instant.
     queryKey: queryKeys.jellyfinItem(itemId ?? '', 'full'),
     queryFn: jsonFetcher<CatalogItemDetailResponse>(
-      `/api/jellyfin/catalog/items/${itemId}?expand=seasons,episodes,similar,trailers`,
+      `/api/jellyfin/catalog/items/${itemId}?expand=seasons,episodes,similar,trailers,children`,
     ),
     enabled: Boolean(itemId),
   });
 
   const item = query.data?.item;
+  const similar = query.data?.similar ?? [];
+  // The site never leaves this section out. When Jellyfin has no "similar"
+  // for a title, same-genre neighbours keep the overlay's shape intact.
+  const fallbackGenre = item?.Genres?.[0];
+  const genreFallback = useQuery({
+    queryKey: ['jellyfin', 'catalog', 'modal-similar-fallback', item?.Id, fallbackGenre],
+    queryFn: jsonFetcher<CatalogItemsResponse>(
+      `/api/jellyfin/catalog/items?recursive=true&includeItemTypes=${item?.Type === 'Movie' ? 'Movie' : 'Series'}`
+      + `&genres=${encodeURIComponent(fallbackGenre ?? '')}&sortBy=CommunityRating&sortOrder=Descending&limit=12`,
+    ),
+    enabled: Boolean(itemId) && Boolean(fallbackGenre) && query.isSuccess && similar.length === 0,
+    staleTime: 10 * 60_000,
+  });
+  const moreLikeThis = similar.length > 0
+    ? similar
+    : (genreFallback.data?.items ?? []).filter((entry) => entry.Id !== item?.Id);
+
+  /**
+   * The season picker is driven by `seasons`, never by the loaded episodes.
+   *
+   * The detail route returns *all* episodes for a Series but only the owning
+   * season's for an Episode. Deriving the option list from those episodes
+   * therefore worked on a series and silently produced a single option — so no
+   * picker at all — on an episode, which is how a 23-season show ended up
+   * without one.
+   */
+  const [seasonChoice, setSeasonChoice] = useState<{ id: string | null; seasonId: string | null }>({ id: null, seasonId: null });
+  // Keyed on the item rather than reset in an effect: a fresh title starts on
+  // its own season without a render-then-correct pass.
+  const chosenSeasonId = seasonChoice.id === itemId ? seasonChoice.seasonId : null;
+  const setSeason = (next: string) => setSeasonChoice({ id: itemId, seasonId: next });
+
+  const seasons = useMemo(() => query.data?.seasons ?? [], [query.data?.seasons]);
+  const payloadEpisodes = useMemo(() => query.data?.episodes ?? [], [query.data?.episodes]);
+  // Episodes spanning more than one season mean the payload covers the whole
+  // series, so switching season is a filter rather than a fetch.
+  const payloadCoversAllSeasons = useMemo(
+    () => new Set(payloadEpisodes.map((episode) => episode.ParentIndexNumber)).size > 1,
+    [payloadEpisodes],
+  );
+  const defaultSeasonId = item?.Type === 'Season' ? item.Id : (item?.SeasonId ?? seasons[0]?.Id ?? null);
+  const activeSeasonId = chosenSeasonId ?? defaultSeasonId;
+  const activeSeasonNumber = seasons.find((entry) => entry.Id === activeSeasonId)?.IndexNumber ?? null;
+
+  // Only when the payload cannot answer: an episode-rooted overlay switching to
+  // a season it never loaded.
+  const needsSeasonFetch = Boolean(activeSeasonId)
+    && !payloadCoversAllSeasons
+    && activeSeasonId !== defaultSeasonId;
+  const seasonQuery = useQuery({
+    queryKey: queryKeys.jellyfinItem(activeSeasonId ?? '', 'full'),
+    queryFn: jsonFetcher<CatalogItemDetailResponse>(
+      `/api/jellyfin/catalog/items/${activeSeasonId}?expand=episodes`,
+    ),
+    enabled: needsSeasonFetch,
+  });
+
+  const seasonEpisodes = payloadCoversAllSeasons
+    ? payloadEpisodes.filter((episode) => episode.ParentIndexNumber === activeSeasonNumber)
+    : needsSeasonFetch
+      ? (seasonQuery.data?.episodes ?? [])
+      : payloadEpisodes;
+
+  // Album tracks and collection members. The detail API already returns these
+  // for a MusicAlbum, Playlist, BoxSet or Folder — the overlay simply never
+  // rendered them, so an album opened with no tracks and nothing to play.
+  const tracks = useMemo(() => query.data?.children ?? [], [query.data?.children]);
 
   const openFullDetails = () => {
     if (!item) return;
@@ -141,7 +302,12 @@ function WatchDetailModal({ itemId, onClose }: { itemId: string | null; onClose:
     router.push(`/jellyfin/library/item/${item.Id}`);
   };
 
-  const backdrop = item ? jellyfinBackdropUrl(item, 1920) : null;
+  // Music is square-art media: an album has no backdrop of its own, and its
+  // ParentId is the *artist*, so asking for a backdrop returned the artist's
+  // — a non-null URL that 404s, which is why the panel opened black.
+  const squareArt = item?.Type === 'MusicAlbum' || item?.Type === 'Audio' || item?.Type === 'MusicArtist';
+  const cover = item ? jellyfinPosterUrl(item, 900) : null;
+  const backdrop = item ? (jellyfinBackdropUrl(item, 1920) ?? jellyfinPosterUrl(item, 1280)) : null;
   const isChildOfSeries = item?.Type === 'Season' || item?.Type === 'Episode';
   const seriesId = isChildOfSeries ? (item?.SeriesId ?? item?.ParentId) : undefined;
   const heroName = (isChildOfSeries ? item?.SeriesName : item?.Name) ?? item?.Name ?? '';
@@ -167,8 +333,14 @@ function WatchDetailModal({ itemId, onClose }: { itemId: string | null; onClose:
     <Dialog open={Boolean(itemId)} onOpenChange={(next) => { if (!next) onClose(); }}>
       <DialogContent
         showCloseButton={false}
-        // 882px wide with a 6px radius at a 1440 viewport, pinned near the top
-        // rather than vertically centred — all measured from the site.
+        // 850px wide with a 6px radius at a 1440 viewport, pinned near the top
+        // rather than vertically centred — all measured from the site (the
+        // panel sits at x=295 in a 1440 viewport: 295 + 850 + 295).
+        //
+        // hpr-cine-modal opts the panel out of the app's glass material. The
+        // glass rule matches on [data-slot='dialog-content'] and outranked the
+        // bg-[#181818] utility below, so the overlay rendered translucent with
+        // the rails showing through it; the site's panel is flat #181818.
         // `flex flex-col` overrides DialogContent's own `grid`. It matters:
         // a stretched grid item ignores aspect-ratio for its height, so the
         // 16:9 hero collapsed and the metadata landed on top of it.
@@ -178,7 +350,7 @@ function WatchDetailModal({ itemId, onClose }: { itemId: string | null; onClose:
         // position:fixed, dropping the panel into normal flow at the foot of
         // the page where it was invisible. The palette does not need it: the
         // tokens live on the root, which the portal is still inside.
-        className="top-8 flex max-h-[calc(100vh-4rem)] w-[92vw] max-w-[882px] translate-y-0 flex-col gap-0 overflow-x-hidden overflow-y-auto rounded-[6px] border-0 bg-[#181818] p-0 shadow-2xl sm:max-w-[882px]"
+        className="hpr-cine-modal top-8 flex max-h-[calc(100vh-4rem)] w-[92vw] max-w-[850px] translate-y-0 flex-col gap-0 overflow-x-hidden overflow-y-auto rounded-[6px] border-0 bg-[#181818] p-0 shadow-2xl sm:max-w-[850px]"
       >
         {!item ? (
           <div className="min-h-64">
@@ -188,15 +360,40 @@ function WatchDetailModal({ itemId, onClose }: { itemId: string | null; onClose:
         ) : (
           <>
             <div className="relative aspect-video w-full shrink-0 overflow-hidden rounded-t-[6px] bg-black">
-              <PreviewBackdrop
-                backdropUrl={backdrop}
-                itemId={item.IsFolder ? undefined : item.Id}
-                runtimeTicks={item.RunTimeTicks}
-                trailerUrl={item.RemoteTrailers?.[0]?.Url}
-                enabled
-                priority
-                controlsClassName="absolute right-12 bottom-8 border-2 size-[38px]"
-              />
+              {squareArt ? (
+                // A square cover cropped to 16:9 loses most of the artwork, so
+                // it sits at its own aspect over a blurred copy of itself.
+                <>
+                  {cover && (
+                    <FadeInImage
+                      src={cover}
+                      alt=""
+                      fill
+                      sizes="850px"
+                      priority
+                      unoptimized
+                      className="scale-110 object-cover opacity-40 blur-2xl"
+                    />
+                  )}
+                  {cover && (
+                    <span className="absolute inset-0 flex items-center justify-center p-6">
+                      <span className="relative aspect-square h-full overflow-hidden rounded shadow-2xl">
+                        <FadeInImage src={cover} alt={item.Name} fill sizes="360px" priority unoptimized className="object-cover" />
+                      </span>
+                    </span>
+                  )}
+                </>
+              ) : (
+                <PreviewBackdrop
+                  backdropUrl={backdrop}
+                  itemId={item.IsFolder ? undefined : item.Id}
+                  runtimeTicks={item.RunTimeTicks}
+                  trailerUrl={item.RemoteTrailers?.[0]?.Url}
+                  enabled
+                  priority
+                  controlsClassName="absolute right-12 bottom-8 border-2 size-[38px]"
+                />
+              )}
               {/* The player fades into the panel rather than cutting off, which
                   is what keeps hero and metadata reading as one surface. */}
               <span className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-[#181818] via-[#181818]/70 to-transparent" />
@@ -234,7 +431,7 @@ function WatchDetailModal({ itemId, onClose }: { itemId: string | null; onClose:
                 )}
 
                 <div className="flex items-center gap-3">
-                  {!item.IsFolder && (
+                  {(
                     <Button
                       className="h-11 rounded px-7 text-base font-semibold"
                       onClick={() => void playback.playItem(item)}
@@ -287,10 +484,19 @@ function WatchDetailModal({ itemId, onClose }: { itemId: string | null; onClose:
               </div>
             </div>
 
-            {query.data?.episodes && query.data.episodes.length > 0 && (
-              <ModalSection title="Episodes">
+            {seasonEpisodes.length > 0 && (
+              <ModalSection
+                title="Episodes"
+                aside={seasons.length > 1 ? (
+                  <SeasonPicker
+                    seasons={seasons}
+                    activeId={activeSeasonId}
+                    onSelect={setSeason}
+                  />
+                ) : null}
+              >
                 <ul className="divide-y divide-white/10">
-                  {query.data.episodes.slice(0, 12).map((episode) => (
+                  {seasonEpisodes.slice(0, 20).map((episode) => (
                     <EpisodeRow
                       key={episode.Id}
                       episode={episode}
@@ -301,16 +507,32 @@ function WatchDetailModal({ itemId, onClose }: { itemId: string | null; onClose:
               </ModalSection>
             )}
 
-            {query.data?.similar && query.data.similar.length > 0 && (
+            {tracks.length > 0 && (
+              <ModalSection title={item.Type === 'MusicAlbum' ? 'Tracks' : 'Titles'}>
+                <ul className="divide-y divide-white/10">
+                  {tracks.map((child, index) => (
+                    <TrackRow
+                      key={child.Id}
+                      track={child}
+                      index={index + 1}
+                      onPlay={() => void playback.playItems(tracks, index)}
+                    />
+                  ))}
+                </ul>
+              </ModalSection>
+            )}
+
+            {moreLikeThis.length > 0 && (
               <ModalSection title="More Like This">
                 {/* A grid, not a rail: the site changes shape inside the
                     overlay because there is no room to scroll one sideways. */}
                 <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
-                  {query.data.similar.slice(0, 9).map((similar) => (
+                  {moreLikeThis.slice(0, 9).map((entry) => (
                     <CatalogPosterCard
-                      key={similar.Id}
-                      item={similar}
+                      key={entry.Id}
+                      item={entry}
                       shape="landscape"
+                      flat
                       className="w-full"
                       onPlay={(next) => void playback.playItem(next)}
                     />
