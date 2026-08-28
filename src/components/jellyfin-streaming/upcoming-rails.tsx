@@ -72,7 +72,14 @@ function countdown(iso: string): string {
  * Radarr already publish through Helprr's calendar endpoint. One request covers
  * all three; the rails are derived client-side.
  */
-export function UpcomingRails() {
+export function UpcomingRails({ only }: {
+  /**
+   * Restrict the rails to one medium. The Movies and TV hubs each want only
+   * their own half of the calendar — "Airing this week" has no business on a
+   * Movies page — while the Watch home wants all three.
+   */
+  only?: 'movie' | 'episode';
+} = {}) {
   const canSeeCalendar = useCan('calendar.view');
   const range = useMemo(() => {
     const start = new Date();
@@ -97,21 +104,26 @@ export function UpcomingRails() {
     return [
       {
         key: 'movies',
+        medium: 'movie' as const,
         title: `Movies in the next ${MONTHS_AHEAD} months`,
         items: future.filter((event) => event.type === 'movie'),
       },
       {
         key: 'seasons',
+        medium: 'episode' as const,
         title: `New seasons in the next ${MONTHS_AHEAD} months`,
         items: future.filter((event) => event.type === 'episode' && PREMIERE_RE.test(event.subtitle ?? '')),
       },
       {
         key: 'episodes',
+        medium: 'episode' as const,
         title: 'Airing this week',
         items: future.filter((event) => event.type === 'episode' && new Date(event.date).getTime() <= weekEnd),
       },
-    ].filter((rail) => rail.items.length > 0);
-  }, [query.data, range.startMs]);
+    ]
+      .filter((rail) => (only ? rail.medium === only : true))
+      .filter((rail) => rail.items.length > 0);
+  }, [only, query.data, range.startMs]);
 
   if (!canSeeCalendar || rails.length === 0) return null;
 

@@ -12,6 +12,7 @@ import { FadeInImage } from '@/components/media/fade-in-image';
 import { PreviewBackdrop } from '@/components/jellyfin-streaming/cinematic/preview-backdrop';
 import { useWatchModal } from '@/components/jellyfin-streaming/cinematic/watch-modal';
 import { useHoverPreviewActive } from '@/components/jellyfin-streaming/cinematic/hover-preview-slot';
+import { usePreviewSource } from '@/components/jellyfin-streaming/cinematic/use-preview-item';
 import { useCompactViewport } from '@/lib/hooks/use-compact-viewport';
 import { useFavoriteToggle } from '@/components/jellyfin-streaming/cinematic/use-favorite-toggle';
 import { sampleWashColor, washGradient } from '@/lib/jellyfin-playback/ambient-color';
@@ -44,6 +45,9 @@ export function CinematicHero({
   const compact = useCompactViewport();
   const hoverPreviewActive = useHoverPreviewActive();
   const [washColor, setWashColor] = useState<string | null>(null);
+  // The billboard is almost always a series, which has no media source of its
+  // own — this resolves the episode the clip is sampled from.
+  const previewSource = usePreviewSource(item, !compact);
 
   // Trailers are not in the home payload's field set, so they cost one extra
   // request — fired only for the single billboard title.
@@ -137,8 +141,8 @@ export function CinematicHero({
     >
       <PreviewBackdrop
         backdropUrl={backdrop}
-        itemId={item.Id}
-        runtimeTicks={item.RunTimeTicks}
+        itemId={previewSource.itemId}
+        runtimeTicks={previewSource.runtimeTicks}
         trailerUrl={detail.data?.item?.RemoteTrailers?.[0]?.Url}
         enabled
         // Two previews at once is both noisy and a second transcode, so the

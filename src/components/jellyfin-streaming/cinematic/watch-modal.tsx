@@ -18,7 +18,9 @@ import { PageSpinner } from '@/components/ui/page-spinner';
 import { HeroTitle } from '@/components/jellyfin-streaming/hero-title';
 import { PreviewBackdrop } from '@/components/jellyfin-streaming/cinematic/preview-backdrop';
 import { CatalogPosterCard } from '@/components/jellyfin-streaming/poster-card';
+import { MediaRail } from '@/components/jellyfin-streaming/media-rail';
 import { useJellyfinPlayback } from '@/components/jellyfin-streaming/playback-provider';
+import { usePreviewSource } from '@/components/jellyfin-streaming/cinematic/use-preview-item';
 import { FadeInImage } from '@/components/media/fade-in-image';
 import { jellyfinBackdropUrl, jellyfinCardImage, jellyfinImageUrl, jellyfinPosterUrl } from '@/lib/jellyfin-playback/image';
 import { formatCertificate, formatCommunityRating } from '@/lib/jellyfin-playback/metadata';
@@ -226,6 +228,9 @@ function WatchDetailModal({ itemId, onClose }: { itemId: string | null; onClose:
   });
 
   const item = query.data?.item;
+  // A series has no media source of its own, so the clip is sampled from the
+  // episode the viewer would land on.
+  const previewSource = usePreviewSource(item, Boolean(itemId));
   const similar = query.data?.similar ?? [];
   // The site never leaves this section out. When Jellyfin has no "similar"
   // for a title, same-genre neighbours keep the overlay's shape intact.
@@ -350,7 +355,18 @@ function WatchDetailModal({ itemId, onClose }: { itemId: string | null; onClose:
         // position:fixed, dropping the panel into normal flow at the foot of
         // the page where it was invisible. The palette does not need it: the
         // tokens live on the root, which the portal is still inside.
-        className="hpr-cine-modal top-8 flex max-h-[calc(100vh-4rem)] w-[92vw] max-w-[850px] translate-y-0 flex-col gap-0 overflow-x-hidden overflow-y-auto rounded-[6px] border-0 bg-[#181818] p-0 shadow-2xl sm:max-w-[850px]"
+        // top-4 / 100dvh-2rem rather than top-8 / 100vh-4rem: the site's panel
+        // effectively fills the window, and a 64px vertical inset left ours
+        // floating in the middle of a tall viewport with obvious ground above
+        // and below it. dvh so a phone browser's collapsing toolbar does not
+        // leave the foot of the panel under it. Still max-height, not height:
+        // a film with no episode list is genuinely short, and stretching it
+        // would just add empty panel below the last section.
+        //
+        // hpr-cine-scroll restyles the panel's own scrollbar — the platform
+        // one is a light grey slab down the side of a #181818 sheet, which is
+        // the loudest thing on the overlay.
+        className="hpr-cine-modal hpr-cine-scroll top-4 flex max-h-[calc(100dvh-2rem)] w-[92vw] max-w-[850px] translate-y-0 flex-col gap-0 overflow-x-hidden overflow-y-auto rounded-[6px] border-0 bg-[#181818] p-0 shadow-2xl sm:max-w-[850px]"
       >
         {!item ? (
           <div className="min-h-64">
@@ -386,8 +402,8 @@ function WatchDetailModal({ itemId, onClose }: { itemId: string | null; onClose:
               ) : (
                 <PreviewBackdrop
                   backdropUrl={backdrop}
-                  itemId={item.IsFolder ? undefined : item.Id}
-                  runtimeTicks={item.RunTimeTicks}
+                  itemId={previewSource.itemId}
+                  runtimeTicks={previewSource.runtimeTicks}
                   trailerUrl={item.RemoteTrailers?.[0]?.Url}
                   enabled
                   priority
@@ -523,22 +539,32 @@ function WatchDetailModal({ itemId, onClose }: { itemId: string | null; onClose:
             )}
 
             {moreLikeThis.length > 0 && (
-              <ModalSection title="More Like This">
-                {/* A grid, not a rail: the site changes shape inside the
-                    overlay because there is no room to scroll one sideways. */}
-                <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
-                  {moreLikeThis.slice(0, 9).map((entry) => (
+              // A rail, not a grid. The grid it replaces had to pass `flat`,
+              // which is what dropped the hover popover here while every other
+              // More Like This in the app has one — hovering a card in the
+              // overlay did nothing at all.
+              //
+              // A rail also gets the edge clamping for free: MediaRail stamps
+              // data-pop-align from the row's live geometry, so the leftmost
+              // card grows rightward and the rightmost leftward and neither is
+              // cut off by the panel's own overflow. A CSS grid cannot express
+              // that, which is the other half of why the cards were flat.
+              //
+              // The row's bleed-and-repad uses --main-pad-x, which is 48px at
+              // this breakpoint — exactly the panel's own px-12 gutter, so the
+              // tiles reach the panel edge and pad back to the text column.
+              <section className="px-12 pb-8">
+                <MediaRail title="More Like This" count={moreLikeThis.length}>
+                  {moreLikeThis.slice(0, 12).map((entry) => (
                     <CatalogPosterCard
                       key={entry.Id}
                       item={entry}
                       shape="landscape"
-                      flat
-                      className="w-full"
                       onPlay={(next) => void playback.playItem(next)}
                     />
                   ))}
-                </div>
-              </ModalSection>
+                </MediaRail>
+              </section>
             )}
 
             <ModalSection title={`About ${heroName}`}>

@@ -722,13 +722,26 @@ export class JellyfinClient {
     });
   }
 
-  async getNextUp(params: { limit?: number; parentId?: string } = {}): Promise<JellyfinItemsResponse> {
+  /**
+   * `/Shows/NextUp`, which takes two different narrowing parameters.
+   *
+   * `ParentId` filters by *library*; `SeriesId` is the only way to ask for one
+   * show's next episode. Sending a series id as ParentId — which is what this
+   * did — reliably returns nothing: NextUp's entries are episodes, whose
+   * ParentId is their season, so no row can ever match a series id. Every
+   * per-series caller therefore got an empty list, which is why a series detail
+   * page had no Next Up rail and a half-watched show never offered Resume.
+   */
+  async getNextUp(
+    params: { limit?: number; parentId?: string; seriesId?: string } = {},
+  ): Promise<JellyfinItemsResponse> {
     return this.get<JellyfinItemsResponse>('/Shows/NextUp', {
       UserId: this.requireUserId(),
       Limit: params.limit ?? 20,
       Fields: CATALOG_LIST_FIELDS,
       EnableImageTypes: 'Primary,Backdrop,Thumb',
       ...(params.parentId ? { ParentId: params.parentId } : {}),
+      ...(params.seriesId ? { SeriesId: params.seriesId } : {}),
     });
   }
 

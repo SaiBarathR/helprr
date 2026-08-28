@@ -166,6 +166,11 @@ export function CinematicCard({
       onPointerEnter={(event) => {
         // Pointer only: a touch "hover" would start a stream on tap.
         if (event.pointerType !== 'mouse') return;
+        // A tile only part-way into view does not expand (see the
+        // data-pop-clip rules), so it must not spend a transcode either —
+        // brushing past the clipped card at a row's edge on the way to its
+        // arrow is the single most common way to hover one.
+        if (event.currentTarget.dataset.popClip === '1') return;
         window.clearTimeout(hoverTimer.current);
         // Long enough that scanning a row costs nothing; the expand itself
         // lands at 300ms, so the clip arrives once you have clearly stopped.

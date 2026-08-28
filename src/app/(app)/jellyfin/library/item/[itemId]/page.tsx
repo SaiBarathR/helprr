@@ -32,6 +32,7 @@ import { CatalogElsewhere } from '@/components/jellyfin-streaming/catalog-elsewh
 import { CatalogRatingsStrip } from '@/components/jellyfin-streaming/catalog-ratings-strip';
 import { PreviewBackdrop } from '@/components/jellyfin-streaming/cinematic/preview-backdrop';
 import { MobileDetailTabs } from '@/components/jellyfin-streaming/cinematic/mobile-detail-tabs';
+import { usePreviewSource } from '@/components/jellyfin-streaming/cinematic/use-preview-item';
 import { useWatchSkin } from '@/lib/hooks/use-watch-skin';
 import { useCompactViewport } from '@/lib/hooks/use-compact-viewport';
 import { cn } from '@/lib/utils';
@@ -77,12 +78,38 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
     void playback.playItem(target);
   }, [autoPlayRequested, playback, query.data?.item]);
 
+  /**
+   * Open at the top, every time.
+   *
+   * The page mounts as a spinner barely taller than the viewport and then grows
+   * by a few thousand pixels once the payload lands. A pending scroll position
+   * is resolved against whichever height the browser happens to see first, so
+   * arriving here from a scrolled rail could leave the hero already part-way
+   * off the top — which is the "opens somewhere in the middle" the owner sees.
+   *
+   * Reset when the route changes, and once more when the content that changes
+   * the height has actually rendered. After that the viewer's own scrolling is
+   * never touched: `settled` latches per item id.
+   */
+  const scrollSettledRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (scrollSettledRef.current === itemId) return;
+    window.scrollTo({ top: 0, behavior: 'instant' });
+    if (query.isSuccess) scrollSettledRef.current = itemId;
+  }, [itemId, query.isSuccess]);
+
   // The reference series page leads its sections with Next Up.
   const nextUpQuery = useQuery({
     queryKey: ['jellyfin', 'catalog', 'next-up', itemId],
-    queryFn: jsonFetcher<CatalogItemsResponse>(`/api/jellyfin/catalog/next-up?parentId=${encodeURIComponent(itemId)}`),
+    // seriesId, not parentId: parentId filters by library, so a series id there
+    // matches nothing and this rail was always empty.
+    queryFn: jsonFetcher<CatalogItemsResponse>(`/api/jellyfin/catalog/next-up?seriesId=${encodeURIComponent(itemId)}`),
     enabled: query.data?.item?.Type === 'Series',
   });
+  // A series has no media source of its own, so the clip is sampled from the
+  // episode the viewer would land on rather than from the series id — which
+  // could only ever have failed.
+  const previewSource = usePreviewSource(item, cinematic);
   const streams = useMemo(() => item?.MediaStreams ?? [], [item]);
   const audioStreams = useMemo(() => streams.filter((s) => s.Type === 'Audio'), [streams]);
   const subtitleStreams = useMemo(() => streams.filter((s) => s.Type === 'Subtitle'), [streams]);
@@ -117,11 +144,35 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
       ? jellyfinImageUrl(logoOwnerId, 'Logo', 720)
       : null;
   const runtimeSeconds = ticksToSeconds(item.RunTimeTicks);
-  const resumeSeconds = ticksToSeconds(item.UserData?.PlaybackPositionTicks);
+  /**
+   * What Play acts on, and therefore what "resume" means here.
+   *
+   * A series carries no PlaybackPositionTicks of its own — progress lives on
+   * its episodes — so reading the series' own UserData meant the button on a
+   * half-watched show always said "Play" while the same show's episode page
+   * said "Resume". The episode a viewer would land on is Jellyfin's Next Up,
+   * which is also exactly what playItem(series) starts (see resolvePlayable),
+   * so the label and the action cannot disagree.
+   */
+  const resumeTarget = item.Type === 'Series'
+    ? (nextUpQuery.data?.items?.[0] ?? null)
+    : item;
+  const resumeSeconds = ticksToSeconds(resumeTarget?.UserData?.PlaybackPositionTicks);
+  // A series' own RunTimeTicks is not a duration anything can be a fraction of.
+  const resumeRuntimeSeconds = ticksToSeconds(resumeTarget?.RunTimeTicks) || runtimeSeconds;
   const canResume = resumeSeconds > 0;
+  // `S1:E5`, when the thing being played is an episode of something.
+  const resumeCue = resumeTarget?.Type === 'Episode'
+    && resumeTarget.ParentIndexNumber != null
+    && resumeTarget.IndexNumber != null
+    ? `S${resumeTarget.ParentIndexNumber}:E${resumeTarget.IndexNumber}`
+    : null;
+  const playLabel = canResume
+    ? (resumeCue ? `Resume ${resumeCue}` : `Resume · ${formatClock(resumeSeconds)}`)
+    : resumeCue ? `Play ${resumeCue}` : 'Play';
   const certificate = formatCertificate(item.OfficialRating);
   const rating = formatCommunityRating(item.CommunityRating);
-  const finishes = endsAt(runtimeSeconds - resumeSeconds);
+  const finishes = endsAt(resumeRuntimeSeconds - resumeSeconds);
   const people = item.People ?? [];
   const trailers = item.RemoteTrailers ?? [];
   const trackOptions = { audioStreamIndex: audioIndex, subtitleStreamIndex: subtitleIndex };
@@ -166,20 +217,20 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
         )}
       >
         <div className={cn(stacked ? 'relative aspect-video w-full overflow-hidden' : 'contents')}>
-        {stacked && resumeSeconds > 0 && runtimeSeconds > 0 && (
+        {stacked && resumeSeconds > 0 && resumeRuntimeSeconds > 0 && (
           // The app rules the foot of the hero video in brand red, showing how
           // far into the title you already are.
           <span className="absolute inset-x-0 bottom-0 z-20 h-[3px] bg-white/25">
             <span
               className="block h-full bg-[#e50914]"
-              style={{ width: `${Math.min(100, (resumeSeconds / runtimeSeconds) * 100)}%` }}
+              style={{ width: `${Math.min(100, (resumeSeconds / resumeRuntimeSeconds) * 100)}%` }}
             />
           </span>
         )}
         <PreviewBackdrop
           backdropUrl={backdrop}
-          itemId={item.IsFolder ? undefined : item.Id}
-          runtimeTicks={item.RunTimeTicks}
+          itemId={previewSource.itemId}
+          runtimeTicks={previewSource.runtimeTicks}
           trailerUrl={trailers[0]?.Url}
           // Autoplay is a cinematic-skin behaviour; classic stays still art.
           enabled={skin === 'cinematic'}
@@ -192,10 +243,23 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
             always has a dark ground, whatever the artwork happens to be.
             Classic keeps the centred bottom fade it was designed around. */}
         {cinematic ? (
+          stacked ? (
+            // A phone writes nothing over the still — the title, the meta row
+            // and the synopsis all sit *below* it — so the left-to-right ramp
+            // the desktop hero needs has nothing to protect here and simply
+            // buries the left of the picture under 75% black. Only the bottom
+            // edge needs softening, where the still meets the page, plus a
+            // light top vignette to hold the back arrow.
+            <>
+              <span className="absolute inset-0 bg-gradient-to-t from-black from-0% via-black/20 via-25% to-transparent to-55%" />
+              <span className="absolute inset-x-0 top-0 h-20 bg-gradient-to-b from-black/50 to-transparent" />
+            </>
+          ) : (
           <>
             <span className="absolute inset-0 bg-gradient-to-r from-black from-5% via-black/75 via-45% to-transparent to-80%" />
             <span className="absolute inset-0 bg-gradient-to-t from-black from-2% via-black/45 via-40% to-transparent to-75%" />
           </>
+          )
         ) : (
           <span className="absolute inset-0 bg-gradient-to-t from-background from-28% via-background/80 via-58% to-transparent" />
         )}
@@ -306,7 +370,7 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
               onClick={() => void playback.playItem(item, trackOptions)}
             >
               <Play className="fill-current" data-icon="inline-start" />
-              {canResume ? `Resume · ${formatClock(resumeSeconds)}` : 'Play'}
+              {playLabel}
             </Button>
             {canResume && (
               <Button

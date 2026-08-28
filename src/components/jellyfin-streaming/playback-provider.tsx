@@ -226,7 +226,80 @@ async function fetchCatalogItems(params: Record<string, string>): Promise<Jellyf
   return data.items ?? [];
 }
 
-async function resolvePlayable(item: JellyfinItem): Promise<JellyfinItem[]> {
+/**
+ * A resolved play request: what goes in the queue, and which entry of it the
+ * caller actually asked for.
+ *
+ * The start index has to travel with the items. Playing episode 5 of a
+ * thirteen-episode show queues all thirteen, and the one thing the queue must
+ * agree with the player about is which of them is on screen.
+ */
+interface Playable {
+  items: JellyfinItem[];
+  startIndex: number;
+}
+
+/**
+ * How many episodes a series queue holds.
+ *
+ * Every episode of the show, in broadcast order, because that is what the
+ * queue panel lists and what "next episode" has to be able to cross a season
+ * boundary for. Bounded so a thousand-episode show cannot turn one Play into a
+ * multi-megabyte payload; libraries past this are served the first 500, and
+ * playback still advances normally within them.
+ */
+const SERIES_QUEUE_LIMIT = 500;
+
+/** Every episode of a series, in season-then-episode order. */
+async function seriesEpisodes(seriesId: string): Promise<JellyfinItem[]> {
+  return fetchCatalogItems({
+    parentId: seriesId,
+    includeItemTypes: 'Episode',
+    recursive: 'true',
+    sortBy: 'ParentIndexNumber,IndexNumber',
+    limit: String(SERIES_QUEUE_LIMIT),
+  });
+}
+
+/**
+ * The member's own Next Up for a series, if Jellyfin has one.
+ *
+ * Keyed by series even when a season was asked for: `/Shows/NextUp` has no
+ * season filter, and the caller scopes the answer to the season it wants.
+ */
+async function nextUpEpisode(seriesId: string): Promise<JellyfinItem | null> {
+  const res = await fetch(`/api/jellyfin/catalog/next-up?seriesId=${encodeURIComponent(seriesId)}`)
+    .catch(() => null);
+  if (!res?.ok) return null;
+  const data = await res.json().catch(() => null) as { items?: JellyfinItem[] } | null;
+  return data?.items?.[0] ?? null;
+}
+
+/**
+ * Flatten resolved play requests into one queue, and translate the caller's
+ * index into an index into it.
+ *
+ * `startIndex` is an index into what the caller passed, and each of those can
+ * expand into many queue entries — a series into its episodes, an album into
+ * its tracks. Used directly, playing episode 5 of a thirteen-episode show
+ * landed on episode 1: the request had become a thirteen-item queue while the
+ * caller was still saying "index 0".
+ */
+export function flattenPlayables(
+  resolved: Playable[],
+  startIndex: number,
+): { items: JellyfinItem[]; index: number } {
+  const wanted = Math.min(Math.max(0, startIndex), Math.max(0, resolved.length - 1));
+  const items: JellyfinItem[] = [];
+  let index = 0;
+  resolved.forEach((entry, entryIndex) => {
+    if (entryIndex === wanted) index = items.length + entry.startIndex;
+    items.push(...entry.items);
+  });
+  return { items, index: Math.min(index, Math.max(0, items.length - 1)) };
+}
+
+async function resolvePlayable(item: JellyfinItem): Promise<Playable> {
   if (item.Type === 'MusicAlbum' || item.Type === 'Playlist' || item.Type === 'Folder') {
     const items = await fetchCatalogItems({
       parentId: item.Id,
@@ -235,7 +308,7 @@ async function resolvePlayable(item: JellyfinItem): Promise<JellyfinItem[]> {
       sortBy: item.Type === 'MusicAlbum' ? 'IndexNumber' : 'SortName',
       limit: '200',
     });
-    return items.length ? items : [item];
+    return { items: items.length ? items : [item], startIndex: 0 };
   }
   if (item.Type === 'MusicArtist') {
     const items = await fetchCatalogItems({
@@ -245,7 +318,7 @@ async function resolvePlayable(item: JellyfinItem): Promise<JellyfinItem[]> {
       sortBy: 'Album,IndexNumber',
       limit: '200',
     });
-    return items.length ? items : [item];
+    return { items: items.length ? items : [item], startIndex: 0 };
   }
   if (item.Type === 'BoxSet') {
     const items = await fetchCatalogItems({
@@ -255,51 +328,53 @@ async function resolvePlayable(item: JellyfinItem): Promise<JellyfinItem[]> {
       sortBy: 'SortName',
       limit: '200',
     });
-    return items.length ? items : [item];
+    return { items: items.length ? items : [item], startIndex: 0 };
   }
-  if (item.Type === 'Series' || item.Type === 'Season') {
-    const parentId = item.Type === 'Season' ? (item.SeriesId || item.Id) : item.Id;
-    const nextUp = await fetch(`/api/jellyfin/catalog/next-up?parentId=${encodeURIComponent(parentId)}`);
-    if (nextUp.ok) {
-      const data = await nextUp.json() as { items?: JellyfinItem[] };
-      if (data.items?.[0]) {
-        const rest = await remainingEpisodes(data.items[0]);
-        return [data.items[0], ...rest];
-      }
-    }
-    const episodes = await fetchCatalogItems({
-      parentId: item.Id,
-      includeItemTypes: 'Episode',
-      recursive: 'true',
-      sortBy: 'ParentIndexNumber,IndexNumber',
-      limit: '200',
-    });
-    const unplayed = episodes.find((candidate) => !candidate.UserData?.Played);
-    if (unplayed) {
-      const start = episodes.findIndex((candidate) => candidate.Id === unplayed.Id);
-      return start >= 0 ? episodes.slice(start) : [unplayed];
-    }
-    if (episodes[0]) return episodes;
-  }
-  if (item.Type === 'Episode') {
-    const rest = await remainingEpisodes(item);
-    return [item, ...rest];
-  }
-  return [item];
-}
 
-async function remainingEpisodes(item: JellyfinItem): Promise<JellyfinItem[]> {
-  if (!item.SeriesId) return [];
-  const episodes = await fetchCatalogItems({
-    parentId: item.SeriesId,
-    includeItemTypes: 'Episode',
-    recursive: 'true',
-    sortBy: 'ParentIndexNumber,IndexNumber',
-    limit: '200',
-  });
-  const index = episodes.findIndex((candidate) => candidate.Id === item.Id);
-  if (index < 0) return [];
-  return episodes.slice(index + 1);
+  /**
+   * Series, season and episode all queue the *whole show*, and only differ in
+   * where they start.
+   *
+   * jellyfin-web queues from the played episode onward and nothing before it
+   * (playbackManager `translateItemsForPlayback` filters the episode list with
+   * a `foundItem` flag), which is fine for its purpose — it has no episode
+   * panel in the player, only auto-advance. Ours does, and inheriting that
+   * shape is exactly what made it wrong: starting episode 5 of thirteen gave a
+   * nine-item list whose first entry was the episode playing, so the panel
+   * reported "Queue · 9" and highlighted row 1. There is no way to show a
+   * series' episodes from a queue that begins at the current one, so the queue
+   * carries the series and the index carries the position — which is also what
+   * lets "next" cross into the following season.
+   */
+  if (item.Type === 'Series' || item.Type === 'Season') {
+    const seriesId = (item.Type === 'Season' ? item.SeriesId : item.Id) || item.Id;
+    const episodes = await seriesEpisodes(seriesId);
+    if (episodes.length === 0) return { items: [item], startIndex: 0 };
+    // Asking for a season means starting inside that season, even though the
+    // queue runs the length of the series.
+    const scope = item.Type === 'Season'
+      ? episodes.filter((candidate) => candidate.SeasonId === item.Id
+        || (item.IndexNumber != null && candidate.ParentIndexNumber === item.IndexNumber))
+      : episodes;
+    const pool = scope.length > 0 ? scope : episodes;
+    const upNext = await nextUpEpisode(seriesId);
+    const pick = (upNext && pool.find((candidate) => candidate.Id === upNext.Id))
+      ?? pool.find((candidate) => !candidate.UserData?.Played)
+      ?? pool[0];
+    const at = pick ? episodes.findIndex((candidate) => candidate.Id === pick.Id) : 0;
+    return { items: episodes, startIndex: Math.max(0, at) };
+  }
+
+  if (item.Type === 'Episode' && item.SeriesId) {
+    const episodes = await seriesEpisodes(item.SeriesId);
+    const at = episodes.findIndex((candidate) => candidate.Id === item.Id);
+    // A missing episode means the list was truncated by the limit above, or
+    // Jellyfin does not file it under this series; play it on its own rather
+    // than dropping the viewer somewhere else in the show.
+    if (at >= 0) return { items: episodes, startIndex: at };
+  }
+
+  return { items: [item], startIndex: 0 };
 }
 
 function shuffleInPlace<T>(items: T[]): T[] {
@@ -309,6 +384,31 @@ function shuffleInPlace<T>(items: T[]): T[] {
     [next[i], next[j]] = [next[j], next[i]];
   }
   return next;
+}
+
+/**
+ * Start playback without treating an interrupted start as a failure.
+ *
+ * `el.play()` rejects with AbortError whenever a new load request lands on the
+ * element before the previous play settles — which is *routine* here: hls.js
+ * assigns its own MediaSource URL from `attachMedia`, and switching queue
+ * entries replaces the source outright. The rejection was propagating out of
+ * attachMedia into startItem's catch, so picking another episode from the
+ * queue put "The play() request was interrupted by a new load request" on
+ * screen even though the new episode was loading correctly. NotAllowedError is
+ * the autoplay policy declining, which is also not a broken file — the viewer
+ * can still press play.
+ *
+ * This is exactly jellyfin-web's htmlMediaHelper.playWithPromise.
+ */
+async function playSafely(el: HTMLMediaElement): Promise<void> {
+  try {
+    await el.play();
+  } catch (cause) {
+    const name = (cause instanceof Error ? cause.name : '').toLowerCase();
+    if (name === 'aborterror' || name === 'notallowederror') return;
+    throw cause;
+  }
 }
 
 function clearTextTracks(el: HTMLVideoElement) {
@@ -338,6 +438,16 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
   const orderRef = useRef<JellyfinItem[]>([]);
   const progressTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const retryingRef = useRef(false);
+  /**
+   * Which start attempt is current.
+   *
+   * Every startItem is a chain of awaits — PlaybackInfo, attach, the Playing
+   * report — and picking a second episode while the first is mid-chain used to
+   * leave both of them writing status, stream and error state in whatever order
+   * they happened to finish. A superseded attempt now stops at its next
+   * checkpoint instead of reporting its own outcome over the live one.
+   */
+  const startTokenRef = useRef(0);
   const playbackStartRef = useRef(0);
   const subtitleOffsetRef = useRef(0);
   const shuffledRef = useRef(false);
@@ -462,6 +572,18 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
         hls.loadSource(next.mediaUrl);
         hls.attachMedia(el);
         hlsRef.current = hls;
+        // attachMedia swaps in a MediaSource URL asynchronously, so calling
+        // play() straight after it races its own load. Waiting for the parsed
+        // manifest is the point at which the element genuinely has a source.
+        // The timeout is a backstop only: a manifest that never parses raises
+        // ERROR above, which fails playback through the normal path.
+        await new Promise<void>((resolve) => {
+          const done = window.setTimeout(resolve, 10_000);
+          hls.once(Hls.Events.MANIFEST_PARSED, () => {
+            window.clearTimeout(done);
+            resolve();
+          });
+        });
       } else {
         el.src = next.mediaUrl;
       }
@@ -516,10 +638,24 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
       enable();
     }
 
-    await el.play();
+    await playSafely(el);
   }, [failPlayback, maxBitrate, muted, playbackRate, volume]);
 
   const startItem = useCallback(async (nextItem: JellyfinItem, options: PlayOptions = {}) => {
+    const token = startTokenRef.current + 1;
+    startTokenRef.current = token;
+    const superseded = () => startTokenRef.current !== token;
+    /**
+     * The encoder the outgoing item is holding.
+     *
+     * Jellyfin keeps a transcode alive for its idle timeout after the client
+     * stops reading it, so every switch that did not go through restartWith or
+     * seek — next, previous, and now every pick from the queue panel — left one
+     * running on the server. With an episode list in the player that is a click
+     * away rather than a rarity, so it is released here, once the replacement
+     * has actually been granted.
+     */
+    const outgoingSession = streamRef.current?.playSessionId;
     setStatus('loading');
     setError(null);
     setNeedsJellyfinConnect(false);
@@ -539,6 +675,17 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     };
     try {
       const nextStream = await fetchStream(nextItem.Id, request);
+      if (outgoingSession && outgoingSession !== nextStream.playSessionId) {
+        // Fire and forget: the viewer is waiting on the new stream, not on the
+        // old one being tidied up.
+        void stopEncodings(outgoingSession);
+      }
+      if (superseded()) {
+        // This attempt lost the race, so nothing will ever read the session it
+        // was just granted. Hand it back rather than leaving it to time out.
+        void stopEncodings(nextStream.playSessionId);
+        return;
+      }
       streamRef.current = nextStream;
       setStream(nextStream);
       setAudioStreamIndex(nextStream.mediaSource.DefaultAudioStreamIndex ?? request.audioStreamIndex ?? null);
@@ -546,6 +693,7 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
       setDurationSeconds(ticksToSeconds(nextStream.mediaSource.RunTimeTicks || nextItem.RunTimeTicks));
       setVideoExpanded(nextItem.MediaType !== 'Audio');
       await attachMedia(nextStream, request.subtitleStreamIndex);
+      if (superseded()) return;
       await report('playing', nextStream, {
         positionTicks: secondsToTicks(mediaRef.current?.currentTime || 0) || resumeTicks,
         isPaused: false,
@@ -559,12 +707,16 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
         playbackStartTimeTicks: playbackStartRef.current,
         maxStreamingBitrate: maxBitrate || undefined,
       });
+      if (superseded()) return;
       setStatus('playing');
       fetch(`/api/jellyfin/catalog/items/${nextItem.Id}?expand=segments`)
         .then((res) => res.ok ? res.json() : null)
         .then((data: { segments?: MediaSegment[] } | null) => setSegments(data?.segments ?? []))
         .catch(() => setSegments([]));
     } catch (cause) {
+      // A newer attempt owns the player now; this one's failure is not the
+      // viewer's problem and must not replace what is actually on screen.
+      if (superseded()) return;
       const message = cause instanceof Error ? cause.message : 'Playback failed';
       if (cause instanceof JellyfinConnectRequiredError) {
         setStatus('error');
@@ -600,16 +752,22 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
   }, [attachMedia, maxBitrate, muted, playbackRate, volume]);
 
   const playItems = useCallback(async (items: JellyfinItem[], startIndex = 0, options?: PlayOptions) => {
-    const resolved = (await Promise.all(items.map(resolvePlayable))).flat();
-    orderRef.current = resolved;
+    const resolved = await Promise.all(items.map(resolvePlayable));
+    const { items: flat, index: queueIndex } = flattenPlayables(resolved, startIndex);
+
+    orderRef.current = flat;
     const shouldShuffle = options?.shuffle ?? shuffled;
     if (options?.shuffle) {
       shuffledRef.current = true;
       setShuffled(true);
     }
-    const nextQueue = shouldShuffle ? shuffleInPlace(resolved) : resolved;
+    // Shuffling discards the requested position by definition — the whole
+    // point is a new order — so it starts at the top of that order.
+    const nextQueue = shouldShuffle ? shuffleInPlace(flat) : flat;
+    indexRef.current = shouldShuffle
+      ? 0
+      : Math.min(queueIndex, Math.max(0, nextQueue.length - 1));
     queueRef.current = nextQueue;
-    indexRef.current = Math.min(startIndex, Math.max(0, nextQueue.length - 1));
     setQueue(nextQueue);
     setIndex(indexRef.current);
     const nextItem = nextQueue[indexRef.current];
@@ -633,10 +791,17 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     if (!nextItem) return;
     indexRef.current = nextIndex;
     setIndex(nextIndex);
-    await startItem(nextItem, { startTimeTicks: 0 });
+    // No explicit startTimeTicks, so startItem falls back to the episode's own
+    // resume position. Forcing 0 meant picking a half-watched episode out of
+    // the panel restarted it, which is not what any episode row in the rest of
+    // the app does.
+    await startItem(nextItem);
   }, [startItem]);
 
   const stop = useCallback(async () => {
+    // Retire any start still in flight, or it will finish into a player the
+    // viewer has already closed.
+    startTokenRef.current += 1;
     clearTimers();
     const current = streamRef.current;
     const el = mediaRef.current;

@@ -38,7 +38,23 @@ const ALREADY_ON_HOME = new Set(['continue-watching', 'next-up', 'favorites']);
 const RANKED_RAIL_ID = 'top-picks';
 const RANKED_LIMIT = 10;
 
-export function RecommendationRails({ limit = 6 }: { limit?: number }) {
+/**
+ * The fewest surviving items a type-filtered rail may keep.
+ *
+ * Narrowing a mixed rail to one medium can leave it with two entries, and a
+ * two-card row reads as broken rather than as a short recommendation.
+ */
+const MIN_FILTERED_ITEMS = 6;
+
+export function RecommendationRails({ limit = 6, mediaType }: {
+  limit?: number;
+  /**
+   * Keep only titles of one medium. The Movies and TV hubs are single-medium
+   * screens, and the engine's rails are mixed — an unfiltered "Because you
+   * watched" on the Movies page recommends series.
+   */
+  mediaType?: 'movie' | 'tv';
+}) {
   const canSee = useCan('recommendations.view');
   const cinematic = useWatchSkin() === 'cinematic';
   const query = useQuery({
@@ -49,7 +65,11 @@ export function RecommendationRails({ limit = 6 }: { limit?: number }) {
   });
 
   const rails = (query.data?.rails ?? [])
-    .filter((rail) => rail.items.length > 0 && !ALREADY_ON_HOME.has(rail.id))
+    .filter((rail) => !ALREADY_ON_HOME.has(rail.id))
+    .map((rail) => (mediaType
+      ? { ...rail, items: rail.items.filter((item) => item.mediaType === mediaType) }
+      : rail))
+    .filter((rail) => rail.items.length >= (mediaType ? MIN_FILTERED_ITEMS : 1))
     .slice(0, limit);
 
   // Three cross-app signals, resolved once for the whole set of rails: what

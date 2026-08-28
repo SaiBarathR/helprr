@@ -30,6 +30,7 @@ import {
   useJellyfinMediaRef,
   useJellyfinPlayback,
 } from '@/components/jellyfin-streaming/playback-provider';
+import { QueuePanel } from '@/components/jellyfin-streaming/queue-panel';
 import { bitrateOptions } from '@/lib/jellyfin-playback/device-profile';
 import { formatClock, ticksToSeconds } from '@/lib/jellyfin-playback/device';
 import { jellyfinPosterUrl } from '@/lib/jellyfin-playback/image';
@@ -98,6 +99,31 @@ export function VideoStage() {
       if (playbackRef.current.status === 'playing') setControlsVisible(false);
     }, 3500);
   }, []);
+
+  /**
+   * Freeze the page while the player owns the screen.
+   *
+   * The player is a `position: fixed` sheet over the route it was started
+   * from, so the document keeps both its scroll position and its scrollbar —
+   * and that scrollbar is what shows up down the right-hand side of the video
+   * in windowed *and* fullscreen mode, because fullscreening the documentElement
+   * takes the page's own scroll container with it. Nothing behind the player is
+   * reachable while it is up, so there is nothing to scroll.
+   *
+   * The lock is a data attribute rather than an inline style so the rule lives
+   * with the rest of the section's CSS, and so a crash mid-teardown leaves one
+   * stale attribute rather than a permanently unscrollable app.
+   *
+   * `expanded` covers the full-screen audio player too — that is the same flag
+   * with an Audio item behind it.
+   */
+  useEffect(() => {
+    if (!expanded) return undefined;
+    document.documentElement.dataset.watchPlayerOpen = 'true';
+    return () => {
+      delete document.documentElement.dataset.watchPlayerOpen;
+    };
+  }, [expanded]);
 
   // Browser back used to leave the video fullscreen over whatever route it
   // landed on. Collapse to the mini player instead, so back reveals the page.
@@ -309,9 +335,8 @@ export function VideoStage() {
         <PictureInPicture2 />
       </Button>
       <Button variant="ghost" size="sm" className="text-white" onClick={() => setPanel(panel === 'stats' ? 'none' : 'stats')}>Stats</Button>
-      <Button variant="ghost" size="icon" className="text-white" onClick={() => void playback.stop()} aria-label="Stop">
-        <X />
-      </Button>
+      {/* No Stop here any more — Close sits in the top bar, on screen the whole
+          time the player is open. */}
     </>
   );
 
@@ -390,6 +415,22 @@ export function VideoStage() {
                 <div className="flex items-start gap-3 px-4 pt-[max(1rem,env(safe-area-inset-top))] pb-4 md:px-8">
                   <Button variant="ghost" size="icon" className="shrink-0 text-white" onClick={() => playback.setVideoExpanded(false)} aria-label="Minimize player">
                     <ChevronDown />
+                  </Button>
+                  {/* Minimize and Close are different things and the player
+                      needs both up here. Minimize keeps playing in the corner;
+                      this ends playback and puts the page back. It used to
+                      exist only as an X buried in the gear panel, three taps
+                      from the surface, which is not where anyone looks for the
+                      way out of a full-screen player. */}
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="shrink-0 text-white"
+                    onClick={() => void playback.stop()}
+                    aria-label="Close player"
+                    title="Close player"
+                  >
+                    <X />
                   </Button>
                   <div className="min-w-0 md:hidden">
                     <p className="truncate text-lg font-semibold text-white">{playback.item?.Name}</p>
@@ -676,31 +717,13 @@ export function VideoStage() {
         </div>
       )}
 
-      {playback.queueOpen && (
-        <div className="app-glass-overlay fixed inset-y-0 right-0 z-[90] flex w-full max-w-sm flex-col border-l bg-background shadow-2xl">
-          <div className="flex items-center justify-between border-b p-3">
-            <p className="text-sm font-semibold">Queue · {playback.queue.length}</p>
-            <Button variant="ghost" size="icon-sm" onClick={() => playback.setQueueOpen(false)} aria-label="Close queue">
-              <X />
-            </Button>
-          </div>
-          <div className="flex-1 overflow-y-auto">
-            {playback.queue.map((queued, queuedIndex) => (
-              <button
-                key={`${queued.Id}-${queuedIndex}`}
-                type="button"
-                onClick={() => void playback.playQueueIndex(queuedIndex)}
-                className={cn(
-                  'flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-accent',
-                  queuedIndex === playback.index && 'bg-accent',
-                )}
-              >
-                <span className="w-6 text-xs text-muted-foreground">{queuedIndex + 1}</span>
-                <span className="min-w-0 flex-1 truncate text-sm">{queued.Name}</span>
-              </button>
-            ))}
-          </div>
-        </div>
+      {playback.queueOpen && playback.queue.length > 0 && (
+        <QueuePanel
+          queue={playback.queue}
+          index={playback.index}
+          onPick={(next) => void playback.playQueueIndex(next)}
+          onClose={() => playback.setQueueOpen(false)}
+        />
       )}
     </>
   );

@@ -200,6 +200,34 @@ presented with a `DeviceId` other than the one it was minted against, which is
 what makes a single stored token per member sufficient; that behaviour is
 recorded as verified evidence in `docs/upstream-compatibility.md`.
 
+### Player Queue and Next Up
+
+`/Shows/NextUp` takes two narrowing parameters that are not interchangeable.
+`ParentId` filters by **library**; `SeriesId` is the only way to ask for one
+show. NextUp returns episodes, whose `ParentId` is their *season*, so a series
+id passed as `ParentId` can never match a row and the call answers with an empty
+list. `getNextUp` accepts both and `/api/jellyfin/catalog/next-up` exposes both;
+every per-series caller must use `seriesId`.
+
+The player's queue carries the **whole series** and the index carries the
+position. jellyfin-web queues from the played episode onward and nothing before
+it (`playbackManager.translateItemsForPlayback` filters the episode list with a
+`foundItem` flag), which suits a player that only auto-advances. Helprr's player
+has an episode panel, and a queue that begins at the current episode cannot show
+one -- it reported a nine-item queue for a thirteen-episode show and marked row
+one as playing. `resolvePlayable` therefore returns `{ items, startIndex }` and
+`flattenPlayables` translates a caller's index into the flattened queue; the
+series queue is capped at 500 episodes so one Play cannot become a
+multi-megabyte payload.
+
+Two consequences worth preserving. `el.play()` rejecting with `AbortError` or
+`NotAllowedError` is not a playback failure -- hls.js assigns its own
+MediaSource URL from `attachMedia`, so an interrupted start is routine; this
+mirrors jellyfin-web's `htmlMediaHelper.playWithPromise`. And every switch that
+replaces the stream must release the outgoing `playSessionId`: Jellyfin holds a
+transcode for its idle timeout after the client stops reading it, and a
+superseded start attempt has to hand back the session it was granted.
+
 ## Destructive Operations and Audit
 
 Destructive actions require capability checks and, for file operations,

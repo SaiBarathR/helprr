@@ -8,6 +8,15 @@ import { cn } from '@/lib/utils';
 
 /** Matches gap-2 on the cinematic track; used to page by whole tiles. */
 const RAIL_GAP = 8;
+/**
+ * How long a horizontal wheel gesture is treated as one continuous motion.
+ *
+ * Trackpads emit a stream of small deltas, so the row has to follow the
+ * pointer directly rather than animating to each one — the 500ms page
+ * transition applied per event turns a flick into a crawl. The transition is
+ * suspended while a gesture is in flight and restored once it settles.
+ */
+const WHEEL_IDLE_MS = 140;
 
 /**
  * The one horizontal rail shell in the Watch section.
@@ -49,8 +58,18 @@ export function MediaRail({
    */
   const [offset, setOffset] = useState(0);
   const [maxOffset, setMaxOffset] = useState(0);
-  /** Page width and count, for the indicator the site shows at a row's top-right. */
-  const [paging, setPaging] = useState({ step: 0, count: 0 });
+  /**
+   * Where each page starts, for the indicator the site shows at a row's
+   * top-right — and now for jumping straight to one.
+   *
+   * An explicit list rather than a step and a count: the last page is short
+   * (it stops at maxOffset rather than a whole step past it), so deriving the
+   * current page by dividing by the step reported the same index for the last
+   * two pages and the indicator never lit its final segment.
+   */
+  const [pages, setPages] = useState<number[]>([]);
+  /** Suspends the page transition while a wheel gesture is in flight. */
+  const [gesturing, setGesturing] = useState(false);
 
   const sync = useCallback(() => {
     const el = scrollerRef.current;
@@ -83,8 +102,17 @@ export function MediaRail({
 
       const first = track.firstElementChild as HTMLElement | null;
       const pitch = first ? first.offsetWidth + RAIL_GAP : track.clientWidth;
+      // Page by a whole number of tiles, as the site does. Landing mid-tile
+      // would leave a half-shown card that is still a hover target.
       const step = pitch > 0 ? Math.max(pitch, Math.floor(track.clientWidth / pitch) * pitch) : 0;
-      setPaging({ step, count: step > 0 ? Math.ceil(track.scrollWidth / step) : 0 });
+      if (step <= 0 || max <= 0) {
+        setPages([0]);
+        return;
+      }
+      const stops: number[] = [];
+      for (let at = 0; at < max; at += step) stops.push(at);
+      stops.push(max);
+      setPages(stops);
     };
     measure();
     const observer = new ResizeObserver(measure);
@@ -92,15 +120,128 @@ export function MediaRail({
     return () => observer.disconnect();
   }, [cinematic, count]);
 
+  /**
+   * Stamp how each tile may behave, from the row's live geometry.
+   *
+   * Two things depend on where a tile currently sits, and neither can be a CSS
+   * selector because both change with the page rather than with DOM order:
+   *
+   * - `data-pop-align` — which way the hover popover grows. The site clamps it
+   *   to the row's content edges: the leftmost visible card grows entirely
+   *   rightward, the rightmost entirely leftward, everything between grows both
+   *   ways from its centre.
+   * - `data-pop-clip` — a tile only part-way into view does not expand at all.
+   *   That is what keeps the site's edge arrows reachable: without it the
+   *   clipped tile at the row's edge expands under the arrow gutter (clamped to
+   *   its own right edge, which is already past the content edge) at a higher
+   *   z-index than the arrow, so the arrow you were reaching for disappeared
+   *   under the card. It also stops a card you can barely see from starting a
+   *   preview transcode.
+   */
+  const stampTiles = useCallback(() => {
+    const viewport = scrollerRef.current;
+    const track = trackRef.current;
+    if (!viewport || !track) return;
+    const v = viewport.getBoundingClientRect();
+    const style = getComputedStyle(viewport);
+    const padLeft = parseFloat(style.paddingLeft) || 0;
+    const padRight = parseFloat(style.paddingRight) || 0;
+    const left = v.left + padLeft;
+    const right = v.right - padRight;
+
+    for (const tile of Array.from(track.querySelectorAll<HTMLElement>('.hpr-cine-tile'))) {
+      const t = tile.getBoundingClientRect();
+      if (t.width === 0) continue;
+      // 1px of slack: sub-pixel tile widths mean a fully-visible tile's edge
+      // lands a fraction outside the content box.
+      const clipped = t.left < left - 1 || t.right > right + 1;
+      tile.dataset.popClip = clipped ? '1' : '0';
+      const grow = t.width * 0.25;
+      tile.dataset.popAlign = t.left - grow < left - 1 ? 'start'
+        : t.right + grow > right + 1 ? 'end'
+          : 'center';
+    }
+  }, []);
+
+  // Re-stamped whenever the row moves or resizes. `transitionend` matters:
+  // during the 500ms page transition the rects are mid-flight, so the pass
+  // that runs on the offset change alone would settle on stale answers.
+  //
+  // Synchronously *and* on the next frame: rAF is suspended in a hidden tab, so
+  // a row that mounts in the background would otherwise stay unstamped. (The
+  // pointerover on the scroller is the real guarantee — it stamps before the
+  // 300ms hover delay can grow anything — but leaving the attributes absent
+  // until then means the first frame of a freshly-revealed tab is unmeasured.)
+  useEffect(() => {
+    if (!cinematic) return undefined;
+    stampTiles();
+    const frame = requestAnimationFrame(stampTiles);
+    return () => cancelAnimationFrame(frame);
+  }, [cinematic, stampTiles, offset, count, maxOffset]);
+
+  useEffect(() => {
+    if (!cinematic) return undefined;
+    const track = trackRef.current;
+    const viewport = scrollerRef.current;
+    if (!track || !viewport) return undefined;
+    const onEnd = (event: TransitionEvent) => {
+      if (event.target === track) stampTiles();
+    };
+    track.addEventListener('transitionend', onEnd);
+    const observer = new ResizeObserver(stampTiles);
+    observer.observe(viewport);
+    return () => {
+      track.removeEventListener('transitionend', onEnd);
+      observer.disconnect();
+    };
+  }, [cinematic, stampTiles]);
+
+  const goTo = useCallback((next: number) => {
+    setOffset(Math.min(maxOffset, Math.max(0, next)));
+  }, [maxOffset]);
+
+  /**
+   * Horizontal wheel and trackpad scrolling.
+   *
+   * A clipped box has no scroll offset for the browser to move, so the row was
+   * only reachable through its arrows — on a laptop trackpad, where a two-finger
+   * swipe is the obvious gesture, the row simply did not respond (and the
+   * browser was free to read the swipe as a back navigation instead).
+   *
+   * A native non-passive listener rather than onWheel: React registers wheel
+   * handlers passively on its root container, so preventDefault() from a JSX
+   * handler is ignored and the page keeps the gesture.
+   */
+  const gestureTimer = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (!cinematic) return undefined;
+    const viewport = scrollerRef.current;
+    if (!viewport || maxOffset <= 1) return undefined;
+
+    const onWheel = (event: WheelEvent) => {
+      // Vertical intent belongs to the page. Netflix rows behave the same way:
+      // only a clearly sideways gesture moves them.
+      if (Math.abs(event.deltaX) <= Math.abs(event.deltaY)) return;
+      event.preventDefault();
+      setGesturing(true);
+      setOffset((current) => Math.min(maxOffset, Math.max(0, current + event.deltaX)));
+      window.clearTimeout(gestureTimer.current);
+      gestureTimer.current = window.setTimeout(() => setGesturing(false), WHEEL_IDLE_MS);
+    };
+
+    viewport.addEventListener('wheel', onWheel, { passive: false });
+    return () => {
+      viewport.removeEventListener('wheel', onWheel);
+      window.clearTimeout(gestureTimer.current);
+    };
+  }, [cinematic, maxOffset]);
+
   const nudge = (direction: -1 | 1) => {
     if (cinematic) {
       const track = trackRef.current;
       if (!track) return;
-      // Page by a whole number of tiles, as the site does. Landing mid-tile
-      // would leave a half-shown card that is still a hover target, and its
-      // popover would then grow into the clipped edge.
-      const step = paging.step || track.clientWidth;
-      setOffset((current) => Math.min(maxOffset, Math.max(0, current + direction * step)));
+      const step = (pages.length > 1 ? pages[1] : 0) || track.clientWidth;
+      goTo(offset + direction * step);
       return;
     }
     const el = scrollerRef.current;
@@ -109,32 +250,14 @@ export function MediaRail({
     el.scrollBy({ left: direction * el.clientWidth * 0.9, behavior: 'smooth' });
   };
 
-  /**
-   * Stamp which way the hover popover should grow.
-   *
-   * The site clamps it to the row's content edges: the leftmost visible card
-   * grows entirely rightward, the rightmost entirely leftward, everything
-   * between grows both ways from its centre. Which card is at an edge depends
-   * on the current page, so CSS `:first-child` cannot say — and one delegated
-   * listener here covers both tile components at once.
-   */
-  const alignPopover = useCallback((target: EventTarget | null) => {
-    const tile = target instanceof Element ? target.closest<HTMLElement>('.hpr-cine-tile') : null;
-    const viewport = scrollerRef.current;
-    if (!tile || !viewport) return;
-    const t = tile.getBoundingClientRect();
-    const v = viewport.getBoundingClientRect();
-    const pad = parseFloat(getComputedStyle(viewport).paddingLeft) || 0;
-    const grow = t.width * 0.25;
-    tile.dataset.popAlign = t.left - grow < v.left + pad - 1 ? 'start'
-      : t.right + grow > v.right - pad + 1 ? 'end'
-      : 'center';
-  }, []);
-
   const scrollable = cinematic ? maxOffset > 1 : !(atStart && atEnd);
   const atRailStart = cinematic ? offset <= 0 : atStart;
   const atRailEnd = cinematic ? offset >= maxOffset - 1 : atEnd;
-  const currentPage = paging.step > 0 ? Math.round(offset / paging.step) : 0;
+  // Nearest page stop, so the final (short) page lights its own segment.
+  const currentPage = pages.reduce(
+    (best, stop, stopIndex) => (Math.abs(stop - offset) < Math.abs(pages[best] - offset) ? stopIndex : best),
+    0,
+  );
 
   return (
     <section className={cn('group/row relative', cinematic ? undefined : 'space-y-2')}>
@@ -178,17 +301,29 @@ export function MediaRail({
 
         {/* The site's page indicator: a segmented track at the row's top-right
             showing how many pages the row has and which one you are on. It
-            appears on row hover, like the arrows. */}
-        {cinematic && paging.count > 1 && (
-          <span
-            aria-hidden
-            className="ml-auto hidden items-center gap-[3px] self-center opacity-0 transition-opacity group-hover/row:opacity-100 group-focus-within/row:opacity-100 [@media(hover:hover)]:flex"
-          >
-            {Array.from({ length: paging.count }, (_, index) => (
-              <span
-                key={index}
-                className={cn('h-[2px] w-3', index === currentPage ? 'bg-white' : 'bg-white/30')}
-              />
+            appears on row hover, like the arrows.
+            The segments are real buttons — a marker you can see the row's shape
+            in but not click is a dead control, and jumping straight to a page
+            is the whole point of knowing how many there are. Each is padded out
+            to a 16px-tall hit area around its 2px rule. */}
+        {cinematic && pages.length > 1 && (
+          <span className="ml-auto hidden items-center self-center opacity-0 transition-opacity group-hover/row:opacity-100 group-focus-within/row:opacity-100 [@media(hover:hover)]:flex">
+            {pages.map((stop, stopIndex) => (
+              <button
+                key={stop}
+                type="button"
+                aria-label={`Page ${stopIndex + 1} of ${pages.length} in ${title}`}
+                aria-current={stopIndex === currentPage ? 'true' : undefined}
+                onClick={() => goTo(stop)}
+                className="group/dot flex h-4 items-center px-[1.5px]"
+              >
+                <span
+                  className={cn(
+                    'h-[2px] w-3 transition-colors',
+                    stopIndex === currentPage ? 'bg-white' : 'bg-white/30 group-hover/dot:bg-white/70',
+                  )}
+                />
+              </button>
             ))}
           </span>
         )}
@@ -206,8 +341,8 @@ export function MediaRail({
         {cinematic ? (
           <div
             ref={scrollerRef}
-            onPointerOver={(event) => alignPopover(event.target)}
-            onFocusCapture={(event) => alignPopover(event.target)}
+            onPointerOver={stampTiles}
+            onFocusCapture={stampTiles}
             className={cn(
               'hpr-cine-row overflow-x-auto scrollbar-hide',
               // Bleed by exactly the shell padding so tiles reach the viewport
@@ -222,7 +357,12 @@ export function MediaRail({
             {/* Full-width block, so its own overflow measures the travel. */}
             <div
               ref={trackRef}
-              className="flex w-full gap-2 transition-transform duration-500 ease-out motion-reduce:transition-none"
+              className={cn(
+                'flex w-full gap-2',
+                // A wheel gesture drives the row directly; animating to each of
+                // a trackpad's dozens of deltas turns a flick into a crawl.
+                !gesturing && 'transition-transform duration-500 ease-out motion-reduce:transition-none',
+              )}
               style={offset ? { transform: `translateX(-${offset}px)` } : undefined}
             >
               {children}
@@ -285,7 +425,12 @@ function RailEdge({ side, hidden, onClick }: { side: 'left' | 'right'; hidden: b
       aria-label={side === 'left' ? 'Scroll left' : 'Scroll right'}
       onClick={onClick}
       className={cn(
-        'absolute inset-y-0 z-30 hidden w-[var(--main-pad-x)] min-w-9 items-center justify-center',
+        // z-[45]: above an expanded card (z-40) and below the masthead (z-50).
+        // Edge tiles no longer expand at all, so a popover should never reach
+        // the gutter — but the arrow is the escape hatch for the whole row and
+        // must not be coverable by the card next to it under any measurement
+        // slack.
+        'absolute inset-y-0 z-[45] hidden w-[var(--main-pad-x)] min-w-9 items-center justify-center',
         'bg-black/50 text-white opacity-0 transition-opacity',
         'group-hover/row:opacity-100 focus-visible:opacity-100 focus-visible:outline-none',
         '[@media(hover:hover)]:flex',

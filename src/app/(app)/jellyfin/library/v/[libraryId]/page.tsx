@@ -12,6 +12,7 @@ import { PageSpinner } from '@/components/ui/page-spinner';
 import { ErrorState } from '@/components/ui/error-state';
 import { WatchTopBar } from '@/components/jellyfin-streaming/watch-top-bar';
 import { CatalogPosterCard } from '@/components/jellyfin-streaming/poster-card';
+import { CATALOG_GRID_CLASS, CATALOG_WRAP_CLASS } from '@/components/jellyfin-streaming/card-shared';
 import { useWatchSkin } from '@/lib/hooks/use-watch-skin';
 import { useJellyfinPlayback } from '@/components/jellyfin-streaming/playback-provider';
 import { Button } from '@/components/ui/button';
@@ -98,6 +99,7 @@ export default function LibraryBrowserPage() {
   const searchParams = useSearchParams();
   const playback = useJellyfinPlayback();
   const skin = useWatchSkin();
+  const cinematic = skin === 'cinematic';
   const name = searchParams.get('name') || 'Library';
   const collectionType = searchParams.get('type') || '';
   const availableViews = viewsFor(collectionType);
@@ -115,7 +117,7 @@ export default function LibraryBrowserPage() {
   const [queueing, setQueueing] = useState(false);
 
   const includeItemTypes = defaultInclude(collectionType, view);
-  const shape = shapeFor(collectionType, view, skin === 'cinematic');
+  const shape = shapeFor(collectionType, view, cinematic);
 
   const buildQuery = (limit: number, startIndex: number): string => {
     const next = new URLSearchParams({
@@ -196,7 +198,16 @@ export default function LibraryBrowserPage() {
       <div className="space-y-4 py-4 pb-28 md:py-6">
         <h1 className="sr-only">{name}</h1>
 
-        <div className="flex flex-wrap items-center justify-between gap-3">
+        {/* Both halves of this row are desktop-only in cinematic — the name is
+            hidden below md because the masthead already carries it, and the top
+            bar belongs to the classic skin — so on a phone it was an empty flex
+            row that `space-y-4` still paid 16px for. */}
+        <div
+          className={cn(
+            'flex-wrap items-center justify-between gap-3',
+            cinematic ? 'hidden md:flex' : 'flex',
+          )}
+        >
           {/* The compact masthead already carries this name; printing it again
               here is the duplicate-title pattern, so it is desktop-only. */}
           <p className="hidden text-base font-semibold tracking-tight md:block">{name}</p>
@@ -224,31 +235,39 @@ export default function LibraryBrowserPage() {
           </div>
         )}
 
-        {/* One toolbar instead of five stacked pill rows. */}
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs tabular-nums text-muted-foreground">
-            {total === 0 ? 'No titles' : `${first}–${last} of ${total}`}
+        {/* One toolbar instead of five stacked pill rows.
+            The two clusters are each their own flex box and the row is
+            justify-between rather than `ml-auto` on the second: `ml-auto`
+            survives the wrap, so on a phone the pager took the first line and
+            the action buttons hung off the right of an otherwise empty second
+            one. With justify-between a wrapped line simply starts at the left,
+            which is where the rest of the page starts. */}
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className="flex items-center gap-2">
+            <span className="text-xs tabular-nums text-muted-foreground">
+              {total === 0 ? 'No titles' : `${first}–${last} of ${total}`}
+            </span>
+            <Button
+              size="icon-sm"
+              variant="outline"
+              aria-label="Previous page"
+              disabled={page === 0}
+              onClick={() => setPage((current) => Math.max(0, current - 1))}
+            >
+              <ChevronLeft />
+            </Button>
+            <Button
+              size="icon-sm"
+              variant="outline"
+              aria-label="Next page"
+              disabled={last >= total}
+              onClick={() => setPage((current) => current + 1)}
+            >
+              <ChevronRight />
+            </Button>
           </span>
-          <Button
-            size="icon-sm"
-            variant="outline"
-            aria-label="Previous page"
-            disabled={page === 0}
-            onClick={() => setPage((current) => Math.max(0, current - 1))}
-          >
-            <ChevronLeft />
-          </Button>
-          <Button
-            size="icon-sm"
-            variant="outline"
-            aria-label="Next page"
-            disabled={last >= total}
-            onClick={() => setPage((current) => current + 1)}
-          >
-            <ChevronRight />
-          </Button>
 
-          <span className="ml-auto flex items-center gap-2">
+          <span className="flex items-center gap-2">
             <Button size="icon-sm" variant="outline" aria-label="Play all" title="Play all" disabled={queueing} onClick={() => void playEverything(false)}>
               <Play className="fill-current" />
             </Button>
@@ -341,12 +360,16 @@ export default function LibraryBrowserPage() {
         <div className="flex gap-3">
           <div className="min-w-0 flex-1">
             {items.length === 0 && <p className="text-sm text-muted-foreground">Nothing matches these filters.</p>}
-            <div className="flex flex-wrap gap-3">
+            <div className={cinematic ? CATALOG_GRID_CLASS : CATALOG_WRAP_CLASS}>
               {items.map((item, index) => (
                 <CatalogPosterCard
                   key={item.Id}
                   item={item}
                   shape={shape}
+                  // A wrapped grid, not a rail: the hover popover would grow
+                  // over its neighbours and clip at the page edge.
+                  flat={cinematic}
+                  className={cinematic ? 'w-full' : undefined}
                   priority={index < 6}
                   onPlay={(next) => void playback.playItem(next)}
                 />

@@ -120,14 +120,22 @@ export function CinematicHeader() {
     // arrow over the hero — the app never carries its chip row into a title.
     if (isDetail) {
       return (
-        // pb-8, not pb-3: the hero below pulls itself up by --main-pad-top, so
-        // a smaller pad left the arrow sitting on the video's top edge.
-        <header className="pointer-events-none sticky top-0 z-50 -mx-[var(--main-pad-x)] px-[var(--main-pad-x)] pt-2 pb-8">
+        // h-0, so the arrow *floats over* the still rather than reserving a band
+        // above it. This header used to be 80px of real flow height that the
+        // hero was expected to slide back under by cancelling --main-pad-top —
+        // which never covered more than a few pixels of it, so the screen opened
+        // with a black rectangle across the top and the artwork pushed 80px
+        // down. The app overlays its back arrow on the artwork, and the stacked
+        // hero carries a top vignette to hold it.
+        //
+        // Still sticky: a zero-height box at the top of the container pins
+        // immediately, so the arrow stays reachable as the page scrolls.
+        <header className="pointer-events-none sticky top-0 z-50 h-0">
           <button
             type="button"
             aria-label="Go back"
             onClick={() => router.back()}
-            className="pointer-events-auto -ml-1 flex size-10 items-center justify-center text-white drop-shadow-[0_1px_6px_rgba(0,0,0,0.9)]"
+            className="pointer-events-auto absolute top-[max(0.5rem,env(safe-area-inset-top))] -left-1 flex size-10 items-center justify-center text-white drop-shadow-[0_1px_6px_rgba(0,0,0,0.9)]"
           >
             <ArrowLeft className="size-7" />
           </button>

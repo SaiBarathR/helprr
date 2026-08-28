@@ -10,9 +10,13 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
   if (!auth.ok) return auth.response;
 
   try {
-    const parentId = new URL(request.url).searchParams.get('parentId') ?? undefined;
+    const params = new URL(request.url).searchParams;
+    // Two different questions: `parentId` narrows to a library, `seriesId` to
+    // one show. They are not interchangeable upstream — see getNextUp.
+    const parentId = params.get('parentId') ?? undefined;
+    const seriesId = params.get('seriesId') ?? undefined;
     const client = await getJellyfinClientForUser(auth.user);
-    const data = await client.getNextUp({ limit: 40, parentId });
+    const data = await client.getNextUp({ limit: 40, parentId, seriesId });
     return NextResponse.json({
       linked: true,
       items: data.Items ?? [],

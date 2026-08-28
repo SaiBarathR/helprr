@@ -47,3 +47,26 @@ export function catalogHref(item: JellyfinItem): string {
   if (item.Type === 'TvChannel') return `/jellyfin/library/watch/${item.Id}`;
   return `/jellyfin/library/item/${item.Id}`;
 }
+
+/**
+ * The wrapped grid the "here is a set of titles" pages use — My List, a library
+ * grid, a browse list. (Search rolls its own, two-up on a phone, and is left
+ * alone because it was never the broken one.)
+ *
+ * A grid rather than `flex flex-wrap`. The card's width ladder is sized for a
+ * *rail*, so in a wrapping flex row it keeps that fixed width and the row runs
+ * out early: measured on a 375px phone, My List fitted two 112px posters and
+ * left 107px of a 343px content column empty. Cards in a grid pass `flat` and
+ * `w-full` and take their size from the column instead — which is also why this
+ * has to be a grid and not a flex row, since a flex item has no column width to
+ * fill.
+ *
+ * Three across on a phone, where the cinematic card is a portrait poster; the
+ * Netflix app's own list screens and the phone detail screen's More Like This
+ * tab both run three. The count only climbs again at lg because the card
+ * becomes 16:9 from md up, so three there is already a wide card.
+ */
+export const CATALOG_GRID_CLASS = 'grid grid-cols-3 gap-2 sm:gap-3 lg:grid-cols-4 xl:grid-cols-5';
+
+/** Classic keeps the captioned cards at their own fixed width. */
+export const CATALOG_WRAP_CLASS = 'flex flex-wrap gap-3';

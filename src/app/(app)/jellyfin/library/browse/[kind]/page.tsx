@@ -12,6 +12,8 @@ import { PageSpinner } from '@/components/ui/page-spinner';
 import { ErrorState } from '@/components/ui/error-state';
 import { WatchTopBar } from '@/components/jellyfin-streaming/watch-top-bar';
 import { CatalogPosterCard } from '@/components/jellyfin-streaming/poster-card';
+import { CATALOG_GRID_CLASS, CATALOG_WRAP_CLASS } from '@/components/jellyfin-streaming/card-shared';
+import { useWatchSkin } from '@/lib/hooks/use-watch-skin';
 import { useJellyfinPlayback } from '@/components/jellyfin-streaming/playback-provider';
 import { jellyfinImageUrl } from '@/lib/jellyfin-playback/image';
 import { FadeInImage } from '@/components/media/fade-in-image';
@@ -252,6 +254,7 @@ function FilteredItems({
   name: string;
 }) {
   const playback = useJellyfinPlayback();
+  const cinematic = useWatchSkin() === 'cinematic';
   const queryString = new URLSearchParams({
     [filterParam]: id,
     recursive: 'true',
@@ -295,9 +298,18 @@ function FilteredItems({
 
         {items.length === 0 && <p className="text-sm text-muted-foreground">Nothing here yet.</p>}
 
-        <div className="flex flex-wrap gap-3">
-          {items.map((item) => (
-            <CatalogPosterCard key={item.Id} item={item} onPlay={(next) => void playback.playItem(next)} />
+        <div className={cinematic ? CATALOG_GRID_CLASS : CATALOG_WRAP_CLASS}>
+          {items.map((item, index) => (
+            <CatalogPosterCard
+              key={item.Id}
+              item={item}
+              // A wrapped grid, not a rail: the hover popover would grow over
+              // its neighbours and clip at the page edge.
+              flat={cinematic}
+              className={cinematic ? 'w-full' : undefined}
+              priority={index < 6}
+              onPlay={(next) => void playback.playItem(next)}
+            />
           ))}
         </div>
 
