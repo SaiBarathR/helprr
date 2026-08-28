@@ -13,6 +13,7 @@ import { JellyfinStreamingRoot } from '@/components/jellyfin-streaming/streaming
 import { ImageCacheGenerationInit } from '@/components/image-cache-generation-init';
 import { getCurrentUser } from '@/lib/auth';
 import { effectiveCapabilities } from '@/lib/permissions';
+import { readJellyfinToken } from '@/lib/jellyfin-token';
 import { getAppShellServiceFlags } from '@/lib/app-shell-services';
 import { setImageCacheGeneration } from '@/lib/image';
 import { getCacheGeneration } from '@/lib/cache/state';
@@ -59,6 +60,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     tmdbConfigured: serviceFlags.tmdbConfigured,
     seerrUserId: user.seerrUserId,
     jellyfinLinked,
+    jellyfinConfigured: serviceFlags.jellyfinConfigured,
+    jellyfinConnected: Boolean(readJellyfinToken(user)),
     customHeadersEnabled: process.env.HELPRR_CUSTOM_HEADERS === 'true',
   };
 

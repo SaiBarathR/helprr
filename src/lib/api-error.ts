@@ -1,6 +1,8 @@
 import { isAxiosError } from 'axios';
 import { NextResponse } from 'next/server';
 import { ConfigurationError } from '@/lib/config-error';
+import { JellyfinNotConnectedError, JellyfinNotLinkedError } from '@/lib/service-helpers';
+import { invalidateJellyfinToken } from '@/lib/jellyfin-token';
 
 /**
  * Convert a caught error into a client-safe JSON response. Upstream failures
@@ -23,4 +25,44 @@ export function upstreamErrorResponse(error: unknown, fallback: string): NextRes
   }
 
   return NextResponse.json({ error: fallback }, { status: 500 });
+}
+
+/**
+ * The one response every playback surface gives when it cannot act as the
+ * member: they have no Jellyfin token, no identity link, or Jellyfin has
+ * stopped accepting the token. The player watches for this exact code and
+ * shows the connect gate in place of the video.
+ *
+ * A 401/403 from Jellyfin means the token was revoked upstream (an admin
+ * deleting the device in Dashboard → Devices does it silently), so the stored
+ * copy is dropped here — that revocation has no other signal.
+ *
+ * Returns null when the error is something else, so callers fall through to
+ * their normal handling.
+ */
+export async function jellyfinConnectGateResponse(
+  user: { id: string },
+  error: unknown,
+): Promise<NextResponse | null> {
+  const needsConnect =
+    error instanceof JellyfinNotConnectedError || error instanceof JellyfinNotLinkedError;
+
+  const revoked =
+    isAxiosError(error) && (error.response?.status === 401 || error.response?.status === 403);
+
+  if (!needsConnect && !revoked) return null;
+
+  if (revoked) {
+    await invalidateJellyfinToken(user.id).catch((err) =>
+      console.error('[api] Failed to drop a revoked Jellyfin token:', err),
+    );
+  }
+
+  return NextResponse.json(
+    {
+      error: 'jellyfin_connect_required',
+      message: 'Connect your Jellyfin account to watch.',
+    },
+    { status: 409 },
+  );
 }

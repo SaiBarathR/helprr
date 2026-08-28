@@ -1,4 +1,5 @@
 import axios, { AxiosInstance } from 'axios';
+import crypto from 'crypto';
 import { ConfigurationError } from '@/lib/config-error';
 import { keepAliveHttpAgent, keepAliveHttpsAgent } from '@/lib/http-agents';
 import { getAppTimeZone, getLocalDateKey, getTimeZoneOffsetMinutes } from '@/lib/timezone';
@@ -34,17 +35,55 @@ const CLIENT_NAME = 'Helprr';
 const CLIENT_VERSION = '1.0.0';
 const DEVICE_NAME = 'Helprr Server';
 export const DEVICE_ID = 'helprr-server';
+const AUTH_DEVICE_NAME = 'Helprr';
+
+/**
+ * Device identity used when minting a *member's* own access token.
+ *
+ * Jellyfin keys a device record by DeviceId and hands it to whoever
+ * authenticated last, so minting every member's token against one shared
+ * constant makes them overwrite each other in Dashboard → Devices. Derive a
+ * stable id per Jellyfin account instead.
+ *
+ * Derived rather than stored: a token is accepted when presented with a
+ * *different* DeviceId than it was minted against (verified against 10.11.11),
+ * so playback keeps using the browser's own id and this one only has to be
+ * unique and stable. It is a hash so the dashboard doesn't carry usernames in
+ * device ids; the username is already visible as the device's owner.
+ */
+function authDeviceId(username: string): string {
+  const digest = crypto.createHash('sha256').update(username.toLowerCase()).digest('hex');
+  return `helprr-user-${digest.slice(0, 16)}`;
+}
 
 export class JellyfinClient {
   private client: AxiosInstance;
   private serverUrl: string;
   private userId: string;
   private token: string;
+  private playbackToken: string;
 
-  constructor(url: string, token: string, userId: string = '', customHeaders?: Record<string, string>) {
+  /**
+   * `token` is the admin API key and serves every *read*: those are scoped by an
+   * explicit userId param, so the key reads any member's data correctly.
+   *
+   * `playbackToken` is the member's own Jellyfin access token and serves only
+   * playback. Jellyfin resolves a session's user from the token alone — the
+   * /Sessions/Playing* models have no UserId field — so an admin-key session is
+   * attributed to nobody. Reads deliberately stay on the API key: a revoked
+   * member token must degrade playback, never blank someone's library.
+   */
+  constructor(
+    url: string,
+    token: string,
+    userId: string = '',
+    customHeaders?: Record<string, string>,
+    playbackToken: string = '',
+  ) {
     this.serverUrl = url.replace(/\/+$/, '');
     this.userId = userId;
     this.token = token;
+    this.playbackToken = playbackToken;
     this.client = axios.create({
       baseURL: this.serverUrl,
       headers: {
@@ -82,7 +121,7 @@ export class JellyfinClient {
     | { ok: false; reason: 'invalid_credentials' | 'unavailable' }
   > {
     const base = serverUrl.replace(/\/+$/, '');
-    const authHeader = `MediaBrowser Client="${CLIENT_NAME}", Device="${DEVICE_NAME}", DeviceId="${DEVICE_ID}", Version="${CLIENT_VERSION}"`;
+    const authHeader = `MediaBrowser Client="${CLIENT_NAME}", Device="${AUTH_DEVICE_NAME}", DeviceId="${authDeviceId(username)}", Version="${CLIENT_VERSION}"`;
     try {
       const response = await axios.post(
         `${base}/Users/AuthenticateByName`,
@@ -649,10 +688,23 @@ export class JellyfinClient {
     }
   }
 
+  /**
+   * Guard, not a fallback. Silently signing a playback call with the admin key
+   * is precisely the bug this exists to prevent, so an unset playback token is
+   * an error rather than a degraded path.
+   */
+  private requirePlaybackToken(): string {
+    if (!this.playbackToken) {
+      throw new ConfigurationError('Jellyfin playback requires the member\'s own access token.');
+    }
+    return this.playbackToken;
+  }
+
   private playbackHeaders(deviceId: string, deviceName = 'Helprr'): Record<string, string> {
+    const token = this.requirePlaybackToken();
     return {
-      Authorization: `MediaBrowser Token="${this.token}", Client="${CLIENT_NAME}", Device="${deviceName}", DeviceId="${deviceId}", Version="${CLIENT_VERSION}"`,
-      'X-Emby-Token': this.token,
+      Authorization: `MediaBrowser Token="${token}", Client="${CLIENT_NAME}", Device="${deviceName}", DeviceId="${deviceId}", Version="${CLIENT_VERSION}"`,
+      'X-Emby-Token': token,
     };
   }
 

@@ -2,6 +2,7 @@ import type { ServiceConnection, User } from '@prisma/client';
 import type { Tagged } from '@/lib/discover';
 import type { RadarrMovie, SonarrSeries } from '@/types';
 import { prisma } from '@/lib/db';
+import { readJellyfinToken } from '@/lib/jellyfin-token';
 import { ConfigurationError } from '@/lib/config-error';
 import { sha256Hex, stableStringify } from '@/lib/cache/keys';
 import { SonarrClient } from '@/lib/sonarr-client';
@@ -197,6 +198,57 @@ export async function getJellyfinUserContext(
   return {
     client: new JellyfinClient(connection.url, connection.apiKey, userId, getConnectionHeaders(connection)),
     connectionFingerprint: buildJellyfinConnectionFingerprint(connection),
+    jellyfinUserId: userId,
+  };
+}
+
+/**
+ * Thrown when a member has no usable Jellyfin access token of their own, so
+ * playback cannot be attributed to them. Distinct from JellyfinNotLinkedError:
+ * that is missing *identity*, this is a missing *credential*. Both send the
+ * member to the same connect gate, since connecting also auto-links.
+ */
+export class JellyfinNotConnectedError extends Error {
+  constructor(message = 'Jellyfin account not connected') {
+    super(message);
+    this.name = 'JellyfinNotConnectedError';
+  }
+}
+
+/**
+ * Jellyfin client for *playing* as a member, as opposed to reading their data.
+ *
+ * Reads keep the admin API key (scoped by an explicit userId param), but every
+ * playback call is signed with the member's own token, because Jellyfin decides
+ * whose session it is from the token alone. Throws rather than falling back to
+ * the API key: an unattributed session is the bug, not an acceptable degraded
+ * mode. Callers map the throw to the connect gate.
+ */
+export async function getJellyfinPlaybackContext(
+  user: Pick<User, 'id' | 'role' | 'jellyfinUserId' | 'jellyfinToken'>
+): Promise<{ client: JellyfinClient; jellyfinUserId: string }> {
+  const playbackToken = readJellyfinToken(user);
+  if (!playbackToken) throw new JellyfinNotConnectedError();
+
+  const connection = await prisma.serviceConnection.findFirst({ where: { type: 'JELLYFIN' } });
+  if (!connection) {
+    throw new ConfigurationError('Jellyfin is not configured. Please add a Jellyfin connection in Settings.');
+  }
+
+  const userId =
+    user.role === 'admin' ? user.jellyfinUserId ?? connection.username ?? null : user.jellyfinUserId;
+  if (!userId) {
+    throw new JellyfinNotLinkedError();
+  }
+
+  return {
+    client: new JellyfinClient(
+      connection.url,
+      connection.apiKey,
+      userId,
+      getConnectionHeaders(connection),
+      playbackToken,
+    ),
     jellyfinUserId: userId,
   };
 }

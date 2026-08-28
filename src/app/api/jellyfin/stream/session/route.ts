@@ -1,32 +1,13 @@
 import { isAxiosError } from 'axios';
 import { NextRequest, NextResponse } from 'next/server';
-import { getJellyfinClientForUser, JellyfinNotLinkedError } from '@/lib/service-helpers';
+import { getJellyfinPlaybackContext } from '@/lib/service-helpers';
 import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
-import { upstreamErrorResponse } from '@/lib/api-error';
+import { jellyfinConnectGateResponse, upstreamErrorResponse } from '@/lib/api-error';
 import type { JellyfinPlayMethod, PlaybackProgressPayload } from '@/types/jellyfin-streaming';
 
 const ITEM_ID_RE = /^[a-f0-9-]+$/i;
 
-/**
- * Jellyfin rejects /Sessions/Playing/Progress when the session has no user, and
- * Helprr authenticates with the admin API key, so it always will. Resume position
- * is persisted separately and correctly via the user-scoped user-data write in
- * `reportPlayback`, so this only costs the live position bar in Jellyfin's own
- * dashboard. Log it once per process instead of every 10s progress tick.
- */
-const loggedReportFailures = new Set<string>();
-
-function logReportFailureOnce(event: string, status: number, message: string): void {
-  const key = `${event}:${status}`;
-  if (loggedReportFailures.has(key)) return;
-  loggedReportFailures.add(key);
-  console.warn(
-    `[api] Jellyfin rejected '${event}' playback reporting (${status}: ${message}). `
-    + 'Resume position is unaffected — it is written per-user via /UserItems/{id}/UserData. '
-    + 'This is logged once per process.',
-  );
-}
 const EVENTS = new Set(['playing', 'progress', 'stopped']);
 const PLAY_METHODS = new Set(['DirectPlay', 'DirectStream', 'Transcode']);
 
@@ -76,16 +57,19 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   };
 
   try {
-    const client = await getJellyfinClientForUser(auth.user);
+    const { client } = await getJellyfinPlaybackContext(auth.user);
     await client.reportPlayback(payload);
     return NextResponse.json({ ok: true });
   } catch (error) {
-    if (error instanceof JellyfinNotLinkedError) {
-      return NextResponse.json({ error: 'Jellyfin account not linked' }, { status: 400 });
-    }
-    // Progress is best-effort: a Jellyfin 400 must not fail the player.
+    const gate = await jellyfinConnectGateResponse(auth.user, error);
+    if (gate) return gate;
+    // Progress is best-effort: a Jellyfin hiccup must not fail the player. Under
+    // the member's own token these should succeed, so a rejection here is worth
+    // seeing rather than suppressing.
     if (isAxiosError(error) && (error.response?.status === 400 || error.response?.status === 404)) {
-      logReportFailureOnce(event, error.response.status, error.message);
+      console.warn(
+        `[api] Jellyfin rejected '${event}' playback reporting (${error.response.status}: ${error.message}).`,
+      );
       return NextResponse.json({ ok: true, reported: false });
     }
     return upstreamErrorResponse(error, 'Failed to report playback');

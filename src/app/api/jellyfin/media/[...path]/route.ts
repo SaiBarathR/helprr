@@ -3,6 +3,7 @@ import type { User } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { requireUserCapability } from '@/lib/auth';
 import { getConnectionHeaders } from '@/lib/service-connection-secrets';
+import { invalidateJellyfinToken, readJellyfinToken } from '@/lib/jellyfin-token';
 import { canUserAccessItem } from '@/lib/jellyfin-playback/item-access';
 import {
   isAllowedMediaPath,
@@ -59,6 +60,14 @@ async function forward(request: NextRequest, pathSegments: string[], user: User)
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
 
+  const playbackToken = readJellyfinToken(user);
+  if (!playbackToken) {
+    return NextResponse.json(
+      { error: 'jellyfin_connect_required', message: 'Connect your Jellyfin account to watch.' },
+      { status: 409 },
+    );
+  }
+
   const connection = await prisma.serviceConnection.findFirst({ where: { type: 'JELLYFIN' } });
   if (!connection) {
     return new NextResponse(null, { status: 404 });
@@ -76,10 +85,14 @@ async function forward(request: NextRequest, pathSegments: string[], user: User)
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
 
+  // Signed with the member's own token, not the admin key: this is the request
+  // Jellyfin bills the stream against, so it decides whose session is playing.
+  // It also means Jellyfin enforces that member's library permissions on the
+  // bytes themselves, behind the canUserAccessItem check above.
   const headers = new Headers({
     ...getConnectionHeaders(connection),
-    Authorization: `MediaBrowser Token="${connection.apiKey}"`,
-    'X-Emby-Token': connection.apiKey,
+    Authorization: `MediaBrowser Token="${playbackToken}"`,
+    'X-Emby-Token': playbackToken,
   });
   for (const name of PASS_REQUEST_HEADERS) {
     const value = request.headers.get(name);
@@ -92,6 +105,18 @@ async function forward(request: NextRequest, pathSegments: string[], user: User)
     signal: request.signal,
     redirect: 'manual',
   });
+
+  if (upstream.status === 401 || upstream.status === 403) {
+    // Revoked upstream mid-stream. Drop the stored copy so the next request
+    // gates cleanly instead of retrying a dead token segment after segment.
+    await invalidateJellyfinToken(user.id).catch((error) =>
+      console.error('[api] Failed to drop a revoked Jellyfin token:', error),
+    );
+    return NextResponse.json(
+      { error: 'jellyfin_connect_required', message: 'Connect your Jellyfin account to watch.' },
+      { status: 409 },
+    );
+  }
 
   if (upstream.status >= 300 && upstream.status < 400) {
     return new NextResponse(null, { status: 404 });

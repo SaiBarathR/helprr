@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getJellyfinClientForUser, JellyfinNotLinkedError } from '@/lib/service-helpers';
+import { getJellyfinPlaybackContext } from '@/lib/service-helpers';
 import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
-import { upstreamErrorResponse } from '@/lib/api-error';
+import { jellyfinConnectGateResponse, upstreamErrorResponse } from '@/lib/api-error';
 import { buildHelprrStreamInfo } from '@/lib/jellyfin-playback/stream-info';
 import type { JellyfinDeviceProfile, PlaybackInfoRequest } from '@/types/jellyfin-streaming';
 
@@ -59,7 +59,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   };
 
   try {
-    const client = await getJellyfinClientForUser(auth.user);
+    const { client } = await getJellyfinPlaybackContext(auth.user);
     const [item, playback] = await Promise.all([
       client.getItem(itemId),
       client.getPlaybackInfo(playbackRequest),
@@ -75,9 +75,8 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     }
     return NextResponse.json(stream);
   } catch (error) {
-    if (error instanceof JellyfinNotLinkedError) {
-      return NextResponse.json({ error: 'Jellyfin account not linked' }, { status: 400 });
-    }
+    const gate = await jellyfinConnectGateResponse(auth.user, error);
+    if (gate) return gate;
     return upstreamErrorResponse(error, 'Failed to start playback');
   }
 }

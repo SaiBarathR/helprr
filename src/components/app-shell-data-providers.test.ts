@@ -31,6 +31,8 @@ const me: MePayload = {
   tmdbConfigured: true,
   seerrUserId: 'seerr-1',
   jellyfinLinked: true,
+  jellyfinConfigured: true,
+  jellyfinConnected: true,
   customHeadersEnabled: false,
 };
 

@@ -22,9 +22,11 @@ const { JellyfinClient } = await import('@/lib/jellyfin-client');
 
 const USER_ID = 'jf-user-1';
 const ITEM_ID = 'item-1';
+const ADMIN_KEY = 'admin-key';
+const MEMBER_TOKEN = 'member-access-token';
 
 function client() {
-  return new JellyfinClient('http://jellyfin.local', 'admin-key', USER_ID);
+  return new JellyfinClient('http://jellyfin.local', ADMIN_KEY, USER_ID, undefined, MEMBER_TOKEN);
 }
 
 function bodyFor(path: string): Record<string, unknown> | null {
@@ -126,5 +128,30 @@ describe('reportPlayback', () => {
   it('rounds fractional position ticks, which Jellyfin models as int64', async () => {
     await client().reportPlayback({ ...base, event: 'progress', positionTicks: 123.7 });
     expect(bodyFor('/Sessions/Playing/Progress')!.PositionTicks).toBe(124);
+  });
+});
+
+describe('playback request signing', () => {
+  it('signs playback calls with the member token, never the admin key', async () => {
+    await client().reportPlayback({ ...base, event: 'playing' });
+    const headers = post.mock.calls.at(-1)![2].headers as Record<string, string>;
+    expect(headers['X-Emby-Token']).toBe(MEMBER_TOKEN);
+    expect(headers.Authorization).toContain(`Token="${MEMBER_TOKEN}"`);
+    expect(JSON.stringify(headers)).not.toContain(ADMIN_KEY);
+  });
+
+  it('signs transcode teardown with the member token too, so it matches the owning session', async () => {
+    await client().stopActiveEncodings('ps-1', 'device-1');
+    const headers = del.mock.calls.at(-1)![1].headers as Record<string, string>;
+    expect(headers['X-Emby-Token']).toBe(MEMBER_TOKEN);
+    expect(JSON.stringify(headers)).not.toContain(ADMIN_KEY);
+  });
+
+  it('refuses to play rather than silently falling back to the admin key', async () => {
+    const noToken = new JellyfinClient('http://jellyfin.local', ADMIN_KEY, USER_ID);
+    await expect(noToken.reportPlayback({ ...base, event: 'playing' })).rejects.toThrow(
+      /member's own access token/,
+    );
+    expect(post).not.toHaveBeenCalled();
   });
 });
