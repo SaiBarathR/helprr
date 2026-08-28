@@ -28,6 +28,7 @@ Helprr is not trying to clone every setting from Sonarr, Radarr, Lidarr, qBittor
 - TMDb discovery with the rails I use most, plus collections, people, credits, region/language controls, and filters.
 - AniList anime and manga discovery, schedules, people/studio pages, library tracking, and Sonarr/Radarr mappings (including auto-mapping).
 - Watchlists, scheduled reminders, calendar views, a random-watch picker, and library-gap views for when I do not know what to watch.
+- Watch a Jellyfin library without leaving Helprr: in-app playback with audio/subtitle track selection, scrubbing previews, chapters, and resume from whichever device stopped last. An optional cinematic layout turns the section into a streaming-service home. Titles the browser cannot play natively are transcoded by the Jellyfin server, so it needs the headroom for that. Each person signs in to Jellyfin once so what they watch is recorded on their own Jellyfin account — progress, resume points, and history — rather than showing up unattributed.
 - Seerr request visibility and workflow when Seerr is part of the setup.
 
 
@@ -64,7 +65,7 @@ All integrations are optional and configured in **Settings → Instances**. Feat
 | Lidarr      | Music library, artist/album actions, monitoring, files                                |
 | qBittorrent | Torrents, transfer state, file priorities, limits, cleanup, bandwidth schedules       |
 | Prowlarr    | Indexers, history, tests, sync, and reliability stats                                 |
-| Jellyfin    | Library/watch status, sessions/devices, playback analytics, server control            |
+| Jellyfin    | Library/watch status, in-app playback, sessions/devices, analytics, server control    |
 | TMDb        | Movie/TV discovery, metadata, collections, people, and artwork                        |
 | AniList     | Anime/manga discovery, schedules, library tracking, and mappings                      |
 | Seerr       | Requests and request workflow                                                         |
@@ -501,9 +502,10 @@ same bounded image-cache summary is included in administrator support bundles.
 1. Sign in with the bootstrap administrator.
 2. Open **Settings → Instances** and connect the services you actually use. Test each connection before relying on it.
 3. In **Settings → Users**, create member accounts and grant only the capabilities they need.
-4. Configure preferences, dashboard layout, notifications, and optional cleanup/bandwidth rules.
-5. For push: serve the app over HTTPS, configure VAPID values, open Helprr on the target device, install it as a PWA if desired, and allow notifications.
-6. Export a backup from **Settings → Backup & Restore** after the initial configuration and keep it secure.
+4. If you use the Watch section, have each member connect their Jellyfin account — signing in with the **Sign in with Jellyfin** button does it automatically, and anyone using a Helprr password can do it from **Settings → Account**. Until they do, Helprr asks them to sign in when they press play. **Settings → Users** shows who is still not connected.
+5. Configure preferences, dashboard layout, notifications, and optional cleanup/bandwidth rules.
+6. For push: serve the app over HTTPS, configure VAPID values, open Helprr on the target device, install it as a PWA if desired, and allow notifications.
+7. Export a backup from **Settings → Backup & Restore** after the initial configuration and keep it secure.
 
 
 
@@ -762,6 +764,7 @@ docker compose --env-file .env.dev -f docker-compose.dev.yml \
 - Use unique, long secrets and a private network or HTTPS reverse proxy. Do not expose Helprr directly to the public internet without understanding the security implications.
 - Passwords are stored as per-user scrypt hashes. `APP_PASSWORD` seeds/resets only the bootstrap admin; it is not a universal login password.
 - Local and Jellyfin credential requests are limited to 8 KiB; usernames are limited to 64 Unicode characters and passwords to 1,024 UTF-8 bytes. New and reset local passwords use the same byte ceiling. A separate 120-request-per-minute malformed-login backstop deliberately fails closed, so a sufficiently large malformed flood can briefly return 429 to otherwise valid sign-in attempts.
+- Watching uses each member's own Jellyfin access token, not the Jellyfin admin API key, so a playback session is never more privileged than the member driving it. Those tokens are encrypted at rest and never returned by the API. Connecting an account only ever connects the Jellyfin account already linked to that profile, and the connect endpoint shares the same rate limits as sign-in. If a Jellyfin administrator revokes a device, Helprr drops the token and asks that member to reconnect.
 - Web Share Target requests accept only multipart or URL-encoded form bodies up to 16 KiB. Shared titles are limited to 256 Unicode characters, and shared text and URL fields are each limited to 2,048 UTF-8 bytes.
 - Resetting the bootstrap password does not invalidate active sessions. Revoke sessions from **Settings → Sessions** when access needs to be removed.
 - Service credentials and custom headers are sensitive. Restrict administrator accounts and protect backups/log exports.

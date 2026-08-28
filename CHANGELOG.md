@@ -7,11 +7,90 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- A new **Watch** section plays a Jellyfin library inside Helprr instead of
+  handing off to another app. Movies, episodes, and music play in-app with direct
+  play, remux, or server-side HLS transcode chosen from a real browser capability
+  profile.
+- The player carries the controls a long watch actually needs: audio and
+  subtitle track selection before and during playback, ASS/SSA rendering through
+  the same libass worker jellyfin-web uses, burned-in PGS bitmaps, trickplay
+  thumbnail previews while scrubbing, chapter markers, playback rate, and resume
+  from where the last device stopped.
+- Watch home leads with a billboard and shaped rails: continue watching, next up,
+  recently added, per-library rows, and Helprr recommendations. Hovering a card
+  on a wide screen expands it in place with a muted preview.
+- Watch also has New & Popular with a Coming Soon agenda drawn from the Sonarr,
+  Radarr, and Lidarr calendars, a search wall across every item type, My List,
+  Browse, a Live TV channel guide, collection hubs, and Top 10 rows.
+- Detail pages show a multi-provider rating strip (IMDb, TMDb, Metacritic, Rotten
+  Tomatoes, Trakt) sourced from the *arr instance that owns the title, the exact
+  media file and its audio/subtitle streams, and whether the title is already
+  downloading.
+- Movie and series pages gain a **Play in Helprr** action when the title exists in
+  the Jellyfin library.
+- **Settings → Appearance → Watch** adds a Cinematic mode toggle for the
+  streaming-service layout and an Autoplay previews toggle, since previews can
+  make the server transcode.
+- Minimizing the player keeps audio going in a now-playing bar, so browsing the
+  library does not stop playback.
+- Each member watches as themselves. Playback now runs on the member's own
+  Jellyfin account, so Jellyfin's dashboard shows who is watching, the position
+  bar tracks live, and Playback Reporting attributes the session. Signing in with
+  Jellyfin connects the account automatically; **Settings → Account** adds a
+  connect option for members who use a Helprr password.
+- Trying to watch without a connected Jellyfin account shows a sign-in panel over
+  the player rather than an error, and playback starts as soon as it succeeds.
+- **Settings → Users** marks members who are linked to a Jellyfin account but
+  have not connected it yet, so it is clear who still cannot watch.
+- Live TV playback and chapter markers ship without feature-flow testing: the
+  reference server has no tuner and no item reached during testing carried
+  chapters. Both degrade to an absent control rather than an error.
+
 ### Fixed
 
+- Watching in Helprr was attributed to nobody in Jellyfin. The session showed no
+  user, its live position never advanced because Jellyfin rejected every progress
+  report, and playback analytics had nothing to record against. Resume points and
+  watched state were always correct; only attribution was missing.
+- A Jellyfin token revoked while a transcode was playing left the player stalled
+  on a frozen frame indefinitely, because HLS segment failures are handled inside
+  hls.js and its retry for network errors is unbounded. Playback now stops and
+  offers reconnection.
 - Interactive search and grab wait up to 300 seconds for Radarr, Sonarr, and
   Lidarr indexer queries instead of aborting at the default 30-second HTTP
   timeout.
+
+### Security
+
+- The browser never receives a Jellyfin API key. Catalog reads, `PlaybackInfo`,
+  and every stream, subtitle, attachment, and font byte pass through
+  capability-checked Helprr routes.
+- The media proxy forwards only allowlisted playback paths, resolves each request
+  to an item and applies the same per-item access check as the image proxy,
+  strips caller-supplied `api_key`/token query parameters, refuses upstream
+  redirects, and rewrites HLS playlists onto Helprr URLs.
+- Playback uses a per-browser device id so one Helprr user cannot take over
+  another's Jellyfin session.
+- Playback no longer runs on the Jellyfin admin API key. It uses the member's own
+  access token, and refuses to play rather than quietly falling back to the admin
+  key, so a session can never be more privileged than the member driving it. The
+  media proxy is signed the same way, which means Jellyfin also enforces that
+  member's own library permissions on the streamed bytes.
+- Member Jellyfin access tokens are encrypted at rest (AES-256-GCM). A token that
+  cannot be decrypted after a secret rotation is treated as absent and the member
+  is asked to reconnect. Tokens are never included in any API response.
+- Connecting a Jellyfin account only ever connects the account already linked to
+  that profile; valid credentials for a different Jellyfin user are refused, so a
+  member cannot watch or record history as somebody else. The connect endpoint
+  shares the per-IP, per-username, and global backoff limits used by sign-in.
+- A Jellyfin administrator revoking a device now takes effect in Helprr: the
+  rejected request drops the stored token and the member is asked to reconnect,
+  including mid-stream.
+- The production Content-Security-Policy now allows `'wasm-unsafe-eval'`, blob
+  workers and media, and data-URI fonts, which subtitle rendering and HLS
+  playback require.
 
 ## [1.4.0] - 2026-08-26
 
