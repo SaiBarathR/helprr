@@ -5,8 +5,8 @@ import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { GroupedSection } from '@/components/settings/grouped-section';
+import { JellyfinConnectForm } from '@/components/settings/jellyfin-connect-form';
 import { useMe } from '@/components/permission-provider';
 
 /**
@@ -21,38 +21,9 @@ import { useMe } from '@/components/permission-provider';
 export function JellyfinConnection() {
   const me = useMe();
   const router = useRouter();
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   if (!me?.jellyfinConfigured) return null;
-
-  async function connect(event: React.FormEvent) {
-    event.preventDefault();
-    setBusy(true);
-    setError(null);
-    try {
-      const res = await fetch('/api/account/jellyfin/link', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setError(data.error ?? 'Could not connect to Jellyfin');
-        return;
-      }
-      setUsername('');
-      setPassword('');
-      toast.success(`Connected as ${data.jellyfinUsername}`);
-      router.refresh();
-    } catch {
-      setError('Could not reach Helprr. Check your connection and try again.');
-    } finally {
-      setBusy(false);
-    }
-  }
 
   async function disconnect() {
     setBusy(true);
@@ -96,33 +67,18 @@ export function JellyfinConnection() {
       title="Jellyfin"
       footer="Helprr never stores your Jellyfin password — only the access token the server returns."
     >
-      <form onSubmit={connect} className="grouped-row grouped-row-stacked space-y-3">
+      <div className="grouped-row grouped-row-stacked space-y-3">
         <p className="text-sm text-muted-foreground">
           Sign in to Jellyfin once so playback, resume points, and history are recorded on your own
           account instead of being unattributed.
         </p>
-        <Input
-          type="text"
-          placeholder="Jellyfin username"
-          autoComplete="username"
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-          required
+        <JellyfinConnectForm
+          onConnected={(name) => {
+            toast.success(`Connected as ${name}`);
+            router.refresh();
+          }}
         />
-        <Input
-          type="password"
-          placeholder="Jellyfin password"
-          autoComplete="current-password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-        />
-        {error && <p className="text-sm text-destructive">{error}</p>}
-        <Button type="submit" className="w-full" disabled={busy}>
-          {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-          Connect Jellyfin account
-        </Button>
-      </form>
+      </div>
     </GroupedSection>
   );
 }

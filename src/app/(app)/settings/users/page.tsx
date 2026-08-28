@@ -45,6 +45,7 @@ interface SafeUser {
   seerrUserId: string | null;
   hasPassword: boolean;
   hasJellyfinLink: boolean;
+  hasJellyfinConnection: boolean;
   createdAt: string;
 }
 
@@ -171,6 +172,7 @@ export default function UsersAdminPage() {
                     {u.role}
                     {u.status !== 'active' ? ` · ${u.status}` : ''}
                     {u.hasJellyfinLink ? ' · Jellyfin linked' : ''}
+                    {u.hasJellyfinLink && !u.hasJellyfinConnection ? ' · not connected (cannot watch)' : ''}
                   </div>
                 </div>
               </button>

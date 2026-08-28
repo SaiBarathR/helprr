@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { JellyfinConnectForm } from '@/components/settings/jellyfin-connect-form';
 import {
   ChevronDown,
   Gauge,
@@ -348,9 +349,24 @@ export function VideoStage() {
             {playback.status === 'loading' && (
               <div className="absolute inset-0 flex items-center justify-center text-sm text-white/80">Loading stream…</div>
             )}
-            {playback.error && (
+            {playback.needsJellyfinConnect ? (
+              <div className="absolute inset-0 z-20 flex items-center justify-center overflow-y-auto bg-black/90 p-6">
+                <div className="w-full max-w-xs space-y-4">
+                  <div className="space-y-1.5 text-center">
+                    <p className="text-sm font-medium text-white">Connect your Jellyfin account</p>
+                    <p className="text-xs text-white/70">
+                      Sign in once so what you watch is recorded on your own account.
+                    </p>
+                  </div>
+                  <JellyfinConnectForm
+                    submitLabel="Connect and play"
+                    onConnected={() => playback.retryAfterConnect()}
+                  />
+                </div>
+              </div>
+            ) : playback.error ? (
               <div className="absolute inset-0 flex items-center justify-center p-6 text-center text-sm text-red-300">{playback.error}</div>
-            )}
+            ) : null}
 
             {intro && expanded && (
               <Button className="absolute right-4 bottom-36 z-10" onClick={() => playback.skipSegment(intro)}>

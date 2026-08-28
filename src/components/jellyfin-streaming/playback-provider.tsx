@@ -38,6 +38,14 @@ interface PlaybackContextValue {
   stream: HelprrStreamInfo | null;
   status: 'idle' | 'loading' | 'playing' | 'paused' | 'error';
   error: string | null;
+  /**
+   * The member has no usable Jellyfin token, so nothing can be played as them.
+   * The video stage swaps in the connect gate instead of an error message —
+   * signing in is the fix, not retrying.
+   */
+  needsJellyfinConnect: boolean;
+  /** Re-attempt the pending item once the member has connected. */
+  retryAfterConnect: () => void;
   positionSeconds: number;
   durationSeconds: number;
   volume: number;
@@ -79,6 +87,18 @@ interface PlaybackContextValue {
 const PlaybackContext = createContext<PlaybackContextValue | null>(null);
 const MediaRefContext = createContext<React.RefObject<HTMLVideoElement | null> | null>(null);
 
+/**
+ * The server could not act as this member — no Jellyfin token, no identity
+ * link, or the token was revoked upstream. Distinct from a playback failure
+ * because the fix is signing in, not retrying.
+ */
+export class JellyfinConnectRequiredError extends Error {
+  constructor() {
+    super('Connect your Jellyfin account to watch.');
+    this.name = 'JellyfinConnectRequiredError';
+  }
+}
+
 async function fetchStream(itemId: string, options: PlayOptions): Promise<HelprrStreamInfo> {
   const deviceProfile = getDeviceProfile({
     maxStreamingBitrate: options.maxStreamingBitrate && options.maxStreamingBitrate > 0
@@ -106,6 +126,9 @@ async function fetchStream(itemId: string, options: PlayOptions): Promise<Helprr
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({ error: 'Playback failed' }));
+    if (res.status === 409 && body.error === 'jellyfin_connect_required') {
+      throw new JellyfinConnectRequiredError();
+    }
     throw new Error(typeof body.error === 'string' ? body.error : 'Playback failed');
   }
   return res.json() as Promise<HelprrStreamInfo>;
@@ -325,6 +348,7 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
   const [stream, setStream] = useState<HelprrStreamInfo | null>(null);
   const [status, setStatus] = useState<PlaybackContextValue['status']>('idle');
   const [error, setError] = useState<string | null>(null);
+  const [needsJellyfinConnect, setNeedsJellyfinConnect] = useState(false);
   const [positionSeconds, setPositionSeconds] = useState(0);
   const [durationSeconds, setDurationSeconds] = useState(0);
   const [volume, setVolumeState] = useState(1);
@@ -462,6 +486,7 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
   const startItem = useCallback(async (nextItem: JellyfinItem, options: PlayOptions = {}) => {
     setStatus('loading');
     setError(null);
+    setNeedsJellyfinConnect(false);
     playbackStartRef.current = Date.now() * 10_000;
     const resumeTicks = options.startTimeTicks
       ?? nextItem.UserData?.PlaybackPositionTicks
@@ -505,6 +530,17 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
         .catch(() => setSegments([]));
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : 'Playback failed';
+      if (cause instanceof JellyfinConnectRequiredError) {
+        setStatus('error');
+        setNeedsJellyfinConnect(true);
+        setError(message);
+        // The stage only expands on the success path, so a gated attempt would
+        // otherwise leave the form crammed into the mini player. Expand for
+        // audio too — a blocking gate the member cannot reach is a dead end,
+        // and the retry resets this to whatever the media type wants.
+        setVideoExpanded(true);
+        return;
+      }
       const canRetryDirect = options.enableDirectPlay !== false && !retryingRef.current;
       if (canRetryDirect) {
         retryingRef.current = true;
@@ -598,6 +634,7 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     setQueueOpen(false);
     setSegments([]);
     setError(null);
+    setNeedsJellyfinConnect(false);
     // Clear the queue too. `item` is derived from it, and anything keyed off a
     // non-null `item` (player chrome, the now-playing bar, key handling) would
     // otherwise stay armed indefinitely after the user stopped playback.
@@ -909,6 +946,26 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     setPlaybackRateState(rate);
   }, []);
 
+  /**
+   * Replay whatever the gate interrupted. The queue is untouched by a gated
+   * attempt, so the pending item is still at the current index — no need to
+   * stash it separately.
+   */
+  const retryAfterConnect = useCallback(() => {
+    const pending = queueRef.current[indexRef.current];
+    if (!pending) {
+      setNeedsJellyfinConnect(false);
+      return;
+    }
+    // No startTimeTicks: the gated attempt never played, so startItem should
+    // fall back to the item's own resume point like a fresh play would.
+    void startItem(pending, {
+      audioStreamIndex,
+      subtitleStreamIndex,
+      maxStreamingBitrate: maxBitrate,
+    });
+  }, [audioStreamIndex, maxBitrate, startItem, subtitleStreamIndex]);
+
   const value = useMemo<PlaybackContextValue>(() => ({
     queue,
     index,
@@ -916,6 +973,8 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     stream,
     status,
     error,
+    needsJellyfinConnect,
+    retryAfterConnect,
     positionSeconds,
     durationSeconds,
     volume,
@@ -953,7 +1012,8 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     skipSegment,
     setSubtitleOffset,
   }), [
-    addToQueue, audioStreamIndex, durationSeconds, error, index, item, maxBitrate, muted, next, playItem,
+    addToQueue, audioStreamIndex, durationSeconds, error, index, item, maxBitrate, muted,
+    needsJellyfinConnect, next, playItem, retryAfterConnect,
     playItems, playQueueIndex, playbackRate, positionSeconds, previous, queue, queueOpen, repeat, seek,
     segments, setAudioStream, setMaxBitrate, setMuted, setPlaybackRate, setRepeatMode, setSubtitleOffset,
     setSubtitleStream, setVolume, shuffled, skip, skipSegment, status, stop, stream, subtitleOffsetSeconds,
