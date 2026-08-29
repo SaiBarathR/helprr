@@ -33,6 +33,10 @@ export function CommandPalette() {
         type="button"
         aria-label="Search"
         onClick={() => setOpen(true)}
+        // Marked like the sidebar and the tab bar so the cinematic Watch skin
+        // can hide it: this is app chrome, and a bright slab on the right edge
+        // of a full-screen streaming page is exactly what that skin removes.
+        data-app-command-launcher
         className="md:hidden fixed right-0 bottom-[22%] z-40 flex h-16 w-9 items-center justify-start rounded-l-xl bg-primary pl-2 text-primary-foreground shadow-lg translate-x-[45%] active:translate-x-0 transition-transform"
       >
         <Search className="size-4" />

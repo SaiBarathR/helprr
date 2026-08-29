@@ -81,6 +81,7 @@ import { arrEditHref, arrManageHref } from '@/lib/arr-edit-href';
 import { useSeriesEpisodeWatch } from '@/components/jellyfin/use-series-episode-watch';
 import { EpisodeWatchIndicator } from '@/components/jellyfin/watch-status-indicator';
 import { MarkWatchedMenuItem } from '@/components/jellyfin/mark-watched-button';
+import { PlayInHelprrButton } from '@/components/jellyfin/play-in-helprr-button';
 import { episodeKey, type EpisodeWatchStatus } from '@/types/watch-status';
 import { QuickContextMenu, type ContextActionGroup } from '@/components/ui/quick-context-menu';
 
@@ -1592,6 +1593,15 @@ export default function SeriesDetailPage() {
             </div>
           </div>
         )}
+
+        {/* Straight into Helprr's own player when the show is in Jellyfin. */}
+        <PlayInHelprrButton
+          imdbId={series.imdbId}
+          tvdbId={series.tvdbId}
+          tmdbId={series.tmdbId}
+          autoPlay={false}
+          className="mt-4 h-10 w-full rounded-full"
+        />
 
         {/* Seasons list */}
         <div className="mt-4">

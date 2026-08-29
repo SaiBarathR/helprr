@@ -78,22 +78,38 @@ export interface JellyfinUserData {
 }
 
 export interface JellyfinMediaStream {
+  Index?: number;
   Codec?: string;
   BitRate?: number;
   Width?: number;
   Height?: number;
   AverageFrameRate?: number;
-  Type: 'Video' | 'Audio' | 'Subtitle' | 'EmbeddedImage';
+  RealFrameRate?: number;
+  ReferenceFrameRate?: number;
+  Type: 'Video' | 'Audio' | 'Subtitle' | 'EmbeddedImage' | 'Data';
   ChannelLayout?: string;
   Channels?: number;
   Language?: string;
+  DisplayLanguage?: string;
   DisplayTitle?: string;
+  Title?: string;
   IsDefault?: boolean;
+  IsForced?: boolean;
+  IsHearingImpaired?: boolean;
+  IsExternal?: boolean;
+  IsTextSubtitleStream?: boolean;
+  SupportsExternalStream?: boolean;
+  DeliveryMethod?: 'Encode' | 'Embed' | 'External' | 'Hls';
+  DeliveryUrl?: string;
   Profile?: string;
   VideoRange?: string;
+  VideoRangeType?: string;
   BitDepth?: number;
   AudioSpatialFormat?: string;
   SampleRate?: number;
+  Level?: number;
+  AspectRatio?: string;
+  Path?: string;
 }
 
 export interface JellyfinItem {
@@ -114,6 +130,7 @@ export interface JellyfinItem {
   UserData?: JellyfinUserData;
   DateCreated?: string;
   PremiereDate?: string;
+  StartDate?: string;
   ParentIndexNumber?: number;
   IndexNumber?: number;
   MediaType?: string;
@@ -121,6 +138,119 @@ export interface JellyfinItem {
   Container?: string;
   /** Total leaf episode count on a Series (with Fields=RecursiveItemCount) — the denominator for watched-progress. */
   RecursiveItemCount?: number;
+  ChildCount?: number;
+  ParentId?: string;
+  SeasonId?: string;
+  SeriesThumbImageTag?: string;
+  ParentThumbImageTag?: string;
+  ParentBackdropImageTags?: string[];
+  CollectionType?: string;
+  OfficialRating?: string;
+  CriticRating?: number;
+  Status?: string;
+  EndDate?: string;
+  Taglines?: string[];
+  Studios?: Array<{ Name?: string; Id?: string }>;
+  People?: JellyfinPerson[];
+  Chapters?: JellyfinChapter[];
+  Trickplay?: Record<string, JellyfinTrickplayInfo[]>;
+  MediaSources?: JellyfinMediaSource[];
+  PrimaryImageAspectRatio?: number;
+  AlbumArtist?: string;
+  Album?: string;
+  Artists?: string[];
+  NormalizationGain?: number;
+  SpecialFeatureCount?: number;
+  LocalTrailerCount?: number;
+  Width?: number;
+  Height?: number;
+  CanDownload?: boolean;
+  RemoteTrailers?: Array<{ Url?: string; Name?: string }>;
+  ProductionLocations?: string[];
+  OriginalTitle?: string;
+  SortName?: string;
+  IsFolder?: boolean;
+  LockedFields?: string[];
+  ImageBlurHashes?: Record<string, Record<string, string>>;
+  ChannelId?: string;
+  ChannelName?: string;
+  CurrentProgram?: {
+    Name?: string;
+    Overview?: string;
+    StartDate?: string;
+    EndDate?: string;
+    ChannelId?: string;
+    ChannelName?: string;
+  };
+}
+
+export interface JellyfinPerson {
+  Name?: string;
+  Id?: string;
+  Role?: string;
+  Type?: string;
+  PrimaryImageTag?: string;
+}
+
+export interface JellyfinChapter {
+  StartPositionTicks: number;
+  Name?: string;
+  ImageTag?: string;
+  ImageDateModified?: string;
+}
+
+export interface JellyfinTrickplayInfo {
+  Width?: number;
+  Height?: number;
+  TileWidth?: number;
+  TileHeight?: number;
+  ThumbnailCount?: number;
+  Interval?: number;
+  Bandwidth?: number;
+}
+
+export interface JellyfinMediaAttachment {
+  Codec?: string;
+  CodecTag?: string;
+  MimeType?: string;
+  FileName?: string;
+  Index?: number;
+  DeliveryUrl?: string;
+}
+
+export interface JellyfinMediaSource {
+  Id: string;
+  ETag?: string;
+  Path?: string;
+  Protocol?: string;
+  Container?: string;
+  Bitrate?: number;
+  RunTimeTicks?: number;
+  DefaultAudioStreamIndex?: number | null;
+  DefaultSubtitleStreamIndex?: number | null;
+  DefaultSecondarySubtitleStreamIndex?: number | null;
+  SupportsDirectPlay?: boolean;
+  SupportsDirectStream?: boolean;
+  SupportsTranscoding?: boolean;
+  TranscodingUrl?: string;
+  TranscodingSubProtocol?: string;
+  TranscodingContainer?: string;
+  DirectStreamUrl?: string;
+  EncoderPath?: string;
+  EncoderProtocol?: string;
+  IsRemote?: boolean;
+  RequiresOpening?: boolean;
+  LiveStreamId?: string;
+  OpenToken?: string;
+  MediaStreams?: JellyfinMediaStream[];
+  MediaAttachments?: JellyfinMediaAttachment[];
+  Formats?: string[];
+  BitrateAnalysis?: unknown;
+  Size?: number;
+  Name?: string;
+  VideoType?: string;
+  Timestamp?: string;
+  Video3DFormat?: string;
 }
 
 export interface JellyfinItemsResponse {

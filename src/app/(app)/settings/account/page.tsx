@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { toast } from 'sonner';
 import { ChevronLeft, Loader2 } from 'lucide-react';
 import { GroupedSection } from '@/components/settings/grouped-section';
+import { JellyfinConnection } from '@/components/settings/jellyfin-connection';
 import { getQueryClient } from '@/lib/query-client';
 import { invalidateExternalUrls } from '@/lib/hooks/use-external-urls';
 import {
@@ -84,6 +85,8 @@ export default function AccountSettingsPage() {
       <div className="px-4 mb-4">
         <h1 className="text-2xl font-semibold">Account</h1>
       </div>
+
+      <JellyfinConnection />
 
       <GroupedSection>
         <button

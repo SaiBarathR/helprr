@@ -89,6 +89,8 @@ export function Sidebar() {
 
   return (
     <aside
+      // Stable hook for the cinematic Watch skin, which hides the sidebar.
+      data-app-sidebar
       className={cn(
         'hidden md:flex flex-col border-r border-border bg-card app-chrome-bar h-screen sticky top-0 transition-all duration-200',
         sidebarCollapsed ? 'w-16' : 'w-56'

@@ -67,6 +67,7 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
     'GET /api/sonarr/tags',
   ],
   'authenticated/per-user': [
+    'GET /api/account/jellyfin/link',
     'GET /api/badges',
     'GET /api/dashboard-layouts/active',
     'GET /api/dashboard-layouts',
@@ -158,10 +159,21 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
     'GET /api/jellyfin/playback/users',
   ],
   'cap:jellyfin.view': [
+    'GET /api/jellyfin/catalog/browse',
+    'GET /api/jellyfin/catalog/filters',
+    'GET /api/jellyfin/catalog/home',
+    'GET /api/jellyfin/catalog/items',
+    'GET /api/jellyfin/catalog/items/[itemId]',
+    'GET /api/jellyfin/catalog/live',
+    'GET /api/jellyfin/catalog/lyrics',
+    'GET /api/jellyfin/catalog/next-up',
+    'GET /api/jellyfin/catalog/search',
+    'GET /api/jellyfin/catalog/views',
     'GET /api/jellyfin/counts',
     'GET /api/jellyfin/image',
     'GET /api/jellyfin/libraries',
     'GET /api/jellyfin/lookup',
+    'GET /api/jellyfin/media/[...path]',
     'GET /api/jellyfin/playback/history',
     'GET /api/jellyfin/recently-added',
     'GET /api/jellyfin/resume',
@@ -417,7 +429,7 @@ describe('GET API route capability matrix', () => {
   const assignments = policyAssignments();
 
   it('explicitly assigns every GET handler exactly once', () => {
-    expect(handlers.size).toBe(195);
+    expect(handlers.size).toBe(207);
     expect([...assignments.keys()].sort()).toEqual([...handlers.keys()].sort());
   });
 

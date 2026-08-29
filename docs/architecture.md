@@ -22,7 +22,7 @@ The `ServiceType` enum currently covers:
 | Lidarr | Music library, albums/tracks, files, and monitoring |
 | qBittorrent | Torrents, files, transfer controls, cleanup, and schedules |
 | Prowlarr | Indexers, tests, history, sync, and statistics |
-| Jellyfin | Library/watch state, playback, sessions, devices, and control |
+| Jellyfin | Library/watch state, in-app playback (direct play, remux, HLS transcode, subtitles), sessions, devices, and control |
 | TMDB | Movie/TV discovery, metadata, collections, people, and images |
 | AniList | Anime/manga discovery, schedules, tracking, and mappings |
 | Seerr | Request creation, approval, state, users, and quotas |
@@ -47,6 +47,16 @@ Routes resolve stored `ServiceConnection` records and construct clients through
 the existing helpers. A mutating route must independently verify the actor,
 capability or role, ownership where relevant, request shape, and selected
 instance before invoking an upstream mutation.
+
+Jellyfin in-app playback follows the same boundary. The browser never talks to
+Jellyfin with an API key. Catalog and `PlaybackInfo` go through authenticated
+Helprr routes (`jellyfin.view`). Stream, subtitle, HLS, Live TV, and fallback
+font bytes go through `/api/jellyfin/media/...` after an allowlisted path check
+and the same per-item access rule as `/api/jellyfin/image`. The proxy rewrites
+HLS playlists onto Helprr URLs and strips `api_key`. Playback DeviceId is
+per-browser so Helprr users do not clobber one shared Jellyfin session. PGS
+bitmaps are not advertised for client-side overlay so the server can burn them
+in; ASS/SSA uses the same libass worker as jellyfin-web.
 
 The authenticated shell keeps the Jellyfin watch and Seerr request providers
 mounted so their React Query caches and optimistic updates survive navigation.
@@ -112,7 +122,9 @@ unknown or newly added capability is denied until intentionally granted.
 
 Local passwords use scrypt. New and reset passwords require at least 15 Unicode
 code points, while existing compatible hashes remain verifiable. A user may have
-no local hash when Jellyfin is the only login method.
+no local hash when Jellyfin is the only login method. Signing in with Jellyfin
+also connects that member's playback credential; see "Jellyfin Identity and
+Playback Credentials" below.
 
 `APP_PASSWORD` seeds the bootstrap admin only when a hash is needed; ordinary
 login checks `User.passwordHash`. An admin password change through Settings ->
@@ -124,6 +136,97 @@ compromise also requires explicit session revocation.
 Public middleware exceptions must remain narrow. Liveness and readiness are
 exact paths, not prefixes. Share-target handling is public at middleware only so
 its route can preserve the incoming payload while applying its own auth check.
+
+## Jellyfin Identity and Playback Credentials
+
+Helprr holds two different Jellyfin credentials per member, and the split is
+deliberate.
+
+`ServiceConnection.apiKey` is the admin API key and serves every **read**.
+Catalog, resume, watch-status, and next-up calls pass an explicit `userId`
+parameter, so the key reads any member's data scoped to that member. Reads stay
+on the key on purpose: a member's own token going bad must degrade playback
+only, never blank someone's library.
+
+`User.jellyfinToken` is the member's own Jellyfin access token and serves only
+**playback**. This is not an optimization. Jellyfin resolves a session's user
+from the token alone -- the `/Sessions/Playing*` models carry no `UserId` field
+-- so an API-key session belongs to nobody. Before this split, every Helprr
+session showed no user in the Jellyfin dashboard, `/Sessions/Playing/Progress`
+was rejected on every tick, and Playback Reporting had nothing to attribute.
+Resume state was correct only because it is also written out-of-band through
+`POST /UserItems/{id}/UserData?userId=`, which the API key may do for any user.
+
+Jellyfin has no impersonation endpoint, so an admin key cannot mint a member
+token. Each member authenticates once themselves, either through "Sign in with
+Jellyfin" (which stores the token as a side effect of logging in) or through
+Settings -> Account, which posts to `/api/account/jellyfin/link`. That route
+verifies the authenticated Jellyfin user matches the profile's existing
+`jellyfinUserId` and rejects a mismatch, because valid credentials for a
+*different* account would otherwise let a member watch and record history as
+somebody else. A member with no link yet is auto-linked, guarded by the unique
+index on `jellyfinUserId`. The route shares the per-IP, per-username, and global
+backoff keys used by the login routes so it cannot be used to work around those
+caps.
+
+Tokens are encrypted at rest with AES-256-GCM under a key derived from
+`JWT_SECRET`/`APP_PASSWORD`, marked by an `enc:v1:` prefix. The prefix means a
+plaintext value written before encryption landed still reads back and is
+re-encrypted on the next write. A token that cannot be decrypted -- typically
+after a secret rotation -- is treated as absent rather than raising, so the
+member is asked to reconnect instead of every playback request failing.
+`toSafeUser` exposes only a boolean; the token itself never reaches a response.
+
+`JellyfinClient` takes the playback token beside the API key and **throws**
+rather than falling back when it is missing, because silently signing a playback
+call with the admin key is the exact defect this design removes.
+`getJellyfinPlaybackContext` is the single entry point for playback routes, and
+`jellyfinConnectGateResponse` is the single place that answers
+`409 { error: 'jellyfin_connect_required' }`. Both a missing token and a missing
+identity link map to that one response, since connecting also links.
+
+Revocation has no push signal: a Jellyfin admin deleting the device in
+Dashboard -> Devices invalidates the token silently. A `401`/`403` on any
+playback call is therefore the only evidence, and the stored copy is dropped at
+that point. The media proxy carries the token per HLS segment, so a mid-stream
+revocation is caught there too.
+
+Device identity matters in two places and they are not the same. A member's
+token is minted against a stable per-account `DeviceId` derived from a hash of
+the Jellyfin username, so members stop overwriting one shared device row in
+Jellyfin's Devices view. Playback then presents that token with the *browser's*
+own device id, giving one Jellyfin session per browser. A token is accepted when
+presented with a `DeviceId` other than the one it was minted against, which is
+what makes a single stored token per member sufficient; that behaviour is
+recorded as verified evidence in `docs/upstream-compatibility.md`.
+
+### Player Queue and Next Up
+
+`/Shows/NextUp` takes two narrowing parameters that are not interchangeable.
+`ParentId` filters by **library**; `SeriesId` is the only way to ask for one
+show. NextUp returns episodes, whose `ParentId` is their *season*, so a series
+id passed as `ParentId` can never match a row and the call answers with an empty
+list. `getNextUp` accepts both and `/api/jellyfin/catalog/next-up` exposes both;
+every per-series caller must use `seriesId`.
+
+The player's queue carries the **whole series** and the index carries the
+position. jellyfin-web queues from the played episode onward and nothing before
+it (`playbackManager.translateItemsForPlayback` filters the episode list with a
+`foundItem` flag), which suits a player that only auto-advances. Helprr's player
+has an episode panel, and a queue that begins at the current episode cannot show
+one -- it reported a nine-item queue for a thirteen-episode show and marked row
+one as playing. `resolvePlayable` therefore returns `{ items, startIndex }` and
+`flattenPlayables` translates a caller's index into the flattened queue; the
+series queue is capped at 500 episodes so one Play cannot become a
+multi-megabyte payload.
+
+Two consequences worth preserving. `el.play()` rejecting with `AbortError` or
+`NotAllowedError` is not a playback failure -- hls.js assigns its own
+MediaSource URL from `attachMedia`, so an interrupted start is routine; this
+mirrors jellyfin-web's `htmlMediaHelper.playWithPromise`. And every switch that
+replaces the stream must release the outgoing `playSessionId`: Jellyfin holds a
+transcode for its idle timeout after the client stops reading it, and a
+superseded start attempt has to hand back the session it was granted.
 
 ## Destructive Operations and Audit
 

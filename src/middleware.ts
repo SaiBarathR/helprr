@@ -24,7 +24,7 @@ const SECURITY_HEADERS: Record<string, string> = {
 // Dev keeps a relaxed policy: Fast Refresh needs eval, and dev-injected inline
 // scripts carry no nonce.
 const DEV_CSP =
-  "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' http: https:; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: https: http:; font-src 'self' https:; connect-src 'self' ws: wss: http: https:; frame-src 'self' https://www.youtube.com https://www.dailymotion.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
+  "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' http: https:; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: blob: https: http:; font-src 'self' data: https:; media-src 'self' blob:; worker-src 'self' blob:; connect-src 'self' ws: wss: http: https:; frame-src 'self' https://www.youtube.com https://www.dailymotion.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
 
 // Production script-src is nonce-based. Modern browsers honor
 // 'nonce-…' + 'strict-dynamic' and ignore the host sources and
@@ -38,7 +38,7 @@ const DEV_CSP =
 // isn't part of the strict-dynamic trust-propagation chain). The PWA service
 // worker — push + offline — is core, so pin it to its own 'self' directive.
 function buildProdCsp(nonce: string): string {
-  return `default-src 'self'; script-src 'self' 'unsafe-inline' https: 'nonce-${nonce}' 'strict-dynamic'; worker-src 'self'; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: https:; font-src 'self' https:; connect-src 'self' wss: https:; frame-src 'self' https://www.youtube.com https://www.dailymotion.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'`;
+  return `default-src 'self'; script-src 'self' 'unsafe-inline' https: 'wasm-unsafe-eval' 'nonce-${nonce}' 'strict-dynamic'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: blob: https:; font-src 'self' data: https:; media-src 'self' blob:; connect-src 'self' wss: https:; frame-src 'self' https://www.youtube.com https://www.dailymotion.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'`;
 }
 
 function addSecurityHeaders(response: NextResponse, csp: string): NextResponse {

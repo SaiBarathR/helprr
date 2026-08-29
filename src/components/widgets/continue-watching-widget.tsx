@@ -8,7 +8,7 @@ import { useElementSize } from '@/lib/widgets/use-element-size';
 import { useListFetchSize } from '@/lib/widgets/use-list-fetch-size';
 import type { JellyfinItem } from '@/types/jellyfin';
 import type { WidgetProps } from '@/lib/widgets/types';
-import { useExternalUrls } from '@/lib/hooks/use-external-urls';
+import { catalogHref } from '@/components/jellyfin-streaming/poster-card';
 import {
   Bar,
   CAROUSEL_CARD_HEIGHT,
@@ -29,11 +29,6 @@ async function fetchResumeItems(limit: number): Promise<JellyfinItem[]> {
   if (!res.ok) throw new ApiError(res.status, 'Request failed');
   const data = await res.json();
   return data.items || [];
-}
-
-function jellyfinWebUrl(baseUrl: string, item: JellyfinItem): string {
-  const targetId = item.Type === 'Episode' && item.SeriesId ? item.SeriesId : item.Id;
-  return `${baseUrl}/web/index.html#!/details?id=${targetId}`;
 }
 
 export function ContinueWatchingWidget({
@@ -64,8 +59,6 @@ export function ContinueWatchingWidget({
     cacheKey: `continue-watching-${fetchLimit}`,
     refetchOnFocus: true,
   });
-  const externalUrls = useExternalUrls();
-  const jellyfinUrl = externalUrls.JELLYFIN;
 
   const list = items ?? [];
   const useList = narrow || layoutVariant === 'list';
@@ -192,16 +185,14 @@ export function ContinueWatchingWidget({
                 </div>
               </div>
             );
-            return jellyfinUrl && !editMode ? (
-              <a
+            return !editMode ? (
+              <Link
                 key={it.Id}
-                href={jellyfinWebUrl(jellyfinUrl, it)}
-                target="_blank"
-                rel="noopener noreferrer"
+                href={catalogHref(it)}
                 style={{ textDecoration: 'none', color: 'inherit', display: 'block' }}
               >
                 {row}
-              </a>
+              </Link>
             ) : (
               <div key={it.Id}>{row}</div>
             );
@@ -266,12 +257,10 @@ export function ContinueWatchingWidget({
               <div style={{ fontSize: 10, color: HPR.fgMute, fontFamily: FONT_MONO }}>{sub}</div>
             </>
           );
-          return jellyfinUrl && !editMode ? (
-            <a
+          return !editMode ? (
+            <Link
               key={it.Id}
-              href={jellyfinWebUrl(jellyfinUrl, it)}
-              target="_blank"
-              rel="noopener noreferrer"
+              href={catalogHref(it)}
               style={{
                 width: CAROUSEL_CARD_WIDTH,
                 flexShrink: 0,
@@ -280,7 +269,7 @@ export function ContinueWatchingWidget({
               }}
             >
               {cardInner}
-            </a>
+            </Link>
           ) : (
             <div key={it.Id} style={{ width: CAROUSEL_CARD_WIDTH, flexShrink: 0 }}>
               {cardInner}

@@ -17,6 +17,7 @@ import {
 import { withApiLogging } from '@/lib/api-logger';
 import { isHttpsRequest } from '@/lib/request-utils';
 import { readLoginCredentials } from '@/lib/server/login-input';
+import { storeJellyfinToken } from '@/lib/jellyfin-token';
 
 const INVALID_CREDENTIALS = 'Invalid Jellyfin username or password';
 // Distinct steering message: Jellyfin is unreachable/changed, so the user
@@ -91,10 +92,12 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     }
   }
 
-  // Cache the AccessToken (non-authoritative — Helprr never re-validates against
-  // it for auth). Best-effort: a write failure must not fail an otherwise-good login.
-  prisma.user
-    .update({ where: { id: user.id }, data: { jellyfinToken: auth.accessToken } })
+  // Store the AccessToken encrypted. It is never an *auth* credential — Helprr
+  // owns identity and never re-validates a session against it — but it is the
+  // credential playback runs on, so signing in here is also what connects the
+  // member's Jellyfin account. Best-effort: a write failure must not fail an
+  // otherwise-good login; the member just gets asked to connect on the watch screen.
+  storeJellyfinToken(user.id, auth.accessToken)
     .catch((err) => console.error('[Auth] Failed to cache Jellyfin token:', err));
 
   const userAgent = request.headers.get('user-agent');

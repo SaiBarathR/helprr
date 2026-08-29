@@ -8,10 +8,17 @@ import { cn } from '@/lib/utils';
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const navPosition = useUIStore((s) => s.navPosition);
+  const watchSkin = useUIStore((s) => s.watchSkin);
 
   useEffect(() => {
     document.documentElement.dataset.navPosition = navPosition;
   }, [navPosition]);
+
+  // Mirrors THEME_BOOTSTRAP_SCRIPT's pre-paint stamp so the skin follows the
+  // store after hydration (toggling in Settings takes effect immediately).
+  useEffect(() => {
+    document.documentElement.dataset.watchSkin = watchSkin;
+  }, [watchSkin]);
 
   const isBottom = navPosition === 'bottom';
 

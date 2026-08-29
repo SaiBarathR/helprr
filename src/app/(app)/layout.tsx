@@ -9,9 +9,11 @@ import { QueryProvider } from '@/components/query-provider';
 import { BadgeProvider } from '@/components/layout/badge-provider';
 import { RequestedMediaProvider } from '@/components/seerr/requested-media-provider';
 import { WatchStatusProvider } from '@/components/jellyfin/watch-status-provider';
+import { JellyfinStreamingRoot } from '@/components/jellyfin-streaming/streaming-root';
 import { ImageCacheGenerationInit } from '@/components/image-cache-generation-init';
 import { getCurrentUser } from '@/lib/auth';
 import { effectiveCapabilities } from '@/lib/permissions';
+import { readJellyfinToken } from '@/lib/jellyfin-token';
 import { getAppShellServiceFlags } from '@/lib/app-shell-services';
 import { setImageCacheGeneration } from '@/lib/image';
 import { getCacheGeneration } from '@/lib/cache/state';
@@ -58,6 +60,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     tmdbConfigured: serviceFlags.tmdbConfigured,
     seerrUserId: user.seerrUserId,
     jellyfinLinked,
+    jellyfinConfigured: serviceFlags.jellyfinConfigured,
+    jellyfinConnected: Boolean(readJellyfinToken(user)),
     customHeadersEnabled: process.env.HELPRR_CUSTOM_HEADERS === 'true',
   };
 
@@ -67,7 +71,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <ImageCacheGenerationInit value={imageCacheGeneration} />
         <RequestedMediaProvider>
           <WatchStatusProvider>
-            <BadgeProvider>
+            <JellyfinStreamingRoot>
+              <BadgeProvider>
             <div className="flex min-h-screen bg-background">
               <StandaloneLaunchRedirect />
               <DiscoverLayoutHydrator />
@@ -75,7 +80,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               <Sidebar />
               <AppShell>{children}</AppShell>
             </div>
-            </BadgeProvider>
+              </BadgeProvider>
+            </JellyfinStreamingRoot>
           </WatchStatusProvider>
         </RequestedMediaProvider>
       </PermissionProvider>

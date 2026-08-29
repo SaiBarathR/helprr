@@ -1,4 +1,5 @@
 import axios, { AxiosInstance } from 'axios';
+import crypto from 'crypto';
 import { ConfigurationError } from '@/lib/config-error';
 import { keepAliveHttpAgent, keepAliveHttpsAgent } from '@/lib/http-agents';
 import { getAppTimeZone, getLocalDateKey, getTimeZoneOffsetMinutes } from '@/lib/timezone';
@@ -22,20 +23,67 @@ import type {
   PlaybackActivityItem,
   PlaybackBreakdownEntry,
 } from '@/types/jellyfin';
+import type {
+  PlaybackInfoRequest,
+  PlaybackInfoResponse,
+  PlaybackProgressPayload,
+  MediaSegment,
+} from '@/types/jellyfin-streaming';
+import { CATALOG_ITEM_FIELDS, CATALOG_LIST_FIELDS } from '@/types/jellyfin-streaming';
 
 const CLIENT_NAME = 'Helprr';
 const CLIENT_VERSION = '1.0.0';
 const DEVICE_NAME = 'Helprr Server';
 export const DEVICE_ID = 'helprr-server';
+const AUTH_DEVICE_NAME = 'Helprr';
+
+/**
+ * Device identity used when minting a *member's* own access token.
+ *
+ * Jellyfin keys a device record by DeviceId and hands it to whoever
+ * authenticated last, so minting every member's token against one shared
+ * constant makes them overwrite each other in Dashboard → Devices. Derive a
+ * stable id per Jellyfin account instead.
+ *
+ * Derived rather than stored: a token is accepted when presented with a
+ * *different* DeviceId than it was minted against (verified against 10.11.11),
+ * so playback keeps using the browser's own id and this one only has to be
+ * unique and stable. It is a hash so the dashboard doesn't carry usernames in
+ * device ids; the username is already visible as the device's owner.
+ */
+function authDeviceId(username: string): string {
+  const digest = crypto.createHash('sha256').update(username.toLowerCase()).digest('hex');
+  return `helprr-user-${digest.slice(0, 16)}`;
+}
 
 export class JellyfinClient {
   private client: AxiosInstance;
   private serverUrl: string;
   private userId: string;
+  private token: string;
+  private playbackToken: string;
 
-  constructor(url: string, token: string, userId: string = '', customHeaders?: Record<string, string>) {
+  /**
+   * `token` is the admin API key and serves every *read*: those are scoped by an
+   * explicit userId param, so the key reads any member's data correctly.
+   *
+   * `playbackToken` is the member's own Jellyfin access token and serves only
+   * playback. Jellyfin resolves a session's user from the token alone — the
+   * /Sessions/Playing* models have no UserId field — so an admin-key session is
+   * attributed to nobody. Reads deliberately stay on the API key: a revoked
+   * member token must degrade playback, never blank someone's library.
+   */
+  constructor(
+    url: string,
+    token: string,
+    userId: string = '',
+    customHeaders?: Record<string, string>,
+    playbackToken: string = '',
+  ) {
     this.serverUrl = url.replace(/\/+$/, '');
     this.userId = userId;
+    this.token = token;
+    this.playbackToken = playbackToken;
     this.client = axios.create({
       baseURL: this.serverUrl,
       headers: {
@@ -73,7 +121,7 @@ export class JellyfinClient {
     | { ok: false; reason: 'invalid_credentials' | 'unavailable' }
   > {
     const base = serverUrl.replace(/\/+$/, '');
-    const authHeader = `MediaBrowser Client="${CLIENT_NAME}", Device="${DEVICE_NAME}", DeviceId="${DEVICE_ID}", Version="${CLIENT_VERSION}"`;
+    const authHeader = `MediaBrowser Client="${CLIENT_NAME}", Device="${AUTH_DEVICE_NAME}", DeviceId="${authDeviceId(username)}", Version="${CLIENT_VERSION}"`;
     try {
       const response = await axios.post(
         `${base}/Users/AuthenticateByName`,
@@ -203,12 +251,21 @@ export class JellyfinClient {
    * ParentIndexNumber = season, IndexNumber = episode — the keys we match on
    * (episodes rarely carry provider ids). UserData carries Played / progress.
    */
-  async getSeriesEpisodes(seriesId: string): Promise<JellyfinItemsResponse> {
+  /**
+   * Episodes for a series, optionally scoped to one season.
+   *
+   * Season pages must pass `seasonId`; without it Jellyfin returns every
+   * episode in the series, which made a season page list the whole show.
+   * Images stay enabled because episode rows render 16:9 stills.
+   */
+  async getSeriesEpisodes(seriesId: string, seasonId?: string): Promise<JellyfinItemsResponse> {
     return this.get<JellyfinItemsResponse>(`/Shows/${seriesId}/Episodes`, {
       userId: this.requireUserId(),
-      Fields: 'ProviderIds',
+      Fields: CATALOG_LIST_FIELDS,
       EnableUserData: true,
-      EnableImages: false,
+      EnableImages: true,
+      EnableImageTypes: 'Primary,Thumb',
+      ...(seasonId ? { SeasonId: seasonId } : {}),
     });
   }
 
@@ -237,8 +294,9 @@ export class JellyfinClient {
     return this.get<JellyfinItem[]>(`/Users/${this.requireUserId()}/Items/Latest`, {
       Limit: params.limit ?? 15,
       ...(params.parentId && { ParentId: params.parentId }),
-      Fields: 'Overview,DateCreated,ImageTags',
-      EnableImageTypes: 'Primary,Backdrop',
+      Fields: CATALOG_LIST_FIELDS,
+      EnableImageTypes: 'Primary,Backdrop,Thumb',
+      EnableUserData: true,
     });
   }
 
@@ -247,8 +305,42 @@ export class JellyfinClient {
       UserId: this.requireUserId(),
       Limit: params.limit ?? 10,
       Fields: params.extraFields ? `Overview,ImageTags,${params.extraFields}` : 'Overview,ImageTags',
-      EnableImageTypes: 'Primary,Backdrop',
+      EnableImageTypes: 'Primary,Backdrop,Thumb',
+      EnableUserData: true,
       MediaTypes: 'Video',
+    });
+  }
+
+  async getUpcoming(limit = 24): Promise<JellyfinItemsResponse> {
+    return this.get<JellyfinItemsResponse>('/Shows/Upcoming', {
+      UserId: this.requireUserId(),
+      Limit: limit,
+      Fields: CATALOG_LIST_FIELDS,
+      EnableImageTypes: 'Primary,Backdrop,Thumb',
+      EnableUserData: true,
+    });
+  }
+
+  async getMovieRecommendations(): Promise<Array<{ BaselineItemName?: string; RecommendationType?: string; Items?: JellyfinItem[] }>> {
+    return this.get(`/Movies/Recommendations`, {
+      userId: this.requireUserId(),
+      categoryLimit: 6,
+      itemLimit: 16,
+      Fields: CATALOG_LIST_FIELDS,
+    });
+  }
+
+  async getLocalTrailers(itemId: string): Promise<JellyfinItem[]> {
+    return this.get<JellyfinItem[]>(`/Users/${this.requireUserId()}/Items/${itemId}/LocalTrailers`);
+  }
+
+  async getLiveTvRecordings(limit = 40): Promise<JellyfinItemsResponse> {
+    return this.get<JellyfinItemsResponse>('/LiveTv/Recordings', {
+      UserId: this.requireUserId(),
+      IsInProgress: false,
+      Limit: limit,
+      Fields: CATALOG_LIST_FIELDS,
+      EnableUserData: true,
     });
   }
 
@@ -594,5 +686,322 @@ export class JellyfinClient {
       if (this.isPluginMissingError(error)) return null;
       throw error;
     }
+  }
+
+  /**
+   * Guard, not a fallback. Silently signing a playback call with the admin key
+   * is precisely the bug this exists to prevent, so an unset playback token is
+   * an error rather than a degraded path.
+   */
+  private requirePlaybackToken(): string {
+    if (!this.playbackToken) {
+      throw new ConfigurationError('Jellyfin playback requires the member\'s own access token.');
+    }
+    return this.playbackToken;
+  }
+
+  private playbackHeaders(deviceId: string, deviceName = 'Helprr'): Record<string, string> {
+    const token = this.requirePlaybackToken();
+    return {
+      Authorization: `MediaBrowser Token="${token}", Client="${CLIENT_NAME}", Device="${deviceName}", DeviceId="${deviceId}", Version="${CLIENT_VERSION}"`,
+      'X-Emby-Token': token,
+    };
+  }
+
+  async getItem(itemId: string, fields: string = CATALOG_ITEM_FIELDS): Promise<JellyfinItem> {
+    return this.get<JellyfinItem>(`/Users/${this.requireUserId()}/Items/${itemId}`, {
+      Fields: fields,
+    });
+  }
+
+  async getCatalogItems(params: Record<string, unknown> = {}): Promise<JellyfinItemsResponse> {
+    return this.get<JellyfinItemsResponse>(`/Users/${this.requireUserId()}/Items`, {
+      Fields: CATALOG_LIST_FIELDS,
+      EnableImageTypes: 'Primary,Backdrop,Thumb,Logo,Banner',
+      ...params,
+    });
+  }
+
+  /**
+   * `/Shows/NextUp`, which takes two different narrowing parameters.
+   *
+   * `ParentId` filters by *library*; `SeriesId` is the only way to ask for one
+   * show's next episode. Sending a series id as ParentId — which is what this
+   * did — reliably returns nothing: NextUp's entries are episodes, whose
+   * ParentId is their season, so no row can ever match a series id. Every
+   * per-series caller therefore got an empty list, which is why a series detail
+   * page had no Next Up rail and a half-watched show never offered Resume.
+   */
+  async getNextUp(
+    params: { limit?: number; parentId?: string; seriesId?: string } = {},
+  ): Promise<JellyfinItemsResponse> {
+    return this.get<JellyfinItemsResponse>('/Shows/NextUp', {
+      UserId: this.requireUserId(),
+      Limit: params.limit ?? 20,
+      Fields: CATALOG_LIST_FIELDS,
+      EnableImageTypes: 'Primary,Backdrop,Thumb',
+      ...(params.parentId ? { ParentId: params.parentId } : {}),
+      ...(params.seriesId ? { SeriesId: params.seriesId } : {}),
+    });
+  }
+
+  async getSeasons(seriesId: string): Promise<JellyfinItemsResponse> {
+    return this.get<JellyfinItemsResponse>(`/Shows/${seriesId}/Seasons`, {
+      userId: this.requireUserId(),
+      Fields: CATALOG_LIST_FIELDS,
+      EnableUserData: true,
+      EnableImages: true,
+    });
+  }
+
+  async getSimilarItems(itemId: string, limit = 16): Promise<JellyfinItemsResponse> {
+    return this.get<JellyfinItemsResponse>(`/Items/${itemId}/Similar`, {
+      userId: this.requireUserId(),
+      Limit: limit,
+      Fields: CATALOG_LIST_FIELDS,
+    });
+  }
+
+  async getSpecialFeatures(itemId: string): Promise<JellyfinItem[]> {
+    return this.get<JellyfinItem[]>(`/Users/${this.requireUserId()}/Items/${itemId}/SpecialFeatures`);
+  }
+
+  async getInstantMix(itemId: string, limit = 50): Promise<JellyfinItemsResponse> {
+    return this.get<JellyfinItemsResponse>(`/Items/${itemId}/InstantMix`, {
+      UserId: this.requireUserId(),
+      Limit: limit,
+      Fields: CATALOG_LIST_FIELDS,
+    });
+  }
+
+  async getThemeMedia(itemId: string): Promise<{
+    ThemeSongsResult?: JellyfinItemsResponse;
+    ThemeVideosResult?: JellyfinItemsResponse;
+    SoundtrackSongsResult?: JellyfinItemsResponse;
+  }> {
+    return this.get(`/Items/${itemId}/ThemeMedia`, {
+      UserId: this.requireUserId(),
+      InheritFromParent: true,
+    });
+  }
+
+  async getMediaSegments(itemId: string): Promise<{ Items?: MediaSegment[] }> {
+    return this.get<{ Items?: MediaSegment[] }>(`/MediaSegments/${itemId}`);
+  }
+
+  /**
+   * Genre / studio / person index for the Watch browse pages. All three are
+   * user-scoped on the Jellyfin side, so a restricted account only sees the
+   * entities its own libraries contain.
+   */
+  async getBrowseEntities(
+    kind: 'Genres' | 'Studios' | 'Persons',
+    params: { parentId?: string; limit?: number; startIndex?: number; searchTerm?: string } = {},
+  ): Promise<JellyfinItemsResponse> {
+    return this.get<JellyfinItemsResponse>(`/${kind}`, {
+      userId: this.requireUserId(),
+      Limit: params.limit ?? 100,
+      StartIndex: params.startIndex ?? 0,
+      SortBy: 'SortName',
+      SortOrder: 'Ascending',
+      Recursive: true,
+      EnableImages: true,
+      EnableTotalRecordCount: true,
+      ...(params.parentId ? { ParentId: params.parentId } : {}),
+      ...(params.searchTerm ? { SearchTerm: params.searchTerm } : {}),
+    });
+  }
+
+  async getLiveTvChannels(params: { limit?: number } = {}): Promise<JellyfinItemsResponse> {
+    return this.get<JellyfinItemsResponse>('/LiveTv/Channels', {
+      UserId: this.requireUserId(),
+      AddCurrentProgram: true,
+      EnableUserData: true,
+      Limit: params.limit ?? 200,
+    });
+  }
+
+  async getLiveTvPrograms(params: Record<string, unknown> = {}): Promise<JellyfinItemsResponse> {
+    return this.get<JellyfinItemsResponse>('/LiveTv/Programs', {
+      UserId: this.requireUserId(),
+      EnableUserData: true,
+      ...params,
+    });
+  }
+
+  async getLyrics(itemId: string): Promise<unknown> {
+    return this.get(`/Audio/${itemId}/Lyrics`);
+  }
+
+  async getItemFilters(parentId?: string): Promise<{
+    Genres?: string[];
+    Tags?: string[];
+    OfficialRatings?: string[];
+    Years?: number[];
+  }> {
+    return this.get('/Items/Filters', {
+      UserId: this.requireUserId(),
+      ...(parentId ? { ParentId: parentId } : {}),
+    });
+  }
+
+  async setFavorite(itemId: string, favorite: boolean): Promise<JellyfinUserData> {
+    if (favorite) {
+      const res = await this.client.post<JellyfinUserData>(`/UserFavoriteItems/${itemId}`, null, {
+        params: { userId: this.requireUserId() },
+      });
+      return res.data;
+    }
+    const res = await this.client.delete<JellyfinUserData>(`/UserFavoriteItems/${itemId}`, {
+      params: { userId: this.requireUserId() },
+    });
+    return res.data;
+  }
+
+  async getPlaybackInfo(request: PlaybackInfoRequest): Promise<PlaybackInfoResponse> {
+    const params: Record<string, unknown> = {
+      userId: this.requireUserId(),
+      startTimeTicks: request.startTimeTicks ?? 0,
+      isPlayback: request.isPlayback ?? true,
+      autoOpenLiveStream: true,
+      maxStreamingBitrate: request.maxStreamingBitrate,
+    };
+    if (request.audioStreamIndex != null) params.audioStreamIndex = request.audioStreamIndex;
+    if (request.subtitleStreamIndex != null) params.subtitleStreamIndex = request.subtitleStreamIndex;
+    if (request.mediaSourceId) params.mediaSourceId = request.mediaSourceId;
+    if (request.liveStreamId) params.liveStreamId = request.liveStreamId;
+    if (request.enableDirectPlay != null) params.enableDirectPlay = request.enableDirectPlay;
+    if (request.enableDirectStream != null) params.enableDirectStream = request.enableDirectStream;
+    if (request.allowVideoStreamCopy != null) params.allowVideoStreamCopy = request.allowVideoStreamCopy;
+    if (request.allowAudioStreamCopy != null) params.allowAudioStreamCopy = request.allowAudioStreamCopy;
+
+    const body = {
+      DeviceProfile: request.deviceProfile,
+      UserId: this.requireUserId(),
+      StartTimeTicks: request.startTimeTicks ?? 0,
+      IsPlayback: request.isPlayback ?? true,
+      AutoOpenLiveStream: true,
+      MaxStreamingBitrate: request.maxStreamingBitrate,
+      AudioStreamIndex: request.audioStreamIndex,
+      SubtitleStreamIndex: request.subtitleStreamIndex,
+      MediaSourceId: request.mediaSourceId,
+      LiveStreamId: request.liveStreamId,
+      EnableDirectPlay: request.enableDirectPlay,
+      EnableDirectStream: request.enableDirectStream,
+      AllowVideoStreamCopy: request.allowVideoStreamCopy,
+      AllowAudioStreamCopy: request.allowAudioStreamCopy,
+      AlwaysBurnInSubtitleWhenTranscoding: request.alwaysBurnInSubtitleWhenTranscoding ?? false,
+    };
+
+    const res = await this.client.post<PlaybackInfoResponse>(
+      `/Items/${request.itemId}/PlaybackInfo`,
+      body,
+      {
+        params,
+        headers: this.playbackHeaders(request.deviceId, request.deviceName),
+      },
+    );
+    return res.data;
+  }
+
+  /**
+   * Persist resume position on the member's own account.
+   *
+   * The /Sessions/Playing* endpoints attribute progress to the *session's* user,
+   * and Helprr authenticates with the admin API key, so those sessions carry no
+   * user and Jellyfin saves nothing — playing a title for minutes left
+   * PlaybackPositionTicks at 0. This is the same explicit-userId escape hatch
+   * `markPlayed` documents, and it is what actually makes Resume work.
+   */
+  async updateUserItemData(
+    itemId: string,
+    data: { PlaybackPositionTicks?: number; Played?: boolean; PlayCount?: number },
+  ): Promise<void> {
+    await this.client.post(`/UserItems/${itemId}/UserData`, data, {
+      params: { userId: this.requireUserId() },
+    });
+  }
+
+  /**
+   * Report playback state.
+   *
+   * Two things happen per event, and they are not interchangeable:
+   *  - /Sessions/Playing* drives Jellyfin's Now Playing / Active Devices view.
+   *    Each event takes a *different* model and Jellyfin 400s the whole payload
+   *    on any undeclared property, so each branch sends only what its schema
+   *    allows. `PlaybackRate` and `MaxStreamingBitrate` have no Jellyfin
+   *    equivalent and are dropped; shuffle travels as `PlaybackOrder`
+   *    ('Default' | 'Shuffle'), not `ShuffleMode`.
+   *  - updateUserItemData persists the resume position against the member's
+   *    account, which the session path cannot do under admin-key auth.
+   */
+  async reportPlayback(payload: PlaybackProgressPayload): Promise<void> {
+    const headers = this.playbackHeaders(payload.deviceId, payload.deviceName);
+    const positionTicks = Math.round(payload.positionTicks ?? 0);
+
+    if (payload.event !== 'playing') {
+      // Best-effort: a Now Playing hiccup must not lose the resume point.
+      await this.updateUserItemData(payload.itemId, { PlaybackPositionTicks: positionTicks })
+        .catch(() => undefined);
+    }
+
+    // PlaybackStopInfo is much narrower than the start/progress models.
+    if (payload.event === 'stopped') {
+      await this.client.post('/Sessions/Playing/Stopped', {
+        ItemId: payload.itemId,
+        MediaSourceId: payload.mediaSourceId,
+        PlaySessionId: payload.playSessionId,
+        PositionTicks: positionTicks,
+        LiveStreamId: payload.liveStreamId,
+        Failed: false,
+      }, { headers });
+      return;
+    }
+
+    await this.client.post(
+      payload.event === 'playing' ? '/Sessions/Playing' : '/Sessions/Playing/Progress',
+      {
+        ItemId: payload.itemId,
+        MediaSourceId: payload.mediaSourceId,
+        PlaySessionId: payload.playSessionId,
+        PositionTicks: positionTicks,
+        IsPaused: payload.isPaused ?? false,
+        IsMuted: payload.isMuted ?? false,
+        VolumeLevel: payload.volumeLevel ?? 100,
+        PlayMethod: payload.playMethod,
+        AudioStreamIndex: payload.audioStreamIndex,
+        SubtitleStreamIndex: payload.subtitleStreamIndex,
+        LiveStreamId: payload.liveStreamId,
+        RepeatMode: payload.repeatMode ?? 'RepeatNone',
+        PlaybackOrder: payload.shuffleMode === 'Shuffle' ? 'Shuffle' : 'Default',
+        CanSeek: payload.canSeek ?? true,
+        PlaybackStartTimeTicks: payload.playbackStartTimeTicks,
+      },
+      { headers },
+    );
+  }
+
+  /**
+   * Release a transcode. Jellyfin exposes this as DELETE /Videos/ActiveEncodings
+   * with deviceId and playSessionId both required — a POST to
+   * /Videos/ActiveEncodings/Stop returns 405 and leaves ffmpeg running.
+   */
+  async stopActiveEncodings(playSessionId: string, deviceId: string, deviceName?: string): Promise<void> {
+    await this.client.delete('/Videos/ActiveEncodings', {
+      params: { deviceId, playSessionId },
+      headers: this.playbackHeaders(deviceId, deviceName),
+    });
+  }
+
+  buildUpstreamUrl(path: string, search: URLSearchParams): string {
+    const qs = search.toString();
+    return `${this.serverUrl}${path}${qs ? `?${qs}` : ''}`;
+  }
+
+  tokenHeader(): Record<string, string> {
+    return {
+      Authorization: `MediaBrowser Token="${this.token}", Client="${CLIENT_NAME}", Device="${DEVICE_NAME}", DeviceId="${DEVICE_ID}", Version="${CLIENT_VERSION}"`,
+      'X-Emby-Token': this.token,
+    };
   }
 }

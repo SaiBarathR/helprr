@@ -10,7 +10,7 @@ import { CategoryRow } from '@/components/settings/category-row';
 import { Switch } from '@/components/ui/switch';
 import { useUIStore } from '@/lib/store';
 import { haptic } from '@/lib/haptics';
-import { Compass, Image as ImageIcon, Paintbrush, Vibrate } from 'lucide-react';
+import { Clapperboard, Compass, Image as ImageIcon, Paintbrush, PlayCircle, Vibrate } from 'lucide-react';
 
 function HapticsSection() {
   const hapticsEnabled = useUIStore((s) => s.hapticsEnabled);
@@ -34,6 +34,56 @@ function HapticsSection() {
             // Demo tick so enabling is immediately felt.
             if (v) haptic('medium');
           }}
+        />
+      </div>
+    </GroupedSection>
+  );
+}
+
+function WatchSkinSection() {
+  const watchSkin = useUIStore((s) => s.watchSkin);
+  const setWatchSkin = useUIStore((s) => s.setWatchSkin);
+  const watchPreviews = useUIStore((s) => s.watchPreviews);
+  const setWatchPreviews = useUIStore((s) => s.setWatchPreviews);
+  const cinematic = watchSkin === 'cinematic';
+
+  return (
+    <GroupedSection
+      title="Watch"
+      footer="Cinematic mode gives the Watch section a streaming-service layout: artwork without captions, a billboard hero, and chrome that gets out of the way. Always dark, whatever your theme. Autoplay previews stream a muted clip of the title — your server may have to transcode for it, so turn them off if playback elsewhere suffers."
+    >
+      <div className="grouped-row">
+        <div className="flex items-center gap-3 min-w-0 flex-1">
+          <span className="flex h-8 w-8 items-center justify-center rounded-md shrink-0 bg-rose-500/10 text-rose-400">
+            <Clapperboard className="h-[18px] w-[18px]" />
+          </span>
+          <div className="min-w-0 flex flex-col items-start">
+            <span className="text-[15px] font-medium truncate">Cinematic mode</span>
+          </div>
+        </div>
+        <Switch
+          checked={cinematic}
+          onCheckedChange={(v) => setWatchSkin(v ? 'cinematic' : 'classic')}
+          aria-label="Cinematic mode"
+        />
+      </div>
+      <div className="grouped-row">
+        <div className="flex items-center gap-3 min-w-0 flex-1">
+          <span className="flex h-8 w-8 items-center justify-center rounded-md shrink-0 bg-teal-500/10 text-teal-400">
+            <PlayCircle className="h-[18px] w-[18px]" />
+          </span>
+          <div className="min-w-0 flex flex-col items-start">
+            <span className="text-[15px] font-medium truncate">Autoplay previews</span>
+            {!cinematic && (
+              <span className="text-[13px] text-muted-foreground">Needs cinematic mode</span>
+            )}
+          </div>
+        </div>
+        <Switch
+          checked={watchPreviews}
+          disabled={!cinematic}
+          onCheckedChange={setWatchPreviews}
+          aria-label="Autoplay previews"
         />
       </div>
     </GroupedSection>
@@ -108,6 +158,8 @@ export default function AppearanceSettingsPage() {
           subtitle="Accent color, palette, gradient, text, and font"
         />
       </GroupedSection>
+
+      <WatchSkinSection />
 
       <HapticsSection />
 

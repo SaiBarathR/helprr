@@ -1,5 +1,6 @@
 import type { User } from '@prisma/client';
 import { prisma } from '@/lib/db';
+import { readJellyfinToken } from '@/lib/jellyfin-token';
 
 /** Public-safe view of a user — never leaks passwordHash or jellyfinToken. */
 export function toSafeUser(u: User) {
@@ -14,6 +15,10 @@ export function toSafeUser(u: User) {
     seerrUserId: u.seerrUserId,
     hasPassword: u.passwordHash !== null,
     hasJellyfinLink: u.jellyfinUserId !== null,
+    // Identity vs credential: linked says whose data to read, connected says
+    // they can actually play. A token encrypted under a rotated secret reads
+    // back as absent, which is the truthful answer here — it cannot be used.
+    hasJellyfinConnection: readJellyfinToken(u) !== null,
     createdAt: u.createdAt,
   };
 }

@@ -47,6 +47,15 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
+# Patch the base image's OpenSSL from the Alpine mirror. node:24-alpine lags the
+# branch it is built from — it shipped libcrypto3/libssl3 3.5.7-r0 while Alpine
+# v3.24 main already carried 3.5.8-r0 (CVE-2026-14456) — and the image-scan gate
+# blocks any fixable high, so waiting on an upstream rebuild blocks every merge.
+# Targeted rather than a blanket `apk upgrade`, to keep the published image's
+# package set predictable. Node links its own bundled OpenSSL, so this changes
+# only what the OS-package scanner reads and cannot affect the runtime.
+RUN apk upgrade --no-cache libcrypto3 libssl3
+
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 RUN mkdir -p /app/logs /app/image-cache \

@@ -423,6 +423,11 @@ export type PersistedThemeVars =
  * overrides) apply from the first paint. Unparseable colors leave the
  * attribute unset, which the CSS treats as dark.
  *
+ * v6: also replays the persisted watchSkin onto <html> as data-watch-skin.
+ * The cinematic Watch skin is expressed as a CSS scope keyed on that
+ * attribute, so without the replay every Watch navigation would paint the
+ * classic skin and snap once the store rehydrates.
+ *
  * v4: also replays the persisted navPosition onto <html> as
  * data-nav-position pre-paint. The bottom-nav geometry in globals.css keys
  * on that attribute, and AppShell only sets it in a useEffect — without the
@@ -443,7 +448,7 @@ const DEFAULT_BOOT_PAYLOAD = JSON.stringify({
 
 export const THEME_BOOTSTRAP_SCRIPT = `(function(){try{var e=document.documentElement,p=localStorage.getItem(${JSON.stringify(
   UI_PREFS_STORAGE_KEY,
-)});try{if(p&&JSON.parse(p).state.navPosition==='bottom')e.dataset.navPosition='bottom';}catch(n){}var r=localStorage.getItem(${JSON.stringify(
+)});try{if(p){var q=JSON.parse(p).state;if(q.navPosition==='bottom')e.dataset.navPosition='bottom';if(q.watchSkin==='cinematic')e.dataset.watchSkin='cinematic';}}catch(n){}var r=localStorage.getItem(${JSON.stringify(
   THEME_VARS_STORAGE_KEY,
 )});var v;if(r){v=JSON.parse(r);}else{if(p)return;v=${DEFAULT_BOOT_PAYLOAD};}if(!v||typeof v!=='object')return;var g=v.__glass,m=v;if(g&&typeof g==='object'){var s=g.scheme==='light'?'light':g.scheme==='dark'?'dark':(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');m=v[s==='dark'?'__dark':'__light'];if(!m||typeof m!=='object')return;e.setAttribute('data-glass','');e.setAttribute('data-glass-scheme',s);e.setAttribute('data-scheme',s);var t=document.querySelector('meta[name="theme-color"]');var c=s==='dark'?g.tcDark:g.tcLight;if(t&&typeof c==='string')t.setAttribute('content',c);}for(var k in m){if(k.indexOf('--hpr-')===0&&m[k]!=null)e.style.setProperty(k,String(m[k]));}if(!e.hasAttribute('data-scheme')){var b=m['--hpr-inkSoft'],M=typeof b==='string'?b.match(/^#([0-9a-f]{6})$/i):null;if(M){var x=parseInt(M[1],16);e.setAttribute('data-scheme',(0.2126*((x>>16)&255)+0.7152*((x>>8)&255)+0.0722*(x&255))>140?'light':'dark');}}}catch(e){}})();`;
 
