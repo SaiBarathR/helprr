@@ -29,6 +29,18 @@ export interface PlayOptions {
   enableDirectPlay?: boolean;
   enableDirectStream?: boolean;
   shuffle?: boolean;
+  /**
+   * Which media source the indexes above refer to.
+   *
+   * Jellyfin ignores AudioStreamIndex and SubtitleStreamIndex unless
+   * MediaSourceId comes with them — measured against 10.11.11: requesting
+   * audio track 5 on its own still returns a transcode URL for track 1, and
+   * the same request with the source id returns track 5. jellyfin-web always
+   * sends it (playbackmanager.js `changeStream` passes `currentMediaSource.Id`
+   * into `getPlaybackInfo`). Without it, picking another audio track or a
+   * burned-in subtitle silently does nothing.
+   */
+  mediaSourceId?: string;
 }
 
 interface PlaybackContextValue {
@@ -115,6 +127,7 @@ async function fetchStream(itemId: string, options: PlayOptions): Promise<Helprr
       deviceName: getJellyfinPlaybackDeviceName(),
       deviceProfile,
       startTimeTicks: options.startTimeTicks,
+      mediaSourceId: options.mediaSourceId,
       audioStreamIndex: options.audioStreamIndex,
       subtitleStreamIndex: options.subtitleStreamIndex,
       maxStreamingBitrate: options.maxStreamingBitrate && options.maxStreamingBitrate > 0
@@ -415,6 +428,54 @@ function clearTextTracks(el: HTMLVideoElement) {
   el.querySelectorAll('track').forEach((track) => track.remove());
 }
 
+/**
+ * Where one cue sits, given the viewer's vertical-position setting.
+ *
+ * A negative position counts lines up from the bottom, so a two-line cue has to
+ * start a line higher to leave its last line where a one-line cue sits. That is
+ * jellyfin-web's rule verbatim (htmlVideoPlayer/plugin.js `renderTracksEvents`).
+ */
+export function cueLineFor(line: number, text: string): number {
+  const lineCount = (text.match(/\n/g) ?? []).length;
+  return line < 0 ? line - lineCount : line;
+}
+
+/**
+ * Position a track's cues from that setting.
+ *
+ * One writer, deliberately: jellyfin-web sets `cue.line` here and nowhere else,
+ * and a second writer in the player chrome is what used to silently override
+ * the viewer's choice.
+ */
+function applyCueLine(track: TextTrack, line: number) {
+  for (const cue of Array.from(track.cues ?? []) as VTTCue[]) {
+    // Both, and in this order. Jellyfin writes its cues as `line:90%`, which
+    // parses to snapToLines false — and with that flag false `line` is a
+    // percentage, so a negative position would place the cue above the top of
+    // the frame instead of a few lines up from the bottom. jellyfin-web never
+    // meets this because it builds its cues itself, where snapToLines defaults
+    // to true.
+    cue.snapToLines = true;
+    cue.line = cueLineFor(line, cue.text);
+  }
+}
+
+/**
+ * Whether this subtitle track can only be shown by re-requesting the stream.
+ *
+ * Anything Jellyfin has to encode into the picture (PGS, VOBSUB) needs a new
+ * transcode, and so does an embedded track while one is already running.
+ * Everything else is a text track the element can be handed directly, which is
+ * the distinction jellyfin-web draws in `setSubtitleStreamIndex`.
+ */
+export function subtitleNeedsOwnStream(stream: HelprrStreamInfo, index: number | null): boolean {
+  if (index == null || index < 0) return false;
+  const track = stream.subtitleTracks.find((candidate) => candidate.index === index);
+  if (!track) return false;
+  return track.deliveryMethod === 'Encode'
+    || (track.deliveryMethod === 'Embed' && stream.playMethod === 'Transcode');
+}
+
 function fontUrls(stream: HelprrStreamInfo): string[] {
   return (stream.mediaSource.MediaAttachments ?? [])
     .filter((attachment) => {
@@ -424,6 +485,35 @@ function fontUrls(stream: HelprrStreamInfo): string[] {
     })
     .map((attachment) => attachment.DeliveryUrl)
     .filter((url): url is string => Boolean(url));
+}
+
+/**
+ * The position to report, which is not always the one the element shows.
+ *
+ * Until a freshly attached stream has reached the offset it was started at,
+ * the element reads zero, and reporting that would move the member's resume
+ * point back to the beginning.
+ */
+export function positionToReport(el: HTMLMediaElement | null, stream: HelprrStreamInfo, reachedStart: boolean): number {
+  if (reachedStart) return secondsToTicks(el?.currentTime ?? 0);
+  return stream.startTimeTicks || secondsToTicks(el?.currentTime ?? 0);
+}
+
+/**
+ * Claim the next start attempt, before anything is awaited.
+ *
+ * A restart is stop-then-start and the stop is a network round trip, so two
+ * quick changes both enter it holding the same live session and reach the start
+ * in whichever order the server answers their stops. Arriving last was what
+ * won, which is how a third click on PGS could settle on the ASS track chosen
+ * second. Claiming here, synchronously, leaves the newest request the only one
+ * that gets through: jellyfin-web has this for free because it mutates one
+ * `playerData` before it awaits anything.
+ */
+export function reserveStart(token: { current: number }): () => boolean {
+  const claimed = token.current + 1;
+  token.current = claimed;
+  return () => token.current === claimed;
 }
 
 export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) {
@@ -450,6 +540,28 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
   const startTokenRef = useRef(0);
   const playbackStartRef = useRef(0);
   const subtitleOffsetRef = useRef(0);
+  /**
+   * The tracks the viewer asked for, held where they can be read synchronously.
+   *
+   * jellyfin-web keeps these on its mutable `playerData` and reads them back in
+   * `changeStream`. Held only in React state they were read through callback
+   * closures, so switching audio and then subtitles before the first re-render
+   * landed sent the *previous* audio index back to Jellyfin and reverted the
+   * track the viewer had just chosen.
+   */
+  const audioIndexRef = useRef<number | null>(null);
+  const subtitleIndexRef = useRef<number | null>(null);
+  /**
+   * Whether the element has actually arrived at the position it was started at.
+   *
+   * A restarted HLS transcode attaches at currentTime 0 and only jumps to the
+   * requested offset once hls.js has the level details — measured at around six
+   * seconds against a 4K HDR transcode, against a ten-second progress cycle.
+   * Every progress and stop report writes the resume point straight to the
+   * member's item data, so reporting that transient zero is what would throw
+   * away where they had got to.
+   */
+  const reachedStartRef = useRef(false);
   const shuffledRef = useRef(false);
   const repeatRef = useRef<RepeatMode>('RepeatNone');
 
@@ -483,13 +595,90 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     }
   };
 
-  const destroyPlayers = () => {
-    hlsRef.current?.destroy();
-    hlsRef.current = null;
+  /** Tear down whatever is rendering subtitles, leaving the video alone. */
+  const destroySubtitles = useCallback(() => {
     try { assRef.current?.dispose?.(); } catch { /* already torn down */ }
     assRef.current = null;
     if (mediaRef.current) clearTextTracks(mediaRef.current);
-  };
+  }, []);
+
+  const destroyPlayers = useCallback(() => {
+    hlsRef.current?.destroy();
+    hlsRef.current = null;
+    destroySubtitles();
+  }, [destroySubtitles]);
+
+  /**
+   * Render one subtitle track onto the element that is already playing.
+   *
+   * Separate from attachMedia because switching between text tracks does not
+   * need a new stream: jellyfin-web only re-requests one when the old or new
+   * track has to be burned in (playbackmanager.js `setSubtitleStreamIndex`).
+   * `index` below zero means "off", which is just the teardown.
+   */
+  const applySubtitleTrack = useCallback(async (next: HelprrStreamInfo, index: number | null) => {
+    const el = mediaRef.current;
+    if (!el) return;
+    destroySubtitles();
+    if (index == null || index < 0) return;
+    // A track Jellyfin is burning in has no URL and nothing to attach — the
+    // pixels already carry it.
+    const selected = next.subtitleTracks.find((track) => track.index === index && track.deliveryMethod !== 'Encode')
+      ?? next.subtitleTracks.find((track) => track.index === index);
+    if (!selected?.url) return;
+
+    if (selected.format === 'ass' || selected.format === 'ssa') {
+      const { default: SubtitlesOctopus } = await import('@jellyfin/libass-wasm');
+      const videoStream = next.mediaSource.MediaStreams?.find((candidate) => candidate.Type === 'Video');
+      assRef.current = new SubtitlesOctopus({
+        video: el,
+        subUrl: selected.url,
+        workerUrl: '/libass/subtitles-octopus-worker.js',
+        legacyWorkerUrl: '/libass/subtitles-octopus-worker-legacy.js',
+        fallbackFont: '/libass/default.woff2',
+        fonts: fontUrls(next),
+        timeOffset: ticksToSeconds(next.transcodingOffsetTicks) + subtitleOffsetRef.current,
+        // libass is disposed by its own error path, so without a handler a
+        // failed render just makes the subtitles vanish silently.
+        onError: () => { assRef.current = null; },
+        // The rest are jellyfin-web's settings verbatim (htmlVideoPlayer
+        // `renderSsaAss`), which override every libass default. They matter
+        // most on the typeset ASS this library is full of: the render caps keep
+        // a 4K stream from rasterising at full resolution, the limits contain a
+        // pathological subtitle file, and targetFps is what makes karaoke and
+        // sign animations run at the video's own rate.
+        renderMode: 'wasm-blend',
+        dropAllAnimations: false,
+        libassMemoryLimit: 40,
+        libassGlyphLimit: 40,
+        targetFps: videoStream?.ReferenceFrameRate || videoStream?.RealFrameRate || 24,
+        prescaleFactor: 0.8,
+        prescaleHeightLimit: 1080,
+        maxRenderHeight: 2160,
+        resizeVariation: 0.2,
+        renderAhead: 90,
+      });
+      return;
+    }
+
+    const track = document.createElement('track');
+    track.kind = 'subtitles';
+    track.label = selected.displayTitle;
+    track.srclang = selected.language;
+    track.src = selected.url;
+    track.default = true;
+    el.appendChild(track);
+    const enable = () => {
+      const textTrack = el.textTracks[0];
+      if (!textTrack) return;
+      textTrack.mode = 'showing';
+      // ::cue cannot move a cue box, so the vertical-position setting has to be
+      // written onto the cues themselves — the same lever jellyfin-web uses.
+      applyCueLine(textTrack, cueLineRef.current);
+    };
+    track.addEventListener('load', enable);
+    enable();
+  }, [destroySubtitles]);
 
   /**
    * Fail playback, checking first whether the member is simply no longer
@@ -537,23 +726,44 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     if (isHls && !useNative && canPlayHlsWithMse()) {
       const Hls = (await import('hls.js')).default;
       if (Hls.isSupported()) {
-        const maxBufferLength = maxBitrate >= 25_000_000 ? 6 : 30;
+        // "Auto" quality still negotiates against the profile's 120 Mbps
+        // ceiling, so the effective bitrate — not the picker's 0 — decides
+        // this. jellyfin-web caps the buffer at 6s above 25 Mbps because
+        // browsers choke on huge fragments from hardware encoders
+        // (htmlVideoPlayer/plugin.js, hls.js#876); keyed off the raw setting a
+        // 4K transcode kept the 30s buffer that comment warns about.
+        const effectiveBitrate = maxBitrate > 0 ? maxBitrate : 120_000_000;
+        const maxBufferLength = effectiveBitrate >= 25_000_000 ? 6 : 30;
         const hls = new Hls({
           startPosition: start || -1,
           manifestLoadingTimeOut: 20_000,
           maxBufferLength,
           maxMaxBufferLength: maxBufferLength,
+          lowLatencyMode: false,
+          // Keep the whole back buffer: the default 90s makes seeking back into
+          // what was just watched re-download it. Both match jellyfin-web's
+          // Hls.DefaultConfig overrides.
+          backBufferLength: Infinity,
+          // Pick the HDR rendition when the manifest offers one, or an HDR
+          // transcode is silently watched in SDR.
+          videoPreference: { preferHDR: true },
           xhrSetup(xhr) {
             xhr.withCredentials = true;
           },
         });
+        // How many times a decode error has been nursed back. jellyfin-web
+        // escalates recover -> swapAudioCodec+recover -> give up
+        // (htmlMediaHelper.js `handleHlsJsMediaError`); recovering forever
+        // leaves a genuinely broken stream spinning with no error on screen.
+        let mediaErrorRecoveries = 0;
         hls.on(Hls.Events.ERROR, (_event, data) => {
-          // Checked before the fatal guard and before the retry below: a 409 is
-          // Helprr refusing to serve without a Jellyfin token, not a transient
-          // network fault. hls.js retries NETWORK_ERROR indefinitely, so left to
-          // the retry path a revoked token stalls the stream silently and no
-          // error ever reaches the media element.
-          if (data.response?.code === 409) {
+          // Checked before the fatal guard and before the retry below. hls.js
+          // retries NETWORK_ERROR indefinitely, so any upstream refusal — a 409
+          // for a revoked token, a 404 for an item the member lost access to, a
+          // 500 from a dead transcode — would otherwise stall the stream
+          // silently with no error ever reaching the media element. jellyfin-web
+          // treats every response code at or above 400 as fatal here.
+          if ((data.response?.code ?? 0) >= 400) {
             hls.stopLoad();
             void failPlayback('This title could not be played.');
             return;
@@ -564,8 +774,16 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
             return;
           }
           if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
-            hls.recoverMediaError();
-            return;
+            mediaErrorRecoveries += 1;
+            if (mediaErrorRecoveries === 1) {
+              hls.recoverMediaError();
+              return;
+            }
+            if (mediaErrorRecoveries === 2) {
+              hls.swapAudioCodec();
+              hls.recoverMediaError();
+              return;
+            }
           }
           el.dispatchEvent(new Event('error'));
         });
@@ -598,53 +816,14 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
       }
     }
 
-    const requestedSub = requestedSubtitleIndex ?? next.mediaSource.DefaultSubtitleStreamIndex;
-    const selectedSub = requestedSub != null && requestedSub >= 0
-      ? next.subtitleTracks.find((track) => track.index === requestedSub && track.deliveryMethod !== 'Encode')
-        ?? next.subtitleTracks.find((track) => track.index === requestedSub)
-      : undefined;
-    if (selectedSub && (selectedSub.format === 'ass' || selectedSub.format === 'ssa') && selectedSub.url) {
-      const { default: SubtitlesOctopus } = await import('@jellyfin/libass-wasm');
-      assRef.current = new SubtitlesOctopus({
-        video: el,
-        subUrl: selectedSub.url,
-        workerUrl: '/libass/subtitles-octopus-worker.js',
-        legacyWorkerUrl: '/libass/subtitles-octopus-worker-legacy.js',
-        fallbackFont: '/libass/default.woff2',
-        fonts: fontUrls(next),
-        renderMode: 'wasm-blend',
-        timeOffset: ticksToSeconds(next.transcodingOffsetTicks) + subtitleOffsetRef.current,
-      });
-    } else if (selectedSub?.url && selectedSub.format !== 'ass' && selectedSub.format !== 'ssa') {
-      const track = document.createElement('track');
-      track.kind = 'subtitles';
-      track.label = selectedSub.displayTitle;
-      track.srclang = selectedSub.language;
-      track.src = selectedSub.url;
-      track.default = true;
-      el.appendChild(track);
-      const enable = () => {
-        const textTrack = el.textTracks[0];
-        if (!textTrack) return;
-        textTrack.mode = 'showing';
-        // jellyfin-web sets `cue.line` from the same vertical-position setting
-        // (htmlVideoPlayer/plugin.js ~line 1485). ::cue cannot express it.
-        const line = cueLineRef.current;
-        for (const cue of Array.from(textTrack.cues ?? [])) {
-          (cue as VTTCue).line = line;
-        }
-      };
-      track.addEventListener('load', enable);
-      enable();
-    }
+    await applySubtitleTrack(next, requestedSubtitleIndex ?? next.mediaSource.DefaultSubtitleStreamIndex ?? null);
 
     await playSafely(el);
-  }, [failPlayback, maxBitrate, muted, playbackRate, volume]);
+  }, [applySubtitleTrack, destroyPlayers, failPlayback, maxBitrate, muted, playbackRate, volume]);
 
   const startItem = useCallback(async (nextItem: JellyfinItem, options: PlayOptions = {}) => {
-    const token = startTokenRef.current + 1;
-    startTokenRef.current = token;
-    const superseded = () => startTokenRef.current !== token;
+    const stillCurrent = reserveStart(startTokenRef);
+    const superseded = () => !stillCurrent();
     /**
      * The encoder the outgoing item is holding.
      *
@@ -660,6 +839,8 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     setError(null);
     setNeedsJellyfinConnect(false);
     playbackStartRef.current = Date.now() * 10_000;
+    // The replacement element starts at zero until it seeks itself into place.
+    reachedStartRef.current = false;
     const resumeTicks = options.startTimeTicks
       ?? nextItem.UserData?.PlaybackPositionTicks
       ?? 0;
@@ -667,6 +848,10 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
       startTimeTicks: resumeTicks,
       audioStreamIndex: options.audioStreamIndex,
       subtitleStreamIndex: options.subtitleStreamIndex,
+      // Only meaningful alongside a track index, and only correct while the
+      // item is unchanged — a source id from the outgoing item would ask
+      // Jellyfin for a source this one does not have.
+      mediaSourceId: options.mediaSourceId,
       maxStreamingBitrate: options.maxStreamingBitrate && options.maxStreamingBitrate > 0
         ? options.maxStreamingBitrate
         : undefined,
@@ -688,11 +873,21 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
       }
       streamRef.current = nextStream;
       setStream(nextStream);
-      setAudioStreamIndex(nextStream.mediaSource.DefaultAudioStreamIndex ?? request.audioStreamIndex ?? null);
-      setSubtitleStreamIndex(request.subtitleStreamIndex ?? nextStream.mediaSource.DefaultSubtitleStreamIndex ?? null);
+      // What the viewer asked for wins over what came back. Jellyfin returns
+      // the *file's* defaults in DefaultAudioStreamIndex/DefaultSubtitleStreamIndex
+      // rather than echoing the request, so reading the response back here was
+      // what reverted a chosen audio track — and then fed the stale index into
+      // the next restart. jellyfin-web stores the requested index the same way
+      // (playbackmanager.js `changeStream`).
+      const chosenAudio = request.audioStreamIndex ?? nextStream.mediaSource.DefaultAudioStreamIndex ?? null;
+      const chosenSubtitle = request.subtitleStreamIndex ?? nextStream.mediaSource.DefaultSubtitleStreamIndex ?? null;
+      audioIndexRef.current = chosenAudio;
+      subtitleIndexRef.current = chosenSubtitle;
+      setAudioStreamIndex(chosenAudio);
+      setSubtitleStreamIndex(chosenSubtitle);
       setDurationSeconds(ticksToSeconds(nextStream.mediaSource.RunTimeTicks || nextItem.RunTimeTicks));
       setVideoExpanded(nextItem.MediaType !== 'Audio');
-      await attachMedia(nextStream, request.subtitleStreamIndex);
+      await attachMedia(nextStream, chosenSubtitle);
       if (superseded()) return;
       await report('playing', nextStream, {
         positionTicks: secondsToTicks(mediaRef.current?.currentTime || 0) || resumeTicks,
@@ -700,8 +895,8 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
         volumeLevel: Math.round(volume * 100),
         isMuted: muted,
         playbackRate,
-        audioStreamIndex: nextStream.mediaSource.DefaultAudioStreamIndex ?? null,
-        subtitleStreamIndex: nextStream.mediaSource.DefaultSubtitleStreamIndex ?? null,
+        audioStreamIndex: chosenAudio,
+        subtitleStreamIndex: chosenSubtitle,
         repeatMode: repeatRef.current,
         shuffleMode: shuffledRef.current ? 'Shuffle' : 'Sorted',
         playbackStartTimeTicks: playbackStartRef.current,
@@ -805,16 +1000,16 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     clearTimers();
     const current = streamRef.current;
     const el = mediaRef.current;
-    const positionTicks = secondsToTicks(el?.currentTime ?? positionSeconds);
     if (current) {
       await report('stopped', current, {
-        positionTicks,
+        positionTicks: positionToReport(el, current, reachedStartRef.current)
+          || secondsToTicks(positionSeconds),
         isPaused: true,
         volumeLevel: Math.round(volume * 100),
         isMuted: muted,
         playbackRate,
-        audioStreamIndex,
-        subtitleStreamIndex,
+        audioStreamIndex: audioIndexRef.current,
+        subtitleStreamIndex: subtitleIndexRef.current,
         repeatMode: repeatRef.current,
         shuffleMode: shuffledRef.current ? 'Shuffle' : 'Sorted',
         playbackStartTimeTicks: playbackStartRef.current,
@@ -842,11 +1037,15 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     queueRef.current = [];
     orderRef.current = [];
     indexRef.current = 0;
+    audioIndexRef.current = null;
+    subtitleIndexRef.current = null;
+    setAudioStreamIndex(null);
+    setSubtitleStreamIndex(null);
     setQueue([]);
     setIndex(0);
     setPositionSeconds(0);
     setDurationSeconds(0);
-  }, [audioStreamIndex, maxBitrate, muted, playbackRate, positionSeconds, subtitleStreamIndex, volume]);
+  }, [destroyPlayers, maxBitrate, muted, playbackRate, positionSeconds, volume]);
 
   const togglePause = useCallback(() => {
     const el = mediaRef.current;
@@ -867,13 +1066,17 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     const isHls = current.mimeType.toLowerCase().includes('mpegurl') || current.mediaUrl.includes('.m3u8');
     if (current.playMethod === 'Transcode' && !isHls) {
       void (async () => {
+        const stillCurrent = reserveStart(startTokenRef);
         await stopEncodings(current.playSessionId);
+        // Dragged again while the stop was in flight: the later seek wins.
+        if (!stillCurrent()) return;
         const nextItem = queueRef.current[indexRef.current];
         if (!nextItem) return;
         await startItem(nextItem, {
           startTimeTicks: secondsToTicks(seconds),
-          audioStreamIndex,
-          subtitleStreamIndex,
+          audioStreamIndex: audioIndexRef.current,
+          subtitleStreamIndex: subtitleIndexRef.current,
+          mediaSourceId: current.mediaSource.Id,
           maxStreamingBitrate: maxBitrate,
         });
       })();
@@ -881,7 +1084,7 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     }
     el.currentTime = seconds;
     setPositionSeconds(seconds);
-  }, [audioStreamIndex, maxBitrate, startItem, subtitleStreamIndex]);
+  }, [maxBitrate, startItem]);
 
   const skip = useCallback((deltaSeconds: number) => {
     seek(Math.max(0, positionSeconds + deltaSeconds));
@@ -929,26 +1132,69 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     const current = streamRef.current;
     const nextItem = queueRef.current[indexRef.current];
     if (!current || !nextItem) return;
+    // The live stream and the queue disagree while a start is still in flight —
+    // picking an episode and then a track before it had attached. That start
+    // owns the player, and a source id from the outgoing item would ask
+    // Jellyfin for a source this one does not have; it also sets the track
+    // state itself when it lands, so the panel corrects rather than lying.
+    if (current.item.Id !== nextItem.Id) return;
+    // Read before the stop, not after it. Not the element's own time either: a
+    // change made while a previous restart is still attaching would read the
+    // transient zero and send the viewer back to the beginning. Switching
+    // subtitles twice in a row hit this exactly.
+    const startTimeTicks = positionToReport(mediaRef.current, current, reachedStartRef.current)
+      || secondsToTicks(positionSeconds);
+    const stillCurrent = reserveStart(startTokenRef);
     await stopEncodings(current.playSessionId);
+    // A newer change was made while the stop was in flight, so that one owns
+    // the player; finishing this chain would apply a selection the viewer has
+    // already moved on from.
+    if (!stillCurrent()) return;
     await startItem(nextItem, {
-      startTimeTicks: secondsToTicks(mediaRef.current?.currentTime ?? positionSeconds),
-      audioStreamIndex: patch.audioStreamIndex ?? audioStreamIndex,
-      subtitleStreamIndex: patch.subtitleStreamIndex ?? subtitleStreamIndex,
+      startTimeTicks,
+      // The refs, read here rather than passed in by the caller: every setter
+      // writes them synchronously, so the restart that wins the claim above
+      // carries the viewer's newest pick — including one made while this stop
+      // was in flight, and including a client-side subtitle swap, which does
+      // not restart at all and so has no restart of its own to carry it.
+      audioStreamIndex: audioIndexRef.current,
+      subtitleStreamIndex: subtitleIndexRef.current,
+      // The source the indexes belong to, without which Jellyfin ignores them.
+      mediaSourceId: current.mediaSource.Id,
       maxStreamingBitrate: patch.maxStreamingBitrate ?? maxBitrate,
       enableDirectPlay: patch.enableDirectPlay,
       enableDirectStream: patch.enableDirectStream,
     });
-  }, [audioStreamIndex, maxBitrate, positionSeconds, startItem, subtitleStreamIndex]);
+  }, [maxBitrate, positionSeconds, startItem]);
 
   const setAudioStream = useCallback(async (streamIndex: number) => {
+    audioIndexRef.current = streamIndex;
     setAudioStreamIndex(streamIndex);
-    await restartWith({ audioStreamIndex: streamIndex });
+    await restartWith({});
   }, [restartWith]);
 
+  /**
+   * Switch subtitles, restarting the stream only when one has to be burned in.
+   *
+   * jellyfin-web swaps an External track on the element and leaves the stream
+   * alone (playbackmanager.js `setSubtitleStreamIndex`); only a track Jellyfin
+   * has to encode into the picture — PGS, VOBSUB — needs a new stream, and so
+   * does turning one of those off. Restarting for every change made each toggle
+   * a multi-second stall and started a fresh transcode, which is what made
+   * flipping between two tracks a few times so punishing.
+   */
   const setSubtitleStream = useCallback(async (streamIndex: number) => {
+    const current = streamRef.current;
+    const previousIndex = subtitleIndexRef.current;
+    subtitleIndexRef.current = streamIndex;
     setSubtitleStreamIndex(streamIndex);
-    await restartWith({ subtitleStreamIndex: streamIndex });
-  }, [restartWith]);
+    if (!current) return;
+    if (subtitleNeedsOwnStream(current, streamIndex) || subtitleNeedsOwnStream(current, previousIndex)) {
+      await restartWith({});
+      return;
+    }
+    await applySubtitleTrack(current, streamIndex);
+  }, [applySubtitleTrack, restartWith]);
 
   const setMaxBitrate = useCallback(async (bitrate: number) => {
     setMaxBitrateState(bitrate);
@@ -1003,6 +1249,7 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     const el = mediaRef.current;
     if (!el) return undefined;
     const onTime = () => {
+      if (el.currentTime > 0) reachedStartRef.current = true;
       setPositionSeconds(el.currentTime);
       if (el.duration && Number.isFinite(el.duration)) setDurationSeconds(el.duration);
     };
@@ -1029,8 +1276,9 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
         void stopEncodings(current.playSessionId);
         void startItem(nextItem, {
           startTimeTicks: secondsToTicks(el.currentTime || 0),
-          audioStreamIndex,
-          subtitleStreamIndex,
+          audioStreamIndex: audioIndexRef.current,
+          subtitleStreamIndex: subtitleIndexRef.current,
+          mediaSourceId: current.mediaSource.Id,
           maxStreamingBitrate: maxBitrate,
           enableDirectPlay: false,
           enableDirectStream: false,
@@ -1055,7 +1303,7 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
       el.removeEventListener('volumechange', onVolume);
       el.removeEventListener('error', onError);
     };
-  }, [audioStreamIndex, failPlayback, maxBitrate, next, startItem, subtitleStreamIndex]);
+  }, [failPlayback, maxBitrate, next, startItem]);
 
   useEffect(() => {
     clearTimers();
@@ -1065,13 +1313,13 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
       const el = mediaRef.current;
       if (!current || !el) return;
       void report('progress', current, {
-        positionTicks: secondsToTicks(el.currentTime),
+        positionTicks: positionToReport(el, current, reachedStartRef.current),
         isPaused: el.paused,
         volumeLevel: Math.round(el.volume * 100),
         isMuted: el.muted,
         playbackRate: el.playbackRate,
-        audioStreamIndex,
-        subtitleStreamIndex,
+        audioStreamIndex: audioIndexRef.current,
+        subtitleStreamIndex: subtitleIndexRef.current,
         repeatMode: repeatRef.current,
         shuffleMode: shuffledRef.current ? 'Shuffle' : 'Sorted',
         playbackStartTimeTicks: playbackStartRef.current,
@@ -1079,15 +1327,13 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
       });
     }, 10_000);
     return clearTimers;
-  }, [audioStreamIndex, maxBitrate, status, subtitleStreamIndex]);
+  }, [maxBitrate, status]);
 
   useEffect(() => {
     cueLineRef.current = subtitleCueLine(subtitleAppearance.verticalPosition);
     const textTrack = mediaRef.current?.textTracks?.[0];
     if (!textTrack) return;
-    for (const cue of Array.from(textTrack.cues ?? [])) {
-      (cue as VTTCue).line = cueLineRef.current;
-    }
+    applyCueLine(textTrack, cueLineRef.current);
   }, [subtitleAppearance.verticalPosition]);
 
   // Report Stopped when the page goes away. Without this the Jellyfin session
@@ -1100,7 +1346,7 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
       if (event.persisted) return;
       const current = streamRef.current;
       if (!current) return;
-      beaconStopped(current, secondsToTicks(mediaRef.current?.currentTime ?? 0));
+      beaconStopped(current, positionToReport(mediaRef.current, current, reachedStartRef.current));
       streamRef.current = null;
     };
     window.addEventListener('pagehide', onPageHide);
@@ -1161,11 +1407,16 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     // No startTimeTicks: the gated attempt never played, so startItem should
     // fall back to the item's own resume point like a fresh play would.
     void startItem(pending, {
-      audioStreamIndex,
-      subtitleStreamIndex,
+      audioStreamIndex: audioIndexRef.current,
+      subtitleStreamIndex: subtitleIndexRef.current,
+      // Only when the stored stream is this item's — after a gate it may still
+      // be the one that was playing before.
+      mediaSourceId: streamRef.current?.item.Id === pending.Id
+        ? streamRef.current.mediaSource.Id
+        : undefined,
       maxStreamingBitrate: maxBitrate,
     });
-  }, [audioStreamIndex, maxBitrate, startItem, subtitleStreamIndex]);
+  }, [maxBitrate, startItem]);
 
   const value = useMemo<PlaybackContextValue>(() => ({
     queue,

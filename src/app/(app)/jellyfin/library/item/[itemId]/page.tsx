@@ -216,7 +216,13 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
           stacked ? 'min-h-0' : 'min-h-[68vh]',
         )}
       >
-        <div className={cn(stacked ? 'relative aspect-video w-full overflow-hidden' : 'contents')}>
+        {/* `relative` alongside `contents` is for next/image's dev-time check
+            only: it reads the *DOM* parent's computed position, and a
+            `display: contents` wrapper generates no box, so the fill backdrop
+            below already resolves against the positioned section. Positioning
+            is not applied to a box that does not exist, so layout is
+            unchanged. */}
+        <div className={cn('relative', stacked ? 'aspect-video w-full overflow-hidden' : 'contents')}>
         {stacked && resumeSeconds > 0 && resumeRuntimeSeconds > 0 && (
           // The app rules the foot of the hero video in brand red, showing how
           // far into the title you already are.

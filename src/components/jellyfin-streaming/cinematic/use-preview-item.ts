@@ -11,6 +11,20 @@ export interface PreviewSource {
 }
 
 /**
+ * Whether a preview can be sampled from this item at all.
+ *
+ * A Series or a Season resolves to an episode below; anything else that is a
+ * folder — a box set, an album, a playlist — has no single representative and
+ * keeps its artwork. Callers need this answer *before* the resolver, because
+ * only one card at a time may hold the hover-preview slot and claiming it
+ * stands the billboard down.
+ */
+export function canPreviewItem(item: JellyfinItem | null | undefined): boolean {
+  if (!item) return false;
+  return !item.IsFolder || item.Type === 'Series' || item.Type === 'Season';
+}
+
+/**
  * The item a preview clip should actually be sampled from.
  *
  * A Series or a Season has no media source of its own, so `/PlaybackInfo` on
@@ -67,9 +81,8 @@ export function usePreviewSource(
     staleTime: 10 * 60_000,
   });
 
-  if (!item) return {};
+  if (!item || !canPreviewItem(item)) return {};
   if (!item.IsFolder) return { itemId: item.Id, runtimeTicks: item.RunTimeTicks };
-  if (!isEpisodicFolder) return {};
   const episode = query.data;
   return episode ? { itemId: episode.Id, runtimeTicks: episode.RunTimeTicks } : {};
 }

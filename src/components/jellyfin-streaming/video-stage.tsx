@@ -31,6 +31,7 @@ import {
   useJellyfinPlayback,
 } from '@/components/jellyfin-streaming/playback-provider';
 import { QueuePanel } from '@/components/jellyfin-streaming/queue-panel';
+import { toggleFullscreen } from '@/lib/jellyfin-playback/browser';
 import { bitrateOptions } from '@/lib/jellyfin-playback/device-profile';
 import { formatClock, ticksToSeconds } from '@/lib/jellyfin-playback/device';
 import { jellyfinPosterUrl } from '@/lib/jellyfin-playback/image';
@@ -165,10 +166,7 @@ export function VideoStage() {
         p.setQueueOpen(false);
       }
       if (event.key === 'm') p.setMuted(!p.muted);
-      if (event.key === 'f') {
-        if (document.fullscreenElement) void document.exitFullscreen();
-        else void document.documentElement.requestFullscreen?.();
-      }
+      if (event.key === 'f') toggleFullscreen(document.documentElement, mediaRef.current);
       if (event.key === 'n') void p.next();
       if (event.key === 'p') void p.previous();
       if (event.key >= '0' && event.key <= '9' && p.durationSeconds > 0) {
@@ -177,7 +175,7 @@ export function VideoStage() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [expanded]);
+  }, [expanded, mediaRef]);
 
   // Buffered range for the seek bar. Read from the element rather than the
   // context because the provider does not track it.
@@ -252,46 +250,13 @@ export function VideoStage() {
   const video = playback.stream?.mediaSource.MediaStreams?.find((stream) => stream.Type === 'Video');
   const showChrome = expanded && (controlsVisible || panel !== 'none' || playback.status !== 'playing');
 
-  // Lift the subtitles clear of the chrome while it is on screen. Cues render
-  // at the bottom of the video by default, which is exactly where the scrubber,
-  // the control row and the centred title now sit, so a line of dialogue lands
-  // on top of them. The site raises its cues the same way.
-  //
-  // `line` is the only lever native ::cue rendering gives us — CSS cannot move
-  // a cue box. Jellyfin's cues arrive with snapToLines false, which makes
-  // `line` a percentage rather than a line count, so both have to be set. And
-  // `cuechange` fires on the TextTrack, not on the media element.
-  useEffect(() => {
-    const el = mediaRef.current;
-    if (!el) return undefined;
-    const line: number | 'auto' = showChrome ? -4 : 'auto';
-    const apply = () => {
-      for (const track of Array.from(el.textTracks)) {
-        if (track.mode === 'disabled') continue;
-        const cues = Array.from(track.cues ?? []) as VTTCue[];
-        // Every cue in a track gets the same treatment, so the first one is a
-        // reliable signal that the track is already positioned.
-        if (cues.length === 0 || cues[0].line === line) continue;
-        for (const cue of cues) {
-          cue.snapToLines = true;
-          cue.line = line;
-        }
-      }
-    };
-    const tracks = el.textTracks;
-    const listen = () => {
-      for (const track of Array.from(tracks)) track.addEventListener('cuechange', apply);
-    };
-    apply();
-    listen();
-    tracks.addEventListener('addtrack', apply);
-    tracks.addEventListener('addtrack', listen);
-    return () => {
-      tracks.removeEventListener('addtrack', apply);
-      tracks.removeEventListener('addtrack', listen);
-      for (const track of Array.from(tracks)) track.removeEventListener('cuechange', apply);
-    };
-  }, [showChrome, mediaRef, playback.subtitleStreamIndex])
+  // Cue placement lives entirely in the provider, which writes `cue.line` from
+  // the viewer's vertical-position setting — the one lever native ::cue
+  // rendering gives us, and the only place jellyfin-web writes it either
+  // (htmlVideoPlayer/plugin.js). A second writer here used to overwrite every
+  // cue whenever the chrome appeared or a cue changed, which silently made the
+  // Raise/Lower control in the subtitle panel do nothing. The default position
+  // already sits three lines up, clear of the control row.
 
   // Rendered inline on sm+ and inside the `more` panel below it, so there is
   // one definition of these controls rather than two.
@@ -625,11 +590,7 @@ export function VideoStage() {
                         size="icon"
                         className="text-white"
                         aria-label="Fullscreen"
-                        onClick={() => {
-                          const root = document.documentElement;
-                          if (document.fullscreenElement) void document.exitFullscreen();
-                          else void root.requestFullscreen?.();
-                        }}
+                        onClick={() => toggleFullscreen(document.documentElement, mediaRef.current)}
                       >
                         <Maximize />
                       </Button>

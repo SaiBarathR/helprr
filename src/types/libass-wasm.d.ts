@@ -10,6 +10,16 @@ declare module '@jellyfin/libass-wasm' {
     availableFonts?: Record<string, string>;
     renderMode?: string;
     timeOffset?: number;
+    onError?: () => void;
+    dropAllAnimations?: boolean;
+    libassMemoryLimit?: number;
+    libassGlyphLimit?: number;
+    targetFps?: number;
+    prescaleFactor?: number;
+    prescaleHeightLimit?: number;
+    maxRenderHeight?: number;
+    resizeVariation?: number;
+    renderAhead?: number;
   }
 
   export default class SubtitlesOctopus {

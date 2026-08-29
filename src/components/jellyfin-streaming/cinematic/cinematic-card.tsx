@@ -13,6 +13,7 @@ import { useFavoriteToggle } from '@/components/jellyfin-streaming/cinematic/use
 import { useCompactViewport } from '@/lib/hooks/use-compact-viewport';
 import { useMediaPreview } from '@/components/jellyfin-streaming/cinematic/media-preview';
 import { useHoverPreviewSlot } from '@/components/jellyfin-streaming/cinematic/hover-preview-slot';
+import { canPreviewItem, usePreviewSource } from '@/components/jellyfin-streaming/cinematic/use-preview-item';
 import { useUIStore } from '@/lib/store';
 import { useWatchModal } from '@/components/jellyfin-streaming/cinematic/watch-modal';
 import {
@@ -89,7 +90,20 @@ export function CinematicCard({
   // Exactly one card may hold the preview slot, so brushing across a row can
   // never leave a trail of transcodes running on the server.
   const cardId = useId();
-  const holdsSlot = useHoverPreviewSlot(cardId, hovering);
+  // Whether this card has a preview is settled before the claim, not after it:
+  // claiming the slot stands the billboard down, so a card with nothing to
+  // sample used to stop the hero and put nothing in its place. A box set or an
+  // album is ruled out by type; a series with no reachable episode — an empty
+  // or inaccessible folder — is only ruled out once the resolver below has
+  // answered, which is why the claim waits on it rather than on the hover.
+  const previewable = previewsAllowed && !compact && !upcoming && canPreviewItem(item);
+  // A series or season card samples the episode a viewer would land on, which
+  // is what the billboard, the overlay and the detail page already do: neither
+  // a series nor a season has a media source of its own, so /PlaybackInfo on
+  // one fails outright and the card showed still art forever. A leaf resolves
+  // to itself with no request, so its claim is still immediate.
+  const previewSource = usePreviewSource(item, hovering && previewable);
+  const holdsSlot = useHoverPreviewSlot(cardId, hovering && previewable && Boolean(previewSource.itemId));
   // The Netflix app puts portrait posters in its phone rails; 16:9 stills only
   // appear from tablet up. The frame decides which artwork is fetched, so this
   // cannot be a media query.
@@ -109,14 +123,13 @@ export function CinematicCard({
   const href = catalogHref(item);
   const playable = Boolean(onPlay) && !upcoming;
 
-  const previewEnabled = holdsSlot && previewsAllowed && !compact && !upcoming && !item.IsFolder;
   const previewState = useMediaPreview({
-    itemId: item.Id,
-    runtimeTicks: item.RunTimeTicks,
-    enabled: previewEnabled,
+    itemId: previewSource.itemId,
+    runtimeTicks: previewSource.runtimeTicks,
+    enabled: holdsSlot,
     videoRef,
   });
-  const showPreview = previewEnabled && previewState === 'playing';
+  const showPreview = holdsSlot && previewState === 'playing';
 
   // The panel's fact line, as the site writes it: a certificate box, then a
   // season count for a series or a runtime for anything else. Episodes lead
@@ -202,7 +215,7 @@ export function CinematicCard({
         {/* Always mounted while the slot is held so the player has somewhere to
             attach; revealed only once it reports playing, so a failure simply
             leaves the artwork. */}
-        {previewEnabled && (
+        {holdsSlot && (
           <video
             ref={videoRef}
             muted

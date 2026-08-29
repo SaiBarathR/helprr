@@ -84,3 +84,48 @@ export function canPlayHlsWithMse(): boolean {
 export function canPlayHls(video: HTMLVideoElement, browser: HelprrBrowser): boolean {
   return canPlayNativeHls(video, browser) || canPlayHlsWithMse();
 }
+
+/**
+ * iOS Safari's own fullscreen surface, which `lib.dom` does not declare.
+ */
+interface WebkitFullscreenDocument {
+  webkitIsFullScreen?: boolean;
+  webkitCancelFullscreen?: () => void;
+}
+
+interface WebkitFullscreenVideo {
+  webkitEnterFullscreen?: () => void;
+}
+
+/**
+ * Enter or leave fullscreen, falling back to the video's own surface.
+ *
+ * iPhone Safari implements no element Fullscreen API — only the video
+ * element's `webkitEnterFullscreen()` — so `requestFullscreen?.()` on the
+ * document element resolved to `undefined` and did nothing at all there,
+ * leaving the button and the `f` shortcut dead in the installed PWA, which is
+ * a primary target. jellyfin-web carries the same fallback chain
+ * (playbackmanager.js `toggleFullscreen`).
+ *
+ * The rejection is handled rather than voided: a browser that refuses the
+ * request — a permissions policy, or a gesture it would not accept — rejects,
+ * and an unhandled rejection in the console is not feedback to anybody.
+ */
+export function toggleFullscreen(root: Element, video: HTMLVideoElement | null): void {
+  const doc = root.ownerDocument as Document & WebkitFullscreenDocument;
+  const native = video as (HTMLVideoElement & WebkitFullscreenVideo) | null;
+
+  if (doc.fullscreenElement) {
+    void doc.exitFullscreen().catch(() => undefined);
+    return;
+  }
+  if (doc.webkitIsFullScreen && doc.webkitCancelFullscreen) {
+    doc.webkitCancelFullscreen();
+    return;
+  }
+  if (typeof root.requestFullscreen === 'function') {
+    void root.requestFullscreen().catch(() => native?.webkitEnterFullscreen?.());
+    return;
+  }
+  native?.webkitEnterFullscreen?.();
+}

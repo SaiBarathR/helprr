@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import type { HelprrStreamInfo } from '@/types/jellyfin-streaming';
+import { useJellyfinPlayback } from '@/components/jellyfin-streaming/playback-provider';
 import { getDeviceProfile } from '@/lib/jellyfin-playback/device-profile';
 import { getJellyfinPlaybackDeviceId, getJellyfinPlaybackDeviceName, secondsToTicks, ticksToSeconds } from '@/lib/jellyfin-playback/device';
 import { canPlayHlsWithMse, canPlayNativeHls, detectBrowser } from '@/lib/jellyfin-playback/browser';
@@ -47,6 +48,17 @@ export function useMediaPreview({
   videoRef: React.RefObject<HTMLVideoElement | null>;
 }): PreviewState {
   const [state, setState] = useState<PreviewState>('idle');
+  /**
+   * Scenery never competes with the thing the viewer actually asked to watch.
+   *
+   * The player is a fixed sheet over the route it started from, so the page
+   * underneath stays mounted and its billboard kept previewing behind it — a
+   * second transcode of, often, the very same 4K file, for a frame nobody can
+   * see. The hero already stands down for the overlay and for a hovered card
+   * for exactly this reason; playback is the stronger case.
+   */
+  const playerIdle = useJellyfinPlayback().status === 'idle';
+  const active = enabled && playerIdle;
   const sessionRef = useRef<{ playSessionId: string; deviceId: string } | null>(null);
   const hlsRef = useRef<{ destroy: () => void } | null>(null);
   /**
@@ -62,7 +74,7 @@ export function useMediaPreview({
   const attemptedRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!enabled || !itemId || attemptedRef.current === itemId) return;
+    if (!active || !itemId || attemptedRef.current === itemId) return;
     const el = videoRef.current;
     if (!el) return;
     attemptedRef.current = itemId;
@@ -139,13 +151,14 @@ export function useMediaPreview({
         fail();
       }
     })();
-  }, [enabled, itemId, runtimeTicks, videoRef]);
+  }, [active, itemId, runtimeTicks, videoRef]);
 
   /**
    * Teardown is its own effect so that attach stays idempotent, but it has to
-   * follow `enabled` as well as the item: with the item alone, disabling a
-   * preview (the home hero while an overlay is open) left the element playing
-   * and the transcode running behind an opacity-0 layer.
+   * follow `active` as well as the item: with the item alone, disabling a
+   * preview (the home hero while an overlay is open, or anything at all once
+   * the player takes over) left the element playing and the transcode running
+   * behind an opacity-0 layer.
    *
    * It releases rather than merely pausing. A paused HLS transcode still holds
    * an encoder on the server, and a self-hosted box should not be paying for a
@@ -176,7 +189,7 @@ export function useMediaPreview({
         }).catch(() => undefined);
       }
     };
-  }, [itemId, enabled, videoRef]);
+  }, [itemId, active, videoRef]);
 
   return state;
 }
