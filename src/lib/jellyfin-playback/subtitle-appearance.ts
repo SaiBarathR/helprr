@@ -98,3 +98,32 @@ export function subtitleCueLine(verticalPosition: number): number {
   if (!Number.isFinite(verticalPosition)) return DEFAULT_SUBTITLE_APPEARANCE.verticalPosition;
   return Math.trunc(verticalPosition);
 }
+
+/**
+ * Where a cue box's bottom edge should sit to clear the player chrome, as a
+ * percentage of the video box height.
+ *
+ * `subtitleCueLine` above counts *text rows* from the bottom, which is what
+ * jellyfin-web does and what the Raise/Lower control means. That only keeps
+ * cues clear of the controls when a row happens to be the right size: the
+ * chrome is a fixed number of pixels tall, so on a phone the two disagree.
+ * At 426x876 the seek bar lands on the row-3 boundary and grazes every cue,
+ * and any cue that *wraps* past its newline count — 7% of a film's cues at
+ * that width — is drawn under the bar. In landscape, where the chrome is a far
+ * larger share of a 350px viewport, even a plain two-row cue is crossed.
+ *
+ * A percentage line anchored to the box's bottom (`lineAlign: 'end'`) is
+ * measured in the same units as the obstacle, so it clears the chrome exactly,
+ * at any viewport, for any number of rendered rows including wrapped ones.
+ *
+ * Returns null when there is nothing to clear, which keeps the row-based
+ * placement — and the viewer's setting — in charge whenever the chrome is down.
+ */
+export function cueBottomPercent(videoHeight: number, occludedPx: number): number | null {
+  if (!Number.isFinite(videoHeight) || !Number.isFinite(occludedPx)) return null;
+  if (videoHeight <= 0 || occludedPx <= 0) return null;
+  // Chrome taller than the video box leaves nowhere legible to put a cue;
+  // pinning to the top beats pinning under the controls.
+  if (occludedPx >= videoHeight) return 0;
+  return ((videoHeight - occludedPx) / videoHeight) * 100;
+}

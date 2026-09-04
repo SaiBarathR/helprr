@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cueLineFor, positionToReport, reserveStart, subtitleNeedsOwnStream } from '@/components/jellyfin-streaming/playback-provider';
+import { applyCueLine, cueLineFor, positionToReport, reserveStart, subtitleNeedsOwnStream, waitForLayout } from '@/components/jellyfin-streaming/playback-provider';
 import type { HelprrStreamInfo } from '@/types/jellyfin-streaming';
 
 /**
@@ -81,6 +81,78 @@ describe('cueLineFor', () => {
   });
 });
 
+/**
+ * Cue placement against the player chrome.
+ *
+ * Row counting alone put the seek bar through the last line of a cue on a
+ * phone: the reserved rows are text-sized, the chrome is pixel-sized, and on a
+ * 426x876 viewport they disagree. These pin the two placement modes and the
+ * switch between them.
+ */
+describe('applyCueLine', () => {
+  interface FakeCue { text: string; line: number | 'auto'; snapToLines: boolean; lineAlign: string }
+
+  /** A cue list shaped like the bits of TextTrack/VTTCue this writer touches. */
+  function trackOf(texts: string[], opts: { lineAlign?: boolean } = {}): { track: TextTrack; cues: FakeCue[] } {
+    const cues = texts.map((text) => {
+      const cue: FakeCue = { text, line: 'auto', snapToLines: true, lineAlign: 'start' };
+      if (opts.lineAlign === false) {
+        // A UA that does not implement lineAlign: the setter never sticks.
+        Object.defineProperty(cue, 'lineAlign', { get: () => 'start', set: () => {} });
+      }
+      return cue;
+    });
+    return { track: { cues } as unknown as TextTrack, cues };
+  }
+
+  it('counts rows from the bottom while the chrome is down', () => {
+    const { track, cues } = trackOf(['one line', 'first\nsecond']);
+    applyCueLine(track, -3, 0, 876);
+    expect(cues.map((c) => [c.snapToLines, c.lineAlign, c.line]))
+      .toEqual([[true, 'start', -3], [true, 'start', -4]]);
+  });
+
+  it('anchors the box bottom to the top of the chrome while it is up', () => {
+    const { track, cues } = trackOf(['one line', 'first\nsecond']);
+    applyCueLine(track, -3, 101, 876);
+    // 101px of 876 covered, so the box's bottom edge sits at 88.47%.
+    for (const cue of cues) {
+      expect(cue.snapToLines).toBe(false);
+      expect(cue.lineAlign).toBe('end');
+      expect(cue.line).toBeCloseTo(((876 - 101) / 876) * 100, 4);
+    }
+  });
+
+  it('places every cue identically regardless of line count, which is the point', () => {
+    // Row placement had to guess how tall the box would be, and guessed from
+    // newlines — so a cue that wrapped landed lower than the rows reserved for
+    // it. An end-anchored box grows upward instead.
+    const { track, cues } = trackOf(['a', 'a\nb', 'a\nb\nc']);
+    applyCueLine(track, -3, 101, 876);
+    expect(new Set(cues.map((c) => c.line)).size).toBe(1);
+  });
+
+  it('falls back to rows when the UA ignores lineAlign', () => {
+    // Without lineAlign a percentage line anchors the box top, which would push
+    // it further into the chrome — strictly worse than the rows it replaced.
+    const { track, cues } = trackOf(['first\nsecond'], { lineAlign: false });
+    applyCueLine(track, -3, 101, 876);
+    expect(cues[0].snapToLines).toBe(true);
+    expect(cues[0].line).toBe(-4);
+  });
+
+  it('restores row placement when the chrome goes away again', () => {
+    const { track, cues } = trackOf(['first\nsecond']);
+    applyCueLine(track, -3, 101, 876);
+    applyCueLine(track, -3, 0, 876);
+    expect(cues[0]).toMatchObject({ snapToLines: true, lineAlign: 'start', line: -4 });
+  });
+
+  it('does nothing to a track with no cues yet', () => {
+    expect(() => applyCueLine({ cues: null } as unknown as TextTrack, -3, 101, 876)).not.toThrow();
+  });
+});
+
 describe('positionToReport', () => {
   const stream = { startTimeTicks: 12_000_000_000 } as unknown as HelprrStreamInfo;
   const element = (currentTime: number) => ({ currentTime }) as HTMLMediaElement;
@@ -141,5 +213,65 @@ describe('reserveStart', () => {
     await Promise.all(chains);
 
     expect(started).toEqual(['pgs-again']);
+  });
+});
+
+/**
+ * libass measures the element it is handed and aborts with "width or height is
+ * 0" on a zero-sized one. Subtitles are applied from attachMedia before
+ * playSafely, so on iOS — where native HLS attaches faster than the stage
+ * paints — every ASS track was dropped, silently, by the onError handler.
+ */
+describe('waitForLayout', () => {
+  const sizedElement = (width: number, height: number) =>
+    ({ clientWidth: width, clientHeight: height }) as unknown as HTMLElement;
+
+  /** Captures the callback so a test can drive a resize itself. */
+  function stubResizeObserver() {
+    const original = globalThis.ResizeObserver;
+    const instances: { cb: () => void; disconnected: boolean }[] = [];
+    class Stub {
+      cb: () => void;
+      disconnected = false;
+      constructor(cb: () => void) { this.cb = cb; instances.push(this); }
+      observe() { /* the test calls cb directly */ }
+      disconnect() { this.disconnected = true; }
+    }
+    globalThis.ResizeObserver = Stub as unknown as typeof ResizeObserver;
+    return { instances, restore: () => { globalThis.ResizeObserver = original; } };
+  }
+
+  it('resolves without observing when the element already has a box', async () => {
+    const { instances, restore } = stubResizeObserver();
+    try {
+      await waitForLayout(sizedElement(402, 226));
+      expect(instances).toHaveLength(0);
+    } finally { restore(); }
+  });
+
+  it('waits for the element to gain a box, then stops observing', async () => {
+    const { instances, restore } = stubResizeObserver();
+    try {
+      const el = sizedElement(0, 0) as { clientWidth: number; clientHeight: number };
+      const pending = waitForLayout(el as unknown as HTMLElement, 5_000);
+      expect(instances).toHaveLength(1);
+
+      // A resize that leaves it zero-sized must not resolve it.
+      instances[0].cb();
+      el.clientWidth = 402;
+      el.clientHeight = 226;
+      instances[0].cb();
+
+      await pending;
+      expect(instances[0].disconnected).toBe(true);
+    } finally { restore(); }
+  });
+
+  it('gives up after the timeout rather than stalling playback', async () => {
+    const { instances, restore } = stubResizeObserver();
+    try {
+      await waitForLayout(sizedElement(0, 0), 1);
+      expect(instances[0].disconnected).toBe(true);
+    } finally { restore(); }
   });
 });

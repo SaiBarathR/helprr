@@ -71,6 +71,7 @@
     "vitest": "^4.1.10"
   },
   "overrides": {
+    "browserslist": "^4.28.7",
     "postcss": "^8.5.18",
     "sharp": "$sharp",
     "brace-expansion@1": "1.1.16",

@@ -56,7 +56,23 @@ and the same per-item access rule as `/api/jellyfin/image`. The proxy rewrites
 HLS playlists onto Helprr URLs and strips `api_key`. Playback DeviceId is
 per-browser so Helprr users do not clobber one shared Jellyfin session. PGS
 bitmaps are not advertised for client-side overlay so the server can burn them
-in; ASS/SSA uses the same libass worker as jellyfin-web.
+in; ASS/SSA uses the same libass worker as jellyfin-web, falling back to a
+server burn-in when that worker cannot render (which is the case on iOS).
+
+Native text subtitles (WebVTT/SRT) are placed by writing `cue.line`, in one
+place only — `applyCueLine` in the playback provider. It has two modes. With
+the player chrome hidden it counts text rows up from the bottom of the video
+box, which is what jellyfin-web does and what the Raise/Lower control in the
+subtitle panel means. While the chrome is up it instead pins the cue box's
+bottom edge to the top of the chrome, as a percentage of the video box with
+`lineAlign: 'end'`. Rows and pixels only agree at one viewport size, so on a
+phone the row placement drew the seek bar through the last line of a cue; a
+percentage measured against the obstacle clears it at any viewport, for any
+number of rendered rows including wrapped ones. The stage measures the
+obstruction (it owns that DOM) and reports it through
+`reportChromeObstruction`; a UA without `lineAlign` support falls back to rows.
+libass is unaffected — it positions from the subtitle script inside the video
+frame and never meets the chrome.
 
 The authenticated shell keeps the Jellyfin watch and Seerr request providers
 mounted so their React Query caches and optimistic updates survive navigation.

@@ -17,7 +17,7 @@ import { getJellyfinPlaybackDeviceId, getJellyfinPlaybackDeviceName, secondsToTi
 import { canPlayHlsWithMse, canPlayNativeHls, detectBrowser } from '@/lib/jellyfin-playback/browser';
 import { jellyfinPosterUrl } from '@/lib/jellyfin-playback/image';
 import { useUIStore } from '@/lib/store';
-import { subtitleCueLine } from '@/lib/jellyfin-playback/subtitle-appearance';
+import { cueBottomPercent, subtitleCueLine } from '@/lib/jellyfin-playback/subtitle-appearance';
 
 export type RepeatMode = 'RepeatNone' | 'RepeatAll' | 'RepeatOne';
 
@@ -28,6 +28,14 @@ export interface PlayOptions {
   maxStreamingBitrate?: number;
   enableDirectPlay?: boolean;
   enableDirectStream?: boolean;
+  /**
+   * Whether to ask for ASS/SSA as text this client will render itself.
+   *
+   * `false` drops both formats from the device profile, which is how Jellyfin
+   * is told to burn them into the picture instead. Set only after libass has
+   * actually failed here — see `assRenderBrokenRef`.
+   */
+  enableSsaRender?: boolean;
   shuffle?: boolean;
   /**
    * Which media source the indexes above refer to.
@@ -94,6 +102,12 @@ interface PlaybackContextValue {
   setQueueOpen: (open: boolean) => void;
   skipSegment: (segment: MediaSegment) => void;
   setSubtitleOffset: (seconds: number) => void;
+  /**
+   * How many pixels at the bottom of the video box the player chrome covers.
+   * The stage measures it, because the stage owns that DOM; cue placement still
+   * happens in exactly one place, below.
+   */
+  reportChromeObstruction: (px: number) => void;
 }
 
 const PlaybackContext = createContext<PlaybackContextValue | null>(null);
@@ -117,6 +131,7 @@ async function fetchStream(itemId: string, options: PlayOptions): Promise<Helprr
       ? options.maxStreamingBitrate
       : 120_000_000,
     isRetry: options.enableDirectPlay === false,
+    enableSsaRender: options.enableSsaRender,
   });
   const res = await fetch('/api/jellyfin/stream/info', {
     method: 'POST',
@@ -262,6 +277,15 @@ interface Playable {
  * playback still advances normally within them.
  */
 const SERIES_QUEUE_LIMIT = 500;
+
+/**
+ * How long libass gets to size its canvas before it is treated as failed.
+ *
+ * Generous on purpose: it sizes itself off `loadedmetadata` or its own
+ * ResizeObserver, and neither should be anywhere near this slow. Being wrong in
+ * the impatient direction would cost a needless transcode.
+ */
+const ASS_RENDER_PROBE_MS = 4000;
 
 /** Every episode of a series, in season-then-episode order. */
 async function seriesEpisodes(seriesId: string): Promise<JellyfinItem[]> {
@@ -447,8 +471,31 @@ export function cueLineFor(line: number, text: string): number {
  * and a second writer in the player chrome is what used to silently override
  * the viewer's choice.
  */
-function applyCueLine(track: TextTrack, line: number) {
-  for (const cue of Array.from(track.cues ?? []) as VTTCue[]) {
+export function applyCueLine(track: TextTrack, line: number, obstruction = 0, videoHeight = 0) {
+  const cues = Array.from(track.cues ?? []) as VTTCue[];
+  if (cues.length === 0) return;
+
+  // While the chrome is up, place the box's bottom edge against the top of it
+  // rather than counting rows from the viewport floor — see cueBottomPercent.
+  let percent = cueBottomPercent(videoHeight, obstruction);
+  if (percent !== null) {
+    const probe = cues[0];
+    probe.snapToLines = false;
+    probe.lineAlign = 'end';
+    // A UA without `lineAlign` leaves it 'start', where a percentage line
+    // anchors the box's *top* and pushes it further into the chrome — worse
+    // than the row placement it replaced. Both Safari 26 and Chrome on Android
+    // honour it; anything that does not falls back rather than degrades.
+    if (probe.lineAlign !== 'end') percent = null;
+  }
+
+  for (const cue of cues) {
+    if (percent !== null) {
+      cue.snapToLines = false;
+      cue.lineAlign = 'end';
+      cue.line = percent;
+      continue;
+    }
     // Both, and in this order. Jellyfin writes its cues as `line:90%`, which
     // parses to snapToLines false — and with that flag false `line` is a
     // percentage, so a negative position would place the cue above the top of
@@ -456,6 +503,9 @@ function applyCueLine(track: TextTrack, line: number) {
     // meets this because it builds its cues itself, where snapToLines defaults
     // to true.
     cue.snapToLines = true;
+    // Reset too: a cue left anchored 'end' by the branch above would otherwise
+    // read its row from the wrong edge of the box.
+    cue.lineAlign = 'start';
     cue.line = cueLineFor(line, cue.text);
   }
 }
@@ -485,6 +535,32 @@ function fontUrls(stream: HelprrStreamInfo): string[] {
     })
     .map((attachment) => attachment.DeliveryUrl)
     .filter((url): url is string => Boolean(url));
+}
+
+/**
+ * Resolve once the element has a real layout box, or give up after `timeoutMs`.
+ *
+ * Only libass needs this: it measures the element it is handed and refuses to
+ * start on a zero-sized one. Giving up rather than waiting forever keeps a
+ * never-laid-out element from stalling playback — it just leaves libass to fail
+ * the way it already did.
+ */
+export function waitForLayout(el: HTMLElement, timeoutMs = 2000): Promise<void> {
+  const sized = () => el.clientWidth > 0 && el.clientHeight > 0;
+  if (sized()) return Promise.resolve();
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      observer.disconnect();
+      clearTimeout(timer);
+      resolve();
+    };
+    const observer = new ResizeObserver(() => { if (sized()) finish(); });
+    observer.observe(el);
+    const timer: ReturnType<typeof setTimeout> = setTimeout(finish, timeoutMs);
+  });
 }
 
 /**
@@ -520,8 +596,33 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
   const mediaRef = useRef<HTMLVideoElement | null>(null);
   const subtitleAppearance = useUIStore((state) => state.subtitleAppearance);
   const cueLineRef = useRef(subtitleCueLine(subtitleAppearance.verticalPosition));
+  const obstructionRef = useRef(0);
   const hlsRef = useRef<{ destroy: () => void } | null>(null);
   const assRef = useRef<{ dispose?: () => void } | null>(null);
+  /**
+   * Whether libass has already failed on this device.
+   *
+   * It cannot start at all in iOS Safari 26 — the worker dies during startup,
+   * with no message, on a bare `new Worker(...)` and no app code involved.
+   * jellyfin-web is no better off there: it pins the same libass build and
+   * turns the failure into a playback error. Rather than copy that, the first
+   * failure is remembered and every stream from then on asks Jellyfin to burn
+   * the subtitles in, which works everywhere at the cost of a transcode.
+   *
+   * A ref, not state: the profile for the very next request has to see it, and
+   * a render later would be too late.
+   */
+  const assRenderBrokenRef = useRef(false);
+  /** Pending check that libass actually sized its canvas. */
+  const assProbeRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /**
+   * `restartWith`, reachable from `applySubtitleTrack` above it.
+   *
+   * The burn-in fallback has to restart the stream, but naming `restartWith` as
+   * a dependency that far up the component would read it in its own temporal
+   * dead zone on every render.
+   */
+  const restartRef = useRef<((patch: PlayOptions) => Promise<void>) | null>(null);
   const streamRef = useRef<HelprrStreamInfo | null>(null);
   const queueRef = useRef<JellyfinItem[]>([]);
   const indexRef = useRef(0);
@@ -595,8 +696,27 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     }
   };
 
+  /**
+   * Give up on client-side ASS and have Jellyfin burn it into the picture.
+   *
+   * Reached from two different failures, because libass has two ways to not
+   * work: it either calls `onError`, or it builds its canvas and never sizes
+   * it. Idempotent — one broken renderer must not restart the stream twice.
+   */
+  const fallBackToBurnIn = useCallback((reason: string) => {
+    assRef.current = null;
+    if (assRenderBrokenRef.current) return;
+    assRenderBrokenRef.current = true;
+    console.warn(`[Jellyfin] ASS renderer unavailable (${reason}); using burned-in subtitles`);
+    void restartRef.current?.({});
+  }, []);
+
   /** Tear down whatever is rendering subtitles, leaving the video alone. */
   const destroySubtitles = useCallback(() => {
+    if (assProbeRef.current) {
+      clearTimeout(assProbeRef.current);
+      assProbeRef.current = null;
+    }
     try { assRef.current?.dispose?.(); } catch { /* already torn down */ }
     assRef.current = null;
     if (mediaRef.current) clearTextTracks(mediaRef.current);
@@ -628,6 +748,13 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     if (!selected?.url) return;
 
     if (selected.format === 'ass' || selected.format === 'ssa') {
+      // libass sizes its canvas from the element and aborts with "width or
+      // height is 0" when it is constructed before the player has laid out.
+      // That is the normal case here: this runs from attachMedia *before*
+      // playSafely, and iOS attaches native HLS faster than the stage paints,
+      // so every ASS track was dropped on the floor — invisibly, because the
+      // onError below only clears the ref.
+      await waitForLayout(el);
       const { default: SubtitlesOctopus } = await import('@jellyfin/libass-wasm');
       const videoStream = next.mediaSource.MediaStreams?.find((candidate) => candidate.Type === 'Video');
       assRef.current = new SubtitlesOctopus({
@@ -638,9 +765,12 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
         fallbackFont: '/libass/default.woff2',
         fonts: fontUrls(next),
         timeOffset: ticksToSeconds(next.transcodingOffsetTicks) + subtitleOffsetRef.current,
-        // libass is disposed by its own error path, so without a handler a
-        // failed render just makes the subtitles vanish silently.
-        onError: () => { assRef.current = null; },
+        // libass disposes itself on its own error path, so this only has to
+        // note that it cannot run here and re-request the stream: with ass/ssa
+        // gone from the profile, Jellyfin burns the track into the picture and
+        // the viewer gets subtitles instead of silence. Guarded on the flag so
+        // one broken renderer cannot restart the stream repeatedly.
+        onError: () => fallBackToBurnIn('worker error'),
         // The rest are jellyfin-web's settings verbatim (htmlVideoPlayer
         // `renderSsaAss`), which override every libass default. They matter
         // most on the typeset ASS this library is full of: the render caps keep
@@ -658,6 +788,24 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
         resizeVariation: 0.2,
         renderAhead: 90,
       });
+      /**
+       * Confirm it actually started, because failing quietly is its other mode.
+       *
+       * On iOS 26 libass builds its canvas and then never sizes it — the
+       * element keeps the 300x150 default backing store and a zero CSS box, so
+       * nothing is ever painted and `onError` is never called. libass sizes
+       * itself from `loadedmetadata` or its own ResizeObserver, so a canvas
+       * still unsized well after both have had their chance is not a race worth
+       * waiting on any longer.
+       */
+      if (assProbeRef.current) clearTimeout(assProbeRef.current);
+      assProbeRef.current = setTimeout(() => {
+        assProbeRef.current = null;
+        if (!assRef.current) return;
+        const painted = Array.from(document.querySelectorAll('canvas'))
+          .some((canvas) => canvas.getBoundingClientRect().width > 0);
+        if (!painted) fallBackToBurnIn('canvas never sized');
+      }, ASS_RENDER_PROBE_MS);
       return;
     }
 
@@ -674,11 +822,11 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
       textTrack.mode = 'showing';
       // ::cue cannot move a cue box, so the vertical-position setting has to be
       // written onto the cues themselves — the same lever jellyfin-web uses.
-      applyCueLine(textTrack, cueLineRef.current);
+      applyCueLine(textTrack, cueLineRef.current, obstructionRef.current, el.getBoundingClientRect().height);
     };
     track.addEventListener('load', enable);
     enable();
-  }, [destroySubtitles]);
+  }, [destroySubtitles, fallBackToBurnIn]);
 
   /**
    * Fail playback, checking first whether the member is simply no longer
@@ -857,6 +1005,9 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
         : undefined,
       enableDirectPlay: options.enableDirectPlay,
       enableDirectStream: options.enableDirectStream,
+      // Read from the ref rather than the caller, so every start honours it —
+      // a later episode must not retry a renderer already known to be broken.
+      enableSsaRender: !assRenderBrokenRef.current,
     };
     try {
       const nextStream = await fetchStream(nextItem.Id, request);
@@ -1167,6 +1318,10 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     });
   }, [maxBitrate, positionSeconds, startItem]);
 
+  // Published for the burn-in fallback in applySubtitleTrack, which sits above
+  // this and so cannot depend on it directly.
+  useEffect(() => { restartRef.current = restartWith; });
+
   const setAudioStream = useCallback(async (streamIndex: number) => {
     audioIndexRef.current = streamIndex;
     setAudioStreamIndex(streamIndex);
@@ -1329,12 +1484,29 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     return clearTimers;
   }, [maxBitrate, status]);
 
+  /**
+   * Re-place the cues. One writer, called from the three things that move them:
+   * a new track, the viewer's Raise/Lower, and the chrome appearing or resizing.
+   * A second writer here is what once made Raise/Lower silently do nothing.
+   */
+  const refreshCueLines = useCallback(() => {
+    const el = mediaRef.current;
+    const textTrack = el?.textTracks?.[0];
+    if (!el || !textTrack) return;
+    applyCueLine(textTrack, cueLineRef.current, obstructionRef.current, el.getBoundingClientRect().height);
+  }, [mediaRef]);
+
   useEffect(() => {
     cueLineRef.current = subtitleCueLine(subtitleAppearance.verticalPosition);
-    const textTrack = mediaRef.current?.textTracks?.[0];
-    if (!textTrack) return;
-    applyCueLine(textTrack, cueLineRef.current);
-  }, [subtitleAppearance.verticalPosition]);
+    refreshCueLines();
+  }, [refreshCueLines, subtitleAppearance.verticalPosition]);
+
+  const reportChromeObstruction = useCallback((px: number) => {
+    const next = Number.isFinite(px) ? Math.max(0, Math.round(px)) : 0;
+    if (next === obstructionRef.current) return;
+    obstructionRef.current = next;
+    refreshCueLines();
+  }, [refreshCueLines]);
 
   // Report Stopped when the page goes away. Without this the Jellyfin session
   // lingers in Active Devices and a transcode keeps running until Jellyfin's own
@@ -1353,6 +1525,24 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     return () => window.removeEventListener('pagehide', onPageHide);
   }, []);
 
+  /**
+   * `skip` and `previous` both close over `positionSeconds`, which `timeupdate`
+   * rewrites about four times a second, so every one of them is a new function
+   * on every tick. Reading them through a ref lets the handlers below register
+   * once, the same trick the listener effects above use to avoid re-binding.
+   */
+  const transportRef = useRef({ next, previous, seek, skip });
+  useEffect(() => { transportRef.current = { next, previous, seek, skip }; });
+
+  /**
+   * Keyed on the stream, not on the transport callbacks.
+   *
+   * Assigning `mediaSession.metadata` hands iOS a fresh MediaMetadata and it
+   * re-renders the Now Playing surface, re-fetching the artwork. With the
+   * callbacks in this effect's dependencies that happened on every tick, and
+   * the Dynamic Island's artwork span the whole time a video was playing —
+   * stopping on pause only because `timeupdate` stops there too.
+   */
   useEffect(() => {
     const current = streamRef.current?.item;
     if (!current || typeof navigator === 'undefined' || !navigator.mediaSession) return;
@@ -1363,16 +1553,20 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
       album: current.SeasonName || current.Album || '',
       artwork: artwork ? [{ src: artwork, sizes: '512x512', type: 'image/jpeg' }] : [],
     });
+  }, [stream]);
+
+  useEffect(() => {
+    if (typeof navigator === 'undefined' || !navigator.mediaSession) return;
     navigator.mediaSession.setActionHandler('play', () => { void mediaRef.current?.play(); });
     navigator.mediaSession.setActionHandler('pause', () => { mediaRef.current?.pause(); });
-    navigator.mediaSession.setActionHandler('previoustrack', () => { void previous(); });
-    navigator.mediaSession.setActionHandler('nexttrack', () => { void next(); });
-    navigator.mediaSession.setActionHandler('seekbackward', () => skip(-10));
-    navigator.mediaSession.setActionHandler('seekforward', () => skip(10));
+    navigator.mediaSession.setActionHandler('previoustrack', () => { void transportRef.current.previous(); });
+    navigator.mediaSession.setActionHandler('nexttrack', () => { void transportRef.current.next(); });
+    navigator.mediaSession.setActionHandler('seekbackward', () => transportRef.current.skip(-10));
+    navigator.mediaSession.setActionHandler('seekforward', () => transportRef.current.skip(10));
     navigator.mediaSession.setActionHandler('seekto', (details) => {
-      if (typeof details.seekTime === 'number') seek(details.seekTime);
+      if (typeof details.seekTime === 'number') transportRef.current.seek(details.seekTime);
     });
-  }, [next, previous, seek, skip, stream]);
+  }, []);
 
   const setVolume = useCallback((value: number) => {
     const el = mediaRef.current;
@@ -1463,11 +1657,12 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     setQueueOpen,
     skipSegment,
     setSubtitleOffset,
+    reportChromeObstruction,
   }), [
     addToQueue, audioStreamIndex, durationSeconds, error, index, item, maxBitrate, muted,
     needsJellyfinConnect, next, playItem, retryAfterConnect,
     playItems, playQueueIndex, playbackRate, positionSeconds, previous, queue, queueOpen, repeat, seek,
-    segments, setAudioStream, setMaxBitrate, setMuted, setPlaybackRate, setRepeatMode, setSubtitleOffset,
+    segments, reportChromeObstruction, setAudioStream, setMaxBitrate, setMuted, setPlaybackRate, setRepeatMode, setSubtitleOffset,
     setSubtitleStream, setVolume, shuffled, skip, skipSegment, status, stop, stream, subtitleOffsetSeconds,
     subtitleStreamIndex, togglePause, toggleShuffle, videoExpanded, volume,
   ]);
