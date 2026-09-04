@@ -38,6 +38,10 @@ describe('mediaBadges', () => {
     ['DOVI', 'Dolby Vision'],
     ['DOVIWithHDR10', 'Dolby Vision'],
     ['DOVIWithHLG', 'Dolby Vision'],
+    // Observed on this library's own copy of 2001. Not a value guessed from
+    // the enum — and the reason this matches by substring rather than by a
+    // list, which would have quietly downgraded it to plain "HDR".
+    ['DOVIWithEL', 'Dolby Vision'],
     ['HDR10Plus', 'HDR10+'],
     ['HDR10', 'HDR10'],
     ['HLG', 'HLG'],
@@ -90,6 +94,27 @@ describe('mediaBadges', () => {
   it('flags subtitles only when a track exists', () => {
     expect(mediaBadges([video({}), subtitle()]).subtitles).toBe(true);
     expect(mediaBadges([video({})]).subtitles).toBe(false);
+  });
+
+  it('badges the owner\'s Dolby Vision copy of 2001 correctly', () => {
+    // 3840x2160 DOVIWithEL 10-bit HEVC, ac3 + eac3 5.1, four subtitle tracks.
+    expect(mediaBadges([
+      video({ Width: 3840, Height: 2160, VideoRangeType: 'DOVIWithEL', VideoRange: 'HDR', Codec: 'hevc', BitDepth: 10 }),
+      audio({ Codec: 'ac3', ChannelLayout: '5.1', Channels: 6, AudioSpatialFormat: 'None' }),
+      audio({ Codec: 'eac3', ChannelLayout: '5.1', Channels: 6, AudioSpatialFormat: 'None' }),
+      subtitle(),
+    ])).toEqual({ resolution: '4K', dynamicRange: 'Dolby Vision', audio: '5.1', subtitles: true });
+  });
+
+  it('picks Atmos out of the owner\'s Gravity, past a DTS 7.1 sitting first', () => {
+    // 3840x2160 SDR, and the Atmos track is the *second* of three.
+    expect(mediaBadges([
+      video({ Width: 3840, Height: 2160, VideoRangeType: 'SDR', Codec: 'hevc' }),
+      audio({ Codec: 'dts', ChannelLayout: '7.1', Channels: 8, AudioSpatialFormat: 'None', Profile: 'DTS-HD MA' }),
+      audio({ Codec: 'truehd', ChannelLayout: '7.1', Channels: 8, AudioSpatialFormat: 'DolbyAtmos', Profile: 'Dolby TrueHD + Dolby Atmos' }),
+      audio({ Codec: 'ac3', ChannelLayout: '5.1', Channels: 6, AudioSpatialFormat: 'None' }),
+      subtitle(),
+    ])).toEqual({ resolution: '4K', dynamicRange: null, audio: 'Atmos', subtitles: true });
   });
 
   it('describes this library\'s real 4K title the way the file actually is', () => {
