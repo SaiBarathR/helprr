@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cueLineFor, positionToReport, reserveStart, subtitleNeedsOwnStream } from '@/components/jellyfin-streaming/playback-provider';
+import { cueLineFor, positionToReport, reserveStart, subtitleNeedsOwnStream, waitForLayout } from '@/components/jellyfin-streaming/playback-provider';
 import type { HelprrStreamInfo } from '@/types/jellyfin-streaming';
 
 /**
@@ -141,5 +141,65 @@ describe('reserveStart', () => {
     await Promise.all(chains);
 
     expect(started).toEqual(['pgs-again']);
+  });
+});
+
+/**
+ * libass measures the element it is handed and aborts with "width or height is
+ * 0" on a zero-sized one. Subtitles are applied from attachMedia before
+ * playSafely, so on iOS — where native HLS attaches faster than the stage
+ * paints — every ASS track was dropped, silently, by the onError handler.
+ */
+describe('waitForLayout', () => {
+  const sizedElement = (width: number, height: number) =>
+    ({ clientWidth: width, clientHeight: height }) as unknown as HTMLElement;
+
+  /** Captures the callback so a test can drive a resize itself. */
+  function stubResizeObserver() {
+    const original = globalThis.ResizeObserver;
+    const instances: { cb: () => void; disconnected: boolean }[] = [];
+    class Stub {
+      cb: () => void;
+      disconnected = false;
+      constructor(cb: () => void) { this.cb = cb; instances.push(this); }
+      observe() { /* the test calls cb directly */ }
+      disconnect() { this.disconnected = true; }
+    }
+    globalThis.ResizeObserver = Stub as unknown as typeof ResizeObserver;
+    return { instances, restore: () => { globalThis.ResizeObserver = original; } };
+  }
+
+  it('resolves without observing when the element already has a box', async () => {
+    const { instances, restore } = stubResizeObserver();
+    try {
+      await waitForLayout(sizedElement(402, 226));
+      expect(instances).toHaveLength(0);
+    } finally { restore(); }
+  });
+
+  it('waits for the element to gain a box, then stops observing', async () => {
+    const { instances, restore } = stubResizeObserver();
+    try {
+      const el = sizedElement(0, 0) as { clientWidth: number; clientHeight: number };
+      const pending = waitForLayout(el as unknown as HTMLElement, 5_000);
+      expect(instances).toHaveLength(1);
+
+      // A resize that leaves it zero-sized must not resolve it.
+      instances[0].cb();
+      el.clientWidth = 402;
+      el.clientHeight = 226;
+      instances[0].cb();
+
+      await pending;
+      expect(instances[0].disconnected).toBe(true);
+    } finally { restore(); }
+  });
+
+  it('gives up after the timeout rather than stalling playback', async () => {
+    const { instances, restore } = stubResizeObserver();
+    try {
+      await waitForLayout(sizedElement(0, 0), 1);
+      expect(instances[0].disconnected).toBe(true);
+    } finally { restore(); }
   });
 });

@@ -488,6 +488,32 @@ function fontUrls(stream: HelprrStreamInfo): string[] {
 }
 
 /**
+ * Resolve once the element has a real layout box, or give up after `timeoutMs`.
+ *
+ * Only libass needs this: it measures the element it is handed and refuses to
+ * start on a zero-sized one. Giving up rather than waiting forever keeps a
+ * never-laid-out element from stalling playback — it just leaves libass to fail
+ * the way it already did.
+ */
+export function waitForLayout(el: HTMLElement, timeoutMs = 2000): Promise<void> {
+  const sized = () => el.clientWidth > 0 && el.clientHeight > 0;
+  if (sized()) return Promise.resolve();
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      observer.disconnect();
+      clearTimeout(timer);
+      resolve();
+    };
+    const observer = new ResizeObserver(() => { if (sized()) finish(); });
+    observer.observe(el);
+    const timer: ReturnType<typeof setTimeout> = setTimeout(finish, timeoutMs);
+  });
+}
+
+/**
  * The position to report, which is not always the one the element shows.
  *
  * Until a freshly attached stream has reached the offset it was started at,
@@ -628,6 +654,13 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     if (!selected?.url) return;
 
     if (selected.format === 'ass' || selected.format === 'ssa') {
+      // libass sizes its canvas from the element and aborts with "width or
+      // height is 0" when it is constructed before the player has laid out.
+      // That is the normal case here: this runs from attachMedia *before*
+      // playSafely, and iOS attaches native HLS faster than the stage paints,
+      // so every ASS track was dropped on the floor — invisibly, because the
+      // onError below only clears the ref.
+      await waitForLayout(el);
       const { default: SubtitlesOctopus } = await import('@jellyfin/libass-wasm');
       const videoStream = next.mediaSource.MediaStreams?.find((candidate) => candidate.Type === 'Video');
       assRef.current = new SubtitlesOctopus({
@@ -639,8 +672,13 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
         fonts: fontUrls(next),
         timeOffset: ticksToSeconds(next.transcodingOffsetTicks) + subtitleOffsetRef.current,
         // libass is disposed by its own error path, so without a handler a
-        // failed render just makes the subtitles vanish silently.
-        onError: () => { assRef.current = null; },
+        // failed render just makes the subtitles vanish silently. It is logged
+        // as well as swallowed: that silence is what hid the zero-size failure
+        // above, and a dropped track is worth one console line.
+        onError: () => {
+          console.warn('[Jellyfin] ASS subtitle rendering failed; track dropped');
+          assRef.current = null;
+        },
         // The rest are jellyfin-web's settings verbatim (htmlVideoPlayer
         // `renderSsaAss`), which override every libass default. They matter
         // most on the typeset ASS this library is full of: the render caps keep
@@ -1353,6 +1391,24 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     return () => window.removeEventListener('pagehide', onPageHide);
   }, []);
 
+  /**
+   * `skip` and `previous` both close over `positionSeconds`, which `timeupdate`
+   * rewrites about four times a second, so every one of them is a new function
+   * on every tick. Reading them through a ref lets the handlers below register
+   * once, the same trick the listener effects above use to avoid re-binding.
+   */
+  const transportRef = useRef({ next, previous, seek, skip });
+  useEffect(() => { transportRef.current = { next, previous, seek, skip }; });
+
+  /**
+   * Keyed on the stream, not on the transport callbacks.
+   *
+   * Assigning `mediaSession.metadata` hands iOS a fresh MediaMetadata and it
+   * re-renders the Now Playing surface, re-fetching the artwork. With the
+   * callbacks in this effect's dependencies that happened on every tick, and
+   * the Dynamic Island's artwork span the whole time a video was playing —
+   * stopping on pause only because `timeupdate` stops there too.
+   */
   useEffect(() => {
     const current = streamRef.current?.item;
     if (!current || typeof navigator === 'undefined' || !navigator.mediaSession) return;
@@ -1363,16 +1419,20 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
       album: current.SeasonName || current.Album || '',
       artwork: artwork ? [{ src: artwork, sizes: '512x512', type: 'image/jpeg' }] : [],
     });
+  }, [stream]);
+
+  useEffect(() => {
+    if (typeof navigator === 'undefined' || !navigator.mediaSession) return;
     navigator.mediaSession.setActionHandler('play', () => { void mediaRef.current?.play(); });
     navigator.mediaSession.setActionHandler('pause', () => { mediaRef.current?.pause(); });
-    navigator.mediaSession.setActionHandler('previoustrack', () => { void previous(); });
-    navigator.mediaSession.setActionHandler('nexttrack', () => { void next(); });
-    navigator.mediaSession.setActionHandler('seekbackward', () => skip(-10));
-    navigator.mediaSession.setActionHandler('seekforward', () => skip(10));
+    navigator.mediaSession.setActionHandler('previoustrack', () => { void transportRef.current.previous(); });
+    navigator.mediaSession.setActionHandler('nexttrack', () => { void transportRef.current.next(); });
+    navigator.mediaSession.setActionHandler('seekbackward', () => transportRef.current.skip(-10));
+    navigator.mediaSession.setActionHandler('seekforward', () => transportRef.current.skip(10));
     navigator.mediaSession.setActionHandler('seekto', (details) => {
-      if (typeof details.seekTime === 'number') seek(details.seekTime);
+      if (typeof details.seekTime === 'number') transportRef.current.seek(details.seekTime);
     });
-  }, [next, previous, seek, skip, stream]);
+  }, []);
 
   const setVolume = useCallback((value: number) => {
     const el = mediaRef.current;
