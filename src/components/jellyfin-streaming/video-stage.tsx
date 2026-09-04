@@ -250,13 +250,43 @@ export function VideoStage() {
   const video = playback.stream?.mediaSource.MediaStreams?.find((stream) => stream.Type === 'Video');
   const showChrome = expanded && (controlsVisible || panel !== 'none' || playback.status !== 'playing');
 
-  // Cue placement lives entirely in the provider, which writes `cue.line` from
-  // the viewer's vertical-position setting — the one lever native ::cue
-  // rendering gives us, and the only place jellyfin-web writes it either
-  // (htmlVideoPlayer/plugin.js). A second writer here used to overwrite every
-  // cue whenever the chrome appeared or a cue changed, which silently made the
-  // Raise/Lower control in the subtitle panel do nothing. The default position
-  // already sits three lines up, clear of the control row.
+  // Cue placement still lives entirely in the provider — a second writer here
+  // used to overwrite every cue whenever the chrome appeared, which silently
+  // made the Raise/Lower control do nothing. What the stage owns is the
+  // *measurement*: how much of the video box the bottom chrome covers. The
+  // default three-rows-up position does not clear it, whatever the comment here
+  // used to claim; on a phone the seek bar is drawn through the last line of
+  // the cue, and in landscape through the middle of a two-line one.
+  //
+  // Reported as pixels off the bottom of the video box rather than as the
+  // container's own height, so an open panel (which grows the container
+  // upward) lifts the cues past it too.
+  const bottomChromeRef = useRef<HTMLDivElement | null>(null);
+  const reportChromeObstruction = playback.reportChromeObstruction;
+  useEffect(() => {
+    const measure = () => {
+      const chrome = bottomChromeRef.current;
+      const media = mediaRef.current;
+      if (!showChrome || !chrome || !media) {
+        reportChromeObstruction(0);
+        return;
+      }
+      const video = media.getBoundingClientRect();
+      reportChromeObstruction(Math.max(0, video.bottom - chrome.getBoundingClientRect().top));
+    };
+    measure();
+    const chrome = bottomChromeRef.current;
+    if (!showChrome || !chrome) return;
+    // Rotation, fullscreen and a panel opening all change the height without
+    // re-running this effect.
+    const observer = new ResizeObserver(measure);
+    observer.observe(chrome);
+    window.addEventListener('resize', measure);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', measure);
+    };
+  }, [mediaRef, panel, reportChromeObstruction, showChrome]);
 
   // Rendered inline on sm+ and inside the `more` panel below it, so there is
   // one definition of these controls rather than two.
@@ -407,7 +437,7 @@ export function VideoStage() {
                   </div>
                 </div>
 
-                <div className="space-y-2 px-4 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))] md:px-8">
+                <div ref={bottomChromeRef} className="space-y-2 px-4 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))] md:px-8">
                   {/* Panels sit above the scrubber, which is the top row. */}
                   {panel === 'more' && (
                     <Panel>

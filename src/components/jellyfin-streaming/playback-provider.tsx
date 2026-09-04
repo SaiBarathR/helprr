@@ -17,7 +17,7 @@ import { getJellyfinPlaybackDeviceId, getJellyfinPlaybackDeviceName, secondsToTi
 import { canPlayHlsWithMse, canPlayNativeHls, detectBrowser } from '@/lib/jellyfin-playback/browser';
 import { jellyfinPosterUrl } from '@/lib/jellyfin-playback/image';
 import { useUIStore } from '@/lib/store';
-import { subtitleCueLine } from '@/lib/jellyfin-playback/subtitle-appearance';
+import { cueBottomPercent, subtitleCueLine } from '@/lib/jellyfin-playback/subtitle-appearance';
 
 export type RepeatMode = 'RepeatNone' | 'RepeatAll' | 'RepeatOne';
 
@@ -102,6 +102,12 @@ interface PlaybackContextValue {
   setQueueOpen: (open: boolean) => void;
   skipSegment: (segment: MediaSegment) => void;
   setSubtitleOffset: (seconds: number) => void;
+  /**
+   * How many pixels at the bottom of the video box the player chrome covers.
+   * The stage measures it, because the stage owns that DOM; cue placement still
+   * happens in exactly one place, below.
+   */
+  reportChromeObstruction: (px: number) => void;
 }
 
 const PlaybackContext = createContext<PlaybackContextValue | null>(null);
@@ -465,8 +471,31 @@ export function cueLineFor(line: number, text: string): number {
  * and a second writer in the player chrome is what used to silently override
  * the viewer's choice.
  */
-function applyCueLine(track: TextTrack, line: number) {
-  for (const cue of Array.from(track.cues ?? []) as VTTCue[]) {
+export function applyCueLine(track: TextTrack, line: number, obstruction = 0, videoHeight = 0) {
+  const cues = Array.from(track.cues ?? []) as VTTCue[];
+  if (cues.length === 0) return;
+
+  // While the chrome is up, place the box's bottom edge against the top of it
+  // rather than counting rows from the viewport floor — see cueBottomPercent.
+  let percent = cueBottomPercent(videoHeight, obstruction);
+  if (percent !== null) {
+    const probe = cues[0];
+    probe.snapToLines = false;
+    probe.lineAlign = 'end';
+    // A UA without `lineAlign` leaves it 'start', where a percentage line
+    // anchors the box's *top* and pushes it further into the chrome — worse
+    // than the row placement it replaced. Both Safari 26 and Chrome on Android
+    // honour it; anything that does not falls back rather than degrades.
+    if (probe.lineAlign !== 'end') percent = null;
+  }
+
+  for (const cue of cues) {
+    if (percent !== null) {
+      cue.snapToLines = false;
+      cue.lineAlign = 'end';
+      cue.line = percent;
+      continue;
+    }
     // Both, and in this order. Jellyfin writes its cues as `line:90%`, which
     // parses to snapToLines false — and with that flag false `line` is a
     // percentage, so a negative position would place the cue above the top of
@@ -474,6 +503,9 @@ function applyCueLine(track: TextTrack, line: number) {
     // meets this because it builds its cues itself, where snapToLines defaults
     // to true.
     cue.snapToLines = true;
+    // Reset too: a cue left anchored 'end' by the branch above would otherwise
+    // read its row from the wrong edge of the box.
+    cue.lineAlign = 'start';
     cue.line = cueLineFor(line, cue.text);
   }
 }
@@ -564,6 +596,7 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
   const mediaRef = useRef<HTMLVideoElement | null>(null);
   const subtitleAppearance = useUIStore((state) => state.subtitleAppearance);
   const cueLineRef = useRef(subtitleCueLine(subtitleAppearance.verticalPosition));
+  const obstructionRef = useRef(0);
   const hlsRef = useRef<{ destroy: () => void } | null>(null);
   const assRef = useRef<{ dispose?: () => void } | null>(null);
   /**
@@ -789,7 +822,7 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
       textTrack.mode = 'showing';
       // ::cue cannot move a cue box, so the vertical-position setting has to be
       // written onto the cues themselves — the same lever jellyfin-web uses.
-      applyCueLine(textTrack, cueLineRef.current);
+      applyCueLine(textTrack, cueLineRef.current, obstructionRef.current, el.getBoundingClientRect().height);
     };
     track.addEventListener('load', enable);
     enable();
@@ -1451,12 +1484,29 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     return clearTimers;
   }, [maxBitrate, status]);
 
+  /**
+   * Re-place the cues. One writer, called from the three things that move them:
+   * a new track, the viewer's Raise/Lower, and the chrome appearing or resizing.
+   * A second writer here is what once made Raise/Lower silently do nothing.
+   */
+  const refreshCueLines = useCallback(() => {
+    const el = mediaRef.current;
+    const textTrack = el?.textTracks?.[0];
+    if (!el || !textTrack) return;
+    applyCueLine(textTrack, cueLineRef.current, obstructionRef.current, el.getBoundingClientRect().height);
+  }, [mediaRef]);
+
   useEffect(() => {
     cueLineRef.current = subtitleCueLine(subtitleAppearance.verticalPosition);
-    const textTrack = mediaRef.current?.textTracks?.[0];
-    if (!textTrack) return;
-    applyCueLine(textTrack, cueLineRef.current);
-  }, [subtitleAppearance.verticalPosition]);
+    refreshCueLines();
+  }, [refreshCueLines, subtitleAppearance.verticalPosition]);
+
+  const reportChromeObstruction = useCallback((px: number) => {
+    const next = Number.isFinite(px) ? Math.max(0, Math.round(px)) : 0;
+    if (next === obstructionRef.current) return;
+    obstructionRef.current = next;
+    refreshCueLines();
+  }, [refreshCueLines]);
 
   // Report Stopped when the page goes away. Without this the Jellyfin session
   // lingers in Active Devices and a transcode keeps running until Jellyfin's own
@@ -1607,11 +1657,12 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     setQueueOpen,
     skipSegment,
     setSubtitleOffset,
+    reportChromeObstruction,
   }), [
     addToQueue, audioStreamIndex, durationSeconds, error, index, item, maxBitrate, muted,
     needsJellyfinConnect, next, playItem, retryAfterConnect,
     playItems, playQueueIndex, playbackRate, positionSeconds, previous, queue, queueOpen, repeat, seek,
-    segments, setAudioStream, setMaxBitrate, setMuted, setPlaybackRate, setRepeatMode, setSubtitleOffset,
+    segments, reportChromeObstruction, setAudioStream, setMaxBitrate, setMuted, setPlaybackRate, setRepeatMode, setSubtitleOffset,
     setSubtitleStream, setVolume, shuffled, skip, skipSegment, status, stop, stream, subtitleOffsetSeconds,
     subtitleStreamIndex, togglePause, toggleShuffle, videoExpanded, volume,
   ]);

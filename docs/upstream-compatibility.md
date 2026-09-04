@@ -74,6 +74,23 @@ stack on **2026-08-28**:
   `401`/`403`, which Helprr treats as the only available revocation signal. This
   was exercised during an active HLS transcode: the segment after the last
   successful one was refused and the player surfaced the connect gate.
+- **Deliberate divergence: native cue placement, 2026-09-04.** jellyfin-web
+  places WebVTT/SRT cues by counting text rows from the bottom of the video box
+  (`htmlVideoPlayer/plugin.js` `renderTracksEvents`), and Helprr followed it.
+  Rows are text-sized and the player chrome is pixel-sized, so on a phone they
+  disagree: at 426x876 the seek bar was drawn through the last line of a cue,
+  and in landscape through the middle of a two-line one. Helprr now keeps the
+  row placement only while the chrome is hidden, and pins the cue box's bottom
+  to the top of the chrome (`snapToLines: false`, `lineAlign: 'end'`, a
+  percentage `line`) while it is up. Verified rendering on Chrome for Android
+  and Safari 26.4. Do not "restore parity" here without re-measuring on a phone.
+- **Web Push on Android, verified 2026-09-04.** Exercised for the first time
+  against the installed WebAPK over an HTTPS origin: `pushManager.subscribe`
+  returned an FCM endpoint, the subscription persisted, and
+  `POST /api/notifications/test` reported `{"sent":1}` with the notification
+  posted by the WebAPK's own package (title, body, icon and origin subtext
+  correct). Push cannot be exercised over a plain-HTTP origin at all — there is
+  no secure context, so the service worker API is absent.
 - **Not qualified.** Live TV *playback* has never been exercised — no tuner is
   configured on the reference server, so only channel listing is covered. Chapter
   markers are likewise unexercised because no item reached during testing carried
