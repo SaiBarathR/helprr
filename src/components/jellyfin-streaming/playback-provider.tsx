@@ -28,6 +28,14 @@ export interface PlayOptions {
   maxStreamingBitrate?: number;
   enableDirectPlay?: boolean;
   enableDirectStream?: boolean;
+  /**
+   * Whether to ask for ASS/SSA as text this client will render itself.
+   *
+   * `false` drops both formats from the device profile, which is how Jellyfin
+   * is told to burn them into the picture instead. Set only after libass has
+   * actually failed here — see `assRenderBrokenRef`.
+   */
+  enableSsaRender?: boolean;
   shuffle?: boolean;
   /**
    * Which media source the indexes above refer to.
@@ -117,6 +125,7 @@ async function fetchStream(itemId: string, options: PlayOptions): Promise<Helprr
       ? options.maxStreamingBitrate
       : 120_000_000,
     isRetry: options.enableDirectPlay === false,
+    enableSsaRender: options.enableSsaRender,
   });
   const res = await fetch('/api/jellyfin/stream/info', {
     method: 'POST',
@@ -262,6 +271,15 @@ interface Playable {
  * playback still advances normally within them.
  */
 const SERIES_QUEUE_LIMIT = 500;
+
+/**
+ * How long libass gets to size its canvas before it is treated as failed.
+ *
+ * Generous on purpose: it sizes itself off `loadedmetadata` or its own
+ * ResizeObserver, and neither should be anywhere near this slow. Being wrong in
+ * the impatient direction would cost a needless transcode.
+ */
+const ASS_RENDER_PROBE_MS = 4000;
 
 /** Every episode of a series, in season-then-episode order. */
 async function seriesEpisodes(seriesId: string): Promise<JellyfinItem[]> {
@@ -548,6 +566,30 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
   const cueLineRef = useRef(subtitleCueLine(subtitleAppearance.verticalPosition));
   const hlsRef = useRef<{ destroy: () => void } | null>(null);
   const assRef = useRef<{ dispose?: () => void } | null>(null);
+  /**
+   * Whether libass has already failed on this device.
+   *
+   * It cannot start at all in iOS Safari 26 — the worker dies during startup,
+   * with no message, on a bare `new Worker(...)` and no app code involved.
+   * jellyfin-web is no better off there: it pins the same libass build and
+   * turns the failure into a playback error. Rather than copy that, the first
+   * failure is remembered and every stream from then on asks Jellyfin to burn
+   * the subtitles in, which works everywhere at the cost of a transcode.
+   *
+   * A ref, not state: the profile for the very next request has to see it, and
+   * a render later would be too late.
+   */
+  const assRenderBrokenRef = useRef(false);
+  /** Pending check that libass actually sized its canvas. */
+  const assProbeRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /**
+   * `restartWith`, reachable from `applySubtitleTrack` above it.
+   *
+   * The burn-in fallback has to restart the stream, but naming `restartWith` as
+   * a dependency that far up the component would read it in its own temporal
+   * dead zone on every render.
+   */
+  const restartRef = useRef<((patch: PlayOptions) => Promise<void>) | null>(null);
   const streamRef = useRef<HelprrStreamInfo | null>(null);
   const queueRef = useRef<JellyfinItem[]>([]);
   const indexRef = useRef(0);
@@ -621,8 +663,27 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     }
   };
 
+  /**
+   * Give up on client-side ASS and have Jellyfin burn it into the picture.
+   *
+   * Reached from two different failures, because libass has two ways to not
+   * work: it either calls `onError`, or it builds its canvas and never sizes
+   * it. Idempotent — one broken renderer must not restart the stream twice.
+   */
+  const fallBackToBurnIn = useCallback((reason: string) => {
+    assRef.current = null;
+    if (assRenderBrokenRef.current) return;
+    assRenderBrokenRef.current = true;
+    console.warn(`[Jellyfin] ASS renderer unavailable (${reason}); using burned-in subtitles`);
+    void restartRef.current?.({});
+  }, []);
+
   /** Tear down whatever is rendering subtitles, leaving the video alone. */
   const destroySubtitles = useCallback(() => {
+    if (assProbeRef.current) {
+      clearTimeout(assProbeRef.current);
+      assProbeRef.current = null;
+    }
     try { assRef.current?.dispose?.(); } catch { /* already torn down */ }
     assRef.current = null;
     if (mediaRef.current) clearTextTracks(mediaRef.current);
@@ -671,14 +732,12 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
         fallbackFont: '/libass/default.woff2',
         fonts: fontUrls(next),
         timeOffset: ticksToSeconds(next.transcodingOffsetTicks) + subtitleOffsetRef.current,
-        // libass is disposed by its own error path, so without a handler a
-        // failed render just makes the subtitles vanish silently. It is logged
-        // as well as swallowed: that silence is what hid the zero-size failure
-        // above, and a dropped track is worth one console line.
-        onError: () => {
-          console.warn('[Jellyfin] ASS subtitle rendering failed; track dropped');
-          assRef.current = null;
-        },
+        // libass disposes itself on its own error path, so this only has to
+        // note that it cannot run here and re-request the stream: with ass/ssa
+        // gone from the profile, Jellyfin burns the track into the picture and
+        // the viewer gets subtitles instead of silence. Guarded on the flag so
+        // one broken renderer cannot restart the stream repeatedly.
+        onError: () => fallBackToBurnIn('worker error'),
         // The rest are jellyfin-web's settings verbatim (htmlVideoPlayer
         // `renderSsaAss`), which override every libass default. They matter
         // most on the typeset ASS this library is full of: the render caps keep
@@ -696,6 +755,24 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
         resizeVariation: 0.2,
         renderAhead: 90,
       });
+      /**
+       * Confirm it actually started, because failing quietly is its other mode.
+       *
+       * On iOS 26 libass builds its canvas and then never sizes it — the
+       * element keeps the 300x150 default backing store and a zero CSS box, so
+       * nothing is ever painted and `onError` is never called. libass sizes
+       * itself from `loadedmetadata` or its own ResizeObserver, so a canvas
+       * still unsized well after both have had their chance is not a race worth
+       * waiting on any longer.
+       */
+      if (assProbeRef.current) clearTimeout(assProbeRef.current);
+      assProbeRef.current = setTimeout(() => {
+        assProbeRef.current = null;
+        if (!assRef.current) return;
+        const painted = Array.from(document.querySelectorAll('canvas'))
+          .some((canvas) => canvas.getBoundingClientRect().width > 0);
+        if (!painted) fallBackToBurnIn('canvas never sized');
+      }, ASS_RENDER_PROBE_MS);
       return;
     }
 
@@ -716,7 +793,7 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     };
     track.addEventListener('load', enable);
     enable();
-  }, [destroySubtitles]);
+  }, [destroySubtitles, fallBackToBurnIn]);
 
   /**
    * Fail playback, checking first whether the member is simply no longer
@@ -895,6 +972,9 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
         : undefined,
       enableDirectPlay: options.enableDirectPlay,
       enableDirectStream: options.enableDirectStream,
+      // Read from the ref rather than the caller, so every start honours it —
+      // a later episode must not retry a renderer already known to be broken.
+      enableSsaRender: !assRenderBrokenRef.current,
     };
     try {
       const nextStream = await fetchStream(nextItem.Id, request);
@@ -1204,6 +1284,10 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
       enableDirectStream: patch.enableDirectStream,
     });
   }, [maxBitrate, positionSeconds, startItem]);
+
+  // Published for the burn-in fallback in applySubtitleTrack, which sits above
+  // this and so cannot depend on it directly.
+  useEffect(() => { restartRef.current = restartWith; });
 
   const setAudioStream = useCallback(async (streamIndex: number) => {
     audioIndexRef.current = streamIndex;
