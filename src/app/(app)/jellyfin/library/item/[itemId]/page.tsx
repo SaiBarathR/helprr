@@ -32,6 +32,7 @@ import { CatalogElsewhere } from '@/components/jellyfin-streaming/catalog-elsewh
 import { CatalogRatingsStrip } from '@/components/jellyfin-streaming/catalog-ratings-strip';
 import { PreviewBackdrop } from '@/components/jellyfin-streaming/cinematic/preview-backdrop';
 import { MobileDetailTabs } from '@/components/jellyfin-streaming/cinematic/mobile-detail-tabs';
+import { mediaBadges } from '@/lib/jellyfin-playback/media-badges';
 import { usePreviewSource } from '@/components/jellyfin-streaming/cinematic/use-preview-item';
 import { useWatchSkin } from '@/lib/hooks/use-watch-skin';
 import { useCompactViewport } from '@/lib/hooks/use-compact-viewport';
@@ -180,9 +181,11 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
   const directors = people.filter((p) => p.Type === 'Director').map((p) => p.Name).filter(Boolean);
   const writers = people.filter((p) => p.Type === 'Writer').map((p) => p.Name).filter(Boolean);
   const actors = people.filter((p) => p.Type === 'Actor').map((p) => p.Name).filter(Boolean);
-  // Netflix's phone meta row: season count for a series, HD and CC badges.
+  // Netflix's phone meta row: season count for a series, then whatever the file
+  // actually is. `HD` for everything above 700 lines meant a 4K HDR Atmos title
+  // and a stereo 720p one advertised themselves identically.
   const seasonCount = item.Type === 'Series' ? (item.ChildCount ?? 0) : 0;
-  const isHighDefinition = (videoStream?.Height ?? 0) >= 700;
+  const badges = mediaBadges(streams);
   const infoRows: Array<[string, string]> = ([
     ['Genres', (item.Genres ?? []).join(', ')],
     ['Director', directors.join(', ')],
@@ -325,12 +328,16 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
               {seasonCount > 0
                 ? <span>{seasonCount} Season{seasonCount === 1 ? '' : 's'}</span>
                 : runtimeSeconds > 0 ? <span>{formatRuntimeShort(runtimeSeconds)}</span> : null}
-              {isHighDefinition && (
-                <span className="border border-white/40 px-1 text-[10px] tracking-wide text-white/90">HD</span>
-              )}
-              {subtitleStreams.length > 0 && (
-                <span className="border border-white/40 px-1 text-[10px] tracking-wide text-white/90">CC</span>
-              )}
+              {[badges.resolution, badges.dynamicRange, badges.audio, badges.subtitles ? 'CC' : null]
+                .filter((badge): badge is string => Boolean(badge))
+                .map((badge) => (
+                  <span
+                    key={badge}
+                    className="border border-white/40 px-1 text-[10px] tracking-wide text-white/90"
+                  >
+                    {badge}
+                  </span>
+                ))}
             </div>
           ) : (
             <div
