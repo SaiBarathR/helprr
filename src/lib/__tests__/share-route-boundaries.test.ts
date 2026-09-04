@@ -39,10 +39,11 @@ describe('Web Share Target request boundaries', () => {
     ));
 
     expect(response.status).toBe(303);
-    const location = new URL(response.headers.get('location')!);
-    expect(location.pathname).toBe('/share');
-    expect(location.searchParams.get('title')).toBe('A title');
-    expect(location.searchParams.get('url')).toBe('https://www.themoviedb.org/movie/1');
+    const location = response.headers.get('location')!;
+    expect(location.startsWith('/share?')).toBe(true);
+    const params = new URLSearchParams(location.slice('/share?'.length));
+    expect(params.get('title')).toBe('A title');
+    expect(params.get('url')).toBe('https://www.themoviedb.org/movie/1');
   });
 
   it('preserves a bounded valid payload through unauthenticated login', async () => {
@@ -53,9 +54,10 @@ describe('Web Share Target request boundaries', () => {
     const response = await POST(formRequest('title=Hello&text=World'));
 
     expect(response.status).toBe(303);
-    const location = new URL(response.headers.get('location')!);
-    expect(location.pathname).toBe('/login');
-    expect(location.searchParams.get('next')).toBe('/share?title=Hello&text=World');
+    const location = response.headers.get('location')!;
+    expect(location.startsWith('/login?')).toBe(true);
+    const params = new URLSearchParams(location.slice('/login?'.length));
+    expect(params.get('next')).toBe('/share?title=Hello&text=World');
   });
 
   it('rejects unsupported JSON without invoking authentication', async () => {
@@ -67,6 +69,21 @@ describe('Web Share Target request boundaries', () => {
 
     expect(response.status).toBe(415);
     expect(mocks.requireAuth).not.toHaveBeenCalled();
+  });
+
+  it('names no host, whatever the server believes its own URL to be', async () => {
+    // A standalone build reports its bind address in `request.url`, so the
+    // Location built from it sent every share to http://0.0.0.0:3050 -- found
+    // by sharing a link into the installed Android PWA, and invisible to the
+    // cases above because they only ever asserted the path and the query.
+    const response = await POST(new NextRequest('http://0.0.0.0:3050/api/share', {
+      method: 'POST',
+      body: 'title=Hello',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    }));
+
+    expect(response.status).toBe(303);
+    expect(response.headers.get('location')).toBe('/share?title=Hello');
   });
 
   it.each([

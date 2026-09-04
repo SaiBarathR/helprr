@@ -14,21 +14,27 @@ const SHARE_URL_MAX_BYTES = 2_048;
 const SHARE_REDIRECT_QUERY_MAX_BYTES = 8 * 1024;
 const SHARE_REDIRECT_LOCATION_MAX_BYTES = 8 * 1024;
 
-function redirectOrPayloadTooLarge(
-  target: string,
-  requestUrl: string,
-): NextResponse {
-  const location = new URL(target, requestUrl);
-  if (
-    Buffer.byteLength(location.toString(), 'utf8')
-    > SHARE_REDIRECT_LOCATION_MAX_BYTES
-  ) {
+/**
+ * 303 to a *relative* Location.
+ *
+ * The obvious `new URL(target, request.url)` is wrong here. In a standalone
+ * build `request.url` carries the server's own bind address rather than the
+ * host that was asked, so a link shared into the installed Android PWA
+ * redirected to `http://0.0.0.0:3050/login`: the payload survived intact and
+ * the user landed on an unreachable host. Reading `x-forwarded-host` would
+ * fix the host but makes the Location a caller-supplied value. A relative
+ * reference is resolved by the browser against the origin it actually
+ * requested, so it is same-origin by construction and needs no proxy headers
+ * at all -- which is how middleware already emits its own /login redirects.
+ */
+function redirectOrPayloadTooLarge(target: string): NextResponse {
+  if (Buffer.byteLength(target, 'utf8') > SHARE_REDIRECT_LOCATION_MAX_BYTES) {
     return NextResponse.json(
       { error: 'Shared payload is too large' },
       { status: 413 },
     );
   }
-  return NextResponse.redirect(location, 303);
+  return new NextResponse(null, { status: 303, headers: { location: target } });
 }
 
 /**
@@ -66,13 +72,10 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     // Preserve the shared payload across the login round-trip so the user
     // doesn't lose context: send them to /login?next=/share?...
     const next = `/share?${query}`;
-    return redirectOrPayloadTooLarge(
-      `/login?next=${encodeURIComponent(next)}`,
-      request.url,
-    );
+    return redirectOrPayloadTooLarge(`/login?next=${encodeURIComponent(next)}`);
   }
 
-  return redirectOrPayloadTooLarge(`/share?${query}`, request.url);
+  return redirectOrPayloadTooLarge(`/share?${query}`);
 }
 
 async function readSharedParams(request: NextRequest): Promise<URLSearchParams> {
