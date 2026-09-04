@@ -111,7 +111,11 @@ export function QueuePanel({
       role="dialog"
       aria-label={`${heading} queue`}
     >
-      <div className="flex items-start gap-2 border-b border-white/10 px-4 py-3">
+      {/* The panel is `inset-y-0`, so in the installed PWA it runs edge to edge
+          and the title landed under the clock and the Dynamic Island. A browser
+          tab never showed it, because there the browser's own chrome is already
+          holding the content down. Same treatment at the foot of the list. */}
+      <div className="flex items-start gap-2 border-b border-white/10 px-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3">
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold text-white">{heading}</p>
           <p className="text-[11px] text-white/60">
@@ -124,7 +128,7 @@ export function QueuePanel({
         </Button>
       </div>
 
-      <div className="hpr-cine-scroll flex-1 overflow-y-auto overscroll-contain">
+      <div className="hpr-cine-scroll flex-1 overflow-y-auto overscroll-contain pb-[env(safe-area-inset-bottom)]">
         {groups.map((group) => (
           <section key={group.key}>
             {group.label && (
