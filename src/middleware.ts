@@ -96,8 +96,13 @@ export async function middleware(request: NextRequest) {
     return pass();
   }
 
-  // Allow static assets
-  if (pathname.startsWith('/icons') || pathname.startsWith('/images')) {
+  // Allow static assets. `/libass` is the subtitle renderer's worker, wasm and
+  // fallback font: third-party build output with no user data in it, and it has
+  // to be public for the same reason the service worker does. The PWA installs
+  // its worker while sitting on /login, so while these redirected here they got
+  // cached as login HTML — and the renderer then failed on every later load
+  // with an opaque worker error, until the cache was cleared by hand.
+  if (pathname.startsWith('/icons') || pathname.startsWith('/images') || pathname.startsWith('/libass')) {
     return pass();
   }
 
