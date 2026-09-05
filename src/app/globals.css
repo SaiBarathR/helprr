@@ -531,6 +531,32 @@ html {
   html[data-watch-skin='cinematic'] .hpr-watch-page-enter {
     animation: watch-page-in 150ms ease-out;
   }
+
+  html[data-watch-skin='cinematic'] .hpr-watch-page-enter[data-watch-detail] {
+    animation: rail-in 180ms ease-out backwards;
+  }
+}
+
+/* Watch uses CSS arrivals and an immediate Back. Exclude its root from
+   native snapshots so an interrupted navigation cannot layer two fades. */
+html[data-watch-skin='cinematic']:has(.hpr-watch) {
+  view-transition-name: none;
+}
+
+/* The fixed video sheet borrows the house content arrival without staggering
+   its controls. Its video node stays mounted through open, exit and mini mode. */
+.hpr-watch-player-enter {
+  animation: content-in 160ms ease-out backwards;
+}
+
+@keyframes watch-player-out {
+  from { opacity: 1; transform: translateY(0); }
+  to { opacity: 0; transform: translateY(8px); }
+}
+
+.hpr-watch-player-enter[data-closing='true'] {
+  animation: watch-player-out 160ms ease-in forwards;
+  pointer-events: none;
 }
 
 /* Page transitions */
@@ -580,6 +606,21 @@ html {
   opacity: 0.7;
   transform: scale(0.98);
   transition: all 0.1s ease;
+}
+
+/* Watch cards use the same press idiom as pill buttons, without animating
+   their reserved dimensions. The stretched link keeps its keyboard ring. */
+.hpr-watch .press-feedback {
+  transition: transform 120ms ease-out, opacity 120ms ease-out;
+}
+
+.hpr-watch .press-feedback:has(> a:focus-visible) {
+  transform: scale(1.02);
+}
+
+.hpr-watch .press-feedback:active {
+  opacity: 0.85;
+  transform: scale(0.97);
 }
 
 /* Widget ghost placeholder (shown at original position during drag) */
@@ -648,6 +689,11 @@ html {
 
 @media (prefers-reduced-motion: reduce) {
 
+  .hpr-watch .press-feedback {
+    transition: none !important;
+    transform: none !important;
+  }
+
   .widget-ghost,
   .widget-jiggle,
   .widget-jiggle:nth-child(2n),
@@ -657,6 +703,10 @@ html {
   .animate-content-in>*,
   .animate-list-in>*,
   .animate-rail-in>*,
+  .hpr-watch-page-enter,
+  .hpr-watch-player-enter,
+  .hpr-cine-modal,
+  html[data-watch-skin='cinematic']:has(.hpr-watch) [data-slot='dialog-overlay'],
   .animate-hero-zoom,
   .animate-spinner-in {
     animation: none !important;
@@ -819,6 +869,12 @@ html {
 
 .animate-rail-in>* {
   animation: rail-in 0.25s ease-out backwards;
+}
+
+/* Windowed cards remount inside permanent slots. Animate those slots once,
+   when their rail approaches the viewport, and keep their original stagger. */
+.hpr-cine-row:not([data-rail-arrived]) > .animate-rail-in > [data-rail-slot] {
+  animation: none;
 }
 
 .animate-rail-in>*:nth-child(1) {

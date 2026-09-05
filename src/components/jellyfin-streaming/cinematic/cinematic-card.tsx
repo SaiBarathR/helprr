@@ -157,7 +157,7 @@ export const CinematicCard = memo(function CinematicCard({
         // The tile is the layout box and never changes size — the popover
         // grows out of .hpr-cine-face instead, so nothing around it moves.
         // `flat` opts out of the popover entirely (grids, not rows).
-        'group relative shrink-0',
+        'press-feedback group relative shrink-0',
         !flat && 'hpr-cine-tile',
         flat ? cardAspectClass(shape) : cinematicCardLayout(requestedShape, compact),
         // A rail sizes its own tiles; a grid sizes them from the column, and

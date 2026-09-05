@@ -59,7 +59,7 @@ export default function LiveTvPage() {
   const recordings = query.data?.recordings ?? [];
 
   return (
-    <div className="space-y-6 py-4 pb-28">
+    <div className="hpr-watch-page-enter space-y-6 py-4 pb-28">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="sr-only">Live TV</h1>

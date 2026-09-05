@@ -81,7 +81,7 @@ export function NewAndHot({ railsFallback }: { railsFallback: React.ReactNode })
   );
 
   return (
-    <div className="space-y-6 pb-28">
+    <div className="hpr-watch-page-enter space-y-6 pb-28">
       <nav aria-label="New & Hot sections" className="flex items-center gap-2 overflow-x-auto pt-1 scrollbar-hide">
         {TABS.map((entry) => (
           <button

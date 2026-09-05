@@ -237,7 +237,7 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
   const hasMediaDetail = Boolean(videoStream) || audioStreams.length > 0 || subtitleStreams.length > 0 || Boolean(fileLine);
 
   return (
-    <div className="pb-28">
+    <div className="hpr-watch-page-enter pb-28" data-watch-detail>
       <section
         className={cn(
           'relative -mx-[var(--main-pad-x)] -mt-[var(--main-pad-top)] flex flex-col overflow-hidden',

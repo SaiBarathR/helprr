@@ -31,6 +31,7 @@ import {
   useJellyfinPlayback,
 } from '@/components/jellyfin-streaming/playback-provider';
 import { QueuePanel } from '@/components/jellyfin-streaming/queue-panel';
+import { usePlayerSheet } from '@/components/jellyfin-streaming/use-player-sheet';
 import { toggleFullscreen } from '@/lib/jellyfin-playback/browser';
 import { bitrateOptions } from '@/lib/jellyfin-playback/device-profile';
 import { formatClock, ticksToSeconds } from '@/lib/jellyfin-playback/device';
@@ -91,6 +92,8 @@ export function VideoStage() {
   const isActive = playback.status !== 'idle' && Boolean(playback.item);
   const isVideo = isActive && !isAudio;
   const expanded = playback.videoExpanded && isActive;
+  const sheet = usePlayerSheet(isVideo && expanded);
+  const visualExpanded = expanded || sheet.present;
 
   // Re-opening the player should always start with the chrome up. Adjusting
   // state during render avoids the cascading re-render an effect would cause.
@@ -136,12 +139,12 @@ export function VideoStage() {
    * with an Audio item behind it.
    */
   useEffect(() => {
-    if (!expanded) return undefined;
+    if (!visualExpanded) return undefined;
     document.documentElement.dataset.watchPlayerOpen = 'true';
     return () => {
       delete document.documentElement.dataset.watchPlayerOpen;
     };
-  }, [expanded]);
+  }, [visualExpanded]);
 
   // Browser back used to leave the video fullscreen over whatever route it
   // landed on. Collapse to the mini player instead, so back reveals the page.
@@ -262,7 +265,7 @@ export function VideoStage() {
   );
 
   const progress = playback.durationSeconds > 0 ? playback.positionSeconds / playback.durationSeconds : 0;
-  const mini = isVideo && !expanded;
+  const mini = isVideo && !expanded && !sheet.present;
   const audioFull = isAudio && expanded;
   const video = playback.stream?.mediaSource.MediaStreams?.find((stream) => stream.Type === 'Video');
   const showChrome = expanded && (controlsVisible || panel !== 'none' || playback.status !== 'playing');
@@ -355,13 +358,20 @@ export function VideoStage() {
   return (
     <>
       <div
+        data-closing={sheet.exiting || undefined}
+        inert={sheet.exiting}
+        onAnimationEnd={(event) => {
+          if (event.target === event.currentTarget && event.animationName === 'watch-player-out') {
+            sheet.finishExit();
+          }
+        }}
         className={cn(
           'overflow-hidden bg-black',
-          !isVideo && 'pointer-events-none fixed h-px w-px opacity-0',
+          !isVideo && !sheet.present && 'pointer-events-none fixed h-px w-px opacity-0',
           // Sits above the now-playing bar (62px) rather than on top of it —
           // at md:bottom-4 it used to cover Pause/Next/Repeat/Queue/Stop.
           mini && 'fixed right-3 bottom-[calc(9.5rem+env(safe-area-inset-bottom))] z-30 h-36 w-64 rounded-xl border shadow-2xl md:bottom-[5.5rem]',
-          isVideo && expanded && 'fixed inset-0 z-[80]',
+          sheet.present && 'hpr-watch-player-enter fixed inset-0 z-[80]',
         )}
       >
         <div

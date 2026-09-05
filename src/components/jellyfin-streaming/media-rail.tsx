@@ -370,7 +370,7 @@ export function MediaRail({
             <div
               ref={trackRef}
               className={cn(
-                'flex w-full gap-2',
+                'animate-rail-in flex w-full gap-2',
                 // A wheel gesture drives the row directly; animating to each of
                 // a trackpad's dozens of deltas turns a flick into a crawl.
                 !gesturing && 'transition-transform duration-500 ease-out motion-reduce:transition-none',

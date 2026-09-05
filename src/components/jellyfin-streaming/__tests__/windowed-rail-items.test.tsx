@@ -61,6 +61,8 @@ describe('windowed rail items', () => {
     expect(horizontal.observe).toHaveBeenCalledTimes(20);
     await horizontal.emit(slots.slice(0, 5).map((target) => ({ target, isIntersecting: true })));
     expect(container.querySelectorAll('button')).toHaveLength(5);
+    const firstCard = slots[0].firstElementChild;
+    expect(viewportRef.current?.dataset.railArrived).toBe('true');
     expect(slots[0].hasAttribute('aria-hidden')).toBe(false);
     expect(slots[5].getAttribute('aria-hidden')).toBe('true');
     await horizontal.emit([
@@ -70,6 +72,15 @@ describe('windowed rail items', () => {
     expect(Array.from(container.querySelectorAll('button')).map((button) => button.textContent))
       .toEqual(['Title 15', 'Title 16', 'Title 17', 'Title 18', 'Title 19']);
     expect(container.querySelectorAll('[data-rail-slot]')).toHaveLength(20);
+    await horizontal.emit([
+      ...slots.slice(15).map((target) => ({ target, isIntersecting: false })),
+      ...slots.slice(0, 5).map((target) => ({ target, isIntersecting: true })),
+    ]);
+    // The animation's nodes and item order survive a complete card remount.
+    const returnedSlots = Array.from(container.querySelectorAll('[data-rail-slot]'));
+    expect(returnedSlots.every((slot, index) => slot === slots[index])).toBe(true);
+    expect(slots[0].firstElementChild).not.toBe(firstCard);
+    expect(viewportRef.current?.dataset.railArrived).toBe('true');
   });
 
   it('preserves keyboard focus while removing other cards from distant rows', async () => {

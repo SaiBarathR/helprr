@@ -7,6 +7,8 @@ import { cn } from '@/lib/utils';
  * Keep the rail's complete geometry, but mount artwork and card hooks only
  * near the visible part of a nearby row. The browser tracks scrolling,
  * transforms and resizing without a layout read for each tile.
+ * Permanent slots own the entrance stagger, so card re-entry cannot restart
+ * it or change the item's nth-child position.
  */
 export function WindowedRailItems({
   children,
@@ -52,6 +54,9 @@ export function WindowedRailItems({
       intersecting.clear();
       nearby = entry.isIntersecting;
       if (nearby) {
+        // Latch once per rail, using the observer we already have. Distant
+        // rails need not animate until they approach the viewport.
+        viewport.dataset.railArrived = 'true';
         slots.current.forEach((slot) => horizontal.observe(slot));
       }
       update();
