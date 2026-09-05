@@ -734,9 +734,14 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
 
         {people.length > 0 && (
           <MediaRail title="Cast & crew" count={Math.min(people.length, 20)}>
-              {people.slice(0, 20).map((person) => (
+              {/* The position is part of the key because id+role is not unique:
+                  Jellyfin credits one person once per job, so a director who
+                  also wrote the episode arrives twice carrying the same Role
+                  and only a differing Type — which React reported as two
+                  children with the same key. */}
+              {people.slice(0, 20).map((person, position) => (
                 person.Id ? (
-                  <Link key={`${person.Id}-${person.Role}`} href={`/jellyfin/library/item/${person.Id}`} className="w-24 shrink-0 text-center">
+                  <Link key={`${person.Id}-${person.Role}-${position}`} href={`/jellyfin/library/item/${person.Id}`} className="w-24 shrink-0 text-center">
                     <div className="relative flex aspect-square items-center justify-center overflow-hidden rounded-full bg-muted">
                       {jellyfinPersonImageUrl(person, 160)
                         ? <FadeInImage src={jellyfinPersonImageUrl(person, 160)!} alt={person.Name ?? ''} fill sizes="96px" unoptimized className="object-cover" />
