@@ -1554,6 +1554,26 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     refreshCueLines();
   }, [refreshCueLines]);
 
+  /**
+   * Clear anything this device left playing the last time it was killed.
+   *
+   * `pagehide` below covers a closed tab and a navigation away, but not an app
+   * being terminated: iOS fires no lifecycle event at all when a standalone PWA
+   * is killed from the app switcher, so no Stopped is ever sent and the session
+   * and its transcode outlive the app. Starting up is the first moment this
+   * device can say so. Only when nothing is playing here, and the server
+   * ignores any session still reporting, so a second tab sharing this device id
+   * is not stopped out from under itself.
+   */
+  useEffect(() => {
+    if (streamRef.current) return;
+    void fetch('/api/jellyfin/stream/orphans', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deviceId: getJellyfinPlaybackDeviceId() }),
+    }).catch(() => {});
+  }, []);
+
   // Report Stopped when the page goes away. Without this the Jellyfin session
   // lingers in Active Devices and a transcode keeps running until Jellyfin's own
   // idle timeout. `persisted` means the page went into the bfcache and may come

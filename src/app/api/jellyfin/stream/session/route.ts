@@ -4,6 +4,7 @@ import { getJellyfinPlaybackContext } from '@/lib/service-helpers';
 import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { jellyfinConnectGateResponse, upstreamErrorResponse } from '@/lib/api-error';
+import { notePlaybackReport } from '@/lib/jellyfin-playback/session-reaper';
 import type { JellyfinPlayMethod, PlaybackProgressPayload } from '@/types/jellyfin-streaming';
 
 const ITEM_ID_RE = /^[a-f0-9-]+$/i;
@@ -59,6 +60,19 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   try {
     const { client } = await getJellyfinPlaybackContext(auth.user);
     await client.reportPlayback(payload);
+    // These reports are the only liveness signal a player gives: an app killed
+    // from the task switcher sends no Stopped, so the reaper notices the
+    // silence instead.
+    notePlaybackReport({
+      event: payload.event,
+      userId: auth.user.id,
+      deviceId: payload.deviceId,
+      deviceName: payload.deviceName,
+      itemId: payload.itemId,
+      mediaSourceId: payload.mediaSourceId,
+      playSessionId: payload.playSessionId,
+      positionTicks: payload.positionTicks,
+    });
     return NextResponse.json({ ok: true });
   } catch (error) {
     const gate = await jellyfinConnectGateResponse(auth.user, error);

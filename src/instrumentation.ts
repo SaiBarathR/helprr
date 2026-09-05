@@ -83,6 +83,18 @@ export async function register() {
       }
 
       try {
+        // A player that is killed rather than closed never sends its Stopped
+        // report, which leaves the Jellyfin session listed and its transcode
+        // running. Nothing else notices, because Jellyfin keeps its own
+        // check-in moving while the encoder lives.
+        const { startPlaybackSessionReaper } = await import('@/lib/jellyfin-playback/session-reaper');
+        startPlaybackSessionReaper();
+        console.log('[Helprr] Playback session reaper started');
+      } catch (reaperErr) {
+        console.warn('[Helprr] Could not start playback session reaper:', reaperErr);
+      }
+
+      try {
         const { startCleanupJobs } = await import('@/lib/cleanup/scheduler');
         // Idempotent — startCleanupJobs internally restarts timers, and the
         // scheduler stashes its state on globalThis so dev hot-reload of this

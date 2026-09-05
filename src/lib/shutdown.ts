@@ -3,6 +3,7 @@ import { prisma } from '@/lib/db';
 import { disconnectRedisClient } from '@/lib/redis';
 import { pollingService } from '@/lib/polling-service';
 import { stopCleanupJobs, awaitInFlightQueue, awaitInFlightDownload } from '@/lib/cleanup/scheduler';
+import { stopPlaybackSessionReaper } from '@/lib/jellyfin-playback/session-reaper';
 
 // Bounded drain: an in-flight cleanup cycle must settle before exit (killing it
 // mid-delete leaves qBittorrent/Arr state inconsistent — see
@@ -21,6 +22,7 @@ async function drain(signal: string): Promise<void> {
   // Stop new work first: no new polling/cleanup cycles start after this.
   pollingService.stop();
   stopCleanupJobs();
+  stopPlaybackSessionReaper();
   const {
     awaitImageCacheBackgroundWork,
     beginImageCacheShutdown,
