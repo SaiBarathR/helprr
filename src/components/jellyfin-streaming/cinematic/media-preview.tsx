@@ -141,9 +141,26 @@ export function useMediaPreview({
           }
         } else {
           el.src = info.mediaUrl;
-          // A transcode already starts at the requested offset, so seeking
-          // again would double it; a direct stream has to be moved into place.
-          if (!isHls && info.playMethod !== 'Transcode') el.currentTime = startSeconds;
+        }
+
+        /**
+         * Only a transcode is cut at the offset that was asked for.
+         *
+         * A direct play or a direct stream serves the whole file and ignores
+         * `startTimeTicks`, so the element has to be moved into place — and
+         * that includes HLS, which the old check excluded. A remuxed MKV
+         * direct-streams as HLS, which is most of this library and is always
+         * the native path on iOS, so previews there opened on the intro and
+         * the sponsor card: exactly the "starts from the beginning" the owner
+         * reported. An HLS source cannot be seeked until its manifest has been
+         * read, hence the wait for metadata.
+         */
+        if (info.playMethod !== 'Transcode' && startSeconds > 0) {
+          const seekIntoPlace = () => {
+            if (el.currentTime < startSeconds - 5) el.currentTime = startSeconds;
+          };
+          if (el.readyState >= 1) seekIntoPlace();
+          else el.addEventListener('loadedmetadata', seekIntoPlace, { once: true });
         }
 
         await el.play().catch(fail);
