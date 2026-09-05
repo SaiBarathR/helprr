@@ -24,7 +24,7 @@ import { formatClock, ticksToSeconds } from '@/lib/jellyfin-playback/device';
 import { formatBytes } from '@/lib/format';
 import { formatCertificate, formatCommunityRating, formatRuntimeShort } from '@/lib/jellyfin-playback/metadata';
 import type { CatalogItemDetailResponse, CatalogItemsResponse } from '@/types/jellyfin-streaming';
-import type { JellyfinMediaStream } from '@/types/jellyfin';
+import type { JellyfinMediaStream, JellyfinPerson } from '@/types/jellyfin';
 import { FadeInImage } from '@/components/media/fade-in-image';
 import { HeroTitle } from '@/components/jellyfin-streaming/hero-title';
 import { CatalogTrailerRail } from '@/components/jellyfin-streaming/catalog-trailer-rail';
@@ -175,6 +175,26 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
   const rating = formatCommunityRating(item.CommunityRating);
   const finishes = endsAt(resumeRuntimeSeconds - resumeSeconds);
   const people = item.People ?? [];
+  /**
+   * One card per person, with their jobs joined.
+   *
+   * Jellyfin credits a person once per job, so a director who also wrote the
+   * episode arrives twice. On this library both credits even carry the same
+   * `Role` ("Director"), so the rail drew two cards that read identically and
+   * said less than one card could. `Role` is only trustworthy for a performer,
+   * where it is the character; for crew it is `Type` that separates the jobs.
+   */
+  const credits = people.reduce<Array<{ person: JellyfinPerson; jobs: string[] }>>((acc, person) => {
+    if (!person.Id) return acc;
+    const existing = acc.find((credit) => credit.person.Id === person.Id);
+    const job = person.Type ?? '';
+    if (existing) {
+      if (job && !existing.jobs.includes(job)) existing.jobs.push(job);
+      return acc;
+    }
+    acc.push({ person, jobs: job ? [job] : [] });
+    return acc;
+  }, []);
   const trailers = item.RemoteTrailers ?? [];
   const trackOptions = { audioStreamIndex: audioIndex, subtitleStreamIndex: subtitleIndex };
 
@@ -732,16 +752,11 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
           />
         )}
 
-        {people.length > 0 && (
-          <MediaRail title="Cast & crew" count={Math.min(people.length, 20)}>
-              {/* The position is part of the key because id+role is not unique:
-                  Jellyfin credits one person once per job, so a director who
-                  also wrote the episode arrives twice carrying the same Role
-                  and only a differing Type — which React reported as two
-                  children with the same key. */}
-              {people.slice(0, 20).map((person, position) => (
+        {credits.length > 0 && (
+          <MediaRail title="Cast & crew" count={Math.min(credits.length, 20)}>
+              {credits.slice(0, 20).map(({ person, jobs }) => (
                 person.Id ? (
-                  <Link key={`${person.Id}-${person.Role}-${position}`} href={`/jellyfin/library/item/${person.Id}`} className="w-24 shrink-0 text-center">
+                  <Link key={person.Id} href={`/jellyfin/library/item/${person.Id}`} className="w-24 shrink-0 text-center">
                     <div className="relative flex aspect-square items-center justify-center overflow-hidden rounded-full bg-muted">
                       {jellyfinPersonImageUrl(person, 160)
                         ? <FadeInImage src={jellyfinPersonImageUrl(person, 160)!} alt={person.Name ?? ''} fill sizes="96px" unoptimized className="object-cover" />
@@ -749,7 +764,11 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
                     </div>
                     <p className="mt-1.5 truncate text-xs font-medium">{person.Name}</p>
                     <p className="truncate text-[11px] text-muted-foreground">
-                      {person.Role ? `as ${person.Role}` : person.Type}
+                      {/* A performer's Role is the character and says the most;
+                          for crew it repeats the job, so the jobs carry it. */}
+                      {(person.Type === 'Actor' || person.Type === 'GuestStar') && person.Role
+                        ? `as ${person.Role}`
+                        : jobs.join(' · ')}
                     </p>
                   </Link>
                 ) : null
