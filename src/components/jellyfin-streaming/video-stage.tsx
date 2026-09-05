@@ -59,6 +59,23 @@ import {
 /** Player element class the ::cue rule is scoped to. */
 const VIDEO_CLASS = 'hpr-jf-video';
 
+/**
+ * How long the chrome stays up after the last interaction.
+ *
+ * 3.5s is the streaming-player convention — YouTube and Netflix both hide at
+ * around three seconds, and on both the first tap after that is spent bringing
+ * the controls back rather than pressing what is under the finger. Lengthening
+ * it here would make this player the odd one out.
+ *
+ * What those players also do, and what this one did not, is treat *using* the
+ * controls as activity: the countdown restarts on every interaction. Only
+ * `pointermove`, `keydown` and a bare-surface tap restarted it here, and touch
+ * produces none of the first two — so tapping a control 2.5s in still left
+ * one second, measured on the device. `revealControls` is therefore wired to
+ * the chrome itself (below) as well.
+ */
+const CONTROLS_HIDE_MS = 3500;
+
 function isTypingTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   return target.isContentEditable
@@ -98,7 +115,7 @@ export function VideoStage() {
     if (hideTimerRef.current) window.clearTimeout(hideTimerRef.current);
     hideTimerRef.current = window.setTimeout(() => {
       if (playbackRef.current.status === 'playing') setControlsVisible(false);
-    }, 3500);
+    }, CONTROLS_HIDE_MS);
   }, []);
 
   /**
@@ -140,7 +157,7 @@ export function VideoStage() {
     // true during render whenever the player opens (below).
     hideTimerRef.current = window.setTimeout(() => {
       if (playbackRef.current.status === 'playing') setControlsVisible(false);
-    }, 3500);
+    }, CONTROLS_HIDE_MS);
     window.addEventListener('pointermove', revealControls);
     window.addEventListener('keydown', revealControls);
     return () => {
@@ -354,6 +371,13 @@ export function VideoStage() {
             if (!expanded) return;
             // Controls handle their own clicks; only the bare surface toggles.
             if ((event.target as HTMLElement | null)?.closest('button, a, input, select, label')) return;
+            // An open panel takes the tap and nothing else does: tapping away
+            // used to leave the panel up *and* toggle playback underneath it,
+            // so the way out of the subtitle list was to find its button again.
+            if (panel !== 'none' && !(event.target as HTMLElement | null)?.closest('[data-player-panel]')) {
+              setPanel('none');
+              return;
+            }
             if (controlsVisible) playback.togglePause();
             else revealControls();
           }}
@@ -400,7 +424,16 @@ export function VideoStage() {
             )}
 
             {showChrome && (
-              <div className="absolute inset-0 flex flex-col justify-between bg-gradient-to-t from-black/80 via-black/20 to-black/50">
+              <div
+                // Pressing anything in the chrome counts as activity and
+                // restarts the hide countdown, which is what every streaming
+                // player does and what `pointermove` cannot deliver on a
+                // touchscreen. `pointerdown` rather than click so the reset
+                // lands at the start of the gesture — a scrub or a long press
+                // holds the chrome up while the finger is still down.
+                onPointerDown={revealControls}
+                className="absolute inset-0 flex flex-col justify-between bg-gradient-to-t from-black/80 via-black/20 to-black/50"
+              >
                 {/* The site keeps a single control in the top-left of its
                     player and nothing else up there. Ours is Minimize rather
                     than its Back, so it keeps the chevron that says so — but it
@@ -1020,7 +1053,12 @@ function SubtitleAppearanceControls({
 
 function Panel({ children }: { children: React.ReactNode }) {
   return (
-    <div className="app-glass-overlay max-h-48 overflow-y-auto rounded-lg border border-white/10 bg-black/70 p-2">
+    <div
+      // Marks the panel for the surface tap handler, which dismisses whatever
+      // panel is open when the tap lands anywhere but inside one.
+      data-player-panel
+      className="app-glass-overlay max-h-48 overflow-y-auto rounded-lg border border-white/10 bg-black/70 p-2"
+    >
       <div className="flex flex-col gap-1">{children}</div>
     </div>
   );
