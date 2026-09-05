@@ -49,6 +49,16 @@ export interface PlayOptions {
    * burned-in subtitle silently does nothing.
    */
   mediaSourceId?: string;
+  /**
+   * Attach the replacement stream paused rather than playing.
+   *
+   * Client-side only — never part of the PlaybackInfo request, whose fields are
+   * picked out one by one above. `restartWith` sets it so a track or quality
+   * change made while paused does not resume: attachMedia always plays (it has
+   * to, for the element to load and seek), so the pause has to be reapplied on
+   * the far side, inside this start's own `superseded` guards.
+   */
+  startPaused?: boolean;
 }
 
 interface PlaybackContextValue {
@@ -653,6 +663,19 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
   const audioIndexRef = useRef<number | null>(null);
   const subtitleIndexRef = useRef<number | null>(null);
   /**
+   * Whether the viewer wants playback paused, latched from their own play and
+   * pause actions.
+   *
+   * The media element cannot answer this during a restart. `attachMedia` plays
+   * it so it will load and seek, so for a few hundred milliseconds a paused
+   * title reads `paused === false`; a second track change landing inside that
+   * window read the transient value and resumed a stream the viewer had paused.
+   * Same trap as the transient `currentTime` zero that `positionToReport`
+   * exists to avoid, and the same answer: trust what was asked for, not what
+   * the element momentarily shows.
+   */
+  const pausedIntentRef = useRef(false);
+  /**
    * Whether the element has actually arrived at the position it was started at.
    *
    * A restarted HLS transcode attaches at currentTime 0 and only jumps to the
@@ -983,6 +1006,10 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
      * has actually been granted.
      */
     const outgoingSession = streamRef.current?.playSessionId;
+    // Latched before anything is awaited, so a second change arriving mid-attach
+    // reads the viewer's intent and not the element `attachMedia` has just
+    // played. Absent for a fresh start — picking a title means playing it.
+    pausedIntentRef.current = Boolean(options.startPaused);
     setStatus('loading');
     setError(null);
     setNeedsJellyfinConnect(false);
@@ -1040,9 +1067,13 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
       setVideoExpanded(nextItem.MediaType !== 'Audio');
       await attachMedia(nextStream, chosenSubtitle);
       if (superseded()) return;
+      // Restoring a paused restart. The element's own `pause` handler sets the
+      // status too, so the setStatus below has to agree with this rather than
+      // overwrite it back to playing.
+      if (options.startPaused) mediaRef.current?.pause();
       await report('playing', nextStream, {
         positionTicks: secondsToTicks(mediaRef.current?.currentTime || 0) || resumeTicks,
-        isPaused: false,
+        isPaused: Boolean(options.startPaused),
         volumeLevel: Math.round(volume * 100),
         isMuted: muted,
         playbackRate,
@@ -1054,7 +1085,7 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
         maxStreamingBitrate: maxBitrate || undefined,
       });
       if (superseded()) return;
-      setStatus('playing');
+      setStatus(options.startPaused ? 'paused' : 'playing');
       fetch(`/api/jellyfin/catalog/items/${nextItem.Id}?expand=segments`)
         .then((res) => res.ok ? res.json() : null)
         .then((data: { segments?: MediaSegment[] } | null) => setSegments(data?.segments ?? []))
@@ -1148,6 +1179,7 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     // Retire any start still in flight, or it will finish into a player the
     // viewer has already closed.
     startTokenRef.current += 1;
+    pausedIntentRef.current = false;
     clearTimers();
     const current = streamRef.current;
     const el = mediaRef.current;
@@ -1202,9 +1234,11 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     const el = mediaRef.current;
     if (!el || !streamRef.current) return;
     if (el.paused) {
+      pausedIntentRef.current = false;
       void el.play();
       setStatus('playing');
     } else {
+      pausedIntentRef.current = true;
       el.pause();
       setStatus('paused');
     }
@@ -1295,6 +1329,13 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     // subtitles twice in a row hit this exactly.
     const startTimeTicks = positionToReport(mediaRef.current, current, reachedStartRef.current)
       || secondsToTicks(positionSeconds);
+    // Carried for the same reason as the position: changing a track restarts
+    // the stream, and a restart plays, so switching audio while paused resumed
+    // playback. Read from the latch rather than the element — see
+    // `pausedIntentRef`. Reading `mediaRef.current.paused` here looks right and
+    // is not: `attachMedia` plays the element, so a second change made while
+    // the first was still attaching saw `false` and resumed.
+    const wasPaused = pausedIntentRef.current;
     const stillCurrent = reserveStart(startTokenRef);
     await stopEncodings(current.playSessionId);
     // A newer change was made while the stop was in flight, so that one owns
@@ -1315,6 +1356,7 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
       maxStreamingBitrate: patch.maxStreamingBitrate ?? maxBitrate,
       enableDirectPlay: patch.enableDirectPlay,
       enableDirectStream: patch.enableDirectStream,
+      startPaused: wasPaused,
     });
   }, [maxBitrate, positionSeconds, startItem]);
 
@@ -1437,6 +1479,10 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
           maxStreamingBitrate: maxBitrate,
           enableDirectPlay: false,
           enableDirectStream: false,
+          // Dropping to a transcode is this player's own recovery, not a
+          // request to start playing: a title paused when its direct stream
+          // failed must come back paused.
+          startPaused: pausedIntentRef.current,
         }).finally(() => { retryingRef.current = false; });
       } else {
         // Already transcoding, so there is no lower fallback to drop to. This is
@@ -1557,8 +1603,16 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
 
   useEffect(() => {
     if (typeof navigator === 'undefined' || !navigator.mediaSession) return;
-    navigator.mediaSession.setActionHandler('play', () => { void mediaRef.current?.play(); });
-    navigator.mediaSession.setActionHandler('pause', () => { mediaRef.current?.pause(); });
+    // These are viewer actions too — a pause from the lock screen has to reach
+    // the latch, or the next track change would undo it.
+    navigator.mediaSession.setActionHandler('play', () => {
+      pausedIntentRef.current = false;
+      void mediaRef.current?.play();
+    });
+    navigator.mediaSession.setActionHandler('pause', () => {
+      pausedIntentRef.current = true;
+      mediaRef.current?.pause();
+    });
     navigator.mediaSession.setActionHandler('previoustrack', () => { void transportRef.current.previous(); });
     navigator.mediaSession.setActionHandler('nexttrack', () => { void transportRef.current.next(); });
     navigator.mediaSession.setActionHandler('seekbackward', () => transportRef.current.skip(-10));
