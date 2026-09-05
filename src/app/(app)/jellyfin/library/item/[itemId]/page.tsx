@@ -186,6 +186,11 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
   // and a stereo 720p one advertised themselves identically.
   const seasonCount = item.Type === 'Series' ? (item.ChildCount ?? 0) : 0;
   const badges = mediaBadges(streams);
+  // Both meta rows advertise the same capabilities; only the chrome around each
+  // badge differs, because the phone row sits on artwork and the wide one sits
+  // on the page, where a hardcoded white border would vanish in the light theme.
+  const capabilityBadges = [badges.resolution, badges.dynamicRange, badges.audio, badges.subtitles ? 'CC' : null]
+    .filter((badge): badge is string => Boolean(badge));
   const infoRows: Array<[string, string]> = ([
     ['Genres', (item.Genres ?? []).join(', ')],
     ['Director', directors.join(', ')],
@@ -328,16 +333,14 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
               {seasonCount > 0
                 ? <span>{seasonCount} Season{seasonCount === 1 ? '' : 's'}</span>
                 : runtimeSeconds > 0 ? <span>{formatRuntimeShort(runtimeSeconds)}</span> : null}
-              {[badges.resolution, badges.dynamicRange, badges.audio, badges.subtitles ? 'CC' : null]
-                .filter((badge): badge is string => Boolean(badge))
-                .map((badge) => (
-                  <span
-                    key={badge}
-                    className="border border-white/40 px-1 text-[10px] tracking-wide text-white/90"
-                  >
-                    {badge}
-                  </span>
-                ))}
+              {capabilityBadges.map((badge) => (
+                <span
+                  key={badge}
+                  className="border border-white/40 px-1 text-[10px] tracking-wide text-white/90"
+                >
+                  {badge}
+                </span>
+              ))}
             </div>
           ) : (
             <div
@@ -355,6 +358,21 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
                 ? <span>{new Date(item.PremiereDate).toLocaleDateString()}</span>
                 : item.ProductionYear ? <span>{item.ProductionYear}</span> : null}
               {runtimeSeconds > 0 && <span>{formatClock(runtimeSeconds)}</span>}
+              {/* Next to the runtime rather than at the end of the row: these
+                  and the duration are the only facts here about the file
+                  itself, and after "Ends at" they read as an afterthought. */}
+              {capabilityBadges.length > 0 && (
+                <span className="flex flex-wrap items-center gap-1.5">
+                  {capabilityBadges.map((badge) => (
+                    <span
+                      key={badge}
+                      className="rounded border border-current px-1.5 py-px text-[11px] font-medium tracking-wide"
+                    >
+                      {badge}
+                    </span>
+                  ))}
+                </span>
+              )}
               {rating && <span className="font-medium text-foreground">{rating}</span>}
               {typeof item.CriticRating === 'number' && item.CriticRating > 0 && (
                 <span className="rounded-full bg-[var(--hpr-rose)]/15 px-2 py-0.5 text-[11px] font-medium text-[var(--hpr-rose)]">
