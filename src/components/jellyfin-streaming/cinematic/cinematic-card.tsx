@@ -1,7 +1,8 @@
 'use client';
 
-import { useId, useRef, useState } from 'react';
+import { memo, useEffect, useId, useRef, useState } from 'react';
 import Link from 'next/link';
+import { cinematicCardLayout } from '@/components/jellyfin-streaming/cinematic/card-layout';
 import { useRouter } from 'next/navigation';
 import { Play } from 'lucide-react';
 import type { JellyfinItem } from '@/types/jellyfin';
@@ -25,18 +26,6 @@ import {
 import { formatCertificate, formatRuntimeShort, isRecentlyAdded } from '@/lib/jellyfin-playback/metadata';
 import { ticksToSeconds } from '@/lib/jellyfin-playback/device';
 import { cn } from '@/lib/utils';
-
-/**
- * Tiles are materially bigger than the classic skin's. With the caption gone
- * the artwork is the only thing carrying the title, so it has to be large
- * enough to actually read — every streaming service lands around six tiles
- * across a desktop viewport, not the nine or ten a management UI fits.
- */
-const WIDTH_CLASS: Record<CatalogCardShape, string> = {
-  portrait: 'w-[112px] sm:w-[132px] md:w-[148px] lg:w-[160px] xl:w-[176px] 2xl:w-[196px]',
-  square: 'w-[112px] sm:w-[132px] md:w-[148px] lg:w-[160px] xl:w-[176px] 2xl:w-[196px]',
-  landscape: 'w-[168px] sm:w-[196px] md:w-[220px] lg:w-[240px] xl:w-[262px] 2xl:w-[292px]',
-};
 
 const SIZES: Record<CatalogCardShape, string> = {
   portrait: '220px',
@@ -67,7 +56,7 @@ function metaLine(item: JellyfinItem, asSeries: boolean): string | undefined {
  * devices it fades in over the art on hover (with the expand), and on touch,
  * where there is no hover, it rides a permanent bottom scrim.
  */
-export function CinematicCard({
+export const CinematicCard = memo(function CinematicCard({
   item,
   onPlay,
   priority = false,
@@ -87,6 +76,7 @@ export function CinematicCard({
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [hovering, setHovering] = useState(false);
   const hoverTimer = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(hoverTimer.current), []);
   // Exactly one card may hold the preview slot, so brushing across a row can
   // never leave a trail of transcodes running on the server.
   const cardId = useId();
@@ -169,11 +159,10 @@ export function CinematicCard({
         // `flat` opts out of the popover entirely (grids, not rows).
         'group relative shrink-0',
         !flat && 'hpr-cine-tile',
-        cardAspectClass(shape),
+        flat ? cardAspectClass(shape) : cinematicCardLayout(requestedShape, compact),
         // A rail sizes its own tiles; a grid sizes them from the column, and
         // the responsive w-[...] ladder overrode a caller's w-full, so grid
         // cells rendered 292px wide in a 240px column and overlapped.
-        !flat && WIDTH_CLASS[shape],
         className,
       )}
       onPointerEnter={(event) => {
@@ -341,4 +330,4 @@ export function CinematicCard({
       />
     </div>
   );
-}
+});

@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { cinematicCardLayout } from '@/components/jellyfin-streaming/cinematic/card-layout';
 import { useRouter } from 'next/navigation';
 import { Check, Play } from 'lucide-react';
 import { FadeInImage } from '@/components/media/fade-in-image';
@@ -23,17 +24,10 @@ const TONE_CLASS: Record<TileTone, string> = {
  * Cinematic tiles are materially bigger: with the caption gone the artwork is
  * the only thing carrying the title, so it has to be large enough to read.
  */
-const WIDTH: Record<'classic' | 'cinematic', Record<CatalogCardShape, string>> = {
-  classic: {
-    portrait: 'w-[110px] sm:w-[140px] md:w-[150px] lg:w-[164px] xl:w-[180px] 2xl:w-[196px]',
-    square: 'w-[110px] sm:w-[140px] md:w-[150px] lg:w-[164px] xl:w-[180px] 2xl:w-[196px]',
-    landscape: 'w-[184px] sm:w-[224px] md:w-[240px] lg:w-[264px] xl:w-[288px] 2xl:w-[312px]',
-  },
-  cinematic: {
-    portrait: 'w-[112px] sm:w-[132px] md:w-[148px] lg:w-[160px] xl:w-[176px] 2xl:w-[196px]',
-    square: 'w-[112px] sm:w-[132px] md:w-[148px] lg:w-[160px] xl:w-[176px] 2xl:w-[196px]',
-    landscape: 'w-[168px] sm:w-[196px] md:w-[220px] lg:w-[240px] xl:w-[262px] 2xl:w-[292px]',
-  },
+const WIDTH: Record<CatalogCardShape, string> = {
+  portrait: 'w-[110px] sm:w-[140px] md:w-[150px] lg:w-[164px] xl:w-[180px] 2xl:w-[196px]',
+  square: 'w-[110px] sm:w-[140px] md:w-[150px] lg:w-[164px] xl:w-[180px] 2xl:w-[196px]',
+  landscape: 'w-[184px] sm:w-[224px] md:w-[240px] lg:w-[264px] xl:w-[288px] 2xl:w-[312px]',
 };
 
 export interface TileBadge {
@@ -225,8 +219,7 @@ export function MediaTile({
     <div
       className={cn(
         'group relative shrink-0',
-        cinematic && ['hpr-cine-tile', cardAspectClass(shape)],
-        WIDTH[cinematic ? 'cinematic' : 'classic'][shape],
+        cinematic ? ['hpr-cine-tile', cinematicCardLayout(shape, false)] : WIDTH[shape],
         className,
       )}
     >

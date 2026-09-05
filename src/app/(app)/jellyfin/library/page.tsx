@@ -1,5 +1,6 @@
 'use client';
 
+import { useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { jsonFetcher } from '@/lib/query-fetch';
 import { queryKeys } from '@/lib/query-keys';
@@ -29,7 +30,8 @@ function shapeForCollection(collectionType: string): 'landscape' | 'portrait' | 
 }
 
 export default function WatchHomePage() {
-  const playback = useJellyfinPlayback();
+  const { playItem } = useJellyfinPlayback();
+  const play = useCallback((item: JellyfinItem) => void playItem(item), [playItem]);
   const query = useQuery({
     queryKey: queryKeys.jellyfinHome(),
     queryFn: jsonFetcher<CatalogHomeResponse>('/api/jellyfin/catalog/home'),
@@ -51,12 +53,10 @@ export default function WatchHomePage() {
     );
   }
 
-  const play = (item: JellyfinItem) => void playback.playItem(item);
-
   return (
     <>
       <PullToRefresh onRefresh={query.refetch} />
-      <div className="pb-28">
+      <div className="hpr-watch-page-enter pb-28">
         <h1 className="sr-only">Watch</h1>
         <WatchHero items={data.spotlight ?? []} onPlay={play} />
 

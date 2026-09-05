@@ -1,6 +1,9 @@
 'use client';
 
 import { useMemo } from 'react';
+import { useWatchSkin } from '@/lib/hooks/use-watch-skin';
+import { useCompactViewport } from '@/lib/hooks/use-compact-viewport';
+import { cinematicCardLayout } from '@/components/jellyfin-streaming/cinematic/card-layout';
 import { useQuery } from '@tanstack/react-query';
 import { jsonFetcher } from '@/lib/query-fetch';
 import { useCan } from '@/components/permission-provider';
@@ -80,6 +83,8 @@ export function UpcomingRails({ only }: {
    */
   only?: 'movie' | 'episode';
 } = {}) {
+  const cinematic = useWatchSkin() === 'cinematic';
+  const compact = useCompactViewport();
   const canSeeCalendar = useCan('calendar.view');
   const range = useMemo(() => {
     const start = new Date();
@@ -130,7 +135,12 @@ export function UpcomingRails({ only }: {
   return (
     <>
       {rails.map((rail) => (
-        <MediaRail key={rail.key} title={rail.title} count={rail.items.length}>
+        <MediaRail
+          key={rail.key}
+          title={rail.title}
+          count={rail.items.length}
+          tileClassName={cinematic ? cinematicCardLayout('landscape', compact) : undefined}
+        >
           {rail.items.map((event) => (
             <MediaTile
               key={event.id}

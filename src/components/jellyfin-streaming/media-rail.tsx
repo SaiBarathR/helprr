@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { WindowedRailItems } from '@/components/jellyfin-streaming/windowed-rail-items';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowRight, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useWatchSkin } from '@/lib/hooks/use-watch-skin';
@@ -32,6 +33,7 @@ export function MediaRail({
   href,
   children,
   count,
+  tileClassName,
 }: {
   title: string;
   /** Secondary line beside the heading (recommendation rails explain themselves). */
@@ -41,6 +43,8 @@ export function MediaRail({
   children: React.ReactNode;
   /** Number of tiles; the scroll state resyncs when it changes. */
   count: number;
+  /** Known tile geometry enables mounting only the visible part of a rail. */
+  tileClassName?: string;
 }) {
   const skin = useWatchSkin();
   const cinematic = skin === 'cinematic';
@@ -89,37 +93,6 @@ export function MediaRail({
     return () => observer.disconnect();
   }, [cinematic, sync, count]);
 
-  useEffect(() => {
-    if (!cinematic) return undefined;
-    const track = trackRef.current;
-    if (!track) return undefined;
-    const measure = () => {
-      // The track is the scroller's content box, so its own overflow is
-      // exactly how far the row can travel.
-      const max = Math.max(0, track.scrollWidth - track.clientWidth);
-      setMaxOffset(max);
-      setOffset((current) => Math.min(current, max));
-
-      const first = track.firstElementChild as HTMLElement | null;
-      const pitch = first ? first.offsetWidth + RAIL_GAP : track.clientWidth;
-      // Page by a whole number of tiles, as the site does. Landing mid-tile
-      // would leave a half-shown card that is still a hover target.
-      const step = pitch > 0 ? Math.max(pitch, Math.floor(track.clientWidth / pitch) * pitch) : 0;
-      if (step <= 0 || max <= 0) {
-        setPages([0]);
-        return;
-      }
-      const stops: number[] = [];
-      for (let at = 0; at < max; at += step) stops.push(at);
-      stops.push(max);
-      setPages(stops);
-    };
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(track);
-    return () => observer.disconnect();
-  }, [cinematic, count]);
-
   /**
    * Stamp how each tile may behave, from the row's live geometry.
    *
@@ -141,7 +114,7 @@ export function MediaRail({
   const stampTiles = useCallback(() => {
     const viewport = scrollerRef.current;
     const track = trackRef.current;
-    if (!viewport || !track) return;
+    if (!viewport || !track || !window.matchMedia('(hover: hover)').matches) return;
     const v = viewport.getBoundingClientRect();
     const style = getComputedStyle(viewport);
     const padLeft = parseFloat(style.paddingLeft) || 0;
@@ -149,52 +122,91 @@ export function MediaRail({
     const left = v.left + padLeft;
     const right = v.right - padRight;
 
-    for (const tile of Array.from(track.querySelectorAll<HTMLElement>('.hpr-cine-tile'))) {
-      const t = tile.getBoundingClientRect();
+    // Complete every layout read before changing any selector attributes.
+    const tiles = Array.from(track.querySelectorAll<HTMLElement>('.hpr-cine-tile'))
+      .map((tile) => ({ tile, rect: tile.getBoundingClientRect() }));
+    for (const { tile, rect: t } of tiles) {
       if (t.width === 0) continue;
       // 1px of slack: sub-pixel tile widths mean a fully-visible tile's edge
       // lands a fraction outside the content box.
       const clipped = t.left < left - 1 || t.right > right + 1;
-      tile.dataset.popClip = clipped ? '1' : '0';
+      const clip = clipped ? '1' : '0';
+      if (tile.dataset.popClip !== clip) tile.dataset.popClip = clip;
       const grow = t.width * 0.25;
-      tile.dataset.popAlign = t.left - grow < left - 1 ? 'start'
+      const align = t.left - grow < left - 1 ? 'start'
         : t.right + grow > right + 1 ? 'end'
           : 'center';
+      if (tile.dataset.popAlign !== align) tile.dataset.popAlign = align;
     }
   }, []);
-
-  // Re-stamped whenever the row moves or resizes. `transitionend` matters:
-  // during the 500ms page transition the rects are mid-flight, so the pass
-  // that runs on the offset change alone would settle on stale answers.
-  //
-  // Synchronously *and* on the next frame: rAF is suspended in a hidden tab, so
-  // a row that mounts in the background would otherwise stay unstamped. (The
-  // pointerover on the scroller is the real guarantee — it stamps before the
-  // 300ms hover delay can grow anything — but leaving the attributes absent
-  // until then means the first frame of a freshly-revealed tab is unmeasured.)
-  useEffect(() => {
-    if (!cinematic) return undefined;
-    stampTiles();
-    const frame = requestAnimationFrame(stampTiles);
-    return () => cancelAnimationFrame(frame);
-  }, [cinematic, stampTiles, offset, count, maxOffset]);
 
   useEffect(() => {
     if (!cinematic) return undefined;
     const track = trackRef.current;
     const viewport = scrollerRef.current;
     if (!track || !viewport) return undefined;
+    const measure = () => {
+      // The track is the scroller's content box, so its own overflow is
+      // exactly how far the row can travel.
+      const max = Math.max(0, track.scrollWidth - track.clientWidth);
+      const first = track.firstElementChild as HTMLElement | null;
+      const pitch = first ? first.offsetWidth + RAIL_GAP : track.clientWidth;
+      // Page by a whole number of tiles, as the site does. Landing mid-tile
+      // would leave a half-shown card that is still a hover target.
+      const step = pitch > 0 ? Math.max(pitch, Math.floor(track.clientWidth / pitch) * pitch) : 0;
+      const stops: number[] = [];
+      if (step > 0 && max > 0) {
+        for (let at = 0; at < max; at += step) stops.push(at);
+      }
+      stops.push(max);
+      stampTiles();
+      setMaxOffset(max);
+      setOffset((current) => Math.min(current, max));
+      setPages((current) => current.length === stops.length
+        && current.every((stop, index) => stop === stops[index]) ? current : stops);
+    };
+    // One observer owns the track and its viewport. Coalesce notifications
+    // into one read/write pass, including the initial mount.
+    let frame = 0;
+    const schedule = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(measure);
+    };
     const onEnd = (event: TransitionEvent) => {
-      if (event.target === track) stampTiles();
+      if (event.target === track) schedule();
     };
-    track.addEventListener('transitionend', onEnd);
-    const observer = new ResizeObserver(stampTiles);
-    observer.observe(viewport);
-    return () => {
-      track.removeEventListener('transitionend', onEnd);
+    const pointer = window.matchMedia('(hover: hover)');
+    const observer = new ResizeObserver(schedule);
+    const observe = () => {
       observer.disconnect();
+      if (pointer.matches) {
+        observer.observe(track);
+        observer.observe(viewport);
+        schedule();
+      } else {
+        cancelAnimationFrame(frame);
+        setOffset(0);
+        setMaxOffset(0);
+        setPages([]);
+      }
     };
-  }, [cinematic, stampTiles]);
+    observe();
+    pointer.addEventListener('change', observe);
+    track.addEventListener('transitionend', onEnd);
+    return () => {
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+      pointer.removeEventListener('change', observe);
+      track.removeEventListener('transitionend', onEnd);
+    };
+  }, [cinematic, count, stampTiles]);
+
+  // Pointer/focus entry stamps synchronously; paging is measured once per frame.
+  useEffect(() => {
+    if (!cinematic) return undefined;
+    const frame = requestAnimationFrame(stampTiles);
+    return () => cancelAnimationFrame(frame);
+  }, [cinematic, stampTiles, offset]);
 
   const goTo = useCallback((next: number) => {
     setOffset(Math.min(maxOffset, Math.max(0, next)));
@@ -365,7 +377,11 @@ export function MediaRail({
               )}
               style={offset ? { transform: `translateX(-${offset}px)` } : undefined}
             >
-              {children}
+              {tileClassName ? (
+                <WindowedRailItems className={tileClassName} viewportRef={scrollerRef}>
+                  {children}
+                </WindowedRailItems>
+              ) : children}
             </div>
           </div>
         ) : (

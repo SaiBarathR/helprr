@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useQueries, useQuery } from '@tanstack/react-query';
 import { ChevronDown } from 'lucide-react';
 import { jsonFetcher } from '@/lib/query-fetch';
@@ -116,7 +116,8 @@ export function CollectionHub({
   /** What counts as a title here — Series for shows, Movie for films. */
   includeItemTypes: string;
 }) {
-  const playback = useJellyfinPlayback();
+  const { playItem } = useJellyfinPlayback();
+  const play = useCallback((item: JellyfinItem) => void playItem(item), [playItem]);
   const compact = useCompactViewport();
   const [genre, setGenre] = useState<string | null>(null);
   const isShows = includeItemTypes === 'Series';
@@ -197,7 +198,6 @@ export function CollectionHub({
     return <p className="py-8 text-sm text-muted-foreground">No {title} library on this Jellyfin server.</p>;
   }
 
-  const play = (item: JellyfinItem) => void playback.playItem(item);
   // The billboard wants artwork it can actually fill a wide frame with.
   const heroItems = (spotlight.data?.items ?? [])
     .filter((item) => (item.BackdropImageTags?.length ?? 0) > 0 && Boolean(item.Overview))
@@ -287,7 +287,7 @@ export function CollectionHub({
   );
 
   return (
-    <div className="pb-28">
+    <div className="hpr-watch-page-enter pb-28">
       <h1 className="sr-only">{title}</h1>
 
       {/* Centred, not left-aligned. The header row above already carries the
