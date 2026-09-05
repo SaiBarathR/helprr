@@ -71,7 +71,14 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
   return (
     <QueryClientProvider client={queryClient}>
       {children}
-      {process.env.NODE_ENV === 'development' && <ReactQueryDevtools initialIsOpen={false} />}
+      {/* Away from bottom-right, where the toggle sat directly on top of the
+          expanded player's Player settings button and swallowed taps meant for
+          it — the player owns bottom-left (transport), bottom-right (subtitles
+          through settings) and top-left (minimize/close), and Next's own dev
+          badge takes bottom-left, so top-right is the corner left over. */}
+      {process.env.NODE_ENV === 'development' && (
+        <ReactQueryDevtools initialIsOpen={false} buttonPosition="top-right" />
+      )}
     </QueryClientProvider>
   );
 }

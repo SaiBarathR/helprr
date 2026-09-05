@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "predev": "node scripts/copy-libass-assets.mjs",
-    "dev": "next dev -p 3050",
+    "dev": "rm -f public/sw.js && next dev -p 3050",
     "prebuild": "node scripts/copy-libass-assets.mjs",
     "build": "next build --webpack",
     "test": "vitest run",
