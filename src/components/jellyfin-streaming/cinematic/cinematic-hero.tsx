@@ -21,6 +21,7 @@ import { jellyfinBackdropUrl, jellyfinImageUrl } from '@/lib/jellyfin-playback/i
 import { HeroTitle } from '@/components/jellyfin-streaming/hero-title';
 import { formatCertificate, formatRuntimeShort, isRecentlyAdded } from '@/lib/jellyfin-playback/metadata';
 import { ticksToSeconds } from '@/lib/jellyfin-playback/device';
+import { Skeleton } from '@/components/ui/skeleton';
 
 /**
  * The billboard.
@@ -36,9 +37,12 @@ import { ticksToSeconds } from '@/lib/jellyfin-playback/device';
 export function CinematicHero({
   items,
   onPlay,
+  pending,
 }: {
   items: JellyfinItem[];
   onPlay: (item: JellyfinItem) => void;
+  /** See WatchHeroProps.pending — empty-while-loading vs genuinely empty. */
+  pending?: boolean;
 }) {
   const item = items[0];
   const modal = useWatchModal();
@@ -76,7 +80,28 @@ export function CinematicHero({
     return () => { cancelled = true; };
   }, [backdropForWash]);
 
-  if (!item) return null;
+  // Holds the billboard's ground while its query is in flight. Returning null
+  // let the rails render at the top of the page and then be shoved down when
+  // the hero arrived — the layout jump the owner reported, and one that is
+  // worse the slower the connection. The two shapes match the real ones below:
+  // a portrait card on a phone, the inset billboard from `md` up.
+  if (!item && !pending) return null;
+  if (!item) {
+    // Each branch is the exact box its real counterpart occupies — the phone's
+    // portrait card down to `mx-2 mb-6` and `aspect-2/3`, the billboard down to
+    // its height ladder — so the rails below are laid out where they will stay.
+    // A near-enough box is not good enough: an earlier version guessed a `vh`
+    // height for the phone and still shifted the rails by ~100px on arrival.
+    return compact ? (
+      <section aria-hidden className="mx-2 mb-6">
+        <Skeleton className="aspect-2/3 w-full rounded-xl" />
+      </section>
+    ) : (
+      <div aria-hidden className="mb-9">
+        <Skeleton className="h-[68vh] max-h-[42rem] min-h-[24rem] w-full rounded-3xl" />
+      </div>
+    );
+  }
 
   const backdrop = jellyfinBackdropUrl(item, 1920);
   const logo = item.ImageTags?.Logo ? jellyfinImageUrl(item.Id, 'Logo', 720) : null;
