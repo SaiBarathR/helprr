@@ -397,7 +397,12 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
           >
             <Button
               size="lg"
-              className={cn('rounded-full px-6', stacked && 'w-full rounded')}
+              // `flex-1` rather than `w-full` on a phone: at full width this
+              // took the whole row and pushed Play-from-start onto a line of
+              // its own, where a lone round button sat left-aligned against
+              // nothing. Flexing leaves room for it beside the label, and
+              // still fills the row on a title that has no resume point.
+              className={cn('rounded-full px-6', stacked && 'flex-1 rounded')}
               onClick={() => void playback.playItem(item, trackOptions)}
             >
               <Play className="fill-current" data-icon="inline-start" />
