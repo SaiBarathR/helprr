@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useQueries, useQuery } from '@tanstack/react-query';
 import { ChevronDown } from 'lucide-react';
 import { jsonFetcher } from '@/lib/query-fetch';
@@ -116,7 +116,8 @@ export function CollectionHub({
   /** What counts as a title here — Series for shows, Movie for films. */
   includeItemTypes: string;
 }) {
-  const playback = useJellyfinPlayback();
+  const { playItem } = useJellyfinPlayback();
+  const play = useCallback((item: JellyfinItem) => void playItem(item), [playItem]);
   const compact = useCompactViewport();
   const [genre, setGenre] = useState<string | null>(null);
   const isShows = includeItemTypes === 'Series';
@@ -197,7 +198,6 @@ export function CollectionHub({
     return <p className="py-8 text-sm text-muted-foreground">No {title} library on this Jellyfin server.</p>;
   }
 
-  const play = (item: JellyfinItem) => void playback.playItem(item);
   // The billboard wants artwork it can actually fill a wide frame with.
   const heroItems = (spotlight.data?.items ?? [])
     .filter((item) => (item.BackdropImageTags?.length ?? 0) > 0 && Boolean(item.Overview))
@@ -244,6 +244,24 @@ export function CollectionHub({
   // The app puts a rounded "All Categories" pill directly under the header and
   // *above* the hero on a phone, and never repeats the screen name below it —
   // the header already carries it. Desktop keeps the title beside the picker.
+  /**
+   * A stand-in the exact size of the trigger, while the genre list is in
+   * flight.
+   *
+   * Rendering nothing until the filters call answered dropped a control in
+   * above the rails a couple of seconds late and pushed the whole page down by
+   * its height — the last of the jumps on this screen. Only shown while the
+   * query is pending, so a library with no genres still takes no space.
+   */
+  const pickerPlaceholder = genres.length === 0 && filters.isPending && (
+    <Skeleton
+      className={cn(
+        'w-32',
+        compact ? 'h-[34px] rounded-full' : 'h-[34px] rounded-none',
+      )}
+    />
+  );
+
   const picker = genres.length > 0 && (
     <DropdownMenu>
       <DropdownMenuTrigger
@@ -269,21 +287,21 @@ export function CollectionHub({
   );
 
   return (
-    <div className="pb-28">
+    <div className="hpr-watch-page-enter pb-28">
       <h1 className="sr-only">{title}</h1>
 
       {/* Centred, not left-aligned. The header row above already carries the
           back arrow, the section name and two icons; a 150px pill will not fit
           beside them on a 360px phone without truncating the name, so it takes
           its own row and centres there. */}
-      {compact && <div className="mb-3 flex justify-center">{picker}</div>}
+      {compact && <div className="mb-3 flex justify-center">{picker}{pickerPlaceholder}</div>}
 
-      <WatchHero items={heroItems} onPlay={play} />
+      <WatchHero items={heroItems} onPlay={play} pending={spotlight.isPending} />
 
       {!compact && (
       <div className="mb-4 flex items-center gap-4">
         <h2 className="text-2xl font-medium tracking-tight md:text-3xl">{title}</h2>
-        {picker}
+        {picker}{pickerPlaceholder}
       </div>
       )}
 

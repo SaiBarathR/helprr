@@ -521,6 +521,44 @@ html {
   transform: scale(0.97);
 }
 
+/* A short arrival fade for the Watch hubs; opacity keeps reserved geometry fixed. */
+@keyframes watch-page-in {
+  from { opacity: 0.85; }
+  to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  html[data-watch-skin='cinematic'] .hpr-watch-page-enter {
+    animation: watch-page-in 150ms ease-out;
+  }
+
+  html[data-watch-skin='cinematic'] .hpr-watch-page-enter[data-watch-detail] {
+    animation: rail-in 180ms ease-out backwards;
+  }
+}
+
+/* Watch uses CSS arrivals and an immediate Back. Exclude its root from
+   native snapshots so an interrupted navigation cannot layer two fades. */
+html[data-watch-skin='cinematic']:has(.hpr-watch) {
+  view-transition-name: none;
+}
+
+/* The fixed video sheet borrows the house content arrival without staggering
+   its controls. Its video node stays mounted through open, exit and mini mode. */
+.hpr-watch-player-enter {
+  animation: content-in 160ms ease-out backwards;
+}
+
+@keyframes watch-player-out {
+  from { opacity: 1; transform: translateY(0); }
+  to { opacity: 0; transform: translateY(8px); }
+}
+
+.hpr-watch-player-enter[data-closing='true'] {
+  animation: watch-player-out 160ms ease-in forwards;
+  pointer-events: none;
+}
+
 /* Page transitions */
 @view-transition {
   navigation: auto;
@@ -568,6 +606,21 @@ html {
   opacity: 0.7;
   transform: scale(0.98);
   transition: all 0.1s ease;
+}
+
+/* Watch cards use the same press idiom as pill buttons, without animating
+   their reserved dimensions. The stretched link keeps its keyboard ring. */
+.hpr-watch .press-feedback {
+  transition: transform 120ms ease-out, opacity 120ms ease-out;
+}
+
+.hpr-watch .press-feedback:has(> a:focus-visible) {
+  transform: scale(1.02);
+}
+
+.hpr-watch .press-feedback:active {
+  opacity: 0.85;
+  transform: scale(0.97);
 }
 
 /* Widget ghost placeholder (shown at original position during drag) */
@@ -636,6 +689,11 @@ html {
 
 @media (prefers-reduced-motion: reduce) {
 
+  .hpr-watch .press-feedback {
+    transition: none !important;
+    transform: none !important;
+  }
+
   .widget-ghost,
   .widget-jiggle,
   .widget-jiggle:nth-child(2n),
@@ -645,6 +703,10 @@ html {
   .animate-content-in>*,
   .animate-list-in>*,
   .animate-rail-in>*,
+  .hpr-watch-page-enter,
+  .hpr-watch-player-enter,
+  .hpr-cine-modal,
+  html[data-watch-skin='cinematic']:has(.hpr-watch) [data-slot='dialog-overlay'],
   .animate-hero-zoom,
   .animate-spinner-in {
     animation: none !important;
@@ -807,6 +869,12 @@ html {
 
 .animate-rail-in>* {
   animation: rail-in 0.25s ease-out backwards;
+}
+
+/* Windowed cards remount inside permanent slots. Animate those slots once,
+   when their rail approaches the viewport, and keep their original stagger. */
+.hpr-cine-row:not([data-rail-arrived]) > .animate-rail-in > [data-rail-slot] {
+  animation: none;
 }
 
 .animate-rail-in>*:nth-child(1) {
@@ -1536,7 +1604,7 @@ html[data-watch-skin='cinematic'] [data-slot='dropdown-menu-content'].hpr-cine-f
 /* left/right/top/height rather than `inset: 0`, and never `height: auto`.
    `auto` is not interpolatable, so a transition to calc(150% + panel) does not
    run at all — the height snapped to full size at t=0 while left/right waited
-   out their 300ms intent delay, and the card spent that beat as a tall
+   out their intent delay, and the card spent that beat as a tall
    narrow poster before springing sideways. Every value here is a length, so
    all four animate together. */
 html[data-watch-skin='cinematic'] .hpr-cine-face {
@@ -1623,7 +1691,19 @@ html[data-watch-skin='cinematic'] .hpr-cine-panel {
     bottom: auto;
     height: calc(150% + var(--hpr-pop-panel));
     box-shadow: 0 3px 10px rgba(0, 0, 0, 0.75);
-    transition-delay: 300ms;
+    /* Measured on netflix.com, warm, over five hovers: the popover's own work
+       starts 420-510ms after the pointer enters a card and the expanded card
+       lands at ~1000ms. At the previous 300ms this expanded at 600ms, and
+       crossing the page popped a card under the pointer the whole way. 700ms
+       + the 300ms growth puts the finished popover where the site puts it. */
+    transition-delay: 700ms;
+  }
+
+  /* Keyboard focus is deliberate — there is no brushing past a card with Tab,
+     so the gate the pointer needs only makes stepping through a row feel
+     stuck. Placed after the shared rule so it wins for a focused tile. */
+  html[data-watch-skin='cinematic'] .hpr-cine-tile:focus-within > .hpr-cine-face {
+    transition-delay: 0s;
   }
 
   /* At either end the site clamps the popover to the row's inset rather than

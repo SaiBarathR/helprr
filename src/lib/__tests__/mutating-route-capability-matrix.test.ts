@@ -104,6 +104,7 @@ const POLICY_GROUPS: Record<string, readonly string[]> = {
   ],
   'cap:jellyfin.view': [
     'POST /api/jellyfin/stream/info',
+    'POST /api/jellyfin/stream/orphans',
     'POST /api/jellyfin/stream/session',
     'POST /api/jellyfin/stream/stop-encodings',
   ],
@@ -412,7 +413,7 @@ describe('mutating API route capability matrix', () => {
   const assignments = policyAssignments();
 
   it('explicitly assigns every mutating handler exactly once', () => {
-    expect(handlers.size).toBe(156);
+    expect(handlers.size).toBe(157);
     expect([...assignments.keys()].sort()).toEqual([...handlers.keys()].sort());
   });
 

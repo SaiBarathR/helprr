@@ -195,7 +195,7 @@ export default function LibraryBrowserPage() {
   return (
     <>
       <PullToRefresh onRefresh={query.refetch} />
-      <div className="space-y-4 py-4 pb-28 md:py-6">
+      <div className="hpr-watch-page-enter space-y-4 py-4 pb-28 md:py-6">
         <h1 className="sr-only">{name}</h1>
 
         {/* Both halves of this row are desktop-only in cinematic — the name is

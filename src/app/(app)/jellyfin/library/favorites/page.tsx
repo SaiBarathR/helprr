@@ -28,7 +28,7 @@ export default function FavoritesPage() {
     // separates itself from the content, and the row that used to sit here
     // holds nothing in this skin — between them they left 32px of empty page
     // above the first poster.
-    <div className={cn('pb-28', cinematic ? 'pt-2 md:pt-4' : 'py-4')}>
+    <div className={cn('hpr-watch-page-enter pb-28', cinematic ? 'pt-2 md:pt-4' : 'py-4')}>
       <h1 className="sr-only">Favorites</h1>
       {/* Classic's back button and sub-nav, carrying its own gap. Cinematic
           renders nothing at all here — its masthead lives in the Watch layout —

@@ -24,7 +24,7 @@ import { formatClock, ticksToSeconds } from '@/lib/jellyfin-playback/device';
 import { formatBytes } from '@/lib/format';
 import { formatCertificate, formatCommunityRating, formatRuntimeShort } from '@/lib/jellyfin-playback/metadata';
 import type { CatalogItemDetailResponse, CatalogItemsResponse } from '@/types/jellyfin-streaming';
-import type { JellyfinMediaStream } from '@/types/jellyfin';
+import type { JellyfinMediaStream, JellyfinPerson } from '@/types/jellyfin';
 import { FadeInImage } from '@/components/media/fade-in-image';
 import { HeroTitle } from '@/components/jellyfin-streaming/hero-title';
 import { CatalogTrailerRail } from '@/components/jellyfin-streaming/catalog-trailer-rail';
@@ -175,6 +175,26 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
   const rating = formatCommunityRating(item.CommunityRating);
   const finishes = endsAt(resumeRuntimeSeconds - resumeSeconds);
   const people = item.People ?? [];
+  /**
+   * One card per person, with their jobs joined.
+   *
+   * Jellyfin credits a person once per job, so a director who also wrote the
+   * episode arrives twice. On this library both credits even carry the same
+   * `Role` ("Director"), so the rail drew two cards that read identically and
+   * said less than one card could. `Role` is only trustworthy for a performer,
+   * where it is the character; for crew it is `Type` that separates the jobs.
+   */
+  const credits = people.reduce<Array<{ person: JellyfinPerson; jobs: string[] }>>((acc, person) => {
+    if (!person.Id) return acc;
+    const existing = acc.find((credit) => credit.person.Id === person.Id);
+    const job = person.Type ?? '';
+    if (existing) {
+      if (job && !existing.jobs.includes(job)) existing.jobs.push(job);
+      return acc;
+    }
+    acc.push({ person, jobs: job ? [job] : [] });
+    return acc;
+  }, []);
   const trailers = item.RemoteTrailers ?? [];
   const trackOptions = { audioStreamIndex: audioIndex, subtitleStreamIndex: subtitleIndex };
 
@@ -186,6 +206,11 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
   // and a stereo 720p one advertised themselves identically.
   const seasonCount = item.Type === 'Series' ? (item.ChildCount ?? 0) : 0;
   const badges = mediaBadges(streams);
+  // Both meta rows advertise the same capabilities; only the chrome around each
+  // badge differs, because the phone row sits on artwork and the wide one sits
+  // on the page, where a hardcoded white border would vanish in the light theme.
+  const capabilityBadges = [badges.resolution, badges.dynamicRange, badges.audio, badges.subtitles ? 'CC' : null]
+    .filter((badge): badge is string => Boolean(badge));
   const infoRows: Array<[string, string]> = ([
     ['Genres', (item.Genres ?? []).join(', ')],
     ['Director', directors.join(', ')],
@@ -212,7 +237,7 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
   const hasMediaDetail = Boolean(videoStream) || audioStreams.length > 0 || subtitleStreams.length > 0 || Boolean(fileLine);
 
   return (
-    <div className="pb-28">
+    <div className="hpr-watch-page-enter pb-28" data-watch-detail>
       <section
         className={cn(
           'relative -mx-[var(--main-pad-x)] -mt-[var(--main-pad-top)] flex flex-col overflow-hidden',
@@ -328,16 +353,14 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
               {seasonCount > 0
                 ? <span>{seasonCount} Season{seasonCount === 1 ? '' : 's'}</span>
                 : runtimeSeconds > 0 ? <span>{formatRuntimeShort(runtimeSeconds)}</span> : null}
-              {[badges.resolution, badges.dynamicRange, badges.audio, badges.subtitles ? 'CC' : null]
-                .filter((badge): badge is string => Boolean(badge))
-                .map((badge) => (
-                  <span
-                    key={badge}
-                    className="border border-white/40 px-1 text-[10px] tracking-wide text-white/90"
-                  >
-                    {badge}
-                  </span>
-                ))}
+              {capabilityBadges.map((badge) => (
+                <span
+                  key={badge}
+                  className="border border-white/40 px-1 text-[10px] tracking-wide text-white/90"
+                >
+                  {badge}
+                </span>
+              ))}
             </div>
           ) : (
             <div
@@ -355,6 +378,21 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
                 ? <span>{new Date(item.PremiereDate).toLocaleDateString()}</span>
                 : item.ProductionYear ? <span>{item.ProductionYear}</span> : null}
               {runtimeSeconds > 0 && <span>{formatClock(runtimeSeconds)}</span>}
+              {/* Next to the runtime rather than at the end of the row: these
+                  and the duration are the only facts here about the file
+                  itself, and after "Ends at" they read as an afterthought. */}
+              {capabilityBadges.length > 0 && (
+                <span className="flex flex-wrap items-center gap-1.5">
+                  {capabilityBadges.map((badge) => (
+                    <span
+                      key={badge}
+                      className="rounded border border-current px-1.5 py-px text-[11px] font-medium tracking-wide"
+                    >
+                      {badge}
+                    </span>
+                  ))}
+                </span>
+              )}
               {rating && <span className="font-medium text-foreground">{rating}</span>}
               {typeof item.CriticRating === 'number' && item.CriticRating > 0 && (
                 <span className="rounded-full bg-[var(--hpr-rose)]/15 px-2 py-0.5 text-[11px] font-medium text-[var(--hpr-rose)]">
@@ -379,7 +417,12 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
           >
             <Button
               size="lg"
-              className={cn('rounded-full px-6', stacked && 'w-full rounded')}
+              // `flex-1` rather than `w-full` on a phone: at full width this
+              // took the whole row and pushed Play-from-start onto a line of
+              // its own, where a lone round button sat left-aligned against
+              // nothing. Flexing leaves room for it beside the label, and
+              // still fills the row on a title that has no resume point.
+              className={cn('rounded-full px-6', stacked && 'flex-1 rounded')}
               onClick={() => void playback.playItem(item, trackOptions)}
             >
               <Play className="fill-current" data-icon="inline-start" />
@@ -709,11 +752,11 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
           />
         )}
 
-        {people.length > 0 && (
-          <MediaRail title="Cast & crew" count={Math.min(people.length, 20)}>
-              {people.slice(0, 20).map((person) => (
+        {credits.length > 0 && (
+          <MediaRail title="Cast & crew" count={Math.min(credits.length, 20)}>
+              {credits.slice(0, 20).map(({ person, jobs }) => (
                 person.Id ? (
-                  <Link key={`${person.Id}-${person.Role}`} href={`/jellyfin/library/item/${person.Id}`} className="w-24 shrink-0 text-center">
+                  <Link key={person.Id} href={`/jellyfin/library/item/${person.Id}`} className="w-24 shrink-0 text-center">
                     <div className="relative flex aspect-square items-center justify-center overflow-hidden rounded-full bg-muted">
                       {jellyfinPersonImageUrl(person, 160)
                         ? <FadeInImage src={jellyfinPersonImageUrl(person, 160)!} alt={person.Name ?? ''} fill sizes="96px" unoptimized className="object-cover" />
@@ -721,7 +764,11 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
                     </div>
                     <p className="mt-1.5 truncate text-xs font-medium">{person.Name}</p>
                     <p className="truncate text-[11px] text-muted-foreground">
-                      {person.Role ? `as ${person.Role}` : person.Type}
+                      {/* A performer's Role is the character and says the most;
+                          for crew it repeats the job, so the jobs carry it. */}
+                      {(person.Type === 'Actor' || person.Type === 'GuestStar') && person.Role
+                        ? `as ${person.Role}`
+                        : jobs.join(' · ')}
                     </p>
                   </Link>
                 ) : null

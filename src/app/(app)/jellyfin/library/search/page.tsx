@@ -80,7 +80,7 @@ export default function JellyfinSearchPage() {
   const groups = useMemo(() => groupItems(query.data?.items ?? []), [query.data?.items]);
 
   return (
-    <div className="space-y-4 py-4 pb-28 md:py-6">
+    <div className="hpr-watch-page-enter space-y-4 py-4 pb-28 md:py-6">
       <h1 className="sr-only">Search</h1>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <WatchTopBar />

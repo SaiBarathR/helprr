@@ -72,7 +72,7 @@ function LibraryList() {
   const views = query.data?.views ?? [];
 
   return (
-    <div className="space-y-4 py-4 pb-28">
+    <div className="hpr-watch-page-enter space-y-4 py-4 pb-28">
       <h1 className="sr-only">Libraries</h1>
       <WatchTopBar />
       <BrowseKindTabs active="libraries" />
@@ -139,7 +139,7 @@ function EntityList({ kind }: { kind: CatalogBrowseKind }) {
   return (
     <>
       <PullToRefresh onRefresh={query.refetch} />
-      <div className="space-y-4 py-4 pb-28">
+      <div className="hpr-watch-page-enter space-y-4 py-4 pb-28">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h1 className="sr-only">{config.title}</h1>
@@ -284,7 +284,7 @@ function FilteredItems({
   return (
     <>
       <PullToRefresh onRefresh={query.refetch} />
-      <div className="space-y-4 py-4 pb-28">
+      <div className="hpr-watch-page-enter space-y-4 py-4 pb-28">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h1 className="sr-only">{name || KINDS[kind].title}</h1>

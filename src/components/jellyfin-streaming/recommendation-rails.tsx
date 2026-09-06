@@ -1,6 +1,8 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
+import { useCompactViewport } from '@/lib/hooks/use-compact-viewport';
+import { cinematicCardLayout } from '@/components/jellyfin-streaming/cinematic/card-layout';
 import { jsonFetcher } from '@/lib/query-fetch';
 import { useCan } from '@/components/permission-provider';
 import { useRequestedMedia } from '@/components/seerr/requested-media-provider';
@@ -57,6 +59,7 @@ export function RecommendationRails({ limit = 6, mediaType }: {
 }) {
   const canSee = useCan('recommendations.view');
   const cinematic = useWatchSkin() === 'cinematic';
+  const compact = useCompactViewport();
   const query = useQuery({
     queryKey: ['jellyfin', 'catalog', 'recommendation-rails'],
     queryFn: jsonFetcher<RecommendationsResponse>('/api/recommendations'),
@@ -92,6 +95,7 @@ export function RecommendationRails({ limit = 6, mediaType }: {
             title={ranked ? `Top ${items.length} on your server` : rail.title}
             reason={ranked ? null : rail.reason}
             count={items.length}
+            tileClassName={cinematic && !ranked ? cinematicCardLayout('landscape', compact) : undefined}
           >
             {items.map((item, index) => (
               <RecTile

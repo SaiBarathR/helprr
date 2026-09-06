@@ -31,6 +31,7 @@ import {
   useJellyfinPlayback,
 } from '@/components/jellyfin-streaming/playback-provider';
 import { QueuePanel } from '@/components/jellyfin-streaming/queue-panel';
+import { usePlayerSheet } from '@/components/jellyfin-streaming/use-player-sheet';
 import { toggleFullscreen } from '@/lib/jellyfin-playback/browser';
 import { bitrateOptions } from '@/lib/jellyfin-playback/device-profile';
 import { formatClock, ticksToSeconds } from '@/lib/jellyfin-playback/device';
@@ -59,6 +60,23 @@ import {
 /** Player element class the ::cue rule is scoped to. */
 const VIDEO_CLASS = 'hpr-jf-video';
 
+/**
+ * How long the chrome stays up after the last interaction.
+ *
+ * 3.5s is the streaming-player convention — YouTube and Netflix both hide at
+ * around three seconds, and on both the first tap after that is spent bringing
+ * the controls back rather than pressing what is under the finger. Lengthening
+ * it here would make this player the odd one out.
+ *
+ * What those players also do, and what this one did not, is treat *using* the
+ * controls as activity: the countdown restarts on every interaction. Only
+ * `pointermove`, `keydown` and a bare-surface tap restarted it here, and touch
+ * produces none of the first two — so tapping a control 2.5s in still left
+ * one second, measured on the device. `revealControls` is therefore wired to
+ * the chrome itself (below) as well.
+ */
+const CONTROLS_HIDE_MS = 3500;
+
 function isTypingTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   return target.isContentEditable
@@ -74,6 +92,8 @@ export function VideoStage() {
   const isActive = playback.status !== 'idle' && Boolean(playback.item);
   const isVideo = isActive && !isAudio;
   const expanded = playback.videoExpanded && isActive;
+  const sheet = usePlayerSheet(isVideo && expanded);
+  const visualExpanded = expanded || sheet.present;
 
   // Re-opening the player should always start with the chrome up. Adjusting
   // state during render avoids the cascading re-render an effect would cause.
@@ -98,7 +118,7 @@ export function VideoStage() {
     if (hideTimerRef.current) window.clearTimeout(hideTimerRef.current);
     hideTimerRef.current = window.setTimeout(() => {
       if (playbackRef.current.status === 'playing') setControlsVisible(false);
-    }, 3500);
+    }, CONTROLS_HIDE_MS);
   }, []);
 
   /**
@@ -119,12 +139,12 @@ export function VideoStage() {
    * with an Audio item behind it.
    */
   useEffect(() => {
-    if (!expanded) return undefined;
+    if (!visualExpanded) return undefined;
     document.documentElement.dataset.watchPlayerOpen = 'true';
     return () => {
       delete document.documentElement.dataset.watchPlayerOpen;
     };
-  }, [expanded]);
+  }, [visualExpanded]);
 
   // Browser back used to leave the video fullscreen over whatever route it
   // landed on. Collapse to the mini player instead, so back reveals the page.
@@ -140,7 +160,7 @@ export function VideoStage() {
     // true during render whenever the player opens (below).
     hideTimerRef.current = window.setTimeout(() => {
       if (playbackRef.current.status === 'playing') setControlsVisible(false);
-    }, 3500);
+    }, CONTROLS_HIDE_MS);
     window.addEventListener('pointermove', revealControls);
     window.addEventListener('keydown', revealControls);
     return () => {
@@ -245,7 +265,7 @@ export function VideoStage() {
   );
 
   const progress = playback.durationSeconds > 0 ? playback.positionSeconds / playback.durationSeconds : 0;
-  const mini = isVideo && !expanded;
+  const mini = isVideo && !expanded && !sheet.present;
   const audioFull = isAudio && expanded;
   const video = playback.stream?.mediaSource.MediaStreams?.find((stream) => stream.Type === 'Video');
   const showChrome = expanded && (controlsVisible || panel !== 'none' || playback.status !== 'playing');
@@ -338,13 +358,20 @@ export function VideoStage() {
   return (
     <>
       <div
+        data-closing={sheet.exiting || undefined}
+        inert={sheet.exiting}
+        onAnimationEnd={(event) => {
+          if (event.target === event.currentTarget && event.animationName === 'watch-player-out') {
+            sheet.finishExit();
+          }
+        }}
         className={cn(
           'overflow-hidden bg-black',
-          !isVideo && 'pointer-events-none fixed h-px w-px opacity-0',
+          !isVideo && !sheet.present && 'pointer-events-none fixed h-px w-px opacity-0',
           // Sits above the now-playing bar (62px) rather than on top of it —
           // at md:bottom-4 it used to cover Pause/Next/Repeat/Queue/Stop.
           mini && 'fixed right-3 bottom-[calc(9.5rem+env(safe-area-inset-bottom))] z-30 h-36 w-64 rounded-xl border shadow-2xl md:bottom-[5.5rem]',
-          isVideo && expanded && 'fixed inset-0 z-[80]',
+          sheet.present && 'hpr-watch-player-enter fixed inset-0 z-[80]',
         )}
       >
         <div
@@ -354,6 +381,13 @@ export function VideoStage() {
             if (!expanded) return;
             // Controls handle their own clicks; only the bare surface toggles.
             if ((event.target as HTMLElement | null)?.closest('button, a, input, select, label')) return;
+            // An open panel takes the tap and nothing else does: tapping away
+            // used to leave the panel up *and* toggle playback underneath it,
+            // so the way out of the subtitle list was to find its button again.
+            if (panel !== 'none' && !(event.target as HTMLElement | null)?.closest('[data-player-panel]')) {
+              setPanel('none');
+              return;
+            }
             if (controlsVisible) playback.togglePause();
             else revealControls();
           }}
@@ -400,7 +434,16 @@ export function VideoStage() {
             )}
 
             {showChrome && (
-              <div className="absolute inset-0 flex flex-col justify-between bg-gradient-to-t from-black/80 via-black/20 to-black/50">
+              <div
+                // Pressing anything in the chrome counts as activity and
+                // restarts the hide countdown, which is what every streaming
+                // player does and what `pointermove` cannot deliver on a
+                // touchscreen. `pointerdown` rather than click so the reset
+                // lands at the start of the gesture — a scrub or a long press
+                // holds the chrome up while the finger is still down.
+                onPointerDown={revealControls}
+                className="absolute inset-0 flex flex-col justify-between bg-gradient-to-t from-black/80 via-black/20 to-black/50"
+              >
                 {/* The site keeps a single control in the top-left of its
                     player and nothing else up there. Ours is Minimize rather
                     than its Back, so it keeps the chevron that says so — but it
@@ -1020,7 +1063,12 @@ function SubtitleAppearanceControls({
 
 function Panel({ children }: { children: React.ReactNode }) {
   return (
-    <div className="app-glass-overlay max-h-48 overflow-y-auto rounded-lg border border-white/10 bg-black/70 p-2">
+    <div
+      // Marks the panel for the surface tap handler, which dismisses whatever
+      // panel is open when the tap lands anywhere but inside one.
+      data-player-panel
+      className="app-glass-overlay max-h-48 overflow-y-auto rounded-lg border border-white/10 bg-black/70 p-2"
+    >
       <div className="flex flex-col gap-1">{children}</div>
     </div>
   );

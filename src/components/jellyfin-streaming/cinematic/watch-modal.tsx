@@ -17,6 +17,8 @@ import {
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { HeroTitle } from '@/components/jellyfin-streaming/hero-title';
 import { PreviewBackdrop } from '@/components/jellyfin-streaming/cinematic/preview-backdrop';
+import { useFavoriteToggle } from '@/components/jellyfin-streaming/cinematic/use-favorite-toggle';
+import { useCan } from '@/components/permission-provider';
 import { CatalogPosterCard } from '@/components/jellyfin-streaming/poster-card';
 import { MediaRail } from '@/components/jellyfin-streaming/media-rail';
 import { useJellyfinPlayback } from '@/components/jellyfin-streaming/playback-provider';
@@ -104,6 +106,28 @@ function CircleButton({
     >
       {children}
     </button>
+  );
+}
+
+/**
+ * My List for the overlay, on the same hook and capability gate as the tiles.
+ *
+ * Its own component rather than a hook in WatchDetailModal, because the toggle
+ * seeds its state once from the item and the item arrives from a query — read
+ * at the top of the overlay it would latch `false` before the payload landed,
+ * and a title already on the list would show as if it were not.
+ */
+function MyListButton({ item }: { item: JellyfinItem }) {
+  const canFavorite = useCan('jellyfin.watchedState');
+  const favorite = useFavoriteToggle(item.Id, item.UserData?.IsFavorite ?? false);
+  if (!canFavorite) return null;
+  return (
+    <CircleButton
+      label={favorite.isFavorite ? 'Remove from My List' : 'Add to My List'}
+      onClick={favorite.toggle}
+    >
+      {favorite.isFavorite ? <Check className="size-5" strokeWidth={3} /> : <Plus className="size-5" />}
+    </CircleButton>
   );
 }
 
@@ -368,6 +392,24 @@ function WatchDetailModal({ itemId, onClose }: { itemId: string | null; onClose:
         // the loudest thing on the overlay.
         className="hpr-cine-modal hpr-cine-scroll top-4 flex max-h-[calc(100dvh-2rem)] w-[92vw] max-w-[850px] translate-y-0 flex-col gap-0 overflow-x-hidden overflow-y-auto rounded-[6px] border-0 bg-[#181818] p-0 shadow-2xl sm:max-w-[850px]"
       >
+        {/* Close rides the scroll rather than the hero. It used to sit inside
+            the 16:9 header, which is fine on a film and useless on a series:
+            One Piece is 2663px of panel in a 909px window, so scrolling to the
+            episodes left no visible way out. A zero-height sticky strip keeps
+            it pinned without taking any layout, and hoisting it above the
+            `item` branch also gives the loading state an exit it never had.
+            z-40 clears the hero's own controls (audio z-30, titles z-20). */}
+        <div className="sticky top-0 z-40 h-0">
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="absolute top-4 right-4 flex size-9 items-center justify-center rounded-full bg-[#181818] text-white transition-colors hover:bg-[#2a2a2a]"
+          >
+            <X className="size-5" />
+          </button>
+        </div>
+
         {!item ? (
           <div className="min-h-64">
             <DialogTitle className="sr-only">Loading title</DialogTitle>
@@ -407,21 +449,17 @@ function WatchDetailModal({ itemId, onClose }: { itemId: string | null; onClose:
                   trailerUrl={item.RemoteTrailers?.[0]?.Url}
                   enabled
                   priority
-                  controlsClassName="absolute right-12 bottom-8 border-2 size-[38px]"
+                  // z-30, not the control's default z-20: the title/CTA block
+                  // below is itself z-20 and `inset-x-0`, so it reaches under
+                  // this corner and — being later in the DOM at an equal
+                  // z-index — took every click aimed at the toggle. The button
+                  // overlays the video, like Close, so it belongs above it.
+                  controlsClassName="absolute right-12 bottom-8 z-30 border-2 size-[38px]"
                 />
               )}
               {/* The player fades into the panel rather than cutting off, which
                   is what keeps hero and metadata reading as one surface. */}
               <span className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-[#181818] via-[#181818]/70 to-transparent" />
-
-              <button
-                type="button"
-                onClick={onClose}
-                aria-label="Close"
-                className="absolute top-4 right-4 z-30 flex size-9 items-center justify-center rounded-full bg-[#181818] text-white transition-colors hover:bg-[#2a2a2a]"
-              >
-                <X className="size-5" />
-              </button>
 
               <div className="absolute inset-x-0 bottom-0 z-20 space-y-4 px-12 pb-8">
                 <DialogTitle asChild>
@@ -452,13 +490,37 @@ function WatchDetailModal({ itemId, onClose }: { itemId: string | null; onClose:
                       className="h-11 rounded px-7 text-base font-semibold"
                       onClick={() => void playback.playItem(item)}
                     >
-                      {resumeSeconds > 0
-                        ? <RotateCcw data-icon="inline-start" />
-                        : <Play className="fill-current" data-icon="inline-start" />}
+                      <Play className="fill-current" data-icon="inline-start" />
                       {resumeSeconds > 0 ? 'Resume' : 'Play'}
                     </Button>
                   )}
-                  <CircleButton label="Add to My List"><Plus className="size-5" /></CircleButton>
+                  {/* The overlay had no way to start a part-watched title over
+                      — the detail page's only control the overlay was missing.
+                      The rewind glyph belongs to it, so Resume takes the play
+                      triangle the site gives it rather than sharing one icon
+                      between "carry on" and "start again". */}
+                  {resumeSeconds > 0 && (
+                    <CircleButton
+                      label="Play from start"
+                      onClick={() => void playback.playItem(item, { startTimeTicks: 0 })}
+                    >
+                      <RotateCcw className="size-5" />
+                    </CircleButton>
+                  )}
+                  <MyListButton item={item} />
+                  {/* UNWIRED. Rate has no handler because it has nowhere to go
+                      yet — nothing in the app stores a user's opinion of a
+                      title. The destination is the recommendations engine,
+                      which already ingests `like` / `dislike` events
+                      (src/lib/recommendations/events.ts, EVENT_TYPES) and
+                      treats both as INSTANT_FEEDBACK that busts the rails
+                      cache. Wiring this means posting a `like` event for the
+                      item and deciding the shape of the control first: the
+                      site's is a hover menu of thumbs-down / thumbs-up /
+                      two-thumbs, and `dislike` and `not_interested` are
+                      separate signals the engine already understands. Left
+                      inert rather than removed at the owner's direction —
+                      see plans/2026-09-06-rate-button.md. */}
                   <CircleButton label="Rate"><ThumbsUp className="size-[18px]" /></CircleButton>
                 </div>
               </div>

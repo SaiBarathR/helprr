@@ -11,7 +11,14 @@ desktop is fully supported.
 ## Essential Commands
 
 - `npm ci` — install exactly from `package-lock.json`.
-- `npm run dev` — Turbopack development server on port `3050`.
+- `npm run dev` — Turbopack development server on port `3050`. Deletes
+  `public/sw.js` first: `npm run build` writes that production service worker
+  into a directory the dev server still serves, so any browser that once loaded
+  the app keeps being controlled by it and is served the *built* chunks. The
+  symptom is source edits appearing not to deploy, blank pages, or a reload
+  loop. Serwist is disabled in development and the app registers `/sw-push.js`
+  there instead, so removing the file is the intended dev state; a device
+  already holding the stale worker needs its site data cleared once.
 - `npm run lint` — settings-export validation plus ESLint.
 - `npm test` — Vitest suite.
 - `npm run build` — standalone production build using webpack for Serwist.

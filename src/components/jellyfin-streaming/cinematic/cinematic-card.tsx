@@ -1,9 +1,10 @@
 'use client';
 
-import { useId, useRef, useState } from 'react';
+import { memo, useEffect, useId, useRef, useState } from 'react';
 import Link from 'next/link';
+import { cinematicCardLayout } from '@/components/jellyfin-streaming/cinematic/card-layout';
 import { useRouter } from 'next/navigation';
-import { Play } from 'lucide-react';
+import { Play, Volume2, VolumeX } from 'lucide-react';
 import type { JellyfinItem } from '@/types/jellyfin';
 import { FadeInImage } from '@/components/media/fade-in-image';
 import { useCan } from '@/components/permission-provider';
@@ -13,6 +14,7 @@ import { useFavoriteToggle } from '@/components/jellyfin-streaming/cinematic/use
 import { useCompactViewport } from '@/lib/hooks/use-compact-viewport';
 import { useMediaPreview } from '@/components/jellyfin-streaming/cinematic/media-preview';
 import { useHoverPreviewSlot } from '@/components/jellyfin-streaming/cinematic/hover-preview-slot';
+import { setPreviewMuted, usePreviewMuted } from '@/components/jellyfin-streaming/cinematic/preview-audio';
 import { canPreviewItem, usePreviewSource } from '@/components/jellyfin-streaming/cinematic/use-preview-item';
 import { useUIStore } from '@/lib/store';
 import { useWatchModal } from '@/components/jellyfin-streaming/cinematic/watch-modal';
@@ -25,18 +27,6 @@ import {
 import { formatCertificate, formatRuntimeShort, isRecentlyAdded } from '@/lib/jellyfin-playback/metadata';
 import { ticksToSeconds } from '@/lib/jellyfin-playback/device';
 import { cn } from '@/lib/utils';
-
-/**
- * Tiles are materially bigger than the classic skin's. With the caption gone
- * the artwork is the only thing carrying the title, so it has to be large
- * enough to actually read — every streaming service lands around six tiles
- * across a desktop viewport, not the nine or ten a management UI fits.
- */
-const WIDTH_CLASS: Record<CatalogCardShape, string> = {
-  portrait: 'w-[112px] sm:w-[132px] md:w-[148px] lg:w-[160px] xl:w-[176px] 2xl:w-[196px]',
-  square: 'w-[112px] sm:w-[132px] md:w-[148px] lg:w-[160px] xl:w-[176px] 2xl:w-[196px]',
-  landscape: 'w-[168px] sm:w-[196px] md:w-[220px] lg:w-[240px] xl:w-[262px] 2xl:w-[292px]',
-};
 
 const SIZES: Record<CatalogCardShape, string> = {
   portrait: '220px',
@@ -58,6 +48,41 @@ function metaLine(item: JellyfinItem, asSeries: boolean): string | undefined {
 }
 
 /**
+ * The preview's audio toggle, as the site carries it on a hover popover.
+ *
+ * The clip always *attaches* muted — an unmuted autoplay is refused outright,
+ * and a preview that never starts is worse than a silent one — so the choice
+ * is applied here, once the element is already playing.
+ *
+ * Mounted only with a playing preview, which is at most one card at a time.
+ */
+function PreviewMuteButton({ videoRef }: { videoRef: React.RefObject<HTMLVideoElement | null> }) {
+  const muted = usePreviewMuted();
+
+  useEffect(() => {
+    const el = videoRef.current;
+    if (el) el.muted = muted;
+  }, [muted, videoRef]);
+
+  return (
+    <button
+      type="button"
+      aria-label={muted ? 'Turn audio on' : 'Turn audio off'}
+      title={muted ? 'Turn audio on' : 'Turn audio off'}
+      onClick={(event) => {
+        // The tile's stretched link sits underneath; this must not navigate.
+        event.preventDefault();
+        event.stopPropagation();
+        setPreviewMuted(!muted);
+      }}
+      className="absolute right-2 bottom-2 z-20 flex size-8 items-center justify-center rounded-full border-2 border-white/50 bg-[rgba(42,42,42,0.6)] text-white transition-colors hover:border-white"
+    >
+      {muted ? <VolumeX className="size-4" /> : <Volume2 className="size-4" />}
+    </button>
+  );
+}
+
+/**
  * The streaming-service tile: artwork only, no caption beneath it.
  *
  * Dropping the caption is the single biggest thing separating a streaming
@@ -67,7 +92,7 @@ function metaLine(item: JellyfinItem, asSeries: boolean): string | undefined {
  * devices it fades in over the art on hover (with the expand), and on touch,
  * where there is no hover, it rides a permanent bottom scrim.
  */
-export function CinematicCard({
+export const CinematicCard = memo(function CinematicCard({
   item,
   onPlay,
   priority = false,
@@ -87,6 +112,7 @@ export function CinematicCard({
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [hovering, setHovering] = useState(false);
   const hoverTimer = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(hoverTimer.current), []);
   // Exactly one card may hold the preview slot, so brushing across a row can
   // never leave a trail of transcodes running on the server.
   const cardId = useId();
@@ -167,13 +193,12 @@ export function CinematicCard({
         // The tile is the layout box and never changes size — the popover
         // grows out of .hpr-cine-face instead, so nothing around it moves.
         // `flat` opts out of the popover entirely (grids, not rows).
-        'group relative shrink-0',
+        'press-feedback group relative shrink-0',
         !flat && 'hpr-cine-tile',
-        cardAspectClass(shape),
+        flat ? cardAspectClass(shape) : cinematicCardLayout(requestedShape, compact),
         // A rail sizes its own tiles; a grid sizes them from the column, and
         // the responsive w-[...] ladder overrode a caller's w-full, so grid
         // cells rendered 292px wide in a 240px column and overlapped.
-        !flat && WIDTH_CLASS[shape],
         className,
       )}
       onPointerEnter={(event) => {
@@ -186,7 +211,7 @@ export function CinematicCard({
         if (event.currentTarget.dataset.popClip === '1') return;
         window.clearTimeout(hoverTimer.current);
         // Long enough that scanning a row costs nothing; the expand itself
-        // lands at 300ms, so the clip arrives once you have clearly stopped.
+        // lands at 1000ms, so the clip arrives once you have clearly stopped.
         hoverTimer.current = window.setTimeout(() => setHovering(true), 1400);
       }}
       onPointerLeave={() => {
@@ -227,6 +252,8 @@ export function CinematicCard({
             )}
           />
         )}
+
+        {showPreview && <PreviewMuteButton videoRef={videoRef} />}
 
         {/* Touch has no hover, so a 16:9 still needs its title written on it.
             A portrait poster does not: the title is part of the artwork, which
@@ -341,4 +368,4 @@ export function CinematicCard({
       />
     </div>
   );
-}
+});

@@ -13,6 +13,7 @@ import { useWatchSkin } from '@/lib/hooks/use-watch-skin';
 import { formatCertificate, formatCommunityRating } from '@/lib/jellyfin-playback/metadata';
 import { formatClock, ticksToSeconds } from '@/lib/jellyfin-playback/device';
 import { cn } from '@/lib/utils';
+import { Skeleton } from '@/components/ui/skeleton';
 
 const ROTATE_MS = 10_000;
 
@@ -26,6 +27,15 @@ const ROTATE_MS = 10_000;
 interface WatchHeroProps {
   items: JellyfinItem[];
   onPlay: (item: JellyfinItem) => void;
+  /**
+   * Whether the spotlight is still being fetched.
+   *
+   * Empty means two different things — not here yet, and this library has no
+   * billboard title — and they need opposite treatment: hold the space, or
+   * take none at all. Without the distinction a library with no spotlight
+   * would shimmer forever.
+   */
+  pending?: boolean;
 }
 
 /** Skin switch — see use-watch-skin. */
@@ -35,7 +45,7 @@ export function WatchHero(props: WatchHeroProps) {
   return <ClassicHero {...props} />;
 }
 
-function ClassicHero({ items, onPlay }: WatchHeroProps) {
+function ClassicHero({ items, onPlay, pending }: WatchHeroProps) {
   const [index, setIndex] = useState(0);
   const [paused, setPaused] = useState(false);
   useEffect(() => {
@@ -46,7 +56,20 @@ function ClassicHero({ items, onPlay }: WatchHeroProps) {
     return () => window.clearInterval(timer);
   }, [paused, items.length]);
 
-  if (items.length === 0) return null;
+  // Same reservation as the cinematic billboard: rendering nothing put the
+  // rails at the top of the page and then pushed them down when the hero
+  // landed. The box matches the section below it, negative insets included.
+  if (items.length === 0 && !pending) return null;
+  if (items.length === 0) {
+    return (
+      <div
+        aria-hidden
+        className="relative -mx-[var(--main-pad-x)] -mt-[var(--main-pad-top)] mb-2 h-[62vh] min-h-[22rem] overflow-hidden"
+      >
+        <Skeleton className="h-full w-full rounded-none" />
+      </div>
+    );
+  }
   const item = items[Math.min(index, items.length - 1)]!;
   const logo = item.ImageTags?.Logo ? jellyfinImageUrl(item.Id, 'Logo', 640) : null;
   // Every slide stays mounted in a fixed order. Keying one <img> on the item
