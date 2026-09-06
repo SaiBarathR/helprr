@@ -1,6 +1,6 @@
 'use client';
 
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 import { useCallback, useMemo } from 'react';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
 import { useElementSize } from '@/lib/widgets/use-element-size';
@@ -52,28 +52,29 @@ const CLIENT_CACHE_MS = 5 * 60 * 1000;
 // Cache the sections fetch per perSectionLimit. Widgets at the same size
 // share a single in-flight request via this map; differently-sized widgets
 // each get the bundle they need without colliding.
-const sectionsPromises = new Map<number, { promise: Promise<DiscoverResponse>; time: number }>();
+const sectionsPromises = new Map<number, { promise: Promise<DiscoverResponse>; time: number; signal?: AbortSignal }>();
 
-function fetchSectionsCached(perSectionLimit: number): Promise<DiscoverResponse> {
+function fetchSectionsCached(perSectionLimit: number, signal?: AbortSignal): Promise<DiscoverResponse> {
   const now = Date.now();
   const existing = sectionsPromises.get(perSectionLimit);
-  if (existing && now - existing.time < CLIENT_CACHE_MS) return existing.promise;
-  const promise = fetch(`/api/discover?mode=sections&perSectionLimit=${perSectionLimit}`)
+  if (existing && !existing.signal?.aborted && now - existing.time < CLIENT_CACHE_MS) return existing.promise;
+  const promise = fetch(`/api/discover?mode=sections&perSectionLimit=${perSectionLimit}`, { signal })
     .then((res) => {
       if (!res.ok) throw new Error('Failed to fetch Discover sections');
       return res.json() as Promise<DiscoverResponse>;
     })
     .catch((err) => {
-      sectionsPromises.delete(perSectionLimit);
+      if (sectionsPromises.get(perSectionLimit)?.promise === promise) sectionsPromises.delete(perSectionLimit);
       throw err;
     });
-  sectionsPromises.set(perSectionLimit, { promise, time: now });
+  sectionsPromises.set(perSectionLimit, { promise, time: now, signal });
   return promise;
 }
 
 interface CustomCache {
   promise: Promise<DiscoverItem[]>;
   time: number;
+  signal?: AbortSignal;
 }
 
 // LRU-evicted cache for custom Discover carousel queries. Insertion order ==
@@ -118,26 +119,26 @@ function buildCustomQuery(filters: DiscoverLayoutCustomFilters, limit?: number):
   return params.toString();
 }
 
-function fetchCustomCached(filters: DiscoverLayoutCustomFilters, limit: number): Promise<DiscoverItem[]> {
+function fetchCustomCached(filters: DiscoverLayoutCustomFilters, limit: number, signal?: AbortSignal): Promise<DiscoverItem[]> {
   const query = buildCustomQuery(filters, limit);
   const now = Date.now();
   const cached = customCache.get(query);
-  if (cached && now - cached.time < CLIENT_CACHE_MS) {
+  if (cached && !cached.signal?.aborted && now - cached.time < CLIENT_CACHE_MS) {
     // Bump recency without re-fetching.
     customCacheSet(query, cached);
     return cached.promise;
   }
-  const promise = fetch(`/api/discover?${query}`)
+  const promise = fetch(`/api/discover?${query}`, { signal })
     .then((res) => {
       if (!res.ok) throw new Error('Failed to fetch Discover carousel');
       return res.json() as Promise<DiscoverResponse>;
     })
     .then((data) => (data.items ?? []).slice(0, limit))
     .catch((err) => {
-      customCache.delete(query);
+      if (customCache.get(query)?.promise === promise) customCache.delete(query);
       throw err;
     });
-  customCacheSet(query, { promise, time: now });
+  customCacheSet(query, { promise, time: now, signal });
   return promise;
 }
 
@@ -616,7 +617,7 @@ export function DiscoverSectionWidget({
   const needsSections = isBuiltinMedia || isBuiltinGenre || isBuiltinProvider;
 
   const fetchSections = useCallback(
-    () => fetchSectionsCached(effectiveSectionLimit),
+    (signal?: AbortSignal) => fetchSectionsCached(effectiveSectionLimit, signal),
     [effectiveSectionLimit],
   );
   const {
@@ -635,7 +636,7 @@ export function DiscoverSectionWidget({
     ? `discover-custom-${buildCustomQuery(customFilters, effectiveCustomLimit)}`
     : undefined;
   const fetchCustom = useCallback(
-    () => fetchCustomCached(customFilters!, effectiveCustomLimit),
+    (signal?: AbortSignal) => fetchCustomCached(customFilters!, effectiveCustomLimit, signal),
     [customFilters, effectiveCustomLimit],
   );
 

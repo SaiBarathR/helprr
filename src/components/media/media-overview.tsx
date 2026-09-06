@@ -1,7 +1,7 @@
 'use client';
 
 import { memo } from 'react';
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 import { Film, Tv, Disc3, Eye, EyeOff } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { cn, shallowEqualExcept } from '@/lib/utils';

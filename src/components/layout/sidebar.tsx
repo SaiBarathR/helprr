@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { PanelLeftClose, PanelLeft, Loader2, Search } from 'lucide-react';
@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { useUIStore } from '@/lib/store';
 import { getActiveNavHref, getEnabledNavItems, navItemAllowed } from '@/lib/nav-config';
-import { useNavPending } from '@/hooks/use-nav-pending';
+import { usePendingHref } from '@/components/layout/navigation-provider';
 import { useMe, hasCapability } from '@/components/permission-provider';
 import { useSearchPalette } from '@/components/search/search-store';
 import { useBadgeCounts } from '@/components/layout/badge-provider';
@@ -25,7 +25,7 @@ import { NavBadge } from '@/components/layout/nav-badge';
  */
 export function Sidebar() {
   const pathname = usePathname();
-  const { pendingHref, beginPending } = useNavPending();
+  const pendingHref = usePendingHref();
   const persistedCollapsed = useUIStore((s) => s.sidebarCollapsed);
   const toggleSidebar = useUIStore((s) => s.toggleSidebar);
 
@@ -65,7 +65,7 @@ export function Sidebar() {
     [navOrder, disabledNavItems, me]
   );
 
-  const activeHref = getActiveNavHref(navItems, pathname);
+  const activeHref = getActiveNavHref(navItems, pendingHref?.split('?')[0] || pathname);
 
   const searchButton = (
     <button
@@ -114,12 +114,7 @@ export function Sidebar() {
             <Link
               key={href}
               href={href}
-              onClick={(event) => {
-                if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
-                  return;
-                }
-                beginPending(href);
-              }}
+              prefetch={null}
               className={cn(
                 'relative flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',
                 isActive

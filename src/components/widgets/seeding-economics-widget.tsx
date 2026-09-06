@@ -19,8 +19,8 @@ const EMPTY: InsightsTorrentsResponse = {
   topUploaded: [],
 };
 
-async function fetchTorrents(): Promise<InsightsTorrentsResponse> {
-  const res = await fetch('/api/insights/torrents');
+async function fetchTorrents(signal?: AbortSignal): Promise<InsightsTorrentsResponse> {
+  const res = await fetch('/api/insights/torrents', { signal });
   // 403 = missing insights.view at the data layer → empty state, not the error boundary.
   if (res.status === 403) return EMPTY;
   if (!res.ok) throw new ApiError(res.status, 'Request failed');

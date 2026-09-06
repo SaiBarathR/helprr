@@ -1,7 +1,7 @@
 'use client';
 
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import Link from '@/components/ui/app-link';
+import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
 import { Badge } from '@/components/ui/badge';
 import { FadeInImage } from '@/components/media/fade-in-image';
 import { WatchlistButton } from '@/components/watchlist/watchlist-button';

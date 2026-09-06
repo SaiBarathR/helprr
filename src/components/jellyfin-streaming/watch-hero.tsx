@@ -1,6 +1,6 @@
 'use client';
 
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 import { useEffect, useState } from 'react';
 import { Info, Play } from 'lucide-react';
 import type { JellyfinItem } from '@/types/jellyfin';

@@ -1,8 +1,8 @@
 'use client';
 
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 import { cinematicCardLayout } from '@/components/jellyfin-streaming/cinematic/card-layout';
-import { useRouter } from 'next/navigation';
+import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
 import { Check, Play } from 'lucide-react';
 import { FadeInImage } from '@/components/media/fade-in-image';
 import { useWatchSkin } from '@/lib/hooks/use-watch-skin';

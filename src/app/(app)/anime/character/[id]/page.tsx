@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 import { useParams } from 'next/navigation';
 import DOMPurify from 'isomorphic-dompurify';
 import { useInfiniteQuery } from '@tanstack/react-query';

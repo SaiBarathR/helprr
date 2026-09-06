@@ -60,6 +60,9 @@ interface AnilistStatusDrawerProps {
   totalVolumes?: number | null;
   entry: AniListMediaListEntryBase | null;
   scoreFormat?: string | null;
+  loading?: boolean;
+  loadError?: boolean;
+  onRetry?: () => void;
   onSaved: (entry: AniListMediaListEntryBase) => void;
   onDeleted: () => void;
 }
@@ -95,6 +98,9 @@ export function AnilistStatusDrawer({
   totalVolumes,
   entry,
   scoreFormat,
+  loading = false,
+  loadError = false,
+  onRetry,
   onSaved,
   onDeleted,
 }: AnilistStatusDrawerProps) {
@@ -125,6 +131,7 @@ export function AnilistStatusDrawer({
   }, [open, entry]);
 
   async function handleSave() {
+    if (loading || loadError) return;
     setSaving(true);
     try {
       const body: Record<string, unknown> = {
@@ -192,9 +199,19 @@ export function AnilistStatusDrawer({
     <Drawer open={open} onOpenChange={onOpenChange}>
       <DrawerContent>
         <DrawerHeader>
-          <DrawerTitle>{entry ? 'Edit AniList Entry' : 'Add to AniList'}</DrawerTitle>
+          <DrawerTitle>{loading || loadError ? 'AniList Entry' : entry ? 'Edit AniList Entry' : 'Add to AniList'}</DrawerTitle>
           <DrawerDescription className="line-clamp-1">{mediaTitle}</DrawerDescription>
         </DrawerHeader>
+        {loading || loadError ? (
+          <div className="p-4 space-y-4">
+            <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground">
+              {loading && <Loader2 className="size-4 animate-spin" />}
+              {loadError ? 'Could not load this entry. Try again before editing.' : 'Loading entry…'}
+            </p>
+            {loadError && <Button variant="outline" onClick={onRetry}>Retry</Button>}
+            <Button variant="outline" onClick={() => onOpenChange(false)}>Close</Button>
+          </div>
+        ) : <>
         <div className="flex-1 min-h-0 px-4 pb-2 space-y-4 overflow-y-auto">
           <div className="space-y-1.5">
             <Label className="text-xs text-muted-foreground">Status</Label>
@@ -297,6 +314,7 @@ export function AnilistStatusDrawer({
             </Button>
           </div>
         </DrawerFooter>
+        </>}
       </DrawerContent>
     </Drawer>
   );

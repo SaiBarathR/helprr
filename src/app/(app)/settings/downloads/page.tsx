@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { ApiError, jsonFetcher } from '@/lib/query-fetch';
-import { useRouter } from 'next/navigation';
+import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
 import { ChevronLeft, Plus, Trash2, Loader2, Zap } from 'lucide-react';
 import { toast } from 'sonner';
 import { GroupedSection } from '@/components/settings/grouped-section';

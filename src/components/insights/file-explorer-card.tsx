@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 import { ArrowDownWideNarrow, ArrowUpNarrowWide, ExternalLink, Scale, X } from 'lucide-react';
 import { HPR, mix } from '@/components/widgets/bento-primitives';
 import { formatBytes } from '@/lib/format';

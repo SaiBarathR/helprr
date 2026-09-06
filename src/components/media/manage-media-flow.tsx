@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { useRouter } from 'next/navigation';
+import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, ChevronRight, Loader2, Pencil, RefreshCw, Search, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';

@@ -1163,6 +1163,10 @@ export default function ProwlarrPage() {
 
         if (data.hasFailures) {
           toast.error(`${data.passed} passed, ${data.failed} failed`);
+          // The results are already available. Names are optional decoration
+          // and must not hold the dialog closed on a slow connection.
+          setTestAllIndexerNames({});
+          setTestAllResults(data);
 
           try {
             // Reuse the shared indexers cache (IndexersTab/HistoryTab) instead of
@@ -1189,7 +1193,6 @@ export default function ProwlarrPage() {
             setTestAllIndexerNames({});
           }
 
-          setTestAllResults(data);
         } else {
           setTestAllResults(null);
           setTestAllIndexerNames({});

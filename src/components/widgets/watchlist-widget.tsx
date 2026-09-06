@@ -1,6 +1,6 @@
 'use client';
 
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 import { Bookmark, ExternalLink, Film, List, Sparkles, Tv } from 'lucide-react';
 import { ApiError } from '@/lib/query-fetch';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';

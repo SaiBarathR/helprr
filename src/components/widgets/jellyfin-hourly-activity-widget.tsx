@@ -4,10 +4,10 @@ import type { WidgetProps } from '@/lib/widgets/types';
 import { JellyfinStatsWidgetShell } from './jellyfin-widget-shell';
 import { HourlyHeatmap } from './jellyfin-stats-charts';
 
-async function fetchHourly({ days, userId }: { days: number; userId: string }): Promise<Record<string, number>> {
+async function fetchHourly({ days, userId, signal }: { days: number; userId: string; signal?: AbortSignal }): Promise<Record<string, number>> {
   const params = new URLSearchParams({ days: String(days) });
   if (userId) params.set('userId', userId);
-  const res = await fetch(`/api/jellyfin/playback/hourly?${params}`);
+  const res = await fetch(`/api/jellyfin/playback/hourly?${params}`, { signal });
   if (!res.ok) return {};
   const data = await res.json();
   return (data.data && typeof data.data === 'object') ? data.data : {};

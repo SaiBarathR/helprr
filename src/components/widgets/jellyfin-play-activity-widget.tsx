@@ -6,10 +6,10 @@ import type { WidgetProps } from '@/lib/widgets/types';
 import { JellyfinStatsWidgetShell } from './jellyfin-widget-shell';
 import { PlayActivityChart } from './jellyfin-stats-charts';
 
-async function fetchPlayActivity({ days, userId }: { days: number; userId: string }): Promise<PlayActivityUser[]> {
+async function fetchPlayActivity({ days, userId, signal }: { days: number; userId: string; signal?: AbortSignal }): Promise<PlayActivityUser[]> {
   const params = new URLSearchParams({ days: String(days) });
   if (userId) params.set('userId', userId);
-  const res = await fetch(`/api/jellyfin/playback/activity?${params}`);
+  const res = await fetch(`/api/jellyfin/playback/activity?${params}`, { signal });
   if (!res.ok) throw new ApiError(res.status, 'Request failed');
   const data = await res.json();
   return Array.isArray(data.data) ? data.data : [];

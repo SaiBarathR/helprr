@@ -26,12 +26,12 @@ function keyFor(scope: 'radarr' | 'sonarr', instanceId: string | undefined, id: 
  * omit nothing — a Radarr id and a Sonarr id can collide, and so can the same
  * id across two instances.
  */
-export function useArrQueueLookup(): (ref: { scope: 'radarr' | 'sonarr'; instanceId?: string; id: number } | undefined) => ArrQueueState | undefined {
+export function useArrQueueLookup(enabled = true): (ref: { scope: 'radarr' | 'sonarr'; instanceId?: string; id: number } | undefined) => ArrQueueState | undefined {
   const canSeeQueue = useCan('activity.view');
   const query = useQuery({
     queryKey: ['jellyfin', 'catalog', 'arr-queue'],
     queryFn: jsonFetcher<{ records: QueueItem[] }>('/api/activity/queue?page=1&pageSize=200'),
-    enabled: canSeeQueue,
+    enabled: canSeeQueue && enabled,
     staleTime: 30_000,
     refetchInterval: 60_000,
   });

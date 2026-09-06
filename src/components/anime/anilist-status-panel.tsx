@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 import { Sparkles, Pencil, Plus, Loader2, AlertTriangle } from 'lucide-react';
 import { AnilistStatusDrawer } from '@/components/anime/anilist-status-drawer';
 import { useMe } from '@/components/permission-provider';

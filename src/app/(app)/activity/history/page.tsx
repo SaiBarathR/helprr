@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState, type JSX } from 'react';
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 import { keepPreviousData, useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { jsonFetcher } from '@/lib/query-fetch';
 import { PageHeader } from '@/components/layout/page-header';

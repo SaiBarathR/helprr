@@ -1,8 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import Link from '@/components/ui/app-link';
+import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
 import { format, formatDistanceToNow } from 'date-fns';
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import {

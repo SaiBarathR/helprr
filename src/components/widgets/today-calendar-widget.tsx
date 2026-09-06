@@ -1,7 +1,7 @@
 'use client';
 import { ApiError } from '@/lib/query-fetch';
 
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 import { Check, Disc3, Film, Tv } from 'lucide-react';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
 import { useElementSize } from '@/lib/widgets/use-element-size';
@@ -66,8 +66,8 @@ function typeColor(type: CalendarEvent['type']): string {
   return HPR.purple;
 }
 
-async function fetchToday(): Promise<CalendarEvent[]> {
-  const res = await fetch('/api/calendar?days=1&fullDay=true');
+async function fetchToday(signal?: AbortSignal): Promise<CalendarEvent[]> {
+  const res = await fetch('/api/calendar?days=1&fullDay=true', { signal });
   if (!res.ok) throw new ApiError(res.status, 'Request failed');
   return res.json();
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 import { Search } from 'lucide-react';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
 import { useElementSize } from '@/lib/widgets/use-element-size';
@@ -12,8 +12,8 @@ interface WantedCounts {
   cutoffTotal: number;
 }
 
-async function fetchWanted(): Promise<WantedCounts> {
-  const res = await fetch('/api/activity/wanted');
+async function fetchWanted(signal?: AbortSignal): Promise<WantedCounts> {
+  const res = await fetch('/api/activity/wanted', { signal });
   if (!res.ok) throw new Error('Failed to fetch wanted counts');
   const data = (await res.json()) as { missingTotal?: number; cutoffTotal?: number };
   return {

@@ -2,7 +2,7 @@
 import { ApiError } from '@/lib/query-fetch';
 
 import { useCallback } from 'react';
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 import { AlertCircle, AlertTriangle, RotateCw, Trash2 } from 'lucide-react';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
 import { useElementSize } from '@/lib/widgets/use-element-size';
@@ -23,8 +23,8 @@ interface CleanupHistoryRecord {
   createdAt: string;
 }
 
-async function fetchCleanupHistory(pageSize: number): Promise<CleanupHistoryRecord[]> {
-  const res = await fetch(`/api/cleanup/history?pageSize=${pageSize}`);
+async function fetchCleanupHistory(pageSize: number, signal?: AbortSignal): Promise<CleanupHistoryRecord[]> {
+  const res = await fetch(`/api/cleanup/history?pageSize=${pageSize}`, { signal });
   if (!res.ok) throw new ApiError(res.status, 'Request failed');
   const data = await res.json();
   return (data?.records ?? []) as CleanupHistoryRecord[];
@@ -67,7 +67,7 @@ export function CleanupHistoryWidget({
     rowHeight: ROW_HEIGHT,
     bucketSize: 5,
   });
-  const fetchFn = useCallback(() => fetchCleanupHistory(fetchPageSize), [fetchPageSize]);
+  const fetchFn = useCallback((signal?: AbortSignal) => fetchCleanupHistory(fetchPageSize, signal), [fetchPageSize]);
   const { data, loading } = useWidgetData({
     fetchFn,
     refreshInterval,

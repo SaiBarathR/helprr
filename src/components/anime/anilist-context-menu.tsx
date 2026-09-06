@@ -8,6 +8,7 @@ import { AnilistStatusDrawer } from '@/components/anime/anilist-status-drawer';
 import type { ContextAction } from '@/components/ui/quick-context-menu';
 import type { AniListMediaListEntryBase } from '@/lib/anilist-mutations';
 import { parseAnilistListEntryResponse } from '@/lib/anilist-list-entry-response';
+import { ApiError } from '@/lib/query-fetch';
 
 interface ViewerResponse {
   configured: boolean;
@@ -28,7 +29,6 @@ export interface AnilistContextMedia {
 }
 
 interface DrawerState extends AnilistContextMedia {
-  entry: AniListMediaListEntryBase | null;
   scoreFormat: string | null;
 }
 
@@ -54,24 +54,25 @@ export function useAnilistContextMenu() {
     && viewerQuery.data?.connected === true
     && viewerQuery.data?.requiresReauth !== true;
 
-  const openAnilistDrawer = useCallback(async (media: AnilistContextMedia) => {
+  const entryQuery = useQuery({
+    queryKey: ['anilist', 'context-entry', drawer?.mediaId, drawer?.scoreFormat],
+    enabled: canUseAnilist && drawer !== null && drawer.entry === undefined,
+    // One snapshot per open form; background refresh must not reset edits.
+    // Closing changes the key and discards that snapshot for the next open.
+    staleTime: Infinity,
+    gcTime: 0,
+    queryFn: async ({ signal }) => {
+      const res = await fetch(`/api/anilist/list-entry?mediaId=${drawer!.mediaId}`, { signal });
+      if (!res.ok) throw new ApiError(res.status, 'Could not load the AniList entry');
+      return parseAnilistListEntryResponse(await res.json(), drawer!.scoreFormat);
+    },
+  });
+
+  const openAnilistDrawer = useCallback((media: AnilistContextMedia) => {
     if (!canUseAnilist) return;
     const scoreFormat = viewerQuery.data?.user?.scoreFormat ?? null;
-    let entry = media.entry ?? null;
-    if (media.entry === undefined) {
-      try {
-        const res = await fetch(`/api/anilist/list-entry?mediaId=${media.mediaId}`);
-        if (res.ok) {
-          const data = await res.json();
-          entry = parseAnilistListEntryResponse(data, scoreFormat);
-        }
-      } catch {
-        entry = null;
-      }
-    }
     setDrawer({
       ...media,
-      entry,
       scoreFormat,
     });
   }, [canUseAnilist, viewerQuery.data?.user?.scoreFormat]);
@@ -111,7 +112,10 @@ export function useAnilistContextMenu() {
       totalEpisodes={drawer.totalEpisodes}
       totalChapters={drawer.totalChapters}
       totalVolumes={drawer.totalVolumes}
-      entry={drawer.entry}
+      entry={drawer.entry !== undefined ? drawer.entry : entryQuery.data ?? null}
+      loading={drawer.entry === undefined && (entryQuery.isPending || entryQuery.isFetching)}
+      loadError={drawer.entry === undefined && entryQuery.isError && !entryQuery.isFetching}
+      onRetry={() => { void entryQuery.refetch(); }}
       scoreFormat={drawer.scoreFormat}
       onSaved={() => {
         invalidateLibrary();

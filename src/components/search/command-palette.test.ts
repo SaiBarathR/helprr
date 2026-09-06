@@ -10,7 +10,7 @@ vi.mock('next/dynamic', () => ({
   },
 }));
 
-import { CommandPalette } from '@/components/search/command-palette';
+import { CommandPalette, SearchLoadingDialog } from '@/components/search/command-palette';
 import { useSearchPalette } from '@/components/search/search-store';
 
 let root: Root;
@@ -29,6 +29,17 @@ afterEach(async () => {
 });
 
 describe('CommandPalette', () => {
+  it('shows a closable shell while the search chunk is still downloading', async () => {
+    useSearchPalette.setState({ open: true });
+    await act(async () => root.render(createElement(SearchLoadingDialog)));
+    expect(document.querySelector('[role="dialog"]')).not.toBeNull();
+    expect(document.querySelector('[role="status"]')?.textContent).toContain('Loading search');
+    const close = [...document.querySelectorAll('button')].find((button) => button.textContent?.includes('Close'))!;
+    await act(async () => close.click());
+    expect(useSearchPalette.getState().open).toBe(false);
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+  });
+
   it('keeps the launcher lightweight and opens the lazy dialog from button or hotkey', async () => {
     await act(async () => {
       root.render(createElement(CommandPalette));

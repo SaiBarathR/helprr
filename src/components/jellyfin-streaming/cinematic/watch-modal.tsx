@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useCallback, useContext, useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
 import { useQuery } from '@tanstack/react-query';
 import { Check, ChevronDown, Play, Plus, RotateCcw, ThumbsUp, X } from 'lucide-react';
 import { jsonFetcher } from '@/lib/query-fetch';

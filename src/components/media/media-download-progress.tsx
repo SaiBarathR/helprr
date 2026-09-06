@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 import { ArrowUpRight, ChevronDown, Download } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { useCan } from '@/components/permission-provider';
@@ -49,7 +49,7 @@ export function MediaDownloadProgress({
     queryFn: jsonFetcher<MediaQueueResponse>(`/api/activity/queue?${params.toString()}`),
     enabled: canViewActivity && Number.isInteger(mediaId) && mediaId > 0,
     staleTime: 2_000,
-    refetchInterval: 5_000,
+    refetchInterval: (query) => summarizeMediaDownloads(query.state.data?.records ?? []) ? 5_000 : 60_000,
     refetchOnWindowFocus: true,
   });
 

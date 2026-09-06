@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
 import { useVisibleInterval } from '@/lib/hooks/use-visible-interval';
 import { formatDistanceToNowShort } from '@/lib/format';
@@ -44,17 +44,18 @@ interface CleanupStatusData {
   stats: CleanupStats | null;
 }
 
-async function fetchCleanupStatus(): Promise<CleanupStatusData> {
+async function fetchCleanupStatus(signal?: AbortSignal): Promise<CleanupStatusData> {
   // Per-request fallbacks: a single endpoint failing (network error or non-2xx)
   // degrades just its own section instead of blanking the whole widget.
   const [schedRes, strikesRes, statsRes] = await Promise.all([
-    fetch('/api/cleanup/scheduler-status').catch(() => null),
+    fetch('/api/cleanup/scheduler-status', { signal }).catch(() => null),
     // Compact preview: top 5 strikes; the header count comes from the response total.
-    fetch('/api/cleanup/strikes?limit=5').catch(() => null),
+    fetch('/api/cleanup/strikes?limit=5', { signal }).catch(() => null),
     // Offset at local midnight (not now) so DST-transition days keep the
     // server's "today" boundary aligned with the user's calendar day.
-    fetch(`/api/cleanup/stats?tzOffsetMinutes=${new Date(new Date().setHours(0, 0, 0, 0)).getTimezoneOffset()}`).catch(() => null),
+    fetch(`/api/cleanup/stats?tzOffsetMinutes=${new Date(new Date().setHours(0, 0, 0, 0)).getTimezoneOffset()}`, { signal }).catch(() => null),
   ]);
+  signal?.throwIfAborted();
   const strikesJson = strikesRes?.ok
     ? ((await strikesRes.json()) as { records?: StrikeRow[]; total?: number })
     : { records: [], total: 0 };

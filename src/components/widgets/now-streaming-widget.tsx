@@ -21,8 +21,8 @@ import {
 } from './bento-primitives';
 import { useDashboardLayout } from './dashboard-layout-context';
 
-async function fetchSessions(): Promise<JellyfinSession[]> {
-  const res = await fetch('/api/jellyfin/sessions');
+async function fetchSessions(signal?: AbortSignal): Promise<JellyfinSession[]> {
+  const res = await fetch('/api/jellyfin/sessions', { signal });
   if (!res.ok) throw new Error(`Failed to fetch sessions (${res.status})`);
   const data: { sessions: JellyfinSession[] } = await res.json();
   return data.sessions;

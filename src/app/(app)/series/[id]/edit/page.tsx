@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { arrMutationFetch } from '@/lib/query-fetch';
 import { handleAuthError } from '@/lib/query-client';
-import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
+import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
 import { PageHeader } from '@/components/layout/page-header';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';

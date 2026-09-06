@@ -5,8 +5,11 @@ import { BottomNav } from '@/components/layout/bottom-nav';
 import { PushReenableBanner } from '@/components/notifications/push-reenable-banner';
 import { useUIStore } from '@/lib/store';
 import { cn } from '@/lib/utils';
+import { usePendingHref } from '@/components/layout/navigation-provider';
+import { NavigationLoading } from '@/components/layout/navigation-loading';
 
 export function AppShell({ children }: { children: React.ReactNode }) {
+  const pendingHref = usePendingHref();
   const navPosition = useUIStore((s) => s.navPosition);
   const watchSkin = useUIStore((s) => s.watchSkin);
 
@@ -41,7 +44,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         )}
       >
         <PushReenableBanner />
-        {children}
+        {pendingHref !== null && <NavigationLoading key={pendingHref} href={pendingHref} />}
+        <div hidden={pendingHref !== null} inert={pendingHref !== null}>
+          {children}
+        </div>
       </main>
       {isBottom && <BottomNav />}
     </div>

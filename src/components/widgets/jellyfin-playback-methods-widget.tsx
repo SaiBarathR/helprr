@@ -6,10 +6,10 @@ import type { WidgetProps } from '@/lib/widgets/types';
 import { JellyfinStatsWidgetShell } from './jellyfin-widget-shell';
 import { PlaybackMethodBar } from './jellyfin-stats-charts';
 
-async function fetchMethods({ days, userId }: { days: number; userId: string }): Promise<PlaybackBreakdownEntry[]> {
+async function fetchMethods({ days, userId, signal }: { days: number; userId: string; signal?: AbortSignal }): Promise<PlaybackBreakdownEntry[]> {
   const params = new URLSearchParams({ days: String(days) });
   if (userId) params.set('userId', userId);
-  const res = await fetch(`/api/jellyfin/playback/breakdown/PlaybackMethod?${params}`);
+  const res = await fetch(`/api/jellyfin/playback/breakdown/PlaybackMethod?${params}`, { signal });
   if (!res.ok) throw new ApiError(res.status, 'Request failed');
   const data = await res.json();
   return Array.isArray(data.entries) ? data.entries : [];

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 import { ChevronLeft, ChevronRight, Download as DownloadIcon, Upload } from 'lucide-react';
 import { ExportSettingsDialog } from '@/components/settings/export-settings-dialog';
 import { ImportSettingsDialog } from '@/components/settings/import-settings-dialog';

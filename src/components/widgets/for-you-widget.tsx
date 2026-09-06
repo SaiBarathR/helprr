@@ -2,7 +2,7 @@
 import { ApiError } from '@/lib/query-fetch';
 
 import { useCallback } from 'react';
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 import { Sparkles } from 'lucide-react';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
 import { useElementSize } from '@/lib/widgets/use-element-size';
@@ -24,8 +24,8 @@ import {
 } from './bento-primitives';
 import { useDashboardLayout } from './dashboard-layout-context';
 
-async function fetchForYou(limit: number): Promise<ForYouItem[]> {
-  const res = await fetch(`/api/recommendations/for-you?limit=${limit}`);
+async function fetchForYou(limit: number, signal?: AbortSignal): Promise<ForYouItem[]> {
+  const res = await fetch(`/api/recommendations/for-you?limit=${limit}`, { signal });
   if (!res.ok) throw new ApiError(res.status, 'Request failed');
   const data = (await res.json()) as ForYouResponse;
   return data.items ?? [];
@@ -50,7 +50,7 @@ export function ForYouWidget({
     : 12;
   const visibleCount = Math.max(listVisible, carouselVisible);
   const fetchLimit = Math.min(24, Math.max(heightFetchSize, carouselVisible));
-  const fetchFn = useCallback(() => fetchForYou(fetchLimit), [fetchLimit]);
+  const fetchFn = useCallback((signal?: AbortSignal) => fetchForYou(fetchLimit, signal), [fetchLimit]);
   const { data, loading } = useWidgetData({
     fetchFn,
     refreshInterval,

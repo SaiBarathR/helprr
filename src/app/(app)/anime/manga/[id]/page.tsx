@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 import DOMPurify from 'isomorphic-dompurify';
 import { PageHeader } from '@/components/layout/page-header';
 import { AnimeHero } from '@/components/anime/anime-hero';

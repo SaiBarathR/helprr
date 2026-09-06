@@ -1,8 +1,9 @@
 'use client';
 
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
+import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, Bell, LogOut, Search } from 'lucide-react';
 import { useCompactViewport } from '@/lib/hooks/use-compact-viewport';

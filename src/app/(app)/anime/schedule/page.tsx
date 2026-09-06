@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 import { ChevronLeft } from 'lucide-react';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { PageSpinner } from '@/components/ui/page-spinner';

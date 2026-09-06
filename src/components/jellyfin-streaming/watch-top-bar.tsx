@@ -1,6 +1,6 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
+import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
 import { ChevronLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { WatchSubNav } from '@/components/jellyfin-streaming/watch-subnav';

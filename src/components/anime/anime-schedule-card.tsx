@@ -1,7 +1,7 @@
 'use client';
 
 import Image from 'next/image';
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 import { Check, Star } from 'lucide-react';
 import { ScheduledAlertButton } from '@/components/scheduled-alerts/scheduled-alert-dialog';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';

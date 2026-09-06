@@ -2,8 +2,9 @@
 
 import { Suspense, useCallback, useMemo, useState } from 'react';
 import Image from 'next/image';
-import Link from 'next/link';
-import { useRouter, useSearchParams } from 'next/navigation';
+import Link from '@/components/ui/app-link';
+import { useSearchParams } from 'next/navigation';
+import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Dices, GalleryVerticalEnd, Loader2, Popcorn, RefreshCw, Star } from 'lucide-react';
 import { Button } from '@/components/ui/button';

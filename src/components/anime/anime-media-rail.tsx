@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 import { FadeInImage } from '@/components/media/fade-in-image';
 import { Badge } from '@/components/ui/badge';
 import { WatchlistAddDialog } from '@/components/watchlist/watchlist-add-dialog';

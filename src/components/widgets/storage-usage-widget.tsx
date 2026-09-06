@@ -9,8 +9,8 @@ import type { WidgetProps } from '@/lib/widgets/types';
 import type { DiskTrend, StorageTrendResponse } from '@/types/service-stats';
 import { Bar, Eyebrow, FONT_MONO, HPR } from './bento-primitives';
 
-async function fetchStorageTrend(): Promise<Record<string, DiskTrend>> {
-  const res = await fetch('/api/storage/trend');
+async function fetchStorageTrend(signal?: AbortSignal): Promise<Record<string, DiskTrend>> {
+  const res = await fetch('/api/storage/trend', { signal });
   if (!res.ok) throw new ApiError(res.status, 'Request failed');
   const data: StorageTrendResponse = await res.json();
   return data.trends || {};

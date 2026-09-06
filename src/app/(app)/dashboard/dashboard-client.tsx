@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
 import { useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { useUIStore } from '@/lib/store';

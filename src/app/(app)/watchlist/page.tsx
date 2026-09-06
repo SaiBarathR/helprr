@@ -24,7 +24,7 @@ import {
   X,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 import { FadeInImage } from '@/components/media/fade-in-image';
 import { BulkActionBar } from '@/components/media/bulk-action-bar';
 import { SelectionCheck } from '@/components/media/selection-check';

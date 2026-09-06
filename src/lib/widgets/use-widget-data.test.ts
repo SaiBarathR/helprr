@@ -24,6 +24,50 @@ afterEach(async () => {
 });
 
 describe('useWidgetData visibility', () => {
+  it('aborts an obsolete transfer only after its last consumer unmounts', async () => {
+    let signal: AbortSignal | undefined;
+    const fetchFn = vi.fn((received?: AbortSignal) => {
+      signal = received;
+      return new Promise<string>(() => {});
+    });
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    function Probe() {
+      useWidgetData({ fetchFn, refreshInterval: 60_000, cacheKey: 'cancel-transfer' });
+      return null;
+    }
+    const render = (count: number) => root.render(createElement(QueryClientProvider, { client: queryClient },
+      Array.from({ length: count }, (_, index) => createElement(Probe, { key: index }))));
+    await act(async () => render(2));
+    expect(fetchFn).toHaveBeenCalledOnce();
+    await act(async () => render(1));
+    expect(signal?.aborted).toBe(false);
+    await act(async () => render(0));
+    expect(signal?.aborted).toBe(true);
+    queryClient.clear();
+  });
+
+  it('reuses recently loaded dashboard data on return without another download', async () => {
+    const fetchFn = vi.fn(async () => 'cached dashboard');
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    function Probe() {
+      const result = useWidgetData({ fetchFn, refreshInterval: 60_000, cacheKey: 'return-visit' });
+      return createElement('span', null, result.data ?? 'empty');
+    }
+    const render = (visible: boolean) => root.render(createElement(QueryClientProvider, { client: queryClient }, visible ? createElement(Probe) : null));
+    await act(async () => render(true));
+    await act(async () => vi.advanceTimersByTimeAsync(0));
+    await act(async () => render(false));
+    await act(async () => vi.advanceTimersByTimeAsync(5000));
+    await act(async () => render(true));
+    expect(document.body.textContent).toContain('cached dashboard');
+    expect(fetchFn).toHaveBeenCalledOnce();
+    await act(async () => render(false));
+    await act(async () => vi.advanceTimersByTimeAsync(30_000));
+    await act(async () => render(true));
+    expect(fetchFn).toHaveBeenCalledTimes(2);
+    queryClient.clear();
+  });
+
   it('defers the first request, pauses polling offscreen, and retains cached data', async () => {
     const fetchFn = vi.fn(async () => fetchFn.mock.calls.length);
     const queryClient = new QueryClient({

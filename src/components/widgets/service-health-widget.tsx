@@ -11,8 +11,8 @@ interface ServiceStatus {
   ok: boolean;
 }
 
-async function fetchServiceHealth(): Promise<ServiceStatus[]> {
-  const res = await fetch('/api/services/health');
+async function fetchServiceHealth(signal?: AbortSignal): Promise<ServiceStatus[]> {
+  const res = await fetch('/api/services/health', { signal });
   if (!res.ok) throw new ApiError(res.status, 'Request failed');
   return res.json();
 }

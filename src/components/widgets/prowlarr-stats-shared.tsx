@@ -21,12 +21,12 @@ export function chartLayoutForWidth(width: number): { yWidth: number; yMaxLen: n
   return { yWidth: Y_WIDTH, yMaxLen: 14 };
 }
 
-export async function fetchProwlarrStats(days: number): Promise<ProwlarrStats | null> {
+export async function fetchProwlarrStats(days: number, signal?: AbortSignal): Promise<ProwlarrStats | null> {
   const startDate = daysToStartDate(days);
   const url = startDate
     ? `/api/prowlarr/stats?startDate=${encodeURIComponent(startDate)}`
     : '/api/prowlarr/stats';
-  const res = await fetch(url);
+  const res = await fetch(url, { signal });
   if (!res.ok) throw new ApiError(res.status, 'Request failed');
   const data = await res.json();
   if (data?.error) return null;
@@ -171,7 +171,7 @@ export function ProwlarrChartWidgetShell<Row extends { name: string }>(
 
   const [filters, setFilters] = useWidgetFilter<{ days: number }>(widgetId, { days: 30 });
 
-  const fetchFn = React.useCallback(() => fetchProwlarrStats(filters.days), [filters.days]);
+  const fetchFn = React.useCallback((signal?: AbortSignal) => fetchProwlarrStats(filters.days, signal), [filters.days]);
   const { data, loading } = useWidgetData<ProwlarrStats | null>({
     fetchFn,
     refreshInterval,
