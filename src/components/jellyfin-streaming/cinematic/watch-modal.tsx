@@ -407,7 +407,12 @@ function WatchDetailModal({ itemId, onClose }: { itemId: string | null; onClose:
                   trailerUrl={item.RemoteTrailers?.[0]?.Url}
                   enabled
                   priority
-                  controlsClassName="absolute right-12 bottom-8 border-2 size-[38px]"
+                  // z-30, not the control's default z-20: the title/CTA block
+                  // below is itself z-20 and `inset-x-0`, so it reaches under
+                  // this corner and — being later in the DOM at an equal
+                  // z-index — took every click aimed at the toggle. The button
+                  // overlays the video, like Close, so it belongs above it.
+                  controlsClassName="absolute right-12 bottom-8 z-30 border-2 size-[38px]"
                 />
               )}
               {/* The player fades into the panel rather than cutting off, which
