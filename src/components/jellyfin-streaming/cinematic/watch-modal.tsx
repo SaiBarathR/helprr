@@ -452,11 +452,22 @@ function WatchDetailModal({ itemId, onClose }: { itemId: string | null; onClose:
                       className="h-11 rounded px-7 text-base font-semibold"
                       onClick={() => void playback.playItem(item)}
                     >
-                      {resumeSeconds > 0
-                        ? <RotateCcw data-icon="inline-start" />
-                        : <Play className="fill-current" data-icon="inline-start" />}
+                      <Play className="fill-current" data-icon="inline-start" />
                       {resumeSeconds > 0 ? 'Resume' : 'Play'}
                     </Button>
+                  )}
+                  {/* The overlay had no way to start a part-watched title over
+                      — the detail page's only control the overlay was missing.
+                      The rewind glyph belongs to it, so Resume takes the play
+                      triangle the site gives it rather than sharing one icon
+                      between "carry on" and "start again". */}
+                  {resumeSeconds > 0 && (
+                    <CircleButton
+                      label="Play from start"
+                      onClick={() => void playback.playItem(item, { startTimeTicks: 0 })}
+                    >
+                      <RotateCcw className="size-5" />
+                    </CircleButton>
                   )}
                   <CircleButton label="Add to My List"><Plus className="size-5" /></CircleButton>
                   <CircleButton label="Rate"><ThumbsUp className="size-[18px]" /></CircleButton>

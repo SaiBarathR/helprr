@@ -1604,7 +1604,7 @@ html[data-watch-skin='cinematic'] [data-slot='dropdown-menu-content'].hpr-cine-f
 /* left/right/top/height rather than `inset: 0`, and never `height: auto`.
    `auto` is not interpolatable, so a transition to calc(150% + panel) does not
    run at all — the height snapped to full size at t=0 while left/right waited
-   out their 300ms intent delay, and the card spent that beat as a tall
+   out their intent delay, and the card spent that beat as a tall
    narrow poster before springing sideways. Every value here is a length, so
    all four animate together. */
 html[data-watch-skin='cinematic'] .hpr-cine-face {
@@ -1691,7 +1691,19 @@ html[data-watch-skin='cinematic'] .hpr-cine-panel {
     bottom: auto;
     height: calc(150% + var(--hpr-pop-panel));
     box-shadow: 0 3px 10px rgba(0, 0, 0, 0.75);
-    transition-delay: 300ms;
+    /* Measured on netflix.com, warm, over five hovers: the popover's own work
+       starts 420-510ms after the pointer enters a card and the expanded card
+       lands at ~1000ms. At the previous 300ms this expanded at 600ms, and
+       crossing the page popped a card under the pointer the whole way. 700ms
+       + the 300ms growth puts the finished popover where the site puts it. */
+    transition-delay: 700ms;
+  }
+
+  /* Keyboard focus is deliberate — there is no brushing past a card with Tab,
+     so the gate the pointer needs only makes stepping through a row feel
+     stuck. Placed after the shared rule so it wins for a focused tile. */
+  html[data-watch-skin='cinematic'] .hpr-cine-tile:focus-within > .hpr-cine-face {
+    transition-delay: 0s;
   }
 
   /* At either end the site clamps the popover to the row's inset rather than

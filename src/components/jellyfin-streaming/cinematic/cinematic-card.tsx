@@ -4,7 +4,7 @@ import { memo, useEffect, useId, useRef, useState } from 'react';
 import Link from 'next/link';
 import { cinematicCardLayout } from '@/components/jellyfin-streaming/cinematic/card-layout';
 import { useRouter } from 'next/navigation';
-import { Play } from 'lucide-react';
+import { Play, Volume2, VolumeX } from 'lucide-react';
 import type { JellyfinItem } from '@/types/jellyfin';
 import { FadeInImage } from '@/components/media/fade-in-image';
 import { useCan } from '@/components/permission-provider';
@@ -14,6 +14,7 @@ import { useFavoriteToggle } from '@/components/jellyfin-streaming/cinematic/use
 import { useCompactViewport } from '@/lib/hooks/use-compact-viewport';
 import { useMediaPreview } from '@/components/jellyfin-streaming/cinematic/media-preview';
 import { useHoverPreviewSlot } from '@/components/jellyfin-streaming/cinematic/hover-preview-slot';
+import { setPreviewMuted, usePreviewMuted } from '@/components/jellyfin-streaming/cinematic/preview-audio';
 import { canPreviewItem, usePreviewSource } from '@/components/jellyfin-streaming/cinematic/use-preview-item';
 import { useUIStore } from '@/lib/store';
 import { useWatchModal } from '@/components/jellyfin-streaming/cinematic/watch-modal';
@@ -44,6 +45,41 @@ function metaLine(item: JellyfinItem, asSeries: boolean): string | undefined {
     return item.AlbumArtist || item.Artists?.join(', ') || undefined;
   }
   return [item.ProductionYear, item.Genres?.[0]].filter(Boolean).join(' · ') || undefined;
+}
+
+/**
+ * The preview's audio toggle, as the site carries it on a hover popover.
+ *
+ * The clip always *attaches* muted — an unmuted autoplay is refused outright,
+ * and a preview that never starts is worse than a silent one — so the choice
+ * is applied here, once the element is already playing.
+ *
+ * Mounted only with a playing preview, which is at most one card at a time.
+ */
+function PreviewMuteButton({ videoRef }: { videoRef: React.RefObject<HTMLVideoElement | null> }) {
+  const muted = usePreviewMuted();
+
+  useEffect(() => {
+    const el = videoRef.current;
+    if (el) el.muted = muted;
+  }, [muted, videoRef]);
+
+  return (
+    <button
+      type="button"
+      aria-label={muted ? 'Turn audio on' : 'Turn audio off'}
+      title={muted ? 'Turn audio on' : 'Turn audio off'}
+      onClick={(event) => {
+        // The tile's stretched link sits underneath; this must not navigate.
+        event.preventDefault();
+        event.stopPropagation();
+        setPreviewMuted(!muted);
+      }}
+      className="absolute right-2 bottom-2 z-20 flex size-8 items-center justify-center rounded-full border-2 border-white/50 bg-[rgba(42,42,42,0.6)] text-white transition-colors hover:border-white"
+    >
+      {muted ? <VolumeX className="size-4" /> : <Volume2 className="size-4" />}
+    </button>
+  );
 }
 
 /**
@@ -175,7 +211,7 @@ export const CinematicCard = memo(function CinematicCard({
         if (event.currentTarget.dataset.popClip === '1') return;
         window.clearTimeout(hoverTimer.current);
         // Long enough that scanning a row costs nothing; the expand itself
-        // lands at 300ms, so the clip arrives once you have clearly stopped.
+        // lands at 1000ms, so the clip arrives once you have clearly stopped.
         hoverTimer.current = window.setTimeout(() => setHovering(true), 1400);
       }}
       onPointerLeave={() => {
@@ -216,6 +252,8 @@ export const CinematicCard = memo(function CinematicCard({
             )}
           />
         )}
+
+        {showPreview && <PreviewMuteButton videoRef={videoRef} />}
 
         {/* Touch has no hover, so a 16:9 still needs its title written on it.
             A portrait poster does not: the title is part of the artwork, which
