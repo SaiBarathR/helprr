@@ -90,14 +90,14 @@ export function JellyfinPlayHistoryWidget({ refreshInterval, editMode = false }:
     [filters.fromIso, filters.toIso],
   );
 
-  const fetchFn = useCallback(async (): Promise<HistoryResult> => {
+  const fetchFn = useCallback(async (signal?: AbortSignal): Promise<HistoryResult> => {
     if (!filters.fromIso) return { items: [], total: 0 };
     const from = toDateStr(new Date(filters.fromIso));
     const to = toDateStr(new Date(filters.toIso || filters.fromIso));
     const params = new URLSearchParams({ from, to, limit: String(PAGE_SIZE), offset: '0' });
     if (filters.userId) params.set('userId', filters.userId);
     if (filters.type) params.set('type', filters.type);
-    const res = await fetch(`/api/jellyfin/playback/custom-history?${params}`);
+    const res = await fetch(`/api/jellyfin/playback/custom-history?${params}`, { signal });
     if (!res.ok) return { items: [], total: 0 };
     const data = await res.json();
     return { items: data.items ?? [], total: data.total ?? 0 };

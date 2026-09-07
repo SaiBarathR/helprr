@@ -71,9 +71,9 @@ export function JellyfinStatsWidgetShell<T>(props: JellyfinStatsWidgetShellProps
   const [filters, setFilters, resetFilters] = useWidgetFilter<JellyfinStatsFilters>(widgetId, defaults);
   const [drawerOpen, setDrawerOpen] = useState(false);
 
-  const fetchWrapped = useCallback(() => {
+  const fetchWrapped = useCallback((signal?: AbortSignal) => {
     const queryDays = filters.days === 0 ? MAX_DAYS : filters.days;
-    return fetchFn({ days: queryDays, userId: filters.userId });
+    return fetchFn({ days: queryDays, userId: filters.userId, signal });
   }, [filters.days, filters.userId, fetchFn]);
 
   const { data, loading } = useWidgetData<T>({

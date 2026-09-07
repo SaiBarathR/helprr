@@ -1,6 +1,6 @@
 'use client';
 
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 import { Check, Play } from 'lucide-react';
 import type { JellyfinItem } from '@/types/jellyfin';
 import { FadeInImage } from '@/components/media/fade-in-image';

@@ -1,6 +1,6 @@
 'use client';
 
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 import { ArrowRight } from 'lucide-react';
 
 export function Carousel({ children, className = '' }: { children: React.ReactNode; className?: string }) {

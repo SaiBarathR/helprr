@@ -1,6 +1,6 @@
 'use client';
 
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 import { Film, Tv, Download, HardDrive } from 'lucide-react';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
 import { fetchServicesStats } from '@/lib/widgets/widget-fetchers';

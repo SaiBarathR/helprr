@@ -1,6 +1,6 @@
 'use client';
 
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 import { HardDrive } from 'lucide-react';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
 import { useElementSize } from '@/lib/widgets/use-element-size';
@@ -29,8 +29,8 @@ interface TorrentData {
   upRateLimit: number;
 }
 
-async function fetchTorrentData(): Promise<TorrentData> {
-  const res = await fetch('/api/qbittorrent/summary');
+async function fetchTorrentData(signal?: AbortSignal): Promise<TorrentData> {
+  const res = await fetch('/api/qbittorrent/summary', { signal });
   if (!res.ok) throw new Error('Failed to fetch');
   const data: QBittorrentSummaryResponse = await res.json();
   const torrents = data.torrents || [];

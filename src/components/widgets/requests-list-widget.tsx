@@ -1,7 +1,7 @@
 'use client';
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 import { FadeInImage } from '@/components/media/fade-in-image';
 import {
   MoreHorizontal, Check, X, RefreshCw, Trash2, Film, Tv, Loader2,
@@ -83,6 +83,7 @@ async function fetchRequestsPage(
   sort: SeerrRequestSort,
   sortDirection: SeerrSortDirection,
   mediaType?: SeerrMediaType,
+  signal?: AbortSignal,
 ): Promise<ListResponse> {
   const params = new URLSearchParams({
     take: String(take),
@@ -97,7 +98,7 @@ async function fetchRequestsPage(
   if (mediaType) {
     params.set('mediaType', mediaType);
   }
-  const res = await fetch(`/api/seerr/requests?${params.toString()}`);
+  const res = await fetch(`/api/seerr/requests?${params.toString()}`, { signal });
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as { error?: string };
     throw new Error(body.error ?? `Failed (${res.status})`);
@@ -213,7 +214,7 @@ export function RequestsListWidget({
   // story keeps working for dashboard widget mode. Extra pages live in
   // component state below.
   const fetchFn = useCallback(
-    () => fetchRequestsPage(filter, take, 0, requestedBy, sort, sortDirection, serverMediaType),
+    (signal?: AbortSignal) => fetchRequestsPage(filter, take, 0, requestedBy, sort, sortDirection, serverMediaType, signal),
     [filter, take, requestedBy, sort, sortDirection, serverMediaType],
   );
   const { data, loading, error, refresh } = useWidgetData<ListResponse>({

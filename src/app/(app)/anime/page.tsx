@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ApiError, jsonFetcher } from '@/lib/query-fetch';
 import Image from 'next/image';
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 import { AnimeMediaRail } from '@/components/anime/anime-media-rail';
 import { AnimeSearchOverlay } from '@/components/anime/anime-search-overlay';
 import { HeroCarousel } from '@/components/hero-carousel';

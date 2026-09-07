@@ -1,6 +1,6 @@
 'use client';
 
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 import { Plus } from 'lucide-react';
 import { isMovieFormat, buildSonarrAddParams, buildRadarrAddParams } from '@/lib/anilist-helpers';
 import type { AniListMediaFormat } from '@/types/anilist';

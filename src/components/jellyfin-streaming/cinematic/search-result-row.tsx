@@ -1,6 +1,6 @@
 'use client';
 
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 import { Play } from 'lucide-react';
 import { FadeInImage } from '@/components/media/fade-in-image';
 import { catalogHref } from '@/components/jellyfin-streaming/card-shared';

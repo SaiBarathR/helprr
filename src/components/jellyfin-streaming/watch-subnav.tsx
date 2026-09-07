@@ -1,6 +1,6 @@
 'use client';
 
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 import { usePathname } from 'next/navigation';
 import { Clapperboard, Heart, LayoutGrid, Radio, Search } from 'lucide-react';
 import { cn } from '@/lib/utils';

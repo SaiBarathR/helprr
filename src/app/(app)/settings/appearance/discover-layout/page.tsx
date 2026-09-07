@@ -1,6 +1,6 @@
 'use client';
 
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 import { ChevronLeft } from 'lucide-react';
 import { DiscoverLayoutSettings } from '@/components/settings/discover-layout-settings';
 

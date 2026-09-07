@@ -1,6 +1,6 @@
 'use client';
 
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 import { ChevronLeft } from 'lucide-react';
 import { NavOrderSettings } from '@/components/settings/nav-order-settings';
 import { AnimeCarouselSettings } from '@/components/settings/anime-carousel-settings';

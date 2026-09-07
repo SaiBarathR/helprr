@@ -18,7 +18,7 @@ const DEFAULTS: Filters = { days: 30 };
 export function ProwlarrStatsSummaryWidget({ refreshInterval, editMode = false, narrow = false }: WidgetProps) {
   const [filters, setFilters] = useWidgetFilter<Filters>('prowlarr-stats-summary', DEFAULTS);
 
-  const fetchFn = useCallback(() => fetchProwlarrStats(filters.days), [filters.days]);
+  const fetchFn = useCallback((signal?: AbortSignal) => fetchProwlarrStats(filters.days, signal), [filters.days]);
   const { data, loading } = useWidgetData({
     fetchFn,
     refreshInterval,

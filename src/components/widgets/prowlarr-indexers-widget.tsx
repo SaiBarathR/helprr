@@ -1,6 +1,6 @@
 'use client';
 
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 import { Layers } from 'lucide-react';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
 import { ApiError } from '@/lib/query-fetch';
@@ -16,11 +16,12 @@ interface ProwlarrSummary {
   blocked: number;
 }
 
-async function fetchProwlarr(): Promise<ProwlarrSummary | null> {
+async function fetchProwlarr(signal?: AbortSignal): Promise<ProwlarrSummary | null> {
   const [indexersRes, statusRes] = await Promise.allSettled([
-    fetch('/api/prowlarr/indexers'),
-    fetch('/api/prowlarr/status'),
+    fetch('/api/prowlarr/indexers', { signal }),
+    fetch('/api/prowlarr/status', { signal }),
   ]);
+  signal?.throwIfAborted();
   // Network failure → graceful empty (matches the allSettled intent); a non-ok
   // response throws so a 401 redirects via the global handler.
   if (indexersRes.status !== 'fulfilled') return null;

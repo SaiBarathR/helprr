@@ -18,6 +18,7 @@ import { CatalogRail } from '@/components/jellyfin-streaming/catalog-rail';
 import { WatchHero } from '@/components/jellyfin-streaming/watch-hero';
 import { UpcomingRails } from '@/components/jellyfin-streaming/upcoming-rails';
 import { RecommendationRails } from '@/components/jellyfin-streaming/recommendation-rails';
+import { useNearViewport } from '@/lib/hooks/use-near-viewport';
 import { useCompactViewport } from '@/lib/hooks/use-compact-viewport';
 import { cn } from '@/lib/utils';
 import { useJellyfinPlayback } from '@/components/jellyfin-streaming/playback-provider';
@@ -178,17 +179,6 @@ export function CollectionHub({
     [genre, genres],
   );
 
-  const rails = useQueries({
-    queries: railGenres.map((name) => ({
-      queryKey: ['jellyfin', 'catalog', 'hub-rail', parentId, includeItemTypes, name],
-      queryFn: jsonFetcher<CatalogItemsResponse>(
-        `/api/jellyfin/catalog/items?parentId=${parentId}&includeItemTypes=${includeItemTypes}`
-        + `&recursive=true&genres=${encodeURIComponent(name)}&sortBy=CommunityRating&sortOrder=Descending&limit=${RAIL_SIZE}`,
-      ),
-      enabled: Boolean(parentId),
-      staleTime: 10 * 60_000,
-    })),
-  });
 
   if (home.isPending && !home.data) return <PageSpinner />;
   if (home.isError) {
@@ -220,27 +210,11 @@ export function CollectionHub({
   const libraryHref = `/jellyfin/library/v/${library.Id}?name=${encodeURIComponent(library.Name)}`
     + `&type=${encodeURIComponent(library.CollectionType || collectionType)}`;
 
-  // A genre picked by name is shown whatever its size; the automatic set has to
-  // earn its row.
-  const minItems = genre ? 1 : MIN_RAIL_ITEMS;
-  const genreRails = railGenres
-    .map((name, index) => ({ name, items: rails[index]?.data?.items ?? [] }))
-    .filter((rail) => rail.items.length >= minItems)
-    .slice(0, GENRE_RAILS_SHOWN);
-
   const hasAnything = heroItems.length > 0
-    || genreRails.length > 0
     || resume.length > 0
     || nextUp.length > 0
     || recentlyAdded.length > 0
     || (released.data?.items?.length ?? 0) > 0;
-  const railState = hubRailState({
-    askedEverything: filters.isSuccess && spotlight.isSuccess,
-    railsPending: rails.some((rail) => rail.isPending),
-    hasAnything,
-    builtRails: genreRails.length,
-  });
-
   // The app puts a rounded "All Categories" pill directly under the header and
   // *above* the hero on a phone, and never repeats the screen name below it —
   // the header already carries it. Desktop keeps the title beside the picker.
@@ -350,26 +324,62 @@ export function CollectionHub({
         <UpcomingRails only={isShows ? 'episode' : 'movie'} />
         <RecommendationRails mediaType={isShows ? 'tv' : 'movie'} limit={4} />
 
-        {genreRails.map((rail) => (
-          <CatalogRail
-            key={rail.name}
-            shape="landscape"
-            title={rail.name}
-            items={rail.items}
-            onPlay={play}
-            href={libraryHref}
-          />
-        ))}
-
-        {/* While the library is still answering, the page says so. */}
-        {railState === 'loading' && <HubSkeleton />}
-
-        {railState === 'empty' && (
-          <p className="text-sm text-muted-foreground">Nothing to show here yet.</p>
-        )}
+        <GenreRailSection
+          key={`${parentId}:${genre ?? 'all'}`}
+          parentId={parentId!}
+          includeItemTypes={includeItemTypes}
+          railGenres={railGenres}
+          genre={genre}
+          libraryHref={libraryHref}
+          play={play}
+          hasAnything={hasAnything}
+          askedEverything={filters.isSuccess && spotlight.isSuccess}
+        />
       </div>
     </div>
   );
+}
+
+function GenreRailSection({ parentId, includeItemTypes, railGenres, genre, libraryHref, play, hasAnything, askedEverything }: {
+  parentId: string;
+  includeItemTypes: string;
+  railGenres: string[];
+  genre: string | null;
+  libraryHref: string;
+  play: (item: JellyfinItem) => void;
+  hasAnything: boolean;
+  askedEverything: boolean;
+}) {
+  // Reserve the section's space, but don't compete with the hero/first rails
+  // for mobile bandwidth until the user is approaching these rows.
+  const { ref, hasEnteredViewport } = useNearViewport<HTMLDivElement>();
+  const rails = useQueries({
+    queries: railGenres.map((name) => ({
+      queryKey: ['jellyfin', 'catalog', 'hub-rail', parentId, includeItemTypes, name],
+      queryFn: jsonFetcher<CatalogItemsResponse>(
+        `/api/jellyfin/catalog/items?parentId=${parentId}&includeItemTypes=${includeItemTypes}`
+        + `&recursive=true&genres=${encodeURIComponent(name)}&sortBy=CommunityRating&sortOrder=Descending&limit=${RAIL_SIZE}`,
+      ),
+      enabled: hasEnteredViewport || Boolean(genre),
+      staleTime: 10 * 60_000,
+    })),
+  });
+
+  const genreRails = railGenres
+    .map((name, index) => ({ name, items: rails[index]?.data?.items ?? [] }))
+    .filter((rail) => rail.items.length >= (genre ? 1 : MIN_RAIL_ITEMS))
+    .slice(0, GENRE_RAILS_SHOWN);
+  const railState = hubRailState({
+    askedEverything,
+    railsPending: rails.some((rail) => rail.isPending),
+    hasAnything,
+    builtRails: genreRails.length,
+  });
+  return <div ref={ref} className="space-y-6">
+    {genreRails.map((rail) => <CatalogRail key={rail.name} shape="landscape" title={rail.name} items={rail.items} onPlay={play} href={libraryHref} />)}
+    {(!hasEnteredViewport || railState === 'loading') && genreRails.length === 0 && <HubSkeleton />}
+    {hasEnteredViewport && railState === 'empty' && <p className="py-8 text-sm text-muted-foreground">Nothing to show here yet.</p>}
+  </div>;
 }
 
 /**

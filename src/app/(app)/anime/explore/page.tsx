@@ -3,8 +3,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { jsonFetcher } from '@/lib/query-fetch';
-import Link from 'next/link';
-import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import Link from '@/components/ui/app-link';
+import { usePathname, useSearchParams } from 'next/navigation';
+import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
 import { SearchBar } from '@/components/media/search-bar';
 import { AnimeCard } from '@/components/anime/anime-card';
 import { Button } from '@/components/ui/button';

@@ -1,7 +1,8 @@
 'use client';
 
 import { Suspense, useEffect, useState, useMemo } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
+import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { jsonFetcher, ensureArray, withInstanceQuery } from '@/lib/query-fetch';
 import { queryKeys } from '@/lib/query-keys';

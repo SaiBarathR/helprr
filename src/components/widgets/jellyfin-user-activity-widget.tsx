@@ -29,11 +29,11 @@ interface UserActivityData {
   pluginAvailable: boolean;
 }
 
-async function fetchUserActivity(days: number): Promise<UserActivityData> {
+async function fetchUserActivity(days: number, signal?: AbortSignal): Promise<UserActivityData> {
   const queryDays = days === 0 ? MAX_DAYS : days;
   const [pbRes, jfRes] = await Promise.allSettled([
-    fetch(`/api/jellyfin/playback/users?days=${queryDays}`),
-    fetch('/api/jellyfin/users'),
+    fetch(`/api/jellyfin/playback/users?days=${queryDays}`, { signal }),
+    fetch('/api/jellyfin/users', { signal }),
   ]);
   let users: PlaybackUserActivity[] = [];
   let jellyfinUsers: JellyfinUser[] = [];
@@ -87,7 +87,7 @@ export function JellyfinUserActivityWidget({ refreshInterval, editMode = false, 
   // click can't overwrite the history of the user that's currently selected.
   const latestHistoryRequestRef = useRef<string | null>(null);
 
-  const fetchFn = useCallback(() => fetchUserActivity(filters.days), [filters.days]);
+  const fetchFn = useCallback((signal?: AbortSignal) => fetchUserActivity(filters.days, signal), [filters.days]);
   const { data, loading } = useWidgetData<UserActivityData>({
     fetchFn,
     refreshInterval,

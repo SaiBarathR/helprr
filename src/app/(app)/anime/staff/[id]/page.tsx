@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { ApiError, jsonFetcher } from '@/lib/query-fetch';
 import { handleAuthError } from '@/lib/query-client';
 import Image from 'next/image';
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 import { useParams } from 'next/navigation';
 import DOMPurify from 'isomorphic-dompurify';
 import { PageHeader } from '@/components/layout/page-header';

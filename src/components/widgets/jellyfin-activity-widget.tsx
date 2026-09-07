@@ -15,8 +15,8 @@ const ROW_HEIGHT = 52;
 const CAROUSEL_MAX = 20;
 
 function makeFetcher(hasUserId: boolean) {
-  return async function fetchActivity(): Promise<JellyfinActivityEntry[]> {
-    const res = await fetch(`/api/jellyfin/activity?hasUserId=${hasUserId}&limit=50`);
+  return async function fetchActivity(signal?: AbortSignal): Promise<JellyfinActivityEntry[]> {
+    const res = await fetch(`/api/jellyfin/activity?hasUserId=${hasUserId}&limit=50`, { signal });
     if (!res.ok) throw new ApiError(res.status, 'Request failed');
     const data = await res.json();
     return Array.isArray(data.entries) ? data.entries : [];

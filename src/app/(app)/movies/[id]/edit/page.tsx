@@ -2,7 +2,8 @@
 
 import { useState } from 'react';
 import { ApiError, jsonFetcher, withInstanceQuery } from '@/lib/query-fetch';
-import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
+import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
 import { PageHeader } from '@/components/layout/page-header';
 import {
   Select,

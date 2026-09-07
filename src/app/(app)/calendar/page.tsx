@@ -11,7 +11,7 @@ import {
   useState,
   type ReactElement,
 } from 'react';
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 import { useWindowVirtualizer } from '@tanstack/react-virtual';
 import {
   startOfMonth,

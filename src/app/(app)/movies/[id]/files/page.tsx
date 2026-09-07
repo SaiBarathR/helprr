@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
+import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
 import { format, formatDistanceToNow } from 'date-fns';
 import { Copy, ExternalLink, FileStack, Info } from 'lucide-react';
 import { PageHeader } from '@/components/layout/page-header';

@@ -1,6 +1,6 @@
 'use client';
 
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 import { notFound, useParams, useSearchParams } from 'next/navigation';
 import { useDeferredValue, useState } from 'react';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';

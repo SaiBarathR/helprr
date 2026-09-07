@@ -2,7 +2,7 @@
 'use client';
 
 import { useRef } from 'react';
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { ChevronRight } from 'lucide-react';
 import { PersonCard } from '@/components/media/person-card';

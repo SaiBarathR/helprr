@@ -1,9 +1,9 @@
 'use client';
 
 import { memo, useEffect, useId, useRef, useState } from 'react';
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 import { cinematicCardLayout } from '@/components/jellyfin-streaming/cinematic/card-layout';
-import { useRouter } from 'next/navigation';
+import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
 import { Play, Volume2, VolumeX } from 'lucide-react';
 import type { JellyfinItem } from '@/types/jellyfin';
 import { FadeInImage } from '@/components/media/fade-in-image';

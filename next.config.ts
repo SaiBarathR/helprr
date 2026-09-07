@@ -6,6 +6,9 @@ const withSerwist = withSerwistInit({
   swSrc: 'src/app/sw.ts',
   swDest: 'public/sw.js',
   disable: process.env.NODE_ENV === 'development',
+  // These optional subtitle engines total over 7 MB. Fetch them only when
+  // playback needs ASS subtitles, not during every PWA install/update.
+  globPublicPatterns: ['*', '!(libass)/**/*'],
   exclude: [
     /\.map$/,
     /^manifest.*\.js$/,

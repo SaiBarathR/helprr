@@ -1,6 +1,6 @@
 'use client';
 
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 import { ApiError } from '@/lib/query-fetch';
 import { toCachedImageSrc } from '@/lib/image';
 import { formatDistanceToNowShort } from '@/lib/format';

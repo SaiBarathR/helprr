@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowRight, Clock, Tv, Layers, CalendarClock, Hourglass, type LucideIcon } from 'lucide-react';
 import { jsonFetcher } from '@/lib/query-fetch';

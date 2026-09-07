@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Ban, Bookmark, Clapperboard, Film, HardDriveDownload, Heart, Loader2, Share2, Sparkles, Star, Tv, X } from 'lucide-react';

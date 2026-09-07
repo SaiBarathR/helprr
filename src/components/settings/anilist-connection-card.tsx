@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { ApiError } from '@/lib/query-fetch';
-import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
+import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
 import Image from 'next/image';
 import { Sparkles, Loader2, ChevronRight, ExternalLink, AlertTriangle, Check, Unplug } from 'lucide-react';
 import { Button } from '@/components/ui/button';

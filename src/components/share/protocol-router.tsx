@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import Link from 'next/link';
+import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
+import Link from '@/components/ui/app-link';
 import { Loader2, AlertTriangle, ChevronLeft } from 'lucide-react';
 import { toast } from 'sonner';
 

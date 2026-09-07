@@ -17,13 +17,13 @@ const USERS_FETCH_SIZE = 50;
 // rows than a 1-per-row list, and the window scroll reveals every fetched user.
 const GRID_CLASS = 'grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4';
 
-async function fetchUsers(): Promise<SeerrPaginated<SeerrUserSummary>> {
+async function fetchUsers(signal?: AbortSignal): Promise<SeerrPaginated<SeerrUserSummary>> {
   const params = new URLSearchParams({
     take: String(USERS_FETCH_SIZE),
     skip: '0',
     sort: 'requests',
   });
-  const res = await fetch(`/api/seerr/users?${params.toString()}`);
+  const res = await fetch(`/api/seerr/users?${params.toString()}`, { signal });
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as { error?: string };
     throw new Error(body.error ?? `Failed (${res.status})`);

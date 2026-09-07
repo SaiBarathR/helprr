@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
 import { useElementSize } from '@/lib/widgets/use-element-size';
 import { useListFetchSize } from '@/lib/widgets/use-list-fetch-size';
@@ -83,25 +83,25 @@ function itemToRailItem(item: AniListListItem): RailItem {
 
 const HOME_CACHE_TTL_MS = 5 * 60 * 1000;
 const ANILIST_MAX_PER_PAGE = 50;
-const homeDataPromises = new Map<number, { promise: Promise<HomeData>; time: number }>();
+const homeDataPromises = new Map<number, { promise: Promise<HomeData>; time: number; signal?: AbortSignal }>();
 
-async function fetchHomeDataCached(perPage: number) {
+async function fetchHomeDataCached(perPage: number, signal?: AbortSignal) {
   const clamped = Math.min(ANILIST_MAX_PER_PAGE, Math.max(10, perPage));
   const now = Date.now();
   const existing = homeDataPromises.get(clamped);
-  if (existing && now - existing.time < HOME_CACHE_TTL_MS) {
+  if (existing && !existing.signal?.aborted && now - existing.time < HOME_CACHE_TTL_MS) {
     return existing.promise;
   }
-  const promise = fetch(`/api/anime/home?perPage=${clamped}`)
+  const promise = fetch(`/api/anime/home?perPage=${clamped}`, { signal })
     .then((res) => {
       if (!res.ok) throw new Error('Failed to fetch anime home data');
       return res.json() as Promise<HomeData>;
     })
     .catch((error) => {
-      homeDataPromises.delete(clamped);
+      if (homeDataPromises.get(clamped)?.promise === promise) homeDataPromises.delete(clamped);
       throw error;
     });
-  homeDataPromises.set(clamped, { promise, time: now });
+  homeDataPromises.set(clamped, { promise, time: now, signal });
   return promise;
 }
 
@@ -158,16 +158,16 @@ export function AnimeCarouselWidget({
   }, [requiresViewer]);
 
   const { data: homeData, loading: homeLoading } = useWidgetData<HomeData>({
-    fetchFn: () => fetchHomeDataCached(perPage),
+    fetchFn: (signal) => fetchHomeDataCached(perPage, signal),
     refreshInterval,
     enabled: !editMode && !requiresViewer && ready,
-    cacheKey: `anime-home-${perPage}`,
+    cacheKey: `anime-home-${Math.min(ANILIST_MAX_PER_PAGE, Math.max(10, perPage))}`,
   });
 
   const { data: listData, loading: listLoading } = useWidgetData<AniListMediaListEntry[]>({
-    fetchFn: async () => {
+    fetchFn: async (signal) => {
       const status = carouselId === 'continueWatching' ? 'CURRENT' : 'PLANNING';
-      const res = await fetch(`/api/anilist/library?type=ANIME&status=${status}`);
+      const res = await fetch(`/api/anilist/library?type=ANIME&status=${status}`, { signal });
       if (!res.ok) throw new Error(`Failed to fetch ${status} list`);
       const json = await res.json();
       return flattenEntries(json.collection);

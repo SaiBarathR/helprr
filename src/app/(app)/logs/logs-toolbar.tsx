@@ -12,7 +12,7 @@ import {
 import { LogsFilterMenu, type LogLevel, type LogSource } from './logs-filter-menu';
 import { LogsDateRangePicker } from './logs-date-range-picker';
 import { cn } from '@/lib/utils';
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 
 interface LogFile {
   name: string;

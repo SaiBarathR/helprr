@@ -2,7 +2,7 @@
 import { ApiError } from '@/lib/query-fetch';
 
 import { useCallback, useState } from 'react';
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 import { Download, Film, Tv, AlertTriangle, Trash2, Info, Import, Clock } from 'lucide-react';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
 import { useElementSize } from '@/lib/widgets/use-element-size';
@@ -104,8 +104,8 @@ function getPosterUrl(r: HistoryRecord): string | null {
   );
 }
 
-async function fetchHistory(pageSize: number): Promise<HistoryRecord[]> {
-  const res = await fetch(`/api/activity/history?pageSize=${pageSize}`);
+async function fetchHistory(pageSize: number, signal?: AbortSignal): Promise<HistoryRecord[]> {
+  const res = await fetch(`/api/activity/history?pageSize=${pageSize}`, { signal });
   if (!res.ok) throw new ApiError(res.status, 'Request failed');
   const data = await res.json();
   return data.records || [];
@@ -256,7 +256,7 @@ export function ActivityHistoryWidget({
     : 10;
   const visibleCount = Math.max(listVisible, carouselVisible);
   const fetchPageSize = Math.max(heightFetchSize, Math.ceil(carouselVisible / 20) * 20);
-  const fetchFn = useCallback(() => fetchHistory(fetchPageSize), [fetchPageSize]);
+  const fetchFn = useCallback((signal?: AbortSignal) => fetchHistory(fetchPageSize, signal), [fetchPageSize]);
   const { data, loading } = useWidgetData({
     fetchFn,
     refreshInterval,

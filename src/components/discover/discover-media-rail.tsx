@@ -1,6 +1,6 @@
 'use client';
 
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 import { Star, Film, Tv, Check, ExternalLink, Plus } from 'lucide-react';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import type { DiscoverItem } from '@/types';

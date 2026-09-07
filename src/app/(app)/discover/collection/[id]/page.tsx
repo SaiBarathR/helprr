@@ -1,6 +1,6 @@
 import { headers } from 'next/headers';
 import Image from 'next/image';
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 import { PageHeader } from '@/components/layout/page-header';
 import { Badge } from '@/components/ui/badge';
 import { Star, Film } from 'lucide-react';

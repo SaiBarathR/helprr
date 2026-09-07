@@ -1,6 +1,6 @@
 'use client';
 
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 import { Film, Tv, Disc3, Star } from 'lucide-react';
 import { memo, useState, type ReactNode } from 'react';
 import type { MediaImage } from '@/types';

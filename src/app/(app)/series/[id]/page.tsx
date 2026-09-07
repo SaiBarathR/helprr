@@ -3,8 +3,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import Image from 'next/image';
 import DOMPurify from 'isomorphic-dompurify';
-import { useParams, useRouter, useSearchParams } from 'next/navigation';
-import Link from 'next/link';
+import { useParams, useSearchParams } from 'next/navigation';
+import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
+import Link from '@/components/ui/app-link';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { PageSpinner } from '@/components/ui/page-spinner';

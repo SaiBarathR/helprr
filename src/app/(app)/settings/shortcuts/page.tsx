@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useSyncExternalStore } from 'react';
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 import { ChevronLeft, Copy, Check, Share } from 'lucide-react';
 import { toast } from 'sonner';
 import { GroupedSection } from '@/components/settings/grouped-section';

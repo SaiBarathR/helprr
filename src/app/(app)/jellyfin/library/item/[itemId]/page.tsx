@@ -1,7 +1,7 @@
 'use client';
 
 import { use, useEffect, useMemo, useRef, useState } from 'react';
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 import { useSearchParams } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, Film, HardDrive, Heart, ListPlus, Play, Plus, RotateCcw, Shuffle, User } from 'lucide-react';

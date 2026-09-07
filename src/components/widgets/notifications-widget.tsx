@@ -1,8 +1,8 @@
 'use client';
 
 import { useCallback, useMemo, useRef, useState } from 'react';
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import Link from '@/components/ui/app-link';
+import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
 import { Info } from 'lucide-react';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
 import { useElementSize } from '@/lib/widgets/use-element-size';
@@ -28,8 +28,8 @@ interface NotificationRecord {
   createdAt: string;
 }
 
-async function fetchNotifications(pageSize: number): Promise<NotificationRecord[]> {
-  const res = await fetch(`/api/notifications?pageSize=${pageSize}`);
+async function fetchNotifications(pageSize: number, signal?: AbortSignal): Promise<NotificationRecord[]> {
+  const res = await fetch(`/api/notifications?pageSize=${pageSize}`, { signal });
   if (!res.ok) throw new Error(`Failed (${res.status})`);
   const data = await res.json();
   return data.records || [];
@@ -47,7 +47,7 @@ export function NotificationsWidget({
     rowHeight: NOTIFICATION_ROW_HEIGHT,
     bucketSize: 5,
   });
-  const fetchFn = useCallback(() => fetchNotifications(fetchPageSize), [fetchPageSize]);
+  const fetchFn = useCallback((signal?: AbortSignal) => fetchNotifications(fetchPageSize, signal), [fetchPageSize]);
   const { data, loading } = useWidgetData({
     fetchFn,
     refreshInterval,

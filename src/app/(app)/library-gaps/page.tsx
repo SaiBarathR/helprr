@@ -4,7 +4,7 @@ import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { jsonFetcher } from '@/lib/query-fetch';
 import { queryKeys } from '@/lib/query-keys';
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 import { FadeInImage } from '@/components/media/fade-in-image';
 import { toast } from 'sonner';
 import { formatDistanceToNow, isValid } from 'date-fns';

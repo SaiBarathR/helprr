@@ -2,7 +2,7 @@
 import { ApiError } from '@/lib/query-fetch';
 
 import { useCallback } from 'react';
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 import { Film, Tv } from 'lucide-react';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
 import { useElementSize } from '@/lib/widgets/use-element-size';
@@ -42,8 +42,8 @@ function formatShortDate(dateStr: string): string {
   return `${month} ${day}`;
 }
 
-async function fetchRecent(limit: number): Promise<RecentItem[]> {
-  const res = await fetch(`/api/activity/recent?limit=${limit}`);
+async function fetchRecent(limit: number, signal?: AbortSignal): Promise<RecentItem[]> {
+  const res = await fetch(`/api/activity/recent?limit=${limit}`, { signal });
   if (!res.ok) throw new ApiError(res.status, 'Request failed');
   const data = await res.json();
   return Array.isArray(data) ? data : [];
@@ -68,7 +68,7 @@ export function RecentlyAddedWidget({
     : 12;
   const visibleCount = Math.max(listVisible, carouselVisible);
   const fetchLimit = Math.max(heightFetchSize, Math.ceil(carouselVisible / 20) * 20);
-  const fetchFn = useCallback(() => fetchRecent(fetchLimit), [fetchLimit]);
+  const fetchFn = useCallback((signal?: AbortSignal) => fetchRecent(fetchLimit, signal), [fetchLimit]);
   const { data, loading } = useWidgetData({
     fetchFn,
     refreshInterval,

@@ -2,7 +2,7 @@
 import { ApiError } from '@/lib/query-fetch';
 
 import { useCallback } from 'react';
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
 import { useElementSize } from '@/lib/widgets/use-element-size';
 import { useListFetchSize } from '@/lib/widgets/use-list-fetch-size';
@@ -40,8 +40,8 @@ function itemKey(item: QueueWidgetItem): string {
   return `${item.source ?? item.service ?? item.backend ?? 'unknown'}-${item.id}`;
 }
 
-async function fetchQueue(pageSize: number): Promise<QueueWidgetItem[]> {
-  const res = await fetch(`/api/activity/queue?pageSize=${pageSize}`);
+async function fetchQueue(pageSize: number, signal?: AbortSignal): Promise<QueueWidgetItem[]> {
+  const res = await fetch(`/api/activity/queue?pageSize=${pageSize}`, { signal });
   if (!res.ok) throw new ApiError(res.status, 'Request failed');
   const data: QueueApiResponse = await res.json();
   return data.records || [];
@@ -73,7 +73,7 @@ export function ActiveDownloadsWidget({
   // Grow the fetch with width too — a wide carousel needs more cards than a
   // tall list. Bucket to the same 20-step as useListFetchSize uses.
   const fetchPageSize = Math.max(heightFetchSize, Math.ceil(carouselVisible / 20) * 20);
-  const fetchFn = useCallback(() => fetchQueue(fetchPageSize), [fetchPageSize]);
+  const fetchFn = useCallback((signal?: AbortSignal) => fetchQueue(fetchPageSize, signal), [fetchPageSize]);
   const { data: queue, loading } = useWidgetData({
     fetchFn,
     refreshInterval,

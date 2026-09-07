@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import Image from 'next/image';
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 import { useParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { PageHeader } from '@/components/layout/page-header';

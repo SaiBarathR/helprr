@@ -55,7 +55,7 @@ export function useWidgetData<T>({
   refreshInterval,
   enabled = true,
   cacheKey,
-  staleTime = 0,
+  staleTime,
   refetchOnFocus = false,
 }: UseWidgetDataOptions<T>): UseWidgetDataResult<T> {
   // No cacheKey → a stable per-instance key so instances don't share (matches the
@@ -73,10 +73,9 @@ export function useWidgetData<T>({
     refetchInterval: queryEnabled ? refreshInterval : false,
     refetchIntervalInBackground: false,
     refetchOnWindowFocus: refetchOnFocus,
-    // Preserve the old refetch-on-mount behavior by default. Exact shared
-    // resources can opt into a short freshness window so a fast first response
-    // does not trigger another request while a sibling consumer mounts.
-    staleTime,
+    // Returning to the dashboard shouldn't re-download every widget at once.
+    // Live widgets retain immediate focus refresh; explicit freshness wins.
+    staleTime: staleTime ?? (refetchOnFocus ? 0 : Math.min(refreshInterval, 30_000)),
     gcTime: 5 * 60_000,
   });
 

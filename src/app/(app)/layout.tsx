@@ -17,6 +17,7 @@ import { readJellyfinToken } from '@/lib/jellyfin-token';
 import { getAppShellServiceFlags } from '@/lib/app-shell-services';
 import { setImageCacheGeneration } from '@/lib/image';
 import { getCacheGeneration } from '@/lib/cache/state';
+import { NavigationProvider } from '@/components/layout/navigation-provider';
 
 // Revocation is enforced server-side here (getSession() hits the DB on every
 // invocation). Force-dynamic guarantees this layout re-runs on every request
@@ -67,6 +68,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <QueryProvider>
+      <NavigationProvider>
       <PermissionProvider value={me}>
         <ImageCacheGenerationInit value={imageCacheGeneration} />
         <RequestedMediaProvider>
@@ -85,6 +87,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           </WatchStatusProvider>
         </RequestedMediaProvider>
       </PermissionProvider>
+      </NavigationProvider>
     </QueryProvider>
   );
 }

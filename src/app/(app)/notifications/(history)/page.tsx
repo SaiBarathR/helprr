@@ -1,8 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import Link from '@/components/ui/app-link';
+import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
 import { format, subDays } from 'date-fns';
 import type { DateRange } from 'react-day-picker';
 import { PageHeader } from '@/components/layout/page-header';

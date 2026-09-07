@@ -79,7 +79,7 @@ export function RecommendationRails({ limit = 6, mediaType }: {
   // Jellyfin says you have watched, what is downloading in arr right now, and
   // what you have already requested through Seerr.
   const watchLookup = useWatchLookup(rails.length > 0);
-  const queueLookup = useArrQueueLookup();
+  const queueLookup = useArrQueueLookup(rails.some((rail) => rail.items.some((item) => item.arr)));
   const requested = useRequestedMedia(rails.length > 0);
 
   if (!canSee || rails.length === 0) return null;

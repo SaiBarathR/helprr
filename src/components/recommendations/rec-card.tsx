@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 import { Ban, Bookmark, ExternalLink, Film, HardDriveDownload, Heart, Sparkles, Star, Tv } from 'lucide-react';
 import { QuickContextMenu, type ContextAction } from '@/components/ui/quick-context-menu';
 import { WatchlistAddDialog, type WatchlistDraft } from '@/components/watchlist/watchlist-add-dialog';

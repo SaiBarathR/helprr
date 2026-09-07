@@ -1,8 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import Link from '@/components/ui/app-link';
+import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
 import { ChevronLeft, Loader2, LogOut, Monitor, Pencil } from 'lucide-react';
 import { toast } from 'sonner';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';

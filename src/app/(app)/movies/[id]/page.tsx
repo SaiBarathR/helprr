@@ -4,7 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { arrMutationFetch, jsonFetcher } from '@/lib/query-fetch';
 import { handleAuthError } from '@/lib/query-client';
 import Image from 'next/image';
-import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
+import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { PageSpinner } from '@/components/ui/page-spinner';
@@ -65,7 +66,7 @@ import {
 } from '@/lib/detail-view-state';
 import { useExternalUrls, useExternalUrlResolver } from '@/lib/hooks/use-external-urls';
 import { formatBytes } from '@/lib/format';
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 import { DiscoverVideoRail } from '@/components/discover/discover-video-rail';
 import { DiscoverMediaRail } from '@/components/discover/discover-media-rail';
 import { DiscoverWatchProvidersSection } from '@/components/discover/discover-watch-providers';

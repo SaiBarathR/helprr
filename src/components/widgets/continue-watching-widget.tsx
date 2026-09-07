@@ -2,7 +2,7 @@
 import { ApiError } from '@/lib/query-fetch';
 
 import { useCallback } from 'react';
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
 import { useElementSize } from '@/lib/widgets/use-element-size';
 import { useListFetchSize } from '@/lib/widgets/use-list-fetch-size';
@@ -24,8 +24,8 @@ import {
 } from './bento-primitives';
 import { useDashboardLayout } from './dashboard-layout-context';
 
-async function fetchResumeItems(limit: number): Promise<JellyfinItem[]> {
-  const res = await fetch(`/api/jellyfin/resume?limit=${limit}`);
+async function fetchResumeItems(limit: number, signal?: AbortSignal): Promise<JellyfinItem[]> {
+  const res = await fetch(`/api/jellyfin/resume?limit=${limit}`, { signal });
   if (!res.ok) throw new ApiError(res.status, 'Request failed');
   const data = await res.json();
   return data.items || [];
@@ -51,7 +51,7 @@ export function ContinueWatchingWidget({
     : 12;
   const visibleCount = Math.max(listVisible, carouselVisible);
   const fetchLimit = Math.max(heightFetchSize, Math.ceil(carouselVisible / 10) * 10);
-  const fetchFn = useCallback(() => fetchResumeItems(fetchLimit), [fetchLimit]);
+  const fetchFn = useCallback((signal?: AbortSignal) => fetchResumeItems(fetchLimit, signal), [fetchLimit]);
   const { data: items, loading } = useWidgetData({
     fetchFn,
     refreshInterval,

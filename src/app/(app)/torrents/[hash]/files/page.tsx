@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError, jsonFetcher } from '@/lib/query-fetch';
-import { useParams, useSearchParams, useRouter } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
+import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
 import { toast } from 'sonner';
 import { ArrowLeft, ChevronRight, ChevronDown, Download, Folder, File, Gauge, Loader2, X } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';

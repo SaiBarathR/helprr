@@ -2,7 +2,7 @@
 import { ApiError } from '@/lib/query-fetch';
 
 import { useCallback, useState } from 'react';
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 import { Disc3, Film, Tv } from 'lucide-react';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
 import { useElementSize } from '@/lib/widgets/use-element-size';
@@ -101,8 +101,8 @@ export function UpcomingWidget({
   const { ref, width, height } = useElementSize<HTMLDivElement>();
   const { setWidgetLayoutOverride } = useDashboardLayout();
 
-  const fetchUpcoming = useCallback(async (): Promise<CalendarEvent[]> => {
-    const res = await fetch(`/api/calendar?days=${days}`);
+  const fetchUpcoming = useCallback(async (signal?: AbortSignal): Promise<CalendarEvent[]> => {
+    const res = await fetch(`/api/calendar?days=${days}`, { signal });
     if (!res.ok) throw new ApiError(res.status, 'Request failed');
     return res.json();
   }, [days]);

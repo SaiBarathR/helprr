@@ -1,7 +1,7 @@
 'use client';
 
 import Image from 'next/image';
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 import { Badge } from '@/components/ui/badge';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 

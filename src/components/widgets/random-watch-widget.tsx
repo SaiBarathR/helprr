@@ -2,7 +2,7 @@
 
 import { useCallback, useState } from 'react';
 import Image from 'next/image';
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 import { Clock, Dices, Film, RefreshCw, Star, Tv } from 'lucide-react';
 import { ApiError } from '@/lib/query-fetch';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';

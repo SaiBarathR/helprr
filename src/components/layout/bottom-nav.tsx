@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { Loader2, MoreHorizontal } from 'lucide-react';
@@ -12,7 +12,7 @@ import {
 } from '@/components/ui/popover';
 import { useUIStore } from '@/lib/store';
 import { getActiveNavHref, getEnabledNavItems, getBottomNavLayout, navItemAllowed } from '@/lib/nav-config';
-import { useNavPending } from '@/hooks/use-nav-pending';
+import { usePendingHref } from '@/components/layout/navigation-provider';
 import { useMe, hasCapability } from '@/components/permission-provider';
 import { useBadgeCounts } from '@/components/layout/badge-provider';
 import { NavBadge } from '@/components/layout/nav-badge';
@@ -20,7 +20,7 @@ import type { BadgeSlice } from '@/types/badges';
 
 export function BottomNav() {
   const pathname = usePathname();
-  const { pendingHref, beginPending } = useNavPending();
+  const pendingHref = usePendingHref();
   const [moreOpen, setMoreOpen] = useState(false);
   const navOrder = useUIStore((s) => s.navOrder);
   const disabledNavItems = useUIStore((s) => s.disabledNavItems);
@@ -36,7 +36,7 @@ export function BottomNav() {
     return getBottomNavLayout(enabled);
   }, [navOrder, disabledNavItems, me]);
 
-  const activeHref = getActiveNavHref([...tabs, ...moreItems], pathname);
+  const activeHref = getActiveNavHref([...tabs, ...moreItems], pendingHref?.split('?')[0] || pathname);
   const isMoreActive = moreItems.some((item) => item.href === activeHref);
 
   // Roll the hidden items' badges into one indicator on the "More" button.
@@ -75,12 +75,7 @@ export function BottomNav() {
             <Link
               key={href}
               href={href}
-              onClick={(event) => {
-                if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
-                  return;
-                }
-                beginPending(href);
-              }}
+              prefetch={null}
               className={cn(
                 'flex flex-col items-center justify-center gap-0.5 flex-1 h-full min-h-[48px] text-[11px] font-medium transition-colors',
                 isActive ? 'text-primary' : 'text-muted-foreground',
@@ -132,12 +127,12 @@ export function BottomNav() {
                     <Link
                       key={href}
                       href={href}
+                      prefetch={null}
                       onClick={(event) => {
-                        setMoreOpen(false);
                         if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
                           return;
                         }
-                        beginPending(href);
+                        setMoreOpen(false);
                       }}
                       className={cn(
                         'flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium transition-colors min-h-[44px]',

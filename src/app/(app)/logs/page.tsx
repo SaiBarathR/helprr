@@ -13,6 +13,7 @@ import { LogsEntryRow, type LogEntry } from './logs-entry-row';
 import type { LogLevel, LogSource } from './logs-filter-menu';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useCan } from '@/components/permission-provider';
+import { Button } from '@/components/ui/button';
 
 function entryKey(entry: LogEntry, index: number) {
   // Index keeps keys unique even if two lines share a timestamp + requestId.
@@ -89,6 +90,7 @@ export default function LogsPage() {
   const [filesSheetOpen, setFilesSheetOpen] = useState(false);
   const [scrollMargin, setScrollMargin] = useState(0);
   const [pendingDeleteFile, setPendingDeleteFile] = useState<string | null>(null);
+  const [expandedSearch, setExpandedSearch] = useState<string | null>(null);
 
   const listRef = useRef<HTMLDivElement | null>(null);
 
@@ -98,7 +100,7 @@ export default function LogsPage() {
   }, [searchInput]);
 
   const logsSearchPath = (() => {
-    const params = new URLSearchParams({ limit: '1000' });
+    const params = new URLSearchParams();
     if (selectedFile !== 'all') params.set('file', selectedFile);
     if (levels.size > 0) params.set('level', [...levels].join(','));
     if (sources.size > 0) params.set('source', [...sources].join(','));
@@ -107,6 +109,7 @@ export default function LogsPage() {
     if (to) params.set('to', to);
     return `/api/logs/search?${params.toString()}`;
   })();
+  const entryLimit = expandedSearch === logsSearchPath ? 1000 : 200;
 
   const { data: files = [], refetch: refetchFiles } = useQuery({
     queryKey: ['logs', 'files'],
@@ -120,8 +123,9 @@ export default function LogsPage() {
     isError: loadError,
     refetch: refetchLogs,
   } = useQuery({
-    queryKey: ['logs', { selectedFile, levels: [...levels], sources: [...sources], query, from, to }],
-    queryFn: jsonFetcher<{ entries?: LogEntry[] }>(logsSearchPath),
+    queryKey: ['logs', logsSearchPath, entryLimit],
+    queryFn: jsonFetcher<{ entries?: LogEntry[] }>(`${logsSearchPath}&limit=${entryLimit}`),
+    placeholderData: (previous, previousQuery) => previousQuery?.queryKey[1] === logsSearchPath ? previous : undefined,
     select: (payload) => (Array.isArray(payload.entries) ? payload.entries : []),
   });
 
@@ -395,6 +399,12 @@ export default function LogsPage() {
           </div>
         )}
       </div>
+
+      {entries.length >= 200 && entryLimit === 200 && (
+        <Button variant="outline" className="w-full" disabled={loading} onClick={() => setExpandedSearch(logsSearchPath)}>
+          Load up to 1,000 entries
+        </Button>
+      )}
 
       <LogsFilesSheet
         open={filesSheetOpen}

@@ -18,8 +18,8 @@ interface DevicesData {
   selfDeviceId: string;
 }
 
-async function fetchDevicesData(): Promise<DevicesData> {
-  const res = await fetch('/api/jellyfin/devices');
+async function fetchDevicesData(signal?: AbortSignal): Promise<DevicesData> {
+  const res = await fetch('/api/jellyfin/devices', { signal });
   if (!res.ok) return { devices: [], selfDeviceId: '' };
   const data = await res.json();
   return {

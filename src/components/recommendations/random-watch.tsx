@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { jsonFetcher } from '@/lib/query-fetch';
 import Image from 'next/image';
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 import { Clock, Dices, Film, Loader2, RefreshCw, Sparkles, Star, Tv } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';

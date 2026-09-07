@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 import { ChevronDown, Play, X } from 'lucide-react';
 import { FadeInImage } from '@/components/media/fade-in-image';
 import { catalogHref } from '@/components/jellyfin-streaming/card-shared';
