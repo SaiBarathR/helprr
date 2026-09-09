@@ -190,7 +190,7 @@ export async function mountPlayback(options: { hls?: boolean } = {}): Promise<Ha
         // Enough of a media source for the provider; the indexes are what the
         // restart carries and the tests assert on.
         mediaSource: { Id: 'source-1', RunTimeTicks: ITEM.RunTimeTicks, MediaStreams: [] } as never,
-        playMethod: 'DirectPlay',
+        playMethod: body.enableDirectPlay === false ? 'Transcode' : 'DirectPlay',
         playSessionId: `session-${session}`,
         // Not `.m3u8` and not an mpegurl mime type, so `attachMedia` stays off
         // the hls.js path entirely.

@@ -87,11 +87,15 @@ function canPlayAudioFormat(format: string, browser: HelprrBrowser): boolean {
   return playable(audio.canPlayType(types[format] ?? `audio/${format}`));
 }
 
-function testCanPlayMkv(video: HTMLVideoElement, browser: HelprrBrowser): boolean {
-  if (playable(video.canPlayType('video/x-matroska')) || playable(video.canPlayType('video/mkv'))) {
-    return true;
-  }
-  return browser.edgeChromium && browser.windows;
+function mkvCodecs(video: HTMLVideoElement, candidates: Record<string, string[]>): string[] {
+  // A generic "maybe" only identifies the container. MP4 HEVC support does
+  // not prove that the same decoder works in Matroska. Require an explicit
+  // codec/container answer, including audio; otherwise let Jellyfin remux.
+  return Object.entries(candidates).filter(([, codecs]) => codecs.some((codec) =>
+    ['video/x-matroska', 'video/mkv'].some((type) =>
+      video.canPlayType(`${type}; codecs="${codec}"`) === 'probably'
+    )
+  )).map(([codec]) => codec);
 }
 
 function canPlayNativeHlsInFmp4(browser: HelprrBrowser): boolean {
@@ -152,7 +156,6 @@ export function getDeviceProfile(options: DeviceProfileOptions = {}): JellyfinDe
   const safariSupportsOpus = browser.safari && browser.versionMajor >= 17
     && playable(document.createElement('audio').canPlayType('audio/x-caf; codecs="opus"'));
   const webmAudioCodecs = ['vorbis'];
-  const canPlayMkv = testCanPlayMkv(video, browser);
 
   const profile: JellyfinDeviceProfile = {
     MaxStreamingBitrate: bitrateSetting,
@@ -295,12 +298,20 @@ export function getDeviceProfile(options: DeviceProfileOptions = {}): JellyfinDe
       AudioCodec: videoAudioCodecs.join(','),
     });
   }
-  if (canPlayMkv && mp4VideoCodecs.length) {
+  const mkvVideoCodecs = mkvCodecs(video, {
+    h264: ['avc1.42E01E'], hevc: ['hvc1.1.L120', 'hev1.1.L120'],
+    vp8: ['vp8'], vp9: ['vp9'], av1: ['av01.0.15M.08'],
+  });
+  const mkvAudioCodecs = mkvCodecs(video, {
+    aac: ['mp4a.40.2'], mp3: ['mp3'], ac3: ['ac-3'], eac3: ['ec-3'],
+    opus: ['opus'], vorbis: ['vorbis'], flac: ['flac'],
+  });
+  if (mkvVideoCodecs.length && mkvAudioCodecs.length) {
     profile.DirectPlayProfiles.push({
       Container: 'mkv',
       Type: 'Video',
-      VideoCodec: mp4VideoCodecs.join(','),
-      AudioCodec: videoAudioCodecs.join(','),
+      VideoCodec: mkvVideoCodecs.join(','),
+      AudioCodec: mkvAudioCodecs.join(','),
     });
   }
   if (browser.safari || browser.chrome || browser.edgeChromium) {

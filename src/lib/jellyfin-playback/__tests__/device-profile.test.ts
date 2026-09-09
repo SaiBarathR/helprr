@@ -105,6 +105,25 @@ describe('device profile shape', () => {
 });
 
 describe('codec gating', () => {
+  it('does not infer Matroska support from maybe or MP4 HEVC support', () => {
+    vi.spyOn(HTMLMediaElement.prototype, 'canPlayType').mockImplementation((type) => {
+      if (/matroska|video\/mkv/.test(type)) return 'maybe';
+      return /video\/mp4/.test(type) ? 'probably' : '';
+    });
+    const profile = getDeviceProfile({ userAgent: CHROME_DESKTOP });
+    expect(profile.DirectPlayProfiles.find((entry) => entry.Container === 'mp4,m4v')?.VideoCodec).toContain('hevc');
+    expect(profile.DirectPlayProfiles.some((entry) => entry.Container === 'mkv')).toBe(false);
+  });
+
+  it('advertises only codecs explicitly supported inside Matroska', () => {
+    vi.spyOn(HTMLMediaElement.prototype, 'canPlayType').mockImplementation((type) => {
+      if (/matroska|video\/mkv/.test(type)) return /avc1|mp4a\.40\.2/.test(type) ? 'probably' : '';
+      return /video\/mp4/.test(type) ? 'probably' : '';
+    });
+    expect(getDeviceProfile({ userAgent: CHROME_DESKTOP }).DirectPlayProfiles.find((entry) => entry.Container === 'mkv'))
+      .toMatchObject({ VideoCodec: 'h264', AudioCodec: 'aac' });
+  });
+
   it('advertises HEVC for Safari and withholds it from Firefox', () => {
     stubCanPlayType([H264, HEVC, AC3]);
     const safari = getDeviceProfile({ userAgent: SAFARI_MAC, maxTouchPoints: 0 });

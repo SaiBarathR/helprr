@@ -7,9 +7,10 @@ const COOKIE_NAME = 'helprr-session';
 
 // Prefix-matched public routes (login page + auth endpoints).
 const PUBLIC_PATHS = ['/login', '/api/auth/login', '/api/auth/jellyfin'];
-// Exact-matched public routes: liveness and readiness probes are public for
-// container/orchestrator use, but subpaths must not become silently exposed.
-const PUBLIC_EXACT_PATHS = ['/api/health', '/api/ready'];
+// Probes and the static offline document must work without a session. The worker
+// installs on /login too; redirecting offline.html would precache login HTML.
+// Match exactly so neighboring paths do not become silently exposed.
+const PUBLIC_EXACT_PATHS = ['/api/health', '/api/ready', '/offline.html'];
 const IS_DEV = process.env.NODE_ENV === 'development';
 
 const SECURITY_HEADERS: Record<string, string> = {

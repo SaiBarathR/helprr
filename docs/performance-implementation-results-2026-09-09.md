@@ -1,6 +1,6 @@
 # Performance implementation results — 9 September 2026
 
-Implemented the twelve packages plus opt-in measurement from [the performance plan](performance-improvement-plan-2026-09-06.md). Changes remain uncommitted on `codex/stop-responsiveness`; no release or deployment was performed. Android and iPhone qualification belongs to the owner, as requested.
+Implemented the twelve packages plus opt-in measurement from [the performance plan](performance-improvement-plan-2026-09-06.md). The original implementation was committed and pushed as `456a84e0` on `codex/stop-responsiveness`. This follow-up records the subsequent fixes and qualification; no release or deployment was performed. Android and iPhone qualification belongs to the owner, as requested.
 
 ## Changes
 
@@ -42,10 +42,12 @@ The standalone `tsc --noEmit` check also encounters existing test typing errors;
 | Metric | Plan baseline | Final build |
 | --- | ---: | ---: |
 | Precached entries | 635 | 29 |
-| Raw bytes | 8,623,760 | 1,163,130 |
-| Sum of independently gzipped assets | 3,168,702 | 544,539 |
+| Raw bytes | 8,623,760 | 1,163,296 |
+| Sum of independently gzipped assets | 3,168,702 | 544,550 |
 
-That is **86.5% fewer raw precache bytes** and **82.8% fewer independently gzipped bytes**. This is an artifact comparison, not a cellular installation trace. Framework/runtime dependencies, fonts and offline fallback remain; optional HLS/chart/editor chunks and backup icons are excluded. A live old-worker/new-build transition reproduced obsolete widget chunks before the shell-stamp fix; the new worker subsequently served the current webpack build, all widgets loaded, and the saved page carried its build stamp.
+That is **86.5% fewer raw precache bytes** and **82.8% fewer independently gzipped bytes**. This is an artifact comparison, not a cellular installation trace. Framework/runtime dependencies, fonts and the offline fallback remain; optional HLS/chart/editor chunks and backup icons are excluded.
+
+The offline fallback was in the manifest but **not functional until the follow-up fix below**: `/offline.html` was missing from `src/middleware.ts`'s public allowlist, so precaching followed its `307` to `/login?next=%2Foffline.html` and stored login HTML under the `/offline.html` key. Adding it to `PUBLIC_EXACT_PATHS` fixed it; the page's inline `onclick` was also replaced with an anchor, because the nonce + `strict-dynamic` CSP neutralises `unsafe-inline` and the button was inert once the document became reachable. Byte figures above are from the build carrying that fix. A live old-worker/new-build transition reproduced obsolete widget chunks before the shell-stamp fix; the new worker subsequently served the current webpack build, all widgets loaded, and the saved page carried its build stamp.
 
 ### Desktop browser journeys
 
@@ -60,6 +62,17 @@ Used production standalone on localhost:3052 with the isolated `helprr_dev` data
 - **Offline/stalled network:** pausing the test server produced a saved Radarr response after **2,010 ms**, marked `x-helprr-stale: 1` with the original timestamp. Reconnect scheduling showed the saved-data notice. Resuming the server and clicking Retry removed it.
 - **Independent Watch shelves:** core content appeared at the 709 ms checkpoint while optional latest reads were held. At 76 seconds, core content remained usable and latest shelves were still absent.
 - **Watch rails:** 14 interactive cards mounted while 163 slots existed during the independent-shelf check. Additional content mounted as it approached the viewport; fixed slots preserve rail geometry.
+
+#### Independent re-verification (9 Sep 2026, Chrome 152, 1728px)
+
+Re-measured rather than taken from the notes above. Every automated gate was re-run on the same tree: lint, production build, `git diff --check`, the precache budget, and **1,007 passing tests with 5 skipped** (up from 1,000 with the two follow-up test files).
+
+- **Optional shelves under a real stall.** With `section=latest` and `section=favorites` held for 45 s at the proxy, `section=core` returned in **536 ms** and carried a fully usable page — hero metadata, Play and More Info, and every core rail heading — with **zero loading indicators**. All three delayed shelves later returned 200 at 45.5–45.9 s: independently cached, independently slow, never blocking and never cancelled.
+- **Season pagination.** No season in the library exceeds 50 episodes, so the client's own 50-per-page path cannot be exercised here; the contract underneath it was verified directly instead. Walking a 28-episode season at `episodeLimit=10` replayed `getNextPageParam` exactly: `episodesStart` echoed each request, pages returned 10/10/8, the concatenation matched the unpaginated reference **in order with no duplicates**, and the walk terminated after three requests without probing past the end.
+- **Playing a middle episode** started the selected item and no other (`streamedIsTargetEpisode`), with the remaining queue expanding behind it.
+- **Dashboard editing.** Entering and leaving Edit with no changes left all 30 widget geometries byte-identical, and offered no Save or Discard. After a drag on `.bento-drag-handle`, Discard appeared, Done issued a single `PUT /api/dashboard-layouts/<id>` carrying the moved coordinates, and the change survived a full reload. React-grid-layout mounts **only** in Edit mode — normal browsing has zero `.react-grid-item` nodes, confirming the static CSS layout.
+- **Prepared library search.** Six rapid keystrokes into the 504-title movie library issued **zero** network requests; the grid deferred rather than recomputing per keystroke, settled to 4 matches, and restored all 34 cards on clear — also with zero requests.
+- **Measurement note.** `performance.getEntriesByType('resource')` caps at 250 entries and then records nothing, so it cannot be used to prove a chunk was not loaded on a 30-widget dashboard. Diff `script[src]` after clearing and enlarging the buffer instead.
 
 ### Repeated startup observations
 
@@ -85,10 +98,41 @@ The reproducible Node fixture benchmark and raw results are in `plans/2026-09-08
 ## Limits and owner qualification
 
 - **AniList live home was blocked by upstream HTTP 403.** The app returned its failure state; no successful live Anime-home qualification is claimed. Rail behavior is covered by fixtures and live Watch rails. Recheck Anime when upstream access recovers.
-- Android, iPhone, native iOS HLS, cellular network shaping, app suspension, lock/unlock, audio routing and memory-pressure recovery remain owner tests. macOS Safari/Firefox were not qualified in this pass.
+- Android, native iOS HLS, cellular network shaping, audio routing, lock/unlock, rotation and memory-pressure recovery remain owner tests. macOS Safari and Firefox are still unqualified — the automation available drives Chromium only.
+- **iPhone PWA qualification (9 Sep 2026, iPhone 17 simulator, iOS 26.4, home-screen install over the tailnet origin).** Verified: play/stop for a movie with the stopped report ordered before `stop-encodings` and no media requests after Stop; stop-before-load followed immediately by a different title, with only the latest streaming; resume from a detail page restoring position and closing the overlay; pause pinning the chrome; the subtitle panel; Data saver renegotiating to `VideoBitrate=1616000` under its 2 Mbps ceiling while staying paused, persisted as `helprr:playback-bitrate = -1`; the labelled stale-snapshot path and its recovery; `qbittorrent/summary?view=delta` returning a reset then a cursor; and a cold reopen in 30 requests with no chunk 404s. A 30-second background kept the pause state and the position advanced only as far as the buffer allowed.
+- **A production→production worker transition was qualified separately:** an installation holding shell stamp `eb179753…` opened cleanly against a build stamped `17dd39e1…`. A PWA installed while the origin served `npm run dev` is a different case and does **not** self-heal — it holds a `/sw-push.js` registration and a Turbopack shell, 404s every dev chunk, and renders blank until the installation's `ServiceWorkers/` and `CacheStorage/` are cleared once.
+- **Pre-existing defect reported during qualification, addressed by the follow-up below — MKV direct play stalls silently on Chromium.** `testCanPlayMkv` trusts `canPlayType('video/x-matroska')`, which Chrome 152 answers `"maybe"`, and the `mkv` direct-play profile advertises the **MP4** codec list. An HEVC-in-MKV episode (589 kbps, so no bitrate ceiling rejects it) is therefore offered for direct play, and Chrome neither decodes it nor raises an `error` event: `readyState` stays `0`, `networkState` stays `NETWORK_LOADING`, not one media byte is requested, and the session keeps reporting `playing` every 10 s. Chrome decodes the same codec inside MP4. Neither the direct-play→transcode retry (it needs an `error` event) nor the new `waiting`-based stall detector (it needs a `waiting` event and `reachedStart`) can fire, so nothing recovers. Not introduced by this work; a load-timeout guard and a container-specific codec list are the fixes. `MaxStaticBitrate: bitrateSetting` behaves as designed and simply cannot help a file this small.
 - Authentication/ownership/partial-failure coverage is automated; the live browser used the linked administrator, not a second restricted account.
 - The new local benchmark does not replace before/after physical-device traces, heap profiles, field INP or a release qualification. Conditional server pagination should be reconsidered if transfer/parse dominates on a real large mobile library.
 - Delta history is bounded to 64 entries, 60 seconds and 16 MiB of serialized payload accounting. Process restart, eviction, filter/permission-scope changes or mutation-version changes cause a safe full reset; there is no persistent client cursor dependency.
+
+## Follow-up review of the seven reported concerns
+
+The independent tester's report was checked against the source. Browser/device testing was not repeated for these follow-up changes, at the owner's request. Earlier measurements and simulator results describe the earlier tree, not qualification of these fixes.
+
+| Concern | Assessment and action |
+| --- | --- |
+| Silent MKV startup / false playing state | Valid. Matroska now requires explicit `probably` responses for its own video and audio codecs; a generic container `maybe` and MP4 codec support no longer enable it. Startup waits for the play promise and usable media data, with a 30-second bound even when no media event arrives. One fallback negotiation disables direct play/stream; a second silent failure produces an error. Progress reporting skips media without current data. An autoplay denial remains paused rather than triggering codec recovery. |
+| Two-second saved-data fallback | Intentional policy, not a demonstrated defect. It returns a labelled, at-most-five-minute-old snapshot while the network request continues. A slow healthy server can trigger the notice; this threshold is not a network request deadline. Cellular qualification remains open. |
+| Detail resume stale after Stop | Valid. After the stopped report settles, invalidate catalog queries, including all item expansions and home shelves. Active queries refetch after server-side catalog invalidation; local Stop still completes before any network wait. |
+| Safe-area coverage missing | Valid. Coverage now pins the emitted safe-area CSS, normal-flow positioning, a nonshrinking 44 × 44 Retry target, Retry interaction and stale-to-fresh visibility. jsdom cannot measure real notch geometry; the CSS assertion checks the emitted markup. |
+| Notice obscures top navigation | Valid layout conflict. Mount the notice inside AppShell's main content in normal flow. Its wrapped height moves the following content down and no longer overlays the top navigation. It scrolls with the page. |
+| Failed container catalog lookup errors | Confirmed intentional behavior change. Albums, playlists, folders, artists and box sets need a successful child lookup; a failed lookup surfaces a queue error rather than treating the container itself as a playable file. Already playable movies/episodes still start independently of optional queue expansion. |
+| Duplicate stop-encodings during restart | Valid. The restart/seek/recovery path identifies the outgoing session it already released; replacement startup skips its second cleanup for that session. Superseded newly granted sessions still receive cleanup. |
+
+The earlier offline-document correction is retained: `/offline.html` is public by exact match, its Retry link requires no inline JavaScript, and changing the document bytes changes its precache revision so a worker update can replace a cached login response.
+
+Follow-up checks passed: `npm run lint`, **1,016 tests passed / 5 skipped**, `npm run build` (build `k3ykYrgscG3kZ9KeA21Sl`), `git diff --check`, and the precache budget (29 entries, 1,163,184 raw bytes). Logs are in `plans/2026-09-09-pwa-regressions/followup-*.log`. These checks do not constitute another live playback or iPhone acceptance pass.
+
+## HEVC HLS browser recheck (9 Sep 2026)
+
+At the owner's subsequent request, rechecked the reported episode in Chrome against the isolated production server on localhost:3052, build `Bv1jAwN1dhIb4-kvFSKeV`. Friends S1E1 “Pilot” is HEVC in MKV at 588,564 bps. Its decoded `main.m3u8` was **244,428 bytes**. Normal playback negotiated `Transcode`, fetched the init fragment and media segments with HTTP 200, rendered 1280-wide video at `readyState=4`, and advanced from 104.66 to 120.72 seconds after resuming. The original no-segments failure did not reproduce. The page also contains an idle preview video at `readyState=0`; diagnostics must distinguish that element from the active player. This is a possible measurement pitfall, not a confirmed explanation of the earlier observation. No server encoder failure was established.
+
+With HLS init/media requests deliberately withheld in the browser, the existing startup guard made one fallback attempt and displayed “Playback did not start. Try again or choose another quality.” after both attempts timed out. This exposed a valid cleanup defect: the terminal error left hls.js attached and retrying. The final failure path now retires its callbacks, aborts optional queue expansion, pauses media, destroys the player engines, and releases the failed encoding session without delaying the error UI. A regression test failed against the old behavior because one HLS instance remained alive, then passed with the fix.
+
+The updated live failure check recorded exactly two negotiations, final encoding cleanup returning HTTP 200 at 60.33 seconds, and no playback reports. The error was visible at the 61.19-second observation. Through 81.92 seconds, no further HLS media requests occurred and both media elements stayed paused. Normal playback was then rechecked successfully with interception removed. These are desktop browser checks, not native iOS HLS or physical-device qualification.
+
+Final gates passed: lint, **1,017 tests passed / 5 skipped**, production build, `git diff --check`, and the precache budget (29 entries, 1,163,184 raw bytes). Evidence and logs are under `plans/2026-09-09-hls-startup/`. Earlier measurements above retain their original scope.
 
 ## Review and rollback
 

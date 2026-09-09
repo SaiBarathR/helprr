@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { BrowseFreshnessNotice } from '@/components/browse-freshness-notice';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import { refreshAfterReconnect } from '@/lib/reconnect-queries';
@@ -95,7 +94,6 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <BrowseFreshnessNotice onRetry={() => void queryClient.invalidateQueries({ refetchType: 'active' })} />
       {children}
       {/* Away from bottom-right, where the toggle sat directly on top of the
           expanded player's Player settings button and swallowed taps meant for

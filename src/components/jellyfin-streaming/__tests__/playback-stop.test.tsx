@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ITEM, mountPlayback, type Harness } from './playback-restart-harness';
+import { getQueryClient } from '@/lib/query-client';
 
 let harness: Harness | null = null;
 
@@ -11,6 +12,7 @@ afterEach(() => {
   harness = null;
   vi.restoreAllMocks();
   vi.useRealTimers();
+  getQueryClient().clear();
 });
 
 async function playing() {
@@ -21,6 +23,20 @@ async function playing() {
 }
 
 describe('Stop responsiveness', () => {
+  it('invalidates cached catalog details only after the stop report settles', async () => {
+    const h = await playing();
+    const client = getQueryClient();
+    const keys = ['core', 'similar,trailers'].map((expand) => ['jellyfin', 'catalog', 'item', ITEM.Id, expand]);
+    for (const key of keys) client.setQueryData(key, { item: ITEM });
+    h.holdStopRequests();
+    let stopped!: Promise<void>;
+    await h.act(() => { stopped = h.playback().stop(); });
+    expect(keys.every((key) => client.getQueryState(key)?.isInvalidated === false)).toBe(true);
+    await h.act(async () => { h.releaseStopReport(); });
+    expect(keys.every((key) => client.getQueryState(key)?.isInvalidated === true)).toBe(true);
+    await h.act(async () => { h.releaseEncodingStop(); await stopped; });
+  });
+
   it('pauses and clears the player before either stop request completes, preserving the final position', async () => {
     const h = await playing();
     h.element().currentTime = 123;

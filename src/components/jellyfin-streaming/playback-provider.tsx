@@ -19,6 +19,8 @@ import { canPlayHlsWithMse, canPlayNativeHls, detectBrowser } from '@/lib/jellyf
 import { jellyfinPosterUrl } from '@/lib/jellyfin-playback/image';
 import { useUIStore } from '@/lib/store';
 import { cueBottomPercent, subtitleCueLine } from '@/lib/jellyfin-playback/subtitle-appearance';
+import { playMedia } from '@/lib/jellyfin-playback/play-media';
+import { getQueryClient } from '@/lib/query-client';
 
 export type RepeatMode = 'RepeatNone' | 'RepeatAll' | 'RepeatOne';
 
@@ -440,31 +442,6 @@ function shuffleInPlace<T>(items: T[]): T[] {
   return next;
 }
 
-/**
- * Start playback without treating an interrupted start as a failure.
- *
- * `el.play()` rejects with AbortError whenever a new load request lands on the
- * element before the previous play settles — which is *routine* here: hls.js
- * assigns its own MediaSource URL from `attachMedia`, and switching queue
- * entries replaces the source outright. The rejection was propagating out of
- * attachMedia into startItem's catch, so picking another episode from the
- * queue put "The play() request was interrupted by a new load request" on
- * screen even though the new episode was loading correctly. NotAllowedError is
- * the autoplay policy declining, which is also not a broken file — the viewer
- * can still press play.
- *
- * This is exactly jellyfin-web's htmlMediaHelper.playWithPromise.
- */
-async function playSafely(el: HTMLMediaElement): Promise<void> {
-  try {
-    await el.play();
-  } catch (cause) {
-    const name = (cause instanceof Error ? cause.name : '').toLowerCase();
-    if (name === 'aborterror' || name === 'notallowederror') return;
-    throw cause;
-  }
-}
-
 function clearTextTracks(el: HTMLVideoElement) {
   el.querySelectorAll('track').forEach((track) => track.remove());
 }
@@ -662,6 +639,10 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
    */
   const startTokenRef = useRef(0);
   const expansionRef = useRef<AbortController | null>(null);
+  useEffect(() => () => {
+    startTokenRef.current += 1;
+    expansionRef.current?.abort();
+  }, []);
   const playbackStartRef = useRef(0);
   const subtitleOffsetRef = useRef(0);
   /**
@@ -802,7 +783,7 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
       // libass sizes its canvas from the element and aborts with "width or
       // height is 0" when it is constructed before the player has laid out.
       // That is the normal case here: this runs from attachMedia *before*
-      // playSafely, and iOS attaches native HLS faster than the stage paints,
+      // playMedia, and iOS attaches native HLS faster than the stage paints,
       // so every ASS track was dropped on the floor — invisibly, because the
       // onError below only clears the ref.
       await waitForLayout(el);
@@ -1035,10 +1016,10 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     await applySubtitleTrack(next, requestedSubtitleIndex ?? next.mediaSource.DefaultSubtitleStreamIndex ?? null, isCurrent);
     if (!isCurrent()) return;
 
-    await playSafely(el);
+    return playMedia(el, isCurrent);
   }, [applySubtitleTrack, destroyPlayers, failPlayback, maxBitrate, muted, playbackRate, volume]);
 
-  const startItem = useCallback(async (nextItem: JellyfinItem, options: PlayOptions = {}, owner?: () => boolean) => {
+  const startItem = useCallback(async (nextItem: JellyfinItem, options: PlayOptions = {}, owner?: () => boolean, releasedSession?: string) => {
     if (!owner) expansionRef.current?.abort();
     const stillCurrent = owner ?? reserveStart(startTokenRef);
     const superseded = () => !stillCurrent();
@@ -1053,6 +1034,8 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
      * has actually been granted.
      */
     const outgoingSession = streamRef.current?.playSessionId;
+    // Track/quality/seek recovery may already have released this session.
+    // Carry that fact through this attempt instead of posting cleanup twice.
     // Latched before anything is awaited, so a second change arriving mid-attach
     // reads the viewer's intent and not the element `attachMedia` has just
     // played. Absent for a fresh start — picking a title means playing it.
@@ -1085,7 +1068,7 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     };
     try {
       const nextStream = await fetchStream(nextItem.Id, request);
-      if (outgoingSession && outgoingSession !== nextStream.playSessionId) {
+      if (outgoingSession && outgoingSession !== releasedSession && outgoingSession !== nextStream.playSessionId) {
         // Fire and forget: the viewer is waiting on the new stream, not on the
         // old one being tidied up.
         void stopEncodings(outgoingSession);
@@ -1112,15 +1095,19 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
       setSubtitleStreamIndex(chosenSubtitle);
       setDurationSeconds(ticksToSeconds(nextStream.mediaSource.RunTimeTicks || nextItem.RunTimeTicks));
       setVideoExpanded(nextItem.MediaType !== 'Audio');
-      await attachMedia(nextStream, chosenSubtitle, stillCurrent);
+      const ready = await attachMedia(nextStream, chosenSubtitle, stillCurrent);
       if (superseded()) return;
+      // Autoplay rejection is a paused session, not a failed codec. Preserve
+      // session initialization so a later user Play can report progress.
+      if (!ready) pausedIntentRef.current = true;
+      const startPaused = pausedIntentRef.current;
       // Restoring a paused restart. The element's own `pause` handler sets the
       // status too, so the setStatus below has to agree with this rather than
       // overwrite it back to playing.
-      if (options.startPaused) mediaRef.current?.pause();
+      if (startPaused) mediaRef.current?.pause();
       await report('playing', nextStream, {
         positionTicks: secondsToTicks(mediaRef.current?.currentTime || 0) || resumeTicks,
-        isPaused: Boolean(options.startPaused),
+        isPaused: startPaused,
         volumeLevel: Math.round(volume * 100),
         isMuted: muted,
         playbackRate,
@@ -1132,7 +1119,7 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
         maxStreamingBitrate: maxBitrate || undefined,
       });
       if (superseded()) return;
-      setStatus(options.startPaused ? 'paused' : 'playing');
+      setStatus(pausedIntentRef.current ? 'paused' : 'playing');
       fetch(`/api/jellyfin/catalog/items/${nextItem.Id}?expand=segments`)
         .then((res) => res.ok ? res.json() : null)
         .then((data: { segments?: MediaSegment[] } | null) => { if (stillCurrent()) setSegments(data?.segments ?? []); })
@@ -1158,23 +1145,34 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
         retryingRef.current = true;
         // Release whatever the failed attempt opened, or Jellyfin is left with
         // an orphaned transcode for the lifetime of its idle timeout.
-        await stopEncodings(streamRef.current?.playSessionId ?? '');
+        const failedSession = streamRef.current?.playSessionId;
+        await stopEncodings(failedSession ?? '', AbortSignal.timeout(10_000));
         if (superseded()) return;
         try {
           await startItem(nextItem, {
             ...request,
             enableDirectPlay: false,
             enableDirectStream: false,
-          }, stillCurrent);
+            startPaused: pausedIntentRef.current,
+          }, stillCurrent, failedSession);
           return;
         } finally {
           retryingRef.current = false;
         }
       }
+      // A visible terminal error must also end media work. Leaving hls.js
+      // attached lets its network recovery keep requesting segments forever.
+      // Retire callbacks before destruction so late loader events cannot retry.
+      startTokenRef.current += 1;
+      expansionRef.current?.abort();
+      mediaRef.current?.pause();
+      destroyPlayers();
+      const failedSession = streamRef.current?.playSessionId;
+      if (failedSession) void stopEncodings(failedSession, AbortSignal.timeout(10_000));
       setStatus('error');
       setError(message);
     }
-  }, [attachMedia, maxBitrate, muted, playbackRate, volume]);
+  }, [attachMedia, destroyPlayers, maxBitrate, muted, playbackRate, volume]);
 
   const playItems = useCallback(async (items: JellyfinItem[], startIndex = 0, options?: PlayOptions) => {
     if (!items.length) return;
@@ -1324,6 +1322,10 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     // prevent the encoding cleanup from being attempted.
     if (current && stoppedReport) {
       await report('stopped', current, stoppedReport, AbortSignal.timeout(10_000));
+      // Server catalog invalidation happens in the stopped handler. Refetch
+      // after it finishes so detail expansions cannot overwrite fresh UserData
+      // with their old resume point. Keep this off the local Stop critical path.
+      void getQueryClient().invalidateQueries({ queryKey: ['jellyfin', 'catalog'] });
       await stopEncodings(current.playSessionId, AbortSignal.timeout(10_000));
     }
   }, [destroyPlayers, maxBitrate, muted, playbackRate, setPositionSeconds, volume]);
@@ -1334,7 +1336,7 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     if (el.paused) {
       pausedIntentRef.current = false;
       void el.play();
-      setStatus('playing');
+      setStatus(el.readyState >= 3 ? 'playing' : 'loading');
     } else {
       pausedIntentRef.current = true;
       el.pause();
@@ -1361,7 +1363,7 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
           subtitleStreamIndex: subtitleIndexRef.current,
           mediaSourceId: current.mediaSource.Id,
           maxStreamingBitrate: maxBitrate,
-        });
+        }, stillCurrent, current.playSessionId);
       })();
       return;
     }
@@ -1455,7 +1457,7 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
       enableDirectPlay: patch.enableDirectPlay,
       enableDirectStream: patch.enableDirectStream,
       startPaused: wasPaused,
-    });
+    }, stillCurrent, current.playSessionId);
   }, [maxBitrate, startItem]);
 
   // Published for the burn-in fallback in applySubtitleTrack, which sits above
@@ -1561,7 +1563,8 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
         if (!el.paused && el.readyState < 3 && streamRef.current?.playSessionId === session) bandwidthRef.current.stalled();
       }, 3_000);
     };
-    const onPlay = () => setStatus('playing');
+    const onPlay = () => { if (streamRef.current) setStatus(el.readyState >= 3 ? 'playing' : 'loading'); };
+    const onPlaying = () => { clearStall(); onPlay(); };
     const onPause = () => {
       if (streamRef.current) setStatus('paused');
     };
@@ -1583,7 +1586,7 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
         retryingRef.current = true;
         void stopEncodings(current.playSessionId);
         void startItem(nextItem, {
-          startTimeTicks: secondsToTicks(el.currentTime || 0),
+          startTimeTicks: positionToReport(el, current, reachedStartRef.current),
           audioStreamIndex: audioIndexRef.current,
           subtitleStreamIndex: subtitleIndexRef.current,
           mediaSourceId: current.mediaSource.Id,
@@ -1594,7 +1597,7 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
           // request to start playing: a title paused when its direct stream
           // failed must come back paused.
           startPaused: pausedIntentRef.current,
-        }).finally(() => { retryingRef.current = false; });
+        }, undefined, current.playSessionId).finally(() => { retryingRef.current = false; });
       } else {
         // Already transcoding, so there is no lower fallback to drop to. This is
         // the path a revocation during an active transcode lands on.
@@ -1603,7 +1606,7 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     };
     el.addEventListener('timeupdate', onTime);
     el.addEventListener('waiting', onWaiting);
-    el.addEventListener('playing', clearStall);
+    el.addEventListener('playing', onPlaying);
     el.addEventListener('play', onPlay);
     el.addEventListener('pause', onPause);
     el.addEventListener('ended', onEnded);
@@ -1612,7 +1615,7 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     return () => {
       clearStall();
       el.removeEventListener('waiting', onWaiting);
-      el.removeEventListener('playing', clearStall);
+      el.removeEventListener('playing', onPlaying);
       el.removeEventListener('timeupdate', onTime);
       el.removeEventListener('play', onPlay);
       el.removeEventListener('pause', onPause);
@@ -1628,7 +1631,7 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     progressTimer.current = setInterval(() => {
       const current = streamRef.current;
       const el = mediaRef.current;
-      if (!current || !el) return;
+      if (!current || !el || el.readyState < 2) return;
       void report('progress', current, {
         positionTicks: positionToReport(el, current, reachedStartRef.current),
         isPaused: el.paused,
