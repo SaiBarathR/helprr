@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isAxiosError } from 'axios';
 import { prisma } from '@/lib/db';
-import { requireAuth, requireCapability } from '@/lib/auth';
+import { requireUserCapability } from '@/lib/auth';
 import { getSeerrClient } from '@/lib/service-helpers';
 import { notifyEvent } from '@/lib/notification-service';
 import { withApiLogging } from '@/lib/api-logger';
@@ -30,10 +30,8 @@ async function postHandler(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
-  const authError = await requireAuth();
-  if (authError) return authError;
-  const capError = await requireCapability('requests.approve');
-  if (capError) return capError;
+  const auth = await requireUserCapability('requests.approve');
+  if (!auth.ok) return auth.response;
 
   const { id } = await params;
   const pending = await prisma.pendingRequest.findUnique({ where: { id } });

@@ -1,8 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import Link from '@/components/ui/app-link';
 import { FadeInImage } from '@/components/media/fade-in-image';
+import { WindowedRailItems } from '@/components/jellyfin-streaming/windowed-rail-items';
 import { Badge } from '@/components/ui/badge';
 import { WatchlistAddDialog } from '@/components/watchlist/watchlist-add-dialog';
 import { ScheduledAlertDialog } from '@/components/scheduled-alerts/scheduled-alert-dialog';
@@ -44,14 +45,28 @@ interface AnimeMediaRailProps {
   viewAllHref?: string;
 }
 
-function RailCard({ item, priority }: { item: MediaItem; priority: boolean }) {
+type RailDialogState =
+  | { kind: 'watchlist'; item: MediaItem }
+  | { kind: 'schedule'; item: MediaItem };
+
+const RAIL_CARD_SLOT_CLASS =
+  'min-w-[110px] w-[110px] sm:min-w-[140px] sm:w-[140px] md:min-w-[150px] md:w-[150px] lg:min-w-[164px] lg:w-[164px] xl:min-w-[180px] xl:w-[180px] 2xl:min-w-[196px] 2xl:w-[196px] min-h-[225px] sm:min-h-[270px] md:min-h-[288px] lg:min-h-[315px] xl:min-h-[344px] 2xl:min-h-[374px] snap-start';
+
+function RailCard({
+  item,
+  buildAnilistContextAction,
+  onOpenWatchlist,
+  onOpenSchedule,
+}: {
+  item: MediaItem;
+  buildAnilistContextAction: ReturnType<typeof useAnilistContextMenu>['buildAnilistContextAction'];
+  onOpenWatchlist: (item: MediaItem) => void;
+  onOpenSchedule: (item: MediaItem) => void;
+}) {
   const me = useMe();
   const isManga = item.type === 'MANGA' || item.format === 'MANGA' || item.chapters != null || item.volumes != null;
   const lookup = useWatchLookup(!isManga && item.id > 0);
   const isMobile = useIsMobile();
-  const { buildAnilistContextAction, drawerNode } = useAnilistContextMenu();
-  const [watchlistOpen, setWatchlistOpen] = useState(false);
-  const [scheduleOpen, setScheduleOpen] = useState(false);
 
   // `library` is the server-annotated arr membership (Jellyfin-free, covers
   // movies and not-yet-downloaded series). The watch-status hit still matters
@@ -140,7 +155,7 @@ function RailCard({ item, priority }: { item: MediaItem; priority: boolean }) {
               id: 'watchlist',
               label: 'Add to watchlist',
               icon: <Bookmark className="h-4 w-4" />,
-              onSelect: () => setWatchlistOpen(true),
+              onSelect: () => onOpenWatchlist(item),
             }]
           : []),
         ...(!showDesktopOverlayActions && canSchedule
@@ -148,7 +163,7 @@ function RailCard({ item, priority }: { item: MediaItem; priority: boolean }) {
               id: 'schedule',
               label: 'Schedule alert',
               icon: <Bell className="h-4 w-4" />,
-              onSelect: () => setScheduleOpen(true),
+              onSelect: () => onOpenSchedule(item),
             }]
           : []),
       ],
@@ -160,7 +175,7 @@ function RailCard({ item, priority }: { item: MediaItem; priority: boolean }) {
     'inline-flex h-5 w-5 items-center justify-center rounded-md bg-black/55 backdrop-blur-md text-white hover:bg-black/70 transition-colors';
 
   return (
-    <div className="relative shrink-0 min-w-[110px] w-[110px] sm:min-w-[140px] sm:w-[140px] md:min-w-[150px] md:w-[150px] lg:min-w-[164px] lg:w-[164px] xl:min-w-[180px] xl:w-[180px] 2xl:min-w-[196px] 2xl:w-[196px] group snap-start">
+    <div className="relative h-full w-full group">
       {/* Desktop: individual icons overlaid on the poster's top-right. */}
       {showActions && (
         <div className="absolute top-1 right-1 z-10 hidden md:flex items-center gap-1.5">
@@ -182,7 +197,7 @@ function RailCard({ item, priority }: { item: MediaItem; priority: boolean }) {
             <button
               type="button"
               aria-label="Add to watchlist"
-              onClick={() => setWatchlistOpen(true)}
+              onClick={() => onOpenWatchlist(item)}
               className={iconClass}
             >
               <Bookmark className="h-3 w-3" />
@@ -192,7 +207,7 @@ function RailCard({ item, priority }: { item: MediaItem; priority: boolean }) {
             <button
               type="button"
               aria-label="Schedule alert"
-              onClick={() => setScheduleOpen(true)}
+              onClick={() => onOpenSchedule(item)}
               className={iconClass}
             >
               <Bell className="h-3 w-3" />
@@ -209,8 +224,8 @@ function RailCard({ item, priority }: { item: MediaItem; priority: boolean }) {
                 alt={item.title}
                 fill
                 sizes="(max-width: 640px) 35vw, (max-width: 768px) 140px, (max-width: 1024px) 150px, (max-width: 1280px) 164px, (max-width: 1536px) 180px, 196px"
-                priority={priority}
                 className="object-cover transition-transform duration-300 group-hover:scale-105"
+                responsiveProxy
                 unoptimized={isProtectedApiImageSrc(imgSrc)}
               />
             ) : (
@@ -263,13 +278,13 @@ function RailCard({ item, priority }: { item: MediaItem; priority: boolean }) {
                   </DropdownMenuItem>
                 )}
                 {canWatchlist && (
-                  <DropdownMenuItem onClick={() => setWatchlistOpen(true)}>
+                  <DropdownMenuItem onClick={() => onOpenWatchlist(item)}>
                     <Bookmark className="mr-2 h-4 w-4" />
                     Add to watchlist
                   </DropdownMenuItem>
                 )}
                 {canSchedule && (
-                  <DropdownMenuItem onClick={() => setScheduleOpen(true)}>
+                  <DropdownMenuItem onClick={() => onOpenSchedule(item)}>
                     <Bell className="mr-2 h-4 w-4" />
                     Schedule alert
                   </DropdownMenuItem>
@@ -279,47 +294,14 @@ function RailCard({ item, priority }: { item: MediaItem; priority: boolean }) {
           </div>
         )}
       </div>
-      {(canWatchlist || canSchedule) && (
-        <>
-          {canWatchlist && (
-            <WatchlistAddDialog
-              open={watchlistOpen}
-              onOpenChange={setWatchlistOpen}
-              draft={{
-                source: 'ANILIST',
-                externalId: String(item.id),
-                mediaType: 'anime',
-                title: item.title,
-                year: item.seasonYear ?? null,
-                posterUrl: item.coverImage ?? null,
-                overview: null,
-                rating: item.averageScore ?? null,
-                releaseDate: null,
-              }}
-            />
-          )}
-          {canSchedule && (
-            <ScheduledAlertDialog
-              open={scheduleOpen}
-              onOpenChange={setScheduleOpen}
-              draft={{
-                source: 'ANILIST',
-                externalId: String(item.id),
-                mediaType: 'anime',
-                title: item.title,
-                posterUrl: item.coverImage,
-                href: `/anime/${item.id}`,
-              }}
-            />
-          )}
-        </>
-      )}
-      {drawerNode}
     </div>
   );
 }
 
 export function AnimeMediaRail({ title, items, viewAllHref }: AnimeMediaRailProps) {
+  const viewportRef = useRef<HTMLDivElement | null>(null);
+  const { buildAnilistContextAction, drawerNode } = useAnilistContextMenu();
+  const [dialog, setDialog] = useState<RailDialogState | null>(null);
   if (!items.length) return null;
 
   return (
@@ -333,11 +315,54 @@ export function AnimeMediaRail({ title, items, viewAllHref }: AnimeMediaRailProp
           </Link>
         )}
       </div>
-      <div className="flex gap-3 overflow-x-auto pb-2 -mx-2 px-2 md:-mx-6 md:px-6 scrollbar-hide snap-x snap-mandatory animate-rail-in">
-        {items.map((item, i) => (
-          <RailCard key={item.id} item={item} priority={i < 4} />
-        ))}
+      <div
+        ref={viewportRef}
+        className="flex gap-3 overflow-x-auto pb-2 -mx-2 px-2 md:-mx-6 md:px-6 scrollbar-hide snap-x snap-mandatory animate-rail-in"
+      >
+        <WindowedRailItems className={RAIL_CARD_SLOT_CLASS} viewportRef={viewportRef}>
+          {items.map((item) => (
+            <RailCard
+              key={item.id}
+              item={item}
+              buildAnilistContextAction={buildAnilistContextAction}
+              onOpenWatchlist={(next) => setDialog({ kind: 'watchlist', item: next })}
+              onOpenSchedule={(next) => setDialog({ kind: 'schedule', item: next })}
+            />
+          ))}
+        </WindowedRailItems>
       </div>
+      {dialog?.kind === 'watchlist' && (
+        <WatchlistAddDialog
+          open
+          onOpenChange={(open) => { if (!open) setDialog(null); }}
+          draft={{
+            source: 'ANILIST',
+            externalId: String(dialog.item.id),
+            mediaType: 'anime',
+            title: dialog.item.title,
+            year: dialog.item.seasonYear ?? null,
+            posterUrl: dialog.item.coverImage ?? null,
+            overview: null,
+            rating: dialog.item.averageScore ?? null,
+            releaseDate: null,
+          }}
+        />
+      )}
+      {dialog?.kind === 'schedule' && (
+        <ScheduledAlertDialog
+          open
+          onOpenChange={(open) => { if (!open) setDialog(null); }}
+          draft={{
+            source: 'ANILIST',
+            externalId: String(dialog.item.id),
+            mediaType: 'anime',
+            title: dialog.item.title,
+            posterUrl: dialog.item.coverImage,
+            href: `/anime/${dialog.item.id}`,
+          }}
+        />
+      )}
+      {drawerNode}
     </div>
   );
 }

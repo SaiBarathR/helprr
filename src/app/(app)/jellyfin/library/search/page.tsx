@@ -12,7 +12,7 @@ import { SearchResultRow } from '@/components/jellyfin-streaming/cinematic/searc
 import { useWatchSkin } from '@/lib/hooks/use-watch-skin';
 import { useCompactViewport } from '@/lib/hooks/use-compact-viewport';
 import { cn } from '@/lib/utils';
-import { useJellyfinPlayback } from '@/components/jellyfin-streaming/playback-provider';
+import { useJellyfinPlaybackState } from '@/components/jellyfin-streaming/playback-provider';
 import { ErrorState } from '@/components/ui/error-state';
 import type { CatalogCardShape } from '@/lib/jellyfin-playback/image';
 import type { CatalogItemsResponse } from '@/types/jellyfin-streaming';
@@ -49,7 +49,7 @@ function groupItems(items: JellyfinItem[]) {
 }
 
 export default function JellyfinSearchPage() {
-  const playback = useJellyfinPlayback();
+  const playback = useJellyfinPlaybackState();
   const cinematic = useWatchSkin() === 'cinematic';
   const compact = useCompactViewport();
   // The app lists search hits in a column on a phone and shows 16:9 title

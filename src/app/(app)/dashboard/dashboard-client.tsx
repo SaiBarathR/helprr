@@ -7,8 +7,9 @@ import { toast } from 'sonner';
 import { useUIStore } from '@/lib/store';
 import { useIsMobile } from '@/hooks/use-is-mobile';
 import { WidgetGrid } from '@/components/widgets/widget-grid';
-import { WidgetGallery } from '@/components/widgets/widget-gallery';
-import { RefreshIntervalDrawer } from '@/components/widgets/refresh-interval-drawer';
+import dynamic from 'next/dynamic';
+const WidgetGallery = dynamic(() => import('@/components/widgets/widget-gallery').then((module) => module.WidgetGallery));
+const RefreshIntervalDrawer = dynamic(() => import('@/components/widgets/refresh-interval-drawer').then((module) => module.RefreshIntervalDrawer));
 import { BentoTopBar, FloatingEdit, HPR } from '@/components/widgets/bento-primitives';
 import {
   DashboardLayoutProvider,
@@ -226,7 +227,7 @@ function DashboardInner({ initialLayout, initialDevice }: DashboardClientProps) 
       <WidgetGrid isMobile={isMobile} onConfigureRefresh={() => setRefreshDrawerOpen(true)} />
 
      {!editMode && <FloatingEdit edit={editMode} mobile={isMobile} onClick={handleFloatingToggle} />}
-      <WidgetGallery open={galleryOpen} onOpenChange={setGalleryOpen} />
+      {galleryOpen && <WidgetGallery open={galleryOpen} onOpenChange={setGalleryOpen} />}
       <LayoutSwitcher
         open={switcherOpen}
         onOpenChange={setSwitcherOpen}
@@ -234,11 +235,11 @@ function DashboardInner({ initialLayout, initialDevice }: DashboardClientProps) 
         device={detectedDevice}
         onLayoutSwitched={handleLayoutSwitched}
       />
-      <RefreshIntervalDrawer
+      {refreshDrawerOpen && <RefreshIntervalDrawer
         open={refreshDrawerOpen}
         onOpenChange={setRefreshDrawerOpen}
         layoutName={initialLayout.name}
-      />
+      />}
     </div>
   );
 }

@@ -1,8 +1,9 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { JellyfinConnectForm } from '@/components/settings/jellyfin-connect-form';
+import dynamic from 'next/dynamic';
+const JellyfinConnectForm = dynamic(() => import('@/components/settings/jellyfin-connect-form').then((module) => module.JellyfinConnectForm));
 import {
   ChevronDown,
   Gauge,
@@ -30,7 +31,7 @@ import {
   useJellyfinMediaRef,
   useJellyfinPlayback,
 } from '@/components/jellyfin-streaming/playback-provider';
-import { QueuePanel } from '@/components/jellyfin-streaming/queue-panel';
+const QueuePanel = dynamic(() => import('@/components/jellyfin-streaming/queue-panel').then((module) => module.QueuePanel));
 import { usePlayerSheet } from '@/components/jellyfin-streaming/use-player-sheet';
 import { toggleFullscreen } from '@/lib/jellyfin-playback/browser';
 import { bitrateOptions } from '@/lib/jellyfin-playback/device-profile';
@@ -83,7 +84,11 @@ function isTypingTarget(target: EventTarget | null): boolean {
     || Boolean(target.closest('input, textarea, select, [contenteditable="true"]'));
 }
 
-export function VideoStage() {
+export function VideoStage({ mediaContainer }: { mediaContainer: HTMLDivElement }) {
+  const mediaHost = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    mediaHost.current?.appendChild(mediaContainer);
+  }, [mediaContainer]);
   const playback = useJellyfinPlayback();
   const mediaRef = useJellyfinMediaRef();
   const [controlsVisible, setControlsVisible] = useState(true);
@@ -393,12 +398,10 @@ export function VideoStage() {
           }}
         >
           <style>{cueCss}</style>
-          <video
-            ref={mediaRef}
-            className={cn('h-full w-full bg-black object-contain', VIDEO_CLASS)}
-            playsInline
-            preload="metadata"
-          />
+          <div ref={mediaHost} className="h-full w-full" />
+          {/* Portal media keeps its React owner. This surface preserves stage
+              click/gesture bubbling independently of the media portal tree. */}
+          <div className="absolute inset-0" aria-hidden="true" />
 
             {playback.status === 'loading' && (
               <div className="absolute inset-0 flex items-center justify-center text-sm text-white/80">Loading stream…</div>
@@ -543,6 +546,7 @@ export function VideoStage() {
                   )}
                   {panel === 'quality' && (
                     <Panel>
+                      <p className="px-3 py-2 text-xs text-white/60">Current ceiling: {(playback.effectiveMaxBitrate / 1_000_000).toFixed(1)} Mbps</p>
                       {bitrateOptions().map((option) => (
                         <PanelButton
                           key={option.value}

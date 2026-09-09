@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import { requireAuth, requireCapability } from '@/lib/auth';
+import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { validateSeedingRulePayload } from './_validator';
 import { disableGlobalIfRuleClaimsConfirmationTx } from './_mutual-exclusion';
@@ -17,10 +17,8 @@ function serialize<T extends { categories: unknown; trackerPatterns: unknown; ta
 }
 
 async function getHandler() {
-  const err = await requireAuth();
-  if (err) return err;
-  const capError = await requireCapability('cleanup.view');
-  if (capError) return capError;
+  const auth = await requireUserCapability('cleanup.view');
+  if (!auth.ok) return auth.response;
   // Hide system rules — these are managed via the "Auto-remove imported"
   // toggle in the Download Cleaner config and showing them as a disabled
   // row in the user-editable list was confusing.
@@ -32,10 +30,8 @@ async function getHandler() {
 }
 
 async function postHandler(req: NextRequest) {
-  const err = await requireAuth();
-  if (err) return err;
-  const capError = await requireCapability('cleanup.manage');
-  if (capError) return capError;
+  const auth = await requireUserCapability('cleanup.manage');
+  if (!auth.ok) return auth.response;
   let body: unknown;
   try { body = await req.json(); } catch { return NextResponse.json({ error: 'invalid json' }, { status: 400 }); }
   const v = validateSeedingRulePayload(body);

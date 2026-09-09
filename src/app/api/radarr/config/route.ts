@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getRadarrClient } from '@/lib/service-helpers';
-import { requireAuth, requireCapability } from '@/lib/auth';
+import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { upstreamErrorResponse } from '@/lib/api-error';
 import type { MediaManagementConfig } from '@/types';
@@ -15,10 +15,8 @@ const NO_STORE = { 'Cache-Control': 'private, no-store' } as const;
 // movies.manageFiles — the recycle-bin path is a server filesystem path, and only
 // the Manage Files flow consumes this.
 async function getHandler(request: NextRequest): Promise<NextResponse> {
-  const authError = await requireAuth();
-  if (authError) return authError;
-  const capError = await requireCapability('movies.manageFiles');
-  if (capError) return capError;
+  const auth = await requireUserCapability('movies.manageFiles');
+  if (!auth.ok) return auth.response;
 
   try {
     const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;

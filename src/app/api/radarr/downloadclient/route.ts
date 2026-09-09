@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getRadarrClient } from '@/lib/service-helpers';
-import { requireAuth, requireCapability } from '@/lib/auth';
+import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { upstreamErrorResponse } from '@/lib/api-error';
 
@@ -10,11 +10,9 @@ import { upstreamErrorResponse } from '@/lib/api-error';
  * @returns A JSON HTTP response containing the array of download clients on success; on failure a JSON `{ error }` — 404 when the upstream returned 404, otherwise 500 with a generic message.
  */
 async function getHandler(request: NextRequest) {
-  const authError = await requireAuth();
-  if (authError) return authError;
   // Only the interactive-release flow consumes this, which is activity.manage-gated.
-  const capError = await requireCapability('activity.manage');
-  if (capError) return capError;
+  const auth = await requireUserCapability('activity.manage');
+  if (!auth.ok) return auth.response;
 
   try {
     const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;

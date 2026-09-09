@@ -1,3 +1,4 @@
+import { invalidateJellyfinCatalog } from '@/lib/cache/jellyfin-catalog';
 import { NextRequest, NextResponse } from 'next/server';
 import { JellyfinNotLinkedError, getJellyfinUserContext } from '@/lib/service-helpers';
 import { requireUserCapability } from '@/lib/auth';
@@ -26,6 +27,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   try {
     const { client, connectionFingerprint, jellyfinUserId } = await getJellyfinUserContext(auth.user);
     const userData = await client.setFavorite(itemId, body.favorite);
+    invalidateJellyfinCatalog(auth.user.id);
     await invalidateWatchStatus(watchStatusMapSeed(connectionFingerprint, jellyfinUserId));
     return NextResponse.json({ userData });
   } catch (error) {

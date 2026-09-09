@@ -1,8 +1,10 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { BrowseFreshnessNotice } from '@/components/browse-freshness-notice';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
+import { refreshAfterReconnect } from '@/lib/reconnect-queries';
 import { getQueryClient } from '@/lib/query-client';
 import {
   clearUserScopedBrowserCaches,
@@ -21,6 +23,29 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
   const [authenticationBoundaryActive, setAuthenticationBoundaryActive] = useState(false);
   const [authenticationBoundaryError, setAuthenticationBoundaryError] = useState(false);
   const boundaryClearStarted = useRef(false);
+  useEffect(() => {
+    let controller: AbortController | null = null;
+    let pending = false;
+    const refresh = () => {
+      if (!navigator.onLine || document.visibilityState === 'hidden') return;
+      controller?.abort();
+      controller = new AbortController();
+      pending = false;
+      void refreshAfterReconnect(queryClient, window.location.pathname, controller.signal);
+    };
+    const online = () => { pending = true; refresh(); };
+    const visible = () => { if (pending) refresh(); };
+    const offline = () => controller?.abort();
+    window.addEventListener('online', online);
+    window.addEventListener('offline', offline);
+    document.addEventListener('visibilitychange', visible);
+    return () => {
+      controller?.abort();
+      window.removeEventListener('online', online);
+      window.removeEventListener('offline', offline);
+      document.removeEventListener('visibilitychange', visible);
+    };
+  }, [queryClient]);
   useEffect(() => {
     let handlingBoundary = false;
     return subscribeToAuthenticationBoundaries(() => {
@@ -70,6 +95,7 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <QueryClientProvider client={queryClient}>
+      <BrowseFreshnessNotice onRetry={() => void queryClient.invalidateQueries({ refetchType: 'active' })} />
       {children}
       {/* Away from bottom-right, where the toggle sat directly on top of the
           expanded player's Player settings button and swallowed taps meant for

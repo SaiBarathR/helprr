@@ -1,14 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getRadarrClient } from '@/lib/service-helpers';
-import { requireAuth, requireCapability } from '@/lib/auth';
+import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { upstreamErrorResponse } from '@/lib/api-error';
 
 async function postHandler(request: NextRequest) {
-  const authError = await requireAuth();
-  if (authError) return authError;
-  const capError = await requireCapability('activity.manage');
-  if (capError) return capError;
+  const auth = await requireUserCapability('activity.manage');
+  if (!auth.ok) return auth.response;
 
   try {
     const body = await request.json();

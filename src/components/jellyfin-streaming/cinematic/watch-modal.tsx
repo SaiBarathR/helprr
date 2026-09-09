@@ -1,11 +1,13 @@
 'use client';
 
+import { useSeasonEpisodes } from '@/lib/hooks/use-season-episodes';
+import { useCatalogDetail } from '@/lib/hooks/use-catalog-detail';
+
 import { createContext, useCallback, useContext, useMemo, useState } from 'react';
 import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
 import { useQuery } from '@tanstack/react-query';
 import { Check, ChevronDown, Play, Plus, RotateCcw, ThumbsUp, X } from 'lucide-react';
 import { jsonFetcher } from '@/lib/query-fetch';
-import { queryKeys } from '@/lib/query-keys';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import {
@@ -21,14 +23,14 @@ import { useFavoriteToggle } from '@/components/jellyfin-streaming/cinematic/use
 import { useCan } from '@/components/permission-provider';
 import { CatalogPosterCard } from '@/components/jellyfin-streaming/poster-card';
 import { MediaRail } from '@/components/jellyfin-streaming/media-rail';
-import { useJellyfinPlayback } from '@/components/jellyfin-streaming/playback-provider';
+import { useJellyfinPlaybackState } from '@/components/jellyfin-streaming/playback-provider';
 import { usePreviewSource } from '@/components/jellyfin-streaming/cinematic/use-preview-item';
 import { FadeInImage } from '@/components/media/fade-in-image';
 import { jellyfinBackdropUrl, jellyfinCardImage, jellyfinImageUrl, jellyfinPosterUrl } from '@/lib/jellyfin-playback/image';
 import { formatCertificate, formatCommunityRating } from '@/lib/jellyfin-playback/metadata';
 import { formatClock, ticksToSeconds } from '@/lib/jellyfin-playback/device';
 import type { JellyfinItem } from '@/types/jellyfin';
-import type { CatalogItemDetailResponse, CatalogItemsResponse } from '@/types/jellyfin-streaming';
+import type { CatalogItemsResponse } from '@/types/jellyfin-streaming';
 
 interface WatchModalApi {
   /**
@@ -239,17 +241,9 @@ function TrackRow({ track, index, onPlay }: { track: JellyfinItem; index: number
 }
 
 function WatchDetailModal({ itemId, onClose }: { itemId: string | null; onClose: () => void }) {
-  const playback = useJellyfinPlayback();
+  const playback = useJellyfinPlaybackState();
   const router = useRouter();
-  const query = useQuery({
-    // Same key the full detail page uses, so opening the overlay after
-    // visiting the page (or vice versa) is instant.
-    queryKey: queryKeys.jellyfinItem(itemId ?? '', 'full'),
-    queryFn: jsonFetcher<CatalogItemDetailResponse>(
-      `/api/jellyfin/catalog/items/${itemId}?expand=seasons,episodes,similar,trailers,children`,
-    ),
-    enabled: Boolean(itemId),
-  });
+  const query = useCatalogDetail(itemId);
 
   const item = query.data?.item;
   // A series has no media source of its own, so the clip is sampled from the
@@ -303,19 +297,13 @@ function WatchDetailModal({ itemId, onClose }: { itemId: string | null; onClose:
   // a season it never loaded.
   const needsSeasonFetch = Boolean(activeSeasonId)
     && !payloadCoversAllSeasons
-    && activeSeasonId !== defaultSeasonId;
-  const seasonQuery = useQuery({
-    queryKey: queryKeys.jellyfinItem(activeSeasonId ?? '', 'full'),
-    queryFn: jsonFetcher<CatalogItemDetailResponse>(
-      `/api/jellyfin/catalog/items/${activeSeasonId}?expand=episodes`,
-    ),
-    enabled: needsSeasonFetch,
-  });
+    && (payloadEpisodes.length === 0 || activeSeasonId !== defaultSeasonId);
+  const seasonQuery = useSeasonEpisodes(needsSeasonFetch ? activeSeasonId : null);
 
   const seasonEpisodes = payloadCoversAllSeasons
     ? payloadEpisodes.filter((episode) => episode.ParentIndexNumber === activeSeasonNumber)
     : needsSeasonFetch
-      ? (seasonQuery.data?.episodes ?? [])
+      ? seasonQuery.episodes
       : payloadEpisodes;
 
   // Album tracks and collection members. The detail API already returns these
@@ -488,7 +476,7 @@ function WatchDetailModal({ itemId, onClose }: { itemId: string | null; onClose:
                   {(
                     <Button
                       className="h-11 rounded px-7 text-base font-semibold"
-                      onClick={() => void playback.playItem(item)}
+                      onClick={() => { onClose(); void playback.playItem(item); }}
                     >
                       <Play className="fill-current" data-icon="inline-start" />
                       {resumeSeconds > 0 ? 'Resume' : 'Play'}
@@ -502,7 +490,7 @@ function WatchDetailModal({ itemId, onClose }: { itemId: string | null; onClose:
                   {resumeSeconds > 0 && (
                     <CircleButton
                       label="Play from start"
-                      onClick={() => void playback.playItem(item, { startTimeTicks: 0 })}
+                      onClick={() => { onClose(); void playback.playItem(item, { startTimeTicks: 0 }); }}
                     >
                       <RotateCcw className="size-5" />
                     </CircleButton>
@@ -562,6 +550,7 @@ function WatchDetailModal({ itemId, onClose }: { itemId: string | null; onClose:
               </div>
             </div>
 
+            {query.optionalFailed && <p role="status" className="text-sm text-amber-200">Some sections are unavailable. <button className="underline" onClick={() => void query.refetch()}>Retry</button></p>}
             {seasonEpisodes.length > 0 && (
               <ModalSection
                 title="Episodes"
@@ -574,14 +563,15 @@ function WatchDetailModal({ itemId, onClose }: { itemId: string | null; onClose:
                 ) : null}
               >
                 <ul className="divide-y divide-white/10">
-                  {seasonEpisodes.slice(0, 20).map((episode) => (
+                  {seasonEpisodes.map((episode) => (
                     <EpisodeRow
                       key={episode.Id}
                       episode={episode}
-                      onPlay={() => void playback.playItem(episode)}
+                      onPlay={() => { onClose(); void playback.playItem(episode); }}
                     />
                   ))}
                 </ul>
+                {(needsSeasonFetch ? seasonQuery.hasNextPage : query.episodesMore) && <button type="button" className="mt-3 text-sm underline" disabled={needsSeasonFetch ? seasonQuery.isFetchingNextPage : query.episodesLoading} onClick={() => void (needsSeasonFetch ? seasonQuery.fetchNextPage() : query.loadMoreEpisodes())}>Load more episodes</button>}
               </ModalSection>
             )}
 
@@ -593,7 +583,7 @@ function WatchDetailModal({ itemId, onClose }: { itemId: string | null; onClose:
                       key={child.Id}
                       track={child}
                       index={index + 1}
-                      onPlay={() => void playback.playItems(tracks, index)}
+                      onPlay={() => { onClose(); void playback.playItems(tracks, index); }}
                     />
                   ))}
                 </ul>
@@ -622,7 +612,7 @@ function WatchDetailModal({ itemId, onClose }: { itemId: string | null; onClose:
                       key={entry.Id}
                       item={entry}
                       shape="landscape"
-                      onPlay={(next) => void playback.playItem(next)}
+                      onPlay={(next) => { onClose(); void playback.playItem(next); }}
                     />
                   ))}
                 </MediaRail>

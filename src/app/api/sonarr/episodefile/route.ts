@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSonarrClient } from '@/lib/service-helpers';
-import { requireAuth, requireCapability, requireUserCapability } from '@/lib/auth';
+import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { readJsonBody } from '@/lib/bulk-editor';
 import {
@@ -17,10 +17,8 @@ import { upstreamErrorResponse } from '@/lib/api-error';
 // ── GET /api/sonarr/episodefile?seriesId= ───────────────────────────────────
 // Lists the episode files for a series (the Manage Episodes data source).
 async function getHandler(request: NextRequest): Promise<NextResponse> {
-  const authError = await requireAuth();
-  if (authError) return authError;
-  const capError = await requireCapability('series.view');
-  if (capError) return capError;
+  const auth = await requireUserCapability('series.view');
+  if (!auth.ok) return auth.response;
 
   try {
     const seriesId = coercePositiveInt(request.nextUrl.searchParams.get('seriesId'));

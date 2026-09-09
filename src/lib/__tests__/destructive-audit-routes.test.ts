@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 const mocks = vi.hoisted(() => ({
   requireAuth: vi.fn(),
   requireCapability: vi.fn(),
+  requireUser: vi.fn(),
   requireUserCapability: vi.fn(),
   getCurrentUser: vi.fn(),
   runWithOperationAudit: vi.fn(),
@@ -40,6 +41,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@/lib/auth', () => ({
   requireAuth: mocks.requireAuth,
   requireCapability: mocks.requireCapability,
+  requireUser: mocks.requireUser,
   requireUserCapability: mocks.requireUserCapability,
   getCurrentUser: mocks.getCurrentUser,
 }));
@@ -85,7 +87,13 @@ import { DELETE as deleteQueueItem } from '@/app/api/activity/queue/[id]/route';
 import { POST as torrentAction } from '@/app/api/qbittorrent/route';
 import { POST as torrentHashAction } from '@/app/api/qbittorrent/[hash]/route';
 
-const user = { id: 'user-1', username: 'owner' };
+const user = {
+  id: 'user-1',
+  username: 'owner',
+  role: 'admin',
+  template: 'admin',
+  permissions: {},
+};
 
 function request(path: string, method: string, body?: unknown): NextRequest {
   return new NextRequest(`http://localhost${path}`, {
@@ -100,6 +108,7 @@ describe('destructive route audit wiring', () => {
     vi.clearAllMocks();
     mocks.requireAuth.mockResolvedValue(null);
     mocks.requireCapability.mockResolvedValue(null);
+    mocks.requireUser.mockResolvedValue({ ok: true, user, session: {} });
     mocks.requireUserCapability.mockResolvedValue({ ok: true, user, session: {} });
     mocks.getCurrentUser.mockResolvedValue(user);
     mocks.runWithOperationAudit.mockImplementation(async (_input, operation: () => Promise<unknown>) => operation());

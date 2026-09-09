@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import axios from 'axios';
-import { requireAuth, requireCapability } from '@/lib/auth';
+import { requireUserCapability } from '@/lib/auth';
 import { getSonarrClient } from '@/lib/service-helpers';
 import { searchSeriesAniListCandidates } from '@/lib/anilist-series-mapping';
 import type { SonarrSeries } from '@/types';
@@ -12,10 +12,8 @@ async function getHandler(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const authError = await requireAuth();
-  if (authError) return authError;
-  const capError = await requireCapability('series.view');
-  if (capError) return capError;
+  const auth = await requireUserCapability('series.view');
+  if (!auth.ok) return auth.response;
 
   try {
     const { id } = await params;

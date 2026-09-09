@@ -1,11 +1,14 @@
+import { etagJson } from '@/lib/etag-json';
+import { projectTorrentsForSummary, torrentCounters } from '@/lib/qbittorrent-summary';
 import { NextRequest, NextResponse } from 'next/server';
 import { getQBittorrentClient } from '@/lib/service-helpers';
-import { requireAuth, requireCapability } from '@/lib/auth';
+import { requireUserCapability } from '@/lib/auth';
 import type { QBittorrentSummaryResponse } from '@/types';
 import { logApiDuration } from '@/lib/server-perf';
 import { withApiLogging } from '@/lib/api-logger';
 import { getCachedJson, setCachedJson } from '@/lib/cache/json-cache';
 import { getQbitCacheVersion } from '@/lib/cache/qbittorrent-version';
+import { torrentDeltaHistory } from '@/lib/cache/qbittorrent-delta';
 
 // The summary is identical for every authorized user, and every open torrents
 // page polls it every ~5s — a tiny cache window + in-flight dedupe collapses
@@ -35,7 +38,7 @@ async function loadSummary(
     client.getTransferInfo().catch(() => null),
     client.getSpeedLimitsMode().catch(() => 0),
   ]);
-  return { torrents, transferInfo, speedLimitsMode };
+  return { torrents: projectTorrentsForSummary(torrents), transferInfo, speedLimitsMode };
 }
 
 async function getSummaryCached(
@@ -66,10 +69,8 @@ async function getSummaryCached(
 }
 
 async function getHandler(request: NextRequest) {
-  const authError = await requireAuth();
-  if (authError) return authError;
-  const capError = await requireCapability('torrents.view');
-  if (capError) return capError;
+  const auth = await requireUserCapability('torrents.view');
+  if (!auth.ok) return auth.response;
 
   const startedAt = performance.now();
 
@@ -92,7 +93,12 @@ async function getHandler(request: NextRequest) {
       cached,
     });
 
-    return NextResponse.json(payload, { headers: SUMMARY_CACHE_HEADERS });
+    const view = searchParams.get('view');
+    if (view === 'delta') {
+      const scope = JSON.stringify([auth.user.id, seed]);
+      return etagJson(request, torrentDeltaHistory.response(scope, searchParams.get('cursor') || undefined, payload), SUMMARY_CACHE_HEADERS);
+    }
+    return etagJson(request, view === 'counters' ? { ...torrentCounters(payload.torrents), transferInfo: payload.transferInfo, speedLimitsMode: payload.speedLimitsMode } : payload, SUMMARY_CACHE_HEADERS);
   } catch (error) {
     console.error('Failed to fetch qBittorrent summary:', error);
     logApiDuration('/api/qbittorrent/summary', startedAt, { failed: true });

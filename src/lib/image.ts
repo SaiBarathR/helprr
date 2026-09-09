@@ -1,5 +1,7 @@
 export type ImageServiceHint = 'tmdb' | 'radarr' | 'sonarr' | 'anilist' | 'lidarr';
 
+export const RESPONSIVE_IMAGE_WIDTH_BUCKETS = [160, 240, 320, 480, 640] as const;
+
 // Cache-busting token mirrored from the server-side cache generation
 // (`getCacheGeneration()`). Appended to proxied image URLs so that bumping the
 // generation on purge changes every URL, forcing browsers/PWAs to drop their
@@ -48,6 +50,36 @@ export function toCachedImageSrc(
   } catch {
     return src;
   }
+}
+
+export function selectResponsiveImageWidth(width: number): number {
+  if (!Number.isFinite(width) || width <= 0) return RESPONSIVE_IMAGE_WIDTH_BUCKETS[0];
+  return RESPONSIVE_IMAGE_WIDTH_BUCKETS.find((bucket) => bucket >= width)
+    ?? RESPONSIVE_IMAGE_WIDTH_BUCKETS[RESPONSIVE_IMAGE_WIDTH_BUCKETS.length - 1];
+}
+
+export function setProtectedImageWidth(src: string, width: number): string {
+  const selectedWidth = selectResponsiveImageWidth(width);
+  try {
+    const parsed = new URL(src, 'http://localhost');
+    if (parsed.pathname === '/api/image') {
+      parsed.searchParams.set('w', String(selectedWidth));
+    } else if (parsed.pathname === '/api/jellyfin/image') {
+      parsed.searchParams.set('maxWidth', String(selectedWidth));
+    } else {
+      return src;
+    }
+    return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+  } catch {
+    return src;
+  }
+}
+
+export function toProtectedImageSrcSet(src: string): string | undefined {
+  if (!isProtectedApiImageSrc(src)) return undefined;
+  return RESPONSIVE_IMAGE_WIDTH_BUCKETS
+    .map((width) => `${setProtectedImageWidth(src, width)} ${width}w`)
+    .join(', ');
 }
 
 export function isProtectedApiImageSrc(src: string): boolean {

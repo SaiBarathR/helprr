@@ -1,22 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth, requireCapability } from '@/lib/auth';
+import { requireUserCapability } from '@/lib/auth';
 import { deleteLogFile, listLogFiles } from '@/lib/logger';
 import { withApiLogging } from '@/lib/api-logger';
 
 async function getHandler() {
-  const authError = await requireAuth();
-  if (authError) return authError;
-  const capError = await requireCapability('logs.view');
-  if (capError) return capError;
+  const auth = await requireUserCapability('logs.view');
+  if (!auth.ok) return auth.response;
 
   return NextResponse.json({ files: await listLogFiles() });
 }
 
 async function deleteHandler(request: NextRequest) {
-  const authError = await requireAuth();
-  if (authError) return authError;
-  const capError = await requireCapability('logs.manage');
-  if (capError) return capError;
+  const auth = await requireUserCapability('logs.manage');
+  if (!auth.ok) return auth.response;
 
   const all = request.nextUrl.searchParams.get('all') === 'true';
   if (all) {

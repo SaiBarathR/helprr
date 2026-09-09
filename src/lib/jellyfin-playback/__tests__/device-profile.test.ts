@@ -99,8 +99,8 @@ describe('device profile shape', () => {
 
   it('offers a bitrate ladder with an auto option', () => {
     const options = bitrateOptions();
-    expect(options[0]).toEqual({ label: 'Auto', value: 0 });
-    expect(options.every((option, index) => index === 0 || option.value > 0)).toBe(true);
+    expect(options[0]).toEqual({ label: 'Automatic', value: 0 });
+    expect(options.every((option, index) => index === 0 || option.value === -1 || option.value > 0)).toBe(true);
   });
 });
 

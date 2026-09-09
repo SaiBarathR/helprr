@@ -254,17 +254,17 @@ const SPECIAL_POLICIES: Record<string, SpecialPolicy> = {
   },
   'PUT /api/sonarr/[id]': {
     kind: 'field-capability',
-    marker: 'guardLibraryEdit',
+    marker: 'guardResolvedLibraryEdit',
     capabilities: ['series.editTags', 'series.changePath', 'series.editMonitoring'],
   },
   'PUT /api/radarr/[id]': {
     kind: 'field-capability',
-    marker: 'guardLibraryEdit',
+    marker: 'guardResolvedLibraryEdit',
     capabilities: ['movies.editTags', 'movies.changePath', 'movies.editMonitoring'],
   },
   'PUT /api/lidarr/[id]': {
     kind: 'field-capability',
-    marker: 'guardLibraryEdit',
+    marker: 'guardResolvedLibraryEdit',
     capabilities: ['music.editTags', 'music.changePath', 'music.editMonitoring'],
   },
   'DELETE /api/seerr/pending-requests/[id]': {
@@ -408,6 +408,12 @@ function hasCall(evidence: HandlerEvidence, name: string, stringArgument?: strin
   );
 }
 
+function hasCapabilityGuard(evidence: HandlerEvidence, capability: string): boolean {
+  return hasCall(evidence, 'requireCapability', capability)
+    || hasCall(evidence, 'requireUserCapability', capability)
+    || evidence.handlerText.includes(`can(auth.user, '${capability}')`);
+}
+
 describe('mutating API route capability matrix', () => {
   const handlers = discoverMutatingHandlers();
   const assignments = policyAssignments();
@@ -426,8 +432,7 @@ describe('mutating API route capability matrix', () => {
       for (const route of routes) {
         const evidence = handlers.get(route)!;
         expect(
-          hasCall(evidence, 'requireCapability', capability)
-            || hasCall(evidence, 'requireUserCapability', capability),
+          hasCapabilityGuard(evidence, capability),
           `${route} must require ${capability}`,
         ).toBe(true);
       }
@@ -471,7 +476,9 @@ describe('mutating API route capability matrix', () => {
         expect(evidence.fileText).toContain('return null; // unknown/unmapped action');
       } else if (policy.kind === 'field-capability') {
         expect(
-          hasCall(evidence, 'requireAuth') || hasCall(evidence, 'requireCapability'),
+          hasCall(evidence, 'requireAuth')
+            || hasCall(evidence, 'requireCapability')
+            || hasCall(evidence, 'requireUserCapability'),
           `${route} must authenticate before applying its field guard`,
         ).toBe(true);
       } else {

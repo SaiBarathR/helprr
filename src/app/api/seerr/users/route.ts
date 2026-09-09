@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSeerrClient } from '@/lib/service-helpers';
-import { requireAuth, requireCapability } from '@/lib/auth';
+import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { logger } from '@/lib/logger';
 
@@ -11,11 +11,9 @@ function parseInt32(value: string | null): number | undefined {
 }
 
 async function getHandler(request: NextRequest): Promise<NextResponse> {
-  const authError = await requireAuth();
-  if (authError) return authError;
   // Listing Seerr users is request-management (used for approvals + admin linking).
-  const capError = await requireCapability('requests.approve');
-  if (capError) return capError;
+  const auth = await requireUserCapability('requests.approve');
+  if (!auth.ok) return auth.response;
 
   try {
     const sp = request.nextUrl.searchParams;

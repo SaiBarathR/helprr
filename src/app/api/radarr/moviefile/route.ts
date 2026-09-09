@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getRadarrClient } from '@/lib/service-helpers';
-import { requireAuth, requireCapability, requireUserCapability } from '@/lib/auth';
+import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { readJsonBody } from '@/lib/bulk-editor';
 import {
@@ -16,10 +16,8 @@ import { upstreamErrorResponse } from '@/lib/api-error';
 
 // ── GET /api/radarr/moviefile?movieId= ──────────────────────────────────────
 async function getHandler(request: NextRequest): Promise<NextResponse> {
-  const authError = await requireAuth();
-  if (authError) return authError;
-  const capError = await requireCapability('movies.view');
-  if (capError) return capError;
+  const auth = await requireUserCapability('movies.view');
+  if (!auth.ok) return auth.response;
 
   try {
     const movieId = coercePositiveInt(request.nextUrl.searchParams.get('movieId'));

@@ -1,19 +1,20 @@
 'use client';
 
+import { useCatalogDetail } from '@/lib/hooks/use-catalog-detail';
+
 import { use, useEffect, useMemo, useRef, useState } from 'react';
 import Link from '@/components/ui/app-link';
 import { useSearchParams } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, Film, HardDrive, Heart, ListPlus, Play, Plus, RotateCcw, Shuffle, User } from 'lucide-react';
 import { jsonFetcher } from '@/lib/query-fetch';
-import { queryKeys } from '@/lib/query-keys';
 import { Button } from '@/components/ui/button';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { ErrorState } from '@/components/ui/error-state';
 import { WatchTopBar } from '@/components/jellyfin-streaming/watch-top-bar';
 import { CatalogRail } from '@/components/jellyfin-streaming/catalog-rail';
 import { MediaRail } from '@/components/jellyfin-streaming/media-rail';
-import { useJellyfinPlayback } from '@/components/jellyfin-streaming/playback-provider';
+import { useJellyfinPlaybackState } from '@/components/jellyfin-streaming/playback-provider';
 import {
   jellyfinBackdropUrl,
   jellyfinCardImage,
@@ -23,7 +24,7 @@ import {
 import { formatClock, ticksToSeconds } from '@/lib/jellyfin-playback/device';
 import { formatBytes } from '@/lib/format';
 import { formatCertificate, formatCommunityRating, formatRuntimeShort } from '@/lib/jellyfin-playback/metadata';
-import type { CatalogItemDetailResponse, CatalogItemsResponse } from '@/types/jellyfin-streaming';
+import type { CatalogItemsResponse } from '@/types/jellyfin-streaming';
 import type { JellyfinMediaStream, JellyfinPerson } from '@/types/jellyfin';
 import { FadeInImage } from '@/components/media/fade-in-image';
 import { HeroTitle } from '@/components/jellyfin-streaming/hero-title';
@@ -51,7 +52,7 @@ function streamLabel(stream: JellyfinMediaStream): string {
 
 export default function JellyfinItemPage({ params }: { params: Promise<{ itemId: string }> }) {
   const { itemId } = use(params);
-  const playback = useJellyfinPlayback();
+  const playback = useJellyfinPlaybackState();
   const skin = useWatchSkin();
   const cinematic = skin === 'cinematic';
   const compact = useCompactViewport();
@@ -60,10 +61,7 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
   const stacked = cinematic && compact;
   const [audioIndex, setAudioIndex] = useState<number | null>(null);
   const [subtitleIndex, setSubtitleIndex] = useState<number | null>(null);
-  const query = useQuery({
-    queryKey: queryKeys.jellyfinItem(itemId, 'full'),
-    queryFn: jsonFetcher<CatalogItemDetailResponse>(`/api/jellyfin/catalog/items/${itemId}?expand=seasons,episodes,similar,specials,segments,instantMix,theme,children,filmography,trailers`),
-  });
+  const query = useCatalogDetail(itemId);
 
   const item = query.data?.item;
 
@@ -622,6 +620,8 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
           />
         )}
 
+        {query.optionalFailed && <p role="status" className="text-sm text-muted-foreground">Some sections are unavailable. <button className="underline" onClick={() => void query.refetch()}>Retry</button></p>}
+        {query.episodesMore && <Button variant="outline" disabled={query.episodesLoading} onClick={() => void query.loadMoreEpisodes()}>Load more episodes</Button>}
         {/* Helprr's own detail, kept below the tabs on a phone. */}
         {stacked && infoRows.length > 0 && (
           <dl className="divide-y divide-border overflow-hidden rounded-xl border bg-card/60">

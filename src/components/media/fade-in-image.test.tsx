@@ -155,4 +155,26 @@ describe('FadeInImage', () => {
     expect(image.className).toContain('opacity-0');
     expect(container.querySelector('[data-image-loading="true"]')).not.toBeNull();
   });
+
+  it('renders protected responsive proxy images with srcset buckets and no default 600px source', () => {
+    act(() => {
+      root.render(
+        <FadeInImage
+          src="/api/image?src=https%3A%2F%2Fs4.anilist.co%2Fposter.jpg&service=anilist&v=5"
+          alt="Poster"
+          fill
+          sizes="196px"
+          responsiveProxy
+          unoptimized
+        />,
+      );
+    });
+
+    const image = currentImage(container);
+    expect(image.getAttribute('src')).toBe('/api/image?src=https%3A%2F%2Fs4.anilist.co%2Fposter.jpg&service=anilist&v=5&w=320');
+    expect(image.getAttribute('srcset')).toContain('&w=160 160w');
+    expect(image.getAttribute('srcset')).toContain('&w=640 640w');
+    expect(image.getAttribute('srcset')).not.toContain('&w=600');
+    expect(image.getAttribute('loading')).toBe('lazy');
+  });
 });

@@ -1,16 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getJellyfinClient } from '@/lib/service-helpers';
-import { requireAuth, requireCapability } from '@/lib/auth';
+import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { DEVICE_ID } from '@/lib/jellyfin-client';
 import { upstreamErrorResponse } from '@/lib/api-error';
 
 async function getHandler(): Promise<NextResponse> {
-  const authError = await requireAuth();
-  if (authError) return authError;
-
-  const capError = await requireCapability('jellyfin.control');
-  if (capError) return capError;
+  const auth = await requireUserCapability('jellyfin.control');
+  if (!auth.ok) return auth.response;
 
   try {
     const client = await getJellyfinClient();
@@ -22,11 +19,8 @@ async function getHandler(): Promise<NextResponse> {
 }
 
 async function deleteHandler(request: NextRequest): Promise<NextResponse> {
-  const authError = await requireAuth();
-  if (authError) return authError;
-
-  const capError = await requireCapability('jellyfin.control');
-  if (capError) return capError;
+  const auth = await requireUserCapability('jellyfin.control');
+  if (!auth.ok) return auth.response;
 
   // Distinguish an absent `id` param (→ Delete All) from a present-but-empty one
   // (→ reject). Falling through on `?id=` would silently wipe every device.

@@ -1,3 +1,4 @@
+import { invalidateJellyfinCatalog } from '@/lib/cache/jellyfin-catalog';
 import { NextRequest, NextResponse } from 'next/server';
 import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
@@ -53,6 +54,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     // Always invalidate the library map (a series/episode toggle flips the
     // aggregate). For a series/episode write, also drop that series' episode map
     // — marking a series cascades to its episodes server-side.
+    invalidateJellyfinCatalog(auth.user.id);
     await invalidateWatchStatus(watchStatusMapSeed(connectionFingerprint, jellyfinUserId));
     if (typeof seriesId === 'string' && seriesId) {
       await invalidateWatchStatus(seriesEpisodesSeed(connectionFingerprint, jellyfinUserId, seriesId));

@@ -1,15 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getJellyfinClient } from '@/lib/service-helpers';
-import { requireAuth, requireCapability } from '@/lib/auth';
+import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { upstreamErrorResponse } from '@/lib/api-error';
 
 async function postHandler(req: NextRequest) {
-  const authError = await requireAuth();
-  if (authError) return authError;
-
-  const capError = await requireCapability('jellyfin.control');
-  if (capError) return capError;
+  const auth = await requireUserCapability('jellyfin.control');
+  if (!auth.ok) return auth.response;
 
   try {
     const { action } = (await req.json()) as { action: string };

@@ -3,13 +3,12 @@ import { getRadarrClient, getRadarrClients } from '@/lib/service-helpers';
 import { resolveConnection } from '@/lib/arr-instances';
 import { getConnectionHeaders } from '@/lib/service-connection-secrets';
 import { RadarrClient } from '@/lib/radarr-client';
-import { requireAuth, requireCapability } from '@/lib/auth';
+import { requireUserCapability } from '@/lib/auth';
 import type { RadarrMovie, RadarrMovieListItem } from '@/types';
 import { logApiDuration } from '@/lib/server-perf';
 import { withApiLogging } from '@/lib/api-logger';
-import { getCachedTaggedLibrary, invalidateTaggedLibrary } from '@/lib/cache/tagged-library';
+import { getCachedTaggedLibrary, getCachedTaggedLibraryJsonResponse, invalidateTaggedLibrary } from '@/lib/cache/tagged-library';
 import { getInstanceLabelMaps, labelsFor } from '@/lib/cache/reference-labels';
-import { etagJson } from '@/lib/etag-json';
 import { upstreamErrorResponse } from '@/lib/api-error';
 
 const RADARR_CACHE_HEADERS = {
@@ -54,10 +53,8 @@ function toListItem(movie: RadarrMovie): RadarrMovieListItem {
 }
 
 async function getHandler(request: NextRequest) {
-  const authError = await requireAuth();
-  if (authError) return authError;
-  const capError = await requireCapability('movies.view');
-  if (capError) return capError;
+  const auth = await requireUserCapability('movies.view');
+  if (!auth.ok) return auth.response;
   const startedAt = performance.now();
 
   try {
@@ -78,37 +75,45 @@ async function getHandler(request: NextRequest) {
           ])
         : getRadarrClients());
 
-    // Cache the raw tagged library (full objects) so both ?full=true and the slim list
-    // view are served from one entry. Authorized callers all get identical bytes (binary
-    // capability gate), so no per-user filtering is needed after the read.
-    const { items: tagged, cached } = await getCachedTaggedLibrary({
+    const { response, cached, itemCount } = await getCachedTaggedLibraryJsonResponse(request, RADARR_CACHE_HEADERS, {
       scope: 'radarr',
       cacheKeySeed,
-      getInstances: resolveInstances,
-      fetchOne: (client) => client.getMovies(),
+      projectionKey: full ? 'full' : 'list',
+      buildPayload: async () => {
+        // Cache the raw tagged library (full objects) so both ?full=true and the slim list
+        // view are served from one entry. Authorized callers all get identical bytes (binary
+        // capability gate), so no per-user filtering is needed after the read.
+        const { items: tagged, complete } = await getCachedTaggedLibrary({
+          scope: 'radarr',
+          cacheKeySeed,
+          getInstances: resolveInstances,
+          fetchOne: (client) => client.getMovies(),
+        });
+        if (full) return { payload: tagged, itemCount: tagged.length, cacheable: complete };
+
+        // Resolve quality-profile / tag IDs to names against each item's OWN instance, so a
+        // movie from a non-default Radarr isn't mislabelled by the default instance's lookup.
+        const labelMaps = await getInstanceLabelMaps('radarr', await resolveInstances());
+        return {
+          itemCount: tagged.length,
+          cacheable: complete && [...labelMaps.values()].every((map) => map.complete !== false),
+          payload: tagged.map((m) => ({
+            ...toListItem(m),
+            instanceId: m.instanceId,
+            instanceLabel: m.instanceLabel,
+            ...labelsFor(labelMaps, m.instanceId, { qualityProfileId: m.qualityProfileId, tags: m.tags }),
+          })),
+        };
+      },
     });
 
     logApiDuration('/api/radarr', startedAt, {
       method: 'GET',
       full,
-      movieCount: tagged.length,
-      cached: !!cached,
+      movieCount: itemCount,
+      cached,
     });
-    if (full) return etagJson(request, tagged, RADARR_CACHE_HEADERS);
-
-    // Resolve quality-profile / tag IDs to names against each item's OWN instance, so a
-    // movie from a non-default Radarr isn't mislabelled by the default instance's lookup.
-    const labelMaps = await getInstanceLabelMaps('radarr', await resolveInstances());
-    return etagJson(
-      request,
-      tagged.map((m) => ({
-        ...toListItem(m),
-        instanceId: m.instanceId,
-        instanceLabel: m.instanceLabel,
-        ...labelsFor(labelMaps, m.instanceId, { qualityProfileId: m.qualityProfileId, tags: m.tags }),
-      })),
-      RADARR_CACHE_HEADERS
-    );
+    return response;
   } catch (error) {
     logApiDuration('/api/radarr', startedAt, { method: 'GET', failed: true });
     return upstreamErrorResponse(error, 'Failed to fetch movies');
@@ -116,10 +121,8 @@ async function getHandler(request: NextRequest) {
 }
 
 async function postHandler(request: Request) {
-  const authError = await requireAuth();
-  if (authError) return authError;
-  const capError = await requireCapability('movies.add');
-  if (capError) return capError;
+  const auth = await requireUserCapability('movies.add');
+  if (!auth.ok) return auth.response;
   const startedAt = performance.now();
 
   try {

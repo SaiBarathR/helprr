@@ -1,3 +1,4 @@
+import { recordBrowseFreshness } from '@/lib/browse-freshness';
 // Shared client-side fetcher for TanStack Query. Replaces the per-page
 // `sonarrFetch`/`radarrFetch`/`lidarrFetch` + `withInstanceQuery` copies and the
 // silent `r.ok ? r.json() : []` fallback: a non-ok response now throws an
@@ -77,6 +78,7 @@ export async function nullOn404<T>(promise: Promise<T>): Promise<T | null> {
 export function jsonFetcher<T>(path: string, instanceId?: string) {
   return async ({ signal }: { signal?: AbortSignal } = {}): Promise<T> => {
     const res = await fetch(withInstanceQuery(path, instanceId), { signal });
+    recordBrowseFreshness(withInstanceQuery(path, instanceId), res);
     if (!res.ok) throw new ApiError(res.status, `GET ${path} → ${res.status}`);
     return (await res.json()) as T;
   };

@@ -10,6 +10,8 @@ const eslintConfig = defineConfig([
     // Default ignores of eslint-config-next:
     ".next/**",
     "out/**",
+    // Local qualification artifacts include generated bundles and browser traces.
+    "plans/**",
     "build/**",
     "next-env.d.ts",
     // Local agent worktrees are separate checkouts with their own lint state.

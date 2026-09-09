@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { CleanupAction, type Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
-import { requireAuth, requireCapability } from '@/lib/auth';
+import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 
 // Only completed removal actions count toward "Removed" tiles. Excludes
@@ -38,10 +38,8 @@ function startOfToday(tzOffsetRaw: string | null): Date {
 }
 
 async function getHandler(req: NextRequest) {
-  const err = await requireAuth();
-  if (err) return err;
-  const capError = await requireCapability('cleanup.view');
-  if (capError) return capError;
+  const auth = await requireUserCapability('cleanup.view');
+  if (!auth.ok) return auth.response;
   const now = new Date();
   const startToday = startOfToday(req.nextUrl.searchParams.get('tzOffsetMinutes'));
   const start7d = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);

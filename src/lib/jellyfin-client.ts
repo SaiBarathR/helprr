@@ -62,6 +62,14 @@ export class JellyfinClient {
   private userId: string;
   private token: string;
   private playbackToken: string;
+  private readSignal?: AbortSignal;
+
+  /** A request-local view. Shared clients, authentication and writes are untouched. */
+  withReadSignal(signal: AbortSignal): JellyfinClient {
+    const scoped = Object.assign(Object.create(Object.getPrototypeOf(this)), this) as JellyfinClient;
+    scoped.readSignal = signal;
+    return scoped;
+  }
 
   /**
    * `token` is the admin API key and serves every *read*: those are scoped by an
@@ -167,7 +175,7 @@ export class JellyfinClient {
   }
 
   private async get<T>(endpoint: string, params?: Record<string, unknown>): Promise<T> {
-    const response = await this.client.get<T>(endpoint, { params });
+    const response = await this.client.get<T>(endpoint, { params, signal: this.readSignal });
     return response.data;
   }
 
@@ -258,7 +266,7 @@ export class JellyfinClient {
    * episode in the series, which made a season page list the whole show.
    * Images stay enabled because episode rows render 16:9 stills.
    */
-  async getSeriesEpisodes(seriesId: string, seasonId?: string): Promise<JellyfinItemsResponse> {
+  async getSeriesEpisodes(seriesId: string, seasonId?: string, page?: { startIndex: number; limit: number }): Promise<JellyfinItemsResponse> {
     return this.get<JellyfinItemsResponse>(`/Shows/${seriesId}/Episodes`, {
       userId: this.requireUserId(),
       Fields: CATALOG_LIST_FIELDS,
@@ -266,6 +274,7 @@ export class JellyfinClient {
       EnableImages: true,
       EnableImageTypes: 'Primary,Thumb',
       ...(seasonId ? { SeasonId: seasonId } : {}),
+      ...(page ? { StartIndex: page.startIndex, Limit: page.limit, EnableTotalRecordCount: true } : {}),
     });
   }
 

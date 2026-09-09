@@ -1,16 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getJellyfinClient } from '@/lib/service-helpers';
 import { sanitizeDays } from '@/lib/jellyfin-playback-query';
-import { requireAuth, requireCapability } from '@/lib/auth';
+import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { upstreamErrorResponse } from '@/lib/api-error';
 
 async function getHandler(request: NextRequest): Promise<NextResponse> {
-  const authError = await requireAuth();
-  if (authError) return authError;
-
-  const capError = await requireCapability('jellyfin.stats');
-  if (capError) return capError;
+  const auth = await requireUserCapability('jellyfin.stats');
+  if (!auth.ok) return auth.response;
 
   try {
     const { searchParams } = new URL(request.url);

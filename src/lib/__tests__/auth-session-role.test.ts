@@ -24,6 +24,7 @@ vi.mock('@/lib/db', () => ({
 }));
 
 import { requireAdmin, requireUserCapability, verifySession } from '@/lib/auth';
+import { can } from '@/lib/permissions';
 
 function user(overrides: Record<string, unknown> = {}) {
   return {
@@ -67,6 +68,21 @@ beforeEach(() => {
 });
 
 describe('server-side session and role enforcement', () => {
+  it('loads the JWT and session once for a reusable capability result', async () => {
+    mocks.sessionFindUnique.mockResolvedValue(
+      session({ user: user({ permissions: { 'movies.view': true } }) }),
+    );
+
+    const auth = await requireUserCapability('series.view');
+
+    expect(auth.ok).toBe(true);
+    if (auth.ok) {
+      expect(can(auth.user, 'movies.view')).toBe(true);
+    }
+    expect(mocks.jwtVerify).toHaveBeenCalledTimes(1);
+    expect(mocks.sessionFindUnique).toHaveBeenCalledTimes(1);
+  });
+
   it('ignores the JWT role hint and applies a database demotion on the next request', async () => {
     mocks.sessionFindUnique.mockResolvedValue(session({ user: user({ role: 'member' }) }));
 
@@ -74,6 +90,21 @@ describe('server-side session and role enforcement', () => {
 
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.response.status).toBe(403);
+  });
+
+  it('reloads role changes on consecutive requests', async () => {
+    mocks.sessionFindUnique
+      .mockResolvedValueOnce(session({ user: user({ role: 'admin', template: 'admin' }) }))
+      .mockResolvedValueOnce(session({ user: user({ role: 'member' }) }));
+
+    const allowed = await requireAdmin();
+    const denied = await requireAdmin();
+
+    expect(allowed.ok).toBe(true);
+    expect(denied.ok).toBe(false);
+    if (!denied.ok) expect(denied.response.status).toBe(403);
+    expect(mocks.jwtVerify).toHaveBeenCalledTimes(2);
+    expect(mocks.sessionFindUnique).toHaveBeenCalledTimes(2);
   });
 
   it('applies current database capability overrides on every request', async () => {
@@ -88,6 +119,34 @@ describe('server-side session and role enforcement', () => {
 
     expect(denied.ok).toBe(false);
     expect(allowed.ok).toBe(true);
+    expect(mocks.jwtVerify).toHaveBeenCalledTimes(2);
+    expect(mocks.sessionFindUnique).toHaveBeenCalledTimes(2);
+  });
+
+  it('reloads revoked sessions on consecutive requests', async () => {
+    mocks.sessionFindUnique
+      .mockResolvedValueOnce(session())
+      .mockResolvedValueOnce(session({ revokedAt: new Date('2026-07-15T00:00:00Z') }));
+
+    await expect(verifySession('signed-token')).resolves.toBe(true);
+    await expect(verifySession('signed-token')).resolves.toBe(false);
+    expect(mocks.jwtVerify).toHaveBeenCalledTimes(2);
+    expect(mocks.sessionFindUnique).toHaveBeenCalledTimes(2);
+  });
+
+  it('reloads disabled users on consecutive requests', async () => {
+    mocks.sessionFindUnique
+      .mockResolvedValueOnce(session())
+      .mockResolvedValueOnce(session({ user: user({ status: 'disabled' }) }));
+
+    const allowed = await requireUserCapability('series.view');
+    const denied = await requireUserCapability('series.view');
+
+    expect(allowed.ok).toBe(true);
+    expect(denied.ok).toBe(false);
+    if (!denied.ok) expect(denied.response.status).toBe(401);
+    expect(mocks.jwtVerify).toHaveBeenCalledTimes(2);
+    expect(mocks.sessionFindUnique).toHaveBeenCalledTimes(2);
   });
 
   it.each([

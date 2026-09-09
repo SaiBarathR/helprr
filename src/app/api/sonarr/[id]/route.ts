@@ -1,20 +1,49 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSonarrClient } from '@/lib/service-helpers';
-import { requireAuth, requireCapability, getCurrentUser, requireUserCapability } from '@/lib/auth';
-import { diffSeriesEdit, guardLibraryEdit } from '@/lib/library-edit-guard';
+import { requireUserCapability } from '@/lib/auth';
+import { diffSeriesEdit, type LibraryEditCaps, type LibraryEditDiff } from '@/lib/library-edit-guard';
+import { can, type PermissionUser } from '@/lib/permissions';
+import type { Capability } from '@/lib/capabilities';
 import { invalidateTaggedLibrary } from '@/lib/cache/tagged-library';
 import { withApiLogging } from '@/lib/api-logger';
 import { upstreamErrorResponse } from '@/lib/api-error';
 import { runWithOperationAudit } from '@/lib/file-audit';
 
+function guardResolvedLibraryEdit(
+  user: PermissionUser,
+  diff: LibraryEditDiff,
+  caps: LibraryEditCaps
+): NextResponse | null {
+  if (!diff.tags && !diff.path && !diff.monitoring && !diff.other) return null;
+  if (user.role === 'admin') return null;
+
+  if (diff.other) {
+    return NextResponse.json(
+      { error: 'Forbidden: only an admin can change these fields' },
+      { status: 403 }
+    );
+  }
+
+  const missing: Capability[] = [];
+  if (diff.tags && !can(user, caps.tags)) missing.push(caps.tags);
+  if (diff.path && !can(user, caps.path)) missing.push(caps.path);
+  if (diff.monitoring && !can(user, caps.monitoring)) missing.push(caps.monitoring);
+
+  if (missing.length > 0) {
+    return NextResponse.json(
+      { error: `Forbidden: you cannot change ${missing.join(', ')}` },
+      { status: 403 }
+    );
+  }
+  return null;
+}
+
 async function getHandler(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const authError = await requireAuth();
-  if (authError) return authError;
-  const capError = await requireCapability('series.view');
-  if (capError) return capError;
+  const auth = await requireUserCapability('series.view');
+  if (!auth.ok) return auth.response;
 
   try {
     const { id } = await params;
@@ -31,10 +60,8 @@ async function putHandler(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const authError = await requireAuth();
-  if (authError) return authError;
-  const capError = await requireCapability('series.view');
-  if (capError) return capError;
+  const auth = await requireUserCapability('series.view');
+  if (!auth.ok) return auth.response;
 
   try {
     const { id } = await params;
@@ -57,11 +84,9 @@ async function putHandler(
     // for changing monitoring / tags / root folder without the matching capability.
     // Skipping the fetch for admins avoids an extra upstream round-trip and keeps a
     // transient detail-fetch error from failing an otherwise-valid admin edit.
-    const user = await getCurrentUser();
-    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    if (user.role !== 'admin') {
+    if (auth.user.role !== 'admin') {
       const current = await client.getSeriesById(pathId);
-      const guardError = await guardLibraryEdit(diffSeriesEdit(current, body), {
+      const guardError = guardResolvedLibraryEdit(auth.user, diffSeriesEdit(current, body), {
         tags: 'series.editTags',
         path: 'series.changePath',
         monitoring: 'series.editMonitoring',

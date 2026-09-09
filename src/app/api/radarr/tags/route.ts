@@ -3,7 +3,7 @@ import { getRadarrClient } from '@/lib/service-helpers';
 import { RadarrClient } from '@/lib/radarr-client';
 import { resolveConnection } from '@/lib/arr-instances';
 import { getConnectionHeaders } from '@/lib/service-connection-secrets';
-import { requireAuth, requireCapability } from '@/lib/auth';
+import { requireAuth, requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { REFERENCE_CACHE_HEADERS } from '@/lib/cache/reference-headers';
 import { invalidateReferenceLabels } from '@/lib/cache/reference-labels';
@@ -27,10 +27,8 @@ async function getHandler(request: NextRequest) {
 // upstream Radarr state, so it requires movies.editTags — view-only users must
 // not be able to write through this route.
 async function postHandler(request: NextRequest) {
-  const authError = await requireAuth();
-  if (authError) return authError;
-  const capError = await requireCapability('movies.editTags');
-  if (capError) return capError;
+  const auth = await requireUserCapability('movies.editTags');
+  if (!auth.ok) return auth.response;
 
   try {
     const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;

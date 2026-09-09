@@ -2,16 +2,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
 const mocks = vi.hoisted(() => ({
-  requireAuth: vi.fn(),
-  requireCapability: vi.fn(),
+  requireUserCapability: vi.fn(),
   historyCount: vi.fn(),
   historyGroupBy: vi.fn(),
   strikeCount: vi.fn(),
 }));
 
 vi.mock('@/lib/auth', () => ({
-  requireAuth: mocks.requireAuth,
-  requireCapability: mocks.requireCapability,
+  requireUserCapability: mocks.requireUserCapability,
 }));
 vi.mock('@/lib/api-logger', () => ({
   withApiLogging: (handler: unknown) => handler,
@@ -26,8 +24,7 @@ import { GET } from '@/app/api/cleanup/stats/route';
 describe('cleanup stats route', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.requireAuth.mockResolvedValue(null);
-    mocks.requireCapability.mockResolvedValue(null);
+    mocks.requireUserCapability.mockResolvedValue({ ok: true, user: { id: 'user-1' }, session: {} });
     mocks.historyCount.mockResolvedValue(0);
     mocks.historyGroupBy.mockResolvedValue([]);
     mocks.strikeCount.mockResolvedValue(0);

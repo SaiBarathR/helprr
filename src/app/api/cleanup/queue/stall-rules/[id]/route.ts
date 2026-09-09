@@ -1,15 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import { requireAuth, requireCapability } from '@/lib/auth';
+import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { validateStallRulePayload } from '../../_validators';
 import { capStrikesToThreshold } from '@/lib/cleanup/strikes';
 
 async function putHandler(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
-  const err = await requireAuth();
-  if (err) return err;
-  const capError = await requireCapability('cleanup.manage');
-  if (capError) return capError;
+  const auth = await requireUserCapability('cleanup.manage');
+  if (!auth.ok) return auth.response;
   const { id } = await ctx.params;
   let body: unknown;
   try { body = await req.json(); } catch { return NextResponse.json({ error: 'invalid json' }, { status: 400 }); }
@@ -38,10 +36,8 @@ async function putHandler(req: NextRequest, ctx: { params: Promise<{ id: string 
 }
 
 async function deleteHandler(_req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
-  const err = await requireAuth();
-  if (err) return err;
-  const capError = await requireCapability('cleanup.manage');
-  if (capError) return capError;
+  const auth = await requireUserCapability('cleanup.manage');
+  if (!auth.ok) return auth.response;
   const { id } = await ctx.params;
   const existing = await prisma.stallRule.findUnique({ where: { id }, select: { id: true } });
   if (!existing) return NextResponse.json({ error: 'not found' }, { status: 404 });

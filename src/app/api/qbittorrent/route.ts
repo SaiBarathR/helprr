@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
+import type { User } from '@prisma/client';
 import type { QBittorrentClient } from '@/lib/qbittorrent-client';
 import { getQBittorrentClient } from '@/lib/service-helpers';
-import { requireAuth, requireCapability, requireUserCapability } from '@/lib/auth';
+import { requireUser, requireUserCapability } from '@/lib/auth';
 import type { Capability } from '@/lib/capabilities';
+import { can } from '@/lib/permissions';
 import { MagnetParseError, parseMagnetInfoHash } from '@/lib/magnet';
 import { TorrentParseError, parseTorrentInfoHash } from '@/lib/torrent-metainfo';
 import { logApiDuration } from '@/lib/server-perf';
@@ -56,13 +58,18 @@ function actionCapability(action: unknown): Capability | null {
   }
 }
 
-async function runTorrentAction(client: QBittorrentClient, body: Record<string, unknown>): Promise<NextResponse | null> {
+async function runTorrentAction(
+  client: QBittorrentClient,
+  body: Record<string, unknown>,
+  user: User
+): Promise<NextResponse | null> {
   const action = body.action;
   const requiredCap = actionCapability(action);
   if (!requiredCap) return NextResponse.json({ error: 'Unknown action' }, { status: 400 });
 
-  const auth = await requireUserCapability(requiredCap);
-  if (!auth.ok) return auth.response;
+  if (!can(user, requiredCap)) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
 
   const hash = isNonEmptyString(body.hash) ? body.hash.trim() : '';
   if (!hash) return NextResponse.json({ error: 'hash is required' }, { status: 400 });
@@ -80,7 +87,7 @@ async function runTorrentAction(client: QBittorrentClient, body: Record<string, 
       const deleteFiles = booleanOr(body.deleteFiles, false);
       const snapshot = await snapshotTorrentDeleteTargets(client, hash);
       await runWithOperationAudit({
-        user: auth.user,
+        user,
         service: 'QBITTORRENT',
         operation: 'DELETE_TORRENT',
         targetType: 'torrent',
@@ -197,10 +204,8 @@ async function waitForTorrentHash(client: QBittorrentClient, hash: string): Prom
 }
 
 async function getHandler(request: NextRequest) {
-  const authError = await requireAuth();
-  if (authError) return authError;
-  const capError = await requireCapability('torrents.view');
-  if (capError) return capError;
+  const auth = await requireUserCapability('torrents.view');
+  if (!auth.ok) return auth.response;
   const startedAt = performance.now();
 
   try {
@@ -228,8 +233,8 @@ async function getHandler(request: NextRequest) {
 }
 
 async function postHandler(request: NextRequest) {
-  const authError = await requireAuth();
-  if (authError) return authError;
+  const auth = await requireUser();
+  if (!auth.ok) return auth.response;
   const startedAt = performance.now();
 
   try {
@@ -237,8 +242,9 @@ async function postHandler(request: NextRequest) {
     const contentType = request.headers.get('content-type') || '';
 
     if (contentType.includes('multipart/form-data')) {
-      const capError = await requireCapability('torrents.add');
-      if (capError) return capError;
+      if (!can(auth.user, 'torrents.add')) {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+      }
       const formData = await request.formData();
       const file = formData.get('file') as File | null;
       if (!file) {
@@ -315,7 +321,7 @@ async function postHandler(request: NextRequest) {
 
     const body = rawBody as Record<string, unknown>;
     if (body.action !== undefined) {
-      const actionResponse = await runTorrentAction(client, body);
+      const actionResponse = await runTorrentAction(client, body, auth.user);
       if (actionResponse) return actionResponse;
       // Bust the summary cache so the client's reconcile refetch sees post-action state.
       await bumpQbitCacheVersion();
@@ -323,8 +329,9 @@ async function postHandler(request: NextRequest) {
       return NextResponse.json({ success: true });
     }
 
-    const capError = await requireCapability('torrents.add');
-    if (capError) return capError;
+    if (!can(auth.user, 'torrents.add')) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
 
     const urls = body.urls;
     if (!isNonEmptyString(urls)) {

@@ -14,7 +14,7 @@ import { WatchTopBar } from '@/components/jellyfin-streaming/watch-top-bar';
 import { CatalogPosterCard } from '@/components/jellyfin-streaming/poster-card';
 import { CATALOG_GRID_CLASS, CATALOG_WRAP_CLASS } from '@/components/jellyfin-streaming/card-shared';
 import { useWatchSkin } from '@/lib/hooks/use-watch-skin';
-import { useJellyfinPlayback } from '@/components/jellyfin-streaming/playback-provider';
+import { useJellyfinPlaybackState } from '@/components/jellyfin-streaming/playback-provider';
 import { jellyfinImageUrl } from '@/lib/jellyfin-playback/image';
 import { FadeInImage } from '@/components/media/fade-in-image';
 import { Button } from '@/components/ui/button';
@@ -253,7 +253,7 @@ function FilteredItems({
   id: string;
   name: string;
 }) {
-  const playback = useJellyfinPlayback();
+  const playback = useJellyfinPlaybackState();
   const cinematic = useWatchSkin() === 'cinematic';
   const queryString = new URLSearchParams({
     [filterParam]: id,

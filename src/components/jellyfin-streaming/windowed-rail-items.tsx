@@ -14,61 +14,98 @@ export function WindowedRailItems({
   children,
   className,
   viewportRef,
+  overscanPx = 300,
 }: {
   children: ReactNode;
   /** Exactly the card's responsive width and aspect ratio. */
   className: string;
   viewportRef: RefObject<HTMLDivElement | null>;
+  /** Horizontal and vertical near-viewport margin before a slot may mount. */
+  overscanPx?: number;
 }) {
   const items = useMemo(() => Children.toArray(children), [children]);
-  const keys = items.map((item, index) => String(isValidElement(item) ? item.key : index));
-  const keyList = JSON.stringify(keys);
+  const keys = useMemo(
+    () => items.map((item, index) => String(isValidElement(item) ? item.key : index)),
+    [items],
+  );
+  const keyList = useMemo(() => JSON.stringify(keys), [keys]);
   const slots = useRef(new Map<string, HTMLDivElement>());
   const [mounted, setMounted] = useState<Set<string>>(() => new Set());
 
   useEffect(() => {
     const viewport = viewportRef.current;
     if (!viewport) return;
-    const intersecting = new Set<string>();
+    const originalPosition = viewport.style.position;
+    if (getComputedStyle(viewport).position === 'static') viewport.style.position = 'relative';
+    let nearby = false;
+    let frame = 0;
     const update = () => {
+      frame = 0;
       const next = new Set<string>();
-      slots.current.forEach((slot, key) => {
-        // Paging or scrolling must never unmount the keyboard's current card.
-        if (intersecting.has(key) || slot.contains(document.activeElement)) next.add(key);
-      });
+      const left = viewport.scrollLeft - overscanPx;
+      const right = viewport.scrollLeft + viewport.clientWidth + overscanPx;
+      // Every slot uses the same responsive geometry. Read at most two slots,
+      // rather than force layout for every card on every scroll frame.
+      const first = slots.current.get(keys[0]);
+      const second = slots.current.get(keys[1]);
+      if (nearby && first) {
+        const origin = first.offsetLeft;
+        const width = first.offsetWidth;
+        const stride = second ? second.offsetLeft - origin : width;
+        if (stride > 0) {
+          const from = Math.max(0, Math.ceil((left - origin - width) / stride));
+          const to = Math.min(keys.length - 1, Math.floor((right - origin) / stride));
+          for (let index = from; index <= to; index++) next.add(keys[index]);
+        }
+      }
+      const focused = document.activeElement?.closest<HTMLElement>('[data-rail-slot]');
+      if (focused && viewport.contains(focused) && focused.dataset.railSlot) next.add(focused.dataset.railSlot);
       setMounted((current) => current.size === next.size
         && [...next].every((key) => current.has(key)) ? current : next);
     };
-    let nearby = false;
-    const horizontal = new IntersectionObserver((entries) => {
-      if (!nearby) return;
-      entries.forEach((entry) => {
-        const key = (entry.target as HTMLElement).dataset.railSlot!;
-        if (entry.isIntersecting) intersecting.add(key);
-        else intersecting.delete(key);
-      });
-      update();
-    }, { root: viewport, rootMargin: '0px 300px' });
-    const vertical = new IntersectionObserver(([entry]) => {
-      horizontal.disconnect();
-      intersecting.clear();
+
+    const scheduleUpdate = () => {
+      if (frame) return;
+      frame = window.requestAnimationFrame(update);
+    };
+
+    const resizeObserver = typeof ResizeObserver !== 'undefined'
+      ? new ResizeObserver(scheduleUpdate)
+      : null;
+    const vertical = typeof IntersectionObserver !== 'undefined' ? new IntersectionObserver(([entry]) => {
       nearby = entry.isIntersecting;
       if (nearby) {
-        // Latch once per rail, using the observer we already have. Distant
-        // rails need not animate until they approach the viewport.
+        // Latch once per rail. Distant rails need not animate until they
+        // approach the viewport.
         viewport.dataset.railArrived = 'true';
-        slots.current.forEach((slot) => horizontal.observe(slot));
       }
       update();
-    }, { rootMargin: '300px 0px' });
-    vertical.observe(viewport);
+    }, { rootMargin: `${overscanPx}px 0px` }) : null;
+
+    if (vertical) {
+      vertical.observe(viewport);
+    } else {
+      nearby = true;
+      viewport.dataset.railArrived = 'true';
+      update();
+    }
+    viewport.addEventListener('scroll', scheduleUpdate, { passive: true });
+    viewport.addEventListener('focusin', scheduleUpdate);
+    viewport.addEventListener('focusout', scheduleUpdate);
+    window.addEventListener('resize', scheduleUpdate);
+    resizeObserver?.observe(viewport);
     return () => {
       nearby = false;
-      horizontal.disconnect();
-      vertical.disconnect();
-      intersecting.clear();
+      if (frame) window.cancelAnimationFrame(frame);
+      viewport.style.position = originalPosition;
+      viewport.removeEventListener('scroll', scheduleUpdate);
+      viewport.removeEventListener('focusin', scheduleUpdate);
+      viewport.removeEventListener('focusout', scheduleUpdate);
+      window.removeEventListener('resize', scheduleUpdate);
+      resizeObserver?.disconnect();
+      vertical?.disconnect();
     };
-  }, [viewportRef, keyList]);
+  }, [viewportRef, keyList, keys, overscanPx]);
 
   return items.map((item, index) => {
     const key = keys[index];

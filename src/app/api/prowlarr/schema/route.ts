@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getProwlarrClient } from '@/lib/service-helpers';
-import { requireAuth, requireCapability } from '@/lib/auth';
+import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { upstreamErrorResponse } from '@/lib/api-error';
 
@@ -12,10 +12,8 @@ import { upstreamErrorResponse } from '@/lib/api-error';
  * @returns A NextResponse containing the indexer schemas as JSON on success, or a JSON object `{ error: string }` with HTTP status 500 on failure.
  */
 async function getHandler() {
-  const authError = await requireAuth();
-  if (authError) return authError;
-  const capError = await requireCapability('prowlarr.view');
-  if (capError) return capError;
+  const auth = await requireUserCapability('prowlarr.view');
+  if (!auth.ok) return auth.response;
 
   try {
     const client = await getProwlarrClient();

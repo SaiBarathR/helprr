@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import { useDeferredValue, useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import Link from '@/components/ui/app-link';
 import { MediaGridSkeleton } from '@/components/ui/media-grid-skeleton';
 import { useWindowVirtualizer } from '@tanstack/react-virtual';
@@ -36,6 +36,14 @@ import { type ContextActionGroup } from '@/components/ui/quick-context-menu';
 import { MediaDeleteConfirmDialog } from '@/components/media/media-delete-confirm-dialog';
 import { RenamePreviewDialog } from '@/components/media/rename-preview-dialog';
 import { arrEditHref, arrFilesHref } from '@/lib/arr-edit-href';
+import {
+  deriveMusicBaseRows,
+  preparedItems,
+  prepareMusicRows,
+  searchPreparedRows,
+  type MusicFilter,
+  type MusicSortKey,
+} from '@/lib/library-filtering';
 import type { LidarrArtistListItem } from '@/types';
 import type { MediaViewMode } from '@/lib/store';
 
@@ -235,6 +243,7 @@ export default function MusicPage() {
   const setVisibleFieldsForMode = useUIStore((s) => s.setMusicVisibleFields);
   const search = useUIStore((s) => s.musicSearch);
   const setSearch = useUIStore((s) => s.setMusicSearch);
+  const deferredSearch = useDeferredValue(search);
 
   const visibleFields = visibleFieldsByMode[viewMode];
   const setVisibleFields = useCallback(
@@ -341,11 +350,12 @@ export default function MusicPage() {
 
   // Selection keys are composite so ids that repeat across instances stay distinct.
   const keyOf = useCallback((artist: LidarrArtistListItem) => `${artist.instanceId ?? ''}:${artist.id}`, []);
+  const preparedRows = useMemo(() => prepareMusicRows(artists), [artists]);
   const artistByKey = useMemo(() => {
     const map = new Map<string, LidarrArtistListItem>();
-    for (const artist of artists) map.set(keyOf(artist), artist);
+    for (const row of preparedRows) map.set(row.key, row.item);
     return map;
-  }, [artists, keyOf]);
+  }, [preparedRows]);
 
   // Drop a stale instance filter if that instance is no longer connected.
   useEffect(() => {
@@ -354,77 +364,17 @@ export default function MusicPage() {
     }
   }, [instances, instanceFilter, setInstanceFilter]);
 
-  const filtered = useMemo(() => {
-    let list = artists;
+  const baseRows = useMemo(() => deriveMusicBaseRows(preparedRows, {
+    filter: filter as MusicFilter[],
+    instanceFilter,
+    sort: sort as MusicSortKey,
+    sortDir,
+  }), [preparedRows, filter, instanceFilter, sort, sortDir]);
 
-    if (search) {
-      const q = search.toLowerCase();
-      list = list.filter((a) => a.artistName.toLowerCase().includes(q));
-    }
-
-    if (filter.length > 0) {
-      list = list.filter((a) => filter.some((f) => {
-        const s = a.statistics;
-        if (f === 'monitored') return a.monitored;
-        if (f === 'unmonitored') return !a.monitored;
-        if (f === 'missing') return !!s && s.trackFileCount < s.totalTrackCount;
-        if (f === 'complete') return !!s && s.totalTrackCount > 0 && s.trackFileCount >= s.totalTrackCount;
-        if (f === 'continuing') return a.status === 'continuing';
-        if (f === 'ended') return a.status === 'ended' || a.ended;
-        return true;
-      }));
-    }
-
-    if (instanceFilter !== 'all') {
-      list = list.filter((artist) => artist.instanceId === instanceFilter);
-    }
-
-    list = [...list].sort((a, b) => {
-      let result = 0;
-
-      switch (sort) {
-        case 'sortName':
-          result = (a.sortName || a.artistName).localeCompare(b.sortName || b.artistName);
-          break;
-        case 'dateAdded':
-          result = new Date(a.added).getTime() - new Date(b.added).getTime();
-          break;
-        case 'albumCount':
-          result = (a.statistics?.albumCount || 0) - (b.statistics?.albumCount || 0);
-          break;
-        case 'trackCount':
-          result = (a.statistics?.totalTrackCount || 0) - (b.statistics?.totalTrackCount || 0);
-          break;
-        case 'sizeOnDisk':
-          result = (a.statistics?.sizeOnDisk || 0) - (b.statistics?.sizeOnDisk || 0);
-          break;
-        case 'rating':
-          result = (a.ratings?.value || 0) - (b.ratings?.value || 0);
-          break;
-        case 'qualityProfile': {
-          const qA = a.qualityProfileName || '';
-          const qB = b.qualityProfileName || '';
-          result = qA.localeCompare(qB);
-          break;
-        }
-        case 'monitored':
-          result = (a.monitored === b.monitored) ? 0 : a.monitored ? -1 : 1;
-          break;
-        case 'artistType':
-          result = (a.artistType || '').localeCompare(b.artistType || '');
-          break;
-        case 'path':
-          result = (a.path || '').localeCompare(b.path || '');
-          break;
-        default:
-          result = 0;
-      }
-
-      return sortDir === 'asc' ? result : -result;
-    });
-
-    return list;
-  }, [artists, search, sort, sortDir, filter, instanceFilter]);
+  const filtered = useMemo(
+    () => preparedItems(searchPreparedRows(baseRows, deferredSearch)),
+    [baseRows, deferredSearch],
+  );
 
   // ── Bulk selection ────────────────────────────────────────────────────────
   const allFilteredSelected = filtered.length > 0 && filtered.every((a) => selectedKeys.has(keyOf(a)));
@@ -534,11 +484,9 @@ export default function MusicPage() {
     }
   }, [deleteTarget, deletingTarget, runDelete]);
 
-  const contextActionsByKey = useMemo(() => {
-    const result = new Map<string, ContextActionGroup[]>();
-    for (const item of artists) {
+  const buildContextActions = useCallback((item: LidarrArtistListItem): ContextActionGroup[] => {
       const key = keyOf(item);
-      result.set(key, [
+      return [
         {
           id: 'navigation',
           actions: [
@@ -613,11 +561,8 @@ export default function MusicPage() {
               : []),
           ],
         },
-      ]);
-    }
-    return result;
+      ];
   }, [
-    artists,
     keyOf,
     hrefForArtist,
     handleNavigateToDetail,
@@ -633,14 +578,14 @@ export default function MusicPage() {
   ]);
 
   const contextActionsForArtist = useCallback(
-    (item: LidarrArtistListItem) => contextActionsByKey.get(keyOf(item)) ?? [],
-    [contextActionsByKey, keyOf],
+    (item: LidarrArtistListItem) => buildContextActions(item),
+    [buildContextActions],
   );
 
-  const contextActionsForTableRow = useCallback(
-    (row: { id: number; instanceId?: string }) => contextActionsByKey.get(`${row.instanceId ?? ''}:${row.id}`) ?? [],
-    [contextActionsByKey],
-  );
+  const contextActionsForTableRow = useCallback((row: { id: number; instanceId?: string }) => {
+    const artist = artistByKey.get(`${row.instanceId ?? ''}:${row.id}`);
+    return artist ? buildContextActions(artist) : [];
+  }, [artistByKey, buildContextActions]);
 
   const effectiveView = viewMode === 'table' ? 'table' : viewMode;
   const useVirtualization = !loading && filtered.length > 0;
@@ -689,7 +634,7 @@ export default function MusicPage() {
   });
 
   const tableRows = useMemo(() => (
-    filtered.map((artist) => ({
+    effectiveView === 'table' ? filtered.map((artist) => ({
       id: artist.id,
       title: artist.artistName,
       year: 0,
@@ -707,8 +652,8 @@ export default function MusicPage() {
       artistType: artist.artistType,
       albumCount: artist.statistics?.albumCount,
       trackProgress: trackProgressLabel(artist),
-    }))
-  ), [filtered, multiInstance, hrefForArtist]);
+    })) : []
+  ), [effectiveView, filtered, multiInstance, hrefForArtist]);
 
   // Table headers sort through the same store state as the toolbar dropdown:
   // picking the active key toggles direction; a new key gets its natural default.

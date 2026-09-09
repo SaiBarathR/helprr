@@ -1,3 +1,4 @@
+import { withPerformanceScope } from '@/lib/server-perf';
 import { NextResponse } from 'next/server';
 import { logger, redact } from '@/lib/logger';
 
@@ -107,7 +108,7 @@ export function withApiLogging<T extends (...args: never[]) => Promise<Response>
     const meta = requestMetadata(request, options.redactQueryParams);
 
     try {
-      const response = await handler(...args);
+      const response = await withPerformanceScope(() => handler(...args));
       if (!prefs.enabled) {
         response.headers.set('x-request-id', requestId);
         return response;

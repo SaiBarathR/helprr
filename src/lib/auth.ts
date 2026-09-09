@@ -1,3 +1,4 @@
+import { measureServer } from '@/lib/server-perf';
 import { cache } from 'react';
 import { SignJWT, jwtVerify } from 'jose';
 import { cookies } from 'next/headers';
@@ -72,7 +73,7 @@ interface DecodedToken {
 
 async function decodeToken(token: string): Promise<DecodedToken | null> {
   try {
-    const { payload } = await jwtVerify(token, getJwtSecret(), { algorithms: ['HS256'] });
+    const { payload } = await measureServer('auth', () => jwtVerify(token, getJwtSecret(), { algorithms: ['HS256'] }));
     const sid = typeof payload.sid === 'string' ? payload.sid : null;
     return { sid };
   } catch {
@@ -80,15 +81,16 @@ async function decodeToken(token: string): Promise<DecodedToken | null> {
   }
 }
 
-// Memoized per request (React cache): requireAuth + requireCapability (and any
-// other guard) on the same request share a single session+user load instead of
-// each issuing its own findUnique + JWT verify. Scoped to one request, so it
-// never leaks a session across requests.
+// React cache only memoizes when React supplies a cache scope, such as Server
+// Component rendering. Route handlers must not rely on it for guard deduping:
+// resolve auth once with requireUserCapability/requireUser and reuse that result.
+// There is intentionally no cross-request session cache; every new request can
+// observe revocations, disabled users, and role/capability changes.
 const loadAndTouchSession = cache(async (sid: string): Promise<SessionRow | null> => {
-  const session = await prisma.session.findUnique({
+  const session = await measureServer('session', () => prisma.session.findUnique({
     where: { id: sid },
     include: { user: true },
-  });
+  }));
   if (!session || session.revokedAt) return null;
 
   // Every session must resolve to an active user. A disabled (or pending) user

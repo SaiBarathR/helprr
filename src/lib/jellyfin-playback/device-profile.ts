@@ -156,7 +156,7 @@ export function getDeviceProfile(options: DeviceProfileOptions = {}): JellyfinDe
 
   const profile: JellyfinDeviceProfile = {
     MaxStreamingBitrate: bitrateSetting,
-    MaxStaticBitrate: 100_000_000,
+    MaxStaticBitrate: bitrateSetting,
     MusicStreamingTranscodingBitrate: Math.min(bitrateSetting, 384_000),
     DirectPlayProfiles: [],
     TranscodingProfiles: [],
@@ -568,7 +568,8 @@ export function getDeviceProfile(options: DeviceProfileOptions = {}): JellyfinDe
 
 export function bitrateOptions(): Array<{ label: string; value: number }> {
   return [
-    { label: 'Auto', value: 0 },
+    { label: 'Automatic', value: 0 },
+    { label: 'Data saver (2 Mbps)', value: -1 },
     { label: '20 Mbps (1080p / 4K)', value: 20_000_000 },
     { label: '15 Mbps', value: 15_000_000 },
     { label: '10 Mbps (1080p)', value: 10_000_000 },

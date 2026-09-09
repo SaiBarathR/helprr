@@ -6,6 +6,7 @@ import { THEME_BOOTSTRAP_SCRIPT } from '@/lib/dashboard-theme';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { Toaster } from '@/components/ui/sonner';
 import { ServiceWorkerRegister } from '@/components/sw-register';
+import { PerformanceCollector } from '@/components/performance-collector';
 import { ClientLogCapture } from '@/components/client-log-capture';
 import './globals.css';
 
@@ -71,6 +72,7 @@ export default async function RootLayout({
         <Toaster />
         <ServiceWorkerRegister />
         <ClientLogCapture />
+        <PerformanceCollector />
       </body>
     </html>
   );

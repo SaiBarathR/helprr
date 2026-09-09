@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSonarrClients, getRadarrClients, getLidarrClients } from '@/lib/service-helpers';
-import { requireAuth, requireCapability, requireUser } from '@/lib/auth';
+import { requireUser, requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { getOrCreateAppSettings } from '@/lib/app-settings';
 import { startOfLocalDay, toZonedDate, getLocalDateKey } from '@/lib/timezone';
@@ -22,10 +22,8 @@ const CALENDAR_CACHE_HEADERS = {
 } as const;
 
 async function getHandler(request: NextRequest): Promise<NextResponse> {
-  const authError = await requireAuth();
-  if (authError) return authError;
-  const capError = await requireCapability('calendar.view');
-  if (capError) return capError;
+  const auth = await requireUserCapability('calendar.view');
+  if (!auth.ok) return auth.response;
 
   try {
     const { searchParams } = new URL(request.url);

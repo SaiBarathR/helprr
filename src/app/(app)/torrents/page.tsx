@@ -1,5 +1,8 @@
 'use client';
 
+import { passiveTorrentRefreshIntervalMs } from '@/lib/qbittorrent-summary';
+import { applyTorrentDelta, type TorrentDeltaResponse } from '@/lib/qbittorrent-delta';
+
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import { useWindowVirtualizer } from '@tanstack/react-virtual';
 import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
@@ -814,6 +817,8 @@ export default function TorrentsPage() {
   // Mirrors detailHash so an in-flight detail fetch can tell it was superseded
   // (another torrent opened, or the drawer closed) and drop its response.
   const detailHashRef = useRef<string | null>(null);
+  const detailAbortRef = useRef<AbortController | null>(null);
+  useEffect(() => () => detailAbortRef.current?.abort(), []);
   const [detailData, setDetailData] = useState<{
     properties: Record<string, unknown>;
     files: TorrentFile[];
@@ -822,6 +827,7 @@ export default function TorrentsPage() {
   const [detailLoading, setDetailLoading] = useState(false);
   useEffect(() => {
     detailHashRef.current = detailHash;
+    if (!detailHash) detailAbortRef.current?.abort();
   }, [detailHash]);
 
   const [deleteDrawer, setDeleteDrawer] = useState<{ open: boolean; hash: string; name: string; deleteFiles: boolean }>({
@@ -856,22 +862,35 @@ export default function TorrentsPage() {
   // support, so we fetch all + filter client-side in that case. The signature is
   // part of the query key so switching filters refetches immediately.
   const filterSignature = filter.length === 1 ? filter[0] : filter.length === 0 ? '__all__' : '__multi__';
+  const deltaSnapshots = useRef(new Map<string, { cursor: string; payload: QBittorrentSummaryResponse }>());
 
   const summaryQuery = useQuery({
     queryKey: ['torrents', 'summary', filterSignature],
     queryFn: async ({ signal }): Promise<QBittorrentSummaryResponse> => {
-      const currentFilter = useUIStore.getState().torrentsFilter;
       const params = new URLSearchParams();
-      if (currentFilter.length === 1) params.set('filter', currentFilter[0]);
+      if (filterSignature !== '__all__' && filterSignature !== '__multi__') params.set('filter', filterSignature);
+      const previous = deltaSnapshots.current.get(filterSignature);
+      params.set('view', 'delta');
+      if (previous) params.set('cursor', previous.cursor);
       const qs = params.toString();
       const res = await fetch(qs ? `/api/qbittorrent/summary?${qs}` : '/api/qbittorrent/summary', { signal });
       if (!res.ok) throw new Error('Failed to fetch');
-      const data = (await res.json()) as QBittorrentSummaryResponse & { error?: string };
+      const data = (await res.json()) as TorrentDeltaResponse & { error?: string };
       if (data.error) throw new Error(data.error);
-      return data;
+      signal.throwIfAborted();
+      try {
+        const payload = applyTorrentDelta(previous?.payload, data);
+        deltaSnapshots.current.set(filterSignature, { cursor: data.cursor, payload });
+        // The finite upstream filter set is small; cap defensively as well.
+        if (deltaSnapshots.current.size > 16) deltaSnapshots.current.delete(deltaSnapshots.current.keys().next().value!);
+        return payload;
+      } catch (error) {
+        deltaSnapshots.current.delete(filterSignature);
+        throw error; // The next query retry requests a full reset.
+      }
     },
     enabled: hasHydrated,
-    refetchInterval: backoffRefetchInterval(refreshIntervalMs),
+    refetchInterval: backoffRefetchInterval(passiveTorrentRefreshIntervalMs(refreshIntervalMs, typeof navigator === 'undefined' ? undefined : (navigator as Navigator & { connection?: { saveData?: boolean; effectiveType?: string } }).connection)),
     refetchIntervalInBackground: false,
     refetchOnWindowFocus: true,
     staleTime: 0,
@@ -956,22 +975,26 @@ export default function TorrentsPage() {
     : null;
 
   const fetchDetail = useCallback(async (hash: string) => {
+    detailAbortRef.current?.abort();
+    const controller = new AbortController();
+    detailAbortRef.current = controller;
     setDetailHash(hash);
     detailHashRef.current = hash;
     setDetailLoading(true);
     setDetailData(null);
     try {
-      const res = await fetch(`/api/qbittorrent/${hash}/details`);
+      const res = await fetch(`/api/qbittorrent/${hash}/details`, { signal: controller.signal });
       // Superseded (another torrent opened) or drawer closed while in flight:
       // this response no longer owns the drawer state.
-      if (detailHashRef.current !== hash) return;
+      if (controller.signal.aborted || detailHashRef.current !== hash) return;
       if (res.ok) {
-        setDetailData(await res.json());
+        const details = await res.json();
+        if (!controller.signal.aborted && detailHashRef.current === hash) setDetailData(details);
       } else {
         toast.error('Failed to load torrent details');
       }
     } catch {
-      if (detailHashRef.current === hash) toast.error('Failed to load torrent details');
+      if (!controller.signal.aborted && detailHashRef.current === hash) toast.error('Failed to load torrent details');
     } finally {
       if (detailHashRef.current === hash) setDetailLoading(false);
     }

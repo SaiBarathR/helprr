@@ -1,9 +1,8 @@
 'use client';
 
+import { useCatalogHome } from '@/lib/hooks/use-catalog-home';
+
 import { useCallback } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { jsonFetcher } from '@/lib/query-fetch';
-import { queryKeys } from '@/lib/query-keys';
 import { PullToRefresh } from '@/components/ui/pull-to-refresh';
 import { useRefreshAction } from '@/lib/hooks/use-refresh-action';
 import { PageSpinner } from '@/components/ui/page-spinner';
@@ -13,8 +12,7 @@ import { CatalogRail } from '@/components/jellyfin-streaming/catalog-rail';
 import { WatchHero } from '@/components/jellyfin-streaming/watch-hero';
 import { UpcomingRails } from '@/components/jellyfin-streaming/upcoming-rails';
 import { RecommendationRails } from '@/components/jellyfin-streaming/recommendation-rails';
-import { useJellyfinPlayback } from '@/components/jellyfin-streaming/playback-provider';
-import type { CatalogHomeResponse } from '@/types/jellyfin-streaming';
+import { useJellyfinPlaybackState } from '@/components/jellyfin-streaming/playback-provider';
 import type { JellyfinItem } from '@/types/jellyfin';
 
 /**
@@ -30,12 +28,9 @@ function shapeForCollection(collectionType: string): 'landscape' | 'portrait' | 
 }
 
 export default function WatchHomePage() {
-  const { playItem } = useJellyfinPlayback();
+  const { playItem } = useJellyfinPlaybackState();
   const play = useCallback((item: JellyfinItem) => void playItem(item), [playItem]);
-  const query = useQuery({
-    queryKey: queryKeys.jellyfinHome(),
-    queryFn: jsonFetcher<CatalogHomeResponse>('/api/jellyfin/catalog/home'),
-  });
+  const query = useCatalogHome();
   useRefreshAction(query.refetch);
 
   if (query.isPending && !query.data) return <PageSpinner />;
@@ -56,6 +51,7 @@ export default function WatchHomePage() {
   return (
     <>
       <PullToRefresh onRefresh={query.refetch} />
+      {query.optionalFailed && <p role="status" className="px-4 py-2 text-sm text-muted-foreground">Some shelves are unavailable. <button className="underline" onClick={() => void query.refetch()}>Retry</button></p>}
       <div className="hpr-watch-page-enter pb-28">
         <h1 className="sr-only">Watch</h1>
         <WatchHero items={data.spotlight ?? []} onPlay={play} />

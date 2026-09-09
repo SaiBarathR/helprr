@@ -66,6 +66,7 @@ function flattenEntries(collection: AniListMediaListCollection): AniListMediaLis
 // entries via `select`; the library page reads `.collection` directly. Returning
 // different shapes from the two queryFns corrupts the shared cache.
 type LibraryCollectionResponse = { collection: AniListMediaListCollection };
+const PERSONAL_ANIME_PREVIEW_LIMIT = 50;
 const selectLibraryEntries = (lib: LibraryCollectionResponse): AniListMediaListEntry[] =>
   flattenEntries(lib.collection);
 
@@ -220,8 +221,14 @@ export default function AnimeHomePage() {
   const currentSeason = data?.currentSeason;
   const nextSeasonInfo = data?.nextSeasonInfo;
 
-  const watchingItems = useMemo(() => (watchingQuery.data ?? []).map(entryToRailItem), [watchingQuery.data]);
-  const planningItems = useMemo(() => (planningQuery.data ?? []).map(entryToRailItem), [planningQuery.data]);
+  const watchingItems = useMemo(
+    () => (watchingQuery.data ?? []).slice(0, PERSONAL_ANIME_PREVIEW_LIMIT).map(entryToRailItem),
+    [watchingQuery.data],
+  );
+  const planningItems = useMemo(
+    () => (planningQuery.data ?? []).slice(0, PERSONAL_ANIME_PREVIEW_LIMIT).map(entryToRailItem),
+    [planningQuery.data],
+  );
 
   const disabledSet = useMemo(() => new Set(disabledAnimeCarousels), [disabledAnimeCarousels]);
   const orderedCarouselIds = useMemo(

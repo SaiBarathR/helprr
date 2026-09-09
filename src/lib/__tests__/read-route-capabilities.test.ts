@@ -2,8 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest, NextResponse } from 'next/server';
 
 const mocks = vi.hoisted(() => ({
-  requireAuth: vi.fn(),
-  requireCapability: vi.fn(),
+  requireUserCapability: vi.fn(),
   getSonarrClient: vi.fn(),
   getRadarrClient: vi.fn(),
   getLidarrClient: vi.fn(),
@@ -18,8 +17,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('@/lib/auth', () => ({
-  requireAuth: mocks.requireAuth,
-  requireCapability: mocks.requireCapability,
+  requireUserCapability: mocks.requireUserCapability,
 }));
 vi.mock('@/lib/api-logger', () => ({
   withApiLogging: (handler: unknown) => handler,
@@ -102,8 +100,7 @@ const cases: GetCase[] = [
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mocks.requireAuth.mockResolvedValue(null);
-  mocks.requireCapability.mockResolvedValue(null);
+  mocks.requireUserCapability.mockResolvedValue({ ok: true, user: { id: 'user-1' }, session: {} });
   mocks.getSonarrClient.mockResolvedValue({
     getEpisodes: mocks.sonarrEpisodes.mockResolvedValue([]),
     getRenamePreview: mocks.sonarrRename.mockResolvedValue([]),
@@ -122,14 +119,14 @@ beforeEach(() => {
 
 describe('sensitive authenticated GET route capabilities', () => {
   it.each(cases)('returns 401 before capability or upstream work: $name', async ({ invoke }) => {
-    mocks.requireAuth.mockResolvedValue(
-      NextResponse.json({ error: 'Unauthorized' }, { status: 401 }),
-    );
+    mocks.requireUserCapability.mockResolvedValue({
+      ok: false,
+      response: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }),
+    });
 
     const response = await invoke();
 
     expect(response.status).toBe(401);
-    expect(mocks.requireCapability).not.toHaveBeenCalled();
     expect(mocks.getSonarrClient).not.toHaveBeenCalled();
     expect(mocks.getRadarrClient).not.toHaveBeenCalled();
     expect(mocks.getLidarrClient).not.toHaveBeenCalled();
@@ -139,14 +136,15 @@ describe('sensitive authenticated GET route capabilities', () => {
     capability,
     invoke,
   }) => {
-    mocks.requireCapability.mockResolvedValue(
-      NextResponse.json({ error: 'Forbidden' }, { status: 403 }),
-    );
+    mocks.requireUserCapability.mockResolvedValue({
+      ok: false,
+      response: NextResponse.json({ error: 'Forbidden' }, { status: 403 }),
+    });
 
     const response = await invoke();
 
     expect(response.status).toBe(403);
-    expect(mocks.requireCapability).toHaveBeenCalledWith(capability);
+    expect(mocks.requireUserCapability).toHaveBeenCalledWith(capability);
     expect(mocks.getSonarrClient).not.toHaveBeenCalled();
     expect(mocks.getRadarrClient).not.toHaveBeenCalled();
     expect(mocks.getLidarrClient).not.toHaveBeenCalled();
@@ -159,7 +157,7 @@ describe('sensitive authenticated GET route capabilities', () => {
     const response = await invoke();
 
     expect(response.status).toBe(200);
-    expect(mocks.requireCapability).toHaveBeenCalledWith(capability);
+    expect(mocks.requireUserCapability).toHaveBeenCalledWith(capability);
   });
 
   it('preserves selected multi-instance IDs and route parameters', async () => {

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth, requireCapability } from '@/lib/auth';
+import { requireUserCapability } from '@/lib/auth';
 import { getJellyfinClientContext } from '@/lib/service-helpers';
 import { withApiLogging } from '@/lib/api-logger';
 import {
@@ -9,10 +9,8 @@ import {
 } from '@/lib/cache/jellyfin-lookup-cache';
 
 async function getHandler(request: NextRequest): Promise<NextResponse> {
-  const authError = await requireAuth();
-  if (authError) return authError;
-  const capError = await requireCapability('jellyfin.view');
-  if (capError) return capError;
+  const auth = await requireUserCapability('jellyfin.view');
+  if (!auth.ok) return auth.response;
 
   const { searchParams } = request.nextUrl;
   const imdbId = searchParams.get('imdbId');
