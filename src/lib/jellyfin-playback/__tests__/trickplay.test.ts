@@ -11,12 +11,11 @@ function itemWith(widths: number[]): JellyfinItem {
     Type: 'Movie',
     MediaType: 'Video',
     Trickplay: {
-      [SOURCE]: Object.fromEntries(widths.map((width) => [
-        String(width),
-        { Width: width, Height: Math.round(width * 0.5625), TileWidth: 10, TileHeight: 10, ThumbnailCount: 400, Interval: 10_000 },
-      ])),
+      [SOURCE]: widths.map((width) => ({
+        Width: width, Height: Math.round(width * 0.5625), TileWidth: 10, TileHeight: 10, ThumbnailCount: 400, Interval: 10_000,
+      })),
     },
-  } as JellyfinItem;
+  };
 }
 
 describe('trickplay resolution selection', () => {
@@ -30,7 +29,7 @@ describe('trickplay resolution selection', () => {
 
   it('returns null without trickplay data or a media source', () => {
     expect(pickTrickplayResolution(itemWith([320]), undefined, 400)).toBeNull();
-    expect(pickTrickplayResolution({ Id: 'x', Name: 'x', Type: 'Movie' } as JellyfinItem, SOURCE, 400)).toBeNull();
+    expect(pickTrickplayResolution({ Id: 'x', Name: 'x', Type: 'Movie' }, SOURCE, 400)).toBeNull();
     expect(pickTrickplayResolution(null, SOURCE, 400)).toBeNull();
   });
 });

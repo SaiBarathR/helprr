@@ -33,9 +33,6 @@
   "exclude": [
     "node_modules",
     "src/app/sw.ts",
-    "jellyfinDocs",
-    "**/*.test.ts",
-    "**/*.test.tsx",
-    "**/__tests__/**"
+    "jellyfinDocs"
   ]
 }

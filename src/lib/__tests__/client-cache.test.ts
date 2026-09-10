@@ -13,7 +13,7 @@ afterEach(() => {
 
 describe('client authentication cache boundaries', () => {
   it('awaits deletion of every user-scoped PWA cache', async () => {
-    const deleteCache = vi.fn(async () => true);
+    const deleteCache = vi.fn<CacheStorage['delete']>(async () => true);
     vi.stubGlobal('window', {
       caches: { delete: deleteCache },
     });
@@ -178,8 +178,7 @@ describe('client authentication cache boundaries', () => {
 
   it('publishes to both transports and deduplicates received boundaries', () => {
     type Listener = (event: MessageEvent<unknown>) => void;
-    let channelListener: Listener | null = null;
-    let storageListener: ((event: StorageEvent) => void) | null = null;
+    const listeners: { channel?: Listener; storage?: (event: StorageEvent) => void } = {};
     const channelPostMessage = vi.fn();
     const setItem = vi.fn();
     class FakeBroadcastChannel {
@@ -187,7 +186,7 @@ describe('client authentication cache boundaries', () => {
         expect(name).toBe('helprr-authentication-boundary');
       }
       addEventListener(_type: string, next: Listener) {
-        channelListener = next;
+        listeners.channel = next;
       }
       removeEventListener() {}
       postMessage(message: unknown) {
@@ -197,7 +196,7 @@ describe('client authentication cache boundaries', () => {
     vi.stubGlobal('window', {
       localStorage: { setItem },
       addEventListener: (_type: string, next: (event: StorageEvent) => void) => {
-        storageListener = next;
+        listeners.storage = next;
       },
       removeEventListener: vi.fn(),
     });
@@ -214,15 +213,15 @@ describe('client authentication cache boundaries', () => {
       type: 'helprr-authentication-boundary',
       id: 'boundary-1',
     };
-    channelListener?.(new MessageEvent('message', {
+    listeners.channel?.(new MessageEvent('message', {
       data: first,
     }));
-    storageListener?.({
+    listeners.storage?.({
       key: 'helprr:authentication-boundary',
       newValue: JSON.stringify(first),
     } as StorageEvent);
     expect(onBoundary).toHaveBeenCalledOnce();
-    storageListener?.({
+    listeners.storage?.({
       key: 'helprr:authentication-boundary',
       newValue: JSON.stringify({ ...first, id: 'boundary-2' }),
     } as StorageEvent);
