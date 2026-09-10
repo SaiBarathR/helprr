@@ -45,7 +45,7 @@ describe('widget loader registry', () => {
         enabled: true,
         order: 0,
         mediaType: 'movie' as const,
-        filters: {},
+        filters: { contentType: 'movie' as const, sortBy: 'popularity', sortOrder: 'desc' as const },
       }],
     };
     const [definition] = buildDiscoverWidgetDefinitions(discoverLayout);

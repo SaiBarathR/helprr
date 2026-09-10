@@ -81,11 +81,9 @@ async function renderWidget({
       createElement(
         QueryClientProvider,
         { client: queryClient },
-        createElement(
-          WidgetAvailabilityProvider,
-          { services },
-          createElement(WidgetRenderer, { instance, rowSpan: 2, editMode }),
-        ),
+        <WidgetAvailabilityProvider services={services}>
+          <WidgetRenderer instance={instance} rowSpan={2} editMode={editMode} />
+        </WidgetAvailabilityProvider>,
       ),
     );
   });
@@ -206,11 +204,9 @@ describe('WidgetRenderer lazy states', () => {
         createElement(
           QueryClientProvider,
           { client: queryClient },
-          createElement(
-            WidgetAvailabilityProvider,
-            { services: ['JELLYFIN', 'PROWLARR', 'QBITTORRENT', 'TMDB', 'SEERR'] },
-            createElement(WidgetRenderer, { instance, rowSpan: 2 }),
-          ),
+          <WidgetAvailabilityProvider services={['JELLYFIN', 'PROWLARR', 'QBITTORRENT', 'TMDB', 'SEERR']}>
+            <WidgetRenderer instance={instance} rowSpan={2} />
+          </WidgetAvailabilityProvider>,
         ),
       );
     });

@@ -29,8 +29,18 @@ const base = {
   itemId: ITEM_ID,
   deviceId: 'device-1',
   deviceName: 'Helprr',
-  deviceProfile: { DirectPlayProfiles: [], TranscodingProfiles: [], SubtitleProfiles: [] },
-} as Parameters<InstanceType<typeof JellyfinClient>['getPlaybackInfo']>[0];
+  deviceProfile: {
+    MaxStreamingBitrate: 120_000_000,
+    MaxStaticBitrate: 120_000_000,
+    MusicStreamingTranscodingBitrate: 192_000,
+    DirectPlayProfiles: [],
+    TranscodingProfiles: [],
+    ContainerProfiles: [],
+    CodecProfiles: [],
+    SubtitleProfiles: [],
+    ResponseProfiles: [],
+  },
+} satisfies Parameters<InstanceType<typeof JellyfinClient>['getPlaybackInfo']>[0];
 
 function client() {
   return new JellyfinClient('http://jellyfin.local', 'admin-key', USER_ID, undefined, 'member-token');

@@ -47,11 +47,9 @@ describe('WidgetAvailabilityProvider', () => {
         createElement(
           QueryClientProvider,
           { client: queryClient },
-          createElement(
-            WidgetAvailabilityProvider,
-            { services: ['JELLYFIN'] },
-            createElement(Probe),
-          ),
+          <WidgetAvailabilityProvider services={['JELLYFIN']}>
+            <Probe />
+          </WidgetAvailabilityProvider>,
         ),
       );
     });

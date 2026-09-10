@@ -43,15 +43,11 @@ function AppProviders({ children }: { children: React.ReactNode }) {
   return createElement(
     QueryClientProvider,
     { client: queryClient },
-    createElement(
-      PermissionProvider,
-      { value: me },
-      createElement(
-        RequestedMediaProvider,
-        null,
-        createElement(WatchStatusProvider, null, children),
-      ),
-    ),
+    <PermissionProvider value={me}>
+      <RequestedMediaProvider>
+        <WatchStatusProvider>{children}</WatchStatusProvider>
+      </RequestedMediaProvider>
+    </PermissionProvider>,
   );
 }
 

@@ -88,11 +88,9 @@ describe('useWidgetData visibility', () => {
         createElement(
           QueryClientProvider,
           { client: queryClient },
-          createElement(
-            WidgetVisibilityProvider,
-            { active },
-            createElement(Probe),
-          ),
+          <WidgetVisibilityProvider active={active}>
+            <Probe />
+          </WidgetVisibilityProvider>,
         ),
       );
     }
