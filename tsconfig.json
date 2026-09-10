@@ -30,5 +30,12 @@
     ".next/dev/types/**/*.ts",
     "**/*.mts"
   ],
-  "exclude": ["node_modules", "src/app/sw.ts", "jellyfinDocs"]
+  "exclude": [
+    "node_modules",
+    "src/app/sw.ts",
+    "jellyfinDocs",
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "**/__tests__/**"
+  ]
 }
