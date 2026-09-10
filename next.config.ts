@@ -1,30 +1,26 @@
 import withSerwistInit from '@serwist/next';
 import type { NextConfig } from 'next';
 import pkg from './package.json';
+import { randomUUID } from 'node:crypto';
 
 const withSerwist = withSerwistInit({
   swSrc: 'src/app/sw.ts',
   swDest: 'public/sw.js',
   disable: process.env.NODE_ENV === 'development',
-  // These optional subtitle engines total over 7 MB. Fetch them only when
-  // playback needs ASS subtitles, not during every PWA install/update.
-  globPublicPatterns: ['*', '!(libass)/**/*'],
+  // Install only the offline shell and its build-graph dependencies. Route and
+  // optional feature chunks use the existing runtime cache on first visit.
+  globPublicPatterns: ['offline.html', 'manifest.json', 'favicon.ico', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png'],
   exclude: [
     /\.map$/,
     /^manifest.*\.js$/,
     ({ asset, compilation }) => {
-      // Lazy widget entries are runtime-cached on first use; precaching them
-      // would download every widget during each PWA install or update.
-      const chunk = [...compilation.chunks].find(({ files }) => files.has(asset.name));
-      if (!chunk || chunk.canBeInitial()) return false;
-
-      return [...compilation.chunkGraph.getChunkModulesIterable(chunk)].some((module) => {
-        const sourcePath = module.nameForCondition();
-        return (
-          sourcePath?.includes('/src/components/widgets/') === true &&
-          /-widget\.[tj]sx?$/.test(sourcePath)
-        );
-      });
+      if (!asset.name.startsWith('static/')) return false;
+      if (asset.name.startsWith('static/media/') && /\.woff2?$/.test(asset.name)) return false;
+      // Webpack entrypoint files include shared framework/runtime dependencies;
+      // selecting the shell by graph keeps those even when names/hashes change.
+      const shellFiles = new Set(['app/layout', 'main-app', 'polyfills'].flatMap((name) => compilation.entrypoints.get(name)?.getFiles() ?? []));
+      if (shellFiles.has(asset.name)) return false;
+      return true;
     },
   ],
 });
@@ -37,6 +33,9 @@ const nextConfig: NextConfig = {
   env: {
     NEXT_PUBLIC_APP_VERSION: process.env.APP_VERSION || pkg.version,
     NEXT_PUBLIC_GIT_SHA: process.env.GIT_SHA || '',
+    // Distinguish even local rebuilds of the same commit. Cached HTML must
+    // reference chunks from the worker's build before it can be reused.
+    NEXT_PUBLIC_SHELL_CACHE_VERSION: randomUUID(),
   },
   // Dev-only: extra origins allowed to reach the dev server (LAN IP, Tailscale
   // hostname, etc.). Comma-separated, set in .env.local — never used in production.

@@ -5,7 +5,7 @@ import { jsonFetcher } from '@/lib/query-fetch';
 import { WatchTopBar } from '@/components/jellyfin-streaming/watch-top-bar';
 import { CatalogPosterCard } from '@/components/jellyfin-streaming/poster-card';
 import { CATALOG_GRID_CLASS, CATALOG_WRAP_CLASS } from '@/components/jellyfin-streaming/card-shared';
-import { useJellyfinPlayback } from '@/components/jellyfin-streaming/playback-provider';
+import { useJellyfinPlaybackState } from '@/components/jellyfin-streaming/playback-provider';
 import { useWatchSkin } from '@/lib/hooks/use-watch-skin';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { ErrorState } from '@/components/ui/error-state';
@@ -13,7 +13,7 @@ import { cn } from '@/lib/utils';
 import type { CatalogItemsResponse } from '@/types/jellyfin-streaming';
 
 export default function FavoritesPage() {
-  const playback = useJellyfinPlayback();
+  const playback = useJellyfinPlaybackState();
   const cinematic = useWatchSkin() === 'cinematic';
   const query = useQuery({
     queryKey: ['jellyfin', 'catalog', 'favorites'],

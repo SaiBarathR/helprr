@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { ScheduledAlert, ScheduledAlertOccurrence, ServiceType, WatchlistItem, WatchlistTag } from '@prisma/client';
 import { prisma } from '@/lib/db';
-import { requireAuth, requireCapability, getCurrentUser } from '@/lib/auth';
+import { requireUserCapability } from '@/lib/auth';
 import { getOrCreateAppSettings } from '@/lib/app-settings';
 import { parseDiskThresholds } from '@/lib/disk-space';
 import { parseCustomHeaders } from '@/lib/service-connection-secrets';
@@ -119,10 +119,8 @@ async function loadScheduledAlertsByUser(userId?: string): Promise<Map<string, E
 }
 
 async function postHandler(request: NextRequest): Promise<NextResponse> {
-  const authError = await requireAuth();
-  if (authError) return authError;
-  const capError = await requireCapability('settings.backup');
-  if (capError) return capError;
+  const auth = await requireUserCapability('settings.backup');
+  if (!auth.ok) return auth.response;
 
   let body: ExportRequestBody;
   try {
@@ -150,10 +148,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   // password hashes when includeSecrets), app settings, all devices'
   // notification rules. The settings.backup capability alone must not expose
   // those to a member, so global sections require the admin role on top of it.
-  const exporter = await getCurrentUser();
-  if (!exporter) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  const exporter = auth.user;
   const wantsGlobalData =
     includeSecrets ||
     wantAppSettings ||

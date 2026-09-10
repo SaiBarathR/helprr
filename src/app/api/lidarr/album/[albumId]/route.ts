@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getLidarrClient } from '@/lib/service-helpers';
-import { requireAuth, requireCapability, requireUserCapability } from '@/lib/auth';
+import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { upstreamErrorResponse } from '@/lib/api-error';
 import { invalidateTaggedLibrary } from '@/lib/cache/tagged-library';
@@ -10,10 +10,8 @@ async function getHandler(
   request: NextRequest,
   { params }: { params: Promise<{ albumId: string }> }
 ) {
-  const authError = await requireAuth();
-  if (authError) return authError;
-  const capError = await requireCapability('music.view');
-  if (capError) return capError;
+  const auth = await requireUserCapability('music.view');
+  if (!auth.ok) return auth.response;
 
   try {
     const { albumId } = await params;
@@ -34,11 +32,9 @@ async function putHandler(
   request: NextRequest,
   { params }: { params: Promise<{ albumId: string }> }
 ) {
-  const authError = await requireAuth();
-  if (authError) return authError;
   // Album PUT is used to toggle monitoring / pick the release; gate on monitoring.
-  const capError = await requireCapability('music.editMonitoring');
-  if (capError) return capError;
+  const auth = await requireUserCapability('music.editMonitoring');
+  if (!auth.ok) return auth.response;
 
   try {
     const { albumId } = await params;

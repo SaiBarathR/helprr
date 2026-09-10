@@ -1,10 +1,11 @@
 'use client';
 
+import { useCatalogHome } from '@/lib/hooks/use-catalog-home';
+
 import { useCallback, useMemo, useState } from 'react';
 import { useQueries, useQuery } from '@tanstack/react-query';
 import { ChevronDown } from 'lucide-react';
 import { jsonFetcher } from '@/lib/query-fetch';
-import { queryKeys } from '@/lib/query-keys';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -21,10 +22,9 @@ import { RecommendationRails } from '@/components/jellyfin-streaming/recommendat
 import { useNearViewport } from '@/lib/hooks/use-near-viewport';
 import { useCompactViewport } from '@/lib/hooks/use-compact-viewport';
 import { cn } from '@/lib/utils';
-import { useJellyfinPlayback } from '@/components/jellyfin-streaming/playback-provider';
+import { useJellyfinPlaybackState } from '@/components/jellyfin-streaming/playback-provider';
 import type {
   CatalogFiltersResponse,
-  CatalogHomeResponse,
   CatalogItemsResponse,
 } from '@/types/jellyfin-streaming';
 import type { JellyfinItem } from '@/types/jellyfin';
@@ -117,16 +117,13 @@ export function CollectionHub({
   /** What counts as a title here — Series for shows, Movie for films. */
   includeItemTypes: string;
 }) {
-  const { playItem } = useJellyfinPlayback();
+  const { playItem } = useJellyfinPlaybackState();
   const play = useCallback((item: JellyfinItem) => void playItem(item), [playItem]);
   const compact = useCompactViewport();
   const [genre, setGenre] = useState<string | null>(null);
   const isShows = includeItemTypes === 'Series';
 
-  const home = useQuery({
-    queryKey: queryKeys.jellyfinHome(),
-    queryFn: jsonFetcher<CatalogHomeResponse>('/api/jellyfin/catalog/home'),
-  });
+  const home = useCatalogHome();
 
   const library = useMemo(
     () => (home.data?.views ?? []).find(

@@ -22,7 +22,7 @@ function makeQueryClient() {
         staleTime: 30_000, // baseline; reference hooks raise this, live hooks lower it
         gcTime: 5 * 60_000, // keep data warm so back-navigation paints from cache
         refetchOnWindowFocus: false, // iOS PWA focus churn would hammer the *arr instances
-        refetchOnReconnect: true,
+        refetchOnReconnect: false, // QueryProvider bounds and prioritizes reconnect reads.
         // Local *arr — fast-fail. Never retry a 401 (let the handler above redirect).
         retry: (count, error) =>
           !(error instanceof ApiError && error.status === 401) && count < 1,

@@ -1,14 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSonarrClient } from '@/lib/service-helpers';
-import { requireAuth, requireCapability } from '@/lib/auth';
+import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { upstreamErrorResponse } from '@/lib/api-error';
 
 async function getHandler(request: NextRequest) {
-  const authError = await requireAuth();
-  if (authError) return authError;
-  const capError = await requireCapability('activity.manage');
-  if (capError) return capError;
+  const auth = await requireUserCapability('activity.manage');
+  if (!auth.ok) return auth.response;
 
   try {
     const seriesId = Number(new URL(request.url).searchParams.get('seriesId'));

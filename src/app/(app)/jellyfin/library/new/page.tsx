@@ -1,8 +1,7 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
-import { jsonFetcher } from '@/lib/query-fetch';
-import { queryKeys } from '@/lib/query-keys';
+import { useCatalogHome } from '@/lib/hooks/use-catalog-home';
+
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { ErrorState } from '@/components/ui/error-state';
 import { PullToRefresh } from '@/components/ui/pull-to-refresh';
@@ -12,8 +11,7 @@ import { CatalogRail } from '@/components/jellyfin-streaming/catalog-rail';
 import { UpcomingRails } from '@/components/jellyfin-streaming/upcoming-rails';
 import { NewAndHot } from '@/components/jellyfin-streaming/cinematic/new-and-hot';
 import { useWatchSkin } from '@/lib/hooks/use-watch-skin';
-import { useJellyfinPlayback } from '@/components/jellyfin-streaming/playback-provider';
-import type { CatalogHomeResponse } from '@/types/jellyfin-streaming';
+import { useJellyfinPlaybackState } from '@/components/jellyfin-streaming/playback-provider';
 import type { JellyfinItem } from '@/types/jellyfin';
 
 /**
@@ -24,12 +22,9 @@ import type { JellyfinItem } from '@/types/jellyfin';
  * recent additions — both already available, just never gathered on one page.
  */
 export default function WatchNewPage() {
-  const playback = useJellyfinPlayback();
+  const playback = useJellyfinPlaybackState();
   const cinematic = useWatchSkin() === 'cinematic';
-  const query = useQuery({
-    queryKey: queryKeys.jellyfinHome(),
-    queryFn: jsonFetcher<CatalogHomeResponse>('/api/jellyfin/catalog/home'),
-  });
+  const query = useCatalogHome();
   useRefreshAction(query.refetch);
 
   if (query.isPending && !query.data) return <PageSpinner />;
@@ -68,6 +63,7 @@ export default function WatchNewPage() {
     return (
       <>
         <PullToRefresh onRefresh={query.refetch} />
+      {query.optionalFailed && <p role="status" className="px-4 py-2 text-sm text-muted-foreground">Some shelves are unavailable. <button className="underline" onClick={() => void query.refetch()}>Retry</button></p>}
         <h1 className="sr-only">New &amp; Popular</h1>
         <NewAndHot railsFallback={watchingRails} />
       </>
@@ -77,6 +73,7 @@ export default function WatchNewPage() {
   return (
     <>
       <PullToRefresh onRefresh={query.refetch} />
+      {query.optionalFailed && <p role="status" className="px-4 py-2 text-sm text-muted-foreground">Some shelves are unavailable. <button className="underline" onClick={() => void query.refetch()}>Retry</button></p>}
       <div className="space-y-6 pb-28">
         <h1 className="sr-only">New &amp; Popular</h1>
         <WatchTopBar />

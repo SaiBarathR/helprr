@@ -38,7 +38,10 @@ export function MobileDetailTabs({
 }) {
   const hasEpisodes = episodes.length > 0;
   const hasSimilar = similar.length > 0;
-  const [tab, setTab] = useState<Tab>(hasEpisodes ? 'episodes' : 'similar');
+  const [selectedTab, setTab] = useState<Tab | null>(null);
+  // Episodes arrive independently of the core item. Pick the default from
+  // available data until the user makes an explicit selection.
+  const tab = selectedTab ?? (hasEpisodes ? 'episodes' : 'similar');
   const [pickerOpen, setPickerOpen] = useState(false);
 
   const activeSeason = useMemo(

@@ -15,7 +15,7 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
     // one show. They are not interchangeable upstream — see getNextUp.
     const parentId = params.get('parentId') ?? undefined;
     const seriesId = params.get('seriesId') ?? undefined;
-    const client = await getJellyfinClientForUser(auth.user);
+    const client = (await getJellyfinClientForUser(auth.user)).withReadSignal(request.signal);
     const data = await client.getNextUp({ limit: 40, parentId, seriesId });
     return NextResponse.json({
       linked: true,

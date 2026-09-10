@@ -3,8 +3,7 @@ import { NextRequest } from 'next/server';
 import type { HistoryItem, HistoryResponse } from '@/types';
 
 const mocks = vi.hoisted(() => ({
-  requireAuth: vi.fn(),
-  requireCapability: vi.fn(),
+  requireUserCapability: vi.fn(),
   getSonarrClient: vi.fn(),
   getSonarrClients: vi.fn(),
   getRadarrClients: vi.fn(),
@@ -15,8 +14,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('@/lib/auth', () => ({
-  requireAuth: mocks.requireAuth,
-  requireCapability: mocks.requireCapability,
+  requireUserCapability: mocks.requireUserCapability,
 }));
 vi.mock('@/lib/api-logger', () => ({
   withApiLogging: (handler: unknown) => handler,
@@ -71,8 +69,7 @@ const request = (query = '') =>
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mocks.requireAuth.mockResolvedValue(null);
-  mocks.requireCapability.mockResolvedValue(null);
+  mocks.requireUserCapability.mockResolvedValue({ ok: true, user: { id: 'user-1' }, session: {} });
   mocks.getSonarrClient.mockResolvedValue({ getEpisodesByIds: vi.fn() });
   mocks.sonarrHistory.mockImplementation(
     (_page: number, pageSize: number) =>

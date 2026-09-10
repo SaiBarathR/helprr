@@ -2,7 +2,8 @@
 
 import Image, { type ImageProps } from 'next/image';
 import { ImageOff } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
+import { isProtectedApiImageSrc, setProtectedImageWidth, toProtectedImageSrcSet } from '@/lib/image';
 import { cn } from '@/lib/utils';
 
 type FadeInImageProps = Omit<ImageProps, 'loading' | 'priority' | 'onLoad' | 'onError'> & {
@@ -10,6 +11,8 @@ type FadeInImageProps = Omit<ImageProps, 'loading' | 'priority' | 'onLoad' | 'on
   priority?: boolean;
   /** Invoked once, only after all retry attempts have failed. */
   onError?: ImageProps['onError'];
+  /** Generate same-origin protected proxy srcset buckets instead of a single unoptimized URL. */
+  responsiveProxy?: boolean;
 };
 
 const RETRY_DELAYS_MS = [750, 2_000, 5_000] as const;
@@ -32,9 +35,11 @@ function jitteredDelay(delayMs: number): number {
 
 function RetryableImage({
   priority = false,
+  responsiveProxy = false,
   className,
   alt,
   onError,
+  style,
   ...props
 }: FadeInImageProps) {
   const srcKey = imageSourceKey(props.src);
@@ -111,6 +116,103 @@ function RetryableImage({
     );
   }
 
+  const useResponsiveProxy =
+    responsiveProxy
+    && typeof props.src === 'string'
+    && isProtectedApiImageSrc(props.src);
+  const imgClassName = cn(
+    'transition-opacity duration-300',
+    loaded ? 'opacity-100' : 'opacity-0',
+    className,
+  );
+
+  if (useResponsiveProxy && typeof props.src === 'string') {
+    const {
+      src,
+      fill,
+      sizes,
+      width,
+      height,
+      unoptimized,
+      overrideSrc,
+      preload,
+      loader,
+      quality,
+      placeholder,
+      blurDataURL,
+      onLoadingComplete,
+      layout,
+      objectFit,
+      objectPosition,
+      lazyBoundary,
+      lazyRoot,
+      ...imgProps
+    } = props;
+    void unoptimized;
+    void overrideSrc;
+    void preload;
+    void loader;
+    void quality;
+    void placeholder;
+    void blurDataURL;
+    void onLoadingComplete;
+    void layout;
+    void objectFit;
+    void objectPosition;
+    void lazyBoundary;
+    void lazyRoot;
+
+    const fillStyle = fill
+      ? {
+          position: 'absolute',
+          height: '100%',
+          width: '100%',
+          inset: 0,
+          color: 'transparent',
+        } satisfies CSSProperties
+      : undefined;
+
+    return (
+      <>
+        {!loaded && (
+          <span
+            aria-hidden="true"
+            data-image-loading="true"
+            className="absolute inset-0 bg-[length:200%_100%] bg-gradient-to-r from-muted via-muted/50 to-muted animate-[shimmer_1.5s_ease-in-out_infinite] motion-reduce:animate-none"
+          />
+        )}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          {...imgProps}
+          key={`${srcKey}:${attempt}`}
+          ref={imageRef}
+          src={setProtectedImageWidth(src, 320)}
+          srcSet={toProtectedImageSrcSet(src)}
+          sizes={sizes}
+          width={fill ? undefined : width}
+          height={fill ? undefined : height}
+          alt={alt}
+          loading={priority ? 'eager' : 'lazy'}
+          fetchPriority={priority ? 'high' : undefined}
+          decoding="async"
+          onLoad={markLoaded}
+          onError={(event) => {
+            setLoaded(false);
+            if (attempt < RETRY_DELAYS_MS.length) {
+              scheduleRetry();
+              return;
+            }
+            clearPendingRetry();
+            setFailed(true);
+            onError?.(event);
+          }}
+          style={{ ...fillStyle, ...style }}
+          className={imgClassName}
+        />
+      </>
+    );
+  }
+
   return (
     <>
       {!loaded && (
@@ -138,11 +240,7 @@ function RetryableImage({
           setFailed(true);
           onError?.(event);
         }}
-        className={cn(
-          'transition-opacity duration-300',
-          loaded ? 'opacity-100' : 'opacity-0',
-          className,
-        )}
+        className={imgClassName}
       />
     </>
   );

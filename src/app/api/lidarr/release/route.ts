@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getLidarrClient } from '@/lib/service-helpers';
-import { requireAuth, requireCapability } from '@/lib/auth';
+import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { upstreamErrorResponse } from '@/lib/api-error';
 
@@ -10,10 +10,8 @@ function toPositiveInt(value: unknown): number | null {
 }
 
 async function getHandler(request: NextRequest) {
-  const authError = await requireAuth();
-  if (authError) return authError;
-  const capError = await requireCapability('activity.manage');
-  if (capError) return capError;
+  const auth = await requireUserCapability('activity.manage');
+  if (!auth.ok) return auth.response;
 
   try {
     const { searchParams } = new URL(request.url);
@@ -49,10 +47,8 @@ async function getHandler(request: NextRequest) {
 }
 
 async function postHandler(request: NextRequest) {
-  const authError = await requireAuth();
-  if (authError) return authError;
-  const capError = await requireCapability('activity.manage');
-  if (capError) return capError;
+  const auth = await requireUserCapability('activity.manage');
+  if (!auth.ok) return auth.response;
 
   try {
     const body = await request.json();

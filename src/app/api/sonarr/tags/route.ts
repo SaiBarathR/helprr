@@ -3,7 +3,7 @@ import { getSonarrClient } from '@/lib/service-helpers';
 import { SonarrClient } from '@/lib/sonarr-client';
 import { resolveConnection } from '@/lib/arr-instances';
 import { getConnectionHeaders } from '@/lib/service-connection-secrets';
-import { requireAuth, requireCapability } from '@/lib/auth';
+import { requireAuth, requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { REFERENCE_CACHE_HEADERS } from '@/lib/cache/reference-headers';
 import { invalidateReferenceLabels } from '@/lib/cache/reference-labels';
@@ -27,10 +27,8 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
 // upstream Sonarr state, so it requires series.editTags — view-only users must
 // not be able to write through this route.
 async function postHandler(request: NextRequest): Promise<NextResponse> {
-  const authError = await requireAuth();
-  if (authError) return authError;
-  const capError = await requireCapability('series.editTags');
-  if (capError) return capError;
+  const auth = await requireUserCapability('series.editTags');
+  if (!auth.ok) return auth.response;
 
   try {
     const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;

@@ -160,6 +160,9 @@ export interface CatalogHomeResponse {
 }
 
 export interface CatalogItemDetailResponse {
+  failedExpansions?: string[];
+  episodesTotal?: number;
+  episodesStart?: number;
   linked: boolean;
   item: JellyfinItem | null;
   seasons?: JellyfinItem[];

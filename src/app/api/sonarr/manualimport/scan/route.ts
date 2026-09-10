@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSonarrClient } from '@/lib/service-helpers';
-import { requireAuth, requireCapability } from '@/lib/auth';
+import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { readJsonBody } from '@/lib/bulk-editor';
 import { coercePositiveInt } from '@/lib/manage-files-guard';
@@ -11,10 +11,8 @@ import { upstreamErrorResponse } from '@/lib/api-error';
 // Episodes. The folder is resolved SERVER-SIDE from the series record — a client
 // never supplies a path, so this can't be abused to scan arbitrary directories.
 async function getHandler(request: NextRequest): Promise<NextResponse> {
-  const authError = await requireAuth();
-  if (authError) return authError;
-  const capError = await requireCapability('series.manageFiles');
-  if (capError) return capError;
+  const auth = await requireUserCapability('series.manageFiles');
+  if (!auth.ok) return auth.response;
 
   try {
     const seriesId = coercePositiveInt(request.nextUrl.searchParams.get('seriesId'));
@@ -55,10 +53,8 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
 // Re-runs the import decision engine over edited rows to refresh rejections +
 // custom-format score. Non-destructive (no disk changes), so no audit.
 async function postHandler(request: NextRequest): Promise<NextResponse> {
-  const authError = await requireAuth();
-  if (authError) return authError;
-  const capError = await requireCapability('series.manageFiles');
-  if (capError) return capError;
+  const auth = await requireUserCapability('series.manageFiles');
+  if (!auth.ok) return auth.response;
 
   try {
     const json = await readJsonBody(request);

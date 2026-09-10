@@ -1,3 +1,4 @@
+import { invalidateJellyfinCatalog } from '@/lib/cache/jellyfin-catalog';
 import { isAxiosError } from 'axios';
 import { NextRequest, NextResponse } from 'next/server';
 import { getJellyfinPlaybackContext } from '@/lib/service-helpers';
@@ -60,6 +61,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   try {
     const { client } = await getJellyfinPlaybackContext(auth.user);
     await client.reportPlayback(payload);
+    if (event === 'stopped') invalidateJellyfinCatalog(auth.user.id);
     // These reports are the only liveness signal a player gives: an app killed
     // from the task switcher sends no Stopped, so the reaper notices the
     // silence instead.

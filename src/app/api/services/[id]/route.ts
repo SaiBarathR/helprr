@@ -1,15 +1,14 @@
+import { invalidateTaggedLibrary } from '@/lib/cache/tagged-library';
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import { requireAuth, requireCapability } from '@/lib/auth';
+import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { clearConnectionMemo, ensureDefaultForType, setDefaultConnection } from '@/lib/arr-instances';
 import { serializeConnection } from '@/lib/service-connection-secrets';
 
 async function deleteHandler(_request: NextRequest, ctx: { params: Promise<{ id: string }> }): Promise<NextResponse> {
-  const authError = await requireAuth();
-  if (authError) return authError;
-  const capError = await requireCapability('settings.instances');
-  if (capError) return capError;
+  const auth = await requireUserCapability('settings.instances');
+  if (!auth.ok) return auth.response;
 
   const { id } = await ctx.params;
   const existing = await prisma.serviceConnection.findUnique({ where: { id } });
@@ -18,14 +17,13 @@ async function deleteHandler(_request: NextRequest, ctx: { params: Promise<{ id:
   await prisma.serviceConnection.delete({ where: { id } }); // PollingState cascades
   await ensureDefaultForType(existing.type); // promote a sibling if we removed the default
   clearConnectionMemo();
+  await invalidateTaggedLibrary(existing.type.toLowerCase(), id);
   return NextResponse.json({ ok: true });
 }
 
 async function patchHandler(request: NextRequest, ctx: { params: Promise<{ id: string }> }): Promise<NextResponse> {
-  const authError = await requireAuth();
-  if (authError) return authError;
-  const capError = await requireCapability('settings.instances');
-  if (capError) return capError;
+  const auth = await requireUserCapability('settings.instances');
+  if (!auth.ok) return auth.response;
 
   const { id } = await ctx.params;
   const existing = await prisma.serviceConnection.findUnique({ where: { id } });
@@ -55,6 +53,7 @@ async function patchHandler(request: NextRequest, ctx: { params: Promise<{ id: s
   clearConnectionMemo();
   const updated = await prisma.serviceConnection.findUnique({ where: { id } });
   if (!updated) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  await invalidateTaggedLibrary(updated.type.toLowerCase(), id);
   return NextResponse.json(serializeConnection(updated));
 }
 

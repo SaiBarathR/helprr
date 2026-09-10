@@ -6,7 +6,7 @@ import { jsonFetcher } from '@/lib/query-fetch';
 import { queryKeys } from '@/lib/query-keys';
 import { WatchTopBar } from '@/components/jellyfin-streaming/watch-top-bar';
 import { CatalogRail } from '@/components/jellyfin-streaming/catalog-rail';
-import { useJellyfinPlayback } from '@/components/jellyfin-streaming/playback-provider';
+import { useJellyfinPlaybackState } from '@/components/jellyfin-streaming/playback-provider';
 import { jellyfinPosterUrl } from '@/lib/jellyfin-playback/image';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { ErrorState } from '@/components/ui/error-state';
@@ -34,7 +34,7 @@ function programsForChannel(programs: JellyfinItem[], channelId: string): Jellyf
 }
 
 export default function LiveTvPage() {
-  const playback = useJellyfinPlayback();
+  const playback = useJellyfinPlaybackState();
   const query = useQuery({
     queryKey: queryKeys.jellyfinLive(),
     queryFn: jsonFetcher<LiveTvResponse>('/api/jellyfin/catalog/live'),

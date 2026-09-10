@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSonarrClient, getSonarrClients, getRadarrClients, getLidarrClients } from '@/lib/service-helpers';
 import type { SonarrClient } from '@/lib/sonarr-client';
-import { requireAuth, requireCapability } from '@/lib/auth';
+import { requireUserCapability } from '@/lib/auth';
 import type { HistoryItem } from '@/types';
 import { withApiLogging } from '@/lib/api-logger';
 import {
@@ -240,10 +240,8 @@ function parseHistoryQuery(searchParams: URLSearchParams):
  * @returns A bounded page with total exactness, continuation, and partial-result metadata.
  */
 async function getHandler(request: NextRequest) {
-  const authError = await requireAuth();
-  if (authError) return authError;
-  const capError = await requireCapability('activity.view');
-  if (capError) return capError;
+  const auth = await requireUserCapability('activity.view');
+  if (!auth.ok) return auth.response;
 
   try {
     const { searchParams } = new URL(request.url);

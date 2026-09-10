@@ -22,16 +22,19 @@ async function getHandler(
   try {
     const { searchParams } = new URL(request.url);
     const expand = new Set((searchParams.get('expand') ?? '').split(',').map((part) => part.trim()).filter(Boolean));
-    const client = await getJellyfinClientForUser(auth.user);
+    const legacy = !searchParams.has('expand');
+    const wants = (name: string) => legacy || expand.has(name);
+    const client = (await getJellyfinClientForUser(auth.user)).withReadSignal(request.signal);
     const item = await client.getItem(itemId);
 
     const payload: CatalogItemDetailResponse = { linked: true, item };
 
     const jobs: Array<Promise<void>> = [];
-    if (item.Type === 'Series' || item.Type === 'Season' || item.Type === 'Episode') {
+    if (wants('seasons') && (item.Type === 'Series' || item.Type === 'Season' || item.Type === 'Episode')) {
       // Season and episode pages need the sibling seasons to offer a picker.
       const seriesId = item.Type === 'Series' ? itemId : (item.SeriesId || item.ParentId || itemId);
       jobs.push(client.getSeasons(seriesId).then((data) => { payload.seasons = data.Items ?? []; }).catch(() => {
+        (payload.failedExpansions ??= []).push('seasons');
         payload.seasons = [];
       }));
     }
@@ -40,30 +43,41 @@ async function getHandler(
       // the page can offer "More from Season N".
       const seriesId = item.Type === 'Series' ? itemId : (item.SeriesId || item.ParentId || itemId);
       const seasonId = item.Type === 'Season' ? itemId : item.Type === 'Episode' ? item.SeasonId : undefined;
-      jobs.push(client.getSeriesEpisodes(seriesId, seasonId).then((data) => {
+      const page = searchParams.has('episodeLimit') ? {
+        startIndex: Math.max(0, Number.parseInt(searchParams.get('episodeStart') ?? '0', 10) || 0),
+        limit: Math.min(100, Math.max(1, Number.parseInt(searchParams.get('episodeLimit') ?? '50', 10) || 50)),
+      } : undefined;
+      jobs.push(client.getSeriesEpisodes(seriesId, seasonId, page).then((data) => {
+        if (page) { payload.episodesTotal = data.TotalRecordCount ?? data.Items?.length ?? 0; payload.episodesStart = page.startIndex; }
         payload.episodes = data.Items ?? [];
       }).catch(() => {
+        (payload.failedExpansions ??= []).push('episodes');
         payload.episodes = [];
       }));
     }
     if (item.Type === 'Movie' || item.Type === 'Series') {
-      jobs.push(client.getSimilarItems(itemId).then((data) => { payload.similar = data.Items ?? []; }).catch(() => {
+      if (wants('similar')) jobs.push(client.getSimilarItems(itemId).then((data) => { payload.similar = data.Items ?? []; }).catch(() => {
+        (payload.failedExpansions ??= []).push('similar');
         payload.similar = [];
       }));
-      jobs.push(client.getSpecialFeatures(itemId).then((items) => { payload.specialFeatures = items ?? []; }).catch(() => {
+      if (wants('specials')) jobs.push(client.getSpecialFeatures(itemId).then((items) => { payload.specialFeatures = items ?? []; }).catch(() => {
+        (payload.failedExpansions ??= []).push('specialFeatures');
         payload.specialFeatures = [];
       }));
-      jobs.push(client.getLocalTrailers(itemId).then((items) => { payload.localTrailers = items ?? []; }).catch(() => {
+      if (wants('trailers')) jobs.push(client.getLocalTrailers(itemId).then((items) => { payload.localTrailers = items ?? []; }).catch(() => {
+        (payload.failedExpansions ??= []).push('localTrailers');
         payload.localTrailers = [];
       }));
     }
-    if (expand.has('instantMix') || item.MediaType === 'Audio' || item.Type === 'MusicAlbum' || item.Type === 'MusicArtist') {
+    if (wants('instantMix') && (item.MediaType === 'Audio' || item.Type === 'MusicAlbum' || item.Type === 'MusicArtist')) {
       jobs.push(client.getInstantMix(itemId).then((data) => { payload.instantMix = data.Items ?? []; }).catch(() => {
+        (payload.failedExpansions ??= []).push('instantMix');
         payload.instantMix = [];
       }));
     }
-    if (expand.has('segments') || item.MediaType === 'Video') {
+    if (wants('segments')) {
       jobs.push(client.getMediaSegments(itemId).then((data) => { payload.segments = data.Items ?? []; }).catch(() => {
+        (payload.failedExpansions ??= []).push('segments');
         payload.segments = [];
       }));
     }
@@ -78,17 +92,18 @@ async function getHandler(
         payload.themeMedia = { themeSongs: [], themeVideos: [], soundtrackSongs: [] };
       }));
     }
-    if (item.Type === 'BoxSet' || item.Type === 'Playlist' || item.Type === 'Folder' || item.Type === 'MusicAlbum') {
+    if (wants('children') && (item.Type === 'BoxSet' || item.Type === 'Playlist' || item.Type === 'Folder' || item.Type === 'MusicAlbum')) {
       jobs.push(client.getCatalogItems({
         ParentId: itemId,
         Limit: 200,
         Recursive: item.Type === 'Playlist' || item.Type === 'MusicAlbum',
         SortBy: item.Type === 'MusicAlbum' ? 'IndexNumber' : 'SortName',
       }).then((data) => { payload.children = data.Items ?? []; }).catch(() => {
+        (payload.failedExpansions ??= []).push('children');
         payload.children = [];
       }));
     }
-    if (item.Type === 'Person') {
+    if (wants('filmography') && item.Type === 'Person') {
       jobs.push(client.getCatalogItems({
         PersonIds: itemId,
         Recursive: true,
@@ -97,6 +112,7 @@ async function getHandler(
         SortBy: 'PremiereDate',
         SortOrder: 'Descending',
       }).then((data) => { payload.filmography = data.Items ?? []; }).catch(() => {
+        (payload.failedExpansions ??= []).push('filmography');
         payload.filmography = [];
       }));
     }

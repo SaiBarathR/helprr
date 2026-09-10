@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import { useDeferredValue, useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import Link from '@/components/ui/app-link';
 import { MediaGridSkeleton } from '@/components/ui/media-grid-skeleton';
 import { useWindowVirtualizer } from '@tanstack/react-virtual';
@@ -41,6 +41,14 @@ import { InteractiveSearchDialog } from '@/components/media/interactive-search-d
 import { RenamePreviewDialog } from '@/components/media/rename-preview-dialog';
 import { arrEditHref, arrManageHref } from '@/lib/arr-edit-href';
 import { buildMarkWatchedContextAction } from '@/lib/mark-watched-context-action';
+import {
+  deriveMovieBaseRows,
+  preparedItems,
+  prepareMovieRows,
+  searchPreparedRows,
+  type MovieFilter,
+  type MovieSortKey,
+} from '@/lib/library-filtering';
 import type { RadarrMovieListItem } from '@/types';
 
 import type { MediaViewMode } from '@/lib/store';
@@ -271,6 +279,7 @@ export default function MoviesPage() {
   const setVisibleFieldsForMode = useUIStore((s) => s.setMoviesVisibleFields);
   const search = useUIStore((s) => s.moviesSearch);
   const setSearch = useUIStore((s) => s.setMoviesSearch);
+  const deferredSearch = useDeferredValue(search);
 
   const visibleFields = visibleFieldsByMode[viewMode];
   const setVisibleFields = useCallback(
@@ -377,11 +386,12 @@ export default function MoviesPage() {
 
   // Selection keys are composite so ids that repeat across instances stay distinct.
   const keyOf = useCallback((movie: RadarrMovieListItem) => `${movie.instanceId ?? ''}:${movie.id}`, []);
+  const preparedRows = useMemo(() => prepareMovieRows(movies), [movies]);
   const movieByKey = useMemo(() => {
     const map = new Map<string, RadarrMovieListItem>();
-    for (const movie of movies) map.set(keyOf(movie), movie);
+    for (const row of preparedRows) map.set(row.key, row.item);
     return map;
-  }, [movies, keyOf]);
+  }, [preparedRows]);
 
   // Drop a stale instance filter if that instance is no longer connected.
   useEffect(() => {
@@ -390,119 +400,20 @@ export default function MoviesPage() {
     }
   }, [instances, instanceFilter, setInstanceFilter]);
 
-  const filtered = useMemo(() => {
-    let list = movies;
+  const baseRows = useMemo(() => deriveMovieBaseRows(preparedRows, {
+    filter: filter as MovieFilter[],
+    instanceFilter,
+    sort: sort as MovieSortKey,
+    sortDir,
+    watchPredicate: canFilterByWatchStatus && watchMapReady && watchFilter !== 'all'
+      ? (movie) => matchesWatchFilter(watchFilter, watchLookup, 'radarr', movie.instanceId, movie.id)
+      : undefined,
+  }), [preparedRows, filter, instanceFilter, sort, sortDir, canFilterByWatchStatus, watchMapReady, watchFilter, watchLookup]);
 
-    if (search) {
-      const q = search.toLowerCase();
-      list = list.filter((m) => m.title.toLowerCase().includes(q));
-    }
-
-    if (filter.length > 0) {
-      list = list.filter((m) => filter.some((f) => {
-        if (f === 'monitored') return m.monitored;
-        if (f === 'unmonitored') return !m.monitored;
-        if (f === 'missing') return m.monitored && !m.hasFile;
-        if (f === 'hasFile') return m.hasFile;
-        if (f === 'released') return m.status === 'released';
-        if (f === 'inCinemas') return m.status === 'inCinemas';
-        if (f === 'announced') return m.status === 'announced';
-        return true;
-      }));
-    }
-
-    if (instanceFilter !== 'all') {
-      list = list.filter((movie) => movie.instanceId === instanceFilter);
-    }
-
-    if (canFilterByWatchStatus && watchMapReady && watchFilter !== 'all') {
-      list = list.filter((movie) =>
-        matchesWatchFilter(watchFilter, watchLookup, 'radarr', movie.instanceId, movie.id)
-      );
-    }
-
-    list = [...list].sort((a, b) => {
-      let result = 0;
-
-      switch (sort) {
-        case 'title':
-          result = a.sortTitle.localeCompare(b.sortTitle);
-          break;
-        case 'originalTitle':
-          result = (a.originalTitle || a.title).localeCompare(b.originalTitle || b.title);
-          break;
-        case 'year':
-          result = a.year - b.year;
-          break;
-        case 'dateAdded':
-          result = new Date(a.added).getTime() - new Date(b.added).getTime();
-          break;
-        case 'sizeOnDisk':
-          result = a.sizeOnDisk - b.sizeOnDisk;
-          break;
-        case 'runtime':
-          result = a.runtime - b.runtime;
-          break;
-        case 'studio':
-          result = (a.studio || '').localeCompare(b.studio || '');
-          break;
-        case 'qualityProfile': {
-          const qA = a.qualityProfileName || '';
-          const qB = b.qualityProfileName || '';
-          result = qA.localeCompare(qB);
-          break;
-        }
-        case 'monitored':
-          result = (a.monitored === b.monitored) ? 0 : a.monitored ? -1 : 1;
-          break;
-        case 'inCinemas':
-          result = new Date(a.inCinemas || 0).getTime() - new Date(b.inCinemas || 0).getTime();
-          break;
-        case 'digitalRelease':
-          result = new Date(a.digitalRelease || 0).getTime() - new Date(b.digitalRelease || 0).getTime();
-          break;
-        case 'physicalRelease':
-          result = new Date(a.physicalRelease || 0).getTime() - new Date(b.physicalRelease || 0).getTime();
-          break;
-        case 'popularity':
-          result = (a.popularity || 0) - (b.popularity || 0);
-          break;
-        case 'imdbRating':
-          result = (a.ratings?.imdb?.value || 0) - (b.ratings?.imdb?.value || 0);
-          break;
-        case 'tmdbRating':
-          result = (a.ratings?.tmdb?.value || 0) - (b.ratings?.tmdb?.value || 0);
-          break;
-        case 'tomatoRating':
-          result = (a.ratings?.rottenTomatoes?.value || 0) - (b.ratings?.rottenTomatoes?.value || 0);
-          break;
-        case 'traktRating':
-          result = (a.ratings?.trakt?.value || 0) - (b.ratings?.trakt?.value || 0);
-          break;
-        case 'path':
-          result = (a.path || '').localeCompare(b.path || '');
-          break;
-        case 'certification':
-          result = (a.certification || '').localeCompare(b.certification || '');
-          break;
-        case 'originalLanguage':
-          result = (a.originalLanguage?.name || '').localeCompare(b.originalLanguage?.name || '');
-          break;
-        case 'tags': {
-          const tA = (a.tagLabels ?? []).slice().sort().join(',');
-          const tB = (b.tagLabels ?? []).slice().sort().join(',');
-          result = tA.localeCompare(tB);
-          break;
-        }
-        default:
-          result = 0;
-      }
-
-      return sortDir === 'asc' ? result : -result;
-    });
-
-    return list;
-  }, [movies, search, sort, sortDir, filter, instanceFilter, canFilterByWatchStatus, watchMapReady, watchFilter, watchLookup]);
+  const filtered = useMemo(
+    () => preparedItems(searchPreparedRows(baseRows, deferredSearch)),
+    [baseRows, deferredSearch],
+  );
 
   // ── Bulk selection ────────────────────────────────────────────────────────
   const allFilteredSelected = filtered.length > 0 && filtered.every((m) => selectedKeys.has(keyOf(m)));
@@ -612,9 +523,7 @@ export default function MoviesPage() {
     }
   }, [deleteTarget, deletingTarget, runDelete]);
 
-  const contextActionsByKey = useMemo(() => {
-    const result = new Map<string, ContextActionGroup[]>();
-    for (const movie of movies) {
+  const buildContextActions = useCallback((movie: RadarrMovieListItem): ContextActionGroup[] => {
       const key = keyOf(movie);
       const movieWatch = watchLookup({
         scope: 'radarr',
@@ -628,7 +537,7 @@ export default function MoviesPage() {
         isWriting: isWritingWatched,
         setWatched,
       });
-      result.set(key, [
+      return [
         {
           id: 'navigation',
           actions: [
@@ -728,11 +637,8 @@ export default function MoviesPage() {
               : []),
           ],
         },
-      ]);
-    }
-    return result;
+      ];
   }, [
-    movies,
     keyOf,
     hrefForMovie,
     handleNavigateToDetail,
@@ -753,13 +659,15 @@ export default function MoviesPage() {
   ]);
 
   const contextActionsForMovie = useCallback(
-    (movie: RadarrMovieListItem) => contextActionsByKey.get(keyOf(movie)) ?? [],
-    [contextActionsByKey, keyOf],
+    (movie: RadarrMovieListItem) => buildContextActions(movie),
+    [buildContextActions],
   );
 
-  const contextActionsForTableRow = useCallback(
-    (row: { id: number; instanceId?: string }) => contextActionsByKey.get(`${row.instanceId ?? ''}:${row.id}`) ?? [],
-    [contextActionsByKey],
+  const contextActionsForTableRow = useCallback((row: { id: number; instanceId?: string }) => {
+    const movie = movieByKey.get(`${row.instanceId ?? ''}:${row.id}`);
+    return movie ? buildContextActions(movie) : [];
+  },
+    [buildContextActions, movieByKey],
   );
 
   const effectiveView = viewMode === 'table' ? 'table' : viewMode;
@@ -809,7 +717,7 @@ export default function MoviesPage() {
   });
 
   const tableRows = useMemo(() => (
-    filtered.map((movie) => ({
+    effectiveView === 'table' ? filtered.map((movie) => ({
       id: movie.id,
       title: movie.title,
       year: movie.year,
@@ -827,8 +735,8 @@ export default function MoviesPage() {
       runtime: movie.runtime,
       certification: movie.certification,
       genres: movie.genres,
-    }))
-  ), [filtered, multiInstance, hrefForMovie]);
+    })) : []
+  ), [effectiveView, filtered, multiInstance, hrefForMovie]);
 
   // Table headers sort through the same store state as the toolbar dropdown:
   // picking the active key toggles direction; a new key gets its natural default.

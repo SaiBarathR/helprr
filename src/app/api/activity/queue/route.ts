@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth, requireCapability } from '@/lib/auth';
+import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { getQueueCached } from '@/lib/activity-queue';
 import { parsePageParams } from '@/lib/pagination';
@@ -25,10 +25,8 @@ const QUEUE_CACHE_HEADERS = {
 // runs per request before the cache is read.
 
 async function getHandler(request: NextRequest): Promise<NextResponse> {
-  const authError = await requireAuth();
-  if (authError) return authError;
-  const capError = await requireCapability('activity.view');
-  if (capError) return capError;
+  const auth = await requireUserCapability('activity.view');
+  if (!auth.ok) return auth.response;
 
   try {
     const { searchParams } = new URL(request.url);

@@ -1,3 +1,4 @@
+import { invalidateTaggedLibrary } from '@/lib/cache/tagged-library';
 import { getCachedJson, setCachedJson, deleteCachedJson } from '@/lib/cache/json-cache';
 import type { ResolvedLabels } from '@/types';
 
@@ -19,6 +20,7 @@ import type { ResolvedLabels } from '@/types';
 const REFERENCE_TTL_SECONDS = 120;
 
 export interface InstanceLabelMaps {
+  complete?: boolean;
   qualityProfile: Record<number, string>;
   tag: Record<number, string>;
   metadataProfile: Record<number, string>;
@@ -53,6 +55,7 @@ async function loadOne(scope: string, connectionId: string, client: ReferenceCli
     settle(client.getMetadataProfiles?.()),
   ]);
   const maps: InstanceLabelMaps = {
+    complete: profiles.ok && tags.ok && metadataProfiles.ok,
     qualityProfile: Object.fromEntries(profiles.data.map((p) => [p.id, p.name])),
     tag: Object.fromEntries(tags.data.map((t) => [t.id, t.label])),
     metadataProfile: Object.fromEntries(metadataProfiles.data.map((m) => [m.id, m.name])),
@@ -89,6 +92,7 @@ export async function getInstanceLabelMaps(
  */
 export async function invalidateReferenceLabels(scope: string, connectionId: string): Promise<void> {
   await deleteCachedJson(`${scope}-labels`, connectionId);
+  await invalidateTaggedLibrary(scope, connectionId);
 }
 
 /** Resolve one item's instance-local reference IDs to display names against its own instance. */

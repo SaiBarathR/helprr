@@ -14,7 +14,7 @@ import { WatchTopBar } from '@/components/jellyfin-streaming/watch-top-bar';
 import { CatalogPosterCard } from '@/components/jellyfin-streaming/poster-card';
 import { CATALOG_GRID_CLASS, CATALOG_WRAP_CLASS } from '@/components/jellyfin-streaming/card-shared';
 import { useWatchSkin } from '@/lib/hooks/use-watch-skin';
-import { useJellyfinPlayback } from '@/components/jellyfin-streaming/playback-provider';
+import { useJellyfinPlaybackState } from '@/components/jellyfin-streaming/playback-provider';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { cn } from '@/lib/utils';
@@ -97,7 +97,7 @@ function decadesFrom(years: number[]): number[] {
 export default function LibraryBrowserPage() {
   const params = useParams<{ libraryId: string }>();
   const searchParams = useSearchParams();
-  const playback = useJellyfinPlayback();
+  const playback = useJellyfinPlaybackState();
   const skin = useWatchSkin();
   const cinematic = skin === 'cinematic';
   const name = searchParams.get('name') || 'Library';

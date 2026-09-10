@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getRadarrClient } from '@/lib/service-helpers';
-import { requireAuth, requireCapability } from '@/lib/auth';
+import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { readJsonBody } from '@/lib/bulk-editor';
 import { coercePositiveInt } from '@/lib/manage-files-guard';
@@ -11,10 +11,8 @@ import { upstreamErrorResponse } from '@/lib/api-error';
 // Passes movieId only (no folder) so Radarr's dedicated "manage files" branch is
 // used; the client never supplies a path.
 async function getHandler(request: NextRequest): Promise<NextResponse> {
-  const authError = await requireAuth();
-  if (authError) return authError;
-  const capError = await requireCapability('movies.manageFiles');
-  if (capError) return capError;
+  const auth = await requireUserCapability('movies.manageFiles');
+  if (!auth.ok) return auth.response;
 
   try {
     const movieId = coercePositiveInt(request.nextUrl.searchParams.get('movieId'));
@@ -33,10 +31,8 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
 // ── POST /api/radarr/manualimport/scan (reprocess) ──────────────────────────
 // Re-runs the import decision engine over edited rows. Non-destructive, no audit.
 async function postHandler(request: NextRequest): Promise<NextResponse> {
-  const authError = await requireAuth();
-  if (authError) return authError;
-  const capError = await requireCapability('movies.manageFiles');
-  if (capError) return capError;
+  const auth = await requireUserCapability('movies.manageFiles');
+  if (!auth.ok) return auth.response;
 
   try {
     const json = await readJsonBody(request);

@@ -1,14 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import { requireAuth, requireCapability } from '@/lib/auth';
+import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { parseInt32, parsePageParams } from '@/lib/pagination';
 
 async function getHandler(request: NextRequest) {
-  const err = await requireAuth();
-  if (err) return err;
-  const capError = await requireCapability('cleanup.view');
-  if (capError) return capError;
+  const auth = await requireUserCapability('cleanup.view');
+  if (!auth.ok) return auth.response;
 
   // Widget passes ?limit=N for a compact top-N preview; the dashboard table passes
   // ?page&pageSize. Either way we return { records, total, page, pageSize } so the

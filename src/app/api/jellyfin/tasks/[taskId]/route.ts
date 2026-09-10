@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getJellyfinClient } from '@/lib/service-helpers';
-import { requireAuth, requireCapability } from '@/lib/auth';
+import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { upstreamErrorResponse } from '@/lib/api-error';
 
@@ -8,11 +8,8 @@ async function postHandler(
   _req: NextRequest,
   { params }: { params: Promise<{ taskId: string }> }
 ): Promise<NextResponse> {
-  const authError = await requireAuth();
-  if (authError) return authError;
-
-  const capError = await requireCapability('jellyfin.control');
-  if (capError) return capError;
+  const auth = await requireUserCapability('jellyfin.control');
+  if (!auth.ok) return auth.response;
 
   try {
     const { taskId } = await params;
@@ -28,11 +25,8 @@ async function deleteHandler(
   _req: NextRequest,
   { params }: { params: Promise<{ taskId: string }> }
 ): Promise<NextResponse> {
-  const authError = await requireAuth();
-  if (authError) return authError;
-
-  const capError = await requireCapability('jellyfin.control');
-  if (capError) return capError;
+  const auth = await requireUserCapability('jellyfin.control');
+  if (!auth.ok) return auth.response;
 
   try {
     const { taskId } = await params;

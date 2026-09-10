@@ -8,12 +8,11 @@ import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, Bell, LogOut, Search } from 'lucide-react';
 import { useCompactViewport } from '@/lib/hooks/use-compact-viewport';
 import { jsonFetcher } from '@/lib/query-fetch';
-import { queryKeys } from '@/lib/query-keys';
 import { useUIStore } from '@/lib/store';
 import { useMe } from '@/components/permission-provider';
 import { useWatchSkin } from '@/lib/hooks/use-watch-skin';
 import { resolveDefaultPageHref } from '@/lib/nav-config';
-import type { CatalogHomeResponse } from '@/types/jellyfin-streaming';
+import type { CatalogViewsResponse } from '@/types/jellyfin-streaming';
 import { cn } from '@/lib/utils';
 
 interface NavEntry {
@@ -53,8 +52,8 @@ export function CinematicHeader() {
 
   // Reuses the home payload, so this costs nothing beyond what the page fetches.
   const home = useQuery({
-    queryKey: queryKeys.jellyfinHome(),
-    queryFn: jsonFetcher<CatalogHomeResponse>('/api/jellyfin/catalog/home'),
+    queryKey: ['jellyfin', 'catalog', 'views'],
+    queryFn: jsonFetcher<CatalogViewsResponse>('/api/jellyfin/catalog/views'),
     enabled: skin === 'cinematic',
     staleTime: 5 * 60_000,
   });

@@ -1,15 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSonarrClient } from '@/lib/service-helpers';
-import { requireAuth, requireCapability } from '@/lib/auth';
+import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { invalidateTaggedLibrary } from '@/lib/cache/tagged-library';
 import { upstreamErrorResponse } from '@/lib/api-error';
 
 async function putHandler(request: NextRequest) {
-  const authError = await requireAuth();
-  if (authError) return authError;
-  const capError = await requireCapability('series.editMonitoring');
-  if (capError) return capError;
+  const auth = await requireUserCapability('series.editMonitoring');
+  if (!auth.ok) return auth.response;
 
   try {
     const body = await request.json();

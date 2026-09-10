@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth, requireCapability } from '@/lib/auth';
+import { requireUserCapability } from '@/lib/auth';
 import {
   getActiveCacheUsage,
   getCacheMaintenanceMeta,
@@ -11,10 +11,8 @@ import { withApiLogging } from '@/lib/api-logger';
 import { upstreamErrorResponse } from '@/lib/api-error';
 
 async function getHandler() {
-  const authError = await requireAuth();
-  if (authError) return authError;
-  const capError = await requireCapability('settings.storage');
-  if (capError) return capError;
+  const auth = await requireUserCapability('settings.storage');
+  if (!auth.ok) return auth.response;
 
   try {
     const [enabled, usage, maintenance] = await Promise.all([
@@ -35,10 +33,8 @@ async function getHandler() {
 }
 
 async function deleteHandler(request: NextRequest) {
-  const authError = await requireAuth();
-  if (authError) return authError;
-  const capError = await requireCapability('settings.storage');
-  if (capError) return capError;
+  const auth = await requireUserCapability('settings.storage');
+  if (!auth.ok) return auth.response;
 
   try {
     // ?provider=anilist clears only AniList API keys (images/TMDB untouched).

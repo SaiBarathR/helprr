@@ -1,15 +1,14 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, type CSSProperties } from 'react';
 import GridLayout, { WidthProvider, type Layout } from 'react-grid-layout/legacy';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
 import { useUIStore } from '@/lib/store';
 import type { ColSpan, RowSpan } from '@/lib/widgets/types';
 import { getWidgetDefinition } from '@/lib/widgets/registry';
-import { useMe, hasCapabilities } from '@/components/permission-provider';
 import { useDashboardLayout } from './dashboard-layout-context';
-import { WidgetGridItem } from './widget-grid-desktop';
+import { useVisibleDashboardWidgets, WidgetGridItem } from './widget-grid-shared';
 import { ThemeInspector } from './theme-inspector';
 
 const MOBILE_COLS = 4;
@@ -19,20 +18,7 @@ export function WidgetGridMobile({ onConfigureRefresh }: { onConfigureRefresh: (
   const { widgets: dashboardLayout, removeWidget, updateMobileWidgetPositions } = useDashboardLayout();
   const editMode = useUIStore((s) => s.dashboardEditMode);
   const discoverLayout = useUIStore((s) => s.discoverLayout);
-  const me = useMe();
-
-  const visibleWidgets = useMemo(
-    () =>
-      dashboardLayout.filter((instance) => {
-        const def = getWidgetDefinition(instance.widgetId, discoverLayout);
-        return (
-          !!def &&
-          (!def.requiredCapability || hasCapabilities(me, def.requiredCapability)) &&
-          (!def.adminOnly || me?.role === 'admin')
-        );
-      }),
-    [dashboardLayout, discoverLayout, me],
-  );
+  const visibleWidgets = useVisibleDashboardWidgets(dashboardLayout);
 
   const { layoutItems, layoutLookup } = useMemo(() => {
     const lookup = new Map<string, { col: number; row: number; narrow: boolean }>();
@@ -75,7 +61,7 @@ export function WidgetGridMobile({ onConfigureRefresh }: { onConfigureRefresh: (
   }
 
   return (
-    <div style={{ ['--hpr-cols' as string]: String(MOBILE_COLS) } as React.CSSProperties}>
+    <div style={{ ['--hpr-cols' as string]: String(MOBILE_COLS) } as CSSProperties}>
       {editMode && <ThemeInspector mobile />}
       <ResponsiveGrid
         className="dashboard-bento-grid-rgl dashboard-bento-grid-rgl-mobile"

@@ -3,7 +3,7 @@ import { getRadarrClient, getRadarrClients } from '@/lib/service-helpers';
 import { resolveConnection } from '@/lib/arr-instances';
 import { getConnectionHeaders } from '@/lib/service-connection-secrets';
 import { RadarrClient } from '@/lib/radarr-client';
-import { requireAuth, requireCapability } from '@/lib/auth';
+import { requireUserCapability } from '@/lib/auth';
 import { logApiDuration } from '@/lib/server-perf';
 import { withApiLogging } from '@/lib/api-logger';
 import { getCachedTaggedLibrary, invalidateTaggedLibrary } from '@/lib/cache/tagged-library';
@@ -76,10 +76,8 @@ function buildSummary(collection: TaggedCollection, libByTmdb: Map<number, Libra
 }
 
 async function getHandler(request: NextRequest) {
-  const authError = await requireAuth();
-  if (authError) return authError;
-  const capError = await requireCapability('movies.view');
-  if (capError) return capError;
+  const auth = await requireUserCapability('movies.view');
+  if (!auth.ok) return auth.response;
   const startedAt = performance.now();
 
   try {
@@ -147,10 +145,8 @@ async function getHandler(request: NextRequest) {
 // Add a missing movie from a collection, applying that collection's own defaults
 // (quality profile / root folder / minimum availability / search) the way Radarr does.
 async function postHandler(request: NextRequest) {
-  const authError = await requireAuth();
-  if (authError) return authError;
-  const capError = await requireCapability('movies.add');
-  if (capError) return capError;
+  const auth = await requireUserCapability('movies.add');
+  if (!auth.ok) return auth.response;
   const startedAt = performance.now();
 
   try {
@@ -226,10 +222,8 @@ async function postHandler(request: NextRequest) {
 
 // Toggle monitoring on a single collection.
 async function putHandler(request: NextRequest) {
-  const authError = await requireAuth();
-  if (authError) return authError;
-  const capError = await requireCapability('movies.editMonitoring');
-  if (capError) return capError;
+  const auth = await requireUserCapability('movies.editMonitoring');
+  if (!auth.ok) return auth.response;
   const startedAt = performance.now();
 
   try {

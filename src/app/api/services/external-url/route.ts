@@ -1,14 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import { requireAuth, requireCapability } from '@/lib/auth';
+import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { clearConnectionMemo } from '@/lib/arr-instances';
 
 async function putHandler(request: NextRequest): Promise<NextResponse> {
-  const authError = await requireAuth();
-  if (authError) return authError;
-  const capError = await requireCapability('settings.instances');
-  if (capError) return capError;
+  const auth = await requireUserCapability('settings.instances');
+  if (!auth.ok) return auth.response;
 
   let body: Record<string, unknown>;
   try {

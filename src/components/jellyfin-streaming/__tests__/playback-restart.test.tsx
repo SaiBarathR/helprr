@@ -56,6 +56,7 @@ describe('restart keeps the viewer\'s paused intent', () => {
     expect(h.media.paused()).toBe(true);
     expect(lastStartReport(h)?.isPaused).toBe(true);
     expect(h.requests.at(-1)?.audioStreamIndex).toBe(2);
+    expect(h.encodingStops).toEqual(['session-1']);
   });
 
   it('stays paused when a second change lands while the first is still attaching', async () => {

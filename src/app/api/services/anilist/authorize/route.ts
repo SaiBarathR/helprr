@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { randomBytes } from 'crypto';
 import { prisma } from '@/lib/db';
-import { requireAuth, requireCapability } from '@/lib/auth';
+import { requireUserCapability } from '@/lib/auth';
 import { ANILIST_GRAPHQL_URL, buildAuthorizeUrl } from '@/lib/anilist-oauth';
 import { withApiLogging } from '@/lib/api-logger';
 import {
@@ -35,10 +35,8 @@ function trustedOrigin(request: NextRequest): string | null {
 }
 
 async function postHandler(request: NextRequest): Promise<NextResponse> {
-  const authError = await requireAuth();
-  if (authError) return authError;
-  const capError = await requireCapability('settings.instances');
-  if (capError) return capError;
+  const auth = await requireUserCapability('settings.instances');
+  if (!auth.ok) return auth.response;
 
   let body: unknown;
   try {

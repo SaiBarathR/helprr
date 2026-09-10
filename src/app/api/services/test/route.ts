@@ -7,7 +7,7 @@ import { ProwlarrClient } from '@/lib/prowlarr-client';
 import { JellyfinClient } from '@/lib/jellyfin-client';
 import { TmdbClient } from '@/lib/tmdb-client';
 import { SeerrClient } from '@/lib/seerr-client';
-import { requireAuth, requireCapability } from '@/lib/auth';
+import { requireUserCapability } from '@/lib/auth';
 import {
   customHeadersEnabled,
   isNonEmptyString,
@@ -29,10 +29,8 @@ import { withApiLogging } from '@/lib/api-logger';
  * @returns An object with `success` boolean and, on success, `version` (string); on failure, `error` (string)
  */
 async function postHandler(request: NextRequest): Promise<NextResponse> {
-  const authError = await requireAuth();
-  if (authError) return authError;
-  const capError = await requireCapability('settings.instances');
-  if (capError) return capError;
+  const auth = await requireUserCapability('settings.instances');
+  if (!auth.ok) return auth.response;
 
   let attemptedType: ServiceType | null = null;
 

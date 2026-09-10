@@ -3,13 +3,12 @@ import { getLidarrClient, getLidarrClients } from '@/lib/service-helpers';
 import { resolveConnection } from '@/lib/arr-instances';
 import { getConnectionHeaders } from '@/lib/service-connection-secrets';
 import { LidarrClient } from '@/lib/lidarr-client';
-import { requireAuth, requireCapability } from '@/lib/auth';
+import { requireUserCapability } from '@/lib/auth';
 import type { LidarrArtist, LidarrArtistListItem } from '@/types';
 import { logApiDuration } from '@/lib/server-perf';
 import { withApiLogging } from '@/lib/api-logger';
-import { getCachedTaggedLibrary, invalidateTaggedLibrary } from '@/lib/cache/tagged-library';
+import { getCachedTaggedLibrary, getCachedTaggedLibraryJsonResponse, invalidateTaggedLibrary } from '@/lib/cache/tagged-library';
 import { getInstanceLabelMaps, labelsFor } from '@/lib/cache/reference-labels';
-import { etagJson } from '@/lib/etag-json';
 
 const LIDARR_CACHE_HEADERS = {
   // Revalidate every read instead of replaying a stale copy: a browser cache is per-device
@@ -49,15 +48,10 @@ function toListItem(artist: LidarrArtist): LidarrArtistListItem {
 
 async function getHandler(request: NextRequest) {
   const startedAt = performance.now();
-  const authError = await requireAuth();
-  if (authError) {
+  const auth = await requireUserCapability('music.view');
+  if (!auth.ok) {
     logApiDuration('GET /api/lidarr', startedAt, { method: 'GET', failed: true, authError: true });
-    return authError;
-  }
-  const capError = await requireCapability('music.view');
-  if (capError) {
-    logApiDuration('GET /api/lidarr', startedAt, { method: 'GET', failed: true, authError: true });
-    return capError;
+    return auth.response;
   }
 
   try {
@@ -77,37 +71,44 @@ async function getHandler(request: NextRequest) {
           ])
         : getLidarrClients());
 
-    // Shared tagged-library cache: one Redis entry per (scope, instance), reused by
-    // ?full=true and the slim list. A partial (some-instance-failed) poll is left
-    // uncached, so a blip can't half-blank the library for the whole TTL — matching
-    // sonarr/radarr instead of the old swallow-to-[] aggregation.
-    const { items: tagged, cached } = await getCachedTaggedLibrary({
+    const { response, cached, itemCount } = await getCachedTaggedLibraryJsonResponse(request, LIDARR_CACHE_HEADERS, {
       scope: 'lidarr',
       cacheKeySeed,
-      getInstances: resolveInstances,
-      fetchOne: (client) => client.getArtists(),
+      projectionKey: full ? 'full' : 'list',
+      buildPayload: async () => {
+        // Shared tagged-library cache: one Redis entry per (scope, instance), reused by
+        // ?full=true and the slim list. A partial (some-instance-failed) poll is left
+        // uncached, so a blip can't half-blank the library for the whole TTL.
+        const { items: tagged, complete } = await getCachedTaggedLibrary({
+          scope: 'lidarr',
+          cacheKeySeed,
+          getInstances: resolveInstances,
+          fetchOne: (client) => client.getArtists(),
+        });
+        if (full) return { payload: tagged, itemCount: tagged.length, cacheable: complete };
+
+        // Resolve quality-profile / metadata-profile / tag IDs to names against each item's OWN
+        // instance, so an artist from a non-default Lidarr isn't mislabelled by the default lookup.
+        const labelMaps = await getInstanceLabelMaps('lidarr', await resolveInstances());
+        return {
+          itemCount: tagged.length,
+          cacheable: complete && [...labelMaps.values()].every((map) => map.complete !== false),
+          payload: tagged.map((a) => ({
+            ...toListItem(a),
+            instanceId: a.instanceId,
+            instanceLabel: a.instanceLabel,
+            ...labelsFor(labelMaps, a.instanceId, {
+              qualityProfileId: a.qualityProfileId,
+              metadataProfileId: a.metadataProfileId,
+              tags: a.tags,
+            }),
+          })),
+        };
+      },
     });
 
-    logApiDuration('GET /api/lidarr', startedAt, { method: 'GET', full, artistCount: tagged.length, cached: !!cached });
-    if (full) return etagJson(request, tagged, LIDARR_CACHE_HEADERS);
-
-    // Resolve quality-profile / metadata-profile / tag IDs to names against each item's OWN
-    // instance, so an artist from a non-default Lidarr isn't mislabelled by the default lookup.
-    const labelMaps = await getInstanceLabelMaps('lidarr', await resolveInstances());
-    return etagJson(
-      request,
-      tagged.map((a) => ({
-        ...toListItem(a),
-        instanceId: a.instanceId,
-        instanceLabel: a.instanceLabel,
-        ...labelsFor(labelMaps, a.instanceId, {
-          qualityProfileId: a.qualityProfileId,
-          metadataProfileId: a.metadataProfileId,
-          tags: a.tags,
-        }),
-      })),
-      LIDARR_CACHE_HEADERS,
-    );
+    logApiDuration('GET /api/lidarr', startedAt, { method: 'GET', full, artistCount: itemCount, cached });
+    return response;
   } catch (error) {
     logApiDuration('GET /api/lidarr', startedAt, { method: 'GET', failed: true });
     console.error('Failed to fetch artists:', error);
@@ -116,10 +117,8 @@ async function getHandler(request: NextRequest) {
 }
 
 async function postHandler(request: Request) {
-  const authError = await requireAuth();
-  if (authError) return authError;
-  const capError = await requireCapability('music.add');
-  if (capError) return capError;
+  const auth = await requireUserCapability('music.add');
+  if (!auth.ok) return auth.response;
 
   try {
     const body = await request.json();

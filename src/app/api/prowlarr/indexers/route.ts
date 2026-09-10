@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getProwlarrClient } from '@/lib/service-helpers';
-import { requireAuth, requireCapability } from '@/lib/auth';
+import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { upstreamErrorResponse } from '@/lib/api-error';
 
@@ -10,10 +10,8 @@ import { upstreamErrorResponse } from '@/lib/api-error';
  * @returns The fetched indexers as a JSON response; on failure returns a JSON object with an `error` message and HTTP status 500.
  */
 async function getHandler(): Promise<NextResponse> {
-  const authError = await requireAuth();
-  if (authError) return authError;
-  const capError = await requireCapability('prowlarr.view');
-  if (capError) return capError;
+  const auth = await requireUserCapability('prowlarr.view');
+  if (!auth.ok) return auth.response;
 
   try {
     const client = await getProwlarrClient();
@@ -31,10 +29,8 @@ async function getHandler(): Promise<NextResponse> {
  * @returns A JSON HTTP response containing normalized test results or the added indexer on success; on error, a JSON object with an `error` message and HTTP status 500.
  */
 async function postHandler(request: NextRequest): Promise<NextResponse> {
-  const authError = await requireAuth();
-  if (authError) return authError;
-  const capError = await requireCapability('prowlarr.manage');
-  if (capError) return capError;
+  const auth = await requireUserCapability('prowlarr.manage');
+  if (!auth.ok) return auth.response;
 
   try {
     let body: unknown;

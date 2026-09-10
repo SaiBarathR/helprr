@@ -20,6 +20,65 @@ export interface AnnotatableAnimeItem {
   year: number | null;
 }
 
+export interface AnimeAnnotationContext {
+  lookups: ReturnType<typeof buildLibraryLookups>;
+  links: Map<number, AnilistLibraryLink[]>;
+  seriesByKey: Map<string, Tagged<SonarrSeries>>;
+}
+
+export async function buildAnimeAnnotationContext(
+  items: AnnotatableAnimeItem[],
+  movies: Tagged<RadarrMovie>[],
+  series: Tagged<SonarrSeries>[],
+  mappingLinks?: Map<number, AnilistLibraryLink[]>
+): Promise<AnimeAnnotationContext | null> {
+  if (!items.length || (!movies.length && !series.length)) return null;
+
+  const lookups = buildLibraryLookups(movies, series);
+  const links = mappingLinks ?? (await loadLibraryLinksForAnilistIds(items.map((item) => item.id)));
+  const seriesByKey = new Map<string, Tagged<SonarrSeries>>();
+  for (const show of series) seriesByKey.set(`${show.instanceId}:${show.id}`, show);
+
+  return { lookups, links, seriesByKey };
+}
+
+export function annotateAnimeItemsWithContext<T extends AnnotatableAnimeItem>(
+  items: T[],
+  context: AnimeAnnotationContext | null,
+): (T & { library?: DiscoverLibraryStatus })[] {
+  if (!context) return items;
+
+  return items.map((item) => {
+    if (isMovieFormat(item.format)) {
+      return {
+        ...item,
+        library: matchMovieInLibrary(context.lookups, {
+          title: item.title,
+          year: item.year,
+        }),
+      };
+    }
+
+    // Reverse mapping (AniList entry -> Sonarr series) catches season splits that
+    // title matching misses; intersect with the live library to drop stale links.
+    const matched = (context.links.get(item.id) ?? [])
+      .map((link) => context.seriesByKey.get(`${link.sonarrInstanceId}:${link.sonarrSeriesId}`))
+      .filter((show): show is Tagged<SonarrSeries> => !!show);
+
+    return {
+      ...item,
+      library: matched.length
+        ? seriesLibraryStatusFromMatches(matched)
+        : matchSeriesInLibrary(context.lookups, {
+            title: item.title,
+            titleRomaji: item.titleRomaji,
+            titleNative: item.titleNative,
+            year: item.year,
+          }),
+    };
+  });
+}
+
 /**
  * Annotate AniList items with Sonarr/Radarr library membership. Movies match by
  * title/year (list items carry no tmdb id); series prefer the AniList↔Sonarr
@@ -33,40 +92,6 @@ export async function annotateAnimeItems<T extends AnnotatableAnimeItem>(
   series: Tagged<SonarrSeries>[],
   mappingLinks?: Map<number, AnilistLibraryLink[]>
 ): Promise<(T & { library?: DiscoverLibraryStatus })[]> {
-  if (!items.length || (!movies.length && !series.length)) return items;
-
-  const lookups = buildLibraryLookups(movies, series);
-  const links = mappingLinks ?? (await loadLibraryLinksForAnilistIds(items.map((item) => item.id)));
-  const seriesByKey = new Map<string, Tagged<SonarrSeries>>();
-  for (const show of series) seriesByKey.set(`${show.instanceId}:${show.id}`, show);
-
-  return items.map((item) => {
-    if (isMovieFormat(item.format)) {
-      return {
-        ...item,
-        library: matchMovieInLibrary(lookups, {
-          title: item.title,
-          year: item.year,
-        }),
-      };
-    }
-
-    // Reverse mapping (AniList entry → Sonarr series) catches season splits that
-    // title matching misses; intersect with the live library to drop stale links.
-    const matched = (links.get(item.id) ?? [])
-      .map((link) => seriesByKey.get(`${link.sonarrInstanceId}:${link.sonarrSeriesId}`))
-      .filter((show): show is Tagged<SonarrSeries> => !!show);
-
-    return {
-      ...item,
-      library: matched.length
-        ? seriesLibraryStatusFromMatches(matched)
-        : matchSeriesInLibrary(lookups, {
-            title: item.title,
-            titleRomaji: item.titleRomaji,
-            titleNative: item.titleNative,
-            year: item.year,
-          }),
-    };
-  });
+  const context = await buildAnimeAnnotationContext(items, movies, series, mappingLinks);
+  return annotateAnimeItemsWithContext(items, context);
 }

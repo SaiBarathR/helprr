@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import axios from 'axios';
-import { requireAuth, requireAdmin, requireCapability } from '@/lib/auth';
+import { requireAdmin, requireUserCapability } from '@/lib/auth';
 import { resolveConnection } from '@/lib/arr-instances';
 import { getConnectionHeaders } from '@/lib/service-connection-secrets';
 import { SonarrClient } from '@/lib/sonarr-client';
@@ -60,10 +60,8 @@ async function getHandler(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const authError = await requireAuth();
-  if (authError) return authError;
-  const capError = await requireCapability('series.view');
-  if (capError) return capError;
+  const auth = await requireUserCapability('series.view');
+  if (!auth.ok) return auth.response;
 
   try {
     const { id } = await params;
@@ -98,8 +96,6 @@ async function postHandler(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const authError = await requireAuth();
-  if (authError) return authError;
   const admin = await requireAdmin();
   if (!admin.ok) return admin.response;
 
@@ -128,8 +124,6 @@ async function patchHandler(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const authError = await requireAuth();
-  if (authError) return authError;
   const admin = await requireAdmin();
   if (!admin.ok) return admin.response;
 
@@ -158,8 +152,6 @@ async function deleteHandler(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const authError = await requireAuth();
-  if (authError) return authError;
   const admin = await requireAdmin();
   if (!admin.ok) return admin.response;
 

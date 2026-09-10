@@ -21,6 +21,7 @@ import {
   JellyfinPlaybackProvider,
   useJellyfinMediaRef,
   useJellyfinPlayback,
+  useJellyfinPlaybackState,
 } from '@/components/jellyfin-streaming/playback-provider';
 import type { JellyfinItem } from '@/types/jellyfin';
 import type { HelprrStreamInfo } from '@/types/jellyfin-streaming';
@@ -39,6 +40,7 @@ export interface SessionReport {
   event: string;
   isPaused: boolean;
   positionTicks: number;
+  playSessionId: string;
 }
 
 export const ITEM: JellyfinItem = {
@@ -62,11 +64,19 @@ export interface FakeMedia {
 
 export interface Harness {
   playback: () => Playback;
+  stateCommits: () => number;
+  holdCatalog: () => void;
+  releaseCatalog: (items: JellyfinItem[]) => void;
+  catalogSignals: AbortSignal[];
   media: FakeMedia;
   /** Stream requests the provider made, oldest first. */
   requests: StreamRequest[];
   /** Session reports the provider sent, oldest first. */
   reports: SessionReport[];
+  encodingStops: string[];
+  holdStopRequests: () => void;
+  releaseStopReport: () => void;
+  releaseEncodingStop: () => void;
   /** Handlers the provider registered on the Media Session. */
   mediaSession: Record<string, () => void>;
   /** The `<video>` the provider is driving. */
@@ -111,12 +121,13 @@ function installMediaElement(state: { paused: boolean; currentTime: number }) {
  * audio index each restart actually asked Jellyfin for, and every session
  * report is recorded, so it can see the `isPaused` each start announced.
  */
-export async function mountPlayback(): Promise<Harness> {
+export async function mountPlayback(options: { hls?: boolean } = {}): Promise<Harness> {
   const state = { paused: true, currentTime: 0 };
   installMediaElement(state);
 
   const requests: StreamRequest[] = [];
   const reports: SessionReport[] = [];
+  const encodingStops: string[] = [];
   const mediaSession: Record<string, () => void> = {};
 
   Object.defineProperty(navigator, 'mediaSession', {
@@ -130,9 +141,27 @@ export async function mountPlayback(): Promise<Harness> {
   // The provider constructs one for the lock screen; jsdom has no such global.
   (globalThis as unknown as Record<string, unknown>).MediaMetadata = class {};
 
+  let catalogGate: Promise<JellyfinItem[]> | null = null;
+  let resolveCatalog: ((items: JellyfinItem[]) => void) | null = null;
+  const catalogSignals: AbortSignal[] = [];
   let session = 0;
   let gate: Promise<void> | null = null;
   let openGate: (() => void) | null = null;
+  let stopReportGate: Promise<void> | null = null;
+  let encodingStopGate: Promise<void> | null = null;
+  let releaseStopReport: (() => void) | null = null;
+  let releaseEncodingStop: (() => void) | null = null;
+
+  const waitForRequest = (pending: Promise<void>, signal?: AbortSignal | null) =>
+    new Promise<void>((resolve, reject) => {
+      if (signal?.aborted) { reject(signal.reason); return; }
+      const abort = () => reject(signal?.reason);
+      signal?.addEventListener('abort', abort, { once: true });
+      void pending.then(() => {
+        signal?.removeEventListener('abort', abort);
+        resolve();
+      });
+    });
 
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
@@ -142,6 +171,12 @@ export async function mountPlayback(): Promise<Harness> {
       headers: { 'Content-Type': 'application/json' },
     });
 
+    if (url.includes('/api/jellyfin/catalog/items?') && catalogGate) {
+      if (init?.signal) catalogSignals.push(init.signal);
+      const pending = catalogGate;
+      await waitForRequest(pending.then(() => undefined), init?.signal);
+      return ok({ items: await pending });
+    }
     if (url.includes('/api/jellyfin/stream/info')) {
       if (gate) await gate;
       session += 1;
@@ -155,12 +190,12 @@ export async function mountPlayback(): Promise<Harness> {
         // Enough of a media source for the provider; the indexes are what the
         // restart carries and the tests assert on.
         mediaSource: { Id: 'source-1', RunTimeTicks: ITEM.RunTimeTicks, MediaStreams: [] } as never,
-        playMethod: 'DirectPlay',
+        playMethod: body.enableDirectPlay === false ? 'Transcode' : 'DirectPlay',
         playSessionId: `session-${session}`,
         // Not `.m3u8` and not an mpegurl mime type, so `attachMedia` stays off
         // the hls.js path entirely.
-        mediaUrl: 'https://example.invalid/stream.mp4',
-        mimeType: 'video/mp4',
+        mediaUrl: options.hls ? 'https://example.invalid/stream.m3u8' : 'https://example.invalid/stream.mp4',
+        mimeType: options.hls ? 'application/vnd.apple.mpegurl' : 'video/mp4',
         startTimeTicks: body.startTimeTicks ?? 0,
         transcodingOffsetTicks: 0,
         subtitleTracks: [],
@@ -168,7 +203,13 @@ export async function mountPlayback(): Promise<Harness> {
       return ok(stream);
     }
     if (url.includes('/api/jellyfin/stream/session')) {
-      reports.push({ event: body.event, isPaused: Boolean(body.isPaused), positionTicks: body.positionTicks ?? 0 });
+      reports.push({ event: body.event, isPaused: Boolean(body.isPaused), positionTicks: body.positionTicks ?? 0, playSessionId: body.playSessionId });
+      if (body.event === 'stopped' && stopReportGate) await waitForRequest(stopReportGate, init?.signal);
+      return ok({});
+    }
+    if (url.includes('/api/jellyfin/stream/stop-encodings')) {
+      encodingStops.push(body.playSessionId);
+      if (encodingStopGate) await waitForRequest(encodingStopGate, init?.signal);
       return ok({});
     }
     if (url.includes('/api/account/jellyfin/link')) return ok({ linked: true });
@@ -182,6 +223,12 @@ export async function mountPlayback(): Promise<Harness> {
   // Published from an effect, not during render: reassigning a captured
   // variable mid-render is a side effect React's lint rule rightly rejects.
   const holder: { current: Playback | null } = { current: null };
+  let stateCommits = 0;
+  function StateProbe() {
+    useJellyfinPlaybackState();
+    useEffect(() => { stateCommits++; });
+    return null;
+  }
   function Probe() {
     const playback = useJellyfinPlayback();
     const mediaRef = useJellyfinMediaRef();
@@ -194,10 +241,14 @@ export async function mountPlayback(): Promise<Harness> {
   };
 
   await run(() => {
-    root.render(<JellyfinPlaybackProvider><Probe /></JellyfinPlaybackProvider>);
+    root.render(<JellyfinPlaybackProvider><Probe /><StateProbe /></JellyfinPlaybackProvider>);
   });
 
   return {
+    stateCommits: () => stateCommits,
+    catalogSignals,
+    holdCatalog: () => { catalogGate = new Promise((resolve) => { resolveCatalog = resolve; }); },
+    releaseCatalog: (items) => { resolveCatalog?.(items); catalogGate = null; },
     playback: () => {
       if (!holder.current) throw new Error('provider did not mount');
       return holder.current;
@@ -205,6 +256,13 @@ export async function mountPlayback(): Promise<Harness> {
     media: { paused: () => state.paused, currentTime: () => state.currentTime },
     requests,
     reports,
+    encodingStops,
+    holdStopRequests: () => {
+      stopReportGate = new Promise<void>((resolve) => { releaseStopReport = resolve; });
+      encodingStopGate = new Promise<void>((resolve) => { releaseEncodingStop = resolve; });
+    },
+    releaseStopReport: () => { releaseStopReport?.(); stopReportGate = null; },
+    releaseEncodingStop: () => { releaseEncodingStop?.(); encodingStopGate = null; },
     mediaSession,
     element: () => {
       const el = container.querySelector('video');

@@ -7,6 +7,8 @@ import { useUIStore } from '@/lib/store';
 import { cn } from '@/lib/utils';
 import { usePendingHref } from '@/components/layout/navigation-provider';
 import { NavigationLoading } from '@/components/layout/navigation-loading';
+import { BrowseFreshnessNotice } from '@/components/browse-freshness-notice';
+import { getQueryClient } from '@/lib/query-client';
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pendingHref = usePendingHref();
@@ -43,6 +45,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           isBottom ? 'pb-[calc(4rem+env(safe-area-inset-bottom))] md:pb-4' : 'pb-4'
         )}
       >
+        <BrowseFreshnessNotice onRetry={() => void getQueryClient().invalidateQueries({ refetchType: 'active' })} />
         <PushReenableBanner />
         {pendingHref !== null && <NavigationLoading key={pendingHref} href={pendingHref} />}
         <div hidden={pendingHref !== null} inert={pendingHref !== null}>

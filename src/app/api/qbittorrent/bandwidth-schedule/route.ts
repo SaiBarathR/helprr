@@ -1,17 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
-import { requireAuth, requireCapability } from '@/lib/auth';
+import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { getOrCreateAppSettings } from '@/lib/app-settings';
 import { parseBandwidthSchedule } from '@/lib/bandwidth-scheduler/parse';
 import { pickActiveRule } from '@/lib/bandwidth-scheduler/active-rule';
 
 async function getHandler(): Promise<NextResponse> {
-  const authError = await requireAuth();
-  if (authError) return authError;
-  const capError = await requireCapability('torrents.view');
-  if (capError) return capError;
+  const auth = await requireUserCapability('torrents.view');
+  if (!auth.ok) return auth.response;
 
   const settings = await getOrCreateAppSettings();
   const schedule = parseBandwidthSchedule(settings.qbtBandwidthSchedule);
@@ -24,10 +22,8 @@ async function getHandler(): Promise<NextResponse> {
 }
 
 async function putHandler(request: NextRequest): Promise<NextResponse> {
-  const authError = await requireAuth();
-  if (authError) return authError;
-  const capError = await requireCapability('torrents.bandwidth');
-  if (capError) return capError;
+  const auth = await requireUserCapability('torrents.bandwidth');
+  if (!auth.ok) return auth.response;
 
   let body: unknown;
   try {

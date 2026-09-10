@@ -54,7 +54,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     enableDirectPlay: typeof body.enableDirectPlay === 'boolean' ? body.enableDirectPlay : undefined,
     enableDirectStream: typeof body.enableDirectStream === 'boolean' ? body.enableDirectStream : undefined,
     isPlayback: true,
-    deviceProfile: body.deviceProfile,
+    deviceProfile: maxStreamingBitrate ? { ...body.deviceProfile, MaxStreamingBitrate: maxStreamingBitrate, MaxStaticBitrate: maxStreamingBitrate } : body.deviceProfile,
     alwaysBurnInSubtitleWhenTranscoding: body.alwaysBurnInSubtitleWhenTranscoding === true,
   };
 

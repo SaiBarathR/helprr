@@ -29,14 +29,16 @@
       }
       h1 { font-size: 1.25rem; font-weight: 600; margin: 0 0 0.5rem; }
       p { font-size: 0.9rem; line-height: 1.5; color: #a8a29e; margin: 0 0 1.5rem; }
-      button {
+      .retry {
+        display: inline-flex; align-items: center; justify-content: center;
+        text-decoration: none;
         appearance: none; border: 0; cursor: pointer;
         font: inherit; font-weight: 600; font-size: 0.9rem;
         padding: 0.7rem 1.4rem; border-radius: 0.75rem;
         background: #f59e0b; color: #1c1917;
         min-height: 44px;
       }
-      button:active { opacity: 0.85; }
+      .retry:active { opacity: 0.85; }
     </style>
   </head>
   <body>
@@ -54,7 +56,7 @@
       </div>
       <h1>You're offline</h1>
       <p>This page hasn't been opened yet, so there's no saved copy to show. Pages you've already visited still work offline.</p>
-      <button type="button" onclick="location.reload()">Try again</button>
+      <a class="retry" href="">Try again</a>
     </div>
   </body>
 </html>

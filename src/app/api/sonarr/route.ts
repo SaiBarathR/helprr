@@ -3,13 +3,12 @@ import { getSonarrClient, getSonarrClients } from '@/lib/service-helpers';
 import { resolveConnection } from '@/lib/arr-instances';
 import { getConnectionHeaders } from '@/lib/service-connection-secrets';
 import { SonarrClient } from '@/lib/sonarr-client';
-import { requireAuth, requireCapability } from '@/lib/auth';
+import { requireUserCapability } from '@/lib/auth';
 import type { SonarrSeries, SonarrSeriesListItem } from '@/types';
 import { logApiDuration } from '@/lib/server-perf';
 import { withApiLogging } from '@/lib/api-logger';
-import { getCachedTaggedLibrary, invalidateTaggedLibrary } from '@/lib/cache/tagged-library';
+import { getCachedTaggedLibrary, getCachedTaggedLibraryJsonResponse, invalidateTaggedLibrary } from '@/lib/cache/tagged-library';
 import { getInstanceLabelMaps, labelsFor } from '@/lib/cache/reference-labels';
-import { etagJson } from '@/lib/etag-json';
 
 const SONARR_CACHE_HEADERS = {
   // Revalidate every read instead of replaying a stale copy: a browser cache is per-device
@@ -49,15 +48,10 @@ function toListItem(series: SonarrSeries): SonarrSeriesListItem {
 
 async function getHandler(request: NextRequest) {
   const startedAt = performance.now();
-  const authError = await requireAuth();
-  if (authError) {
+  const auth = await requireUserCapability('series.view');
+  if (!auth.ok) {
     logApiDuration('GET /api/sonarr', startedAt, { method: 'GET', failed: true, authError: true });
-    return authError;
-  }
-  const capError = await requireCapability('series.view');
-  if (capError) {
-    logApiDuration('GET /api/sonarr', startedAt, { method: 'GET', failed: true, authError: true });
-    return capError;
+    return auth.response;
   }
 
   try {
@@ -78,34 +72,40 @@ async function getHandler(request: NextRequest) {
           ])
         : getSonarrClients());
 
-    // Cache the raw tagged library (full objects) so both ?full=true and the slim list
-    // view are served from one entry. Authorized callers all get identical bytes (binary
-    // capability gate), so no per-user filtering is needed after the read.
-    const { items: tagged, cached } = await getCachedTaggedLibrary({
+    const { response, cached, itemCount } = await getCachedTaggedLibraryJsonResponse(request, SONARR_CACHE_HEADERS, {
       scope: 'sonarr',
       cacheKeySeed,
-      getInstances: resolveInstances,
-      fetchOne: (client) => client.getSeries(),
+      projectionKey: full ? 'full' : 'list',
+      buildPayload: async () => {
+        // Cache the raw tagged library (full objects) so both ?full=true and the slim list
+        // view are served from one entry. Authorized callers all get identical bytes (binary
+        // capability gate), so no per-user filtering is needed after the read.
+        const { items: tagged, complete } = await getCachedTaggedLibrary({
+          scope: 'sonarr',
+          cacheKeySeed,
+          getInstances: resolveInstances,
+          fetchOne: (client) => client.getSeries(),
+        });
+        if (full) return { payload: tagged, itemCount: tagged.length, cacheable: complete };
+
+        // Resolve quality-profile / tag IDs to names against each item's OWN instance, so a
+        // series from a non-default Sonarr isn't mislabelled by the default instance's lookup.
+        const labelMaps = await getInstanceLabelMaps('sonarr', await resolveInstances());
+        return {
+          itemCount: tagged.length,
+          cacheable: complete && [...labelMaps.values()].every((map) => map.complete !== false),
+          payload: tagged.map((s) => ({
+            ...toListItem(s),
+            instanceId: s.instanceId,
+            instanceLabel: s.instanceLabel,
+            ...labelsFor(labelMaps, s.instanceId, { qualityProfileId: s.qualityProfileId, tags: s.tags }),
+          })),
+        };
+      },
     });
 
-    logApiDuration('GET /api/sonarr', startedAt, { method: 'GET', full, seriesCount: tagged.length, cached: !!cached });
-    if (full) {
-      return etagJson(request, tagged, SONARR_CACHE_HEADERS);
-    }
-
-    // Resolve quality-profile / tag IDs to names against each item's OWN instance, so a
-    // series from a non-default Sonarr isn't mislabelled by the default instance's lookup.
-    const labelMaps = await getInstanceLabelMaps('sonarr', await resolveInstances());
-    return etagJson(
-      request,
-      tagged.map((s) => ({
-        ...toListItem(s),
-        instanceId: s.instanceId,
-        instanceLabel: s.instanceLabel,
-        ...labelsFor(labelMaps, s.instanceId, { qualityProfileId: s.qualityProfileId, tags: s.tags }),
-      })),
-      SONARR_CACHE_HEADERS
-    );
+    logApiDuration('GET /api/sonarr', startedAt, { method: 'GET', full, seriesCount: itemCount, cached });
+    return response;
   } catch (error) {
     logApiDuration('GET /api/sonarr', startedAt, { method: 'GET', failed: true });
     console.error('Failed to fetch series:', error);
@@ -114,10 +114,8 @@ async function getHandler(request: NextRequest) {
 }
 
 async function postHandler(request: Request) {
-  const authError = await requireAuth();
-  if (authError) return authError;
-  const capError = await requireCapability('series.add');
-  if (capError) return capError;
+  const auth = await requireUserCapability('series.add');
+  if (!auth.ok) return auth.response;
 
   try {
     const body = await request.json();

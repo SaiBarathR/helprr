@@ -4,9 +4,7 @@ import { MAX_IMPORT_BYTES } from '@/lib/settings-export';
 import { MAX_IMPORT_ARRAY_ENTRIES } from '@/lib/settings-import-validation';
 
 const mocks = vi.hoisted(() => ({
-  authError: vi.fn(),
-  capabilityError: vi.fn(),
-  currentUser: vi.fn(),
+  requireUserCapability: vi.fn(),
   transaction: vi.fn(),
   userFindUnique: vi.fn(),
   userUpdate: vi.fn(),
@@ -14,9 +12,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('@/lib/auth', () => ({
-  requireAuth: mocks.authError,
-  requireCapability: mocks.capabilityError,
-  getCurrentUser: mocks.currentUser,
+  requireUserCapability: mocks.requireUserCapability,
 }));
 
 vi.mock('@/lib/db', () => ({
@@ -81,9 +77,7 @@ function request(raw: string, headers: Record<string, string> = {}): NextRequest
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mocks.authError.mockResolvedValue(null);
-  mocks.capabilityError.mockResolvedValue(null);
-  mocks.currentUser.mockResolvedValue(admin);
+  mocks.requireUserCapability.mockResolvedValue({ ok: true, user: admin, session: {} });
   const tx = {
     user: { findUnique: mocks.userFindUnique, update: mocks.userUpdate },
     session: { updateMany: mocks.sessionUpdateMany },
@@ -94,7 +88,7 @@ beforeEach(() => {
 describe('hostile settings imports', () => {
   it('authenticates before reading an untrusted request body', async () => {
     const text = vi.fn();
-    mocks.authError.mockResolvedValue(NextResponse.json({ error: 'Unauthorized' }, { status: 401 }));
+    mocks.requireUserCapability.mockResolvedValue({ ok: false, response: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) });
     const fakeRequest = { text, headers: new Headers() } as unknown as NextRequest;
 
     const response = await importSettings(fakeRequest);
@@ -136,7 +130,7 @@ describe('hostile settings imports', () => {
   });
 
   it('prevents a backup-capable member from importing global sections', async () => {
-    mocks.currentUser.mockResolvedValue({ ...admin, id: 'member-id', role: 'member', template: 'member' });
+    mocks.requireUserCapability.mockResolvedValue({ ok: true, user: { ...admin, id: 'member-id', role: 'member', template: 'member' } });
 
     const response = await importSettings(request(JSON.stringify({ appSettings: { logLevel: 'debug' } })));
 

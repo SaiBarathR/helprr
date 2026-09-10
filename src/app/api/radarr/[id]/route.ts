@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getRadarrClient } from '@/lib/service-helpers';
-import { requireAuth, requireCapability, getCurrentUser, requireUserCapability } from '@/lib/auth';
-import { diffMovieEdit, guardLibraryEdit } from '@/lib/library-edit-guard';
+import { requireUserCapability } from '@/lib/auth';
+import { diffMovieEdit, type LibraryEditCaps, type LibraryEditDiff } from '@/lib/library-edit-guard';
+import { can, type PermissionUser } from '@/lib/permissions';
+import type { Capability } from '@/lib/capabilities';
 import { invalidateTaggedLibrary } from '@/lib/cache/tagged-library';
 import { withApiLogging } from '@/lib/api-logger';
 import { upstreamErrorResponse } from '@/lib/api-error';
@@ -15,14 +17,41 @@ function parsePositiveId(id: string): { value: number } | { error: NextResponse 
   return { value: parsed };
 }
 
+function guardResolvedLibraryEdit(
+  user: PermissionUser,
+  diff: LibraryEditDiff,
+  caps: LibraryEditCaps
+): NextResponse | null {
+  if (!diff.tags && !diff.path && !diff.monitoring && !diff.other) return null;
+  if (user.role === 'admin') return null;
+
+  if (diff.other) {
+    return NextResponse.json(
+      { error: 'Forbidden: only an admin can change these fields' },
+      { status: 403 }
+    );
+  }
+
+  const missing: Capability[] = [];
+  if (diff.tags && !can(user, caps.tags)) missing.push(caps.tags);
+  if (diff.path && !can(user, caps.path)) missing.push(caps.path);
+  if (diff.monitoring && !can(user, caps.monitoring)) missing.push(caps.monitoring);
+
+  if (missing.length > 0) {
+    return NextResponse.json(
+      { error: `Forbidden: you cannot change ${missing.join(', ')}` },
+      { status: 403 }
+    );
+  }
+  return null;
+}
+
 async function getHandler(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
-  const authError = await requireAuth();
-  if (authError) return authError;
-  const capError = await requireCapability('movies.view');
-  if (capError) return capError;
+  const auth = await requireUserCapability('movies.view');
+  if (!auth.ok) return auth.response;
 
   try {
     const { id } = await params;
@@ -41,10 +70,8 @@ async function putHandler(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
-  const authError = await requireAuth();
-  if (authError) return authError;
-  const capError = await requireCapability('movies.view');
-  if (capError) return capError;
+  const auth = await requireUserCapability('movies.view');
+  if (!auth.ok) return auth.response;
 
   try {
     const { id } = await params;
@@ -69,11 +96,9 @@ async function putHandler(
     // for changing monitoring / tags / root folder without the matching capability.
     // Skipping the fetch for admins avoids an extra upstream round-trip and keeps a
     // transient detail-fetch error from failing an otherwise-valid admin edit.
-    const user = await getCurrentUser();
-    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    if (user.role !== 'admin') {
+    if (auth.user.role !== 'admin') {
       const current = await client.getMovieById(pathId);
-      const guardError = await guardLibraryEdit(diffMovieEdit(current, body), {
+      const guardError = guardResolvedLibraryEdit(auth.user, diffMovieEdit(current, body), {
         tags: 'movies.editTags',
         path: 'movies.changePath',
         monitoring: 'movies.editMonitoring',

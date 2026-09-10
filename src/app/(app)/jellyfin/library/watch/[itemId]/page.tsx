@@ -7,12 +7,12 @@ import { jsonFetcher } from '@/lib/query-fetch';
 import { queryKeys } from '@/lib/query-keys';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { ErrorState } from '@/components/ui/error-state';
-import { useJellyfinPlayback } from '@/components/jellyfin-streaming/playback-provider';
+import { useJellyfinPlaybackState } from '@/components/jellyfin-streaming/playback-provider';
 import type { CatalogItemDetailResponse } from '@/types/jellyfin-streaming';
 
 export default function WatchPage({ params }: { params: Promise<{ itemId: string }> }) {
   const { itemId } = use(params);
-  const playback = useJellyfinPlayback();
+  const playback = useJellyfinPlaybackState();
   const router = useRouter();
   const startedId = useRef<string | null>(null);
   const query = useQuery({

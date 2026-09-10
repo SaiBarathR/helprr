@@ -64,7 +64,7 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
     // Single letter (or '#') drives the A–Z jump rail in the library grid.
     const nameStartsWith = searchParams.get('nameStartsWith') ?? undefined;
 
-    const client = await getJellyfinClientForUser(auth.user);
+    const client = (await getJellyfinClientForUser(auth.user)).withReadSignal(request.signal);
     const data = await client.getCatalogItems({
       StartIndex: startIndex,
       Limit: limit,

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import type { HelprrStreamInfo } from '@/types/jellyfin-streaming';
-import { useJellyfinPlayback } from '@/components/jellyfin-streaming/playback-provider';
+import { useJellyfinPlaybackState } from '@/components/jellyfin-streaming/playback-provider';
 import { getDeviceProfile } from '@/lib/jellyfin-playback/device-profile';
 import { getJellyfinPlaybackDeviceId, getJellyfinPlaybackDeviceName, secondsToTicks, ticksToSeconds } from '@/lib/jellyfin-playback/device';
 import { canPlayHlsWithMse, canPlayNativeHls, detectBrowser } from '@/lib/jellyfin-playback/browser';
@@ -57,7 +57,7 @@ export function useMediaPreview({
    * see. The hero already stands down for the overlay and for a hovered card
    * for exactly this reason; playback is the stronger case.
    */
-  const playerIdle = useJellyfinPlayback().status === 'idle';
+  const playerIdle = useJellyfinPlaybackState().status === 'idle';
   const active = enabled && playerIdle;
   const sessionRef = useRef<{ playSessionId: string; deviceId: string } | null>(null);
   const hlsRef = useRef<{ destroy: () => void } | null>(null);
@@ -106,7 +106,7 @@ export function useMediaPreview({
             // session outright ("Failed to start playback"); the ceiling
             // belongs on the request, where the server applies it to an
             // otherwise-valid profile.
-            deviceProfile: getDeviceProfile(),
+            deviceProfile: getDeviceProfile({ maxStreamingBitrate: PREVIEW_BITRATE }),
           }),
         });
         if (!response.ok) return fail();

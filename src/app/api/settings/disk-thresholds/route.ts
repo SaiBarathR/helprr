@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
-import { requireAuth, requireCapability } from '@/lib/auth';
+import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { getOrCreateAppSettings } from '@/lib/app-settings';
 import {
@@ -28,10 +28,8 @@ async function currentDisks() {
 }
 
 async function getHandler(): Promise<NextResponse> {
-  const authError = await requireAuth();
-  if (authError) return authError;
-  const capError = await requireCapability('settings.storage');
-  if (capError) return capError;
+  const auth = await requireUserCapability('settings.storage');
+  if (!auth.ok) return auth.response;
 
   const settings = await getOrCreateAppSettings();
   const [thresholds, disks] = await Promise.all([
@@ -42,10 +40,8 @@ async function getHandler(): Promise<NextResponse> {
 }
 
 async function putHandler(request: NextRequest): Promise<NextResponse> {
-  const authError = await requireAuth();
-  if (authError) return authError;
-  const capError = await requireCapability('settings.storage');
-  if (capError) return capError;
+  const auth = await requireUserCapability('settings.storage');
+  if (!auth.ok) return auth.response;
 
   let body: unknown;
   try {

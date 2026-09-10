@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { AppSettings, Prisma, ScheduledAlert, ServiceType, UserRole, UserStatus } from '@prisma/client';
 import { prisma } from '@/lib/db';
-import { requireAuth, requireCapability, getCurrentUser } from '@/lib/auth';
+import { requireUserCapability } from '@/lib/auth';
 import { BOOTSTRAP_ADMIN_ID } from '@/lib/bootstrap-admin';
 import { withApiLogging } from '@/lib/api-logger';
 import { parseCustomHeaders } from '@/lib/service-connection-secrets';
@@ -1554,15 +1554,12 @@ async function applyUsersInTxn(
 }
 
 async function postHandler(request: NextRequest): Promise<NextResponse> {
-  const authError = await requireAuth();
-  if (authError) return authError;
-  const capError = await requireCapability('settings.backup');
-  if (capError) return capError;
+  const auth = await requireUserCapability('settings.backup');
+  if (!auth.ok) return auth.response;
 
   // Imported watchlist items are attributed to the importing admin (the export
   // format is owner-agnostic). Falls back to the bootstrap admin defensively.
-  const importer = await getCurrentUser();
-  const importerId = importer?.id ?? BOOTSTRAP_ADMIN_ID;
+  const importerId = auth.user.id ?? BOOTSTRAP_ADMIN_ID;
 
   const contentLength = Number(request.headers.get('content-length'));
   if (Number.isFinite(contentLength) && contentLength > MAX_IMPORT_BYTES) {
@@ -1609,7 +1606,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   // restore their own watchlist and scheduled alerts (uiPrefs never reach this
   // route). Every other section writes global state — service connections,
   // user accounts, app settings, cleanup rules, layouts, notification devices.
-  if (importer?.role !== 'admin') {
+  if (auth.user.role !== 'admin') {
     const globalSections = [
       body.appSettings,
       body.serviceConnections,

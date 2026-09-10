@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth, requireCapability } from '@/lib/auth';
+import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { loadDownloadCleanerConfig, saveDownloadCleanerConfig } from '@/lib/cleanup/download-cleaner';
 import { restartDownloadCleaner } from '@/lib/cleanup/scheduler';
@@ -56,19 +56,15 @@ function validate(body: unknown): { ok: true; value: DownloadCleanerConfigShape 
 }
 
 async function getHandler() {
-  const err = await requireAuth();
-  if (err) return err;
-  const capError = await requireCapability('cleanup.view');
-  if (capError) return capError;
+  const auth = await requireUserCapability('cleanup.view');
+  if (!auth.ok) return auth.response;
   const cfg = await loadDownloadCleanerConfig();
   return NextResponse.json(cfg);
 }
 
 async function putHandler(req: NextRequest) {
-  const err = await requireAuth();
-  if (err) return err;
-  const capError = await requireCapability('cleanup.manage');
-  if (capError) return capError;
+  const auth = await requireUserCapability('cleanup.manage');
+  if (!auth.ok) return auth.response;
   let body: unknown;
   try { body = await req.json(); } catch { return NextResponse.json({ error: 'invalid json' }, { status: 400 }); }
   const v = validate(body);

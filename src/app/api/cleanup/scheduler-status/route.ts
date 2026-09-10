@@ -1,13 +1,11 @@
 import { NextResponse } from 'next/server';
-import { requireAuth, requireCapability } from '@/lib/auth';
+import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { getSchedulerStatus } from '@/lib/cleanup/scheduler';
 
 async function getHandler() {
-  const err = await requireAuth();
-  if (err) return err;
-  const capError = await requireCapability('cleanup.view');
-  if (capError) return capError;
+  const auth = await requireUserCapability('cleanup.view');
+  if (!auth.ok) return auth.response;
   return NextResponse.json(getSchedulerStatus());
 }
 

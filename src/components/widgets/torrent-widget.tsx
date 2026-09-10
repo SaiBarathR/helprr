@@ -9,13 +9,6 @@ import type { WidgetProps } from '@/lib/widgets/types';
 import type { QBittorrentSummaryResponse } from '@/types';
 import { Eyebrow, FONT_DISPLAY, FONT_MONO, Hairline, HPR, ICON_HIDE_HEIGHT_THRESHOLD, ICON_HIDE_THRESHOLD, mix } from './bento-primitives';
 
-const DOWNLOADING = new Set([
-  'downloading', 'metadl', 'forcedmetadl', 'queueddl',
-  'checkingdl', 'forceddl', 'allocating', 'stalleddl',
-]);
-const SEEDING = new Set(['uploading', 'stalledup', 'queuedup', 'checkingup', 'forcedup']);
-const PAUSED = new Set(['paused', 'pauseddl', 'pausedup', 'stoppeddl', 'stoppedup']);
-
 interface TorrentData {
   total: number;
   downloading: number;
@@ -30,25 +23,15 @@ interface TorrentData {
 }
 
 async function fetchTorrentData(signal?: AbortSignal): Promise<TorrentData> {
-  const res = await fetch('/api/qbittorrent/summary', { signal });
+  const res = await fetch('/api/qbittorrent/summary?view=counters', { signal });
   if (!res.ok) throw new Error('Failed to fetch');
-  const data: QBittorrentSummaryResponse = await res.json();
-  const torrents = data.torrents || [];
-  let downloading = 0,
-    seeding = 0,
-    paused = 0;
-  for (const t of torrents) {
-    const s = (t.state || '').toLowerCase();
-    if (DOWNLOADING.has(s)) downloading++;
-    else if (SEEDING.has(s)) seeding++;
-    else if (PAUSED.has(s)) paused++;
-  }
+  const data: Pick<QBittorrentSummaryResponse, 'transferInfo'> & Pick<TorrentData, 'total' | 'downloading' | 'seeding' | 'paused'> = await res.json();
   const ti = data.transferInfo;
   return {
-    total: torrents.length,
-    downloading,
-    seeding,
-    paused,
+    total: data.total,
+    downloading: data.downloading,
+    seeding: data.seeding,
+    paused: data.paused,
     dlSpeed: ti?.dl_info_speed ?? 0,
     upSpeed: ti?.up_info_speed ?? 0,
     dlTotal: ti?.dl_info_data ?? 0,

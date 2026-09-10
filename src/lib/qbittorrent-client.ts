@@ -126,11 +126,13 @@ export class QBittorrentClient {
     }
   }
 
-  private async get<T>(endpoint: string, params?: Record<string, unknown>): Promise<T> {
+  private async get<T>(endpoint: string, params?: Record<string, unknown>, signal?: AbortSignal): Promise<T> {
+    signal?.throwIfAborted();
     await this.ensureAuthenticated();
     try {
       const response = await this.client.get<T>(endpoint, {
         params,
+        signal,
         headers: { Cookie: this.cookie! },
       });
       return response.data;
@@ -140,6 +142,7 @@ export class QBittorrentClient {
         await this.ensureAuthenticated();
         const response = await this.client.get<T>(endpoint, {
           params,
+        signal,
           headers: { Cookie: this.cookie! },
         });
         return response.data;
@@ -202,16 +205,16 @@ export class QBittorrentClient {
     return this.get<QBittorrentTorrent[]>('/api/v2/torrents/info', params);
   }
 
-  async getTorrentProperties(hash: string): Promise<TorrentProperties> {
-    return this.get<TorrentProperties>('/api/v2/torrents/properties', { hash });
+  async getTorrentProperties(hash: string, signal?: AbortSignal): Promise<TorrentProperties> {
+    return this.get<TorrentProperties>('/api/v2/torrents/properties', { hash }, signal);
   }
 
-  async getTorrentFiles(hash: string): Promise<TorrentFile[]> {
-    return this.get<TorrentFile[]>('/api/v2/torrents/files', { hash });
+  async getTorrentFiles(hash: string, signal?: AbortSignal): Promise<TorrentFile[]> {
+    return this.get<TorrentFile[]>('/api/v2/torrents/files', { hash }, signal);
   }
 
-  async getTorrentTrackers(hash: string): Promise<TorrentTracker[]> {
-    return this.get<TorrentTracker[]>('/api/v2/torrents/trackers', { hash });
+  async getTorrentTrackers(hash: string, signal?: AbortSignal): Promise<TorrentTracker[]> {
+    return this.get<TorrentTracker[]>('/api/v2/torrents/trackers', { hash }, signal);
   }
 
   private isNotFound(error: unknown): boolean {

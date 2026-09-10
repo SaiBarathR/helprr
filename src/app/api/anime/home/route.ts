@@ -3,7 +3,7 @@ import { requireAuth } from '@/lib/auth';
 import { loadTaggedLibrary } from '@/lib/service-helpers';
 import { getAnimeHome } from '@/lib/anilist-client';
 import { normalizeAniListItem } from '@/lib/anilist-helpers';
-import { annotateAnimeItems } from '@/lib/anime-library';
+import { annotateAnimeItemsWithContext, buildAnimeAnnotationContext } from '@/lib/anime-library';
 import { loadLibraryLinksForAnilistIds } from '@/lib/anilist-series-mapping';
 import type { AniListMediaSeason, AniListMedia } from '@/types/anilist';
 import { withApiLogging } from '@/lib/api-logger';
@@ -60,28 +60,29 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
     ]);
 
     // One reverse-lookup query for every entry across all sections.
-    const allIds = [
+    const allItems = [
       ...result.trending,
       ...result.season,
       ...result.nextSeason,
       ...result.popular,
       ...result.top,
-    ].map((media) => media.id);
-    const mappingLinks = await loadLibraryLinksForAnilistIds(allIds);
+    ].map(normalizeAniListItem);
+    const mappingLinks = await loadLibraryLinksForAnilistIds(allItems.map((media) => media.id));
+    const annotationContext = await buildAnimeAnnotationContext(allItems, movies, series, mappingLinks);
 
     const normalizeAndAnnotate = (items: AniListMedia[]) =>
-      annotateAnimeItems(items.map(normalizeAniListItem), movies, series, mappingLinks);
+      annotateAnimeItemsWithContext(items.map(normalizeAniListItem), annotationContext);
 
     const currentSeason: SeasonWindow = current;
     const nextSeasonInfo: SeasonWindow = next;
 
-    const [trending, season, nextSeason, popular, top] = await Promise.all([
+    const [trending, season, nextSeason, popular, top] = [
       normalizeAndAnnotate(result.trending),
       normalizeAndAnnotate(result.season),
       normalizeAndAnnotate(result.nextSeason),
       normalizeAndAnnotate(result.popular),
       normalizeAndAnnotate(result.top),
-    ]);
+    ];
 
     return NextResponse.json({
       currentSeason,

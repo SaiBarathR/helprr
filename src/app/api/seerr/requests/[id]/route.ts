@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSeerrClient } from '@/lib/service-helpers';
-import { requireAuth, requireCapability, requireUserCapability } from '@/lib/auth';
+import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { upstreamErrorResponse } from '@/lib/api-error';
 
@@ -58,10 +58,8 @@ async function deleteHandler(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
-  const authError = await requireAuth();
-  if (authError) return authError;
-  const capError = await requireCapability('requests.approve');
-  if (capError) return capError;
+  const auth = await requireUserCapability('requests.approve');
+  if (!auth.ok) return auth.response;
 
   try {
     const { id: raw } = await params;
@@ -81,10 +79,8 @@ async function putHandler(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
-  const authError = await requireAuth();
-  if (authError) return authError;
-  const capError = await requireCapability('requests.approve');
-  if (capError) return capError;
+  const auth = await requireUserCapability('requests.approve');
+  if (!auth.ok) return auth.response;
 
   try {
     const { id: raw } = await params;

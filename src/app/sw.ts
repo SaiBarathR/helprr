@@ -15,6 +15,8 @@ import {
   Serwist,
   StaleWhileRevalidate,
 } from 'serwist';
+import { cacheBrowseSnapshot, staleBrowseSnapshot } from '@/lib/offline-snapshot';
+import { cacheShellResponse, matchingShellResponse } from '@/lib/shell-cache';
 import { isImageResponseCacheable } from '@/lib/image-response-cache-policy';
 import { NOTIFICATION_SUBSCRIPTIONS_CHANGED } from '@/lib/notification-subscriptions';
 
@@ -51,6 +53,21 @@ const cacheValidatedImageResponses: SerwistPlugin = {
   ),
 };
 
+const browseSnapshots: SerwistPlugin = {
+  cacheWillUpdate: ({ response }) => cacheBrowseSnapshot(response),
+  cachedResponseWillBeUsed: async ({ cachedResponse }) => staleBrowseSnapshot(cachedResponse),
+  fetchDidSucceed: async ({ response }) => {
+    if (response.status === 401 || response.status === 403) await caches.delete('api-readonly');
+    return response;
+  },
+};
+
+const shellVersion = process.env.NEXT_PUBLIC_SHELL_CACHE_VERSION ?? '';
+const matchingBuildShell: SerwistPlugin = {
+  cacheWillUpdate: ({ response }) => cacheShellResponse(response, shellVersion),
+  cachedResponseWillBeUsed: async ({ cachedResponse }) => matchingShellResponse(cachedResponse, shellVersion),
+};
+
 const runtimeCaching: RuntimeCaching[] =
   process.env.NODE_ENV !== 'production'
     ? [
@@ -63,21 +80,23 @@ const runtimeCaching: RuntimeCaching[] =
         {
           // Read-only library/dashboard reads → fresh online, offline last-known-good.
           // networkTimeoutSeconds falls back to cache only if the network stalls.
-          // CacheableResponsePlugin([200]) means 401/403/3xx are never written, so
-          // a revoked session can't read another user's stale data here.
+          // `browseSnapshots` replaced CacheableResponsePlugin here: cacheBrowseSnapshot
+          // returns null for any status but 200, so 401/403/3xx are still never written
+          // and a revoked session can't read another user's stale data. Its
+          // fetchDidSucceed also drops the whole cache on a live 401/403.
           matcher: ({ sameOrigin, url: { pathname } }) => sameOrigin && READONLY_API_NETWORK_FIRST.test(pathname),
           method: 'GET',
           handler: new NetworkFirst({
             cacheName: 'api-readonly',
-            // 10s, not 3: a healthy but slow *arr (large library fetch) regularly
-            // exceeds 3s, which would silently swap in a ≤5-min-old cached body.
-            networkTimeoutSeconds: 10,
+            // A stalled read may show a clearly labelled saved snapshot;
+            // healthy network responses (including 401/403) stay authoritative.
+            networkTimeoutSeconds: 2,
             plugins: [
-              new CacheableResponsePlugin({ statuses: [200] }),
+              browseSnapshots,
               new ExpirationPlugin({
                 maxEntries: 128,
                 maxAgeSeconds: 5 * 60,
-                maxAgeFrom: 'last-used',
+                maxAgeFrom: 'last-fetched',
               }),
             ],
           }),
@@ -135,6 +154,7 @@ const runtimeCaching: RuntimeCaching[] =
           handler: new StaleWhileRevalidate({
             cacheName: 'pages',
             plugins: [
+              matchingBuildShell,
               new CacheableResponsePlugin({ statuses: [200] }),
               new ExpirationPlugin({
                 maxEntries: 64,
