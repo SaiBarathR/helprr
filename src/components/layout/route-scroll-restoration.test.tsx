@@ -213,6 +213,31 @@ describe('route scroll restoration lifecycle', () => {
     expect(nextRail.scrollLeft).toBe(420);
   });
 
+  // iOS standalone commits the new route before delivering its popstate. That
+  // popstate then matches the route already showing, and the hash-only branch
+  // used to cancel the restoration it belongs to and persist the clamped zero.
+  it('restores when the route commits before its own popstate arrives', async () => {
+    navigate({ kind: 'push', href: '/movies/1' });
+    route = { pathname: '/movies/1', search: '' };
+    window.history.replaceState({}, '', '/movies/1');
+    await render(<Page />);
+    await act(async () => { await new Promise((resolve) => requestAnimationFrame(resolve)); });
+
+    writeRouteScrollState('/movies', { document: { top: 900, left: 0 }, elements: {} });
+
+    // The app's back control freezes capture, then the router commits the
+    // destination, and only afterwards does the popstate for it arrive.
+    navigate({ kind: 'traverse' });
+    route = { pathname: '/movies', search: '' };
+    window.history.replaceState({}, '', '/movies');
+    await render(<Page />);
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    await act(async () => { await new Promise((resolve) => requestAnimationFrame(resolve)); });
+
+    expect(scrollY).toBe(900);
+    expect(readRouteScrollState('/movies')?.document.top).toBe(900);
+  });
+
   it('freezes the outgoing route on popstate before the next DOM commits', async () => {
     scrollY = 640;
     window.history.replaceState({}, '', '/series/3');

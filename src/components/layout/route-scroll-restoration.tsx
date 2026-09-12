@@ -75,7 +75,15 @@ export function RouteScrollRestoration({ children, pending }: { children: React.
     };
     const onPopState = () => {
       const destination = routeScrollKey(window.location);
-      if (destination === routeRef.current) {
+      const pending = pendingNavigationRef.current;
+      // The router can commit the new route before its popstate arrives, which
+      // is what iOS standalone does. That popstate belongs to the restoration
+      // already running for this route: cancelling it would abandon the restore,
+      // and re-pending it would block every attempt until the deadline.
+      if (destination === routeRef.current && restoringRef.current) {
+        return;
+      }
+      if (destination === routeRef.current && (!pending || pending.source === destination)) {
         // traverseHistory() freezes before history moves. A hash-only popstate
         // has no pathname/search commit, so release that freeze here and let
         // the browser retain ownership of anchor scrolling.
