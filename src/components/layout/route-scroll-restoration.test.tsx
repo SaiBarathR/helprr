@@ -261,6 +261,21 @@ describe('route scroll restoration lifecycle', () => {
     expect(scrollY).toBe(380);
   });
 
+  // A page that syncs its view into the query (anime library's tab) arrives on
+  // the bare route and replaces itself onto the keyed one. That destination is a
+  // view the user is returning to, so its own offset wins over the arrival zero.
+  it('restores a scroll:false destination that already has a saved offset', async () => {
+    writeRouteScrollState('/movies?filter=missing', { document: { top: 600, left: 0 }, elements: {} });
+    scrollY = 0;
+    navigate({ kind: 'replace', href: '/movies?filter=missing', preserveScroll: true });
+    route = { pathname: '/movies', search: '?filter=missing' };
+    window.history.replaceState({}, '', '/movies?filter=missing');
+    await render();
+    await act(async () => { await new Promise((resolve) => requestAnimationFrame(resolve)); });
+    expect(scrollY).toBe(600);
+    expect(readRouteScrollState('/movies?filter=missing')?.document.top).toBe(600);
+  });
+
   it('preserves new navigation options when an unfinished restoration is disposed', async () => {
     writeRouteScrollState('/series/9', { document: { top: 900, left: 0 }, elements: {} });
     navigate({ kind: 'push', href: '/series/9' });

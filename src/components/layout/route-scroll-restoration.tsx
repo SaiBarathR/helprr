@@ -140,7 +140,12 @@ export function RouteScrollRestoration({ children, pending }: { children: React.
     routeRef.current = nextRoute;
     userScrollRef.current = false;
 
-    if (routeChanged && navigation?.preserveScroll && navigation.destination === nextRoute) {
+    // A scroll:false replace syncs the current view into the URL, so the
+    // viewport must not jump. Once that view has its own saved offset, though,
+    // the user is returning to it rather than switching within it, and keeping
+    // the arrival position would overwrite the offset they left behind.
+    const saved = readRouteScrollState(nextRoute);
+    if (routeChanged && navigation?.preserveScroll && navigation.destination === nextRoute && !saved) {
       frozenRef.current = false;
       restoringRef.current = false;
       pendingNavigationRef.current = null;
@@ -156,8 +161,8 @@ export function RouteScrollRestoration({ children, pending }: { children: React.
       return;
     }
 
-    const snapshot = readRouteScrollState(nextRoute);
-    const saved = snapshot ?? { document: { top: 0, left: 0 }, elements: {} };
+    const snapshot = saved;
+    const target = snapshot ?? { document: { top: 0, left: 0 }, elements: {} };
     frozenRef.current = true;
     restoringRef.current = true;
     let stopped = false;
@@ -193,7 +198,7 @@ export function RouteScrollRestoration({ children, pending }: { children: React.
       frame = 0;
       if (stopped) return;
       if (pendingNavigationRef.current?.source === nextRoute && pendingNavigationRef.current !== navigation) return;
-      const complete = applyRouteScroll(root, saved);
+      const complete = applyRouteScroll(root, target);
       // Lazy widgets below the restored viewport do not participate in its
       // geometry. Waiting for every skeleton would lock the dashboard forever.
       const placeholder = [...root.querySelectorAll<HTMLElement>('[data-slot="skeleton"], [data-scroll-restoration-pending], [aria-busy="true"]')]

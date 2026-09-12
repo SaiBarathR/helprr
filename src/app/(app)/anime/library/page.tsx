@@ -253,8 +253,11 @@ export default function AnimeLibraryPage() {
   // On tab/type change: persist the shared tab selection, restore that tab's
   // client-side render count from view-state, and reset scroll-restore. The
   // collection itself is fetched by libraryQuery (keyed on type+status).
+  // Gated on `hydrated`: before the restore effect below has applied the saved
+  // tab, `type`/`status` still hold their mount defaults, and persisting those
+  // would overwrite the very selection the next visit needs to read back.
   useEffect(() => {
-    if (!viewer?.connected) return;
+    if (!hydrated || !viewer?.connected) return;
     persistShared(type, status);
 
     const savedView = getListViewState(cacheKey);
@@ -262,7 +265,7 @@ export default function AnimeLibraryPage() {
     setRenderedCount(extras.renderedCount && extras.renderedCount > 0 ? extras.renderedCount : PAGE_SIZE);
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [viewer?.connected, type, status]);
+  }, [hydrated, viewer?.connected, type, status]);
 
   const flatEntries = useMemo<AniListMediaListEntry[]>(() => {
     if (!collection) return [];
