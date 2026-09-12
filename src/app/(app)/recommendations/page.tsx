@@ -1,6 +1,8 @@
 'use client';
 
-import { Suspense, useCallback, useMemo, useState } from 'react';
+import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
+
+import { Suspense, useCallback, useMemo } from 'react';
 import Image from 'next/image';
 import Link from '@/components/ui/app-link';
 import { useSearchParams } from 'next/navigation';
@@ -110,7 +112,7 @@ function RecommendationsPageInner() {
   const queryClient = useQueryClient();
   const tracker = useRecEvents();
   const me = useMe();
-  const [hiddenKeys, setHiddenKeys] = useState<Set<string>>(new Set());
+  const [hiddenKeys, setHiddenKeys] = useRouteViewState<Set<string>>('hiddenKeys', new Set());
 
   // The two capabilities gate independently (server-enforced by their APIs):
   // a random.view-only user gets just the Random mode, and vice versa.
@@ -140,7 +142,7 @@ function RecommendationsPageInner() {
     setHiddenKeys((prev) => new Set(prev).add(itemKey));
     // Flush so the server-side cache bust lands before the next refetch.
     void tracker.flush();
-  }, [tracker]);
+  }, [setHiddenKeys, tracker]);
 
   const rails = useMemo(() => railsQuery.data?.rails ?? [], [railsQuery.data]);
 
@@ -183,7 +185,7 @@ function RecommendationsPageInner() {
       {/* Sticky glass mode switcher — same page-toolbar convention as the
           library pages, so the chips stay reachable mid-feed. */}
       <div className="page-toolbar page-toolbar-flush pb-2 app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
-        <div className="flex flex-nowrap items-center gap-1.5 overflow-x-auto scrollbar-hide">
+        <div data-scroll-restoration-key="recommendations:filters" className="flex flex-nowrap items-center gap-1.5 overflow-x-auto scrollbar-hide">
           {availableModes.map(({ id, label, icon: Icon }) => {
             const active = mode === id;
             return (

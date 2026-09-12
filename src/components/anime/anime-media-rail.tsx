@@ -317,6 +317,7 @@ export function AnimeMediaRail({ title, items, viewAllHref }: AnimeMediaRailProp
       </div>
       <div
         ref={viewportRef}
+        data-scroll-restoration-key={`anime-media:${title}`}
         className="flex gap-3 overflow-x-auto pb-2 -mx-2 px-2 md:-mx-6 md:px-6 scrollbar-hide snap-x snap-mandatory animate-rail-in"
       >
         <WindowedRailItems className={RAIL_CARD_SLOT_CLASS} viewportRef={viewportRef}>

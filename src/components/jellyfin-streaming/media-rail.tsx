@@ -1,5 +1,7 @@
 'use client';
 
+import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
+
 import Link from '@/components/ui/app-link';
 import { WindowedRailItems } from '@/components/jellyfin-streaming/windowed-rail-items';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -60,7 +62,7 @@ export function MediaRail({
    * the arrows translate the track instead. Touch keeps native scrolling: the
    * arrows are pointer-only, so the offset simply stays at 0 there.
    */
-  const [offset, setOffset] = useState(0);
+  const [offset, setOffset] = useRouteViewState(`rail-offset:${href ?? title}`, 0);
   const [maxOffset, setMaxOffset] = useState(0);
   /**
    * Where each page starts, for the indicator the site shows at a row's
@@ -199,7 +201,7 @@ export function MediaRail({
       pointer.removeEventListener('change', observe);
       track.removeEventListener('transitionend', onEnd);
     };
-  }, [cinematic, count, stampTiles]);
+  }, [cinematic, count, setOffset, stampTiles]);
 
   // Pointer/focus entry stamps synchronously; paging is measured once per frame.
   useEffect(() => {
@@ -210,7 +212,7 @@ export function MediaRail({
 
   const goTo = useCallback((next: number) => {
     setOffset(Math.min(maxOffset, Math.max(0, next)));
-  }, [maxOffset]);
+  }, [maxOffset, setOffset]);
 
   /**
    * Horizontal wheel and trackpad scrolling.
@@ -246,7 +248,7 @@ export function MediaRail({
       viewport.removeEventListener('wheel', onWheel);
       window.clearTimeout(gestureTimer.current);
     };
-  }, [cinematic, maxOffset]);
+  }, [cinematic, maxOffset, setOffset]);
 
   const nudge = (direction: -1 | 1) => {
     if (cinematic) {
@@ -353,6 +355,7 @@ export function MediaRail({
         {cinematic ? (
           <div
             ref={scrollerRef}
+            data-scroll-restoration-key={`watch-rail:${title}`}
             onPointerOver={stampTiles}
             onFocusCapture={stampTiles}
             className={cn(
@@ -387,6 +390,7 @@ export function MediaRail({
         ) : (
           <div
             ref={scrollerRef}
+            data-scroll-restoration-key={`watch-rail:${title}`}
             onScroll={sync}
             className={cn(
               'flex overflow-x-auto scrollbar-hide',

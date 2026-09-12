@@ -1,6 +1,8 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
+
+import { useMemo } from 'react';
 import Link from '@/components/ui/app-link';
 import { useQuery } from '@tanstack/react-query';
 import { jsonFetcher } from '@/lib/query-fetch';
@@ -54,7 +56,7 @@ function headline(event: CalendarEvent): string {
  * neither is faked here.
  */
 export function NewAndHot({ railsFallback }: { railsFallback: React.ReactNode }) {
-  const [tab, setTab] = useState<TabId>('coming');
+  const [tab, setTab] = useRouteViewState<TabId>('new-and-hot:tab', 'coming');
   const canSeeCalendar = useCan('calendar.view');
 
   const range = useMemo(() => {

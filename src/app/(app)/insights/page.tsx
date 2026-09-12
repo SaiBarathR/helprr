@@ -1,5 +1,7 @@
 'use client';
 
+import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
+
 import * as React from 'react';
 import type { DateRange } from 'react-day-picker';
 import { Library, Download, HardDrive, MonitorPlay, ScanSearch, type LucideIcon } from 'lucide-react';
@@ -125,7 +127,7 @@ export default function InsightsPage() {
     return list;
   }, [showLibrary, canGaps, canJellyfin, canProwlarr, canTorrents, canWatchStats, canMovies, canSeries]);
 
-  const [tab, setTab] = React.useState<InsightsTabId>('library');
+  const [tab, setTab] = useRouteViewState<InsightsTabId>('InsightsPage:tab', 'library');
   // Movies/Episodes scope for the Analysis tab — shared by all three cards so
   // the two aggregate cards dedupe onto one request.
   const [analysisKind, setAnalysisKind] = React.useState<MediaAnalysisKindFilter>('all');
@@ -147,7 +149,7 @@ export default function InsightsPage() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-2 pt-3 pb-6 space-y-4">
+      <div data-scroll-restoration-key="insights-content" className="flex-1 overflow-y-auto px-2 pt-3 pb-6 space-y-4">
         {tabs.length > 1 && (
           // Radix Tabs: keeps the pill styling, adds roving focus + arrow keys.
           <Tabs

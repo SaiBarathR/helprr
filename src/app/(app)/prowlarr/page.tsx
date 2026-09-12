@@ -1,7 +1,10 @@
 'use client';
 
+import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
+
 import { useState, useMemo } from 'react';
-import { useQuery, useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
+import { useRestorableInfiniteQuery as useInfiniteQuery } from '@/lib/hooks/use-restorable-infinite-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { jsonFetcher, ensureArray, ApiError } from '@/lib/query-fetch';
 import { Button } from '@/components/ui/button';
@@ -501,7 +504,7 @@ function StatCard({ label, value, icon, iconBg }: StatCardProps) {
  * @returns A React element containing the stats UI and charts for the selected date range.
  */
 function StatsTab() {
-  const [dateRange, setDateRange] = useState<DateRange>('7d');
+  const [dateRange, setDateRange] = useRouteViewState<DateRange>('dateRange', '7d');
 
   // Range lives in the key, so switching ranges auto-refetches (and re-paints
   // from cache instantly when returning to a range fetched within staleTime).
@@ -893,7 +896,7 @@ function HistoryDrawer({
  */
 function HistoryTab() {
   const [selectedRecord, setSelectedRecord] = useState<ProwlarrHistoryRecord | null>(null);
-  const [activeFilter, setActiveFilter] = useState<HistoryFilterValue>('');
+  const [activeFilter, setActiveFilter] = useRouteViewState<HistoryFilterValue>('activeFilter', '');
 
   const PAGE_SIZE = 20;
 

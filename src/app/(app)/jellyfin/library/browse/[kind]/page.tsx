@@ -1,9 +1,12 @@
 'use client';
 
+import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
+
 import Link from '@/components/ui/app-link';
 import { notFound, useParams, useSearchParams } from 'next/navigation';
-import { useDeferredValue, useState } from 'react';
-import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
+import { useDeferredValue } from 'react';
+import { useRestorableInfiniteQuery as useInfiniteQuery } from '@/lib/hooks/use-restorable-infinite-query';
+import { useQuery } from '@tanstack/react-query';
 import { jsonFetcher } from '@/lib/query-fetch';
 import { queryKeys } from '@/lib/query-keys';
 import { PullToRefresh } from '@/components/ui/pull-to-refresh';
@@ -111,7 +114,7 @@ function LibraryList() {
 
 function EntityList({ kind }: { kind: CatalogBrowseKind }) {
   const config = KINDS[kind];
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useRouteViewState('search', '');
   const searchTerm = useDeferredValue(search.trim());
 
   // A large library can hold thousands of studios or people, so this pages

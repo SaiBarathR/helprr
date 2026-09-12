@@ -1,11 +1,13 @@
 'use client';
 
+import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
+
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
 import Link from '@/components/ui/app-link';
 import { useParams } from 'next/navigation';
 import DOMPurify from 'isomorphic-dompurify';
-import { useInfiniteQuery } from '@tanstack/react-query';
+import { useRestorableInfiniteQuery as useInfiniteQuery } from '@/lib/hooks/use-restorable-infinite-query';
 import { PageHeader } from '@/components/layout/page-header';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { Badge } from '@/components/ui/badge';
@@ -31,12 +33,12 @@ export default function CharacterDetailPage() {
   const params = useParams();
   const id = params.id as string;
 
-  const [descExpanded, setDescExpanded] = useState(false);
-  const [spoilerVisible, setSpoilerVisible] = useState(false);
-  const [spoilerNamesVisible, setSpoilerNamesVisible] = useState(false);
+  const [descExpanded, setDescExpanded] = useRouteViewState('descExpanded', false);
+  const [spoilerVisible, setSpoilerVisible] = useRouteViewState('spoilerVisible', false);
+  const [spoilerNamesVisible, setSpoilerNamesVisible] = useRouteViewState('spoilerNamesVisible', false);
 
   // Media state
-  const [sort, setSort] = useState('POPULARITY_DESC');
+  const [sort, setSort] = useRouteViewState('sort', 'POPULARITY_DESC');
   const [sortOpen, setSortOpen] = useState(false);
   const sentinelRef = useRef<HTMLDivElement>(null);
   const sortDropdownRef = useRef<HTMLDivElement>(null);

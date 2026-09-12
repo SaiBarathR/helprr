@@ -1,5 +1,7 @@
 'use client';
 
+import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
+
 import { passiveTorrentRefreshIntervalMs } from '@/lib/qbittorrent-summary';
 import { applyTorrentDelta, type TorrentDeltaResponse } from '@/lib/qbittorrent-delta';
 
@@ -809,7 +811,7 @@ export default function TorrentsPage() {
   const [transferInfo, setTransferInfo] = useState<QBittorrentTransferInfo | null>(null);
   const [speedLimitsMode, setSpeedLimitsMode] = useState(0);
   const [refreshIntervalMs, setRefreshIntervalMs] = useState(5000);
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useRouteViewState('search', '');
   const [selectedTorrents, setSelectedTorrents] = useState<Set<string>>(new Set());
   const [listOffsetTop, setListOffsetTop] = useState(0);
 

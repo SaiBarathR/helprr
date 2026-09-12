@@ -1,5 +1,7 @@
 'use client';
 
+import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
+
 import { useMemo, useState } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
@@ -104,16 +106,16 @@ export default function LibraryBrowserPage() {
   const collectionType = searchParams.get('type') || '';
   const availableViews = viewsFor(collectionType);
 
-  const [view, setView] = useState(availableViews[0]?.id ?? '');
-  const [sortBy, setSortBy] = useState('SortName');
-  const [sortOrder, setSortOrder] = useState<'Ascending' | 'Descending'>('Ascending');
-  const [filter, setFilter] = useState('');
-  const [genre, setGenre] = useState('');
-  const [decade, setDecade] = useState('');
-  const [rating, setRating] = useState('');
-  const [tag, setTag] = useState('');
-  const [letter, setLetter] = useState('');
-  const [page, setPage] = useState(0);
+  const [view, setView] = useRouteViewState('LibraryBrowserPage:view', availableViews[0]?.id ?? '');
+  const [sortBy, setSortBy] = useRouteViewState('LibraryBrowserPage:sortBy', 'SortName');
+  const [sortOrder, setSortOrder] = useRouteViewState<'Ascending' | 'Descending'>('LibraryBrowserPage:sortOrder', 'Ascending');
+  const [filter, setFilter] = useRouteViewState('LibraryBrowserPage:filter', '');
+  const [genre, setGenre] = useRouteViewState('LibraryBrowserPage:genre', '');
+  const [decade, setDecade] = useRouteViewState('LibraryBrowserPage:decade', '');
+  const [rating, setRating] = useRouteViewState('LibraryBrowserPage:rating', '');
+  const [tag, setTag] = useRouteViewState('LibraryBrowserPage:tag', '');
+  const [letter, setLetter] = useRouteViewState('LibraryBrowserPage:letter', '');
+  const [page, setPage] = useRouteViewState('LibraryBrowserPage:page', 0);
   const [queueing, setQueueing] = useState(false);
 
   const includeItemTypes = defaultInclude(collectionType, view);

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
 import Link from '@/components/ui/app-link';
-import { useInfiniteQuery } from '@tanstack/react-query';
+import { useRestorableInfiniteQuery as useInfiniteQuery } from '@/lib/hooks/use-restorable-infinite-query';
 import { toast } from 'sonner';
 import { Ban, Bookmark, Clapperboard, Film, HardDriveDownload, Heart, Loader2, Share2, Sparkles, Star, Tv, X } from 'lucide-react';
 import { jsonFetcher } from '@/lib/query-fetch';

@@ -1,5 +1,7 @@
 'use client';
 
+import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
+
 import { useCallback, useState } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { CleanupDashboardTab } from './_components/cleanup-dashboard-tab';
@@ -9,7 +11,7 @@ import { CleanupHistoryTab } from './_components/cleanup-history-tab';
 import { useCan } from '@/components/permission-provider';
 
 export default function CleanupPage() {
-  const [tab, setTab] = useState<'dashboard' | 'queue' | 'download' | 'history'>('dashboard');
+  const [tab, setTab] = useRouteViewState<'dashboard' | 'queue' | 'download' | 'history'>('CleanupPage:tab', 'dashboard');
   const [dirty, setDirty] = useState<{ queue: boolean; download: boolean }>({ queue: false, download: false });
   const canManage = useCan('cleanup.manage');
   const activeTab = !canManage && (tab === 'queue' || tab === 'download') ? 'dashboard' : tab;
@@ -31,7 +33,7 @@ export default function CleanupPage() {
         <div
           className="page-toolbar page-toolbar-flush mb-4 app-chrome-bar bg-background/95 pb-2 backdrop-blur supports-[backdrop-filter]:bg-background/80"
         >
-          <TabsList className="w-full no-scrollbar overflow-x-auto">
+          <TabsList data-scroll-restoration-key="cleanup:tabs" className="w-full no-scrollbar overflow-x-auto">
           <TabsTrigger value="dashboard" className="flex-1 min-w-0">Dashboard</TabsTrigger>
           {canManage && (
             <TabsTrigger value="queue" className="flex-1 min-w-0 relative">

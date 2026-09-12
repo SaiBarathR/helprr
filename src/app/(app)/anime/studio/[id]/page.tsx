@@ -1,10 +1,12 @@
 'use client';
 
+import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
+
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
 import Link from '@/components/ui/app-link';
 import { useParams } from 'next/navigation';
-import { useInfiniteQuery } from '@tanstack/react-query';
+import { useRestorableInfiniteQuery as useInfiniteQuery } from '@/lib/hooks/use-restorable-infinite-query';
 import { PageHeader } from '@/components/layout/page-header';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { Badge } from '@/components/ui/badge';
@@ -39,7 +41,7 @@ export default function StudioDetailPage() {
   const id = params.id as string;
 
   // Media state
-  const [sort, setSort] = useState('START_DATE_DESC');
+  const [sort, setSort] = useRouteViewState('sort', 'START_DATE_DESC');
   const [sortOpen, setSortOpen] = useState(false);
   const sentinelRef = useRef<HTMLDivElement>(null);
   const sortDropdownRef = useRef<HTMLDivElement>(null);

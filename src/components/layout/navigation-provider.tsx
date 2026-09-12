@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { usePathname, useRouter as useNextRouter } from 'next/navigation';
+import { NAVIGATION_CANCEL_EVENT, NAVIGATION_START_EVENT, routeScrollKey, type NavigationStartDetail } from '@/lib/route-scroll-state';
 
 type Router = ReturnType<typeof useNextRouter>;
 type Destination = { pathname: string; href: string };
@@ -19,6 +20,29 @@ export function NavigationProvider({ children }: { children: React.ReactNode }) 
   const [destination, setDestination] = useState<Destination | null>(null);
   const [historyDestination, setHistoryDestination] = useState<{ from: string; href: string } | null>(null);
   const historyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const transitionNavigation = useRef<{ source: string; destination: string; sawPending: boolean } | null>(null);
+  const transitionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    const navigation = transitionNavigation.current;
+    if (!navigation) return;
+    if (isPending) {
+      navigation.sawPending = true;
+      return;
+    }
+    transitionNavigation.current = null;
+    transitionTimer.current = setTimeout(() => {
+      transitionTimer.current = null;
+      const current = routeScrollKey(window.location);
+      if (current === navigation.source && current !== navigation.destination) {
+        window.dispatchEvent(new Event(NAVIGATION_CANCEL_EVENT));
+      }
+    }, 0);
+  }, [isPending, destination]);
+
+  useEffect(() => () => {
+    if (transitionTimer.current) clearTimeout(transitionTimer.current);
+  }, []);
 
   useEffect(() => {
     const onPopState = () => {
@@ -35,7 +59,15 @@ export function NavigationProvider({ children }: { children: React.ReactNode }) 
   }, [pathname]);
 
   const navigate = useCallback((method: 'push' | 'replace', href: string, options?: Parameters<Router['push']>[1]) => {
+    if (transitionTimer.current) clearTimeout(transitionTimer.current);
     const url = new URL(href, window.location.href);
+    const detail: NavigationStartDetail = { kind: method, href, preserveScroll: options?.scroll === false };
+    window.dispatchEvent(new CustomEvent(NAVIGATION_START_EVENT, { detail }));
+    transitionNavigation.current = {
+      source: routeScrollKey(window.location),
+      destination: routeScrollKey(url),
+      sawPending: false,
+    };
     setHistoryDestination(null);
     if (historyTimer.current) clearTimeout(historyTimer.current);
     // Filter/search/hash updates keep their current view and controls mounted.
@@ -46,12 +78,19 @@ export function NavigationProvider({ children }: { children: React.ReactNode }) 
   }, [nextRouter]);
 
   const traverseHistory = useCallback((method: 'back' | 'forward') => {
+    if (transitionTimer.current) clearTimeout(transitionTimer.current);
+    transitionNavigation.current = null;
+    const detail: NavigationStartDetail = { kind: 'traverse' };
+    window.dispatchEvent(new CustomEvent(NAVIGATION_START_EVENT, { detail }));
     setDestination(null);
     setHistoryDestination({ from: pathname, href: '' });
     if (historyTimer.current) clearTimeout(historyTimer.current);
     // At the edge of browser history there is no popstate event or navigation.
     // Once popstate arrives, only a route commit clears the loading view.
-    historyTimer.current = setTimeout(() => setHistoryDestination(null), 1000);
+    historyTimer.current = setTimeout(() => {
+      setHistoryDestination(null);
+      window.dispatchEvent(new Event(NAVIGATION_CANCEL_EVENT));
+    }, 1000);
     nextRouter[method]();
   }, [nextRouter, pathname]);
 

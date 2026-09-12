@@ -1,5 +1,8 @@
 'use client';
 
+import { readRouteScrollState, routeScrollKey } from '@/lib/route-scroll-state';
+import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
+
 import {
   forwardRef,
   useCallback,
@@ -896,10 +899,10 @@ function MonthView({
   // so any navigation (prev/next/Today swaps the Date object) invalidates it
   // and the selection falls back to the derived default: today when the month
   // contains it, otherwise the month's first day with events.
-  const [manualSelection, setManualSelection] = useState<{
+  const [manualSelection, setManualSelection] = useRouteViewState<{
     anchor: Date;
     key: string;
-  } | null>(null);
+  } | null>('manualSelection', null);
   const panelRef = useRef<HTMLDivElement>(null);
 
   const defaultKey = useMemo(() => {
@@ -913,7 +916,7 @@ function MonthView({
   }, [currentDate, eventsByDay]);
 
   const selectedKey =
-    manualSelection && manualSelection.anchor === currentDate
+    manualSelection && manualSelection.anchor.getTime() === currentDate.getTime()
       ? manualSelection.key
       : defaultKey;
 
@@ -1248,7 +1251,7 @@ export default function CalendarPage() {
   const showImages = useUIStore((s) => s.calendarShowImages);
   const setShowImages = useUIStore((s) => s.setCalendarShowImages);
 
-  const [currentDate, setCurrentDate] = useState(new Date());
+  const [currentDate, setCurrentDate] = useRouteViewState('currentDate', new Date());
   const autoFocusPendingRef = useRef(true);
   const autoFocusWaitForLoadRef = useRef(true);
   const autoFocusSawLoadingRef = useRef(false);
@@ -1256,6 +1259,11 @@ export default function CalendarPage() {
   const agendaViewRef = useRef<AgendaViewHandle>(null);
 
   useEffect(() => {
+    if (lastViewRef.current === null && readRouteScrollState(routeScrollKey(window.location))) {
+      autoFocusPendingRef.current = false;
+      lastViewRef.current = calendarView;
+      return;
+    }
     if (lastViewRef.current !== calendarView) {
       if (calendarView === 'agenda' || calendarView === 'week') {
         autoFocusPendingRef.current = true;

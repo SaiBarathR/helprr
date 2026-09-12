@@ -1,5 +1,7 @@
 'use client';
 
+import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
+
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ensureArray, jsonFetcher } from '@/lib/query-fetch';
@@ -239,10 +241,10 @@ export default function WatchlistPage() {
     enter,
     exit,
   } = useBulkSelection();
-  const [search, setSearch] = useState('');
-  const [appliedSearch, setAppliedSearch] = useState('');
+  const [search, setSearch] = useRouteViewState('search', '');
+  const [appliedSearch, setAppliedSearch] = useRouteViewState('appliedSearch', '');
   // Multi-select tag filter (client-side: every item already carries its tags).
-  const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
+  const [selectedTagIds, setSelectedTagIds] = useRouteViewState<string[]>('selectedTagIds', []);
   const [removeTarget, setRemoveTarget] = useState<WatchlistItem | null>(null);
   const [removing, setRemoving] = useState(false);
   const [manageOpen, setManageOpen] = useState(false);
@@ -313,7 +315,7 @@ export default function WatchlistPage() {
       debounce((value: string) => {
         setAppliedSearch(value.trim());
       }, 300),
-    []
+    [setAppliedSearch]
   );
 
   useEffect(() => {
@@ -650,7 +652,7 @@ export default function WatchlistPage() {
   const resetFilters = useCallback(() => {
     setView((v) => ({ ...v, type: 'all', sources: [], libraryOnly: 'all' }));
     setSelectedTagIds([]);
-  }, []);
+  }, [setSelectedTagIds]);
 
   const activeSortLabel =
     SORT_OPTIONS.find((o) => o.value === view.sort)?.label ?? 'Date Added';
@@ -953,7 +955,7 @@ export default function WatchlistPage() {
                 </button>
               )}
             </div>
-            <div className="-mx-2 flex gap-2.5 overflow-x-auto px-2 pb-1 scrollbar-hide md:-mx-6 md:px-6">
+            <div data-scroll-restoration-key="watchlist-not-in-library" className="-mx-2 flex gap-2.5 overflow-x-auto px-2 pb-1 scrollbar-hide md:-mx-6 md:px-6">
               {railItems.map((item, i) => (
                 <div key={item.id} className={cn('shrink-0', RAIL_CARD)}>
                   <WatchlistCard

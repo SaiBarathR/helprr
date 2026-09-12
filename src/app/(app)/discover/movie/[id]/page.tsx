@@ -1,6 +1,8 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
+
+import { useMemo } from 'react';
 import { useParams } from 'next/navigation';
 import Link from '@/components/ui/app-link';
 import Image from 'next/image';
@@ -24,7 +26,7 @@ export default function DiscoverMovieDetailPage() {
   const { id } = useParams();
   const movieId = Number(id);
   const validId = Number.isFinite(movieId) && movieId > 0;
-  const [overviewExpanded, setOverviewExpanded] = useState(false);
+  const [overviewExpanded, setOverviewExpanded] = useRouteViewState('overviewExpanded', false);
 
   const {
     data: movie = null,

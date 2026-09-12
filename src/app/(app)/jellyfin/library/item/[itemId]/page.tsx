@@ -77,26 +77,6 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
     void playback.playItem(target);
   }, [autoPlayRequested, playback, query.data?.item]);
 
-  /**
-   * Open at the top, every time.
-   *
-   * The page mounts as a spinner barely taller than the viewport and then grows
-   * by a few thousand pixels once the payload lands. A pending scroll position
-   * is resolved against whichever height the browser happens to see first, so
-   * arriving here from a scrolled rail could leave the hero already part-way
-   * off the top — which is the "opens somewhere in the middle" the owner sees.
-   *
-   * Reset when the route changes, and once more when the content that changes
-   * the height has actually rendered. After that the viewer's own scrolling is
-   * never touched: `settled` latches per item id.
-   */
-  const scrollSettledRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (scrollSettledRef.current === itemId) return;
-    window.scrollTo({ top: 0, behavior: 'instant' });
-    if (query.isSuccess) scrollSettledRef.current = itemId;
-  }, [itemId, query.isSuccess]);
-
   // The reference series page leads its sections with Next Up.
   const nextUpQuery = useQuery({
     queryKey: ['jellyfin', 'catalog', 'next-up', itemId],

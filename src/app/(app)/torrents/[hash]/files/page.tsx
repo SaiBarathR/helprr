@@ -1,5 +1,7 @@
 'use client';
 
+import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
+
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError, jsonFetcher } from '@/lib/query-fetch';
@@ -44,7 +46,7 @@ export default function TorrentFilesPage() {
   const torrentName = searchParams.get('name') || 'Torrent Files';
   const canManage = useCan('torrents.manage');
 
-  const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
+  const [expandedDirs, setExpandedDirs] = useRouteViewState<Set<string>>('TorrentFilesPage:expandedDirs', new Set());
   const [refreshIntervalMs, setRefreshIntervalMs] = useState(5000);
   const queryClient = useQueryClient();
   const filesKey = ['qbittorrent', hash, 'files'] as const;
@@ -135,7 +137,7 @@ export default function TorrentFilesPage() {
       }
       return next;
     });
-  }, []);
+  }, [setExpandedDirs]);
 
   if (loading && files.length === 0) {
     return (

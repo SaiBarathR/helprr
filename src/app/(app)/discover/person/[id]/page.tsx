@@ -1,5 +1,7 @@
 'use client';
 
+import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
+
 import { useMemo, useState } from 'react';
 import Image from 'next/image';
 import Link from '@/components/ui/app-link';
@@ -108,11 +110,11 @@ export default function PersonDetailPage() {
   const { id } = useParams();
   const personId = Number(id);
   const validId = Number.isFinite(personId) && personId > 0;
-  const [bioExpanded, setBioExpanded] = useState(false);
-  const [department, setDepartment] = useState<Department | null>(null);
-  const [mediaFilter, setMediaFilter] = useState<MediaFilter>('all');
-  const [sortKey, setSortKey] = useState<SortKey>('voteCount');
-  const [sortDir, setSortDir] = useState<SortDir>('desc');
+  const [bioExpanded, setBioExpanded] = useRouteViewState('bioExpanded', false);
+  const [department, setDepartment] = useRouteViewState<Department | null>('department', null);
+  const [mediaFilter, setMediaFilter] = useRouteViewState<MediaFilter>('mediaFilter', 'all');
+  const [sortKey, setSortKey] = useRouteViewState<SortKey>('sortKey', 'voteCount');
+  const [sortDir, setSortDir] = useRouteViewState<SortDir>('sortDir', 'desc');
   const [showSortMenu, setShowSortMenu] = useState(false);
 
   const {
@@ -338,7 +340,7 @@ export default function PersonDetailPage() {
 
         {/* Social links */}
         {socialLinks.length > 0 && (
-          <div className="flex gap-2 overflow-x-auto -mx-2 px-2 md:-mx-6 md:px-6 scrollbar-hide">
+          <div data-scroll-restoration-key="person:images" className="flex gap-2 overflow-x-auto -mx-2 px-2 md:-mx-6 md:px-6 scrollbar-hide">
             {socialLinks.map((link) => (
               <a
                 key={link.label}
@@ -432,7 +434,7 @@ export default function PersonDetailPage() {
               </div>
             </div>
             {/* Department filter */}
-            <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide">
+            <div data-scroll-restoration-key="person:credits-filters" className="flex items-center gap-2 overflow-x-auto scrollbar-hide">
               {DEPARTMENTS.map((dept) => {
                 const count = departmentCounts[dept];
                 if (count === 0) return null;

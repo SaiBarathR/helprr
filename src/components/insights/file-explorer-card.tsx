@@ -1,5 +1,6 @@
 'use client';
 
+import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
 import * as React from 'react';
 import Link from '@/components/ui/app-link';
 import { ArrowDownWideNarrow, ArrowUpNarrowWide, ExternalLink, Scale, X } from 'lucide-react';
@@ -212,15 +213,15 @@ function FileRow({ file, selected, selectable, onToggle }: {
 }
 
 export function FileExplorerCard({ kind }: { kind: MediaAnalysisKindFilter }) {
-  const [search, setSearch] = React.useState('');
-  const [q, setQ] = React.useState('');
-  const [resolution, setResolution] = React.useState(ALL);
-  const [videoCodec, setVideoCodec] = React.useState(ALL);
-  const [dynamicRange, setDynamicRange] = React.useState(ALL);
-  const [audioCodec, setAudioCodec] = React.useState(ALL);
-  const [sort, setSort] = React.useState<SortKey>('size');
-  const [dir, setDir] = React.useState<'asc' | 'desc'>('desc');
-  const [page, setPage] = React.useState(1);
+  const [search, setSearch] = useRouteViewState(`file-explorer:${kind}:search`, '');
+  const [q, setQ] = useRouteViewState(`file-explorer:${kind}:q`, '');
+  const [resolution, setResolution] = useRouteViewState(`file-explorer:${kind}:resolution`, ALL);
+  const [videoCodec, setVideoCodec] = useRouteViewState(`file-explorer:${kind}:videoCodec`, ALL);
+  const [dynamicRange, setDynamicRange] = useRouteViewState(`file-explorer:${kind}:dynamicRange`, ALL);
+  const [audioCodec, setAudioCodec] = useRouteViewState(`file-explorer:${kind}:audioCodec`, ALL);
+  const [sort, setSort] = useRouteViewState<SortKey>(`file-explorer:${kind}:sort`, 'size');
+  const [dir, setDir] = useRouteViewState<'asc' | 'desc'>(`file-explorer:${kind}:dir`, 'desc');
+  const [page, setPage] = useRouteViewState(`file-explorer:${kind}:page`, 1);
   // Selected rows keep their full objects — pages change under the selection.
   const [selected, setSelected] = React.useState<Map<string, MediaAnalysisFile>>(new Map());
   const [compareOpen, setCompareOpen] = React.useState(false);
@@ -228,11 +229,13 @@ export function FileExplorerCard({ kind }: { kind: MediaAnalysisKindFilter }) {
   // Debounce typing into the actual query param.
   React.useEffect(() => {
     const t = setTimeout(() => {
-      setQ(search.trim());
-      setPage(1);
+      if (q !== search.trim()) {
+        setQ(search.trim());
+        setPage(1);
+      }
     }, 300);
     return () => clearTimeout(t);
-  }, [search]);
+  }, [search, q, setQ, setPage]);
 
   // Any dataset-narrowing change starts back at page 1.
   const resetPage = <T,>(setter: (v: T) => void) => (v: T) => {
@@ -255,16 +258,6 @@ export function FileExplorerCard({ kind }: { kind: MediaAnalysisKindFilter }) {
   const { data, loading } = useInsightsResource<MediaAnalysisFilesResponse>(
     `/api/insights/media-analysis/files?${params.toString()}`
   );
-
-  // Kind is page-level state; a switch there invalidates the facet values too
-  // (they're distinct per dataset), so clear them along with the pagination.
-  React.useEffect(() => {
-    setResolution(ALL);
-    setVideoCodec(ALL);
-    setDynamicRange(ALL);
-    setAudioCodec(ALL);
-    setPage(1);
-  }, [kind]);
 
   const toggleSelect = React.useCallback((file: MediaAnalysisFile, checked: boolean) => {
     setSelected((prev) => {
@@ -295,7 +288,7 @@ export function FileExplorerCard({ kind }: { kind: MediaAnalysisKindFilter }) {
           placeholder="Search title or file name…"
           className="h-8 text-xs"
         />
-        <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide -mx-1 px-1 pb-0.5">
+        <div data-scroll-restoration-key={`file-explorer:${kind}:filters`} className="flex items-center gap-2 overflow-x-auto scrollbar-hide -mx-1 px-1 pb-0.5">
           <FilterSelect label="Resolution" value={resolution} options={data?.options.resolution ?? []} onChange={resetPage(setResolution)} />
           <FilterSelect label="Codec" value={videoCodec} options={data?.options.videoCodec ?? []} onChange={resetPage(setVideoCodec)} />
           <FilterSelect label="Range" value={dynamicRange} options={data?.options.dynamicRange ?? []} onChange={resetPage(setDynamicRange)} />

@@ -1,9 +1,10 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { ApiError, jsonFetcher } from '@/lib/query-fetch';
-import { handleAuthError } from '@/lib/query-client';
+import { useRestorableInfiniteQuery } from '@/lib/hooks/use-restorable-infinite-query';
+import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
+import { jsonFetcher } from '@/lib/query-fetch';
 import Image from 'next/image';
 import Link from '@/components/ui/app-link';
 import { useParams } from 'next/navigation';
@@ -17,7 +18,6 @@ import { formatFavourites, formatFuzzyDate } from '@/lib/anilist-helpers';
 import type {
   AniListStaffDetailResponse,
   AniListStaffMediaEdge,
-  AniListStaffVoiceActingEdge,
   AniListPageInfo,
 } from '@/types/anilist';
 
@@ -31,41 +31,47 @@ const SORT_OPTIONS = [
   { value: 'TITLE_ROMAJI', label: 'Title' },
 ];
 
+function useStaffPages<T>(id: string, type: string, sort: string, first: T[] | undefined, pageInfo: AniListPageInfo | null | undefined) {
+  const query = useRestorableInfiniteQuery({
+    queryKey: ['anime', 'staff-pages', id, type, sort],
+    initialPageParam: 1,
+    enabled: Boolean(first),
+    queryFn: ({ pageParam, signal }) => pageParam === 1
+      ? Promise.resolve({ edges: first ?? [], pageInfo: pageInfo ?? null })
+      : jsonFetcher<{ edges: T[]; pageInfo: AniListPageInfo | null }>(
+        `/api/anime/staff/${id}?page=${pageParam}&sort=${sort}&type=${type}`,
+      )({ signal }),
+    getNextPageParam: (last) => last.pageInfo?.hasNextPage ? (last.pageInfo.currentPage || 1) + 1 : undefined,
+    staleTime: Infinity,
+  });
+  return {
+    media: query.data?.pages.flatMap((page) => page.edges) ?? [],
+    pageInfo: query.data?.pages.at(-1)?.pageInfo ?? null,
+    loadingMore: query.isFetching,
+    fetchMore: query.fetchNextPage,
+  };
+}
+
 export default function StaffDetailPage() {
   const params = useParams();
   const id = params.id as string;
 
-  const [descExpanded, setDescExpanded] = useState(false);
+  const [descExpanded, setDescExpanded] = useRouteViewState('descExpanded', false);
 
   // Anime media state
-  const [animeMedia, setAnimeMedia] = useState<AniListStaffMediaEdge[]>([]);
-  const [animePageInfo, setAnimePageInfo] = useState<AniListPageInfo | null>(null);
-  const [animeSort, setAnimeSort] = useState(DEFAULT_SORT);
-  const [animeLoadingMore, setAnimeLoadingMore] = useState(false);
+  const [animeSort, setAnimeSort] = useRouteViewState('animeSort', DEFAULT_SORT);
   const [animeSortOpen, setAnimeSortOpen] = useState(false);
   const animeSentinelRef = useRef<HTMLDivElement>(null);
 
   // Manga media state
-  const [mangaMedia, setMangaMedia] = useState<AniListStaffMediaEdge[]>([]);
-  const [mangaPageInfo, setMangaPageInfo] = useState<AniListPageInfo | null>(null);
-  const [mangaSort, setMangaSort] = useState(DEFAULT_SORT);
-  const [mangaLoadingMore, setMangaLoadingMore] = useState(false);
+  const [mangaSort, setMangaSort] = useRouteViewState('mangaSort', DEFAULT_SORT);
   const [mangaSortOpen, setMangaSortOpen] = useState(false);
   const mangaSentinelRef = useRef<HTMLDivElement>(null);
 
   // Voice acting state
-  const [vaMedia, setVaMedia] = useState<AniListStaffVoiceActingEdge[]>([]);
-  const [vaPageInfo, setVaPageInfo] = useState<AniListPageInfo | null>(null);
-  const [vaSort, setVaSort] = useState(DEFAULT_SORT);
-  const [vaLoadingMore, setVaLoadingMore] = useState(false);
+  const [vaSort, setVaSort] = useRouteViewState('vaSort', DEFAULT_SORT);
   const [vaSortOpen, setVaSortOpen] = useState(false);
   const vaSentinelRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    setAnimeSort(DEFAULT_SORT);
-    setMangaSort(DEFAULT_SORT);
-    setVaSort(DEFAULT_SORT);
-  }, [id]);
 
   const detailQuery = useQuery({
     queryKey: ['anime', 'staff', id, animeSort, mangaSort, vaSort],
@@ -81,75 +87,15 @@ export default function StaffDetailPage() {
   const loading = detailQuery.isLoading;
   const error = detailQuery.error;
 
-  // Seed the paginated lists from the page-1 payload. Resets on a sort change
-  // (the query key changes), matching the old re-run-on-sort behavior.
-  useEffect(() => {
-    const data = detailQuery.data;
-    if (!data) return;
-    setAnimeMedia(data.animeMedia);
-    setAnimePageInfo(data.animePageInfo);
-    setMangaMedia(data.mangaMedia);
-    setMangaPageInfo(data.mangaPageInfo);
-    setVaMedia(data.voiceActingMedia);
-    setVaPageInfo(data.voiceActingPageInfo);
-  }, [detailQuery.data]);
-
-  // Fetch more anime
-  const fetchMoreAnime = useCallback(async () => {
-    if (!animePageInfo?.hasNextPage || animeLoadingMore) return;
-    setAnimeLoadingMore(true);
-    try {
-      const page = (animePageInfo.currentPage || 1) + 1;
-      const res = await fetch(`/api/anime/staff/${id}?page=${page}&sort=${animeSort}&type=ANIME`);
-      if (!res.ok) throw new ApiError(res.status, 'Failed to fetch');
-      const data = await res.json();
-      setAnimeMedia((prev) => [...prev, ...data.edges]);
-      setAnimePageInfo(data.pageInfo);
-    } catch (e) {
-      handleAuthError(e); // 401 → redirect to /login; no-op otherwise
-      console.error(e);
-    } finally {
-      setAnimeLoadingMore(false);
-    }
-  }, [id, animePageInfo, animeLoadingMore, animeSort]);
-
-  // Fetch more manga
-  const fetchMoreManga = useCallback(async () => {
-    if (!mangaPageInfo?.hasNextPage || mangaLoadingMore) return;
-    setMangaLoadingMore(true);
-    try {
-      const page = (mangaPageInfo.currentPage || 1) + 1;
-      const res = await fetch(`/api/anime/staff/${id}?page=${page}&sort=${mangaSort}&type=MANGA`);
-      if (!res.ok) throw new ApiError(res.status, 'Failed to fetch');
-      const data = await res.json();
-      setMangaMedia((prev) => [...prev, ...data.edges]);
-      setMangaPageInfo(data.pageInfo);
-    } catch (e) {
-      handleAuthError(e); // 401 → redirect to /login; no-op otherwise
-      console.error(e);
-    } finally {
-      setMangaLoadingMore(false);
-    }
-  }, [id, mangaPageInfo, mangaLoadingMore, mangaSort]);
-
-  // Fetch more voice acting
-  const fetchMoreVa = useCallback(async () => {
-    if (!vaPageInfo?.hasNextPage || vaLoadingMore) return;
-    setVaLoadingMore(true);
-    try {
-      const page = (vaPageInfo.currentPage || 1) + 1;
-      const res = await fetch(`/api/anime/staff/${id}?page=${page}&sort=${vaSort}&type=VOICE_ACTING`);
-      if (!res.ok) throw new ApiError(res.status, 'Failed to fetch');
-      const data = await res.json();
-      setVaMedia((prev) => [...prev, ...data.edges]);
-      setVaPageInfo(data.pageInfo);
-    } catch (e) {
-      handleAuthError(e); // 401 → redirect to /login; no-op otherwise
-      console.error(e);
-    } finally {
-      setVaLoadingMore(false);
-    }
-  }, [id, vaPageInfo, vaLoadingMore, vaSort]);
+  const { media: animeMedia, pageInfo: animePageInfo, loadingMore: animeLoadingMore, fetchMore: fetchMoreAnime } = useStaffPages(
+    id, 'ANIME', animeSort, detail?.animeMedia, detail?.animePageInfo,
+  );
+  const { media: mangaMedia, pageInfo: mangaPageInfo, loadingMore: mangaLoadingMore, fetchMore: fetchMoreManga } = useStaffPages(
+    id, 'MANGA', mangaSort, detail?.mangaMedia, detail?.mangaPageInfo,
+  );
+  const { media: vaMedia, pageInfo: vaPageInfo, loadingMore: vaLoadingMore, fetchMore: fetchMoreVa } = useStaffPages(
+    id, 'VOICE_ACTING', vaSort, detail?.voiceActingMedia, detail?.voiceActingPageInfo,
+  );
 
   // Anime infinite scroll
   useEffect(() => {

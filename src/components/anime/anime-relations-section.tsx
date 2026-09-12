@@ -62,7 +62,7 @@ export function AnimeRelationsSection({ relations }: AnimeRelationsSectionProps)
   return (
     <div className="space-y-2">
       <h2 className="text-base font-semibold">Relations</h2>
-      <div className="flex gap-3 overflow-x-auto pb-2 -mx-2 px-2 md:-mx-6 md:px-6 scrollbar-hide">
+      <div data-scroll-restoration-key="anime-relations" className="flex gap-3 overflow-x-auto pb-2 -mx-2 px-2 md:-mx-6 md:px-6 scrollbar-hide">
         {sortedRelations.map((rel) => {
           const imgSrc = rel.coverImage
             ? toCachedImageSrc(rel.coverImage, 'anilist') || rel.coverImage

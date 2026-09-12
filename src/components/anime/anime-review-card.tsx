@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
+
 import Image from 'next/image';
 import { Star, ChevronDown, ChevronUp, ThumbsUp } from 'lucide-react';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
@@ -26,7 +27,7 @@ export function AnimeReviewCard({ reviews }: AnimeReviewCardProps) {
 }
 
 function ReviewItem({ review }: { review: AniListReview }) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useRouteViewState(`review:${review.id}:expanded`, false);
   const avatarSrc = review.user.avatar.large || review.user.avatar.medium;
   const imgSrc = avatarSrc
     ? toCachedImageSrc(avatarSrc, 'anilist') || avatarSrc

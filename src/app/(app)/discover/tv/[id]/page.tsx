@@ -1,6 +1,8 @@
 'use client';
 
-import { useCallback, useMemo, useState } from 'react';
+import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
+
+import { useCallback, useMemo } from 'react';
 import { useParams } from 'next/navigation';
 import Link from '@/components/ui/app-link';
 import Image from 'next/image';
@@ -25,8 +27,8 @@ export default function DiscoverTvDetailPage() {
   const { id } = useParams();
   const tvId = Number(id);
   const validId = Number.isFinite(tvId) && tvId > 0;
-  const [overviewExpanded, setOverviewExpanded] = useState(false);
-  const [expandedSeason, setExpandedSeason] = useState<number | null>(null);
+  const [overviewExpanded, setOverviewExpanded] = useRouteViewState('overviewExpanded', false);
+  const [expandedSeason, setExpandedSeason] = useRouteViewState<number | null>('expandedSeason', null);
 
   const {
     data: show = null,
@@ -55,7 +57,7 @@ export default function DiscoverTvDetailPage() {
 
   const handleToggleSeason = useCallback((seasonNumber: number) => {
     setExpandedSeason((prev) => (prev === seasonNumber ? null : seasonNumber));
-  }, []);
+  }, [setExpandedSeason]);
 
   const infoRows = useMemo(() => {
     if (!show) return [];

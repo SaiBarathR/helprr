@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
 import Link from '@/components/ui/app-link';
 import { useParams, useSearchParams } from 'next/navigation';
@@ -57,12 +58,6 @@ import { ApiError, arrMutationFetch, ensureArray, jsonFetcher } from '@/lib/quer
 import { handleAuthError } from '@/lib/query-client';
 import { useQualityProfiles, useMetadataProfiles, useTags } from '@/lib/hooks/use-reference-data';
 import { pollCommand } from '@/lib/arr-command';
-import {
-  getDetailViewState,
-  setDetailViewState,
-  waitForScrollY,
-  type DetailViewKey,
-} from '@/lib/detail-view-state';
 import { useExternalUrlResolver } from '@/lib/hooks/use-external-urls';
 import { formatBytes } from '@/lib/format';
 import { useCan } from '@/components/permission-provider';
@@ -103,10 +98,7 @@ export default function ArtistDetailPage() {
   const artistId = Number(id);
   const instance = useSearchParams().get('instance') ?? undefined;
   const queryClient = useQueryClient();
-  const detailViewKey: DetailViewKey = `artist:${artistId}`;
   const contentScrollRef = useRef<HTMLDivElement>(null);
-  const scrollReadyRef = useRef(false);
-  const hasRestoredScrollRef = useRef(false);
   const router = useRouter();
 
   // Artist + albums — TanStack cache gives instant back-nav paint (gcTime),
@@ -145,7 +137,7 @@ export default function ArtistDetailPage() {
   const [deleteFiles, setDeleteFiles] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
   const [actionLoading, setActionLoading] = useState('');
-  const [overviewExpanded, setOverviewExpanded] = useState(false);
+  const [overviewExpanded, setOverviewExpanded] = useRouteViewState('overview-expanded', false);
   const [showRenamePreview, setShowRenamePreview] = useState(false);
   const [albumInteractiveTarget, setAlbumInteractiveTarget] = useState<{
     albumId: number;
@@ -160,68 +152,6 @@ export default function ArtistDetailPage() {
   const canManageActivity = useCan('activity.manage');
   const canDeleteArtist = useCan('music.delete');
   const canEditArtist = canEditMonitoring || canEditTags || canChangePath;
-
-  const getCurrentScrollY = useCallback(() => {
-    const content = contentScrollRef.current;
-    if (content) {
-      const maxScroll = Math.max(0, content.scrollHeight - content.clientHeight);
-      if (maxScroll > 0 || content.scrollTop > 0) return content.scrollTop;
-    }
-    if (typeof window === 'undefined') return 0;
-    return window.scrollY;
-  }, []);
-
-  // Reset scroll-restore guards whenever the artist/instance changes.
-  useEffect(() => {
-    scrollReadyRef.current = false;
-    hasRestoredScrollRef.current = false;
-  }, [artistId, instance]);
-
-  useEffect(() => {
-    if (loading || !artist || hasRestoredScrollRef.current) return;
-    const saved = getDetailViewState(detailViewKey);
-    if (!saved || saved.scrollY <= 0) {
-      hasRestoredScrollRef.current = true;
-      scrollReadyRef.current = true;
-      return;
-    }
-
-    let cancelled = false;
-    void (async () => {
-      await waitForScrollY(saved.scrollY);
-      if (cancelled) return;
-      window.scrollTo({ top: saved.scrollY, behavior: 'instant' });
-      hasRestoredScrollRef.current = true;
-      scrollReadyRef.current = true;
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [detailViewKey, loading, artist]);
-
-  useEffect(() => {
-    const persistScroll = () => {
-      if (!scrollReadyRef.current) return;
-      setDetailViewState(detailViewKey, { scrollY: getCurrentScrollY() });
-    };
-
-    let lastSaved = 0;
-    const onScroll = () => {
-      const now = Date.now();
-      if (now - lastSaved < 150) return;
-      lastSaved = now;
-      persistScroll();
-    };
-
-    window.addEventListener('scroll', onScroll, { passive: true });
-    window.addEventListener('pagehide', persistScroll);
-    return () => {
-      persistScroll();
-      window.removeEventListener('scroll', onScroll);
-      window.removeEventListener('pagehide', persistScroll);
-    };
-  }, [detailViewKey, getCurrentScrollY, loading, artist]);
 
   const persistArtist = useCallback((next: LidarrArtist) => {
     queryClient.setQueryData(queryKeys.detail('lidarr', artistId, instance), next);
@@ -524,7 +454,7 @@ export default function ArtistDetailPage() {
         }
       />
 
-      <div ref={contentScrollRef} className="space-y-6 animate-content-in">
+      <div ref={contentScrollRef} data-scroll-restoration-key="artist-detail" className="space-y-6 animate-content-in">
         {/* Hero */}
         {fanart ? (
           <div className="-mx-2 md:-mx-6">
@@ -647,7 +577,7 @@ export default function ArtistDetailPage() {
         {linkChips.length > 0 && (
           <div>
             <h2 className="text-base font-semibold mb-2">Links</h2>
-            <div className="flex gap-2 overflow-x-auto pb-1 -mx-2 px-2 md:-mx-6 md:px-6 scrollbar-hide">
+            <div data-scroll-restoration-key="artist-links" className="flex gap-2 overflow-x-auto pb-1 -mx-2 px-2 md:-mx-6 md:px-6 scrollbar-hide">
               {linkChips.map((chip) => (
                 <a
                   key={chip.label}

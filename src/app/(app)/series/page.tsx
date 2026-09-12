@@ -201,7 +201,6 @@ export default function SeriesPage() {
   } | null>(null);
   const [deletingTarget, setDeletingTarget] = useState(false);
   const contentRef = useRef<HTMLDivElement | null>(null);
-  const hasRestoredScrollRef = useRef(false);
   const hasRestoredSearchRef = useRef(false);
 
   const viewMode = useUIStore((s) => s.seriesView);
@@ -230,8 +229,8 @@ export default function SeriesPage() {
     [viewMode, setVisibleFieldsForMode]
   );
 
-  const persistViewState = useCallback((scrollY = window.scrollY, searchValue = search) => {
-    setListViewState('series', { scrollY, search: searchValue });
+  const persistViewState = useCallback((searchValue = search) => {
+    setListViewState('series', { scrollY: 0, search: searchValue });
   }, [search]);
 
   useEffect(() => {
@@ -272,39 +271,12 @@ export default function SeriesPage() {
   }, [viewMode, posterSize, loading, series.length, search, filter, watchFilter]);
 
   useEffect(() => {
-    if (loading || hasRestoredScrollRef.current) return;
-    hasRestoredScrollRef.current = true;
-
-    const saved = getListViewState('series');
-    if (!saved || saved.scrollY <= 0) return;
-
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        window.scrollTo({ top: saved.scrollY, behavior: 'instant' });
-      });
-    });
-  }, [loading]);
-
-  useEffect(() => {
-    persistViewState(window.scrollY, search);
+    persistViewState(search);
   }, [search, persistViewState]);
-
-  useEffect(() => {
-    let lastSaved = 0;
-    const onScroll = () => {
-      const now = Date.now();
-      if (now - lastSaved < 150) return;
-      lastSaved = now;
-      persistViewState(window.scrollY, search);
-    };
-
-    window.addEventListener('scroll', onScroll, { passive: true });
-    return () => window.removeEventListener('scroll', onScroll);
-  }, [persistViewState, search]);
 
   const handleSearch = useCallback((v: string) => setSearch(v), [setSearch]);
   const handleNavigateToDetail = useCallback(() => {
-    persistViewState(window.scrollY, search);
+    persistViewState(search);
   }, [persistViewState, search]);
 
   // Connected instances derived from the (already instance-tagged) list. The

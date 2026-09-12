@@ -1,5 +1,7 @@
 'use client';
 
+import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
+
 import {
   Fragment,
   useCallback,
@@ -138,7 +140,13 @@ export function DataTable<T>({
       ? stored
       : defaultPageSize;
   });
-  const [page, setPage] = useState(1);
+  const resetSignature = JSON.stringify(resetPageKey) ?? '';
+  const [pageState, setPageState] = useRouteViewState(`table:${tableId}:page`, { page: 1, resetSignature });
+  const page = pageState.resetSignature === resetSignature ? pageState.page : 1;
+  const setPage = useCallback((next: number) => setPageState({ page: next, resetSignature }), [resetSignature, setPageState]);
+  useEffect(() => {
+    if (pageState.resetSignature !== resetSignature) setPage(1);
+  }, [pageState.resetSignature, resetSignature, setPage]);
   const containerRef = useRef<HTMLDivElement | null>(null);
   // Live drag state kept in a ref; only the resulting width goes through setState.
   const dragRef = useRef<{ columnId: string; startX: number; startWidth: number } | null>(null);
@@ -205,19 +213,11 @@ export function DataTable<T>({
     [rows, paginate, currentPage, pageSize],
   );
 
-  // Filters/search changed → the old page offset is meaningless. Render-time
-  // state adjustment (not an effect) so the reset lands in the same pass.
-  const [prevResetKey, setPrevResetKey] = useState(resetPageKey);
-  if (prevResetKey !== resetPageKey) {
-    setPrevResetKey(resetPageKey);
-    setPage(1);
-  }
-
   const goToPage = useCallback((next: number) => {
     setPage(next);
     // Jump back to the top of the table (offset for sticky toolbars).
     containerRef.current?.scrollIntoView({ block: 'start', behavior: 'instant' });
-  }, []);
+  }, [setPage]);
 
   const changePageSize = useCallback((value: string) => {
     const size = Number(value);
@@ -225,7 +225,7 @@ export function DataTable<T>({
     setPageSize(size);
     setPage(1);
     writeStoredPrefs(tableId, { pageSize: size });
-  }, [tableId]);
+  }, [setPage, tableId]);
 
   // Sticky headers only work while the wrapper is NOT a scroll container, so
   // measure horizontal overflow and fall back to scrolling when columns don't
@@ -261,6 +261,7 @@ export function DataTable<T>({
     >
       <div
         ref={scrollWrapRef}
+        data-scroll-restoration-key={`table:${tableId}`}
         className={stickyActive ? 'overflow-x-clip' : 'overflow-x-auto overscroll-x-contain'}
       >
         <table className="w-full text-sm table-fixed" style={{ minWidth: totalWidth }}>

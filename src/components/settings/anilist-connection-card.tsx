@@ -1,5 +1,6 @@
 'use client';
 
+import { fetchAnilistViewer } from '@/lib/anilist-viewer';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { ApiError } from '@/lib/query-fetch';
@@ -54,16 +55,7 @@ export function AnilistConnectionCard() {
 
   const viewerQuery = useQuery({
     queryKey: ['anilist', 'viewer'],
-    queryFn: async ({ signal }): Promise<ViewerResponse> => {
-      const res = await fetch('/api/anilist/viewer', { signal });
-      // /api/anilist/* returns 401 for AniList-token issues too (not only a
-      // revoked Helprr session), so a !ok here degrades to "not connected"
-      // rather than redirecting — preserving the original behavior. The
-      // authorize/disconnect mutations below hit Helprr's own /api/services/*
-      // endpoints, where a 401 IS a revoked session and does redirect.
-      if (!res.ok) return { configured: false, connected: false, requiresReauth: false };
-      return res.json();
-    },
+    queryFn: ({ signal }) => fetchAnilistViewer<ViewerResponse>(signal),
   });
   const viewer = viewerQuery.data ?? null;
   const loading = viewerQuery.isLoading;
