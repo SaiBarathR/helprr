@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useInfiniteQuery } from '@tanstack/react-query';
+import { useRestorableInfiniteQuery as useInfiniteQuery } from '@/lib/hooks/use-restorable-infinite-query';
 import { jsonFetcher } from '@/lib/query-fetch';
 import Link from '@/components/ui/app-link';
 import { usePathname, useSearchParams } from 'next/navigation';
@@ -27,11 +27,6 @@ import {
 } from '@/components/ui/select';
 import { DEFAULT_ANIME_FILTERS, type AnimeFiltersState, useUIStore } from '@/lib/store';
 import {
-  getListViewState,
-  setListViewState,
-  type MediaListKey,
-} from '@/lib/media-list-cache';
-import {
   ArrowDownAZ,
   CalendarDays,
   ChevronLeft,
@@ -53,23 +48,6 @@ interface ListResponse {
   mode: 'browse' | 'search';
   items: AnimeItemWithLibrary[];
   pageInfo: AniListPageInfo | null;
-}
-
-const EXPLORE_CACHE_KEY: MediaListKey = 'anime-explore:current';
-
-function ensureHeightReached(targetScrollY: number, timeoutMs = 1200, pollMs = 50) {
-  return new Promise<void>((resolve) => {
-    const startedAt = Date.now();
-    const tick = () => {
-      const maxScroll = Math.max(0, document.body.scrollHeight - window.innerHeight);
-      if (maxScroll >= targetScrollY || Date.now() - startedAt >= timeoutMs) {
-        resolve();
-        return;
-      }
-      window.setTimeout(tick, pollMs);
-    };
-    tick();
-  });
 }
 
 const SORT_OPTIONS = [
@@ -131,7 +109,6 @@ export default function AnimePage() {
   const [urlInitialized, setUrlInitialized] = useState(false);
 
   const initRef = useRef(false);
-  const hasRestoredScrollRef = useRef(false);
 
   // Initialize from URL params exactly once
   useEffect(() => {
@@ -351,8 +328,6 @@ export default function AnimePage() {
   ]);
 
   const resetExploreScroll = useCallback(() => {
-    setListViewState(EXPLORE_CACHE_KEY, { scrollY: 0, search: '' });
-    hasRestoredScrollRef.current = true;
     window.scrollTo({ top: 0, behavior: 'instant' });
   }, []);
 
@@ -363,44 +338,6 @@ export default function AnimePage() {
     setViewMode('browse');
     resetExploreScroll();
   };
-
-  // Restore scroll once items are rendered
-  useEffect(() => {
-    if (loading || hasRestoredScrollRef.current) return;
-    const saved = getListViewState(EXPLORE_CACHE_KEY);
-    if (!saved || saved.scrollY <= 0) {
-      hasRestoredScrollRef.current = true;
-      return;
-    }
-
-    let cancelled = false;
-    void (async () => {
-      await ensureHeightReached(saved.scrollY);
-      if (cancelled) return;
-      window.scrollTo({ top: saved.scrollY, behavior: 'instant' });
-      hasRestoredScrollRef.current = true;
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [loading, items.length]);
-
-  // Persist scroll while user scrolls
-  useEffect(() => {
-    let lastSaved = 0;
-    const onScroll = () => {
-      const now = Date.now();
-      if (now - lastSaved < 150) return;
-      lastSaved = now;
-      setListViewState(EXPLORE_CACHE_KEY, {
-        scrollY: window.scrollY,
-        search: searchQuery,
-      });
-    };
-    window.addEventListener('scroll', onScroll, { passive: true });
-    return () => window.removeEventListener('scroll', onScroll);
-  }, [searchQuery]);
 
   const applyFilters = () => {
     setAnimeSort(draftSort);
@@ -505,12 +442,6 @@ export default function AnimePage() {
                   item={item}
                   grid
                   imagePriority={i < 4}
-                  onNavigate={() => {
-                    setListViewState(EXPLORE_CACHE_KEY, {
-                      scrollY: window.scrollY,
-                      search: searchQuery,
-                    });
-                  }}
                 />
               ))}
             </div>

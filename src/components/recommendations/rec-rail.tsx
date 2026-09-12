@@ -47,6 +47,7 @@ export function RecRail({ rail, tracker, hiddenKeys, onNotInterested }: RecRailP
       <div className="relative">
         <div
           ref={scroller}
+          data-scroll-restoration-key={`recommendations:${rail.id}`}
           onScroll={updateScrollState}
           className="flex snap-x snap-proximity gap-2.5 overflow-x-auto px-2 pb-2 scrollbar-hide md:gap-3 md:px-6"
         >

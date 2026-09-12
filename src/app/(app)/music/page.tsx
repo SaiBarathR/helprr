@@ -126,48 +126,6 @@ function getPosterColumns(width: number, posterSize: 'small' | 'medium' | 'large
   return 3;
 }
 
-function ensurePaintedOrHeightReached(targetScrollY: number, timeoutMs = 1200, pollMs = 50) {
-  return new Promise<void>((resolve) => {
-    const startedAt = Date.now();
-    let done = false;
-    let loadTimeoutId: number | null = null;
-
-    const finish = () => {
-      if (done) return;
-      done = true;
-      if (loadTimeoutId !== null) window.clearTimeout(loadTimeoutId);
-      resolve();
-    };
-
-    const waitForHeight = () => {
-      if (done) return;
-      const maxScrollTop = Math.max(0, document.body.scrollHeight - window.innerHeight);
-      const reachedHeight = maxScrollTop >= targetScrollY;
-      const timedOut = Date.now() - startedAt >= timeoutMs;
-      if (reachedHeight || timedOut) {
-        finish();
-        return;
-      }
-      window.setTimeout(waitForHeight, pollMs);
-    };
-
-    if (document.readyState !== 'complete') {
-      const onLoad = () => {
-        window.removeEventListener('load', onLoad);
-        waitForHeight();
-      };
-      window.addEventListener('load', onLoad, { once: true });
-      loadTimeoutId = window.setTimeout(() => {
-        window.removeEventListener('load', onLoad);
-        waitForHeight();
-      }, timeoutMs);
-      return;
-    }
-
-    waitForHeight();
-  });
-}
-
 function trackProgressLabel(artist: LidarrArtistListItem): string {
   const s = artist.statistics;
   if (!s) return '';
@@ -177,7 +135,7 @@ function trackProgressLabel(artist: LidarrArtistListItem): string {
 /**
  * Music library page (artist-centric). Mirrors the Movies page: client-side data
  * loading + cache, virtualized posters/overview/table views, sticky filter/sort
- * bar, debounced search, and scroll-position restoration.
+ * bar and debounced search.
  */
 export default function MusicPage() {
   const canAddMusic = useCan('music.add');
@@ -224,7 +182,6 @@ export default function MusicPage() {
   } | null>(null);
   const [deletingTarget, setDeletingTarget] = useState(false);
   const contentRef = useRef<HTMLDivElement | null>(null);
-  const hasRestoredScrollRef = useRef(false);
   const hasRestoredSearchRef = useRef(false);
 
   const viewMode = useUIStore((s) => s.musicView);
@@ -251,8 +208,8 @@ export default function MusicPage() {
     [viewMode, setVisibleFieldsForMode]
   );
 
-  const persistViewState = useCallback((scrollY = window.scrollY, searchValue = search) => {
-    setListViewState('music', { scrollY, search: searchValue });
+  const persistViewState = useCallback((searchValue = search) => {
+    setListViewState('music', { scrollY: 0, search: searchValue });
   }, [search]);
 
   useEffect(() => {
@@ -293,47 +250,12 @@ export default function MusicPage() {
   }, [viewMode, posterSize, loading, artists.length, search, filter]);
 
   useEffect(() => {
-    if (loading || hasRestoredScrollRef.current) return;
-
-    const saved = getListViewState('music');
-    if (!saved || saved.scrollY <= 0) {
-      hasRestoredScrollRef.current = true;
-      return;
-    }
-
-    let cancelled = false;
-    void (async () => {
-      await ensurePaintedOrHeightReached(saved.scrollY);
-      if (cancelled) return;
-      window.scrollTo({ top: saved.scrollY, behavior: 'instant' });
-      hasRestoredScrollRef.current = true;
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [loading]);
-
-  useEffect(() => {
-    persistViewState(window.scrollY, search);
+    persistViewState(search);
   }, [search, persistViewState]);
-
-  useEffect(() => {
-    let lastSaved = 0;
-    const onScroll = () => {
-      const now = Date.now();
-      if (now - lastSaved < 150) return;
-      lastSaved = now;
-      persistViewState(window.scrollY, search);
-    };
-
-    window.addEventListener('scroll', onScroll, { passive: true });
-    return () => window.removeEventListener('scroll', onScroll);
-  }, [persistViewState, search]);
 
   const handleSearch = useCallback((v: string) => setSearch(v), [setSearch]);
   const handleNavigateToDetail = useCallback(() => {
-    persistViewState(window.scrollY, search);
+    persistViewState(search);
   }, [persistViewState, search]);
 
   // Connected instances derived from the (already instance-tagged) list.

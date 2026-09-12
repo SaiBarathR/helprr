@@ -1,5 +1,6 @@
 'use client';
 
+import { fetchAnilistViewer } from '@/lib/anilist-viewer';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
 import Link from '@/components/ui/app-link';
@@ -120,21 +121,6 @@ function formatHours(minutes: number): string {
   return `${days}d ${hours % 24}h`;
 }
 
-function ensureHeightReached(targetScrollY: number, timeoutMs = 1200, pollMs = 50) {
-  return new Promise<void>((resolve) => {
-    const startedAt = Date.now();
-    const tick = () => {
-      const maxScroll = Math.max(0, document.body.scrollHeight - window.innerHeight);
-      if (maxScroll >= targetScrollY || Date.now() - startedAt >= timeoutMs) {
-        resolve();
-        return;
-      }
-      window.setTimeout(tick, pollMs);
-    };
-    tick();
-  });
-}
-
 export default function AnimeLibraryPage() {
   const urlParams = useSearchParams();
   const router = useRouter();
@@ -168,23 +154,11 @@ export default function AnimeLibraryPage() {
   const [renderedCount, setRenderedCount] = useState<number>(PAGE_SIZE);
 
   const sentinelRef = useRef<HTMLDivElement>(null);
-  const hasRestoredScrollRef = useRef(false);
 
-  // Viewer connection/stats. On !ok — or a network rejection (offline PWA) — we
-  // treat it as not-configured (parity with the old loadViewer catch) rather than
-  // leaving `viewer` null, which would strand the page on an infinite spinner.
+  // Keep the connected library visible if a background viewer request fails.
   const viewerQuery = useQuery({
     queryKey: ['anilist', 'viewer'],
-    queryFn: async ({ signal }): Promise<ViewerResponse> => {
-      try {
-        const res = await fetch('/api/anilist/viewer', { signal });
-        if (!res.ok) return { configured: false, connected: false, requiresReauth: false };
-        return (await res.json()) as ViewerResponse;
-      } catch (e) {
-        if (signal?.aborted) throw e; // a cancelled fetch must stay cancelled, not resolve
-        return { configured: false, connected: false, requiresReauth: false };
-      }
-    },
+    queryFn: ({ signal }) => fetchAnilistViewer<ViewerResponse>(signal),
   });
   const viewer = viewerQuery.data ?? null;
 
@@ -266,9 +240,9 @@ export default function AnimeLibraryPage() {
   );
 
   const persistTabView = useCallback(
-    (nextRenderedCount: number, scrollY = window.scrollY) => {
+    (nextRenderedCount: number) => {
       setListViewState(cacheKey, {
-        scrollY,
+        scrollY: 0,
         search: '',
         extras: { renderedCount: nextRenderedCount } satisfies PerTabExtras,
       });
@@ -279,17 +253,19 @@ export default function AnimeLibraryPage() {
   // On tab/type change: persist the shared tab selection, restore that tab's
   // client-side render count from view-state, and reset scroll-restore. The
   // collection itself is fetched by libraryQuery (keyed on type+status).
+  // Gated on `hydrated`: before the restore effect below has applied the saved
+  // tab, `type`/`status` still hold their mount defaults, and persisting those
+  // would overwrite the very selection the next visit needs to read back.
   useEffect(() => {
-    if (!viewer?.connected) return;
+    if (!hydrated || !viewer?.connected) return;
     persistShared(type, status);
 
     const savedView = getListViewState(cacheKey);
     const extras = (savedView?.extras ?? {}) as PerTabExtras;
     setRenderedCount(extras.renderedCount && extras.renderedCount > 0 ? extras.renderedCount : PAGE_SIZE);
 
-    hasRestoredScrollRef.current = false;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [viewer?.connected, type, status]);
+  }, [hydrated, viewer?.connected, type, status]);
 
   const flatEntries = useMemo<AniListMediaListEntry[]>(() => {
     if (!collection) return [];
@@ -318,41 +294,6 @@ export default function AnimeLibraryPage() {
     return () => observer.disconnect();
   }, [hasMore, loading, flatEntries.length, persistTabView]);
 
-  // Restore scroll position after data is rendered
-  useEffect(() => {
-    if (loading || hasRestoredScrollRef.current) return;
-    const saved = getListViewState(cacheKey);
-    if (!saved || saved.scrollY <= 0) {
-      hasRestoredScrollRef.current = true;
-      return;
-    }
-
-    let cancelled = false;
-    void (async () => {
-      await ensureHeightReached(saved.scrollY);
-      if (cancelled) return;
-      window.scrollTo({ top: saved.scrollY, behavior: 'instant' });
-      hasRestoredScrollRef.current = true;
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [loading, cacheKey, visibleEntries.length]);
-
-  // Persist scroll position while user scrolls
-  useEffect(() => {
-    let lastSaved = 0;
-    const onScroll = () => {
-      const now = Date.now();
-      if (now - lastSaved < 150) return;
-      lastSaved = now;
-      persistTabView(renderedCount, window.scrollY);
-    };
-    window.addEventListener('scroll', onScroll, { passive: true });
-    return () => window.removeEventListener('scroll', onScroll);
-  }, [renderedCount, persistTabView]);
-
   const stats = viewer?.user?.statistics;
   const tabs = type === 'ANIME' ? STATUS_TABS : STATUS_TABS_MANGA;
 
@@ -376,6 +317,7 @@ export default function AnimeLibraryPage() {
   );
 
   if (!viewer) {
+    if (viewerQuery.isError) return <div className="p-6 text-center space-y-4"><p>Unable to load your AniList library.</p><Button onClick={() => void viewerQuery.refetch()}>Retry</Button></div>;
     return <PageSpinner />;
   }
 
@@ -515,7 +457,7 @@ export default function AnimeLibraryPage() {
                 key={entry.id}
                 entry={entry}
                 imagePriority={i < 4}
-                onNavigate={() => persistTabView(renderedCount, window.scrollY)}
+                onNavigate={() => persistTabView(renderedCount)}
                 onEdit={() => setEditingEntry(entry)}
               />
             ))}

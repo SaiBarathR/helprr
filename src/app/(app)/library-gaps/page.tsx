@@ -1,5 +1,7 @@
 'use client';
 
+import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
+
 import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { jsonFetcher } from '@/lib/query-fetch';
@@ -311,7 +313,7 @@ export default function LibraryGapsPage() {
   const {
     selectionMode, selectedKeys, count, toggle, selectMany, clear, enter, exit,
   } = useBulkSelection();
-  const [activeId, setActiveId] = useState<LibraryGapSectionId | null>(null);
+  const [activeId, setActiveId] = useRouteViewState<LibraryGapSectionId | null>('activeId', null);
   const [searchingAll, setSearchingAll] = useState(false);
 
   // Resolve the active section: the picked tile if it still has gaps, else the
@@ -443,7 +445,7 @@ export default function LibraryGapsPage() {
     <div className="animate-content-in space-y-4">
       <h1 className="sr-only">Library Gaps</h1>
       <div className="page-toolbar page-toolbar-flush app-chrome-bar bg-background/95 pb-2 backdrop-blur supports-[backdrop-filter]:bg-background/80">
-        <div className="flex gap-2 overflow-x-auto scrollbar-hide">
+        <div data-scroll-restoration-key="library-gaps:tabs" className="flex gap-2 overflow-x-auto scrollbar-hide">
           {data.sections.map((section) => (
             <SectionTile
               key={section.id}

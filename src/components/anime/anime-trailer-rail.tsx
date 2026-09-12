@@ -48,7 +48,7 @@ export function AnimeTrailerRail({ trailer, externalLinks, title }: AnimeTrailer
 
   return (
     <div>
-      <div className="flex gap-3 overflow-x-auto pb-1 -mx-2 px-2 md:-mx-6 md:px-6 scrollbar-hide animate-rail-in">
+      <div data-scroll-restoration-key="anime-trailers" className="flex gap-3 overflow-x-auto pb-1 -mx-2 px-2 md:-mx-6 md:px-6 scrollbar-hide animate-rail-in">
         {videos.map((video, idx) => {
           const thumbnail = video.site === 'youtube'
             ? `https://img.youtube.com/vi/${video.videoKey}/mqdefault.jpg`

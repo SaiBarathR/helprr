@@ -1,7 +1,9 @@
 'use no memo';
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
+
+import { useCallback, useState } from 'react';
 import { useWindowVirtualizer } from '@tanstack/react-virtual';
 import { PageHeader } from '@/components/layout/page-header';
 import { PersonRow } from '@/components/media/person-row';
@@ -43,12 +45,8 @@ export function CreditsListPage({
   onRetry,
   retrying,
 }: CreditsListPageProps) {
-  const [tab, setTab] = useState<'cast' | 'crew'>(initialTab);
+  const [tab, setTab] = useRouteViewState<'cast' | 'crew'>('creditsTab', initialTab);
   const [scrollMargin, setScrollMargin] = useState(0);
-
-  useEffect(() => {
-    setTab(initialTab);
-  }, [initialTab]);
 
   const handleListRef = useCallback((node: HTMLDivElement | null) => {
     setScrollMargin(node?.offsetTop ?? 0);

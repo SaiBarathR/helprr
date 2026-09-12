@@ -1,5 +1,7 @@
 'use client';
 
+import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
+
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -56,9 +58,9 @@ export default function MovieCollectionsPage() {
   const instanceFilter = useUIStore((s) => s.moviesInstanceFilter);
   const setInstanceFilter = useUIStore((s) => s.setMoviesInstanceFilter);
 
-  const [search, setSearch] = useState('');
-  const [filter, setFilter] = useState<FilterMode>('all');
-  const [sort, setSort] = useState<SortMode>('title');
+  const [search, setSearch] = useRouteViewState('search', '');
+  const [filter, setFilter] = useRouteViewState<FilterMode>('filter', 'all');
+  const [sort, setSort] = useRouteViewState<SortMode>('sort', 'title');
   const [selected, setSelected] = useState<CollectionSummary | null>(null);
   const [pendingActions, setPendingActions] = useState<Set<string>>(new Set());
 

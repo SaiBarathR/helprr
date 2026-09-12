@@ -1,5 +1,7 @@
 'use client';
 
+import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
+
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useWindowVirtualizer } from '@tanstack/react-virtual';
 import Link from '@/components/ui/app-link';
@@ -61,8 +63,8 @@ function entryLabel(entry: AdminAnimeMappingRow['entries'][number]): string {
 export default function AnimeMappingListPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const [filter, setFilter] = useState<StateFilter>('ALL');
-  const [search, setSearch] = useState('');
+  const [filter, setFilter] = useRouteViewState<StateFilter>('AnimeMappingListPage:filter', 'ALL');
+  const [search, setSearch] = useRouteViewState('AnimeMappingListPage:search', '');
   const [confirmTarget, setConfirmTarget] = useState<AdminAnimeMappingRow | null>(null);
   const [confirmAll, setConfirmAll] = useState(false);
 

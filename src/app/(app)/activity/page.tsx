@@ -1,5 +1,7 @@
 'use client';
 
+import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
+
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from '@/components/ui/app-link';
 import { useSearchParams } from 'next/navigation';
@@ -40,7 +42,8 @@ import { formatDistanceToNow } from 'date-fns';
 import { toast } from 'sonner';
 import type { QueueItem } from '@/types';
 import { getRefreshIntervalMs } from '@/lib/client-refresh-settings';
-import { keepPreviousData, useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useRestorableInfiniteQuery as useInfiniteQuery } from '@/lib/hooks/use-restorable-infinite-query';
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError, jsonFetcher, backoffRefetchInterval } from '@/lib/query-fetch';
 import { invalidateActivity } from '@/lib/query-invalidation';
 import { classifyQueueIssue } from '@/lib/queue-state';
@@ -593,7 +596,7 @@ export default function ActivityPage() {
       )}
 
       {/* Tab content */}
-      <div ref={contentScrollRef} className="flex-1 overflow-y-auto">
+      <div ref={contentScrollRef} data-scroll-restoration-key="activity-content" className="flex-1 overflow-y-auto">
         {tab === 'queue' && (
           <QueueTab
             sortBy={sortBy}
@@ -647,7 +650,7 @@ function QueueTab({
   const [refreshIntervalMs, setRefreshIntervalMs] = useState(5000);
   // Season-pack groups start collapsed; keyed by group key (stable across polls
   // since it derives from the download id), so an open group stays open on refetch.
-  const [expandedKeys, setExpandedKeys] = useState<Set<string>>(() => new Set());
+  const [expandedKeys, setExpandedKeys] = useRouteViewState<Set<string>>('expandedKeys', () => new Set());
   const toggleExpand = (key: string) =>
     setExpandedKeys((prev) => {
       const next = new Set(prev);

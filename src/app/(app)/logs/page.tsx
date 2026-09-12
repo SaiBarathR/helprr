@@ -1,5 +1,7 @@
 'use client';
 
+import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
+
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useWindowVirtualizer } from '@tanstack/react-virtual';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -78,15 +80,15 @@ async function downloadOrShare(url: string, fallbackName: string) {
 export default function LogsPage() {
   const queryClient = useQueryClient();
   const canManageLogs = useCan('logs.manage');
-  const [selectedFile, setSelectedFile] = useState('all');
-  const [levels, setLevels] = useState<Set<LogLevel>>(() => new Set());
-  const [sources, setSources] = useState<Set<LogSource>>(() => new Set());
-  const [searchInput, setSearchInput] = useState('');
-  const [query, setQuery] = useState('');
-  const [from, setFrom] = useState('');
-  const [to, setTo] = useState('');
+  const [selectedFile, setSelectedFile] = useRouteViewState('selectedFile', 'all');
+  const [levels, setLevels] = useRouteViewState<Set<LogLevel>>('levels', () => new Set());
+  const [sources, setSources] = useRouteViewState<Set<LogSource>>('sources', () => new Set());
+  const [searchInput, setSearchInput] = useRouteViewState('searchInput', '');
+  const [query, setQuery] = useRouteViewState('query', '');
+  const [from, setFrom] = useRouteViewState('from', '');
+  const [to, setTo] = useRouteViewState('to', '');
   const [deletingFile, setDeletingFile] = useState<string | null>(null);
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [expanded, setExpanded] = useRouteViewState<Set<string>>('expanded', new Set());
   const [filesSheetOpen, setFilesSheetOpen] = useState(false);
   const [scrollMargin, setScrollMargin] = useState(0);
   const [pendingDeleteFile, setPendingDeleteFile] = useState<string | null>(null);
@@ -97,7 +99,7 @@ export default function LogsPage() {
   useEffect(() => {
     const handle = window.setTimeout(() => setQuery(searchInput.trim()), 300);
     return () => window.clearTimeout(handle);
-  }, [searchInput]);
+  }, [searchInput, setQuery]);
 
   const logsSearchPath = (() => {
     const params = new URLSearchParams();
@@ -196,7 +198,7 @@ export default function LogsPage() {
         setDeletingFile(null);
       }
     },
-    [queryClient, selectedFile]
+    [queryClient, selectedFile, setSelectedFile]
   );
 
   const deleteFile = useCallback((file: string) => {
@@ -206,7 +208,7 @@ export default function LogsPage() {
   const handleResetFilters = useCallback(() => {
     setLevels(new Set());
     setSources(new Set());
-  }, []);
+  }, [setLevels, setSources]);
 
   const handleClearAll = useCallback(() => {
     setLevels(new Set());
@@ -216,7 +218,7 @@ export default function LogsPage() {
     setFrom('');
     setTo('');
     setSelectedFile('all');
-  }, []);
+  }, [setFrom, setLevels, setQuery, setSearchInput, setSelectedFile, setSources, setTo]);
 
   const handleToggleLevel = useCallback((value: LogLevel) => {
     setLevels((prev) => {
@@ -225,7 +227,7 @@ export default function LogsPage() {
       else next.add(value);
       return next;
     });
-  }, []);
+  }, [setLevels]);
 
   const handleToggleSource = useCallback((value: LogSource) => {
     setSources((prev) => {
@@ -234,20 +236,20 @@ export default function LogsPage() {
       else next.add(value);
       return next;
     });
-  }, []);
+  }, [setSources]);
 
   const handleFilterLevel = useCallback((value: LogLevel) => {
     setLevels(new Set([value]));
-  }, []);
+  }, [setLevels]);
 
   const handleFilterSource = useCallback((value: LogSource) => {
     setSources(new Set([value]));
-  }, []);
+  }, [setSources]);
 
   const handleDateRangeChange = useCallback((nextFrom: string, nextTo: string) => {
     setFrom(nextFrom);
     setTo(nextTo);
-  }, []);
+  }, [setFrom, setTo]);
 
   const toggleExpand = useCallback((key: string) => {
     setExpanded((prev) => {
@@ -259,7 +261,7 @@ export default function LogsPage() {
       }
       return next;
     });
-  }, []);
+  }, [setExpanded]);
 
   const totalSize = virtualizer.getTotalSize();
   const virtualItems = virtualizer.getVirtualItems();

@@ -1,8 +1,11 @@
 'use client';
 
+import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
+
 import { useEffect, useMemo, useState, type JSX } from 'react';
 import Link from '@/components/ui/app-link';
-import { keepPreviousData, useInfiniteQuery, useQuery } from '@tanstack/react-query';
+import { useRestorableInfiniteQuery as useInfiniteQuery } from '@/lib/hooks/use-restorable-infinite-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { jsonFetcher } from '@/lib/query-fetch';
 import { PageHeader } from '@/components/layout/page-header';
 import { Badge } from '@/components/ui/badge';
@@ -162,8 +165,8 @@ function buildHistoryUrl(p: number, eventFilter: EventFilterKey, instanceFilter:
 }
 
 export default function HistoryPage() {
-  const [eventFilter, setEventFilter] = useState<EventFilterKey>('all');
-  const [instanceFilter, setInstanceFilter] = useState<string>('all');
+  const [eventFilter, setEventFilter] = useRouteViewState<EventFilterKey>('eventFilter', 'all');
+  const [instanceFilter, setInstanceFilter] = useRouteViewState<string>('instanceFilter', 'all');
   const [selectedItem, setSelectedItem] = useState<HistoryRecord | null>(null);
   const [drawerMode, setDrawerMode] = useState<DrawerMode>('basic');
 
@@ -226,10 +229,10 @@ export default function HistoryPage() {
   // when handleLoadMore was removed) is suppressed here.
   useEffect(() => {
     if (instanceFilter !== 'all' && !instanceOptions.some((i) => i.id === instanceFilter)) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
+
       setInstanceFilter('all');
     }
-  }, [instanceOptions, instanceFilter]);
+  }, [instanceOptions, instanceFilter, setInstanceFilter]);
 
   const activeFilterLabel = EVENT_FILTERS.find((f) => f.key === eventFilter)?.label || 'All Events';
 
@@ -272,7 +275,7 @@ export default function HistoryPage() {
       )}
 
       {/* History list */}
-      <div className="flex-1 overflow-y-auto pb-4">
+      <div data-scroll-restoration-key="activity-history" className="flex-1 overflow-y-auto pb-4">
         {loading ? (
           <PageSpinner />
         ) : history.length === 0 ? (

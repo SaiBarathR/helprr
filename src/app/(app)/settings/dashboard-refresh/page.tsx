@@ -1,5 +1,7 @@
 'use client';
 
+import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
+
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError, jsonFetcher } from '@/lib/query-fetch';
@@ -56,7 +58,7 @@ export default function DashboardRefreshSettingsPage() {
   const router = useRouter();
   const [overrides, setOverrides] = useState<OverrideMap>({});
   const [drafts, setDrafts] = useState<Record<string, Record<string, string>>>({});
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [expanded, setExpanded] = useRouteViewState<Record<string, boolean>>('DashboardRefreshSettingsPage:expanded', {});
   const [confirmLeave, setConfirmLeave] = useState(false);
   const discoverLayout = useUIStore((s) => s.discoverLayout);
   const queryClient = useQueryClient();

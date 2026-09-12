@@ -26,6 +26,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('@tanstack/react-query', () => ({
+  useQueryClient: () => ({ getQueryData: () => undefined }),
   useInfiniteQuery: ({ queryKey }: { queryKey: readonly unknown[] }) =>
     queryKey[2] === 'browse' ? mocks.browseQuery : mocks.searchQuery,
 }));

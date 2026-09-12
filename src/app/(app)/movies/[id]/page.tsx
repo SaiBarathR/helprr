@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { arrMutationFetch, jsonFetcher } from '@/lib/query-fetch';
 import { handleAuthError } from '@/lib/query-client';
 import Image from 'next/image';
@@ -58,12 +58,6 @@ import { queryKeys } from '@/lib/query-keys';
 import { invalidateMovies } from '@/lib/query-invalidation';
 import { useQualityProfiles, useTags } from '@/lib/hooks/use-reference-data';
 import { pollCommand } from '@/lib/arr-command';
-import {
-  getDetailViewState,
-  setDetailViewState,
-  waitForScrollY,
-  type DetailViewKey,
-} from '@/lib/detail-view-state';
 import { useExternalUrls, useExternalUrlResolver } from '@/lib/hooks/use-external-urls';
 import { formatBytes } from '@/lib/format';
 import Link from '@/components/ui/app-link';
@@ -89,35 +83,12 @@ import { QuickContextMenu, type ContextActionGroup } from '@/components/ui/quick
 import { MediaDownloadProgress } from '@/components/media/media-download-progress';
 import { formatLanguageCode, formatRegionCodes } from '@/lib/media-locale';
 
-function waitForElementScrollY(
-  element: HTMLElement,
-  targetScrollY: number,
-  timeoutMs = 1200,
-  pollMs = 50
-): Promise<void> {
-  return new Promise((resolve) => {
-    const startedAt = Date.now();
-    const tick = () => {
-      const maxScroll = Math.max(0, element.scrollHeight - element.clientHeight);
-      if (maxScroll >= targetScrollY || Date.now() - startedAt >= timeoutMs) {
-        resolve();
-        return;
-      }
-      window.setTimeout(tick, pollMs);
-    };
-    tick();
-  });
-}
-
 export default function MovieDetailPage() {
   const { id } = useParams();
   const movieId = Number(id);
   const instance = useSearchParams().get('instance') ?? undefined;
   const queryClient = useQueryClient();
-  const detailViewKey: DetailViewKey = `movie:${movieId}`;
   const contentScrollRef = useRef<HTMLDivElement>(null);
-  const scrollReadyRef = useRef(false);
-  const hasRestoredScrollRef = useRef(false);
   const router = useRouter();
 
   // Movie detail — TanStack's cache gives instant paint on back-nav (gcTime)
@@ -202,86 +173,6 @@ export default function MovieDetailPage() {
     enabled: !!movie,
     staleTime: 5 * 60_000,
   });
-
-  const getCurrentScrollY = useCallback(() => {
-    const content = contentScrollRef.current;
-    if (content) {
-      const maxScroll = Math.max(0, content.scrollHeight - content.clientHeight);
-      if (maxScroll > 0 || content.scrollTop > 0) return content.scrollTop;
-    }
-
-    if (typeof window === 'undefined') return 0;
-    return window.scrollY;
-  }, []);
-
-  // Reset scroll-restore guards whenever the movie/instance changes.
-  useEffect(() => {
-    scrollReadyRef.current = false;
-    hasRestoredScrollRef.current = false;
-  }, [instance, movieId]);
-
-  useEffect(() => {
-    if (loading || !movie || hasRestoredScrollRef.current) return;
-    const saved = getDetailViewState(detailViewKey);
-    if (!saved || saved.scrollY <= 0) {
-      hasRestoredScrollRef.current = true;
-      scrollReadyRef.current = true;
-      return;
-    }
-
-    let cancelled = false;
-    void (async () => {
-      const content = contentScrollRef.current;
-      const shouldUseContentScroll = Boolean(
-        content && Math.max(0, content.scrollHeight - content.clientHeight) > 0
-      );
-
-      if (shouldUseContentScroll && content) {
-        await waitForElementScrollY(content, saved.scrollY);
-      } else {
-        await waitForScrollY(saved.scrollY);
-      }
-
-      if (cancelled) return;
-      if (shouldUseContentScroll && content) {
-        content.scrollTo({ top: saved.scrollY, behavior: 'instant' });
-      } else {
-        window.scrollTo({ top: saved.scrollY, behavior: 'instant' });
-      }
-      hasRestoredScrollRef.current = true;
-      scrollReadyRef.current = true;
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [detailViewKey, loading, movie]);
-
-  useEffect(() => {
-    const persistScroll = () => {
-      if (!scrollReadyRef.current) return;
-      setDetailViewState(detailViewKey, { scrollY: getCurrentScrollY() });
-    };
-
-    let lastSaved = 0;
-    const onScroll = () => {
-      const now = Date.now();
-      if (now - lastSaved < 150) return;
-      lastSaved = now;
-      persistScroll();
-    };
-
-    const content = contentScrollRef.current;
-    window.addEventListener('scroll', onScroll, { passive: true });
-    content?.addEventListener('scroll', onScroll, { passive: true });
-    window.addEventListener('pagehide', persistScroll);
-    return () => {
-      persistScroll();
-      window.removeEventListener('scroll', onScroll);
-      content?.removeEventListener('scroll', onScroll);
-      window.removeEventListener('pagehide', persistScroll);
-    };
-  }, [detailViewKey, getCurrentScrollY, loading, movie]);
 
   async function handleOpenInJellyfin() {
     if (!movie || !externalUrls.JELLYFIN) return;
@@ -676,8 +567,8 @@ export default function MovieDetailPage() {
 
       <div
         ref={contentScrollRef}
+        data-scroll-restoration-key="movie-detail"
         className="space-y-6 animate-content-in"
-        onClickCapture={() => setDetailViewState(detailViewKey, { scrollY: getCurrentScrollY() })}
       >
         {/* Hero: Backdrop or flat poster layout */}
         {tmdbData?.backdropPath ? (

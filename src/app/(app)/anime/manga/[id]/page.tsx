@@ -1,6 +1,8 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
+
+
 import { useParams } from 'next/navigation';
 import Link from '@/components/ui/app-link';
 import DOMPurify from 'isomorphic-dompurify';
@@ -18,19 +20,10 @@ import { ExternalLink, ListChecks } from 'lucide-react';
 import { useMe } from '@/components/permission-provider';
 import type { AniListMangaDetailResponse } from '@/types/anilist';
 import { useQuery } from '@tanstack/react-query';
-import {
-  getDetailViewState,
-  setDetailViewState,
-  waitForScrollY,
-  type DetailViewKey,
-} from '@/lib/detail-view-state';
 
 export default function MangaDetailPage() {
   const params = useParams();
   const id = params.id as string;
-  const detailViewKey: DetailViewKey = `manga:${id}`;
-  const scrollReadyRef = useRef(false);
-  const hasRestoredScrollRef = useRef(false);
   // gcTime gives instant back-nav paint without the bespoke snapshot cache.
   const detailQuery = useQuery({
     queryKey: ['anime', 'manga', id],
@@ -51,60 +44,8 @@ export default function MangaDetailPage() {
       ? detailQuery.error.message
       : 'Failed to load'
     : null;
-  const [synopsisExpanded, setSynopsisExpanded] = useState(false);
+  const [synopsisExpanded, setSynopsisExpanded] = useRouteViewState('synopsisExpanded', false);
   const isAdmin = useMe()?.role === 'admin';
-
-  // Reset scroll-restore guards when navigating to a different manga.
-  useEffect(() => {
-    scrollReadyRef.current = false;
-    hasRestoredScrollRef.current = false;
-  }, [id]);
-
-  useEffect(() => {
-    if (loading || !detail || hasRestoredScrollRef.current) return;
-    const saved = getDetailViewState(detailViewKey);
-    if (!saved || saved.scrollY <= 0) {
-      hasRestoredScrollRef.current = true;
-      scrollReadyRef.current = true;
-      return;
-    }
-
-    let cancelled = false;
-    void (async () => {
-      await waitForScrollY(saved.scrollY);
-      if (cancelled) return;
-      window.scrollTo({ top: saved.scrollY, behavior: 'instant' });
-      hasRestoredScrollRef.current = true;
-      scrollReadyRef.current = true;
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [detailViewKey, loading, detail]);
-
-  useEffect(() => {
-    const persistScroll = () => {
-      if (!scrollReadyRef.current) return;
-      setDetailViewState(detailViewKey, { scrollY: window.scrollY });
-    };
-
-    let lastSaved = 0;
-    const onScroll = () => {
-      const now = Date.now();
-      if (now - lastSaved < 150) return;
-      lastSaved = now;
-      persistScroll();
-    };
-
-    window.addEventListener('scroll', onScroll, { passive: true });
-    window.addEventListener('pagehide', persistScroll);
-    return () => {
-      persistScroll();
-      window.removeEventListener('scroll', onScroll);
-      window.removeEventListener('pagehide', persistScroll);
-    };
-  }, [detailViewKey]);
 
   if (loading && !detail) {
     return <><PageHeader title="Manga" /><PageSpinner /></>;
@@ -182,7 +123,7 @@ export default function MangaDetailPage() {
   ];
 
   return (
-    <div className="animate-content-in" onClickCapture={() => setDetailViewState(detailViewKey, { scrollY: window.scrollY })}>
+    <div className="animate-content-in">
       <PageHeader title={detail.title} />
 
       {/* Hero */}

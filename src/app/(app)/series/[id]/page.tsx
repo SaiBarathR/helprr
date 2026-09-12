@@ -1,6 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
+
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import Image from 'next/image';
 import DOMPurify from 'isomorphic-dompurify';
 import { useParams, useSearchParams } from 'next/navigation';
@@ -49,12 +51,6 @@ import { handleAuthError } from '@/lib/query-client';
 import { episodesWithFileKey, tvSeasonKey } from '@/lib/series-query-cache';
 import { useQualityProfiles, useRootFolders, useTags } from '@/lib/hooks/use-reference-data';
 import { pollCommand } from '@/lib/arr-command';
-import {
-  getDetailViewState,
-  setDetailViewState,
-  waitForScrollY,
-  type DetailViewKey,
-} from '@/lib/detail-view-state';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import { useExternalUrls, useExternalUrlResolver } from '@/lib/hooks/use-external-urls';
 import { DiscoverVideoRail } from '@/components/discover/discover-video-rail';
@@ -145,38 +141,14 @@ function formatAniListMappingState(state: SeriesAniListResponse['mapping']['stat
   return 'Not mapped';
 }
 
-function waitForElementScrollY(
-  element: HTMLElement,
-  targetScrollY: number,
-  timeoutMs = 1200,
-  pollMs = 50
-): Promise<void> {
-  return new Promise((resolve) => {
-    const startedAt = Date.now();
-    const tick = () => {
-      const maxScroll = Math.max(0, element.scrollHeight - element.clientHeight);
-      if (maxScroll >= targetScrollY || Date.now() - startedAt >= timeoutMs) {
-        resolve();
-        return;
-      }
-      window.setTimeout(tick, pollMs);
-    };
-    tick();
-  });
-}
-
-
 export default function SeriesDetailPage() {
   const { id } = useParams();
   const router = useRouter();
   const seriesId = Number(id);
   const instance = useSearchParams().get('instance') ?? undefined;
   const queryClient = useQueryClient();
-  const detailViewKey: DetailViewKey = `series:${seriesId}`;
   const currentSeriesIdRef = useRef(seriesId);
   const contentScrollRef = useRef<HTMLDivElement>(null);
-  const scrollReadyRef = useRef(false);
-  const hasRestoredScrollRef = useRef(false);
   // The on-screen AniList entry — read by the background refresh interval.
   const activeAnimeEntryIdRef = useRef<number | null>(null);
   currentSeriesIdRef.current = seriesId;
@@ -216,14 +188,14 @@ export default function SeriesDetailPage() {
   const [activeDetailLoading, setActiveDetailLoading] = useState(false);
   // Full detail set hydrated when the remap drawer opens (suggestions need every entry's relations).
   const [drawerDetails, setDrawerDetails] = useState<AniListDetailResponse[] | null>(null);
-  const [animeOverviewExpanded, setAnimeOverviewExpanded] = useState(false);
+  const [animeOverviewExpanded, setAnimeOverviewExpanded] = useRouteViewState('SeriesDetailPage:animeOverviewExpanded', false);
   const [showAniListRemap, setShowAniListRemap] = useState(false);
-  const [activeAnimeTab, setActiveAnimeTab] = useState(0);
+  const [activeAnimeTab, setActiveAnimeTab] = useRouteViewState('SeriesDetailPage:activeAnimeTab', 0);
   // Season chip expanded to its full name (mobile has no hover), keyed by anilistMediaId.
-  const [expandedAnimeTabId, setExpandedAnimeTabId] = useState<number | null>(null);
+  const [expandedAnimeTabId, setExpandedAnimeTabId] = useRouteViewState<number | null>('SeriesDetailPage:expandedAnimeTabId', null);
   const [showAddWatchlist, setShowAddWatchlist] = useState(false);
   const [showScheduleAlert, setShowScheduleAlert] = useState(false);
-  const [expandedSeasons, setExpandedSeasons] = useState<Set<number>>(new Set());
+  const [expandedSeasons, setExpandedSeasons] = useRouteViewState<Set<number>>('expandedSeasons', new Set());
   const [seasonInteractiveTarget, setSeasonInteractiveTarget] = useState<{
     seasonNumber: number;
     label: string;
@@ -347,86 +319,12 @@ export default function SeriesDetailPage() {
     return counts;
   }, [episodeWatch]);
 
-  const getCurrentScrollY = useCallback(() => {
-    const content = contentScrollRef.current;
-    if (content) {
-      const maxScroll = Math.max(0, content.scrollHeight - content.clientHeight);
-      if (maxScroll > 0 || content.scrollTop > 0) return content.scrollTop;
-    }
-
-    if (typeof window === 'undefined') return 0;
-    return window.scrollY;
-  }, []);
-
-  // Reset scroll-restore guards and per-series UI state whenever the series /
+  // Reset per-series transient UI state whenever the series /
   // instance changes (Next keeps this component mounted across param changes, so
   // this can't rely on a remount).
   useEffect(() => {
-    scrollReadyRef.current = false;
-    hasRestoredScrollRef.current = false;
-    setExpandedSeasons(new Set());
     setDrawerDetails(null);
   }, [seriesId, instance]);
-
-  useEffect(() => {
-    if (loading || !series || hasRestoredScrollRef.current) return;
-    const saved = getDetailViewState(detailViewKey);
-    if (!saved || saved.scrollY <= 0) {
-      hasRestoredScrollRef.current = true;
-      scrollReadyRef.current = true;
-      return;
-    }
-
-    let cancelled = false;
-    void (async () => {
-      const content = contentScrollRef.current;
-
-      if (content) {
-        await waitForElementScrollY(content, saved.scrollY);
-      } else {
-        await waitForScrollY(saved.scrollY);
-      }
-
-      if (cancelled) return;
-      if (content) {
-        content.scrollTo({ top: saved.scrollY, behavior: 'instant' });
-      } else {
-        window.scrollTo({ top: saved.scrollY, behavior: 'instant' });
-      }
-      hasRestoredScrollRef.current = true;
-      scrollReadyRef.current = true;
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [detailViewKey, loading, series]);
-
-  useEffect(() => {
-    const persistScroll = () => {
-      if (!scrollReadyRef.current) return;
-      setDetailViewState(detailViewKey, { scrollY: getCurrentScrollY() });
-    };
-
-    let lastSaved = 0;
-    const onScroll = () => {
-      const now = Date.now();
-      if (now - lastSaved < 150) return;
-      lastSaved = now;
-      persistScroll();
-    };
-
-    const content = contentScrollRef.current;
-    window.addEventListener('scroll', onScroll, { passive: true });
-    content?.addEventListener('scroll', onScroll, { passive: true });
-    window.addEventListener('pagehide', persistScroll);
-    return () => {
-      persistScroll();
-      window.removeEventListener('scroll', onScroll);
-      content?.removeEventListener('scroll', onScroll);
-      window.removeEventListener('pagehide', persistScroll);
-    };
-  }, [detailViewKey, getCurrentScrollY, loading, series]);
 
   useEffect(() => {
     if (series?.seriesType !== 'anime' || !series?.id) return;
@@ -489,7 +387,7 @@ export default function SeriesDetailPage() {
       window.removeEventListener('focus', handleVisibilityOrFocus);
       document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
     };
-  }, [series?.id, series?.seriesType, seriesId, instance, queryClient]);
+  }, [series?.id, series?.seriesType, seriesId, instance, queryClient, setActiveAnimeTab]);
 
   useEffect(() => {
     setAnimeNowMs(Date.now());
@@ -1103,7 +1001,6 @@ export default function SeriesDetailPage() {
   return (
     <div
       className="flex flex-col min-h-0 animate-content-in -mx-2 md:-mx-6"
-      onClickCapture={() => setDetailViewState(detailViewKey, { scrollY: getCurrentScrollY() })}
     >
       {/* Page Header */}
       <PageHeader
@@ -1258,10 +1155,10 @@ export default function SeriesDetailPage() {
         }
       />
 
-      <div ref={contentScrollRef} className="flex-1 overflow-y-auto px-2 md:p-6">
+      <div ref={contentScrollRef} data-scroll-restoration-key="series-detail" className="flex-1 overflow-y-auto px-2 md:p-6">
         {/* Hero: Backdrop or flat poster layout */}
         {isAnimeSeries && animeEntries.length > 1 && (
-          <div className="flex items-center gap-1.5 overflow-x-auto pt-1 pb-3 -mx-2 px-2 md:mx-0 md:px-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div data-scroll-restoration-key="series-anime-tabs" className="flex items-center gap-1.5 overflow-x-auto pt-1 pb-3 -mx-2 px-2 md:mx-0 md:px-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {animeEntries.map((entry, index) => {
               const detail = animeDetailsById.get(entry.anilistMediaId);
               const fullTitle = detail?.title ?? entry.titleSnapshot ?? `AniList #${entry.anilistMediaId}`;

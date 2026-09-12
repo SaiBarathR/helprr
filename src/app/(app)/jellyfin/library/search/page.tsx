@@ -1,5 +1,6 @@
 'use client';
 
+import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { jsonFetcher } from '@/lib/query-fetch';
@@ -55,8 +56,8 @@ export default function JellyfinSearchPage() {
   // The app lists search hits in a column on a phone and shows 16:9 title
   // cards on a wide screen; a portrait poster grid is neither.
   const asList = cinematic && compact;
-  const [q, setQ] = useState('');
-  const [debounced, setDebounced] = useState('');
+  const [q, setQ] = useRouteViewState('search', '');
+  const [debounced, setDebounced] = useState(q.trim());
   useEffect(() => {
     const timer = window.setTimeout(() => setDebounced(q.trim()), 250);
     return () => window.clearTimeout(timer);

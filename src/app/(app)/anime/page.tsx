@@ -1,5 +1,6 @@
 'use client';
 
+import { fetchAnilistViewer } from '@/lib/anilist-viewer';
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ApiError, jsonFetcher } from '@/lib/query-fetch';
@@ -181,12 +182,7 @@ export default function AnimeHomePage() {
 
   const viewerQuery = useQuery({
     queryKey: ['anilist', 'viewer'],
-    queryFn: async ({ signal }): Promise<ViewerSummary> => {
-      const res = await fetch('/api/anilist/viewer', { signal });
-      if (!res.ok) return { connected: false };
-      const json = await res.json();
-      return { connected: !!json.connected, user: json.user };
-    },
+    queryFn: ({ signal }) => fetchAnilistViewer<ViewerSummary>(signal),
     enabled: isAdmin,
   });
   const viewer: ViewerSummary | null = isAdmin ? (viewerQuery.data ?? null) : { connected: false };

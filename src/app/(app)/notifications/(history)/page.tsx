@@ -46,7 +46,8 @@ import {
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { toast } from 'sonner';
-import { keepPreviousData, useInfiniteQuery, useQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query';
+import { useRestorableInfiniteQuery as useInfiniteQuery } from '@/lib/hooks/use-restorable-infinite-query';
+import { keepPreviousData, useQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query';
 import { ApiError, jsonFetcher } from '@/lib/query-fetch';
 import { useUIStore } from '@/lib/store';
 import { EVENT_GROUPS, EVENT_META, type NotificationEventType } from '@/lib/notification-events';

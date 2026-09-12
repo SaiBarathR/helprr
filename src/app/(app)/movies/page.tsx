@@ -147,48 +147,6 @@ function getPosterColumns(width: number, posterSize: 'small' | 'medium' | 'large
   return 3;
 }
 
-function ensurePaintedOrHeightReached(targetScrollY: number, timeoutMs = 1200, pollMs = 50) {
-  return new Promise<void>((resolve) => {
-    const startedAt = Date.now();
-    let done = false;
-    let loadTimeoutId: number | null = null;
-
-    const finish = () => {
-      if (done) return;
-      done = true;
-      if (loadTimeoutId !== null) window.clearTimeout(loadTimeoutId);
-      resolve();
-    };
-
-    const waitForHeight = () => {
-      if (done) return;
-      const maxScrollTop = Math.max(0, document.body.scrollHeight - window.innerHeight);
-      const reachedHeight = maxScrollTop >= targetScrollY;
-      const timedOut = Date.now() - startedAt >= timeoutMs;
-      if (reachedHeight || timedOut) {
-        finish();
-        return;
-      }
-      window.setTimeout(waitForHeight, pollMs);
-    };
-
-    if (document.readyState !== 'complete') {
-      const onLoad = () => {
-        window.removeEventListener('load', onLoad);
-        waitForHeight();
-      };
-      window.addEventListener('load', onLoad, { once: true });
-      loadTimeoutId = window.setTimeout(() => {
-        window.removeEventListener('load', onLoad);
-        waitForHeight();
-      }, timeoutMs);
-      return;
-    }
-
-    waitForHeight();
-  });
-}
-
 /**
  * Render the Movies management page with client-side data loading, filtering, sorting, and multiple view modes (posters, overview, table).
  *
@@ -258,7 +216,6 @@ export default function MoviesPage() {
   } | null>(null);
   const [deletingTarget, setDeletingTarget] = useState(false);
   const contentRef = useRef<HTMLDivElement | null>(null);
-  const hasRestoredScrollRef = useRef(false);
   const hasRestoredSearchRef = useRef(false);
 
   const viewMode = useUIStore((s) => s.moviesView);
@@ -287,8 +244,8 @@ export default function MoviesPage() {
     [viewMode, setVisibleFieldsForMode]
   );
 
-  const persistViewState = useCallback((scrollY = window.scrollY, searchValue = search) => {
-    setListViewState('movies', { scrollY, search: searchValue });
+  const persistViewState = useCallback((searchValue = search) => {
+    setListViewState('movies', { scrollY: 0, search: searchValue });
   }, [search]);
 
   useEffect(() => {
@@ -329,47 +286,12 @@ export default function MoviesPage() {
   }, [viewMode, posterSize, loading, movies.length, search, filter, watchFilter]);
 
   useEffect(() => {
-    if (loading || hasRestoredScrollRef.current) return;
-
-    const saved = getListViewState('movies');
-    if (!saved || saved.scrollY <= 0) {
-      hasRestoredScrollRef.current = true;
-      return;
-    }
-
-    let cancelled = false;
-    void (async () => {
-      await ensurePaintedOrHeightReached(saved.scrollY);
-      if (cancelled) return;
-      window.scrollTo({ top: saved.scrollY, behavior: 'instant' });
-      hasRestoredScrollRef.current = true;
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [loading]);
-
-  useEffect(() => {
-    persistViewState(window.scrollY, search);
+    persistViewState(search);
   }, [search, persistViewState]);
-
-  useEffect(() => {
-    let lastSaved = 0;
-    const onScroll = () => {
-      const now = Date.now();
-      if (now - lastSaved < 150) return;
-      lastSaved = now;
-      persistViewState(window.scrollY, search);
-    };
-
-    window.addEventListener('scroll', onScroll, { passive: true });
-    return () => window.removeEventListener('scroll', onScroll);
-  }, [persistViewState, search]);
 
   const handleSearch = useCallback((v: string) => setSearch(v), [setSearch]);
   const handleNavigateToDetail = useCallback(() => {
-    persistViewState(window.scrollY, search);
+    persistViewState(search);
   }, [persistViewState, search]);
 
   // Connected instances derived from the (already instance-tagged) list.

@@ -3,7 +3,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import Link from '@/components/ui/app-link';
-import { useInfiniteQuery } from '@tanstack/react-query';
+import { useRestorableInfiniteQuery as useInfiniteQuery } from '@/lib/hooks/use-restorable-infinite-query';
 import { History, Loader2, Search, X } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { jsonFetcher } from '@/lib/query-fetch';

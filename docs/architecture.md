@@ -287,6 +287,24 @@ or aborted, surfaced in the preview dialog and the dashboard's last-cycle line.
 
 ## PWA and Push
 
+Authenticated routes share scroll restoration in `AppShell`. Navigation captures
+the outgoing route before displaying its loading feedback, which preserves the
+outgoing page's layout height. Positions are tab-scoped and keyed by pathname and
+canonical query string, including service instance. The shared controller restores
+the document and nested scrollers as content becomes available, and yields to user
+scroll gestures and explicit controls. Saved destinations settle after 400 ms of
+quiet layout, with an eight-second upper bound for unreachable positions. Lazy
+placeholders below the viewport do not block restoration. A layout-induced
+clamp does not overwrite a higher saved destination. Inline overflow and Radix
+scrollports participate, and dashboard keys include widget identity. Page components must not add competing mount-time scroll resets.
+Use `data-scroll-restoration-key` for independently scrolling rails and panels.
+
+`useRouteViewState` retains small presentation state that determines the layout,
+such as expanded seasons, selected sections, filters, and table pages.
+`useRestorableInfiniteQuery` retains the loaded page count and rebuilds that depth
+after the query payload cache expires. Payloads remain in TanStack Query; action
+dialogs, pending mutations, and credentials are not retained as view state.
+
 Production uses `src/app/sw.ts`, compiled by Serwist for precaching, runtime
 caching, offline behavior, and push handling. `npm run build` explicitly uses
 webpack because the current Serwist integration is not compatible with the

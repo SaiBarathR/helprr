@@ -1,7 +1,10 @@
 'use client';
 
+import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
+
 import { useCallback, useMemo, useState } from 'react';
-import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useRestorableInfiniteQuery as useInfiniteQuery } from '@/lib/hooks/use-restorable-infinite-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { jsonFetcher } from '@/lib/query-fetch';
 import { FadeInImage } from '@/components/media/fade-in-image';
 import Image from 'next/image';
@@ -132,7 +135,7 @@ const MAX_DAYS = 18250;
 
 export default function JellyfinPage() {
   const pageQueryClient = useQueryClient();
-  const [tab, setTab] = useState<TabKey>('overview');
+  const [tab, setTab] = useRouteViewState<TabKey>('JellyfinPage:tab', 'overview');
   // Users (sessions) and Stats are admin analytics; members keep Overview and
   // their own per-user History.
   const canSessions = useCan('jellyfin.sessions');
@@ -153,7 +156,7 @@ export default function JellyfinPage() {
       <PullToRefresh onRefresh={() => pageQueryClient.invalidateQueries({ queryKey: ['jellyfin'] })} />
       {/* Radix Tabs: same segmented look, plus roving focus + arrow-key nav. */}
       <Tabs
-        value={tab}
+        value={visibleTabs.some((item) => item.key === tab) ? tab : 'overview'}
         onValueChange={(v) => setTab(v as TabKey)}
         className="flex flex-1 min-h-0 flex-col gap-0"
       >
@@ -184,10 +187,10 @@ export default function JellyfinPage() {
 
 // ─── Shared UI ───
 
-function Carousel({ children, className = '' }: { children: React.ReactNode; className?: string }) {
+function Carousel({ children, className = '', restorationKey }: { children: React.ReactNode; className?: string; restorationKey: string }) {
   return (
     <div className="relative">
-      <div className={`flex gap-3 overflow-x-auto pb-2 snap-x snap-mandatory scrollbar-hide -mx-1 px-1 ${className}`}>
+      <div data-scroll-restoration-key={`jellyfin:${restorationKey}`} className={`flex gap-3 overflow-x-auto pb-2 snap-x snap-mandatory scrollbar-hide -mx-1 px-1 ${className}`}>
         {children}
       </div>
       <div className="pointer-events-none absolute top-0 right-0 bottom-2 w-8 bg-gradient-to-l from-background to-transparent" />
@@ -425,7 +428,7 @@ function OverviewTab() {
               <span className="text-green-400 tabular-nums">{sessions.length}</span>
             </span>
           } />
-          <Carousel>{sessions.map((s) => <SessionCard key={s.Id} session={s} variant="full" onInfoClick={setSelectedSession} jellyfinUrl={jellyfinUrl} />)}</Carousel>
+          <Carousel restorationKey="active-sessions">{sessions.map((s) => <SessionCard key={s.Id} session={s} variant="full" onInfoClick={setSelectedSession} jellyfinUrl={jellyfinUrl} />)}</Carousel>
         </div>
       )}
 
@@ -507,14 +510,14 @@ function OverviewTab() {
       {resumeItems.length > 0 && (
         <div>
           <SectionHeader title="Continue Watching" />
-          <Carousel>{resumeItems.map((item, i) => <PosterCard key={item.Id} item={item} showProgress jellyfinUrl={jellyfinUrl} imagePriority={i < 4} />)}</Carousel>
+          <Carousel restorationKey="continue-watching">{resumeItems.map((item, i) => <PosterCard key={item.Id} item={item} showProgress jellyfinUrl={jellyfinUrl} imagePriority={i < 4} />)}</Carousel>
         </div>
       )}
 
       {recentlyAdded.length > 0 && (
         <div>
           <SectionHeader title="Recently Added" />
-          <Carousel>{recentlyAdded.map((item, i) => <PosterCard key={item.Id} item={item} jellyfinUrl={jellyfinUrl} imagePriority={i < 4} />)}</Carousel>
+          <Carousel restorationKey="recently-added">{recentlyAdded.map((item, i) => <PosterCard key={item.Id} item={item} jellyfinUrl={jellyfinUrl} imagePriority={i < 4} />)}</Carousel>
         </div>
       )}
 
@@ -611,8 +614,8 @@ function DevicesSection({
   selfDeviceId: string;
   onRefresh: () => Promise<void>;
 }) {
-  const [view, setView] = useState<'carousel' | 'list'>('carousel');
-  const [seeAll, setSeeAll] = useState(false);
+  const [view, setView] = useRouteViewState<'carousel' | 'list'>('DevicesSection:view', 'carousel');
+  const [seeAll, setSeeAll] = useRouteViewState('DevicesSection:seeAll', false);
   // `pending` is a device to delete, or the string 'all' for Delete All.
   const [pending, setPending] = useState<JellyfinDevice | 'all' | null>(null);
   const [busy, setBusy] = useState(false);
@@ -655,7 +658,7 @@ function DevicesSection({
         }
       />
       {view === 'carousel' ? (
-        <Carousel>
+        <Carousel restorationKey="devices">
           {inline.map((device) => (
             <DeviceItem key={device.Id} device={device} variant="card" isSelf={device.Id === selfDeviceId} onDelete={setPending} />
           ))}
@@ -698,8 +701,8 @@ function DevicesSection({
 }
 
 function ActivityFeed({ title, entries, alert = false }: { title: string; entries: JellyfinActivityEntry[]; alert?: boolean }) {
-  const [view, setView] = useState<'carousel' | 'list'>('carousel');
-  const [seeAll, setSeeAll] = useState(false);
+  const [view, setView] = useRouteViewState<'carousel' | 'list'>('ActivityFeed:view', 'carousel');
+  const [seeAll, setSeeAll] = useRouteViewState('ActivityFeed:seeAll', false);
   const inline = entries.slice(0, SECTION_INLINE_MAX);
 
   return (
@@ -714,7 +717,7 @@ function ActivityFeed({ title, entries, alert = false }: { title: string; entrie
         }
       />
       {view === 'carousel' ? (
-        <Carousel>
+        <Carousel restorationKey={`activity:${title}`}>
           {inline.map((entry) => (
             <ActivityItem key={entry.Id} entry={entry} variant="card" alert={alert} />
           ))}
@@ -855,9 +858,9 @@ const QUICK_RANGES = [
 const PAGE_SIZE = 50;
 
 function HistoryTab() {
-  const [selectedUserId, setSelectedUserId] = useState<string>('');
-  const [selectedFilter, setSelectedFilter] = useState<string>('');
-  const [dateRange, setDateRange] = useState<DateRange>(() => {
+  const [selectedUserId, setSelectedUserId] = useRouteViewState<string>('HistoryTab:selectedUserId', '');
+  const [selectedFilter, setSelectedFilter] = useRouteViewState<string>('HistoryTab:selectedFilter', '');
+  const [dateRange, setDateRange] = useRouteViewState<DateRange>('history:dateRange', () => {
     const to = new Date();
     const from = new Date();
     from.setDate(from.getDate() - 6);
@@ -1064,13 +1067,13 @@ function CustomHistoryRow({ item }: { item: CustomHistoryItem }) {
 type SortMode = 'plays' | 'duration';
 
 function StatsTab() {
-  const [days, setDays] = useState(3);
-  const [selectedUserId, setSelectedUserId] = useState('');
-  const [methodSort, setMethodSort] = useState<SortMode>('duration');
-  const [tvSort, setTvSort] = useState<SortMode>('duration');
-  const [clientSort, setClientSort] = useState<SortMode>('duration');
-  const [deviceSort, setDeviceSort] = useState<SortMode>('duration');
-  const [movieSort, setMovieSort] = useState<SortMode>('duration');
+  const [days, setDays] = useRouteViewState('StatsTab:days', 3);
+  const [selectedUserId, setSelectedUserId] = useRouteViewState('StatsTab:selectedUserId', '');
+  const [methodSort, setMethodSort] = useRouteViewState<SortMode>('StatsTab:methodSort', 'duration');
+  const [tvSort, setTvSort] = useRouteViewState<SortMode>('StatsTab:tvSort', 'duration');
+  const [clientSort, setClientSort] = useRouteViewState<SortMode>('StatsTab:clientSort', 'duration');
+  const [deviceSort, setDeviceSort] = useRouteViewState<SortMode>('StatsTab:deviceSort', 'duration');
+  const [movieSort, setMovieSort] = useRouteViewState<SortMode>('StatsTab:movieSort', 'duration');
 
   // Shared with HistoryTab's user dropdown (same query key → one fetch).
   const userListQuery = useQuery({
@@ -1650,7 +1653,7 @@ function TaskStatusIcon({ status, state }: { status?: string; state: string }) {
 }
 
 function ScheduledTasksList({ tasks, onRefresh }: { tasks: JellyfinScheduledTask[]; onRefresh?: () => Promise<void> }) {
-  const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
+  const [expandedCategory, setExpandedCategory] = useRouteViewState<string | null>('ScheduledTasksList:expandedCategory', null);
   const { refreshing, refresh } = useRefreshAction(() => onRefresh?.());
   const [busyTasks, setBusyTasks] = useState<Set<string>>(new Set());
 

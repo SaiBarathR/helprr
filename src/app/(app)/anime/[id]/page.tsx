@@ -1,6 +1,8 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
+
+import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Image from 'next/image';
 import Link from '@/components/ui/app-link';
@@ -41,12 +43,6 @@ import type { DiscoverLibraryStatus } from '@/types';
 import { useQuery } from '@tanstack/react-query';
 import { ApiError } from '@/lib/query-fetch';
 import { handleAuthError } from '@/lib/query-client';
-import {
-  getDetailViewState,
-  setDetailViewState,
-  waitForScrollY,
-  type DetailViewKey,
-} from '@/lib/detail-view-state';
 import { formatRegionCode } from '@/lib/media-locale';
 
 type DetailWithLibrary = AniListDetailResponse & {
@@ -87,9 +83,6 @@ const STATUS_LABELS: Record<string, string> = {
 export default function AnimeDetailPage() {
   const params = useParams();
   const id = params.id as string;
-  const detailViewKey: DetailViewKey = `anime:${id}`;
-  const scrollReadyRef = useRef(false);
-  const hasRestoredScrollRef = useRef(false);
   // gcTime gives instant back-nav paint without the bespoke snapshot cache.
   const detailQuery = useQuery({
     queryKey: ['anime', 'detail', id],
@@ -116,7 +109,7 @@ export default function AnimeDetailPage() {
       ? detailQuery.error.message
       : 'Failed to load'
     : null;
-  const [synopsisExpanded, setSynopsisExpanded] = useState(false);
+  const [synopsisExpanded, setSynopsisExpanded] = useRouteViewState('synopsisExpanded', false);
   const externalUrls = useExternalUrls();
   const resolveExternalUrl = useExternalUrlResolver();
   const [jellyfinLoading, setJellyfinLoading] = useState(false);
@@ -166,58 +159,6 @@ export default function AnimeDetailPage() {
 
     return () => controller.abort();
   }, [id, isAdmin, detailFormat, librarySeriesId, libraryInstanceId]);
-
-  // Reset scroll-restore guards when navigating to a different anime.
-  useEffect(() => {
-    scrollReadyRef.current = false;
-    hasRestoredScrollRef.current = false;
-  }, [id]);
-
-  useEffect(() => {
-    if (loading || !detail || hasRestoredScrollRef.current) return;
-    const saved = getDetailViewState(detailViewKey);
-    if (!saved || saved.scrollY <= 0) {
-      hasRestoredScrollRef.current = true;
-      scrollReadyRef.current = true;
-      return;
-    }
-
-    let cancelled = false;
-    void (async () => {
-      await waitForScrollY(saved.scrollY);
-      if (cancelled) return;
-      window.scrollTo({ top: saved.scrollY, behavior: 'instant' });
-      hasRestoredScrollRef.current = true;
-      scrollReadyRef.current = true;
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [detailViewKey, loading, detail]);
-
-  useEffect(() => {
-    const persistScroll = () => {
-      if (!scrollReadyRef.current) return;
-      setDetailViewState(detailViewKey, { scrollY: window.scrollY });
-    };
-
-    let lastSaved = 0;
-    const onScroll = () => {
-      const now = Date.now();
-      if (now - lastSaved < 150) return;
-      lastSaved = now;
-      persistScroll();
-    };
-
-    window.addEventListener('scroll', onScroll, { passive: true });
-    window.addEventListener('pagehide', persistScroll);
-    return () => {
-      persistScroll();
-      window.removeEventListener('scroll', onScroll);
-      window.removeEventListener('pagehide', persistScroll);
-    };
-  }, [detailViewKey]);
 
   useEffect(() => {
     setNowMs(Date.now());
@@ -508,7 +449,7 @@ export default function AnimeDetailPage() {
   ];
 
   return (
-    <div className="animate-content-in" onClickCapture={() => setDetailViewState(detailViewKey, { scrollY: window.scrollY })}>
+    <div className="animate-content-in">
       <PageHeader title={detail.title} />
       {/* Hero */}
       <QuickContextMenu label={`${detail.title} actions`} groups={heroContextGroups}>

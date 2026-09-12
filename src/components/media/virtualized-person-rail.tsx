@@ -70,6 +70,7 @@ export function VirtualizedPersonRail({
       )}
       <div
         ref={scrollRef}
+        data-scroll-restoration-key={`people:${title}`}
         className="overflow-x-auto pb-1 -mx-2 px-2 md:-mx-6 md:px-6 scrollbar-hide"
       >
         <div

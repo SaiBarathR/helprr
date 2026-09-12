@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { BottomNav } from '@/components/layout/bottom-nav';
 import { PushReenableBanner } from '@/components/notifications/push-reenable-banner';
 import { useUIStore } from '@/lib/store';
@@ -9,11 +9,24 @@ import { usePendingHref } from '@/components/layout/navigation-provider';
 import { NavigationLoading } from '@/components/layout/navigation-loading';
 import { BrowseFreshnessNotice } from '@/components/browse-freshness-notice';
 import { getQueryClient } from '@/lib/query-client';
+import { RouteScrollRestoration } from '@/components/layout/route-scroll-restoration';
 
 export function AppShell({ children }: { children: React.ReactNode }) {
+  const mainRef = useRef<HTMLElement>(null);
   const pendingHref = usePendingHref();
   const navPosition = useUIStore((s) => s.navPosition);
   const watchSkin = useUIStore((s) => s.watchSkin);
+
+  useEffect(() => {
+    const main = mainRef.current;
+    if (!main) return;
+    const measure = () => main.style.setProperty('--app-main-left', `${main.getBoundingClientRect().left}px`);
+    measure();
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
+    observer?.observe(main);
+    window.addEventListener('resize', measure);
+    return () => { observer?.disconnect(); window.removeEventListener('resize', measure); };
+  }, []);
 
   useEffect(() => {
     document.documentElement.dataset.navPosition = navPosition;
@@ -40,6 +53,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         />
       )}
       <main
+        ref={mainRef}
         className={cn(
           'app-main flex-1 [overflow-x:clip]',
           isBottom ? 'pb-[calc(4rem+env(safe-area-inset-bottom))] md:pb-4' : 'pb-4'
@@ -47,10 +61,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       >
         <BrowseFreshnessNotice onRetry={() => void getQueryClient().invalidateQueries({ refetchType: 'active' })} />
         <PushReenableBanner />
-        {pendingHref !== null && <NavigationLoading key={pendingHref} href={pendingHref} />}
-        <div hidden={pendingHref !== null} inert={pendingHref !== null}>
-          {children}
-        </div>
+        {pendingHref !== null && (
+          <div className="fixed right-0 bottom-0 top-[env(safe-area-inset-top)] z-30 overflow-y-auto bg-background" style={{ left: 'var(--app-main-left, 0px)' }}>
+            <NavigationLoading key={pendingHref} href={pendingHref} />
+          </div>
+        )}
+        <RouteScrollRestoration pending={pendingHref !== null}>{children}</RouteScrollRestoration>
       </main>
       {isBottom && <BottomNav />}
     </div>

@@ -1,10 +1,13 @@
 'use client';
 
+import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
+
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from '@/components/ui/app-link';
 import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
 import { format, formatDistanceToNow } from 'date-fns';
-import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
+import { useRestorableInfiniteQuery as useInfiniteQuery } from '@/lib/hooks/use-restorable-infinite-query';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   ArrowUpDown,
   Bell,
@@ -83,12 +86,12 @@ export default function ScheduledAlertsPage() {
   const router = useRouter();
   const canEdit = useCan('scheduledAlerts.edit');
   const queryClient = useQueryClient();
-  const [searchInput, setSearchInput] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
-  const [sort, setSort] = useState<SortKey>('nextNotify');
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('active');
-  const [modeFilter, setModeFilter] = useState<ModeFilter>('all');
-  const [mediaTypeFilter, setMediaTypeFilter] = useState<string>('all');
+  const [searchInput, setSearchInput] = useRouteViewState('ScheduledAlertsPage:searchInput', '');
+  const [debouncedSearch, setDebouncedSearch] = useRouteViewState('ScheduledAlertsPage:debouncedSearch', '');
+  const [sort, setSort] = useRouteViewState<SortKey>('ScheduledAlertsPage:sort', 'nextNotify');
+  const [statusFilter, setStatusFilter] = useRouteViewState<StatusFilter>('ScheduledAlertsPage:statusFilter', 'active');
+  const [modeFilter, setModeFilter] = useRouteViewState<ModeFilter>('ScheduledAlertsPage:modeFilter', 'all');
+  const [mediaTypeFilter, setMediaTypeFilter] = useRouteViewState<string>('ScheduledAlertsPage:mediaTypeFilter', 'all');
   const [filterDrawerOpen, setFilterDrawerOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [addDraft, setAddDraft] = useState<ScheduledAlertDraft | null>(null);
@@ -100,7 +103,7 @@ export default function ScheduledAlertsPage() {
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(searchInput), 300);
     return () => clearTimeout(t);
-  }, [searchInput]);
+  }, [searchInput, setDebouncedSearch]);
 
   const queryKey = useMemo(
     () => ['scheduled-alerts', { q: debouncedSearch, sort, statusFilter, modeFilter, mediaTypeFilter }] as const,

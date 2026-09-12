@@ -1,6 +1,8 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
+
+import { useMemo, useState } from 'react';
 import { arrMutationFetch } from '@/lib/query-fetch';
 import { handleAuthError } from '@/lib/query-client';
 import Image from 'next/image';
@@ -39,12 +41,6 @@ import { format } from 'date-fns';
 import type { LidarrAlbum, LidarrTrack, LidarrTrackFile } from '@/types';
 import { isProtectedApiImageSrc } from '@/lib/image';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import {
-  getDetailViewState,
-  setDetailViewState,
-  waitForScrollY,
-  type DetailViewKey,
-} from '@/lib/detail-view-state';
 import { useExternalUrlResolver } from '@/lib/hooks/use-external-urls';
 import { formatBytes } from '@/lib/format';
 import { useCan } from '@/components/permission-provider';
@@ -82,9 +78,6 @@ export default function AlbumDetailPage() {
   const instance = useSearchParams().get('instance') ?? undefined;
   const router = useRouter();
   const queryClient = useQueryClient();
-  const detailViewKey: DetailViewKey = `album:${albumId}`;
-  const scrollReadyRef = useRef(false);
-  const hasRestoredScrollRef = useRef(false);
 
   // Album + tracks + files — TanStack cache gives instant back-nav (gcTime),
   // replacing the bespoke album snapshot. Instance-scoped: album ids repeat
@@ -110,7 +103,7 @@ export default function AlbumDetailPage() {
   const [actionLoading, setActionLoading] = useState('');
   const [overviewExpanded, setOverviewExpanded] = useState(false);
   const [interactiveSearch, setInteractiveSearch] = useState(false);
-  const [expandedTrack, setExpandedTrack] = useState<number | null>(null);
+  const [expandedTrack, setExpandedTrack] = useRouteViewState<number | null>('AlbumDetailPage:expandedTrack', null);
   const [showReleases, setShowReleases] = useState(false);
   const [selectingRelease, setSelectingRelease] = useState<number | null>(null);
   const [deleteAlbumOpen, setDeleteAlbumOpen] = useState(false);
@@ -121,52 +114,6 @@ export default function AlbumDetailPage() {
   const canEditMonitoring = useCan('music.editMonitoring');
   const canManageActivity = useCan('activity.manage');
   const canDelete = useCan('music.delete');
-
-  // Reset scroll-restore guards whenever the album/instance changes.
-  useEffect(() => {
-    scrollReadyRef.current = false;
-    hasRestoredScrollRef.current = false;
-  }, [albumId, instance]);
-
-  useEffect(() => {
-    if (loading || !album || hasRestoredScrollRef.current) return;
-    const saved = getDetailViewState(detailViewKey);
-    if (!saved || saved.scrollY <= 0) {
-      hasRestoredScrollRef.current = true;
-      scrollReadyRef.current = true;
-      return;
-    }
-    let cancelled = false;
-    void (async () => {
-      await waitForScrollY(saved.scrollY);
-      if (cancelled) return;
-      window.scrollTo({ top: saved.scrollY, behavior: 'instant' });
-      hasRestoredScrollRef.current = true;
-      scrollReadyRef.current = true;
-    })();
-    return () => { cancelled = true; };
-  }, [detailViewKey, loading, album]);
-
-  useEffect(() => {
-    const persistScroll = () => {
-      if (!scrollReadyRef.current) return;
-      setDetailViewState(detailViewKey, { scrollY: window.scrollY });
-    };
-    let lastSaved = 0;
-    const onScroll = () => {
-      const now = Date.now();
-      if (now - lastSaved < 150) return;
-      lastSaved = now;
-      persistScroll();
-    };
-    window.addEventListener('scroll', onScroll, { passive: true });
-    window.addEventListener('pagehide', persistScroll);
-    return () => {
-      persistScroll();
-      window.removeEventListener('scroll', onScroll);
-      window.removeEventListener('pagehide', persistScroll);
-    };
-  }, [detailViewKey, loading, album]);
 
   async function handleSearch() {
     if (!album) return;

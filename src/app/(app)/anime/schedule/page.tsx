@@ -1,5 +1,8 @@
 'use client';
 
+import { readRouteScrollState, routeScrollKey } from '@/lib/route-scroll-state';
+import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
+
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from '@/components/ui/app-link';
 import { ChevronLeft } from 'lucide-react';
@@ -92,10 +95,13 @@ function buildDayBuckets(weekStart: Date, entries: EntryWithLibrary[]): DayBucke
 const EMPTY_ENTRIES: EntryWithLibrary[] = [];
 
 export default function AnimeSchedulePage() {
-  const [weekStart, setWeekStart] = useState<Date>(() => startOfWeek(new Date()));
+  const [weekStart, setWeekStart] = useRouteViewState<Date>('weekStart', () => startOfWeek(new Date()));
   const [now, setNow] = useState<number>(() => Math.floor(Date.now() / 1000));
   // Guards the open-time auto-scroll so the per-minute `now` tick can't re-fire it.
   const didAutoScrollRef = useRef(false);
+  useEffect(() => {
+    if (readRouteScrollState(routeScrollKey(window.location))) didAutoScrollRef.current = true;
+  }, []);
 
   const weekEnd = useMemo(() => endOfWeek(weekStart), [weekStart]);
   const currentWeekStart = useMemo(() => startOfWeek(new Date()), []);
@@ -161,7 +167,7 @@ export default function AnimeSchedulePage() {
       next.setDate(next.getDate() - 7);
       return next;
     });
-  }, []);
+  }, [setWeekStart]);
 
   const handleNext = useCallback(() => {
     setWeekStart((prev) => {
@@ -169,12 +175,12 @@ export default function AnimeSchedulePage() {
       next.setDate(next.getDate() + 7);
       return next;
     });
-  }, []);
+  }, [setWeekStart]);
 
   const handleToday = useCallback(() => {
     didAutoScrollRef.current = false; // re-arm the scroll-to-today effect
     setWeekStart(startOfWeek(new Date()));
-  }, []);
+  }, [setWeekStart]);
 
   // Build the grid from the week the loaded entries actually belong to (the
   // response echoes its requested weekStart). While keepPreviousData is showing

@@ -11,12 +11,14 @@ const PathContext = createContext('/dashboard');
 vi.mock('next/navigation', () => ({
   useRouter: () => native,
   usePathname: () => useContext(PathContext),
+  useSearchParams: () => new URLSearchParams(window.location.search),
 }));
 vi.mock('@/components/layout/bottom-nav', () => ({ BottomNav: () => <nav>Tabs stay available</nav> }));
 vi.mock('@/components/notifications/push-reenable-banner', () => ({ PushReenableBanner: () => null }));
 
 import { NavigationProvider, useAppRouter } from './navigation-provider';
 import { AppShell } from './app-shell';
+import { NAVIGATION_CANCEL_EVENT } from '@/lib/route-scroll-state';
 
 let root: Root;
 let commit: (pathname: string, ready: Promise<string>) => void;
@@ -52,6 +54,7 @@ function Harness() {
 beforeEach(async () => {
   (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   vi.clearAllMocks();
+  vi.spyOn(window, 'scrollTo').mockImplementation(() => undefined);
   window.history.replaceState({}, '', '/dashboard');
   document.body.innerHTML = '<div id="root"></div>';
   root = createRoot(document.getElementById('root')!);
@@ -64,6 +67,7 @@ beforeEach(async () => {
 afterEach(async () => {
   await act(async () => root.unmount());
   vi.useRealTimers();
+  vi.restoreAllMocks();
 });
 
 async function click(text: string) {
@@ -72,12 +76,23 @@ async function click(text: string) {
 }
 
 describe('app navigation feedback', () => {
+  it('releases scroll capture when a push completes without a route commit', async () => {
+    native.push.mockImplementation(() => undefined);
+    const cancelled = vi.fn();
+    window.addEventListener(NAVIGATION_CANCEL_EVENT, cancelled);
+    try {
+      await click('Movies');
+      await act(async () => { await new Promise((resolve) => setTimeout(resolve, 10)); });
+      expect(cancelled).toHaveBeenCalledOnce();
+    } finally { window.removeEventListener(NAVIGATION_CANCEL_EVENT, cancelled); }
+  });
   it('paints the destination before the route responds, then displays its content', async () => {
     const draft = document.querySelector('input')!;
     draft.value = 'unsaved';
     await click('Movies');
     expect(document.querySelector('[data-navigation-loading]')?.textContent).toContain('Movies');
-    expect(draft.closest('[hidden]')).not.toBeNull();
+    expect(draft.closest('[aria-hidden="true"]')).not.toBeNull();
+    expect(draft.closest('[hidden]')).toBeNull();
     expect(document.querySelector('nav')?.textContent).toContain('Tabs stay available');
     await act(async () => resolve('Movies content'));
     expect(document.querySelector('[data-navigation-loading]')).toBeNull();

@@ -1,5 +1,6 @@
 'use client';
 
+import { fetchAnilistViewer } from '@/lib/anilist-viewer';
 import { useCallback, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ListChecks, Plus } from 'lucide-react';
@@ -41,11 +42,7 @@ export function useAnilistContextMenu() {
 
   const viewerQuery = useQuery({
     queryKey: ['anilist', 'viewer'],
-    queryFn: async ({ signal }): Promise<ViewerResponse> => {
-      const res = await fetch('/api/anilist/viewer', { signal });
-      if (!res.ok) return { configured: false, connected: false, requiresReauth: false };
-      return (await res.json()) as ViewerResponse;
-    },
+    queryFn: ({ signal }) => fetchAnilistViewer<ViewerResponse>(signal),
     enabled: isAdmin,
     staleTime: 60_000,
   });
