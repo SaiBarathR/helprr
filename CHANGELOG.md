@@ -5,7 +5,7 @@ All notable changes to Helprr are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.5.0] - 2026-09-13
 
 ### Added
 
@@ -47,6 +47,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Live TV playback and chapter markers ship without feature-flow testing: the
   reference server has no tuner and no item reached during testing carried
   chapters. Both degrade to an absent control rather than an error.
+- Helprr connects to Jellyfin 12. The client uses the documented `/UserViews`,
+  `/Items`, `/Items/Latest`, and `/Items/{itemId}` routes with an explicit user
+  id, and authenticates with the standard `Authorization: MediaBrowser` header,
+  so it works on a server that has legacy authorization disabled. Jellyfin
+  10.11 remains qualified.
+- Detail pages describe what a title actually is — Dolby Vision, HDR, Atmos,
+  resolution, and subtitle availability read from the real media file — instead
+  of a fixed "HD CC" label.
+
+### Changed
+
+- Navigating inside the app replaces the page immediately with a loading view in
+  the already-loaded shell, and the navigation controls stay usable while the
+  route downloads. Same-page filter, query-string, and hash changes keep the
+  current controls.
+- Helprr asks for less mobile data. Recent dashboard data is reused for up to 30
+  seconds, unobserved widget requests are cancelled on leaving a page, Watch
+  genre rows wait until they approach the viewport, logs load 200 entries before
+  the existing 1,000-entry expansion, and media download summaries poll every 60
+  seconds when idle instead of continuously.
+- The installed app precaches far less on first load. The optional libass
+  subtitle engines (about 7.7 MB) are fetched on demand during playback rather
+  than up front, which cut precached bytes by roughly 86%. The offline fallback
+  and authenticated API cache rules are unchanged.
+- Watch rails are windowed, player chrome loads lazily, artwork is requested at
+  the size it is displayed at, and the torrents view reads incremental deltas, so
+  navigation stays responsive on a phone.
 
 ### Fixed
 
@@ -61,6 +88,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Interactive search and grab wait up to 300 seconds for Radarr, Sonarr, and
   Lidarr indexer queries instead of aborting at the default 30-second HTTP
   timeout.
+- Scroll position is restored across the whole application. Navigation used to
+  hide the outgoing page, which collapsed its height and overwrote the saved
+  position with zero, so returning to a long list started at the top. Scroll
+  ownership now lives in one controller in the app shell, restores nested
+  scrollers as content arrives, yields to a real scroll gesture, and rebuilds
+  infinite-scroll depth after the payload cache expires.
+- The anime library returned to the wrong tab, and its offset was lost because
+  restoring the tab was treated as a view switch.
+- An installed iOS app in standalone mode lost its scroll position on back,
+  because it commits the destination route before delivering the popstate for
+  it. Safari on the same device was unaffected.
+- The PWA's offline page never worked. `/offline.html` was missing from the
+  public route allowlist, so the service worker precached the login redirect
+  under that key, and its Retry button was inert under the production CSP.
+- The installed app could not rotate, and its icon was letterboxed on the home
+  screen.
+- Edge-anchored sheets, drawers, and the queue panel could sit under a phone's
+  home indicator and notch.
+- Sharing a link into Helprr from another app sent it to the host that was
+  asked for rather than the container's bind address.
 
 ### Security
 
@@ -91,6 +138,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The production Content-Security-Policy now allows `'wasm-unsafe-eval'`, blob
   workers and media, and data-URI fonts, which subtitle rendering and HLS
   playback require.
+- `next` 16.2.11 -> 16.3.3 for a critical Image Optimization API RCE on AVIF
+  input (GHSA-2xp9-vwfh-vxw4) and CVE-2026-75604, and `sharp` 0.35.4 for a high
+  libheif advisory (GHSA-rgj7-g3m4-5g8c). The service worker caches
+  `/_next/image`, so the image path was reachable in this deployment.
+- The base image's OpenSSL is patched during the build so the release image
+  passes the blocking vulnerability scan.
 
 ## [1.4.0] - 2026-08-26
 
