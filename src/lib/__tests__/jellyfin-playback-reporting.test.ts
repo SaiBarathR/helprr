@@ -135,7 +135,7 @@ describe('playback request signing', () => {
   it('signs playback calls with the member token, never the admin key', async () => {
     await client().reportPlayback({ ...base, event: 'playing' });
     const headers = post.mock.calls.at(-1)![2].headers as Record<string, string>;
-    expect(headers['X-Emby-Token']).toBe(MEMBER_TOKEN);
+    expect(headers['X-Emby-Token']).toBeUndefined();
     expect(headers.Authorization).toContain(`Token="${MEMBER_TOKEN}"`);
     expect(JSON.stringify(headers)).not.toContain(ADMIN_KEY);
   });
@@ -143,7 +143,7 @@ describe('playback request signing', () => {
   it('signs transcode teardown with the member token too, so it matches the owning session', async () => {
     await client().stopActiveEncodings('ps-1', 'device-1');
     const headers = del.mock.calls.at(-1)![1].headers as Record<string, string>;
-    expect(headers['X-Emby-Token']).toBe(MEMBER_TOKEN);
+    expect(headers['X-Emby-Token']).toBeUndefined();
     expect(JSON.stringify(headers)).not.toContain(ADMIN_KEY);
   });
 

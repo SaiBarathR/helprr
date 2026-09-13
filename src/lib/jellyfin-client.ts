@@ -97,7 +97,6 @@ export class JellyfinClient {
       headers: {
         ...customHeaders,
         'Authorization': `MediaBrowser Token="${token}", Client="${CLIENT_NAME}", Device="${DEVICE_NAME}", DeviceId="${DEVICE_ID}", Version="${CLIENT_VERSION}"`,
-        'X-Emby-Token': token,
         'Content-Type': 'application/json',
       },
       timeout: 30000, // 30 second timeout
@@ -136,7 +135,6 @@ export class JellyfinClient {
         { Username: username, Pw: password },
         {
           headers: {
-            'X-Emby-Authorization': authHeader,
             Authorization: authHeader,
             'Content-Type': 'application/json',
           },
@@ -233,7 +231,7 @@ export class JellyfinClient {
   }
 
   async getLibraries(): Promise<JellyfinLibrary[]> {
-    const data = await this.get<{ Items: JellyfinLibrary[] }>(`/Users/${this.requireUserId()}/Views`);
+    const data = await this.get<{ Items: JellyfinLibrary[] }>('/UserViews', { userId: this.requireUserId() });
     return data.Items;
   }
 
@@ -243,14 +241,14 @@ export class JellyfinClient {
   }
 
   async getItems(params: Record<string, unknown> = {}): Promise<JellyfinItemsResponse> {
-    return this.get<JellyfinItemsResponse>(`/Users/${this.requireUserId()}/Items`, params);
+    return this.queryItems(params);
   }
 
-  /** Query the root /Items endpoint which supports filters like AnyProviderIdEquals. */
+  /** Documented catalog endpoint; callers cannot replace the scoped user identity. */
   async queryItems(params: Record<string, unknown> = {}): Promise<JellyfinItemsResponse> {
     return this.get<JellyfinItemsResponse>('/Items', {
+      ...Object.fromEntries(Object.entries(params).filter(([key]) => key.toLowerCase() !== 'userid')),
       UserId: this.requireUserId(),
-      ...params,
     });
   }
 
@@ -300,7 +298,8 @@ export class JellyfinClient {
   }
 
   async getRecentlyAdded(params: { limit?: number; parentId?: string } = {}): Promise<JellyfinItem[]> {
-    return this.get<JellyfinItem[]>(`/Users/${this.requireUserId()}/Items/Latest`, {
+    return this.get<JellyfinItem[]>('/Items/Latest', {
+      userId: this.requireUserId(),
       Limit: params.limit ?? 15,
       ...(params.parentId && { ParentId: params.parentId }),
       Fields: CATALOG_LIST_FIELDS,
@@ -340,7 +339,7 @@ export class JellyfinClient {
   }
 
   async getLocalTrailers(itemId: string): Promise<JellyfinItem[]> {
-    return this.get<JellyfinItem[]>(`/Users/${this.requireUserId()}/Items/${itemId}/LocalTrailers`);
+    return this.get<JellyfinItem[]>(`/Items/${itemId}/LocalTrailers`, { userId: this.requireUserId() });
   }
 
   async getLiveTvRecordings(limit = 40): Promise<JellyfinItemsResponse> {
@@ -713,18 +712,18 @@ export class JellyfinClient {
     const token = this.requirePlaybackToken();
     return {
       Authorization: `MediaBrowser Token="${token}", Client="${CLIENT_NAME}", Device="${deviceName}", DeviceId="${deviceId}", Version="${CLIENT_VERSION}"`,
-      'X-Emby-Token': token,
     };
   }
 
   async getItem(itemId: string, fields: string = CATALOG_ITEM_FIELDS): Promise<JellyfinItem> {
-    return this.get<JellyfinItem>(`/Users/${this.requireUserId()}/Items/${itemId}`, {
+    return this.get<JellyfinItem>(`/Items/${itemId}`, {
+      userId: this.requireUserId(),
       Fields: fields,
     });
   }
 
   async getCatalogItems(params: Record<string, unknown> = {}): Promise<JellyfinItemsResponse> {
-    return this.get<JellyfinItemsResponse>(`/Users/${this.requireUserId()}/Items`, {
+    return this.queryItems({
       Fields: CATALOG_LIST_FIELDS,
       EnableImageTypes: 'Primary,Backdrop,Thumb,Logo,Banner',
       ...params,
@@ -772,7 +771,7 @@ export class JellyfinClient {
   }
 
   async getSpecialFeatures(itemId: string): Promise<JellyfinItem[]> {
-    return this.get<JellyfinItem[]>(`/Users/${this.requireUserId()}/Items/${itemId}/SpecialFeatures`);
+    return this.get<JellyfinItem[]>(`/Items/${itemId}/SpecialFeatures`, { userId: this.requireUserId() });
   }
 
   async getInstantMix(itemId: string, limit = 50): Promise<JellyfinItemsResponse> {
@@ -1010,7 +1009,6 @@ export class JellyfinClient {
   tokenHeader(): Record<string, string> {
     return {
       Authorization: `MediaBrowser Token="${this.token}", Client="${CLIENT_NAME}", Device="${DEVICE_NAME}", DeviceId="${DEVICE_ID}", Version="${CLIENT_VERSION}"`,
-      'X-Emby-Token': this.token,
     };
   }
 }

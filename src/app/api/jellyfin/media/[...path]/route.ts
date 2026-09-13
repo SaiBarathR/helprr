@@ -92,7 +92,6 @@ async function forward(request: NextRequest, pathSegments: string[], user: User)
   const headers = new Headers({
     ...getConnectionHeaders(connection),
     Authorization: `MediaBrowser Token="${playbackToken}"`,
-    'X-Emby-Token': playbackToken,
   });
   for (const name of PASS_REQUEST_HEADERS) {
     const value = request.headers.get(name);

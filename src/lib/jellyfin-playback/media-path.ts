@@ -17,8 +17,9 @@ const ALLOWED_PATHS: readonly RegExp[] = [
   new RegExp(String.raw`^/fallbackfont/fonts`, 'i'),
 ];
 
-// Matched case-insensitively: Jellyfin accepts `api_key` and `ApiKey`, and the
-// proxy supplies its own credential in headers, so no caller-supplied token
+// Matched case-insensitively: Jellyfin 12 accepts `ApiKey`; older servers may
+// also return legacy `api_key` tokens. The proxy supplies its own credential
+// in headers, so no caller-supplied token
 // should ever reach upstream.
 const SENSITIVE_QUERY_KEYS = new Set([
   'api_key',

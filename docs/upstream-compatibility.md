@@ -4,7 +4,8 @@ Last verified: **2026-07-14**, from Helprr's isolated development stack during t
 Helprr 1.1.0 qualification and release. The `JELLYFIN` row was re-verified on
 **2026-08-28** for the in-app Watch and playback work; see
 [Jellyfin in-app playback](#jellyfin-in-app-playback) for what that covered and
-what it did not. Every other row still carries its 2026-07-14 evidence.
+what it did not. Jellyfin **12.0.0** was checked on **2026-09-13** with the
+qualification limits below. Every other row still carries its 2026-07-14 evidence.
 
 ## How to read this matrix
 
@@ -28,7 +29,7 @@ product release number.
 | `LIDARR` | Lidarr | REST `/api/v1` | `3.1.2.4913` | Authenticated system-status probe; live track-file and album operations |
 | `QBITTORRENT` | qBittorrent | Web API `/api/v2` | `v5.1.4` | Authenticated app-version probe; live queue, cleanup, keep-data, and delete-data operations |
 | `PROWLARR` | Prowlarr | REST `/api/v1` | `2.4.0.5397` | Authenticated system-status probe |
-| `JELLYFIN` | Jellyfin | Unversioned REST routes such as `/System/Info`, `/Items`, `/Items/{id}/PlaybackInfo`, `/Videos/{id}/…`, `/Audio/{id}/…`, `/Sessions/Playing*`, `/Users/AuthenticateByName`, `/UserItems/{id}/UserData` | `10.11.11` | Authenticated system-information and admin-access probe; live catalog, image, media-proxy, and in-app playback flows (see the note below) |
+| `JELLYFIN` | Jellyfin | Unversioned REST routes such as `/System/Info`, `/Items`, `/Items/{id}/PlaybackInfo`, `/Videos/{id}/…`, `/Audio/{id}/…`, `/Sessions/Playing*`, `/Users/AuthenticateByName`, `/UserItems/{id}/UserData` | `12.0.0`; `10.11.11` (earlier qualification) | Live v12 API, catalog, and Chrome HLS playback checks with legacy authorization disabled (see below) |
 | `TMDB` | TMDB | Hosted API `v3` | No product version exposed | Authenticated `/configuration` request succeeded |
 | `ANILIST` | AniList | Hosted GraphQL API at `graphql.anilist.co` | No product version exposed | OAuth-authenticated Viewer query succeeded |
 | `SEERR` | Seerr | REST `/api/v1` | `3.3.0` | Authenticated current-user and status probes |
@@ -37,6 +38,54 @@ The live probes above used the isolated Helprr development database and applicat
 They made read-only status, configuration, or viewer requests. The destructive-flow
 evidence refers to intentionally created test downloads/media and did not target the
 stable Helprr database.
+
+### Jellyfin 12 compatibility (2026-09-13)
+
+The configured server returned `Version: 12.0.0` and
+`EnableLegacyAuthorization: false`. Its live `/api-docs/openapi.json` and the
+[official v12.0 server source](https://github.com/jellyfin/jellyfin/tree/v12.0)
+were compared with Helprr's client and media proxies. See also the
+[Jellyfin 12 release notes](https://jellyfin.org/posts/jellyfin-release-12.0/).
+
+- Catalog calls now use `/UserViews`, `/Items`, `/Items/Latest`, and
+  `/Items/{itemId}` with explicit user IDs, including local trailers and special
+  features. The older `/Users/{userId}/...` aliases remain in the v12 source but
+  are obsolete and hidden from its API specification. Query parameters cannot
+  override the client's scoped user identity.
+- Authentication, image delivery, and playback requests use the standard
+  `Authorization: MediaBrowser ...` header. Duplicate legacy `X-Emby-*` headers
+  were removed. Tokens returned in media URLs, including `ApiKey` and legacy
+  `api_key`, continue to be stripped before browser-facing proxy URLs are built.
+- Explicit catalog recursion, item types, pagination, filters, and abort signals
+  are preserved. Helprr does not parse the old `10.x` version prefix, use the
+  removed Quick Connect GET route, or call the removed no-op administration APIs.
+- Live client checks passed for library views and virtual folders, item counts,
+  latest/resume/next-up/recommendations, catalog/detail/search, seasons/episodes,
+  people/genres/studios, trailers/theme media/media segments, devices/users/tasks,
+  activity, and Live TV listings. Existing member-scoped catalog reads also
+  passed. A favorite was toggled and restored successfully.
+- Installed Playback Reporting plugin reads passed, including activity, hourly,
+  movie/TV, and device breakdown reports. This is evidence for the installed
+  plugin, not a promise that older plugin binaries work on v12.
+- Chrome 152 on macOS exercised Watch home, catalog/search, episode details,
+  artwork and HEVC/MKV HLS transcoding for Friends S1E1. After account connection,
+  real UI clicks verified advancing unmuted video, pause/resume, seeking, English
+  SUBRIP subtitles delivered as WebVTT (HTTP 200), and quality changes both paused
+  and playing. Paused quality changes preserved the exact position and intent.
+  Playback/session and encoding cleanup requests returned HTTP 200. Background
+  preview traffic was not isolated in the final post-stop network capture, so
+  this does not establish zero post-stop media requests. An isolated
+  stop saved exactly `1895470570` ticks (3:09.547057) in Jellyfin's user-data and
+  item responses; a fresh page offered Resume and negotiated that exact offset,
+  then video advanced normally. An abandoned paused test tab had
+  initially overwritten progress, so concurrent same-account players are not
+  qualified by this run. Token revocation was covered by regression tests rather
+  than revoking the user's live credentials.
+- No Live TV tuner was available, so empty channel/program/recording responses
+  only qualify listing contracts. Physical iPhone/PWA playback, alternate episode
+  versions, book reading, server restart/shutdown, task execution and device
+  deletion were not exercised. New Jellyfin features are not automatically new
+  Helprr features.
 
 ### Jellyfin in-app playback
 
@@ -97,7 +146,7 @@ stack on **2026-08-28**:
   chapters. Both degrade to an absent control rather than an error, but neither has
   feature-flow evidence behind it.
 
-Jellyfin exposes these routes without an API version, so a future `10.x` release can
+Jellyfin exposes these routes without an API version, so a future release can
 change them without a contract change. Re-run the flows above after upgrading rather
 than treating a successful connection test as proof that playback still works.
 
