@@ -123,7 +123,6 @@ describe('dedicated Jellyfin image authorization', () => {
         upstreamHeaders: {
           'X-Proxy-Auth': 'proxy-secret',
           Authorization: 'MediaBrowser Token="secret-key"',
-          'X-Emby-Token': 'secret-key',
         },
       }),
     );

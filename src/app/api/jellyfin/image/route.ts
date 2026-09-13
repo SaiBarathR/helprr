@@ -72,7 +72,6 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
         // HELPRR_CUSTOM_HEADERS is enabled.
         ...getConnectionHeaders(connection),
         Authorization: `MediaBrowser Token="${connection.apiKey}"`,
-        'X-Emby-Token': connection.apiKey,
       },
       requesterId: user.id,
       signal: request.signal,
