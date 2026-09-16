@@ -133,3 +133,14 @@ export function jellyfinPersonImageUrl(
   if (!person.Id || !person.PrimaryImageTag) return null;
   return jellyfinImageUrl(person.Id, 'Primary', width);
 }
+
+/** Music folders often have no backdrop; their primary cover is the artwork. */
+export function jellyfinDetailImage(item: {
+  Id: string; Type?: string; MediaType?: string; ImageTags?: Record<string, string>;
+  BackdropImageTags?: string[]; SeriesId?: string; ParentId?: string;
+}, width = 1920): string | null {
+  const music = item.MediaType === 'Audio' || ['Audio', 'MusicAlbum', 'MusicArtist'].includes(item.Type ?? '');
+  return music
+    ? jellyfinPosterUrl(item, width)
+    : jellyfinBackdropUrl(item, width) ?? jellyfinPosterUrl(item, width);
+}
