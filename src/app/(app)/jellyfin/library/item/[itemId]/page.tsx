@@ -16,7 +16,7 @@ import { CatalogRail } from '@/components/jellyfin-streaming/catalog-rail';
 import { MediaRail } from '@/components/jellyfin-streaming/media-rail';
 import { useJellyfinPlaybackState } from '@/components/jellyfin-streaming/playback-provider';
 import {
-  jellyfinBackdropUrl,
+  jellyfinDetailImage,
   jellyfinCardImage,
   jellyfinImageUrl,
   jellyfinPersonImageUrl,
@@ -114,7 +114,7 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
         ? item.OriginalTitle
         : null;
 
-  const backdrop = jellyfinBackdropUrl(item);
+  const backdrop = jellyfinDetailImage(item);
   // Borrow the series logo for a season or episode — they rarely have their own.
   const logoOwnerId = item.ImageTags?.Logo ? item.Id : (isChildOfSeries ? seriesId : undefined);
   const logo = item.ImageTags?.Logo
@@ -228,7 +228,7 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
             below already resolves against the positioned section. Positioning
             is not applied to a box that does not exist, so layout is
             unchanged. */}
-        <div className={cn('relative', stacked ? 'aspect-video w-full overflow-hidden' : 'contents')}>
+        <div className={cn('relative', stacked ? (isMusic ? 'aspect-square w-full overflow-hidden' : 'aspect-video w-full overflow-hidden') : 'contents')}>
         {stacked && resumeSeconds > 0 && resumeRuntimeSeconds > 0 && (
           // The app rules the foot of the hero video in brand red, showing how
           // far into the title you already are.
@@ -245,7 +245,8 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
           runtimeTicks={previewSource.runtimeTicks}
           trailerUrl={trailers[0]?.Url}
           // Autoplay is a cinematic-skin behaviour; classic stays still art.
-          enabled={skin === 'cinematic'}
+          enabled={skin === 'cinematic' && !isMusic}
+          className={isMusic ? 'object-contain' : undefined}
           priority
           // Bottom of the hero, not the top: the top row belongs to the
           // section nav and the Exit link, and the toggle collided with them.

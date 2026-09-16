@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   jellyfinBackdropUrl,
+  jellyfinDetailImage,
   jellyfinSeriesCardImage,
   jellyfinCardImage,
   jellyfinCinematicCardImage,
@@ -86,6 +87,23 @@ describe('jellyfinBackdropUrl', () => {
   it('honours a narrower width so the hero can mount several layers', () => {
     expect(jellyfinBackdropUrl({ Id: 'a', BackdropImageTags: ['t'] }, 1280)).toContain('maxWidth=1280');
     expect(jellyfinBackdropUrl({ Id: 'a', BackdropImageTags: ['t'] })).toContain('maxWidth=1920');
+  });
+});
+
+describe('detail artwork', () => {
+  it('uses album cover art even when a parent music folder is present', () => {
+    expect(jellyfinDetailImage({ Id: 'album', Type: 'MusicAlbum', ParentId: 'music', ImageTags: { Primary: 'cover' } }))
+      .toContain('itemId=album&type=Primary');
+  });
+
+  it('borrows parent cover art for audio tracks', () => {
+    expect(jellyfinDetailImage({ Id: 'track', Type: 'Audio', MediaType: 'Audio', ParentId: 'album' }))
+      .toContain('itemId=album&type=Primary');
+  });
+
+  it('falls back to a poster for videos without a backdrop', () => {
+    expect(jellyfinDetailImage({ Id: 'movie', Type: 'Movie', ImageTags: { Primary: 'cover' } }))
+      .toContain('itemId=movie&type=Primary');
   });
 });
 
