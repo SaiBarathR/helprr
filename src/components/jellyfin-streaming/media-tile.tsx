@@ -68,9 +68,8 @@ export interface MediaTileProps {
  * a raw Jellyfin item (upcoming from the arr calendar, Helprr's own
  * recommendations, trailers).
  *
- * Classic keeps the captioned, bordered card. Cinematic drops the caption —
- * the art is the label — and moves it into a hover reveal on pointer devices
- * and a permanent scrim on touch, where there is no hover to reach it.
+ * Classic keeps the captioned, bordered card. Cinematic displays the original
+ * artwork without a title overlay; metadata remains in the hover panel.
  */
 export function MediaTile({
   title,
@@ -130,20 +129,6 @@ export function MediaTile({
 
         {!cinematic && (
           <span className="pointer-events-none absolute inset-0 z-20 bg-black/0 transition-colors group-hover:bg-black/35" />
-        )}
-
-        {cinematic && shape === 'landscape' && (
-          // Touch has no hover, so a 16:9 still needs its title written on it.
-          // A portrait poster does not — the title is part of the artwork,
-          // which is why the app runs bare posters on phones. Gated the same
-          // way as CinematicCard so the two never disagree on one screen.
-          <>
-            <span className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-2/5 bg-gradient-to-t from-black/85 to-transparent [@media(hover:hover)]:hidden" />
-            {/* pr-12 keeps the title clear of the touch play affordance. */}
-            <span className="pointer-events-none absolute inset-x-0 bottom-0 z-10 p-2 pr-12 text-[11px] font-medium text-white [@media(hover:hover)]:hidden">
-              <span className="line-clamp-2">{title}</span>
-            </span>
-          </>
         )}
 
         {topLeftBadge && (

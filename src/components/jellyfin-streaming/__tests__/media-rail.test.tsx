@@ -2,11 +2,12 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { resetRouteViewStateForTests } from '@/lib/hooks/use-route-view-state';
 import { MediaRail } from '@/components/jellyfin-streaming/media-rail';
 
 const skin = vi.hoisted(() => ({ value: 'cinematic' }));
 vi.mock('@/lib/hooks/use-watch-skin', () => ({ useWatchSkin: () => skin.value }));
-vi.mock('next/link', () => ({ default: 'a' }));
+vi.mock('@/components/ui/app-link', () => ({ default: 'a' }));
 
 let container: HTMLDivElement;
 let root: Root;
@@ -14,6 +15,8 @@ let hover = true;
 const observe = vi.fn();
 
 beforeEach(() => {
+  resetRouteViewStateForTests();
+  window.sessionStorage.clear();
   hover = true;
   skin.value = 'cinematic';
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
@@ -82,6 +85,29 @@ describe('cinematic rail measurement', () => {
     expect(operations.every((operation) => operation.startsWith('read'))).toBe(true);
     // One observer watches both boxes instead of independent measurement loops.
     expect(observe).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps arrows and wheel gestures independent for rows sharing a destination', async () => {
+    const frames: FrameRequestCallback[] = [];
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => { frames.push(callback); return frames.length; });
+    await act(async () => root.render(<>
+      {['Recently added', 'Top rated', 'Action'].map((title) => (
+        <MediaRail key={title} title={title} href="/jellyfin/library/movies" count={20}>
+          {Array.from({ length: 20 }, (_, index) => <div key={index} className="hpr-cine-tile" />)}
+        </MediaRail>
+      ))}
+    </>));
+    const tracks = Array.from(container.querySelectorAll<HTMLElement>('.hpr-cine-row > div'));
+    for (const track of tracks) {
+      Object.defineProperty(track, 'clientWidth', { value: 500 });
+      Object.defineProperty(track, 'scrollWidth', { value: 2000 });
+      Object.defineProperty(track.firstElementChild, 'offsetWidth', { value: 92 });
+    }
+    await act(async () => { frames.splice(0).forEach((callback) => callback(0)); });
+    await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="Scroll right"]')!.click());
+    expect(tracks.map((track) => track.style.transform)).toEqual(['translateX(-500px)', '', '']);
+    await act(async () => tracks[1].parentElement!.dispatchEvent(new WheelEvent('wheel', { deltaX: 150, bubbles: true, cancelable: true })));
+    expect(tracks.map((track) => track.style.transform)).toEqual(['translateX(-500px)', 'translateX(-150px)', '']);
   });
 
   it('does no hover layout work on a touch device', async () => {

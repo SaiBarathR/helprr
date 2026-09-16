@@ -63,6 +63,7 @@ function defineSlotMetrics(slots: Element[], width = 112, gap = 8) {
   slots.forEach((slot, index) => {
     setMetric(slot, 'offsetLeft', index * (width + gap));
     setMetric(slot, 'offsetWidth', width);
+    slot.getBoundingClientRect = () => ({ left: index * (width + gap) - (viewportRef.current?.scrollLeft ?? 0) } as DOMRect);
   });
 }
 
@@ -107,6 +108,62 @@ describe('windowed rail items', () => {
     expect(returnedSlots.every((slot, index) => slot === slots[index])).toBe(true);
     expect(slots[0].firstElementChild).not.toBe(firstCard);
     expect(viewportRef.current?.dataset.railArrived).toBe('true');
+  });
+
+  it('mounts new artwork during transform paging without a native scroll event', async () => {
+    const frames = new Map<number, FrameRequestCallback>();
+    let id = 0;
+    vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
+      frames.set(++id, callback);
+      return id;
+    });
+    vi.spyOn(window, 'cancelAnimationFrame').mockImplementation((key) => { frames.delete(key); });
+    const flush = async () => act(async () => {
+      const pending = [...frames.values()];
+      frames.clear();
+      pending.forEach((callback) => callback(0));
+    });
+    const trackRef = createRef<HTMLDivElement>();
+    const children = Array.from({ length: 50 }, (_, index) => <button key={index}>Title {index}</button>);
+    const render = async (offset: number) => act(async () => root.render(
+      <div ref={viewportRef}><div ref={trackRef}>
+        <WindowedRailItems viewportRef={viewportRef} trackRef={trackRef} offset={offset} className="aspect-2/3 w-[112px]">
+          {children}
+        </WindowedRailItems>
+      </div></div>,
+    ));
+    await render(0);
+    const slots = Array.from(container.querySelectorAll('[data-rail-slot]'));
+    defineSlotMetrics(slots);
+    setMetric(viewportRef.current!, 'clientWidth', 360);
+    let translation = 0;
+    slots[0].getBoundingClientRect = () => ({ left: -translation } as DOMRect);
+    await Observer.instances[0].emit([{ target: viewportRef.current!, isIntersecting: true }]);
+    await flush();
+    expect(slots[0].querySelector('button')).not.toBeNull();
+    await render(1800);
+    const transition = (type: string) => {
+      const event = new Event(type, { bubbles: true });
+      Object.defineProperty(event, 'propertyName', { value: 'transform' });
+      trackRef.current!.dispatchEvent(event);
+    };
+    transition('transitionrun');
+    translation = 900;
+    await flush();
+    expect(slots[8].querySelector('button')).not.toBeNull();
+    translation = 1800;
+    await flush();
+    transition('transitionend');
+    await flush();
+    expect(viewportRef.current!.scrollLeft).toBe(0);
+    expect(slots[15].querySelector('button')).not.toBeNull();
+    expect(slots[0].querySelector('button')).toBeNull();
+    expect(frames.size).toBe(0);
+    // Reduced-motion and wheel gestures have no CSS transition events.
+    translation = 3000;
+    await render(3000);
+    await flush();
+    expect(slots[25].querySelector('button')).not.toBeNull();
   });
 
   it('keeps a 500-item rail bounded to the viewport and overscan', async () => {

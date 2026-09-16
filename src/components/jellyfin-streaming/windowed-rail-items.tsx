@@ -15,6 +15,8 @@ export function WindowedRailItems({
   className,
   viewportRef,
   overscanPx = 300,
+  trackRef,
+  offset = 0,
 }: {
   children: ReactNode;
   /** Exactly the card's responsive width and aspect ratio. */
@@ -22,6 +24,8 @@ export function WindowedRailItems({
   viewportRef: RefObject<HTMLDivElement | null>;
   /** Horizontal and vertical near-viewport margin before a slot may mount. */
   overscanPx?: number;
+  trackRef?: RefObject<HTMLDivElement | null>;
+  offset?: number;
 }) {
   const items = useMemo(() => Children.toArray(children), [children]);
   const keys = useMemo(
@@ -32,6 +36,8 @@ export function WindowedRailItems({
   const slots = useRef(new Map<string, HTMLDivElement>());
   const [mounted, setMounted] = useState<Set<string>>(() => new Set());
 
+  const refresh = useRef<(() => void) | null>(null);
+
   useEffect(() => {
     const viewport = viewportRef.current;
     if (!viewport) return;
@@ -39,19 +45,22 @@ export function WindowedRailItems({
     if (getComputedStyle(viewport).position === 'static') viewport.style.position = 'relative';
     let nearby = false;
     let frame = 0;
+    let transitioning = false;
     const update = () => {
+      if (frame) window.cancelAnimationFrame(frame);
       frame = 0;
       const next = new Set<string>();
-      const left = viewport.scrollLeft - overscanPx;
-      const right = viewport.scrollLeft + viewport.clientWidth + overscanPx;
+      const viewportLeft = viewport.getBoundingClientRect().left;
+      const left = -overscanPx;
+      const right = viewport.clientWidth + overscanPx;
       // Every slot uses the same responsive geometry. Read at most two slots,
       // rather than force layout for every card on every scroll frame.
       const first = slots.current.get(keys[0]);
       const second = slots.current.get(keys[1]);
       if (nearby && first) {
-        const origin = first.offsetLeft;
+        const origin = first.getBoundingClientRect().left - viewportLeft;
         const width = first.offsetWidth;
-        const stride = second ? second.offsetLeft - origin : width;
+        const stride = second ? second.offsetLeft - first.offsetLeft : width;
         if (stride > 0) {
           const from = Math.max(0, Math.ceil((left - origin - width) / stride));
           const to = Math.min(keys.length - 1, Math.floor((right - origin) / stride));
@@ -62,12 +71,24 @@ export function WindowedRailItems({
       if (focused && viewport.contains(focused) && focused.dataset.railSlot) next.add(focused.dataset.railSlot);
       setMounted((current) => current.size === next.size
         && [...next].every((key) => current.has(key)) ? current : next);
+      if (transitioning) frame = window.requestAnimationFrame(update);
     };
 
     const scheduleUpdate = () => {
       if (frame) return;
       frame = window.requestAnimationFrame(update);
     };
+
+    refresh.current = scheduleUpdate;
+    const track = trackRef?.current;
+    const onTransition = (event: TransitionEvent) => {
+      if (event.target !== track || event.propertyName !== 'transform') return;
+      transitioning = event.type === 'transitionrun';
+      scheduleUpdate();
+    };
+    track?.addEventListener('transitionrun', onTransition);
+    track?.addEventListener('transitionend', onTransition);
+    track?.addEventListener('transitioncancel', onTransition);
 
     const resizeObserver = typeof ResizeObserver !== 'undefined'
       ? new ResizeObserver(scheduleUpdate)
@@ -96,6 +117,10 @@ export function WindowedRailItems({
     resizeObserver?.observe(viewport);
     return () => {
       nearby = false;
+      refresh.current = null;
+      track?.removeEventListener('transitionrun', onTransition);
+      track?.removeEventListener('transitionend', onTransition);
+      track?.removeEventListener('transitioncancel', onTransition);
       if (frame) window.cancelAnimationFrame(frame);
       viewport.style.position = originalPosition;
       viewport.removeEventListener('scroll', scheduleUpdate);
@@ -105,7 +130,9 @@ export function WindowedRailItems({
       resizeObserver?.disconnect();
       vertical?.disconnect();
     };
-  }, [viewportRef, keyList, keys, overscanPx]);
+  }, [viewportRef, trackRef, keyList, keys, overscanPx]);
+
+  useEffect(() => { refresh.current?.(); }, [offset]);
 
   return items.map((item, index) => {
     const key = keys[index];

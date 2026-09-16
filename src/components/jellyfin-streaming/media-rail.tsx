@@ -62,7 +62,7 @@ export function MediaRail({
    * the arrows translate the track instead. Touch keeps native scrolling: the
    * arrows are pointer-only, so the offset simply stays at 0 there.
    */
-  const [offset, setOffset] = useRouteViewState(`rail-offset:${href ?? title}`, 0);
+  const [offset, setOffset] = useRouteViewState(`rail-offset:${JSON.stringify([title, href ?? null])}`, 0);
   const [maxOffset, setMaxOffset] = useState(0);
   /**
    * Where each page starts, for the indicator the site shows at a row's
@@ -381,7 +381,7 @@ export function MediaRail({
               style={offset ? { transform: `translateX(-${offset}px)` } : undefined}
             >
               {tileClassName ? (
-                <WindowedRailItems className={tileClassName} viewportRef={scrollerRef}>
+                <WindowedRailItems className={tileClassName} viewportRef={scrollerRef} trackRef={trackRef} offset={offset}>
                   {children}
                 </WindowedRailItems>
               ) : children}
