@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   jellyfinBackdropUrl,
+  jellyfinSeriesCardImage,
   jellyfinCardImage,
+  jellyfinCinematicCardImage,
   jellyfinPersonImageUrl,
 } from '@/lib/jellyfin-playback/image';
 
@@ -84,5 +86,52 @@ describe('jellyfinBackdropUrl', () => {
   it('honours a narrower width so the hero can mount several layers', () => {
     expect(jellyfinBackdropUrl({ Id: 'a', BackdropImageTags: ['t'] }, 1280)).toContain('maxWidth=1280');
     expect(jellyfinBackdropUrl({ Id: 'a', BackdropImageTags: ['t'] })).toContain('maxWidth=1920');
+  });
+});
+
+describe('cinematic artwork identity', () => {
+  it('uses the series thumb instead of an episode still', () => {
+    expect(jellyfinSeriesCardImage({ Id: 'ep', SeriesId: 'series', SeriesThumbImageTag: 'thumb' }))
+      .toContain('itemId=series&type=Thumb');
+  });
+
+
+});
+
+describe('cinematic title artwork', () => {
+  const episode = {
+    Id: 'episode', Type: 'Episode', SeriesId: 'series', ParentId: 'season',
+    ImageTags: { Primary: 'episode-still', Thumb: 'episode-thumb' },
+    SeriesThumbImageTag: 'series-title-art',
+    ParentBackdropImageTags: ['titleless-backdrop'],
+  };
+
+  it('uses series title art even when the episode supplies its own images', () => {
+    expect(jellyfinCinematicCardImage(episode)).toContain('itemId=series&type=Thumb');
+  });
+
+  it('uses the series poster on mobile', () => {
+    expect(jellyfinCinematicCardImage(episode, 600, 'portrait')).toContain('itemId=series&type=Primary');
+  });
+
+  it('retains the series backdrop fallback used by Continue Watching', () => {
+    expect(jellyfinCinematicCardImage({ ...episode, SeriesThumbImageTag: undefined }))
+      .toContain('itemId=series&type=Backdrop');
+  });
+
+  it('uses series artwork for seasons too', () => {
+    expect(jellyfinCinematicCardImage({ ...episode, Type: 'Season' })).toContain('itemId=series&type=Thumb');
+  });
+
+  it('preserves the existing movie thumb and backdrop selection', () => {
+    const movie = { Id: 'movie', Type: 'Movie', ImageTags: { Primary: 'poster', Thumb: 'title-art' }, BackdropImageTags: ['fanart'] };
+    expect(jellyfinCinematicCardImage(movie)).toContain('itemId=movie&type=Thumb');
+    expect(jellyfinCinematicCardImage({ ...movie, ImageTags: { Primary: 'poster' } }))
+      .toContain('itemId=movie&type=Backdrop');
+  });
+
+  it('does not silently substitute a scene when title artwork is unavailable', () => {
+    expect(jellyfinCinematicCardImage({ Id: 'orphan', Type: 'Episode', ImageTags: { Primary: 'still' } })).toBeNull();
+    expect(jellyfinCinematicCardImage({ Id: 'movie', Type: 'Movie' })).toBeNull();
   });
 });

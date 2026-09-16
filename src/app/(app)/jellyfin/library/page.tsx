@@ -68,6 +68,7 @@ export default function WatchHomePage() {
               title={`Latest in ${row.libraryName}`}
               href={`/jellyfin/library/v/${row.libraryId}?name=${encodeURIComponent(row.libraryName)}&type=${encodeURIComponent(row.collectionType)}`}
               shape={shapeForCollection(row.collectionType)}
+              identity="series"
               items={row.items}
               onPlay={play}
             />
