@@ -381,7 +381,7 @@ export function MediaRail({
               style={offset ? { transform: `translateX(-${offset}px)` } : undefined}
             >
               {tileClassName ? (
-                <WindowedRailItems className={tileClassName} viewportRef={scrollerRef}>
+                <WindowedRailItems className={tileClassName} viewportRef={scrollerRef} trackRef={trackRef} offset={offset}>
                   {children}
                 </WindowedRailItems>
               ) : children}
