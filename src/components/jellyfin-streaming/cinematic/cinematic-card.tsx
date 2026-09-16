@@ -20,8 +20,7 @@ import { useUIStore } from '@/lib/store';
 import { useWatchModal } from '@/components/jellyfin-streaming/cinematic/watch-modal';
 import {
   cardAspectClass,
-  jellyfinCardImage,
-  jellyfinSeriesCardImage,
+  jellyfinCinematicCardImage,
   type CatalogCardShape,
 } from '@/lib/jellyfin-playback/image';
 import { formatCertificate, formatRuntimeShort, isRecentlyAdded } from '@/lib/jellyfin-playback/metadata';
@@ -82,16 +81,7 @@ function PreviewMuteButton({ videoRef }: { videoRef: React.RefObject<HTMLVideoEl
   );
 }
 
-/**
- * The streaming-service tile: artwork only, no caption beneath it.
- *
- * Dropping the caption is the single biggest thing separating a streaming
- * home from a media manager — the art is the label. That only holds while the
- * art actually carries a title treatment, which Jellyfin's Thumb/Backdrop art
- * usually does but not always, so the title is still reachable: on pointer
- * devices it fades in over the art on hover (with the expand), and on touch,
- * where there is no hover, it rides a permanent bottom scrim.
- */
+/** Title artwork without text overlays; episode cards borrow their show art. */
 export const CinematicCard = memo(function CinematicCard({
   item,
   onPlay,
@@ -130,16 +120,9 @@ export const CinematicCard = memo(function CinematicCard({
   // to itself with no request, so its claim is still immediate.
   const previewSource = usePreviewSource(item, hovering && previewable);
   const holdsSlot = useHoverPreviewSlot(cardId, hovering && previewable && Boolean(previewSource.itemId));
-  // The Netflix app puts portrait posters in its phone rails; 16:9 stills only
-  // appear from tablet up. The frame decides which artwork is fetched, so this
-  // cannot be a media query.
   const shape = compact && requestedShape === 'landscape' ? 'portrait' : requestedShape;
-  const asSeries = identity === 'series' && item.Type === 'Episode' && Boolean(item.SeriesName);
-  // The series-level art is a 16:9 thumb, so it only belongs in a 16:9 frame;
-  // dropping it into a portrait tile crops most of the picture away. For
-  // portrait, jellyfinCardImage already borrows the series *poster*.
-  const image = (asSeries && shape === 'landscape' ? jellyfinSeriesCardImage(item, 600) : null)
-    ?? jellyfinCardImage(item, 600, shape);
+  const asSeries = (identity === 'series' || item.Type === 'Episode' || item.Type === 'Season') && Boolean(item.SeriesName);
+  const image = jellyfinCinematicCardImage(item, 600, shape);
   const progress = item.UserData?.PlayedPercentage;
   const unplayed = item.UserData?.UnplayedItemCount ?? 0;
   // A series with unwatched leaves is the site's "New Episode" case.
@@ -195,7 +178,7 @@ export const CinematicCard = memo(function CinematicCard({
         // `flat` opts out of the popover entirely (grids, not rows).
         'press-feedback group relative shrink-0',
         !flat && 'hpr-cine-tile',
-        flat ? cardAspectClass(shape) : cinematicCardLayout(requestedShape, compact),
+        flat ? cardAspectClass(shape) : cinematicCardLayout(shape, false),
         // A rail sizes its own tiles; a grid sizes them from the column, and
         // the responsive w-[...] ladder overrode a caller's w-full, so grid
         // cells rendered 292px wide in a 240px column and overlapped.
@@ -254,24 +237,6 @@ export const CinematicCard = memo(function CinematicCard({
         )}
 
         {showPreview && <PreviewMuteButton videoRef={videoRef} />}
-
-        {/* Touch has no hover, so a 16:9 still needs its title written on it.
-            A portrait poster does not: the title is part of the artwork, which
-            is exactly why the Netflix app runs bare posters on phones. */}
-        {shape === 'landscape' && (
-          <>
-            <span className={cn(
-              'pointer-events-none absolute inset-x-0 bottom-0 z-10 h-2/5 bg-gradient-to-t from-black/85 to-transparent',
-              !flat && '[@media(hover:hover)]:hidden',
-            )} />
-            <span className={cn(
-              'pointer-events-none absolute inset-x-0 bottom-0 z-10 p-2 text-[11px] font-medium text-white',
-              !flat && '[@media(hover:hover)]:hidden',
-            )}>
-              <span className="line-clamp-2">{title}</span>
-            </span>
-          </>
-        )}
 
         {upcoming && (
           <span className="absolute top-2 left-2 z-20 rounded bg-black/60 px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-white uppercase backdrop-blur-md">

@@ -117,6 +117,36 @@ export function jellyfinSeriesCardImage(
   return null;
 }
 
+/**
+ * Episodes in cinematic browsing use their show's artwork, just like Continue
+ * Watching and Next Up. Other items retain the existing artwork preference.
+ */
+export function jellyfinCinematicCardImage(
+  item: {
+    Id: string;
+    Type?: string;
+    ImageTags?: Record<string, string>;
+    BackdropImageTags?: string[];
+    SeriesId?: string;
+    ParentId?: string;
+    SeriesThumbImageTag?: string;
+    ParentThumbImageTag?: string;
+    ParentBackdropImageTags?: string[];
+  },
+  width = 600,
+  shape: CatalogCardShape = 'landscape',
+): string | null {
+  if (item.Type === 'Episode' || item.Type === 'Season') {
+    const seriesId = item.SeriesId ?? item.ParentId;
+    if (!seriesId) return null;
+    if (shape === 'landscape') {
+      return jellyfinSeriesCardImage(item, width) ?? jellyfinImageUrl(seriesId, 'Primary', width);
+    }
+    return jellyfinImageUrl(seriesId, 'Primary', width);
+  }
+  return jellyfinCardImage(item, width, shape);
+}
+
 /** Aspect ratio class for a card frame. */
 export function cardAspectClass(shape: CatalogCardShape): string {
   if (shape === 'landscape') return 'aspect-video';
