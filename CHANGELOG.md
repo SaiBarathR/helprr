@@ -5,6 +5,25 @@ All notable changes to Helprr are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.1] - 2026-09-17
+
+### Fixed
+
+- Paging one Watch carousel moved another. Each row's scroll offset was stored
+  under its link or, for a row without one, its title, so two rows that resolved
+  to the same key shared a single position.
+- Cards stayed blank when paging a carousel past its first page. The rows mount
+  only the cards near the viewport, and that decision read `scrollLeft`, which
+  does not change when the arrows translate the track with a transform. Visibility
+  is now measured against the viewport itself and keeps refreshing while the track
+  is still moving.
+- Episodes and seasons in the cinematic carousels showed their own still instead
+  of the show's artwork, unlike Continue Watching and Next Up.
+- Album and artist covers were missing from the phone detail screen. Music items
+  were given the 16:9 backdrop frame used for video, which they have no image
+  for; they now use a square frame that shows the whole cover, and the autoplay
+  preview is left to video.
+
 ## [1.5.0] - 2026-09-13
 
 ### Added
