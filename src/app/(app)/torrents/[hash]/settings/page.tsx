@@ -2,17 +2,17 @@
 
 import { useState } from 'react';
 import { useParams } from 'next/navigation';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { PageHeader } from '@/components/layout/page-header';
 import { GroupedSection } from '@/components/settings/grouped-section';
 import { ErrorState } from '@/components/ui/error-state';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { Switch } from '@/components/ui/switch';
-import { ApiError } from '@/lib/query-fetch';
 import { useCan } from '@/components/permission-provider';
 import type { QBittorrentTorrent } from '@/types';
 import { SpeedLimitInput } from '../../_components/speed-limit-input';
+import { torrentQueryKey, useTorrent, useTorrentAction } from '../../_components/use-torrent';
 
 type TorrentOption = 'seq_dl' | 'f_l_piece_prio' | 'auto_tmm';
 
@@ -36,58 +36,20 @@ export default function TorrentSettingsPage() {
   const canManage = useCan('torrents.manage');
   const [pendingOptions, setPendingOptions] = useState<ReadonlySet<TorrentOption>>(() => new Set());
 
-  const torrentQuery = useQuery({
-    queryKey: ['qbittorrent', 'torrent', hash],
-    queryFn: async ({ signal }): Promise<QBittorrentTorrent | null> => {
-      const res = await fetch(`/api/qbittorrent?hashes=${encodeURIComponent(hash)}`, { signal });
-      if (!res.ok) throw new ApiError(res.status, `GET /api/qbittorrent → ${res.status}`);
-      const torrents = (await res.json()) as QBittorrentTorrent[];
-      return torrents.find((t) => t.hash === hash) ?? null;
-    },
-    // Settings can change elsewhere (the list, another device); read fresh on each visit.
-    staleTime: 0,
-  });
+  const torrentQuery = useTorrent(hash);
   const torrent = torrentQuery.data;
+  const runAction = useTorrentAction();
 
   const setTorrentField = <K extends keyof QBittorrentTorrent>(field: K, value: QBittorrentTorrent[K]) => {
     queryClient.setQueryData<QBittorrentTorrent | null>(
-      ['qbittorrent', 'torrent', hash],
+      torrentQueryKey(hash),
       (old) => (old ? { ...old, [field]: value } : old),
     );
   };
 
-  const { mutateAsync: postAction } = useMutation({
-    mutationFn: async (body: Record<string, unknown>) => {
-      const res = await fetch('/api/qbittorrent', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ hash, ...body }),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => null);
-        // ApiError so a 401 reaches the global MutationCache handler (redirect).
-        throw new ApiError(res.status, data?.error || 'Action failed');
-      }
-    },
-  });
-
-  // Resolves false once the failure is toasted (SpeedLimitInput's contract).
-  const runAction = async (body: Record<string, unknown>): Promise<boolean> => {
-    try {
-      await postAction(body);
-      return true;
-    } catch (err) {
-      // 401 is handled globally (redirect to /login); only toast other failures.
-      if (!(err instanceof ApiError && err.status === 401)) {
-        toast.error(err instanceof Error ? err.message : 'Action failed');
-      }
-      return false;
-    }
-  };
-
   const saveLimit = (action: 'setDownloadLimit' | 'setUploadLimit', field: 'dl_limit' | 'up_limit') =>
     async (limit: number) => {
-      const ok = await runAction({ action, limit });
+      const ok = await runAction({ hash, action, limit });
       if (ok) setTorrentField(field, limit);
       return ok;
     };
@@ -97,7 +59,7 @@ export default function TorrentSettingsPage() {
   const toggleOption = async (option: (typeof OPTIONS)[number], enable: boolean) => {
     setPendingOptions((prev) => new Set(prev).add(option.field));
     setTorrentField(option.field, enable);
-    const ok = await runAction(option.body(enable));
+    const ok = await runAction({ hash, ...option.body(enable) });
     if (ok) toast.success(option.success);
     else setTorrentField(option.field, !enable);
     setPendingOptions((prev) => {

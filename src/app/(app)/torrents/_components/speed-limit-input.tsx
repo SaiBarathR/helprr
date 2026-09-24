@@ -23,10 +23,16 @@ export function formatSpeedLimit(bytesPerSec: number): string {
 export function SpeedLimitInput({
   label,
   currentLimit,
+  mixed = false,
+  target,
   onSave,
 }: {
   label: string;
   currentLimit: number;
+  /** The torrents being edited disagree: show "Mixed" and open the editor empty. */
+  mixed?: boolean;
+  /** Who the limit applies to, named in the toasts (e.g. "3 torrents"). */
+  target?: string;
   // Resolving false means the action layer already surfaced the failure (its
   // own toast) — skip the success toast and keep the editor open. A throw
   // means the failure hasn't been surfaced yet, so toast it here.
@@ -36,9 +42,10 @@ export function SpeedLimitInput({
   const [value, setValue] = useState('');
   const [unit, setUnit] = useState<'KB/s' | 'MB/s'>('MB/s');
   const [saving, setSaving] = useState(false);
+  const scope = target ? ` for ${target}` : '';
 
   const startEditing = () => {
-    if (currentLimit > 0) {
+    if (!mixed && currentLimit > 0) {
       const mbVal = currentLimit / (1024 * 1024);
       if (mbVal >= 1) {
         setValue(mbVal.toFixed(1).replace(/\.0$/, ''));
@@ -67,10 +74,10 @@ export function SpeedLimitInput({
     try {
       if (await onSave(Math.round(bytesPerSec)) !== false) {
         setEditing(false);
-        toast.success(`${label} updated`);
+        toast.success(`${label} updated${scope}`);
       }
     } catch {
-      toast.error(`Failed to set ${label.toLowerCase()}`);
+      toast.error(`Failed to set ${label.toLowerCase()}${scope}`);
     } finally {
       setSaving(false);
     }
@@ -81,10 +88,10 @@ export function SpeedLimitInput({
     try {
       if (await onSave(0) !== false) {
         setEditing(false);
-        toast.success(`${label} set to unlimited`);
+        toast.success(`${label} set to unlimited${scope}`);
       }
     } catch {
-      toast.error(`Failed to set ${label.toLowerCase()}`);
+      toast.error(`Failed to set ${label.toLowerCase()}${scope}`);
     } finally {
       setSaving(false);
     }
@@ -99,7 +106,7 @@ export function SpeedLimitInput({
       >
         <span className="text-sm">{label}</span>
         <span className="flex items-center gap-1 text-sm text-muted-foreground">
-          {formatSpeedLimit(currentLimit)}
+          {mixed ? 'Mixed' : formatSpeedLimit(currentLimit)}
           <ChevronRight className="h-3.5 w-3.5" />
         </span>
       </button>
