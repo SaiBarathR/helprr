@@ -16,14 +16,6 @@ import { PullToRefresh } from '@/components/ui/pull-to-refresh';
 import { useRefreshAction } from '@/lib/hooks/use-refresh-action';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { Switch } from '@/components/ui/switch';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { getRefreshIntervalMs } from '@/lib/client-refresh-settings';
 import { reportBulkTorrent } from '@/lib/bulk-fan-out';
 import { useQuery } from '@tanstack/react-query';
@@ -74,6 +66,7 @@ import {
   Tag,
   Pencil,
   Info,
+  SlidersHorizontal,
 } from 'lucide-react';
 import type {
   QBittorrentTorrent,
@@ -88,6 +81,7 @@ import {
 } from '@/lib/store';
 import { useCan } from '@/components/permission-provider';
 import { useBadgeActions } from '@/components/layout/badge-provider';
+import { SpeedLimitInput, formatSpeedLimit } from './_components/speed-limit-input';
 
 const TORRENT_ROW_HEIGHT = 160;
 
@@ -145,11 +139,6 @@ function formatSeedingTime(seconds: number): string {
   if (h > 0) parts.push(`${h}h`);
   if (m > 0 || parts.length === 0) parts.push(`${m}m`);
   return parts.join(' ');
-}
-
-function formatSpeedLimit(bytesPerSec: number): string {
-  if (bytesPerSec <= 0) return 'Unlimited';
-  return formatSpeed(bytesPerSec);
 }
 
 function getStateBadge(state: string) {
@@ -342,127 +331,6 @@ type PendingFieldOverride = {
   prev: string;
   until: number;
 };
-
-// --- SpeedLimitInput component ---
-
-function SpeedLimitInput({
-  label,
-  currentLimit,
-  onSave,
-}: {
-  label: string;
-  currentLimit: number;
-  // Resolving false means the action layer already surfaced the failure (its
-  // own toast) — skip the success toast and keep the editor open. A throw
-  // means the failure hasn't been surfaced yet, so toast it here.
-  onSave: (limitBytesPerSec: number) => Promise<boolean | void>;
-}) {
-  const [editing, setEditing] = useState(false);
-  const [value, setValue] = useState('');
-  const [unit, setUnit] = useState<'KB/s' | 'MB/s'>('MB/s');
-  const [saving, setSaving] = useState(false);
-
-  const startEditing = () => {
-    if (currentLimit > 0) {
-      const mbVal = currentLimit / (1024 * 1024);
-      if (mbVal >= 1) {
-        setValue(mbVal.toFixed(1).replace(/\.0$/, ''));
-        setUnit('MB/s');
-      } else {
-        setValue((currentLimit / 1024).toFixed(0));
-        setUnit('KB/s');
-      }
-    } else {
-      setValue('');
-      setUnit('MB/s');
-    }
-    setEditing(true);
-  };
-
-  const handleSave = async () => {
-    const numVal = parseFloat(value);
-    if (isNaN(numVal) || numVal < 0) {
-      toast.error('Invalid speed value');
-      return;
-    }
-    setSaving(true);
-    const bytesPerSec = unit === 'MB/s' ? numVal * 1024 * 1024 : numVal * 1024;
-    try {
-      if (await onSave(Math.round(bytesPerSec)) !== false) {
-        setEditing(false);
-        toast.success(`${label} updated`);
-      }
-    } catch {
-      toast.error(`Failed to set ${label.toLowerCase()}`);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleUnlimited = async () => {
-    setSaving(true);
-    try {
-      if (await onSave(0) !== false) {
-        setEditing(false);
-        toast.success(`${label} set to unlimited`);
-      }
-    } catch {
-      toast.error(`Failed to set ${label.toLowerCase()}`);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  if (!editing) {
-    return (
-      <button
-        className="flex items-center justify-between px-3 py-2 w-full text-left"
-        onClick={startEditing}
-      >
-        <span className="text-xs text-muted-foreground">{label}</span>
-        <span className="text-xs">{formatSpeedLimit(currentLimit)}</span>
-      </button>
-    );
-  }
-
-  return (
-    <div className="px-3 py-2 space-y-2">
-      <span className="text-xs text-muted-foreground">{label}</span>
-      <div className="flex items-center gap-2">
-        <Input
-          type="number"
-          min="0"
-          step="0.1"
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          placeholder="0"
-          className="h-8 text-xs flex-1"
-          autoFocus
-        />
-        <Select value={unit} onValueChange={(v) => setUnit(v as 'KB/s' | 'MB/s')}>
-          <SelectTrigger size="sm" className="text-xs">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="KB/s">KB/s</SelectItem>
-            <SelectItem value="MB/s">MB/s</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-      <div className="flex gap-2">
-        <Button size="sm" className="h-7 text-xs flex-1" onClick={handleSave} disabled={saving}>
-          {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Save'}
-        </Button>
-        <Button size="sm" variant="outline" className="h-7 text-xs flex-1" onClick={handleUnlimited} disabled={saving}>
-          Unlimited
-        </Button>
-        <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setEditing(false)} disabled={saving}>
-          Cancel
-        </Button>
-      </div>
-    </div>
-  );
-}
 
 // --- Row actions dropdown (shared by card and table rows) ---
 
@@ -805,7 +673,6 @@ export default function TorrentsPage() {
   const sortDir = useUIStore((s) => s.torrentsSortDir);
   const setSortDir = useUIStore((s) => s.setTorrentsSortDir);
   const viewMode = useUIStore((s) => s.torrentsView);
-  const setViewMode = useUIStore((s) => s.setTorrentsView);
   const isTableView = viewMode === 'table';
   const [torrents, setTorrents] = useState<QBittorrentTorrent[]>([]);
   const [transferInfo, setTransferInfo] = useState<QBittorrentTransferInfo | null>(null);
@@ -839,11 +706,6 @@ export default function TorrentsPage() {
     deleteFiles: false,
   });
   const [deleting, setDeleting] = useState(false);
-
-  // Settings drawer
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [globalLimits, setGlobalLimits] = useState<{ downloadLimit: number; uploadLimit: number; speedLimitsMode: number } | null>(null);
-  const [globalLimitsLoading, setGlobalLimitsLoading] = useState(false);
 
   // Category drawer
   const [categoryDrawer, setCategoryDrawer] = useState<{ open: boolean; hash: string }>({ open: false, hash: '' });
@@ -999,20 +861,6 @@ export default function TorrentsPage() {
       if (!controller.signal.aborted && detailHashRef.current === hash) toast.error('Failed to load torrent details');
     } finally {
       if (detailHashRef.current === hash) setDetailLoading(false);
-    }
-  }, []);
-
-  const fetchGlobalLimits = useCallback(async () => {
-    setGlobalLimitsLoading(true);
-    try {
-      const res = await fetch('/api/qbittorrent/transfer/limits');
-      if (res.ok) {
-        setGlobalLimits(await res.json());
-      }
-    } catch {
-      toast.error('Failed to load global limits');
-    } finally {
-      setGlobalLimitsLoading(false);
     }
   }, []);
 
@@ -1618,10 +1466,7 @@ export default function TorrentsPage() {
               <TooltipTrigger asChild>
                 <button
                   className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent active:bg-accent/80 transition-colors"
-                  onClick={() => {
-                    setSettingsOpen(true);
-                    void fetchGlobalLimits();
-                  }}
+                  onClick={() => router.push('/torrents/settings')}
                   aria-label="Settings"
                 >
                   <Settings className="h-5 w-5" />
@@ -1898,33 +1743,38 @@ export default function TorrentsPage() {
                   </div>
                 )}
 
-                {/* Speed Limits */}
-                {detailHash && canBandwidthTorrents && (
-                  <div>
-                    <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Speed Limits</h3>
-                    <div className="rounded-lg border divide-y">
-                      <SpeedLimitInput
-                        label="Download Limit"
-                        currentLimit={Number(detailData.properties.dl_limit) || 0}
-                        onSave={async (limit) => {
-                          const ok = await torrentAction(detailHash, 'setDownloadLimit', { limit });
-                          // Refresh detail
-                          if (ok) void fetchDetail(detailHash);
-                          return ok;
-                        }}
-                      />
-                      <SpeedLimitInput
-                        label="Upload Limit"
-                        currentLimit={Number(detailData.properties.up_limit) || 0}
-                        onSave={async (limit) => {
-                          const ok = await torrentAction(detailHash, 'setUploadLimit', { limit });
-                          if (ok) void fetchDetail(detailHash);
-                          return ok;
-                        }}
-                      />
-                    </div>
+                {/* Settings: read-only here. Editing lives on its own page, where
+                    the on-screen keyboard can't push a drawer out of view. */}
+                <div>
+                  <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Settings</h3>
+                  <div className="rounded-lg border divide-y">
+                    <DetailRow label="Download Limit" value={formatSpeedLimit(Number(detailData.properties.dl_limit) || 0)} />
+                    <DetailRow label="Upload Limit" value={formatSpeedLimit(Number(detailData.properties.up_limit) || 0)} />
+                    {detailTorrent && (
+                      <>
+                        <DetailRow label="Sequential Download" value={detailTorrent.seq_dl ? 'On' : 'Off'} />
+                        <DetailRow label="First/Last Piece Priority" value={detailTorrent.f_l_piece_prio ? 'On' : 'Off'} />
+                        <DetailRow label="Auto Torrent Management" value={detailTorrent.auto_tmm ? 'On' : 'Off'} />
+                      </>
+                    )}
                   </div>
-                )}
+                  {detailHash && (canBandwidthTorrents || canManageTorrents) && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full text-xs mt-2"
+                      onClick={() => {
+                        const hash = detailHash;
+                        setDetailHash(null);
+                        setDetailData(null);
+                        router.push(`/torrents/${hash}/settings`);
+                      }}
+                    >
+                      <SlidersHorizontal className="mr-2 h-3.5 w-3.5" />
+                      Edit Settings
+                    </Button>
+                  )}
+                </div>
 
                 {/* Timing */}
                 <div>
@@ -1943,42 +1793,6 @@ export default function TorrentsPage() {
                     )}
                   </div>
                 </div>
-
-                {/* Options */}
-                {detailHash && detailTorrent && canManageTorrents && (
-                  <div>
-                    <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Options</h3>
-                    <div className="rounded-lg border divide-y">
-                      <div className="flex items-center justify-between px-3 py-2">
-                        <span className="text-xs text-muted-foreground">Sequential Download</span>
-                        <Switch
-                          checked={detailTorrent.seq_dl}
-                          onCheckedChange={() => {
-                            void torrentAction(detailHash, 'toggleSequentialDownload');
-                          }}
-                        />
-                      </div>
-                      <div className="flex items-center justify-between px-3 py-2">
-                        <span className="text-xs text-muted-foreground">First/Last Piece Priority</span>
-                        <Switch
-                          checked={detailTorrent.f_l_piece_prio}
-                          onCheckedChange={() => {
-                            void torrentAction(detailHash, 'toggleFirstLastPiecePrio');
-                          }}
-                        />
-                      </div>
-                      <div className="flex items-center justify-between px-3 py-2">
-                        <span className="text-xs text-muted-foreground">Auto Torrent Management</span>
-                        <Switch
-                          checked={detailTorrent.auto_tmm}
-                          onCheckedChange={(checked) => {
-                            void torrentAction(detailHash, 'setAutoManagement', { enable: checked });
-                          }}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                )}
 
                 {/* Network */}
                 <div>
@@ -2127,94 +1941,6 @@ export default function TorrentsPage() {
         </DrawerContent>
       </Drawer>
 
-      {/* Global Settings Drawer */}
-      <Drawer open={settingsOpen} onOpenChange={setSettingsOpen}>
-        <DrawerContent>
-          <DrawerHeader>
-            <DrawerTitle>qBittorrent Settings</DrawerTitle>
-          </DrawerHeader>
-          <div className="px-4 pb-6 flex-1 min-h-0 overflow-y-auto space-y-4">
-            <div>
-              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">View</h3>
-              <div className="rounded-lg border divide-y">
-                <div className="flex items-center justify-between px-3 py-2">
-                  <span className="text-xs text-muted-foreground">Table View</span>
-                  <Switch
-                    checked={isTableView}
-                    onCheckedChange={(checked) => setViewMode(checked ? 'table' : 'card')}
-                  />
-                </div>
-              </div>
-            </div>
-
-            {globalLimitsLoading ? (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-              </div>
-            ) : globalLimits ? (
-              <>
-                <div>
-                  <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Speed Limits</h3>
-                  <div className="rounded-lg border divide-y">
-                    <SpeedLimitInput
-                      label="Global Download Limit"
-                      currentLimit={globalLimits.downloadLimit}
-                      onSave={async (limit) => {
-                        const res = await fetch('/api/qbittorrent/transfer/limits', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ action: 'setDownloadLimit', limit }),
-                        });
-                        if (!res.ok) throw new Error('Failed to set global download limit');
-                        void fetchGlobalLimits();
-                      }}
-                    />
-                    <SpeedLimitInput
-                      label="Global Upload Limit"
-                      currentLimit={globalLimits.uploadLimit}
-                      onSave={async (limit) => {
-                        const res = await fetch('/api/qbittorrent/transfer/limits', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ action: 'setUploadLimit', limit }),
-                        });
-                        if (!res.ok) throw new Error('Failed to set global upload limit');
-                        void fetchGlobalLimits();
-                      }}
-                    />
-                    <div className="flex items-center justify-between px-3 py-2">
-                      <span className="text-xs text-muted-foreground">Alternative Speed Limits</span>
-                      {/* Rendered from speedLimitsMode (not globalLimits) so the switch
-                          gets the optimistic flip + pending-poll guard the toolbar
-                          button already has — qBittorrent applies the toggle
-                          asynchronously, so an immediate re-fetch reads the old mode. */}
-                      <Switch
-                        checked={speedLimitsMode === 1}
-                        onCheckedChange={() => void toggleAltSpeedMode()}
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {transferInfo && (
-                  <div>
-                    <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Transfer Stats</h3>
-                    <div className="rounded-lg border divide-y">
-                      <DetailRow label="Session Downloaded" value={formatBytes(transferInfo.dl_info_data)} />
-                      <DetailRow label="Session Uploaded" value={formatBytes(transferInfo.up_info_data)} />
-                      <DetailRow label="DHT Nodes" value={String(transferInfo.dht_nodes)} />
-                      <DetailRow label="Connection Status" value={transferInfo.connection_status} />
-                    </div>
-                  </div>
-                )}
-              </>
-            ) : (
-              <p className="text-sm text-muted-foreground text-center py-4">Failed to load settings.</p>
-            )}
-          </div>
-        </DrawerContent>
-      </Drawer>
-
       {/* Category Picker Drawer */}
       <Drawer open={categoryDrawer.open} onOpenChange={(open) => !open && setCategoryDrawer({ open: false, hash: '' })}>
         <DrawerContent>
@@ -2300,7 +2026,7 @@ export default function TorrentsPage() {
             <DrawerTitle>Set Speed Limits ({selectedTorrents.size} torrents)</DrawerTitle>
           </DrawerHeader>
           <div className="px-4 pb-6 space-y-1">
-            <div className="rounded-lg border divide-y">
+            <div className="grouped-section-content overflow-hidden">
               <SpeedLimitInput
                 label="Download Limit"
                 currentLimit={0}

@@ -215,7 +215,10 @@ async function getHandler(request: NextRequest) {
     const category = searchParams.get('category') || undefined;
     const sort = searchParams.get('sort') || undefined;
     const reverse = searchParams.get('reverse') === 'true' ? true : undefined;
-    const torrents = await client.getTorrents(filter, category, sort, reverse);
+    // qBittorrent's own `hashes` filter ('|'-separated), so a single-torrent
+    // view doesn't have to download the whole list.
+    const hashes = searchParams.get('hashes') || undefined;
+    const torrents = await client.getTorrents(filter, category, sort, reverse, hashes);
     logApiDuration('/api/qbittorrent', startedAt, {
       method: 'GET',
       torrentCount: torrents.length,
