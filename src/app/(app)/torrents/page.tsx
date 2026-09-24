@@ -10,7 +10,6 @@ import { useWindowVirtualizer } from '@tanstack/react-virtual';
 import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { SearchInput } from '@/components/media/search-input';
 import { PullToRefresh } from '@/components/ui/pull-to-refresh';
 import { useRefreshAction } from '@/lib/hooks/use-refresh-action';
@@ -81,7 +80,8 @@ import {
 } from '@/lib/store';
 import { useCan } from '@/components/permission-provider';
 import { useBadgeActions } from '@/components/layout/badge-provider';
-import { SpeedLimitInput, formatSpeedLimit } from './_components/speed-limit-input';
+import { formatSpeedLimit } from './_components/speed-limit-input';
+import { setSpeedLimitTargets } from './_components/speed-limit-targets';
 
 const TORRENT_ROW_HEIGHT = 160;
 
@@ -92,13 +92,7 @@ const TORRENT_ACTION_MESSAGES: Record<string, { single: string; bulk?: string }>
   delete: { single: 'Deleted', bulk: 'delete' },
   recheck: { single: 'Rechecking', bulk: 'recheck' },
   reannounce: { single: 'Reannounced', bulk: 'reannounce' },
-  setDownloadLimit: { single: 'Download limit set', bulk: 'Set download limit for' },
-  setUploadLimit: { single: 'Upload limit set', bulk: 'Set upload limit for' },
-  toggleSequentialDownload: { single: 'Sequential download toggled', bulk: 'toggle sequential download for' },
-  toggleFirstLastPiecePrio: { single: 'First/last piece priority toggled', bulk: 'toggle first/last piece priority for' },
   setCategory: { single: 'Category set', bulk: 'set category for' },
-  setAutoManagement: { single: 'Auto management toggled', bulk: 'toggle auto management for' },
-  rename: { single: 'Renamed', bulk: 'rename' },
 };
 
 function torrentActionMessage(action: string, mode: 'single' | 'bulk'): string {
@@ -307,18 +301,16 @@ const OPTIMISTIC_ROW_PATCHES: Record<
   stop: (t) => ({ ...t, state: t.progress >= 1 ? 'stoppedUP' : 'stoppedDL', dlspeed: 0, upspeed: 0 }),
   pause: (t) => ({ ...t, state: t.progress >= 1 ? 'pausedUP' : 'pausedDL', dlspeed: 0, upspeed: 0 }),
   setCategory: (t, extra) => ({ ...t, category: String(extra?.category ?? '') }),
-  rename: (t, extra) => ({ ...t, name: String(extra?.name ?? t.name) }),
 };
 
 // The field each action's override guards (the one the reconcile must not revert).
-const OPTIMISTIC_OVERRIDE_FIELD: Record<string, 'state' | 'name' | 'category'> = {
+const OPTIMISTIC_OVERRIDE_FIELD: Record<string, 'state' | 'category'> = {
   start: 'state',
   resume: 'state',
   forceStart: 'state',
   stop: 'state',
   pause: 'state',
   setCategory: 'category',
-  rename: 'name',
 };
 
 // How long an optimistic override (or delete tombstone) may outlive polls that
@@ -326,7 +318,7 @@ const OPTIMISTIC_OVERRIDE_FIELD: Record<string, 'state' | 'name' | 'category'> =
 const OPTIMISTIC_STATE_TTL_MS = 10_000;
 
 type PendingFieldOverride = {
-  field: 'state' | 'name' | 'category';
+  field: 'state' | 'category';
   value: string;
   prev: string;
   until: number;
@@ -342,7 +334,7 @@ interface TorrentRowProps {
   onTorrentAction: (hash: string, action: string, extra?: Record<string, unknown>) => void;
   onOpenDeleteDrawer: (hash: string, name: string, deleteFiles: boolean) => void;
   onOpenCategoryDrawer: (hash: string) => void;
-  onOpenRenameDrawer: (hash: string, name: string) => void;
+  onRename: (hash: string) => void;
 }
 
 function torrentContextActionGroups({
@@ -353,7 +345,7 @@ function torrentContextActionGroups({
   onTorrentAction,
   onOpenDeleteDrawer,
   onOpenCategoryDrawer,
-  onOpenRenameDrawer,
+  onRename,
   canManageTorrents,
   canDeleteTorrents,
 }: TorrentRowProps & {
@@ -429,7 +421,7 @@ function torrentContextActionGroups({
               id: 'rename',
               label: 'Rename',
               icon: <Pencil className="h-4 w-4" />,
-              onSelect: () => onOpenRenameDrawer(torrent.hash, torrent.name),
+              onSelect: () => onRename(torrent.hash),
             },
           ]
         : [],
@@ -463,7 +455,7 @@ function TorrentRowActions({
   onTorrentAction,
   onOpenDeleteDrawer,
   onOpenCategoryDrawer,
-  onOpenRenameDrawer,
+  onRename,
   triggerClassName,
 }: Omit<TorrentRowProps, 'selected' | 'onToggleSelect' | 'onFetchDetail'> & { triggerClassName?: string }) {
   const canManageTorrents = useCan('torrents.manage');
@@ -504,7 +496,7 @@ function TorrentRowActions({
             <DropdownMenuItem onClick={() => onOpenCategoryDrawer(torrent.hash)}>
               <Tag className="mr-2 h-4 w-4" /> Set Category
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => onOpenRenameDrawer(torrent.hash, torrent.name)}>
+            <DropdownMenuItem onClick={() => onRename(torrent.hash)}>
               <Pencil className="mr-2 h-4 w-4" /> Rename
             </DropdownMenuItem>
           </>
@@ -538,7 +530,7 @@ const TorrentRow = memo(function TorrentRow({
   onTorrentAction,
   onOpenDeleteDrawer,
   onOpenCategoryDrawer,
-  onOpenRenameDrawer,
+  onRename,
 }: TorrentRowProps) {
   const hasSpeedLimit = torrent.dl_limit > 0 || torrent.up_limit > 0;
   const canManageTorrents = useCan('torrents.manage');
@@ -552,7 +544,7 @@ const TorrentRow = memo(function TorrentRow({
     onTorrentAction,
     onOpenDeleteDrawer,
     onOpenCategoryDrawer,
-    onOpenRenameDrawer,
+    onRename,
     canManageTorrents,
     canDeleteTorrents,
   });
@@ -596,7 +588,7 @@ const TorrentRow = memo(function TorrentRow({
               onTorrentAction={onTorrentAction}
               onOpenDeleteDrawer={onOpenDeleteDrawer}
               onOpenCategoryDrawer={onOpenCategoryDrawer}
-              onOpenRenameDrawer={onOpenRenameDrawer}
+              onRename={onRename}
               triggerClassName="h-7 w-7 shrink-0 -mt-0.5"
             />
           </div>
@@ -711,14 +703,6 @@ export default function TorrentsPage() {
   const [categoryDrawer, setCategoryDrawer] = useState<{ open: boolean; hash: string }>({ open: false, hash: '' });
   const [categories, setCategories] = useState<Record<string, { name: string; savePath: string }>>({});
   const [categoriesLoading, setCategoriesLoading] = useState(false);
-
-  // Rename drawer
-  const [renameDrawer, setRenameDrawer] = useState<{ open: boolean; hash: string; name: string }>({ open: false, hash: '', name: '' });
-  const [renameValue, setRenameValue] = useState('');
-  const [renaming, setRenaming] = useState(false);
-
-  // Bulk speed limit drawer
-  const [bulkSpeedDrawer, setBulkSpeedDrawer] = useState(false);
 
   const listRef = useRef<HTMLDivElement | null>(null);
   // When exactly one filter is active, push it to qBittorrent so the server slims
@@ -1061,23 +1045,18 @@ export default function TorrentsPage() {
     }
   }, [torrents]);
 
-  const openRenameDrawer = useCallback((hash: string, name: string) => {
-    setRenameDrawer({ open: true, hash, name });
-    setRenameValue(name);
-  }, []);
+  // Renaming and bulk limits are pages, not drawers: their text fields would
+  // bring up the on-screen keyboard, which pushes a drawer out of view on iOS.
+  const openRename = useCallback((hash: string) => {
+    router.push(`/torrents/${hash}/rename`);
+  }, [router]);
 
-  const handleRename = useCallback(async () => {
-    if (!renameValue.trim()) return;
-    setRenaming(true);
-    try {
-      await torrentAction(renameDrawer.hash, 'rename', { name: renameValue.trim() });
-      setRenameDrawer({ open: false, hash: '', name: '' });
-    } catch {
-      // Error handled in torrentAction
-    } finally {
-      setRenaming(false);
-    }
-  }, [renameDrawer.hash, renameValue, torrentAction]);
+  const openBulkSpeedLimits = useCallback(() => {
+    setSpeedLimitTargets(torrents
+      .filter((t) => selectedTorrents.has(t.hash))
+      .map(({ hash, name, dl_limit, up_limit }) => ({ hash, name, dl_limit, up_limit })));
+    router.push('/torrents/speed-limits');
+  }, [router, selectedTorrents, torrents]);
 
   const toggleAltSpeedMode = useCallback(async () => {
     // Optimistic flip with a pending override so a racing poll can't bounce the
@@ -1330,11 +1309,11 @@ export default function TorrentsPage() {
           onTorrentAction={torrentAction}
           onOpenDeleteDrawer={openDeleteDrawer}
           onOpenCategoryDrawer={openCategoryDrawer}
-          onOpenRenameDrawer={openRenameDrawer}
+          onRename={openRename}
         />
       ),
     },
-  ], [allSelected, selectAll, selectedTorrents, toggleSelect, fetchDetail, torrentAction, openDeleteDrawer, openCategoryDrawer, openRenameDrawer]);
+  ], [allSelected, selectAll, selectedTorrents, toggleSelect, fetchDetail, torrentAction, openDeleteDrawer, openCategoryDrawer, openRename]);
 
   const wrapTableRow = useCallback((torrent: QBittorrentTorrent, tr: ReactElement) => (
     <QuickContextMenu
@@ -1347,14 +1326,14 @@ export default function TorrentsPage() {
         onTorrentAction: torrentAction,
         onOpenDeleteDrawer: openDeleteDrawer,
         onOpenCategoryDrawer: openCategoryDrawer,
-        onOpenRenameDrawer: openRenameDrawer,
+        onRename: openRename,
         canManageTorrents,
         canDeleteTorrents,
       })}
     >
       {tr}
     </QuickContextMenu>
-  ), [selectedTorrents, toggleSelect, fetchDetail, torrentAction, openDeleteDrawer, openCategoryDrawer, openRenameDrawer, canManageTorrents, canDeleteTorrents]);
+  ), [selectedTorrents, toggleSelect, fetchDetail, torrentAction, openDeleteDrawer, openCategoryDrawer, openRename, canManageTorrents, canDeleteTorrents]);
 
   return (
     <div className="space-y-3 animate-content-in">
@@ -1550,7 +1529,7 @@ export default function TorrentsPage() {
           {canBandwidthTorrents && (
             <button
               className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg hover:bg-accent"
-              onClick={() => setBulkSpeedDrawer(true)}
+              onClick={openBulkSpeedLimits}
               aria-label="Speed Limits"
             >
               <Gauge className="h-4 w-4" />
@@ -1675,7 +1654,7 @@ export default function TorrentsPage() {
                     onTorrentAction={torrentAction}
                     onOpenDeleteDrawer={openDeleteDrawer}
                     onOpenCategoryDrawer={openCategoryDrawer}
-                    onOpenRenameDrawer={openRenameDrawer}
+                    onRename={openRename}
                   />
                 ))}
               </div>
@@ -1987,68 +1966,6 @@ export default function TorrentsPage() {
         </DrawerContent>
       </Drawer>
 
-      {/* Rename Drawer */}
-      <Drawer open={renameDrawer.open} onOpenChange={(open) => !open && setRenameDrawer({ open: false, hash: '', name: '' })}>
-        <DrawerContent>
-          <DrawerHeader>
-            <DrawerTitle>Rename Torrent</DrawerTitle>
-          </DrawerHeader>
-          <div className="px-4 pb-2">
-            <Input
-              value={renameValue}
-              onChange={(e) => setRenameValue(e.target.value)}
-              placeholder="Torrent name"
-              autoFocus
-            />
-          </div>
-          <DrawerFooter>
-            <Button onClick={handleRename} disabled={renaming || !renameValue.trim()} className="w-full">
-              {renaming ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Renaming...
-                </>
-              ) : (
-                'Rename'
-              )}
-            </Button>
-            <DrawerClose asChild>
-              <Button variant="outline" className="w-full">Cancel</Button>
-            </DrawerClose>
-          </DrawerFooter>
-        </DrawerContent>
-      </Drawer>
-
-      {/* Bulk Speed Limit Drawer */}
-      <Drawer open={bulkSpeedDrawer} onOpenChange={setBulkSpeedDrawer}>
-        <DrawerContent>
-          <DrawerHeader>
-            <DrawerTitle>Set Speed Limits ({selectedTorrents.size} torrents)</DrawerTitle>
-          </DrawerHeader>
-          <div className="px-4 pb-6 space-y-1">
-            <div className="grouped-section-content overflow-hidden">
-              <SpeedLimitInput
-                label="Download Limit"
-                currentLimit={0}
-                onSave={async (limit) => {
-                  const ok = await bulkAction('setDownloadLimit', { limit });
-                  if (ok) setBulkSpeedDrawer(false);
-                  return ok;
-                }}
-              />
-              <SpeedLimitInput
-                label="Upload Limit"
-                currentLimit={0}
-                onSave={async (limit) => {
-                  const ok = await bulkAction('setUploadLimit', { limit });
-                  if (ok) setBulkSpeedDrawer(false);
-                  return ok;
-                }}
-              />
-            </div>
-          </div>
-        </DrawerContent>
-      </Drawer>
     </div>
   );
 }

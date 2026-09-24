@@ -98,6 +98,27 @@ describe('SpeedLimitInput', () => {
     expect(toast.error).toHaveBeenCalledWith('Invalid speed value');
   });
 
+  it('shows Mixed for torrents that disagree and opens the editor empty', async () => {
+    await act(async () => root.render(
+      <SpeedLimitInput label="Download Limit" currentLimit={512 * 1024} mixed onSave={vi.fn()} />,
+    ));
+    expect(document.querySelector('button.grouped-row')!.textContent).toContain('Mixed');
+
+    await act(async () => document.querySelector<HTMLButtonElement>('button.grouped-row')!.click());
+    expect(document.querySelector('input')!.value).toBe('');
+    expect(document.querySelector('[data-slot="select-trigger"]')!.textContent).toContain('MB/s');
+  });
+
+  it('names who the limit applies to in its messages', async () => {
+    await act(async () => root.render(
+      <SpeedLimitInput label="Upload Limit" currentLimit={0} target="3 torrents" onSave={vi.fn().mockResolvedValue(true)} />,
+    ));
+    await act(async () => document.querySelector<HTMLButtonElement>('button.grouped-row')!.click());
+    await act(async () => button('Unlimited').click());
+
+    expect(toast.success).toHaveBeenCalledWith('Upload Limit set to unlimited for 3 torrents');
+  });
+
   it('cancels without saving', async () => {
     const onSave = vi.fn();
     await renderInput(0, onSave);
