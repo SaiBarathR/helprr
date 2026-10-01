@@ -62,6 +62,7 @@ export default function SeasonDetailPage() {
     episodeId: number;
     title: string;
   } | null>(null);
+  const [searchingEpisodeIds, setSearchingEpisodeIds] = useState<ReadonlySet<number>>(new Set());
   const [showScheduleAlert, setShowScheduleAlert] = useState(false);
 
   const canEditMonitoring = useCan('series.editMonitoring');
@@ -149,6 +150,29 @@ export default function SeasonDetailPage() {
       toast.error('Search failed');
     } finally {
       setActionLoading('');
+    }
+  }
+
+  async function handleEpisodeAutomaticSearch(ep: SonarrEpisode) {
+    if (searchingEpisodeIds.has(ep.id)) return;
+    setSearchingEpisodeIds((prev) => new Set(prev).add(ep.id));
+    try {
+      const res = await arrMutationFetch(instance, '/api/sonarr/command', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'EpisodeSearch', episodeIds: [ep.id] }),
+      });
+      if (!res.ok) throw new Error(`EpisodeSearch → ${res.status}`);
+      toast.success(`Episode ${ep.episodeNumber} search started`);
+    } catch (e) {
+      handleAuthError(e);
+      toast.error(`Episode ${ep.episodeNumber} search failed`);
+    } finally {
+      setSearchingEpisodeIds((prev) => {
+        const next = new Set(prev);
+        next.delete(ep.id);
+        return next;
+      });
     }
   }
 
@@ -437,7 +461,7 @@ export default function SeasonDetailPage() {
             <QuickContextMenu key={ep.id} label={`${ep.title || `Episode ${ep.episodeNumber}`} actions`} actions={episodeActions}>
             <Link
               href={episodeHref}
-              className="flex gap-3 px-4 py-3 active:bg-muted/50 transition-colors"
+              className="flex flex-wrap gap-x-3 gap-y-2 px-4 py-3 active:bg-muted/50 transition-colors"
             >
               {/* Episode still image or number fallback (skip for anime) */}
               {series?.seriesType !== 'anime' && (
@@ -531,6 +555,45 @@ export default function SeasonDetailPage() {
                     <Bookmark className="h-4 w-4 text-muted-foreground" />
                   )}
                 </button>
+              )}
+              {/* Per-episode search — same activity.manage gate as the season buttons. Its own
+                  full-width line so both fit side by side on a phone; the row is a link,
+                  so the buttons stop the tap from opening it. */}
+              {canManageActivity && (
+                <div className="basis-full flex flex-wrap gap-1.5">
+                  <Button
+                    variant="secondary"
+                    size="xs"
+                    className="rounded-full has-[>svg]:px-2.5"
+                    aria-label={`Automatic search: ${ep.title || `Episode ${ep.episodeNumber}`}`}
+                    aria-busy={searchingEpisodeIds.has(ep.id)}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      void handleEpisodeAutomaticSearch(ep);
+                    }}
+                  >
+                    {searchingEpisodeIds.has(ep.id) ? <Loader2 className="animate-spin" /> : <Search />}
+                    Automatic
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="xs"
+                    className="rounded-full has-[>svg]:px-2.5"
+                    aria-label={`Interactive search: ${ep.title || `Episode ${ep.episodeNumber}`}`}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setEpisodeInteractiveTarget({
+                        episodeId: ep.id,
+                        title: ep.title || `Episode ${ep.episodeNumber}`,
+                      });
+                    }}
+                  >
+                    <Search />
+                    Interactive
+                  </Button>
+                </div>
               )}
             </Link>
             </QuickContextMenu>
