@@ -135,6 +135,20 @@ describe('Activity source filter', () => {
     expect(window.location.search).toBe('?tab=queue');
   });
 
+  it('drops a deep-link filter when the page navigates to plain /activity', async () => {
+    mocks.search = new URLSearchParams('tab=queue&source=sonarr');
+    window.history.replaceState(null, '', '/activity?tab=queue&source=sonarr');
+    await renderPage();
+    await waitFor(() => expect(text()).toContain('1 Task'));
+    // A client navigation (e.g. the nav item) keeps the page mounted and only
+    // changes the search params.
+    mocks.search = new URLSearchParams();
+    window.history.replaceState(null, '', '/activity');
+    await renderPage();
+    await waitFor(() => expect(text()).toContain('2 Tasks'));
+    expect(filterBar()).toBeNull();
+  });
+
   it('flags a saved source and instance filter and clears both at once', async () => {
     useUIStore.setState({ activityFilterBy: ['sonarr'], activityInstanceFilter: 'son-1' });
     await renderPage();

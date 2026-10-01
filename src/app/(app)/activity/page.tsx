@@ -288,6 +288,11 @@ function isFilterKey(value: string): value is FilterKey {
   return FILTER_OPTIONS.some((option) => option.key === value);
 }
 
+function linkSourceFrom(params: URLSearchParams): FilterKey | null {
+  const source = params.get('source');
+  return source && isFilterKey(source) && source !== 'all' ? source : null;
+}
+
 /**
  * Renders the Activity page with header controls (filter, sort, history, refresh) and tabbed views for Queue, Failed imports, Missing, and Cutoff items.
  *
@@ -309,15 +314,18 @@ export default function ActivityPage() {
   const setFilterBy = useUIStore((s) => s.setActivityFilterBy);
   const instanceFilter = useUIStore((s) => s.activityInstanceFilter);
   const setInstanceFilter = useUIStore((s) => s.setActivityInstanceFilter);
+  const searchParamsKey = searchParams.toString();
   // A ?source deep link (push notifications for a grab/failure) narrows this
   // visit only. It must never be written to the persisted filter, or every later
-  // visit stays silently filtered to that source.
-  const [linkSource, setLinkSource] = useState<FilterKey | null>(() => {
-    const s = searchParams.get('source');
-    return s && isFilterKey(s) && s !== 'all' ? s : null;
-  });
+  // visit stays silently filtered to that source. Re-read on every URL change:
+  // a client navigation to plain /activity keeps this page mounted.
+  const [linkSource, setLinkSource] = useState(() => linkSourceFrom(searchParams));
+  const [linkSourceKey, setLinkSourceKey] = useState(searchParamsKey);
+  if (linkSourceKey !== searchParamsKey) {
+    setLinkSourceKey(searchParamsKey);
+    setLinkSource(linkSourceFrom(searchParams));
+  }
   const sources = useMemo(() => (linkSource ? [linkSource] : filterBy), [linkSource, filterBy]);
-  const searchParamsKey = searchParams.toString();
   // Tab priority: an explicit ?tab (a widget or push-notification deep-link) wins
   // and is applied here on the first paint; otherwise we resume the last-used tab
   // from the persisted store in the effect below (the nav item / a generic "view
