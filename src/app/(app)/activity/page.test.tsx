@@ -122,6 +122,19 @@ describe('Activity source filter', () => {
     expect(window.location.search).toBe('?tab=queue');
   });
 
+  it('falls back to the saved filter when a deep-link filter is dismissed', async () => {
+    useUIStore.setState({ activityFilterBy: ['radarr'] });
+    mocks.search = new URLSearchParams('tab=queue&source=sonarr');
+    window.history.replaceState(null, '', '/activity?tab=queue&source=sonarr');
+    await renderPage();
+    await waitFor(() => expect(filterBar()?.textContent).toContain('Sonarr'));
+    await act(async () => button('Remove Sonarr filter')!.click());
+    await waitFor(() => expect(filterBar()?.textContent).toContain('Radarr'));
+    expect(text()).toContain('1 Task');
+    expect(useUIStore.getState().activityFilterBy).toEqual(['radarr']);
+    expect(window.location.search).toBe('?tab=queue');
+  });
+
   it('flags a saved source and instance filter and clears both at once', async () => {
     useUIStore.setState({ activityFilterBy: ['sonarr'], activityInstanceFilter: 'son-1' });
     await renderPage();

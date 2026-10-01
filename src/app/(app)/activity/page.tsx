@@ -392,16 +392,19 @@ export default function ActivityPage() {
     }
   }, [hasHydrated, searchParamsKey, setSortBy, setSortDirection]);
 
-  // Any source change made here replaces a deep-link filter and is saved; the
-  // link's ?source is dropped from the URL so a reload doesn't bring it back.
+  // Drop a deep-link filter, and its ?source from the URL so a reload doesn't
+  // bring it back; the saved filter applies again.
+  function dropLinkSource() {
+    setLinkSource(null);
+    const params = new URLSearchParams(window.location.search);
+    params.delete('source');
+    const query = params.toString();
+    window.history.replaceState(null, '', query ? `/activity?${query}` : '/activity');
+  }
+
+  // A source change made in the menu replaces a deep-link filter and is saved.
   function updateSources(next: string[]) {
-    if (linkSource) {
-      setLinkSource(null);
-      const params = new URLSearchParams(window.location.search);
-      params.delete('source');
-      const query = params.toString();
-      window.history.replaceState(null, '', query ? `/activity?${query}` : '/activity');
-    }
+    if (linkSource) dropLinkSource();
     setFilterBy(next);
   }
 
@@ -411,7 +414,9 @@ export default function ActivityPage() {
     ...sources.map((key) => ({
       id: `source:${key}`,
       label: sourceLabel(key),
-      onRemove: () => updateSources(sources.filter((s) => s !== key)),
+      // Dismissing a deep link's visit filter falls back to the saved filter
+      // rather than overwriting it.
+      onRemove: linkSource ? dropLinkSource : () => updateSources(sources.filter((s) => s !== key)),
     })),
     ...(instanceFilter !== 'all'
       ? [{
