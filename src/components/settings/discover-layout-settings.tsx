@@ -244,7 +244,7 @@ function CustomCarouselEditor({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="w-[92vw] sm:max-w-md p-0">
+      <SheetContent side="right" className="w-[92vw] sm:max-w-md">
         <SheetHeader>
           <SheetTitle>{initial ? 'Edit Custom Carousel' : 'New Custom Carousel'}</SheetTitle>
         </SheetHeader>

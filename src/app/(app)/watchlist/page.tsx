@@ -1102,28 +1102,25 @@ export default function WatchlistPage() {
       />
 
       {selectionMode && canEdit && (
-        <>
-          <div aria-hidden className="h-24" />
-          <BulkActionBar
-            count={actionableSelectedCount}
-            allSelected={allFilteredSelected}
-            onToggleSelectAll={toggleSelectAll}
-            onCancel={exit}
-            variant="full"
-            canTag
-            canSearch={false}
-            onSearch={async () => {}}
-            canDelete
-            onDelete={() => handleBulkRemove()}
-            deleteFilesOption={false}
-            deleteVerb="Remove"
-            deleteDescription="Removes the selected items from your watchlist. Your media library is not affected."
-            allowReplace
-            tags={tags.map((t) => ({ id: 0, label: t.name }))}
-            onApplyTags={handleApplyTags}
-            itemNoun="item"
-          />
-        </>
+        <BulkActionBar
+          count={actionableSelectedCount}
+          allSelected={allFilteredSelected}
+          onToggleSelectAll={toggleSelectAll}
+          onCancel={exit}
+          variant="full"
+          canTag
+          canSearch={false}
+          onSearch={async () => {}}
+          canDelete
+          onDelete={() => handleBulkRemove()}
+          deleteFilesOption={false}
+          deleteVerb="Remove"
+          deleteDescription="Removes the selected items from your watchlist. Your media library is not affected."
+          allowReplace
+          tags={tags.map((t) => ({ id: 0, label: t.name }))}
+          onApplyTags={handleApplyTags}
+          itemNoun="item"
+        />
       )}
     </div>
   );
@@ -1447,11 +1444,12 @@ function ManageTagsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      {/* A column so the tag list takes the scrolling and Close stays in view. */}
+      <DialogContent className="flex flex-col overflow-hidden">
         <DialogHeader>
           <DialogTitle>Manage tags</DialogTitle>
         </DialogHeader>
-        <div className="space-y-3 max-h-[60vh] overflow-y-auto">
+        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto">
           {tags.length === 0 ? (
             <p className="text-sm text-muted-foreground">No tags yet. Add items with tags to create them.</p>
           ) : (

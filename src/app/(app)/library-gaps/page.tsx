@@ -534,19 +534,15 @@ export default function LibraryGapsPage() {
       )}
 
       {selectionMode && (
-        <>
-          {/* Spacer so the floating bar doesn't cover the last row. */}
-          <div aria-hidden className="h-24" />
-          <BulkActionBar
-            count={count}
-            allSelected={allSelected}
-            onToggleSelectAll={toggleSelectAll}
-            onCancel={exit}
-            variant="search"
-            canSearch={canSearch}
-            onSearch={handleBulkSearch}
-          />
-        </>
+        <BulkActionBar
+          count={count}
+          allSelected={allSelected}
+          onToggleSelectAll={toggleSelectAll}
+          onCancel={exit}
+          variant="search"
+          canSearch={canSearch}
+          onSearch={handleBulkSearch}
+        />
       )}
     </div>
   );

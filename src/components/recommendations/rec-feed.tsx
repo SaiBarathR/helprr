@@ -238,8 +238,11 @@ function FeedCard({ item, position, tracker, onHide }: {
           ))}
         </div>
 
-        {/* Action rail — TikTok-style vertical stack, bottom-right. */}
-        <div className="pointer-events-auto flex shrink-0 flex-col items-center gap-2.5">
+        {/* Action rail — TikTok-style vertical stack, bottom-right. On a phone
+            it keeps clear of the command palette's edge handle, which covers
+            the screen's last 20px about a fifth of the way up — right where
+            this rail's buttons sit on every card. */}
+        <div className="pointer-events-auto mr-3 flex shrink-0 flex-col items-center gap-2.5 md:mr-0">
           <ActionButton
             label="More like this"
             active={liked}

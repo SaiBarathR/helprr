@@ -941,26 +941,22 @@ export default function MusicPage() {
       />
 
       {selectionMode && (
-        <>
-          {/* Spacer so the floating bar doesn't cover the last rows. */}
-          <div aria-hidden className="h-24" />
-          <BulkActionBar
-            count={selectedCount}
-            allSelected={allFilteredSelected}
-            onToggleSelectAll={toggleSelectAll}
-            onCancel={exit}
-            canMonitor={canMonitor}
-            canTag={canTag}
-            canSearch={canSearch}
-            canDelete={canDelete}
-            tags={tags}
-            onMonitor={handleMonitor}
-            onApplyTags={handleApplyTags}
-            onSearch={handleBulkSearch}
-            onDelete={handleDelete}
-            itemNoun="artist"
-          />
-        </>
+        <BulkActionBar
+          count={selectedCount}
+          allSelected={allFilteredSelected}
+          onToggleSelectAll={toggleSelectAll}
+          onCancel={exit}
+          canMonitor={canMonitor}
+          canTag={canTag}
+          canSearch={canSearch}
+          canDelete={canDelete}
+          tags={tags}
+          onMonitor={handleMonitor}
+          onApplyTags={handleApplyTags}
+          onSearch={handleBulkSearch}
+          onDelete={handleDelete}
+          itemNoun="artist"
+        />
       )}
     </div>
   );

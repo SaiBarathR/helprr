@@ -7,6 +7,22 @@
    no attribute (SSR first paint, legacy caches) means dark, the default. */
 @custom-variant light (&:where(html[data-scheme='light'], html[data-scheme='light'] *));
 
+/* Grows a small control's tap area to 44px without changing its size or the
+   layout around it: a transparent ::after centred on the control takes the
+   taps. The control must be positioned (`relative` or `absolute`) and must not
+   clip its overflow. Neighbours closer than the enlarged area share the gap. */
+@utility touch-target {
+  &::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: max(100%, 44px);
+    height: max(100%, 44px);
+    transform: translate(-50%, -50%);
+  }
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -158,6 +174,26 @@
   :root[data-nav-position="bottom"] {
     --header-height: 0px;
   }
+}
+
+/* What app chrome takes from the foot of the viewport: the home indicator, plus
+   the 3rem tab bar when the nav sits at the bottom of a phone. Anything fixed
+   to the bottom (save bars, toasts, the now-playing bar) offsets by this, so it
+   sits above the tab bar instead of under it, and off the home indicator. */
+:root {
+  --footer-height: env(safe-area-inset-bottom, 0px);
+}
+
+@media (max-width: 767.98px) {
+  :root[data-nav-position="bottom"] {
+    --footer-height: calc(3rem + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+/* While a FloatingActionBar is up, toasts stack above it instead of covering
+   its Save / Discard / bulk buttons. */
+:root:has([data-floating-action-bar]) {
+  --floating-bar-clearance: 3.5rem;
 }
 
 /* ── Main content padding + full-bleed page toolbars ────────────────────
@@ -590,15 +626,6 @@ html[data-watch-skin='cinematic']:has(.hpr-watch) {
   to {
     opacity: 1;
   }
-}
-
-/* Touch target helper - apply to interactive nav/action elements */
-.touch-target {
-  min-height: 44px;
-  min-width: 44px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
 
 /* Active press feedback */

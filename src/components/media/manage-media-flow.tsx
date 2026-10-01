@@ -21,7 +21,6 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { DeleteFilesConfirmDialog } from '@/components/media/delete-files-confirm-dialog';
 import { jsonFetcher, ensureArray, withInstanceQuery, arrMutationFetch, ApiError } from '@/lib/query-fetch';
 import { queryKeys } from '@/lib/query-keys';
@@ -763,7 +762,7 @@ function LanguagePicker({ open, languages, loading, onClose, onSelect }: {
           <DialogDescription className="sr-only">Set languages on the selected files.</DialogDescription>
         </DialogHeader>
         <Input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder={loading ? 'Loading…' : 'Filter languages'} />
-        <ScrollArea className="max-h-[45dvh] rounded-md border">
+        <div className="max-h-[45dvh] overflow-y-auto rounded-md border">
           <div className="p-1">
             {list.map((l) => {
               const on = picked.has(l.id);
@@ -775,7 +774,7 @@ function LanguagePicker({ open, languages, loading, onClose, onSelect }: {
               );
             })}
           </div>
-        </ScrollArea>
+        </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancel</Button>
           <Button disabled={picked.size === 0} onClick={() => onSelect(languages.filter((l) => picked.has(l.id)))}>Select Languages</Button>

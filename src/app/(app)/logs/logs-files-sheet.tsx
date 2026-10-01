@@ -238,7 +238,7 @@ export function LogsFilesSheet({
   if (isDesktop) {
     return (
       <Sheet open={open} onOpenChange={onOpenChange}>
-        <SheetContent side="right" className="w-3/4 sm:max-w-md p-0 gap-0">
+        <SheetContent side="right" className="w-3/4 sm:max-w-md gap-0">
           <SheetHeader className="border-b border-border">
             <SheetTitle asChild>{titleNode}</SheetTitle>
             <SheetDescription className="sr-only">

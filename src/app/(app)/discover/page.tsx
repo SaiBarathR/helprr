@@ -1477,7 +1477,7 @@ export default function DiscoverPage() {
       <Sheet open={filtersOpen} onOpenChange={setFiltersOpen}>
         <SheetContent
           side={isMobile ? 'bottom' : 'right'}
-          className={isMobile ? 'h-[88dvh] rounded-t-2xl p-0' : 'w-[92vw] sm:max-w-md p-0'}
+          className={isMobile ? 'h-[88dvh] rounded-t-2xl' : 'w-[92vw] sm:max-w-md'}
         >
           <SheetHeader>
             <SheetTitle>Advanced Filters</SheetTitle>

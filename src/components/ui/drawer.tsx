@@ -106,7 +106,9 @@ function DrawerTitle({
   return (
     <DrawerPrimitive.Title
       data-slot="drawer-title"
-      className={cn("text-foreground font-semibold", className)}
+      // A long release or file name must wrap rather than run past a phone's
+      // edge, even inside a flex row.
+      className={cn("text-foreground min-w-0 font-semibold [overflow-wrap:anywhere]", className)}
       {...props}
     />
   )
@@ -119,7 +121,7 @@ function DrawerDescription({
   return (
     <DrawerPrimitive.Description
       data-slot="drawer-description"
-      className={cn("text-muted-foreground text-sm", className)}
+      className={cn("text-muted-foreground min-w-0 text-sm [overflow-wrap:anywhere]", className)}
       {...props}
     />
   )
