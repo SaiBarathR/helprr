@@ -110,6 +110,21 @@ describe('season page episode search buttons', () => {
     expect(button('Interactive search: Curiouser and Curiouser!')!.closest('a')).toBeNull();
   });
 
+  it('opens the episode quick-actions menu from the row link', async () => {
+    await renderPage();
+    const link = document.querySelector<HTMLAnchorElement>('a[href="/series/7/season/4/episode/102?instance=son-1"]')!;
+    await act(async () => {
+      link.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 20, clientY: 20 }));
+    });
+    await waitFor(() => expect(document.body.textContent).toContain('Open episode'));
+  });
+
+  it('names the episode on each bookmark', async () => {
+    await renderPage();
+    expect(button('Unmonitor episode: Home')).toBeDefined();
+    expect(button('Unmonitor episode: Curiouser and Curiouser!')).toBeDefined();
+  });
+
   it('disables Automatic while that episode search is in flight', async () => {
     let release!: () => void;
     commandResponse = () => Response.json({ id: 1 });

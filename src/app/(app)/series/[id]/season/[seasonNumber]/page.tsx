@@ -459,10 +459,12 @@ export default function SeasonDetailPage() {
           ];
 
           return (
-            <QuickContextMenu key={ep.id} label={`${ep.title || `Episode ${ep.episodeNumber}`} actions`} actions={episodeActions}>
-            {/* The link's ::after covers the whole row so it stays one tap target, while
-                the bookmark and search buttons sit beside the link rather than inside it. */}
-            <div className="relative flex flex-wrap gap-x-3 gap-y-2 px-4 py-3 active:bg-muted/50 transition-colors">
+            // The link's ::after covers the whole row so it stays one tap (and long-press)
+            // target, while the bookmark and search buttons sit beside the link rather than
+            // inside it. The quick-actions menu wraps only the link: it ignores gestures that
+            // start on a nested link or button.
+            <div key={ep.id} className="relative flex flex-wrap gap-x-3 gap-y-2 px-4 py-3 active:bg-muted/50 transition-colors">
+            <QuickContextMenu label={`${ep.title || `Episode ${ep.episodeNumber}`} actions`} actions={episodeActions}>
             <Link
               href={episodeHref}
               className="flex flex-1 min-w-0 gap-3 after:absolute after:inset-0"
@@ -543,11 +545,12 @@ export default function SeasonDetailPage() {
                 )}
               </div>
             </Link>
+            </QuickContextMenu>
 
               {/* Monitor bookmark */}
               {canEditMonitoring && (
                 <button
-                  aria-label={ep.monitored ? 'Unmonitor episode' : 'Monitor episode'}
+                  aria-label={`${ep.monitored ? 'Unmonitor' : 'Monitor'} episode: ${ep.title || `Episode ${ep.episodeNumber}`}`}
                   onClick={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
@@ -593,7 +596,6 @@ export default function SeasonDetailPage() {
                 </div>
               )}
             </div>
-            </QuickContextMenu>
           );
         })}
 
