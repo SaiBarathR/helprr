@@ -139,11 +139,12 @@ export default function SeasonDetailPage() {
     if (!series) return;
     setActionLoading('search');
     try {
-      await arrMutationFetch(instance, '/api/sonarr/command', {
+      const res = await arrMutationFetch(instance, '/api/sonarr/command', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: 'SeasonSearch', seriesId: series.id, seasonNumber }),
       });
+      if (!res.ok) throw new Error(`SeasonSearch → ${res.status}`);
       toast.success(`Season ${seasonNumber} search started`);
     } catch (e) {
       handleAuthError(e);

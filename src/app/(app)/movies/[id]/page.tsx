@@ -214,11 +214,12 @@ export default function MovieDetailPage() {
     if (!movie) return;
     setActionLoading('search');
     try {
-      await arrMutationFetch(instance, '/api/radarr/command', {
+      const res = await arrMutationFetch(instance, '/api/radarr/command', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: 'MoviesSearch', movieIds: [movie.id] }),
       });
+      if (!res.ok) throw new Error(`MoviesSearch → ${res.status}`);
       toast.success('Search started');
     } catch (e) { handleAuthError(e); toast.error('Search failed'); }
     finally { setActionLoading(''); }

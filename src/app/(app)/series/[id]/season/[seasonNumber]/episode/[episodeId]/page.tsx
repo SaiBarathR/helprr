@@ -239,11 +239,12 @@ export default function EpisodeDetailPage() {
   async function handleAutomaticSearch() {
     setActionLoading('search');
     try {
-      await arrMutationFetch(instance, '/api/sonarr/command', {
+      const res = await arrMutationFetch(instance, '/api/sonarr/command', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: 'EpisodeSearch', episodeIds: [episodeId] }),
       });
+      if (!res.ok) throw new Error(`EpisodeSearch → ${res.status}`);
       toast.success('Episode search started');
     } catch (e) {
       handleAuthError(e);

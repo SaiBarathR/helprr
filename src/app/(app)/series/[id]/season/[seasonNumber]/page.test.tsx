@@ -115,6 +115,17 @@ describe('season page episode search buttons', () => {
     expect(mocks.push).not.toHaveBeenCalled();
   });
 
+  it('reports a rejected season search instead of claiming it started', async () => {
+    commandResponse = () => new Response('nope', { status: 500 });
+    await renderPage();
+    const seasonSearch = [...document.querySelectorAll('button')]
+      .find((b) => !b.hasAttribute('aria-label') && b.textContent === 'Automatic')!;
+    await act(async () => seasonSearch.click());
+    await waitFor(() => expect(mocks.toast.error).toHaveBeenCalledWith('Search failed'));
+    expect(commands[0].body).toEqual({ name: 'SeasonSearch', seriesId: 7, seasonNumber: 4 });
+    expect(mocks.toast.success).not.toHaveBeenCalled();
+  });
+
   it('hides the buttons from users who cannot manage downloads', async () => {
     mocks.caps = new Set(['series.editMonitoring']);
     await renderPage();

@@ -563,11 +563,12 @@ export default function SeriesDetailPage() {
     if (!series) return;
     setActionLoading('search');
     try {
-      await arrMutationFetch(instance, '/api/sonarr/command', {
+      const res = await arrMutationFetch(instance, '/api/sonarr/command', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: 'SeriesSearch', seriesId: series.id }),
       });
+      if (!res.ok) throw new Error(`SeriesSearch → ${res.status}`);
       toast.success('Series search started');
     } catch (e) { handleAuthError(e); toast.error('Search failed'); }
     finally { setActionLoading(''); }
