@@ -563,11 +563,12 @@ export default function SeriesDetailPage() {
     if (!series) return;
     setActionLoading('search');
     try {
-      await arrMutationFetch(instance, '/api/sonarr/command', {
+      const res = await arrMutationFetch(instance, '/api/sonarr/command', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: 'SeriesSearch', seriesId: series.id }),
       });
+      if (!res.ok) throw new Error(`SeriesSearch → ${res.status}`);
       toast.success('Series search started');
     } catch (e) { handleAuthError(e); toast.error('Search failed'); }
     finally { setActionLoading(''); }
@@ -1376,7 +1377,9 @@ export default function SeriesDetailPage() {
           </div>
         )}
 
-        <MediaDownloadProgress source="sonarr" mediaId={series.id} instanceId={instance} />
+        {/* This page stacks sections without a space-y wrapper, so the card spaces itself
+            (and adds nothing when there is no download). */}
+        <MediaDownloadProgress source="sonarr" mediaId={series.id} instanceId={instance} className="my-4" />
 
         {isAnimeSeries && (
           <div className="pt-3 space-y-3">

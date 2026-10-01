@@ -31,7 +31,9 @@ function Chip({ children, tone = 'default' }: { children: ReactNode; tone?: 'def
   return (
     <Badge
       variant={tone === 'muted' ? 'outline' : 'secondary'}
-      className="font-normal whitespace-nowrap"
+      // A long list (many categories) wraps inside the chip instead of
+      // running past a phone-width card.
+      className="font-normal max-w-full whitespace-normal break-words"
     >
       {children}
     </Badge>

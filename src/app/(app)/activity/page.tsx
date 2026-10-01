@@ -49,6 +49,7 @@ import { invalidateActivity } from '@/lib/query-invalidation';
 import { classifyQueueIssue } from '@/lib/queue-state';
 import { useUIStore } from '@/lib/store';
 import { type InstanceOption } from '@/components/instance-filter';
+import { ActiveFilterBar, type ActiveFilter } from '@/components/ui/active-filter-bar';
 import { useCan } from '@/components/permission-provider';
 import { useBadgeActions } from '@/components/layout/badge-provider';
 import { RemoveQueueDialog, type RemoveQueueOptions } from './_components/remove-queue-dialog';
@@ -287,6 +288,11 @@ function isFilterKey(value: string): value is FilterKey {
   return FILTER_OPTIONS.some((option) => option.key === value);
 }
 
+function linkSourceFrom(params: URLSearchParams): FilterKey | null {
+  const source = params.get('source');
+  return source && isFilterKey(source) && source !== 'all' ? source : null;
+}
+
 /**
  * Renders the Activity page with header controls (filter, sort, history, refresh) and tabbed views for Queue, Failed imports, Missing, and Cutoff items.
  *
@@ -309,6 +315,17 @@ export default function ActivityPage() {
   const instanceFilter = useUIStore((s) => s.activityInstanceFilter);
   const setInstanceFilter = useUIStore((s) => s.setActivityInstanceFilter);
   const searchParamsKey = searchParams.toString();
+  // A ?source deep link (push notifications for a grab/failure) narrows this
+  // visit only. It must never be written to the persisted filter, or every later
+  // visit stays silently filtered to that source. Re-read on every URL change:
+  // a client navigation to plain /activity keeps this page mounted.
+  const [linkSource, setLinkSource] = useState(() => linkSourceFrom(searchParams));
+  const [linkSourceKey, setLinkSourceKey] = useState(searchParamsKey);
+  if (linkSourceKey !== searchParamsKey) {
+    setLinkSourceKey(searchParamsKey);
+    setLinkSource(linkSourceFrom(searchParams));
+  }
+  const sources = useMemo(() => (linkSource ? [linkSource] : filterBy), [linkSource, filterBy]);
   // Tab priority: an explicit ?tab (a widget or push-notification deep-link) wins
   // and is applied here on the first paint; otherwise we resume the last-used tab
   // from the persisted store in the effect below (the nav item / a generic "view
@@ -371,11 +388,7 @@ export default function ActivityPage() {
     initRef.current = true;
     const params = new URLSearchParams(searchParamsKey);
     const currentState = useUIStore.getState();
-    const requestedSource = params.get('source');
     const requestedSort = params.get('sort');
-    if (requestedSource && isFilterKey(requestedSource) && requestedSource !== 'all') {
-      setFilterBy([requestedSource]);
-    }
     if (requestedSort && isSortKey(requestedSort)) {
       const defaultDirection = getDefaultActivitySortDirection(requestedSort);
       if (requestedSort !== currentState.activitySortBy) {
@@ -385,7 +398,50 @@ export default function ActivityPage() {
         setSortDirection(defaultDirection);
       }
     }
-  }, [hasHydrated, searchParamsKey, setFilterBy, setSortBy, setSortDirection]);
+  }, [hasHydrated, searchParamsKey, setSortBy, setSortDirection]);
+
+  // Drop a deep-link filter, and its ?source from the URL so a reload doesn't
+  // bring it back; the saved filter applies again.
+  function dropLinkSource() {
+    setLinkSource(null);
+    const params = new URLSearchParams(window.location.search);
+    params.delete('source');
+    const query = params.toString();
+    window.history.replaceState(null, '', query ? `/activity?${query}` : '/activity');
+  }
+
+  // A source change made in the menu replaces a deep-link filter and is saved.
+  function updateSources(next: string[]) {
+    if (linkSource) dropLinkSource();
+    setFilterBy(next);
+  }
+
+  const sourceLabel = (key: string) => FILTER_OPTIONS.find((opt) => opt.key === key)?.label ?? key;
+  const selectedInstance = arrConnections.find((c) => c.id === instanceFilter);
+  const activeFilters: ActiveFilter[] = [
+    ...sources.map((key) => ({
+      id: `source:${key}`,
+      label: sourceLabel(key),
+      // Dismissing a deep link's visit filter falls back to the saved filter
+      // rather than overwriting it.
+      onRemove: linkSource ? dropLinkSource : () => updateSources(sources.filter((s) => s !== key)),
+    })),
+    ...(instanceFilter !== 'all'
+      ? [{
+        id: 'instance',
+        // Instance labels repeat across apps ("main"), so name the app too.
+        label: selectedInstance
+          ? `${selectedInstance.label} (${sourceLabel(selectedInstance.type.toLowerCase())})`
+          : 'Instance',
+        onRemove: () => setInstanceFilter('all'),
+      }]
+      : []),
+  ];
+
+  function clearFilters() {
+    updateSources([]);
+    setInstanceFilter('all');
+  }
 
   function handleTabChange(nextTab: TabKey) {
     if (!isTabKey(nextTab)) return;
@@ -452,15 +508,23 @@ export default function ActivityPage() {
             {/* Filter */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="md:h-11 md:w-11 w-7 h-7" aria-label="Filter and sort">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="relative md:h-11 md:w-11 w-7 h-7"
+                  aria-label={activeFilters.length > 0 ? 'Filter and sort (filters active)' : 'Filter and sort'}
+                >
                   <SlidersHorizontal className="h-4 w-4" />
+                  {activeFilters.length > 0 && (
+                    <span className="absolute right-0.5 top-0.5 h-2 w-2 rounded-full bg-primary" />
+                  )}
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 <DropdownMenuLabel>Sources</DropdownMenuLabel>
                 <DropdownMenuCheckboxItem
-                  checked={filterBy.length === 0}
-                  onCheckedChange={() => setFilterBy([])}
+                  checked={sources.length === 0}
+                  onCheckedChange={() => updateSources([])}
                   onSelect={(e) => e.preventDefault()}
                 >
                   All
@@ -468,11 +532,11 @@ export default function ActivityPage() {
                 {FILTER_OPTIONS.filter((opt) => opt.key !== 'all').map((opt) => (
                   <DropdownMenuCheckboxItem
                     key={opt.key}
-                    checked={filterBy.includes(opt.key)}
-                    onCheckedChange={() => setFilterBy(
-                      filterBy.includes(opt.key)
-                        ? filterBy.filter((s) => s !== opt.key)
-                        : [...filterBy, opt.key]
+                    checked={sources.includes(opt.key)}
+                    onCheckedChange={() => updateSources(
+                      sources.includes(opt.key)
+                        ? sources.filter((s) => s !== opt.key)
+                        : [...sources, opt.key]
                     )}
                     onSelect={(e) => e.preventDefault()}
                   >
@@ -588,9 +652,11 @@ export default function ActivityPage() {
         </Tabs>
       </div>
 
+      <ActiveFilterBar filters={activeFilters} onClearAll={clearFilters} className="pt-2" />
+
       {/* Queue count */}
       {tab === 'queue' && queueCount > 0 && (
-        <p className="text-xs text-muted-foreground mb-1">
+        <p className="text-xs text-muted-foreground py-2">
           {queueCount} {queueCount === 1 ? 'Task' : 'Tasks'}
         </p>
       )}
@@ -601,14 +667,14 @@ export default function ActivityPage() {
           <QueueTab
             sortBy={sortBy}
             sortDirection={sortDirection}
-            filterBy={filterBy}
+            filterBy={sources}
             instanceFilter={instanceFilter}
             onCountChange={setQueueCount}
           />
         )}
-        {tab === 'failed' && <FailedImportsTab filterBy={filterBy} instanceFilter={instanceFilter} />}
-        {tab === 'missing' && <WantedTab type="missing" filterBy={filterBy} instanceFilter={instanceFilter} />}
-        {tab === 'cutoff' && <WantedTab type="cutoff" filterBy={filterBy} instanceFilter={instanceFilter} />}
+        {tab === 'failed' && <FailedImportsTab filterBy={sources} instanceFilter={instanceFilter} />}
+        {tab === 'missing' && <WantedTab type="missing" filterBy={sources} instanceFilter={instanceFilter} />}
+        {tab === 'cutoff' && <WantedTab type="cutoff" filterBy={sources} instanceFilter={instanceFilter} />}
       </div>
     </div>
   );
@@ -1176,7 +1242,7 @@ function QueueTab({
                   </p>
                 </DrawerHeader>
 
-                <div className="px-4 space-y-4 pb-6">
+                <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-6 space-y-4">
                   {/* Tags row */}
                   <div className="flex items-center gap-2 flex-wrap">
                     {selectedItem.source && (

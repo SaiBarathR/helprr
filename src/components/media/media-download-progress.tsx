@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { jsonFetcher } from '@/lib/query-fetch';
 import { formatBytes } from '@/lib/format';
+import { cn } from '@/lib/utils';
 import {
   summarizeMediaDownloads,
   type MediaDownloadItem,
@@ -34,10 +35,12 @@ export function MediaDownloadProgress({
   source,
   mediaId,
   instanceId,
+  className,
 }: {
   source: MediaQueueSource;
   mediaId: number;
   instanceId?: string;
+  className?: string;
 }) {
   const canViewActivity = useCan('activity.view');
   const [expanded, setExpanded] = useState(false);
@@ -57,7 +60,7 @@ export function MediaDownloadProgress({
   if (!canViewActivity || !summary) return null;
 
   return (
-    <section className="overflow-hidden rounded-xl border border-primary/20 bg-primary/[0.04]">
+    <section className={cn('overflow-hidden rounded-xl border border-primary/20 bg-primary/[0.04]', className)}>
       <button
         type="button"
         onClick={() => setExpanded((value) => !value)}
