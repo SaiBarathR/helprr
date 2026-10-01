@@ -566,13 +566,15 @@ export default function SeasonDetailPage() {
                 </button>
               )}
               {/* Per-episode search — same activity.manage gate as the season buttons. Its own
-                  full-width line so both fit side by side on a phone. */}
+                  full-width line so both fit side by side on a phone. Only the buttons sit above
+                  the link's ::after, so the rest of the line still opens the episode; a disabled
+                  Automatic keeps its pointer events so a tap can't fall through to the link. */}
               {canManageActivity && (
-                <div className="relative basis-full flex flex-wrap gap-1.5">
+                <div className="basis-full flex flex-wrap gap-1.5">
                   <Button
                     variant="secondary"
                     size="xs"
-                    className="rounded-full has-[>svg]:px-2.5"
+                    className="relative rounded-full has-[>svg]:px-2.5 disabled:pointer-events-auto"
                     aria-label={`Automatic search: ${ep.title || `Episode ${ep.episodeNumber}`}`}
                     disabled={searchingEpisodeIds.has(ep.id)}
                     onClick={() => { void handleEpisodeAutomaticSearch(ep); }}
@@ -583,7 +585,7 @@ export default function SeasonDetailPage() {
                   <Button
                     variant="secondary"
                     size="xs"
-                    className="rounded-full has-[>svg]:px-2.5"
+                    className="relative rounded-full has-[>svg]:px-2.5"
                     aria-label={`Interactive search: ${ep.title || `Episode ${ep.episodeNumber}`}`}
                     onClick={() => setEpisodeInteractiveTarget({
                       episodeId: ep.id,

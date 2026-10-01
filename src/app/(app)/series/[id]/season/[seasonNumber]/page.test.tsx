@@ -110,6 +110,20 @@ describe('season page episode search buttons', () => {
     expect(button('Interactive search: Curiouser and Curiouser!')!.closest('a')).toBeNull();
   });
 
+  // jsdom has no hit testing, so this pins the declarations that keep the rest of the
+  // button line on the link's stretched ::after: only the buttons are positioned above
+  // it, and a disabled Automatic still takes its own taps instead of passing them through.
+  it('lets taps beside the search buttons reach the episode link', async () => {
+    await renderPage();
+    const automatic = button('Automatic search: Home')!;
+    const interactive = button('Interactive search: Home')!;
+    expect(automatic.parentElement!.className.split(/\s+/)).not.toContain('relative');
+    expect(automatic.className.split(/\s+/)).toContain('relative');
+    expect(interactive.className.split(/\s+/)).toContain('relative');
+    expect(automatic.className.split(/\s+/)).toContain('disabled:pointer-events-auto');
+    expect(automatic.className.split(/\s+/)).not.toContain('disabled:pointer-events-none');
+  });
+
   it('opens the episode quick-actions menu from the row link', async () => {
     await renderPage();
     const link = document.querySelector<HTMLAnchorElement>('a[href="/series/7/season/4/episode/102?instance=son-1"]')!;
