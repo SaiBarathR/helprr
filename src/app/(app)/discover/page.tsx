@@ -37,6 +37,7 @@ import { ScheduledAlertButton } from '@/components/scheduled-alerts/scheduled-al
 import { QuickContextMenu } from '@/components/ui/quick-context-menu';
 import { useCan, useMe, hasCapability } from '@/components/permission-provider';
 import { DEFAULT_DISCOVER_FILTERS, type DiscoverFiltersState, useUIStore } from '@/lib/store';
+import { ActiveFilterBar, type ActiveFilter } from '@/components/ui/active-filter-bar';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import type {
   DiscoverFiltersResponse,
@@ -71,18 +72,13 @@ import {
 import { useRequestedMedia } from '@/components/seerr/requested-media-provider';
 import { SeerrRequestModal } from '@/components/seerr/seerr-request-modal';
 import { useIsMobile } from '@/hooks/use-is-mobile';
-
-const SECTION_TO_BROWSE: Record<string, { sort: string; contentType: 'all' | 'movie' | 'show' }> = {
-  trending: { sort: 'trending', contentType: 'all' },
-  popular_movies: { sort: 'popular', contentType: 'movie' },
-  popular_series: { sort: 'popular', contentType: 'show' },
-  upcoming_movies: { sort: 'upcoming', contentType: 'movie' },
-  upcoming_series: { sort: 'upcoming', contentType: 'show' },
-  now_playing: { sort: 'popular', contentType: 'movie' },
-  airing_today: { sort: 'popular', contentType: 'show' },
-  top_rated_movies: { sort: 'highlyRated', contentType: 'movie' },
-  top_rated_tv: { sort: 'highlyRated', contentType: 'show' },
-};
+import {
+  SECTION_TO_BROWSE,
+  discoverFilterChips,
+  discoverLinkView,
+  toReleaseState,
+  type DiscoverView,
+} from './_components/link-view';
 
 const SORT_OPTIONS = [
   { value: 'trending', label: 'Trending', icon: Flame },
@@ -633,24 +629,82 @@ function CustomCarouselRow({
 
 export default function DiscoverPage() {
   const searchParams = useSearchParams();
-  const discoverContentType = useUIStore((s) => s.discoverContentType);
+  const savedContentType = useUIStore((s) => s.discoverContentType);
   const setDiscoverContentType = useUIStore((s) => s.setDiscoverContentType);
-  const discoverSort = useUIStore((s) => s.discoverSort);
+  const savedSort = useUIStore((s) => s.discoverSort);
   const setDiscoverSort = useUIStore((s) => s.setDiscoverSort);
-  const discoverSortDirection = useUIStore((s) => s.discoverSortDirection);
+  const savedSortDirection = useUIStore((s) => s.discoverSortDirection);
   const setDiscoverSortDirection = useUIStore((s) => s.setDiscoverSortDirection);
-  const discoverFilters = useUIStore((s) => s.discoverFilters);
+  const savedFilters = useUIStore((s) => s.discoverFilters);
   const setDiscoverFilters = useUIStore((s) => s.setDiscoverFilters);
 
   const isMobile = useIsMobile();
-  const [personFilter, setPersonFilter] = useRouteViewState<{ id: number; name: string } | null>('personFilter', null);
   const [query, setQuery] = useRouteViewState('query', '');
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const [manualBrowseMode, setManualBrowseMode] = useRouteViewState('manualBrowseMode', false);
+  const [savedManualBrowseMode, setSavedManualBrowseMode] = useRouteViewState('manualBrowseMode', false);
+  const [savedSectionKey, setSavedSectionKey] = useRouteViewState<string | null>('activeSectionKey', null);
+
+  // A link (cast credit, widget "View all", genre/studio/network chip) opens its
+  // own view. It applies to that URL only and never touches the saved filters,
+  // so following one can't leave every later plain visit filtered. Changes made
+  // on it stay with it too; route view state is keyed by the full URL, so they
+  // survive back-navigation and plain /discover keeps its own.
+  const searchParamsKey = searchParams.toString();
+  const linkView = useMemo(() => discoverLinkView(new URLSearchParams(searchParamsKey)), [searchParamsKey]);
+  const [linkEdits, setLinkEdits] = useRouteViewState<DiscoverView | null>('linkView', null);
+  const savedView = useMemo<DiscoverView>(() => ({
+    contentType: savedContentType,
+    sort: savedSort,
+    sortDirection: savedSortDirection,
+    filters: savedFilters,
+    section: savedSectionKey,
+    manualBrowseMode: savedManualBrowseMode,
+    person: null,
+    names: {},
+  }), [savedContentType, savedSort, savedSortDirection, savedFilters, savedSectionKey, savedManualBrowseMode]);
+  const view = linkView ? (linkEdits ?? linkView) : savedView;
+  const {
+    contentType: discoverContentType,
+    sort: discoverSort,
+    sortDirection: discoverSortDirection,
+    filters: discoverFilters,
+    section: activeSectionKey,
+    manualBrowseMode,
+    person: personFilter,
+  } = view;
+
+  const updateView = useCallback((patch: Partial<DiscoverView>) => {
+    if (linkView) {
+      setLinkEdits((current) => ({ ...(current ?? linkView), ...patch }));
+      return;
+    }
+    if (patch.contentType !== undefined) setDiscoverContentType(patch.contentType);
+    if (patch.sort !== undefined) setDiscoverSort(patch.sort);
+    if (patch.sortDirection !== undefined) setDiscoverSortDirection(patch.sortDirection);
+    if (patch.filters !== undefined) setDiscoverFilters(patch.filters);
+    if (patch.section !== undefined) setSavedSectionKey(patch.section);
+    if (patch.manualBrowseMode !== undefined) setSavedManualBrowseMode(patch.manualBrowseMode);
+  }, [
+    linkView,
+    setLinkEdits,
+    setDiscoverContentType,
+    setDiscoverSort,
+    setDiscoverSortDirection,
+    setDiscoverFilters,
+    setSavedSectionKey,
+    setSavedManualBrowseMode,
+  ]);
+
+  // A plain visit opens on the home carousels unless a saved sort or filter
+  // asks for the grid: typing a search or tapping a pill switches to the grid
+  // for that visit only. Syncing state to the URL is a legitimate effect.
+  useEffect(() => {
+    if (!linkView) setSavedManualBrowseMode(false);
+  }, [linkView, setSavedManualBrowseMode]);
+
   const [draftFilters, setDraftFilters] = useState<DiscoverFiltersState>(discoverFilters);
   const [draftSort, setDraftSort] = useState(discoverSort);
   const [draftSortDirection, setDraftSortDirection] = useState(discoverSortDirection);
-  const [activeSectionKey, setActiveSectionKey] = useRouteViewState<string | null>('activeSectionKey', null);
   const [rateLimitCountdown, setRateLimitCountdown] = useState<number | null>(null);
   const [carouselItemLimit] = useState(computeCarouselItemLimit);
 
@@ -919,125 +973,6 @@ export default function DiscoverPage() {
     };
   })();
 
-  // Handle person URL params (from movie detail cast/crew links). Syncing state
-  // from the URL is a legitimate effect, so the set-state-in-effect rule is
-  // suppressed (the grid query keys off this state and refetches automatically).
-  useEffect(() => {
-    const rawPersonId = searchParams.get('person');
-    const personName = searchParams.get('personName')?.trim() || '';
-    const personId = Number(rawPersonId);
-
-    const hasValidPerson = Number.isFinite(personId) && personId > 0 && Boolean(personName);
-
-    if (hasValidPerson) {
-      setPersonFilter({ id: personId, name: personName });
-      setDiscoverContentType('movie');
-      setDiscoverSort('popular');
-      setManualBrowseMode(true);
-      return;
-    }
-
-    setPersonFilter(null);
-    setManualBrowseMode(false);
-
-  }, [
-    searchParams,
-    setPersonFilter,
-    setDiscoverContentType,
-    setDiscoverSort,
-    setManualBrowseMode,
-  ]);
-
-  // Handle filter/section URL params from widget links and detail-page links
-  // (custom carousel "View all" passes the full filter set; section links pass
-  // just `section`; older genre/provider links pass id lists + contentType).
-  useEffect(() => {
-    const rawCompanies = searchParams.get('companies');
-    const rawNetworks = searchParams.get('networks');
-    const rawGenres = searchParams.get('genres');
-    const rawProviders = searchParams.get('providers');
-    const rawSection = searchParams.get('section');
-    const rawContentType = searchParams.get('contentType');
-    const rawSortBy = searchParams.get('sortBy');
-    const rawSortOrder = searchParams.get('sortOrder');
-    const rawYearFrom = searchParams.get('yearFrom');
-    const rawYearTo = searchParams.get('yearTo');
-    const rawRuntimeMin = searchParams.get('runtimeMin');
-    const rawRuntimeMax = searchParams.get('runtimeMax');
-    const rawRatingMin = searchParams.get('ratingMin');
-    const rawRatingMax = searchParams.get('ratingMax');
-    const rawVoteCountMin = searchParams.get('voteCountMin');
-    const rawLanguage = searchParams.get('language');
-    const rawRegion = searchParams.get('region');
-    const rawReleaseState = searchParams.get('releaseState');
-
-    const hasFilterParam = Boolean(
-      rawCompanies || rawNetworks || rawGenres || rawProviders ||
-      rawYearFrom || rawYearTo || rawRuntimeMin || rawRuntimeMax ||
-      rawRatingMin || rawRatingMax || rawVoteCountMin ||
-      rawLanguage || rawRegion || rawReleaseState
-    );
-    if (!hasFilterParam && !rawSection && !rawSortBy) return;
-
-    const parseIds = (raw: string | null) =>
-      raw
-        ? raw.split(',').map((v) => Number(v.trim())).filter((v) => Number.isFinite(v) && v > 0)
-        : [];
-
-    const ct = rawContentType === 'movie' || rawContentType === 'show' ? rawContentType : 'all';
-
-    // Syncing filters/sort/section from URL params is a legitimate effect; the
-    // grid query keys off this state and refetches automatically.
-
-    if (rawSection) {
-      setActiveSectionKey(rawSection);
-      const mapped = SECTION_TO_BROWSE[rawSection];
-      if (mapped) {
-        setDiscoverSort(mapped.sort);
-        setDiscoverContentType(mapped.contentType);
-        setDiscoverSortDirection(mapped.sort === 'upcoming' ? 'asc' : 'desc');
-      } else {
-        setDiscoverContentType(ct);
-      }
-    } else {
-      setDiscoverContentType(ct);
-      if (rawSortBy) setDiscoverSort(rawSortBy);
-      else setDiscoverSort('popular');
-      if (rawSortOrder === 'asc' || rawSortOrder === 'desc') {
-        setDiscoverSortDirection(rawSortOrder);
-      }
-    }
-
-    if (hasFilterParam) {
-      const allowedReleaseStates: ReadonlyArray<DiscoverFiltersState['releaseState']> = [
-        '', 'released', 'upcoming', 'airing', 'ended',
-      ];
-      const releaseState = (allowedReleaseStates as readonly string[]).includes(rawReleaseState ?? '')
-        ? (rawReleaseState as DiscoverFiltersState['releaseState'])
-        : '';
-
-      setDiscoverFilters({
-        ...DEFAULT_DISCOVER_FILTERS,
-        companies: parseIds(rawCompanies),
-        networks: parseIds(rawNetworks),
-        genres: parseIds(rawGenres),
-        providers: parseIds(rawProviders),
-        yearFrom: rawYearFrom ?? '',
-        yearTo: rawYearTo ?? '',
-        runtimeMin: rawRuntimeMin ?? '',
-        runtimeMax: rawRuntimeMax ?? '',
-        ratingMin: rawRatingMin ?? '',
-        ratingMax: rawRatingMax ?? '',
-        voteCountMin: rawVoteCountMin ?? '',
-        language: rawLanguage ?? '',
-        region: rawRegion ?? DEFAULT_DISCOVER_FILTERS.region,
-        releaseState,
-      });
-    }
-    setManualBrowseMode(true);
-
-  }, [searchParams, setDiscoverContentType, setDiscoverSort, setDiscoverSortDirection, setDiscoverFilters, setManualBrowseMode, setActiveSectionKey]);
-
   // Countdown ticker for the rate-limit banner (non-fetch interval); setState in
   // the effect is inherent to a ticker, so the rule is suppressed.
   useEffect(() => {
@@ -1089,20 +1024,16 @@ export default function DiscoverPage() {
       void refetchGrid();
       return;
     }
-    setDiscoverContentType(type);
-    setActiveSectionKey(null);
-    setManualBrowseMode(true);
-  }, [discoverContentType, gridMode, refetchGrid, setActiveSectionKey, setDiscoverContentType, setManualBrowseMode]);
+    updateView({ contentType: type, section: null, manualBrowseMode: true });
+  }, [discoverContentType, gridMode, refetchGrid, updateView]);
 
   const handleSelectSort = useCallback((sort: string) => {
     if (discoverSort === sort && gridMode) {
       void refetchGrid();
       return;
     }
-    setDiscoverSort(sort);
-    setActiveSectionKey(null);
-    setManualBrowseMode(true);
-  }, [discoverSort, gridMode, refetchGrid, setActiveSectionKey, setDiscoverSort, setManualBrowseMode]);
+    updateView({ sort, section: null, manualBrowseMode: true });
+  }, [discoverSort, gridMode, refetchGrid, updateView]);
 
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -1122,45 +1053,46 @@ export default function DiscoverPage() {
   }, [gridMode, hasNextPage, loadingMore, loadingItems, fetchNextPage, items.length]);
 
   const goToDiscoverHome = useCallback(() => {
+    // Leaving a link's view returns to the saved Discover instead of resetting it.
+    if (linkView) {
+      router.replace('/discover');
+      return;
+    }
     setDiscoverFilters({ ...DEFAULT_DISCOVER_FILTERS });
     setDiscoverSort('trending');
     setDiscoverSortDirection('desc');
     setDiscoverContentType('all');
-    setActiveSectionKey(null);
+    setSavedSectionKey(null);
     setQuery('');
-    setManualBrowseMode(false);
-    setPersonFilter(null);
-  }, [setDiscoverFilters, setDiscoverSort, setDiscoverSortDirection, setDiscoverContentType, setActiveSectionKey, setQuery, setManualBrowseMode, setPersonFilter]);
+    setSavedManualBrowseMode(false);
+  }, [linkView, router, setDiscoverFilters, setDiscoverSort, setDiscoverSortDirection, setDiscoverContentType, setSavedSectionKey, setQuery, setSavedManualBrowseMode]);
 
   const handleSeeAll = useCallback((section: DiscoverSection) => {
-    setActiveSectionKey(section.key);
-    setManualBrowseMode(true);
     const mapped = SECTION_TO_BROWSE[section.key];
-    if (mapped) {
-      setDiscoverSort(mapped.sort);
-      setDiscoverContentType(mapped.contentType);
-      if (mapped.sort === 'upcoming') setDiscoverSortDirection('asc');
-      else setDiscoverSortDirection('desc');
-    }
-  }, [setActiveSectionKey, setManualBrowseMode, setDiscoverSort, setDiscoverContentType, setDiscoverSortDirection]);
+    updateView({
+      section: section.key,
+      manualBrowseMode: true,
+      ...(mapped && {
+        sort: mapped.sort,
+        contentType: mapped.contentType,
+        sortDirection: mapped.sort === 'upcoming' ? 'asc' : 'desc',
+      }),
+    });
+  }, [updateView]);
 
   const handleSeeAllCustom = useCallback((layoutSection: DiscoverLayoutSection) => {
     const f = layoutSection.filters;
     if (!f) return;
     const ct: 'all' | 'movie' | 'show' =
       f.contentType === 'movie' || f.contentType === 'show' ? f.contentType : 'all';
-    const allowedReleaseStates: ReadonlyArray<DiscoverFiltersState['releaseState']> = [
-      '', 'released', 'upcoming', 'airing', 'ended',
-    ];
-    const releaseState = (allowedReleaseStates as readonly string[]).includes(f.releaseState ?? '')
-      ? (f.releaseState as DiscoverFiltersState['releaseState'])
-      : '';
 
-    setActiveSectionKey(null);
-    setDiscoverContentType(ct);
-    setDiscoverSort(f.sortBy);
-    setDiscoverSortDirection(f.sortOrder);
-    setDiscoverFilters({
+    updateView({
+      section: null,
+      contentType: ct,
+      sort: f.sortBy,
+      sortDirection: f.sortOrder,
+      manualBrowseMode: true,
+      filters: {
       ...DEFAULT_DISCOVER_FILTERS,
       genres: f.genres ?? [],
       providers: f.providers ?? [],
@@ -1175,38 +1107,49 @@ export default function DiscoverPage() {
       voteCountMin: f.voteCountMin ?? '',
       language: f.language ?? '',
       region: f.region ?? DEFAULT_DISCOVER_FILTERS.region,
-      releaseState,
+      releaseState: toReleaseState(f.releaseState),
+      },
     });
-    setManualBrowseMode(true);
-  }, [setActiveSectionKey, setDiscoverContentType, setDiscoverSort, setDiscoverSortDirection, setDiscoverFilters, setManualBrowseMode]);
+  }, [updateView]);
 
   const pickGenre = useCallback((genreId: number, type: 'movie' | 'show') => {
-    setDiscoverFilters({
-      ...discoverFilters,
-      genres: discoverFilters.genres.includes(genreId)
-        ? discoverFilters.genres
-        : [...discoverFilters.genres, genreId],
+    updateView({
+      filters: {
+        ...discoverFilters,
+        genres: discoverFilters.genres.includes(genreId)
+          ? discoverFilters.genres
+          : [...discoverFilters.genres, genreId],
+      },
+      contentType: type,
+      section: null,
+      manualBrowseMode: true,
     });
-    setDiscoverContentType(type);
-    setActiveSectionKey(null);
-    setManualBrowseMode(true);
-  }, [setDiscoverFilters, discoverFilters, setDiscoverContentType, setActiveSectionKey, setManualBrowseMode]);
+  }, [updateView, discoverFilters]);
 
   const pickProvider = useCallback((providerId: number, type: 'movie' | 'show') => {
-    setDiscoverFilters({
-      ...discoverFilters,
-      providers: discoverFilters.providers.includes(providerId)
-        ? discoverFilters.providers
-        : [...discoverFilters.providers, providerId],
+    updateView({
+      filters: {
+        ...discoverFilters,
+        providers: discoverFilters.providers.includes(providerId)
+          ? discoverFilters.providers
+          : [...discoverFilters.providers, providerId],
+      },
+      contentType: type,
+      section: null,
+      manualBrowseMode: true,
     });
-    setDiscoverContentType(type);
-    setActiveSectionKey(null);
-    setManualBrowseMode(true);
-  }, [setDiscoverFilters, discoverFilters, setDiscoverContentType, setActiveSectionKey, setManualBrowseMode]);
+  }, [updateView, discoverFilters]);
 
   const resetFilters = useCallback(() => {
     goToDiscoverHome();
   }, [goToDiscoverHome]);
+
+  const activeFilters: ActiveFilter[] = discoverFilterChips(view, filtersMeta).map((chip) => ({
+    id: chip.id,
+    label: chip.label,
+    onRemove: () => updateView(chip.patch),
+  }));
+  const clearAllFilters = () => updateView({ contentType: 'all', filters: { ...DEFAULT_DISCOVER_FILTERS } });
 
   const genreChoices = useMemo(() => {
     if (!filtersMeta) return [];
@@ -1234,9 +1177,8 @@ export default function DiscoverPage() {
                 setQuery(value);
                 // Typing a query is an explicit browse intent: leave any active
                 // section and switch to grid mode (was a query-watching effect).
-                if (value.trim()) {
-                  setActiveSectionKey(null);
-                  setManualBrowseMode(true);
+                if (value.trim() && (activeSectionKey !== null || !manualBrowseMode)) {
+                  updateView({ section: null, manualBrowseMode: true });
                 }
               }}
               placeholder="Search movies and shows"
@@ -1328,6 +1270,8 @@ export default function DiscoverPage() {
         )}
       </div>
 
+      <ActiveFilterBar filters={activeFilters} onClearAll={clearAllFilters} />
+
       {!gridMode && (
         <div className="space-y-5">
           {loadingSections ? (
@@ -1406,7 +1350,7 @@ export default function DiscoverPage() {
               <User className="h-4 w-4 text-primary shrink-0" />
               <span className="text-sm font-medium flex-1 truncate">Movies with {personFilter.name}</span>
               <button
-                onClick={() => setPersonFilter(null)}
+                onClick={() => updateView({ person: null })}
                 className="shrink-0 h-6 w-6 rounded-full flex items-center justify-center hover:bg-accent"
               >
                 <X className="h-3.5 w-3.5" />
@@ -1425,7 +1369,7 @@ export default function DiscoverPage() {
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => setActiveSectionKey(null)}
+                  onClick={() => updateView({ section: null })}
                   className="h-8 px-2 text-xs"
                 >
                   Clear section
@@ -1719,18 +1663,18 @@ export default function DiscoverPage() {
               </Button>
               <Button onClick={() => {
                 const normalized = normalizeFilterValues(draftFilters);
-                setDiscoverFilters(normalized);
-                setDiscoverSort(draftSort);
-                setDiscoverSortDirection(draftSortDirection);
-                setActiveSectionKey(null);
-                setManualBrowseMode(
-                  Boolean(
+                updateView({
+                  filters: normalized,
+                  sort: draftSort,
+                  sortDirection: draftSortDirection,
+                  section: null,
+                  manualBrowseMode: Boolean(
                     query.trim()
                     || !isDefaultFilters(normalized)
                     || draftSort !== 'trending'
                     || discoverContentType !== 'all'
-                  )
-                );
+                  ),
+                });
                 setFiltersOpen(false);
               }}>
                 Apply

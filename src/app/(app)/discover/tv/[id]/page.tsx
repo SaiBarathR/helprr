@@ -165,7 +165,7 @@ export default function DiscoverTvDetailPage() {
                   ? toCachedImageSrc(`https://image.tmdb.org/t/p/w185${network.logoPath}`, 'tmdb')
                   : null;
                 return (
-                  <Link key={network.id} href={`/discover?networks=${network.id}&contentType=show`} className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-border/50 bg-accent/30">
+                  <Link key={network.id} href={`/discover?networks=${network.id}&networkName=${encodeURIComponent(network.name)}&contentType=show`} className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-border/50 bg-accent/30">
                     {logoSrc && (
                       <div className="relative h-5 w-8">
                         <Image
@@ -196,7 +196,7 @@ export default function DiscoverTvDetailPage() {
                   ? toCachedImageSrc(`https://image.tmdb.org/t/p/w185${company.logoPath}`, 'tmdb')
                   : null;
                 return (
-                  <Link key={company.id} href={`/discover?companies=${company.id}&contentType=show`} className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-border/50 bg-accent/30">
+                  <Link key={company.id} href={`/discover?companies=${company.id}&companyName=${encodeURIComponent(company.name)}&contentType=show`} className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-border/50 bg-accent/30">
                     {logoSrc && (
                       <div className="relative h-5 w-8">
                         <Image

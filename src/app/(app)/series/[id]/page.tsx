@@ -1973,7 +1973,7 @@ export default function SeriesDetailPage() {
                         return (
                           <Link
                             key={network.id}
-                            href={`/discover?networks=${network.id}&contentType=show`}
+                            href={`/discover?networks=${network.id}&networkName=${encodeURIComponent(network.name)}&contentType=show`}
                             className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-border/50 bg-accent/30"
                           >
                             {logoSrc && (
@@ -2010,7 +2010,7 @@ export default function SeriesDetailPage() {
                         return (
                           <Link
                             key={company.id}
-                            href={`/discover?companies=${company.id}&contentType=show`}
+                            href={`/discover?companies=${company.id}&companyName=${encodeURIComponent(company.name)}&contentType=show`}
                             className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-border/50 bg-accent/30"
                           >
                             {logoSrc && (
