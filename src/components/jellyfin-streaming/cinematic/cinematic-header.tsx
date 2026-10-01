@@ -148,7 +148,10 @@ export function CinematicHeader() {
     // them into Shows or New & Hot is not something it does.
     if (!isHome) {
       return (
-        <header className="sticky top-0 z-50 -mx-[var(--main-pad-x)] px-[var(--main-pad-x)] pt-1 pb-2">
+        // Pulled up over the shell's status-bar padding and padded by the same
+        // inset: it rests where it did, and once pinned at top 0 it clears the
+        // status bar and Dynamic Island instead of sliding under them.
+        <header className="sticky top-0 z-50 -mx-[var(--main-pad-x)] -mt-[env(safe-area-inset-top)] px-[var(--main-pad-x)] pt-[calc(0.25rem+env(safe-area-inset-top))] pb-2">
           <span
             aria-hidden
             className={cn(
@@ -189,7 +192,8 @@ export function CinematicHeader() {
     // behind the header on the app's home, and a #141414 bar cut straight
     // across it.
     return (
-      <header className="sticky top-0 z-50 -mx-[var(--main-pad-x)] px-[var(--main-pad-x)] pt-1 pb-2">
+      // Status-bar inset handled as in the category header above.
+      <header className="sticky top-0 z-50 -mx-[var(--main-pad-x)] -mt-[env(safe-area-inset-top)] px-[var(--main-pad-x)] pt-[calc(0.25rem+env(safe-area-inset-top))] pb-2">
         <span
           aria-hidden
           className={cn(
@@ -258,7 +262,9 @@ export function CinematicHeader() {
       className={cn(
         // Sticky and pulled back over the content, so the billboard runs to the
         // very top of the page with the header floating on it — as on the site.
-        'sticky top-0 z-50 h-[4.5rem] md:-mb-[4.5rem]',
+        // The inset is zero on a desktop; on an iPad web app it keeps the
+        // pinned masthead off the status bar.
+        'sticky top-0 z-50 h-[calc(4.5rem+env(safe-area-inset-top))] pt-[env(safe-area-inset-top)] md:-mb-[calc(4.5rem+env(safe-area-inset-top))]',
         '-mx-[var(--main-pad-x)] px-[var(--main-pad-x)]',
         'flex items-center gap-4 transition-colors duration-300 md:gap-6',
         // Transparent at rest: the billboard paints its own top ramp, and a

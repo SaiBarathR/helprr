@@ -373,9 +373,9 @@ export function VideoStage({ mediaContainer }: { mediaContainer: HTMLDivElement 
         className={cn(
           'overflow-hidden bg-black',
           !isVideo && !sheet.present && 'pointer-events-none fixed h-px w-px opacity-0',
-          // Sits above the now-playing bar (62px) rather than on top of it —
-          // at md:bottom-4 it used to cover Pause/Next/Repeat/Queue/Stop.
-          mini && 'fixed right-3 bottom-[calc(9.5rem+env(safe-area-inset-bottom))] z-30 h-36 w-64 rounded-xl border shadow-2xl md:bottom-[5.5rem]',
+          // Sits above the now-playing bar rather than on top of it — at
+          // md:bottom-4 it used to cover Pause/Next/Repeat/Queue/Stop.
+          mini && 'fixed right-3 bottom-[calc(var(--footer-height)+var(--player-bar-height,0px)+0.75rem)] z-30 h-36 w-64 rounded-xl border shadow-2xl',
           sheet.present && 'hpr-watch-player-enter fixed inset-0 z-[80]',
         )}
       >
@@ -748,6 +748,15 @@ export function VideoStage({ mediaContainer }: { mediaContainer: HTMLDivElement 
                 {playback.status === 'paused' ? <Play className="fill-current" /> : <Pause />}
               </Button>
               <Button variant="ghost" size="icon" onClick={() => void playback.next()}><SkipForward /></Button>
+              {/* The now-playing bar drops Repeat on a phone, so it has to be here. */}
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => playback.setRepeat(playback.repeat === 'RepeatNone' ? 'RepeatAll' : playback.repeat === 'RepeatAll' ? 'RepeatOne' : 'RepeatNone')}
+                aria-label="Repeat"
+              >
+                {playback.repeat === 'RepeatOne' ? <Repeat1 className="text-[var(--hpr-amber)]" /> : <Repeat className={playback.repeat === 'RepeatAll' ? 'text-[var(--hpr-amber)]' : undefined} />}
+              </Button>
               <Button variant="ghost" size="icon" onClick={() => playback.setQueueOpen(true)}><ListMusic /></Button>
             </div>
             <AudioLyrics itemId={playback.item.Id} positionSeconds={playback.positionSeconds} />

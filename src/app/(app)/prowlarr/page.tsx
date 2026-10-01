@@ -1260,7 +1260,8 @@ export default function ProwlarrPage() {
           }
         }}
       >
-        <DialogContent className="max-w-lg">
+        {/* A column so a long failure list scrolls under a fixed header and close button. */}
+        <DialogContent className="flex max-w-lg flex-col overflow-hidden">
           <DialogHeader>
             <DialogTitle>Test All Results</DialogTitle>
             <DialogDescription>
@@ -1270,11 +1271,11 @@ export default function ProwlarrPage() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-3">
+          <div className="-mx-6 min-h-0 flex-1 space-y-3 overflow-y-auto px-6">
             {testAllResults?.results.filter((result) => !result.isValid).map((result) => (
               <div key={result.id} className="rounded-lg border border-border/60 bg-card px-3 py-2">
                 <div className="flex items-center justify-between gap-3">
-                  <p className="text-sm font-medium">
+                  <p className="min-w-0 text-sm font-medium [overflow-wrap:anywhere]">
                     {testAllIndexerNames[result.id] ?? `Indexer ID ${result.id}`}
                   </p>
                   <Badge variant="outline" className="border-rose-500/40 text-rose-400">

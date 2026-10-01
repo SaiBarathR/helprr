@@ -177,17 +177,35 @@
 }
 
 /* What app chrome takes from the foot of the viewport: the home indicator, plus
-   the 3rem tab bar when the nav sits at the bottom of a phone. Anything fixed
-   to the bottom (save bars, toasts, the now-playing bar) offsets by this, so it
-   sits above the tab bar instead of under it, and off the home indicator. */
+   the 3rem tab bar when the nav sits at the bottom of a phone. Anything floating
+   at the bottom (save bars, toasts) offsets by this, so it sits above the tab
+   bar instead of under it, and off the home indicator.
+
+   A full-width bar (the now-playing bar, an import bar) instead sits on top of
+   the tab bar when there is one (--footer-bar-bottom), and otherwise on the very
+   bottom with the home indicator inside its own padding (--footer-bar-inset). */
 :root {
   --footer-height: env(safe-area-inset-bottom, 0px);
+  --footer-bar-bottom: 0px;
+  --footer-bar-inset: env(safe-area-inset-bottom, 0px);
 }
 
 @media (max-width: 767.98px) {
   :root[data-nav-position="bottom"] {
     --footer-height: calc(3rem + env(safe-area-inset-bottom, 0px));
+    --footer-bar-bottom: calc(3rem + env(safe-area-inset-bottom, 0px));
+    --footer-bar-inset: 0px;
   }
+}
+
+/* While the now-playing bar is up, everything else at the foot of the screen
+   (floating bars, toasts, the mini player and the page's last rows) clears it. */
+:root:has([data-now-playing-bar]) {
+  --player-bar-height: 3.875rem;
+}
+
+:root:has([data-now-playing-bar]) .app-main {
+  padding-bottom: calc(var(--footer-height) + var(--player-bar-height) + 1rem);
 }
 
 /* While a FloatingActionBar is up, toasts stack above it instead of covering
@@ -959,10 +977,11 @@ html[data-watch-skin='cinematic']:has(.hpr-watch) {
   animation: spinner-in 0.15s ease-out 0.1s both;
 }
 
-/* Scroll margin for calendar scrollIntoView targets */
+/* Scroll margin for calendar scrollIntoView targets: below the sticky toolbar,
+   which the calendar page measures into --calendar-sticky-offset. */
 [data-agenda-date],
 [data-week-date] {
-  scroll-margin-top: calc(var(--header-height, 0px) + 4rem);
+  scroll-margin-top: var(--calendar-sticky-offset, calc(var(--header-height, 0px) + 4rem));
 }
 
 /* ─── Cinematic Hero utilities ──────────────────────────────────────── */
@@ -1484,6 +1503,19 @@ html[data-watch-skin='cinematic']:has(.hpr-watch) [data-app-command-launcher] {
    is just a dead strip at the foot of every Watch page. */
 html[data-watch-skin='cinematic']:has(.hpr-watch) .app-main {
   padding-bottom: 0;
+}
+
+/* ...so the footer measures drop it too: the now-playing bar, floating bars and
+   toasts sit on the screen's foot rather than above a tab bar that isn't there. */
+html[data-watch-skin='cinematic']:has(.hpr-watch) {
+  --footer-height: env(safe-area-inset-bottom, 0px);
+  --footer-bar-bottom: 0px;
+  --footer-bar-inset: env(safe-area-inset-bottom, 0px);
+}
+
+/* The now-playing bar still needs its room at the foot of a Watch page. */
+html[data-watch-skin='cinematic']:has(.hpr-watch):has([data-now-playing-bar]) .app-main {
+  padding-bottom: calc(var(--footer-height) + var(--player-bar-height) + 1rem);
 }
 
 /* Both nav modes hide their bar in cinematic, so nothing occupies the notch

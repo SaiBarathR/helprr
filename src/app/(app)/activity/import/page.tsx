@@ -10,6 +10,7 @@ import { PageHeader } from '@/components/layout/page-header';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { PageSpinner } from '@/components/ui/page-spinner';
+import { FloatingActionBar } from '@/components/ui/floating-action-bar';
 import {
   Loader2, RefreshCw, Check, ChevronRight, Search,
 } from 'lucide-react';
@@ -263,8 +264,16 @@ function ManualImportContent() {
     const currentEpisodes = currentOverride || currentFile?.episodes || [];
     const selectedEpId = currentEpisodes.length > 0 ? currentEpisodes[0].id : null;
 
+    // A full-screen picker over the page (beside the sidebar) with a single
+    // scroller, the episode list, so the search and season headers stay put
+    // while it scrolls. Inside the shell, a 100dvh column overflowed below the
+    // nav and scrolled twice. z-50 and in the page, so dialogs and the tab bar,
+    // which come later in the document, stay above it; its header pins at 0.
     return (
-      <div className="flex flex-col h-[100dvh] bg-background">
+      <div
+        className="fixed inset-y-0 right-0 left-[var(--app-main-left,0px)] z-50 flex flex-col bg-background px-[var(--main-pad-x)] pt-[calc(env(safe-area-inset-top)+var(--main-pad-top))]"
+        style={{ '--header-height': '0px' } as React.CSSProperties}
+      >
         {/* Header */}
         <PageHeader
           title="Select Episode"
@@ -304,7 +313,7 @@ function ManualImportContent() {
         </div>
 
         {/* Episode list */}
-        <div className="flex-1 overflow-y-auto overscroll-contain pb-[env(safe-area-inset-bottom)]">
+        <div className="flex-1 overflow-y-auto overscroll-contain pb-[var(--footer-height)]">
           {filteredSeasons.length === 0 ? (
             <p className="text-center py-12 text-sm text-muted-foreground">No episodes match</p>
           ) : (
@@ -362,14 +371,14 @@ function ManualImportContent() {
   // ── Files view (default) ──────────────────────────────────────────────────
 
   return (
-    <div className="flex flex-col h-[100dvh] bg-background animate-content-in">
+    <div className="animate-content-in">
       <PageHeader
         title="Manual Import"
         subtitle={itemTitle}
         onBack={() => router.back()}
       />
 
-      <div className="flex-1 overflow-y-auto overscroll-contain pb-28 md:pb-0">
+      <div>
         {loading ? (
           <PageSpinner />
         ) : files.length === 0 ? (
@@ -475,12 +484,8 @@ function ManualImportContent() {
         )}
       </div>
 
-      {/* Bottom action bar */}
       {!loading && files.length > 0 && (
-        <div
-          className="fixed md:sticky left-0 right-0 bottom-[calc(3rem+env(safe-area-inset-bottom))] md:bottom-0 z-40 md:z-30 border-t border-border app-chrome-bar bg-background/95 backdrop-blur-sm px-4 py-3"
-          style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom, 0px))' }}
-        >
+        <FloatingActionBar className="p-2">
           <Button
             onClick={submitImport}
             disabled={submitting}
@@ -489,7 +494,7 @@ function ManualImportContent() {
             {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Import {files.length === 1 ? 'File' : `${files.length} Files`}
           </Button>
-        </div>
+        </FloatingActionBar>
       )}
     </div>
   );

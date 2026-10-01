@@ -2099,7 +2099,8 @@ export default function SeriesDetailPage() {
               Choose which episodes to monitor for {series.title}.
             </DrawerDescription>
           </DrawerHeader>
-          <div className="px-4 pb-2">
+          {/* The options scroll so Apply and Cancel stay on a short phone's screen. */}
+          <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-2">
             <div className="grouped-section">
               <div className="grouped-section-content">
                 {MONITOR_OPTIONS.map((option) => (

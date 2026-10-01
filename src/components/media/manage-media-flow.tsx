@@ -31,7 +31,6 @@ import {
 import { pollCommand } from '@/lib/arr-command';
 import { formatBytes } from '@/lib/format';
 import { cn } from '@/lib/utils';
-import { useUIStore } from '@/lib/store';
 import { useCan } from '@/components/permission-provider';
 import type {
   ManualImportItem, SonarrEpisode, ArrLanguage, ArrQualityModel, ReleaseType,
@@ -110,7 +109,6 @@ export function ManageMediaFlow({ service, mediaId, mediaTitle, instanceId }: Ma
   const router = useRouter();
   const queryClient = useQueryClient();
   const isSonarr = service === 'sonarr';
-  const navPosition = useUIStore((s) => s.navPosition);
   const canDelete = useCan(isSonarr ? 'series.delete' : 'movies.delete');
   const canImportFiles = useCan('activity.manage');
 
@@ -507,12 +505,9 @@ export function ManageMediaFlow({ service, mediaId, mediaTitle, instanceId }: Ma
       </div>
 
       {/* Bottom action bar — always visible; actions enable once files are selected */}
-      <div
-        className={cn(
-          'page-bleed sticky z-30 flex items-center gap-2 border-t border-border app-chrome-bar bg-background/95 py-3 backdrop-blur-sm',
-          navPosition === 'bottom' ? 'bottom-[calc(3rem+env(safe-area-inset-bottom))] md:bottom-0' : 'bottom-0'
-        )}
-      >
+      {/* On the tab bar when the nav is at the bottom, else on the screen's foot
+          with the home indicator inside its padding. */}
+      <div className="page-bleed sticky bottom-[var(--footer-bar-bottom)] z-30 flex items-center gap-2 border-t border-border app-chrome-bar bg-background/95 pt-3 pb-[calc(0.75rem+var(--footer-bar-inset))] backdrop-blur-sm">
         {canDelete && (
           <Button variant="destructive" size="sm" disabled={submitting || deletableSelected.length === 0} onClick={() => setDeleteOpen(true)}>
             <Trash2 className="mr-1.5 h-4 w-4" />Delete
