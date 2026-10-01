@@ -136,3 +136,18 @@ describe('Activity source filter', () => {
   });
 });
 
+// jsdom has no layout, so this pins the declarations that let a tall detail
+// drawer scroll: the body is the drawer's flexible, scrollable child.
+describe('Activity queue detail drawer', () => {
+  it('scrolls its body so rows below the fold stay reachable', async () => {
+    await renderPage();
+    await waitFor(() => expect(text()).toContain('2 Tasks'));
+    const row = [...document.querySelectorAll('button')].find((b) => b.textContent?.includes('Show.S01E01'))!;
+    await act(async () => row.click());
+    await waitFor(() => expect(text()).toContain('Size Left'));
+    const sizeLeft = [...document.querySelectorAll('span, p, div')].find((el) => el.textContent === 'Size Left')!;
+    const body = sizeLeft.closest('.overflow-y-auto');
+    expect(body?.className).toContain('min-h-0');
+    expect(body?.className).toContain('flex-1');
+  });
+});

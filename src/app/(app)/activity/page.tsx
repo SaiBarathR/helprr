@@ -643,7 +643,7 @@ export default function ActivityPage() {
 
       {/* Queue count */}
       {tab === 'queue' && queueCount > 0 && (
-        <p className="text-xs text-muted-foreground mb-1">
+        <p className="text-xs text-muted-foreground py-2">
           {queueCount} {queueCount === 1 ? 'Task' : 'Tasks'}
         </p>
       )}
@@ -1229,7 +1229,7 @@ function QueueTab({
                   </p>
                 </DrawerHeader>
 
-                <div className="px-4 space-y-4 pb-6">
+                <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-6 space-y-4">
                   {/* Tags row */}
                   <div className="flex items-center gap-2 flex-wrap">
                     {selectedItem.source && (
