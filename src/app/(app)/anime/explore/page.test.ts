@@ -23,12 +23,18 @@ const mocks = vi.hoisted(() => ({
   routerReplace: vi.fn(),
   setAnimeSort: vi.fn(),
   setAnimeFilters: vi.fn(),
+  savedSort: 'seasonal',
+  savedFilters: undefined as Record<string, unknown> | undefined,
+  browseKey: undefined as readonly unknown[] | undefined,
 }));
 
 vi.mock('@tanstack/react-query', () => ({
   useQueryClient: () => ({ getQueryData: () => undefined }),
-  useInfiniteQuery: ({ queryKey }: { queryKey: readonly unknown[] }) =>
-    queryKey[2] === 'browse' ? mocks.browseQuery : mocks.searchQuery,
+  useInfiniteQuery: ({ queryKey }: { queryKey: readonly unknown[] }) => {
+    if (queryKey[2] !== 'browse') return mocks.searchQuery;
+    mocks.browseKey = queryKey;
+    return mocks.browseQuery;
+  },
 }));
 vi.mock('next/navigation', () => ({
   usePathname: () => '/anime/explore',
@@ -69,9 +75,9 @@ vi.mock('@/lib/store', () => {
     status: '',
   };
   const state = {
-    animeSort: 'seasonal',
+    get animeSort() { return mocks.savedSort; },
     setAnimeSort: mocks.setAnimeSort,
-    animeFilters: filters,
+    get animeFilters() { return mocks.savedFilters ?? filters; },
     setAnimeFilters: mocks.setAnimeFilters,
     hasHydrated: true,
   };
@@ -111,7 +117,11 @@ beforeEach(() => {
     IS_REACT_ACT_ENVIRONMENT: boolean;
   }).IS_REACT_ACT_ENVIRONMENT = true;
   vi.stubGlobal('IntersectionObserver', IntersectionObserverStub);
+  vi.stubGlobal('scrollTo', vi.fn());
   mocks.searchParams = new URLSearchParams();
+  mocks.savedSort = 'seasonal';
+  mocks.savedFilters = undefined;
+  mocks.browseKey = undefined;
   mocks.browseQuery = infiniteResult();
   mocks.searchQuery = infiniteResult();
   document.body.innerHTML = '<div id="root"></div>';
@@ -122,6 +132,7 @@ afterEach(async () => {
   await act(async () => root.unmount());
   vi.useRealTimers();
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 async function renderPage() {
@@ -197,5 +208,64 @@ describe('Anime Explore query states', () => {
 
     expect(document.body.textContent).toContain('Anime 2');
     expect(document.body.textContent).not.toContain("Couldn't load anime");
+  });
+});
+
+const NO_FILTERS = { genres: [], year: '', yearMin: '', yearMax: '', season: '', formats: [], status: '' };
+
+// Puts the jsdom URL where the mocked search params say the page is, so the
+// write-back effect sees an up-to-date URL.
+function visit(query: string) {
+  mocks.searchParams = new URLSearchParams(query);
+  window.history.replaceState(null, '', query ? `/anime/explore?${query}` : '/anime/explore');
+}
+
+function button(label: string) {
+  return [...document.querySelectorAll('button')].find(
+    (el) => el.getAttribute('aria-label') === label || el.textContent === label,
+  );
+}
+
+describe('Anime Explore links', () => {
+  it('browses a "View all" link without saving its sort or dropping saved filters', async () => {
+    mocks.savedFilters = { ...NO_FILTERS, genres: ['Action'] };
+    visit('sort=trending');
+    await renderPage();
+
+    expect(mocks.browseKey).toEqual(['anime', 'list', 'browse', 'trending', NO_FILTERS]);
+    expect(document.body.textContent).not.toContain('Filtered by');
+    expect(mocks.routerReplace).not.toHaveBeenCalled();
+    expect(mocks.setAnimeSort).not.toHaveBeenCalled();
+    expect(mocks.setAnimeFilters).not.toHaveBeenCalled();
+  });
+
+  it("keeps changes made on a link's view with it, each building on the last", async () => {
+    visit('sort=seasonal&season=FALL&year=2026');
+    await renderPage();
+
+    expect(document.body.textContent).toContain('Fall');
+    await act(async () => button('Remove Fall filter')?.click());
+    expect(mocks.browseKey).toEqual(['anime', 'list', 'browse', 'seasonal', { ...NO_FILTERS, year: '2026' }]);
+    expect(document.body.textContent).not.toContain('Fall');
+    expect(mocks.routerReplace).toHaveBeenLastCalledWith('/anime/explore?sort=seasonal&year=2026', { scroll: false });
+
+    // The URL hasn't caught up yet (the mocked search params never do); the
+    // next change must still build on the one before it.
+    await act(async () => button('Score')?.click());
+    expect(mocks.browseKey).toEqual(['anime', 'list', 'browse', 'score', { ...NO_FILTERS, year: '2026' }]);
+    expect(mocks.routerReplace).toHaveBeenLastCalledWith('/anime/explore?sort=score&year=2026', { scroll: false });
+    expect(mocks.setAnimeSort).not.toHaveBeenCalled();
+    expect(mocks.setAnimeFilters).not.toHaveBeenCalled();
+  });
+
+  it('shows saved filters on a plain visit and saves changes made there', async () => {
+    mocks.savedFilters = { ...NO_FILTERS, genres: ['Action'] };
+    visit('');
+    await renderPage();
+
+    expect(document.body.textContent).toContain('Filtered by');
+    await act(async () => button('Remove Action filter')?.click());
+    expect(mocks.setAnimeFilters).toHaveBeenCalledWith(NO_FILTERS);
+    expect(mocks.routerReplace).not.toHaveBeenCalled();
   });
 });

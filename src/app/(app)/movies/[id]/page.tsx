@@ -896,7 +896,7 @@ export default function MovieDetailPage() {
                           return (
                             <Link
                               key={company.id}
-                              href={`/discover?companies=${company.id}&contentType=movie`}
+                              href={`/discover?companies=${company.id}&companyName=${encodeURIComponent(company.name)}&contentType=movie`}
                               className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-border/50 bg-accent/30"
                             >
                               {logoSrc && (

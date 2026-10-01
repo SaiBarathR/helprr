@@ -26,6 +26,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { DEFAULT_ANIME_FILTERS, type AnimeFiltersState, useUIStore } from '@/lib/store';
+import { ActiveFilterBar, type ActiveFilter } from '@/components/ui/active-filter-bar';
+import { exploreHref, exploreLinkView, type ExploreView } from './_components/link-view';
 import {
   ArrowDownAZ,
   CalendarDays,
@@ -82,6 +84,18 @@ const ALL_GENRES = [
   'Romance', 'Sci-Fi', 'Slice of Life', 'Sports', 'Supernatural', 'Thriller',
 ];
 
+// Only a searchable (≥3 char) ?search= restores search mode — a 1–2 char one
+// would enable neither list (searchInfinite needs ≥3, browse is off in search
+// mode) and strand the page on an empty search view.
+function searchFromUrl(params: URLSearchParams) {
+  const search = params.get('search');
+  return search && search.trim().length >= 3 ? search : '';
+}
+
+function statusLabel(status: string) {
+  return status === 'NOT_YET_RELEASED' ? 'Upcoming' : status.charAt(0) + status.slice(1).toLowerCase();
+}
+
 const YEAR_OPTIONS: number[] = (() => {
   const end = new Date().getFullYear() + 5;
   const years: number[] = [];
@@ -93,123 +107,60 @@ export default function AnimePage() {
   const urlParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
-  const animeSort = useUIStore((s) => s.animeSort);
+  const savedSort = useUIStore((s) => s.animeSort);
   const setAnimeSort = useUIStore((s) => s.setAnimeSort);
-  const animeFilters = useUIStore((s) => s.animeFilters);
+  const savedFilters = useUIStore((s) => s.animeFilters);
   const setAnimeFilters = useUIStore((s) => s.setAnimeFilters);
   const hasHydrated = useUIStore((s) => s.hasHydrated);
 
-  // viewMode/searchQuery/sort/filters are restored on back-nav from the URL
-  // (write-back effect below keeps them there); list data is restored from the
+  // A "View all" link (?sort=trending, ?season=FALL&year=…) opens its own view.
+  // It never touches the saved filters, so following one can't leave every
+  // later plain visit filtered. Changes made on it stay with it, mirrored into
+  // its URL below; only a plain visit's changes are saved. Local state is the
+  // render source so an edit shows at once (the URL catches up a navigation
+  // later); it is re-read whenever the URL changes, e.g. the nav item or back.
+  const urlKey = urlParams.toString();
+  const [linkView, setLinkView] = useState(() => exploreLinkView(urlParams));
+  const [linkViewUrlKey, setLinkViewUrlKey] = useState(urlKey);
+  if (linkViewUrlKey !== urlKey) {
+    setLinkViewUrlKey(urlKey);
+    setLinkView(exploreLinkView(urlParams));
+  }
+  const animeSort = linkView ? linkView.sort : savedSort;
+  const animeFilters = linkView ? linkView.filters : savedFilters;
+
+  // The search and a link view's sort/filters are restored on back-nav from the
+  // URL (write-back effect below keeps them there); list data is restored from the
   // TanStack query cache (gcTime), replacing the bespoke media-list-cache data.
-  const [viewMode, setViewMode] = useState<'browse' | 'search'>('browse');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [debouncedQuery, setDebouncedQuery] = useState('');
+  const [viewMode, setViewMode] = useState<'browse' | 'search'>(() => (searchFromUrl(urlParams) ? 'search' : 'browse'));
+  const [searchQuery, setSearchQuery] = useState(() => searchFromUrl(urlParams));
+  const [debouncedQuery, setDebouncedQuery] = useState(() => searchFromUrl(urlParams).trim());
   const [filterOpen, setFilterOpen] = useState(false);
-  const [urlInitialized, setUrlInitialized] = useState(false);
 
-  const initRef = useRef(false);
-
-  // Initialize from URL params exactly once
+  // Keep the search and a link view's sort/filters in the current history
+  // entry, so back-navigation and reload return to them. scroll: false keeps
+  // the list where it is while typing or removing a chip.
   useEffect(() => {
-    if (!hasHydrated || initRef.current) return;
-    initRef.current = true;
-
-    const urlSearch = urlParams.get('search');
-    const urlSort = urlParams.get('sort');
-    const urlSeason = urlParams.get('season');
-    const urlYear = urlParams.get('year');
-    const urlYearMin = urlParams.get('yearMin');
-    const urlYearMax = urlParams.get('yearMax');
-    const urlStatus = urlParams.get('status');
-    const urlFormat = urlParams.get('format');
-    const urlGenres = urlParams.get('genres');
-
-    const hasUrlFilters = Boolean(
-      urlSeason || urlYear || urlYearMin || urlYearMax || urlStatus || urlFormat || urlGenres
-    );
-
-    if (urlSearch && urlSearch.trim().length >= 3) {
-      // Only restore search mode for a searchable (≥3 char) query — a 1–2 char
-      // ?search= would enable neither list (searchInfinite needs ≥3, browse is
-      // off in search mode) and strand the page on an empty search view.
-      setSearchQuery(urlSearch);
-      setViewMode('search');
-    } else if (urlSort || hasUrlFilters) {
-      // URL signals browse intent — override any cached search mode.
-      // The browse fetcher's signature check below decides whether a refetch is needed.
-      setSearchQuery('');
-      setViewMode('browse');
-    }
-
-    if (!urlSort && !hasUrlFilters) {
-      setUrlInitialized(true);
-      return;
-    }
-
-    if (urlSort) setAnimeSort(urlSort);
-
-    const nextFilters: AnimeFiltersState = { ...DEFAULT_ANIME_FILTERS };
-    if (urlSeason) nextFilters.season = urlSeason;
-    if (urlYear) nextFilters.year = urlYear;
-    if (urlYearMin) nextFilters.yearMin = urlYearMin;
-    if (urlYearMax) nextFilters.yearMax = urlYearMax;
-    if (urlStatus) nextFilters.status = urlStatus;
-    if (urlFormat) {
-      nextFilters.formats = urlFormat
-        .split(',')
-        .map((format) => format.trim())
-        .filter(Boolean) as AniListMediaFormat[];
-    }
-    if (urlGenres) {
-      nextFilters.genres = urlGenres
-        .split(',')
-        .map((genre) => genre.trim())
-        .filter(Boolean);
-    }
-    setAnimeFilters(nextFilters);
-    setUrlInitialized(true);
-  }, [hasHydrated, urlParams, setAnimeSort, setAnimeFilters]);
-
-  // Keep the active explore state reflected in the current history entry.
-  // Without this, browser back can rehydrate from the original URL
-  // (for example sort=score) after the user switched to another sort.
-  useEffect(() => {
-    if (!hasHydrated || !urlInitialized) return;
-
-    const params = new URLSearchParams();
-    const trimmedSearch = searchQuery.trim();
-
-    if (viewMode === 'search' && trimmedSearch) {
-      params.set('search', trimmedSearch);
-    } else {
-      if (animeSort !== 'seasonal') params.set('sort', animeSort);
-      if (animeFilters.season) params.set('season', animeFilters.season);
-      if (animeFilters.year) params.set('year', animeFilters.year);
-      if (animeFilters.yearMin) params.set('yearMin', animeFilters.yearMin);
-      if (animeFilters.yearMax) params.set('yearMax', animeFilters.yearMax);
-      if (animeFilters.status) params.set('status', animeFilters.status);
-      if (animeFilters.formats.length) params.set('format', animeFilters.formats.join(','));
-      if (animeFilters.genres.length) params.set('genres', animeFilters.genres.join(','));
-    }
-
-    const query = params.toString();
-    const target = query ? `${pathname}?${query}` : pathname;
-    const current = `${pathname}${urlParams.toString() ? `?${urlParams.toString()}` : ''}`;
-    if (target !== current) {
+    const trimmedSearch = viewMode === 'search' ? searchQuery.trim() : '';
+    const target = exploreHref(pathname, linkView, trimmedSearch);
+    if (target !== `${window.location.pathname}${window.location.search}`) {
       router.replace(target, { scroll: false });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hasHydrated, urlInitialized, viewMode, searchQuery, animeSort, animeFilters, pathname]);
+  }, [viewMode, searchQuery, linkView, pathname, router]);
 
+  // A plain visit's changes are saved; a link view's stay with it.
+  const updateBrowse = (next: ExploreView) => {
+    if (linkView) {
+      setLinkView(next);
+      return;
+    }
+    setAnimeSort(next.sort);
+    setAnimeFilters(next.filters);
+  };
+
+  // Seeded from the active sort/filters each time the drawer opens.
   const [draftFilters, setDraftFilters] = useState<AnimeFiltersState>(animeFilters);
   const [draftSort, setDraftSort] = useState(animeSort);
-
-  // Sync draft state when store updates from URL
-  useEffect(() => {
-    setDraftFilters(animeFilters);
-    setDraftSort(animeSort);
-  }, [animeFilters, animeSort]);
 
   const sentinelRef = useRef<HTMLDivElement>(null);
 
@@ -237,7 +188,7 @@ export default function AnimePage() {
 
   // Debounce the search box into the query key, and switch to search mode once a
   // searchable (≥3 char) query is committed. 1–2 char input keeps the last
-  // results (matches old behavior); empty falls back to browse via the effect below.
+  // results (matches old behavior); emptying the box falls back to browse (onChange).
   useEffect(() => {
     const t = window.setTimeout(() => {
       const q = searchQuery.trim();
@@ -251,13 +202,8 @@ export default function AnimePage() {
     return () => window.clearTimeout(t);
   }, [searchQuery]);
 
-  // Empty search box while in search mode → fall back to browse.
-  useEffect(() => {
-    if (viewMode === 'search' && searchQuery.trim() === '') setViewMode('browse');
-  }, [viewMode, searchQuery]);
-
   const searchActive = viewMode === 'search' && debouncedQuery.length >= 3;
-  const queriesReady = hasHydrated && urlInitialized;
+  const queriesReady = hasHydrated;
 
   // Browse + search lists. The query key carries the full state, so the cache +
   // staleTime (5m) replace the bespoke data cache, signature check and freshness
@@ -289,7 +235,7 @@ export default function AnimePage() {
     [active.data],
   );
   const loading =
-    (active.isLoading || !urlInitialized) && active.data === undefined;
+    active.isLoading && active.data === undefined;
   const initialError = active.isError && active.data === undefined;
   const loadingMore = active.isFetchingNextPage;
   const {
@@ -333,15 +279,14 @@ export default function AnimePage() {
 
   const handleSortChange = (sort: string) => {
     if (sort === animeSort && viewMode === 'browse') return;
-    setAnimeSort(sort);
+    updateBrowse({ sort, filters: animeFilters });
     setSearchQuery('');
     setViewMode('browse');
     resetExploreScroll();
   };
 
   const applyFilters = () => {
-    setAnimeSort(draftSort);
-    setAnimeFilters(draftFilters);
+    updateBrowse({ sort: draftSort, filters: draftFilters });
     setFilterOpen(false);
     setSearchQuery('');
     setViewMode('browse');
@@ -349,14 +294,41 @@ export default function AnimePage() {
   };
 
   const clearFilters = () => {
-    setAnimeSort('seasonal');
-    setAnimeFilters(DEFAULT_ANIME_FILTERS);
+    updateBrowse({ sort: 'seasonal', filters: DEFAULT_ANIME_FILTERS });
     setDraftFilters(DEFAULT_ANIME_FILTERS);
     setDraftSort('seasonal');
     setViewMode('browse');
     setFilterOpen(false);
     resetExploreScroll();
   };
+
+  const removeFilter = (next: Partial<AnimeFiltersState>) => () =>
+    updateBrowse({ sort: animeSort, filters: { ...animeFilters, ...next } });
+  const { genres, year, yearMin, yearMax, season, formats, status } = animeFilters;
+  const activeFilters: ActiveFilter[] = [
+    ...genres.map((genre) => ({
+      id: `genre:${genre}`,
+      label: genre,
+      onRemove: removeFilter({ genres: genres.filter((g) => g !== genre) }),
+    })),
+    ...(year ? [{ id: 'year', label: year, onRemove: removeFilter({ year: '' }) }] : []),
+    ...(yearMin || yearMax
+      ? [{
+        id: 'yearRange',
+        label: yearMin && yearMax ? `${yearMin}–${yearMax}` : yearMin ? `${yearMin}+` : `≤ ${yearMax}`,
+        onRemove: removeFilter({ yearMin: '', yearMax: '' }),
+      }]
+      : []),
+    ...(season
+      ? [{ id: 'season', label: SEASON_OPTIONS.find((o) => o.value === season)?.label ?? season, onRemove: removeFilter({ season: '' }) }]
+      : []),
+    ...formats.map((format) => ({
+      id: `format:${format}`,
+      label: FORMAT_OPTIONS.find((o) => o.value === format)?.label ?? format,
+      onRemove: removeFilter({ formats: formats.filter((f) => f !== format) }),
+    })),
+    ...(status ? [{ id: 'status', label: statusLabel(status), onRemove: removeFilter({ status: '' }) }] : []),
+  ];
 
   if (!hasHydrated) {
     return <PageSpinner />;
@@ -377,7 +349,10 @@ export default function AnimePage() {
       <div className="page-toolbar pt-1 pb-2 app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 space-y-1">
         <SearchBar
           value={searchQuery}
-          onChange={setSearchQuery}
+          onChange={(value) => {
+            setSearchQuery(value);
+            if (!value.trim()) setViewMode('browse');
+          }}
           placeholder="Search anime..."
           historyKey="anime-explore"
         />
@@ -420,6 +395,14 @@ export default function AnimePage() {
           </div>
         )}
       </div>
+
+      {viewMode !== 'search' && (
+        <ActiveFilterBar
+          filters={activeFilters}
+          onClearAll={() => updateBrowse({ sort: animeSort, filters: DEFAULT_ANIME_FILTERS })}
+          className="pt-2"
+        />
+      )}
 
       {/* Content */}
       {loading ? (
@@ -628,7 +611,7 @@ export default function AnimePage() {
                 <div className="flex flex-wrap gap-2">
                   {(['FINISHED', 'RELEASING', 'NOT_YET_RELEASED'] as const).map((st) => {
                     const active = draftFilters.status === st;
-                    const label = st === 'NOT_YET_RELEASED' ? 'Upcoming' : st.charAt(0) + st.slice(1).toLowerCase();
+                    const label = statusLabel(st);
                     return (
                       <Button
                         key={st}

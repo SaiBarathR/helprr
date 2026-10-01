@@ -250,15 +250,13 @@ export default function AnimeLibraryPage() {
     [cacheKey]
   );
 
-  // On tab/type change: persist the shared tab selection, restore that tab's
-  // client-side render count from view-state, and reset scroll-restore. The
-  // collection itself is fetched by libraryQuery (keyed on type+status).
-  // Gated on `hydrated`: before the restore effect below has applied the saved
-  // tab, `type`/`status` still hold their mount defaults, and persisting those
-  // would overwrite the very selection the next visit needs to read back.
+  // On tab/type change: restore that tab's client-side render count from
+  // view-state, and reset scroll-restore. The collection itself is fetched by
+  // libraryQuery (keyed on type+status). The shared tab selection is saved only
+  // by a tab the user picks (handlers below): a ?status= link (the Anime page's
+  // "View all") opens that tab for the visit without replacing the remembered one.
   useEffect(() => {
     if (!hydrated || !viewer?.connected) return;
-    persistShared(type, status);
 
     const savedView = getListViewState(cacheKey);
     const extras = (savedView?.extras ?? {}) as PerTabExtras;
@@ -299,21 +297,27 @@ export default function AnimeLibraryPage() {
 
   const handleSelectType = useCallback(
     (next: AniListMediaType) => {
-      if (next === type) return;
+      // Remembered even when it's already showing (from a ?type= link).
+      if (next === type) {
+        persistShared(type, status);
+        return;
+      }
       setType(next);
       setStatus('ALL');
+      persistShared(next, 'ALL');
       window.scrollTo({ top: 0, behavior: 'instant' });
     },
-    [type]
+    [type, status, persistShared]
   );
 
   const handleSelectStatus = useCallback(
     (next: AniListMediaListStatus | 'ALL') => {
+      persistShared(type, next);
       if (next === status) return;
       setStatus(next);
       window.scrollTo({ top: 0, behavior: 'instant' });
     },
-    [status]
+    [type, status, persistShared]
   );
 
   if (!viewer) {
