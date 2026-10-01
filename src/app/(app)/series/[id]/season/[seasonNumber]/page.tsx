@@ -460,9 +460,12 @@ export default function SeasonDetailPage() {
 
           return (
             <QuickContextMenu key={ep.id} label={`${ep.title || `Episode ${ep.episodeNumber}`} actions`} actions={episodeActions}>
+            {/* The link's ::after covers the whole row so it stays one tap target, while
+                the bookmark and search buttons sit beside the link rather than inside it. */}
+            <div className="relative flex flex-wrap gap-x-3 gap-y-2 px-4 py-3 active:bg-muted/50 transition-colors">
             <Link
               href={episodeHref}
-              className="flex flex-wrap gap-x-3 gap-y-2 px-4 py-3 active:bg-muted/50 transition-colors"
+              className="flex flex-1 min-w-0 gap-3 after:absolute after:inset-0"
             >
               {/* Episode still image or number fallback (skip for anime) */}
               {series?.seriesType !== 'anime' && (
@@ -539,16 +542,18 @@ export default function SeasonDetailPage() {
                   <p className="text-xs text-muted-foreground line-clamp-2 mt-1">{tmdbEp.overview}</p>
                 )}
               </div>
+            </Link>
 
               {/* Monitor bookmark */}
               {canEditMonitoring && (
                 <button
+                  aria-label={ep.monitored ? 'Unmonitor episode' : 'Monitor episode'}
                   onClick={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
                     handleToggleEpisodeMonitor(ep.id, !ep.monitored);
                   }}
-                  className="min-w-[36px] min-h-[36px] flex items-center justify-center shrink-0 self-center"
+                  className="relative min-w-[36px] min-h-[36px] flex items-center justify-center shrink-0 self-center"
                 >
                   {ep.monitored ? (
                     <BookmarkCheck className="h-4 w-4 text-primary" />
@@ -558,21 +563,16 @@ export default function SeasonDetailPage() {
                 </button>
               )}
               {/* Per-episode search — same activity.manage gate as the season buttons. Its own
-                  full-width line so both fit side by side on a phone; the row is a link,
-                  so the buttons stop the tap from opening it. */}
+                  full-width line so both fit side by side on a phone. */}
               {canManageActivity && (
-                <div className="basis-full flex flex-wrap gap-1.5">
+                <div className="relative basis-full flex flex-wrap gap-1.5">
                   <Button
                     variant="secondary"
                     size="xs"
                     className="rounded-full has-[>svg]:px-2.5"
                     aria-label={`Automatic search: ${ep.title || `Episode ${ep.episodeNumber}`}`}
-                    aria-busy={searchingEpisodeIds.has(ep.id)}
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      void handleEpisodeAutomaticSearch(ep);
-                    }}
+                    disabled={searchingEpisodeIds.has(ep.id)}
+                    onClick={() => { void handleEpisodeAutomaticSearch(ep); }}
                   >
                     {searchingEpisodeIds.has(ep.id) ? <Loader2 className="animate-spin" /> : <Search />}
                     Automatic
@@ -582,21 +582,17 @@ export default function SeasonDetailPage() {
                     size="xs"
                     className="rounded-full has-[>svg]:px-2.5"
                     aria-label={`Interactive search: ${ep.title || `Episode ${ep.episodeNumber}`}`}
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      setEpisodeInteractiveTarget({
-                        episodeId: ep.id,
-                        title: ep.title || `Episode ${ep.episodeNumber}`,
-                      });
-                    }}
+                    onClick={() => setEpisodeInteractiveTarget({
+                      episodeId: ep.id,
+                      title: ep.title || `Episode ${ep.episodeNumber}`,
+                    })}
                   >
                     <Search />
                     Interactive
                   </Button>
                 </div>
               )}
-            </Link>
+            </div>
             </QuickContextMenu>
           );
         })}

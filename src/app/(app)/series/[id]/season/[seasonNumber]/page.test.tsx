@@ -100,6 +100,35 @@ describe('season page episode search buttons', () => {
     expect(mocks.push).not.toHaveBeenCalled();
   });
 
+  it('keeps the row controls outside the episode link', async () => {
+    await renderPage();
+    const link = document.querySelector('a[href="/series/7/season/4/episode/102?instance=son-1"]');
+    expect(link).not.toBeNull();
+    // Buttons inside a link are invalid HTML and leak into the link's accessible name.
+    expect(link!.querySelector('button')).toBeNull();
+    expect(button('Automatic search: Curiouser and Curiouser!')!.closest('a')).toBeNull();
+    expect(button('Interactive search: Curiouser and Curiouser!')!.closest('a')).toBeNull();
+  });
+
+  it('disables Automatic while that episode search is in flight', async () => {
+    let release!: () => void;
+    commandResponse = () => Response.json({ id: 1 });
+    const pending = new Promise<void>((done) => { release = done; });
+    const fetchMock = vi.mocked(fetch);
+    const base = fetchMock.getMockImplementation()!;
+    fetchMock.mockImplementation(async (url, init) => {
+      if (init?.method === 'POST') await pending;
+      return base(url, init);
+    });
+    await renderPage();
+    const automatic = button('Automatic search: Home')!;
+    await act(async () => automatic.click());
+    await waitFor(() => expect(automatic.disabled).toBe(true));
+    await act(async () => release());
+    await waitFor(() => expect(automatic.disabled).toBe(false));
+    expect(commands).toHaveLength(1);
+  });
+
   it('reports a rejected search instead of claiming it started', async () => {
     commandResponse = () => new Response('nope', { status: 500 });
     await renderPage();
