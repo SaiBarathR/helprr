@@ -621,7 +621,7 @@ function HistoryRowCard({
     <button
       type="button"
       onClick={() => onSelect(row)}
-      className={`grouped-row w-full text-left flex-col items-stretch gap-1.5 cursor-pointer transition-colors hover:bg-muted/30 active:bg-muted/40 ${isFailed ? 'bg-destructive/5' : ''}`}
+      className={`grouped-row grouped-row-stacked w-full text-left gap-1.5 cursor-pointer transition-colors hover:bg-muted/30 active:bg-muted/40 ${isFailed ? 'bg-destructive/5' : ''}`}
     >
       <div className="flex items-start gap-2 min-w-0 w-full">
         <div className="flex-1 min-w-0 space-y-1">

@@ -1973,13 +1973,13 @@ export default function TorrentsPage() {
                 {Object.entries(categories).map(([key, cat]) => (
                   <button
                     key={key}
-                    className="flex items-center justify-between w-full px-3 py-3 text-sm hover:bg-accent transition-colors"
+                    className="flex items-center justify-between gap-3 w-full px-3 py-3 text-sm hover:bg-accent transition-colors"
                     onClick={async () => {
                       await torrentAction(categoryDrawer.hash, 'setCategory', { category: cat.name });
                       setCategoryDrawer({ open: false, hash: '' });
                     }}
                   >
-                    <span>{cat.name}</span>
+                    <span className="min-w-0 truncate text-left">{cat.name}</span>
                     {cat.savePath && (
                       <span className="text-[10px] text-muted-foreground truncate max-w-[50%]">{cat.savePath}</span>
                     )}

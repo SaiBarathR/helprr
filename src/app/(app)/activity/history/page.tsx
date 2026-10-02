@@ -359,8 +359,8 @@ export default function HistoryPage() {
                     {eventLabel(item.eventType)}
                   </Badge>
 
-                  {/* Filename - allow wrapping */}
-                  <p className="text-sm leading-snug break-words">
+                  {/* Filename: up to two lines (the drawer has the full name) */}
+                  <p className="text-sm leading-snug break-words line-clamp-2">
                     {item.sourceTitle}
                   </p>
 

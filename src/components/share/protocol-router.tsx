@@ -88,8 +88,8 @@ export function ProtocolRouter({ command, params }: ProtocolRouterProps) {
   }, [command, params, router]);
 
   return (
-    <div className="animate-content-in pb-12">
-      <div className="px-1 pt-1 pb-2">
+    <div className="mx-auto w-full max-w-2xl animate-content-in pb-12">
+      <div className="px-1 pt-[calc(env(safe-area-inset-top)+0.25rem)] pb-2">
         <Link
           href="/"
           className="inline-flex items-center gap-1 text-sm text-primary -ml-1 min-h-[44px] px-1"
@@ -108,7 +108,7 @@ export function ProtocolRouter({ command, params }: ProtocolRouterProps) {
         <h1 className="font-display text-2xl">
           {status === 'error' ? 'Couldn’t route' : status === 'done' ? 'Done' : 'Routing…'}
         </h1>
-        <p className="text-sm text-muted-foreground max-w-sm">{message}</p>
+        <p className="text-sm text-muted-foreground max-w-sm [overflow-wrap:anywhere]">{message}</p>
         {status === 'error' && (
           <Link
             href="/"

@@ -155,7 +155,9 @@ export function PendingApprovalSection({
             disabled={contextMenuDisabled || isBusy}
           >
             <div
-              className="flex items-center gap-3 rounded-lg border border-border bg-card p-2"
+              // The buttons wrap onto their own line before the title gets
+              // narrower than 10rem (phones), instead of squeezing it to a sliver.
+              className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-border bg-card p-2"
               style={{ opacity: isBusy ? 0.5 : 1 }}
             >
               <div className="flex h-14 w-10 shrink-0 items-center justify-center overflow-hidden rounded bg-muted text-muted-foreground">
@@ -172,7 +174,7 @@ export function PendingApprovalSection({
                   <Icon className="h-4 w-4" />
                 )}
               </div>
-              <div className="min-w-0 flex-1">
+              <div className="min-w-0 flex-1 basis-40">
                 <div className="truncate text-sm font-medium">
                   {r.title ?? `TMDB ${r.tmdbId}`}
                   {r.year ? ` (${r.year})` : ''}
@@ -186,7 +188,7 @@ export function PendingApprovalSection({
                     : ''}
                 </div>
               </div>
-              <div className="flex shrink-0 items-center gap-1.5">
+              <div className="ml-auto flex shrink-0 items-center gap-1.5">
                 {canApprove ? (
                   <>
                     <Button size="sm" className="h-8" disabled={isBusy} onClick={() => setModalRow(r)}>

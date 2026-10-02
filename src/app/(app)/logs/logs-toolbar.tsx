@@ -97,7 +97,9 @@ export function LogsToolbar({
 
       <div className="flex flex-wrap items-center gap-1.5">
         <Select value={selectedFile} onValueChange={onSelectFile}>
-          <SelectTrigger className="h-10 max-w-[160px] sm:max-w-[240px]" aria-label="Filter by log file">
+          {/* Its own row on phones, so the six controls never leave the download
+              button alone on a second line. */}
+          <SelectTrigger className="h-10 basis-full sm:basis-auto sm:max-w-[240px]" aria-label="Filter by log file">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>

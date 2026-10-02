@@ -373,7 +373,9 @@ export default function AnimeMappingsPage() {
         {TTL_FIELDS.map((field) => {
           const hint = formatMinutesHint(ttlDraft?.[field.key]);
           return (
-            <div key={field.key} className="grouped-row gap-3">
+            // On phones the input and its hint go under the label instead of
+            // crushing it.
+            <div key={field.key} className="grouped-row grouped-row-stack-mobile gap-3">
               <div className="min-w-0">
                 <span className="text-sm">{field.label}</span>
                 <p className="text-[11px] text-muted-foreground truncate">{field.hint}</p>
@@ -397,7 +399,7 @@ export default function AnimeMappingsPage() {
             </div>
           );
         })}
-        <div className="flex gap-2 px-4 py-3">
+        <div className="flex flex-col gap-2 px-4 py-3 sm:flex-row">
           <Button
             variant="outline"
             className="h-9 flex-1"

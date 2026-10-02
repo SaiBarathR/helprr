@@ -602,8 +602,10 @@ export function VideoStage({ mediaContainer }: { mediaContainer: HTMLDivElement 
                     </span>
                   </div>
 
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-1">
+                  {/* Eight buttons need ~324px with the roomy gaps; tighter gaps on
+                      phones keep the gear on screen at 344px. */}
+                  <div className="flex items-center justify-between gap-1 sm:gap-2">
+                    <div className="flex items-center gap-0.5 sm:gap-1">
                       <Button variant="ghost" size="icon" className="text-white" onClick={() => playback.skip(-10)} aria-label="Back 10 seconds">
                         <SkipBack />
                       </Button>
@@ -655,7 +657,7 @@ export function VideoStage({ mediaContainer }: { mediaContainer: HTMLDivElement 
                         <span className="font-semibold">{playback.item?.Name}</span>
                       )}
                     </p>
-                    <div className="flex items-center justify-end gap-1">
+                    <div className="flex items-center justify-end gap-0.5 sm:gap-1">
                       <Button variant="ghost" size="icon" className="text-white" onClick={() => setPanel(panel === 'subs' ? 'none' : 'subs')} aria-label="Subtitles">
                         <Subtitles />
                       </Button>

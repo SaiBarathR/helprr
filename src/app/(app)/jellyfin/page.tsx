@@ -1049,12 +1049,17 @@ function CustomHistoryRow({ item }: { item: CustomHistoryItem }) {
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-sm truncate">{item.ItemName}</p>
-        <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
-          <span>{item.ClientName}</span><span>&middot;</span><span>{item.DeviceName}</span><span>&middot;</span><span>{formatDurationSeconds(item.PlayDuration)}</span>
+        {/* Long client or device names truncate; the play time always shows. */}
+        <div className="flex min-w-0 items-center gap-1.5 text-[10px] text-muted-foreground">
+          <span className="min-w-0 truncate">{item.ClientName}</span><span className="shrink-0">&middot;</span><span className="min-w-0 truncate">{item.DeviceName}</span><span className="shrink-0">&middot;</span><span className="shrink-0">{formatDurationSeconds(item.PlayDuration)}</span>
         </div>
       </div>
       <div className="text-right shrink-0 space-y-0.5">
-        <Badge variant="outline" className={`text-[9px] px-1 py-0 ${methodColor}`}>{methodLabel}</Badge>
+        {/* Transcode labels run long ("Transcode (v:h264 a:direct)"); cap them so
+            the title keeps its room on phones. */}
+        <Badge variant="outline" className={`max-w-[8rem] text-[9px] px-1 py-0 ${methodColor}`} title={methodLabel}>
+          <span className="truncate">{methodLabel}</span>
+        </Badge>
         <p className="text-[10px] text-muted-foreground">{formatDateCreated(item.DateCreated)}</p>
       </div>
     </div>

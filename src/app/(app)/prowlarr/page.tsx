@@ -1034,7 +1034,7 @@ function HistoryTab() {
                   <div className="flex-1 min-w-0 space-y-1">
                     {/* Query + queryType badge */}
                     <div className="flex items-center gap-1.5">
-                      {query ? <span className="text-sm font-medium truncate">{query}</span> : null}
+                      {query ? <span className="min-w-0 flex-1 text-sm font-medium truncate">{query}</span> : null}
                       {queryType && (
                         <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-mono shrink-0">
                           {queryType}
