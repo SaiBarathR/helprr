@@ -306,7 +306,7 @@ export function MediaRail({
           <Link
             href={href}
             aria-label={`See all ${title}`}
-            className="flex size-5 items-center justify-center self-center rounded-full border border-border text-muted-foreground transition-colors hover:border-foreground hover:text-foreground"
+            className="relative flex size-5 items-center justify-center self-center rounded-full border border-border text-muted-foreground transition-colors hover:border-foreground hover:text-foreground touch-target"
           >
             <ArrowRight className="size-3" />
           </Link>

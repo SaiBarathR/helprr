@@ -503,7 +503,7 @@ function SectionRow({
         {section.type === 'media' && (
           <button
             onClick={() => onSeeAll(section)}
-            className="text-xs text-primary font-medium inline-flex items-center gap-1"
+            className="relative text-xs text-primary font-medium inline-flex items-center gap-1 touch-target"
           >
             See all
             <ChevronRight className="h-3.5 w-3.5" />
@@ -591,7 +591,7 @@ function CustomCarouselRow({
         {layoutSection.filters && (
           <button
             onClick={() => onSeeAll(layoutSection)}
-            className="text-xs text-primary font-medium inline-flex items-center gap-1"
+            className="relative text-xs text-primary font-medium inline-flex items-center gap-1 touch-target"
           >
             See all
             <ChevronRight className="h-3.5 w-3.5" />

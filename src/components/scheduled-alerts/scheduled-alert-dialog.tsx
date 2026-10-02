@@ -391,6 +391,8 @@ export function ScheduledAlertButton({
             'flex items-center justify-center rounded-full bg-background/55 backdrop-blur-md text-foreground hover:bg-background/80 transition-colors',
             'h-9 w-9',
             className,
+            // Taller hit area only: on posters it sits beside the watchlist button.
+            'relative touch-target-y',
           )}
         >
           <Bell className="h-3.5 w-3.5" />

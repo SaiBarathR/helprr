@@ -79,7 +79,9 @@ export function HeroCarousel({ slides, className = '', intervalMs = 7000 }: Hero
               aria-label={`Go to slide ${i + 1}`}
               aria-current={i === index}
               onClick={() => setIndex(i)}
-              className="p-2"
+              // The dots sit at the carousel's clipped bottom edge, so the 44px
+              // hit area grows upward from there rather than from the centre.
+              className="relative p-2 after:absolute after:inset-x-0 after:bottom-0 after:h-11 after:content-['']"
             >
               <span
                 className={`block h-2 rounded-full transition-all ${

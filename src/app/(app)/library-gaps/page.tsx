@@ -129,7 +129,7 @@ function GapCard({
         onClick={handleSearch}
         disabled={searching}
         aria-label="Search"
-        className="absolute right-1.5 top-1.5 z-10 flex h-7 w-7 items-center justify-center rounded-md bg-black/55 text-white backdrop-blur-sm transition-colors hover:bg-black/70 disabled:opacity-60"
+        className="absolute right-1.5 top-1.5 z-10 flex h-7 w-7 items-center justify-center rounded-md bg-black/55 text-white backdrop-blur-sm touch-target transition-colors hover:bg-black/70 disabled:opacity-60"
       >
         {searching ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Search className="h-3.5 w-3.5" />}
       </button>
@@ -139,7 +139,7 @@ function GapCard({
     action = (
       <div
         aria-hidden="true"
-        className="absolute right-1.5 top-1.5 z-10 flex h-7 w-7 items-center justify-center rounded-md bg-black/55 text-white backdrop-blur-sm"
+        className="absolute right-1.5 top-1.5 z-10 flex h-7 w-7 items-center justify-center rounded-md bg-black/55 text-white backdrop-blur-sm touch-target"
       >
         <Layers className="h-3.5 w-3.5" />
       </div>
@@ -150,7 +150,7 @@ function GapCard({
     action = (
       <div
         aria-hidden="true"
-        className="absolute right-1.5 top-1.5 z-10 flex h-7 w-7 items-center justify-center rounded-md bg-black/55 text-white backdrop-blur-sm"
+        className="absolute right-1.5 top-1.5 z-10 flex h-7 w-7 items-center justify-center rounded-md bg-black/55 text-white backdrop-blur-sm touch-target"
       >
         <Plus className="h-3.5 w-3.5" />
       </div>

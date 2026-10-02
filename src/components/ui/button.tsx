@@ -43,10 +43,17 @@ function Button({
   variant = "default",
   size = "default",
   asChild = false,
+  touchTarget = true,
   ...props
 }: React.ComponentProps<"button"> &
   VariantProps<typeof buttonVariants> & {
     asChild?: boolean
+    /**
+     * A 44px hit area around the button that doesn't change its size. Turn it
+     * off where buttons tile edge to edge (calendar days), or a tap near one
+     * button's edge would land on its neighbour.
+     */
+    touchTarget?: boolean
   }) {
   const Comp = asChild ? Slot.Root : "button"
 
@@ -55,7 +62,7 @@ function Button({
       data-slot="button"
       data-variant={variant}
       data-size={size}
-      className={cn(buttonVariants({ variant, size, className }))}
+      className={cn(buttonVariants({ variant, size }), touchTarget && "relative touch-target", className)}
       {...props}
     />
   )

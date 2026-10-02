@@ -144,6 +144,13 @@ export function SectionHeader({
       </div>
       {right && (
         <div
+          // "View all" links here are one line of 11px text; give them a 44px
+          // hit area without growing the header. Raised one layer so the
+          // controls' hit areas aren't covered by the widget's masked list.
+          // Links sit last in the row, so they grow rightward only and can't
+          // cover the pill toggle before them (compact cells shrink "View all"
+          // to an arrow beside it).
+          className="relative z-[1] [&_a]:relative [&_a]:touch-target [&_a]:after:left-0 [&_a]:after:[transform:translateY(-50%)]"
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -829,11 +836,11 @@ export function ViewModeToggle({
         alignItems: 'stretch',
         borderRadius: 6,
         border: `1px solid ${HPR.hairline2}`,
-        overflow: 'hidden',
         height: 22,
       }}
     >
       <ViewModeButton
+        corner="start"
         active={value === 'carousel'}
         label="Carousel view"
         onClick={() => onChange('carousel')}
@@ -842,6 +849,7 @@ export function ViewModeToggle({
       </ViewModeButton>
       <div style={{ width: 1, background: HPR.hairline2 }} />
       <ViewModeButton
+        corner="end"
         active={value === 'list'}
         label="List view"
         onClick={() => onChange('list')}
@@ -853,11 +861,14 @@ export function ViewModeToggle({
 }
 
 function ViewModeButton({
+  corner,
   active,
   label,
   onClick,
   children,
 }: {
+  /** Which end of the pill this is, so its active fill keeps the round corners. */
+  corner: 'start' | 'end';
   active: boolean;
   label: string;
   onClick: () => void;
@@ -868,6 +879,9 @@ function ViewModeButton({
       type="button"
       aria-label={label}
       aria-pressed={active}
+      // A taller hit area than the 22px pill; the width stays, since the two
+      // halves touch.
+      className="relative touch-target-y"
       onClick={(e) => {
         e.stopPropagation();
         onClick();
@@ -880,6 +894,7 @@ function ViewModeButton({
         height: '100%',
         padding: 0,
         border: 'none',
+        borderRadius: corner === 'start' ? '5px 0 0 5px' : '0 5px 5px 0',
         background: active ? mix(HPR.amber, 18) : 'transparent',
         color: active ? HPR.amber : HPR.fgMute,
         cursor: 'pointer',
@@ -910,11 +925,11 @@ export function VariantToggle({
         alignItems: 'stretch',
         borderRadius: 6,
         border: `1px solid ${HPR.hairline2}`,
-        overflow: 'hidden',
         height: 22,
       }}
     >
       <VariantButton
+        corner="start"
         active={value === 'default'}
         label="Horizontal layout"
         onClick={() => onChange('default')}
@@ -923,6 +938,7 @@ export function VariantToggle({
       </VariantButton>
       <div style={{ width: 1, background: HPR.hairline2 }} />
       <VariantButton
+        corner="end"
         active={value === 'vertical'}
         label="Vertical layout"
         onClick={() => onChange('vertical')}
@@ -934,11 +950,14 @@ export function VariantToggle({
 }
 
 function VariantButton({
+  corner,
   active,
   label,
   onClick,
   children,
 }: {
+  /** Which end of the pill this is, so its active fill keeps the round corners. */
+  corner: 'start' | 'end';
   active: boolean;
   label: string;
   onClick: () => void;
@@ -949,6 +968,9 @@ function VariantButton({
       type="button"
       aria-label={label}
       aria-pressed={active}
+      // A taller hit area than the 22px pill; the width stays, since the two
+      // halves touch.
+      className="relative touch-target-y"
       onClick={(e) => {
         e.stopPropagation();
         onClick();
@@ -961,6 +983,7 @@ function VariantButton({
         height: '100%',
         padding: 0,
         border: 'none',
+        borderRadius: corner === 'start' ? '5px 0 0 5px' : '0 5px 5px 0',
         background: active ? mix(HPR.amber, 18) : 'transparent',
         color: active ? HPR.amber : HPR.fgMute,
         cursor: 'pointer',

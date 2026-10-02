@@ -23,6 +23,28 @@
   }
 }
 
+/* A hit-area control right after another one grows rightward and vertically
+   only. Later siblings paint on top, so a centred area would cover the visible
+   edge of the control before it (toolbar buttons with no gap). */
+.touch-target + .touch-target::after {
+  left: 0;
+  transform: translateY(-50%);
+}
+
+/* Height only, for controls that sit edge to edge in a row (segmented pills),
+   where a wider hit area would cover the neighbour. */
+@utility touch-target-y {
+  &::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 0;
+    width: 100%;
+    height: max(100%, 44px);
+    transform: translateY(-50%);
+  }
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);

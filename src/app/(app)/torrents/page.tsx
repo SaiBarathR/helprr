@@ -575,13 +575,17 @@ const TorrentRow = memo(function TorrentRow({
     <QuickContextMenu label={`Actions for ${torrent.name}`} groups={contextGroups}>
     <div className="px-3 py-3 sm:px-4">
       <div className="flex items-start gap-3">
-        <input
-          type="checkbox"
-          checked={selected}
-          onChange={() => onToggleSelect(torrent.hash)}
-          className="mt-1 rounded border-border"
-          aria-label={`Select ${torrent.name}`}
-        />
+        {/* The label carries the 44px hit area (a native checkbox can't), and
+            is marked so a long press on it selects instead of opening the menu. */}
+        <label className="relative mt-1 flex touch-target" data-context-menu-ignore>
+          <input
+            type="checkbox"
+            checked={selected}
+            onChange={() => onToggleSelect(torrent.hash)}
+            className="rounded border-border"
+            aria-label={`Select ${torrent.name}`}
+          />
+        </label>
         <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between gap-2">
             <button
@@ -1175,25 +1179,29 @@ export default function TorrentsPage() {
     {
       id: 'select',
       label: (
-        <input
-          type="checkbox"
-          checked={allSelected}
-          onChange={selectAll}
-          className="block rounded border-border"
-          aria-label="Select all"
-        />
+        <label className="relative flex touch-target" data-context-menu-ignore>
+          <input
+            type="checkbox"
+            checked={allSelected}
+            onChange={selectAll}
+            className="block rounded border-border"
+            aria-label="Select all"
+          />
+        </label>
       ),
       width: 40,
       minWidth: 40,
       fixed: true,
       cell: (t) => (
-        <input
-          type="checkbox"
-          checked={selectedTorrents.has(t.hash)}
-          onChange={() => toggleSelect(t.hash)}
-          className="block rounded border-border"
-          aria-label={`Select ${t.name}`}
-        />
+        <label className="relative flex touch-target" data-context-menu-ignore>
+          <input
+            type="checkbox"
+            checked={selectedTorrents.has(t.hash)}
+            onChange={() => toggleSelect(t.hash)}
+            className="block rounded border-border"
+            aria-label={`Select ${t.name}`}
+          />
+        </label>
       ),
     },
     {
@@ -1625,13 +1633,15 @@ export default function TorrentsPage() {
         <div className="space-y-0">
           <div className="flex items-center gap-2 px-3 pb-2">
             {!isTableView && (
-              <input
-                type="checkbox"
-                checked={selectedTorrents.size === filteredTorrents.length && filteredTorrents.length > 0}
-                onChange={selectAll}
-                className="rounded border-border"
-                aria-label="Select all"
-              />
+              <label className="relative flex touch-target" data-context-menu-ignore>
+                <input
+                  type="checkbox"
+                  checked={selectedTorrents.size === filteredTorrents.length && filteredTorrents.length > 0}
+                  onChange={selectAll}
+                  className="rounded border-border"
+                  aria-label="Select all"
+                />
+              </label>
             )}
             <span className="text-xs text-muted-foreground">
               {filteredTorrents.length} torrent{filteredTorrents.length !== 1 ? 's' : ''}

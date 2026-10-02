@@ -643,6 +643,7 @@ function DetailButton({ onClick }: { onClick: () => void }) {
     <button
       type="button"
       aria-label="View details"
+      className="relative touch-target"
       onClick={(e) => {
         e.preventDefault();
         e.stopPropagation();

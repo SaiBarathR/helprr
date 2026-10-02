@@ -96,7 +96,7 @@ function SortableCarouselItem({
         } ${isDisabled ? 'opacity-40' : ''}`}
       >
         <button
-          className="touch-none p-1 -m-1 text-muted-foreground/50 cursor-grab active:cursor-grabbing"
+          className="relative touch-none p-1 -m-1 text-muted-foreground/50 cursor-grab active:cursor-grabbing touch-target"
           aria-label="Drag to reorder"
           {...attributes}
           {...listeners}

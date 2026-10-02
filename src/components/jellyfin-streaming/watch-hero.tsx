@@ -170,7 +170,9 @@ function ClassicHero({ items, onPlay, pending }: WatchHeroProps) {
                 aria-current={slideIndex === index ? 'true' : undefined}
                 onClick={() => setIndex(slideIndex)}
                 className={cn(
-                  'h-1.5 rounded-full transition-all',
+                  // Each dot's hit area is 44px tall and takes half of the gap on
+                  // either side, so the dots share one strip without overlapping.
+                  "relative h-1.5 rounded-full transition-all after:absolute after:-inset-x-[3px] after:top-1/2 after:h-11 after:-translate-y-1/2 after:content-['']",
                   slideIndex === index ? 'w-6 bg-foreground' : 'w-1.5 bg-foreground/35 hover:bg-foreground/60',
                 )}
               />

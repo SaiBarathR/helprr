@@ -118,7 +118,7 @@ function SortableNavItem({
         } ${isDisabled ? 'opacity-40' : ''}`}
       >
         <button
-          className="touch-none p-1 -m-1 text-muted-foreground/50 cursor-grab active:cursor-grabbing"
+          className="relative touch-none p-1 -m-1 text-muted-foreground/50 cursor-grab active:cursor-grabbing touch-target"
           aria-label="Drag to reorder"
           {...attributes}
           {...listeners}
@@ -130,7 +130,7 @@ function SortableNavItem({
         {!isDisabled && !isPinned && (
           <button
             onClick={onSetDefault}
-            className="p-1 -m-0.5 rounded-md transition-colors"
+            className="relative p-1 -m-0.5 rounded-md transition-colors touch-target"
             title={isDefault ? 'Default page' : 'Set as default page'}
             aria-label={isDefault ? 'Default page' : 'Set as default page'}
           >
@@ -224,7 +224,7 @@ export function NavOrderSettings() {
               <button
                 key={pos}
                 onClick={() => setNavPosition(pos)}
-                className={`px-3 py-1 text-xs font-medium rounded-md transition-all capitalize ${
+                className={`relative px-3 py-1 text-xs font-medium rounded-md transition-all capitalize touch-target-y ${
                   navPosition === pos
                     ? 'bg-background text-foreground shadow-sm'
                     : 'text-muted-foreground'

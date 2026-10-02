@@ -1488,6 +1488,9 @@ export default function CalendarPage() {
               size="icon"
               onClick={goBack}
               className="h-7 w-7 shrink-0"
+              // No extra hit area: the compact toolbar packs these against
+              // "Today", which the spill-over would cover.
+              touchTarget={false}
               aria-label="Previous period"
             >
               <ChevronLeft className="h-4 w-4" />
@@ -1497,6 +1500,9 @@ export default function CalendarPage() {
               size="icon"
               onClick={goForward}
               className="h-7 w-7 shrink-0"
+              // No extra hit area: the compact toolbar packs these against
+              // "Today", which the spill-over would cover.
+              touchTarget={false}
               aria-label="Next period"
             >
               <ChevronRight className="h-4 w-4" />

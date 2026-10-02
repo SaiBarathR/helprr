@@ -172,10 +172,10 @@ export function CinematicHeader() {
               {sectionLabel ?? nameParam ?? 'Watch'}
             </span>
             <span className="ml-auto flex items-center gap-4">
-              <Link href="/jellyfin/library/search" aria-label="Search" className="text-white">
+              <Link href="/jellyfin/library/search" aria-label="Search" className="relative text-white touch-target">
                 <Search className="size-[22px]" />
               </Link>
-              <Link href={exitHref} aria-label="Leave the Watch section" className="text-white">
+              <Link href={exitHref} aria-label="Leave the Watch section" className="relative text-white touch-target">
                 <LogOut className="size-[22px]" />
               </Link>
             </span>
@@ -214,10 +214,10 @@ export function CinematicHeader() {
             <span className="min-w-0 truncate text-[22px] font-medium text-white">{sectionLabel}</span>
           )}
           <span className="ml-auto flex items-center gap-4">
-            <Link href="/jellyfin/library/search" aria-label="Search" className="text-white">
+            <Link href="/jellyfin/library/search" aria-label="Search" className="relative text-white touch-target">
               <Search className="size-[22px]" />
             </Link>
-            <Link href={exitHref} aria-label="Leave the Watch section" className="text-white">
+            <Link href={exitHref} aria-label="Leave the Watch section" className="relative text-white touch-target">
               <LogOut className="size-[22px]" />
             </Link>
           </span>

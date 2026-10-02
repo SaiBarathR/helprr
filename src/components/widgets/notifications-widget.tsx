@@ -256,6 +256,7 @@ export function NotificationsWidget({
                 <button
                   type="button"
                   aria-label="View details"
+                  className="relative touch-target"
                   onClick={(e) => { e.stopPropagation(); handleOpenDetail(n); }}
                   style={{
                     flexShrink: 0,
