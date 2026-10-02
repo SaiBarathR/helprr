@@ -3,7 +3,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { ChevronDown, Loader2, Film, Tv, MonitorPlay } from 'lucide-react';
+import { ChevronDown, Loader2, Film, Tv, MonitorPlay, History } from 'lucide-react';
 import type { DateRange } from 'react-day-picker';
 import type { CustomHistoryItem } from '@/types/jellyfin';
 import type { WidgetProps } from '@/lib/widgets/types';
@@ -17,7 +17,7 @@ import {
   UserSelect,
   WidgetFilterDrawer,
 } from './widget-filter-controls';
-import { SectionHeader, HPR } from './bento-primitives';
+import { SectionHeader, HPR, EmptyState } from './bento-primitives';
 import { formatDurationSeconds } from '@/lib/jellyfin-helpers';
 
 interface Filters {
@@ -185,7 +185,10 @@ export function JellyfinPlayHistoryWidget({ refreshInterval, editMode = false }:
         {loading && items.length === 0 ? (
           <div style={{ fontSize: 11, color: HPR.fgSubtle }}>Loading…</div>
         ) : items.length === 0 ? (
-          <div style={{ fontSize: 11, color: HPR.fgSubtle, padding: '6px 0' }}>No plays found.</div>
+          <EmptyState>
+            <History size={18} />
+            No plays found.
+          </EmptyState>
         ) : (
           <>
             <div className="space-y-1">

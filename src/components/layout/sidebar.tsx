@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from '@/components/ui/app-link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
@@ -67,6 +67,24 @@ export function Sidebar() {
 
   const activeHref = getActiveNavHref(navItems, pendingHref?.split('?')[0] || pathname);
 
+  // The scrollbar is hidden, so fade the bottom edge while items sit below it.
+  // The observer's first callback takes the initial measurement; re-run when
+  // the item count changes, since that changes scrollHeight but not the nav box.
+  const navRef = useRef<HTMLElement>(null);
+  const [moreBelow, setMoreBelow] = useState(false);
+  useEffect(() => {
+    const nav = navRef.current;
+    if (!nav) return;
+    const update = () => setMoreBelow(nav.scrollHeight - nav.scrollTop - nav.clientHeight > 1);
+    const observer = new ResizeObserver(update);
+    observer.observe(nav);
+    nav.addEventListener('scroll', update, { passive: true });
+    return () => {
+      observer.disconnect();
+      nav.removeEventListener('scroll', update);
+    };
+  }, [navItems.length]);
+
   const searchButton = (
     <button
       onClick={() => openSearch(true)}
@@ -96,7 +114,10 @@ export function Sidebar() {
         sidebarCollapsed ? 'w-16' : 'w-56'
       )}
     >
-      <nav className="flex-1 min-h-0 overflow-y-auto no-scrollbar pt-3 pb-2 space-y-1 px-2">
+      <nav
+        ref={navRef}
+        className={cn('flex-1 min-h-0 overflow-y-auto no-scrollbar pt-3 pb-2 space-y-1 px-2', moreBelow && 'scroll-fade-y')}
+      >
         {sidebarCollapsed ? (
           <Tooltip>
             <TooltipTrigger asChild>{searchButton}</TooltipTrigger>

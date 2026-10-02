@@ -1,9 +1,10 @@
 'use client';
 import { ApiError } from '@/lib/query-fetch';
+import { Activity } from 'lucide-react';
 
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
 import type { WidgetProps } from '@/lib/widgets/types';
-import { Dot, Eyebrow, FONT_MONO, HPR } from './bento-primitives';
+import { Dot, Eyebrow, FONT_MONO, HPR, EmptyState } from './bento-primitives';
 
 interface ServiceStatus {
   instanceId: string;
@@ -45,9 +46,10 @@ export function ServiceHealthWidget({ refreshInterval, narrow = false, editMode 
         }}
       >
         {list.length === 0 && (
-          <div style={{ fontSize: 11, color: HPR.fgSubtle, padding: '6px 0' }}>
+          <EmptyState>
+            <Activity size={18} />
             No services configured
-          </div>
+          </EmptyState>
         )}
         {list.map((s, i) => (
           <div

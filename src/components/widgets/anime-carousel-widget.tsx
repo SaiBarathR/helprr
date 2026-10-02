@@ -1,5 +1,6 @@
 'use client';
 
+import { PlayCircle } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import Link from '@/components/ui/app-link';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
@@ -14,6 +15,7 @@ import {
   CAROUSEL_CARD_HEIGHT,
   CAROUSEL_CARD_WIDTH,
   CAROUSEL_GAP,
+  EmptyState,
   FONT_MONO,
   HPR,
   LIST_ROW_HEIGHT,
@@ -254,7 +256,10 @@ export function AnimeCarouselWidget({
         style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}
       >
         <SectionHeader title={title} right={toggleNode} />
-        <div style={{ fontSize: 11, color: HPR.fgSubtle, padding: '6px 0' }}>No items</div>
+        <EmptyState>
+          <PlayCircle size={18} />
+          No items
+        </EmptyState>
       </div>
     );
   }

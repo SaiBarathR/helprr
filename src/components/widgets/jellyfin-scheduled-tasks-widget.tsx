@@ -22,7 +22,7 @@ import type { WidgetProps } from '@/lib/widgets/types';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
 import { fetchJellyfinTasks } from '@/lib/widgets/widget-fetchers';
 import { formatTriggerSchedule, taskRunDuration, timeAgo } from '@/lib/jellyfin-helpers';
-import { SectionHeader, HPR } from './bento-primitives';
+import { SectionHeader, HPR, EmptyState } from './bento-primitives';
 
 function TaskStatusIcon({ status, state }: { status?: string; state: string }) {
   if (state === 'Running') return <Loader2 className="h-3.5 w-3.5 animate-spin text-[var(--hpr-cyan)] shrink-0" />;
@@ -145,7 +145,10 @@ export function JellyfinScheduledTasksWidget({ refreshInterval, editMode = false
         {loading && totalCount === 0 ? (
           <div style={{ fontSize: 11, color: HPR.fgSubtle }}>Loading…</div>
         ) : totalCount === 0 ? (
-          <div style={{ fontSize: 11, color: HPR.fgSubtle, padding: '6px 0' }}>No scheduled tasks.</div>
+          <EmptyState>
+            <Timer size={18} />
+            No scheduled tasks.
+          </EmptyState>
         ) : (
           <>
             <div className="grid grid-cols-3 gap-1 mb-1">

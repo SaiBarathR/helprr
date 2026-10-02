@@ -16,7 +16,7 @@ import {
   WidgetFilterDrawer,
   type SortMode,
 } from './widget-filter-controls';
-import { SectionHeader, HPR } from './bento-primitives';
+import { SectionHeader, HPR, EmptyState } from './bento-primitives';
 
 export interface JellyfinStatsFilters {
   days: number;
@@ -114,7 +114,9 @@ export function JellyfinStatsWidgetShell<T>(props: JellyfinStatsWidgetShellProps
         {loading && (data === null || isEmpty(data)) ? (
           <div style={{ fontSize: 11, color: HPR.fgSubtle }}>Loading…</div>
         ) : isEmpty(data) ? (
-          <div style={{ fontSize: 11, color: HPR.fgSubtle, padding: '6px 0' }}>{emptyMessage}</div>
+          <EmptyState>
+            {emptyMessage}
+          </EmptyState>
         ) : (
           renderContent(data, filters.sortBy, { width: bodyWidth, height: bodyHeight })
         )}

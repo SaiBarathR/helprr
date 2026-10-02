@@ -133,7 +133,7 @@ export default function SeriesEditPage() {
     <div className="animate-content-in">
       <PageHeader title={`Edit ${series.title}`} />
 
-      <div className="px-4 pt-4 pb-8 space-y-6">
+      <div className="mx-auto max-w-2xl px-4 pt-4 pb-8 space-y-6">
         {/* Quality Profile */}
         <div className="grouped-section">
           <p className="grouped-section-title">Quality Profile</p>

@@ -2,7 +2,7 @@
 import { ApiError } from '@/lib/query-fetch';
 
 import Link from '@/components/ui/app-link';
-import { Check, Disc3, Film, Tv } from 'lucide-react';
+import { Check, Disc3, Film, Tv, CalendarDays } from 'lucide-react';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
 import { useElementSize } from '@/lib/widgets/use-element-size';
 import { useListFetchSize } from '@/lib/widgets/use-list-fetch-size';
@@ -14,6 +14,7 @@ import {
   CAROUSEL_CARD_HEIGHT,
   CAROUSEL_CARD_WIDTH,
   CAROUSEL_GAP,
+  EmptyState,
   FONT_MONO,
   HPR,
   LIST_ROW_HEIGHT,
@@ -141,7 +142,10 @@ export function TodayCalendarWidget({
         style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}
       >
         <SectionHeader title="Today" badge={<Pill color={HPR.amber}>0</Pill>} right={toggleNode} />
-        <div style={{ fontSize: 11, color: HPR.fgSubtle, padding: '6px 0' }}>Nothing airing today</div>
+        <EmptyState>
+          <CalendarDays size={18} />
+          Nothing airing today
+        </EmptyState>
       </div>
     );
   }

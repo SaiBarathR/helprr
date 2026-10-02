@@ -20,6 +20,7 @@ import {
 } from '@/components/ui/active-filter-bar';
 import { PullToRefresh } from '@/components/ui/pull-to-refresh';
 import { useRefreshAction } from '@/lib/hooks/use-refresh-action';
+import { useIsMobile } from '@/hooks/use-is-mobile';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { getRefreshIntervalMs } from '@/lib/client-refresh-settings';
@@ -676,7 +677,9 @@ export default function TorrentsPage() {
   const sortDir = useUIStore((s) => s.torrentsSortDir);
   const setSortDir = useUIStore((s) => s.setTorrentsSortDir);
   const viewMode = useUIStore((s) => s.torrentsView);
-  const isTableView = viewMode === 'table';
+  // 'auto' picks the table from Tailwind's lg breakpoint up.
+  const isBelowLg = useIsMobile(1023);
+  const isTableView = viewMode === 'table' || (viewMode === 'auto' && !isBelowLg);
   const [torrents, setTorrents] = useState<QBittorrentTorrent[]>([]);
   const [transferInfo, setTransferInfo] = useState<QBittorrentTransferInfo | null>(null);
   const [speedLimitsMode, setSpeedLimitsMode] = useState(0);

@@ -328,6 +328,14 @@ html {
   );
 }
 
+/* Dashboard EmptyState: a one-row cell leaves ~32px under the header, too
+   little for icon + message, so keep just the message there. */
+@container bento-empty (max-height: 55px) {
+  .bento-empty > svg {
+    display: none;
+  }
+}
+
 /* ── Bento Dashboard tokens (--hpr-*) ───────────────────────────────────
    Scoped to the dashboard via the .dashboard-bento class. Theme inspector
    rewrites these vars live; other pages keep the existing OKLch tokens. */

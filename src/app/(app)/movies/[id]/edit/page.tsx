@@ -125,7 +125,7 @@ export default function MovieEditPage() {
     <div className="animate-content-in">
       <PageHeader title={`Edit ${movie.title}`} />
 
-      <div className="px-4 space-y-6 mt-4 pb-8">
+      <div className="mx-auto max-w-2xl px-4 space-y-6 mt-4 pb-8">
         {/* Settings Section */}
         <div className="grouped-section">
           <div className="grouped-section-title">Settings</div>

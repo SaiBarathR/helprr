@@ -125,7 +125,7 @@ export default function ArtistEditPage() {
     <div className="animate-content-in">
       <PageHeader title={`Edit ${artist.artistName}`} />
 
-      <div className="px-4 space-y-6 mt-4 pb-8">
+      <div className="mx-auto max-w-2xl px-4 space-y-6 mt-4 pb-8">
         <div className="grouped-section">
           <div className="grouped-section-title">Settings</div>
           <div className="grouped-section-content">

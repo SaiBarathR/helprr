@@ -2,12 +2,13 @@
 import { ApiError } from '@/lib/query-fetch';
 
 import { useState } from 'react';
+import { Activity } from 'lucide-react';
 import type { JellyfinActivityEntry } from '@/types/jellyfin';
 import type { WidgetProps } from '@/lib/widgets/types';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
 import { useElementSize } from '@/lib/widgets/use-element-size';
 import { useListFetchSize } from '@/lib/widgets/use-list-fetch-size';
-import { SectionHeader, HPR, ViewModeToggle } from './bento-primitives';
+import { SectionHeader, HPR, ViewModeToggle, EmptyState } from './bento-primitives';
 import { useDashboardLayout } from './dashboard-layout-context';
 import { ActivityItem, ActivitySeeAllDrawer } from '@/components/jellyfin/activity-item';
 
@@ -89,7 +90,10 @@ export function JellyfinActivityFeed({
       {loading && list.length === 0 ? (
         <div style={{ fontSize: 11, color: HPR.fgSubtle }}>Loading…</div>
       ) : list.length === 0 ? (
-        <div style={{ fontSize: 11, color: HPR.fgSubtle, padding: '6px 0' }}>Nothing to show</div>
+        <EmptyState>
+          <Activity size={18} />
+          Nothing to show
+        </EmptyState>
       ) : useList ? (
         <div className="no-scrollbar scroll-fade-y" style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflowY: 'auto' }}>
           {list.slice(0, visibleCount).map((entry, i) => (

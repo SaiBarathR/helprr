@@ -115,6 +115,8 @@ export function EmptyChartState({ message }: { message: string }) {
         alignItems: 'center',
         justifyContent: 'center',
         flex: 1,
+        // Block parents (insights frame body) need the 100% to centre it.
+        height: '100%',
         minHeight: 60,
         fontSize: 11,
         color: HPR.fgSubtle,

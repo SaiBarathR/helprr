@@ -1,5 +1,6 @@
 'use client';
 
+import { Users } from 'lucide-react';
 import { useCallback, useRef, useState } from 'react';
 import Image from 'next/image';
 import { Badge } from '@/components/ui/badge';
@@ -14,7 +15,7 @@ import type { WidgetProps } from '@/lib/widgets/types';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
 import { useWidgetFilter } from './use-widget-filter';
 import { DaysPill, JELLYFIN_DAYS_OPTIONS, MAX_DAYS } from './widget-filter-controls';
-import { SectionHeader, HPR } from './bento-primitives';
+import { SectionHeader, HPR, EmptyState } from './bento-primitives';
 import { formatDurationSeconds } from '@/lib/jellyfin-helpers';
 
 interface Filters {
@@ -148,7 +149,10 @@ export function JellyfinUserActivityWidget({ refreshInterval, editMode = false, 
         ) : loading && users.length === 0 ? (
           <div style={{ fontSize: 11, color: HPR.fgSubtle }}>Loading…</div>
         ) : users.length === 0 ? (
-          <div style={{ fontSize: 11, color: HPR.fgSubtle, padding: '6px 0' }}>No user activity found.</div>
+          <EmptyState>
+            <Users size={18} />
+            No user activity found.
+          </EmptyState>
         ) : (
           <div className="space-y-2">
             {users.map((user) => {

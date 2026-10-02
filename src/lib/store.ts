@@ -124,7 +124,8 @@ export type TorrentsSortKeyPreference =
   | 'time_active'
   | 'seeding_time';
 export type TorrentsSortDirectionPreference = 'asc' | 'desc';
-export type TorrentsViewPreference = 'card' | 'table';
+// 'auto' shows the table on wide screens and cards elsewhere.
+export type TorrentsViewPreference = 'auto' | 'card' | 'table';
 export type ActivityTabPreference = 'queue' | 'failed' | 'missing' | 'cutoff';
 export type ActivitySortPreference = 'title' | 'progress' | 'timeleft' | 'size';
 export type ActivitySortDirectionPreference = 'asc' | 'desc';
@@ -251,7 +252,7 @@ function cloneDiscoverFilters(filters: DiscoverFiltersState): DiscoverFiltersSta
   };
 }
 
-export const STORE_VERSION = 47;
+export const STORE_VERSION = 48;
 
 // Matches the calendar backdrop's previously hardcoded Tailwind `opacity-35`.
 export const DEFAULT_CALENDAR_IMAGE_OPACITY = 35;
@@ -483,6 +484,13 @@ export function migrateUiPrefs(persisted: unknown, version: number): Record<stri
   }
   if (version < 47) {
     state.watchPreviews = true;
+  }
+  if (version < 48 && state.torrentsView === 'card') {
+    // 'card' was the default, so a saved 'card' can't be told apart from
+    // never choosing. Treat it as unchosen: wide screens now get the table.
+    // Only rewrite a present value: a partial settings import must not gain
+    // a torrents category it never exported.
+    state.torrentsView = 'auto';
   }
   if (!isMediaWatchFilterPreference(state.moviesWatchFilter)) {
     state.moviesWatchFilter = 'all';
@@ -929,7 +937,7 @@ export const useUIStore = create<UIState>()(
       setTorrentsSortKey: (sortKey) => set({ torrentsSortKey: sortKey }),
       torrentsSortDir: 'desc',
       setTorrentsSortDir: (dir) => set({ torrentsSortDir: dir }),
-      torrentsView: 'card',
+      torrentsView: 'auto',
       setTorrentsView: (view) => set({ torrentsView: view }),
       // Activity
       activityTab: 'queue',

@@ -14,6 +14,7 @@ import {
   CAROUSEL_CARD_HEIGHT,
   CAROUSEL_CARD_WIDTH,
   CAROUSEL_GAP,
+  EmptyState,
   FONT_MONO,
   HPR,
   LIST_ROW_HEIGHT,
@@ -82,21 +83,12 @@ export function ForYouWidget({
     return (
       <div ref={ref} style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
         <SectionHeader title={title} right={toggleNode} />
-        <div
-          style={{
-            fontSize: 11,
-            color: HPR.fgSubtle,
-            padding: '6px 0',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 6,
-          }}
-        >
-          <Sparkles size={12} strokeWidth={2} />
+        <EmptyState>
+          <Sparkles size={18} />
           {editMode
             ? 'Pick suggestions from your library and watchlist'
             : 'Add items to Sonarr or Radarr to personalize'}
-        </div>
+        </EmptyState>
       </div>
     );
   }

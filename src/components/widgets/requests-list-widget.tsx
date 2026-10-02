@@ -26,7 +26,7 @@ import {
   type ContextActionGroup,
 } from '@/components/ui/quick-context-menu';
 import type { WidgetProps } from '@/lib/widgets/types';
-import { SectionHeader } from './bento-primitives';
+import { SectionHeader, EmptyState } from './bento-primitives';
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -474,9 +474,10 @@ export function RequestsListWidget({
             <p className="text-sm">{emptyLabel}</p>
           </div>
         ) : (
-          <div className="flex flex-1 items-start overflow-hidden py-1.5 text-[11px] text-muted-foreground">
+          <EmptyState>
+            <Inbox size={18} />
             {emptyLabel}
-          </div>
+          </EmptyState>
         )}
       </div>
     );
@@ -493,9 +494,10 @@ export function RequestsListWidget({
             <p className="text-sm">No matching requests</p>
           </div>
         ) : (
-          <div className="flex flex-1 items-start overflow-hidden py-1.5 text-[11px] text-muted-foreground">
+          <EmptyState>
+            <Inbox size={18} />
             No matching requests
-          </div>
+          </EmptyState>
         )}
       </div>
     );

@@ -998,18 +998,25 @@ function VariantButton({
 export function EmptyState({ children }: { children: React.ReactNode }) {
   return (
     <div
+      className="bento-empty"
       style={{
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
-        padding: 16,
+        padding: '4px 16px',
         gap: 6,
         color: HPR.fgSubtle,
         fontSize: 11,
         fontFamily: FONT_BODY,
         textAlign: 'center',
-        minHeight: 80,
+        // Fills whatever the header leaves, so the message sits mid-cell
+        // (flex parents grow it; block scrollers resolve the 100%). Its own
+        // height drives the globals.css query that drops the icon in short cells.
+        flex: 1,
+        height: '100%',
+        minHeight: 24,
+        container: 'bento-empty / size',
       }}
     >
       {children}
