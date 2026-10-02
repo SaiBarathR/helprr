@@ -27,6 +27,7 @@ import {
 } from '@/components/ui/select';
 import { DEFAULT_ANIME_FILTERS, type AnimeFiltersState, useUIStore } from '@/lib/store';
 import { ActiveFilterBar, type ActiveFilter } from '@/components/ui/active-filter-bar';
+import { seasonalSortNote } from '@/lib/anilist-helpers';
 import { exploreHref, exploreLinkView, type ExploreView } from './_components/link-view';
 import {
   ArrowDownAZ,
@@ -330,6 +331,8 @@ export default function AnimePage() {
     ...(status ? [{ id: 'status', label: statusLabel(status), onRemove: removeFilter({ status: '' }) }] : []),
   ];
 
+  const seasonNote = viewMode !== 'search' && animeSort === 'seasonal' ? seasonalSortNote(animeFilters) : null;
+
   if (!hasHydrated) {
     return <PageSpinner />;
   }
@@ -403,6 +406,7 @@ export default function AnimePage() {
           className="pt-2"
         />
       )}
+      {seasonNote && <p className="pt-2 text-xs text-muted-foreground">{seasonNote}</p>}
 
       {/* Content */}
       {loading ? (

@@ -243,10 +243,10 @@ describe('Anime Explore links', () => {
     visit('sort=seasonal&season=FALL&year=2026');
     await renderPage();
 
-    expect(document.body.textContent).toContain('Fall');
+    expect(button('Remove Fall filter')).toBeTruthy();
     await act(async () => button('Remove Fall filter')?.click());
     expect(mocks.browseKey).toEqual(['anime', 'list', 'browse', 'seasonal', { ...NO_FILTERS, year: '2026' }]);
-    expect(document.body.textContent).not.toContain('Fall');
+    expect(button('Remove Fall filter')).toBeFalsy();
     expect(mocks.routerReplace).toHaveBeenLastCalledWith('/anime/explore?sort=seasonal&year=2026', { scroll: false });
 
     // The URL hasn't caught up yet (the mocked search params never do); the

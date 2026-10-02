@@ -11,6 +11,7 @@ import type {
 } from '@/types';
 import type { TmdbDiscoverParams, TmdbListItem } from '@/lib/tmdb-client';
 import { withApiLogging } from '@/lib/api-logger';
+import { SORT_PRESET_VOTE_FLOOR } from '@/lib/discover-sort-presets';
 import { upstreamErrorResponse } from '@/lib/api-error';
 type DiscoverSections = NonNullable<DiscoverResponse['sections']>;
 
@@ -133,14 +134,14 @@ function applySortPreset(sortBy: string, input: TmdbDiscoverParams): TmdbDiscove
         ...input,
         sortBy: 'vote_average',
         sortOrder: 'desc',
-        voteCountMin: Math.max(input.voteCountMin || 0, 200),
+        voteCountMin: Math.max(input.voteCountMin || 0, SORT_PRESET_VOTE_FLOOR.highlyRated),
       };
     case 'mostLoved':
       return {
         ...input,
         sortBy: 'vote_average',
         sortOrder: 'desc',
-        voteCountMin: Math.max(input.voteCountMin || 0, 1200),
+        voteCountMin: Math.max(input.voteCountMin || 0, SORT_PRESET_VOTE_FLOOR.mostLoved),
       };
     case 'popular':
       return {

@@ -80,6 +80,7 @@ import {
   toReleaseState,
   type DiscoverView,
 } from './_components/link-view';
+import { discoverSortPresetNote } from '@/lib/discover-sort-presets';
 
 const SORT_OPTIONS = [
   { value: 'trending', label: 'Trending', icon: Flame },
@@ -1176,6 +1177,8 @@ export default function DiscoverPage() {
     onRemove: () => updateView(chip.patch),
   }));
   const clearAllFilters = () => updateView({ contentType: 'all', filters: { ...DEFAULT_DISCOVER_FILTERS } });
+  // Search results ignore the sort, so its preset rule only names browse results.
+  const sortPresetNote = query.trim() ? null : discoverSortPresetNote(discoverSort, discoverFilters.voteCountMin, activeSectionKey);
 
   const genreChoices = useMemo(() => {
     if (!filtersMeta) return [];
@@ -1389,6 +1392,7 @@ export default function DiscoverPage() {
               <p className="text-xs text-muted-foreground">
                 {personFilter ? `Filtered by: ${personFilter.name}` : activeSectionKey ? `Section: ${activeSectionKey.replaceAll('_', ' ')}` : 'Custom search and filters'}
               </p>
+              {sortPresetNote && <p className="text-xs text-muted-foreground">{sortPresetNote}</p>}
             </div>
             <div className="flex items-center gap-2">
               {activeSectionKey && (
