@@ -64,10 +64,14 @@ import {
 import { useCalendar } from '@/hooks/use-calendar';
 import { useUIStore } from '@/lib/store';
 import { InstanceFilter, deriveInstances } from '@/components/instance-filter';
+import { ActiveFilterBar } from '@/components/ui/active-filter-bar';
 import { ScheduledAlertButton } from '@/components/scheduled-alerts/scheduled-alert-dialog';
 import { QuickContextMenu } from '@/components/ui/quick-context-menu';
 import type { ScheduledAlertDraft } from '@/lib/scheduled-alerts/types';
 import type { CalendarEvent } from '@/types';
+
+/** The app behind each event type, to tell same-named instances apart. */
+const EVENT_APP = { episode: 'sonarr', movie: 'radarr', album: 'lidarr' } as const;
 
 /** Detail-page link for a calendar event, by media type. Carries the owning
  * instance so a non-default-instance item opens the correct instance. */
@@ -1326,7 +1330,7 @@ export default function CalendarPage() {
   });
 
   // Instances present in the loaded events (drives the instance-filter dropdown).
-  const instances = useMemo(() => deriveInstances(events), [events]);
+  const instances = useMemo(() => deriveInstances(events, (event) => EVENT_APP[event.type]), [events]);
 
   // Drop a stale instance selection if that instance is no longer present.
   useEffect(() => {
@@ -1526,6 +1530,17 @@ export default function CalendarPage() {
 
         </div>
       </div>
+
+      {/* On phones the instance picker is a bare icon, so name the pick here. The
+          type, monitored and scheduled toggles show their own state. */}
+      <ActiveFilterBar
+        filters={instanceFilter === 'all' ? [] : [{
+          id: 'instance',
+          label: instances.find((i) => i.id === instanceFilter)?.label ?? 'Instance',
+          onRemove: () => setInstanceFilter('all'),
+        }]}
+        onClearAll={() => setInstanceFilter('all')}
+      />
 
       {/* Error state */}
       {error && (

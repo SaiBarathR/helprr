@@ -825,7 +825,8 @@ function UsersTab() {
             <>
               <DrawerHeader className="text-left">
                 <DrawerTitle className="text-sm">{selectedUser.user_name} — Recent Plays</DrawerTitle>
-                <p className="text-xs text-muted-foreground">{selectedUser.total_count} total plays &middot; {selectedUser.total_play_time}</p>
+                <p className="text-xs text-muted-foreground">{selectedUser.total_count} plays all time &middot; {selectedUser.total_play_time}</p>
+                <p className="text-xs text-muted-foreground">Showing the latest 30 plays from the last 30 days</p>
               </DrawerHeader>
               <div className="px-2 pb-6 flex-1 min-h-0 overflow-y-auto">
                 {historyLoading ? (

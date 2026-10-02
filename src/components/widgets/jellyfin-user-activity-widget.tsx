@@ -219,6 +219,7 @@ export function JellyfinUserActivityWidget({ refreshInterval, editMode = false, 
                 <p className="text-xs text-muted-foreground">
                   {selectedUser.total_count} total plays · {selectedUser.total_play_time}
                 </p>
+                <p className="text-xs text-muted-foreground">Showing the latest 30 plays from the last 30 days</p>
               </DrawerHeader>
               <div className="px-3 pb-6 flex-1 min-h-0 overflow-y-auto">
                 {historyLoading ? (

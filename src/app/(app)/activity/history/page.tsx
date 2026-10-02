@@ -28,7 +28,8 @@ import { Copy, ExternalLink, Filter, Info, Loader2, ChevronRight } from 'lucide-
 import { formatDistanceToNow } from 'date-fns';
 import { toast } from 'sonner';
 import type { HistoryItem } from '@/types';
-import { InstanceFilter, type InstanceOption } from '@/components/instance-filter';
+import { InstanceFilter, type InstanceOption, withAppName } from '@/components/instance-filter';
+import { ActiveFilterBar, FilterDot, filterButtonLabel, type ActiveFilter } from '@/components/ui/active-filter-bar';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 // --- Event type config ---
@@ -217,9 +218,9 @@ export default function HistoryPage() {
     // is the /api/instances connection list for the filter. Shares with the activity
     // page's same-key query, and can't prefix-collide with the services key.
     queryKey: ['arr-instances'],
-    queryFn: jsonFetcher<Array<{ id: string; label: string }>>('/api/instances'),
+    queryFn: jsonFetcher<Array<{ id: string; label: string; type: string }>>('/api/instances'),
     select: (conns): InstanceOption[] =>
-      Array.isArray(conns) ? conns.map((c) => ({ id: c.id, label: c.label })) : [],
+      Array.isArray(conns) ? conns.map((c) => ({ id: c.id, label: withAppName(c.label, c.type) })) : [],
     staleTime: 5 * 60_000,
   });
 
@@ -235,6 +236,20 @@ export default function HistoryPage() {
   }, [instanceOptions, instanceFilter, setInstanceFilter]);
 
   const activeFilterLabel = EVENT_FILTERS.find((f) => f.key === eventFilter)?.label || 'All Events';
+  const activeFilters: ActiveFilter[] = [
+    ...(eventFilter !== 'all' ? [{ id: 'event', label: activeFilterLabel, onRemove: () => setEventFilter('all') }] : []),
+    ...(instanceFilter !== 'all'
+      ? [{
+        id: 'instance',
+        label: instanceOptions.find((i) => i.id === instanceFilter)?.label ?? 'Instance',
+        onRemove: () => setInstanceFilter('all'),
+      }]
+      : []),
+  ];
+  const clearFilters = () => {
+    setEventFilter('all');
+    setInstanceFilter('all');
+  };
 
   return (
     <div className="flex flex-col min-h-0 animate-content-in">
@@ -245,8 +260,14 @@ export default function HistoryPage() {
             <InstanceFilter instances={instanceOptions} value={instanceFilter} onChange={setInstanceFilter} />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-8 w-8">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="relative h-8 w-8"
+                  aria-label={filterButtonLabel(`Event: ${activeFilterLabel}`, eventFilter !== 'all')}
+                >
                   <Filter className="h-4 w-4" />
+                  <FilterDot active={eventFilter !== 'all'} />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
@@ -265,14 +286,7 @@ export default function HistoryPage() {
         }
       />
 
-      {/* Active filter indicator */}
-      {eventFilter !== 'all' && (
-        <div className="pb-2">
-          <Badge variant="secondary" className="text-[10px]">
-            {activeFilterLabel}
-          </Badge>
-        </div>
-      )}
+      <ActiveFilterBar filters={activeFilters} onClearAll={clearFilters} className="pb-2" />
 
       {/* History list */}
       <div data-scroll-restoration-key="activity-history" className="flex-1 overflow-y-auto pb-4">
@@ -280,7 +294,7 @@ export default function HistoryPage() {
           <PageSpinner />
         ) : history.length === 0 ? (
           <div className="text-center py-16 text-muted-foreground">
-            <p className="text-sm">No history events</p>
+            <p className="text-sm">{activeFilters.length > 0 ? 'No history events match your filters' : 'No history events'}</p>
             {historyTruncated && (
               <p className="mt-2 text-xs text-amber-400">
                 More matching history may exist beyond the scan limit.

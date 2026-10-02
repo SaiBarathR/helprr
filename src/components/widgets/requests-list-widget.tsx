@@ -401,7 +401,8 @@ export function RequestsListWidget({
 
   const header = hideHeader ? null : (
     <SectionHeader
-      title="Requests"
+      // The pending widget lists only pending requests; say so.
+      title={filter === 'pending' ? 'Pending Requests' : 'Requests'}
       right={
         <Link href="/requests" style={{ color: 'inherit', textDecoration: 'none' }}>
           <span className="@max-[219px]/cell:hidden">View all </span>→
