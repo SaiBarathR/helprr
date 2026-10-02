@@ -176,6 +176,7 @@ export function SonarrMapDrawer({
           <div className="flex items-center gap-2 rounded-lg border border-border/40 bg-muted/20 px-3 py-2">
             <Search className="h-4 w-4 text-muted-foreground shrink-0" />
             <SearchInput
+              clearable
               value={query}
               onChange={setQuery}
               historyKey="sonarr-map"

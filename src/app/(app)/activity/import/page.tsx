@@ -311,6 +311,7 @@ function ManualImportContent() {
         {/* Search bar */}
         <div className="py-2 border-b border-border">
           <SearchInput
+            clearable
             value={episodeSearch}
             onChange={setEpisodeSearch}
             historyKey="activity-import"
