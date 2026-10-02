@@ -39,7 +39,9 @@ export function PersonRow({
   return (
     <Link
       href={`/discover/person/${id}`}
-      className="flex items-center gap-3 px-4 py-3"
+      // No inset: the rows have no card behind them, so padding only pushed
+      // them out of line with the tabs and page content.
+      className="flex items-center gap-3 py-3"
     >
       <div className="relative w-12 h-12 rounded-full overflow-hidden bg-muted shrink-0">
         {imageSrc ? (

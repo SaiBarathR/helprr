@@ -744,62 +744,59 @@ export default function MovieDetailPage() {
           </div>
         )}
 
-        {/* Desktop: two columns once the content area is wide enough (a container
-            query, so the sidebar's width counts). The groups keep the phone
-            order in the DOM, so focus and screen readers follow the screen at
-            every width: facts left, story and cast right (spanning both left
-            rows; the 1fr row takes any extra height), actions left, rails full
-            width. */}
+        {/* Phones stack these in DOM order. On wide content areas .detail-grid
+            (globals.css) puts the facts beside the overview and actions and runs
+            everything else full width. */}
         <div className="@container">
-          <div className="flex flex-col gap-6 @4xl:grid @4xl:grid-cols-[minmax(0,22rem)_minmax(0,1fr)] @4xl:grid-rows-[auto_1fr_auto] @4xl:items-start @4xl:gap-x-8">
-            <div className="flex flex-col gap-6 empty:hidden @4xl:col-start-1 @4xl:row-start-1">
-              <MediaDownloadProgress source="radarr" mediaId={movie.id} instanceId={instance} />
+          <div className="detail-grid detail-grid-movie flex flex-col gap-6">
+            <MediaDownloadProgress source="radarr" mediaId={movie.id} instanceId={instance} className="[grid-area:progress]" />
 
-              {/* Metadata rows - borderless key-value */}
-              {metadataRows.length > 0 && (
-                <div>
-                  {metadataRows.map((row) => (
-                    <div
-                      key={row.label}
-                      className="flex justify-between items-start py-2.5 border-b border-border/40 last:border-b-0"
-                    >
-                      <span className="text-xs font-medium text-muted-foreground tracking-wide uppercase shrink-0">
-                        {row.label}
-                      </span>
-                      <span className="text-sm text-right ml-4 truncate">{row.value}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div className="flex min-w-0 flex-col gap-6 empty:hidden @4xl:col-start-2 @4xl:row-span-2 @4xl:row-start-1">
-              {/* Overview - collapsible */}
-              {movie.overview && (
-                <div>
-                  <div className="relative">
-                    <p
-                      className={`text-sm text-muted-foreground leading-relaxed ${
-                        !overviewExpanded ? 'line-clamp-3' : ''
-                      }`}
-                    >
-                      {movie.overview}
-                    </p>
-                    <button
-                      onClick={() => setOverviewExpanded(!overviewExpanded)}
-                      className="text-sm text-primary font-medium mt-1"
-                    >
-                      {overviewExpanded ? 'less' : 'more...'}
-                    </button>
+            {/* Metadata rows - borderless key-value */}
+            {metadataRows.length > 0 && (
+              <div className="[grid-area:facts]">
+                {metadataRows.map((row) => (
+                  <div
+                    key={row.label}
+                    className="flex justify-between items-start py-2.5 border-b border-border/40 last:border-b-0"
+                  >
+                    <span className="text-xs font-medium text-muted-foreground tracking-wide uppercase shrink-0">
+                      {row.label}
+                    </span>
+                    <span className="text-sm text-right ml-4 truncate">{row.value}</span>
                   </div>
+                ))}
+              </div>
+            )}
+
+            {/* Overview - collapsible */}
+            {movie.overview && (
+              <div className="[grid-area:overview]">
+                <div className="relative">
+                  <p
+                    className={`text-sm text-muted-foreground leading-relaxed ${
+                      !overviewExpanded ? 'line-clamp-3' : ''
+                    }`}
+                  >
+                    {movie.overview}
+                  </p>
+                  <button
+                    onClick={() => setOverviewExpanded(!overviewExpanded)}
+                    className="text-sm text-primary font-medium mt-1"
+                  >
+                    {overviewExpanded ? 'Show less' : 'Read more'}
+                  </button>
                 </div>
-              )}
+              </div>
+            )}
 
-              {/* Cast & Crew */}
-              {credits.length > 0 && <MovieCreditsSection credits={credits} movieId={movieId} instance={instance} />}
-            </div>
+            {/* Cast & Crew */}
+            {credits.length > 0 && (
+              <div className="min-w-0 [grid-area:cast]">
+                <MovieCreditsSection credits={credits} movieId={movieId} instance={instance} />
+              </div>
+            )}
 
-            <div className="flex flex-col gap-6 @4xl:col-start-1 @4xl:row-start-2">
+            <div className="flex flex-col gap-6 [grid-area:actions]">
               {/* Straight into Helprr's own player when the title is in Jellyfin. */}
               <PlayInHelprrButton
                 imdbId={movie.imdbId}
@@ -845,25 +842,25 @@ export default function MovieDetailPage() {
                   Files &amp; information
                 </Button>
               </div>
+            </div>
 
-              {/* Information section */}
-              <div>
-                <h2 className="text-base font-semibold mb-2">Information</h2>
-                <div>
-                  {infoRows.map((row) => (
-                    <div
-                      key={row.label}
-                      className="flex justify-between items-start py-2.5 border-b border-border/40 last:border-b-0"
-                    >
-                      <span className="text-sm text-muted-foreground shrink-0">{row.label}</span>
-                      <span className="text-sm text-right ml-4 max-w-[60%] break-words">{row.value}</span>
-                    </div>
-                  ))}
-                </div>
+            {/* Information section */}
+            <div className="[grid-area:info]">
+              <h2 className="text-base font-semibold mb-2">Information</h2>
+              <div className="detail-info-rows">
+                {infoRows.map((row) => (
+                  <div
+                    key={row.label}
+                    className="flex justify-between items-start py-2.5 border-b border-border/40 last:border-b-0"
+                  >
+                    <span className="text-sm text-muted-foreground shrink-0">{row.label}</span>
+                    <span className="text-sm text-right ml-4 max-w-[60%] break-words">{row.value}</span>
+                  </div>
+                ))}
               </div>
             </div>
 
-            <div className="min-w-0 space-y-6 empty:hidden @4xl:col-span-2 @4xl:row-start-3">
+            <div className="min-w-0 space-y-6 empty:hidden [grid-area:rails]">
               {/* TMDB Enrichment Sections */}
               {tmdbData && (
                 <>
@@ -901,13 +898,13 @@ export default function MovieDetailPage() {
                               className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-border/50 bg-accent/30"
                             >
                               {logoSrc && (
-                                <div className="relative h-5 w-8">
+                                <div className="relative h-5 w-8 overflow-hidden rounded-[3px] bg-white">
                                   <Image
                                     src={logoSrc}
                                     alt={company.name}
                                     fill
                                     sizes="32px"
-                                    className="object-contain"
+                                    className="object-contain p-0.5"
                                     unoptimized={isProtectedApiImageSrc(logoSrc)}
                                   />
                                 </div>

@@ -396,7 +396,7 @@ export default function AlbumDetailPage() {
         }
       />
 
-      <div className="space-y-6 animate-content-in">
+      <div className="@container space-y-6 animate-content-in">
         {/* Hero — pt-3 keeps the cover clear of the flush page header. */}
         <div className="flex gap-4 pt-3">
           <div className="w-[130px] shrink-0">
@@ -453,7 +453,7 @@ export default function AlbumDetailPage() {
               {album.overview}
             </p>
             <button onClick={() => setOverviewExpanded(!overviewExpanded)} className="text-sm text-primary font-medium mt-1">
-              {overviewExpanded ? 'less' : 'more...'}
+              {overviewExpanded ? 'Show less' : 'Read more'}
             </button>
           </div>
         )}
@@ -475,7 +475,7 @@ export default function AlbumDetailPage() {
         {/* Information */}
         <div>
           <h2 className="text-base font-semibold mb-2">Information</h2>
-          <div>
+          <div className="detail-info-rows">
             {infoRows.map((row) => (
               <div key={row.label} className="flex justify-between items-start py-2.5 border-b border-border/40 last:border-b-0">
                 <span className="text-sm text-muted-foreground shrink-0">{row.label}</span>

@@ -529,7 +529,9 @@ export function StatTile({
       >
         {icon}
       </div>
-      <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 1 }}>
+      {/* Below 160px the cell stacks one tile per row, so each tile becomes a
+          single "label … value" line to keep all four inside the cell. */}
+      <div className="flex min-w-0 flex-col gap-px @max-[159px]/cell:w-full @max-[159px]/cell:flex-row-reverse @max-[159px]/cell:items-baseline @max-[159px]/cell:justify-between @max-[159px]/cell:gap-2">
         <span
           // Font size lives in classes (not inline style) so the container
           // variant can shrink it — the value must stay fully visible.
@@ -781,7 +783,9 @@ export function FloatingEdit({
       aria-label={edit ? 'Done editing dashboard' : 'Edit dashboard'}
       style={{
         position: 'fixed',
-        bottom: mobile ? 80 : 30,
+        // Clear the tab bar, home indicator and now-playing bar like the other
+        // floating bars; a fixed offset sat on the iPhone tab bar.
+        bottom: `calc(var(--footer-height) + var(--player-bar-height, 0px) + ${mobile ? 16 : 30}px)`,
         right: edit ? (mobile ? "40%" : "40%") : mobile ? 50 : 36,
         width: 48 ,
         height: 48 ,

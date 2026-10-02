@@ -157,7 +157,7 @@ interface ProwlarrChartWidgetShellProps<Row extends { name: string }> {
 export function ProwlarrChartWidgetShell<Row extends { name: string }>(
   props: ProwlarrChartWidgetShellProps<Row>,
 ) {
-  const { ref: chartRef, width: chartWidth } = useElementSize<HTMLDivElement>();
+  const { ref: chartRef, width: chartWidth, height: chartHeight } = useElementSize<HTMLDivElement>();
   const {
     widgetId,
     title,
@@ -181,7 +181,11 @@ export function ProwlarrChartWidgetShell<Row extends { name: string }>(
     cacheKey: `prowlarr-stats-${filters.days}d`,
   });
 
-  const rows = data ? selectData(data) : [];
+  const allRows = data ? selectData(data) : [];
+  // Rows come sorted biggest first. Show the ones that fit at 16px each (the
+  // x axis takes ~30px) so every bar keeps its label, instead of Recharts
+  // skipping labels on a crowded axis and leaving bars unnamed.
+  const rows = chartHeight > 0 ? allRows.slice(0, Math.max(1, Math.floor((chartHeight - 30) / 16))) : allRows;
 
   const badge = (
     <DaysPill
@@ -215,9 +219,9 @@ export function ProwlarrChartWidgetShell<Row extends { name: string }>(
           ) : undefined
         }
       />
-      {loading && rows.length === 0 ? (
+      {loading && allRows.length === 0 ? (
         <EmptyChartState message="Loading…" />
-      ) : rows.length === 0 ? (
+      ) : allRows.length === 0 ? (
         <EmptyChartState message={emptyMessage} />
       ) : (
         <div ref={chartRef} style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>

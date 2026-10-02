@@ -385,7 +385,8 @@ function ManualImportContent() {
     <div className="animate-content-in">
       <PageHeader
         title="Manual Import"
-        subtitle={itemTitle}
+        // No title in the link: skip the subtitle rather than repeat "Manual Import".
+        subtitle={searchParams.get('title') || undefined}
         onBack={() => router.back()}
       />
 

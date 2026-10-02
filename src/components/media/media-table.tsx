@@ -186,7 +186,7 @@ export function MediaTable({
         label: 'Year',
         width: 72,
         sortKey: sortKeys?.year,
-        cell: (row) => <span className={muted}>{row.year}</span>,
+        cell: (row) => <span className={muted}>{row.year > 0 ? row.year : '—'}</span>,
       });
     }
     if (show('artistType') && type === 'artist') {

@@ -81,6 +81,8 @@ export const MediaCard = memo(function MediaCard({
   // the server transcodes once per (url, width) variant.
   const poster = getImageUrl(images, 'poster', posterHint, { width: 360 });
   const show = (field: string) => !visibleFields || visibleFields.includes(field);
+  // Sonarr/Radarr report 0 for an unknown year; showing "0" reads as broken.
+  const showYear = show('year') && year > 0;
 
   // Broken poster URLs flip to the icon fallback instead of an empty box.
   // Keyed by URL (render-guarded reset) so a changed poster retries.
@@ -112,19 +114,19 @@ export const MediaCard = memo(function MediaCard({
           )}
           {/* Over-image scrims stay black-based (with white text) in every theme —
               background-based fills turn into a white fog in light mode. */}
-          {(show('title') || show('year') || instanceLabel) && (
+          {(show('title') || showYear || instanceLabel) && (
           <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/15 to-transparent" />
           )}
-          {(show('title') || show('year') || instanceLabel) && (
+          {(show('title') || showYear || instanceLabel) && (
           <div className="absolute bottom-0 left-0 right-0 p-2">
             {show('title') && (
               <p className="text-xs font-semibold text-white truncate leading-tight">{title}</p>
             )}
-            {(show('year') || instanceLabel) && (
+            {(showYear || instanceLabel) && (
               <p className="text-[10px] text-white/75 truncate">
-                {show('year') && year}
+                {showYear && year}
                 {instanceLabel && (
-                  <span className="text-[var(--hpr-amber)] font-medium">{show('year') ? ' · ' : ''}{instanceLabel}</span>
+                  <span className="text-[var(--hpr-amber)] font-medium">{showYear ? ' · ' : ''}{instanceLabel}</span>
                 )}
               </p>
             )}

@@ -913,7 +913,7 @@ export default function SeriesDetailPage() {
       statisticsRows.push({ label: 'Release Groups', value: series.statistics.releaseGroups.join(', ') });
     }
     if (series.statistics.percentOfEpisodes != null) {
-      statisticsRows.push({ label: 'Percent of Episodes', value: `${series.statistics.percentOfEpisodes}%` });
+      statisticsRows.push({ label: 'Percent of Episodes', value: `${Number(series.statistics.percentOfEpisodes.toFixed(1))}%` });
     }
   }
 
@@ -927,7 +927,7 @@ export default function SeriesDetailPage() {
         `Files ${stats.episodeFileCount}/${stats.episodeCount}`,
         `Total ${stats.totalEpisodeCount}`,
         stats.sizeOnDisk > 0 ? `Size ${formatBytes(stats.sizeOnDisk)}` : null,
-        stats.percentOfEpisodes != null ? `Coverage ${stats.percentOfEpisodes}%` : null,
+        stats.percentOfEpisodes != null ? `Coverage ${Number(stats.percentOfEpisodes.toFixed(1))}%` : null,
         previousSeasonAiring ? `Previous ${previousSeasonAiring}` : null,
         stats.releaseGroups?.length ? `Groups ${stats.releaseGroups.join(', ')}` : null,
       ].filter((part): part is string => Boolean(part));
@@ -1377,98 +1377,95 @@ export default function SeriesDetailPage() {
           </div>
         )}
 
-        {/* Desktop: two columns once the content area is wide enough (a container
-            query, so the sidebar's width counts). The groups keep the phone
-            order in the DOM, so focus and screen readers follow the screen at
-            every width: facts left, story, Play and seasons right (spanning
-            both left rows; the 1fr row takes any extra height), information
-            left, the AniList/TMDB sections full width. Sections keep their own
+        {/* Phones stack these in DOM order. On wide content areas .detail-grid
+            (globals.css) puts the facts beside the overview, Play and AniList
+            card and runs everything else full width. Sections keep their own
             spacing. */}
         <div className="@container">
-          <div className="flex flex-col @4xl:grid @4xl:grid-cols-[minmax(0,22rem)_minmax(0,1fr)] @4xl:grid-rows-[auto_1fr_auto] @4xl:items-start @4xl:gap-x-8">
-            <div className="@4xl:col-start-1 @4xl:row-start-1">
-              {/* This page stacks sections without a space-y wrapper, so the card spaces itself
-                  (and adds nothing when there is no download). */}
-              <MediaDownloadProgress source="sonarr" mediaId={series.id} instanceId={instance} className="my-4" />
+          <div className="detail-grid detail-grid-series flex flex-col">
+            {/* This page stacks sections without a space-y wrapper, so the card spaces itself
+                (and adds nothing when there is no download). */}
+            <MediaDownloadProgress source="sonarr" mediaId={series.id} instanceId={instance} className="my-4 [grid-area:progress]" />
 
-              {isAnimeSeries && (
-                <div className="pt-3 space-y-3">
-                  {/* Anilist update form */}
-                  {!animeLoading && animeDetail && <AnilistStatusPanel
-                    mediaId={animeDetail.id}
-                    mediaTitle={animeDetail.title}
-                    mediaType="ANIME"
-                    totalEpisodes={animeDetail.episodes}
-                  />}
+            {isAnimeSeries && (
+              <div className="pt-3 space-y-3 [grid-area:anilist]">
+                {/* Anilist update form */}
+                {!animeLoading && animeDetail && <AnilistStatusPanel
+                  mediaId={animeDetail.id}
+                  mediaTitle={animeDetail.title}
+                  mediaType="ANIME"
+                  totalEpisodes={animeDetail.episodes}
+                />}
 
-                  {/* AniList mapping management — above the trailer for discoverability.
-                      Amber call-to-action when no match is linked yet. Admin-only:
-                      the drawer's mutations 403 for members. */}
-                  {isAdmin && !animeLoading && animeData !== null && (
-                    animeEntries.length > 0 ? (
-                      <button
-                        onClick={() => setShowAniListRemap(true)}
-                        className="inline-flex items-center gap-1.5 rounded-full bg-muted/30 px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors active:bg-muted/50"
-                      >
-                        <Pencil className="h-3 w-3" />
-                        AniList mapping{animeEntries.length > 1 ? ` · ${animeEntries.length} seasons` : ''}
-                      </button>
-                    ) : (
-                      <button
-                        onClick={() => setShowAniListRemap(true)}
-                        className="inline-flex items-center gap-1.5 rounded-full bg-[var(--hpr-amber)]/20 px-3 py-1.5 text-xs font-medium text-[var(--hpr-amber)] transition-colors active:bg-[var(--hpr-amber)]/30"
-                      >
-                        <TriangleAlert className="h-3.5 w-3.5" />
-                        Map to AniList
-                      </button>
-                    )
-                  )}
-
-                  {/* Trailer */}
-                  {!animeLoading && animeDetail && (
-                    <AnimeTrailerRail
-                      trailer={animeDetail.trailer}
-                      externalLinks={animeDetail.externalLinks}
-                      title={animeDetail.title}
-                    />
-                  )}
-                </div>
-              )}
-
-              {/* Borderless metadata rows */}
-              <div className="space-y-0">
-                <div className="flex py-2 border-b border-border/30">
-                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider w-20 shrink-0 pt-0.5">Status</span>
-                  <span className="text-sm capitalize">{series.status}</span>
-                </div>
-                {series.statistics && series.statistics.sizeOnDisk > 0 && (
-                  <div className="flex py-2 border-b border-border/30">
-                    <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider w-20 shrink-0 pt-0.5">Size</span>
-                    <span className="text-sm">{formatBytes(series.statistics.sizeOnDisk)}</span>
-                  </div>
-                )}
-                {series.network && (
-                  <div className="flex py-2 border-b border-border/30">
-                    <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider w-20 shrink-0 pt-0.5">Network</span>
-                    <span className="text-sm">{series.network}</span>
-                  </div>
-                )}
-                {series.genres && series.genres.length > 0 && (
-                  <div className="flex py-2 border-b border-border/30">
-                    <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider w-20 shrink-0 pt-0.5">Genre</span>
-                    <span className="text-sm">{series.genres.join(', ')}</span>
-                  </div>
-                )}
-                {nextAiring && (
-                  <div className="flex py-2 border-b border-border/30">
-                    <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider w-20 shrink-0 pt-0.5">Airing</span>
-                    <span className="text-sm">{nextAiring}</span>
-                  </div>
+                {/* AniList mapping management — above the trailer for discoverability.
+                    Amber call-to-action when no match is linked yet. Admin-only:
+                    the drawer's mutations 403 for members. */}
+                {isAdmin && !animeLoading && animeData !== null && (
+                  animeEntries.length > 0 ? (
+                    <button
+                      onClick={() => setShowAniListRemap(true)}
+                      className="inline-flex items-center gap-1.5 rounded-full bg-muted/30 px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors active:bg-muted/50"
+                    >
+                      <Pencil className="h-3 w-3" />
+                      AniList mapping{animeEntries.length > 1 ? ` · ${animeEntries.length} seasons` : ''}
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => setShowAniListRemap(true)}
+                      className="inline-flex items-center gap-1.5 rounded-full bg-[var(--hpr-amber)]/20 px-3 py-1.5 text-xs font-medium text-[var(--hpr-amber)] transition-colors active:bg-[var(--hpr-amber)]/30"
+                    >
+                      <TriangleAlert className="h-3.5 w-3.5" />
+                      Map to AniList
+                    </button>
+                  )
                 )}
               </div>
+            )}
+
+            {/* Trailer: its own row on desktop, so it sits with the media below. */}
+            {isAnimeSeries && !animeLoading && animeDetail && (
+              <div className="mt-3 empty:hidden [grid-area:trailer]">
+                <AnimeTrailerRail
+                  trailer={animeDetail.trailer}
+                  externalLinks={animeDetail.externalLinks}
+                  title={animeDetail.title}
+                />
+              </div>
+            )}
+
+            {/* Borderless metadata rows */}
+            <div className="space-y-0 [grid-area:facts]">
+              <div className="flex py-2 border-b border-border/30">
+                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider w-20 shrink-0 pt-0.5">Status</span>
+                <span className="text-sm capitalize">{series.status}</span>
+              </div>
+              {series.statistics && series.statistics.sizeOnDisk > 0 && (
+                <div className="flex py-2 border-b border-border/30">
+                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider w-20 shrink-0 pt-0.5">Size</span>
+                  <span className="text-sm">{formatBytes(series.statistics.sizeOnDisk)}</span>
+                </div>
+              )}
+              {series.network && (
+                <div className="flex py-2 border-b border-border/30">
+                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider w-20 shrink-0 pt-0.5">Network</span>
+                  <span className="text-sm">{series.network}</span>
+                </div>
+              )}
+              {series.genres && series.genres.length > 0 && (
+                <div className="flex py-2 border-b border-border/30">
+                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider w-20 shrink-0 pt-0.5">Genre</span>
+                  <span className="text-sm">{series.genres.join(', ')}</span>
+                </div>
+              )}
+              {nextAiring && (
+                <div className="flex py-2 border-b border-border/30">
+                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider w-20 shrink-0 pt-0.5">Airing</span>
+                  <span className="text-sm">{nextAiring}</span>
+                </div>
+              )}
             </div>
 
-            <div className="min-w-0 @4xl:col-start-2 @4xl:row-span-2 @4xl:row-start-1">
+            <div className="min-w-0 [grid-area:main]">
               {/* Overview */}
               {series.overview && (
                 <div className="pt-4 pb-2">
@@ -1483,7 +1480,7 @@ export default function SeriesDetailPage() {
                       onClick={() => setOverviewExpanded(!overviewExpanded)}
                       className="text-sm text-primary mt-1"
                     >
-                      {overviewExpanded ? 'Show less' : 'More...'}
+                      {overviewExpanded ? 'Show less' : 'Read more'}
                     </button>
                   )}
                 </div>
@@ -1515,174 +1512,172 @@ export default function SeriesDetailPage() {
                 autoPlay={false}
                 className="mt-4 h-10 w-full rounded-full"
               />
+            </div>
 
-              {/* Seasons list */}
-              <div className="mt-4">
-                <h2 className="text-lg font-bold mb-2">Seasons</h2>
-                {/* Episodes failing must not render as a series with no seasons. */}
-                {episodesQuery.isError && episodes.length === 0 && (
-                  <ErrorState
-                    compact
-                    message="Couldn't load episodes for this series."
-                    onRetry={() => episodesQuery.refetch()}
-                    retrying={episodesQuery.isFetching}
-                  />
-                )}
-                <div>
-                  {seasonNumbers.map((sn) => {
-                    const seasonEps = episodes.filter((e) => e.seasonNumber === sn);
-                    const fileCount = seasonEps.filter((e) => e.hasFile).length;
-                    const total = seasonEps.length;
-                    const seasonData = series.seasons.find((s) => s.seasonNumber === sn);
-                    const isMonitored = seasonData?.monitored ?? true;
-                    const isAnime = series.seriesType === 'anime';
-                    const tmdbSeason = isAnime ? undefined : tmdbData?.seasons?.find((s) => s.seasonNumber === sn);
-                    const isExpanded = expandedSeasons.has(sn);
-                    const seasonHref = `/series/${id}/season/${sn}${instance ? `?instance=${instance}` : ''}`;
-                    const seasonActions = [
-                      { id: 'open', label: 'Open season', href: seasonHref },
-                      ...(canEditMonitoring ? [{ id: 'monitor', label: isMonitored ? 'Unmonitor season' : 'Monitor season', icon: <Bookmark className="h-4 w-4" />, onSelect: () => { void handleToggleSeasonMonitor(sn, !isMonitored); } }] : []),
-                      ...(canManageActivity ? [{
-                        id: 'interactive',
-                        label: 'Interactive search…',
-                        icon: <Search className="h-4 w-4" />,
-                        onSelect: () => {
-                          setSeasonInteractiveTarget({
-                            seasonNumber: sn,
-                            label: sn === 0 ? 'Specials' : `Season ${sn}`,
-                          });
-                        },
-                      }] : []),
-                      ...(tmdbData && !isAnime ? [{ id: 'expand', label: isExpanded ? 'Collapse episodes' : 'Show episodes', icon: isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />, onSelect: () => toggleSeasonExpand(sn) }] : []),
-                    ];
+            {/* Seasons list */}
+            <div className="mt-4 [grid-area:seasons]">
+              <h2 className="text-lg font-bold mb-2">Seasons</h2>
+              {/* Episodes failing must not render as a series with no seasons. */}
+              {episodesQuery.isError && episodes.length === 0 && (
+                <ErrorState
+                  compact
+                  message="Couldn't load episodes for this series."
+                  onRetry={() => episodesQuery.refetch()}
+                  retrying={episodesQuery.isFetching}
+                />
+              )}
+              <div>
+                {seasonNumbers.map((sn) => {
+                  const seasonEps = episodes.filter((e) => e.seasonNumber === sn);
+                  const fileCount = seasonEps.filter((e) => e.hasFile).length;
+                  const total = seasonEps.length;
+                  const seasonData = series.seasons.find((s) => s.seasonNumber === sn);
+                  const isMonitored = seasonData?.monitored ?? true;
+                  const isAnime = series.seriesType === 'anime';
+                  const tmdbSeason = isAnime ? undefined : tmdbData?.seasons?.find((s) => s.seasonNumber === sn);
+                  const isExpanded = expandedSeasons.has(sn);
+                  const seasonHref = `/series/${id}/season/${sn}${instance ? `?instance=${instance}` : ''}`;
+                  const seasonActions = [
+                    { id: 'open', label: 'Open season', href: seasonHref },
+                    ...(canEditMonitoring ? [{ id: 'monitor', label: isMonitored ? 'Unmonitor season' : 'Monitor season', icon: <Bookmark className="h-4 w-4" />, onSelect: () => { void handleToggleSeasonMonitor(sn, !isMonitored); } }] : []),
+                    ...(canManageActivity ? [{
+                      id: 'interactive',
+                      label: 'Interactive search…',
+                      icon: <Search className="h-4 w-4" />,
+                      onSelect: () => {
+                        setSeasonInteractiveTarget({
+                          seasonNumber: sn,
+                          label: sn === 0 ? 'Specials' : `Season ${sn}`,
+                        });
+                      },
+                    }] : []),
+                    ...(tmdbData && !isAnime ? [{ id: 'expand', label: isExpanded ? 'Collapse episodes' : 'Show episodes', icon: isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />, onSelect: () => toggleSeasonExpand(sn) }] : []),
+                  ];
 
-                    return (
-                      <div key={sn} className="border-b border-border/50">
-                        <div className="flex items-center py-3.5 gap-2">
-                          {/* TMDB season poster */}
-                          {tmdbSeason?.posterPath && (
-                            <div className="relative w-[45px] h-[67px] rounded overflow-hidden shrink-0">
-                              <Image
-                                src={toCachedImageSrc(tmdbSeason.posterPath, 'tmdb') || tmdbSeason.posterPath}
-                                alt=""
-                                fill
-                                sizes="45px"
-                                className="object-cover"
-                                unoptimized
-                              />
+                  return (
+                    <div key={sn} className="border-b border-border/50">
+                      <div className="flex items-center py-3.5 gap-2">
+                        {/* TMDB season poster */}
+                        {tmdbSeason?.posterPath && (
+                          <div className="relative w-[45px] h-[67px] rounded overflow-hidden shrink-0">
+                            <Image
+                              src={toCachedImageSrc(tmdbSeason.posterPath, 'tmdb') || tmdbSeason.posterPath}
+                              alt=""
+                              fill
+                              sizes="45px"
+                              className="object-cover"
+                              unoptimized
+                            />
+                          </div>
+                        )}
+                        <QuickContextMenu label={`${sn === 0 ? 'Specials' : `Season ${sn}`} actions`} actions={seasonActions}>
+                        <Link href={seasonHref} className="flex-1 min-w-0 flex items-center gap-2">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium">{sn === 0 ? 'Specials' : `Season ${sn}`}</span>
+                              <span className="text-sm text-muted-foreground">{fileCount}/{total}</span>
+                              {(watchedBySeason[sn] ?? 0) > 0 && (
+                                <span className="inline-flex items-center gap-0.5 text-xs font-medium text-[var(--hpr-amber)]" title={`${watchedBySeason[sn]} watched`}>
+                                  <Check className="h-3 w-3" strokeWidth={3} />{watchedBySeason[sn]}
+                                </span>
+                              )}
                             </div>
-                          )}
-                          <QuickContextMenu label={`${sn === 0 ? 'Specials' : `Season ${sn}`} actions`} actions={seasonActions}>
-                          <Link href={seasonHref} className="flex-1 min-w-0 flex items-center gap-2">
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2">
-                                <span className="font-medium">{sn === 0 ? 'Specials' : `Season ${sn}`}</span>
-                                <span className="text-sm text-muted-foreground">{fileCount}/{total}</span>
-                                {(watchedBySeason[sn] ?? 0) > 0 && (
-                                  <span className="inline-flex items-center gap-0.5 text-xs font-medium text-[var(--hpr-amber)]" title={`${watchedBySeason[sn]} watched`}>
-                                    <Check className="h-3 w-3" strokeWidth={3} />{watchedBySeason[sn]}
-                                  </span>
-                                )}
+                            {tmdbSeason && tmdbSeason.voteAverage > 0 && (
+                              <div className="flex items-center gap-1 mt-0.5">
+                                <Star className="h-3 w-3 fill-yellow-400 text-yellow-400" />
+                                <span className="text-xs text-muted-foreground">{tmdbSeason.voteAverage.toFixed(1)}</span>
                               </div>
-                              {tmdbSeason && tmdbSeason.voteAverage > 0 && (
-                                <div className="flex items-center gap-1 mt-0.5">
-                                  <Star className="h-3 w-3 fill-yellow-400 text-yellow-400" />
-                                  <span className="text-xs text-muted-foreground">{tmdbSeason.voteAverage.toFixed(1)}</span>
-                                </div>
-                              )}
-                              {tmdbSeason?.overview && (
-                                <p className="text-xs text-muted-foreground line-clamp-2 mt-1">{tmdbSeason.overview}</p>
-                              )}
-                            </div>
-                            <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
-                          </Link>
-                          </QuickContextMenu>
-                          {/* Expand/collapse for TMDB episodes (not for anime) */}
-                          {tmdbData && !isAnime && (
-                            <button
-                              onClick={() => toggleSeasonExpand(sn)}
-                              className="min-w-[36px] min-h-[44px] flex items-center justify-center"
-                            >
-                              {isExpanded ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
-                            </button>
-                          )}
-                          {/* Monitor toggle — admin-gated */}
-                          {canEditMonitoring && (
-                            <button
-                              onClick={() => handleToggleSeasonMonitor(sn, !isMonitored)}
-                              className="min-w-[36px] min-h-[44px] flex items-center justify-center"
-                            >
-                              {isMonitored ? (
-                                <Bookmark className="h-5 w-5 fill-current text-foreground" />
-                              ) : (
-                                <Bookmark className="h-5 w-5 text-muted-foreground" />
-                              )}
-                            </button>
-                          )}
-                        </div>
-                        {/* Expanded episode cards */}
-                        {isExpanded && series.tmdbId && (
-                          <ExpandedSeasonEpisodes
-                            tmdbId={series.tmdbId}
-                            seasonNumber={sn}
-                            seasonEps={seasonEps}
-                            seriesRouteId={String(id)}
-                            instance={instance}
-                            episodeWatch={episodeWatch}
-                          />
+                            )}
+                            {tmdbSeason?.overview && (
+                              <p className="text-xs text-muted-foreground line-clamp-2 mt-1">{tmdbSeason.overview}</p>
+                            )}
+                          </div>
+                          <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
+                        </Link>
+                        </QuickContextMenu>
+                        {/* Expand/collapse for TMDB episodes (not for anime) */}
+                        {tmdbData && !isAnime && (
+                          <button
+                            onClick={() => toggleSeasonExpand(sn)}
+                            className="min-w-[36px] min-h-[44px] flex items-center justify-center"
+                          >
+                            {isExpanded ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+                          </button>
+                        )}
+                        {/* Monitor toggle — admin-gated */}
+                        {canEditMonitoring && (
+                          <button
+                            onClick={() => handleToggleSeasonMonitor(sn, !isMonitored)}
+                            className="min-w-[36px] min-h-[44px] flex items-center justify-center"
+                          >
+                            {isMonitored ? (
+                              <Bookmark className="h-5 w-5 fill-current text-foreground" />
+                            ) : (
+                              <Bookmark className="h-5 w-5 text-muted-foreground" />
+                            )}
+                          </button>
                         )}
                       </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-
-            <div className="@4xl:col-start-1 @4xl:row-start-2">
-              {/* Information section */}
-              <div className="mt-6">
-                <h2 className="text-lg font-bold mb-2">Information</h2>
-                <div className="space-y-0">
-                  {infoRows.map((row) => (
-                    <div key={row.label} className="flex justify-between py-2.5 border-b border-border/30 items-start">
-                      <span className="text-sm text-muted-foreground shrink-0">{row.label}</span>
-                      <span className="text-sm text-right ml-4 max-w-[60%] break-words">{row.value}</span>
+                      {/* Expanded episode cards */}
+                      {isExpanded && series.tmdbId && (
+                        <ExpandedSeasonEpisodes
+                          tmdbId={series.tmdbId}
+                          seasonNumber={sn}
+                          seasonEps={seasonEps}
+                          seriesRouteId={String(id)}
+                          instance={instance}
+                          episodeWatch={episodeWatch}
+                        />
+                      )}
                     </div>
-                  ))}
-                  {seasonDetailRows.length > 0 && (
-                    <>
-                      <div className="pt-3 pb-1 text-xs uppercase tracking-wider text-muted-foreground">Season Details</div>
-                      {seasonDetailRows.map((row) => (
-                        <div key={row.label} className="flex justify-between py-2.5 border-b border-border/30 items-start">
-                          <span className="text-sm text-muted-foreground shrink-0">{row.label}</span>
-                          <span className="text-sm text-right ml-4 max-w-[60%] break-words">{row.value}</span>
-                        </div>
-                      ))}
-                    </>
-                  )}
-                  {isAnimeSeries && isAdmin && (
-                    <button
-                      onClick={() => setShowAniListRemap(true)}
-                      className="flex justify-between items-center w-full py-2.5 border-b border-border/30 -mx-2 px-2 rounded active:bg-muted/30"
-                    >
-                      <span className="text-sm text-muted-foreground">AniList</span>
-                      <span className="flex items-center gap-2 text-sm text-right">
-                        {formatAniListMappingState(animeMapping?.state)}
-                        {animeEntries.length > 1 ? ` · ${animeEntries.length} seasons` : ''}
-                        {animeMapping?.state === 'MANUAL_MATCH' ? (
-                          <Badge className="bg-green-600/90 text-foreground text-[10px] px-1.5 py-0">Manual</Badge>
-                        ) : animeMapping?.state === 'AUTO_MATCH' ? (
-                          <Badge variant="outline" className="text-[10px] px-1.5 py-0">Auto</Badge>
-                        ) : null}
-                        <Pencil className="h-3 w-3 text-muted-foreground" />
-                      </span>
-                    </button>
-                  )}
-                </div>
+                  );
+                })}
               </div>
             </div>
 
-            <div className="min-w-0 @4xl:col-span-2 @4xl:row-start-3">
+            {/* Information section */}
+            <div className="mt-6 [grid-area:info]">
+              <h2 className="text-lg font-bold mb-2">Information</h2>
+              <div className="detail-info-rows space-y-0">
+                {infoRows.map((row) => (
+                  <div key={row.label} className="flex justify-between py-2.5 border-b border-border/30 items-start">
+                    <span className="text-sm text-muted-foreground shrink-0">{row.label}</span>
+                    <span className="text-sm text-right ml-4 max-w-[60%] break-words">{row.value}</span>
+                  </div>
+                ))}
+                {seasonDetailRows.length > 0 && (
+                  <>
+                    <div className="pt-3 pb-1 text-xs uppercase tracking-wider text-muted-foreground">Season Details</div>
+                    {seasonDetailRows.map((row) => (
+                      <div key={row.label} className="flex justify-between py-2.5 border-b border-border/30 items-start">
+                        <span className="text-sm text-muted-foreground shrink-0">{row.label}</span>
+                        <span className="text-sm text-right ml-4 max-w-[60%] break-words">{row.value}</span>
+                      </div>
+                    ))}
+                  </>
+                )}
+                {isAnimeSeries && isAdmin && (
+                  <button
+                    onClick={() => setShowAniListRemap(true)}
+                    className="flex justify-between items-center w-[calc(100%+1rem)] py-2.5 border-b border-border/30 -mx-2 px-2 rounded active:bg-muted/30"
+                  >
+                    <span className="text-sm text-muted-foreground">AniList</span>
+                    <span className="flex items-center gap-2 text-sm text-right">
+                      {formatAniListMappingState(animeMapping?.state)}
+                      {animeEntries.length > 1 ? ` · ${animeEntries.length} seasons` : ''}
+                      {animeMapping?.state === 'MANUAL_MATCH' ? (
+                        <Badge className="bg-green-600/90 text-foreground text-[10px] px-1.5 py-0">Manual</Badge>
+                      ) : animeMapping?.state === 'AUTO_MATCH' ? (
+                        <Badge variant="outline" className="text-[10px] px-1.5 py-0">Auto</Badge>
+                      ) : null}
+                      <Pencil className="h-3 w-3 text-muted-foreground" />
+                    </span>
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="min-w-0 [grid-area:rails]">
               {/* AniList sections when matched; unmatched anime fall through to the
                   TMDB enrichment branch (series-level only — episode list stays Sonarr-only) */}
               {isAnimeSeries && animeDetail ? (
@@ -1712,7 +1707,7 @@ export default function SeriesDetailPage() {
                   {animeAltTitles.length > 0 && (
                     <div>
                       <h2 className="text-base font-semibold mb-2">Alternative Titles</h2>
-                      <div>
+                      <div className="detail-info-rows">
                         {animeAltTitles.map((title) => (
                           <div
                             key={title.label}
@@ -1872,7 +1867,7 @@ export default function SeriesDetailPage() {
                   )}
 
                   {animeDetail && <div><AnimeRelationsSection relations={animeDetail.relations} /></div>}
-                  {animeDetail && <div className='md:px-4'><AnimeMediaRail title="Recommendations" items={animeDetail.recommendations} /></div>}
+                  {animeDetail && <AnimeMediaRail title="Recommendations" items={animeDetail.recommendations} />}
 
                   {(animeLinks.length > 0 || (externalUrls.JELLYFIN && (series.imdbId || series.tvdbId))) && (
                     <div>
@@ -1993,13 +1988,13 @@ export default function SeriesDetailPage() {
                                   className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-border/50 bg-accent/30"
                                 >
                                   {logoSrc && (
-                                    <div className="relative h-5 w-8">
+                                    <div className="relative h-5 w-8 overflow-hidden rounded-[3px] bg-white">
                                       <Image
                                         src={logoSrc}
                                         alt={network.name}
                                         fill
                                         sizes="32px"
-                                        className="object-contain"
+                                        className="object-contain p-0.5"
                                         unoptimized={isProtectedApiImageSrc(logoSrc)}
                                       />
                                     </div>
@@ -2030,13 +2025,13 @@ export default function SeriesDetailPage() {
                                   className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-border/50 bg-accent/30"
                                 >
                                   {logoSrc && (
-                                    <div className="relative h-5 w-8">
+                                    <div className="relative h-5 w-8 overflow-hidden rounded-[3px] bg-white">
                                       <Image
                                         src={logoSrc}
                                         alt={company.name}
                                         fill
                                         sizes="32px"
-                                        className="object-contain"
+                                        className="object-contain p-0.5"
                                         unoptimized={isProtectedApiImageSrc(logoSrc)}
                                       />
                                     </div>

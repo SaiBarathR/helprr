@@ -126,7 +126,7 @@ export default function AnimeDetailPage() {
   // When the library lookup already identified the Sonarr series, pass it as a
   // hint so the reverse lookup can lazily resolve the mapping — otherwise an
   // anime whose series page was never opened reads "Not mapped" despite being
-  // in the library ("Open in TV" working).
+  // in the library ("Open in Sonarr" working).
   const librarySeriesId =
     detail?.library?.exists && detail.library.type === 'series'
       ? detail.library.id ?? null
@@ -537,7 +537,7 @@ export default function AnimeDetailPage() {
         {isAdmin && !isMovieFormat(detail.format) && (
           <button
             onClick={() => setShowSonarrMap(true)}
-            className="flex justify-between items-center w-full py-2.5 border-b border-border/30 -mx-2 px-2 rounded active:bg-muted/30"
+            className="flex justify-between items-center w-[calc(100%+1rem)] py-2.5 border-b border-border/30 -mx-2 px-2 rounded active:bg-muted/30"
           >
             <span className="text-sm text-muted-foreground">Sonarr</span>
             <span className="flex items-center gap-2 text-sm text-right">
@@ -561,9 +561,9 @@ export default function AnimeDetailPage() {
 
         {/* Alternative Titles */}
         {altTitles.length > 0 && (
-          <div>
+          <div className="@container">
             <h2 className="text-base font-semibold mb-2">Alternative Titles</h2>
-            <div>
+            <div className="detail-info-rows">
               {altTitles.map((t) => (
                 <div
                   key={t.label}
@@ -732,7 +732,7 @@ export default function AnimeDetailPage() {
         <AnimeRelationsSection relations={detail.relations} />
 
         {/* Recommendations */}
-        <div className='md:px-2'>
+        <div>
           <AnimeMediaRail title="Recommendations" items={detail.recommendations} />
         </div>
 

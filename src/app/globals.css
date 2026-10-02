@@ -293,6 +293,102 @@
   padding-inline: var(--main-pad-x);
 }
 
+/* Movie and series detail pages, below the hero. Phones stack the sections in
+   DOM order (the flex column on .detail-grid). Once the content area is wide
+   (56rem of the surrounding @container, so the sidebar counts) a short facts
+   column sits beside the overview and actions and everything else runs full
+   width. Sections place themselves with [grid-area:*]; the single 1fr row soaks
+   up any height difference so neither column gets gaps between its sections.
+   Rows are spaced with margins, not row-gap, so an absent section adds none. */
+@container (min-width: 56rem) {
+  .detail-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 22rem) minmax(0, 1fr);
+    column-gap: 2rem;
+    row-gap: 0;
+    align-items: start;
+  }
+
+  .detail-grid-movie {
+    grid-template-rows: auto auto 1fr;
+    grid-template-areas:
+      'progress progress'
+      'facts overview'
+      'facts actions'
+      'cast cast'
+      'info info'
+      'rails rails';
+  }
+
+  .detail-grid-movie > * {
+    margin-bottom: 1.5rem;
+  }
+
+  .detail-grid-series {
+    grid-template-rows: auto auto 1fr;
+    grid-template-areas:
+      'progress progress'
+      'facts main'
+      'facts anilist'
+      'seasons seasons'
+      'info info'
+      'trailer trailer'
+      'rails rails';
+  }
+
+  /* Information reads down two columns instead of one long list. */
+  .detail-info-rows {
+    columns: 2;
+    column-gap: 2rem;
+  }
+
+  .detail-info-rows > * {
+    break-inside: avoid;
+  }
+}
+
+/* Inline spec rows ("1999 | 139 MIN | R"): each item draws its own leading
+   divider and the row is shifted left inside an overflow-hidden wrapper, so the
+   divider of whichever item starts a line is clipped. A wrapped row never ends
+   or begins with a stray bar. */
+.spec-row {
+  overflow: hidden;
+}
+
+.spec-row > div {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  row-gap: 0.375rem;
+  margin-left: -0.75rem;
+}
+
+.spec-row > div > * {
+  position: relative;
+  padding-left: 0.75rem;
+  margin-right: 0.75rem;
+}
+
+.spec-row > div > *::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 1px;
+  height: 0.75rem;
+  transform: translateY(-50%);
+  background: var(--border);
+}
+
+/* Horizontal rails directly inside <main>: scroll edge to edge while the first
+   card lines up with the page content. The scroll-padding stops snap-start
+   cards from snapping the padding out of view. */
+.rail-bleed {
+  margin-inline: calc(-1 * var(--main-pad-x));
+  padding-inline: var(--main-pad-x);
+  scroll-padding-inline: var(--main-pad-x);
+}
+
 /* Smooth scrolling */
 html {
   scroll-behavior: instant;

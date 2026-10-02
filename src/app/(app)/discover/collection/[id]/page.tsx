@@ -85,7 +85,7 @@ export default async function DiscoverCollectionPage({ params }: DiscoverCollect
 
       <div className="space-y-5 pb-8">
         {/* Hero */}
-        <div className="relative h-[180px] w-full bg-muted/40 -mx-2 md:-mx-6">
+        <div className="relative h-[180px] bg-muted/40 -mx-2 md:-mx-6">
           {backdropSrc && (
             <Image
               src={backdropSrc}

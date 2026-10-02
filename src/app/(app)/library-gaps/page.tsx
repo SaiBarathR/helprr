@@ -445,7 +445,7 @@ export default function LibraryGapsPage() {
     <div className="animate-content-in space-y-4">
       <h1 className="sr-only">Library Gaps</h1>
       <div className="page-toolbar page-toolbar-flush app-chrome-bar bg-background/95 pb-2 backdrop-blur supports-[backdrop-filter]:bg-background/80">
-        <div data-scroll-restoration-key="library-gaps:tabs" className="flex gap-2 overflow-x-auto scrollbar-hide">
+        <div data-scroll-restoration-key="library-gaps:tabs" className="rail-bleed flex gap-2 overflow-x-auto scrollbar-hide">
           {data.sections.map((section) => (
             <SectionTile
               key={section.id}
@@ -469,7 +469,7 @@ export default function LibraryGapsPage() {
 
       {activeSection && activeMeta && (
         <section className="space-y-2.5 animate-rail-in" key={activeSection.id}>
-          <div className="flex min-h-9 items-center gap-2 px-0.5">
+          <div className="flex min-h-9 items-center gap-2">
             <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
               {activeMeta.title}
             </h2>

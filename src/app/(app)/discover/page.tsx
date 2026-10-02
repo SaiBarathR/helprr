@@ -498,7 +498,7 @@ function SectionRow({
 }) {
   return (
     <section className="space-y-2">
-      <div className="flex items-center justify-between px-0.5">
+      <div className="flex items-center justify-between">
         <h2 className="text-base font-semibold">{section.title}</h2>
         {section.type === 'media' && (
           <button
@@ -512,7 +512,7 @@ function SectionRow({
       </div>
 
       {section.type === 'media' && (
-        <div data-scroll-restoration-key={`discover-section:${section.key}:media`} className="flex gap-2.5 overflow-x-auto pb-1 snap-x snap-mandatory scrollbar-hide">
+        <div data-scroll-restoration-key={`discover-section:${section.key}:media`} className="rail-bleed flex gap-2.5 overflow-x-auto pb-1 snap-x snap-mandatory scrollbar-hide">
           {(section.items as DiscoverItem[]).map((item) => (
             <div key={`${item.mediaType}-${item.tmdbId}`} className="snap-start">
               <MediaPoster item={item} onClick={onOpenItem} />
@@ -522,7 +522,7 @@ function SectionRow({
       )}
 
       {section.type === 'genre' && (
-        <div data-scroll-restoration-key={`discover-section:${section.key}:genre`} className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+        <div data-scroll-restoration-key={`discover-section:${section.key}:genre`} className="rail-bleed flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
           {(section.items as Array<{ id: number; name: string; type: 'movie' | 'tv' }>).map((genre) => (
             <button
               key={`${genre.type}-${genre.id}`}
@@ -536,7 +536,7 @@ function SectionRow({
       )}
 
       {section.type === 'provider' && (
-        <div data-scroll-restoration-key={`discover-section:${section.key}:provider`} className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+        <div data-scroll-restoration-key={`discover-section:${section.key}:provider`} className="rail-bleed flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
           {(section.items as Array<{ id: number; name: string; logoPath: string | null; type: 'movie' | 'tv' }>).map((provider) => {
             const providerLogoPath = provider.logoPath ? `https://image.tmdb.org/t/p/w185${provider.logoPath}` : null;
             const providerLogoSrc = providerLogoPath
@@ -585,7 +585,7 @@ function CustomCarouselRow({
   onSeeAll: (layoutSection: DiscoverLayoutSection) => void;
 }) {
   const header = (
-    <div className="flex items-center justify-between px-0.5">
+    <div className="flex items-center justify-between">
       <h2 className="text-base font-semibold">{layoutSection.label}</h2>
       <div className="flex items-center gap-2">
         {layoutSection.filters && (
@@ -606,7 +606,7 @@ function CustomCarouselRow({
     return (
       <section className="space-y-2">
         {header}
-        <div data-scroll-restoration-key={`discover-custom:${layoutSection.id}:loading`} className="flex gap-2.5 overflow-x-auto pb-1 scrollbar-hide">
+        <div data-scroll-restoration-key={`discover-custom:${layoutSection.id}:loading`} className="rail-bleed flex gap-2.5 overflow-x-auto pb-1 scrollbar-hide">
           {Array.from({ length: 6 }).map((_, i) => (
             <div key={i} className="min-w-[110px] w-[110px] sm:min-w-[140px] sm:w-[140px] md:min-w-[150px] md:w-[150px] lg:min-w-[164px] lg:w-[164px] xl:min-w-[180px] xl:w-[180px] 2xl:min-w-[196px] 2xl:w-[196px] aspect-[2/3] rounded-xl bg-muted/40 animate-pulse" />
           ))}
@@ -620,7 +620,7 @@ function CustomCarouselRow({
   return (
     <section className="space-y-2">
       {header}
-      <div data-scroll-restoration-key={`discover-custom:${layoutSection.id}`} className="flex gap-2.5 overflow-x-auto pb-1 snap-x snap-mandatory scrollbar-hide">
+      <div data-scroll-restoration-key={`discover-custom:${layoutSection.id}`} className="rail-bleed flex gap-2.5 overflow-x-auto pb-1 snap-x snap-mandatory scrollbar-hide">
         {items.map((item) => (
           <div key={`${item.mediaType}-${item.tmdbId}`} className="snap-start">
             <MediaPoster item={item} onClick={onOpenItem} />
@@ -1294,7 +1294,7 @@ export default function DiscoverPage() {
 
         <div className="mt-3 space-y-2">
           {/* <p className="text-[11px] font-medium text-muted-foreground">Sort</p> */}
-          <div data-scroll-restoration-key="discover-sort" className="flex items-center gap-2 overflow-x-auto scrollbar-hide">
+          <div data-scroll-restoration-key="discover-sort" className="rail-bleed flex items-center gap-2 overflow-x-auto scrollbar-hide">
             {SORT_OPTIONS.map((option) => {
               const active = discoverSort === option.value;
               const Icon = option.icon;

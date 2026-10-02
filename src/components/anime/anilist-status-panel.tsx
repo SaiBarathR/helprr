@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from '@/components/ui/app-link';
-import { Sparkles, Pencil, Plus, Loader2, AlertTriangle } from 'lucide-react';
+import { Sparkles, Pencil, Plus, Loader2, AlertTriangle, ChevronRight } from 'lucide-react';
 import { AnilistStatusDrawer } from '@/components/anime/anilist-status-drawer';
 import { useMe } from '@/components/permission-provider';
 import type { AniListMediaListEntryBase, AniListMediaListStatus } from '@/lib/anilist-mutations';
@@ -124,7 +124,7 @@ export function AnilistStatusPanel({
 
   if (loading) {
     return (
-      <div className="rounded-lg border border-dashed border-border/40 bg-muted/10 px-5 py-4 flex items-center justify-center">
+      <div className="rounded-xl border border-border/60 bg-card/40 px-4 py-4 flex items-center justify-center">
         <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
       </div>
     );
@@ -134,14 +134,14 @@ export function AnilistStatusPanel({
     return (
       <Link
         href="/settings"
-        className="group relative flex items-center justify-between gap-4 rounded-lg border border-dashed border-pink-500/30 bg-pink-500/5 px-5 py-3 hover:bg-pink-500/10 transition-colors"
+        className="group relative w-full flex items-center justify-between gap-4 rounded-xl border border-border/60 bg-card/40 px-4 py-3 transition-colors hover:bg-muted/40 press-feedback"
       >
         <div className="flex items-center gap-3 min-w-0">
-          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-pink-500/20 text-pink-400 shrink-0">
+          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-pink-500/15 text-pink-400 shrink-0">
             <Sparkles className="h-3.5 w-3.5" />
           </span>
           <div className="min-w-0">
-            <p className="tracked-caps text-pink-300/80">AniList</p>
+            <p className="tracked-caps text-muted-foreground">AniList</p>
             <p className="text-sm font-medium leading-tight">
               {viewer?.requiresReauth ? 'Reconnect to track this' : 'Track on AniList'}
             </p>
@@ -155,7 +155,7 @@ export function AnilistStatusPanel({
   const labels = mediaType === 'MANGA' ? STATUS_LABELS_MANGA : STATUS_LABELS_ANIME;
   const total = mediaType === 'MANGA' ? totalChapters : totalEpisodes;
   const loadErrorBanner = loadError ? (
-    <div className="mb-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-xs text-amber-200 flex items-center gap-2">
+    <div className="mb-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-xs text-amber-200 flex items-center gap-2">
       <AlertTriangle className="h-3.5 w-3.5" />
       AniList status is temporarily unavailable.
     </div>
@@ -167,18 +167,18 @@ export function AnilistStatusPanel({
         {loadErrorBanner}
         <button
           onClick={() => setDrawerOpen(true)}
-          className="group relative w-full flex items-center justify-between gap-4 rounded-lg border border-pink-500/30 bg-pink-500/10 px-5 py-3 hover:bg-pink-500/20 transition-colors press-feedback"
+          className="group relative w-full flex items-center justify-between gap-4 rounded-xl border border-border/60 bg-card/40 px-4 py-3 transition-colors hover:bg-muted/40 press-feedback"
         >
           <div className="flex items-center gap-3 min-w-0">
-            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-pink-500/30 text-pink-300 shrink-0">
+            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-pink-500/15 text-pink-400 shrink-0">
               <Plus className="h-3.5 w-3.5" strokeWidth={2.5} />
             </span>
             <div className="min-w-0 text-left">
-              <p className="tracked-caps text-pink-300/80">AniList</p>
+              <p className="tracked-caps text-muted-foreground">AniList</p>
               <p className="text-sm font-medium leading-tight">Add to AniList list</p>
             </div>
           </div>
-          <Sparkles className="h-4 w-4 text-pink-300/80" />
+          <ChevronRight className="h-4 w-4 text-muted-foreground" />
         </button>
         <AnilistStatusDrawer
           open={drawerOpen}
@@ -206,10 +206,10 @@ export function AnilistStatusPanel({
       {loadErrorBanner}
       <button
         onClick={() => setDrawerOpen(true)}
-        className="group relative w-full flex items-center justify-between gap-4 rounded-lg border border-border/60 bg-card/40 backdrop-blur-sm px-5 py-3 hover:border-pink-500/40 hover:bg-pink-500/5 transition-colors press-feedback"
+        className="group relative w-full flex items-center justify-between gap-4 rounded-xl border border-border/60 bg-card/40 px-4 py-3 transition-colors hover:bg-muted/40 press-feedback"
       >
         <div className="flex items-center gap-3 min-w-0">
-          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-pink-500/15 text-pink-300 shrink-0">
+          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-pink-500/15 text-pink-400 shrink-0">
             <Sparkles className="h-3.5 w-3.5" />
           </span>
           <div className="min-w-0 text-left flex flex-col gap-0.5">

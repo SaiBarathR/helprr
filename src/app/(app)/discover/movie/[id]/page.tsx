@@ -106,7 +106,7 @@ export default function DiscoverMovieDetailPage() {
                   onClick={() => setOverviewExpanded(!overviewExpanded)}
                   className="text-sm text-primary font-medium mt-1"
                 >
-                  {overviewExpanded ? 'less' : 'more...'}
+                  {overviewExpanded ? 'Show less' : 'Read more'}
                 </button>
               )}
             </div>
@@ -199,13 +199,13 @@ export default function DiscoverMovieDetailPage() {
                 return (
                   <Link key={company.id} href={`/discover?companies=${company.id}&contentType=movie`} className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-border/50 bg-accent/30">
                     {logoSrc && (
-                      <div className="relative h-5 w-8">
+                      <div className="relative h-5 w-8 overflow-hidden rounded-[3px] bg-white">
                         <Image
                           src={logoSrc}
                           alt={company.name}
                           fill
                           sizes="32px"
-                          className="object-contain"
+                          className="object-contain p-0.5"
                           unoptimized={isProtectedApiImageSrc(logoSrc)}
                         />
                       </div>

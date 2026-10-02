@@ -273,7 +273,7 @@ export default function MovieFilesPage() {
       <div className="space-y-6 pb-8">
         <section className="space-y-2">
           <div className="flex items-center justify-between gap-2">
-            <h2 className="text-3xl font-bold leading-tight">Files</h2>
+            <h2 className="text-lg font-bold leading-tight">Files</h2>
             {canManageFiles && (
               <Button
                 variant="outline"
@@ -308,7 +308,7 @@ export default function MovieFilesPage() {
         </section>
 
         <section className="space-y-2">
-          <h2 className="text-3xl font-bold leading-tight">History</h2>
+          <h2 className="text-lg font-bold leading-tight">History</h2>
           {historyLoading ? (
             <PageSpinner />
           ) : history.length === 0 ? (

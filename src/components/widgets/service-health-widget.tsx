@@ -32,8 +32,9 @@ export function ServiceHealthWidget({ refreshInterval, narrow = false, editMode 
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
-      <Eyebrow style={{ marginBottom: 8 }}>
-        Service Health · {okCount}/{list.length || 0}
+      {/* Narrow cells drop "Service" so the label stays on one line. */}
+      <Eyebrow style={{ marginBottom: 8, whiteSpace: 'nowrap' }}>
+        <span className="@max-[219px]/cell:hidden">Service </span>Health · {okCount}/{list.length || 0}
       </Eyebrow>
       <div
         className="no-scrollbar scroll-fade-y"

@@ -289,7 +289,7 @@ export default function HistoryPage() {
       <ActiveFilterBar filters={activeFilters} onClearAll={clearFilters} className="pb-2" />
 
       {/* History list */}
-      <div data-scroll-restoration-key="activity-history" className="flex-1 overflow-y-auto pb-4">
+      <div data-scroll-restoration-key="activity-history" className="page-bleed flex-1 overflow-y-auto pb-4">
         {loading ? (
           <PageSpinner />
         ) : history.length === 0 ? (
@@ -348,7 +348,7 @@ export default function HistoryPage() {
                   setDrawerMode('basic');
                   setSelectedItem(item);
                 }}
-                className="w-full text-left flex items-start gap-3 py-2.5 px-3 rounded-lg hover:bg-muted/50 active:bg-muted/50 transition-colors"
+                className="-mx-2 w-[calc(100%+1rem)] text-left flex items-start gap-3 py-2.5 px-2 rounded-lg hover:bg-muted/50 active:bg-muted/50 transition-colors md:-mx-3 md:w-[calc(100%+1.5rem)] md:px-3"
               >
                 <div className="flex-1 min-w-0 space-y-1">
                   {/* Status label */}

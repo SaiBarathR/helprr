@@ -28,6 +28,7 @@ export function PageHeader({ title, subtitle, showBack = true, onBack, rightCont
         {showBack && (
           <button
             onClick={onBack || (() => router.back())}
+            aria-label="Go back"
             className="flex items-center gap-0 text-primary min-w-[44px] min-h-[44px] justify-center -ml-1"
           >
             <ChevronLeft className="h-6 w-6" />

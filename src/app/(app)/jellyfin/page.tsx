@@ -174,7 +174,7 @@ export default function JellyfinPage() {
           </TabsList>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-2 pt-3 pb-4">
+        <div className="page-bleed flex-1 overflow-y-auto pt-3 pb-4">
           <TabsContent value="overview"><OverviewTab /></TabsContent>
           {canSessions && <TabsContent value="users"><UsersTab /></TabsContent>}
           <TabsContent value="history"><HistoryTab /></TabsContent>
@@ -190,7 +190,7 @@ export default function JellyfinPage() {
 function Carousel({ children, className = '', restorationKey }: { children: React.ReactNode; className?: string; restorationKey: string }) {
   return (
     <div className="relative">
-      <div data-scroll-restoration-key={`jellyfin:${restorationKey}`} className={`flex gap-3 overflow-x-auto pb-2 snap-x snap-mandatory scrollbar-hide -mx-1 px-1 ${className}`}>
+      <div data-scroll-restoration-key={`jellyfin:${restorationKey}`} className={`flex gap-3 overflow-x-auto pb-2 snap-x snap-mandatory scrollbar-hide -mx-1 px-1 scroll-px-1 ${className}`}>
         {children}
       </div>
       <div className="pointer-events-none absolute top-0 right-0 bottom-2 w-8 bg-gradient-to-l from-background to-transparent" />

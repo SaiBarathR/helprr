@@ -416,7 +416,7 @@ function AddMoviePageContent() {
                   Add Movie
                 </Button>
               )}
-              <Button variant="ghost" className="flex-1 h-11" onClick={() => setSelected(null)}>
+              <Button variant="secondary" className="flex-1 h-11" onClick={() => setSelected(null)}>
                 Cancel
               </Button>
             </div>
@@ -427,6 +427,15 @@ function AddMoviePageContent() {
               ? (
                   <div className="col-span-full flex justify-center">
                     <PageSpinner />
+                  </div>
+                )
+              : results.length === 0
+              ? (
+                  <div className="col-span-full flex flex-col items-center gap-2 py-16 text-center text-muted-foreground">
+                    <Search className="h-6 w-6 opacity-50" />
+                    <p className="text-sm">
+                      {submittedTerm.trim() ? `No results for “${submittedTerm.trim()}”` : 'Search for a movie to add it to Radarr'}
+                    </p>
                   </div>
                 )
               : results.map((r, i) => {

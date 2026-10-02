@@ -172,7 +172,7 @@ export const MediaOverviewItem = memo(function MediaOverviewItem({
             )
           )}
           {show('title') && <h3 className="text-sm font-medium truncate">{title}</h3>}
-          {show('year') && <span className="text-xs text-muted-foreground shrink-0">({year})</span>}
+          {show('year') && year > 0 && <span className="text-xs text-muted-foreground shrink-0">({year})</span>}
           {instanceLabel && (
             <span className="min-w-0 max-w-[40%] truncate text-[10px] font-medium text-[var(--hpr-amber)]">{instanceLabel}</span>
           )}

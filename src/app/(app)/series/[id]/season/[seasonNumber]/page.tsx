@@ -463,7 +463,7 @@ export default function SeasonDetailPage() {
             // target, while the bookmark and search buttons sit beside the link rather than
             // inside it. The quick-actions menu wraps only the link: it ignores gestures that
             // start on a nested link or button.
-            <div key={ep.id} className="relative flex flex-wrap gap-x-3 gap-y-2 px-4 py-3 active:bg-muted/50 transition-colors">
+            <div key={ep.id} className="page-bleed relative flex flex-wrap gap-x-3 gap-y-2 py-3 active:bg-muted/50 transition-colors">
             <QuickContextMenu label={`${ep.title || `Episode ${ep.episodeNumber}`} actions`} actions={episodeActions}>
             <Link
               href={episodeHref}

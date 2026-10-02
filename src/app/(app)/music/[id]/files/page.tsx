@@ -218,7 +218,7 @@ export default function ArtistFilesPage() {
 
       <div className="space-y-6 pb-8">
         <section className="space-y-2">
-          <h2 className="text-3xl font-bold leading-tight">Files</h2>
+          <h2 className="text-lg font-bold leading-tight">Files</h2>
           {files.length === 0 ? (
             <div className="rounded-2xl border px-4 py-6 text-sm text-muted-foreground text-center">
               No files on disk
@@ -287,7 +287,7 @@ export default function ArtistFilesPage() {
         </section>
 
         <section className="space-y-2">
-          <h2 className="text-3xl font-bold leading-tight">History</h2>
+          <h2 className="text-lg font-bold leading-tight">History</h2>
           {history.length === 0 ? (
             <div className="rounded-2xl border px-4 py-6 text-center text-sm text-muted-foreground">
               No history available

@@ -239,7 +239,7 @@ export default function MovieCollectionsPage() {
             <SearchBar
               value={search}
               onChange={setSearch}
-              placeholder="Search collections..."
+              placeholder="Search..."
               historyKey="movie-collections"
             />
           </div>

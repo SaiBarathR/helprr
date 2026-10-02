@@ -457,8 +457,8 @@ export function ManageMediaFlow({ service, mediaId, mediaTitle, instanceId }: Ma
                       <p className="break-words text-sm leading-snug">{f.relativePath || f.name}</p>
                       <div className="flex flex-wrap items-center gap-1">
                         {q?.quality?.name && <Badge variant="secondary" className="text-[10px]">{q.quality.name}</Badge>}
-                        {langs.length > 0 && <Badge variant="outline" className="text-[10px]">{langs.map((l) => l.name).join(', ')}</Badge>}
-                        {rg && <Badge variant="outline" className="text-[10px]">{rg}</Badge>}
+                        {langs.length > 0 && <Badge variant="outline" className="max-w-full text-[10px]"><span className="truncate">{langs.map((l) => l.name).join(', ')}</span></Badge>}
+                        {rg && <Badge variant="outline" className="max-w-full text-[10px]"><span className="truncate">{rg}</span></Badge>}
                         <Badge variant="outline" className="text-[10px]">{formatBytes(f.size)}</Badge>
                         {f.customFormatScore !== undefined && f.customFormatScore !== 0 && (
                           <Badge variant="outline" className="text-[10px]">

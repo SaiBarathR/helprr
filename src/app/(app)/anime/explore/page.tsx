@@ -384,7 +384,7 @@ export default function AnimePage() {
 
         {/* Sort pills + Filter button */}
         {viewMode !== 'search' && (
-          <div className="py-2 flex gap-2 overflow-x-auto scrollbar-hide">
+          <div className="rail-bleed py-2 flex gap-2 overflow-x-auto scrollbar-hide">
             <Button
               variant={hasFilters ? 'default' : 'outline'}
               size="sm"

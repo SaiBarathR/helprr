@@ -305,7 +305,7 @@ export function AnimeMediaRail({ title, items, viewAllHref }: AnimeMediaRailProp
   if (!items.length) return null;
 
   return (
-    <div className='px-2'>
+    <div>
       <div className="flex items-center justify-between mb-2">
         <h2 className="text-base font-semibold">{title}</h2>
         {viewAllHref && (
@@ -318,7 +318,7 @@ export function AnimeMediaRail({ title, items, viewAllHref }: AnimeMediaRailProp
       <div
         ref={viewportRef}
         data-scroll-restoration-key={`anime-media:${title}`}
-        className="flex gap-3 overflow-x-auto pb-2 -mx-2 px-2 md:-mx-6 md:px-6 scrollbar-hide snap-x snap-mandatory animate-rail-in"
+        className="flex gap-3 overflow-x-auto pb-2 -mx-2 px-2 scroll-px-2 md:-mx-6 md:px-6 md:scroll-px-6 scrollbar-hide snap-x snap-mandatory animate-rail-in"
       >
         <WindowedRailItems className={RAIL_CARD_SLOT_CLASS} viewportRef={viewportRef}>
           {items.map((item) => (

@@ -1207,10 +1207,12 @@ export default function TorrentsPage() {
         </label>
       ),
     },
+    // Widths sum to 1008px, the content width at 1280px with the sidebar open,
+    // so the default table fits without scrolling; Name absorbs any extra.
     {
       id: 'name',
       label: 'Name',
-      width: 260,
+      width: 184,
       minWidth: 160,
       grow: true,
       sortKey: 'name',
@@ -1235,14 +1237,14 @@ export default function TorrentsPage() {
     {
       id: 'state',
       label: 'Status',
-      width: 104,
+      width: 96,
       sortKey: 'state',
       cell: (t) => getStateBadge(t.state),
     },
     {
       id: 'progress',
       label: 'Progress',
-      width: 128,
+      width: 116,
       minWidth: 90,
       sortKey: 'progress',
       cell: (t) => (
@@ -1257,7 +1259,7 @@ export default function TorrentsPage() {
     {
       id: 'size',
       label: 'Size',
-      width: 84,
+      width: 80,
       align: 'right',
       sortKey: 'size',
       cell: (t) => <span className="text-xs text-muted-foreground">{formatBytes(t.size)}</span>,
@@ -1265,7 +1267,7 @@ export default function TorrentsPage() {
     {
       id: 'dlspeed',
       label: 'DL',
-      width: 92,
+      width: 88,
       align: 'right',
       sortKey: 'dlspeed',
       cell: (t) => t.dlspeed > 0
@@ -1275,7 +1277,7 @@ export default function TorrentsPage() {
     {
       id: 'upspeed',
       label: 'UL',
-      width: 92,
+      width: 88,
       align: 'right',
       sortKey: 'upspeed',
       cell: (t) => t.upspeed > 0
@@ -1285,7 +1287,7 @@ export default function TorrentsPage() {
     {
       id: 'eta',
       label: 'ETA',
-      width: 88,
+      width: 76,
       align: 'right',
       sortKey: 'eta',
       cell: (t) => (
@@ -1297,7 +1299,7 @@ export default function TorrentsPage() {
     {
       id: 'num_seeds',
       label: 'Seeds',
-      width: 68,
+      width: 64,
       align: 'right',
       sortKey: 'num_seeds',
       cell: (t) => <span className="text-xs text-muted-foreground">{t.num_seeds}</span>,
@@ -1305,7 +1307,7 @@ export default function TorrentsPage() {
     {
       id: 'num_leechs',
       label: 'Peers',
-      width: 68,
+      width: 64,
       align: 'right',
       sortKey: 'num_leechs',
       cell: (t) => <span className="text-xs text-muted-foreground">{t.num_leechs}</span>,
@@ -1313,7 +1315,7 @@ export default function TorrentsPage() {
     {
       id: 'ratio',
       label: 'Ratio',
-      width: 72,
+      width: 64,
       align: 'right',
       sortKey: 'ratio',
       cell: (t) => <span className="text-xs text-muted-foreground">{(t.ratio ?? 0).toFixed(2)}</span>,

@@ -969,14 +969,14 @@ export default function WatchlistPage() {
 
       </div>
 
-      <div className="px-2 md:px-6 mt-3 space-y-3">
+      <div className="mt-3 space-y-3">
         {/* Below the sticky toolbar; the filter button's dot stays in view. */}
         <ActiveFilterBar filters={activeFilters} onClearAll={clearFilters} />
         {error && <div className="text-sm text-red-400">{error}</div>}
 
         {showRail && (
           <section className="space-y-2">
-            <div className="flex items-center gap-2 px-0.5">
+            <div className="flex items-center gap-2">
               <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                 Not in library
               </h2>
@@ -1056,7 +1056,7 @@ export default function WatchlistPage() {
                       <div
                         key={vr.key}
                         style={{ height: HEADER_ROW_HEIGHT }}
-                        className="flex items-end gap-2 px-0.5 pb-2"
+                        className="flex items-end gap-2 pb-2"
                       >
                         <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground leading-none">
                           {row.label}

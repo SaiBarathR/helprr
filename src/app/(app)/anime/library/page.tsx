@@ -420,7 +420,7 @@ export default function AnimeLibraryPage() {
 
       {/* Status tabs */}
       <div className="page-toolbar pt-1 pb-2 app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
-        <div className="flex gap-2 overflow-x-auto scrollbar-hide">
+        <div className="rail-bleed flex gap-2 overflow-x-auto scrollbar-hide">
           {tabs.map((tab) => {
             const active = status === tab.value;
             return (
@@ -506,10 +506,10 @@ export default function AnimeLibraryPage() {
 
 function StatCard({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
   return (
-    <div className="md:px-3 px-2 md:py-2.5 py-2">
-      <div className="flex items-center gap-1 md:gap-1.5 text-muted-foreground tracked-caps">
+    <div className="min-w-0 py-2 md:py-2.5">
+      <div className="flex min-w-0 items-center gap-1 md:gap-1.5 text-muted-foreground tracked-caps">
         {icon}
-        {label}
+        <span className="truncate">{label}</span>
       </div>
       <p className="font-semibold text-base mt-0.5 tabular-nums">{value}</p>
     </div>

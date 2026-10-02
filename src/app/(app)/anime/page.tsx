@@ -369,7 +369,7 @@ export default function AnimeHomePage() {
               ))}
             />
           )}
-          <div className="space-y-5 px-2 md:p-6 md:px-8">
+          <div className="space-y-5 px-2 md:px-6 md:py-6">
             {orderedCarouselIds
               .filter((id) => !disabledSet.has(id))
               .map((id) => renderCarousel(id))}

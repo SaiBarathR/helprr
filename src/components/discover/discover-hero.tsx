@@ -43,6 +43,8 @@ export function DiscoverHero({
     : null;
 
   const mediaLabel = mediaType === 'movie' ? 'Feature Film' : 'Television Series';
+  // Phones get the one-word form: the full label ran under the action pills.
+  const shortMediaLabel = mediaType === 'movie' ? 'Film' : 'Series';
 
   return (
     <QuickContextMenu label={`${title} actions`} groups={addController.contextGroups}>
@@ -82,7 +84,10 @@ export function DiscoverHero({
         <div className="absolute top-3 left-3 md:top-5 md:left-6 hero-meta-fade">
           <div className="flex items-center gap-2 text-foreground/65">
             <span className="block w-6 h-px bg-foreground/40 hairline-grow" />
-            <span className="tracked-caps">{mediaLabel}</span>
+            <span className="tracked-caps">
+              <span className="max-sm:hidden">{mediaLabel}</span>
+              <span className="sm:hidden">{shortMediaLabel}</span>
+            </span>
           </div>
         </div>
       </div>
@@ -112,29 +117,24 @@ export function DiscoverHero({
         {/* Metadata column */}
         <div className="flex-1 min-w-0 pt-12 md:pt-20 space-y-3 md:space-y-4">
           {/* Editorial spec row */}
-          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1.5">
-            {year && (
-              <span className="font-display font-medium text-foreground text-base md:text-lg leading-none">
-                {year}
-              </span>
-            )}
-            {runtime != null && runtime > 0 && (
-              <>
-                <span className="block w-px h-3 bg-border self-center" aria-hidden />
-                <span className="tracked-caps text-muted-foreground">{runtime} Min</span>
-              </>
-            )}
-            {certification && (
-              <>
-                <span className="block w-px h-3 bg-border self-center" aria-hidden />
-                <span className="rounded-sm border border-border px-1.5 py-px text-[10px] font-semibold tracking-wider text-muted-foreground">
-                  {certification}
+          <div className="spec-row">
+            <div>
+              {year && (
+                <span className="font-display font-medium text-foreground text-base md:text-lg leading-none">
+                  {year}
                 </span>
-              </>
-            )}
-            {rating > 0 && (
-              <>
-                <span className="block w-px h-3 bg-border self-center" aria-hidden />
+              )}
+              {runtime != null && runtime > 0 && (
+                <span className="tracked-caps text-muted-foreground">{runtime} Min</span>
+              )}
+              {certification && (
+                <span>
+                  <span className="rounded-sm border border-border px-1.5 py-px text-[10px] font-semibold tracking-wider text-muted-foreground">
+                    {certification}
+                  </span>
+                </span>
+              )}
+              {rating > 0 && (
                 <span className="inline-flex items-baseline gap-1">
                   <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400 self-center" />
                   <span className="font-display font-medium text-foreground text-base md:text-lg leading-none">
@@ -142,8 +142,8 @@ export function DiscoverHero({
                   </span>
                   <span className="text-[10px] text-muted-foreground">/10</span>
                 </span>
-              </>
-            )}
+              )}
+            </div>
           </div>
 
           {/* Tagline pull-quote */}

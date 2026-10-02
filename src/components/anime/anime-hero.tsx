@@ -161,29 +161,22 @@ export function AnimeHero({
 
         <div className="flex-1 min-w-0 pt-12 md:pt-20 space-y-3 md:space-y-4">
           {/* Editorial spec row */}
-          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1.5">
-            {seasonLine && (
-              <span className="font-display font-medium text-foreground text-base md:text-lg leading-none">
-                {seasonLine}
-              </span>
-            )}
-            {episodes != null && (
-              <>
-                <span className="block w-px h-3 bg-border self-center" aria-hidden />
+          <div className="spec-row">
+            <div>
+              {seasonLine && (
+                <span className="font-display font-medium text-foreground text-base md:text-lg leading-none">
+                  {seasonLine}
+                </span>
+              )}
+              {episodes != null && (
                 <span className="tracked-caps text-muted-foreground">
                   {episodes} Ep{episodes === 1 ? '' : 's'}
                 </span>
-              </>
-            )}
-            {status && (
-              <>
-                <span className="block w-px h-3 bg-border self-center" aria-hidden />
+              )}
+              {status && (
                 <span className="tracked-caps text-muted-foreground">{formatStatus(status)}</span>
-              </>
-            )}
-            {averageScore != null && averageScore > 0 && (
-              <>
-                <span className="block w-px h-3 bg-border self-center" aria-hidden />
+              )}
+              {averageScore != null && averageScore > 0 && (
                 <span className="inline-flex items-baseline gap-1">
                   <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400 self-center" />
                   <span className="font-display font-medium text-foreground text-base md:text-lg leading-none">
@@ -191,8 +184,8 @@ export function AnimeHero({
                   </span>
                   <span className="text-[10px] text-muted-foreground">%</span>
                 </span>
-              </>
-            )}
+              )}
+            </div>
           </div>
 
           {/* Studio attribution */}
