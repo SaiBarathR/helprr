@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { pollCommand } from '@/lib/arr-command';
+import { trackManualImport } from '@/lib/manual-import-tracker';
 import type { ManualImportItem, SonarrEpisode } from '@/types';
 import { SearchInput } from '@/components/media/search-input';
 
@@ -244,7 +245,16 @@ function ManualImportContent() {
       });
 
       if (res.ok) {
-        toast.success('Import submitted');
+        // The import itself runs as a command in the *arr; follow it from here so
+        // the Activity queue updates as soon as it finishes (see the tracker).
+        const command = (await res.json().catch(() => null)) as { id?: number } | null;
+        void trackManualImport(queryClient, {
+          service: source,
+          instanceId: instanceId || undefined,
+          downloadId,
+          commandId: command?.id,
+          title: itemTitle,
+        });
         router.back();
       } else {
         toast.error('Import failed');

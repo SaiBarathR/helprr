@@ -47,6 +47,7 @@ import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-quer
 import { ApiError, jsonFetcher, backoffRefetchInterval } from '@/lib/query-fetch';
 import { invalidateActivity } from '@/lib/query-invalidation';
 import { classifyQueueIssue } from '@/lib/queue-state';
+import { applyPendingImports, pendingImportKey, usePendingImports } from '@/lib/manual-import-tracker';
 import { useUIStore } from '@/lib/store';
 import { type InstanceOption } from '@/components/instance-filter';
 import { ActiveFilterBar, type ActiveFilter } from '@/components/ui/active-filter-bar';
@@ -144,6 +145,47 @@ function getQueueMediaHref(item: QueueItem & { source?: string }): string | null
     return `/music/${artistId}${q}`;
   }
   return null;
+}
+
+/** The manual import page for a queue item's download. */
+function manualImportHref(item: QueueItem & { source?: string }): string {
+  const params = new URLSearchParams({
+    downloadId: item.downloadId,
+    source: item.source || 'sonarr',
+    title: item.title || '',
+  });
+  if (item.seriesId) params.set('seriesId', String(item.seriesId));
+  if (item.movieId) params.set('movieId', String(item.movieId));
+  if (item.instanceId) params.set('instanceId', item.instanceId);
+  return `/activity/import?${params}`;
+}
+
+function needsManualImport(item: QueueItem): boolean {
+  return classifyQueueIssue(item.trackedDownloadState, item.trackedDownloadStatus) === 'import';
+}
+
+/** Needs an import the import page can do: it handles Sonarr and Radarr only. */
+function canManualImport(item: QueueItem & { source?: string }): boolean {
+  return (item.source === 'sonarr' || item.source === 'radarr') && needsManualImport(item);
+}
+
+/**
+ * The Failed tab's Import action, on a queue card that needs one: the reason
+ * the *arr gave and a button, so the import starts from the queue itself.
+ */
+function ManualImportStrip({ item, onImport }: { item: QueueItem; onImport: () => void }) {
+  const reason = item.statusMessages?.flatMap((message) => message.messages ?? [])[0]
+    ?? item.statusMessages?.[0]?.title;
+  return (
+    <div className="flex items-center gap-2 border-t border-border/40 px-3 py-2">
+      <p className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+        {reason ?? 'Needs a manual import'}
+      </p>
+      <Button size="sm" className="h-8 shrink-0 text-xs" onClick={onImport}>
+        <Upload className="mr-1.5 h-3.5 w-3.5" /> Import
+      </Button>
+    </div>
+  );
 }
 
 // --- Season-pack grouping ---
@@ -288,9 +330,39 @@ function isFilterKey(value: string): value is FilterKey {
   return FILTER_OPTIONS.some((option) => option.key === value);
 }
 
-function linkSourceFrom(params: URLSearchParams): FilterKey | null {
-  const source = params.get('source');
-  return source && isFilterKey(source) && source !== 'all' ? source : null;
+/** The filters a deep link (?source=) opens, kept for that visit only. */
+interface ActivityLinkView {
+  sources: string[];
+  instance: string;
+}
+
+/**
+ * The view an Activity link asks for, or null for a plain visit. Push
+ * notifications link `?source=sonarr`; changes made on that view are written
+ * back as `?source=sonarr,radarr`, `?source=all` (every source) and
+ * `&instance=<id>`. A link starts from every instance rather than the saved one.
+ */
+function activityLinkView(params: URLSearchParams): ActivityLinkView | null {
+  const raw = params.get('source');
+  if (!raw) return null;
+  const sources = raw === 'all'
+    ? []
+    : raw.split(',').filter((key) => isFilterKey(key) && key !== 'all');
+  if (raw !== 'all' && sources.length === 0) return null;
+  return { sources, instance: params.get('instance') || 'all' };
+}
+
+/** Write a link view into the current history entry, or drop it (null). */
+function writeActivityLinkView(view: ActivityLinkView | null) {
+  const params = new URLSearchParams(window.location.search);
+  params.delete('source');
+  params.delete('instance');
+  if (view) {
+    params.set('source', view.sources.length > 0 ? view.sources.join(',') : 'all');
+    if (view.instance !== 'all') params.set('instance', view.instance);
+  }
+  const query = params.toString();
+  window.history.replaceState(null, '', query ? `/activity?${query}` : '/activity');
 }
 
 /**
@@ -310,22 +382,23 @@ export default function ActivityPage() {
   const setSortBy = useUIStore((s) => s.setActivitySortBy);
   const sortDirection = useUIStore((s) => s.activitySortDirection);
   const setSortDirection = useUIStore((s) => s.setActivitySortDirection);
-  const filterBy = useUIStore((s) => s.activityFilterBy);
+  const savedSources = useUIStore((s) => s.activityFilterBy);
   const setFilterBy = useUIStore((s) => s.setActivityFilterBy);
-  const instanceFilter = useUIStore((s) => s.activityInstanceFilter);
+  const savedInstance = useUIStore((s) => s.activityInstanceFilter);
   const setInstanceFilter = useUIStore((s) => s.setActivityInstanceFilter);
   const searchParamsKey = searchParams.toString();
-  // A ?source deep link (push notifications for a grab/failure) narrows this
-  // visit only. It must never be written to the persisted filter, or every later
-  // visit stays silently filtered to that source. Re-read on every URL change:
-  // a client navigation to plain /activity keeps this page mounted.
-  const [linkSource, setLinkSource] = useState(() => linkSourceFrom(searchParams));
-  const [linkSourceKey, setLinkSourceKey] = useState(searchParamsKey);
-  if (linkSourceKey !== searchParamsKey) {
-    setLinkSourceKey(searchParamsKey);
-    setLinkSource(linkSourceFrom(searchParams));
+  // A ?source deep link (push notifications for a grab/failure) opens its own
+  // view, like a Discover link: it never touches the saved filters, and changes
+  // made on it stay with it (in its URL), so following one can't leave later
+  // visits filtered. Local state is the render source so a change shows at once;
+  // it's re-read whenever the URL changes, e.g. the nav item to plain /activity.
+  const [linkView, setLinkView] = useState(() => activityLinkView(searchParams));
+  const [linkViewKey, setLinkViewKey] = useState(searchParamsKey);
+  if (linkViewKey !== searchParamsKey) {
+    setLinkViewKey(searchParamsKey);
+    setLinkView(activityLinkView(searchParams));
   }
-  const sources = useMemo(() => (linkSource ? [linkSource] : filterBy), [linkSource, filterBy]);
+  const sources = useMemo(() => (linkView ? linkView.sources : savedSources), [linkView, savedSources]);
   // Tab priority: an explicit ?tab (a widget or push-notification deep-link) wins
   // and is applied here on the first paint; otherwise we resume the last-used tab
   // from the persisted store in the effect below (the nav item / a generic "view
@@ -356,13 +429,18 @@ export default function ActivityPage() {
     () => arrConnections.map((c) => ({ id: c.id, label: c.label })),
     [arrConnections],
   );
+  // A link's instance that no longer exists means every instance; a saved one
+  // is reset by the effect below.
+  const linkInstanceGone = linkView !== null && linkView.instance !== 'all'
+    && instanceOptions.length > 0 && !instanceOptions.some((i) => i.id === linkView.instance);
+  const instanceFilter = linkView ? (linkInstanceGone ? 'all' : linkView.instance) : savedInstance;
 
   // Drop a stale instance selection if that instance no longer exists.
   useEffect(() => {
-    if (instanceFilter !== 'all' && instanceOptions.length > 0 && !instanceOptions.some((i) => i.id === instanceFilter)) {
+    if (savedInstance !== 'all' && instanceOptions.length > 0 && !instanceOptions.some((i) => i.id === savedInstance)) {
       setInstanceFilter('all');
     }
-  }, [instanceOptions, instanceFilter, setInstanceFilter]);
+  }, [instanceOptions, savedInstance, setInstanceFilter]);
   const initRef = useRef(false);
   // Set when the user taps a tab in-page, so a late hydration resume can't override it.
   const userSwitchedTabRef = useRef(false);
@@ -400,20 +478,20 @@ export default function ActivityPage() {
     }
   }, [hasHydrated, searchParamsKey, setSortBy, setSortDirection]);
 
-  // Drop a deep-link filter, and its ?source from the URL so a reload doesn't
-  // bring it back; the saved filter applies again.
-  function dropLinkSource() {
-    setLinkSource(null);
-    const params = new URLSearchParams(window.location.search);
-    params.delete('source');
-    const query = params.toString();
-    window.history.replaceState(null, '', query ? `/activity?${query}` : '/activity');
+  // On a link's view changes stay with the link; on a plain visit they're saved.
+  function updateLinkView(next: ActivityLinkView | null) {
+    setLinkView(next);
+    writeActivityLinkView(next);
   }
 
-  // A source change made in the menu replaces a deep-link filter and is saved.
   function updateSources(next: string[]) {
-    if (linkSource) dropLinkSource();
-    setFilterBy(next);
+    if (linkView) updateLinkView({ ...linkView, sources: next });
+    else setFilterBy(next);
+  }
+
+  function updateInstance(next: string) {
+    if (linkView) updateLinkView({ ...linkView, instance: next });
+    else setInstanceFilter(next);
   }
 
   const sourceLabel = (key: string) => FILTER_OPTIONS.find((opt) => opt.key === key)?.label ?? key;
@@ -422,9 +500,13 @@ export default function ActivityPage() {
     ...sources.map((key) => ({
       id: `source:${key}`,
       label: sourceLabel(key),
-      // Dismissing a deep link's visit filter falls back to the saved filter
-      // rather than overwriting it.
-      onRemove: linkSource ? dropLinkSource : () => updateSources(sources.filter((s) => s !== key)),
+      // Dismissing a link's last source ends its view: the saved filter applies
+      // again rather than being overwritten.
+      onRemove: () => {
+        const rest = sources.filter((s) => s !== key);
+        if (linkView && rest.length === 0) updateLinkView(null);
+        else updateSources(rest);
+      },
     })),
     ...(instanceFilter !== 'all'
       ? [{
@@ -433,13 +515,17 @@ export default function ActivityPage() {
         label: selectedInstance
           ? `${selectedInstance.label} (${sourceLabel(selectedInstance.type.toLowerCase())})`
           : 'Instance',
-        onRemove: () => setInstanceFilter('all'),
+        onRemove: () => updateInstance('all'),
       }]
       : []),
   ];
 
   function clearFilters() {
-    updateSources([]);
+    if (linkView) {
+      updateLinkView({ sources: [], instance: 'all' });
+      return;
+    }
+    setFilterBy([]);
     setInstanceFilter('all');
   }
 
@@ -451,7 +537,9 @@ export default function ActivityPage() {
 
     // Mirror the tab into the URL for deep-linking, but via history.replaceState so
     // there's no router navigation / RSC round-trip to delay the switch.
-    const params = new URLSearchParams(searchParams.toString());
+    // Read the live URL: a link view change written just before can still be
+    // missing from useSearchParams.
+    const params = new URLSearchParams(window.location.search);
     params.set('tab', nextTab);
     const query = params.toString();
     window.history.replaceState(null, '', query ? `/activity?${query}` : '/activity');
@@ -550,7 +638,7 @@ export default function ActivityPage() {
                     <DropdownMenuLabel>Instance</DropdownMenuLabel>
                     <DropdownMenuCheckboxItem
                       checked={instanceFilter === 'all'}
-                      onCheckedChange={() => setInstanceFilter('all')}
+                      onCheckedChange={() => updateInstance('all')}
                       onSelect={(e) => e.preventDefault()}
                     >
                       All instances
@@ -559,7 +647,7 @@ export default function ActivityPage() {
                       <DropdownMenuCheckboxItem
                         key={inst.id}
                         checked={instanceFilter === inst.id}
-                        onCheckedChange={() => setInstanceFilter(inst.id)}
+                        onCheckedChange={() => updateInstance(inst.id)}
                         onSelect={(e) => e.preventDefault()}
                       >
                         {inst.label}
@@ -706,9 +794,11 @@ function QueueTab({
   instanceFilter: string;
   onCountChange: (count: number) => void;
 }) {
+  const router = useRouter();
   const canManageActivity = useCan('activity.manage');
   const { adjustBadge } = useBadgeActions();
   const queryClient = useQueryClient();
+  const pendingImports = usePendingImports();
   const [selectedItem, setSelectedItem] = useState<(QueueItem & { source?: string }) | null>(null);
   const [removing, setRemoving] = useState(false);
   // The queue record or season-pack group the remove dialog is currently confirming.
@@ -745,7 +835,17 @@ function QueueTab({
     refetchOnWindowFocus: true,
     staleTime: 0,
   });
-  const queue = queueQuery.data ?? [];
+  // Imports started from the import page read as importing until the *arr's
+  // queue says how they went.
+  const queue = useMemo(
+    () => applyPendingImports(queueQuery.data ?? [], pendingImports),
+    [queueQuery.data, pendingImports],
+  );
+  // The drawer offers the import when any record of the selected download needs
+  // one: a season pack opens it on its first episode.
+  const selectedImportItem = selectedItem
+    ? queue.find((record) => pendingImportKey(record) === pendingImportKey(selectedItem) && canManualImport(record))
+    : undefined;
   const loading = queueQuery.isLoading;
 
   // Apply filter
@@ -896,94 +996,107 @@ function QueueTab({
                   onAction: () => setRemoveTarget({ kind: 'item', item: rep }),
                 } : undefined}
               >
-                <QuickContextMenu
-                  label={`Actions for ${rep.title}`}
-                  groups={[
-                    {
-                      id: 'navigation',
-                      actions: [
-                        {
-                          id: 'view-details',
-                          label: 'View details',
-                          icon: <Info className="h-4 w-4" />,
-                          onSelect: () => setSelectedItem(rep),
-                        },
-                        ...(mediaHref
+                <div className="rounded-xl bg-muted/30 overflow-hidden">
+                  <QuickContextMenu
+                    label={`Actions for ${rep.title}`}
+                    groups={[
+                      {
+                        id: 'navigation',
+                        actions: [
+                          {
+                            id: 'view-details',
+                            label: 'View details',
+                            icon: <Info className="h-4 w-4" />,
+                            onSelect: () => setSelectedItem(rep),
+                          },
+                          ...(mediaHref
+                            ? [{
+                              id: 'open-media',
+                              label: 'Open related media',
+                              icon: <ExternalLink className="h-4 w-4" />,
+                              href: mediaHref,
+                            }]
+                            : []),
+                          ...(canManageActivity && canManualImport(rep)
+                            ? [{
+                              id: 'manual-import',
+                              label: 'Open Manual Import',
+                              icon: <Upload className="h-4 w-4" />,
+                              onSelect: () => router.push(manualImportHref(rep)),
+                            }]
+                            : []),
+                        ],
+                      },
+                      {
+                        id: 'destructive',
+                        actions: canManageActivity
                           ? [{
-                            id: 'open-media',
-                            label: 'Open related media',
-                            icon: <ExternalLink className="h-4 w-4" />,
-                            href: mediaHref,
+                            id: 'remove',
+                            label: 'Remove from queue',
+                            icon: <Trash2 className="h-4 w-4" />,
+                            destructive: true,
+                            onSelect: () => setRemoveTarget({ kind: 'item', item: rep }),
                           }]
-                          : []),
-                      ],
-                    },
-                    {
-                      id: 'destructive',
-                      actions: canManageActivity
-                        ? [{
-                          id: 'remove',
-                          label: 'Remove from queue',
-                          icon: <Trash2 className="h-4 w-4" />,
-                          destructive: true,
-                          onSelect: () => setRemoveTarget({ kind: 'item', item: rep }),
-                        }]
-                        : [],
-                    },
-                  ]}
-                >
-                  <button
-                    onClick={() => setSelectedItem(rep)}
-                    className="w-full text-left rounded-xl bg-muted/30 p-3 space-y-2 active:bg-muted/50 transition-colors"
+                          : [],
+                      },
+                    ]}
                   >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium truncate">{rep.title}</p>
-                        <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-                          <Badge
-                            variant="secondary"
-                            className={`text-[10px] px-1.5 py-0 ${statusColor(rep.status, rep.trackedDownloadStatus)}`}
-                          >
-                            {statusLabel(rep)}
-                          </Badge>
-                          <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-                            {rep.source}
-                          </Badge>
-                          {qualityName && (
-                            <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-                              {qualityName}
+                    <button
+                      onClick={() => setSelectedItem(rep)}
+                      className="w-full text-left p-3 space-y-2 active:bg-muted/50 transition-colors"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium truncate">{rep.title}</p>
+                          <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                            <Badge
+                              variant="secondary"
+                              className={`text-[10px] px-1.5 py-0 ${statusColor(rep.status, rep.trackedDownloadStatus)}`}
+                            >
+                              {statusLabel(rep)}
                             </Badge>
-                          )}
-                          {typeof rep.customFormatScore === 'number' && (
                             <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-                              CF {rep.customFormatScore}
+                              {rep.source}
                             </Badge>
-                          )}
-                          {rep.indexer && (
-                            <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-                              {rep.indexer}
-                            </Badge>
-                          )}
+                            {qualityName && (
+                              <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                                {qualityName}
+                              </Badge>
+                            )}
+                            {typeof rep.customFormatScore === 'number' && (
+                              <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                                CF {rep.customFormatScore}
+                              </Badge>
+                            )}
+                            {rep.indexer && (
+                              <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                                {rep.indexer}
+                              </Badge>
+                            )}
+                          </div>
                         </div>
+                        {rep.timeleft && (
+                          <span className="text-[10px] text-muted-foreground shrink-0 mt-0.5">
+                            {rep.timeleft}
+                          </span>
+                        )}
                       </div>
-                      {rep.timeleft && (
-                        <span className="text-[10px] text-muted-foreground shrink-0 mt-0.5">
-                          {rep.timeleft}
+                      <div className="flex items-center gap-2">
+                        <Progress value={progress} className="h-1.5 flex-1" />
+                        <span className="text-[10px] text-muted-foreground tabular-nums shrink-0">
+                          {progress.toFixed(0)}%
                         </span>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Progress value={progress} className="h-1.5 flex-1" />
-                      <span className="text-[10px] text-muted-foreground tabular-nums shrink-0">
-                        {progress.toFixed(0)}%
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between text-[10px] text-muted-foreground">
-                      <span>Left: {formatBytes(rep.sizeleft)}</span>
-                      <span>Total: {formatBytes(rep.size)}</span>
-                    </div>
-                  </button>
-                </QuickContextMenu>
+                      </div>
+                      <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+                        <span>Left: {formatBytes(rep.sizeleft)}</span>
+                        <span>Total: {formatBytes(rep.size)}</span>
+                      </div>
+                    </button>
+                  </QuickContextMenu>
+                  {canManageActivity && canManualImport(rep) && (
+                    <ManualImportStrip item={rep} onImport={() => router.push(manualImportHref(rep))} />
+                  )}
+                </div>
               </SwipeRow>
             );
           }
@@ -1011,6 +1124,7 @@ function QueueTab({
             );
           });
           const packMediaHref = getQueueMediaHref(rep);
+          const packImportItem = group.items.find(canManualImport);
 
           return (
             <SwipeRow
@@ -1049,6 +1163,14 @@ function QueueTab({
                               label: 'Open related media',
                               icon: <ExternalLink className="h-4 w-4" />,
                               href: packMediaHref,
+                            }]
+                            : []),
+                          ...(canManageActivity && packImportItem
+                            ? [{
+                              id: 'manual-import',
+                              label: 'Open Manual Import',
+                              icon: <Upload className="h-4 w-4" />,
+                              onSelect: () => router.push(manualImportHref(packImportItem)),
                             }]
                             : []),
                         ],
@@ -1135,6 +1257,10 @@ function QueueTab({
                     </button>
                   )}
                 </div>
+
+                {canManageActivity && packImportItem && (
+                  <ManualImportStrip item={packImportItem} onImport={() => router.push(manualImportHref(packImportItem))} />
+                )}
 
                 {open && (
                   <div className="border-t border-border/40 divide-y divide-border/30">
@@ -1281,6 +1407,16 @@ function QueueTab({
                     <Progress value={progress} className="h-2" />
                   </div>
 
+                  {canManageActivity && selectedImportItem && (
+                    <Button
+                      className="w-full"
+                      onClick={() => { router.push(manualImportHref(selectedImportItem)); setSelectedItem(null); }}
+                    >
+                      <Upload className="mr-2 h-4 w-4" />
+                      Manual Import
+                    </Button>
+                  )}
+
                   {/* Remove button */}
                   {canManageActivity && (
                     <Button
@@ -1366,6 +1502,7 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 function FailedImportsTab({ filterBy, instanceFilter }: { filterBy: string[]; instanceFilter: string }) {
   const router = useRouter();
   const canManageActivity = useCan('activity.manage');
+  const pendingImports = usePendingImports();
   const [refreshIntervalMs, setRefreshIntervalMs] = useState(5000);
 
   useEffect(() => {
@@ -1392,9 +1529,8 @@ function FailedImportsTab({ filterBy, instanceFilter }: { filterBy: string[]; in
   const loading = queueQuery.isLoading;
   // Only import-blocked/stuck items, narrowed to the selected sources/instance.
   const queue = useMemo(() => {
-    let failed = (queueQuery.data ?? []).filter(
-      (r) => classifyQueueIssue(r.trackedDownloadState, r.trackedDownloadStatus) === 'import'
-    );
+    // An import in progress isn't a failure to act on any more.
+    let failed = applyPendingImports(queueQuery.data ?? [], pendingImports).filter(needsManualImport);
     if (filterBy.length > 0) {
       failed = failed.filter((r) => r.source !== undefined && filterBy.includes(r.source));
     }
@@ -1402,24 +1538,8 @@ function FailedImportsTab({ filterBy, instanceFilter }: { filterBy: string[]; in
       failed = failed.filter((r) => r.instanceId === instanceFilter);
     }
     return failed;
-  }, [queueQuery.data, filterBy, instanceFilter]);
+  }, [queueQuery.data, pendingImports, filterBy, instanceFilter]);
 
-  /**
-   * Navigate to the manual import page for a queue item, embedding its identifiers in the query string.
-   *
-   * @param item - The queue item whose import page should be opened. Uses `downloadId`, `title`, and `source` (defaults to `"sonarr"`), and adds `seriesId` or `movieId` when present.
-   */
-  function openManualImport(item: QueueItem & { source?: string }) {
-    const params = new URLSearchParams({
-      downloadId: item.downloadId,
-      source: item.source || 'sonarr',
-      title: item.title || '',
-    });
-    if (item.seriesId) params.set('seriesId', String(item.seriesId));
-    if (item.movieId) params.set('movieId', String(item.movieId));
-    if (item.instanceId) params.set('instanceId', item.instanceId);
-    router.push(`/activity/import?${params}`);
-  }
 
   if (loading) {
     return <ListSkeleton />;
@@ -1457,12 +1577,12 @@ function FailedImportsTab({ filterBy, instanceFilter }: { filterBy: string[]; in
                       href: mediaHref,
                     }]
                     : []),
-                  ...(canManageActivity
+                  ...(canManageActivity && canManualImport(item)
                     ? [{
                       id: 'manual-import',
                       label: 'Open Manual Import',
                       icon: <Upload className="h-4 w-4" />,
-                      onSelect: () => openManualImport(item),
+                      onSelect: () => router.push(manualImportHref(item)),
                     }]
                     : []),
                 ],
@@ -1485,8 +1605,8 @@ function FailedImportsTab({ filterBy, instanceFilter }: { filterBy: string[]; in
                     </p>
                   ))}
                 </div>
-                {canManageActivity && (
-                  <Button size="sm" className="shrink-0 h-8 text-xs" onClick={() => openManualImport(item)}>
+                {canManageActivity && canManualImport(item) && (
+                  <Button size="sm" className="shrink-0 h-8 text-xs" onClick={() => router.push(manualImportHref(item))}>
                     <Upload className="mr-1.5 h-3.5 w-3.5" /> Import
                   </Button>
                 )}
