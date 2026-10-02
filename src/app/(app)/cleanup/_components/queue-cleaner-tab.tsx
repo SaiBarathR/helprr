@@ -323,7 +323,7 @@ export function QueueCleanerTab({ onDirtyChange }: Props) {
                 <Label>Enabled</Label>
                 <p className="text-xs text-muted-foreground mt-0.5">Master toggle for the Queue Cleaner.</p>
               </div>
-              <Switch checked={cfg.enabled} onCheckedChange={(v) => setCfg({ ...cfg, enabled: v })} />
+              <Switch aria-label="Queue Cleaner enabled" checked={cfg.enabled} onCheckedChange={(v) => setCfg({ ...cfg, enabled: v })} />
             </div>
 
             <div className="grouped-row grouped-row-stack-mobile gap-2">
@@ -367,7 +367,7 @@ export function QueueCleanerTab({ onDirtyChange }: Props) {
                 <Label>Re-search after removal</Label>
                 <p className="text-xs text-muted-foreground mt-0.5">When linked to Sonarr/Radarr, blocklist and trigger a new search.</p>
               </div>
-              <Switch checked={cfg.reSearchAfterRemoval} onCheckedChange={(v) => setCfg({ ...cfg, reSearchAfterRemoval: v })} />
+              <Switch aria-label="Re-search after removal" checked={cfg.reSearchAfterRemoval} onCheckedChange={(v) => setCfg({ ...cfg, reSearchAfterRemoval: v })} />
             </div>
 
             <div className="grouped-row">
@@ -375,7 +375,7 @@ export function QueueCleanerTab({ onDirtyChange }: Props) {
                 <Label>Process downloads without content ID</Label>
                 <p className="text-xs text-muted-foreground mt-0.5">Affects Failed Import only. Off (recommended) skips queue items that aren&apos;t linked to a series/movie.</p>
               </div>
-              <Switch checked={cfg.processNoContentId} onCheckedChange={(v) => setCfg({ ...cfg, processNoContentId: v })} />
+              <Switch aria-label="Process downloads without content ID" checked={cfg.processNoContentId} onCheckedChange={(v) => setCfg({ ...cfg, processNoContentId: v })} />
             </div>
 
             <div className="grouped-row grouped-row-stacked gap-2">
@@ -574,7 +574,7 @@ function FailedImportSection({ cfg, setCfg }: { cfg: QueueCleanerConfigShape; se
             <Label>Ignore private torrents</Label>
             <p className="text-xs text-muted-foreground mt-0.5">Skip Failed Import handling entirely on private trackers.</p>
           </div>
-          <Switch checked={fi.ignorePrivate} onCheckedChange={(v) => set({ ignorePrivate: v })} />
+          <Switch aria-label="Ignore private trackers" checked={fi.ignorePrivate} onCheckedChange={(v) => set({ ignorePrivate: v })} />
         </div>
 
         <div className="grouped-row">
@@ -582,7 +582,7 @@ function FailedImportSection({ cfg, setCfg }: { cfg: QueueCleanerConfigShape; se
             <Label>Change category (instead of delete)</Label>
             <p className="text-xs text-muted-foreground mt-0.5">Tell Sonarr/Radarr to move the queue item to its post-import category. Not compatible with &quot;Delete private torrents&quot;.</p>
           </div>
-          <Switch
+          <Switch aria-label="Change category instead of delete"
             checked={fi.changeCategory}
             disabled={fi.deletePrivate && !fi.changeCategory}
             onCheckedChange={(v) => set({ changeCategory: v })}
@@ -597,7 +597,7 @@ function FailedImportSection({ cfg, setCfg }: { cfg: QueueCleanerConfigShape; se
             </Label>
             <p className="text-xs text-muted-foreground mt-0.5">Permit deletion even on private trackers. Affects H&amp;R standing. Not compatible with &quot;Change category&quot;.</p>
           </div>
-          <Switch
+          <Switch aria-label="Delete private torrents"
             checked={fi.deletePrivate}
             disabled={fi.changeCategory && !fi.deletePrivate}
             onCheckedChange={(v) => set({ deletePrivate: v })}
@@ -722,7 +722,7 @@ function RuleCard<R extends CommonRuleShape>({
         )}
         <div className="flex items-center gap-2 shrink-0 ml-auto">
           <span className="text-xs text-muted-foreground">{rule.enabled ? 'On' : 'Off'}</span>
-          <Switch
+          <Switch aria-label={`${rule.name || 'Untitled rule'} enabled`}
             checked={rule.enabled}
             onCheckedChange={(v) => onChange({ ...rule, enabled: v })}
           />

@@ -30,7 +30,8 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from '@/components/ui/dropdown-menu';
-import { PageSpinner } from '@/components/ui/page-spinner';
+import { Skeleton } from '@/components/ui/skeleton';
+import { MediaGridSkeleton } from '@/components/ui/media-grid-skeleton';
 import { LanguageRegionCombobox } from '@/components/ui/language-region-combobox';
 import { WatchlistButton } from '@/components/watchlist/watchlist-button';
 import { ScheduledAlertButton } from '@/components/scheduled-alerts/scheduled-alert-dialog';
@@ -479,6 +480,31 @@ function MediaPoster({
           onDone={() => markRequested(seerrMediaType, item.tmdbId)}
         />
       )}
+    </div>
+  );
+}
+
+// Cold-load placeholder in the page's own shape (hero, then poster rails at the
+// real card widths) instead of a lone spinner, so the content lands in place.
+function DiscoverHomeSkeleton() {
+  return (
+    <div role="status" aria-live="polite" aria-label="Loading Discover" className="space-y-5">
+      <div aria-hidden="true" className="space-y-5">
+        <Skeleton className="-mx-2 h-[280px] rounded-none md:-mx-6 md:h-[380px]" />
+        {Array.from({ length: 3 }, (_, row) => (
+          <div key={row} className="space-y-2">
+            <Skeleton className="h-5 w-40" />
+            <div className="rail-bleed flex gap-2.5 overflow-hidden pb-1">
+              {Array.from({ length: 8 }, (_, i) => (
+                <Skeleton
+                  key={i}
+                  className="aspect-[2/3] min-w-[110px] w-[110px] shrink-0 rounded-xl sm:min-w-[140px] sm:w-[140px] md:min-w-[150px] md:w-[150px] lg:min-w-[164px] lg:w-[164px] xl:min-w-[180px] xl:w-[180px] 2xl:min-w-[196px] 2xl:w-[196px]"
+                />
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -1331,7 +1357,7 @@ export default function DiscoverPage() {
       {!gridMode && (
         <div className="space-y-5">
           {loadingSections ? (
-            <PageSpinner />
+            <DiscoverHomeSkeleton />
           ) : (
             <>
               {heroItems.length > 0 && (
@@ -1438,7 +1464,7 @@ export default function DiscoverPage() {
           </div>
 
           {loadingItems ? (
-            <PageSpinner />
+            <MediaGridSkeleton gridClassName={gridClassName} />
           ) : items.length === 0 ? (
             <div className="rounded-xl border border-border/60 bg-card p-8 text-center space-y-2">
               <Search className="h-6 w-6 mx-auto text-muted-foreground" />

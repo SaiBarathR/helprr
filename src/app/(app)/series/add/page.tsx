@@ -425,12 +425,12 @@ function AddSeriesPageContent() {
 
                   <div className="grouped-row">
                     <Label className="text-sm shrink-0">Season Folders</Label>
-                    <Switch checked={seasonFolder} onCheckedChange={setSeasonFolder} />
+                    <Switch aria-label="Season folders" checked={seasonFolder} onCheckedChange={setSeasonFolder} />
                   </div>
 
                   <div className="grouped-row">
                     <Label className="text-sm shrink-0">Start Search For Missing Episodes</Label>
-                    <Switch checked={searchForMissingEpisodes} onCheckedChange={setSearchForMissingEpisodes} />
+                    <Switch aria-label="Start search for missing episodes" checked={searchForMissingEpisodes} onCheckedChange={setSearchForMissingEpisodes} />
                   </div>
 
                   <div className="grouped-row">

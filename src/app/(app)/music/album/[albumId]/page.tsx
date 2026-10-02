@@ -334,7 +334,8 @@ export default function AlbumDetailPage() {
                 onClick={handleToggleMonitored}
                 disabled={actionLoading === 'monitor'}
                 className="min-w-[44px] min-h-[44px] flex items-center justify-center text-primary"
-                aria-label="Toggle monitored"
+                aria-label="Monitored"
+                aria-pressed={album.monitored}
               >
                 {actionLoading === 'monitor' ? (
                   <Loader2 className="h-5 w-5 animate-spin" />
@@ -347,7 +348,7 @@ export default function AlbumDetailPage() {
             )}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <button className="min-w-[44px] min-h-[44px] flex items-center justify-center text-primary">
+                <button className="min-w-[44px] min-h-[44px] flex items-center justify-center text-primary" aria-label="More actions">
                   <MoreHorizontal className="h-5 w-5" />
                 </button>
               </DropdownMenuTrigger>

@@ -377,7 +377,7 @@ function AddMoviePageContent() {
 
                   <div className="grouped-row">
                     <Label className="text-sm shrink-0">Start Search For Missing Movie</Label>
-                    <Switch checked={searchForMovie} onCheckedChange={setSearchForMovie} />
+                    <Switch aria-label="Start search for missing movie" checked={searchForMovie} onCheckedChange={setSearchForMovie} />
                   </div>
 
                   <div className="grouped-row">

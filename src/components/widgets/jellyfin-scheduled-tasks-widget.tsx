@@ -125,6 +125,7 @@ export function JellyfinScheduledTasksWidget({ refreshInterval, editMode = false
       variant="ghost"
       size="icon"
       className="h-7 w-7"
+      aria-label="Refresh scheduled tasks"
       disabled={manualRefreshing || editMode}
       onClick={() => {
         setManualRefreshing(true);
@@ -194,6 +195,7 @@ export function JellyfinScheduledTasksWidget({ refreshInterval, editMode = false
                         variant="ghost"
                         size="icon"
                         className="h-6 w-6 shrink-0 text-red-500 hover:text-red-400 hover:bg-red-500/10"
+                        aria-label={`Stop ${t.Name}`}
                         disabled={editMode || busyTasks.has(t.Id)}
                         onClick={() => handleTaskAction(t.Id, 'stop')}
                       >
@@ -324,6 +326,7 @@ export function JellyfinScheduledTasksWidget({ refreshInterval, editMode = false
                                         ? 'text-red-500 hover:text-red-400 hover:bg-red-500/10'
                                         : 'text-[var(--hpr-cyan)] hover:text-[var(--hpr-cyan)]/80 hover:bg-[var(--hpr-cyan)]/10'
                                     }`}
+                                    aria-label={`${isRunning ? 'Stop' : 'Run'} ${t.Name}`}
                                     disabled={editMode || isBusy}
                                     onClick={() => handleTaskAction(t.Id, isRunning ? 'stop' : 'start')}
                                   >

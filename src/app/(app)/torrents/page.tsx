@@ -1734,7 +1734,8 @@ export default function TorrentsPage() {
                       <DetailRow label="Remaining" value={formatBytes(detailTorrent.amount_left || 0)} />
                     )}
                     <DetailRow label="Ratio" value={Number(detailData.properties.share_ratio || 0).toFixed(2)} />
-                    <DetailRow label="Availability" value={(detailTorrent?.availability ?? 0).toFixed(2)} />
+                    {/* qBittorrent reports -1 when availability doesn't apply (e.g. seeding). */}
+                    <DetailRow label="Availability" value={(detailTorrent?.availability ?? -1) >= 0 ? detailTorrent!.availability.toFixed(2) : '—'} />
                     {Number(detailData.properties.dl_speed) > 0 && (
                       <DetailRow label="DL Speed" value={formatSpeed(Number(detailData.properties.dl_speed))} />
                     )}

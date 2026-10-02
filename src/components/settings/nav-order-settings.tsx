@@ -148,6 +148,7 @@ function SortableNavItem({
           <Switch
             checked={!isDisabled}
             onCheckedChange={onToggle}
+            aria-label={`Show ${item.label}`}
           />
         )}
       </div>

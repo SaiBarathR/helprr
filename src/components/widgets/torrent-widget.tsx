@@ -104,7 +104,7 @@ export function TorrentWidget({
             {total}
           </span>
           <Eyebrow>
-            <span className="@max-[159px]/cell:hidden">torrent</span>
+            <span className="@max-[159px]/cell:hidden">{total === 1 ? 'torrent' : 'torrents'}</span>
           </Eyebrow>
         </div>
         {data && (

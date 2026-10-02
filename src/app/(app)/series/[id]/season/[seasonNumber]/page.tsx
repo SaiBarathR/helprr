@@ -339,6 +339,8 @@ export default function SeasonDetailPage() {
                 onClick={handleToggleSeasonMonitor}
                 disabled={actionLoading === 'monitor'}
                 className="min-w-[44px] min-h-[44px] flex items-center justify-center text-primary"
+                aria-label="Monitored"
+                aria-pressed={isSeasonMonitored}
               >
                 {actionLoading === 'monitor' ? (
                   <Loader2 className="h-5 w-5 animate-spin" />
@@ -353,7 +355,7 @@ export default function SeasonDetailPage() {
             {/* 3-dot menu */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <button className="min-w-[44px] min-h-[44px] flex items-center justify-center text-primary">
+                <button className="min-w-[44px] min-h-[44px] flex items-center justify-center text-primary" aria-label="More actions">
                   <MoreHorizontal className="h-5 w-5" />
                 </button>
               </DropdownMenuTrigger>

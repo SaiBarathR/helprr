@@ -4,10 +4,12 @@ import { Activity } from 'lucide-react';
 
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
 import type { WidgetProps } from '@/lib/widgets/types';
+import { withAppName } from '@/components/instance-filter';
 import { Dot, Eyebrow, FONT_MONO, HPR, EmptyState } from './bento-primitives';
 
 interface ServiceStatus {
   instanceId: string;
+  type: string;
   label: string;
   ok: boolean;
 }
@@ -76,7 +78,7 @@ export function ServiceHealthWidget({ refreshInterval, narrow = false, editMode 
                   textOverflow: 'ellipsis',
                 }}
               >
-                {s.label}
+                {withAppName(s.label, s.type)}
               </span>
             </div>
             <span

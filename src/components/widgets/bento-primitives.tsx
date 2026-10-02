@@ -604,10 +604,16 @@ export function BentoTopBar({
     <div
       style={{
         position: 'sticky',
-        top: 0,
+        // Pin below the app header (and the iPhone status bar), not under it.
+        top: 'var(--header-height, 0px)',
         zIndex: 10,
-        padding: mobile ? '14px 14px 10px' : '14px 0 12px',
-        // background: `lineaFor thr-gradient(180deg, ${HPR.inkSoft} 70%, transparent)`,
+        // Bleed across the dashboard's own padding so the solid bar spans the
+        // page; widgets scrolling underneath no longer show through it.
+        marginInline: mobile ? '-0.75rem' : '-1.75rem',
+        padding: mobile ? '14px 26px 10px' : '14px 1.75rem 12px',
+        background: mix(HPR.ink, 92),
+        backdropFilter: 'blur(12px)',
+        WebkitBackdropFilter: 'blur(12px)',
         display: 'flex',
         alignItems: 'center',
         gap: 12,
@@ -656,13 +662,14 @@ export function BentoTopBar({
       {edit ? (
         <div style={{ display: 'flex', gap: 6, flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end', marginLeft: 'auto' }}>
           {onSwitch && (
-            <button type="button" onClick={onSwitch} style={btnSecondary}>
+            <button type="button" onClick={onSwitch} className="relative touch-target" style={btnSecondary}>
               Layouts
             </button>
           )}
           {onConfigureRefresh && (
             <button
               type="button"
+              className="relative touch-target"
               onClick={onConfigureRefresh}
               aria-label="Configure refresh intervals"
               style={btnIcon}
@@ -671,18 +678,19 @@ export function BentoTopBar({
             </button>
           )}
           {onAdd && (
-            <button type="button" onClick={onAdd} aria-label="Add widget" style={btnIcon}>
+            <button type="button" onClick={onAdd} aria-label="Add widget" className="relative touch-target" style={btnIcon}>
               <Plus size={14} strokeWidth={2.2} />
             </button>
           )}
           {onDiscard && dirty && (
-            <button type="button" onClick={onDiscard} disabled={saving} style={btnSecondary}>
+            <button type="button" onClick={onDiscard} disabled={saving} className="relative touch-target" style={btnSecondary}>
               Discard
             </button>
           )}
           {onSave && (
             <button
               type="button"
+              className="relative touch-target"
               onClick={onSave}
               disabled={!dirty || saving}
               aria-label={saving ? 'Saving' : 'Save'}
@@ -692,7 +700,7 @@ export function BentoTopBar({
             </button>
           )}
           {onDone && (
-            <button type="button" onClick={onDone} style={btnDone}>
+            <button type="button" onClick={onDone} className="relative touch-target" style={btnDone}>
               Done
             </button>
           )}
@@ -776,12 +784,41 @@ export function FloatingEdit({
   mobile?: boolean;
   onClick?: () => void;
 }) {
+  // Slides away while scrolling down so it doesn't sit on widget headers, and
+  // comes back on any upward scroll or near the top of the page.
+  const [hidden, setHidden] = React.useState(false);
+  React.useEffect(() => {
+    let anchor = window.scrollY;
+    const onScroll = () => {
+      const y = window.scrollY;
+      if (y < 80) {
+        setHidden(false);
+        anchor = y;
+        return;
+      }
+      if (y - anchor > 24) {
+        setHidden(true);
+        anchor = y;
+      } else if (anchor - y > 24) {
+        setHidden(false);
+        anchor = y;
+      }
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
   return (
     <button
       type="button"
       onClick={onClick}
       aria-label={edit ? 'Done editing dashboard' : 'Edit dashboard'}
+      tabIndex={hidden ? -1 : undefined}
       style={{
+        transform: hidden ? 'translateY(calc(100% + 24px))' : undefined,
+        opacity: hidden ? 0 : 1,
+        pointerEvents: hidden ? 'none' : undefined,
+        transition: 'transform 0.2s ease, opacity 0.2s ease',
         position: 'fixed',
         // Clear the tab bar, home indicator and now-playing bar like the other
         // floating bars; a fixed offset sat on the iPhone tab bar.

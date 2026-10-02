@@ -59,6 +59,12 @@ import {
   Power,
   FolderSync,
 } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import type {
   JellyfinSession,
   JellyfinItem,
@@ -460,26 +466,30 @@ function OverviewTab() {
               {serverAction === 'scan-libraries' || scanRunning ? <Loader2 className="h-3 w-3 animate-spin" /> : <FolderSync className="h-3 w-3" />}
               {scanRunning ? 'Scanning…' : 'Scan Libraries'}
             </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 flex-1 text-[11px] gap-1.5 text-muted-foreground hover:text-amber-500 hover:bg-amber-500/10"
-              disabled={serverAction !== null}
-              onClick={() => handleServerAction('restart')}
-            >
-              {serverAction === 'restart' ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCw className="h-3 w-3" />}
-              Restart
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 flex-1 text-[11px] gap-1.5 text-muted-foreground hover:text-red-500 hover:bg-red-500/10"
-              disabled={serverAction !== null}
-              onClick={() => handleServerAction('shutdown')}
-            >
-              {serverAction === 'shutdown' ? <Loader2 className="h-3 w-3 animate-spin" /> : <Power className="h-3 w-3" />}
-              Shutdown
-            </Button>
+            {/* Restart and shut down sit behind a menu (each still confirms), away
+                from the everyday Scan Libraries button. */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 gap-1.5 px-3 text-[11px] text-muted-foreground"
+                  aria-label="Server power"
+                  disabled={serverAction !== null}
+                >
+                  {serverAction === 'restart' || serverAction === 'shutdown' ? <Loader2 className="h-3 w-3 animate-spin" /> : <Power className="h-3 w-3" />}
+                  Power
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => handleServerAction('restart')}>
+                  <RotateCw className="h-4 w-4" /> Restart
+                </DropdownMenuItem>
+                <DropdownMenuItem variant="destructive" onClick={() => handleServerAction('shutdown')}>
+                  <Power className="h-4 w-4" /> Shut down
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
       )}
@@ -1731,6 +1741,7 @@ function ScheduledTasksList({ tasks, onRefresh }: { tasks: JellyfinScheduledTask
             variant="ghost"
             size="icon"
             className="h-7 w-7"
+            aria-label="Refresh scheduled tasks"
             disabled={refreshing}
             onClick={refresh}
           >
@@ -1773,6 +1784,7 @@ function ScheduledTasksList({ tasks, onRefresh }: { tasks: JellyfinScheduledTask
                   variant="ghost"
                   size="icon"
                   className="h-6 w-6 shrink-0 text-red-500 hover:text-red-400 hover:bg-red-500/10"
+                  aria-label={`Stop ${t.Name}`}
                   disabled={busyTasks.has(t.Id)}
                   onClick={() => handleTaskAction(t.Id, 'stop')}
                 >
@@ -1885,6 +1897,7 @@ function ScheduledTasksList({ tasks, onRefresh }: { tasks: JellyfinScheduledTask
                               variant="ghost"
                               size="icon"
                               className={`h-6 w-6 shrink-0 ${isRunning ? 'text-red-500 hover:text-red-400 hover:bg-red-500/10' : 'text-[var(--hpr-cyan)] hover:text-[var(--hpr-cyan)]/80 hover:bg-[var(--hpr-cyan)]/10'}`}
+                              aria-label={`${isRunning ? 'Stop' : 'Run'} ${t.Name}`}
                               disabled={isBusy}
                               onClick={() => handleTaskAction(t.Id, isRunning ? 'stop' : 'start')}
                             >

@@ -258,7 +258,7 @@ export default function AnimeMappingsPage() {
       >
         <div className="grouped-row">
           <span className="text-sm">Nightly auto-map</span>
-          <Switch
+          <Switch aria-label="Nightly auto-map"
             checked={settings?.animeAutoMapEnabled ?? true}
             onCheckedChange={(next) => void updateSettings({ animeAutoMapEnabled: next })}
             disabled={!settings}

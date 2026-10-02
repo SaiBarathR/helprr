@@ -17,7 +17,17 @@ export interface InstanceOption {
   label: string;
 }
 
-const APP_NAMES: Record<string, string> = { sonarr: 'Sonarr', radarr: 'Radarr', lidarr: 'Lidarr' };
+const APP_NAMES: Record<string, string> = {
+  sonarr: 'Sonarr',
+  radarr: 'Radarr',
+  lidarr: 'Lidarr',
+  prowlarr: 'Prowlarr',
+  qbittorrent: 'qBittorrent',
+  jellyfin: 'Jellyfin',
+  seerr: 'Seerr',
+  tmdb: 'TMDB',
+  anilist: 'AniList',
+};
 
 /**
  * "main (Sonarr)": instances of different apps are often named alike. A label
@@ -25,7 +35,10 @@ const APP_NAMES: Record<string, string> = { sonarr: 'Sonarr', radarr: 'Radarr', 
  */
 export function withAppName(label: string, type?: string): string {
   const app = type ? APP_NAMES[type.toLowerCase()] : undefined;
-  if (!app || label.toLowerCase().includes(app.toLowerCase())) return label;
+  if (!app) return label;
+  // Older rows store the type itself ("SONARR") as the label.
+  if (label.toLowerCase() === app.toLowerCase()) return app;
+  if (label.toLowerCase().includes(app.toLowerCase())) return label;
   return `${label} (${app})`;
 }
 

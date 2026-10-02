@@ -299,7 +299,7 @@ export function DownloadCleanerTab({ onDirtyChange }: Props) {
                 <Label>Enabled</Label>
                 <p className="text-xs text-muted-foreground mt-0.5">Master toggle for the Download Cleaner.</p>
               </div>
-              <Switch checked={cfg.enabled} onCheckedChange={(v) => setCfg({ ...cfg, enabled: v })} />
+              <Switch aria-label="Download Cleaner enabled" checked={cfg.enabled} onCheckedChange={(v) => setCfg({ ...cfg, enabled: v })} />
             </div>
 
             <div className="grouped-row grouped-row-stack-mobile gap-2">
@@ -369,7 +369,7 @@ export function DownloadCleanerTab({ onDirtyChange }: Props) {
                 <Label>Enabled</Label>
                 <p className="text-xs text-muted-foreground mt-0.5">Removes torrents in the listed categories as soon as Sonarr/Radarr finish importing them. Managed internally as a hidden system rule. Mutually exclusive with rule-level import confirmation.</p>
               </div>
-              <Switch
+              <Switch aria-label="Auto-remove imported enabled"
                 checked={cfg.autoRemoveImportedEnabled}
                 disabled={ruleLevelConflicts.length > 0}
                 onCheckedChange={(v) => {
@@ -416,7 +416,7 @@ export function DownloadCleanerTab({ onDirtyChange }: Props) {
                 <Label>Delete files</Label>
                 <p className="text-xs text-muted-foreground mt-0.5">Also delete the source files on disk. Off keeps the files and only removes from qBittorrent.</p>
               </div>
-              <Switch checked={cfg.autoRemoveImportedDeleteFiles}
+              <Switch aria-label="Delete files when auto-removing" checked={cfg.autoRemoveImportedDeleteFiles}
                 onCheckedChange={(v) => setCfg({ ...cfg, autoRemoveImportedDeleteFiles: v })}
                 disabled={!cfg.autoRemoveImportedEnabled} />
             </div>
@@ -574,7 +574,7 @@ function SeedingRuleCard({
         )}
         <div className="flex items-center gap-2 shrink-0 ml-auto">
           <span className="text-xs text-muted-foreground">{rule.enabled ? 'On' : 'Off'}</span>
-          <Switch checked={rule.enabled} onCheckedChange={(v) => onChange({ ...rule, enabled: v })} />
+          <Switch aria-label={`${rule.name || 'Untitled rule'} enabled`} checked={rule.enabled} onCheckedChange={(v) => onChange({ ...rule, enabled: v })} />
           {editing ? (
             <Button size="sm" variant="ghost" onClick={onDone} aria-label="Collapse rule">
               <ChevronUp className="w-4 h-4" />

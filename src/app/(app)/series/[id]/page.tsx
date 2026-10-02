@@ -1018,6 +1018,8 @@ export default function SeriesDetailPage() {
                 onClick={handleToggleMonitored}
                 disabled={actionLoading === 'monitor'}
                 className="min-w-[44px] min-h-[44px] flex items-center justify-center text-primary"
+                aria-label="Monitored"
+                aria-pressed={series.monitored}
               >
                 {actionLoading === 'monitor' ? (
                   <Loader2 className="h-5 w-5 animate-spin" />
@@ -1032,7 +1034,7 @@ export default function SeriesDetailPage() {
             {/* 3-dot dropdown */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <button className="min-w-[44px] min-h-[44px] flex items-center justify-center text-primary">
+                <button className="min-w-[44px] min-h-[44px] flex items-center justify-center text-primary" aria-label="More actions">
                   <MoreHorizontal className="h-5 w-5" />
                 </button>
               </DropdownMenuTrigger>
@@ -1600,6 +1602,8 @@ export default function SeriesDetailPage() {
                           <button
                             onClick={() => toggleSeasonExpand(sn)}
                             className="min-w-[36px] min-h-[44px] flex items-center justify-center"
+                            aria-label={sn === 0 ? 'Specials episodes' : `Season ${sn} episodes`}
+                            aria-expanded={isExpanded}
                           >
                             {isExpanded ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
                           </button>
@@ -1609,6 +1613,8 @@ export default function SeriesDetailPage() {
                           <button
                             onClick={() => handleToggleSeasonMonitor(sn, !isMonitored)}
                             className="min-w-[36px] min-h-[44px] flex items-center justify-center"
+                            aria-label={sn === 0 ? 'Specials monitored' : `Season ${sn} monitored`}
+                            aria-pressed={isMonitored}
                           >
                             {isMonitored ? (
                               <Bookmark className="h-5 w-5 fill-current text-foreground" />

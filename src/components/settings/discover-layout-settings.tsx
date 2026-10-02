@@ -178,7 +178,7 @@ function SortableSection({
           </button>
         )}
 
-        <Switch checked={section.enabled} onCheckedChange={onToggle} />
+        <Switch checked={section.enabled} onCheckedChange={onToggle} aria-label={`Show ${section.label}`} />
       </div>
     </QuickContextMenu>
   );

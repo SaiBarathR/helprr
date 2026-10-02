@@ -39,7 +39,14 @@ import {
   Database,
   Info,
   Copy,
+  MoreVertical,
 } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import dynamic from 'next/dynamic';
 import { fmtNum } from '@/components/widgets/prowlarr-stats-shared';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -389,19 +396,32 @@ function IndexersTab() {
                           'Test'
                         )}
                       </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-8 px-2 text-destructive hover:text-destructive"
-                        onClick={() => setConfirmDelete({ id: indexer.id, name: indexer.name })}
-                        disabled={deletingId === indexer.id}
-                      >
-                        {deletingId === indexer.id ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        ) : (
-                          <Trash2 className="h-3.5 w-3.5" />
-                        )}
-                      </Button>
+                      {/* Delete lives behind the menu, not one slip away from Test. */}
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            aria-label={`More actions for ${indexer.name}`}
+                            disabled={deletingId === indexer.id}
+                          >
+                            {deletingId === indexer.id ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <MoreVertical className="h-4 w-4" />
+                            )}
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem
+                            variant="destructive"
+                            onClick={() => setConfirmDelete({ id: indexer.id, name: indexer.name })}
+                          >
+                            <Trash2 className="h-4 w-4" /> Delete indexer
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
                   )}
                 </div>

@@ -7,6 +7,12 @@
    no attribute (SSR first paint, legacy caches) means dark, the default. */
 @custom-variant light (&:where(html[data-scheme='light'], html[data-scheme='light'] *));
 
+/* `dark:` follows the same resolved theme instead of the OS setting, so a dark
+   Helprr theme on a light-mode phone (or the reverse) styles the shared
+   inputs, badges and buttons for the page they are actually on. The cinematic
+   Watch skin is always dark, whatever the theme. */
+@custom-variant dark (&:where(html:not([data-scheme='light']), html:not([data-scheme='light']) *, html[data-watch-skin='cinematic']:has(.hpr-watch), html[data-watch-skin='cinematic']:has(.hpr-watch) *));
+
 /* Grows a small control's tap area to 44px without changing its size or the
    layout around it: a transparent ::after centred on the control takes the
    taps. The control must be positioned (`relative` or `absolute`) and must not
@@ -291,6 +297,96 @@
 .page-bleed {
   margin-inline: calc(-1 * var(--main-pad-x));
   padding-inline: var(--main-pad-x);
+}
+
+/* Light theme contrast. Tinted pills and banners (a translucent 400/500 tint
+   behind 200-400 text: "Downloaded", AniList statuses, warning banners) are
+   tuned for dark surfaces and wash out on light ones, so the text takes the
+   700 shade. Only same-hue tint + text pairs match, so accent text over
+   black image scrims is left alone. */
+html[data-scheme='light'] :is([class*='bg-red-400/'], [class*='bg-red-500/']):is(.text-red-200, .text-red-300, .text-red-400),
+html[data-scheme='light'] :is([class*='bg-red-400/'], [class*='bg-red-500/']) :is(.text-red-200, .text-red-300, .text-red-400) {
+  color: var(--color-red-700);
+}
+
+html[data-scheme='light'] :is([class*='bg-rose-400/'], [class*='bg-rose-500/']):is(.text-rose-200, .text-rose-300, .text-rose-400),
+html[data-scheme='light'] :is([class*='bg-rose-400/'], [class*='bg-rose-500/']) :is(.text-rose-200, .text-rose-300, .text-rose-400) {
+  color: var(--color-rose-700);
+}
+
+html[data-scheme='light'] :is([class*='bg-orange-400/'], [class*='bg-orange-500/']):is(.text-orange-200, .text-orange-300, .text-orange-400),
+html[data-scheme='light'] :is([class*='bg-orange-400/'], [class*='bg-orange-500/']) :is(.text-orange-200, .text-orange-300, .text-orange-400) {
+  color: var(--color-orange-700);
+}
+
+html[data-scheme='light'] :is([class*='bg-amber-400/'], [class*='bg-amber-500/']):is(.text-amber-200, .text-amber-300, .text-amber-400),
+html[data-scheme='light'] :is([class*='bg-amber-400/'], [class*='bg-amber-500/']) :is(.text-amber-200, .text-amber-300, .text-amber-400) {
+  color: var(--color-amber-700);
+}
+
+html[data-scheme='light'] :is([class*='bg-yellow-400/'], [class*='bg-yellow-500/']):is(.text-yellow-200, .text-yellow-300, .text-yellow-400),
+html[data-scheme='light'] :is([class*='bg-yellow-400/'], [class*='bg-yellow-500/']) :is(.text-yellow-200, .text-yellow-300, .text-yellow-400) {
+  color: var(--color-yellow-700);
+}
+
+html[data-scheme='light'] :is([class*='bg-lime-400/'], [class*='bg-lime-500/']):is(.text-lime-200, .text-lime-300, .text-lime-400),
+html[data-scheme='light'] :is([class*='bg-lime-400/'], [class*='bg-lime-500/']) :is(.text-lime-200, .text-lime-300, .text-lime-400) {
+  color: var(--color-lime-700);
+}
+
+html[data-scheme='light'] :is([class*='bg-green-400/'], [class*='bg-green-500/']):is(.text-green-200, .text-green-300, .text-green-400),
+html[data-scheme='light'] :is([class*='bg-green-400/'], [class*='bg-green-500/']) :is(.text-green-200, .text-green-300, .text-green-400) {
+  color: var(--color-green-700);
+}
+
+html[data-scheme='light'] :is([class*='bg-emerald-400/'], [class*='bg-emerald-500/']):is(.text-emerald-200, .text-emerald-300, .text-emerald-400),
+html[data-scheme='light'] :is([class*='bg-emerald-400/'], [class*='bg-emerald-500/']) :is(.text-emerald-200, .text-emerald-300, .text-emerald-400) {
+  color: var(--color-emerald-700);
+}
+
+html[data-scheme='light'] :is([class*='bg-teal-400/'], [class*='bg-teal-500/']):is(.text-teal-200, .text-teal-300, .text-teal-400),
+html[data-scheme='light'] :is([class*='bg-teal-400/'], [class*='bg-teal-500/']) :is(.text-teal-200, .text-teal-300, .text-teal-400) {
+  color: var(--color-teal-700);
+}
+
+html[data-scheme='light'] :is([class*='bg-cyan-400/'], [class*='bg-cyan-500/']):is(.text-cyan-200, .text-cyan-300, .text-cyan-400),
+html[data-scheme='light'] :is([class*='bg-cyan-400/'], [class*='bg-cyan-500/']) :is(.text-cyan-200, .text-cyan-300, .text-cyan-400) {
+  color: var(--color-cyan-700);
+}
+
+html[data-scheme='light'] :is([class*='bg-sky-400/'], [class*='bg-sky-500/']):is(.text-sky-200, .text-sky-300, .text-sky-400),
+html[data-scheme='light'] :is([class*='bg-sky-400/'], [class*='bg-sky-500/']) :is(.text-sky-200, .text-sky-300, .text-sky-400) {
+  color: var(--color-sky-700);
+}
+
+html[data-scheme='light'] :is([class*='bg-blue-400/'], [class*='bg-blue-500/']):is(.text-blue-200, .text-blue-300, .text-blue-400),
+html[data-scheme='light'] :is([class*='bg-blue-400/'], [class*='bg-blue-500/']) :is(.text-blue-200, .text-blue-300, .text-blue-400) {
+  color: var(--color-blue-700);
+}
+
+html[data-scheme='light'] :is([class*='bg-indigo-400/'], [class*='bg-indigo-500/']):is(.text-indigo-200, .text-indigo-300, .text-indigo-400),
+html[data-scheme='light'] :is([class*='bg-indigo-400/'], [class*='bg-indigo-500/']) :is(.text-indigo-200, .text-indigo-300, .text-indigo-400) {
+  color: var(--color-indigo-700);
+}
+
+html[data-scheme='light'] :is([class*='bg-violet-400/'], [class*='bg-violet-500/']):is(.text-violet-200, .text-violet-300, .text-violet-400),
+html[data-scheme='light'] :is([class*='bg-violet-400/'], [class*='bg-violet-500/']) :is(.text-violet-200, .text-violet-300, .text-violet-400) {
+  color: var(--color-violet-700);
+}
+
+html[data-scheme='light'] :is([class*='bg-purple-400/'], [class*='bg-purple-500/']):is(.text-purple-200, .text-purple-300, .text-purple-400),
+html[data-scheme='light'] :is([class*='bg-purple-400/'], [class*='bg-purple-500/']) :is(.text-purple-200, .text-purple-300, .text-purple-400) {
+  color: var(--color-purple-700);
+}
+
+html[data-scheme='light'] :is([class*='bg-fuchsia-400/'], [class*='bg-fuchsia-500/']):is(.text-fuchsia-200, .text-fuchsia-300, .text-fuchsia-400),
+html[data-scheme='light'] :is([class*='bg-fuchsia-400/'], [class*='bg-fuchsia-500/']) :is(.text-fuchsia-200, .text-fuchsia-300, .text-fuchsia-400) {
+  color: var(--color-fuchsia-700);
+}
+
+html[data-scheme='light'] :is([class*='bg-pink-400/'], [class*='bg-pink-500/']):is(.text-pink-200, .text-pink-300, .text-pink-400),
+html[data-scheme='light'] :is([class*='bg-pink-400/'], [class*='bg-pink-500/']) :is(.text-pink-200, .text-pink-300, .text-pink-400) {
+  color: var(--color-pink-700);
 }
 
 /* Movie and series detail pages, below the hero. Phones stack the sections in

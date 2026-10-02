@@ -373,7 +373,7 @@ function AddArtistPageContent() {
 
                   <div className="grouped-row">
                     <Label className="text-sm shrink-0">Search on Add</Label>
-                    <Switch checked={searchOnAdd} onCheckedChange={setSearchOnAdd} />
+                    <Switch aria-label="Search on add" checked={searchOnAdd} onCheckedChange={setSearchOnAdd} />
                   </div>
 
                   <div className="grouped-row">

@@ -63,7 +63,7 @@ import {
 } from '@/components/calendar/release-badges';
 import { useCalendar } from '@/hooks/use-calendar';
 import { useUIStore } from '@/lib/store';
-import { InstanceFilter, deriveInstances } from '@/components/instance-filter';
+import { InstanceFilter, deriveInstances, withAppName } from '@/components/instance-filter';
 import { ActiveFilterBar } from '@/components/ui/active-filter-bar';
 import { ScheduledAlertButton } from '@/components/scheduled-alerts/scheduled-alert-dialog';
 import { QuickContextMenu } from '@/components/ui/quick-context-menu';
@@ -717,7 +717,7 @@ function MonthEventItem({ event, showImages }: { event: CalendarEvent; showImage
               )}
               {event.instanceLabel && (
                 <Badge variant="outline" className="text-[9px] px-1 py-0 h-4 shrink-0">
-                  {event.instanceLabel}
+                  {withAppName(event.instanceLabel, EVENT_APP[event.type])}
                 </Badge>
               )}
             </div>

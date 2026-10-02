@@ -444,6 +444,8 @@ export default function MovieDetailPage() {
                 onClick={handleToggleMonitored}
                 disabled={actionLoading === 'monitor'}
                 className="min-w-[44px] min-h-[44px] flex items-center justify-center text-primary"
+                aria-label="Monitored"
+                aria-pressed={movie.monitored}
               >
                 {actionLoading === 'monitor' ? (
                   <Loader2 className="h-5 w-5 animate-spin" />
@@ -458,7 +460,7 @@ export default function MovieDetailPage() {
             {/* 3-dot menu */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <button className="min-w-[44px] min-h-[44px] flex items-center justify-center text-primary">
+                <button className="min-w-[44px] min-h-[44px] flex items-center justify-center text-primary" aria-label="More actions">
                   <MoreHorizontal className="h-5 w-5" />
                 </button>
               </DropdownMenuTrigger>
@@ -667,7 +669,7 @@ export default function MovieDetailPage() {
               </div>
             </div>
             {tmdbData.tagline && (
-              <p className="mt-3 md:px-4 px-1 text-sm italic text-muted-foreground">&ldquo;{tmdbData.tagline}&rdquo;</p>
+              <p className="mt-3 px-2 md:px-6 text-sm italic text-muted-foreground">&ldquo;{tmdbData.tagline}&rdquo;</p>
             )}
           </div>
         ) : (

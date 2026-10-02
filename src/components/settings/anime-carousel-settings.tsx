@@ -109,7 +109,7 @@ function SortableCarouselItem({
             AniList
           </span>
         )}
-        <Switch checked={!isDisabled} onCheckedChange={onToggle} />
+        <Switch checked={!isDisabled} onCheckedChange={onToggle} aria-label={`Show ${item.label}`} />
       </div>
     </QuickContextMenu>
   );

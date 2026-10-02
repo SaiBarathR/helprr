@@ -380,7 +380,8 @@ export default function ArtistDetailPage() {
                 onClick={handleToggleMonitored}
                 disabled={actionLoading === 'monitor'}
                 className="min-w-[44px] min-h-[44px] flex items-center justify-center text-primary"
-                aria-label="Toggle monitored"
+                aria-label="Monitored"
+                aria-pressed={artist.monitored}
               >
                 {actionLoading === 'monitor' ? (
                   <Loader2 className="h-5 w-5 animate-spin" />
@@ -394,7 +395,7 @@ export default function ArtistDetailPage() {
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <button className="min-w-[44px] min-h-[44px] flex items-center justify-center text-primary">
+                <button className="min-w-[44px] min-h-[44px] flex items-center justify-center text-primary" aria-label="More actions">
                   <MoreHorizontal className="h-5 w-5" />
                 </button>
               </DropdownMenuTrigger>
@@ -651,7 +652,7 @@ export default function ArtistDetailPage() {
                     ];
                     return (
                       <div key={album.id} className="flex gap-3 rounded-xl bg-card p-2.5 hover:bg-muted/30 transition-colors">
-                        <Link href={`/music/album/${album.id}${instance ? `?instance=${instance}` : ''}`} className="relative shrink-0 h-14 w-14 rounded-md overflow-hidden bg-muted">
+                        <Link href={`/music/album/${album.id}${instance ? `?instance=${instance}` : ''}`} aria-label={album.title} className="relative shrink-0 h-14 w-14 rounded-md overflow-hidden bg-muted">
                           {cover ? (
                             <Image src={cover} alt={album.title} fill sizes="56px" className="object-cover" unoptimized={isProtectedApiImageSrc(cover)} />
                           ) : (
