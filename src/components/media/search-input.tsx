@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import { useRef, useState } from 'react';
+import { X } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import { useSearchHistory } from '@/lib/hooks/use-search-history';
@@ -20,6 +21,8 @@ interface SearchInputProps extends Omit<React.ComponentProps<'input'>, 'value' |
   wrapperClassName?: string;
   /** Adornments rendered inside the wrapper alongside the input (icons, clear button). */
   children?: React.ReactNode;
+  /** Show a clear button while there is text (for bars without their own). */
+  clearable?: boolean;
 }
 
 // A controlled text input with a recent-search dropdown, for the non-debounced
@@ -33,6 +36,7 @@ export function SearchInput({
   onSubmit,
   wrapperClassName,
   children,
+  clearable = false,
   onFocus,
   onBlur,
   onKeyDown,
@@ -72,6 +76,7 @@ export function SearchInput({
       {children}
       <Input
         {...inputProps}
+        className={cn(inputProps.className, clearable && 'pr-9')}
         value={value}
         onChange={(e) => {
           onChange(e.target.value);
@@ -99,6 +104,16 @@ export function SearchInput({
         aria-autocomplete="list"
         aria-activedescendant={listbox.activeDescendantId}
       />
+      {clearable && value && (
+        <button
+          type="button"
+          onClick={() => onChange('')}
+          className="absolute right-1.5 top-1/2 -translate-y-1/2 flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground hover:text-foreground touch-target"
+          aria-label="Clear search"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      )}
       {open && (
         <SearchHistoryDropdown
           anchorRef={wrapperRef}

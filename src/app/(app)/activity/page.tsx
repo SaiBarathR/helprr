@@ -49,8 +49,8 @@ import { invalidateActivity } from '@/lib/query-invalidation';
 import { classifyQueueIssue } from '@/lib/queue-state';
 import { applyPendingImports, pendingImportKey, usePendingImports } from '@/lib/manual-import-tracker';
 import { useUIStore } from '@/lib/store';
-import { type InstanceOption } from '@/components/instance-filter';
-import { ActiveFilterBar, type ActiveFilter } from '@/components/ui/active-filter-bar';
+import { type InstanceOption, withAppName } from '@/components/instance-filter';
+import { ActiveFilterBar, FilterDot, filterButtonLabel, type ActiveFilter } from '@/components/ui/active-filter-bar';
 import { useCan } from '@/components/permission-provider';
 import { useBadgeActions } from '@/components/layout/badge-provider';
 import { RemoveQueueDialog, type RemoveQueueOptions } from './_components/remove-queue-dialog';
@@ -426,7 +426,8 @@ export default function ActivityPage() {
     staleTime: 5 * 60_000,
   });
   const instanceOptions = useMemo<InstanceOption[]>(
-    () => arrConnections.map((c) => ({ id: c.id, label: c.label })),
+    // Instance names repeat across apps ("main"), so each names its app too.
+    () => arrConnections.map((c) => ({ id: c.id, label: withAppName(c.label, c.type) })),
     [arrConnections],
   );
   // A link's instance that no longer exists means every instance; a saved one
@@ -495,7 +496,7 @@ export default function ActivityPage() {
   }
 
   const sourceLabel = (key: string) => FILTER_OPTIONS.find((opt) => opt.key === key)?.label ?? key;
-  const selectedInstance = arrConnections.find((c) => c.id === instanceFilter);
+  const selectedInstance = instanceOptions.find((option) => option.id === instanceFilter);
   const activeFilters: ActiveFilter[] = [
     ...sources.map((key) => ({
       id: `source:${key}`,
@@ -511,10 +512,7 @@ export default function ActivityPage() {
     ...(instanceFilter !== 'all'
       ? [{
         id: 'instance',
-        // Instance labels repeat across apps ("main"), so name the app too.
-        label: selectedInstance
-          ? `${selectedInstance.label} (${sourceLabel(selectedInstance.type.toLowerCase())})`
-          : 'Instance',
+        label: selectedInstance?.label ?? 'Instance',
         onRemove: () => updateInstance('all'),
       }]
       : []),
@@ -600,12 +598,10 @@ export default function ActivityPage() {
                   variant="ghost"
                   size="icon"
                   className="relative md:h-11 md:w-11 w-7 h-7"
-                  aria-label={activeFilters.length > 0 ? 'Filter and sort (filters active)' : 'Filter and sort'}
+                  aria-label={filterButtonLabel('Filter and sort', activeFilters.length > 0)}
                 >
                   <SlidersHorizontal className="h-4 w-4" />
-                  {activeFilters.length > 0 && (
-                    <span className="absolute right-0.5 top-0.5 h-2 w-2 rounded-full bg-primary" />
-                  )}
+                  <FilterDot active={activeFilters.length > 0} />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">

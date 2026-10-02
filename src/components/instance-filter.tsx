@@ -2,6 +2,7 @@
 
 import { Layers } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { FilterDot } from '@/components/ui/active-filter-bar';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -16,17 +17,30 @@ export interface InstanceOption {
   label: string;
 }
 
+const APP_NAMES: Record<string, string> = { sonarr: 'Sonarr', radarr: 'Radarr', lidarr: 'Lidarr' };
+
+/**
+ * "main (Sonarr)": instances of different apps are often named alike. A label
+ * that already names its app ("sonarr-anime") stays as it is.
+ */
+export function withAppName(label: string, type?: string): string {
+  const app = type ? APP_NAMES[type.toLowerCase()] : undefined;
+  if (!app || label.toLowerCase().includes(app.toLowerCase())) return label;
+  return `${label} (${app})`;
+}
+
 /**
  * Collect the distinct instances present in an already-tagged list of items
  * (preserving first-seen order). Used to build the options for {@link InstanceFilter}.
  */
 export function deriveInstances<T extends { instanceId?: string; instanceLabel?: string }>(
-  items: T[]
+  items: T[],
+  appOf?: (item: T) => string | undefined,
 ): InstanceOption[] {
   const map = new Map<string, string>();
   for (const item of items) {
     if (item.instanceId && !map.has(item.instanceId)) {
-      map.set(item.instanceId, item.instanceLabel ?? item.instanceId);
+      map.set(item.instanceId, withAppName(item.instanceLabel ?? item.instanceId, appOf?.(item)));
     }
   }
   return Array.from(map, ([id, label]) => ({ id, label }));
@@ -55,10 +69,18 @@ export function InstanceFilter({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" size="sm" className="h-8 gap-1.5 px-2 sm:px-3" title={current}>
+        <Button
+          variant="outline"
+          size="sm"
+          className="relative h-8 gap-1.5 px-2 sm:px-3"
+          title={current}
+          aria-label={`Instance: ${current}`}
+        >
           <Layers className="h-3.5 w-3.5 shrink-0" />
-          {/* Icon-only on mobile to avoid horizontal overflow; label shows from sm up. */}
+          {/* Icon-only on mobile to avoid horizontal overflow; label shows from sm up,
+              and the dot marks a picked instance where the label is hidden. */}
           <span className="hidden sm:inline max-w-[10rem] truncate">{current}</span>
+          <span className="sm:hidden"><FilterDot active={value !== 'all'} /></span>
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align={align}>
