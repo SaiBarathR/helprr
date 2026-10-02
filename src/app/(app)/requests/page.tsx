@@ -9,7 +9,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { useExternalUrls } from '@/lib/hooks/use-external-urls';
 import { useUIStore } from '@/lib/store';
 import { useCan } from '@/components/permission-provider';
-import { RequestsFilterMenu } from '@/components/seerr/requests-filter-menu';
+import { RequestsFilterMenu, useRequestsActiveFilters } from '@/components/seerr/requests-filter-menu';
+import { ActiveFilterBar } from '@/components/ui/active-filter-bar';
 import { RequestsSortMenu } from '@/components/seerr/requests-sort-menu';
 import { RequestsListWidget } from '@/components/widgets/requests-list-widget';
 import { RequestsUsersWidget } from '@/components/widgets/requests-users-widget';
@@ -63,6 +64,21 @@ export default function RequestsPage() {
   const pendingBadge = useMemo(() => counts?.pending ?? 0, [counts]);
 
   const effectiveUserFilter = canApprove ? requestsUserFilter : null;
+  const filterProps = {
+    statusFilter: filter,
+    onStatusFilterChange: setFilter,
+    typeFilter: requestsTypeFilter,
+    onTypeFilterChange: setRequestsTypeFilter,
+    userFilter: effectiveUserFilter,
+    onUserFilterChange: setRequestsUserFilter,
+    showUserSection: canApprove,
+  };
+  const activeFilters = useRequestsActiveFilters(filterProps);
+  const clearFilters = () => {
+    setFilter('all');
+    setRequestsTypeFilter([]);
+    setRequestsUserFilter(null);
+  };
 
   return (
     <div className="animate-content-in">
@@ -97,15 +113,7 @@ export default function RequestsPage() {
 
         {tab === 'requests' ? (
           <>
-            <RequestsFilterMenu
-              statusFilter={filter}
-              onStatusFilterChange={setFilter}
-              typeFilter={requestsTypeFilter}
-              onTypeFilterChange={setRequestsTypeFilter}
-              userFilter={effectiveUserFilter}
-              onUserFilterChange={setRequestsUserFilter}
-              showUserSection={canApprove}
-            />
+            <RequestsFilterMenu activeFilters={activeFilters} {...filterProps} />
             <RequestsSortMenu
               sort={requestsSort}
               onSortChange={setRequestsSort}
@@ -155,6 +163,10 @@ export default function RequestsPage() {
           ) : null}
         </div>
       </div>
+
+      {tab === 'requests' ? (
+        <ActiveFilterBar filters={activeFilters} onClearAll={clearFilters} className="pt-2" />
+      ) : null}
 
       <div
         key={`${tab}-${effectiveUserFilter ?? 'all'}-${typeFilterKey}-${requestsSort}-${requestsSortDirection}-${refreshTick}`}

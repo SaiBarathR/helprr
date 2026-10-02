@@ -159,7 +159,7 @@ export function AnimeCarouselSettings() {
   }
 
   return (
-    <div className="grouped-section mb-6">
+    <div id="anime-carousels" className="grouped-section mb-6 scroll-mt-24">
       <div className="grouped-section-title">Anime Carousels</div>
       <p className="text-xs text-muted-foreground px-4 pb-2">
         Drag to reorder and toggle carousels on the Anime home page. Settings are saved per device.

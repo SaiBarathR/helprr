@@ -11,6 +11,13 @@ import { useAppRouter as useRouter } from '@/components/layout/navigation-provid
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { SearchInput } from '@/components/media/search-input';
+import {
+  ActiveFilterBar,
+  FilterDot,
+  filterButtonLabel,
+  multiSelectFilters,
+  searchFilter,
+} from '@/components/ui/active-filter-bar';
 import { PullToRefresh } from '@/components/ui/pull-to-refresh';
 import { useRefreshAction } from '@/lib/hooks/use-refresh-action';
 import { Badge } from '@/components/ui/badge';
@@ -884,7 +891,7 @@ export default function TorrentsPage() {
       window.removeEventListener('resize', measure);
     };
     // isTableView: switching views remounts the measured node, so re-attach.
-  }, [selectedTorrents.size, loading, error, torrents.length, search, isTableView]);
+  }, [selectedTorrents.size, loading, error, torrents.length, search, filter, isTableView]);
 
   const torrentAction = useCallback(async (
     hash: string,
@@ -1130,11 +1137,14 @@ export default function TorrentsPage() {
     [torrents]
   );
 
-  const activeFilterLabel = filter.length === 0
-    ? 'All'
-    : filter.length === 1
-      ? filterOptions.find((o) => o.value === filter[0])?.label ?? filter[0]
-      : `${filter.length} filters`;
+  // The filter menu's choices, named so a filtered list is never mistaken for
+  // every torrent. The search box is a filter too, but shows itself.
+  const menuFilters = multiSelectFilters(filter, filterOptions, (next) => setFilter(next as typeof filter));
+  const activeFilters = [...menuFilters, ...searchFilter(search, () => setSearch(''))];
+  const clearFilters = () => {
+    setFilter([]);
+    setSearch('');
+  };
 
   const selectAll = useCallback(() => {
     if (selectedTorrents.size === filteredTorrents.length) {
@@ -1344,10 +1354,14 @@ export default function TorrentsPage() {
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
-                className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent active:bg-accent/80 transition-colors"
-                aria-label={`Filter: ${activeFilterLabel}`}
+                className="relative p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent active:bg-accent/80 transition-colors"
+                aria-label={filterButtonLabel(
+                  `Filter: ${menuFilters.map((f) => f.label).join(', ') || 'All'}`,
+                  menuFilters.length > 0,
+                )}
               >
                 <Filter className="h-5 w-5" />
+                <FilterDot active={menuFilters.length > 0} />
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="w-48">
@@ -1487,6 +1501,7 @@ export default function TorrentsPage() {
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <SearchInput
+            clearable
             placeholder="Search torrents..."
             value={search}
             onChange={setSearch}
@@ -1495,6 +1510,9 @@ export default function TorrentsPage() {
           />
         </div>
       </div>
+      {/* Below the sticky toolbar, so it can't push over sticky table headers;
+          the filter button's dot stays in view. */}
+      <ActiveFilterBar filters={activeFilters} onClearAll={clearFilters} />
 
       {selectedTorrents.size > 0 && (
         <div className="flex items-center gap-1 px-2 py-1.5 bg-muted/60 rounded-xl">

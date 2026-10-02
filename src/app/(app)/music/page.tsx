@@ -18,6 +18,15 @@ import { MediaTable } from '@/components/media/media-table';
 import { ViewSelector } from '@/components/media/view-selector';
 import { FieldToggles } from '@/components/media/field-toggles';
 import { SearchBar } from '@/components/media/search-bar';
+import {
+  ActiveFilterBar,
+  FilterDot,
+  filterButtonLabel,
+  multiSelectFilters,
+  searchFilter,
+  type ActiveFilter,
+} from '@/components/ui/active-filter-bar';
+import { withAppName } from '@/components/instance-filter';
 import { PullToRefresh } from '@/components/ui/pull-to-refresh';
 import { useRefreshAction } from '@/lib/hooks/use-refresh-action';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
@@ -247,7 +256,7 @@ export default function MusicPage() {
       observer.disconnect();
       window.removeEventListener('resize', measure);
     };
-  }, [viewMode, posterSize, loading, artists.length, search, filter]);
+  }, [viewMode, posterSize, loading, artists.length, search, filter, instanceFilter]);
 
   useEffect(() => {
     persistViewState(search);
@@ -589,11 +598,24 @@ export default function MusicPage() {
     }
   }, [sort, sortDir, setSort, setSortDir]);
 
-  const activeFilterLabel = filter.length === 0
-    ? 'All'
-    : filter.length === 1
-      ? filterOptions.find((o) => o.value === filter[0])?.label ?? filter[0]
-      : `${filter.length} filters`;
+  // The filter menu's choices, named so a filtered library is never mistaken
+  // for the whole one. The search box is a filter too, but shows itself.
+  const menuFilters: ActiveFilter[] = [
+    ...multiSelectFilters(filter, filterOptions, setFilter),
+    ...(instanceFilter !== 'all'
+      ? [{
+        id: 'instance',
+        label: withAppName(instances.find((i) => i.id === instanceFilter)?.label ?? 'Instance', 'lidarr'),
+        onRemove: () => setInstanceFilter('all'),
+      }]
+      : []),
+  ];
+  const activeFilters = [...menuFilters, ...searchFilter(search, () => setSearch(''))];
+  const clearFilters = () => {
+    setFilter([]);
+    setInstanceFilter('all');
+    setSearch('');
+  };
   const activeSortLabel = sortOptions.find((o) => o.value === sort)?.label ?? 'Name';
 
   function renderOverviewItem(artist: LidarrArtistListItem, fields: string[], globalIndex?: number) {
@@ -638,10 +660,14 @@ export default function MusicPage() {
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
-                className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent active:bg-accent/80 transition-colors"
-                aria-label={`Filter: ${activeFilterLabel}`}
+                className="relative p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent active:bg-accent/80 transition-colors"
+                aria-label={filterButtonLabel(
+                  `Filter: ${menuFilters.map((f) => f.label).join(', ') || 'All'}`,
+                  menuFilters.length > 0,
+                )}
               >
                 <Filter className="h-5 w-5" />
+                <FilterDot active={menuFilters.length > 0} />
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="w-48">
@@ -795,6 +821,9 @@ export default function MusicPage() {
 
         <SearchBar value={search} onChange={handleSearch} placeholder="Search artists..." historyKey="music" debounceMs={250} />
       </div>
+      {/* Below the sticky toolbar, so it can't push over sticky table headers;
+          the filter button's dot stays in view. */}
+      <ActiveFilterBar filters={activeFilters} onClearAll={clearFilters} />
 
       {(() => {
         if (loading && artists.length === 0) {

@@ -18,6 +18,15 @@ import { MediaTable } from '@/components/media/media-table';
 import { ViewSelector } from '@/components/media/view-selector';
 import { FieldToggles } from '@/components/media/field-toggles';
 import { SearchBar } from '@/components/media/search-bar';
+import {
+  ActiveFilterBar,
+  FilterDot,
+  filterButtonLabel,
+  multiSelectFilters,
+  searchFilter,
+  type ActiveFilter,
+} from '@/components/ui/active-filter-bar';
+import { withAppName } from '@/components/instance-filter';
 import { PullToRefresh } from '@/components/ui/pull-to-refresh';
 import { useRefreshAction } from '@/lib/hooks/use-refresh-action';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
@@ -268,7 +277,7 @@ export default function SeriesPage() {
       observer.disconnect();
       window.removeEventListener('resize', measure);
     };
-  }, [viewMode, posterSize, loading, series.length, search, filter, watchFilter]);
+  }, [viewMode, posterSize, loading, series.length, search, filter, watchFilter, instanceFilter]);
 
   useEffect(() => {
     persistViewState(search);
@@ -642,22 +651,33 @@ export default function SeriesPage() {
     }
   }, [sort, sortDir, setSort, setSortDir]);
 
-  const activeFilterLabel = useMemo(() => {
-    const arrLabel = filter.length === 0
-      ? null
-      : filter.length === 1
-        ? filterOptions.find((o) => o.value === filter[0])?.label ?? filter[0]
-        : `${filter.length} filters`;
-    const watchLabel = canFilterByWatchStatus && watchFilter === 'watched'
-      ? 'Watched'
-      : canFilterByWatchStatus && watchFilter === 'unwatched'
-        ? 'Not watched'
-        : null;
-    if (arrLabel && watchLabel) return `${arrLabel}, ${watchLabel}`;
-    if (arrLabel) return arrLabel;
-    if (watchLabel) return watchLabel;
-    return 'All';
-  }, [filter, watchFilter, canFilterByWatchStatus]);
+  // The filter menu's choices, named so a filtered library is never mistaken
+  // for the whole one. The search box is a filter too, but shows itself.
+  const menuFilters: ActiveFilter[] = [
+    ...multiSelectFilters(filter, filterOptions, setFilter),
+    // Same gate as the filter itself: until the watch map loads it hides nothing.
+    ...(canFilterByWatchStatus && watchMapReady && watchFilter !== 'all'
+      ? [{
+        id: 'watch',
+        label: watchFilter === 'watched' ? 'Watched' : 'Not watched',
+        onRemove: () => setWatchFilter('all'),
+      }]
+      : []),
+    ...(instanceFilter !== 'all'
+      ? [{
+        id: 'instance',
+        label: withAppName(instances.find((i) => i.id === instanceFilter)?.label ?? 'Instance', 'sonarr'),
+        onRemove: () => setInstanceFilter('all'),
+      }]
+      : []),
+  ];
+  const activeFilters = [...menuFilters, ...searchFilter(search, () => setSearch(''))];
+  const clearFilters = () => {
+    setFilter([]);
+    setWatchFilter('all');
+    setInstanceFilter('all');
+    setSearch('');
+  };
   const activeSortLabel = sortOptions.find((o) => o.value === sort)?.label ?? 'Title';
 
   return (
@@ -669,10 +689,14 @@ export default function SeriesPage() {
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
-                className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent active:bg-accent/80 transition-colors"
-                aria-label={`Filter: ${activeFilterLabel}`}
+                className="relative p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent active:bg-accent/80 transition-colors"
+                aria-label={filterButtonLabel(
+                  `Filter: ${menuFilters.map((f) => f.label).join(', ') || 'All'}`,
+                  menuFilters.length > 0,
+                )}
               >
                 <Filter className="h-5 w-5" />
+                <FilterDot active={menuFilters.length > 0} />
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="w-48">
@@ -853,6 +877,9 @@ export default function SeriesPage() {
 
         <SearchBar value={search} onChange={handleSearch} placeholder="Search series..." historyKey="series" debounceMs={250} />
       </div>
+      {/* Below the sticky toolbar, so it can't push over sticky table headers;
+          the filter button's dot stays in view. */}
+      <ActiveFilterBar filters={activeFilters} onClearAll={clearFilters} />
 
       {(() => {
         if (loading && series.length === 0) {

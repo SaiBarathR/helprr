@@ -16,6 +16,14 @@ import { ArrowUpDown, Bookmark, Filter, Layers, Plus, Search as SearchIcon } fro
 import { toast } from 'sonner';
 import { Skeleton } from '@/components/ui/skeleton';
 import { SearchBar } from '@/components/media/search-bar';
+import {
+  ActiveFilterBar,
+  FilterDot,
+  filterButtonLabel,
+  searchFilter,
+  type ActiveFilter,
+} from '@/components/ui/active-filter-bar';
+import { withAppName } from '@/components/instance-filter';
 import { MoviesSubNav } from '@/components/media/movies-subnav';
 import { CollectionCard } from '@/components/media/collection-card';
 import {
@@ -202,6 +210,24 @@ export default function MovieCollectionsPage() {
     return list;
   }, [collections, search, filter, sort, instanceFilter]);
 
+  // The instance is shared with the Library tab, so its chip clears both.
+  const menuFilters: ActiveFilter[] = [
+    ...(filter !== 'all' ? [{ id: 'status', label: FILTER_LABELS[filter], onRemove: () => setFilter('all') }] : []),
+    ...(instanceFilter !== 'all'
+      ? [{
+        id: 'instance',
+        label: withAppName(instances.find((i) => i.id === instanceFilter)?.label ?? 'Instance', 'radarr'),
+        onRemove: () => setInstanceFilter('all'),
+      }]
+      : []),
+  ];
+  const activeFilters = [...menuFilters, ...searchFilter(search, () => setSearch(''))];
+  const clearFilters = () => {
+    setFilter('all');
+    setInstanceFilter('all');
+    setSearch('');
+  };
+
   return (
     <div className="space-y-3 animate-content-in">
       <div
@@ -221,10 +247,14 @@ export default function MovieCollectionsPage() {
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
-                className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent active:bg-accent/80 transition-colors"
-                aria-label={`Filter: ${FILTER_LABELS[filter]}`}
+                className="relative p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent active:bg-accent/80 transition-colors"
+                aria-label={filterButtonLabel(
+                  `Filter: ${menuFilters.map((f) => f.label).join(', ') || 'All'}`,
+                  menuFilters.length > 0,
+                )}
               >
                 <Filter className="h-5 w-5" />
+                <FilterDot active={menuFilters.length > 0} />
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48">
@@ -292,6 +322,9 @@ export default function MovieCollectionsPage() {
           </DropdownMenu>
         </div>
       </div>
+      {/* Below the sticky toolbar, so it can't push over sticky table headers;
+          the filter button's dot stays in view. */}
+      <ActiveFilterBar filters={activeFilters} onClearAll={clearFilters} />
 
       {isLoading && collections.length === 0 ? (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
