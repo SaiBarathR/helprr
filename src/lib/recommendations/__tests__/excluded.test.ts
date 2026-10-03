@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   requireUserCapability: vi.fn(),
   groupBy: vi.fn(),
   deleteMany: vi.fn(),
+  transaction: vi.fn(),
   movieDetails: vi.fn(),
   tvDetails: vi.fn(),
   getAnimeSummaries: vi.fn(),
@@ -16,7 +17,10 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@/lib/auth', () => ({ requireUserCapability: mocks.requireUserCapability }));
 vi.mock('@/lib/api-logger', () => ({ withApiLogging: (handler: unknown) => handler }));
 vi.mock('@/lib/db', () => ({
-  prisma: { recommendationEvent: { groupBy: mocks.groupBy, deleteMany: mocks.deleteMany } },
+  prisma: {
+    recommendationEvent: { groupBy: mocks.groupBy, deleteMany: mocks.deleteMany },
+    $transaction: mocks.transaction,
+  },
 }));
 vi.mock('@/lib/service-helpers', () => ({
   getTMDBClient: async () => ({ movieDetails: mocks.movieDetails, tvDetails: mocks.tvDetails }),
@@ -26,7 +30,7 @@ vi.mock('@/lib/cache/arr-library', () => ({ loadCachedArrLibrary: mocks.loadCach
 vi.mock('@/lib/recommendations/profile-store', () => ({ forgetExcludedItems: mocks.forgetExcludedItems }));
 vi.mock('@/lib/recommendations/engine', () => ({ invalidateRecommendations: mocks.invalidateRecommendations }));
 
-import { listExcludedTitles, restoreExcludedTitle } from '@/lib/recommendations/excluded';
+import { EXCLUDED_PAGE_SIZE, listExcludedTitles, parseExcludedCursor, restoreExcludedTitle } from '@/lib/recommendations/excluded';
 import { DELETE, GET } from '@/app/api/recommendations/excluded/route';
 
 const at = (iso: string) => ({ _max: { createdAt: new Date(iso) } });
@@ -38,6 +42,8 @@ beforeEach(() => {
   mocks.deleteMany.mockResolvedValue({ count: 0 });
   mocks.getAnimeSummaries.mockResolvedValue([]);
   mocks.loadCachedArrLibrary.mockResolvedValue({ movies: [], series: [] });
+  mocks.transaction.mockImplementation((ops: Promise<unknown>[]) => Promise.all(ops));
+  mocks.forgetExcludedItems.mockResolvedValue(1);
 });
 
 describe('listExcludedTitles', () => {
@@ -54,6 +60,7 @@ describe('listExcludedTitles', () => {
 
     const result = await listExcludedTitles('user-1');
 
+    expect(result.nextCursor).toBeNull();
     expect(mocks.groupBy).toHaveBeenCalledWith(expect.objectContaining({
       where: { userId: 'user-1', eventType: { in: ['not_interested', 'dislike'] } },
     }));
@@ -98,18 +105,72 @@ describe('listExcludedTitles', () => {
     const result = await listExcludedTitles('user-1');
     expect(result.items[0]).toMatchObject({ title: 'Old Show', posterUrl: 'p.jpg', href: '/series/7?instance=inst-1' });
   });
+  it('pages newest first, and restoring a shown title never shifts the next page', async () => {
+    const rows = Array.from({ length: 60 }, (_, i) => ({
+      itemKey: `tmdb:movie:${i + 1}`,
+      eventType: 'not_interested',
+      ...at(new Date(Date.UTC(2026, 8, 1) + (60 - i) * 60_000).toISOString()),
+    }));
+    mocks.groupBy.mockResolvedValue(rows);
+    mocks.movieDetails.mockResolvedValue({ title: 'Movie', release_date: '2000-01-01', poster_path: null });
+
+    const first = await listExcludedTitles('user-1');
+    expect(first.total).toBe(60);
+    expect(first.items).toHaveLength(EXCLUDED_PAGE_SIZE);
+    expect(first.items[0].itemKey).toBe('tmdb:movie:1');
+    expect(first.nextCursor).not.toBeNull();
+
+    // Two titles from the first page are restored before "Show more".
+    mocks.groupBy.mockResolvedValue(rows.filter((r) => r.itemKey !== 'tmdb:movie:3' && r.itemKey !== 'tmdb:movie:7'));
+    const second = await listExcludedTitles('user-1', parseExcludedCursor(first.nextCursor!));
+    expect(second.items.map((i) => i.itemKey)).toEqual(rows.slice(50).map((r) => r.itemKey));
+    expect(second.nextCursor).toBeNull();
+  });
+
+  it('leaves only the anime rows untitled when AniList fails', async () => {
+    mocks.groupBy.mockResolvedValue([
+      { itemKey: 'anilist:21', eventType: 'not_interested', ...at('2026-09-02T00:00:00Z') },
+      { itemKey: 'tmdb:movie:603', eventType: 'dislike', ...at('2026-09-01T00:00:00Z') },
+    ]);
+    mocks.getAnimeSummaries.mockRejectedValue(new Error('429'));
+    mocks.movieDetails.mockResolvedValue({ title: 'The Matrix', release_date: '1999-03-31', poster_path: null });
+
+    const result = await listExcludedTitles('user-1');
+    expect(result.items.map((i) => [i.itemKey, i.title])).toEqual([
+      ['anilist:21', null],
+      ['tmdb:movie:603', 'The Matrix'],
+    ]);
+  });
+});
+
+describe('parseExcludedCursor', () => {
+  it('reads back what a page hands out and rejects anything else', () => {
+    expect(parseExcludedCursor('1790000000000:arr:sonarr:inst-1:7')).toEqual({ at: 1790000000000, itemKey: 'arr:sonarr:inst-1:7' });
+    expect(parseExcludedCursor('soon:tmdb:movie:1')).toBeNull();
+    expect(parseExcludedCursor('1790000000000:movie:1')).toBeNull();
+    expect(parseExcludedCursor(':tmdb:movie:1')).toBeNull();
+  });
 });
 
 describe('restoreExcludedTitle', () => {
-  it("deletes only this user's exclude events, then clears the profile and cache", async () => {
+  it("deletes only this user's exclude events and their profile entry in one transaction, then clears the cache", async () => {
     mocks.deleteMany.mockResolvedValue({ count: 2 });
 
     await expect(restoreExcludedTitle('user-1', 'tmdb:movie:603')).resolves.toBe(2);
+    expect(mocks.transaction).toHaveBeenCalledTimes(1);
+    expect(mocks.transaction.mock.calls[0][0]).toHaveLength(2);
     expect(mocks.deleteMany).toHaveBeenCalledWith({
       where: { userId: 'user-1', itemKey: 'tmdb:movie:603', eventType: { in: ['not_interested', 'dislike'] } },
     });
     expect(mocks.forgetExcludedItems).toHaveBeenCalledWith('user-1', ['tmdb:movie:603']);
     expect(mocks.invalidateRecommendations).toHaveBeenCalledWith('user-1');
+  });
+
+  it('leaves the cache alone when the transaction fails', async () => {
+    mocks.transaction.mockRejectedValue(new Error('db down'));
+
+    await expect(restoreExcludedTitle('user-1', 'tmdb:movie:603')).rejects.toThrow('db down');
+    expect(mocks.invalidateRecommendations).not.toHaveBeenCalled();
   });
 });
 
@@ -136,6 +197,12 @@ describe('excluded route', () => {
     expect(await response.json()).toEqual({ total: 2 });
     expect(mocks.movieDetails).not.toHaveBeenCalled();
     expect(mocks.getAnimeSummaries).not.toHaveBeenCalled();
+  });
+
+  it('rejects a malformed cursor', async () => {
+    const response = await GET(new NextRequest('http://localhost/api/recommendations/excluded?cursor=nope'));
+    expect(response.status).toBe(400);
+    expect(mocks.groupBy).not.toHaveBeenCalled();
   });
 
   it.each([

@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
-import { countExcludedTitles, listExcludedTitles, restoreExcludedTitle } from '@/lib/recommendations/excluded';
+import {
+  countExcludedTitles,
+  listExcludedTitles,
+  parseExcludedCursor,
+  restoreExcludedTitle,
+} from '@/lib/recommendations/excluded';
 import { isItemKey } from '@/lib/recommendations/item-keys';
 
 // The calling user's excluded titles ("Not interested" and dislikes). Every
@@ -12,11 +17,17 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
   const auth = await requireUserCapability('recommendations.view');
   if (!auth.ok) return auth.response;
 
+  const params = request.nextUrl.searchParams;
   // The Recommendations page only needs the count, which skips the lookups.
-  if (request.nextUrl.searchParams.get('view') === 'count') {
+  if (params.get('view') === 'count') {
     return NextResponse.json({ total: await countExcludedTitles(auth.user.id) });
   }
-  return NextResponse.json(await listExcludedTitles(auth.user.id));
+  const cursor = params.get('cursor');
+  const after = cursor ? parseExcludedCursor(cursor) : null;
+  if (cursor && !after) {
+    return NextResponse.json({ error: 'Invalid cursor' }, { status: 400 });
+  }
+  return NextResponse.json(await listExcludedTitles(auth.user.id, after));
 }
 
 async function deleteHandler(request: NextRequest): Promise<NextResponse> {

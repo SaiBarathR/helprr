@@ -88,21 +88,26 @@ function parseStoredProfile(row: { profile: Prisma.JsonValue; version: number; b
  * Drop item keys from the stored profile's hard excludes without a rebuild
  * (which costs Jellyfin scans), so a title the user asked to see again
  * returns on the next compose instead of after the profile's 6h staleness.
- * The built-at time is kept: the rest of the profile is as fresh as before.
+ * One UPDATE edits the JSON in place, so two restores at once can't write
+ * back each other's stale list. Returns the query for a caller's transaction;
+ * the built-at time is kept, since the rest of the profile is as fresh as before.
  */
-export async function forgetExcludedItems(userId: string, itemKeys: string[]): Promise<void> {
-  const row = await prisma.userTasteProfile.findUnique({ where: { userId } });
-  if (!row) return;
-  const stored = parseStoredProfile(row);
-  if (!stored) return;
-  const drop = new Set(itemKeys);
-  const kept = stored.negatives.excludedItemKeys.filter((key) => !drop.has(key));
-  if (kept.length === stored.negatives.excludedItemKeys.length) return;
-  const profile: TasteProfile = { ...stored, negatives: { ...stored.negatives, excludedItemKeys: kept } };
-  await prisma.userTasteProfile.update({
-    where: { userId },
-    data: { profile: profile as unknown as Prisma.InputJsonValue },
-  });
+export function forgetExcludedItems(userId: string, itemKeys: string[]) {
+  return prisma.$executeRaw`
+    UPDATE "UserTasteProfile"
+    SET "profile" = jsonb_set(
+          "profile",
+          '{negatives,excludedItemKeys}',
+          COALESCE(
+            (SELECT jsonb_agg(key)
+               FROM jsonb_array_elements("profile"->'negatives'->'excludedItemKeys') AS key
+              WHERE NOT (key #>> '{}' = ANY(${itemKeys}::text[]))),
+            '[]'::jsonb
+          )
+        ),
+        "updatedAt" = CURRENT_TIMESTAMP
+    WHERE "userId" = ${userId}
+      AND jsonb_typeof("profile"->'negatives'->'excludedItemKeys') = 'array'`;
 }
 
 /**

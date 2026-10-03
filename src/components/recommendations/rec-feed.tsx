@@ -5,6 +5,7 @@ import Image from 'next/image';
 import Link from '@/components/ui/app-link';
 import { useRestorableInfiniteQuery as useInfiniteQuery } from '@/lib/hooks/use-restorable-infinite-query';
 import { toast } from 'sonner';
+import { useQueryClient } from '@tanstack/react-query';
 import { Ban, Bookmark, Clapperboard, Film, HardDriveDownload, Heart, Loader2, Share2, Sparkles, Star, Tv, X } from 'lucide-react';
 import { jsonFetcher } from '@/lib/query-fetch';
 import { isProtectedApiImageSrc } from '@/lib/image';
@@ -294,6 +295,7 @@ function FeedCard({ item, position, tracker, onHide }: {
 
 /** Infinite vertical feed over /api/recommendations/feed. */
 export function RecFeed({ tracker }: RecFeedProps) {
+  const queryClient = useQueryClient();
   const [hiddenKeys, setHiddenKeys] = useState<Set<string>>(new Set());
   const sentinel = useRef<HTMLDivElement | null>(null);
 
@@ -367,7 +369,11 @@ export function RecFeed({ tracker }: RecFeedProps) {
           item={item}
           position={position}
           tracker={tracker}
-          onHide={(key) => setHiddenKeys((prev) => new Set(prev).add(key))}
+          onHide={(key) => {
+            setHiddenKeys((prev) => new Set(prev).add(key));
+            // Store it now so the For You excluded count includes it.
+            void tracker.flush().then(() => queryClient.invalidateQueries({ queryKey: ['recommendations-excluded-count'] }));
+          }}
         />
       ))}
       <div ref={sentinel} className="h-px snap-start" />

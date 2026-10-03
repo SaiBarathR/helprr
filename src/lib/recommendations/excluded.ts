@@ -3,7 +3,7 @@ import { getTMDBClient } from '@/lib/service-helpers';
 import { loadCachedArrLibrary } from '@/lib/cache/arr-library';
 import { getAnimeSummaries } from '@/lib/anilist-client';
 import { invalidateRecommendations } from './engine';
-import { anilistItemKey, arrItemKey, parseItemKey, type RecMediaType } from './item-keys';
+import { anilistItemKey, arrItemKey, isItemKey, parseItemKey, type RecMediaType } from './item-keys';
 import { forgetExcludedItems } from './profile-store';
 
 // Titles the user hid with "Not interested" or a dislike. Both are permanent
@@ -13,10 +13,11 @@ import { forgetExcludedItems } from './profile-store';
 const EXCLUDE_EVENT_TYPES = ['not_interested', 'dislike'] as const;
 type ExcludeReason = (typeof EXCLUDE_EVENT_TYPES)[number];
 
-/** Newest first; older ones stay excluded, just not listed. */
-export const MAX_LISTED_EXCLUDED = 200;
+/** Titles per page; each page costs up to this many TMDB lookups (cached). */
+export const EXCLUDED_PAGE_SIZE = 50;
 const TMDB_POSTER_BASE = 'https://image.tmdb.org/t/p/w342';
 const TMDB_CONCURRENCY = 6;
+const ANILIST_BATCH = 50;
 
 export interface ExcludedTitle {
   itemKey: string;
@@ -53,7 +54,22 @@ async function loadExcludedKeys(userId: string): Promise<ExcludedKey[]> {
       latest.set(row.itemKey, { itemKey: row.itemKey, reason: row.eventType as ExcludeReason, excludedAt: at });
     }
   }
-  return [...latest.values()].sort((a, b) => b.excludedAt.getTime() - a.excludedAt.getTime());
+  // Newest first; the key breaks ties so the order (and the cursor) is stable.
+  return [...latest.values()].sort((a, b) =>
+    b.excludedAt.getTime() - a.excludedAt.getTime() || (a.itemKey < b.itemKey ? -1 : a.itemKey > b.itemKey ? 1 : 0));
+}
+
+/** A page cursor names the last row shown, so restoring rows never shifts the next page. */
+function cursorOf(key: ExcludedKey): string {
+  return `${key.excludedAt.getTime()}:${key.itemKey}`;
+}
+
+export function parseExcludedCursor(cursor: string): { at: number; itemKey: string } | null {
+  const split = cursor.indexOf(':');
+  const at = Number(cursor.slice(0, split));
+  const itemKey = cursor.slice(split + 1);
+  if (split <= 0 || !Number.isSafeInteger(at) || !isItemKey(itemKey)) return null;
+  return { at, itemKey };
 }
 
 export async function countExcludedTitles(userId: string): Promise<number> {
@@ -116,18 +132,21 @@ async function resolveTmdb(keys: string[]): Promise<Map<string, Resolved>> {
 async function resolveAnilist(keys: string[]): Promise<Map<string, Resolved>> {
   const out = new Map<string, Resolved>();
   const ids = keys.map((key) => parseItemKey(key)?.anilistId).filter((id): id is number => Boolean(id));
-  if (ids.length === 0) return out;
-  try {
-    for (const media of await getAnimeSummaries(ids)) {
-      out.set(anilistItemKey(media.id), {
-        title: media.title.english ?? media.title.romaji ?? media.title.native ?? null,
-        year: media.seasonYear ?? null,
-        posterUrl: media.coverImage?.extraLarge ?? media.coverImage?.large ?? null,
-        href: `/anime/${media.id}`,
-      });
+  // One request per 50 ids, each failing on its own: a rate-limited batch
+  // leaves only its own rows untitled.
+  for (let start = 0; start < ids.length; start += ANILIST_BATCH) {
+    try {
+      for (const media of await getAnimeSummaries(ids.slice(start, start + ANILIST_BATCH))) {
+        out.set(anilistItemKey(media.id), {
+          title: media.title.english ?? media.title.romaji ?? media.title.native ?? null,
+          year: media.seasonYear ?? null,
+          posterUrl: media.coverImage?.extraLarge ?? media.coverImage?.large ?? null,
+          href: `/anime/${media.id}`,
+        });
+      }
+    } catch {
+      // AniList unreachable or rate limited: this batch's rows show without a title.
     }
-  } catch {
-    // AniList unreachable or rate limited: these rows show without a title.
   }
   return out;
 }
@@ -160,10 +179,29 @@ async function resolveArr(keys: string[]): Promise<Map<string, Resolved>> {
   return out;
 }
 
-/** The user's excluded titles, newest first, with what each source knows of them. */
-export async function listExcludedTitles(userId: string): Promise<{ total: number; items: ExcludedTitle[] }> {
+export interface ExcludedPage {
+  total: number;
+  items: ExcludedTitle[];
+  /** Pass back as `cursor` for the next page; null on the last one. */
+  nextCursor: string | null;
+}
+
+/**
+ * One page of the user's excluded titles, newest first, with what each source
+ * knows of them. `after` is a parsed cursor from the previous page.
+ */
+export async function listExcludedTitles(
+  userId: string,
+  after: { at: number; itemKey: string } | null = null,
+): Promise<ExcludedPage> {
   const keys = await loadExcludedKeys(userId);
-  const listed = keys.slice(0, MAX_LISTED_EXCLUDED);
+  let start = 0;
+  if (after) {
+    const next = keys.findIndex(({ excludedAt, itemKey }) =>
+      excludedAt.getTime() < after.at || (excludedAt.getTime() === after.at && itemKey > after.itemKey));
+    start = next === -1 ? keys.length : next;
+  }
+  const listed = keys.slice(start, start + EXCLUDED_PAGE_SIZE);
   const byPrefix = (prefix: string) => listed.map((k) => k.itemKey).filter((key) => key.startsWith(prefix));
   const [tmdb, anilist, arr] = await Promise.all([
     resolveTmdb(byPrefix('tmdb:')),
@@ -184,19 +222,24 @@ export async function listExcludedTitles(userId: string): Promise<{ total: numbe
       href: resolved?.href ?? null,
     };
   });
-  return { total: keys.length, items };
+  const last = listed.at(-1);
+  const nextCursor = last && start + listed.length < keys.length ? cursorOf(last) : null;
+  return { total: keys.length, items, nextCursor };
 }
 
 /**
  * Let a title back into recommendations: delete this user's own exclude
- * events for it, drop it from the stored profile's excludes, and bust the
- * rails cache so the next read recomposes. Returns how many events went.
+ * events for it and drop it from the stored profile's excludes in one
+ * transaction (so a failure can't leave it hidden yet off the list), then
+ * bust the rails cache so the next read recomposes. Returns how many events went.
  */
 export async function restoreExcludedTitle(userId: string, itemKey: string): Promise<number> {
-  const { count } = await prisma.recommendationEvent.deleteMany({
-    where: { userId, itemKey, eventType: { in: [...EXCLUDE_EVENT_TYPES] } },
-  });
-  await forgetExcludedItems(userId, [itemKey]);
+  const [{ count }] = await prisma.$transaction([
+    prisma.recommendationEvent.deleteMany({
+      where: { userId, itemKey, eventType: { in: [...EXCLUDE_EVENT_TYPES] } },
+    }),
+    forgetExcludedItems(userId, [itemKey]),
+  ]);
   await invalidateRecommendations(userId);
   return count;
 }

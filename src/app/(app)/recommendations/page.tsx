@@ -112,7 +112,7 @@ function RecommendationsPageInner() {
   const queryClient = useQueryClient();
   const tracker = useRecEvents();
   const me = useMe();
-  const [hiddenKeys, setHiddenKeys] = useRouteViewState<Set<string>>('hiddenKeys', new Set());
+  const [hidden, setHidden] = useRouteViewState<{ at: number; keys: string[] }>('hiddenSince', { at: 0, keys: [] });
 
   // The two capabilities gate independently (server-enforced by their APIs):
   // a random.view-only user gets just the Random mode, and vice versa.
@@ -138,6 +138,13 @@ function RecommendationsPageInner() {
     enabled: mode !== 'random' && canRecommendations,
   });
 
+  // Titles hidden with "Not interested" since the rails last loaded. A refetch
+  // brings rails the server composed without them (or, after "Show again" on
+  // the Excluded titles page, with them back), so the set only applies to the
+  // data it was made against.
+  const railsAt = railsQuery.dataUpdatedAt;
+  const hiddenKeys = useMemo(() => new Set(hidden.at === railsAt ? hidden.keys : []), [hidden, railsAt]);
+
   const excludedCountQuery = useQuery({
     queryKey: ['recommendations-excluded-count'],
     queryFn: jsonFetcher<{ total: number }>('/api/recommendations/excluded?view=count'),
@@ -146,11 +153,11 @@ function RecommendationsPageInner() {
   const excludedCount = excludedCountQuery.data?.total ?? 0;
 
   const onNotInterested = useCallback((itemKey: string) => {
-    setHiddenKeys((prev) => new Set(prev).add(itemKey));
+    setHidden((prev) => ({ at: railsAt, keys: [...(prev.at === railsAt ? prev.keys : []), itemKey] }));
     // Flush so the server-side cache bust lands before the next refetch, and
     // the excluded count includes this title.
     void tracker.flush().then(() => queryClient.invalidateQueries({ queryKey: ['recommendations-excluded-count'] }));
-  }, [setHiddenKeys, tracker, queryClient]);
+  }, [setHidden, railsAt, tracker, queryClient]);
 
   const rails = useMemo(() => railsQuery.data?.rails ?? [], [railsQuery.data]);
 

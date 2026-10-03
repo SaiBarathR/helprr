@@ -5,7 +5,7 @@ import Image from 'next/image';
 import Link from '@/components/ui/app-link';
 import { Ban, Film, Loader2, Sparkles, Tv } from 'lucide-react';
 import { toast } from 'sonner';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query';
 import { PageHeader } from '@/components/layout/page-header';
 import { Button } from '@/components/ui/button';
 import { ErrorState } from '@/components/ui/error-state';
@@ -14,12 +14,7 @@ import { useAppRouter as useRouter } from '@/components/layout/navigation-provid
 import { jsonFetcher } from '@/lib/query-fetch';
 import { formatDistanceToNowSafe } from '@/lib/format';
 import { isProtectedApiImageSrc, toCachedImageSrc, type ImageServiceHint } from '@/lib/image';
-import type { ExcludedTitle } from '@/lib/recommendations/excluded';
-
-interface ExcludedResponse {
-  total: number;
-  items: ExcludedTitle[];
-}
+import type { ExcludedPage, ExcludedTitle } from '@/lib/recommendations/excluded';
 
 const EXCLUDED_QUERY_KEY = ['recommendations-excluded'] as const;
 
@@ -80,9 +75,14 @@ export default function ExcludedTitlesPage() {
   const queryClient = useQueryClient();
   const [restoring, setRestoring] = useState<ReadonlySet<string>>(new Set());
 
-  const query = useQuery({
+  const query = useInfiniteQuery({
     queryKey: EXCLUDED_QUERY_KEY,
-    queryFn: jsonFetcher<ExcludedResponse>('/api/recommendations/excluded'),
+    queryFn: ({ pageParam, signal }) =>
+      jsonFetcher<ExcludedPage>(
+        pageParam ? `/api/recommendations/excluded?cursor=${encodeURIComponent(pageParam)}` : '/api/recommendations/excluded',
+      )({ signal }),
+    initialPageParam: null as string | null,
+    getNextPageParam: (last) => last.nextCursor,
   });
 
   const restore = async (item: ExcludedTitle) => {
@@ -94,9 +94,13 @@ export default function ExcludedTitlesPage() {
         body: JSON.stringify({ itemKey: item.itemKey }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      queryClient.setQueryData<ExcludedResponse>(EXCLUDED_QUERY_KEY, (prev) => prev && {
-        total: Math.max(0, prev.total - 1),
-        items: prev.items.filter((other) => other.itemKey !== item.itemKey),
+      queryClient.setQueryData<InfiniteData<ExcludedPage, string | null>>(EXCLUDED_QUERY_KEY, (prev) => prev && {
+        ...prev,
+        pages: prev.pages.map((page) => ({
+          ...page,
+          total: Math.max(0, page.total - 1),
+          items: page.items.filter((other) => other.itemKey !== item.itemKey),
+        })),
       });
       void queryClient.invalidateQueries({ queryKey: ['recommendations'] });
       void queryClient.invalidateQueries({ queryKey: ['recommendations-feed'] });
@@ -113,8 +117,7 @@ export default function ExcludedTitlesPage() {
     }
   };
 
-  const data = query.data;
-  const hiddenOlder = data ? data.total - data.items.length : 0;
+  const items = query.data?.pages.flatMap((page) => page.items) ?? [];
 
   return (
     <div className="space-y-3 animate-content-in">
@@ -125,7 +128,7 @@ export default function ExcludedTitlesPage() {
           <ExcludedListSkeleton />
         ) : query.isError ? (
           <ErrorState message="Couldn't load excluded titles." onRetry={() => void query.refetch()} retrying={query.isFetching} />
-        ) : !data || data.items.length === 0 ? (
+        ) : items.length === 0 && !query.hasNextPage ? (
           <div className="rounded-xl bg-card p-8 text-center text-muted-foreground">
             <Ban className="mx-auto mb-2 h-8 w-8 opacity-40" />
             <p>Nothing excluded.</p>
@@ -136,20 +139,25 @@ export default function ExcludedTitlesPage() {
             <p className="text-xs text-muted-foreground">
               These never show up in recommendations. Show one again to let it back in.
             </p>
-            <div className="divide-y rounded-xl bg-card">
-              {data.items.map((item) => (
-                <ExcludedRow
-                  key={item.itemKey}
-                  item={item}
-                  restoring={restoring.has(item.itemKey)}
-                  onRestore={() => void restore(item)}
-                />
-              ))}
-            </div>
-            {hiddenOlder > 0 && (
-              <p className="text-center text-xs text-muted-foreground">
-                {hiddenOlder === 1 ? '1 older title is' : `${hiddenOlder} older titles are`} excluded too.
-              </p>
+            {items.length > 0 && (
+              <div className="divide-y rounded-xl bg-card">
+                {items.map((item) => (
+                  <ExcludedRow
+                    key={item.itemKey}
+                    item={item}
+                    restoring={restoring.has(item.itemKey)}
+                    onRestore={() => void restore(item)}
+                  />
+                ))}
+              </div>
+            )}
+            {query.hasNextPage && (
+              <div className="flex justify-center">
+                <Button variant="outline" size="sm" disabled={query.isFetchingNextPage} onClick={() => void query.fetchNextPage()}>
+                  {query.isFetchingNextPage && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                  Show more
+                </Button>
+              </div>
             )}
           </>
         )}
