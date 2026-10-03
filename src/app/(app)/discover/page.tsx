@@ -1174,11 +1174,14 @@ export default function DiscoverPage() {
   // Search keeps only the content type, and the fixed TMDB list sections
   // ignore the filters, so other chips would claim a narrowing those results
   // don't have.
+  // Upcoming replaces the release state with "not out yet", so a saved one
+  // isn't narrowing anything either.
   const searching = Boolean(query.trim());
   const activeFilters: ActiveFilter[] = isFixedListSection(activeSectionKey)
     ? []
     : discoverFilterChips(view, filtersMeta)
       .filter((chip) => !searching || chip.id === 'contentType')
+      .filter((chip) => !(chip.id === 'releaseState' && discoverSort === 'upcoming'))
       .map((chip) => ({
         id: chip.id,
         label: chip.label,
@@ -1186,7 +1189,10 @@ export default function DiscoverPage() {
       }));
   const clearAllFilters = () => updateView({ contentType: 'all', filters: { ...DEFAULT_DISCOVER_FILTERS } });
   // Search results ignore the sort, so its preset rule only names browse results.
-  const sortPresetNote = query.trim() ? null : discoverSortPresetNote(discoverSort, discoverFilters.voteCountMin, activeSectionKey);
+  const sortPresetNote = searching ? null : discoverSortPresetNote(discoverSort, discoverFilters.voteCountMin, activeSectionKey);
+  // TMDB only filters movies by cast and crew, and search ignores it, so the
+  // person banner only shows over results it actually narrowed.
+  const shownPerson = personFilter && !searching && discoverContentType === 'movie' ? personFilter : null;
 
   const genreChoices = useMemo(() => {
     if (!filtersMeta) return [];
@@ -1382,10 +1388,10 @@ export default function DiscoverPage() {
 
       {gridMode && (
         <div className="space-y-3">
-          {personFilter && (
+          {shownPerson && (
             <div className="flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2">
               <User className="h-4 w-4 text-primary shrink-0" />
-              <span className="text-sm font-medium flex-1 truncate">Movies with {personFilter.name}</span>
+              <span className="text-sm font-medium flex-1 truncate">Movies with {shownPerson.name}</span>
               <button
                 onClick={() => updateView({ person: null })}
                 className="shrink-0 h-6 w-6 rounded-full flex items-center justify-center hover:bg-accent"
@@ -1398,7 +1404,7 @@ export default function DiscoverPage() {
             <div>
               <p className="text-sm text-muted-foreground">Discover Results</p>
               <p className="text-xs text-muted-foreground">
-                {personFilter ? `Filtered by: ${personFilter.name}` : activeSectionKey ? `Section: ${activeSectionKey.replaceAll('_', ' ')}` : 'Custom search and filters'}
+                {shownPerson ? `Filtered by: ${shownPerson.name}` : activeSectionKey ? `Section: ${activeSectionKey.replaceAll('_', ' ')}` : 'Custom search and filters'}
               </p>
               {sortPresetNote && <p className="text-xs text-muted-foreground">{sortPresetNote}</p>}
             </div>
