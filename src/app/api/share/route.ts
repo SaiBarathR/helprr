@@ -25,7 +25,7 @@ const SHARE_REDIRECT_LOCATION_MAX_BYTES = 8 * 1024;
  * fix the host but makes the Location a caller-supplied value. A relative
  * reference is resolved by the browser against the origin it actually
  * requested, so it is same-origin by construction and needs no proxy headers
- * at all -- which is how middleware already emits its own /login redirects.
+ * at all -- which is how the proxy already emits its own /login redirects.
  */
 function redirectOrPayloadTooLarge(target: string): NextResponse {
   if (Buffer.byteLength(target, 'utf8') > SHARE_REDIRECT_LOCATION_MAX_BYTES) {
@@ -45,7 +45,7 @@ function redirectOrPayloadTooLarge(target: string): NextResponse {
  * route — they go to `/protocol` or `/share` directly with query params.
  *
  * We don't resolve here — that happens server-side on the /share page —
- * because /share is auth-gated by middleware and can render rich UI on
+ * because /share is auth-gated by the proxy and can render rich UI on
  * the result, whereas this route just exists to satisfy the manifest
  * spec (which insists on POST for the share-target action).
  */

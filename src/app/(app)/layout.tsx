@@ -26,9 +26,9 @@ import { NavigationProvider } from '@/components/layout/navigation-provider';
 export const dynamic = 'force-dynamic';
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
-  // Edge middleware only checks the JWT signature/sid claim; it can't reach
-  // the DB to confirm the Session row hasn't been revoked (or the user
-  // disabled). Resolve the user here (node runtime) so revocation/disable take
+  // The request proxy only checks the JWT signature/sid claim; it stays off
+  // the DB, so it can't confirm the Session row hasn't been revoked (or the
+  // user disabled). Resolve the user here (node runtime) so revocation/disable take
   // effect for SSR navs, and so the permission provider is seeded server-side.
   // Independent of each other, so resolve in parallel to keep one DB round-trip
   // off the critical path of every authenticated navigation.

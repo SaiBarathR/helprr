@@ -65,7 +65,7 @@ function redirectToLogin(request: NextRequest, csp: string): NextResponse {
   return addSecurityHeaders(NextResponse.redirect(loginUrl), csp);
 }
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Per-request CSP. In production the nonce + policy also ride on the request
@@ -110,7 +110,7 @@ export async function middleware(request: NextRequest) {
   // Web Share Target POSTs hit /api/share directly from the OS share sheet.
   // Let the request through so the route handler can run its own requireAuth
   // check and, when unauthenticated, 303-redirect through /login while
-  // preserving the shared payload (middleware can't read the multipart body to
+  // preserving the shared payload (the proxy can't read the multipart body to
   // forward it, and a JSON 401 here would land the user on a raw error page).
   if (pathname === '/api/share') {
     return pass();

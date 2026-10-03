@@ -31,7 +31,7 @@ async function postHandler(
     const response = NextResponse.json({ revoked: 1, wasCurrent });
     if (wasCurrent) {
       // Clear the cookie up-front so the next navigation doesn't even
-      // hit the middleware-then-redirect round-trip.
+      // hit the proxy-then-redirect round-trip.
       response.cookies.set(COOKIE_NAME, '', {
         httpOnly: true,
         secure: isHttpsRequest(request, process.env.TRUST_FORWARDED_PROTO === 'true'),
