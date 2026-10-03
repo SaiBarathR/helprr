@@ -74,6 +74,10 @@ export default function ExcludedTitlesPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const [restoring, setRestoring] = useState<ReadonlySet<string>>(new Set());
+  // Titles shown again during this visit. Filtering them out at render (not
+  // by editing the cache) means a "Show more" response that started before
+  // the restore can't bring a row back.
+  const [restored, setRestored] = useState<ReadonlySet<string>>(new Set());
 
   const query = useInfiniteQuery({
     queryKey: EXCLUDED_QUERY_KEY,
@@ -94,6 +98,8 @@ export default function ExcludedTitlesPage() {
         body: JSON.stringify({ itemKey: item.itemKey }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setRestored((prev) => new Set(prev).add(item.itemKey));
+      // Also drop it from the cache, so a later visit doesn't flash it first.
       queryClient.setQueryData<InfiniteData<ExcludedPage, string | null>>(EXCLUDED_QUERY_KEY, (prev) => prev && {
         ...prev,
         pages: prev.pages.map((page) => ({
@@ -117,7 +123,7 @@ export default function ExcludedTitlesPage() {
     }
   };
 
-  const items = query.data?.pages.flatMap((page) => page.items) ?? [];
+  const items = (query.data?.pages.flatMap((page) => page.items) ?? []).filter((item) => !restored.has(item.itemKey));
 
   return (
     <div className="space-y-3 animate-content-in">
@@ -126,7 +132,7 @@ export default function ExcludedTitlesPage() {
       <div className="mx-auto max-w-2xl space-y-3">
         {query.isLoading ? (
           <ExcludedListSkeleton />
-        ) : query.isError ? (
+        ) : query.isError && !query.data ? (
           <ErrorState message="Couldn't load excluded titles." onRetry={() => void query.refetch()} retrying={query.isFetching} />
         ) : items.length === 0 && !query.hasNextPage ? (
           <div className="rounded-xl bg-card p-8 text-center text-muted-foreground">
@@ -150,6 +156,9 @@ export default function ExcludedTitlesPage() {
                   />
                 ))}
               </div>
+            )}
+            {query.isFetchNextPageError && (
+              <p className="text-center text-xs text-muted-foreground">Couldn&apos;t load more. Try again.</p>
             )}
             {query.hasNextPage && (
               <div className="flex justify-center">

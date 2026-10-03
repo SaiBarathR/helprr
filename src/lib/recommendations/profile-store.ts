@@ -67,6 +67,19 @@ export async function buildProfileForUser(user: ProfileUser): Promise<BuiltProfi
 /** Rebuild and persist. Returns the fresh profile. */
 export async function rebuildTasteProfile(user: ProfileUser): Promise<TasteProfile> {
   const built = await buildProfileForUser(user);
+  // A build takes a while (Jellyfin scans). A title restored meanwhile has
+  // lost its exclude events but may still be in what was read at the start,
+  // so keep only the excludes that are still backed by an event.
+  const excluded = built.profile.negatives.excludedItemKeys;
+  if (excluded.length > 0) {
+    const stillExcluded = await prisma.recommendationEvent.findMany({
+      where: { userId: user.id, eventType: { in: ['not_interested', 'dislike'] }, itemKey: { in: excluded } },
+      select: { itemKey: true },
+      distinct: ['itemKey'],
+    });
+    const live = new Set(stillExcluded.map((row) => row.itemKey));
+    built.profile.negatives.excludedItemKeys = excluded.filter((key) => live.has(key));
+  }
   const json = built.profile as unknown as Prisma.InputJsonValue;
   await prisma.userTasteProfile.upsert({
     where: { userId: user.id },

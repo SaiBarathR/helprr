@@ -154,9 +154,17 @@ function RecommendationsPageInner() {
 
   const onNotInterested = useCallback((itemKey: string) => {
     setHidden((prev) => ({ at: railsAt, keys: [...(prev.at === railsAt ? prev.keys : []), itemKey] }));
+    // A rails fetch already in flight was composed without this feedback, and
+    // its arrival would clear the hide. Drop it and fetch again once the
+    // feedback is stored.
+    const railsInFlight = queryClient.isFetching({ queryKey: ['recommendations'] }) > 0;
+    if (railsInFlight) void queryClient.cancelQueries({ queryKey: ['recommendations'] });
     // Flush so the server-side cache bust lands before the next refetch, and
     // the excluded count includes this title.
-    void tracker.flush().then(() => queryClient.invalidateQueries({ queryKey: ['recommendations-excluded-count'] }));
+    void tracker.flush().then(() => {
+      void queryClient.invalidateQueries({ queryKey: ['recommendations-excluded-count'] });
+      if (railsInFlight) void queryClient.invalidateQueries({ queryKey: ['recommendations'] });
+    });
   }, [setHidden, railsAt, tracker, queryClient]);
 
   const rails = useMemo(() => railsQuery.data?.rails ?? [], [railsQuery.data]);
@@ -185,7 +193,9 @@ function RecommendationsPageInner() {
     return out;
   }, [rails, hiddenKeys]);
 
-  const refresh = () => {
+  const refresh = async () => {
+    // Store queued feedback first, so the fresh rails already leave it out.
+    await tracker.flush();
     void queryClient.invalidateQueries({ queryKey: ['recommendations'] });
     void queryClient.invalidateQueries({ queryKey: ['recommendations-feed'] });
   };
@@ -225,7 +235,7 @@ function RecommendationsPageInner() {
               <Button
                 size="icon-sm"
                 variant="outline"
-                onClick={refresh}
+                onClick={() => void refresh()}
                 disabled={railsQuery.isFetching}
                 aria-label="Refresh recommendations"
               >
