@@ -3,7 +3,7 @@ import { ApiError } from '@/lib/query-fetch';
 
 import { useCallback, useState } from 'react';
 import Link from '@/components/ui/app-link';
-import { Disc3, Film, Tv } from 'lucide-react';
+import { Disc3, Film, Tv, Calendar } from 'lucide-react';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
 import { useElementSize } from '@/lib/widgets/use-element-size';
 import { useListFetchSize } from '@/lib/widgets/use-list-fetch-size';
@@ -15,6 +15,7 @@ import {
   CAROUSEL_CARD_HEIGHT,
   CAROUSEL_CARD_WIDTH,
   CAROUSEL_GAP,
+  EmptyState,
   FONT_MONO,
   HPR,
   LIST_ROW_HEIGHT,
@@ -173,9 +174,10 @@ export function UpcomingWidget({
         style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}
       >
         <SectionHeader title="Upcoming" badge={dayBadge} right={toggleNode} />
-        <div style={{ fontSize: 11, color: HPR.fgSubtle, padding: '6px 0' }}>
+        <EmptyState>
+          <Calendar size={18} />
           Nothing upcoming
-        </div>
+        </EmptyState>
       </div>
     );
   }

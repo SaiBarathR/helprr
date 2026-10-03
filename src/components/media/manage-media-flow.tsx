@@ -21,7 +21,6 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { DeleteFilesConfirmDialog } from '@/components/media/delete-files-confirm-dialog';
 import { jsonFetcher, ensureArray, withInstanceQuery, arrMutationFetch, ApiError } from '@/lib/query-fetch';
 import { queryKeys } from '@/lib/query-keys';
@@ -32,7 +31,6 @@ import {
 import { pollCommand } from '@/lib/arr-command';
 import { formatBytes } from '@/lib/format';
 import { cn } from '@/lib/utils';
-import { useUIStore } from '@/lib/store';
 import { useCan } from '@/components/permission-provider';
 import type {
   ManualImportItem, SonarrEpisode, ArrLanguage, ArrQualityModel, ReleaseType,
@@ -111,7 +109,6 @@ export function ManageMediaFlow({ service, mediaId, mediaTitle, instanceId }: Ma
   const router = useRouter();
   const queryClient = useQueryClient();
   const isSonarr = service === 'sonarr';
-  const navPosition = useUIStore((s) => s.navPosition);
   const canDelete = useCan(isSonarr ? 'series.delete' : 'movies.delete');
   const canImportFiles = useCan('activity.manage');
 
@@ -460,8 +457,8 @@ export function ManageMediaFlow({ service, mediaId, mediaTitle, instanceId }: Ma
                       <p className="break-words text-sm leading-snug">{f.relativePath || f.name}</p>
                       <div className="flex flex-wrap items-center gap-1">
                         {q?.quality?.name && <Badge variant="secondary" className="text-[10px]">{q.quality.name}</Badge>}
-                        {langs.length > 0 && <Badge variant="outline" className="text-[10px]">{langs.map((l) => l.name).join(', ')}</Badge>}
-                        {rg && <Badge variant="outline" className="text-[10px]">{rg}</Badge>}
+                        {langs.length > 0 && <Badge variant="outline" className="max-w-full text-[10px]"><span className="truncate">{langs.map((l) => l.name).join(', ')}</span></Badge>}
+                        {rg && <Badge variant="outline" className="max-w-full text-[10px]"><span className="truncate">{rg}</span></Badge>}
                         <Badge variant="outline" className="text-[10px]">{formatBytes(f.size)}</Badge>
                         {f.customFormatScore !== undefined && f.customFormatScore !== 0 && (
                           <Badge variant="outline" className="text-[10px]">
@@ -508,12 +505,9 @@ export function ManageMediaFlow({ service, mediaId, mediaTitle, instanceId }: Ma
       </div>
 
       {/* Bottom action bar — always visible; actions enable once files are selected */}
-      <div
-        className={cn(
-          'page-bleed sticky z-30 flex items-center gap-2 border-t border-border app-chrome-bar bg-background/95 py-3 backdrop-blur-sm',
-          navPosition === 'bottom' ? 'bottom-[calc(3rem+env(safe-area-inset-bottom))] md:bottom-0' : 'bottom-0'
-        )}
-      >
+      {/* On the tab bar when the nav is at the bottom, else on the screen's foot
+          with the home indicator inside its padding. */}
+      <div className="page-bleed sticky bottom-[var(--footer-bar-bottom)] z-30 flex items-center gap-2 border-t border-border app-chrome-bar bg-background/95 pt-3 pb-[calc(0.75rem+var(--footer-bar-inset))] backdrop-blur-sm">
         {canDelete && (
           <Button variant="destructive" size="sm" disabled={submitting || deletableSelected.length === 0} onClick={() => setDeleteOpen(true)}>
             <Trash2 className="mr-1.5 h-4 w-4" />Delete
@@ -763,7 +757,7 @@ function LanguagePicker({ open, languages, loading, onClose, onSelect }: {
           <DialogDescription className="sr-only">Set languages on the selected files.</DialogDescription>
         </DialogHeader>
         <Input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder={loading ? 'Loading…' : 'Filter languages'} />
-        <ScrollArea className="max-h-[45dvh] rounded-md border">
+        <div className="max-h-[45dvh] overflow-y-auto rounded-md border">
           <div className="p-1">
             {list.map((l) => {
               const on = picked.has(l.id);
@@ -775,7 +769,7 @@ function LanguagePicker({ open, languages, loading, onClose, onSelect }: {
               );
             })}
           </div>
-        </ScrollArea>
+        </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancel</Button>
           <Button disabled={picked.size === 0} onClick={() => onSelect(languages.filter((l) => picked.has(l.id)))}>Select Languages</Button>

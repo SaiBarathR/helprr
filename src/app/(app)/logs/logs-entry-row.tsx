@@ -140,7 +140,9 @@ export const LogsEntryRow = forwardRef<HTMLDivElement, LogsEntryRowProps>(
             aria-expanded={isExpanded}
             className="block w-full px-4 py-3 text-left active:bg-foreground/5 hover:bg-foreground/[0.02] transition-colors"
           >
-            <div className="flex min-w-0 items-start justify-between gap-3">
+            {/* Phones: time and request id under the message, so they don't
+                squeeze it into a narrow column. */}
+            <div className="flex min-w-0 flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <span
@@ -156,12 +158,12 @@ export const LogsEntryRow = forwardRef<HTMLDivElement, LogsEntryRowProps>(
                   </span>
                   <span className="text-xs text-muted-foreground">{entry.source}</span>
                   {entry.scope && (
-                    <span className="text-xs text-muted-foreground">· {entry.scope}</span>
+                    <span className="min-w-0 text-xs text-muted-foreground [overflow-wrap:anywhere]">· {entry.scope}</span>
                   )}
                 </div>
                 <div className="mt-1 break-words text-sm font-medium">{entry.message}</div>
               </div>
-              <div className="shrink-0 text-right text-[11px] text-muted-foreground font-mono">
+              <div className="flex shrink-0 flex-wrap gap-x-2 text-[11px] text-muted-foreground font-mono sm:block sm:text-right">
                 <div>{entry.timestampLocal}</div>
                 {entry.requestId && <div>{entry.requestId.slice(0, 8)}</div>}
               </div>

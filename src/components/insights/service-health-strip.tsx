@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import { withAppName } from '@/components/instance-filter';
 import { Dot, HPR } from '@/components/widgets/bento-primitives';
 import { useInsightsResource } from './insights-shared';
 
@@ -29,17 +30,20 @@ export function ServiceHealthStrip() {
       >
         {down > 0 ? `${down} down` : 'All healthy'}
       </span>
-      {services.map((s) => (
-        <span
-          key={s.instanceId}
-          className="inline-flex items-center gap-1.5 text-[11px]"
-          style={{ color: HPR.fgMute }}
-          title={s.ok ? `${s.label}: OK` : `${s.label}: ${s.error || 'unreachable'}`}
-        >
-          <Dot color={s.ok ? HPR.green : HPR.rose} size={6} pulse={!s.ok} />
-          {s.label}
-        </span>
-      ))}
+      {services.map((s) => {
+        const label = withAppName(s.label, s.type);
+        return (
+          <span
+            key={s.instanceId}
+            className="inline-flex items-center gap-1.5 text-[11px]"
+            style={{ color: HPR.fgMute }}
+            title={s.ok ? `${label}: OK` : `${label}: ${s.error || 'unreachable'}`}
+          >
+            <Dot color={s.ok ? HPR.green : HPR.rose} size={6} pulse={!s.ok} />
+            {label}
+          </span>
+        );
+      })}
     </div>
   );
 }

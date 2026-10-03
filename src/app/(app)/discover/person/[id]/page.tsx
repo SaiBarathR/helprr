@@ -373,7 +373,7 @@ export default function PersonDetailPage() {
                   onClick={() => setBioExpanded(!bioExpanded)}
                   className="text-sm text-primary font-medium mt-1"
                 >
-                  {bioExpanded ? 'less' : 'more...'}
+                  {bioExpanded ? 'Show less' : 'Read more'}
                 </button>
               )}
             </div>
@@ -390,7 +390,7 @@ export default function PersonDetailPage() {
 
         {/* Credits */}
         <div className="space-y-3">
-          <div className="px-4 space-y-2">
+          <div className="space-y-2">
             <div className="flex items-center justify-between">
               <h2 className="text-base font-semibold">Filmography</h2>
               {/* Sort controls */}
@@ -434,7 +434,7 @@ export default function PersonDetailPage() {
               </div>
             </div>
             {/* Department filter */}
-            <div data-scroll-restoration-key="person:credits-filters" className="flex items-center gap-2 overflow-x-auto scrollbar-hide">
+            <div data-scroll-restoration-key="person:credits-filters" className="rail-bleed flex items-center gap-2 overflow-x-auto scrollbar-hide">
               {DEPARTMENTS.map((dept) => {
                 const count = departmentCounts[dept];
                 if (count === 0) return null;

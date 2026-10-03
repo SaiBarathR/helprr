@@ -81,7 +81,7 @@ function RecipeRow({ recipe, origin }: { recipe: Recipe; origin: string }) {
   }
 
   return (
-    <div className="grouped-row flex-col items-stretch gap-2 py-3">
+    <div className="grouped-row grouped-row-stacked gap-2 py-3">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="text-[15px] font-medium">{recipe.label}</div>
@@ -131,7 +131,7 @@ export default function ShortcutsSettingsPage() {
         title="Before you start"
         footer="These shortcuts open the app to perform the action (foreground). They are not background Siri intents — true hands-free automation would need a native app wrapper."
       >
-        <div className="grouped-row flex-col items-start gap-1.5 py-3">
+        <div className="grouped-row grouped-row-stacked gap-1.5 py-3">
           <p className="text-sm">
             Install Helprr to your Home Screen (Share <Share className="inline h-3.5 w-3.5 align-text-bottom" /> → Add to Home Screen) and stay signed in.
             URLs then open in the standalone app and carry your session.
@@ -156,7 +156,7 @@ export default function ShortcutsSettingsPage() {
         title="Alternative protocol form"
         footer="For the manifest wrapper form, encode the custom-scheme URL and pass it as u."
       >
-        <div className="grouped-row flex-col items-stretch gap-2 py-3">
+        <div className="grouped-row grouped-row-stacked gap-2 py-3">
           <p className="text-sm">
             Prefer the HTTPS recipes above for Shortcuts. If your platform handles registered web
             protocols reliably, these custom-scheme forms route through the same Helprr commands.

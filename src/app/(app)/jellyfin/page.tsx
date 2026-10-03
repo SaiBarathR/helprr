@@ -59,6 +59,12 @@ import {
   Power,
   FolderSync,
 } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import type {
   JellyfinSession,
   JellyfinItem,
@@ -174,7 +180,7 @@ export default function JellyfinPage() {
           </TabsList>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-2 pt-3 pb-4">
+        <div className="page-bleed flex-1 overflow-y-auto pt-3 pb-4">
           <TabsContent value="overview"><OverviewTab /></TabsContent>
           {canSessions && <TabsContent value="users"><UsersTab /></TabsContent>}
           <TabsContent value="history"><HistoryTab /></TabsContent>
@@ -190,7 +196,7 @@ export default function JellyfinPage() {
 function Carousel({ children, className = '', restorationKey }: { children: React.ReactNode; className?: string; restorationKey: string }) {
   return (
     <div className="relative">
-      <div data-scroll-restoration-key={`jellyfin:${restorationKey}`} className={`flex gap-3 overflow-x-auto pb-2 snap-x snap-mandatory scrollbar-hide -mx-1 px-1 ${className}`}>
+      <div data-scroll-restoration-key={`jellyfin:${restorationKey}`} className={`flex gap-3 overflow-x-auto pb-2 snap-x snap-mandatory scrollbar-hide -mx-1 px-1 scroll-px-1 ${className}`}>
         {children}
       </div>
       <div className="pointer-events-none absolute top-0 right-0 bottom-2 w-8 bg-gradient-to-l from-background to-transparent" />
@@ -460,26 +466,30 @@ function OverviewTab() {
               {serverAction === 'scan-libraries' || scanRunning ? <Loader2 className="h-3 w-3 animate-spin" /> : <FolderSync className="h-3 w-3" />}
               {scanRunning ? 'Scanning…' : 'Scan Libraries'}
             </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 flex-1 text-[11px] gap-1.5 text-muted-foreground hover:text-amber-500 hover:bg-amber-500/10"
-              disabled={serverAction !== null}
-              onClick={() => handleServerAction('restart')}
-            >
-              {serverAction === 'restart' ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCw className="h-3 w-3" />}
-              Restart
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 flex-1 text-[11px] gap-1.5 text-muted-foreground hover:text-red-500 hover:bg-red-500/10"
-              disabled={serverAction !== null}
-              onClick={() => handleServerAction('shutdown')}
-            >
-              {serverAction === 'shutdown' ? <Loader2 className="h-3 w-3 animate-spin" /> : <Power className="h-3 w-3" />}
-              Shutdown
-            </Button>
+            {/* Restart and shut down sit behind a menu (each still confirms), away
+                from the everyday Scan Libraries button. */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 gap-1.5 px-3 text-[11px] text-muted-foreground"
+                  aria-label="Server power"
+                  disabled={serverAction !== null}
+                >
+                  {serverAction === 'restart' || serverAction === 'shutdown' ? <Loader2 className="h-3 w-3 animate-spin" /> : <Power className="h-3 w-3" />}
+                  Power
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => handleServerAction('restart')}>
+                  <RotateCw className="h-4 w-4" /> Restart
+                </DropdownMenuItem>
+                <DropdownMenuItem variant="destructive" onClick={() => handleServerAction('shutdown')}>
+                  <Power className="h-4 w-4" /> Shut down
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
       )}
@@ -825,7 +835,8 @@ function UsersTab() {
             <>
               <DrawerHeader className="text-left">
                 <DrawerTitle className="text-sm">{selectedUser.user_name} — Recent Plays</DrawerTitle>
-                <p className="text-xs text-muted-foreground">{selectedUser.total_count} total plays &middot; {selectedUser.total_play_time}</p>
+                <p className="text-xs text-muted-foreground">{selectedUser.total_count} plays all time &middot; {selectedUser.total_play_time}</p>
+                <p className="text-xs text-muted-foreground">Showing the latest 30 plays from the last 30 days</p>
               </DrawerHeader>
               <div className="px-2 pb-6 flex-1 min-h-0 overflow-y-auto">
                 {historyLoading ? (
@@ -1048,12 +1059,17 @@ function CustomHistoryRow({ item }: { item: CustomHistoryItem }) {
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-sm truncate">{item.ItemName}</p>
-        <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
-          <span>{item.ClientName}</span><span>&middot;</span><span>{item.DeviceName}</span><span>&middot;</span><span>{formatDurationSeconds(item.PlayDuration)}</span>
+        {/* Long client or device names truncate; the play time always shows. */}
+        <div className="flex min-w-0 items-center gap-1.5 text-[10px] text-muted-foreground">
+          <span className="min-w-0 truncate">{item.ClientName}</span><span className="shrink-0">&middot;</span><span className="min-w-0 truncate">{item.DeviceName}</span><span className="shrink-0">&middot;</span><span className="shrink-0">{formatDurationSeconds(item.PlayDuration)}</span>
         </div>
       </div>
       <div className="text-right shrink-0 space-y-0.5">
-        <Badge variant="outline" className={`text-[9px] px-1 py-0 ${methodColor}`}>{methodLabel}</Badge>
+        {/* Transcode labels run long ("Transcode (v:h264 a:direct)"); cap them so
+            the title keeps its room on phones. */}
+        <Badge variant="outline" className={`max-w-[8rem] text-[9px] px-1 py-0 ${methodColor}`} title={methodLabel}>
+          <span className="truncate">{methodLabel}</span>
+        </Badge>
         <p className="text-[10px] text-muted-foreground">{formatDateCreated(item.DateCreated)}</p>
       </div>
     </div>
@@ -1725,6 +1741,7 @@ function ScheduledTasksList({ tasks, onRefresh }: { tasks: JellyfinScheduledTask
             variant="ghost"
             size="icon"
             className="h-7 w-7"
+            aria-label="Refresh scheduled tasks"
             disabled={refreshing}
             onClick={refresh}
           >
@@ -1767,6 +1784,7 @@ function ScheduledTasksList({ tasks, onRefresh }: { tasks: JellyfinScheduledTask
                   variant="ghost"
                   size="icon"
                   className="h-6 w-6 shrink-0 text-red-500 hover:text-red-400 hover:bg-red-500/10"
+                  aria-label={`Stop ${t.Name}`}
                   disabled={busyTasks.has(t.Id)}
                   onClick={() => handleTaskAction(t.Id, 'stop')}
                 >
@@ -1879,6 +1897,7 @@ function ScheduledTasksList({ tasks, onRefresh }: { tasks: JellyfinScheduledTask
                               variant="ghost"
                               size="icon"
                               className={`h-6 w-6 shrink-0 ${isRunning ? 'text-red-500 hover:text-red-400 hover:bg-red-500/10' : 'text-[var(--hpr-cyan)] hover:text-[var(--hpr-cyan)]/80 hover:bg-[var(--hpr-cyan)]/10'}`}
+                              aria-label={`${isRunning ? 'Stop' : 'Run'} ${t.Name}`}
                               disabled={isBusy}
                               onClick={() => handleTaskAction(t.Id, isRunning ? 'stop' : 'start')}
                             >

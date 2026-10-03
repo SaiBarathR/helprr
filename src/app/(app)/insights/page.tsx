@@ -140,16 +140,14 @@ export default function InsightsPage() {
       <div
         className="page-toolbar page-toolbar-flush pb-3 app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 flex items-center justify-between gap-3"
       >
-        <div className="min-w-0">
-          <h1 className="text-xl font-bold leading-tight">Insights</h1>
-          <p className="text-[11px] text-muted-foreground">Trends across your library, downloads & viewing</p>
-        </div>
-        <div className="w-40 shrink-0">
+        {/* Page titles stay screen-reader only, as on every other page. */}
+        <h1 className="sr-only">Insights</h1>
+        <div className="w-full sm:w-56">
           <DateRangeSelect value={calendarValue} onChange={handleRangeChange} />
         </div>
       </div>
 
-      <div data-scroll-restoration-key="insights-content" className="flex-1 overflow-y-auto px-2 pt-3 pb-6 space-y-4">
+      <div data-scroll-restoration-key="insights-content" className="page-bleed flex-1 overflow-y-auto pt-3 pb-6 space-y-4">
         {tabs.length > 1 && (
           // Radix Tabs: keeps the pill styling, adds roving focus + arrow keys.
           <Tabs
@@ -159,7 +157,7 @@ export default function InsightsPage() {
           >
             <TabsList
               aria-label="Insight sections"
-              className="flex h-auto w-full justify-start gap-2 bg-transparent p-0 overflow-x-auto scrollbar-hide -mx-2 px-2"
+              className="rail-bleed flex h-auto w-[calc(100%+2*var(--main-pad-x))] justify-start gap-2 bg-transparent py-0 overflow-x-auto scrollbar-hide"
             >
               {tabs.map((id) => {
                 const meta = TAB_META[id];

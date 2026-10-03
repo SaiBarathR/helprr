@@ -389,8 +389,7 @@ export function extractTmdbId(externalLinks: AniListExternalLink[]): number | nu
   return null;
 }
 
-export function getCurrentSeason(): { season: AniListMediaSeason; year: number } {
-  const now = new Date();
+export function getCurrentSeason(now = new Date()): { season: AniListMediaSeason; year: number } {
   const month = now.getMonth() + 1;
   const year = now.getFullYear();
 
@@ -406,6 +405,19 @@ export function getCurrentSeason(): { season: AniListMediaSeason; year: number }
   }
 
   return { season, year };
+}
+
+/**
+ * The Seasonal sort shows one season: the season and year the filters pick,
+ * filling in the current ones for whatever they leave out. Names that season
+ * when any part of it was filled in, since nothing on screen says so.
+ */
+export function seasonalSortNote(filters: { season: string; year: string }, now = new Date()): string | null {
+  if (filters.season && filters.year) return null;
+  const current = getCurrentSeason(now);
+  const season = filters.season || current.season;
+  const label = season.charAt(0) + season.slice(1).toLowerCase();
+  return `Only anime from ${label} ${filters.year || current.year}`;
 }
 
 export function isMovieFormat(format: AniListMediaFormat | null): boolean {

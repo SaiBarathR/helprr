@@ -2,6 +2,12 @@
 
 import { useCallback, useMemo, useState } from 'react';
 import { CheckCircle2, FolderSync, Loader2, Power, RotateCw, Server } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -145,26 +151,30 @@ export function JellyfinServerWidget({ refreshInterval, editMode = false }: Widg
               )}
               {compactView ? '' : scanRunning ? 'Scanning…' : 'Scan Libraries'}
             </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 flex-1 text-[11px] gap-1.5 text-muted-foreground hover:text-amber-500 hover:bg-amber-500/10"
-              disabled={editMode || serverAction !== null}
-              onClick={() => handleServerAction('restart')}
-            >
-              {serverAction === 'restart' ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCw className="h-3 w-3" />}
-              {compactView ? '' : 'Restart'}
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 flex-1 text-[11px] gap-1.5 text-muted-foreground hover:text-red-500 hover:bg-red-500/10"
-              disabled={editMode || serverAction !== null}
-              onClick={() => handleServerAction('shutdown')}
-            >
-              {serverAction === 'shutdown' ? <Loader2 className="h-3 w-3 animate-spin" /> : <Power className="h-3 w-3" />}
-              {compactView ? '' : 'Shutdown'}
-            </Button>
+            {/* Restart and shut down sit behind a menu (each still confirms), away
+                from the everyday Scan Libraries button. */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 gap-1.5 px-3 text-[11px] text-muted-foreground"
+                  aria-label="Server power"
+                  disabled={editMode || serverAction !== null}
+                >
+                  {serverAction === 'restart' || serverAction === 'shutdown' ? <Loader2 className="h-3 w-3 animate-spin" /> : <Power className="h-3 w-3" />}
+                  {compactView ? '' : 'Power'}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => handleServerAction('restart')}>
+                  <RotateCw className="h-4 w-4" /> Restart
+                </DropdownMenuItem>
+                <DropdownMenuItem variant="destructive" onClick={() => handleServerAction('shutdown')}>
+                  <Power className="h-4 w-4" /> Shut down
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
       )}

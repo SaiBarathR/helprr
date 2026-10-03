@@ -1,5 +1,6 @@
 'use client';
 
+import { MonitorPlay } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
 import { StreamInfoDrawer } from '@/components/jellyfin/stream-info-drawer';
@@ -9,6 +10,7 @@ import type { WidgetProps } from '@/lib/widgets/types';
 import {
   Bar,
   Dot,
+  EmptyState,
   FONT_DISPLAY,
   FONT_MONO,
   HPR,
@@ -90,11 +92,12 @@ export function NowStreamingWidget({
 
   if (list.length === 0) {
     return (
-      <div>
+      <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
         <SectionHeader title="Now Streaming" right={toggleNode} />
-        <div style={{ fontSize: 11, color: HPR.fgSubtle, padding: '6px 0' }}>
+        <EmptyState>
+          <MonitorPlay size={18} />
           {editMode ? 'No active streams' : 'Nothing playing right now'}
-        </div>
+        </EmptyState>
       </div>
     );
   }

@@ -16,7 +16,8 @@ export function ProwlarrFailureRateWidget({ refreshInterval, editMode = false, n
             const failed = i.numberOfFailedQueries + i.numberOfFailedRssQueries;
             return {
               name: i.indexerName,
-              'Failure %': parseFloat(((failed / total) * 100).toFixed(1)),
+              // Two decimals so a rare failure (1 in 5,000) doesn't read as 0%.
+              'Failure %': parseFloat(((failed / total) * 100).toFixed(2)),
             };
           })
           .sort((a, b) => b['Failure %'] - a['Failure %'])

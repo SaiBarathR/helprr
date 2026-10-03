@@ -63,11 +63,15 @@ import {
 } from '@/components/calendar/release-badges';
 import { useCalendar } from '@/hooks/use-calendar';
 import { useUIStore } from '@/lib/store';
-import { InstanceFilter, deriveInstances } from '@/components/instance-filter';
+import { InstanceFilter, deriveInstances, withAppName } from '@/components/instance-filter';
+import { ActiveFilterBar } from '@/components/ui/active-filter-bar';
 import { ScheduledAlertButton } from '@/components/scheduled-alerts/scheduled-alert-dialog';
 import { QuickContextMenu } from '@/components/ui/quick-context-menu';
 import type { ScheduledAlertDraft } from '@/lib/scheduled-alerts/types';
 import type { CalendarEvent } from '@/types';
+
+/** The app behind each event type, to tell same-named instances apart. */
+const EVENT_APP = { episode: 'sonarr', movie: 'radarr', album: 'lidarr' } as const;
 
 /** Detail-page link for a calendar event, by media type. Carries the owning
  * instance so a non-default-instance item opens the correct instance. */
@@ -393,8 +397,8 @@ interface AgendaViewHandle {
   scrollToDate: (dateKey: string) => boolean;
 }
 
-const AgendaView = forwardRef<AgendaViewHandle, { events: CalendarEvent[]; showImages: boolean }>(
-function AgendaView({ events, showImages }, ref) {
+const AgendaView = forwardRef<AgendaViewHandle, { events: CalendarEvent[]; showImages: boolean; stickyOffset: number }>(
+function AgendaView({ events, showImages, stickyOffset }, ref) {
   'use no memo';
 
   const rows = useMemo<AgendaRow[]>(() => {
@@ -445,7 +449,8 @@ function AgendaView({ events, showImages }, ref) {
     estimateSize: () => showImages ? 78 : 62,
     overscan: 5,
     scrollMargin,
-    scrollPaddingStart: 80,
+    // A day scrolled to (today on open) lands below the sticky toolbar.
+    scrollPaddingStart: stickyOffset,
     getItemKey: (index) => {
       const row = rows[index];
       return row
@@ -712,7 +717,7 @@ function MonthEventItem({ event, showImages }: { event: CalendarEvent; showImage
               )}
               {event.instanceLabel && (
                 <Badge variant="outline" className="text-[9px] px-1 py-0 h-4 shrink-0">
-                  {event.instanceLabel}
+                  {withAppName(event.instanceLabel, EVENT_APP[event.type])}
                 </Badge>
               )}
             </div>
@@ -1032,7 +1037,7 @@ function MonthView({
 
       <div
         ref={panelRef}
-        className="mt-3 xl:mt-0 scroll-mt-24 xl:sticky xl:top-[calc(var(--header-height,0px)+6rem)]"
+        className="mt-3 xl:mt-0 scroll-mt-[var(--calendar-sticky-offset,6rem)] xl:sticky xl:top-[calc(var(--header-height,0px)+6rem)]"
       >
         {selectedKey ? (
           <DayPanel dateKey={selectedKey} events={selectedEvents} showImages={showImages} />
@@ -1258,6 +1263,27 @@ export default function CalendarPage() {
   const lastViewRef = useRef<ViewType | null>(null);
   const agendaViewRef = useRef<AgendaViewHandle>(null);
 
+  // Where the sticky toolbar ends once stuck. Days scrolled into view (today on
+  // open, a picked day) must land below it; its height changes with the view,
+  // the filters and the nav position, so it's measured rather than assumed.
+  const toolbarRef = useRef<HTMLDivElement>(null);
+  const [stickyOffset, setStickyOffset] = useState(0);
+  useEffect(() => {
+    const toolbar = toolbarRef.current;
+    if (!toolbar) return;
+    const measure = () => {
+      const stuckTop = parseFloat(getComputedStyle(toolbar).top) || 0;
+      setStickyOffset(Math.round(stuckTop + toolbar.offsetHeight) + 8);
+    };
+    const observer = new ResizeObserver(measure);
+    observer.observe(toolbar);
+    window.addEventListener('resize', measure);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', measure);
+    };
+  }, []);
+
   useEffect(() => {
     if (lastViewRef.current === null && readRouteScrollState(routeScrollKey(window.location))) {
       autoFocusPendingRef.current = false;
@@ -1304,7 +1330,7 @@ export default function CalendarPage() {
   });
 
   // Instances present in the loaded events (drives the instance-filter dropdown).
-  const instances = useMemo(() => deriveInstances(events), [events]);
+  const instances = useMemo(() => deriveInstances(events, (event) => EVENT_APP[event.type]), [events]);
 
   // Drop a stale instance selection if that instance is no longer present.
   useEffect(() => {
@@ -1347,6 +1373,9 @@ export default function CalendarPage() {
     } else if (loading) {
       return;
     }
+    // Wait for the toolbar measurement (re-runs when it lands), after the
+    // loading bookkeeping above so a fast load isn't missed in the meantime.
+    if (!stickyOffset) return;
 
     const rafId = window.requestAnimationFrame(() => {
       let done = false;
@@ -1383,7 +1412,7 @@ export default function CalendarPage() {
     });
 
     return () => window.cancelAnimationFrame(rafId);
-  }, [loading, calendarView, agendaTargetDateKey, currentDate]);
+  }, [loading, calendarView, agendaTargetDateKey, currentDate, stickyOffset]);
 
   // Navigation
   function goForward() {
@@ -1422,9 +1451,12 @@ export default function CalendarPage() {
   }, [calendarView, currentDate]);
 
   return (
-    <div className="space-y-3 animate-content-in">
+    <div
+      className="space-y-3 animate-content-in"
+      style={{ '--calendar-sticky-offset': `${stickyOffset || 96}px` } as React.CSSProperties}
+    >
       <h1 className="sr-only">Calendar</h1>
-      <div className="page-toolbar page-toolbar-flush pb-2 app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 space-y-2">
+      <div ref={toolbarRef} className="page-toolbar page-toolbar-flush pb-2 app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 space-y-2">
         {/* Top bar: title + view tabs. Wraps so the filter cluster drops to
             its own line on narrow screens instead of overflowing. */}
         <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5 md:hidden">
@@ -1456,6 +1488,9 @@ export default function CalendarPage() {
               size="icon"
               onClick={goBack}
               className="h-7 w-7 shrink-0"
+              // No extra hit area: the compact toolbar packs these against
+              // "Today", which the spill-over would cover.
+              touchTarget={false}
               aria-label="Previous period"
             >
               <ChevronLeft className="h-4 w-4" />
@@ -1465,6 +1500,9 @@ export default function CalendarPage() {
               size="icon"
               onClick={goForward}
               className="h-7 w-7 shrink-0"
+              // No extra hit area: the compact toolbar packs these against
+              // "Today", which the spill-over would cover.
+              touchTarget={false}
               aria-label="Next period"
             >
               <ChevronRight className="h-4 w-4" />
@@ -1499,6 +1537,17 @@ export default function CalendarPage() {
         </div>
       </div>
 
+      {/* On phones the instance picker is a bare icon, so name the pick here. The
+          type, monitored and scheduled toggles show their own state. */}
+      <ActiveFilterBar
+        filters={instanceFilter === 'all' ? [] : [{
+          id: 'instance',
+          label: instances.find((i) => i.id === instanceFilter)?.label ?? 'Instance',
+          onRemove: () => setInstanceFilter('all'),
+        }]}
+        onClearAll={() => setInstanceFilter('all')}
+      />
+
       {/* Error state */}
       {error && (
         <Card className="border-destructive/50">
@@ -1518,7 +1567,7 @@ export default function CalendarPage() {
       {(!loading || events.length > 0) && (
         <>
           {calendarView === 'agenda' && (
-            <AgendaView ref={agendaViewRef} events={filteredEvents} showImages={showImages} />
+            <AgendaView ref={agendaViewRef} events={filteredEvents} showImages={showImages} stickyOffset={stickyOffset || 80} />
           )}
           {calendarView === 'month' && (
             <MonthView currentDate={currentDate} events={filteredEvents} showImages={showImages} />

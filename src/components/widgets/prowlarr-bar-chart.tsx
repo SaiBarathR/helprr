@@ -30,6 +30,8 @@ export default function ProwlarrBarChart({ rows, bars, xTickFormatter, container
           type="category"
           dataKey="name"
           width={yWidth}
+          // The shell only passes rows that fit, so label every one.
+          interval={0}
           tick={<YTick maxLen={yMaxLen} />}
           axisLine={false}
           tickLine={false}

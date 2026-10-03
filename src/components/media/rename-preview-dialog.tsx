@@ -15,7 +15,6 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { SonarrRenamePreview, RadarrRenamePreview, LidarrRenamePreview } from '@/types';
@@ -196,7 +195,8 @@ export function RenamePreviewDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl">
+      {/* A column so the file list takes the scrolling and the header and actions stay put. */}
+      <DialogContent className="flex flex-col overflow-hidden sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Preview Rename</DialogTitle>
           <DialogDescription>{mediaTitle}</DialogDescription>
@@ -223,7 +223,7 @@ export function RenamePreviewDialog({
               </span>
             </div>
 
-            <ScrollArea className="max-h-[50vh] -mx-2">
+            <div className="-mx-2 min-h-0 flex-1 overflow-y-auto">
               <ul className="px-2 space-y-2">
                 {rows.map((r) => {
                   const checked = selected.has(r.fileId);
@@ -257,7 +257,7 @@ export function RenamePreviewDialog({
                   );
                 })}
               </ul>
-            </ScrollArea>
+            </div>
           </>
         )}
 

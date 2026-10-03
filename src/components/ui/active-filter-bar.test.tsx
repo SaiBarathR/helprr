@@ -3,7 +3,7 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ActiveFilterBar } from './active-filter-bar';
+import { ActiveFilterBar, FilterDot, filterButtonLabel, searchFilter } from './active-filter-bar';
 
 let root: Root;
 beforeEach(() => {
@@ -47,5 +47,40 @@ describe('ActiveFilterBar', () => {
     ));
     await act(async () => button('Clear all')!.click());
     expect(clearAll).toHaveBeenCalledOnce();
+  });
+
+  it('gives each remove button a 44px hit area', async () => {
+    await act(async () => root.render(
+      <ActiveFilterBar filters={[{ id: 'sonarr', label: 'Sonarr', onRemove: () => {} }]} onClearAll={() => {}} />,
+    ));
+    expect(button('Remove Sonarr filter')!.className).toContain('touch-target');
+  });
+});
+
+describe('searchFilter', () => {
+  it('names a search as a filter and clears it', () => {
+    const clear = vi.fn();
+    const [chip] = searchFilter('  dune ', clear);
+    expect(chip.label).toBe('Search: "dune"');
+    chip.onRemove();
+    expect(clear).toHaveBeenCalledOnce();
+  });
+
+  it('adds nothing for an empty search', () => {
+    expect(searchFilter('   ', () => {})).toEqual([]);
+  });
+});
+
+describe('filter trigger', () => {
+  it('says when filters are active', () => {
+    expect(filterButtonLabel('Filter', true)).toBe('Filter (filters active)');
+    expect(filterButtonLabel('Filter', false)).toBe('Filter');
+  });
+
+  it('shows the dot only while filters are active', async () => {
+    await act(async () => root.render(<FilterDot active={false} />));
+    expect(document.getElementById('root')!.innerHTML).toBe('');
+    await act(async () => root.render(<FilterDot active />));
+    expect(document.querySelector('span[aria-hidden]')).not.toBeNull();
   });
 });

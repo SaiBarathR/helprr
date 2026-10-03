@@ -1,12 +1,13 @@
 'use client';
 
+import { MonitorSmartphone } from 'lucide-react';
 import { useState } from 'react';
 import type { JellyfinDevice } from '@/types/jellyfin';
 import type { WidgetProps } from '@/lib/widgets/types';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
 import { useElementSize } from '@/lib/widgets/use-element-size';
 import { useListFetchSize } from '@/lib/widgets/use-list-fetch-size';
-import { SectionHeader, HPR, FONT_MONO, ViewModeToggle } from './bento-primitives';
+import { SectionHeader, HPR, FONT_MONO, ViewModeToggle, EmptyState } from './bento-primitives';
 import { useDashboardLayout } from './dashboard-layout-context';
 import { DeviceItem, DevicesSeeAllDrawer } from '@/components/jellyfin/device-item';
 
@@ -81,7 +82,10 @@ export function JellyfinDevicesWidget({
       {loading && devices.length === 0 ? (
         <div style={{ fontSize: 11, color: HPR.fgSubtle }}>Loading…</div>
       ) : devices.length === 0 ? (
-        <div style={{ fontSize: 11, color: HPR.fgSubtle, padding: '6px 0' }}>No devices</div>
+        <EmptyState>
+          <MonitorSmartphone size={18} />
+          No devices
+        </EmptyState>
       ) : useList ? (
         <div className="no-scrollbar scroll-fade-y" style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1, minHeight: 0, overflowY: 'auto' }}>
           {devices.slice(0, visibleCount).map((device) => (

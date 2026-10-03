@@ -3,7 +3,7 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import Link from '@/components/ui/app-link';
 import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
-import { Info } from 'lucide-react';
+import { Info, Bell } from 'lucide-react';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
 import { useElementSize } from '@/lib/widgets/use-element-size';
 import { useListFetchSize } from '@/lib/widgets/use-list-fetch-size';
@@ -12,7 +12,7 @@ import type { WidgetProps } from '@/lib/widgets/types';
 import { EventIcon, getEventHprColor } from '@/components/notifications/event-visuals';
 import { NotificationDetailDrawer } from '@/components/notifications/notification-detail-drawer';
 import { useBadgeActions } from '@/components/layout/badge-provider';
-import { FONT_MONO, HPR, SectionHeader, mix } from './bento-primitives';
+import { FONT_MONO, HPR, SectionHeader, mix, EmptyState } from './bento-primitives';
 
 // Notification cards include 2 lines of body text + padding, so they're
 // taller than the dashboard's generic LIST_ROW_HEIGHT.
@@ -126,9 +126,10 @@ export function NotificationsWidget({
         style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}
       >
         <SectionHeader title="Notifications" />
-        <div style={{ fontSize: 11, color: HPR.fgSubtle, padding: '6px 0' }}>
+        <EmptyState>
+          <Bell size={18} />
           No recent notifications
-        </div>
+        </EmptyState>
       </div>
     );
   }
@@ -256,6 +257,7 @@ export function NotificationsWidget({
                 <button
                   type="button"
                   aria-label="View details"
+                  className="relative touch-target"
                   onClick={(e) => { e.stopPropagation(); handleOpenDetail(n); }}
                   style={{
                     flexShrink: 0,

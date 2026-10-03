@@ -444,6 +444,8 @@ export default function MovieDetailPage() {
                 onClick={handleToggleMonitored}
                 disabled={actionLoading === 'monitor'}
                 className="min-w-[44px] min-h-[44px] flex items-center justify-center text-primary"
+                aria-label="Monitored"
+                aria-pressed={movie.monitored}
               >
                 {actionLoading === 'monitor' ? (
                   <Loader2 className="h-5 w-5 animate-spin" />
@@ -458,7 +460,7 @@ export default function MovieDetailPage() {
             {/* 3-dot menu */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <button className="min-w-[44px] min-h-[44px] flex items-center justify-center text-primary">
+                <button className="min-w-[44px] min-h-[44px] flex items-center justify-center text-primary" aria-label="More actions">
                   <MoreHorizontal className="h-5 w-5" />
                 </button>
               </DropdownMenuTrigger>
@@ -667,7 +669,7 @@ export default function MovieDetailPage() {
               </div>
             </div>
             {tmdbData.tagline && (
-              <p className="mt-3 md:px-4 px-1 text-sm italic text-muted-foreground">&ldquo;{tmdbData.tagline}&rdquo;</p>
+              <p className="mt-3 px-2 md:px-6 text-sm italic text-muted-foreground">&ldquo;{tmdbData.tagline}&rdquo;</p>
             )}
           </div>
         ) : (
@@ -744,194 +746,209 @@ export default function MovieDetailPage() {
           </div>
         )}
 
-        <MediaDownloadProgress source="radarr" mediaId={movie.id} instanceId={instance} />
+        {/* Phones stack these in DOM order. On wide content areas .detail-grid
+            (globals.css) puts the facts beside the overview and actions and runs
+            everything else full width. */}
+        <div className="@container">
+          <div className="detail-grid detail-grid-movie flex flex-col gap-6">
+            <MediaDownloadProgress source="radarr" mediaId={movie.id} instanceId={instance} className="[grid-area:progress]" />
 
-        {/* Metadata rows - borderless key-value */}
-        {metadataRows.length > 0 && (
-          <div>
-            {metadataRows.map((row) => (
-              <div
-                key={row.label}
-                className="flex justify-between items-start py-2.5 border-b border-border/40 last:border-b-0"
-              >
-                <span className="text-xs font-medium text-muted-foreground tracking-wide uppercase shrink-0">
-                  {row.label}
-                </span>
-                <span className="text-sm text-right ml-4 truncate">{row.value}</span>
+            {/* Metadata rows - borderless key-value */}
+            {metadataRows.length > 0 && (
+              <div className="[grid-area:facts]">
+                {metadataRows.map((row) => (
+                  <div
+                    key={row.label}
+                    className="flex justify-between items-start py-2.5 border-b border-border/40 last:border-b-0"
+                  >
+                    <span className="text-xs font-medium text-muted-foreground tracking-wide uppercase shrink-0">
+                      {row.label}
+                    </span>
+                    <span className="text-sm text-right ml-4 truncate">{row.value}</span>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-        )}
-
-        {/* Overview - collapsible */}
-        {movie.overview && (
-          <div>
-            <div className="relative">
-              <p
-                className={`text-sm text-muted-foreground leading-relaxed ${
-                  !overviewExpanded ? 'line-clamp-3' : ''
-                }`}
-              >
-                {movie.overview}
-              </p>
-              <button
-                onClick={() => setOverviewExpanded(!overviewExpanded)}
-                className="text-sm text-primary font-medium mt-1"
-              >
-                {overviewExpanded ? 'less' : 'more...'}
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Cast & Crew */}
-        {credits.length > 0 && <MovieCreditsSection credits={credits} movieId={movieId} instance={instance} />}
-
-        {/* Straight into Helprr's own player when the title is in Jellyfin. */}
-        <PlayInHelprrButton
-          imdbId={movie.imdbId}
-          tmdbId={movie.tmdbId}
-          className="h-10 w-full rounded-full"
-        />
-
-        {/* Pill buttons */}
-        <div className="flex gap-3">
-          {canManageActivity && (
-            <Button
-              onClick={handleSearch}
-              disabled={!!actionLoading}
-              className="flex-1 rounded-full h-10"
-              variant="secondary"
-            >
-              {actionLoading === 'search' ? (
-                <Loader2 className="h-4 w-4 animate-spin mr-2" />
-              ) : (
-                <Search className="h-4 w-4 mr-2" />
-              )}
-              Automatic
-            </Button>
-          )}
-          {canManageActivity && (
-            <Button
-              onClick={() => setInteractiveSearch(true)}
-              className="flex-1 rounded-full h-10"
-              variant="secondary"
-            >
-              <Search className="h-4 w-4 mr-2" />
-              Interactive
-            </Button>
-          )}
-        </div>
-        <div>
-          <Button
-            onClick={() => router.push(`/movies/${movie.id}/files${instance ? `?instance=${instance}` : ''}`)}
-            className="w-full rounded-full h-10"
-            variant="secondary"
-          >
-            <FileText className="h-4 w-4 mr-2" />
-            Files &amp; information
-          </Button>
-        </div>
-
-        {/* Information section */}
-        <div>
-          <h2 className="text-base font-semibold mb-2">Information</h2>
-          <div>
-            {infoRows.map((row) => (
-              <div
-                key={row.label}
-                className="flex justify-between items-start py-2.5 border-b border-border/40 last:border-b-0"
-              >
-                <span className="text-sm text-muted-foreground shrink-0">{row.label}</span>
-                <span className="text-sm text-right ml-4 truncate max-w-[60%]">{row.value}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* TMDB Enrichment Sections */}
-        {tmdbData && (
-          <>
-            {tmdbData.videos.length > 0 && (
-              <DiscoverVideoRail title="Videos" videos={tmdbData.videos} />
             )}
 
-            {tmdbData.recommendations.length > 0 && (
-              <DiscoverMediaRail title="Recommendations" items={tmdbData.recommendations} />
-            )}
-
-            {tmdbData.similar.length > 0 && (
-              <DiscoverMediaRail title="Similar Movies" items={tmdbData.similar} />
-            )}
-
-            {tmdbData.watchProviders && (
-              <DiscoverWatchProvidersSection providers={tmdbData.watchProviders} />
-            )}
-
-            {tmdbData.productionCompanies.length > 0 && (
-              <div>
-                <h2 className="text-base font-semibold mb-2">Production</h2>
-                <div className="flex flex-wrap gap-2">
-                  {tmdbData.productionCompanies.map((company) => {
-                    const logoSrc = company.logoPath
-                      ? toCachedImageSrc(
-                          company.logoPath.startsWith('http') ? company.logoPath : `https://image.tmdb.org/t/p/w185${company.logoPath}`,
-                          'tmdb'
-                        )
-                      : null;
-                    return (
-                      <Link
-                        key={company.id}
-                        href={`/discover?companies=${company.id}&contentType=movie`}
-                        className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-border/50 bg-accent/30"
-                      >
-                        {logoSrc && (
-                          <div className="relative h-5 w-8">
-                            <Image
-                              src={logoSrc}
-                              alt={company.name}
-                              fill
-                              sizes="32px"
-                              className="object-contain"
-                              unoptimized={isProtectedApiImageSrc(logoSrc)}
-                            />
-                          </div>
-                        )}
-                        <span className="text-xs font-medium">{company.name}</span>
-                      </Link>
-                    );
-                  })}
+            {/* Overview - collapsible */}
+            {movie.overview && (
+              <div className="[grid-area:overview]">
+                <div className="relative">
+                  <p
+                    className={`text-sm text-muted-foreground leading-relaxed ${
+                      !overviewExpanded ? 'line-clamp-3' : ''
+                    }`}
+                  >
+                    {movie.overview}
+                  </p>
+                  <button
+                    onClick={() => setOverviewExpanded(!overviewExpanded)}
+                    className="text-sm text-primary font-medium mt-1"
+                  >
+                    {overviewExpanded ? 'Show less' : 'Read more'}
+                  </button>
                 </div>
               </div>
             )}
 
-            {tmdbData.collection && (
-              <div>
-                <Link
-                  href={`/discover/collection/${tmdbData.collection.id}`}
-                  className="flex items-center gap-3 p-3 rounded-xl bg-muted/60 border border-border/40 hover:bg-muted transition-colors"
-                >
-                  {tmdbData.collection.posterPath && (
-                    <div className="relative w-12 h-[72px] rounded-lg overflow-hidden shrink-0">
-                      <Image
-                        src={toCachedImageSrc(tmdbData.collection.posterPath, 'tmdb') || tmdbData.collection.posterPath}
-                        alt=""
-                        fill
-                        sizes="48px"
-                        className="object-cover"
-                        unoptimized
-                      />
-                    </div>
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs text-muted-foreground uppercase tracking-wider">Part of</p>
-                    <p className="text-sm font-medium line-clamp-1">{tmdbData.collection.name}</p>
-                  </div>
-                </Link>
+            {/* Cast & Crew */}
+            {credits.length > 0 && (
+              <div className="min-w-0 [grid-area:cast]">
+                <MovieCreditsSection credits={credits} movieId={movieId} instance={instance} />
               </div>
             )}
-          </>
-        )}
+
+            <div className="flex flex-col gap-6 [grid-area:actions]">
+              {/* Straight into Helprr's own player when the title is in Jellyfin. */}
+              <PlayInHelprrButton
+                imdbId={movie.imdbId}
+                tmdbId={movie.tmdbId}
+                className="h-10 w-full rounded-full"
+              />
+
+              {/* Pill buttons */}
+              <div className="flex gap-3">
+                {canManageActivity && (
+                  <Button
+                    onClick={handleSearch}
+                    disabled={!!actionLoading}
+                    className="flex-1 rounded-full h-10"
+                    variant="secondary"
+                  >
+                    {actionLoading === 'search' ? (
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    ) : (
+                      <Search className="h-4 w-4 mr-2" />
+                    )}
+                    Automatic
+                  </Button>
+                )}
+                {canManageActivity && (
+                  <Button
+                    onClick={() => setInteractiveSearch(true)}
+                    className="flex-1 rounded-full h-10"
+                    variant="secondary"
+                  >
+                    <Search className="h-4 w-4 mr-2" />
+                    Interactive
+                  </Button>
+                )}
+              </div>
+              <div>
+                <Button
+                  onClick={() => router.push(`/movies/${movie.id}/files${instance ? `?instance=${instance}` : ''}`)}
+                  className="w-full rounded-full h-10"
+                  variant="secondary"
+                >
+                  <FileText className="h-4 w-4 mr-2" />
+                  Files &amp; information
+                </Button>
+              </div>
+            </div>
+
+            {/* Information section */}
+            <div className="[grid-area:info]">
+              <h2 className="text-base font-semibold mb-2">Information</h2>
+              <div className="detail-info-rows">
+                {infoRows.map((row) => (
+                  <div
+                    key={row.label}
+                    className="flex justify-between items-start py-2.5 border-b border-border/40 last:border-b-0"
+                  >
+                    <span className="text-sm text-muted-foreground shrink-0">{row.label}</span>
+                    <span className="text-sm text-right ml-4 max-w-[60%] break-words">{row.value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="min-w-0 space-y-6 empty:hidden [grid-area:rails]">
+              {/* TMDB Enrichment Sections */}
+              {tmdbData && (
+                <>
+                  {tmdbData.videos.length > 0 && (
+                    <DiscoverVideoRail title="Videos" videos={tmdbData.videos} />
+                  )}
+
+                  {tmdbData.recommendations.length > 0 && (
+                    <DiscoverMediaRail title="Recommendations" items={tmdbData.recommendations} />
+                  )}
+
+                  {tmdbData.similar.length > 0 && (
+                    <DiscoverMediaRail title="Similar Movies" items={tmdbData.similar} />
+                  )}
+
+                  {tmdbData.watchProviders && (
+                    <DiscoverWatchProvidersSection providers={tmdbData.watchProviders} />
+                  )}
+
+                  {tmdbData.productionCompanies.length > 0 && (
+                    <div>
+                      <h2 className="text-base font-semibold mb-2">Production</h2>
+                      <div className="flex flex-wrap gap-2">
+                        {tmdbData.productionCompanies.map((company) => {
+                          const logoSrc = company.logoPath
+                            ? toCachedImageSrc(
+                                company.logoPath.startsWith('http') ? company.logoPath : `https://image.tmdb.org/t/p/w185${company.logoPath}`,
+                                'tmdb'
+                              )
+                            : null;
+                          return (
+                            <Link
+                              key={company.id}
+                              href={`/discover?companies=${company.id}&companyName=${encodeURIComponent(company.name)}&contentType=movie`}
+                              className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-border/50 bg-accent/30"
+                            >
+                              {logoSrc && (
+                                <div className="relative h-5 w-8 overflow-hidden rounded-[3px] bg-white">
+                                  <Image
+                                    src={logoSrc}
+                                    alt={company.name}
+                                    fill
+                                    sizes="32px"
+                                    className="object-contain p-0.5"
+                                    unoptimized={isProtectedApiImageSrc(logoSrc)}
+                                  />
+                                </div>
+                              )}
+                              <span className="text-xs font-medium">{company.name}</span>
+                            </Link>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {tmdbData.collection && (
+                    <div>
+                      <Link
+                        href={`/discover/collection/${tmdbData.collection.id}`}
+                        className="flex items-center gap-3 p-3 rounded-xl bg-muted/60 border border-border/40 hover:bg-muted transition-colors"
+                      >
+                        {tmdbData.collection.posterPath && (
+                          <div className="relative w-12 h-[72px] rounded-lg overflow-hidden shrink-0">
+                            <Image
+                              src={toCachedImageSrc(tmdbData.collection.posterPath, 'tmdb') || tmdbData.collection.posterPath}
+                              alt=""
+                              fill
+                              sizes="48px"
+                              className="object-cover"
+                              unoptimized
+                            />
+                          </div>
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs text-muted-foreground uppercase tracking-wider">Part of</p>
+                          <p className="text-sm font-medium line-clamp-1">{tmdbData.collection.name}</p>
+                        </div>
+                      </Link>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        </div>
 
       </div>
 

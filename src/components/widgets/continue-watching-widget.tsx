@@ -2,6 +2,7 @@
 import { ApiError } from '@/lib/query-fetch';
 
 import { useCallback } from 'react';
+import { PlayCircle } from 'lucide-react';
 import Link from '@/components/ui/app-link';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
 import { useElementSize } from '@/lib/widgets/use-element-size';
@@ -14,6 +15,7 @@ import {
   CAROUSEL_CARD_HEIGHT,
   CAROUSEL_CARD_WIDTH,
   CAROUSEL_GAP,
+  EmptyState,
   FONT_MONO,
   HPR,
   LIST_ROW_HEIGHT,
@@ -88,9 +90,10 @@ export function ContinueWatchingWidget({
         style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}
       >
         <SectionHeader title="Continue Watching" right={toggleNode} />
-        <div style={{ fontSize: 11, color: HPR.fgSubtle, padding: '6px 0' }}>
+        <EmptyState>
+          <PlayCircle size={18} />
           {editMode ? 'Nothing to resume' : 'No items in progress'}
-        </div>
+        </EmptyState>
       </div>
     );
   }

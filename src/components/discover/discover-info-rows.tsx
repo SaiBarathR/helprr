@@ -17,9 +17,11 @@ export function DiscoverInfoRows({ title, rows }: DiscoverInfoRowsProps) {
   if (!rows.length) return null;
 
   return (
-    <div>
+    // Its own container, so .detail-info-rows can split the rows into two
+    // columns on wide pages that have no other @container around them.
+    <div className="@container">
       <h2 className="text-base font-semibold mb-2">{title}</h2>
-      <div>
+      <div className="detail-info-rows">
         {rows.map((row) => (
           <div
             key={row.label}

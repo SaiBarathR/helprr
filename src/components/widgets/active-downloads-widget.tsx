@@ -2,6 +2,7 @@
 import { ApiError } from '@/lib/query-fetch';
 
 import { useCallback } from 'react';
+import { Download } from 'lucide-react';
 import Link from '@/components/ui/app-link';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
 import { useElementSize } from '@/lib/widgets/use-element-size';
@@ -11,6 +12,7 @@ import type { QueueItem } from '@/types';
 import type { WidgetProps } from '@/lib/widgets/types';
 import {
   Bar,
+  EmptyState,
   FONT_DISPLAY,
   FONT_MONO,
   HPR,
@@ -109,9 +111,10 @@ export function ActiveDownloadsWidget({
         style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}
       >
         <SectionHeader title="Active Downloads" right={toggleNode} />
-        <div style={{ fontSize: 11, color: HPR.fgSubtle, padding: '6px 0' }}>
+        <EmptyState>
+          <Download size={18} />
           {editMode ? 'No active downloads' : 'Queue is empty'}
-        </div>
+        </EmptyState>
       </div>
     );
   }

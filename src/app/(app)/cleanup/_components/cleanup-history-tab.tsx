@@ -7,6 +7,7 @@ import { format, subDays } from 'date-fns';
 import type { DateRange } from 'react-day-picker';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { ActiveFilterBar, multiSelectFilters, type ActiveFilter } from '@/components/ui/active-filter-bar';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Calendar } from '@/components/ui/calendar';
@@ -24,7 +25,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import {
   Loader2,
   Trash2,
-  X,
   ChevronLeft,
   ChevronRight,
   RotateCw,
@@ -188,15 +188,6 @@ export function CleanupHistoryTab() {
   }, [historyQuery.isError]);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  const activeFilterCount =
-    filters.cleaner.length
-    + filters.strikeType.length
-    + filters.ruleId.length
-    + (filters.action ?? []).length
-    + (filters.reSearched ? 1 : 0)
-    + (filters.dateFrom ? 1 : 0)
-    + (filters.dateTo ? 1 : 0);
-  const hasFilter = activeFilterCount > 0;
 
   const deleteMutation = useMutation({
     mutationFn: async () => {
@@ -259,6 +250,37 @@ export function CleanupHistoryTab() {
     return fromStr === toStr ? fromStr : `${fromStr} → ${toStr}`;
   }, [filters.dateFrom, filters.dateTo]);
 
+  const updateFilters = (patch: Partial<CleanupHistoryFiltersState>) => {
+    setFilters(patch);
+    setPage(1);
+  };
+  const activeFilters: ActiveFilter[] = [
+    ...multiSelectFilters(filters.cleaner, CLEANER_OPTIONS, (next) =>
+      updateFilters({ cleaner: next as CleanupHistoryFiltersState['cleaner'] })),
+    ...multiSelectFilters(filters.strikeType, STRIKE_TYPE_OPTIONS, (next) =>
+      updateFilters({ strikeType: next as CleanupHistoryFiltersState['strikeType'] })),
+    ...multiSelectFilters(filters.action ?? [], ACTION_OPTIONS, (next) =>
+      updateFilters({ action: next as CleanupHistoryFiltersState['action'] })),
+    ...(filters.ruleId.length > 0
+      ? [{
+        id: 'rules',
+        label: filters.ruleId.length === 1 ? '1 rule' : `${filters.ruleId.length} rules`,
+        onRemove: () => updateFilters({ ruleId: [] }),
+      }]
+      : []),
+    ...(filters.reSearched
+      ? [{
+        id: 're-searched',
+        label: filters.reSearched === 'yes' ? 'Re-searched' : 'Not re-searched',
+        onRemove: () => updateFilters({ reSearched: null }),
+      }]
+      : []),
+    ...(filters.dateFrom || filters.dateTo
+      ? [{ id: 'date', label: dateRangeLabel, onRemove: () => setDateRange(null, null) }]
+      : []),
+  ];
+  const hasFilter = activeFilters.length > 0;
+
   return (
     <div className="space-y-4">
       {/* Toolbar */}
@@ -273,15 +295,10 @@ export function CleanupHistoryTab() {
           Filters
           {hasFilter && (
             <Badge variant="secondary" className="ml-2 h-5 px-1.5 text-[10px]">
-              {activeFilterCount}
+              {activeFilters.length}
             </Badge>
           )}
         </Button>
-        {hasFilter && (
-          <Button variant="ghost" size="sm" onClick={() => { resetFilters(); setPage(1); }}>
-            <X className="w-4 h-4 mr-1" /> Clear
-          </Button>
-        )}
         <div className="ml-auto flex items-center gap-2">
           <Button size="sm" variant="ghost" onClick={() => historyQuery.refetch()} disabled={loading} aria-label="Refresh">
             <RotateCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
@@ -298,6 +315,8 @@ export function CleanupHistoryTab() {
           </Button>
         </div>
       </div>
+
+      <ActiveFilterBar filters={activeFilters} onClearAll={() => { resetFilters(); setPage(1); }} />
 
       {/* Records */}
       <section className="grouped-section">
@@ -602,7 +621,7 @@ function HistoryRowCard({
     <button
       type="button"
       onClick={() => onSelect(row)}
-      className={`grouped-row w-full text-left flex-col items-stretch gap-1.5 cursor-pointer transition-colors hover:bg-muted/30 active:bg-muted/40 ${isFailed ? 'bg-destructive/5' : ''}`}
+      className={`grouped-row grouped-row-stacked w-full text-left gap-1.5 cursor-pointer transition-colors hover:bg-muted/30 active:bg-muted/40 ${isFailed ? 'bg-destructive/5' : ''}`}
     >
       <div className="flex items-start gap-2 min-w-0 w-full">
         <div className="flex-1 min-w-0 space-y-1">

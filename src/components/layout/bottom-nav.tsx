@@ -116,7 +116,9 @@ export function BottomNav() {
               align="end"
               sideOffset={8}
               collisionPadding={8}
-              className="w-56 p-2 max-h-[var(--radix-popover-content-available-height)] overflow-y-auto overscroll-contain no-scrollbar"
+              // Opening down (nav on top), stop above the home indicator: iOS
+              // takes taps there for its gesture, so the last row went dead.
+              className="w-56 p-2 max-h-[var(--radix-popover-content-available-height)] data-[side=bottom]:max-h-[calc(var(--radix-popover-content-available-height)_-_env(safe-area-inset-bottom,0px))] overflow-y-auto overscroll-contain no-scrollbar"
             >
               <div className="space-y-0.5">
                 {moreItems.map(({ href, icon: Icon, label, badgeArea }) => {

@@ -493,8 +493,11 @@ function StatusRow({
   const description = autoRunDescription(status);
   const showCountdown = status.enabled && status.autoRunMode !== 'disabled';
   return (
+    // The 12rem basis lets the badge and Configure wrap onto their own line on
+    // phones (flex-1 alone has a zero basis, so the row never wrapped and the
+    // text was crushed to a few words per line).
     <div className="grouped-row flex-wrap gap-2">
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0 flex-1 basis-48">
         <div className="font-medium">{label}</div>
         <div className="text-xs text-muted-foreground">{description}</div>
         {showCountdown && (

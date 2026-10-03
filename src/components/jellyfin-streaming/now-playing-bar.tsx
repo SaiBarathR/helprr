@@ -15,7 +15,13 @@ export function NowPlayingBar() {
   const poster = jellyfinPosterUrl(playback.item, 120);
 
   return (
-    <div className="fixed inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] z-40 border-t px-3 py-2 md:bottom-0 app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+    // Sits on the tab bar when the nav is at the bottom, else on the screen's
+    // foot (home indicator in its padding), and starts after the sidebar.
+    // data-now-playing-bar lets the page, toasts and floating bars clear it.
+    <div
+      data-now-playing-bar
+      className="fixed right-0 left-[var(--app-main-left,0px)] bottom-[var(--footer-bar-bottom)] z-40 border-t px-3 pt-2 pb-[calc(0.5rem+var(--footer-bar-inset))] app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80"
+    >
       <div className="mx-auto flex max-w-5xl items-center gap-3">
         <button
           type="button"
@@ -38,11 +44,13 @@ export function NowPlayingBar() {
             />
           </div>
         </button>
-        <div className="flex items-center gap-1">
-          <Button variant="ghost" size="icon-sm" onClick={playback.toggleShuffle} aria-label="Shuffle" aria-pressed={playback.shuffled}>
+        {/* On a phone only play, next, queue and stop fit; shuffle, previous and
+            repeat are in the expanded player (tap the bar). */}
+        <div className="flex shrink-0 items-center gap-1">
+          <Button variant="ghost" size="icon-sm" className="hidden sm:inline-flex" onClick={playback.toggleShuffle} aria-label="Shuffle" aria-pressed={playback.shuffled}>
             <Shuffle className={playback.shuffled ? 'text-[var(--hpr-amber)]' : undefined} />
           </Button>
-          <Button variant="ghost" size="icon-sm" onClick={() => void playback.previous()} aria-label="Previous">
+          <Button variant="ghost" size="icon-sm" className="hidden sm:inline-flex" onClick={() => void playback.previous()} aria-label="Previous">
             <SkipBack />
           </Button>
           <Button variant="ghost" size="icon-sm" onClick={playback.togglePause} aria-label={playback.status === 'paused' ? 'Play' : 'Pause'}>
@@ -54,6 +62,7 @@ export function NowPlayingBar() {
           <Button
             variant="ghost"
             size="icon-sm"
+            className="hidden sm:inline-flex"
             onClick={() => playback.setRepeat(playback.repeat === 'RepeatNone' ? 'RepeatAll' : playback.repeat === 'RepeatAll' ? 'RepeatOne' : 'RepeatNone')}
             aria-label="Repeat"
           >

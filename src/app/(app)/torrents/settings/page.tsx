@@ -8,11 +8,12 @@ import { PageHeader } from '@/components/layout/page-header';
 import { GroupedSection } from '@/components/settings/grouped-section';
 import { ErrorState } from '@/components/ui/error-state';
 import { Switch } from '@/components/ui/switch';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ApiError, backoffRefetchInterval, jsonFetcher } from '@/lib/query-fetch';
 import { handleAuthError } from '@/lib/query-client';
 import { formatBytes } from '@/lib/format';
 import { getRefreshIntervalMs } from '@/lib/client-refresh-settings';
-import { useUIStore } from '@/lib/store';
+import { useUIStore, type TorrentsViewPreference } from '@/lib/store';
 import { useCan } from '@/components/permission-provider';
 import type { QBittorrentTransferInfo } from '@/types';
 import { SpeedLimitInput, formatSpeedLimit } from '../_components/speed-limit-input';
@@ -49,7 +50,7 @@ export default function QBittorrentSettingsPage() {
   const queryClient = useQueryClient();
   const canBandwidth = useCan('torrents.bandwidth');
   const hasHydrated = useUIStore((s) => s.hasHydrated);
-  const isTableView = useUIStore((s) => s.torrentsView) === 'table';
+  const viewMode = useUIStore((s) => s.torrentsView);
   const setViewMode = useUIStore((s) => s.setTorrentsView);
   const [refreshIntervalMs, setRefreshIntervalMs] = useState(5000);
 
@@ -142,15 +143,23 @@ export default function QBittorrentSettingsPage() {
       <PageHeader title="qBittorrent Settings" />
 
       <div className="mt-3 pb-8">
-        <GroupedSection title="View">
+        <GroupedSection title="View" footer="Automatic shows the table on wide screens and cards on phones.">
           <div className="grouped-row">
-            <span className="text-sm">Table View</span>
-            <Switch
-              checked={isTableView}
+            <span className="text-sm">Layout</span>
+            <Select
+              value={viewMode}
+              onValueChange={(v) => setViewMode(v as TorrentsViewPreference)}
               disabled={!hasHydrated}
-              onCheckedChange={(checked) => setViewMode(checked ? 'table' : 'card')}
-              aria-label="Table View"
-            />
+            >
+              <SelectTrigger aria-label="Layout" className="w-auto h-auto border-0 bg-transparent px-2 py-1 gap-1 text-sm text-muted-foreground shadow-none focus:ring-0 [&>svg]:h-3.5 [&>svg]:w-3.5">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="auto">Automatic</SelectItem>
+                <SelectItem value="card">Cards</SelectItem>
+                <SelectItem value="table">Table</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </GroupedSection>
 

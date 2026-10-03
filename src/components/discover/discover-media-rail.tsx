@@ -121,7 +121,7 @@ export function DiscoverMediaRail({ title, items }: DiscoverMediaRailProps) {
       <div
         ref={viewportRef}
         data-scroll-restoration-key={`discover-media:${title}`}
-        className="flex gap-2.5 overflow-x-auto pb-1 -mx-2 px-2 md:-mx-6 md:px-6 scrollbar-hide snap-x snap-mandatory animate-rail-in"
+        className="flex gap-2.5 overflow-x-auto pb-1 -mx-2 px-2 scroll-px-2 md:-mx-6 md:px-6 md:scroll-px-6 scrollbar-hide snap-x snap-mandatory animate-rail-in"
       >
         <WindowedRailItems className={DISCOVER_RAIL_SLOT_CLASS} viewportRef={viewportRef}>
           {items.map((item) => (

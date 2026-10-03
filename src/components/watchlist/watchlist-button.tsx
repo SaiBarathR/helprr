@@ -5,6 +5,7 @@ import { Bookmark } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { WatchlistAddDialog, type WatchlistDraft } from '@/components/watchlist/watchlist-add-dialog';
 import { useCan } from '@/components/permission-provider';
+import { cn } from '@/lib/utils';
 
 interface Props {
   draft: WatchlistDraft;
@@ -43,10 +44,12 @@ export function WatchlistButton({
             e.stopPropagation();
             setOpen(true);
           }}
-          className={
+          // Taller hit area only: on posters it sits beside the alert button.
+          className={cn(
             className ??
-            'inline-flex h-7 w-7 items-center justify-center rounded-full bg-background/80 backdrop-blur-sm text-foreground hover:bg-background border border-border/50'
-          }
+              'inline-flex h-7 w-7 items-center justify-center rounded-full bg-background/80 backdrop-blur-sm text-foreground hover:bg-background border border-border/50',
+            'relative touch-target-y',
+          )}
         >
           <Bookmark className="h-3.5 w-3.5" />
         </button>

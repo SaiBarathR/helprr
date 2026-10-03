@@ -27,7 +27,7 @@ function HapticsSection() {
             <span className="text-[15px] font-medium truncate">Haptic feedback</span>
           </div>
         </div>
-        <Switch
+        <Switch aria-label="Haptic feedback"
           checked={hapticsEnabled}
           onCheckedChange={(v) => {
             setHapticsEnabled(v);

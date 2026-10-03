@@ -172,9 +172,9 @@ export const MediaOverviewItem = memo(function MediaOverviewItem({
             )
           )}
           {show('title') && <h3 className="text-sm font-medium truncate">{title}</h3>}
-          {show('year') && <span className="text-xs text-muted-foreground shrink-0">({year})</span>}
+          {show('year') && year > 0 && <span className="text-xs text-muted-foreground shrink-0">({year})</span>}
           {instanceLabel && (
-            <span className="text-[10px] font-medium text-[var(--hpr-amber)] shrink-0">{instanceLabel}</span>
+            <span className="min-w-0 max-w-[40%] truncate text-[10px] font-medium text-[var(--hpr-amber)]">{instanceLabel}</span>
           )}
         </div>
 
@@ -182,13 +182,13 @@ export const MediaOverviewItem = memo(function MediaOverviewItem({
         <div className="flex flex-wrap gap-1.5">
           {show('watchStatus') && <WatchStatusInline status={watchStatus} />}
           {show('qualityProfile') && qualityProfile && (
-            <Badge variant="secondary" className="text-[10px] px-1.5 py-0">{qualityProfile}</Badge>
+            <Badge variant="secondary" className="max-w-full text-[10px] px-1.5 py-0"><span className="truncate">{qualityProfile}</span></Badge>
           )}
           {show('metadataProfile') && metadataProfile && (
-            <Badge variant="outline" className="text-[10px] px-1.5 py-0">{metadataProfile}</Badge>
+            <Badge variant="outline" className="max-w-full text-[10px] px-1.5 py-0"><span className="truncate">{metadataProfile}</span></Badge>
           )}
           {show('artistType') && artistType && (
-            <Badge variant="outline" className="text-[10px] px-1.5 py-0">{artistType}</Badge>
+            <Badge variant="outline" className="max-w-full text-[10px] px-1.5 py-0"><span className="truncate">{artistType}</span></Badge>
           )}
           {show('albumCount') && albumCount !== undefined && albumCount > 0 && (
             <Badge variant="outline" className="text-[10px] px-1.5 py-0">{albumCount} albums</Badge>
@@ -197,10 +197,10 @@ export const MediaOverviewItem = memo(function MediaOverviewItem({
             <Badge variant="secondary" className="text-[10px] px-1.5 py-0">{trackProgress}</Badge>
           )}
           {show('network') && network && (
-            <Badge variant="outline" className="text-[10px] px-1.5 py-0">{network}</Badge>
+            <Badge variant="outline" className="max-w-full text-[10px] px-1.5 py-0"><span className="truncate">{network}</span></Badge>
           )}
           {show('studio') && studio && (
-            <Badge variant="outline" className="text-[10px] px-1.5 py-0">{studio}</Badge>
+            <Badge variant="outline" className="max-w-full text-[10px] px-1.5 py-0"><span className="truncate">{studio}</span></Badge>
           )}
           {certification && show('certification') && (
             <Badge variant="outline" className="text-[10px] px-1.5 py-0">{certification}</Badge>

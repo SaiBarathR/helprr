@@ -39,7 +39,14 @@ import {
   Database,
   Info,
   Copy,
+  MoreVertical,
 } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import dynamic from 'next/dynamic';
 import { fmtNum } from '@/components/widgets/prowlarr-stats-shared';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -389,19 +396,32 @@ function IndexersTab() {
                           'Test'
                         )}
                       </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-8 px-2 text-destructive hover:text-destructive"
-                        onClick={() => setConfirmDelete({ id: indexer.id, name: indexer.name })}
-                        disabled={deletingId === indexer.id}
-                      >
-                        {deletingId === indexer.id ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        ) : (
-                          <Trash2 className="h-3.5 w-3.5" />
-                        )}
-                      </Button>
+                      {/* Delete lives behind the menu, not one slip away from Test. */}
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            aria-label={`More actions for ${indexer.name}`}
+                            disabled={deletingId === indexer.id}
+                          >
+                            {deletingId === indexer.id ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <MoreVertical className="h-4 w-4" />
+                            )}
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem
+                            variant="destructive"
+                            onClick={() => setConfirmDelete({ id: indexer.id, name: indexer.name })}
+                          >
+                            <Trash2 className="h-4 w-4" /> Delete indexer
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
                   )}
                 </div>
@@ -1034,7 +1054,7 @@ function HistoryTab() {
                   <div className="flex-1 min-w-0 space-y-1">
                     {/* Query + queryType badge */}
                     <div className="flex items-center gap-1.5">
-                      {query ? <span className="text-sm font-medium truncate">{query}</span> : null}
+                      {query ? <span className="min-w-0 flex-1 text-sm font-medium truncate">{query}</span> : null}
                       {queryType && (
                         <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-mono shrink-0">
                           {queryType}
@@ -1260,7 +1280,8 @@ export default function ProwlarrPage() {
           }
         }}
       >
-        <DialogContent className="max-w-lg">
+        {/* A column so a long failure list scrolls under a fixed header and close button. */}
+        <DialogContent className="flex max-w-lg flex-col overflow-hidden">
           <DialogHeader>
             <DialogTitle>Test All Results</DialogTitle>
             <DialogDescription>
@@ -1270,11 +1291,11 @@ export default function ProwlarrPage() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-3">
+          <div className="-mx-6 min-h-0 flex-1 space-y-3 overflow-y-auto px-6">
             {testAllResults?.results.filter((result) => !result.isValid).map((result) => (
               <div key={result.id} className="rounded-lg border border-border/60 bg-card px-3 py-2">
                 <div className="flex items-center justify-between gap-3">
-                  <p className="text-sm font-medium">
+                  <p className="min-w-0 text-sm font-medium [overflow-wrap:anywhere]">
                     {testAllIndexerNames[result.id] ?? `Indexer ID ${result.id}`}
                   </p>
                   <Badge variant="outline" className="border-rose-500/40 text-rose-400">

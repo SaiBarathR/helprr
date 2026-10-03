@@ -14,6 +14,11 @@ const Toaster = ({ ...props }: ToasterProps) => {
     <Sonner
       className="toaster group"
       closeButton
+      // Sonner's defaults (24px, 16px on a phone) put toasts over the bottom tab
+      // bar and the home indicator; keep them above both, and above a
+      // floating action bar or the now-playing bar while one is up.
+      offset={{ bottom: "calc(var(--footer-height) + var(--player-bar-height, 0px) + var(--floating-bar-clearance, 0px) + 24px)" }}
+      mobileOffset={{ bottom: "calc(var(--footer-height) + var(--player-bar-height, 0px) + var(--floating-bar-clearance, 0px) + 16px)" }}
       icons={{
         success: <CircleCheckIcon className="size-4" />,
         info: <InfoIcon className="size-4" />,

@@ -239,7 +239,7 @@ export function TokenInput({
                 onClick={(e) => { e.stopPropagation(); removeToken(idx); }}
                 disabled={disabled}
                 aria-label={`Remove ${tok}`}
-                className="text-muted-foreground hover:text-foreground disabled:cursor-not-allowed p-1 -m-1"
+                className="relative text-muted-foreground hover:text-foreground disabled:cursor-not-allowed p-1 -m-1 touch-target"
               >
                 <X className="w-3 h-3" />
               </button>

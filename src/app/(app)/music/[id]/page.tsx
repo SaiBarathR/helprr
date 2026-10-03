@@ -380,7 +380,8 @@ export default function ArtistDetailPage() {
                 onClick={handleToggleMonitored}
                 disabled={actionLoading === 'monitor'}
                 className="min-w-[44px] min-h-[44px] flex items-center justify-center text-primary"
-                aria-label="Toggle monitored"
+                aria-label="Monitored"
+                aria-pressed={artist.monitored}
               >
                 {actionLoading === 'monitor' ? (
                   <Loader2 className="h-5 w-5 animate-spin" />
@@ -394,7 +395,7 @@ export default function ArtistDetailPage() {
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <button className="min-w-[44px] min-h-[44px] flex items-center justify-center text-primary">
+                <button className="min-w-[44px] min-h-[44px] flex items-center justify-center text-primary" aria-label="More actions">
                   <MoreHorizontal className="h-5 w-5" />
                 </button>
               </DropdownMenuTrigger>
@@ -454,7 +455,7 @@ export default function ArtistDetailPage() {
         }
       />
 
-      <div ref={contentScrollRef} data-scroll-restoration-key="artist-detail" className="space-y-6 animate-content-in">
+      <div ref={contentScrollRef} data-scroll-restoration-key="artist-detail" className="@container space-y-6 animate-content-in">
         {/* Hero */}
         {fanart ? (
           <div className="-mx-2 md:-mx-6">
@@ -556,22 +557,24 @@ export default function ArtistDetailPage() {
               {artist.overview}
             </p>
             <button onClick={() => setOverviewExpanded(!overviewExpanded)} className="text-sm text-primary font-medium mt-1">
-              {overviewExpanded ? 'less' : 'more...'}
+              {overviewExpanded ? 'Show less' : 'Read more'}
             </button>
           </div>
         )}
 
-        {/* Pill buttons */}
-        {canManageActivity && (
-          <Button onClick={handleSearch} disabled={!!actionLoading} className="w-full rounded-full h-10" variant="secondary">
-            {actionLoading === 'search' ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Search className="h-4 w-4 mr-2" />}
-            Search Monitored Albums
+        {/* Pill buttons: stacked on phones, side by side on wide pages. */}
+        <div className="flex flex-col gap-6 @4xl:flex-row @4xl:gap-3">
+          {canManageActivity && (
+            <Button onClick={handleSearch} disabled={!!actionLoading} className="w-full rounded-full h-10 @4xl:flex-1" variant="secondary">
+              {actionLoading === 'search' ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Search className="h-4 w-4 mr-2" />}
+              Search Monitored Albums
+            </Button>
+          )}
+          <Button onClick={() => router.push(`/music/${artist.id}/files${instance ? `?instance=${instance}` : ''}`)} className="w-full rounded-full h-10 @4xl:flex-1" variant="secondary">
+            <FileText className="h-4 w-4 mr-2" />
+            Files &amp; information
           </Button>
-        )}
-        <Button onClick={() => router.push(`/music/${artist.id}/files${instance ? `?instance=${instance}` : ''}`)} className="w-full rounded-full h-10" variant="secondary">
-          <FileText className="h-4 w-4 mr-2" />
-          Files &amp; information
-        </Button>
+        </div>
 
         {/* External links */}
         {linkChips.length > 0 && (
@@ -597,11 +600,11 @@ export default function ArtistDetailPage() {
         {/* Information */}
         <div>
           <h2 className="text-base font-semibold mb-2">Information</h2>
-          <div>
+          <div className="detail-info-rows">
             {infoRows.map((row) => (
               <div key={row.label} className="flex justify-between items-start py-2.5 border-b border-border/40 last:border-b-0">
                 <span className="text-sm text-muted-foreground shrink-0">{row.label}</span>
-                <span className="text-sm text-right ml-4 truncate max-w-[60%]">{row.value}</span>
+                <span className="text-sm text-right ml-4 max-w-[60%] break-words">{row.value}</span>
               </div>
             ))}
           </div>
@@ -628,7 +631,7 @@ export default function ArtistDetailPage() {
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                   {group.type}{group.type.endsWith('s') ? '' : group.albums.length === 1 ? '' : 's'} · {group.albums.length}
                 </h3>
-                <div className="space-y-2">
+                <div className="space-y-2 @4xl:grid @4xl:grid-cols-2 @4xl:gap-2 @4xl:space-y-0">
                   {group.albums.map((album) => {
                     const cover = getImageUrl(album.images, 'cover', 'lidarr');
                     const year = albumYear(album);
@@ -649,7 +652,7 @@ export default function ArtistDetailPage() {
                     ];
                     return (
                       <div key={album.id} className="flex gap-3 rounded-xl bg-card p-2.5 hover:bg-muted/30 transition-colors">
-                        <Link href={`/music/album/${album.id}${instance ? `?instance=${instance}` : ''}`} className="relative shrink-0 h-14 w-14 rounded-md overflow-hidden bg-muted">
+                        <Link href={`/music/album/${album.id}${instance ? `?instance=${instance}` : ''}`} aria-label={album.title} className="relative shrink-0 h-14 w-14 rounded-md overflow-hidden bg-muted">
                           {cover ? (
                             <Image src={cover} alt={album.title} fill sizes="56px" className="object-cover" unoptimized={isProtectedApiImageSrc(cover)} />
                           ) : (

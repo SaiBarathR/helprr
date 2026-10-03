@@ -70,9 +70,9 @@ function DetailRows({ rows }: { rows: DrawerRow[] }) {
   return (
     <div className="rounded-lg border overflow-hidden divide-y">
       {rows.map((row) => (
-        <div key={`${row.label}-${row.value}`} className="flex justify-between items-start px-4 py-2.5">
-          <span className="text-xs text-muted-foreground uppercase tracking-wide">{row.label}</span>
-          <span className={`text-sm text-right ml-4 ${row.breakValue ? 'break-all' : ''}`}>{row.value}</span>
+        <div key={`${row.label}-${row.value}`} className="flex justify-between items-start gap-4 px-4 py-2.5">
+          <span className="shrink-0 text-xs text-muted-foreground uppercase tracking-wide">{row.label}</span>
+          <span className={`min-w-0 text-sm text-right ${row.breakValue ? 'break-all' : '[overflow-wrap:anywhere]'}`}>{row.value}</span>
         </div>
       ))}
     </div>
@@ -386,6 +386,8 @@ export default function EpisodeDetailPage() {
                 onClick={handleToggleMonitor}
                 disabled={actionLoading === 'monitor'}
                 className="min-w-[44px] min-h-[44px] flex items-center justify-center text-primary"
+                aria-label="Monitored"
+                aria-pressed={episode.monitored}
               >
                 {actionLoading === 'monitor' ? (
                   <Loader2 className="h-5 w-5 animate-spin" />
@@ -400,7 +402,7 @@ export default function EpisodeDetailPage() {
             {/* 3-dot menu */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <button className="min-w-[44px] min-h-[44px] flex items-center justify-center text-primary">
+                <button className="min-w-[44px] min-h-[44px] flex items-center justify-center text-primary" aria-label="More actions">
                   <MoreHorizontal className="h-5 w-5" />
                 </button>
               </DropdownMenuTrigger>
@@ -542,21 +544,21 @@ export default function EpisodeDetailPage() {
       {/* Metadata rows */}
       <div className="space-y-0 rounded-lg border overflow-hidden">
         {series.network && (
-          <div className="flex justify-between items-center px-4 py-2.5 border-b">
-            <span className="text-xs text-muted-foreground uppercase tracking-wide">Network</span>
-            <span className="text-sm">{series.network}</span>
+          <div className="flex justify-between items-center gap-4 px-4 py-2.5 border-b">
+            <span className="shrink-0 text-xs text-muted-foreground uppercase tracking-wide">Network</span>
+            <span className="min-w-0 text-right text-sm [overflow-wrap:anywhere]">{series.network}</span>
           </div>
         )}
         {series.genres && series.genres.length > 0 && (
-          <div className="flex justify-between items-center px-4 py-2.5 border-b">
-            <span className="text-xs text-muted-foreground uppercase tracking-wide">Genre</span>
-            <span className="text-sm truncate max-w-[200px]">{series.genres.join(', ')}</span>
+          <div className="flex justify-between items-center gap-4 px-4 py-2.5 border-b">
+            <span className="shrink-0 text-xs text-muted-foreground uppercase tracking-wide">Genre</span>
+            <span className="min-w-0 text-right text-sm [overflow-wrap:anywhere] truncate max-w-[200px]">{series.genres.join(', ')}</span>
           </div>
         )}
         {mediaInfo?.videoCodec && (
-          <div className="flex justify-between items-center px-4 py-2.5 border-b">
-            <span className="text-xs text-muted-foreground uppercase tracking-wide">Video</span>
-            <span className="text-sm">
+          <div className="flex justify-between items-center gap-4 px-4 py-2.5 border-b">
+            <span className="shrink-0 text-xs text-muted-foreground uppercase tracking-wide">Video</span>
+            <span className="min-w-0 text-right text-sm [overflow-wrap:anywhere]">
               {mediaInfo.videoCodec}
               {mediaInfo.resolution ? ` ${mediaInfo.resolution}` : ''}
               {mediaInfo.videoDynamicRangeType ? ` ${mediaInfo.videoDynamicRangeType}` : ''}
@@ -564,9 +566,9 @@ export default function EpisodeDetailPage() {
           </div>
         )}
         {mediaInfo?.audioCodec && (
-          <div className="flex justify-between items-center px-4 py-2.5 border-b">
-            <span className="text-xs text-muted-foreground uppercase tracking-wide">Audio</span>
-            <span className="text-sm">
+          <div className="flex justify-between items-center gap-4 px-4 py-2.5 border-b">
+            <span className="shrink-0 text-xs text-muted-foreground uppercase tracking-wide">Audio</span>
+            <span className="min-w-0 text-right text-sm [overflow-wrap:anywhere]">
               {mediaInfo.audioCodec}
               {mediaInfo.audioChannels ? ` ${mediaInfo.audioChannels}ch` : ''}
               {mediaInfo.audioLanguages ? ` (${mediaInfo.audioLanguages})` : ''}
@@ -574,9 +576,9 @@ export default function EpisodeDetailPage() {
           </div>
         )}
         {mediaInfo?.subtitles && (
-          <div className="flex justify-between items-center px-4 py-2.5">
-            <span className="text-xs text-muted-foreground uppercase tracking-wide">Subtitles</span>
-            <span className="text-sm truncate max-w-[200px]">{mediaInfo.subtitles}</span>
+          <div className="flex justify-between items-center gap-4 px-4 py-2.5">
+            <span className="shrink-0 text-xs text-muted-foreground uppercase tracking-wide">Subtitles</span>
+            <span className="min-w-0 text-right text-sm [overflow-wrap:anywhere] truncate max-w-[200px]">{mediaInfo.subtitles}</span>
           </div>
         )}
         {!mediaInfo && !series.network && (!series.genres || series.genres.length === 0) && (
@@ -641,32 +643,32 @@ export default function EpisodeDetailPage() {
           </div>
           <div className="rounded-lg border overflow-hidden">
             <div className="px-4 py-2.5 border-b">
-              <span className="text-xs text-muted-foreground uppercase tracking-wide">Filename</span>
+              <span className="shrink-0 text-xs text-muted-foreground uppercase tracking-wide">Filename</span>
               <p className="text-sm mt-0.5 break-all leading-tight">
                 {episodeFile.relativePath || episodeFile.path}
               </p>
             </div>
-            <div className="flex justify-between items-center px-4 py-2.5 border-b">
-              <span className="text-xs text-muted-foreground uppercase tracking-wide">Quality</span>
-              <span className="text-sm">{episodeFile.quality?.quality?.name || 'Unknown'}</span>
+            <div className="flex justify-between items-center gap-4 px-4 py-2.5 border-b">
+              <span className="shrink-0 text-xs text-muted-foreground uppercase tracking-wide">Quality</span>
+              <span className="min-w-0 text-right text-sm [overflow-wrap:anywhere]">{episodeFile.quality?.quality?.name || 'Unknown'}</span>
             </div>
             {episodeFile.languages && episodeFile.languages.length > 0 && (
-              <div className="flex justify-between items-center px-4 py-2.5 border-b">
-                <span className="text-xs text-muted-foreground uppercase tracking-wide">Language</span>
-                <span className="text-sm">
+              <div className="flex justify-between items-center gap-4 px-4 py-2.5 border-b">
+                <span className="shrink-0 text-xs text-muted-foreground uppercase tracking-wide">Language</span>
+                <span className="min-w-0 text-right text-sm [overflow-wrap:anywhere]">
                   {episodeFile.languages.map((l) => l.name).join(', ')}
                 </span>
               </div>
             )}
             {!episodeFile.languages && episodeFile.language && (
-              <div className="flex justify-between items-center px-4 py-2.5 border-b">
-                <span className="text-xs text-muted-foreground uppercase tracking-wide">Language</span>
-                <span className="text-sm">{episodeFile.language.name}</span>
+              <div className="flex justify-between items-center gap-4 px-4 py-2.5 border-b">
+                <span className="shrink-0 text-xs text-muted-foreground uppercase tracking-wide">Language</span>
+                <span className="min-w-0 text-right text-sm [overflow-wrap:anywhere]">{episodeFile.language.name}</span>
               </div>
             )}
-            <div className="flex justify-between items-center px-4 py-2.5">
-              <span className="text-xs text-muted-foreground uppercase tracking-wide">Size</span>
-              <span className="text-sm">{formatBytes(episodeFile.size)}</span>
+            <div className="flex justify-between items-center gap-4 px-4 py-2.5">
+              <span className="shrink-0 text-xs text-muted-foreground uppercase tracking-wide">Size</span>
+              <span className="min-w-0 text-right text-sm [overflow-wrap:anywhere]">{formatBytes(episodeFile.size)}</span>
             </div>
           </div>
         </div>
@@ -756,44 +758,44 @@ export default function EpisodeDetailPage() {
             <div className="px-4 pb-4 space-y-0 overflow-y-auto flex-1 min-h-0">
               <div className="rounded-lg border overflow-hidden divide-y">
                 <div className="px-4 py-2.5">
-                  <span className="text-xs text-muted-foreground uppercase tracking-wide">Release Title</span>
+                  <span className="shrink-0 text-xs text-muted-foreground uppercase tracking-wide">Release Title</span>
                   <p className="text-sm mt-0.5 break-all leading-tight">
                     {selectedHistoryItem.sourceTitle}
                   </p>
                 </div>
-                <div className="flex justify-between items-center px-4 py-2.5">
-                  <span className="text-xs text-muted-foreground uppercase tracking-wide">Date</span>
-                  <span className="text-sm">
+                <div className="flex justify-between items-center gap-4 px-4 py-2.5">
+                  <span className="shrink-0 text-xs text-muted-foreground uppercase tracking-wide">Date</span>
+                  <span className="min-w-0 text-right text-sm [overflow-wrap:anywhere]">
                     {format(new Date(selectedHistoryItem.date), 'MMM d, yyyy h:mm a')}
                   </span>
                 </div>
-                <div className="flex justify-between items-center px-4 py-2.5">
-                  <span className="text-xs text-muted-foreground uppercase tracking-wide">Quality</span>
-                  <span className="text-sm">
+                <div className="flex justify-between items-center gap-4 px-4 py-2.5">
+                  <span className="shrink-0 text-xs text-muted-foreground uppercase tracking-wide">Quality</span>
+                  <span className="min-w-0 text-right text-sm [overflow-wrap:anywhere]">
                     {selectedHistoryItem.quality?.quality?.name || 'Unknown'}
                   </span>
                 </div>
                 {selectedHistoryItem.data?.indexer && (
-                  <div className="flex justify-between items-center px-4 py-2.5">
-                    <span className="text-xs text-muted-foreground uppercase tracking-wide">Indexer</span>
-                    <span className="text-sm">{selectedHistoryItem.data.indexer}</span>
+                  <div className="flex justify-between items-center gap-4 px-4 py-2.5">
+                    <span className="shrink-0 text-xs text-muted-foreground uppercase tracking-wide">Indexer</span>
+                    <span className="min-w-0 text-right text-sm [overflow-wrap:anywhere]">{selectedHistoryItem.data.indexer}</span>
                   </div>
                 )}
                 {selectedHistoryItem.data?.downloadClient && (
-                  <div className="flex justify-between items-center px-4 py-2.5">
-                    <span className="text-xs text-muted-foreground uppercase tracking-wide">Download Client</span>
-                    <span className="text-sm">{selectedHistoryItem.data.downloadClient}</span>
+                  <div className="flex justify-between items-center gap-4 px-4 py-2.5">
+                    <span className="shrink-0 text-xs text-muted-foreground uppercase tracking-wide">Download Client</span>
+                    <span className="min-w-0 text-right text-sm [overflow-wrap:anywhere]">{selectedHistoryItem.data.downloadClient}</span>
                   </div>
                 )}
                 {selectedHistoryItem.data?.releaseGroup && (
-                  <div className="flex justify-between items-center px-4 py-2.5">
-                    <span className="text-xs text-muted-foreground uppercase tracking-wide">Release Group</span>
-                    <span className="text-sm">{selectedHistoryItem.data.releaseGroup}</span>
+                  <div className="flex justify-between items-center gap-4 px-4 py-2.5">
+                    <span className="shrink-0 text-xs text-muted-foreground uppercase tracking-wide">Release Group</span>
+                    <span className="min-w-0 text-right text-sm [overflow-wrap:anywhere]">{selectedHistoryItem.data.releaseGroup}</span>
                   </div>
                 )}
                 {selectedHistoryItem.data?.nzbInfoUrl && (
-                  <div className="flex justify-between items-center px-4 py-2.5">
-                    <span className="text-xs text-muted-foreground uppercase tracking-wide">Source</span>
+                  <div className="flex justify-between items-center gap-4 px-4 py-2.5">
+                    <span className="shrink-0 text-xs text-muted-foreground uppercase tracking-wide">Source</span>
                     <a
                       href={selectedHistoryItem.data.nzbInfoUrl}
                       target="_blank"
@@ -805,26 +807,26 @@ export default function EpisodeDetailPage() {
                   </div>
                 )}
                 {selectedHistoryItem.data?.size && (
-                  <div className="flex justify-between items-center px-4 py-2.5">
-                    <span className="text-xs text-muted-foreground uppercase tracking-wide">Size</span>
-                    <span className="text-sm">{formatBytes(Number(selectedHistoryItem.data.size))}</span>
+                  <div className="flex justify-between items-center gap-4 px-4 py-2.5">
+                    <span className="shrink-0 text-xs text-muted-foreground uppercase tracking-wide">Size</span>
+                    <span className="min-w-0 text-right text-sm [overflow-wrap:anywhere]">{formatBytes(Number(selectedHistoryItem.data.size))}</span>
                   </div>
                 )}
                 {selectedHistoryItem.data?.indexerFlags && selectedHistoryItem.data.indexerFlags !== '0' && (
-                  <div className="flex justify-between items-center px-4 py-2.5">
-                    <span className="text-xs text-muted-foreground uppercase tracking-wide">Flags</span>
-                    <span className="text-sm">{selectedHistoryItem.data.indexerFlags}</span>
+                  <div className="flex justify-between items-center gap-4 px-4 py-2.5">
+                    <span className="shrink-0 text-xs text-muted-foreground uppercase tracking-wide">Flags</span>
+                    <span className="min-w-0 text-right text-sm [overflow-wrap:anywhere]">{selectedHistoryItem.data.indexerFlags}</span>
                   </div>
                 )}
                 {selectedHistoryItem.data?.protocol && (
-                  <div className="flex justify-between items-center px-4 py-2.5">
-                    <span className="text-xs text-muted-foreground uppercase tracking-wide">Protocol</span>
-                    <span className="text-sm capitalize">{selectedHistoryItem.data.protocol}</span>
+                  <div className="flex justify-between items-center gap-4 px-4 py-2.5">
+                    <span className="shrink-0 text-xs text-muted-foreground uppercase tracking-wide">Protocol</span>
+                    <span className="min-w-0 text-right text-sm [overflow-wrap:anywhere] capitalize">{selectedHistoryItem.data.protocol}</span>
                   </div>
                 )}
                 {selectedHistoryItem.data?.message && (
                   <div className="px-4 py-2.5">
-                    <span className="text-xs text-muted-foreground uppercase tracking-wide">Message</span>
+                    <span className="shrink-0 text-xs text-muted-foreground uppercase tracking-wide">Message</span>
                     <p className="text-sm mt-0.5 text-muted-foreground">{selectedHistoryItem.data.message}</p>
                   </div>
                 )}

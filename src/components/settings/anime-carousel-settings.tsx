@@ -96,7 +96,7 @@ function SortableCarouselItem({
         } ${isDisabled ? 'opacity-40' : ''}`}
       >
         <button
-          className="touch-none p-1 -m-1 text-muted-foreground/50 cursor-grab active:cursor-grabbing"
+          className="relative touch-none p-1 -m-1 text-muted-foreground/50 cursor-grab active:cursor-grabbing touch-target"
           aria-label="Drag to reorder"
           {...attributes}
           {...listeners}
@@ -109,7 +109,7 @@ function SortableCarouselItem({
             AniList
           </span>
         )}
-        <Switch checked={!isDisabled} onCheckedChange={onToggle} />
+        <Switch checked={!isDisabled} onCheckedChange={onToggle} aria-label={`Show ${item.label}`} />
       </div>
     </QuickContextMenu>
   );
@@ -159,7 +159,7 @@ export function AnimeCarouselSettings() {
   }
 
   return (
-    <div className="grouped-section mb-6">
+    <div id="anime-carousels" className="grouped-section mb-6 scroll-mt-24">
       <div className="grouped-section-title">Anime Carousels</div>
       <p className="text-xs text-muted-foreground px-4 pb-2">
         Drag to reorder and toggle carousels on the Anime home page. Settings are saved per device.

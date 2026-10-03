@@ -36,9 +36,12 @@ export function RankedList({
   const maxVal = Math.max(...sorted.map((e) => (sortBy === 'duration' ? e.time : e.count)), 1);
 
   return (
-    <div className="rounded-xl bg-card overflow-hidden divide-y divide-border/50 h-full flex flex-col">
+    // 48px rows (the callers fit floor(height / 48) of them): a short list stays
+    // a short card instead of stretching one row over the whole cell. In a cell
+    // too short for even that, max-h-full lets the rows shrink to fit.
+    <div className="rounded-xl bg-card overflow-hidden divide-y divide-border/50 flex max-h-full flex-col">
       {sorted.map((entry, i) => (
-        <div key={`${entry.label}-${i}`} className="relative px-3 flex items-center gap-3 flex-1 min-h-0 @max-[279px]/cell:px-2 @max-[279px]/cell:gap-2">
+        <div key={`${entry.label}-${i}`} className="relative px-3 flex items-center gap-3 h-12 min-h-0 shrink @max-[279px]/cell:px-2 @max-[279px]/cell:gap-2">
           <div
             className="absolute inset-0 bg-[var(--hpr-cyan)]/5"
             style={{ width: `${((sortBy === 'duration' ? entry.time : entry.count) / maxVal) * 100}%` }}

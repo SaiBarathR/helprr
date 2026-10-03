@@ -283,7 +283,7 @@ export function CollectionDetailDrawer({ collection, multiInstance, onClose }: P
 
               {/* Movie rail */}
               <div className="text-[10px] uppercase tracking-wide text-muted-foreground pb-2">Movies</div>
-              <div className="flex gap-3 overflow-x-auto pb-2 -mx-4 px-4 scrollbar-hide snap-x">
+              <div className="flex gap-3 overflow-x-auto pb-2 -mx-4 px-4 scroll-px-4 scrollbar-hide snap-x">
                 {movies.map((m) => (
                   <CollectionMoviePoster
                     key={m.tmdbId}

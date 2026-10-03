@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   caps: new Set<string>(),
   toast: { success: vi.fn(), error: vi.fn() },
-  ui: { hasHydrated: true, torrentsView: 'card', setTorrentsView: vi.fn() },
+  ui: { hasHydrated: true, torrentsView: 'auto', setTorrentsView: vi.fn() },
   handleAuthError: vi.fn(),
 }));
 vi.mock('@/components/permission-provider', () => ({ useCan: (cap: string) => mocks.caps.has(cap) }));
@@ -17,6 +17,16 @@ vi.mock('@/lib/client-refresh-settings', () => ({ getRefreshIntervalMs: vi.fn().
 vi.mock('@/lib/store', () => ({ useUIStore: (select: (state: typeof mocks.ui) => unknown) => select(mocks.ui) }));
 vi.mock('@/lib/query-client', () => ({ handleAuthError: mocks.handleAuthError }));
 vi.mock('sonner', () => ({ toast: mocks.toast }));
+// Native stand-in: Radix Select needs pointer APIs jsdom lacks.
+vi.mock('@/components/ui/select', () => ({
+  Select: ({ value, onValueChange, children }: { value: string; onValueChange: (v: string) => void; children: React.ReactNode }) => (
+    <select aria-label="Layout" value={value} onChange={(e) => onValueChange(e.target.value)}>{children}</select>
+  ),
+  SelectTrigger: () => null,
+  SelectValue: () => null,
+  SelectContent: ({ children }: { children: React.ReactNode }) => children,
+  SelectItem: ({ value, children }: { value: string; children: React.ReactNode }) => <option value={value}>{children}</option>,
+}));
 import { ApiError } from '@/lib/query-fetch';
 import QBittorrentSettingsPage from './page';
 
@@ -36,7 +46,7 @@ beforeEach(async () => {
   (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   vi.clearAllMocks();
   mocks.caps = new Set(['torrents.bandwidth']);
-  mocks.ui.torrentsView = 'card';
+  mocks.ui.torrentsView = 'auto';
   limitReads = [{ downloadLimit: 0, uploadLimit: 0, speedLimitsMode: 0 }];
   limitGets = 0;
   posts = [];
@@ -231,10 +241,17 @@ describe('qBittorrent settings page', () => {
     expect(rowText('Alternative Speed Limits')).toBe('Alternative Speed LimitsOff');
   });
 
-  it('switches the torrent list to the table view', async () => {
+  it('switches the torrent list layout and can return to automatic', async () => {
     await renderPage();
-    await act(async () => document.querySelector<HTMLButtonElement>('[role="switch"][aria-label="Table View"]')!.click());
+    const layout = document.querySelector<HTMLSelectElement>('select[aria-label="Layout"]')!;
+    expect(layout.value).toBe('auto');
 
-    expect(mocks.ui.setTorrentsView).toHaveBeenCalledWith('table');
+    for (const view of ['table', 'auto']) {
+      await act(async () => {
+        layout.value = view;
+        layout.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+      expect(mocks.ui.setTorrentsView).toHaveBeenLastCalledWith(view);
+    }
   });
 });

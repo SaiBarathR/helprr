@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { useUIStore } from '@/lib/store';
 import { Button } from '@/components/ui/button';
+import { FloatingActionBar } from '@/components/ui/floating-action-bar';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Input } from '@/components/ui/input';
 import { useUnsavedChangesGuard } from '@/lib/hooks/use-unsaved-changes-guard';
@@ -260,7 +261,7 @@ export default function DashboardRefreshSettingsPage() {
   }
 
   return (
-    <div className="px-4 sm:px-6 py-4 max-w-3xl mx-auto pb-32">
+    <div className="px-4 sm:px-6 py-4 max-w-3xl mx-auto">
       <div className="flex items-center gap-2 mb-4">
         {/* Guarded back-nav: unsaved interval edits confirm before discarding. */}
         <Button
@@ -441,24 +442,20 @@ export default function DashboardRefreshSettingsPage() {
       )}
 
       {dirty && (
-        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-foreground/[0.08] app-chrome-bar bg-background/95 backdrop-blur px-4 py-3">
-          <div className="max-w-3xl mx-auto flex items-center justify-between gap-3">
-            <span className="text-sm text-muted-foreground">
-              You have unsaved changes
-              {hasInvalid && (
-                <span className="text-red-500 ml-2">— fix invalid values first</span>
-              )}
-            </span>
-            <div className="flex items-center gap-2">
-              <Button variant="ghost" size="sm" onClick={discardAll} disabled={saving}>
-                Discard
-              </Button>
-              <Button size="sm" onClick={handleSave} disabled={saving || hasInvalid}>
-                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save changes'}
-              </Button>
-            </div>
-          </div>
-        </div>
+        <FloatingActionBar>
+          <span className="min-w-0 flex-1 text-sm leading-tight text-muted-foreground">
+            Unsaved changes
+            {hasInvalid && (
+              <span className="block text-xs text-red-500">Fix invalid values first</span>
+            )}
+          </span>
+          <Button variant="ghost" size="sm" onClick={discardAll} disabled={saving}>
+            Discard
+          </Button>
+          <Button size="sm" onClick={handleSave} disabled={saving || hasInvalid}>
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save'}
+          </Button>
+        </FloatingActionBar>
       )}
 
       <ConfirmDialog

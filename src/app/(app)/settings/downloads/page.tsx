@@ -12,6 +12,7 @@ import { useUnsavedChangesGuard } from '@/lib/hooks/use-unsaved-changes-guard';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
+import { FloatingActionBar } from '@/components/ui/floating-action-bar';
 import { Switch } from '@/components/ui/switch';
 import { TimePicker } from '@/components/ui/time-picker';
 import { Badge } from '@/components/ui/badge';
@@ -158,7 +159,7 @@ export default function DownloadsSettingsPage() {
   }
 
   return (
-    <div className="animate-content-in pb-32">
+    <div className="animate-content-in">
       <div className="px-1 pt-1 pb-2">
         {/* Guarded back-nav: unsaved rule edits confirm before discarding. */}
         <button
@@ -237,19 +238,15 @@ export default function DownloadsSettingsPage() {
       </div>
 
       {dirty && (
-        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-foreground/[0.08] app-chrome-bar bg-background/95 backdrop-blur px-4 py-3">
-          <div className="max-w-3xl mx-auto flex items-center justify-between gap-3">
-            <span className="text-sm text-muted-foreground">You have unsaved changes</span>
-            <div className="flex items-center gap-2">
-              <Button variant="ghost" size="sm" onClick={() => setRules(baseline)} disabled={saving}>
-                Discard
-              </Button>
-              <Button size="sm" onClick={() => saveMutation.mutate(rules)} disabled={saving || loading}>
-                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save changes'}
-              </Button>
-            </div>
-          </div>
-        </div>
+        <FloatingActionBar>
+          <span className="min-w-0 flex-1 text-sm text-muted-foreground">Unsaved changes</span>
+          <Button variant="ghost" size="sm" onClick={() => setRules(baseline)} disabled={saving}>
+            Discard
+          </Button>
+          <Button size="sm" onClick={() => saveMutation.mutate(rules)} disabled={saving || loading}>
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save'}
+          </Button>
+        </FloatingActionBar>
       )}
 
       <ConfirmDialog

@@ -339,6 +339,8 @@ export default function SeasonDetailPage() {
                 onClick={handleToggleSeasonMonitor}
                 disabled={actionLoading === 'monitor'}
                 className="min-w-[44px] min-h-[44px] flex items-center justify-center text-primary"
+                aria-label="Monitored"
+                aria-pressed={isSeasonMonitored}
               >
                 {actionLoading === 'monitor' ? (
                   <Loader2 className="h-5 w-5 animate-spin" />
@@ -353,7 +355,7 @@ export default function SeasonDetailPage() {
             {/* 3-dot menu */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <button className="min-w-[44px] min-h-[44px] flex items-center justify-center text-primary">
+                <button className="min-w-[44px] min-h-[44px] flex items-center justify-center text-primary" aria-label="More actions">
                   <MoreHorizontal className="h-5 w-5" />
                 </button>
               </DropdownMenuTrigger>
@@ -463,7 +465,7 @@ export default function SeasonDetailPage() {
             // target, while the bookmark and search buttons sit beside the link rather than
             // inside it. The quick-actions menu wraps only the link: it ignores gestures that
             // start on a nested link or button.
-            <div key={ep.id} className="relative flex flex-wrap gap-x-3 gap-y-2 px-4 py-3 active:bg-muted/50 transition-colors">
+            <div key={ep.id} className="page-bleed relative flex flex-wrap gap-x-3 gap-y-2 py-3 active:bg-muted/50 transition-colors">
             <QuickContextMenu label={`${ep.title || `Episode ${ep.episodeNumber}`} actions`} actions={episodeActions}>
             <Link
               href={episodeHref}

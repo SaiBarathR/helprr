@@ -131,7 +131,7 @@ export default function DiscoverTvDetailPage() {
                   onClick={() => setOverviewExpanded(!overviewExpanded)}
                   className="text-sm text-primary font-medium mt-1"
                 >
-                  {overviewExpanded ? 'less' : 'more...'}
+                  {overviewExpanded ? 'Show less' : 'Read more'}
                 </button>
               )}
             </div>
@@ -165,15 +165,15 @@ export default function DiscoverTvDetailPage() {
                   ? toCachedImageSrc(`https://image.tmdb.org/t/p/w185${network.logoPath}`, 'tmdb')
                   : null;
                 return (
-                  <Link key={network.id} href={`/discover?networks=${network.id}&contentType=show`} className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-border/50 bg-accent/30">
+                  <Link key={network.id} href={`/discover?networks=${network.id}&networkName=${encodeURIComponent(network.name)}&contentType=show`} className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-border/50 bg-accent/30">
                     {logoSrc && (
-                      <div className="relative h-5 w-8">
+                      <div className="relative h-5 w-8 overflow-hidden rounded-[3px] bg-white">
                         <Image
                           src={logoSrc}
                           alt={network.name}
                           fill
                           sizes="32px"
-                          className="object-contain"
+                          className="object-contain p-0.5"
                           unoptimized={isProtectedApiImageSrc(logoSrc)}
                         />
                       </div>
@@ -196,15 +196,15 @@ export default function DiscoverTvDetailPage() {
                   ? toCachedImageSrc(`https://image.tmdb.org/t/p/w185${company.logoPath}`, 'tmdb')
                   : null;
                 return (
-                  <Link key={company.id} href={`/discover?companies=${company.id}&contentType=show`} className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-border/50 bg-accent/30">
+                  <Link key={company.id} href={`/discover?companies=${company.id}&companyName=${encodeURIComponent(company.name)}&contentType=show`} className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-border/50 bg-accent/30">
                     {logoSrc && (
-                      <div className="relative h-5 w-8">
+                      <div className="relative h-5 w-8 overflow-hidden rounded-[3px] bg-white">
                         <Image
                           src={logoSrc}
                           alt={company.name}
                           fill
                           sizes="32px"
-                          className="object-contain"
+                          className="object-contain p-0.5"
                           unoptimized={isProtectedApiImageSrc(logoSrc)}
                         />
                       </div>

@@ -4,7 +4,6 @@ import { useEffect, useRef } from 'react';
 import { BottomNav } from '@/components/layout/bottom-nav';
 import { PushReenableBanner } from '@/components/notifications/push-reenable-banner';
 import { useUIStore } from '@/lib/store';
-import { cn } from '@/lib/utils';
 import { usePendingHref } from '@/components/layout/navigation-provider';
 import { NavigationLoading } from '@/components/layout/navigation-loading';
 import { BrowseFreshnessNotice } from '@/components/browse-freshness-notice';
@@ -20,7 +19,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const main = mainRef.current;
     if (!main) return;
-    const measure = () => main.style.setProperty('--app-main-left', `${main.getBoundingClientRect().left}px`);
+    // On the root, not <main>: the now-playing bar lives outside <main> and
+    // starts here so it doesn't cover the sidebar.
+    const root = document.documentElement;
+    const measure = () => root.style.setProperty('--app-main-left', `${main.getBoundingClientRect().left}px`);
     measure();
     const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
     observer?.observe(main);
@@ -54,10 +56,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       )}
       <main
         ref={mainRef}
-        className={cn(
-          'app-main flex-1 [overflow-x:clip]',
-          isBottom ? 'pb-[calc(4rem+env(safe-area-inset-bottom))] md:pb-4' : 'pb-4'
-        )}
+        // Clear the bottom tab bar and the home indicator (--footer-height).
+        className="app-main flex-1 [overflow-x:clip] pb-[calc(var(--footer-height)+1rem)]"
       >
         <BrowseFreshnessNotice onRetry={() => void getQueryClient().invalidateQueries({ refetchType: 'active' })} />
         <PushReenableBanner />

@@ -373,7 +373,7 @@ function AddArtistPageContent() {
 
                   <div className="grouped-row">
                     <Label className="text-sm shrink-0">Search on Add</Label>
-                    <Switch checked={searchOnAdd} onCheckedChange={setSearchOnAdd} />
+                    <Switch aria-label="Search on add" checked={searchOnAdd} onCheckedChange={setSearchOnAdd} />
                   </div>
 
                   <div className="grouped-row">
@@ -407,7 +407,7 @@ function AddArtistPageContent() {
                   Add Artist
                 </Button>
               )}
-              <Button variant="ghost" className="flex-1 h-11" onClick={() => setSelected(null)}>
+              <Button variant="secondary" className="flex-1 h-11" onClick={() => setSelected(null)}>
                 Cancel
               </Button>
             </div>
@@ -416,7 +416,14 @@ function AddArtistPageContent() {
           <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2.5">
             {searching ? (
               <div className="col-span-full flex justify-center"><PageSpinner /></div>
-            ) : (
+            ) : results.length === 0 ? (
+                  <div className="col-span-full flex flex-col items-center gap-2 py-16 text-center text-muted-foreground">
+                    <Search className="h-6 w-6 opacity-50" />
+                    <p className="text-sm">
+                      {submittedTerm.trim() ? `No results for “${submittedTerm.trim()}”` : 'Search for an artist to add it to Lidarr'}
+                    </p>
+                  </div>
+                ) : (
               results.map((r, i) => {
                 const poster = posterUrl(r.images, r.remotePoster);
                 return (

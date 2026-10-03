@@ -65,6 +65,10 @@ function DialogContent({
           // Grid items default to min-width: auto, so one unbreakable string
           // (a dotted release name) would widen the column past the dialog.
           "*:min-w-0",
+          // Long content (test results, a long tag list) scrolls inside the
+          // dialog instead of pushing its title and actions off the screen.
+          // 85dvh leaves room for a phone's status bar and home indicator.
+          "max-h-[85dvh] overflow-y-auto",
           className
         )}
         {...props}
@@ -73,7 +77,7 @@ function DialogContent({
         {showCloseButton && (
           <DialogPrimitive.Close
             data-slot="dialog-close"
-            className="ring-offset-background focus:ring-ring data-[state=open]:bg-accent data-[state=open]:text-muted-foreground absolute top-4 right-4 rounded-xs opacity-70 transition-opacity hover:opacity-100 focus:ring-2 focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4"
+            className="touch-target ring-offset-background focus:ring-ring data-[state=open]:bg-accent data-[state=open]:text-muted-foreground absolute top-4 right-4 rounded-xs opacity-70 transition-opacity hover:opacity-100 focus:ring-2 focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4"
           >
             <XIcon />
             <span className="sr-only">Close</span>

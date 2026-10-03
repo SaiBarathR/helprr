@@ -24,8 +24,10 @@ export function WatchSubNav() {
             key={href}
             href={href}
             aria-current={isActive ? 'page' : undefined}
+            // The label is hidden on phones, so name the icon-only link here.
+            aria-label={label}
             className={cn(
-              'inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium transition-colors sm:px-3',
+              'relative inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium transition-colors touch-target-y sm:px-3',
               isActive
                 ? 'bg-[var(--hpr-amber)] text-[var(--hpr-ink)] shadow-sm'
                 : 'text-muted-foreground hover:bg-accent hover:text-foreground',

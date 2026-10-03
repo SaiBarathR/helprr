@@ -22,7 +22,7 @@ interface ShareResolutionViewProps {
 export function ShareResolutionView({ resolved, input }: ShareResolutionViewProps) {
   return (
     <div>
-      <div className="px-1 pt-1 pb-2">
+      <div className="px-1 pt-[calc(env(safe-area-inset-top)+0.25rem)] pb-2">
         <Link
           href="/"
           className="inline-flex items-center gap-1 text-sm text-primary -ml-1 min-h-[44px] px-1"
@@ -64,7 +64,7 @@ export function ShareResolutionView({ resolved, input }: ShareResolutionViewProp
           <div className="px-4 py-6 text-center text-sm text-muted-foreground">
             <Search className="h-5 w-5 mx-auto mb-2 opacity-60" />
             Shared content:
-            <pre className="mt-2 inline-block font-mono text-[11px] text-foreground/70 whitespace-pre-wrap text-left">
+            <pre className="mt-2 inline-block max-w-full font-mono text-[11px] text-foreground/70 whitespace-pre-wrap break-all text-left">
               {JSON.stringify(input, null, 2)}
             </pre>
           </div>
@@ -88,7 +88,7 @@ function QueryFallback({ query }: { query: string }) {
         href={`/discover?q=${encodeURIComponent(query)}`}
         className="grouped-row hover:bg-foreground/[0.03] active:bg-foreground/5 transition-colors"
       >
-        <span className="text-sm">Search Discover for &ldquo;{query}&rdquo;</span>
+        <span className="min-w-0 text-sm [overflow-wrap:anywhere]">Search Discover for &ldquo;{query}&rdquo;</span>
         <Search className="h-4 w-4 text-muted-foreground" />
       </Link>
     </GroupedSection>
@@ -181,7 +181,7 @@ function SingleHit({ hit }: { hit: ResolvedTmdbHit }) {
             {mediaTypeLabel}
             {hit.year && <span>· {hit.year}</span>}
           </div>
-          <h2 className="font-display text-xl leading-tight">{hit.title}</h2>
+          <h2 className="font-display text-xl leading-tight [overflow-wrap:anywhere]">{hit.title}</h2>
           <p className="mt-2 text-xs text-muted-foreground line-clamp-3">{hit.overview}</p>
         </div>
       </div>

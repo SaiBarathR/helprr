@@ -231,6 +231,8 @@ export default function AnimeHomePage() {
     () => reconcileAnimeCarouselOrder(animeCarouselOrder),
     [animeCarouselOrder]
   );
+  // Shelves turned off in Settings, so a missing one is never a mystery.
+  const hiddenShelves = orderedCarouselIds.filter((id) => disabledSet.has(id)).length;
 
   function renderCarousel(id: AnimeCarouselId) {
     switch (id) {
@@ -367,10 +369,18 @@ export default function AnimeHomePage() {
               ))}
             />
           )}
-          <div className="space-y-5 px-2 md:p-6 md:px-8">
+          <div className="space-y-5 px-2 md:px-6 md:py-6">
             {orderedCarouselIds
               .filter((id) => !disabledSet.has(id))
               .map((id) => renderCarousel(id))}
+            {hiddenShelves > 0 && (
+              <p className="text-xs text-muted-foreground">
+                {hiddenShelves === 1 ? '1 shelf hidden' : `${hiddenShelves} shelves hidden`} ·{' '}
+                <Link href="/settings/appearance#anime-carousels" className="font-medium text-primary">
+                  Manage
+                </Link>
+              </p>
+            )}
           </div>
         </div>
       ) : null}

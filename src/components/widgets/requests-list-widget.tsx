@@ -26,7 +26,7 @@ import {
   type ContextActionGroup,
 } from '@/components/ui/quick-context-menu';
 import type { WidgetProps } from '@/lib/widgets/types';
-import { SectionHeader } from './bento-primitives';
+import { SectionHeader, EmptyState } from './bento-primitives';
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -401,7 +401,8 @@ export function RequestsListWidget({
 
   const header = hideHeader ? null : (
     <SectionHeader
-      title="Requests"
+      // The pending widget lists only pending requests; say so.
+      title={filter === 'pending' ? 'Pending Requests' : 'Requests'}
       right={
         <Link href="/requests" style={{ color: 'inherit', textDecoration: 'none' }}>
           <span className="@max-[219px]/cell:hidden">View all </span>→
@@ -473,9 +474,10 @@ export function RequestsListWidget({
             <p className="text-sm">{emptyLabel}</p>
           </div>
         ) : (
-          <div className="flex flex-1 items-start overflow-hidden py-1.5 text-[11px] text-muted-foreground">
+          <EmptyState>
+            <Inbox size={18} />
             {emptyLabel}
-          </div>
+          </EmptyState>
         )}
       </div>
     );
@@ -492,9 +494,10 @@ export function RequestsListWidget({
             <p className="text-sm">No matching requests</p>
           </div>
         ) : (
-          <div className="flex flex-1 items-start overflow-hidden py-1.5 text-[11px] text-muted-foreground">
+          <EmptyState>
+            <Inbox size={18} />
             No matching requests
-          </div>
+          </EmptyState>
         )}
       </div>
     );

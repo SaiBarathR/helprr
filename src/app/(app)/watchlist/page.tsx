@@ -33,6 +33,14 @@ import { SelectionCheck } from '@/components/media/selection-check';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { SearchInput } from '@/components/media/search-input';
+import {
+  ActiveFilterBar,
+  FilterDot,
+  filterButtonLabel,
+  multiSelectFilters,
+  searchFilter,
+  type ActiveFilter,
+} from '@/components/ui/active-filter-bar';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import {
   Dialog,
@@ -653,6 +661,37 @@ export default function WatchlistPage() {
     setView((v) => ({ ...v, type: 'all', sources: [], libraryOnly: 'all' }));
     setSelectedTagIds([]);
   }, [setSelectedTagIds]);
+  const clearFilters = () => {
+    resetFilters();
+    setSearch('');
+  };
+
+  // Everything narrowing the list, as chips. Tags and the search count too:
+  // the Filter button's dot only covers its own menu.
+  const activeFilters: ActiveFilter[] = [
+    ...(view.type !== 'all'
+      ? [{
+        id: 'type',
+        label: TYPE_SECTION_LABEL[view.type],
+        onRemove: () => setView((v) => ({ ...v, type: 'all' })),
+      }]
+      : []),
+    ...multiSelectFilters(view.sources, SOURCE_OPTIONS, (next) =>
+      setView((v) => ({ ...v, sources: next as Source[] }))),
+    ...(view.libraryOnly !== 'all'
+      ? [{
+        id: 'library',
+        label: view.libraryOnly === 'in' ? 'In library' : 'Not in library',
+        onRemove: () => setView((v) => ({ ...v, libraryOnly: 'all' })),
+      }]
+      : []),
+    ...selectedTagIds.map((id) => ({
+      id: `tag:${id}`,
+      label: `Tag: ${tags.find((t) => t.id === id)?.name ?? 'Unknown'}`,
+      onRemove: () => setSelectedTagIds((prev) => prev.filter((other) => other !== id)),
+    })),
+    ...searchFilter(search, () => setSearch('')),
+  ];
 
   const activeSortLabel =
     SORT_OPTIONS.find((o) => o.value === view.sort)?.label ?? 'Date Added';
@@ -691,12 +730,10 @@ export default function WatchlistPage() {
               <button
                 type="button"
                 className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent active:bg-accent/80 transition-colors relative"
-                aria-label="Filter"
+                aria-label={filterButtonLabel('Filter', hasActiveFilters)}
               >
                 <Filter className="h-5 w-5" />
-                {hasActiveFilters && (
-                  <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-primary" />
-                )}
+                <FilterDot active={hasActiveFilters} />
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="w-56">
@@ -828,12 +865,10 @@ export default function WatchlistPage() {
                 <button
                   type="button"
                   className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent active:bg-accent/80 transition-colors relative"
-                  aria-label="Filter by tags"
+                  aria-label={filterButtonLabel('Filter by tags', selectedTagIds.length > 0)}
                 >
                   <Tag className="h-5 w-5" />
-                  {selectedTagIds.length > 0 && (
-                    <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-primary" />
-                  )}
+                  <FilterDot active={selectedTagIds.length > 0} />
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" className="w-56">
@@ -934,12 +969,14 @@ export default function WatchlistPage() {
 
       </div>
 
-      <div className="px-2 md:px-6 mt-3 space-y-3">
+      <div className="mt-3 space-y-3">
+        {/* Below the sticky toolbar; the filter button's dot stays in view. */}
+        <ActiveFilterBar filters={activeFilters} onClearAll={clearFilters} />
         {error && <div className="text-sm text-red-400">{error}</div>}
 
         {showRail && (
           <section className="space-y-2">
-            <div className="flex items-center gap-2 px-0.5">
+            <div className="flex items-center gap-2">
               <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                 Not in library
               </h2>
@@ -980,7 +1017,9 @@ export default function WatchlistPage() {
             </div>
           ) : null
         ) : filtered.length === 0 ? (
-          totalCount === 0 ? (
+          // The server already narrows `items` by the search, so an unmatched
+          // search is a filter result, not an empty watchlist.
+          totalCount === 0 && !appliedSearch ? (
             <div className="py-16 text-center text-muted-foreground space-y-1">
               <Bookmark className="h-8 w-8 mx-auto opacity-60" />
               <p className="text-sm">Your watchlist is empty.</p>
@@ -992,7 +1031,7 @@ export default function WatchlistPage() {
             <div className="py-16 text-center text-muted-foreground space-y-2">
               <Filter className="h-8 w-8 mx-auto opacity-60" />
               <p className="text-sm">No items match the current filters.</p>
-              <Button variant="outline" size="sm" onClick={resetFilters}>
+              <Button variant="outline" size="sm" onClick={clearFilters}>
                 Reset filters
               </Button>
             </div>
@@ -1017,7 +1056,7 @@ export default function WatchlistPage() {
                       <div
                         key={vr.key}
                         style={{ height: HEADER_ROW_HEIGHT }}
-                        className="flex items-end gap-2 px-0.5 pb-2"
+                        className="flex items-end gap-2 pb-2"
                       >
                         <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground leading-none">
                           {row.label}
@@ -1102,28 +1141,25 @@ export default function WatchlistPage() {
       />
 
       {selectionMode && canEdit && (
-        <>
-          <div aria-hidden className="h-24" />
-          <BulkActionBar
-            count={actionableSelectedCount}
-            allSelected={allFilteredSelected}
-            onToggleSelectAll={toggleSelectAll}
-            onCancel={exit}
-            variant="full"
-            canTag
-            canSearch={false}
-            onSearch={async () => {}}
-            canDelete
-            onDelete={() => handleBulkRemove()}
-            deleteFilesOption={false}
-            deleteVerb="Remove"
-            deleteDescription="Removes the selected items from your watchlist. Your media library is not affected."
-            allowReplace
-            tags={tags.map((t) => ({ id: 0, label: t.name }))}
-            onApplyTags={handleApplyTags}
-            itemNoun="item"
-          />
-        </>
+        <BulkActionBar
+          count={actionableSelectedCount}
+          allSelected={allFilteredSelected}
+          onToggleSelectAll={toggleSelectAll}
+          onCancel={exit}
+          variant="full"
+          canTag
+          canSearch={false}
+          onSearch={async () => {}}
+          canDelete
+          onDelete={() => handleBulkRemove()}
+          deleteFilesOption={false}
+          deleteVerb="Remove"
+          deleteDescription="Removes the selected items from your watchlist. Your media library is not affected."
+          allowReplace
+          tags={tags.map((t) => ({ id: 0, label: t.name }))}
+          onApplyTags={handleApplyTags}
+          itemNoun="item"
+        />
       )}
     </div>
   );
@@ -1447,11 +1483,12 @@ function ManageTagsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      {/* A column so the tag list takes the scrolling and Close stays in view. */}
+      <DialogContent className="flex flex-col overflow-hidden">
         <DialogHeader>
           <DialogTitle>Manage tags</DialogTitle>
         </DialogHeader>
-        <div className="space-y-3 max-h-[60vh] overflow-y-auto">
+        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto">
           {tags.length === 0 ? (
             <p className="text-sm text-muted-foreground">No tags yet. Add items with tags to create them.</p>
           ) : (

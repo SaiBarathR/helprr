@@ -1,7 +1,9 @@
 'use client';
 
-import type { ReactNode } from 'react';
+import { cloneElement, isValidElement, useId, type ReactNode } from 'react';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
 
 interface FieldRowProps {
   label: string;
@@ -17,15 +19,24 @@ interface FieldRowProps {
  * helper text.
  */
 export function FieldRow({ label, hint, active, children }: FieldRowProps) {
+  // Point the visible label at a lone Input or Switch so it is announced by
+  // name; a control that brings its own id keeps it. Composite controls
+  // (selects, size and range pickers) don't forward an id, so they are skipped
+  // rather than left with a label that points at nothing.
+  const generatedId = useId();
+  const control =
+    isValidElement<{ id?: string }>(children) && (children.type === Input || children.type === Switch) ? children : null;
+  const controlId = control ? (control.props.id ?? generatedId) : undefined;
   return (
     <div className="flex flex-col gap-1" data-active={active ? 'true' : 'false'}>
       <Label
+        htmlFor={controlId}
         className={`text-xs ${active ? 'text-foreground font-medium' : 'text-muted-foreground'}`}
       >
         {label}
       </Label>
       <div>
-        {children}
+        {control && !control.props.id ? cloneElement(control, { id: controlId }) : children}
       </div>
       {hint && (
         <p

@@ -1,12 +1,15 @@
 'use client';
 import { ApiError } from '@/lib/query-fetch';
+import { Activity } from 'lucide-react';
 
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
 import type { WidgetProps } from '@/lib/widgets/types';
-import { Dot, Eyebrow, FONT_MONO, HPR } from './bento-primitives';
+import { withAppName } from '@/components/instance-filter';
+import { Dot, Eyebrow, FONT_MONO, HPR, EmptyState } from './bento-primitives';
 
 interface ServiceStatus {
   instanceId: string;
+  type: string;
   label: string;
   ok: boolean;
 }
@@ -31,8 +34,9 @@ export function ServiceHealthWidget({ refreshInterval, narrow = false, editMode 
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
-      <Eyebrow style={{ marginBottom: 8 }}>
-        Service Health · {okCount}/{list.length || 0}
+      {/* Narrow cells drop "Service" so the label stays on one line. */}
+      <Eyebrow style={{ marginBottom: 8, whiteSpace: 'nowrap' }}>
+        <span className="@max-[219px]/cell:hidden">Service </span>Health · {okCount}/{list.length || 0}
       </Eyebrow>
       <div
         className="no-scrollbar scroll-fade-y"
@@ -45,9 +49,10 @@ export function ServiceHealthWidget({ refreshInterval, narrow = false, editMode 
         }}
       >
         {list.length === 0 && (
-          <div style={{ fontSize: 11, color: HPR.fgSubtle, padding: '6px 0' }}>
+          <EmptyState>
+            <Activity size={18} />
             No services configured
-          </div>
+          </EmptyState>
         )}
         {list.map((s, i) => (
           <div
@@ -73,7 +78,7 @@ export function ServiceHealthWidget({ refreshInterval, narrow = false, editMode 
                   textOverflow: 'ellipsis',
                 }}
               >
-                {s.label}
+                {withAppName(s.label, s.type)}
               </span>
             </div>
             <span

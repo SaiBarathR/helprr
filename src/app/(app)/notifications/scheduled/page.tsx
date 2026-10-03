@@ -28,6 +28,13 @@ import { PageHeader } from '@/components/layout/page-header';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { SearchInput } from '@/components/media/search-input';
+import {
+  ActiveFilterBar,
+  FilterDot,
+  filterButtonLabel,
+  searchFilter,
+  type ActiveFilter,
+} from '@/components/ui/active-filter-bar';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { PullToRefresh } from '@/components/ui/pull-to-refresh';
 import { useRefreshAction } from '@/lib/hooks/use-refresh-action';
@@ -62,6 +69,15 @@ import { QuickContextMenu } from '@/components/ui/quick-context-menu';
 type SortKey = 'nextNotify' | 'title' | 'created';
 type StatusFilter = 'all' | 'active' | 'upcoming' | 'sent' | 'failed' | 'cancelled';
 type ModeFilter = 'all' | 'absolute' | 'release_relative';
+
+const STATUS_LABELS: Record<Exclude<StatusFilter, 'all'>, string> = {
+  active: 'Active',
+  upcoming: 'Upcoming',
+  sent: 'Sent',
+  failed: 'Failed',
+  cancelled: 'Cancelled',
+};
+const MEDIA_LABELS: Record<string, string> = { movie: 'Movies', series: 'Series', anime: 'Anime' };
 
 interface ListResponse {
   page: number;
@@ -140,8 +156,35 @@ export default function ScheduledAlertsPage() {
 
   const { refreshing, refresh } = useRefreshAction(() => listQuery.refetch());
 
-  const hasActiveFilters =
-    statusFilter !== 'active' || modeFilter !== 'all' || mediaTypeFilter !== 'all';
+  // Active is only the default status: it still hides sent, failed and
+  // cancelled alerts, so it shows like any other choice.
+  const menuFilters: ActiveFilter[] = [
+    ...(statusFilter !== 'all'
+      ? [{ id: 'status', label: STATUS_LABELS[statusFilter], onRemove: () => setStatusFilter('all') }]
+      : []),
+    ...(modeFilter !== 'all'
+      ? [{
+        id: 'mode',
+        label: modeFilter === 'absolute' ? 'Custom alerts' : 'Release alerts',
+        onRemove: () => setModeFilter('all'),
+      }]
+      : []),
+    ...(mediaTypeFilter !== 'all'
+      ? [{
+        id: 'media',
+        label: MEDIA_LABELS[mediaTypeFilter] ?? mediaTypeFilter,
+        onRemove: () => setMediaTypeFilter('all'),
+      }]
+      : []),
+  ];
+  const activeFilters = [...menuFilters, ...searchFilter(searchInput, () => setSearchInput(''))];
+  const clearFilters = () => {
+    setStatusFilter('all');
+    setModeFilter('all');
+    setMediaTypeFilter('all');
+    setSearchInput('');
+  };
+  const onlyDefaultStatus = statusFilter === 'active' && activeFilters.length === 1;
 
   const grouped = useMemo(() => {
     const groups = new Map<string, SerializedAlert[]>();
@@ -214,12 +257,10 @@ export default function ScheduledAlertsPage() {
               type="button"
               onClick={() => setFilterDrawerOpen(true)}
               className="min-w-[44px] min-h-[44px] flex items-center justify-center text-primary relative"
-              aria-label="Filter alerts"
+              aria-label={filterButtonLabel('Filter alerts', menuFilters.length > 0)}
             >
               <Filter className="h-5 w-5" />
-              {hasActiveFilters && (
-                <span className="absolute top-2 right-2 h-2 w-2 rounded-full bg-primary" />
-              )}
+              <FilterDot active={menuFilters.length > 0} />
             </button>
             {canEdit && (
               <button
@@ -268,6 +309,8 @@ export default function ScheduledAlertsPage() {
         )}
       </div>
 
+      <ActiveFilterBar filters={activeFilters} onClearAll={clearFilters} />
+
       <div className="flex items-center gap-2">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -306,8 +349,15 @@ export default function ScheduledAlertsPage() {
       ) : records.length === 0 ? (
         <div className="text-center py-12 text-muted-foreground">
           <CalendarClock className="h-8 w-8 mx-auto mb-2 opacity-50" />
-          <p>{debouncedSearch || hasActiveFilters ? 'No alerts match your filters' : 'No scheduled alerts yet'}</p>
-          {!debouncedSearch && !hasActiveFilters && canEdit && (
+          <p>
+            {onlyDefaultStatus
+              ? 'No active alerts'
+              : activeFilters.length > 0 ? 'No alerts match your filters' : 'No scheduled alerts yet'}
+          </p>
+          {onlyDefaultStatus && (
+            <p className="text-xs mt-2">Only active alerts are listed. Sent, failed and cancelled ones are under Filter.</p>
+          )}
+          {(onlyDefaultStatus || activeFilters.length === 0) && canEdit && (
             <p className="text-xs mt-2">Add an alert from any movie, show, or anime page</p>
           )}
         </div>

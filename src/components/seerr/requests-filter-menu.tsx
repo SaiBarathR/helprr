@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Filter } from 'lucide-react';
 import { jsonFetcher } from '@/lib/query-fetch';
 import { Button } from '@/components/ui/button';
+import { FilterDot, filterButtonLabel, type ActiveFilter } from '@/components/ui/active-filter-bar';
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -47,7 +48,68 @@ function userLabel(user: SeerrUserSummary): string {
   );
 }
 
+export interface RequestsFilters {
+  statusFilter: RequestsFilterPreference;
+  onStatusFilterChange: (filter: RequestsFilterPreference) => void;
+  typeFilter: RequestsTypeFilterPreference;
+  onTypeFilterChange: (filter: RequestsTypeFilterPreference) => void;
+  userFilter: number | null;
+  onUserFilterChange: (userId: number | null) => void;
+  showUserSection?: boolean;
+}
+
+function useSeerrUsers(enabled: boolean) {
+  const usersQuery = useQuery({
+    queryKey: ['seerr', 'users'],
+    queryFn: jsonFetcher<SeerrPaginated<SeerrUserSummary>>('/api/seerr/users?take=100'),
+    enabled,
+  });
+  return useMemo(() => usersQuery.data?.results ?? [], [usersQuery.data]);
+}
+
+/**
+ * The request filters in force, as chips. Pending is only the default status:
+ * it still hides every other request, so it shows like any other choice.
+ */
+export function useRequestsActiveFilters({
+  statusFilter,
+  onStatusFilterChange,
+  typeFilter,
+  onTypeFilterChange,
+  userFilter,
+  onUserFilterChange,
+  showUserSection = false,
+}: RequestsFilters): ActiveFilter[] {
+  const users = useSeerrUsers(showUserSection);
+  const filters: ActiveFilter[] = [];
+  if (statusFilter !== 'all') {
+    filters.push({
+      id: 'status',
+      label: STATUS_FILTERS.find((f) => f.value === statusFilter)?.label ?? statusFilter,
+      onRemove: () => onStatusFilterChange('all'),
+    });
+  }
+  for (const type of typeFilter) {
+    filters.push({
+      id: `type:${type}`,
+      label: TYPE_OPTIONS.find((o) => o.value === type)?.label ?? type,
+      onRemove: () => onTypeFilterChange(typeFilter.filter((t) => t !== type)),
+    });
+  }
+  if (showUserSection && userFilter != null) {
+    const user = users.find((u) => u.id === userFilter);
+    filters.push({
+      id: 'user',
+      label: `Requested by ${user ? userLabel(user) : `user ${userFilter}`}`,
+      onRemove: () => onUserFilterChange(null),
+    });
+  }
+  return filters;
+}
+
 export interface RequestsFilterMenuProps {
+  /** The chips from {@link useRequestsActiveFilters}, for the dot and the name. */
+  activeFilters: ActiveFilter[];
   statusFilter: RequestsFilterPreference;
   onStatusFilterChange: (filter: RequestsFilterPreference) => void;
   typeFilter: RequestsTypeFilterPreference;
@@ -58,6 +120,7 @@ export interface RequestsFilterMenuProps {
 }
 
 export function RequestsFilterMenu({
+  activeFilters,
   statusFilter,
   onStatusFilterChange,
   typeFilter,
@@ -66,33 +129,7 @@ export function RequestsFilterMenu({
   onUserFilterChange,
   showUserSection = false,
 }: RequestsFilterMenuProps) {
-  const usersQuery = useQuery({
-    queryKey: ['seerr', 'users'],
-    queryFn: jsonFetcher<SeerrPaginated<SeerrUserSummary>>('/api/seerr/users?take=100'),
-    enabled: showUserSection,
-  });
-
-  const users = useMemo(() => usersQuery.data?.results ?? [], [usersQuery.data]);
-
-  const activeUserLabel = useMemo(() => {
-    if (userFilter == null) return null;
-    const user = users.find((u) => u.id === userFilter);
-    return user ? userLabel(user) : `User ${userFilter}`;
-  }, [userFilter, users]);
-
-  const activeFilterLabel = useMemo(() => {
-    const parts: string[] = [];
-    if (statusFilter !== 'pending') {
-      parts.push(STATUS_FILTERS.find((f) => f.value === statusFilter)?.label ?? statusFilter);
-    }
-    if (typeFilter.length === 1) {
-      parts.push(TYPE_OPTIONS.find((o) => o.value === typeFilter[0])?.label ?? typeFilter[0]);
-    } else if (typeFilter.length > 1) {
-      parts.push(`${typeFilter.length} types`);
-    }
-    if (activeUserLabel) parts.push(activeUserLabel);
-    return parts.length === 0 ? 'All' : parts.join(', ');
-  }, [statusFilter, typeFilter, activeUserLabel]);
+  const users = useSeerrUsers(showUserSection);
 
   const toggleType = (value: 'movie' | 'tv') => {
     onTypeFilterChange(
@@ -105,8 +142,17 @@ export function RequestsFilterMenu({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" className="h-8 w-8" aria-label={`Filter: ${activeFilterLabel}`}>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="relative h-8 w-8"
+          aria-label={filterButtonLabel(
+            `Filter: ${activeFilters.map((f) => f.label).join(', ') || 'All'}`,
+            activeFilters.length > 0,
+          )}
+        >
           <Filter className="h-4 w-4" />
+          <FilterDot active={activeFilters.length > 0} />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-52">

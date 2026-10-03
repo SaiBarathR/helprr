@@ -30,7 +30,8 @@ export function AnimeAddButton({ title, format, tvdbId, tmdbId, library, library
 
   if (library?.exists && library.id) {
     const type: 'movie' | 'series' = library.type === 'movie' ? 'movie' : 'series';
-    const targetService = type === 'movie' ? 'Movies' : 'TV';
+    // Same wording as the Discover hero and the anime page's own links.
+    const targetService = type === 'movie' ? 'Radarr' : 'Sonarr';
     // The matched title may live in more than one instance; fall back to the
     // top-level fields when the (always-populated) instances list is absent.
     const instances = library.instances?.length

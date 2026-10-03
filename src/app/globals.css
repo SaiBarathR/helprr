@@ -7,6 +7,50 @@
    no attribute (SSR first paint, legacy caches) means dark, the default. */
 @custom-variant light (&:where(html[data-scheme='light'], html[data-scheme='light'] *));
 
+/* `dark:` follows the same resolved theme instead of the OS setting, so a dark
+   Helprr theme on a light-mode phone (or the reverse) styles the shared
+   inputs, badges and buttons for the page they are actually on. The cinematic
+   Watch skin is always dark, whatever the theme. */
+@custom-variant dark (&:where(html:not([data-scheme='light']), html:not([data-scheme='light']) *, html[data-watch-skin='cinematic']:has(.hpr-watch), html[data-watch-skin='cinematic']:has(.hpr-watch) *));
+
+/* Grows a small control's tap area to 44px without changing its size or the
+   layout around it: a transparent ::after centred on the control takes the
+   taps. The control must be positioned (`relative` or `absolute`) and must not
+   clip its overflow. Neighbours closer than the enlarged area share the gap. */
+@utility touch-target {
+  &::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: max(100%, 44px);
+    height: max(100%, 44px);
+    transform: translate(-50%, -50%);
+  }
+}
+
+/* A hit-area control right after another one grows rightward and vertically
+   only. Later siblings paint on top, so a centred area would cover the visible
+   edge of the control before it (toolbar buttons with no gap). */
+.touch-target + .touch-target::after {
+  left: 0;
+  transform: translateY(-50%);
+}
+
+/* Height only, for controls that sit edge to edge in a row (segmented pills),
+   where a wider hit area would cover the neighbour. */
+@utility touch-target-y {
+  &::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 0;
+    width: 100%;
+    height: max(100%, 44px);
+    transform: translateY(-50%);
+  }
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -160,6 +204,44 @@
   }
 }
 
+/* What app chrome takes from the foot of the viewport: the home indicator, plus
+   the 3rem tab bar when the nav sits at the bottom of a phone. Anything floating
+   at the bottom (save bars, toasts) offsets by this, so it sits above the tab
+   bar instead of under it, and off the home indicator.
+
+   A full-width bar (the now-playing bar, an import bar) instead sits on top of
+   the tab bar when there is one (--footer-bar-bottom), and otherwise on the very
+   bottom with the home indicator inside its own padding (--footer-bar-inset). */
+:root {
+  --footer-height: env(safe-area-inset-bottom, 0px);
+  --footer-bar-bottom: 0px;
+  --footer-bar-inset: env(safe-area-inset-bottom, 0px);
+}
+
+@media (max-width: 767.98px) {
+  :root[data-nav-position="bottom"] {
+    --footer-height: calc(3rem + env(safe-area-inset-bottom, 0px));
+    --footer-bar-bottom: calc(3rem + env(safe-area-inset-bottom, 0px));
+    --footer-bar-inset: 0px;
+  }
+}
+
+/* While the now-playing bar is up, everything else at the foot of the screen
+   (floating bars, toasts, the mini player and the page's last rows) clears it. */
+:root:has([data-now-playing-bar]) {
+  --player-bar-height: 3.875rem;
+}
+
+:root:has([data-now-playing-bar]) .app-main {
+  padding-bottom: calc(var(--footer-height) + var(--player-bar-height) + 1rem);
+}
+
+/* While a FloatingActionBar is up, toasts stack above it instead of covering
+   its Save / Discard / bulk buttons. */
+:root:has([data-floating-action-bar]) {
+  --floating-bar-clearance: 3.5rem;
+}
+
 /* ── Main content padding + full-bleed page toolbars ────────────────────
    <main> (.app-main) pads from these vars, and .page-toolbar cancels them
    with matching negative margins, so sticky page toolbars always span the
@@ -217,6 +299,192 @@
   padding-inline: var(--main-pad-x);
 }
 
+/* Light theme contrast. Tinted pills and banners (a translucent 400/500 tint
+   behind 200-400 text: "Downloaded", AniList statuses, warning banners) are
+   tuned for dark surfaces and wash out on light ones, so the text takes the
+   700 shade. Only same-hue tint + text pairs match, so accent text over
+   black image scrims is left alone. */
+html[data-scheme='light'] :is([class*='bg-red-400/'], [class*='bg-red-500/']):is(.text-red-200, .text-red-300, .text-red-400),
+html[data-scheme='light'] :is([class*='bg-red-400/'], [class*='bg-red-500/']) :is(.text-red-200, .text-red-300, .text-red-400) {
+  color: var(--color-red-700);
+}
+
+html[data-scheme='light'] :is([class*='bg-rose-400/'], [class*='bg-rose-500/']):is(.text-rose-200, .text-rose-300, .text-rose-400),
+html[data-scheme='light'] :is([class*='bg-rose-400/'], [class*='bg-rose-500/']) :is(.text-rose-200, .text-rose-300, .text-rose-400) {
+  color: var(--color-rose-700);
+}
+
+html[data-scheme='light'] :is([class*='bg-orange-400/'], [class*='bg-orange-500/']):is(.text-orange-200, .text-orange-300, .text-orange-400),
+html[data-scheme='light'] :is([class*='bg-orange-400/'], [class*='bg-orange-500/']) :is(.text-orange-200, .text-orange-300, .text-orange-400) {
+  color: var(--color-orange-700);
+}
+
+html[data-scheme='light'] :is([class*='bg-amber-400/'], [class*='bg-amber-500/']):is(.text-amber-200, .text-amber-300, .text-amber-400),
+html[data-scheme='light'] :is([class*='bg-amber-400/'], [class*='bg-amber-500/']) :is(.text-amber-200, .text-amber-300, .text-amber-400) {
+  color: var(--color-amber-700);
+}
+
+html[data-scheme='light'] :is([class*='bg-yellow-400/'], [class*='bg-yellow-500/']):is(.text-yellow-200, .text-yellow-300, .text-yellow-400),
+html[data-scheme='light'] :is([class*='bg-yellow-400/'], [class*='bg-yellow-500/']) :is(.text-yellow-200, .text-yellow-300, .text-yellow-400) {
+  color: var(--color-yellow-700);
+}
+
+html[data-scheme='light'] :is([class*='bg-lime-400/'], [class*='bg-lime-500/']):is(.text-lime-200, .text-lime-300, .text-lime-400),
+html[data-scheme='light'] :is([class*='bg-lime-400/'], [class*='bg-lime-500/']) :is(.text-lime-200, .text-lime-300, .text-lime-400) {
+  color: var(--color-lime-700);
+}
+
+html[data-scheme='light'] :is([class*='bg-green-400/'], [class*='bg-green-500/']):is(.text-green-200, .text-green-300, .text-green-400),
+html[data-scheme='light'] :is([class*='bg-green-400/'], [class*='bg-green-500/']) :is(.text-green-200, .text-green-300, .text-green-400) {
+  color: var(--color-green-700);
+}
+
+html[data-scheme='light'] :is([class*='bg-emerald-400/'], [class*='bg-emerald-500/']):is(.text-emerald-200, .text-emerald-300, .text-emerald-400),
+html[data-scheme='light'] :is([class*='bg-emerald-400/'], [class*='bg-emerald-500/']) :is(.text-emerald-200, .text-emerald-300, .text-emerald-400) {
+  color: var(--color-emerald-700);
+}
+
+html[data-scheme='light'] :is([class*='bg-teal-400/'], [class*='bg-teal-500/']):is(.text-teal-200, .text-teal-300, .text-teal-400),
+html[data-scheme='light'] :is([class*='bg-teal-400/'], [class*='bg-teal-500/']) :is(.text-teal-200, .text-teal-300, .text-teal-400) {
+  color: var(--color-teal-700);
+}
+
+html[data-scheme='light'] :is([class*='bg-cyan-400/'], [class*='bg-cyan-500/']):is(.text-cyan-200, .text-cyan-300, .text-cyan-400),
+html[data-scheme='light'] :is([class*='bg-cyan-400/'], [class*='bg-cyan-500/']) :is(.text-cyan-200, .text-cyan-300, .text-cyan-400) {
+  color: var(--color-cyan-700);
+}
+
+html[data-scheme='light'] :is([class*='bg-sky-400/'], [class*='bg-sky-500/']):is(.text-sky-200, .text-sky-300, .text-sky-400),
+html[data-scheme='light'] :is([class*='bg-sky-400/'], [class*='bg-sky-500/']) :is(.text-sky-200, .text-sky-300, .text-sky-400) {
+  color: var(--color-sky-700);
+}
+
+html[data-scheme='light'] :is([class*='bg-blue-400/'], [class*='bg-blue-500/']):is(.text-blue-200, .text-blue-300, .text-blue-400),
+html[data-scheme='light'] :is([class*='bg-blue-400/'], [class*='bg-blue-500/']) :is(.text-blue-200, .text-blue-300, .text-blue-400) {
+  color: var(--color-blue-700);
+}
+
+html[data-scheme='light'] :is([class*='bg-indigo-400/'], [class*='bg-indigo-500/']):is(.text-indigo-200, .text-indigo-300, .text-indigo-400),
+html[data-scheme='light'] :is([class*='bg-indigo-400/'], [class*='bg-indigo-500/']) :is(.text-indigo-200, .text-indigo-300, .text-indigo-400) {
+  color: var(--color-indigo-700);
+}
+
+html[data-scheme='light'] :is([class*='bg-violet-400/'], [class*='bg-violet-500/']):is(.text-violet-200, .text-violet-300, .text-violet-400),
+html[data-scheme='light'] :is([class*='bg-violet-400/'], [class*='bg-violet-500/']) :is(.text-violet-200, .text-violet-300, .text-violet-400) {
+  color: var(--color-violet-700);
+}
+
+html[data-scheme='light'] :is([class*='bg-purple-400/'], [class*='bg-purple-500/']):is(.text-purple-200, .text-purple-300, .text-purple-400),
+html[data-scheme='light'] :is([class*='bg-purple-400/'], [class*='bg-purple-500/']) :is(.text-purple-200, .text-purple-300, .text-purple-400) {
+  color: var(--color-purple-700);
+}
+
+html[data-scheme='light'] :is([class*='bg-fuchsia-400/'], [class*='bg-fuchsia-500/']):is(.text-fuchsia-200, .text-fuchsia-300, .text-fuchsia-400),
+html[data-scheme='light'] :is([class*='bg-fuchsia-400/'], [class*='bg-fuchsia-500/']) :is(.text-fuchsia-200, .text-fuchsia-300, .text-fuchsia-400) {
+  color: var(--color-fuchsia-700);
+}
+
+html[data-scheme='light'] :is([class*='bg-pink-400/'], [class*='bg-pink-500/']):is(.text-pink-200, .text-pink-300, .text-pink-400),
+html[data-scheme='light'] :is([class*='bg-pink-400/'], [class*='bg-pink-500/']) :is(.text-pink-200, .text-pink-300, .text-pink-400) {
+  color: var(--color-pink-700);
+}
+
+/* Movie and series detail pages, below the hero. Phones stack the sections in
+   DOM order (the flex column on .detail-grid). Once the content area is wide
+   (56rem of the surrounding @container, so the sidebar counts) a short facts
+   column sits beside the overview and actions and everything else runs full
+   width. Sections place themselves with [grid-area:*]; the single 1fr row soaks
+   up any height difference so neither column gets gaps between its sections.
+   Rows are spaced with margins, not row-gap, so an absent section adds none. */
+@container (min-width: 56rem) {
+  .detail-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 22rem) minmax(0, 1fr);
+    column-gap: 2rem;
+    row-gap: 0;
+    align-items: start;
+  }
+
+  .detail-grid-movie {
+    grid-template-rows: auto auto 1fr;
+    grid-template-areas:
+      'progress progress'
+      'facts overview'
+      'facts actions'
+      'cast cast'
+      'info info'
+      'rails rails';
+  }
+
+  .detail-grid-movie > * {
+    margin-bottom: 1.5rem;
+  }
+
+  .detail-grid-series {
+    grid-template-rows: auto auto 1fr;
+    grid-template-areas:
+      'progress progress'
+      'facts main'
+      'facts anilist'
+      'seasons seasons'
+      'info info'
+      'trailer trailer'
+      'rails rails';
+  }
+
+  /* Information reads down two columns instead of one long list. */
+  .detail-info-rows {
+    columns: 2;
+    column-gap: 2rem;
+  }
+
+  .detail-info-rows > * {
+    break-inside: avoid;
+  }
+}
+
+/* Inline spec rows ("1999 | 139 MIN | R"): each item draws its own leading
+   divider and the row is shifted left inside an overflow-hidden wrapper, so the
+   divider of whichever item starts a line is clipped. A wrapped row never ends
+   or begins with a stray bar. */
+.spec-row {
+  overflow: hidden;
+}
+
+.spec-row > div {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  row-gap: 0.375rem;
+  margin-left: -0.75rem;
+}
+
+.spec-row > div > * {
+  position: relative;
+  padding-left: 0.75rem;
+  margin-right: 0.75rem;
+}
+
+.spec-row > div > *::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 1px;
+  height: 0.75rem;
+  transform: translateY(-50%);
+  background: var(--border);
+}
+
+/* Horizontal rails directly inside <main>: scroll edge to edge while the first
+   card lines up with the page content. The scroll-padding stops snap-start
+   cards from snapping the padding out of view. */
+.rail-bleed {
+  margin-inline: calc(-1 * var(--main-pad-x));
+  padding-inline: var(--main-pad-x);
+  scroll-padding-inline: var(--main-pad-x);
+}
+
 /* Smooth scrolling */
 html {
   scroll-behavior: instant;
@@ -250,6 +518,14 @@ html {
     black calc(100% - 14px),
     transparent 100%
   );
+}
+
+/* Dashboard EmptyState: a one-row cell leaves ~32px under the header, too
+   little for icon + message, so keep just the message there. */
+@container bento-empty (max-height: 55px) {
+  .bento-empty > svg {
+    display: none;
+  }
 }
 
 /* ── Bento Dashboard tokens (--hpr-*) ───────────────────────────────────
@@ -592,15 +868,6 @@ html[data-watch-skin='cinematic']:has(.hpr-watch) {
   }
 }
 
-/* Touch target helper - apply to interactive nav/action elements */
-.touch-target {
-  min-height: 44px;
-  min-width: 44px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
 /* Active press feedback */
 .press-feedback:active {
   opacity: 0.7;
@@ -932,10 +1199,11 @@ html[data-watch-skin='cinematic']:has(.hpr-watch) {
   animation: spinner-in 0.15s ease-out 0.1s both;
 }
 
-/* Scroll margin for calendar scrollIntoView targets */
+/* Scroll margin for calendar scrollIntoView targets: below the sticky toolbar,
+   which the calendar page measures into --calendar-sticky-offset. */
 [data-agenda-date],
 [data-week-date] {
-  scroll-margin-top: calc(var(--header-height, 0px) + 4rem);
+  scroll-margin-top: var(--calendar-sticky-offset, calc(var(--header-height, 0px) + 4rem));
 }
 
 /* ─── Cinematic Hero utilities ──────────────────────────────────────── */
@@ -1457,6 +1725,19 @@ html[data-watch-skin='cinematic']:has(.hpr-watch) [data-app-command-launcher] {
    is just a dead strip at the foot of every Watch page. */
 html[data-watch-skin='cinematic']:has(.hpr-watch) .app-main {
   padding-bottom: 0;
+}
+
+/* ...so the footer measures drop it too: the now-playing bar, floating bars and
+   toasts sit on the screen's foot rather than above a tab bar that isn't there. */
+html[data-watch-skin='cinematic']:has(.hpr-watch) {
+  --footer-height: env(safe-area-inset-bottom, 0px);
+  --footer-bar-bottom: 0px;
+  --footer-bar-inset: env(safe-area-inset-bottom, 0px);
+}
+
+/* The now-playing bar still needs its room at the foot of a Watch page. */
+html[data-watch-skin='cinematic']:has(.hpr-watch):has([data-now-playing-bar]) .app-main {
+  padding-bottom: calc(var(--footer-height) + var(--player-bar-height) + 1rem);
 }
 
 /* Both nav modes hide their bar in cinematic, so nothing occupies the notch

@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
+import { usePathname, useSearchParams } from 'next/navigation';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { ApiError } from '@/lib/query-fetch';
 import {
@@ -37,13 +38,8 @@ import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetFooter,
-} from '@/components/ui/sheet';
+import { PageHeader } from '@/components/layout/page-header';
+import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
 import { LanguageRegionCombobox } from '@/components/ui/language-region-combobox';
 import { toast } from 'sonner';
 import {
@@ -147,7 +143,7 @@ function SortableSection({
         } ${!section.enabled ? 'opacity-40' : ''}`}
       >
         <button
-          className="touch-none p-1 -m-1 text-muted-foreground/50 cursor-grab active:cursor-grabbing"
+          className="relative touch-none p-1 -m-1 text-muted-foreground/50 cursor-grab active:cursor-grabbing touch-target"
           aria-label="Drag to reorder"
           {...attributes}
           {...listeners}
@@ -182,7 +178,7 @@ function SortableSection({
           </button>
         )}
 
-        <Switch checked={section.enabled} onCheckedChange={onToggle} />
+        <Switch checked={section.enabled} onCheckedChange={onToggle} aria-label={`Show ${section.label}`} />
       </div>
     </QuickContextMenu>
   );
@@ -192,16 +188,20 @@ function SortableSection({
 // Custom carousel editor sheet
 // ---------------------------------------------------------------------------
 
+/**
+ * The custom carousel form, shown as its own page (`?carousel=<id|new>`) rather
+ * than a sheet: it has text and number fields, and on a phone the keyboard
+ * pushes an overlay off the screen. Keyed by carousel, so it starts from
+ * `initial` each time it opens.
+ */
 function CustomCarouselEditor({
-  open,
-  onOpenChange,
   onSave,
+  onCancel,
   initial,
   filtersMeta,
 }: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
   onSave: (label: string, filters: DiscoverLayoutCustomFilters) => void;
+  onCancel: () => void;
   initial?: { label: string; filters: DiscoverLayoutCustomFilters };
   filtersMeta: DiscoverFiltersResponse | null;
 }) {
@@ -209,14 +209,6 @@ function CustomCarouselEditor({
   const [filters, setFilters] = useState<DiscoverLayoutCustomFilters>(
     initial?.filters ?? buildDefaultCustomFilters()
   );
-
-  useEffect(() => {
-    if (open) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setLabel(initial?.label ?? '');
-      setFilters(initial?.filters ?? buildDefaultCustomFilters());
-    }
-  }, [open, initial]);
 
   const genreChoices = useMemo(() => {
     if (!filtersMeta) return [];
@@ -239,314 +231,307 @@ function CustomCarouselEditor({
       return;
     }
     onSave(trimmed, filters);
-    onOpenChange(false);
   };
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="w-[92vw] sm:max-w-md p-0">
-        <SheetHeader>
-          <SheetTitle>{initial ? 'Edit Custom Carousel' : 'New Custom Carousel'}</SheetTitle>
-        </SheetHeader>
+    <>
+      <PageHeader title={initial ? 'Edit Custom Carousel' : 'New Custom Carousel'} onBack={onCancel} />
 
-        <div className="px-4 pb-4 overflow-y-auto space-y-4">
-          {/* Name */}
+      <div className="mx-auto max-w-2xl px-4 py-4 space-y-4">
+        {/* Name */}
+        <div className="space-y-1.5">
+          <Label className="text-xs text-muted-foreground">Carousel Name</Label>
+          <Input
+            value={label}
+            onChange={(e) => setLabel(e.target.value)}
+            placeholder="e.g. Horror Movies 2020s"
+          />
+        </div>
+
+        {/* Content Type */}
+        <div className="space-y-1.5">
+          <Label className="text-xs text-muted-foreground">Content Type</Label>
+          <div className="grid grid-cols-3 gap-2">
+            {CONTENT_TYPE_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                onClick={() => setFilters({ ...filters, contentType: opt.value })}
+                className={`px-3 py-2 rounded-lg border text-sm ${
+                  filters.contentType === opt.value
+                    ? 'border-primary text-primary'
+                    : 'border-border text-muted-foreground'
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Sort */}
+        <div className="space-y-1.5">
+          <Label className="text-xs text-muted-foreground">Sort</Label>
+          <div className="grid grid-cols-2 gap-2">
+            {SORT_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                onClick={() => setFilters({ ...filters, sortBy: opt.value })}
+                className={`px-3 py-2 rounded-lg border text-sm ${
+                  filters.sortBy === opt.value
+                    ? 'border-primary text-primary'
+                    : 'border-border text-muted-foreground'
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Sort Direction */}
+        <div className="space-y-1.5">
+          <Label className="text-xs text-muted-foreground">Sort Direction</Label>
+          <div className="grid grid-cols-2 gap-2">
+            {(['desc', 'asc'] as const).map((dir) => (
+              <button
+                key={dir}
+                onClick={() => setFilters({ ...filters, sortOrder: dir })}
+                className={`px-3 py-2 rounded-lg border text-sm uppercase ${
+                  filters.sortOrder === dir
+                    ? 'border-primary text-primary'
+                    : 'border-border text-muted-foreground'
+                }`}
+              >
+                {dir}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Year Range */}
+        <div className="grid grid-cols-2 gap-2">
           <div className="space-y-1.5">
-            <Label className="text-xs text-muted-foreground">Carousel Name</Label>
+            <Label className="text-xs text-muted-foreground">Year From</Label>
             <Input
-              value={label}
-              onChange={(e) => setLabel(e.target.value)}
-              placeholder="e.g. Horror Movies 2020s"
-            />
-          </div>
-
-          {/* Content Type */}
-          <div className="space-y-1.5">
-            <Label className="text-xs text-muted-foreground">Content Type</Label>
-            <div className="grid grid-cols-3 gap-2">
-              {CONTENT_TYPE_OPTIONS.map((opt) => (
-                <button
-                  key={opt.value}
-                  onClick={() => setFilters({ ...filters, contentType: opt.value })}
-                  className={`px-3 py-2 rounded-lg border text-sm ${
-                    filters.contentType === opt.value
-                      ? 'border-primary text-primary'
-                      : 'border-border text-muted-foreground'
-                  }`}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Sort */}
-          <div className="space-y-1.5">
-            <Label className="text-xs text-muted-foreground">Sort</Label>
-            <div className="grid grid-cols-2 gap-2">
-              {SORT_OPTIONS.map((opt) => (
-                <button
-                  key={opt.value}
-                  onClick={() => setFilters({ ...filters, sortBy: opt.value })}
-                  className={`px-3 py-2 rounded-lg border text-sm ${
-                    filters.sortBy === opt.value
-                      ? 'border-primary text-primary'
-                      : 'border-border text-muted-foreground'
-                  }`}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Sort Direction */}
-          <div className="space-y-1.5">
-            <Label className="text-xs text-muted-foreground">Sort Direction</Label>
-            <div className="grid grid-cols-2 gap-2">
-              {(['desc', 'asc'] as const).map((dir) => (
-                <button
-                  key={dir}
-                  onClick={() => setFilters({ ...filters, sortOrder: dir })}
-                  className={`px-3 py-2 rounded-lg border text-sm uppercase ${
-                    filters.sortOrder === dir
-                      ? 'border-primary text-primary'
-                      : 'border-border text-muted-foreground'
-                  }`}
-                >
-                  {dir}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Year Range */}
-          <div className="grid grid-cols-2 gap-2">
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Year From</Label>
-              <Input
-                value={filters.yearFrom ?? ''}
-                onChange={(e) => setFilters({ ...filters, yearFrom: e.target.value })}
-                placeholder="1995"
-                inputMode="numeric"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Year To</Label>
-              <Input
-                value={filters.yearTo ?? ''}
-                onChange={(e) => setFilters({ ...filters, yearTo: e.target.value })}
-                placeholder="2026"
-                inputMode="numeric"
-              />
-            </div>
-          </div>
-
-          {/* Runtime Range */}
-          <div className="grid grid-cols-2 gap-2">
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Runtime Min</Label>
-              <Input
-                value={filters.runtimeMin ?? ''}
-                onChange={(e) => setFilters({ ...filters, runtimeMin: e.target.value })}
-                placeholder="45"
-                inputMode="numeric"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Runtime Max</Label>
-              <Input
-                value={filters.runtimeMax ?? ''}
-                onChange={(e) => setFilters({ ...filters, runtimeMax: e.target.value })}
-                placeholder="180"
-                inputMode="numeric"
-              />
-            </div>
-          </div>
-
-          {/* Rating Range */}
-          <div className="grid grid-cols-2 gap-2">
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Rating Min</Label>
-              <Input
-                value={filters.ratingMin ?? ''}
-                onChange={(e) => setFilters({ ...filters, ratingMin: e.target.value })}
-                placeholder="7.5"
-                inputMode="decimal"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Rating Max</Label>
-              <Input
-                value={filters.ratingMax ?? ''}
-                onChange={(e) => setFilters({ ...filters, ratingMax: e.target.value })}
-                placeholder="10"
-                inputMode="decimal"
-              />
-            </div>
-          </div>
-
-          {/* Vote Count Min */}
-          <div className="space-y-1.5">
-            <Label className="text-xs text-muted-foreground">Vote Count Min</Label>
-            <Input
-              value={filters.voteCountMin ?? ''}
-              onChange={(e) => setFilters({ ...filters, voteCountMin: e.target.value })}
-              placeholder="500"
+              value={filters.yearFrom ?? ''}
+              onChange={(e) => setFilters({ ...filters, yearFrom: e.target.value })}
+              placeholder="1995"
               inputMode="numeric"
             />
           </div>
-
-          {/* Language & Region */}
-          <div className="grid grid-cols-2 gap-2">
-            <div className="space-y-1.5 flex flex-col">
-              <Label className="text-xs text-muted-foreground">Language</Label>
-              <LanguageRegionCombobox
-                value={filters.language ?? ''}
-                onChange={(code) => setFilters({ ...filters, language: code })}
-                options={filtersMeta?.languages || []}
-                placeholder="Any language"
-                emptyLabel="Any language"
-                searchPlaceholder="Search language"
-              />
-            </div>
-            <div className="space-y-1.5 flex flex-col">
-              <Label className="text-xs text-muted-foreground">Region</Label>
-              <LanguageRegionCombobox
-                value={filters.region ?? ''}
-                onChange={(code) => setFilters({ ...filters, region: code })}
-                options={filtersMeta?.regions || []}
-                placeholder="Any region"
-                emptyLabel="Any region"
-                searchPlaceholder="Search region"
-              />
-            </div>
-          </div>
-
-          {/* Release State */}
           <div className="space-y-1.5">
-            <Label className="text-xs text-muted-foreground">Release State</Label>
-            <div className="grid grid-cols-3 gap-2">
-              {RELEASE_STATE_OPTIONS.map((opt) => (
-                <button
-                  key={opt.value || 'any'}
-                  onClick={() => setFilters({ ...filters, releaseState: opt.value })}
-                  className={`px-3 py-2 rounded-lg border text-sm ${
-                    (filters.releaseState ?? '') === opt.value
-                      ? 'border-primary text-primary'
-                      : 'border-border text-muted-foreground'
-                  }`}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
+            <Label className="text-xs text-muted-foreground">Year To</Label>
+            <Input
+              value={filters.yearTo ?? ''}
+              onChange={(e) => setFilters({ ...filters, yearTo: e.target.value })}
+              placeholder="2026"
+              inputMode="numeric"
+            />
           </div>
-
-          {/* Genres */}
-          {genreChoices.length > 0 && (
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Genres</Label>
-              <div className="max-h-40 overflow-y-auto rounded-lg border border-border/50 p-2">
-                <div className="flex flex-wrap gap-2">
-                  {genreChoices.slice(0, 28).map((genre) => {
-                    const active = filters.genres?.includes(genre.id) ?? false;
-                    return (
-                      <button
-                        key={`${genre.type}-${genre.id}`}
-                        onClick={() => {
-                          const set = new Set(filters.genres ?? []);
-                          if (set.has(genre.id)) set.delete(genre.id);
-                          else set.add(genre.id);
-                          setFilters({ ...filters, genres: [...set] });
-                        }}
-                        className={`px-2.5 py-1 rounded-full text-xs border whitespace-normal text-left leading-tight ${
-                          active ? 'border-primary text-primary' : 'border-border text-muted-foreground'
-                        }`}
-                      >
-                        {genre.name}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Providers */}
-          {providerChoices.length > 0 && (
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Providers</Label>
-              <div className="max-h-40 overflow-y-auto rounded-lg border border-border/50 p-2">
-                <div className="flex flex-wrap gap-2">
-                  {providerChoices.slice(0, 28).map((provider) => {
-                    const active = filters.providers?.includes(provider.id) ?? false;
-                    return (
-                      <button
-                        key={`${provider.type}-${provider.id}`}
-                        onClick={() => {
-                          const set = new Set(filters.providers ?? []);
-                          if (set.has(provider.id)) set.delete(provider.id);
-                          else set.add(provider.id);
-                          setFilters({ ...filters, providers: [...set] });
-                        }}
-                        className={`px-2.5 py-1 rounded-full text-xs border whitespace-normal text-left leading-tight ${
-                          active ? 'border-primary text-primary' : 'border-border text-muted-foreground'
-                        }`}
-                      >
-                        {provider.name}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Networks */}
-          {(filtersMeta?.networks?.length ?? 0) > 0 && (
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Networks</Label>
-              <div className="max-h-40 overflow-y-auto rounded-lg border border-border/50 p-2">
-                <div className="flex flex-wrap gap-2">
-                  {(filtersMeta?.networks ?? []).slice(0, 24).map((network) => {
-                    const active = filters.networks?.includes(network.id) ?? false;
-                    return (
-                      <button
-                        key={network.id}
-                        onClick={() => {
-                          const set = new Set(filters.networks ?? []);
-                          if (set.has(network.id)) set.delete(network.id);
-                          else set.add(network.id);
-                          setFilters({ ...filters, networks: [...set] });
-                        }}
-                        className={`px-2.5 py-1 rounded-full text-xs border whitespace-normal text-left leading-tight ${
-                          active ? 'border-primary text-primary' : 'border-border text-muted-foreground'
-                        }`}
-                      >
-                        {network.name}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-          )}
         </div>
 
-        <SheetFooter className="border-t">
-          <div className="grid grid-cols-2 gap-2 w-full">
-            <Button variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleSave}>
-              <Check className="h-3.5 w-3.5 mr-1.5" />
-              {initial ? 'Update' : 'Create'}
-            </Button>
+        {/* Runtime Range */}
+        <div className="grid grid-cols-2 gap-2">
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Runtime Min</Label>
+            <Input
+              value={filters.runtimeMin ?? ''}
+              onChange={(e) => setFilters({ ...filters, runtimeMin: e.target.value })}
+              placeholder="45"
+              inputMode="numeric"
+            />
           </div>
-        </SheetFooter>
-      </SheetContent>
-    </Sheet>
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Runtime Max</Label>
+            <Input
+              value={filters.runtimeMax ?? ''}
+              onChange={(e) => setFilters({ ...filters, runtimeMax: e.target.value })}
+              placeholder="180"
+              inputMode="numeric"
+            />
+          </div>
+        </div>
+
+        {/* Rating Range */}
+        <div className="grid grid-cols-2 gap-2">
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Rating Min</Label>
+            <Input
+              value={filters.ratingMin ?? ''}
+              onChange={(e) => setFilters({ ...filters, ratingMin: e.target.value })}
+              placeholder="7.5"
+              inputMode="decimal"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Rating Max</Label>
+            <Input
+              value={filters.ratingMax ?? ''}
+              onChange={(e) => setFilters({ ...filters, ratingMax: e.target.value })}
+              placeholder="10"
+              inputMode="decimal"
+            />
+          </div>
+        </div>
+
+        {/* Vote Count Min */}
+        <div className="space-y-1.5">
+          <Label className="text-xs text-muted-foreground">Vote Count Min</Label>
+          <Input
+            value={filters.voteCountMin ?? ''}
+            onChange={(e) => setFilters({ ...filters, voteCountMin: e.target.value })}
+            placeholder="500"
+            inputMode="numeric"
+          />
+        </div>
+
+        {/* Language & Region */}
+        <div className="grid grid-cols-2 gap-2">
+          <div className="space-y-1.5 flex flex-col">
+            <Label className="text-xs text-muted-foreground">Language</Label>
+            <LanguageRegionCombobox
+              value={filters.language ?? ''}
+              onChange={(code) => setFilters({ ...filters, language: code })}
+              options={filtersMeta?.languages || []}
+              placeholder="Any language"
+              emptyLabel="Any language"
+              searchPlaceholder="Search language"
+            />
+          </div>
+          <div className="space-y-1.5 flex flex-col">
+            <Label className="text-xs text-muted-foreground">Region</Label>
+            <LanguageRegionCombobox
+              value={filters.region ?? ''}
+              onChange={(code) => setFilters({ ...filters, region: code })}
+              options={filtersMeta?.regions || []}
+              placeholder="Any region"
+              emptyLabel="Any region"
+              searchPlaceholder="Search region"
+            />
+          </div>
+        </div>
+
+        {/* Release State */}
+        <div className="space-y-1.5">
+          <Label className="text-xs text-muted-foreground">Release State</Label>
+          <div className="grid grid-cols-3 gap-2">
+            {RELEASE_STATE_OPTIONS.map((opt) => (
+              <button
+                key={opt.value || 'any'}
+                onClick={() => setFilters({ ...filters, releaseState: opt.value })}
+                className={`px-3 py-2 rounded-lg border text-sm ${
+                  (filters.releaseState ?? '') === opt.value
+                    ? 'border-primary text-primary'
+                    : 'border-border text-muted-foreground'
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Genres */}
+        {genreChoices.length > 0 && (
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Genres</Label>
+            <div className="max-h-40 overflow-y-auto rounded-lg border border-border/50 p-2">
+              <div className="flex flex-wrap gap-2">
+                {genreChoices.slice(0, 28).map((genre) => {
+                  const active = filters.genres?.includes(genre.id) ?? false;
+                  return (
+                    <button
+                      key={`${genre.type}-${genre.id}`}
+                      onClick={() => {
+                        const set = new Set(filters.genres ?? []);
+                        if (set.has(genre.id)) set.delete(genre.id);
+                        else set.add(genre.id);
+                        setFilters({ ...filters, genres: [...set] });
+                      }}
+                      className={`px-2.5 py-1 rounded-full text-xs border whitespace-normal text-left leading-tight ${
+                        active ? 'border-primary text-primary' : 'border-border text-muted-foreground'
+                      }`}
+                    >
+                      {genre.name}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Providers */}
+        {providerChoices.length > 0 && (
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Providers</Label>
+            <div className="max-h-40 overflow-y-auto rounded-lg border border-border/50 p-2">
+              <div className="flex flex-wrap gap-2">
+                {providerChoices.slice(0, 28).map((provider) => {
+                  const active = filters.providers?.includes(provider.id) ?? false;
+                  return (
+                    <button
+                      key={`${provider.type}-${provider.id}`}
+                      onClick={() => {
+                        const set = new Set(filters.providers ?? []);
+                        if (set.has(provider.id)) set.delete(provider.id);
+                        else set.add(provider.id);
+                        setFilters({ ...filters, providers: [...set] });
+                      }}
+                      className={`px-2.5 py-1 rounded-full text-xs border whitespace-normal text-left leading-tight ${
+                        active ? 'border-primary text-primary' : 'border-border text-muted-foreground'
+                      }`}
+                    >
+                      {provider.name}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Networks */}
+        {(filtersMeta?.networks?.length ?? 0) > 0 && (
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Networks</Label>
+            <div className="max-h-40 overflow-y-auto rounded-lg border border-border/50 p-2">
+              <div className="flex flex-wrap gap-2">
+                {(filtersMeta?.networks ?? []).slice(0, 24).map((network) => {
+                  const active = filters.networks?.includes(network.id) ?? false;
+                  return (
+                    <button
+                      key={network.id}
+                      onClick={() => {
+                        const set = new Set(filters.networks ?? []);
+                        if (set.has(network.id)) set.delete(network.id);
+                        else set.add(network.id);
+                        setFilters({ ...filters, networks: [...set] });
+                      }}
+                      className={`px-2.5 py-1 rounded-full text-xs border whitespace-normal text-left leading-tight ${
+                        active ? 'border-primary text-primary' : 'border-border text-muted-foreground'
+                      }`}
+                    >
+                      {network.name}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="grid grid-cols-2 gap-2 pt-2">
+          <Button variant="outline" onClick={onCancel}>
+            Cancel
+          </Button>
+          <Button onClick={handleSave}>
+            <Check className="h-3.5 w-3.5 mr-1.5" />
+            {initial ? 'Update' : 'Create'}
+          </Button>
+        </div>
+      </div>
+    </>
   );
 }
 
@@ -558,9 +543,15 @@ export function DiscoverLayoutSettings() {
   const [layout, setLayout] = useState<DiscoverLayoutConfig | null>(null);
   const [dirty, setDirty] = useState(false);
 
-  // Custom carousel editor
-  const [editorOpen, setEditorOpen] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
+  // The custom carousel editor is a page of its own on this route
+  // (?carousel=<id> or ?carousel=new). Staying on the route keeps this
+  // component mounted, so unsaved layout edits survive opening it, and the back
+  // gesture returns to the list.
+  const router = useRouter();
+  const pathname = usePathname();
+  const carouselParam = useSearchParams().get('carousel');
+  const editingId = carouselParam && carouselParam !== 'new' ? carouselParam : null;
+  const openedFromList = useRef(false);
 
   // Load layout + filters metadata in one query. Each is graceful on a normal
   // failure, but a 401 throws so the global handler redirects to /login.
@@ -655,15 +646,21 @@ export function DiscoverLayoutSettings() {
     [updateLayout]
   );
 
-  const handleEditCustom = useCallback((id: string) => {
-    setEditingId(id);
-    setEditorOpen(true);
-  }, []);
+  const openEditor = useCallback((carousel: string) => {
+    openedFromList.current = true;
+    router.push(`${pathname}?carousel=${encodeURIComponent(carousel)}`);
+  }, [router, pathname]);
 
-  const handleAddCustom = useCallback(() => {
-    setEditingId(null);
-    setEditorOpen(true);
-  }, []);
+  const handleEditCustom = useCallback((id: string) => openEditor(id), [openEditor]);
+  const handleAddCustom = useCallback(() => openEditor('new'), [openEditor]);
+
+  // Back to the list: pop the editor's history entry when the list opened it
+  // (it stays set for this mount, so Forward back into the editor still pops),
+  // or replace it when the editor was opened directly (a reload).
+  const closeEditor = useCallback(() => {
+    if (openedFromList.current) router.back();
+    else router.replace(pathname);
+  }, [router, pathname]);
 
   const handleEditorSave = useCallback(
     (label: string, filters: DiscoverLayoutCustomFilters) => {
@@ -687,8 +684,9 @@ export function DiscoverLayoutSettings() {
           sections: [...prev.sections, newSection],
         }));
       }
+      closeEditor();
     },
-    [editingId, updateLayout]
+    [editingId, updateLayout, closeEditor]
   );
 
   const saveMutation = useMutation({
@@ -732,6 +730,32 @@ export function DiscoverLayoutSettings() {
   const editingSection = editingId
     ? sections.find((s) => s.id === editingId)
     : undefined;
+
+  if (carouselParam && !loading) {
+    if (editingId && editingSection?.type !== 'custom') {
+      return (
+        <>
+          <PageHeader title="Custom Carousel" onBack={closeEditor} />
+          <p className="px-4 py-8 text-center text-sm text-muted-foreground">
+            This carousel isn&apos;t in your layout any more.
+          </p>
+        </>
+      );
+    }
+    return (
+      <CustomCarouselEditor
+        key={carouselParam}
+        onSave={handleEditorSave}
+        onCancel={closeEditor}
+        initial={
+          editingSection?.type === 'custom' && editingSection.filters
+            ? { label: editingSection.label, filters: editingSection.filters }
+            : undefined
+        }
+        filtersMeta={filtersMeta}
+      />
+    );
+  }
 
   if (loading) {
     return (
@@ -825,18 +849,6 @@ export function DiscoverLayoutSettings() {
           </div>
         </div>
       </div>
-
-      <CustomCarouselEditor
-        open={editorOpen}
-        onOpenChange={setEditorOpen}
-        onSave={handleEditorSave}
-        initial={
-          editingSection?.type === 'custom' && editingSection.filters
-            ? { label: editingSection.label, filters: editingSection.filters }
-            : undefined
-        }
-        filtersMeta={filtersMeta}
-      />
     </>
   );
 }

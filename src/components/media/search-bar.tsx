@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { Input } from '@/components/ui/input';
-import { Loader2, Search } from 'lucide-react';
+import { Loader2, Search, X } from 'lucide-react';
 import { useSearchHistory } from '@/lib/hooks/use-search-history';
 import { useSearchHistoryListbox } from '@/lib/hooks/use-search-history-listbox';
 import { SearchHistoryDropdown } from './search-history-dropdown';
@@ -99,8 +99,17 @@ export function SearchBar({ value, onChange, placeholder = 'Search...', historyK
         aria-activedescendant={listbox.activeDescendantId}
         className="pl-9 pr-9"
       />
-      {debouncing && (
+      {debouncing ? (
         <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-muted-foreground" />
+      ) : internal && (
+        <button
+          type="button"
+          onClick={() => setInternal('')}
+          className="absolute right-1.5 top-1/2 -translate-y-1/2 flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground hover:text-foreground touch-target"
+          aria-label="Clear search"
+        >
+          <X className="h-4 w-4" />
+        </button>
       )}
       {historyKey && open && (
         <SearchHistoryDropdown

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
+import { FloatingActionBar } from '@/components/ui/floating-action-bar';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
@@ -288,7 +289,7 @@ export function DownloadCleanerTab({ onDirtyChange }: Props) {
 
   return (
     <TooltipProvider delayDuration={150}>
-      <div className="space-y-6 pb-32">
+      <div className="space-y-6">
         {/* ── General ───────────────────────────────────────────────────── */}
         <section className="grouped-section">
           <div className="grouped-section-title">General</div>
@@ -298,7 +299,7 @@ export function DownloadCleanerTab({ onDirtyChange }: Props) {
                 <Label>Enabled</Label>
                 <p className="text-xs text-muted-foreground mt-0.5">Master toggle for the Download Cleaner.</p>
               </div>
-              <Switch checked={cfg.enabled} onCheckedChange={(v) => setCfg({ ...cfg, enabled: v })} />
+              <Switch aria-label="Download Cleaner enabled" checked={cfg.enabled} onCheckedChange={(v) => setCfg({ ...cfg, enabled: v })} />
             </div>
 
             <div className="grouped-row grouped-row-stack-mobile gap-2">
@@ -368,7 +369,7 @@ export function DownloadCleanerTab({ onDirtyChange }: Props) {
                 <Label>Enabled</Label>
                 <p className="text-xs text-muted-foreground mt-0.5">Removes torrents in the listed categories as soon as Sonarr/Radarr finish importing them. Managed internally as a hidden system rule. Mutually exclusive with rule-level import confirmation.</p>
               </div>
-              <Switch
+              <Switch aria-label="Auto-remove imported enabled"
                 checked={cfg.autoRemoveImportedEnabled}
                 disabled={ruleLevelConflicts.length > 0}
                 onCheckedChange={(v) => {
@@ -415,7 +416,7 @@ export function DownloadCleanerTab({ onDirtyChange }: Props) {
                 <Label>Delete files</Label>
                 <p className="text-xs text-muted-foreground mt-0.5">Also delete the source files on disk. Off keeps the files and only removes from qBittorrent.</p>
               </div>
-              <Switch checked={cfg.autoRemoveImportedDeleteFiles}
+              <Switch aria-label="Delete files when auto-removing" checked={cfg.autoRemoveImportedDeleteFiles}
                 onCheckedChange={(v) => setCfg({ ...cfg, autoRemoveImportedDeleteFiles: v })}
                 disabled={!cfg.autoRemoveImportedEnabled} />
             </div>
@@ -464,24 +465,17 @@ export function DownloadCleanerTab({ onDirtyChange }: Props) {
           </div>
         )}
 
-        <div className="fixed left-0 right-0 bottom-16 sm:bottom-0 z-30 pointer-events-none">
-          <div className="max-w-screen-2xl mx-auto px-4 pb-4">
-            <div
-              className={
-                'app-chrome-bar pointer-events-auto flex items-center justify-end gap-2 rounded-md border bg-card/95 backdrop-blur px-3 py-2 shadow-lg transition-opacity ' +
-                (isDirty ? 'opacity-100' : 'opacity-0 pointer-events-none')
-              }
-            >
-              <span className="text-xs text-muted-foreground mr-auto whitespace-nowrap hidden sm:inline">Unsaved changes</span>
-              <Button variant="ghost" size="sm" onClick={discardChanges} disabled={saving}>Discard</Button>
-              <Button size="sm" onClick={saveAll} disabled={saving}>
-                {saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}
-                <span className="hidden sm:inline">Save all changes</span>
-                <span className="sm:hidden">Save</span>
-              </Button>
-            </div>
-          </div>
-        </div>
+        {isDirty && (
+          <FloatingActionBar>
+            <span className="min-w-0 flex-1 text-sm text-muted-foreground">Unsaved changes</span>
+            <Button variant="ghost" size="sm" onClick={discardChanges} disabled={saving}>Discard</Button>
+            <Button size="sm" onClick={saveAll} disabled={saving}>
+              {saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}
+              <span className="hidden sm:inline">Save all changes</span>
+              <span className="sm:hidden">Save</span>
+            </Button>
+          </FloatingActionBar>
+        )}
 
         <ConfirmDialog
           open={!!pendingDelete}
@@ -580,7 +574,7 @@ function SeedingRuleCard({
         )}
         <div className="flex items-center gap-2 shrink-0 ml-auto">
           <span className="text-xs text-muted-foreground">{rule.enabled ? 'On' : 'Off'}</span>
-          <Switch checked={rule.enabled} onCheckedChange={(v) => onChange({ ...rule, enabled: v })} />
+          <Switch aria-label={`${rule.name || 'Untitled rule'} enabled`} checked={rule.enabled} onCheckedChange={(v) => onChange({ ...rule, enabled: v })} />
           {editing ? (
             <Button size="sm" variant="ghost" onClick={onDone} aria-label="Collapse rule">
               <ChevronUp className="w-4 h-4" />

@@ -8,7 +8,7 @@ import { useListFetchSize } from '@/lib/widgets/use-list-fetch-size';
 import { cn } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { WidgetProps } from '@/lib/widgets/types';
-import { HPR, SectionHeader, mix, FONT_MONO } from './bento-primitives';
+import { HPR, SectionHeader, mix, FONT_MONO, EmptyState } from './bento-primitives';
 import type { SeerrPaginated, SeerrUserSummary } from '@/types/seerr';
 
 const ROW_HEIGHT = 48;
@@ -125,9 +125,10 @@ export function RequestsUsersWidget({
             <p className="text-sm">No users found</p>
           </div>
         ) : (
-          <div style={emptyShellStyle}>
-            <span style={{ fontSize: 11, color: HPR.fgSubtle }}>No users found</span>
-          </div>
+          <EmptyState>
+            <Users size={18} />
+            No users found
+          </EmptyState>
         )}
       </div>
     );

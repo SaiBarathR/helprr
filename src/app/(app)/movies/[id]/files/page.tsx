@@ -101,9 +101,9 @@ function DetailRows({ rows }: { rows: DrawerRow[] }) {
   return (
     <div className="rounded-lg border overflow-hidden divide-y">
       {rows.map((row) => (
-        <div key={`${row.label}-${row.value}`} className="flex justify-between items-start px-4 py-2.5">
-          <span className="text-xs text-muted-foreground uppercase tracking-wide">{row.label}</span>
-          <span className={`text-sm text-right ml-4 ${row.breakValue ? 'break-all' : ''}`}>{row.value}</span>
+        <div key={`${row.label}-${row.value}`} className="flex justify-between items-start gap-4 px-4 py-2.5">
+          <span className="shrink-0 text-xs text-muted-foreground uppercase tracking-wide">{row.label}</span>
+          <span className={`min-w-0 text-sm text-right ${row.breakValue ? 'break-all' : '[overflow-wrap:anywhere]'}`}>{row.value}</span>
         </div>
       ))}
     </div>
@@ -273,7 +273,7 @@ export default function MovieFilesPage() {
       <div className="space-y-6 pb-8">
         <section className="space-y-2">
           <div className="flex items-center justify-between gap-2">
-            <h2 className="text-3xl font-bold leading-tight">Files</h2>
+            <h2 className="text-lg font-bold leading-tight">Files</h2>
             {canManageFiles && (
               <Button
                 variant="outline"
@@ -308,7 +308,7 @@ export default function MovieFilesPage() {
         </section>
 
         <section className="space-y-2">
-          <h2 className="text-3xl font-bold leading-tight">History</h2>
+          <h2 className="text-lg font-bold leading-tight">History</h2>
           {historyLoading ? (
             <PageSpinner />
           ) : history.length === 0 ? (
@@ -429,44 +429,44 @@ export default function MovieFilesPage() {
             <div className="px-4 pb-4 space-y-0 overflow-y-auto flex-1 min-h-0">
               <div className="rounded-lg border overflow-hidden divide-y">
                 <div className="px-4 py-2.5">
-                  <span className="text-xs text-muted-foreground uppercase tracking-wide">Release Title</span>
+                  <span className="shrink-0 text-xs text-muted-foreground uppercase tracking-wide">Release Title</span>
                   <p className="text-sm mt-0.5 break-all leading-tight">
                     {selectedHistoryItem.sourceTitle}
                   </p>
                 </div>
-                <div className="flex justify-between items-center px-4 py-2.5">
-                  <span className="text-xs text-muted-foreground uppercase tracking-wide">Date</span>
-                  <span className="text-sm">
+                <div className="flex justify-between items-center gap-4 px-4 py-2.5">
+                  <span className="shrink-0 text-xs text-muted-foreground uppercase tracking-wide">Date</span>
+                  <span className="min-w-0 text-right text-sm [overflow-wrap:anywhere]">
                     {format(new Date(selectedHistoryItem.date), 'MMM d, yyyy h:mm a')}
                   </span>
                 </div>
-                <div className="flex justify-between items-center px-4 py-2.5">
-                  <span className="text-xs text-muted-foreground uppercase tracking-wide">Quality</span>
-                  <span className="text-sm">
+                <div className="flex justify-between items-center gap-4 px-4 py-2.5">
+                  <span className="shrink-0 text-xs text-muted-foreground uppercase tracking-wide">Quality</span>
+                  <span className="min-w-0 text-right text-sm [overflow-wrap:anywhere]">
                     {selectedHistoryItem.quality?.quality?.name || 'Unknown'}
                   </span>
                 </div>
                 {selectedHistoryItem.data?.indexer && (
-                  <div className="flex justify-between items-center px-4 py-2.5">
-                    <span className="text-xs text-muted-foreground uppercase tracking-wide">Indexer</span>
-                    <span className="text-sm">{selectedHistoryItem.data.indexer}</span>
+                  <div className="flex justify-between items-center gap-4 px-4 py-2.5">
+                    <span className="shrink-0 text-xs text-muted-foreground uppercase tracking-wide">Indexer</span>
+                    <span className="min-w-0 text-right text-sm [overflow-wrap:anywhere]">{selectedHistoryItem.data.indexer}</span>
                   </div>
                 )}
                 {selectedHistoryItem.data?.downloadClient && (
-                  <div className="flex justify-between items-center px-4 py-2.5">
-                    <span className="text-xs text-muted-foreground uppercase tracking-wide">Download Client</span>
-                    <span className="text-sm">{selectedHistoryItem.data.downloadClient}</span>
+                  <div className="flex justify-between items-center gap-4 px-4 py-2.5">
+                    <span className="shrink-0 text-xs text-muted-foreground uppercase tracking-wide">Download Client</span>
+                    <span className="min-w-0 text-right text-sm [overflow-wrap:anywhere]">{selectedHistoryItem.data.downloadClient}</span>
                   </div>
                 )}
                 {selectedHistoryItem.data?.releaseGroup && (
-                  <div className="flex justify-between items-center px-4 py-2.5">
-                    <span className="text-xs text-muted-foreground uppercase tracking-wide">Release Group</span>
-                    <span className="text-sm">{selectedHistoryItem.data.releaseGroup}</span>
+                  <div className="flex justify-between items-center gap-4 px-4 py-2.5">
+                    <span className="shrink-0 text-xs text-muted-foreground uppercase tracking-wide">Release Group</span>
+                    <span className="min-w-0 text-right text-sm [overflow-wrap:anywhere]">{selectedHistoryItem.data.releaseGroup}</span>
                   </div>
                 )}
                 {selectedHistoryItem.data?.nzbInfoUrl && (
-                  <div className="flex justify-between items-center px-4 py-2.5">
-                    <span className="text-xs text-muted-foreground uppercase tracking-wide">Source</span>
+                  <div className="flex justify-between items-center gap-4 px-4 py-2.5">
+                    <span className="shrink-0 text-xs text-muted-foreground uppercase tracking-wide">Source</span>
                     <a
                       href={selectedHistoryItem.data.nzbInfoUrl}
                       target="_blank"
@@ -478,20 +478,20 @@ export default function MovieFilesPage() {
                   </div>
                 )}
                 {selectedHistoryItem.data?.size && (
-                  <div className="flex justify-between items-center px-4 py-2.5">
-                    <span className="text-xs text-muted-foreground uppercase tracking-wide">Size</span>
-                    <span className="text-sm">{formatBytes(Number(selectedHistoryItem.data.size))}</span>
+                  <div className="flex justify-between items-center gap-4 px-4 py-2.5">
+                    <span className="shrink-0 text-xs text-muted-foreground uppercase tracking-wide">Size</span>
+                    <span className="min-w-0 text-right text-sm [overflow-wrap:anywhere]">{formatBytes(Number(selectedHistoryItem.data.size))}</span>
                   </div>
                 )}
                 {selectedHistoryItem.data?.protocol && (
-                  <div className="flex justify-between items-center px-4 py-2.5">
-                    <span className="text-xs text-muted-foreground uppercase tracking-wide">Protocol</span>
-                    <span className="text-sm capitalize">{selectedHistoryItem.data.protocol}</span>
+                  <div className="flex justify-between items-center gap-4 px-4 py-2.5">
+                    <span className="shrink-0 text-xs text-muted-foreground uppercase tracking-wide">Protocol</span>
+                    <span className="min-w-0 text-right text-sm [overflow-wrap:anywhere] capitalize">{selectedHistoryItem.data.protocol}</span>
                   </div>
                 )}
                 {selectedHistoryItem.data?.message && (
                   <div className="px-4 py-2.5">
-                    <span className="text-xs text-muted-foreground uppercase tracking-wide">Message</span>
+                    <span className="shrink-0 text-xs text-muted-foreground uppercase tracking-wide">Message</span>
                     <p className="text-sm mt-0.5 text-muted-foreground">{selectedHistoryItem.data.message}</p>
                   </div>
                 )}

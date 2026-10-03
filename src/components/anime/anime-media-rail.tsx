@@ -255,7 +255,7 @@ function RailCard({
                 <button
                   type="button"
                   aria-label="Item actions"
-                  className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground hover:text-foreground"
+                  className="relative inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground hover:text-foreground touch-target"
                 >
                   <MoreVertical className="h-4 w-4" />
                 </button>
@@ -305,11 +305,11 @@ export function AnimeMediaRail({ title, items, viewAllHref }: AnimeMediaRailProp
   if (!items.length) return null;
 
   return (
-    <div className='px-2'>
+    <div>
       <div className="flex items-center justify-between mb-2">
         <h2 className="text-base font-semibold">{title}</h2>
         {viewAllHref && (
-          <Link href={viewAllHref} className="flex items-center gap-0.5 text-xs text-primary hover:underline font-medium">
+          <Link href={viewAllHref} className="relative flex items-center gap-0.5 text-xs text-primary hover:underline font-medium touch-target">
             View All
             <ChevronRight className="h-3.5 w-3.5" />
           </Link>
@@ -318,7 +318,7 @@ export function AnimeMediaRail({ title, items, viewAllHref }: AnimeMediaRailProp
       <div
         ref={viewportRef}
         data-scroll-restoration-key={`anime-media:${title}`}
-        className="flex gap-3 overflow-x-auto pb-2 -mx-2 px-2 md:-mx-6 md:px-6 scrollbar-hide snap-x snap-mandatory animate-rail-in"
+        className="flex gap-3 overflow-x-auto pb-2 -mx-2 px-2 scroll-px-2 md:-mx-6 md:px-6 md:scroll-px-6 scrollbar-hide snap-x snap-mandatory animate-rail-in"
       >
         <WindowedRailItems className={RAIL_CARD_SLOT_CLASS} viewportRef={viewportRef}>
           {items.map((item) => (

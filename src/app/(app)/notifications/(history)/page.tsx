@@ -8,7 +8,13 @@ import type { DateRange } from 'react-day-picker';
 import { PageHeader } from '@/components/layout/page-header';
 import { Button } from '@/components/ui/button';
 import { SearchInput } from '@/components/media/search-input';
-import { Badge } from '@/components/ui/badge';
+import {
+  ActiveFilterBar,
+  FilterDot,
+  filterButtonLabel,
+  searchFilter,
+  type ActiveFilter,
+} from '@/components/ui/active-filter-bar';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -560,6 +566,22 @@ export default function NotificationsPage() {
     || filters.dateFrom !== null
     || filters.dateTo !== null;
 
+  // The filter drawer's choices, plus the search, as chips.
+  const drawerFilters: ActiveFilter[] = [
+    ...filters.eventTypes.map((type) => ({
+      id: `event:${type}`,
+      label: EVENT_META[type as NotificationEventType]?.label ?? type,
+      onRemove: () => toggleEventType(type),
+    })),
+    ...(filters.readState !== 'all'
+      ? [{ id: 'read', label: filters.readState === 'unread' ? 'Unread' : 'Read', onRemove: () => setReadState('all') }]
+      : []),
+    ...(filters.dateFrom || filters.dateTo
+      ? [{ id: 'date', label: dateRangeLabel, onRemove: () => setDateRange(null, null) }]
+      : []),
+  ];
+  const activeFilters = [...drawerFilters, ...searchFilter(searchInput, () => setSearchInput(''))];
+
   // Bulk delete
   const [deleteMode, setDeleteMode] = useState<DeleteMode>('all');
 
@@ -627,12 +649,10 @@ export default function NotificationsPage() {
               type="button"
               onClick={() => setFilterDrawerOpen(true)}
               className="min-w-[44px] min-h-[44px] flex items-center justify-center text-primary relative"
-              aria-label="Filter notifications"
+              aria-label={filterButtonLabel('Filter notifications', drawerFilters.length > 0)}
             >
               <SlidersHorizontal className="h-5 w-5" />
-              {hasActiveFilters && (
-                <span className="absolute top-2 right-2 h-2 w-2 rounded-full bg-primary" />
-              )}
+              <FilterDot active={drawerFilters.length > 0} />
             </button>
             <Link
               href="/settings/notifications"
@@ -674,56 +694,10 @@ export default function NotificationsPage() {
         )}
       </div>
 
-      {hasActiveFilters && (
-        <div className="flex flex-wrap items-center gap-1.5">
-          {filters.eventTypes.map((type) => (
-            <Badge key={type} variant="secondary" className="gap-1 pr-1">
-              {EVENT_META[type as NotificationEventType]?.label ?? type}
-              <button
-                type="button"
-                onClick={() => toggleEventType(type)}
-                className="ml-1 p-0.5 hover:bg-muted-foreground/20 rounded"
-                aria-label={`Remove ${type} filter`}
-              >
-                <X className="h-3 w-3" />
-              </button>
-            </Badge>
-          ))}
-          {filters.readState !== 'all' && (
-            <Badge variant="secondary" className="gap-1 pr-1">
-              {filters.readState === 'unread' ? 'Unread' : 'Read'}
-              <button
-                type="button"
-                onClick={() => setReadState('all')}
-                className="ml-1 p-0.5 hover:bg-muted-foreground/20 rounded"
-                aria-label="Clear read state filter"
-              >
-                <X className="h-3 w-3" />
-              </button>
-            </Badge>
-          )}
-          {(filters.dateFrom || filters.dateTo) && (
-            <Badge variant="secondary" className="gap-1 pr-1">
-              {dateRangeLabel}
-              <button
-                type="button"
-                onClick={() => setDateRange(null, null)}
-                className="ml-1 p-0.5 hover:bg-muted-foreground/20 rounded"
-                aria-label="Clear date filter"
-              >
-                <X className="h-3 w-3" />
-              </button>
-            </Badge>
-          )}
-          <button
-            type="button"
-            onClick={() => { resetFilters(); setSearchInput(''); }}
-            className="text-xs text-muted-foreground underline ml-1"
-          >
-            Clear all
-          </button>
-        </div>
-      )}
+      <ActiveFilterBar
+        filters={activeFilters}
+        onClearAll={() => { resetFilters(); setSearchInput(''); }}
+      />
 
       {loading ? (
         <PageSpinner />

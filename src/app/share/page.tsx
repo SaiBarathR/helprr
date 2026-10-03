@@ -20,7 +20,7 @@ export default async function SharePage({ searchParams }: SharePageProps) {
   });
 
   return (
-    <div className="animate-content-in pb-16">
+    <div className="mx-auto w-full max-w-2xl animate-content-in pb-16">
       <ShareResolutionView resolved={resolved} input={params} />
     </div>
   );

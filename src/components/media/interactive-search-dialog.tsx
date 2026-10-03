@@ -405,6 +405,7 @@ export function InteractiveSearchDialog({
                     <div className="relative flex-1">
                       <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
                       <SearchInput
+                        clearable
                         placeholder="Filter releases..."
                         value={textFilter}
                         onChange={setTextFilter}
@@ -688,13 +689,13 @@ export function InteractiveSearchDialog({
                   <button
                     key={client.id}
                     onClick={() => setSelectedClientId(client.id)}
-                    className={`w-full flex items-center justify-between rounded-lg border px-3 py-2.5 text-sm transition-colors ${selectedClientId === client.id
+                    className={`w-full flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5 text-sm transition-colors ${selectedClientId === client.id
                       ? 'border-primary bg-primary/10'
                       : 'hover:bg-accent'
                       }`}
                   >
-                    <span className="font-medium">{client.name}</span>
-                    <div className="flex items-center gap-2">
+                    <span className="min-w-0 truncate text-left font-medium">{client.name}</span>
+                    <div className="flex shrink-0 items-center gap-2">
                       <Badge variant="outline" className="text-[10px] capitalize">{client.protocol}</Badge>
                       {selectedClientId === client.id && (
                         <Check className="h-4 w-4 text-primary" />

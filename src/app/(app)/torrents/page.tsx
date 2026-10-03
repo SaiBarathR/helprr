@@ -11,8 +11,16 @@ import { useAppRouter as useRouter } from '@/components/layout/navigation-provid
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { SearchInput } from '@/components/media/search-input';
+import {
+  ActiveFilterBar,
+  FilterDot,
+  filterButtonLabel,
+  multiSelectFilters,
+  searchFilter,
+} from '@/components/ui/active-filter-bar';
 import { PullToRefresh } from '@/components/ui/pull-to-refresh';
 import { useRefreshAction } from '@/lib/hooks/use-refresh-action';
+import { useIsMobile } from '@/hooks/use-is-mobile';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { getRefreshIntervalMs } from '@/lib/client-refresh-settings';
@@ -568,13 +576,17 @@ const TorrentRow = memo(function TorrentRow({
     <QuickContextMenu label={`Actions for ${torrent.name}`} groups={contextGroups}>
     <div className="px-3 py-3 sm:px-4">
       <div className="flex items-start gap-3">
-        <input
-          type="checkbox"
-          checked={selected}
-          onChange={() => onToggleSelect(torrent.hash)}
-          className="mt-1 rounded border-border"
-          aria-label={`Select ${torrent.name}`}
-        />
+        {/* The label carries the 44px hit area (a native checkbox can't), and
+            is marked so a long press on it selects instead of opening the menu. */}
+        <label className="relative mt-1 flex touch-target" data-context-menu-ignore>
+          <input
+            type="checkbox"
+            checked={selected}
+            onChange={() => onToggleSelect(torrent.hash)}
+            className="rounded border-border"
+            aria-label={`Select ${torrent.name}`}
+          />
+        </label>
         <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between gap-2">
             <button
@@ -665,7 +677,9 @@ export default function TorrentsPage() {
   const sortDir = useUIStore((s) => s.torrentsSortDir);
   const setSortDir = useUIStore((s) => s.setTorrentsSortDir);
   const viewMode = useUIStore((s) => s.torrentsView);
-  const isTableView = viewMode === 'table';
+  // 'auto' picks the table from Tailwind's lg breakpoint up.
+  const isBelowLg = useIsMobile(1023);
+  const isTableView = viewMode === 'table' || (viewMode === 'auto' && !isBelowLg);
   const [torrents, setTorrents] = useState<QBittorrentTorrent[]>([]);
   const [transferInfo, setTransferInfo] = useState<QBittorrentTransferInfo | null>(null);
   const [speedLimitsMode, setSpeedLimitsMode] = useState(0);
@@ -884,7 +898,7 @@ export default function TorrentsPage() {
       window.removeEventListener('resize', measure);
     };
     // isTableView: switching views remounts the measured node, so re-attach.
-  }, [selectedTorrents.size, loading, error, torrents.length, search, isTableView]);
+  }, [selectedTorrents.size, loading, error, torrents.length, search, filter, isTableView]);
 
   const torrentAction = useCallback(async (
     hash: string,
@@ -1130,11 +1144,14 @@ export default function TorrentsPage() {
     [torrents]
   );
 
-  const activeFilterLabel = filter.length === 0
-    ? 'All'
-    : filter.length === 1
-      ? filterOptions.find((o) => o.value === filter[0])?.label ?? filter[0]
-      : `${filter.length} filters`;
+  // The filter menu's choices, named so a filtered list is never mistaken for
+  // every torrent. The search box is a filter too, but shows itself.
+  const menuFilters = multiSelectFilters(filter, filterOptions, (next) => setFilter(next as typeof filter));
+  const activeFilters = [...menuFilters, ...searchFilter(search, () => setSearch(''))];
+  const clearFilters = () => {
+    setFilter([]);
+    setSearch('');
+  };
 
   const selectAll = useCallback(() => {
     if (selectedTorrents.size === filteredTorrents.length) {
@@ -1165,31 +1182,37 @@ export default function TorrentsPage() {
     {
       id: 'select',
       label: (
-        <input
-          type="checkbox"
-          checked={allSelected}
-          onChange={selectAll}
-          className="block rounded border-border"
-          aria-label="Select all"
-        />
+        <label className="relative flex touch-target" data-context-menu-ignore>
+          <input
+            type="checkbox"
+            checked={allSelected}
+            onChange={selectAll}
+            className="block rounded border-border"
+            aria-label="Select all"
+          />
+        </label>
       ),
       width: 40,
       minWidth: 40,
       fixed: true,
       cell: (t) => (
-        <input
-          type="checkbox"
-          checked={selectedTorrents.has(t.hash)}
-          onChange={() => toggleSelect(t.hash)}
-          className="block rounded border-border"
-          aria-label={`Select ${t.name}`}
-        />
+        <label className="relative flex touch-target" data-context-menu-ignore>
+          <input
+            type="checkbox"
+            checked={selectedTorrents.has(t.hash)}
+            onChange={() => toggleSelect(t.hash)}
+            className="block rounded border-border"
+            aria-label={`Select ${t.name}`}
+          />
+        </label>
       ),
     },
+    // Widths sum to 1008px, the content width at 1280px with the sidebar open,
+    // so the default table fits without scrolling; Name absorbs any extra.
     {
       id: 'name',
       label: 'Name',
-      width: 260,
+      width: 184,
       minWidth: 160,
       grow: true,
       sortKey: 'name',
@@ -1214,14 +1237,14 @@ export default function TorrentsPage() {
     {
       id: 'state',
       label: 'Status',
-      width: 104,
+      width: 96,
       sortKey: 'state',
       cell: (t) => getStateBadge(t.state),
     },
     {
       id: 'progress',
       label: 'Progress',
-      width: 128,
+      width: 116,
       minWidth: 90,
       sortKey: 'progress',
       cell: (t) => (
@@ -1236,7 +1259,7 @@ export default function TorrentsPage() {
     {
       id: 'size',
       label: 'Size',
-      width: 84,
+      width: 80,
       align: 'right',
       sortKey: 'size',
       cell: (t) => <span className="text-xs text-muted-foreground">{formatBytes(t.size)}</span>,
@@ -1244,7 +1267,7 @@ export default function TorrentsPage() {
     {
       id: 'dlspeed',
       label: 'DL',
-      width: 92,
+      width: 88,
       align: 'right',
       sortKey: 'dlspeed',
       cell: (t) => t.dlspeed > 0
@@ -1254,7 +1277,7 @@ export default function TorrentsPage() {
     {
       id: 'upspeed',
       label: 'UL',
-      width: 92,
+      width: 88,
       align: 'right',
       sortKey: 'upspeed',
       cell: (t) => t.upspeed > 0
@@ -1264,7 +1287,7 @@ export default function TorrentsPage() {
     {
       id: 'eta',
       label: 'ETA',
-      width: 88,
+      width: 76,
       align: 'right',
       sortKey: 'eta',
       cell: (t) => (
@@ -1276,7 +1299,7 @@ export default function TorrentsPage() {
     {
       id: 'num_seeds',
       label: 'Seeds',
-      width: 68,
+      width: 64,
       align: 'right',
       sortKey: 'num_seeds',
       cell: (t) => <span className="text-xs text-muted-foreground">{t.num_seeds}</span>,
@@ -1284,7 +1307,7 @@ export default function TorrentsPage() {
     {
       id: 'num_leechs',
       label: 'Peers',
-      width: 68,
+      width: 64,
       align: 'right',
       sortKey: 'num_leechs',
       cell: (t) => <span className="text-xs text-muted-foreground">{t.num_leechs}</span>,
@@ -1292,7 +1315,7 @@ export default function TorrentsPage() {
     {
       id: 'ratio',
       label: 'Ratio',
-      width: 72,
+      width: 64,
       align: 'right',
       sortKey: 'ratio',
       cell: (t) => <span className="text-xs text-muted-foreground">{(t.ratio ?? 0).toFixed(2)}</span>,
@@ -1344,10 +1367,14 @@ export default function TorrentsPage() {
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
-                className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent active:bg-accent/80 transition-colors"
-                aria-label={`Filter: ${activeFilterLabel}`}
+                className="relative p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent active:bg-accent/80 transition-colors"
+                aria-label={filterButtonLabel(
+                  `Filter: ${menuFilters.map((f) => f.label).join(', ') || 'All'}`,
+                  menuFilters.length > 0,
+                )}
               >
                 <Filter className="h-5 w-5" />
+                <FilterDot active={menuFilters.length > 0} />
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="w-48">
@@ -1487,6 +1514,7 @@ export default function TorrentsPage() {
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <SearchInput
+            clearable
             placeholder="Search torrents..."
             value={search}
             onChange={setSearch}
@@ -1495,6 +1523,9 @@ export default function TorrentsPage() {
           />
         </div>
       </div>
+      {/* Below the sticky toolbar, so it can't push over sticky table headers;
+          the filter button's dot stays in view. */}
+      <ActiveFilterBar filters={activeFilters} onClearAll={clearFilters} />
 
       {selectedTorrents.size > 0 && (
         <div className="flex items-center gap-1 px-2 py-1.5 bg-muted/60 rounded-xl">
@@ -1607,13 +1638,15 @@ export default function TorrentsPage() {
         <div className="space-y-0">
           <div className="flex items-center gap-2 px-3 pb-2">
             {!isTableView && (
-              <input
-                type="checkbox"
-                checked={selectedTorrents.size === filteredTorrents.length && filteredTorrents.length > 0}
-                onChange={selectAll}
-                className="rounded border-border"
-                aria-label="Select all"
-              />
+              <label className="relative flex touch-target" data-context-menu-ignore>
+                <input
+                  type="checkbox"
+                  checked={selectedTorrents.size === filteredTorrents.length && filteredTorrents.length > 0}
+                  onChange={selectAll}
+                  className="rounded border-border"
+                  aria-label="Select all"
+                />
+              </label>
             )}
             <span className="text-xs text-muted-foreground">
               {filteredTorrents.length} torrent{filteredTorrents.length !== 1 ? 's' : ''}
@@ -1701,7 +1734,8 @@ export default function TorrentsPage() {
                       <DetailRow label="Remaining" value={formatBytes(detailTorrent.amount_left || 0)} />
                     )}
                     <DetailRow label="Ratio" value={Number(detailData.properties.share_ratio || 0).toFixed(2)} />
-                    <DetailRow label="Availability" value={(detailTorrent?.availability ?? 0).toFixed(2)} />
+                    {/* qBittorrent reports -1 when availability doesn't apply (e.g. seeding). */}
+                    <DetailRow label="Availability" value={(detailTorrent?.availability ?? -1) >= 0 ? detailTorrent!.availability.toFixed(2) : '—'} />
                     {Number(detailData.properties.dl_speed) > 0 && (
                       <DetailRow label="DL Speed" value={formatSpeed(Number(detailData.properties.dl_speed))} />
                     )}
@@ -1945,13 +1979,13 @@ export default function TorrentsPage() {
                 {Object.entries(categories).map(([key, cat]) => (
                   <button
                     key={key}
-                    className="flex items-center justify-between w-full px-3 py-3 text-sm hover:bg-accent transition-colors"
+                    className="flex items-center justify-between gap-3 w-full px-3 py-3 text-sm hover:bg-accent transition-colors"
                     onClick={async () => {
                       await torrentAction(categoryDrawer.hash, 'setCategory', { category: cat.name });
                       setCategoryDrawer({ open: false, hash: '' });
                     }}
                   >
-                    <span>{cat.name}</span>
+                    <span className="min-w-0 truncate text-left">{cat.name}</span>
                     {cat.savePath && (
                       <span className="text-[10px] text-muted-foreground truncate max-w-[50%]">{cat.savePath}</span>
                     )}

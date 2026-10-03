@@ -188,7 +188,7 @@ function SeasonPicker({
     <div className="fixed inset-0 z-[80] flex flex-col bg-black/90">
       <button type="button" aria-label="Close" onClick={onClose} className="absolute inset-0 cursor-default" />
 
-      <ul className="relative flex flex-1 flex-col items-center justify-center gap-7 overflow-y-auto py-16">
+      <ul className="relative flex flex-1 flex-col items-center justify-center-safe gap-7 overflow-y-auto py-16">
         {seasons.map((season) => (
           <li key={season.Id}>
             <Link

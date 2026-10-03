@@ -28,7 +28,8 @@ import { Copy, ExternalLink, Filter, Info, Loader2, ChevronRight } from 'lucide-
 import { formatDistanceToNow } from 'date-fns';
 import { toast } from 'sonner';
 import type { HistoryItem } from '@/types';
-import { InstanceFilter, type InstanceOption } from '@/components/instance-filter';
+import { InstanceFilter, type InstanceOption, withAppName } from '@/components/instance-filter';
+import { ActiveFilterBar, FilterDot, filterButtonLabel, type ActiveFilter } from '@/components/ui/active-filter-bar';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 // --- Event type config ---
@@ -217,9 +218,9 @@ export default function HistoryPage() {
     // is the /api/instances connection list for the filter. Shares with the activity
     // page's same-key query, and can't prefix-collide with the services key.
     queryKey: ['arr-instances'],
-    queryFn: jsonFetcher<Array<{ id: string; label: string }>>('/api/instances'),
+    queryFn: jsonFetcher<Array<{ id: string; label: string; type: string }>>('/api/instances'),
     select: (conns): InstanceOption[] =>
-      Array.isArray(conns) ? conns.map((c) => ({ id: c.id, label: c.label })) : [],
+      Array.isArray(conns) ? conns.map((c) => ({ id: c.id, label: withAppName(c.label, c.type) })) : [],
     staleTime: 5 * 60_000,
   });
 
@@ -235,6 +236,20 @@ export default function HistoryPage() {
   }, [instanceOptions, instanceFilter, setInstanceFilter]);
 
   const activeFilterLabel = EVENT_FILTERS.find((f) => f.key === eventFilter)?.label || 'All Events';
+  const activeFilters: ActiveFilter[] = [
+    ...(eventFilter !== 'all' ? [{ id: 'event', label: activeFilterLabel, onRemove: () => setEventFilter('all') }] : []),
+    ...(instanceFilter !== 'all'
+      ? [{
+        id: 'instance',
+        label: instanceOptions.find((i) => i.id === instanceFilter)?.label ?? 'Instance',
+        onRemove: () => setInstanceFilter('all'),
+      }]
+      : []),
+  ];
+  const clearFilters = () => {
+    setEventFilter('all');
+    setInstanceFilter('all');
+  };
 
   return (
     <div className="flex flex-col min-h-0 animate-content-in">
@@ -245,8 +260,14 @@ export default function HistoryPage() {
             <InstanceFilter instances={instanceOptions} value={instanceFilter} onChange={setInstanceFilter} />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-8 w-8">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="relative h-8 w-8"
+                  aria-label={filterButtonLabel(`Event: ${activeFilterLabel}`, eventFilter !== 'all')}
+                >
                   <Filter className="h-4 w-4" />
+                  <FilterDot active={eventFilter !== 'all'} />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
@@ -265,22 +286,15 @@ export default function HistoryPage() {
         }
       />
 
-      {/* Active filter indicator */}
-      {eventFilter !== 'all' && (
-        <div className="pb-2">
-          <Badge variant="secondary" className="text-[10px]">
-            {activeFilterLabel}
-          </Badge>
-        </div>
-      )}
+      <ActiveFilterBar filters={activeFilters} onClearAll={clearFilters} className="pb-2" />
 
       {/* History list */}
-      <div data-scroll-restoration-key="activity-history" className="flex-1 overflow-y-auto pb-4">
+      <div data-scroll-restoration-key="activity-history" className="page-bleed flex-1 overflow-y-auto pb-4">
         {loading ? (
           <PageSpinner />
         ) : history.length === 0 ? (
           <div className="text-center py-16 text-muted-foreground">
-            <p className="text-sm">No history events</p>
+            <p className="text-sm">{activeFilters.length > 0 ? 'No history events match your filters' : 'No history events'}</p>
             {historyTruncated && (
               <p className="mt-2 text-xs text-amber-400">
                 More matching history may exist beyond the scan limit.
@@ -334,7 +348,7 @@ export default function HistoryPage() {
                   setDrawerMode('basic');
                   setSelectedItem(item);
                 }}
-                className="w-full text-left flex items-start gap-3 py-2.5 px-3 rounded-lg hover:bg-muted/50 active:bg-muted/50 transition-colors"
+                className="-mx-2 w-[calc(100%+1rem)] text-left flex items-start gap-3 py-2.5 px-2 rounded-lg hover:bg-muted/50 active:bg-muted/50 transition-colors md:-mx-3 md:w-[calc(100%+1.5rem)] md:px-3"
               >
                 <div className="flex-1 min-w-0 space-y-1">
                   {/* Status label */}
@@ -345,8 +359,8 @@ export default function HistoryPage() {
                     {eventLabel(item.eventType)}
                   </Badge>
 
-                  {/* Filename - allow wrapping */}
-                  <p className="text-sm leading-snug break-words">
+                  {/* Filename: up to two lines (the drawer has the full name) */}
+                  <p className="text-sm leading-snug break-words line-clamp-2">
                     {item.sourceTitle}
                   </p>
 

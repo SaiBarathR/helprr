@@ -144,6 +144,13 @@ export function SectionHeader({
       </div>
       {right && (
         <div
+          // "View all" links here are one line of 11px text; give them a 44px
+          // hit area without growing the header. Raised one layer so the
+          // controls' hit areas aren't covered by the widget's masked list.
+          // Links sit last in the row, so they grow rightward only and can't
+          // cover the pill toggle before them (compact cells shrink "View all"
+          // to an arrow beside it).
+          className="relative z-[1] [&_a]:relative [&_a]:touch-target [&_a]:after:left-0 [&_a]:after:[transform:translateY(-50%)]"
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -522,7 +529,9 @@ export function StatTile({
       >
         {icon}
       </div>
-      <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 1 }}>
+      {/* Below 160px the cell stacks one tile per row, so each tile becomes a
+          single "label … value" line to keep all four inside the cell. */}
+      <div className="flex min-w-0 flex-col gap-px @max-[159px]/cell:w-full @max-[159px]/cell:flex-row-reverse @max-[159px]/cell:items-baseline @max-[159px]/cell:justify-between @max-[159px]/cell:gap-2">
         <span
           // Font size lives in classes (not inline style) so the container
           // variant can shrink it — the value must stay fully visible.
@@ -595,10 +604,16 @@ export function BentoTopBar({
     <div
       style={{
         position: 'sticky',
-        top: 0,
+        // Pin below the app header (and the iPhone status bar), not under it.
+        top: 'var(--header-height, 0px)',
         zIndex: 10,
-        padding: mobile ? '14px 14px 10px' : '14px 0 12px',
-        // background: `lineaFor thr-gradient(180deg, ${HPR.inkSoft} 70%, transparent)`,
+        // Bleed across the dashboard's own padding so the solid bar spans the
+        // page; widgets scrolling underneath no longer show through it.
+        marginInline: mobile ? '-0.75rem' : '-1.75rem',
+        padding: mobile ? '14px 26px 10px' : '14px 1.75rem 12px',
+        background: mix(HPR.ink, 92),
+        backdropFilter: 'blur(12px)',
+        WebkitBackdropFilter: 'blur(12px)',
         display: 'flex',
         alignItems: 'center',
         gap: 12,
@@ -647,13 +662,14 @@ export function BentoTopBar({
       {edit ? (
         <div style={{ display: 'flex', gap: 6, flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end', marginLeft: 'auto' }}>
           {onSwitch && (
-            <button type="button" onClick={onSwitch} style={btnSecondary}>
+            <button type="button" onClick={onSwitch} className="relative touch-target" style={btnSecondary}>
               Layouts
             </button>
           )}
           {onConfigureRefresh && (
             <button
               type="button"
+              className="relative touch-target"
               onClick={onConfigureRefresh}
               aria-label="Configure refresh intervals"
               style={btnIcon}
@@ -662,18 +678,19 @@ export function BentoTopBar({
             </button>
           )}
           {onAdd && (
-            <button type="button" onClick={onAdd} aria-label="Add widget" style={btnIcon}>
+            <button type="button" onClick={onAdd} aria-label="Add widget" className="relative touch-target" style={btnIcon}>
               <Plus size={14} strokeWidth={2.2} />
             </button>
           )}
           {onDiscard && dirty && (
-            <button type="button" onClick={onDiscard} disabled={saving} style={btnSecondary}>
+            <button type="button" onClick={onDiscard} disabled={saving} className="relative touch-target" style={btnSecondary}>
               Discard
             </button>
           )}
           {onSave && (
             <button
               type="button"
+              className="relative touch-target"
               onClick={onSave}
               disabled={!dirty || saving}
               aria-label={saving ? 'Saving' : 'Save'}
@@ -683,7 +700,7 @@ export function BentoTopBar({
             </button>
           )}
           {onDone && (
-            <button type="button" onClick={onDone} style={btnDone}>
+            <button type="button" onClick={onDone} className="relative touch-target" style={btnDone}>
               Done
             </button>
           )}
@@ -767,14 +784,45 @@ export function FloatingEdit({
   mobile?: boolean;
   onClick?: () => void;
 }) {
+  // Slides away while scrolling down so it doesn't sit on widget headers, and
+  // comes back on any upward scroll or near the top of the page.
+  const [hidden, setHidden] = React.useState(false);
+  React.useEffect(() => {
+    let anchor = window.scrollY;
+    const onScroll = () => {
+      const y = window.scrollY;
+      if (y < 80) {
+        setHidden(false);
+        anchor = y;
+        return;
+      }
+      if (y - anchor > 24) {
+        setHidden(true);
+        anchor = y;
+      } else if (anchor - y > 24) {
+        setHidden(false);
+        anchor = y;
+      }
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
   return (
     <button
       type="button"
       onClick={onClick}
       aria-label={edit ? 'Done editing dashboard' : 'Edit dashboard'}
+      tabIndex={hidden ? -1 : undefined}
       style={{
+        transform: hidden ? 'translateY(calc(100% + 24px))' : undefined,
+        opacity: hidden ? 0 : 1,
+        pointerEvents: hidden ? 'none' : undefined,
+        transition: 'transform 0.2s ease, opacity 0.2s ease',
         position: 'fixed',
-        bottom: mobile ? 80 : 30,
+        // Clear the tab bar, home indicator and now-playing bar like the other
+        // floating bars; a fixed offset sat on the iPhone tab bar.
+        bottom: `calc(var(--footer-height) + var(--player-bar-height, 0px) + ${mobile ? 16 : 30}px)`,
         right: edit ? (mobile ? "40%" : "40%") : mobile ? 50 : 36,
         width: 48 ,
         height: 48 ,
@@ -829,11 +877,11 @@ export function ViewModeToggle({
         alignItems: 'stretch',
         borderRadius: 6,
         border: `1px solid ${HPR.hairline2}`,
-        overflow: 'hidden',
         height: 22,
       }}
     >
       <ViewModeButton
+        corner="start"
         active={value === 'carousel'}
         label="Carousel view"
         onClick={() => onChange('carousel')}
@@ -842,6 +890,7 @@ export function ViewModeToggle({
       </ViewModeButton>
       <div style={{ width: 1, background: HPR.hairline2 }} />
       <ViewModeButton
+        corner="end"
         active={value === 'list'}
         label="List view"
         onClick={() => onChange('list')}
@@ -853,11 +902,14 @@ export function ViewModeToggle({
 }
 
 function ViewModeButton({
+  corner,
   active,
   label,
   onClick,
   children,
 }: {
+  /** Which end of the pill this is, so its active fill keeps the round corners. */
+  corner: 'start' | 'end';
   active: boolean;
   label: string;
   onClick: () => void;
@@ -868,6 +920,9 @@ function ViewModeButton({
       type="button"
       aria-label={label}
       aria-pressed={active}
+      // A taller hit area than the 22px pill; the width stays, since the two
+      // halves touch.
+      className="relative touch-target-y"
       onClick={(e) => {
         e.stopPropagation();
         onClick();
@@ -880,6 +935,7 @@ function ViewModeButton({
         height: '100%',
         padding: 0,
         border: 'none',
+        borderRadius: corner === 'start' ? '5px 0 0 5px' : '0 5px 5px 0',
         background: active ? mix(HPR.amber, 18) : 'transparent',
         color: active ? HPR.amber : HPR.fgMute,
         cursor: 'pointer',
@@ -910,11 +966,11 @@ export function VariantToggle({
         alignItems: 'stretch',
         borderRadius: 6,
         border: `1px solid ${HPR.hairline2}`,
-        overflow: 'hidden',
         height: 22,
       }}
     >
       <VariantButton
+        corner="start"
         active={value === 'default'}
         label="Horizontal layout"
         onClick={() => onChange('default')}
@@ -923,6 +979,7 @@ export function VariantToggle({
       </VariantButton>
       <div style={{ width: 1, background: HPR.hairline2 }} />
       <VariantButton
+        corner="end"
         active={value === 'vertical'}
         label="Vertical layout"
         onClick={() => onChange('vertical')}
@@ -934,11 +991,14 @@ export function VariantToggle({
 }
 
 function VariantButton({
+  corner,
   active,
   label,
   onClick,
   children,
 }: {
+  /** Which end of the pill this is, so its active fill keeps the round corners. */
+  corner: 'start' | 'end';
   active: boolean;
   label: string;
   onClick: () => void;
@@ -949,6 +1009,9 @@ function VariantButton({
       type="button"
       aria-label={label}
       aria-pressed={active}
+      // A taller hit area than the 22px pill; the width stays, since the two
+      // halves touch.
+      className="relative touch-target-y"
       onClick={(e) => {
         e.stopPropagation();
         onClick();
@@ -961,6 +1024,7 @@ function VariantButton({
         height: '100%',
         padding: 0,
         border: 'none',
+        borderRadius: corner === 'start' ? '5px 0 0 5px' : '0 5px 5px 0',
         background: active ? mix(HPR.amber, 18) : 'transparent',
         color: active ? HPR.amber : HPR.fgMute,
         cursor: 'pointer',
@@ -975,18 +1039,25 @@ function VariantButton({
 export function EmptyState({ children }: { children: React.ReactNode }) {
   return (
     <div
+      className="bento-empty"
       style={{
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
-        padding: 16,
+        padding: '4px 16px',
         gap: 6,
         color: HPR.fgSubtle,
         fontSize: 11,
         fontFamily: FONT_BODY,
         textAlign: 'center',
-        minHeight: 80,
+        // Fills whatever the header leaves, so the message sits mid-cell
+        // (flex parents grow it; block scrollers resolve the 100%). Its own
+        // height drives the globals.css query that drops the icon in short cells.
+        flex: 1,
+        height: '100%',
+        minHeight: 24,
+        container: 'bento-empty / size',
       }}
     >
       {children}

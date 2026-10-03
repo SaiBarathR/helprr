@@ -8,8 +8,9 @@ import { ApiError, jsonFetcher } from '@/lib/query-fetch';
 import { useParams, useSearchParams } from 'next/navigation';
 import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
 import { toast } from 'sonner';
-import { ArrowLeft, ChevronRight, ChevronDown, Download, Folder, File, Gauge, Loader2, X } from 'lucide-react';
+import { ChevronRight, ChevronDown, Download, Folder, File, Gauge, Loader2, X } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
+import { PageHeader } from '@/components/layout/page-header';
 import { QuickContextMenu } from '@/components/ui/quick-context-menu';
 import {
   Select,
@@ -43,7 +44,7 @@ export default function TorrentFilesPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const hash = params.hash;
-  const torrentName = searchParams.get('name') || 'Torrent Files';
+  const torrentName = searchParams.get('name') || undefined;
   const canManage = useCan('torrents.manage');
 
   const [expandedDirs, setExpandedDirs] = useRouteViewState<Set<string>>('TorrentFilesPage:expandedDirs', new Set());
@@ -142,7 +143,7 @@ export default function TorrentFilesPage() {
   if (loading && files.length === 0) {
     return (
       <div className="space-y-3">
-        <PageHeader name={torrentName} canManage={canManage} onBack={() => router.push('/torrents')} />
+        <PageHeader title={canManage ? 'Manage Files' : 'Files'} subtitle={torrentName} onBack={() => router.push('/torrents')} />
         <div className="flex items-center justify-center py-20">
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
         </div>
@@ -153,7 +154,7 @@ export default function TorrentFilesPage() {
   if (error && files.length === 0) {
     return (
       <div className="space-y-3">
-        <PageHeader name={torrentName} canManage={canManage} onBack={() => router.push('/torrents')} />
+        <PageHeader title={canManage ? 'Manage Files' : 'Files'} subtitle={torrentName} onBack={() => router.push('/torrents')} />
         <div className="rounded-xl bg-card p-8 text-center text-muted-foreground">
           <p>{error?.message ?? 'Failed to fetch files'}</p>
         </div>
@@ -163,7 +164,7 @@ export default function TorrentFilesPage() {
 
   return (
     <div className="space-y-3 animate-content-in">
-      <PageHeader name={torrentName} canManage={canManage} onBack={() => router.push('/torrents')} />
+      <PageHeader title={canManage ? 'Manage Files' : 'Files'} subtitle={torrentName} onBack={() => router.push('/torrents')} />
 
       {files.length === 0 ? (
         // Metadata not fetched yet (magnet still resolving) or a file-less
@@ -210,23 +211,6 @@ export default function TorrentFilesPage() {
   );
 }
 
-function PageHeader({ name, canManage, onBack }: { name: string; canManage: boolean; onBack: () => void }) {
-  return (
-    <div className="flex items-start gap-3">
-      <button
-        onClick={onBack}
-        className="p-2 -ml-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent shrink-0"
-        aria-label="Go back"
-      >
-        <ArrowLeft className="h-5 w-5" />
-      </button>
-      <div className="min-w-0 pt-2">
-        <h1 className="text-sm font-medium break-all line-clamp-2 leading-snug">{name}</h1>
-        <p className="text-xs text-muted-foreground mt-0.5">{canManage ? 'Manage Files' : 'Files'}</p>
-      </div>
-    </div>
-  );
-}
 
 interface TreeNodeRowProps {
   node: TreeNode;
