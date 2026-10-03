@@ -80,7 +80,7 @@ import {
   toReleaseState,
   type DiscoverView,
 } from './_components/link-view';
-import { discoverSortPresetNote } from '@/lib/discover-sort-presets';
+import { discoverSortPresetNote, isFixedListSection } from '@/lib/discover-sort-presets';
 
 const SORT_OPTIONS = [
   { value: 'trending', label: 'Trending', icon: Flame },
@@ -1171,11 +1171,19 @@ export default function DiscoverPage() {
     goToDiscoverHome();
   }, [goToDiscoverHome]);
 
-  const activeFilters: ActiveFilter[] = discoverFilterChips(view, filtersMeta).map((chip) => ({
-    id: chip.id,
-    label: chip.label,
-    onRemove: () => updateView(chip.patch),
-  }));
+  // Search keeps only the content type, and the fixed TMDB list sections
+  // ignore the filters, so other chips would claim a narrowing those results
+  // don't have.
+  const searching = Boolean(query.trim());
+  const activeFilters: ActiveFilter[] = isFixedListSection(activeSectionKey)
+    ? []
+    : discoverFilterChips(view, filtersMeta)
+      .filter((chip) => !searching || chip.id === 'contentType')
+      .map((chip) => ({
+        id: chip.id,
+        label: chip.label,
+        onRemove: () => updateView(chip.patch),
+      }));
   const clearAllFilters = () => updateView({ contentType: 'all', filters: { ...DEFAULT_DISCOVER_FILTERS } });
   // Search results ignore the sort, so its preset rule only names browse results.
   const sortPresetNote = query.trim() ? null : discoverSortPresetNote(discoverSort, discoverFilters.voteCountMin, activeSectionKey);

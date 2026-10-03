@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { discoverSortPresetNote } from './discover-sort-presets';
+import { discoverSortPresetNote, isFixedListSection } from './discover-sort-presets';
 
 describe('discoverSortPresetNote', () => {
   it('names the vote floor behind the rating presets', () => {
@@ -24,5 +24,14 @@ describe('discoverSortPresetNote', () => {
   it('adds nothing for sections served from fixed TMDB lists', () => {
     expect(discoverSortPresetNote('highlyRated', '', 'top_rated_movies')).toBeNull();
     expect(discoverSortPresetNote('upcoming', '', 'now_playing')).toBeNull();
+  });
+});
+
+describe('isFixedListSection', () => {
+  it('knows the sections served from fixed TMDB lists', () => {
+    expect(isFixedListSection('now_playing')).toBe(true);
+    expect(isFixedListSection('top_rated_tv')).toBe(true);
+    expect(isFixedListSection('trending_movies')).toBe(false);
+    expect(isFixedListSection(null)).toBe(false);
   });
 });
