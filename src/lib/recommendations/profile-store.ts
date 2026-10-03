@@ -85,6 +85,27 @@ function parseStoredProfile(row: { profile: Prisma.JsonValue; version: number; b
 }
 
 /**
+ * Drop item keys from the stored profile's hard excludes without a rebuild
+ * (which costs Jellyfin scans), so a title the user asked to see again
+ * returns on the next compose instead of after the profile's 6h staleness.
+ * The built-at time is kept: the rest of the profile is as fresh as before.
+ */
+export async function forgetExcludedItems(userId: string, itemKeys: string[]): Promise<void> {
+  const row = await prisma.userTasteProfile.findUnique({ where: { userId } });
+  if (!row) return;
+  const stored = parseStoredProfile(row);
+  if (!stored) return;
+  const drop = new Set(itemKeys);
+  const kept = stored.negatives.excludedItemKeys.filter((key) => !drop.has(key));
+  if (kept.length === stored.negatives.excludedItemKeys.length) return;
+  const profile: TasteProfile = { ...stored, negatives: { ...stored.negatives, excludedItemKeys: kept } };
+  await prisma.userTasteProfile.update({
+    where: { userId },
+    data: { profile: profile as unknown as Prisma.InputJsonValue },
+  });
+}
+
+/**
  * Load the user's profile, rebuilding when missing, shape-versioned stale, or
  * older than PROFILE_MAX_AGE_MS. The read path is what most requests hit — a
  * fresh row costs one Postgres read.

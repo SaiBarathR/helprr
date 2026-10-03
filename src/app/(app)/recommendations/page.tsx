@@ -138,11 +138,19 @@ function RecommendationsPageInner() {
     enabled: mode !== 'random' && canRecommendations,
   });
 
+  const excludedCountQuery = useQuery({
+    queryKey: ['recommendations-excluded-count'],
+    queryFn: jsonFetcher<{ total: number }>('/api/recommendations/excluded?view=count'),
+    enabled: mode === 'rails' && canRecommendations,
+  });
+  const excludedCount = excludedCountQuery.data?.total ?? 0;
+
   const onNotInterested = useCallback((itemKey: string) => {
     setHiddenKeys((prev) => new Set(prev).add(itemKey));
-    // Flush so the server-side cache bust lands before the next refetch.
-    void tracker.flush();
-  }, [setHiddenKeys, tracker]);
+    // Flush so the server-side cache bust lands before the next refetch, and
+    // the excluded count includes this title.
+    void tracker.flush().then(() => queryClient.invalidateQueries({ queryKey: ['recommendations-excluded-count'] }));
+  }, [setHiddenKeys, tracker, queryClient]);
 
   const rails = useMemo(() => railsQuery.data?.rails ?? [], [railsQuery.data]);
 
@@ -266,6 +274,14 @@ function RecommendationsPageInner() {
               ))}
             </div>
           </div>
+        )}
+        {mode === 'rails' && !railsQuery.isLoading && excludedCount > 0 && (
+          <p className="text-xs text-muted-foreground">
+            {excludedCount === 1 ? '1 title excluded' : `${excludedCount} titles excluded`} ·{' '}
+            <Link href="/recommendations/excluded" className="font-medium text-primary">
+              Manage
+            </Link>
+          </p>
         )}
       </div>
     </div>
