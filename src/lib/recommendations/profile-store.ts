@@ -67,24 +67,29 @@ export async function buildProfileForUser(user: ProfileUser): Promise<BuiltProfi
 /** Rebuild and persist. Returns the fresh profile. */
 export async function rebuildTasteProfile(user: ProfileUser): Promise<TasteProfile> {
   const built = await buildProfileForUser(user);
-  // A build takes a while (Jellyfin scans). A title restored meanwhile has
-  // lost its exclude events but may still be in what was read at the start,
-  // so keep only the excludes that are still backed by an event.
-  const excluded = built.profile.negatives.excludedItemKeys;
-  if (excluded.length > 0) {
-    const stillExcluded = await prisma.recommendationEvent.findMany({
-      where: { userId: user.id, eventType: { in: ['not_interested', 'dislike'] }, itemKey: { in: excluded } },
-      select: { itemKey: true },
-      distinct: ['itemKey'],
+  await prisma.$transaction(async (tx) => {
+    // A build takes a while (Jellyfin scans), and a title restored meanwhile
+    // has lost its exclude events but may still be in what was read at the
+    // start. Lock the stored row, keep only the excludes still backed by an
+    // event, then write: a restore's profile UPDATE waits for this lock and
+    // then removes its key from what was written here.
+    await tx.$queryRaw`SELECT 1 FROM "UserTasteProfile" WHERE "userId" = ${user.id} FOR UPDATE`;
+    const excluded = built.profile.negatives.excludedItemKeys;
+    if (excluded.length > 0) {
+      const stillExcluded = await tx.recommendationEvent.findMany({
+        where: { userId: user.id, eventType: { in: ['not_interested', 'dislike'] }, itemKey: { in: excluded } },
+        select: { itemKey: true },
+        distinct: ['itemKey'],
+      });
+      const live = new Set(stillExcluded.map((row) => row.itemKey));
+      built.profile.negatives.excludedItemKeys = excluded.filter((key) => live.has(key));
+    }
+    const json = built.profile as unknown as Prisma.InputJsonValue;
+    await tx.userTasteProfile.upsert({
+      where: { userId: user.id },
+      create: { userId: user.id, profile: json, version: PROFILE_VERSION, builtAt: new Date() },
+      update: { profile: json, version: PROFILE_VERSION, builtAt: new Date() },
     });
-    const live = new Set(stillExcluded.map((row) => row.itemKey));
-    built.profile.negatives.excludedItemKeys = excluded.filter((key) => live.has(key));
-  }
-  const json = built.profile as unknown as Prisma.InputJsonValue;
-  await prisma.userTasteProfile.upsert({
-    where: { userId: user.id },
-    create: { userId: user.id, profile: json, version: PROFILE_VERSION, builtAt: new Date() },
-    update: { profile: json, version: PROFILE_VERSION, builtAt: new Date() },
   });
   return built.profile;
 }

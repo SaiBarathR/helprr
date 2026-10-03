@@ -99,7 +99,10 @@ export default function ExcludedTitlesPage() {
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setRestored((prev) => new Set(prev).add(item.itemKey));
-      // Also drop it from the cache, so a later visit doesn't flash it first.
+      // Also drop it from the cache, so a later visit doesn't show it. A
+      // "Show more" still in flight would write back the pages it started
+      // from, so stop it first (the button stays to fetch that page again).
+      await queryClient.cancelQueries({ queryKey: EXCLUDED_QUERY_KEY });
       queryClient.setQueryData<InfiniteData<ExcludedPage, string | null>>(EXCLUDED_QUERY_KEY, (prev) => prev && {
         ...prev,
         pages: prev.pages.map((page) => ({
