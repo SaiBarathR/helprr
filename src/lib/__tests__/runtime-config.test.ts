@@ -161,7 +161,7 @@ describe('runtime startup configuration', () => {
     expect(error.message).toContain('Secret values are intentionally omitted.');
   });
 
-  it('shares placeholder-safe JWT validation with auth and middleware callers', () => {
+  it('shares placeholder-safe JWT validation with auth and proxy callers', () => {
     expect(getValidatedJwtSecret(VALID_ENV.JWT_SECRET)).toBe(VALID_ENV.JWT_SECRET);
     expect(() => getValidatedJwtSecret('change-me-to-a-32+-char-random-value')).toThrow(
       StartupConfigurationError,

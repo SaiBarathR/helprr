@@ -11,8 +11,8 @@ type RuntimeEnvironment = Readonly<Record<string, string | undefined>>;
  * failure must instead stop the process so Docker/systemd can report a failed
  * start and the operator sees one redacted remediation message.
  *
- * Keep this Node-only wrapper separate from runtime-config.ts: JWT validation
- * is also imported by middleware, where process.exit is unavailable.
+ * Keep this exiting wrapper separate from runtime-config.ts: JWT validation
+ * is also imported by the request proxy, which must never exit the process.
  */
 export function validateRuntimeConfigOrExit(env: RuntimeEnvironment = process.env): void {
   try {

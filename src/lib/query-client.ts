@@ -8,7 +8,7 @@ import { ApiError } from '@/lib/query-fetch';
 function makeQueryClient() {
   return new QueryClient({
     // A session revoked mid-session returns 401 JSON from the API route; the
-    // navigation middleware only redirects full navigations, not in-page
+    // request proxy only redirects full navigations, not in-page
     // fetches. Catch it here so a revoked session redirects instead of leaving
     // the page stranded on an error.
     queryCache: new QueryCache({ onError: handleAuthError }),
@@ -46,6 +46,9 @@ export function handleAuthError(error: unknown) {
   // Preserve the full location (path + query + hash) so the user lands back on
   // the exact view — filters/state live in search/hash, not just the pathname.
   const next = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+  // A full document load on purpose: this runs outside React (no router), and a
+  // dead session must drop every cached query and in-memory store with it.
+  // eslint-disable-next-line @next/next/no-location-assign-relative-destination
   window.location.assign(`/login?next=${encodeURIComponent(next)}`);
 }
 

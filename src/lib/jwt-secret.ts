@@ -7,7 +7,7 @@ export function getJwtSecret(): Uint8Array {
 
   // HS256 keys shorter than the 256-bit hash output are weak, and the shipped
   // example is long enough to pass a length-only check. Reuse startup's
-  // placeholder-safe validation here because middleware may load separately.
+  // placeholder-safe validation here because the proxy may load separately.
   const jwtSecret = getValidatedJwtSecret(process.env.JWT_SECRET);
 
   jwtSecretBytes = new TextEncoder().encode(jwtSecret);

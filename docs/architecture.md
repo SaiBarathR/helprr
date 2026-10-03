@@ -128,9 +128,10 @@ fixed-lifetime sessions, ownerless sessions, and pending/disabled users fail
 closed.
 
 This database reload means role, status, and capability changes take effect on
-the next request without waiting for the 30-day JWT to expire. Middleware in
-`src/middleware.ts` provides the fast cookie boundary, login redirect, CSP, and
-security headers, but route handlers still perform authoritative checks.
+the next request without waiting for the 30-day JWT to expire. The proxy in
+`src/proxy.ts` (Next.js 16's renamed middleware, on the Node.js runtime)
+provides the fast cookie boundary, login redirect, CSP, and security headers,
+but route handlers still perform authoritative checks.
 
 Permissions use code-defined admin/member templates plus per-user delta maps in
 `User.permissions`. Admins allow all. Member defaults are explicit, and an
@@ -149,8 +150,8 @@ transaction. `HELPRR_ADMIN_PASSWORD_RESET=true` is a separate startup recovery
 path for the bootstrap admin and does not revoke existing sessions, so suspected
 compromise also requires explicit session revocation.
 
-Public middleware exceptions must remain narrow. Liveness and readiness are
-exact paths, not prefixes. Share-target handling is public at middleware only so
+Public proxy exceptions must remain narrow. Liveness and readiness are
+exact paths, not prefixes. Share-target handling is public at the proxy only so
 its route can preserve the incoming payload while applying its own auth check.
 
 ## Jellyfin Identity and Playback Credentials
@@ -412,9 +413,9 @@ deployed, and smoke-tested through the manual promotion workflow. See
 
 ## Current Technology Constraints
 
-- Next.js 16 currently warns that `middleware.ts` is deprecated in favor of
-  `proxy`. Migrating the auth/CSP/public-route boundary must be a focused,
-  fully tested change rather than incidental cleanup.
+- Next.js 16 renamed `middleware.ts` to `proxy.ts`. A proxy always runs on the
+  Node.js runtime and rejects the `runtime` segment config; it must stay
+  DB-free and never exit the process, since it runs on every request.
 - Tailwind CSS 4 uses `@tailwindcss/postcss`.
 - Prefer Sonner over deprecated toast components.
 - Strict TypeScript service-worker code requires Web Worker-specific typing;
