@@ -20,7 +20,7 @@ function scryptAsync(
 //
 // scrypt from node:crypto is deliberate: zero new dependencies, no native-addon
 // / musl / Docker risk, and it never runs on the Edge (this module is only ever
-// imported by Node-runtime route handlers, never by middleware). Cost params are
+// imported by Node-runtime route handlers, never by the proxy). Cost params are
 // encoded into the stored string so a future cost bump re-hashes lazily on the
 // next successful login without invalidating existing hashes.
 

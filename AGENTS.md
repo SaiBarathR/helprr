@@ -40,7 +40,7 @@ desktop is fully supported.
 - `src/lib` — clients, auth, permissions, polling, cleanup, audit, cache,
   retention, logging, readiness, and shared logic.
 - `src/instrumentation.ts` — startup validation and background-service boot.
-- `src/middleware.ts` — session boundary, public routes, CSP, and headers.
+- `src/proxy.ts` — session boundary, public routes, CSP, and headers.
 - `prisma/schema.prisma`, `prisma/migrations`, `prisma/release-snapshots` —
   schema, append-only migration history, and released upgrade baselines.
 - `public/` and `src/app/sw.ts` — PWA assets and service workers.
