@@ -432,6 +432,39 @@ export async function getAnimeDetail(id: number): Promise<AniListMediaDetail> {
   return result.Media;
 }
 
+/**
+ * Title, cover and year for many anime at once: one cached request per 50
+ * ids instead of a full detail query each. Ids AniList no longer knows are
+ * simply missing from the result.
+ */
+export async function getAnimeSummaries(ids: number[]): Promise<AniListMedia[]> {
+  const unique = [...new Set(ids)].sort((a, b) => a - b);
+  const gqlQuery = `
+    query ($ids: [Int], $perPage: Int) {
+      Page(page: 1, perPage: $perPage) {
+        media(id_in: $ids, type: ANIME) {
+          id
+          title { romaji english native }
+          coverImage { extraLarge large medium color }
+          seasonYear
+        }
+      }
+    }
+  `;
+  const out: AniListMedia[] = [];
+  for (let start = 0; start < unique.length; start += 50) {
+    const chunk = unique.slice(start, start + 50);
+    const result = await getAnilistJsonWithCache<PageData>({
+      endpoint: 'summaries',
+      params: { ids: chunk },
+      policy: await getCachePolicy('detail'),
+      fetcher: () => gqlRequest<PageData>(gqlQuery, { ids: chunk, perPage: chunk.length }),
+    });
+    out.push(...(result.Page.media ?? []));
+  }
+  return out;
+}
+
 export async function getAnimeNextAiringEpisode(id: number): Promise<AniListNextAiringEpisode | null> {
   const gqlQuery = `
     query ($id: Int) {

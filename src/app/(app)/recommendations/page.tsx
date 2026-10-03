@@ -112,7 +112,7 @@ function RecommendationsPageInner() {
   const queryClient = useQueryClient();
   const tracker = useRecEvents();
   const me = useMe();
-  const [hiddenKeys, setHiddenKeys] = useRouteViewState<Set<string>>('hiddenKeys', new Set());
+  const [hidden, setHidden] = useRouteViewState<{ at: number; keys: string[] }>('hiddenSince', { at: 0, keys: [] });
 
   // The two capabilities gate independently (server-enforced by their APIs):
   // a random.view-only user gets just the Random mode, and vice versa.
@@ -138,11 +138,34 @@ function RecommendationsPageInner() {
     enabled: mode !== 'random' && canRecommendations,
   });
 
+  // Titles hidden with "Not interested" since the rails last loaded. A refetch
+  // brings rails the server composed without them (or, after "Show again" on
+  // the Excluded titles page, with them back), so the set only applies to the
+  // data it was made against.
+  const railsAt = railsQuery.dataUpdatedAt;
+  const hiddenKeys = useMemo(() => new Set(hidden.at === railsAt ? hidden.keys : []), [hidden, railsAt]);
+
+  const excludedCountQuery = useQuery({
+    queryKey: ['recommendations-excluded-count'],
+    queryFn: jsonFetcher<{ total: number }>('/api/recommendations/excluded?view=count'),
+    enabled: mode === 'rails' && canRecommendations,
+  });
+  const excludedCount = excludedCountQuery.data?.total ?? 0;
+
   const onNotInterested = useCallback((itemKey: string) => {
-    setHiddenKeys((prev) => new Set(prev).add(itemKey));
-    // Flush so the server-side cache bust lands before the next refetch.
-    void tracker.flush();
-  }, [setHiddenKeys, tracker]);
+    setHidden((prev) => ({ at: railsAt, keys: [...(prev.at === railsAt ? prev.keys : []), itemKey] }));
+    // A rails fetch already in flight was composed without this feedback, and
+    // its arrival would clear the hide. Drop it and fetch again once the
+    // feedback is stored.
+    const railsInFlight = queryClient.isFetching({ queryKey: ['recommendations'] }) > 0;
+    if (railsInFlight) void queryClient.cancelQueries({ queryKey: ['recommendations'] });
+    // Flush so the server-side cache bust lands before the next refetch, and
+    // the excluded count includes this title.
+    void tracker.flush().then(() => {
+      void queryClient.invalidateQueries({ queryKey: ['recommendations-excluded-count'] });
+      if (railsInFlight) void queryClient.invalidateQueries({ queryKey: ['recommendations'] });
+    });
+  }, [setHidden, railsAt, tracker, queryClient]);
 
   const rails = useMemo(() => railsQuery.data?.rails ?? [], [railsQuery.data]);
 
@@ -170,7 +193,9 @@ function RecommendationsPageInner() {
     return out;
   }, [rails, hiddenKeys]);
 
-  const refresh = () => {
+  const refresh = async () => {
+    // Store queued feedback first, so the fresh rails already leave it out.
+    await tracker.flush();
     void queryClient.invalidateQueries({ queryKey: ['recommendations'] });
     void queryClient.invalidateQueries({ queryKey: ['recommendations-feed'] });
   };
@@ -210,7 +235,7 @@ function RecommendationsPageInner() {
               <Button
                 size="icon-sm"
                 variant="outline"
-                onClick={refresh}
+                onClick={() => void refresh()}
                 disabled={railsQuery.isFetching}
                 aria-label="Refresh recommendations"
               >
@@ -266,6 +291,14 @@ function RecommendationsPageInner() {
               ))}
             </div>
           </div>
+        )}
+        {mode === 'rails' && !railsQuery.isLoading && excludedCount > 0 && (
+          <p className="text-xs text-muted-foreground">
+            {excludedCount === 1 ? '1 title excluded' : `${excludedCount} titles excluded`} ·{' '}
+            <Link href="/recommendations/excluded" className="font-medium text-primary">
+              Manage
+            </Link>
+          </p>
         )}
       </div>
     </div>

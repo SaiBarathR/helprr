@@ -67,11 +67,29 @@ export async function buildProfileForUser(user: ProfileUser): Promise<BuiltProfi
 /** Rebuild and persist. Returns the fresh profile. */
 export async function rebuildTasteProfile(user: ProfileUser): Promise<TasteProfile> {
   const built = await buildProfileForUser(user);
-  const json = built.profile as unknown as Prisma.InputJsonValue;
-  await prisma.userTasteProfile.upsert({
-    where: { userId: user.id },
-    create: { userId: user.id, profile: json, version: PROFILE_VERSION, builtAt: new Date() },
-    update: { profile: json, version: PROFILE_VERSION, builtAt: new Date() },
+  await prisma.$transaction(async (tx) => {
+    // A build takes a while (Jellyfin scans), and a title restored meanwhile
+    // has lost its exclude events but may still be in what was read at the
+    // start. Lock the stored row, keep only the excludes still backed by an
+    // event, then write: a restore's profile UPDATE waits for this lock and
+    // then removes its key from what was written here.
+    await tx.$queryRaw`SELECT 1 FROM "UserTasteProfile" WHERE "userId" = ${user.id} FOR UPDATE`;
+    const excluded = built.profile.negatives.excludedItemKeys;
+    if (excluded.length > 0) {
+      const stillExcluded = await tx.recommendationEvent.findMany({
+        where: { userId: user.id, eventType: { in: ['not_interested', 'dislike'] }, itemKey: { in: excluded } },
+        select: { itemKey: true },
+        distinct: ['itemKey'],
+      });
+      const live = new Set(stillExcluded.map((row) => row.itemKey));
+      built.profile.negatives.excludedItemKeys = excluded.filter((key) => live.has(key));
+    }
+    const json = built.profile as unknown as Prisma.InputJsonValue;
+    await tx.userTasteProfile.upsert({
+      where: { userId: user.id },
+      create: { userId: user.id, profile: json, version: PROFILE_VERSION, builtAt: new Date() },
+      update: { profile: json, version: PROFILE_VERSION, builtAt: new Date() },
+    });
   });
   return built.profile;
 }
@@ -82,6 +100,32 @@ function parseStoredProfile(row: { profile: Prisma.JsonValue; version: number; b
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const profile = value as unknown as TasteProfile;
   return profile.version === PROFILE_VERSION ? profile : null;
+}
+
+/**
+ * Drop item keys from the stored profile's hard excludes without a rebuild
+ * (which costs Jellyfin scans), so a title the user asked to see again
+ * returns on the next compose instead of after the profile's 6h staleness.
+ * One UPDATE edits the JSON in place, so two restores at once can't write
+ * back each other's stale list. Returns the query for a caller's transaction;
+ * the built-at time is kept, since the rest of the profile is as fresh as before.
+ */
+export function forgetExcludedItems(userId: string, itemKeys: string[]) {
+  return prisma.$executeRaw`
+    UPDATE "UserTasteProfile"
+    SET "profile" = jsonb_set(
+          "profile",
+          '{negatives,excludedItemKeys}',
+          COALESCE(
+            (SELECT jsonb_agg(key)
+               FROM jsonb_array_elements("profile"->'negatives'->'excludedItemKeys') AS key
+              WHERE NOT (key #>> '{}' = ANY(${itemKeys}::text[]))),
+            '[]'::jsonb
+          )
+        ),
+        "updatedAt" = CURRENT_TIMESTAMP
+    WHERE "userId" = ${userId}
+      AND jsonb_typeof("profile"->'negatives'->'excludedItemKeys') = 'array'`;
 }
 
 /**

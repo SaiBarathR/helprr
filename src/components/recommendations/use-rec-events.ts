@@ -36,23 +36,31 @@ export interface RecEventTracker {
 export function useRecEvents(): RecEventTracker {
   const queue = useRef<QueuedEvent[]>([]);
   const seenImpressions = useRef<Set<string>>(new Set());
-  const flushing = useRef(false);
+  const inflight = useRef<Promise<void> | null>(null);
 
+  // Resolves once everything queued so far has been sent: it waits out a send
+  // already in flight, then sends what's left. Callers flush after explicit
+  // feedback and then refetch, so returning early would refetch too soon.
   const flush = useCallback(async () => {
-    if (flushing.current || queue.current.length === 0) return;
-    flushing.current = true;
-    const batch = queue.current.splice(0, MAX_BATCH);
-    try {
-      await fetch('/api/recommendations/events', {
+    while (inflight.current || queue.current.length > 0) {
+      if (inflight.current) {
+        await inflight.current;
+        continue;
+      }
+      const batch = queue.current.splice(0, MAX_BATCH);
+      inflight.current = fetch('/api/recommendations/events', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ events: batch }),
         keepalive: true,
-      });
-    } catch {
-      // Lost telemetry is acceptable; never disturb the page for it.
-    } finally {
-      flushing.current = false;
+      })
+        .then(() => undefined)
+        // Lost telemetry is acceptable; never disturb the page for it.
+        .catch(() => undefined)
+        .finally(() => {
+          inflight.current = null;
+        });
+      await inflight.current;
     }
   }, []);
 
