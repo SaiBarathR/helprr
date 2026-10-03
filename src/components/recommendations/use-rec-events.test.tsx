@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { act } from 'react';
+import { act, useEffect } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { RecItem } from '@/lib/recommendations/rec-types';
@@ -13,8 +13,9 @@ let tracker: RecEventTracker;
 const sent: Array<{ events: Array<{ itemKey: string; eventType: string }> }> = [];
 let release: (() => void) | null = null;
 
-function Probe() {
-  tracker = useRecEvents();
+function Probe({ onReady }: { onReady: (tracker: RecEventTracker) => void }) {
+  const events = useRecEvents();
+  useEffect(() => onReady(events), [events, onReady]);
   return null;
 }
 
@@ -29,7 +30,7 @@ beforeEach(async () => {
   }));
   const host = document.createElement('div');
   root = createRoot(host);
-  await act(async () => root.render(<Probe />));
+  await act(async () => root.render(<Probe onReady={(ready) => { tracker = ready; }} />));
 });
 
 afterEach(async () => {
