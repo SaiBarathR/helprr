@@ -16,6 +16,9 @@ export interface DiscoverView {
 
 export const SECTION_TO_BROWSE: Record<string, { sort: string; contentType: DiscoverContentType }> = {
   trending: { sort: 'trending', contentType: 'all' },
+  trending_movies: { sort: 'trending', contentType: 'movie' },
+  trending_tv: { sort: 'trending', contentType: 'show' },
+  popular_all: { sort: 'popular', contentType: 'all' },
   popular_movies: { sort: 'popular', contentType: 'movie' },
   popular_series: { sort: 'popular', contentType: 'show' },
   upcoming_movies: { sort: 'upcoming', contentType: 'movie' },
@@ -24,6 +27,8 @@ export const SECTION_TO_BROWSE: Record<string, { sort: string; contentType: Disc
   airing_today: { sort: 'popular', contentType: 'show' },
   top_rated_movies: { sort: 'highlyRated', contentType: 'movie' },
   top_rated_tv: { sort: 'highlyRated', contentType: 'show' },
+  highly_rated: { sort: 'highlyRated', contentType: 'all' },
+  most_loved: { sort: 'mostLoved', contentType: 'all' },
 };
 
 const RELEASE_STATES: ReadonlyArray<DiscoverFiltersState['releaseState']> = [

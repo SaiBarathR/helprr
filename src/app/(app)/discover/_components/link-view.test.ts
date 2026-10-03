@@ -35,6 +35,16 @@ describe('discoverLinkView', () => {
     });
   });
 
+  it.each([
+    ['trending_movies', 'trending', 'movie'],
+    ['trending_tv', 'trending', 'show'],
+    ['popular_all', 'popular', 'all'],
+    ['highly_rated', 'highlyRated', 'all'],
+    ['most_loved', 'mostLoved', 'all'],
+  ])('maps the %s section the API serves onto its sort chip and content type', (section, sort, contentType) => {
+    expect(link(`section=${section}`)).toMatchObject({ section, sort, contentType });
+  });
+
   it('carries a custom carousel\'s full filter set', () => {
     const view = link('contentType=show&sortBy=highlyRated&sortOrder=asc&genres=18,80&yearFrom=2010&releaseState=bogus');
     expect(view).toMatchObject({ contentType: 'show', sort: 'highlyRated', sortDirection: 'asc' });
