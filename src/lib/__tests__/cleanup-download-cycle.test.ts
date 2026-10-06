@@ -66,12 +66,15 @@ const packImport = (episodeId: number): HistoryRow => ({ eventType: 'downloadFol
 const importedRule = () => rule({ id: 'system', name: 'Auto-remove imported (system)', privacyType: 'public', maxRatio: 0, requireImportedConfirmation: true, isSystem: true });
 const packTorrent = () => torrent({ hash: '206a85e74fc5563c703d8d65b2e6df6d1fbc3ecb', ratio: 0.04, added_on: PACK_ADDED_ON });
 
-// A qBittorrent double for real (non-dry-run) cycles: the listing and the
-// revalidation lookup see the torrent, the post-delete check sees it gone.
-function setRemovableTorrent(t: QBittorrentTorrent) {
-  const deleteTorrent = vi.fn().mockResolvedValue(undefined);
+// A qBittorrent double for real (non-dry-run) cycles: torrents stay listed
+// until deleteTorrent removes them, so revalidation and the post-delete check
+// see what a live client would.
+function setRemovableTorrents(...torrents: QBittorrentTorrent[]) {
+  const deleted = new Set<string>();
+  const deleteTorrent = vi.fn(async (hash: string) => { deleted.add(hash); });
   mocks.getQBittorrentClient.mockResolvedValue({
-    getTorrents: vi.fn().mockResolvedValueOnce([t]).mockResolvedValueOnce([t]).mockResolvedValue([]),
+    getTorrents: vi.fn(async (_filter?: string, _category?: string, _sort?: string, _reverse?: boolean, hash?: string) =>
+      torrents.filter((t) => !deleted.has(t.hash) && (!hash || t.hash === hash))),
     getTorrentTrackers: vi.fn().mockResolvedValue([]),
     deleteTorrent,
   });
@@ -162,24 +165,35 @@ describe('download cleaner cycle', () => {
   it('requires a positive import confirmation', async () => {
     const addedOn = Date.now() / 1000 - 3600;
     mocks.ruleFindMany.mockResolvedValue([rule({ requireImportedConfirmation: true })]); setTorrents([torrent({ added_on: addedOn })]);
-    setSonarrHistory({ records: [{ eventType: 'downloadFolderImported', date: new Date().toISOString() }] }); const result = await run();
+    const grab = { eventType: 'grabbed', date: new Date(addedOn * 1000).toISOString() };
+    setSonarrHistory({ records: [{ eventType: 'downloadFolderImported', date: new Date().toISOString() }, grab] }); const result = await run();
     expect(result.decisions[0]).toMatchObject({ removalKind: 'imported', reason: expect.stringContaining('imported') });
+    setSonarrHistory({ records: [grab] }); expect((await run()).decisions).toHaveLength(0);
     setSonarrHistory({ records: [] }); expect((await run()).decisions).toHaveLength(0);
+  });
+
+  it('asks the arrs only about torrents that already meet the rule threshold', async () => {
+    mocks.ruleFindMany.mockResolvedValue([rule({ requireImportedConfirmation: true, maxRatio: 2 })]); setTorrents([torrent({ ratio: 1 })]);
+    const { getHistory, getQueue } = setSonarrHistory(new Error('offline'));
+    await expect(run()).resolves.toMatchObject({ decisions: [], warnings: [] });
+    expect(getQueue).not.toHaveBeenCalled(); expect(getHistory).not.toHaveBeenCalled(); expect(mocks.historyCreate).not.toHaveBeenCalled();
   });
 
   it('ignores import events older than the current torrent grab', async () => {
     const addedOn = Date.now() / 1000 - 3600;
     mocks.ruleFindMany.mockResolvedValue([rule({ requireImportedConfirmation: true })]);
     setTorrents([torrent({ added_on: addedOn })]);
-    setSonarrHistory({ records: [{ eventType: 'downloadFolderImported', date: new Date((addedOn - 3600) * 1000).toISOString() }] });
+    // The grab is from an earlier life of this hash, as after a manual re-add.
+    const earlierGrab = { eventType: 'grabbed', date: new Date((addedOn - 7200) * 1000).toISOString() };
+    setSonarrHistory({ records: [{ eventType: 'downloadFolderImported', date: new Date((addedOn - 3600) * 1000).toISOString() }, earlierGrab] });
     expect((await run()).decisions).toHaveLength(0);
-    setSonarrHistory({ records: [{ eventType: 'downloadFolderImported', date: new Date((addedOn + 60) * 1000).toISOString() }] });
+    setSonarrHistory({ records: [{ eventType: 'downloadFolderImported', date: new Date((addedOn + 60) * 1000).toISOString() }, earlierGrab] });
     expect((await run()).decisions).toHaveLength(1);
   });
 
   it('keeps a season pack whose episodes are not all imported', async () => {
     mocks.ruleFindMany.mockResolvedValue([importedRule()]);
-    const deleteTorrent = setRemovableTorrent(packTorrent());
+    const deleteTorrent = setRemovableTorrents(packTorrent());
     setSonarrHistory({ records: [packImport(11267), ...packGrabs] });
     const result = await runDownloadCleanerCycle({ dryRun: false, triggeredBy: 'auto' });
     expect(result.decisions).toHaveLength(0);
@@ -187,18 +201,38 @@ describe('download cleaner cycle', () => {
     expect(mocks.historyCreate).not.toHaveBeenCalled();
   });
 
+  it('keeps an imported download no arr grabbed', async () => {
+    mocks.ruleFindMany.mockResolvedValue([importedRule()]);
+    const deleteTorrent = setRemovableTorrents(packTorrent());
+    setSonarrHistory({ records: [packImport(11267)] });
+    const result = await runDownloadCleanerCycle({ dryRun: false, triggeredBy: 'auto' });
+    expect(result.decisions).toHaveLength(0);
+    expect(deleteTorrent).not.toHaveBeenCalled();
+  });
+
   it('removes a season pack once every grabbed episode is imported', async () => {
     mocks.ruleFindMany.mockResolvedValue([importedRule()]);
-    const deleteTorrent = setRemovableTorrent(packTorrent());
+    const deleteTorrent = setRemovableTorrents(packTorrent());
     setSonarrHistory({ records: [...PACK_EPISODES.map(packImport), ...packGrabs] });
     const result = await runDownloadCleanerCycle({ dryRun: false, triggeredBy: 'auto' });
     expect(result).toMatchObject({ succeeded: 1, failed: 0 });
     expect(deleteTorrent).toHaveBeenCalledWith('206a85e74fc5563c703d8d65b2e6df6d1fbc3ecb', true);
   });
 
+  it('reads each arr queue twice per cycle, however many torrents it removes', async () => {
+    mocks.ruleFindMany.mockResolvedValue([importedRule()]);
+    const deleteTorrent = setRemovableTorrents(packTorrent(), torrent({ hash: 'second', ratio: 0.5, added_on: PACK_ADDED_ON }), torrent({ hash: 'third', ratio: 0.5, added_on: PACK_ADDED_ON }));
+    const { getQueue } = setSonarrHistory({ records: [...PACK_EPISODES.map(packImport), ...packGrabs] });
+    const result = await runDownloadCleanerCycle({ dryRun: false, triggeredBy: 'auto' });
+    expect(result).toMatchObject({ succeeded: 3, failed: 0 });
+    expect(deleteTorrent).toHaveBeenCalledTimes(3);
+    // Once for the evaluation pass, once for the pre-delete revalidation.
+    expect(getQueue).toHaveBeenCalledTimes(2);
+  });
+
   it('keeps a download an arr queue still lists, whatever its history says', async () => {
     mocks.ruleFindMany.mockResolvedValue([importedRule()]);
-    const deleteTorrent = setRemovableTorrent(packTorrent());
+    const deleteTorrent = setRemovableTorrents(packTorrent());
     const { getHistory } = setSonarrHistory(
       { records: [...PACK_EPISODES.map(packImport), ...packGrabs] },
       [{ downloadId: '206A85E74FC5563C703D8D65B2E6DF6D1FBC3ECB', trackedDownloadState: 'importBlocked' }],
@@ -211,7 +245,7 @@ describe('download cleaner cycle', () => {
 
   it('re-reads arr state before removing and skips a download that became unfinished', async () => {
     mocks.ruleFindMany.mockResolvedValue([importedRule()]);
-    const deleteTorrent = setRemovableTorrent(packTorrent());
+    const deleteTorrent = setRemovableTorrents(packTorrent());
     const { getQueue } = setSonarrHistory({ records: [...PACK_EPISODES.map(packImport), ...packGrabs] });
     getQueue.mockResolvedValueOnce({ records: [], totalRecords: 0 }).mockResolvedValue({
       records: [{ downloadId: '206A85E74FC5563C703D8D65B2E6DF6D1FBC3ECB', trackedDownloadState: 'importPending' }], totalRecords: 1,

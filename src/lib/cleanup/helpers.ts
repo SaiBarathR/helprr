@@ -365,13 +365,11 @@ export type ImportConfirmer = (hash: string, addedOnEpochSeconds?: number) => Pr
 /**
  * Download ids (lower-cased) an arr still lists in its queue in a non-imported
  * state: downloading, import pending, import blocked on the user, importing.
- * Downloads the arr tracks but cannot match to a series/movie are included —
- * the default queue view hides them. Returns null when the queue could not be
- * read completely.
+ * Returns null when the queue could not be read completely.
  */
 async function fetchUnfinishedQueueIds(client: SonarrClient | RadarrClient): Promise<Set<string> | null> {
   try {
-    const records = await fetchFullQueue((page, pageSize) => client.getQueue(page, pageSize, true));
+    const records = await fetchFullQueue((page, pageSize) => client.getQueue(page, pageSize));
     if (records === null) return null;
     return new Set(
       records
@@ -391,20 +389,25 @@ type ImportHistoryVerdict =
 /**
  * Read ONE arr's complete history for a download (newest first).
  *
- * `complete` mirrors the arr's own completed-download check: every
- * episode/movie it grabbed under this downloadId must have an import as its
- * newest event. One imported episode of a ten-episode season pack is NOT an
- * import of the pack — the other nine may be held back for a manual decision,
- * and deleting the torrent then destroys them.
+ * `complete` follows the per-episode history check Sonarr itself falls back
+ * on (TrackedDownloadAlreadyImported): the arr grabbed the download, and every
+ * episode/movie in its history for this downloadId has an import as its newest
+ * event. One imported episode of a ten-episode season pack is NOT an import of
+ * the pack — the other nine may be held back for a manual decision, and
+ * deleting the torrent then destroys them. A newer failed or ignored event
+ * (the user dismissed it from the arr queue) likewise leaves it unfinished.
  *
  * A download the arr never grabbed (torrent added by hand into its category,
- * then imported) has no grabbed rows to account against; one import is all the
- * evidence history can give, and the caller's queue check carries the rest.
+ * then imported) is never `complete`: without grabs history cannot say what
+ * the torrent should have delivered, and the arr's queue cannot stand in for
+ * that — it is just as empty right after the arr starts, or while the arr
+ * cannot reach the download client, as when the arr is finished.
  *
  * Events only count as belonging to the current torrent when dated at/after
  * `minEventEpochMs`: a re-added infohash still has its months-old grab and
  * import under this downloadId. Unparseable dates fail closed both ways — an
- * import is not current, a grab is not stale.
+ * import is not current, a grab is not stale. Rows without an episode/movie id
+ * are accounted together as one unit rather than skipped.
  */
 function readImportHistory(
   records: HistoryItem[],
@@ -416,22 +419,20 @@ function readImportHistory(
     && (minEventEpochMs === null || Date.parse(r.date) >= minEventEpochMs);
   const isStale = (r: HistoryItem): boolean => minEventEpochMs !== null && Date.parse(r.date) < minEventEpochMs;
 
-  const newestById = new Map<number, HistoryItem>();
-  const grabbedIds = new Set<number>();
+  const newestById = new Map<number | undefined, HistoryItem>();
+  let grabbed = false;
   let grabbedCurrentTorrent = false;
   for (const r of records) {
     const id = source === 'sonarr' ? r.episodeId : r.movieId;
-    if (id === undefined) continue;
     if (!newestById.has(id)) newestById.set(id, r);
     if (r.eventType === 'grabbed') {
-      grabbedIds.add(id);
+      grabbed = true;
       if (!isStale(r)) grabbedCurrentTorrent = true;
     }
   }
 
-  const everyGrabImported = [...grabbedIds].every((id) => isCurrentImport(newestById.get(id)!));
-  const eventType = everyGrabImported ? records.find(isCurrentImport)?.eventType : undefined;
-  if (eventType) return { status: 'complete', eventType };
+  const newest = [...newestById.values()];
+  if (grabbed && newest.every(isCurrentImport)) return { status: 'complete', eventType: newest[0].eventType };
   return { status: grabbedCurrentTorrent ? 'pending' : 'none' };
 }
 
@@ -442,9 +443,11 @@ function readImportHistory(
  *
  *  1. No arr queue still lists it in a non-imported state. The arr keeps a
  *     partially imported or import-blocked download there until it is done
- *     with it, so a listed download is never finished.
+ *     with it, so a listed download is never finished. (The reverse does not
+ *     hold: an unlisted download is not thereby finished.)
  *  2. No arr that grabbed this torrent has an incomplete import of it.
- *  3. Some arr's history shows a complete import (see `readImportHistory`).
+ *  3. Some arr grabbed it and its history shows a complete import (see
+ *     `readImportHistory`).
  *  4. Every arr's queue and history could be read completely. An arr that
  *     cannot be read might be the one still working on the download.
  *

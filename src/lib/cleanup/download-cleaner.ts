@@ -265,17 +265,20 @@ export async function runDownloadCleanerCycle(opts: RunOptions): Promise<Downloa
 
       if (!matched) continue;
 
-      // Two paths share the same predicate downstream. When the rule opts in
-      // to import confirmation (`requireImportedConfirmation: true`, includes
-      // the auto-managed system row), defer to the async pass; otherwise
-      // evaluate the ratio/seedtime predicate synchronously now.
+      // The ratio/seedtime predicate is free, so it runs first: a torrent
+      // below its rule's threshold cannot be removed whatever the arrs say,
+      // and asking them would cost calls (and, during an arr outage, a
+      // skipped history row) for nothing. When the rule opts in to import
+      // confirmation (`requireImportedConfirmation: true`, includes the
+      // auto-managed system row), the decision is then deferred to the async
+      // pass.
+      const decision = evaluatePredicate(t, matched);
+      if (!decision) continue;
       if (matched.requireImportedConfirmation) {
         pendingConfirmation.push({ torrent: t, rule: matched });
         continue;
       }
-
-      const decision = evaluatePredicate(t, matched);
-      if (decision) decisions.push(decision);
+      decisions.push(decision);
     } catch (err) {
       logger.warn('Download cleaner torrent eval failed', { hash: t.hash, err: String(err) }, { scope: LOG });
     }

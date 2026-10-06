@@ -129,16 +129,15 @@ describe('cleanup helpers', () => {
     await expect(createImportConfirmer({ sonarr: [], radarr: [] })('abc')).resolves.toEqual({ status: 'unreachable' });
     await expect(confirmWith(arrClient(new Error('offline')))).resolves.toEqual({ status: 'unreachable' });
     await expect(confirmWith(arrClient([]))).resolves.toEqual({ status: 'unconfirmed' });
-    const client = arrClient([{ eventType: 'downloadFolderImported', date: '2020-01-01T00:00:00Z' }]);
+    const client = arrClient([imported(1), grabbed(1)]);
     await expect(confirmWith(client)).resolves.toEqual({ status: 'imported', source: 'sonarr', eventType: 'downloadFolderImported' });
     expect(client.getHistory).toHaveBeenCalledWith(1, 1000, 'date', 'descending', { downloadId: 'ABC' });
-    // The queue read asks for downloads the arr cannot match too; the default view hides them.
-    expect(client.getQueue).toHaveBeenCalledWith(1, 1000, true);
   });
 
   it('rejects stale or unparseable import history for the current torrent grab', async () => {
     const addedOn = Date.parse('2026-01-01T12:00:00Z') / 1000;
-    const only = (date: string) => arrClient([{ eventType: 'downloadFolderImported', date }]);
+    // The grab belongs to an earlier life of this hash; only the import's date is under test.
+    const only = (date: string) => arrClient([imported(1, date), grabbed(1, '2019-06-01T00:00:00Z')]);
     await expect(confirmWith(only('2026-01-01T11:54:59Z'), addedOn)).resolves.toEqual({ status: 'unconfirmed' });
     await expect(confirmWith(only('2026-01-01T12:00:01Z'), addedOn)).resolves.toMatchObject({ status: 'imported' });
     await expect(confirmWith(only('not-a-date'), addedOn)).resolves.toEqual({ status: 'unconfirmed' });
@@ -166,6 +165,15 @@ describe('cleanup helpers', () => {
     await expect(confirmWith(arrClient(stale), addedOn)).resolves.toEqual({ status: 'unconfirmed' });
   });
 
+  it('treats a newer failed or ignored event as unfinished', async () => {
+    // Dismissed from the arr queue without removing it from the client: Sonarr writes downloadIgnored rows.
+    const ignored = (episodeId: number): HistoryRow => ({ eventType: 'downloadIgnored', date: '2026-10-05T15:00:00Z', episodeId });
+    await expect(confirmWith(arrClient([ignored(1), ignored(2), imported(1), grabbed(1), grabbed(2)]))).resolves.toEqual({ status: 'unconfirmed' });
+    await expect(confirmWith(arrClient([{ eventType: 'downloadFailed', date: '2026-10-05T15:00:00Z', episodeId: 1 }, imported(1), grabbed(1)]))).resolves.toEqual({ status: 'unconfirmed' });
+    // Rows that carry no episode id cannot be accounted, so they hold the download back too.
+    await expect(confirmWith(arrClient([imported(1), { eventType: 'grabbed', date: '2026-10-05T14:00:57Z' }]))).resolves.toEqual({ status: 'unconfirmed' });
+  });
+
   it('accounts Radarr history by movie', async () => {
     const radarr = arrClient([{ eventType: 'downloadFolderImported', date: '2026-10-05T14:08:02Z', movieId: 7 }, { eventType: 'grabbed', date: '2026-10-05T14:00:57Z', movieId: 7 }]);
     await expect(createImportConfirmer({ sonarr: [], radarr: [radarr] as never })('abc')).resolves.toEqual({ status: 'imported', source: 'radarr', eventType: 'downloadFolderImported' });
@@ -185,12 +193,12 @@ describe('cleanup helpers', () => {
     await expect(createImportConfirmer({ sonarr: [arrClient(complete)] as never, radarr: [otherInstance] as never })('ABC')).resolves.toEqual({ status: 'unconfirmed' });
   });
 
-  it('confirms a download the arr never grabbed only once no queue lists it as unfinished', async () => {
-    const handAdded = [imported(1)];
-    await expect(confirmWith(arrClient(handAdded))).resolves.toMatchObject({ status: 'imported' });
-    await expect(confirmWith(arrClient(handAdded, [queueItem({ downloadId: 'ABC', trackedDownloadState: 'importBlocked' })]))).resolves.toEqual({ status: 'unconfirmed' });
-    // A row the arr itself marks imported is the arr saying it is done.
-    await expect(confirmWith(arrClient(handAdded, [queueItem({ downloadId: 'ABC', trackedDownloadState: 'imported' })]))).resolves.toMatchObject({ status: 'imported' });
+  it('never confirms a download no arr grabbed', async () => {
+    // Added by hand into the arr's category: with no grabs, history cannot say
+    // what the torrent should have delivered, and an empty queue proves nothing.
+    await expect(confirmWith(arrClient([imported(1)]))).resolves.toEqual({ status: 'unconfirmed' });
+    await expect(confirmWith(arrClient(range(1, 10).map((id) => imported(id))))).resolves.toEqual({ status: 'unconfirmed' });
+    await expect(confirmWith(arrClient([{ eventType: 'downloadIgnored', date: '2026-10-05T15:00:00Z', episodeId: 2 }, imported(1)]))).resolves.toEqual({ status: 'unconfirmed' });
   });
 
   it('lets any arr that grabbed the torrent veto another arr\'s confirmation', async () => {
