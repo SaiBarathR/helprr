@@ -13,8 +13,9 @@ import { notifyEvent } from '@/lib/notification-service';
 import {
   batchFetchTrackerDomains,
   buildSeedingReason,
-  confirmImportedViaHistory,
+  createImportConfirmer,
   formatError,
+  ImportConfirmer,
   matchesIgnoredPatterns,
   matchesPrivacy,
   matchesTrackerDomain,
@@ -282,14 +283,14 @@ export async function runDownloadCleanerCycle(opts: RunOptions): Promise<Downloa
 
   // Async pass: confirm import per torrent, then run the same ratio/seedtime
   // predicate. `unreachable` results are surfaced as `skipped` history rows
-  // so an arr outage isn't silent; `unconfirmed` (arr reachable but no
-  // imported event yet) is the common case — stay quiet.
+  // so an arr outage isn't silent; `unconfirmed` (arr reachable but the
+  // download is not fully imported yet) is the common case — stay quiet.
   let skippedUnreachable = 0;
   if (pendingConfirmation.length > 0) {
-    const arrs = await loadArrClients();
+    const confirmImported = createImportConfirmer(await loadArrClients());
     await processWithLimit(pendingConfirmation, CLEANUP_CONCURRENCY, async ({ torrent: t, rule }) => {
       try {
-        const confirmation = await confirmImportedViaHistory(t.hash, arrs, t.added_on);
+        const confirmation = await confirmImported(t.hash, t.added_on);
         if (confirmation.status === 'imported') {
           const decision = evaluatePredicate(t, rule);
           if (decision) {
@@ -421,9 +422,17 @@ export async function runDownloadCleanerCycle(opts: RunOptions): Promise<Downloa
       }
     }
   } else {
+    // Revalidation must see current arr state, not the evaluation pass's
+    // snapshot: a fresh confirmer, built on first use and shared by every
+    // removal in this cycle so each arr queue is still read only once.
+    let revalidationConfirmer: Promise<ImportConfirmer> | null = null;
+    const reconfirmImported: ImportConfirmer = async (hash, addedOnEpochSeconds) => {
+      revalidationConfirmer ??= loadArrClients().then(createImportConfirmer);
+      return (await revalidationConfirmer)(hash, addedOnEpochSeconds);
+    };
     await processWithLimit(decisions, CLEANUP_CONCURRENCY, async (d) => {
       try {
-        const revalidation = await revalidateDownloadDecision(d, configFingerprint, scopeFingerprint);
+        const revalidation = await revalidateDownloadDecision(d, configFingerprint, scopeFingerprint, reconfirmImported);
         const outcome = revalidation.ok
           ? await executeDownloadCleanerRemoval(revalidation.decision, opts.triggeredBy, opts.previewId)
           : await recordDownloadRevalidationOutcome(d, revalidation, opts.triggeredBy, opts.previewId);
@@ -658,6 +667,7 @@ async function revalidateDownloadDecision(
   expected: DownloadDecision,
   expectedConfigFingerprint: string,
   expectedScopeFingerprint: string,
+  confirmImported: ImportConfirmer,
 ): Promise<DownloadRevalidation> {
   try {
     const [config, scopeFingerprint] = await Promise.all([
@@ -699,7 +709,7 @@ async function revalidateDownloadDecision(
       return { ok: false, status: 'stale', message: 'Torrent no longer meets the reviewed threshold', errorMessage: 'Cleanup threshold changed after preview' };
     }
     if (rule.requireImportedConfirmation) {
-      const confirmation = await confirmImportedViaHistory(torrent.hash, await loadArrClients(), torrent.added_on);
+      const confirmation = await confirmImported(torrent.hash, torrent.added_on);
       if (confirmation.status !== 'imported') {
         return { ok: false, status: 'stale', message: 'Import confirmation is no longer available', errorMessage: 'Import confirmation changed after preview' };
       }

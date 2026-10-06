@@ -1,4 +1,4 @@
-import type { QBittorrentTorrent, QueueItem } from '@/types';
+import type { HistoryItem, QBittorrentTorrent, QueueItem } from '@/types';
 import type { QBittorrentClient } from '@/lib/qbittorrent-client';
 import type { SonarrClient } from '@/lib/sonarr-client';
 import type { RadarrClient } from '@/lib/radarr-client';
@@ -10,6 +10,7 @@ import type {
   SlowRuleShape,
   StallRuleShape,
 } from './types';
+import { fetchFullQueue } from './queue-pagination';
 
 // Sonarr/Radarr v3 history eventType strings that represent a *successful*
 // import. We require one of these (matched by downloadId == torrent hash) before
@@ -356,72 +357,140 @@ const IMPORT_EVENT_SKEW_SECONDS = 300;
 
 export type ImportConfirmation =
   | { status: 'imported'; source: ImportConfirmationSource; eventType: string }
-  | { status: 'unconfirmed' } // at least one arr was reachable and reported no import
-  | { status: 'unreachable' }; // no arrs configured, or every configured arr threw
+  | { status: 'unconfirmed' } // at least one arr was readable and did not report a complete import
+  | { status: 'unreachable' }; // no arrs configured, or none could be read
+
+export type ImportConfirmer = (hash: string, addedOnEpochSeconds?: number) => Promise<ImportConfirmation>;
 
 /**
- * Query Sonarr+Radarr history for any successful-import event whose
- * downloadId matches the given torrent hash.
+ * Download ids (lower-cased) an arr still lists in its queue in a non-imported
+ * state: downloading, import pending, import blocked on the user, importing.
+ * Returns null when the queue could not be read completely; that arr then
+ * cannot vouch for any download this cycle.
+ */
+async function fetchUnfinishedQueueIds(client: SonarrClient | RadarrClient): Promise<Set<string> | null> {
+  try {
+    const records = await fetchFullQueue((page, pageSize) => client.getQueue(page, pageSize));
+    if (records === null) return null;
+    return new Set(
+      records
+        .filter((item) => !isImportedQueueState(item.trackedDownloadState))
+        .map((item) => (item.downloadId || '').toLowerCase()),
+    );
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Decide from ONE arr's complete history for a download (newest first) whether
+ * that download is fully imported. Returns the confirming import eventType, or
+ * null.
+ *
+ * Mirrors the arr's own completed-download check: every episode/movie it
+ * grabbed under this downloadId must have an import as its newest event. One
+ * imported episode of a ten-episode season pack is NOT an import of the pack —
+ * the other nine may be held back for a manual decision, and deleting the
+ * torrent then destroys them.
+ *
+ * A download the arr never grabbed (torrent added by hand into its category,
+ * then imported) has no grabbed rows to account against; one import is all the
+ * evidence history can give, and the caller's queue check carries the rest.
+ *
+ * Imports only count when dated at/after `minEventEpochMs`: a re-added
+ * infohash still has its months-old import under this downloadId.
+ */
+function completeImportEventType(
+  records: HistoryItem[],
+  source: ImportConfirmationSource,
+  minEventEpochMs: number | null,
+): string | null {
+  const isCurrentImport = (r: HistoryItem): boolean => {
+    if (!IMPORTED_HISTORY_EVENT_TYPES.has(r.eventType)) return false;
+    if (minEventEpochMs === null) return true;
+    const eventMs = Date.parse(r.date);
+    // Unparseable dates fail closed — better to wait a cycle than to delete
+    // on a confirmation we cannot time-order.
+    return Number.isFinite(eventMs) && eventMs >= minEventEpochMs;
+  };
+
+  const newestById = new Map<number, HistoryItem>();
+  const grabbedIds = new Set<number>();
+  for (const r of records) {
+    const id = source === 'sonarr' ? r.episodeId : r.movieId;
+    if (id === undefined) continue;
+    if (!newestById.has(id)) newestById.set(id, r);
+    if (r.eventType === 'grabbed') grabbedIds.add(id);
+  }
+
+  for (const id of grabbedIds) {
+    if (!isCurrentImport(newestById.get(id)!)) return null;
+  }
+  return records.find(isCurrentImport)?.eventType ?? null;
+}
+
+/**
+ * Build the import check used by rules that require Sonarr/Radarr import
+ * confirmation. A torrent is `imported` only when BOTH hold:
+ *
+ *  1. No readable arr queue still lists it in a non-imported state. The arr
+ *     keeps a partially imported or import-blocked download there until it is
+ *     done with it, so a listed download is never finished.
+ *  2. Some arr's history for it shows a complete import (see
+ *     `completeImportEventType`).
+ *
+ * Otherwise: `unconfirmed` when at least one arr could be read, `unreachable`
+ * when none could (or none is configured) so an outage is surfaced instead of
+ * staying silent.
+ *
+ * One confirmer serves one evaluation pass: each arr queue is read once, on
+ * first use, and shared by every torrent checked. History is read per torrent,
+ * filtered to its downloadId and paged to the end — a truncated read would
+ * drop the oldest rows, which are exactly the grabbed rows being accounted
+ * against. An arr whose queue or history cannot be read completely confirms
+ * nothing.
  *
  * Sonarr/Radarr's qBittorrent download client persists History.DownloadId as
  * torrent.Hash.ToUpper(); the /api/v3/history filter is a case-sensitive SQL
  * equality, so we must send uppercase even though qBit returns lowercase.
- *
- * Returns:
- *  - `imported` if any arr's history shows a successful-import event.
- *  - `unconfirmed` if at least one arr was reachable and returned no hit
- *    (common case — torrent just hasn't been imported yet).
- *  - `unreachable` if no arr is configured, or every configured arr threw.
- *
- * Callers distinguish the latter two so an arr outage can be surfaced
- * (`unreachable`) while routine "not imported yet" silence stays quiet.
- *
- * `addedOnEpochSeconds` (torrent added_on) guards against stale history: a
- * re-grab of the same infohash still has the months-old import event under
- * this downloadId, and treating it as confirmation would delete the torrent
- * while the CURRENT grab is mid-import. Only events dated at/after the
- * torrent was added count (5-minute skew allowance between qBit and arr).
  */
-export async function confirmImportedViaHistory(
-  hash: string,
+export function createImportConfirmer(
   arrs: { sonarr: SonarrClient[]; radarr: RadarrClient[] },
-  addedOnEpochSeconds?: number,
-): Promise<ImportConfirmation> {
-  const downloadId = hash.toUpperCase();
-  const minEventEpochMs =
-    typeof addedOnEpochSeconds === 'number' && addedOnEpochSeconds > 0
-      ? (addedOnEpochSeconds - IMPORT_EVENT_SKEW_SECONDS) * 1000
-      : null;
-  let anyReachable = false;
-  let anyConfigured = false;
-
-  // Imported if ANY instance of either type confirms it. Tag each client with
-  // its source up front so we don't have to recover it from the client object.
-  const tagged: Array<{ source: ImportConfirmationSource; client: SonarrClient | RadarrClient }> = [
+): ImportConfirmer {
+  // Tag each client with its source up front so we don't have to recover it
+  // from the client object.
+  const instances: Array<{ source: ImportConfirmationSource; client: SonarrClient | RadarrClient }> = [
     ...arrs.sonarr.map((client) => ({ source: 'sonarr' as const, client })),
     ...arrs.radarr.map((client) => ({ source: 'radarr' as const, client })),
   ];
-  for (const { source, client } of tagged) {
-    anyConfigured = true;
-    try {
-      const res = await client.getHistory(1, 50, 'date', 'descending', { downloadId });
-      anyReachable = true;
-      const hit = (res.records || []).find((r) => {
-        if (!IMPORTED_HISTORY_EVENT_TYPES.has(r.eventType)) return false;
-        if (minEventEpochMs === null) return true;
-        const eventMs = Date.parse(r.date);
-        // Unparseable dates fail closed — better to wait a cycle than to
-        // delete on a confirmation we cannot time-order.
-        return Number.isFinite(eventMs) && eventMs >= minEventEpochMs;
-      });
-      if (hit) {
-        return { status: 'imported', source, eventType: hit.eventType };
-      }
-    } catch {
-      // unreachable for this instance
-    }
-  }
-  if (!anyConfigured || !anyReachable) return { status: 'unreachable' };
-  return { status: 'unconfirmed' };
-}
+  let unfinishedQueueIds: Promise<Array<Set<string> | null>> | null = null;
 
+  return async (hash, addedOnEpochSeconds) => {
+    const minEventEpochMs =
+      typeof addedOnEpochSeconds === 'number' && addedOnEpochSeconds > 0
+        ? (addedOnEpochSeconds - IMPORT_EVENT_SKEW_SECONDS) * 1000
+        : null;
+
+    unfinishedQueueIds ??= Promise.all(instances.map(({ client }) => fetchUnfinishedQueueIds(client)));
+    const unfinished = await unfinishedQueueIds;
+    if (unfinished.some((ids) => ids?.has(hash.toLowerCase()))) return { status: 'unconfirmed' };
+
+    const downloadId = hash.toUpperCase();
+    let anyReadable = false;
+    for (let i = 0; i < instances.length; i++) {
+      if (unfinished[i] === null) continue;
+      const { source, client } = instances[i];
+      try {
+        const records = await fetchFullQueue((page, pageSize) =>
+          client.getHistory(page, pageSize, 'date', 'descending', { downloadId }));
+        if (records === null) continue;
+        anyReadable = true;
+        const eventType = completeImportEventType(records, source, minEventEpochMs);
+        if (eventType) return { status: 'imported', source, eventType };
+      } catch {
+        // unreachable for this instance
+      }
+    }
+    return anyReadable ? { status: 'unconfirmed' } : { status: 'unreachable' };
+  };
+}
