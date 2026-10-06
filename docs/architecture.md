@@ -280,14 +280,18 @@ rule is configured; a torrent whose `private` flag is absent (qBittorrent < 5)
 is treated as private for deletion gating and matches only `both`-scoped rules;
 seed time uses qBittorrent's `seeding_time` (not wall-clock since completion);
 import confirmation requires a complete import, not any import — every
-episode/movie the arr grabbed for the download must have an import as its
-newest history event, read from the download's full history rather than one
-page, so a season pack with some episodes held back for manual import is kept;
-it only accepts import events dated at/after the torrent's `added_on` (re-grabs
-must re-import); it is withheld while any arr queue still lists the download in
-a non-imported state, and an arr whose queue or history cannot be read
-completely confirms nothing; a download no arr grabbed (added by hand, then
-imported) is confirmed by one import once no queue lists it; and slow-rule
+episode/movie an arr grabbed for the download must have an import as its newest
+history event, read from the download's full history rather than one page, so a
+season pack with some episodes held back for manual import is kept; it only
+accepts import events dated at/after the torrent's `added_on`, less a
+five-minute clock-skew allowance (re-grabs must re-import); every configured arr
+has a veto — confirmation is withheld while any arr queue (including downloads
+the arr cannot match to a series/movie) lists the download in a non-imported
+state, while any arr that grabbed the torrent has not finished importing it, and
+whenever any arr's queue or history cannot be read completely; a download no arr
+grabbed (added by hand, then imported) is confirmed by one import once no queue
+lists it as unfinished; a paged arr read counts as complete only when it
+delivers a records array that meets the arr's reported total; and slow-rule
 triggers only apply in active download states so completed/seeding torrents are
 never struck.
 Cleaner intervals are validated to at most 7 days and defensively clamped below

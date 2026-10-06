@@ -172,7 +172,7 @@ async function loadArrQueues(): Promise<{
     try {
       const records = await fetchFullQueue((page, pageSize) => client.getQueue(page, pageSize));
       if (records === null) {
-        logger.error('Sonarr queue exceeds pagination bound; skipping instance this cycle (fail-safe)', { instanceId: connection.id, maxItems: QUEUE_PAGE_SIZE * MAX_QUEUE_PAGES }, { scope: LOG });
+        logger.error('Sonarr queue could not be read completely; skipping instance this cycle (fail-safe)', { instanceId: connection.id, maxItems: QUEUE_PAGE_SIZE * MAX_QUEUE_PAGES }, { scope: LOG });
         complete = false;
         continue;
       }
@@ -190,7 +190,7 @@ async function loadArrQueues(): Promise<{
     try {
       const records = await fetchFullQueue((page, pageSize) => client.getQueue(page, pageSize));
       if (records === null) {
-        logger.error('Radarr queue exceeds pagination bound; skipping instance this cycle (fail-safe)', { instanceId: connection.id, maxItems: QUEUE_PAGE_SIZE * MAX_QUEUE_PAGES }, { scope: LOG });
+        logger.error('Radarr queue could not be read completely; skipping instance this cycle (fail-safe)', { instanceId: connection.id, maxItems: QUEUE_PAGE_SIZE * MAX_QUEUE_PAGES }, { scope: LOG });
         complete = false;
         continue;
       }
@@ -1142,7 +1142,7 @@ async function inspectQueueLink(link: LinkedArr): Promise<{ state: 'present' | '
       ? await getSonarrClient(link.instanceId)
       : await getRadarrClient(link.instanceId);
     const records = await fetchFullQueue((page, pageSize) => client.getQueue(page, pageSize));
-    if (records === null) return { state: 'unknown', errorMessage: 'Queue exceeded the safe pagination bound' };
+    if (records === null) return { state: 'unknown', errorMessage: 'Queue could not be read completely' };
     return { state: records.some((record) => record.id === link.queueItem.id) ? 'present' : 'absent' };
   } catch (error) {
     return { state: 'unknown', errorMessage: formatError(error) };

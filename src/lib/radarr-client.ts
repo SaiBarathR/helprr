@@ -198,11 +198,12 @@ export class RadarrClient {
   }
 
   // Queue
-  async getQueue(page: number = 1, pageSize: number = 20): Promise<QueueResponse> {
+  async getQueue(page: number = 1, pageSize: number = 20, includeUnknownMovieItems: boolean = false): Promise<QueueResponse> {
     return this.get<QueueResponse>('/api/v3/queue', {
       page,
       pageSize,
       includeMovie: true,
+      ...(includeUnknownMovieItems ? { includeUnknownMovieItems: true } : {}),
     });
   }
 

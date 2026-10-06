@@ -132,6 +132,8 @@ describe('cleanup helpers', () => {
     const client = arrClient([{ eventType: 'downloadFolderImported', date: '2020-01-01T00:00:00Z' }]);
     await expect(confirmWith(client)).resolves.toEqual({ status: 'imported', source: 'sonarr', eventType: 'downloadFolderImported' });
     expect(client.getHistory).toHaveBeenCalledWith(1, 1000, 'date', 'descending', { downloadId: 'ABC' });
+    // The queue read asks for downloads the arr cannot match too; the default view hides them.
+    expect(client.getQueue).toHaveBeenCalledWith(1, 1000, true);
   });
 
   it('rejects stale or unparseable import history for the current torrent grab', async () => {
@@ -183,20 +185,49 @@ describe('cleanup helpers', () => {
     await expect(createImportConfirmer({ sonarr: [arrClient(complete)] as never, radarr: [otherInstance] as never })('ABC')).resolves.toEqual({ status: 'unconfirmed' });
   });
 
-  it('confirms a download the arr never grabbed only once no queue lists it', async () => {
+  it('confirms a download the arr never grabbed only once no queue lists it as unfinished', async () => {
     const handAdded = [imported(1)];
     await expect(confirmWith(arrClient(handAdded))).resolves.toMatchObject({ status: 'imported' });
     await expect(confirmWith(arrClient(handAdded, [queueItem({ downloadId: 'ABC', trackedDownloadState: 'importBlocked' })]))).resolves.toEqual({ status: 'unconfirmed' });
+    // A row the arr itself marks imported is the arr saying it is done.
+    await expect(confirmWith(arrClient(handAdded, [queueItem({ downloadId: 'ABC', trackedDownloadState: 'imported' })]))).resolves.toMatchObject({ status: 'imported' });
   });
 
-  it('lets no arr confirm from a queue or history it could not read completely', async () => {
+  it('lets any arr that grabbed the torrent veto another arr\'s confirmation', async () => {
+    const addedOn = Date.parse('2026-10-05T14:00:57Z') / 1000;
+    const pair = (other: ReturnType<typeof arrClient>) =>
+      createImportConfirmer({ sonarr: [arrClient([imported(1), grabbed(1)]), other] as never, radarr: [] })('abc', addedOn);
+    // Same hash, second instance grabbed the whole pack and imported one episode.
+    await expect(pair(arrClient([imported(1), ...range(1, 10).map((id) => grabbed(id))]))).resolves.toEqual({ status: 'unconfirmed' });
+    // Its grabs of an earlier torrent with this hash say nothing about the current one.
+    const earlier = [imported(1, '2026-04-24T04:34:00Z'), ...range(1, 10).map((id) => grabbed(id, '2026-04-24T04:00:00Z'))];
+    await expect(pair(arrClient(earlier))).resolves.toMatchObject({ status: 'imported' });
+  });
+
+  it('withholds confirmation when any configured arr cannot be read completely', async () => {
     const complete = [imported(1), grabbed(1)];
+    const beside = (other: ReturnType<typeof arrClient>) =>
+      createImportConfirmer({ sonarr: [other, arrClient(complete)] as never, radarr: [] })('abc');
     await expect(confirmWith(arrClient(complete, new Error('queue offline')))).resolves.toEqual({ status: 'unreachable' });
-    // A healthy second instance keeps the result at "unconfirmed" rather than hiding behind the outage.
-    await expect(createImportConfirmer({ sonarr: [arrClient(complete, new Error('queue offline')), arrClient([])] as never, radarr: [] })('abc')).resolves.toEqual({ status: 'unconfirmed' });
+    // A healthy arr with a complete import cannot speak for one that is unreadable.
+    await expect(beside(arrClient([], new Error('queue offline')))).resolves.toEqual({ status: 'unreachable' });
+    await expect(beside(arrClient(new Error('history offline')))).resolves.toEqual({ status: 'unreachable' });
+    // The arr reported eleven rows and delivered one: the grabs are missing, not absent.
+    const truncated = arrClient([]);
+    truncated.getHistory.mockResolvedValue({ records: [imported(1)], totalRecords: 11 });
+    await expect(confirmWith(truncated)).resolves.toEqual({ status: 'unreachable' });
     const endless = arrClient(complete);
     endless.getHistory.mockImplementation(async () => ({ records: Array.from({ length: 1000 }, () => imported(1)), totalRecords: 1_000_000 }));
     await expect(confirmWith(endless)).resolves.toEqual({ status: 'unreachable' });
+  });
+
+  it('reports a download an arr positively lists as unfinished even beside an outage', async () => {
+    const down = () => arrClient(new Error('history offline'), new Error('queue offline'));
+    const listed = arrClient([], [queueItem({ downloadId: 'ABC', trackedDownloadState: 'importBlocked' })]);
+    await expect(createImportConfirmer({ sonarr: [down(), listed] as never, radarr: [] })('abc')).resolves.toEqual({ status: 'unconfirmed' });
+    const historyDown = arrClient(new Error('history offline'));
+    const pending = arrClient([grabbed(1)]);
+    await expect(createImportConfirmer({ sonarr: [historyDown, pending] as never, radarr: [] })('abc')).resolves.toEqual({ status: 'unconfirmed' });
   });
 
   it('reads history past the first page before accounting', async () => {

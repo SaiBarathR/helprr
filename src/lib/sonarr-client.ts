@@ -290,12 +290,13 @@ export class SonarrClient {
   }
 
   // Queue
-  async getQueue(page: number = 1, pageSize: number = 20): Promise<QueueResponse> {
+  async getQueue(page: number = 1, pageSize: number = 20, includeUnknownSeriesItems: boolean = false): Promise<QueueResponse> {
     return this.get<QueueResponse>('/api/v3/queue', {
       page,
       pageSize,
       includeEpisode: true,
       includeSeries: true,
+      ...(includeUnknownSeriesItems ? { includeUnknownSeriesItems: true } : {}),
     });
   }
 
