@@ -55,6 +55,16 @@ describe('fetchFullQueue', () => {
     expect(result).toBeNull();
   });
 
+  it('returns null when a short page leaves the reported total unmet', async () => {
+    const { fetchPage } = pagedFetcher(makeQueue(1), 11);
+    expect(await fetchFullQueue(fetchPage)).toBeNull();
+  });
+
+  it('returns null for a response without a records array', async () => {
+    expect(await fetchFullQueue(() => Promise.resolve({}))).toBeNull();
+    expect(await fetchFullQueue(() => Promise.resolve('<html>login</html>' as never))).toBeNull();
+  });
+
   it('treats an empty queue as complete', async () => {
     const { fetchPage } = pagedFetcher([]);
     const result = await fetchFullQueue(fetchPage);

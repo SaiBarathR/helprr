@@ -279,9 +279,22 @@ tracker lookup failed is skipped whenever the ignore list or a tracker-scoped
 rule is configured; a torrent whose `private` flag is absent (qBittorrent < 5)
 is treated as private for deletion gating and matches only `both`-scoped rules;
 seed time uses qBittorrent's `seeding_time` (not wall-clock since completion);
-import confirmation only accepts Sonarr/Radarr history events dated at/after
-the torrent's `added_on` (re-grabs must re-import); and slow-rule triggers only
-apply in active download states so completed/seeding torrents are never struck.
+import confirmation requires a complete import, not any import — an arr must
+have grabbed the download, and every episode/movie in that arr's history for it
+must have an import as its newest event (a newer failed or ignored event leaves
+it unfinished), read from the download's full history rather than one page, so
+a season pack with some episodes held back for manual import is kept; it only
+accepts import events dated at/after the torrent's `added_on`, less a
+five-minute clock-skew allowance (re-grabs must re-import); every configured arr
+has a veto — confirmation is withheld while any arr queue lists the download in
+a non-imported state, while any arr that grabbed the torrent has not finished
+importing it, and whenever any arr's queue or history cannot be read completely;
+a download no arr grabbed (added by hand, then imported) is never confirmed,
+because without grabs nothing says what it should have delivered and an empty
+arr queue is not proof the arr is finished; a paged arr read counts as complete
+only when it delivers a records array that meets the arr's reported total; and
+slow-rule triggers only apply in active download states so completed/seeding
+torrents are never struck.
 Cleaner intervals are validated to at most 7 days and defensively clamped below
 the 32-bit `setInterval` limit. Cycles report `warnings` for anything skipped
 or aborted, surfaced in the preview dialog and the dashboard's last-cycle line.

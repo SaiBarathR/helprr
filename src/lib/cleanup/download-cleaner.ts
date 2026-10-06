@@ -13,7 +13,7 @@ import { notifyEvent } from '@/lib/notification-service';
 import {
   batchFetchTrackerDomains,
   buildSeedingReason,
-  confirmImportedViaHistory,
+  createImportConfirmer,
   formatError,
   matchesIgnoredPatterns,
   matchesPrivacy,
@@ -264,17 +264,20 @@ export async function runDownloadCleanerCycle(opts: RunOptions): Promise<Downloa
 
       if (!matched) continue;
 
-      // Two paths share the same predicate downstream. When the rule opts in
-      // to import confirmation (`requireImportedConfirmation: true`, includes
-      // the auto-managed system row), defer to the async pass; otherwise
-      // evaluate the ratio/seedtime predicate synchronously now.
+      // The ratio/seedtime predicate is free, so it runs first: a torrent
+      // below its rule's threshold cannot be removed whatever the arrs say,
+      // and asking them would cost calls (and, during an arr outage, a
+      // skipped history row) for nothing. When the rule opts in to import
+      // confirmation (`requireImportedConfirmation: true`, includes the
+      // auto-managed system row), the decision is then deferred to the async
+      // pass.
+      const decision = evaluatePredicate(t, matched);
+      if (!decision) continue;
       if (matched.requireImportedConfirmation) {
         pendingConfirmation.push({ torrent: t, rule: matched });
         continue;
       }
-
-      const decision = evaluatePredicate(t, matched);
-      if (decision) decisions.push(decision);
+      decisions.push(decision);
     } catch (err) {
       logger.warn('Download cleaner torrent eval failed', { hash: t.hash, err: String(err) }, { scope: LOG });
     }
@@ -282,14 +285,14 @@ export async function runDownloadCleanerCycle(opts: RunOptions): Promise<Downloa
 
   // Async pass: confirm import per torrent, then run the same ratio/seedtime
   // predicate. `unreachable` results are surfaced as `skipped` history rows
-  // so an arr outage isn't silent; `unconfirmed` (arr reachable but no
-  // imported event yet) is the common case — stay quiet.
+  // so an arr outage isn't silent; `unconfirmed` (arr reachable but the
+  // download is not fully imported yet) is the common case — stay quiet.
   let skippedUnreachable = 0;
   if (pendingConfirmation.length > 0) {
-    const arrs = await loadArrClients();
+    const confirmImported = createImportConfirmer(await loadArrClients());
     await processWithLimit(pendingConfirmation, CLEANUP_CONCURRENCY, async ({ torrent: t, rule }) => {
       try {
-        const confirmation = await confirmImportedViaHistory(t.hash, arrs, t.added_on);
+        const confirmation = await confirmImported(t.hash, t.added_on);
         if (confirmation.status === 'imported') {
           const decision = evaluatePredicate(t, rule);
           if (decision) {
@@ -699,7 +702,9 @@ async function revalidateDownloadDecision(
       return { ok: false, status: 'stale', message: 'Torrent no longer meets the reviewed threshold', errorMessage: 'Cleanup threshold changed after preview' };
     }
     if (rule.requireImportedConfirmation) {
-      const confirmation = await confirmImportedViaHistory(torrent.hash, await loadArrClients(), torrent.added_on);
+      // A fresh confirmer for this one removal: neither the evaluation pass's
+      // arr queue snapshot nor an earlier removal's may vouch for this delete.
+      const confirmation = await createImportConfirmer(await loadArrClients())(torrent.hash, torrent.added_on);
       if (confirmation.status !== 'imported') {
         return { ok: false, status: 'stale', message: 'Import confirmation is no longer available', errorMessage: 'Import confirmation changed after preview' };
       }
