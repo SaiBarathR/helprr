@@ -219,15 +219,30 @@ describe('download cleaner cycle', () => {
     expect(deleteTorrent).toHaveBeenCalledWith('206a85e74fc5563c703d8d65b2e6df6d1fbc3ecb', true);
   });
 
-  it('reads each arr queue twice per cycle, however many torrents it removes', async () => {
+  it('reads each arr queue once for the evaluation pass and afresh before every removal', async () => {
     mocks.ruleFindMany.mockResolvedValue([importedRule()]);
     const deleteTorrent = setRemovableTorrents(packTorrent(), torrent({ hash: 'second', ratio: 0.5, added_on: PACK_ADDED_ON }), torrent({ hash: 'third', ratio: 0.5, added_on: PACK_ADDED_ON }));
     const { getQueue } = setSonarrHistory({ records: [...PACK_EPISODES.map(packImport), ...packGrabs] });
     const result = await runDownloadCleanerCycle({ dryRun: false, triggeredBy: 'auto' });
     expect(result).toMatchObject({ succeeded: 3, failed: 0 });
     expect(deleteTorrent).toHaveBeenCalledTimes(3);
-    // Once for the evaluation pass, once for the pre-delete revalidation.
-    expect(getQueue).toHaveBeenCalledTimes(2);
+    expect(getQueue).toHaveBeenCalledTimes(1 + 3);
+  });
+
+  it('does not let an earlier removal\'s queue read vouch for a later one', async () => {
+    mocks.ruleFindMany.mockResolvedValue([importedRule()]);
+    const deleteTorrent = setRemovableTorrents(torrent({ hash: 'first', ratio: 0.5, added_on: PACK_ADDED_ON }), torrent({ hash: 'second', ratio: 0.5, added_on: PACK_ADDED_ON }));
+    const { getQueue } = setSonarrHistory({ records: [...PACK_EPISODES.map(packImport), ...packGrabs] });
+    // Evaluation and the first revalidation see an empty queue; by the second
+    // revalidation the arr is working on both downloads again.
+    const empty = { records: [], totalRecords: 0 };
+    getQueue.mockResolvedValueOnce(empty).mockResolvedValueOnce(empty).mockResolvedValue({
+      records: ['FIRST', 'SECOND'].map((downloadId) => ({ downloadId, trackedDownloadState: 'importBlocked' })), totalRecords: 2,
+    });
+    const result = await runDownloadCleanerCycle({ dryRun: false, triggeredBy: 'auto' });
+    expect(result).toMatchObject({ succeeded: 1, failed: 1 });
+    expect(result.outcomes.map((o) => o.status).sort()).toEqual(['stale', 'succeeded']);
+    expect(deleteTorrent).toHaveBeenCalledTimes(1);
   });
 
   it('keeps a download an arr queue still lists, whatever its history says', async () => {

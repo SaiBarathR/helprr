@@ -15,7 +15,6 @@ import {
   buildSeedingReason,
   createImportConfirmer,
   formatError,
-  ImportConfirmer,
   matchesIgnoredPatterns,
   matchesPrivacy,
   matchesTrackerDomain,
@@ -425,17 +424,9 @@ export async function runDownloadCleanerCycle(opts: RunOptions): Promise<Downloa
       }
     }
   } else {
-    // Revalidation must see current arr state, not the evaluation pass's
-    // snapshot: a fresh confirmer, built on first use and shared by every
-    // removal in this cycle so each arr queue is still read only once.
-    let revalidationConfirmer: Promise<ImportConfirmer> | null = null;
-    const reconfirmImported: ImportConfirmer = async (hash, addedOnEpochSeconds) => {
-      revalidationConfirmer ??= loadArrClients().then(createImportConfirmer);
-      return (await revalidationConfirmer)(hash, addedOnEpochSeconds);
-    };
     await processWithLimit(decisions, CLEANUP_CONCURRENCY, async (d) => {
       try {
-        const revalidation = await revalidateDownloadDecision(d, configFingerprint, scopeFingerprint, reconfirmImported);
+        const revalidation = await revalidateDownloadDecision(d, configFingerprint, scopeFingerprint);
         const outcome = revalidation.ok
           ? await executeDownloadCleanerRemoval(revalidation.decision, opts.triggeredBy, opts.previewId)
           : await recordDownloadRevalidationOutcome(d, revalidation, opts.triggeredBy, opts.previewId);
@@ -670,7 +661,6 @@ async function revalidateDownloadDecision(
   expected: DownloadDecision,
   expectedConfigFingerprint: string,
   expectedScopeFingerprint: string,
-  confirmImported: ImportConfirmer,
 ): Promise<DownloadRevalidation> {
   try {
     const [config, scopeFingerprint] = await Promise.all([
@@ -712,7 +702,9 @@ async function revalidateDownloadDecision(
       return { ok: false, status: 'stale', message: 'Torrent no longer meets the reviewed threshold', errorMessage: 'Cleanup threshold changed after preview' };
     }
     if (rule.requireImportedConfirmation) {
-      const confirmation = await confirmImported(torrent.hash, torrent.added_on);
+      // A fresh confirmer for this one removal: neither the evaluation pass's
+      // arr queue snapshot nor an earlier removal's may vouch for this delete.
+      const confirmation = await createImportConfirmer(await loadArrClients())(torrent.hash, torrent.added_on);
       if (confirmation.status !== 'imported') {
         return { ok: false, status: 'stale', message: 'Import confirmation is no longer available', errorMessage: 'Import confirmation changed after preview' };
       }

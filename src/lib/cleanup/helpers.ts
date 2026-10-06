@@ -457,7 +457,9 @@ function readImportHistory(
  * outage is surfaced instead of staying silent.
  *
  * One confirmer serves one evaluation pass: each arr queue is read once, on
- * first use, and shared by every torrent checked. History is read per torrent,
+ * first use, and shared by every torrent checked. That snapshot ages, so the
+ * pre-delete revalidation builds a fresh confirmer per removal instead of
+ * reusing one. History is read per torrent,
  * filtered to its downloadId and paged to the end — a truncated read would
  * drop the oldest rows, which are exactly the grabbed rows being accounted
  * against.
