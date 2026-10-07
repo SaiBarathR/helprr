@@ -5,6 +5,20 @@ All notable changes to Helprr are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.1] - 2026-10-08
+
+### Fixed
+
+- Chrome and other Chromium browsers, on desktop and Android, drew text
+  subtitles (SRT, WebVTT) through the seek bar while the player controls were
+  showing. The subtitle now sits just above the controls, or above an open
+  panel, as it already did in Safari.
+- A single tap on the player's seek bar in Safari on iPhone and iPad did not
+  seek: the time preview stayed on screen and the next touch jumped to the
+  earlier tap's position. A tap now seeks straight to where it lands.
+- Skip Intro and Next episode covered the playback speed, quality, and subtitle
+  delay controls of an open player panel. They hide while a panel is open.
+
 ## [1.6.0] - 2026-10-07
 
 ### Added
