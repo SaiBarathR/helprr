@@ -32,11 +32,13 @@ import {
   useJellyfinPlayback,
 } from '@/components/jellyfin-streaming/playback-provider';
 const QueuePanel = dynamic(() => import('@/components/jellyfin-streaming/queue-panel').then((module) => module.QueuePanel));
+import { LiveBadge } from '@/components/jellyfin-streaming/live-badge';
 import { usePlayerSheet } from '@/components/jellyfin-streaming/use-player-sheet';
 import { toggleFullscreen } from '@/lib/jellyfin-playback/browser';
 import { bitrateOptions } from '@/lib/jellyfin-playback/device-profile';
 import { formatClock, ticksToSeconds } from '@/lib/jellyfin-playback/device';
 import { jellyfinPosterUrl } from '@/lib/jellyfin-playback/image';
+import { isLiveStream } from '@/lib/jellyfin-playback/live-stream';
 import { activeLyricIndex, normalizeJellyfinLyrics } from '@/lib/jellyfin-playback/lyrics';
 import { FadeInImage } from '@/components/media/fade-in-image';
 import { cn } from '@/lib/utils';
@@ -97,6 +99,8 @@ export function VideoStage({ mediaContainer }: { mediaContainer: HTMLDivElement 
   const isActive = playback.status !== 'idle' && Boolean(playback.item);
   const isVideo = isActive && !isAudio;
   const expanded = playback.videoExpanded && isActive;
+  // A broadcast has no length: nothing below offers a position inside one.
+  const live = isLiveStream(playback.item, playback.stream);
   const sheet = usePlayerSheet(isVideo && expanded);
   const visualExpanded = expanded || sheet.present;
 
@@ -585,32 +589,38 @@ export function VideoStage({ mediaContainer }: { mediaContainer: HTMLDivElement 
                       controls with the times on a third row of their own.
                       The site shows remaining only — elapsed is kept here
                       because dropping a readout is a loss, not a restyle. */}
-                  <div className="flex items-center gap-3 pb-1 text-[11px] tabular-nums text-white/70 md:pb-8">
-                    <span>{formatClock(playback.positionSeconds)}</span>
-                    <div className="min-w-0 flex-1">
-                      <SeekBar
-                        positionSeconds={playback.positionSeconds}
-                        durationSeconds={playback.durationSeconds}
-                        bufferedSeconds={bufferedSeconds}
-                        chapters={chapters}
-                        onSeek={playback.seek}
-                        trickplayAt={trickplayAt}
-                      />
+                  {live ? (
+                    <div className="pb-1 text-white md:pb-8"><LiveBadge /></div>
+                  ) : (
+                    <div className="flex items-center gap-3 pb-1 text-[11px] tabular-nums text-white/70 md:pb-8">
+                      <span>{formatClock(playback.positionSeconds)}</span>
+                      <div className="min-w-0 flex-1">
+                        <SeekBar
+                          positionSeconds={playback.positionSeconds}
+                          durationSeconds={playback.durationSeconds}
+                          bufferedSeconds={bufferedSeconds}
+                          chapters={chapters}
+                          onSeek={playback.seek}
+                          trickplayAt={trickplayAt}
+                        />
+                      </div>
+                      <span>
+                        {playback.durationSeconds > 0
+                          ? `-${formatClock(Math.max(0, playback.durationSeconds - playback.positionSeconds))}`
+                          : formatClock(playback.durationSeconds)}
+                      </span>
                     </div>
-                    <span>
-                      {playback.durationSeconds > 0
-                        ? `-${formatClock(Math.max(0, playback.durationSeconds - playback.positionSeconds))}`
-                        : formatClock(playback.durationSeconds)}
-                    </span>
-                  </div>
+                  )}
 
                   {/* Eight buttons need ~324px with the roomy gaps; tighter gaps on
                       phones keep the gear on screen at 344px. */}
                   <div className="flex items-center justify-between gap-1 sm:gap-2">
                     <div className="flex items-center gap-0.5 sm:gap-1">
-                      <Button variant="ghost" size="icon" className="text-white" onClick={() => playback.skip(-10)} aria-label="Back 10 seconds">
-                        <SkipBack />
-                      </Button>
+                      {!live && (
+                        <Button variant="ghost" size="icon" className="text-white" onClick={() => playback.skip(-10)} aria-label="Back 10 seconds">
+                          <SkipBack />
+                        </Button>
+                      )}
                       <Button
                         variant="ghost"
                         size="icon-lg"
@@ -622,9 +632,11 @@ export function VideoStage({ mediaContainer }: { mediaContainer: HTMLDivElement 
                           ? <Play className="size-7 fill-current" />
                           : <Pause className="size-7 fill-current" />}
                       </Button>
-                      <Button variant="ghost" size="icon" className="text-white" onClick={() => playback.skip(10)} aria-label="Forward 10 seconds">
-                        <SkipForward />
-                      </Button>
+                      {!live && (
+                        <Button variant="ghost" size="icon" className="text-white" onClick={() => playback.skip(10)} aria-label="Forward 10 seconds">
+                          <SkipForward />
+                        </Button>
+                      )}
                       <Button variant="ghost" size="icon" className="text-white" onClick={() => playback.setMuted(!playback.muted)} aria-label={playback.muted ? 'Unmute' : 'Mute'}>
                         {playback.muted || playback.volume === 0 ? <VolumeX /> : <Volume2 />}
                       </Button>
@@ -699,9 +711,13 @@ export function VideoStage({ mediaContainer }: { mediaContainer: HTMLDivElement 
                 <Button variant="ghost" size="icon-xs" className="text-white" onClick={(event) => { event.stopPropagation(); playback.togglePause(); }}>
                   {playback.status === 'paused' ? <Play className="fill-current" /> : <Pause className="fill-current" />}
                 </Button>
-                <div className="h-0.5 flex-1 rounded bg-white/20">
-                  <div className="h-full rounded bg-[var(--hpr-seek)]" style={{ width: `${progress * 100}%` }} />
-                </div>
+                {live ? (
+                  <LiveBadge className="flex-1 justify-center text-white" />
+                ) : (
+                  <div className="h-0.5 flex-1 rounded bg-white/20">
+                    <div className="h-full rounded bg-[var(--hpr-seek)]" style={{ width: `${progress * 100}%` }} />
+                  </div>
+                )}
                 <Button variant="ghost" size="icon-xs" className="text-white" onClick={(event) => { event.stopPropagation(); void playback.stop(); }}>
                   <X />
                 </Button>
@@ -731,18 +747,22 @@ export function VideoStage({ mediaContainer }: { mediaContainer: HTMLDivElement 
               <p className="text-xl font-semibold">{playback.item.Name}</p>
               <p className="text-sm text-muted-foreground">{playback.item.Artists?.join(', ') || playback.item.AlbumArtist}</p>
             </div>
-            <div className="w-full max-w-md space-y-2">
-              <SeekBar
-                bare
-                positionSeconds={playback.positionSeconds}
-                durationSeconds={playback.durationSeconds}
-                onSeek={playback.seek}
-              />
-              <div className="flex justify-between text-[11px] text-muted-foreground">
-                <span>{formatClock(playback.positionSeconds)}</span>
-                <span>{formatClock(playback.durationSeconds)}</span>
+            {live ? (
+              <LiveBadge />
+            ) : (
+              <div className="w-full max-w-md space-y-2">
+                <SeekBar
+                  bare
+                  positionSeconds={playback.positionSeconds}
+                  durationSeconds={playback.durationSeconds}
+                  onSeek={playback.seek}
+                />
+                <div className="flex justify-between text-[11px] text-muted-foreground">
+                  <span>{formatClock(playback.positionSeconds)}</span>
+                  <span>{formatClock(playback.durationSeconds)}</span>
+                </div>
               </div>
-            </div>
+            )}
             <div className="flex items-center gap-3">
               <Button variant="ghost" size="icon" onClick={playback.toggleShuffle} aria-pressed={playback.shuffled}>
                 <Shuffle className={playback.shuffled ? 'text-[var(--hpr-amber)]' : undefined} />

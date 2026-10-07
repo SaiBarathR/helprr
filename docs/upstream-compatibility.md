@@ -136,7 +136,9 @@ week on the builds named with them.
   - **Burned-in PGS.** Present in the picture in both browsers; in Chrome
     confirmed by comparing the same frame with the track on and off.
   - **Live TV.** One channel played in Chrome as a live HLS transcode under a
-    `TvChannel` session. The player shows it with the on-demand seek bar.
+    `TvChannel` session. The player showed it with the on-demand seek bar; it
+    now reads `IsInfiniteStream` from the negotiated source and shows a LIVE
+    indicator instead, with no scrubber, clocks, or ten-second skips.
   - **Defects found, fixed in Helprr 1.6.1.** All three predate `12.2.0` and none
     is a Jellyfin contract change: Chrome drew native text subtitles through the
     seek bar while the controls were up (see the corrected cue-placement entry

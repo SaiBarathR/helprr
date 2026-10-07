@@ -20,6 +20,7 @@ import { jellyfinPosterUrl } from '@/lib/jellyfin-playback/image';
 import { useUIStore } from '@/lib/store';
 import { cueBottomPercent, subtitleCueLine } from '@/lib/jellyfin-playback/subtitle-appearance';
 import { playMedia } from '@/lib/jellyfin-playback/play-media';
+import { isLiveStream } from '@/lib/jellyfin-playback/live-stream';
 import { getQueryClient } from '@/lib/query-client';
 
 export type RepeatMode = 'RepeatNone' | 'RepeatAll' | 'RepeatOne';
@@ -1427,6 +1428,9 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     const el = mediaRef.current;
     const current = streamRef.current;
     if (!el || !current) return;
+    // A broadcast has no position to move to. Refusing here covers every way
+    // in: the skips, Previous, the keyboard and the lock-screen controls.
+    if (isLiveStream(current.item, current)) return;
     const isHls = current.mimeType.toLowerCase().includes('mpegurl') || current.mediaUrl.includes('.m3u8');
     if (current.playMethod === 'Transcode' && !isHls) {
       void (async () => {
@@ -1478,7 +1482,11 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
   }, [repeat, startItem, stop]);
 
   const previous = useCallback(async () => {
-    if (positionRef.current > 5) {
+    // Rewinding is for a file. A broadcast is always "past five seconds" and
+    // cannot be rewound, so it goes straight to the item before it.
+    const current = streamRef.current;
+    const live = current ? isLiveStream(current.item, current) : false;
+    if (!live && positionRef.current > 5) {
       seek(0);
       return;
     }
@@ -1833,12 +1841,20 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     });
     navigator.mediaSession.setActionHandler('previoustrack', () => { void transportRef.current.previous(); });
     navigator.mediaSession.setActionHandler('nexttrack', () => { void transportRef.current.next(); });
-    navigator.mediaSession.setActionHandler('seekbackward', () => transportRef.current.skip(-10));
-    navigator.mediaSession.setActionHandler('seekforward', () => transportRef.current.skip(10));
-    navigator.mediaSession.setActionHandler('seekto', (details) => {
+  }, []);
+
+  // The seek controls are registered apart from the rest because a broadcast
+  // must not offer them: a handler left in place puts dead skip buttons on the
+  // lock screen.
+  const live = isLiveStream(item, stream);
+  useEffect(() => {
+    if (typeof navigator === 'undefined' || !navigator.mediaSession) return;
+    navigator.mediaSession.setActionHandler('seekbackward', live ? null : () => transportRef.current.skip(-10));
+    navigator.mediaSession.setActionHandler('seekforward', live ? null : () => transportRef.current.skip(10));
+    navigator.mediaSession.setActionHandler('seekto', live ? null : (details) => {
       if (typeof details.seekTime === 'number') transportRef.current.seek(details.seekTime);
     });
-  }, []);
+  }, [live]);
 
   const setVolume = useCallback((value: number) => {
     const el = mediaRef.current;

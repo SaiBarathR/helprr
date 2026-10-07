@@ -7,6 +7,7 @@ import {
   configureLogger,
   flushPendingWrites,
   getLoggerMetrics,
+  isClientAbort,
   searchLogs,
   writeLog,
 } from '@/lib/logger';
@@ -207,5 +208,26 @@ describe('batched logger persistence', () => {
     const entries = await searchLogs({ q: 'searchable pending', limit: 10 });
 
     expect(entries.map((entry) => entry.message)).toContain('searchable pending entry');
+  });
+});
+
+describe('isClientAbort', () => {
+  function errorWithCode(message: string, code?: string): Error {
+    return Object.assign(new Error(message), code ? { code } : {});
+  }
+
+  it('recognises the error Node raises when a client hangs up mid-response', () => {
+    // node:_http_server abortIncoming: new ConnResetException('aborted').
+    expect(isClientAbort(errorWithCode('aborted', 'ECONNRESET'))).toBe(true);
+  });
+
+  it('leaves every other failure fatal', () => {
+    // A dropped Redis or PostgreSQL socket shares the code but not the message.
+    expect(isClientAbort(errorWithCode('read ECONNRESET', 'ECONNRESET'))).toBe(false);
+    expect(isClientAbort(errorWithCode('aborted'))).toBe(false);
+    expect(isClientAbort(errorWithCode('aborted', 'ERR_STREAM_PREMATURE_CLOSE'))).toBe(false);
+    expect(isClientAbort(new DOMException('This operation was aborted', 'AbortError'))).toBe(false);
+    expect(isClientAbort({ message: 'aborted', code: 'ECONNRESET' })).toBe(false);
+    expect(isClientAbort(undefined)).toBe(false);
   });
 });
