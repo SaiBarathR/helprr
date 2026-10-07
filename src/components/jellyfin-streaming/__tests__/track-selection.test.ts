@@ -372,7 +372,8 @@ describe('whenVideoHasDimensions', () => {
   });
 
   it('runs once, however many events follow', () => {
-    // The element is reused: the next stream's events are not this one's.
+    // Its listeners come off when it runs, so later events on the element,
+    // which the next stream reuses, cannot run it again.
     const el = video(0);
     let runs = 0;
     whenVideoHasDimensions(el, () => { runs += 1; });
