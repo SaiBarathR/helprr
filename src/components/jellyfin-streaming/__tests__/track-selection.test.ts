@@ -178,6 +178,15 @@ describe('applyCueLine', () => {
     expect([cues[0].snapToLines, cues[0].line]).toEqual([true, -2]);
   });
 
+  it('does not raise the container in Chrome when the chrome covers the whole video', () => {
+    // A panel open in a short landscape window. The cue is pinned to the top of
+    // the box, which needs no lineAlign; a raise of the full height would move
+    // it out of the frame.
+    const { track, cues } = trackOf(['first\nsecond'], { lineAlign: 'absent' });
+    expect(applyCueLine(track, -3, 400, 318)).toBe(0);
+    expect([cues[0].snapToLines, cues[0].line]).toEqual([false, 0]);
+  });
+
   it('asks for no lift where the cue can be placed directly', () => {
     for (const lineAlign of ['native', 'ignored'] as const) {
       const { track } = trackOf(['one line'], { lineAlign });

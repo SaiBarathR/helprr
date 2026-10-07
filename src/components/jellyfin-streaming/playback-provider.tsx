@@ -485,8 +485,12 @@ export function applyCueLine(track: TextTrack, line: number, obstruction = 0, vi
     // and changes nothing. Ask the interface, and where it is missing sit the
     // cue on the container's floor and have the caller raise the container.
     if (!('lineAlign' in Object.getPrototypeOf(probe))) {
-      percent = null;
-      lift = obstruction;
+      // Not at 0, the chrome covering the whole box: a top anchor is what that
+      // asks for, and raising the container that far takes the cue out of it.
+      if (percent > 0) {
+        percent = null;
+        lift = obstruction;
+      }
     } else {
       probe.snapToLines = false;
       probe.lineAlign = 'end';
@@ -774,7 +778,12 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     }
     try { assRef.current?.dispose?.(); } catch { /* already torn down */ }
     assRef.current = null;
-    if (mediaRef.current) clearTextTracks(mediaRef.current);
+    if (mediaRef.current) {
+      clearTextTracks(mediaRef.current);
+      // The element outlives the track, and a raise left on it would move
+      // whatever cues it shows next.
+      liftCueContainer(mediaRef.current, 0);
+    }
   }, []);
 
   const destroyPlayers = useCallback(() => {
