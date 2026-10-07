@@ -278,6 +278,7 @@ describe('Activity manual import from the queue', () => {
     await act(async () => button('Import')!.click());
     const params = new URLSearchParams((mocks.push.mock.calls[0]?.[0] as string).split('?')[1]);
     expect(params.get('downloadId')).toBe('D');
+    expect(params.get('instanceId')).toBe('son-1');
     // No series on the queue record: the import page takes it from the files instead.
     expect(params.has('seriesId')).toBe(false);
   });

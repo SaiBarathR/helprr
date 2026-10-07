@@ -111,8 +111,13 @@ function ManualImportContent() {
   // this manual-import episode list shares their cache and picks up
   // patchEpisodesInCache monitor/file updates. instanceId '' → undefined normalizes
   // to 'default', matching how those views key off the ?instance= param.
-  // The series whose episodes the picker offers: the one of the file being edited.
+  // The series whose episodes the picker offers: the link's when it carries
+  // one, otherwise that of the file being edited.
   const pickerSeriesId = seriesIdOf(files[pickerFileIndex]);
+  // On the file list no file is being edited, so its Refresh is offered only
+  // when every file belongs to one series (a mixed download refreshes per file,
+  // from the picker).
+  const listSeriesId = files.every((f) => seriesIdOf(f) === pickerSeriesId) ? pickerSeriesId : undefined;
   const episodesKey = queryKeys.episodes(Number(pickerSeriesId), instanceId || undefined);
   const { data: allEpisodes = [] } = useQuery({
     queryKey: episodesKey,
@@ -422,7 +427,7 @@ function ManualImportContent() {
         ) : (
           <div className="py-3 space-y-3">
             {/* Refresh episodes button (Sonarr only) */}
-            {isSonarr && pickerSeriesId && (
+            {isSonarr && listSeriesId && (
               <Button
                 variant="outline"
                 size="sm"

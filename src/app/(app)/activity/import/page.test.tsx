@@ -31,18 +31,23 @@ let queryClient: QueryClient;
 let files: unknown[];
 let requests: string[];
 let submitted: { source: string; files: Array<Record<string, unknown>> } | null;
+let commands: Array<{ url: string; body: Record<string, unknown> }>;
 
 beforeEach(() => {
   (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   files = sonarrFiles;
   requests = [];
   submitted = null;
+  commands = [];
   mocks.back.mockClear(); mocks.track.mockClear();
   vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
     requests.push(url);
+    if (init?.method === 'POST' && url.startsWith('/api/sonarr/command')) { commands.push({ url, body: JSON.parse(String(init.body)) }); return Response.json({}); }
     if (init?.method === 'POST') { submitted = JSON.parse(String(init.body)); return Response.json({ id: 9 }); }
     // Out of order, as the *arr returns them.
     if (url.startsWith('/api/activity/manualimport')) return Response.json([...files].reverse());
+    // Series 48 has its own episodes, so a picker fed from the wrong series is visible.
+    if (url.startsWith('/api/sonarr/48/episodes')) return Response.json([episode(801, 1), episode(802, 2)]);
     if (/^\/api\/sonarr\/\d+\/episodes/.test(url)) return Response.json([episode(501, 1), episode(502, 2), episode(503, 3)]);
     return Response.json({});
   }));
@@ -78,6 +83,10 @@ describe('manual import page', () => {
     expect([...text().matchAll(/S03E0\d/g)].map((m) => m[0])).toEqual(['S03E01', 'S03E02']);
     // The episode picker is fed from the files' series.
     await waitFor(() => expect(requests).toContain('/api/sonarr/47/episodes?instanceId=son-1'));
+    // One series across the download, so the list-level refresh is offered for it.
+    await act(async () => button('Refresh Episodes')!.click());
+    await waitFor(() => expect(commands).toHaveLength(1));
+    expect(commands[0].body).toEqual({ name: 'RefreshSeries', seriesId: 47 });
 
     await act(async () => button('Import 2 Files')!.click());
     await waitFor(() => expect(submitted).not.toBeNull());
@@ -87,6 +96,44 @@ describe('manual import page', () => {
     ]);
     // What Sonarr matched for the file is what it must be told to record.
     expect(submitted!.files[0]).toMatchObject({ releaseGroup: 'grp', indexerFlags: 1, releaseType: 'singleEpisode' });
+  });
+
+  it('edits one file of a mixed download against that file\'s own series', async () => {
+    // Two series in one download, returned out of path order: "Other" sorts before "Show".
+    files = [
+      sonarrFiles[0],
+      { ...sonarrFiles[1], path: '/downloads/pack/Other - 01.mkv', name: 'Other - 01.mkv', relativePath: 'Other - 01.mkv', series: { id: 48, title: 'Other Show' }, episodes: [episode(801, 1)] },
+    ];
+    await renderPage('downloadId=D&source=sonarr&instanceId=son-1&title=Pack');
+    await waitFor(() => expect(text()).toContain('Import 2 Files'));
+    // With two series there is no single one for the list-level refresh to act on.
+    expect(button('Refresh Episodes')).toBeUndefined();
+
+    // Open the picker for the second listed file ("Show - 01", series 47).
+    const change = [...document.querySelectorAll('button')].filter((b) => b.textContent?.includes('Change'));
+    expect(change).toHaveLength(2);
+    await act(async () => change[1].click());
+    await waitFor(() => expect(text()).toContain('Select Episode'));
+    await waitFor(() => expect(text()).toContain('Episode 3'));
+    // Series 47's episodes, not series 48's two.
+    expect(requests).toContain('/api/sonarr/47/episodes?instanceId=son-1');
+
+    // Refresh acts on that file's series and instance.
+    const refresh = [...document.querySelectorAll('button')].find((b) => b.querySelector('svg.lucide-refresh-cw'));
+    await act(async () => refresh!.click());
+    await waitFor(() => expect(commands).toHaveLength(1));
+    expect(commands[0]).toEqual({ url: '/api/sonarr/command?instanceId=son-1', body: { name: 'RefreshSeries', seriesId: 47 } });
+
+    // Pick another episode for it; the other file keeps its own match.
+    const pick = [...document.querySelectorAll('button')].find((b) => b.textContent?.includes('Episode 3'));
+    await act(async () => pick!.click());
+    await waitFor(() => expect(text()).toContain('Import 2 Files'));
+    await act(async () => button('Import 2 Files')!.click());
+    await waitFor(() => expect(submitted).not.toBeNull());
+    expect(submitted!.files).toEqual([
+      expect.objectContaining({ path: '/downloads/pack/Other - 01.mkv', seriesId: 48, episodeIds: [801] }),
+      expect.objectContaining({ path: '/downloads/pack/Show - 01.mkv', seriesId: 47, episodeIds: [503] }),
+    ]);
   });
 
   it('keeps using the queue item\'s series when the link carries one', async () => {
