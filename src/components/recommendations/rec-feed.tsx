@@ -22,8 +22,9 @@ import type { RecEventTracker } from './use-rec-events';
 // allows www.youtube.com frames).
 
 // Viewport height minus the mobile header + sticky mode toolbar (--header-height
-// is 0 at md+, where only the toolbar sits above the feed).
-const CARD_HEIGHT = 'h-[calc(100dvh-var(--header-height,0px)-58px)] md:h-[calc(100dvh-78px)]';
+// is 0 at md+, where only the toolbar sits above the feed), and minus the tab
+// bar and now-playing bar below it (--footer-cover), which hid the last actions.
+const CARD_HEIGHT = 'h-[calc(100dvh-var(--header-height,0px)-58px-var(--footer-cover,0px))] md:h-[calc(100dvh-78px-var(--footer-cover,0px))]';
 const CARD_SNAP_MARGIN = 'scroll-mt-[calc(var(--header-height,0px)+58px)] md:scroll-mt-[78px]';
 
 interface RecFeedProps {
