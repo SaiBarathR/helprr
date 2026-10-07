@@ -464,23 +464,35 @@ export function cueLineFor(line: number, text: string): number {
  * One writer, deliberately: jellyfin-web sets `cue.line` here and nowhere else,
  * and a second writer in the player chrome is what used to silently override
  * the viewer's choice.
+ *
+ * Returns how far the caller must raise the element's cue container, in px,
+ * which is non-zero only in an engine that cannot place the cue itself.
  */
-export function applyCueLine(track: TextTrack, line: number, obstruction = 0, videoHeight = 0) {
+export function applyCueLine(track: TextTrack, line: number, obstruction = 0, videoHeight = 0): number {
   const cues = Array.from(track.cues ?? []) as VTTCue[];
-  if (cues.length === 0) return;
+  if (cues.length === 0) return 0;
 
   // While the chrome is up, place the box's bottom edge against the top of it
   // rather than counting rows from the viewport floor — see cueBottomPercent.
   let percent = cueBottomPercent(videoHeight, obstruction);
+  let lift = 0;
   if (percent !== null) {
     const probe = cues[0];
-    probe.snapToLines = false;
-    probe.lineAlign = 'end';
-    // A UA without `lineAlign` leaves it 'start', where a percentage line
-    // anchors the box's *top* and pushes it further into the chrome — worse
-    // than the row placement it replaced. Both Safari 26 and Chrome on Android
-    // honour it; anything that does not falls back rather than degrades.
-    if (probe.lineAlign !== 'end') percent = null;
+    // A UA without `lineAlign` anchors a percentage line at the box's *top*,
+    // which draws the cue through the seek bar. Blink is that UA, and writing
+    // the property and reading it back cannot catch it: with no `lineAlign` on
+    // the cue interface the write just adds a plain property that reads 'end'
+    // and changes nothing. Ask the interface, and where it is missing sit the
+    // cue on the container's floor and have the caller raise the container.
+    if (!('lineAlign' in Object.getPrototypeOf(probe))) {
+      percent = null;
+      lift = obstruction;
+    } else {
+      probe.snapToLines = false;
+      probe.lineAlign = 'end';
+      // The attribute exists but does not take: rows, as before the chrome.
+      if (probe.lineAlign !== 'end') percent = null;
+    }
   }
 
   for (const cue of cues) {
@@ -500,7 +512,22 @@ export function applyCueLine(track: TextTrack, line: number, obstruction = 0, vi
     // Reset too: a cue left anchored 'end' by the branch above would otherwise
     // read its row from the wrong edge of the box.
     cue.lineAlign = 'start';
-    cue.line = cueLineFor(line, cue.text);
+    cue.line = cueLineFor(lift > 0 ? -1 : line, cue.text);
+  }
+  return lift;
+}
+
+/**
+ * Raise the element's cue container, for the engine that cannot anchor a cue
+ * by its bottom edge. The rule that reads this is in globals.css.
+ */
+function liftCueContainer(el: HTMLMediaElement, px: number) {
+  if (px > 0) {
+    el.dataset.cueLift = '';
+    el.style.setProperty('--hpr-cue-lift', `${px}px`);
+  } else {
+    delete el.dataset.cueLift;
+    el.style.removeProperty('--hpr-cue-lift');
   }
 }
 
@@ -856,7 +883,7 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
       textTrack.mode = 'showing';
       // ::cue cannot move a cue box, so the vertical-position setting has to be
       // written onto the cues themselves — the same lever jellyfin-web uses.
-      applyCueLine(textTrack, cueLineRef.current, obstructionRef.current, el.getBoundingClientRect().height);
+      liftCueContainer(el, applyCueLine(textTrack, cueLineRef.current, obstructionRef.current, el.getBoundingClientRect().height));
     };
     track.addEventListener('load', enable);
     enable();
@@ -1658,7 +1685,7 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     const el = mediaRef.current;
     const textTrack = el?.textTracks?.[0];
     if (!el || !textTrack) return;
-    applyCueLine(textTrack, cueLineRef.current, obstructionRef.current, el.getBoundingClientRect().height);
+    liftCueContainer(el, applyCueLine(textTrack, cueLineRef.current, obstructionRef.current, el.getBoundingClientRect().height));
   }, [mediaRef]);
 
   useEffect(() => {

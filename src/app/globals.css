@@ -842,6 +842,15 @@ html[data-watch-skin='cinematic']:has(.hpr-watch) {
   to { opacity: 0; transform: translateY(8px); }
 }
 
+/* Blink has no VTTCue.lineAlign, so a subtitle cue cannot be anchored by its
+   bottom edge there, and a percentage line would land its top on the player
+   chrome. The player moves the whole cue container up instead, by the height
+   of the chrome (applyCueLine). Scoped to the attribute so engines that place
+   the cue themselves keep an untransformed container. */
+video[data-cue-lift]::-webkit-media-text-track-container {
+  transform: translateY(calc(-1 * var(--hpr-cue-lift, 0px)));
+}
+
 .hpr-watch-player-enter[data-closing='true'] {
   animation: watch-player-out 160ms ease-in forwards;
   pointer-events: none;
