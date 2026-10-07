@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyCueLine, cueLineFor, positionToReport, reserveStart, subtitleNeedsOwnStream, waitForLayout } from '@/components/jellyfin-streaming/playback-provider';
+import { applyCueLine, cueLineFor, positionToReport, reserveStart, subtitleNeedsOwnStream, waitForLayout, whenVideoHasDimensions } from '@/components/jellyfin-streaming/playback-provider';
 import type { HelprrStreamInfo } from '@/types/jellyfin-streaming';
 
 /**
@@ -326,5 +326,69 @@ describe('waitForLayout', () => {
       await waitForLayout(sizedElement(0, 0), 1);
       expect(instances[0].disconnected).toBe(true);
     } finally { restore(); }
+  });
+});
+
+/**
+ * libass sizes its canvas once, at `loadedmetadata`, and keeps it hidden until
+ * then. Safari's native HLS fires that event with a `videoWidth` of 0, so on an
+ * iPhone the canvas was never sized and every ASS track was burned in instead.
+ * The player now waits for real dimensions before it re-sizes libass and before
+ * it starts the clock on the check that libass is rendering.
+ */
+describe('whenVideoHasDimensions', () => {
+  /** A video element reduced to what the helper reads, backed by a real EventTarget. */
+  function video(videoWidth: number) {
+    return Object.assign(new EventTarget(), { videoWidth }) as unknown as HTMLVideoElement & { videoWidth: number };
+  }
+
+  it('runs at once when the video already has dimensions', () => {
+    let runs = 0;
+    whenVideoHasDimensions(video(1920), () => { runs += 1; });
+    expect(runs).toBe(1);
+  });
+
+  it('waits past a loadedmetadata that arrives without dimensions', () => {
+    // Safari, native HLS: resize and loadedmetadata at width 0, then loadeddata at 1920.
+    const el = video(0);
+    let runs = 0;
+    whenVideoHasDimensions(el, () => { runs += 1; });
+    el.dispatchEvent(new Event('resize'));
+    el.dispatchEvent(new Event('loadedmetadata'));
+    expect(runs).toBe(0);
+
+    el.videoWidth = 1920;
+    el.dispatchEvent(new Event('loadeddata'));
+    expect(runs).toBe(1);
+  });
+
+  it('runs on loadedmetadata where the dimensions come with it', () => {
+    const el = video(0);
+    let runs = 0;
+    whenVideoHasDimensions(el, () => { runs += 1; });
+    el.videoWidth = 1920;
+    el.dispatchEvent(new Event('loadedmetadata'));
+    expect(runs).toBe(1);
+  });
+
+  it('runs once, however many events follow', () => {
+    // Its listeners come off when it runs, so later events on the element,
+    // which the next stream reuses, cannot run it again.
+    const el = video(0);
+    let runs = 0;
+    whenVideoHasDimensions(el, () => { runs += 1; });
+    el.videoWidth = 1920;
+    for (const type of ['loadedmetadata', 'loadeddata', 'resize', 'loadedmetadata']) el.dispatchEvent(new Event(type));
+    expect(runs).toBe(1);
+  });
+
+  it('never runs once cancelled', () => {
+    const el = video(0);
+    let runs = 0;
+    const cancel = whenVideoHasDimensions(el, () => { runs += 1; });
+    cancel();
+    el.videoWidth = 1920;
+    for (const type of ['loadedmetadata', 'loadeddata', 'resize']) el.dispatchEvent(new Event(type));
+    expect(runs).toBe(0);
   });
 });
