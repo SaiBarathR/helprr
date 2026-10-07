@@ -1439,7 +1439,11 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
   }, [repeat, startItem, stop]);
 
   const previous = useCallback(async () => {
-    if (positionRef.current > 5) {
+    // Rewinding is for a file. A broadcast is always "past five seconds" and
+    // cannot be rewound, so it goes straight to the item before it.
+    const current = streamRef.current;
+    const live = current ? isLiveStream(current.item, current) : false;
+    if (!live && positionRef.current > 5) {
       seek(0);
       return;
     }
