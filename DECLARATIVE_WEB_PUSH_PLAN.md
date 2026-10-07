@@ -51,7 +51,7 @@ declarativePush Boolean @default(false)
 Per-device (not per-user) because the problem is device-specific — the same account's Android
 phone should keep the richer SW path (action buttons, custom handling).
 
-`npm run db:push` — additive, no migration risk.
+`npm run db:migrate` — an additive column; commit the generated migration.
 
 ### 2. Server — `src/lib/notification-service.ts`
 
@@ -80,7 +80,8 @@ Notes:
   updates without the SW's `/api/badges` fetch. Requires a per-user count query at send time;
   skip in phase 1 to keep the fan-out cheap.
 - Payload size: iOS limit is 4KB; the dual-format payload roughly doubles the envelope — keep
-  `data`/`actions` out of the declarative branch and truncate bodies as today.
+  `data`/`actions` out of the declarative branch and truncate bodies there (the sender does
+  not truncate today).
 
 ### 3. Service worker
 
@@ -117,7 +118,7 @@ On a declarative-enabled device the SW `push` handler still fires (iOS 18.4+ beh
 
 ## Implementation order
 
-1. Schema field + `db:push` → verify: Prisma client typechecks.
+1. Schema field + generated migration → verify: Prisma client typechecks.
 2. Payload branch in `sendPushNotification` → verify: unit-level check of payload JSON for both
    modes; send a test push (`POST /api/notifications/test`) to an iOS 18.4+ device with the
    flag on and confirm delivery with the app force-quit *and* with the SW deliberately broken

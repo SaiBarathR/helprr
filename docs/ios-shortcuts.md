@@ -39,7 +39,8 @@ origin, and the `<…>` placeholders with real values.
 ### Share-sheet add (no Shortcut needed)
 
 Helprr registers a **share target**. Share a TMDB, IMDb, or TVDB link from any app into Helprr and
-it will add the item — this appears in the iOS share sheet once Helprr is installed.
+it opens the match, where you choose **Add to Watchlist** or **Request via Seerr** — this appears in
+the iOS share sheet once Helprr is installed.
 
 ## Limits
 

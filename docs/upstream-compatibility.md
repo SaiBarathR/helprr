@@ -1,11 +1,17 @@
 # Upstream compatibility
 
-Last verified: **2026-07-14**, from Helprr's isolated development stack during the
-Helprr 1.1.0 qualification and release. The `JELLYFIN` row was re-verified on
-**2026-08-28** for the in-app Watch and playback work; see
-[Jellyfin in-app playback](#jellyfin-in-app-playback) for what that covered and
-what it did not. Jellyfin **12.0.0** was checked on **2026-09-13** with the
-qualification limits below. Every other row still carries its 2026-07-14 evidence.
+Last verified: **2026-10-07**, from Helprr's isolated development stack on the
+Helprr 1.6.0 release commit. Every product version below was read back that day
+through Helprr's own connection test, and every integration answered a live read.
+Five services had moved to a newer version since the previous check, so their rows
+now name both versions and say which evidence belongs to which; see
+[2026-10-07 re-verification](#2026-10-07-re-verification) for what was and was not
+re-run.
+
+Earlier checks: the first matrix dates from **2026-07-14** (Helprr 1.1.0). The
+`JELLYFIN` row was re-verified on **2026-08-28** for the in-app Watch and playback
+work; see [Jellyfin in-app playback](#jellyfin-in-app-playback). Jellyfin
+**12.0.0** was checked on **2026-09-13** with the qualification limits below.
 
 ## How to read this matrix
 
@@ -24,20 +30,71 @@ product release number.
 
 | Service type | Integration | API contract used by Helprr | Exact version verified | Verification evidence |
 | --- | --- | --- | --- | --- |
-| `SONARR` | Sonarr | REST `/api/v3` | `4.0.19.2979` (two instances) | Authenticated system-status probe; live queue, cleanup, file, and whole-series operations |
-| `RADARR` | Radarr | REST `/api/v3` | `6.2.1.10461` (two instances) | Authenticated system-status probe; live cleanup and whole-movie operations |
-| `LIDARR` | Lidarr | REST `/api/v1` | `3.1.2.4913` | Authenticated system-status probe; live track-file and album operations |
-| `QBITTORRENT` | qBittorrent | Web API `/api/v2` | `v5.1.4` | Authenticated app-version probe; live queue, cleanup, keep-data, and delete-data operations |
-| `PROWLARR` | Prowlarr | REST `/api/v1` | `2.4.0.5397` | Authenticated system-status probe |
-| `JELLYFIN` | Jellyfin | Unversioned REST routes such as `/System/Info`, `/Items`, `/Items/{id}/PlaybackInfo`, `/Videos/{id}/…`, `/Audio/{id}/…`, `/Sessions/Playing*`, `/Users/AuthenticateByName`, `/UserItems/{id}/UserData` | `12.0.0`; `10.11.11` (earlier qualification) | Live v12 API, catalog, and Chrome HLS playback checks with legacy authorization disabled (see below) |
-| `TMDB` | TMDB | Hosted API `v3` | No product version exposed | Authenticated `/configuration` request succeeded |
-| `ANILIST` | AniList | Hosted GraphQL API at `graphql.anilist.co` | No product version exposed | OAuth-authenticated Viewer query succeeded |
-| `SEERR` | Seerr | REST `/api/v1` | `3.3.0` | Authenticated current-user and status probes |
+| `SONARR` | Sonarr | REST `/api/v3` | `4.0.20.3014` (two instances); `4.0.19.2979` (earlier qualification) | On `4.0.20.3014`: system-status probe; live series, queue, history, and wanted reads; unmatched-download queue listing, manual-import scan, series re-evaluation, and manual import (see below). On `4.0.19.2979`: live cleanup, file, and whole-series operations |
+| `RADARR` | Radarr | REST `/api/v3` | `6.4.4.10685` (two instances); `6.2.1.10461` (earlier qualification) | On `6.4.4.10685`: system-status probe; live movie-list and quality-profile reads; paged reads checked. On `6.2.1.10461`: live cleanup and whole-movie operations |
+| `LIDARR` | Lidarr | REST `/api/v1` | `3.1.2.4913` | Authenticated system-status probe; live track-file and album operations. Artist-list and health reads re-run 2026-10-07 |
+| `QBITTORRENT` | qBittorrent | Web API `/api/v2` | `v5.1.4` | Authenticated app-version probe; live queue, cleanup, keep-data, and delete-data operations. Torrent-list, transfer-summary, and category reads re-run 2026-10-07 |
+| `PROWLARR` | Prowlarr | REST `/api/v1` | `2.5.2.5491`; `2.4.0.5397` (earlier qualification) | Authenticated system-status probe on both; live indexer-list and status reads on `2.5.2.5491` |
+| `JELLYFIN` | Jellyfin | Unversioned REST routes such as `/System/Info`, `/Items`, `/Items/{id}/PlaybackInfo`, `/Videos/{id}/…`, `/Audio/{id}/…`, `/Sessions/Playing*`, `/Users/AuthenticateByName`, `/UserItems/{id}/UserData` | `12.2.0`; `12.0.0` and `10.11.11` (earlier qualifications) | On `12.2.0`: system-info probe, sign-in, library, count, and session reads, and one transcoded playback started and stopped (see below). On `12.0.0`: live v12 API, catalog, and Chrome HLS playback checks with legacy authorization disabled (see below) |
+| `TMDB` | TMDB | Hosted API `v3` | No product version exposed | Authenticated `/configuration` request succeeded; Discover read re-run 2026-10-07 |
+| `ANILIST` | AniList | Hosted GraphQL API at `graphql.anilist.co` | No product version exposed | OAuth-authenticated Viewer query succeeded; Anime home read re-run 2026-10-07 |
+| `SEERR` | Seerr | REST `/api/v1` | `3.4.1`; `3.3.0` (earlier qualification) | Authenticated current-user and status probes on both; live request-list and user-list reads on `3.4.1` |
 
 The live probes above used the isolated Helprr development database and application.
 They made read-only status, configuration, or viewer requests. The destructive-flow
 evidence refers to intentionally created test downloads/media and did not target the
-stable Helprr database.
+stable Helprr database. The 2026-10-07 manual imports are the exception: they imported
+real hand-added downloads into the library, on purpose, through a local build.
+
+### 2026-10-07 re-verification
+
+Versions and live reads were taken from the development stack on Helprr 1.6.0
+(`2ea86dc`), signed in as an administrator. The feature flows ran earlier the same
+week on the builds named with them.
+
+- **Versions.** Each version in the matrix is what `POST /api/services/test` returned
+  that day, the same probe as **Settings → Instances → Test**. Sonarr, Radarr,
+  Prowlarr, Jellyfin, and Seerr had moved since the previous check; Lidarr and
+  qBittorrent had not. AniList signs in with OAuth and has no connection test, and
+  TMDB reports no version.
+- **Live reads.** Through Helprr's own routes, each of these returned live data:
+  Sonarr series, quality profiles, queue, history, and wanted; Radarr movies and
+  quality profiles; Lidarr artists and health; qBittorrent torrents, transfer
+  summary, and categories; Prowlarr indexers and status; Jellyfin system info,
+  libraries, counts, and sessions; Seerr requests and users; TMDB Discover; and the
+  AniList-backed Anime home.
+- **Sonarr `4.0.20.3014` feature flows**, exercised on 2026-10-06 and 2026-10-07
+  while building Helprr 1.6.0, on a local build unless noted:
+  - The queue listed a hand-added download Sonarr could not match once Helprr
+    asked for unknown-series items, and polling announced it as "Manual Import
+    Required".
+  - The manual-import scan returned each file's own series, season, and episode.
+    For a pack Sonarr returned as "Unknown Series", its re-evaluation with the
+    series supplied mapped all 25 files.
+  - Two manual imports ran through Helprr, of ten and of 25 files. Sonarr dropped
+    the first from its queue; after the second the Activity badge returned to 0
+    and each file carried its release group.
+  - Paged reads against the live instance honoured page sizes of 1,000 and 5,000,
+    reported totals that matched the rows delivered, and returned history newest
+    first. The same check passed on Radarr `6.4.4.10685`.
+- **Jellyfin `12.2.0`.** Sign-in through `/Users/AuthenticateByName` worked. One
+  transcoded playback was started from Watch on the development server (build
+  `cc3494a`) and one on a local build, both in the installed app on the iOS
+  Simulator (iOS 27). Each advanced, appeared in Now Streaming under the signed-in
+  member with play method Transcode, and was stopped from the now-playing bar.
+- **Not re-run on the newer versions.** These still rest on the earlier
+  qualification named in the matrix:
+  - Download Cleaner and Queue Cleaner removals, and every delete flow, on Sonarr,
+    Radarr, and qBittorrent. The rewritten import confirmation was replayed against
+    real history, not against a live removal.
+  - Radarr's unmatched-download listing and movie chooser, which are covered by
+    tests only: there was no unmatched movie download to try.
+  - Prowlarr and Seerr beyond the reads above.
+  - On Jellyfin `12.2.0`: track switching, subtitles, seeking, quality changes,
+    resume, the catalog and media proxy refusals, Playback Reporting, token
+    revocation, and the token/DeviceId independence that
+    [Jellyfin in-app playback](#jellyfin-in-app-playback) asks to be re-tested
+    after every Jellyfin upgrade.
 
 ### Jellyfin 12 compatibility (2026-09-13)
 

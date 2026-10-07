@@ -35,7 +35,9 @@ are displayed before optional instance names finish loading.
 - PWA precaching excludes optional `public/libass` subtitle engines. The five
   files total 7,699,873 uncompressed bytes and remain available on demand for
   playback. Actual transferred bytes depend on compression and cache state.
-  Offline fallback precaching and authenticated API cache rules are unchanged.
+  Offline fallback precaching is unchanged. Read-only authenticated API responses
+  are served network-first with a two-second timeout and a labelled snapshot that
+  expires five minutes after it was fetched.
 
 ## Verification recorded on 2026-09-06
 

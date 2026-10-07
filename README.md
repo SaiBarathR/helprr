@@ -243,8 +243,9 @@ POSTGRES_PASSWORD
 REDIS_PASSWORD
 APP_PASSWORD
 JWT_SECRET
-TZ=Etc/UTC
 ```
+
+It leaves `TZ` at the template's `Asia/Kolkata`; set it to your own IANA timezone.
 
 `APP_PASSWORD` creates the bootstrap administrator on first boot. Its username is `admin` by default, or the value of `HELPRR_ADMIN_USERNAME`. Changing `APP_PASSWORD` later does **not** change an existing user's password.
 New local Helprr passwords must contain at least 15 characters; existing shorter
@@ -346,25 +347,24 @@ for the complete feature, `edge`, release, promotion, rollback, and hotfix proce
 - Set `TRUST_FORWARDED_PROTO=true` only when that proxy strips and sets forwarded headers itself. This enables correct secure-cookie and client-IP decisions.
 - Set `APP_ORIGIN=https://helprr.example.com` when enabling AniList OAuth in production. It must be a valid HTTPS origin.
 - If the PostgreSQL password contains URL-reserved characters (`@`, `:`, `/`, `?`, `#`, …), set `DATABASE_URL` explicitly with the password percent-encoded.
-- The VAPID keys are runtime configuration: after adding or rotating them, run `docker compose up -d --no-build --no-deps helprr` — no rebuild or data-service restart is needed. Already-subscribed devices re-subscribe automatically on their next endpoint rotation, or manually from **Settings → Notifications**.
+- The VAPID keys are runtime configuration: after adding or rotating them, run `docker compose up -d --no-build --no-deps helprr` — no rebuild or data-service restart is needed. After rotating keys, turn notifications off and on again on each device in **Settings → Notifications**: a subscription made under the old key keeps that key, even when the browser rotates its endpoint.
 
 
 
 ## Local development
 
-Use Node.js **24** to match the Docker image, plus Docker Compose for the local PostgreSQL and Redis services.
+Use Node.js **24** to match the Docker image, plus the isolated development stack's PostgreSQL and Redis services. The stable Compose file publishes no database or Redis port to the host, and local development must not share stable data.
 
-1. Create Compose configuration and start only the data services. Compose reads the project-level `.env`, not `.env.local`.
+1. Generate the development Compose configuration and start only its data services. Compose reads `.env.dev` here, not `.env.local`.
   ```bash
-   cp .env.example .env
-   # Set POSTGRES_PASSWORD and REDIS_PASSWORD in .env first
-   docker compose up -d helprr-db helprr-redis
+   ./scripts/setup-env.sh --dev
+   docker compose --env-file .env.dev -f docker-compose.dev.yml up -d helprr-dev-db helprr-dev-redis
   ```
-2. Create `.env.local` for the Node process. Use host addresses—not Compose service names—and URL-encode the PostgreSQL password if needed.
+2. Create `.env.local` for the Node process. Use the loopback ports the development stack publishes—not Compose service names—with the two passwords generated in `.env.dev`, and URL-encode the PostgreSQL password if needed.
   ```dotenv
-   DATABASE_URL=postgresql://postgres:YOUR_ENCODED_POSTGRES_PASSWORD@localhost:5432/helprr
-   REDIS_URL=redis://localhost:6379
-   REDIS_PASSWORD=YOUR_REDIS_PASSWORD
+   DATABASE_URL=postgresql://postgres:YOUR_ENCODED_HELPRR_DEV_POSTGRES_PASSWORD@localhost:5433/helprr_dev
+   REDIS_URL=redis://localhost:6380
+   REDIS_PASSWORD=YOUR_HELPRR_DEV_REDIS_PASSWORD
    APP_PASSWORD=YOUR_BOOTSTRAP_ADMIN_PASSWORD
    JWT_SECRET=YOUR_32_OR_MORE_CHARACTER_SECRET
    TZ=Etc/UTC
@@ -443,11 +443,11 @@ Generate a pair with:
 npx web-push generate-vapid-keys
 ```
 
-Without a complete VAPID set, Helprr still runs but push notification subscription/delivery is unavailable.
+Without a complete VAPID set, Helprr still runs but push notifications are not delivered.
 
 ### Cache and image tuning
 
-All values below are optional positive integers; invalid or non-positive values fall back to the defaults.
+All numeric values below are optional positive integers; invalid or non-positive values fall back to the defaults.
 
 
 | Variable                          | Default                   | Scenario                                                                                                    |
@@ -603,11 +603,13 @@ data before sharing it.
 ## Backup and restore
 
 Everything Helprr needs to recover lives in PostgreSQL. Redis holds only
-cache and login rate-limit state and never needs to be backed up. The
-in-app settings export (**Settings → Backup**) is a *portable* subset —
+cache, rate-limit, and other short-lived state and never needs to be backed up. The
+in-app settings export (**Settings → Backup & Restore**) is a *portable* subset —
 connections, preferences, rules, watchlists — useful for moving settings
-between installs, but it is **not** a disaster-recovery backup: it does not
-contain users' password hashes, sessions, push subscriptions, or history.
+between installs, but it is **not** a disaster-recovery backup: it never
+contains sessions, push subscriptions, or history, and it carries users'
+password hashes only when both **Users & accounts** and **Include API keys /
+tokens** are selected.
 
 **Back up** (run before every upgrade and on a schedule):
 
@@ -704,7 +706,7 @@ records are retained for 365 days and cleanup history for 90 days:
 
 - **Cleanup** (queue, download, and seeding rules) — can remove downloads from
   qBittorrent *including their files* when a rule says so. Disabled by
-  default; supports dry-run previews, and automatic mode is opt-in per rule.
+  default; supports dry-run previews, and automatic mode is opt-in per cleaner.
 - **Delete movie / series / artist / album** — each has an optional
   "also delete files" choice in its confirmation dialog (off by default).
 - **Delete episode file / track file / movie file** — deletes that file from
@@ -715,8 +717,8 @@ records are retained for 365 days and cleanup history for 90 days:
 - **Manual import** — moves or copies files into your library folders.
 
 If Sonarr/Radarr has a recycle bin configured, *arr file deletions go there
-instead of being removed outright — Helprr records whether that was the case
-in the operation-audit entry.
+instead of being removed outright. For episode-file and movie-file deletions,
+Helprr records whether one was configured in the operation-audit entry.
 
 
 
@@ -764,7 +766,7 @@ docker compose --env-file .env.dev -f docker-compose.dev.yml \
 - Use unique, long secrets and a private network or HTTPS reverse proxy. Do not expose Helprr directly to the public internet without understanding the security implications.
 - Passwords are stored as per-user scrypt hashes. `APP_PASSWORD` seeds/resets only the bootstrap admin; it is not a universal login password.
 - Local and Jellyfin credential requests are limited to 8 KiB; usernames are limited to 64 Unicode characters and passwords to 1,024 UTF-8 bytes. New and reset local passwords use the same byte ceiling. A separate 120-request-per-minute malformed-login backstop deliberately fails closed, so a sufficiently large malformed flood can briefly return 429 to otherwise valid sign-in attempts.
-- Watching uses each member's own Jellyfin access token, not the Jellyfin admin API key, so a playback session is never more privileged than the member driving it. Those tokens are encrypted at rest and never returned by the API. Connecting an account only ever connects the Jellyfin account already linked to that profile, and the connect endpoint shares the same rate limits as sign-in. If a Jellyfin administrator revokes a device, Helprr drops the token and asks that member to reconnect.
+- Watching uses each member's own Jellyfin access token, not the Jellyfin admin API key, so a playback session is never more privileged than the member driving it. Those tokens are encrypted at rest and never returned by the API. A profile linked to a Jellyfin account can only connect that account; an unlinked profile links the account it signs in with, unless another profile already holds it. The connect endpoint shares the same rate limits as sign-in. If a Jellyfin administrator revokes a device, Helprr drops the token and asks that member to reconnect.
 - Web Share Target requests accept only multipart or URL-encoded form bodies up to 16 KiB. Shared titles are limited to 256 Unicode characters, and shared text and URL fields are each limited to 2,048 UTF-8 bytes.
 - Resetting the bootstrap password does not invalidate active sessions. Revoke sessions from **Settings → Sessions** when access needs to be removed.
 - Service credentials and custom headers are sensitive. Restrict administrator accounts and protect backups/log exports.

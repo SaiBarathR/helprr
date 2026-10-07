@@ -30,7 +30,8 @@ and confirmation dialogs remain the primary, discoverable controls.
 - Every menu includes a bottom icon toolbar for Back, Forward, and Reload. When the pressed entity
   has a navigable destination (an enabled action `href`, or a link trigger such as a media card),
   an Open in new tab control is included as well. Destinations are chosen from a primary open/go-to
-  action when present, otherwise the first internal href, otherwise the trigger href.
+  action when present, otherwise the first internal href, otherwise the first external href,
+  otherwise the trigger href.
 - Context menus stay compact on touch (dense rows, content-width popover, slim toolbar). Fine-pointer
   desktop uses roomier padding, type, and icons, with the same Liquid Glass treatment as other
   Helprr floating surfaces.
