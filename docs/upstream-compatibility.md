@@ -35,7 +35,7 @@ product release number.
 | `LIDARR` | Lidarr | REST `/api/v1` | `3.1.2.4913` | Authenticated system-status probe; live track-file and album operations. Artist-list and health reads re-run 2026-10-07 |
 | `QBITTORRENT` | qBittorrent | Web API `/api/v2` | `v5.1.4` | Authenticated app-version probe; live queue, cleanup, keep-data, and delete-data operations. Torrent-list, transfer-summary, and category reads re-run 2026-10-07 |
 | `PROWLARR` | Prowlarr | REST `/api/v1` | `2.5.2.5491`; `2.4.0.5397` (earlier qualification) | Authenticated system-status probe on both; live indexer-list and status reads on `2.5.2.5491` |
-| `JELLYFIN` | Jellyfin | Unversioned REST routes such as `/System/Info`, `/Items`, `/Items/{id}/PlaybackInfo`, `/Videos/{id}/…`, `/Audio/{id}/…`, `/Sessions/Playing*`, `/Users/AuthenticateByName`, `/UserItems/{id}/UserData` | `12.2.0`; `12.0.0` and `10.11.11` (earlier qualifications) | On `12.2.0`: system-info probe, sign-in, library, count, and session reads, and one transcoded playback started and stopped (see below). On `12.0.0`: live v12 API, catalog, and Chrome HLS playback checks with legacy authorization disabled (see below) |
+| `JELLYFIN` | Jellyfin | Unversioned REST routes such as `/System/Info`, `/Items`, `/Items/{id}/PlaybackInfo`, `/Videos/{id}/…`, `/Audio/{id}/…`, `/Sessions/Playing*`, `/Users/AuthenticateByName`, `/UserItems/{id}/UserData` | `12.2.0`; `12.0.0` and `10.11.11` (earlier qualifications) | On `12.2.0`: catalog reads, playback negotiation, HLS and subtitle delivery through the media proxy, member-attributed sessions under a new device id, resume, proxy refusals, and Playback Reporting reads (see below). On `12.0.0`: live v12 API, catalog, and Chrome HLS playback checks with legacy authorization disabled (see below) |
 | `TMDB` | TMDB | Hosted API `v3` | No product version exposed | Authenticated `/configuration` request succeeded; Discover read re-run 2026-10-07 |
 | `ANILIST` | AniList | Hosted GraphQL API at `graphql.anilist.co` | No product version exposed | OAuth-authenticated Viewer query succeeded; Anime home read re-run 2026-10-07 |
 | `SEERR` | Seerr | REST `/api/v1` | `3.4.1`; `3.3.0` (earlier qualification) | Authenticated current-user and status probes on both; live request-list and user-list reads on `3.4.1` |
@@ -77,11 +77,44 @@ week on the builds named with them.
   - Paged reads against the live instance honoured page sizes of 1,000 and 5,000,
     reported totals that matched the rows delivered, and returned history newest
     first. The same check passed on Radarr `6.4.4.10685`.
-- **Jellyfin `12.2.0`.** Sign-in through `/Users/AuthenticateByName` worked. One
-  transcoded playback was started from Watch on the development server (build
-  `cc3494a`) and one on a local build, both in the installed app on the iOS
-  Simulator (iOS 27). Each advanced, appeared in Now Streaming under the signed-in
-  member with play method Transcode, and was stopped from the now-playing bar.
+- **Jellyfin `12.2.0` playback re-qualification.** Run through Helprr's own routes
+  on the development stack, signed in through `/Users/AuthenticateByName` as a
+  Jellyfin-linked administrator. Unless marked as seen in a player, these are
+  API-level checks: the request Helprr sends and the bytes or state Jellyfin
+  returns.
+  - **Catalog.** Library views, home rails, next-up, resume, recently added,
+    search, paged movie and series queries, filters, and the Live TV listing
+    returned live data.
+  - **Negotiation and delivery.** `PlaybackInfo` for a 4K HEVC film with a
+    transcode-only profile returned an HLS transcode. The master playlist, the
+    variant playlist, and the first media segment came back through
+    `/api/jellyfin/media`, with every playlist entry on a Helprr URL and no
+    `api_key` or `ApiKey`. A text subtitle (`mov_text`) was delivered as WebVTT.
+  - **Token/DeviceId independence.** The member token had been minted against the
+    per-account device id. Playback reports were then sent under a new, never-used
+    browser device id: Jellyfin listed a session for that device id owned by the
+    signed-in member, accepted `/Sessions/Playing/Progress`, and its position
+    advanced across successive reads. One stored token per member is still
+    sufficient on `12.2.0`.
+  - **Track, seek, and quality requests.** Asking for the second audio track, a
+    subtitle track, a start offset at half the runtime, and a 1.5 Mbps cap each
+    produced a stream that carried the choice. These were negotiated, not played.
+  - **Stop and resume.** A stop at 10% saved exactly the ticks sent
+    (`6315584000`) in the item's user data, the item appeared in Continue
+    Watching, a fresh negotiation started from that offset, the active encoding
+    was released, and the session disappeared. The position was then reset.
+  - **Refusals.** The media proxy answered `404` for a non-allowlisted path, two
+    path-traversal forms, and an unknown item id, and `401` without a Helprr
+    session.
+  - **Playback Reporting and administration reads.** Activity, hourly, movie, TV,
+    device, and playback-method reports, user lists, devices, users, scheduled
+    tasks, and the activity log returned data. A favourite was toggled and
+    restored.
+  - **Seen in a player.** An episode played as a transcode in the installed app on
+    the iOS Simulator (iOS 27) with English subtitles displayed, and a film played
+    in a desktop browser at 1440×900. Both showed as a session under the member
+    and left none behind when stopped. Two transcoded playbacks earlier that day,
+    on the development server at `cc3494a` and on a local build, behaved the same.
 - **Not re-run on the newer versions.** These still rest on the earlier
   qualification named in the matrix:
   - Download Cleaner and Queue Cleaner removals, and every delete flow, on Sonarr,
@@ -90,11 +123,11 @@ week on the builds named with them.
   - Radarr's unmatched-download listing and movie chooser, which are covered by
     tests only: there was no unmatched movie download to try.
   - Prowlarr and Seerr beyond the reads above.
-  - On Jellyfin `12.2.0`: track switching, subtitles, seeking, quality changes,
-    resume, the catalog and media proxy refusals, Playback Reporting, token
-    revocation, and the token/DeviceId independence that
-    [Jellyfin in-app playback](#jellyfin-in-app-playback) asks to be re-tested
-    after every Jellyfin upgrade.
+  - On Jellyfin `12.2.0`: token revocation, which means revoking a live member
+    token; audio-track, seek, and quality changes inside a playing session, as
+    opposed to the negotiations above; direct play and remux; ASS/SSA rendering
+    through libass, burned-in PGS, and trickplay; and alternate-version, Live TV,
+    and physical-iPhone playback.
 
 ### Jellyfin 12 compatibility (2026-09-13)
 
@@ -175,6 +208,8 @@ stack on **2026-08-28**:
   **Re-test this specifically after a Jellyfin upgrade** — if a future release
   binds a token to its minting device, one stored token per member stops being
   sufficient and playback breaks for every member on a second browser.
+  Re-tested on `12.2.0` on 2026-10-07 and still holds; see
+  [2026-10-07 re-verification](#2026-10-07-re-verification).
 - **Revocation behaviour, verified 2026-08-28.** Revoking a member's token
   mid-playback causes the next media request to fail with an upstream
   `401`/`403`, which Helprr treats as the only available revocation signal. This
