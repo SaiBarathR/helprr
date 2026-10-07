@@ -11,10 +11,17 @@ import type { JellyfinItem, JellyfinMediaSource } from '@/types/jellyfin';
  *
  * Jellyfin marks a tuned channel's source `IsInfiniteStream`. The channel item
  * covers the moment before a source has been negotiated.
+ *
+ * The stream on the player is the *previous* item's until this one's has been
+ * negotiated, and stays that way if the negotiation fails, so its source only
+ * counts when it belongs to `item`. Otherwise a film started from a channel
+ * would be shown as a broadcast.
  */
 export function isLiveStream(
-  item: Pick<JellyfinItem, 'Type'> | null | undefined,
-  source?: Pick<JellyfinMediaSource, 'IsInfiniteStream'> | null,
+  item: Pick<JellyfinItem, 'Id' | 'Type'> | null | undefined,
+  stream?: { item: Pick<JellyfinItem, 'Id'>; mediaSource: Pick<JellyfinMediaSource, 'IsInfiniteStream'> } | null,
 ): boolean {
-  return source?.IsInfiniteStream === true || item?.Type === 'TvChannel';
+  if (!item) return false;
+  const source = stream?.item.Id === item.Id ? stream.mediaSource : null;
+  return source?.IsInfiniteStream === true || item.Type === 'TvChannel';
 }

@@ -100,7 +100,7 @@ export function VideoStage({ mediaContainer }: { mediaContainer: HTMLDivElement 
   const isVideo = isActive && !isAudio;
   const expanded = playback.videoExpanded && isActive;
   // A broadcast has no length: nothing below offers a position inside one.
-  const live = isLiveStream(playback.item, playback.stream?.mediaSource);
+  const live = isLiveStream(playback.item, playback.stream);
   const sheet = usePlayerSheet(isVideo && expanded);
   const visualExpanded = expanded || sheet.present;
 
@@ -186,9 +186,8 @@ export function VideoStage({ mediaContainer }: { mediaContainer: HTMLDivElement 
       const p = playbackRef.current;
       if (!p.item) return;
       if (event.key === ' ' || event.key === 'k') { event.preventDefault(); p.togglePause(); }
-      const seekable = !isLiveStream(p.item, p.stream?.mediaSource);
-      if (seekable && (event.key === 'ArrowLeft' || event.key === 'j')) p.skip(-10);
-      if (seekable && (event.key === 'ArrowRight' || event.key === 'l')) p.skip(10);
+      if (event.key === 'ArrowLeft' || event.key === 'j') p.skip(-10);
+      if (event.key === 'ArrowRight' || event.key === 'l') p.skip(10);
       if (event.key === 'ArrowUp') { event.preventDefault(); p.setVolume(Math.min(1, p.volume + 0.05)); }
       if (event.key === 'ArrowDown') { event.preventDefault(); p.setVolume(Math.max(0, p.volume - 0.05)); }
       if (event.key === 'Escape') {
@@ -199,7 +198,7 @@ export function VideoStage({ mediaContainer }: { mediaContainer: HTMLDivElement 
       if (event.key === 'f') toggleFullscreen(document.documentElement, mediaRef.current);
       if (event.key === 'n') void p.next();
       if (event.key === 'p') void p.previous();
-      if (seekable && event.key >= '0' && event.key <= '9' && p.durationSeconds > 0) {
+      if (event.key >= '0' && event.key <= '9' && p.durationSeconds > 0) {
         p.seek((Number(event.key) / 10) * p.durationSeconds);
       }
     };
