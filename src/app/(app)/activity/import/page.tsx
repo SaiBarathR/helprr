@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useEffect, useState, useMemo } from 'react';
+import { Suspense, useEffect, useRef, useState, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -98,6 +98,8 @@ function ManualImportContent() {
   const [assigned, setAssigned] = useState<Map<string, ManualImportItem>>(new Map());
   const [mediaSearch, setMediaSearch] = useState('');
   const [assigning, setAssigning] = useState(false);
+  // Bumped per choice and on backing out, so a late answer is recognised and dropped.
+  const assignRequest = useRef(0);
 
   // ── Data fetching ─────────────────────────────────────────────────────────
 
@@ -269,6 +271,7 @@ function ManualImportContent() {
    * re-evaluate them for it, which is what fills in season and episodes.
    */
   async function assignMedia(option: MediaOption) {
+    const request = ++assignRequest.current;
     setAssigning(true);
     try {
       const res = await fetch('/api/activity/manualimport/reprocess', {
@@ -291,27 +294,33 @@ function ManualImportContent() {
       });
       if (!res.ok) throw new Error('reprocess failed');
       const evaluated = new Map(ensureArray((await res.json()) as ManualImportItem[]).map((r) => [r.path, r]));
+      // The user backed out or chose again while the *arr was answering.
+      if (request !== assignRequest.current) return;
+      // Every file must come back: one without an answer would look placed with nothing behind it.
+      if (unplacedFiles.some((f) => !evaluated.has(f.path))) throw new Error('reprocess incomplete');
       setAssigned(new Map(unplacedFiles.map((f) => {
-        const r = evaluated.get(f.path);
+        const r = evaluated.get(f.path)!;
         // What the *arr worked out for this choice; fields it left out keep the scanned value.
         const refreshed = Object.fromEntries(
           (['quality', 'languages', 'releaseGroup', 'releaseType', 'indexerFlags', 'customFormatScore'] as const)
-            .filter((key) => r?.[key] != null)
-            .map((key) => [key, r![key]]),
+            .filter((key) => r[key] != null)
+            .map((key) => [key, r[key]]),
         );
         const placed = isSonarr
-          ? { series: option as SonarrSeries, seasonNumber: r?.seasonNumber, episodes: r?.episodes ?? [] }
+          ? { series: option as SonarrSeries, seasonNumber: r.seasonNumber, episodes: r.episodes ?? [] }
           : { movie: option as RadarrMovie };
-        return [f.path, { ...f, ...refreshed, ...placed, rejections: r?.rejections ?? [] }];
+        return [f.path, { ...f, ...refreshed, ...placed, rejections: r.rejections ?? [] }];
       })));
-      // Episode picks made against another series no longer apply.
-      setFileOverrides(new Map());
+      // Episode picks on these files were made against the previous choice;
+      // picks on files that were never unplaced are kept.
+      const replaced = new Set(unplacedFiles.map((f) => f.path));
+      setFileOverrides((prev) => new Map([...prev].filter(([index]) => !replaced.has(scannedFiles[index]?.path))));
       setMediaSearch('');
       setView('files');
     } catch {
-      toast.error(`Failed to match the files to that ${mediaNoun}`);
+      if (request === assignRequest.current) toast.error(`Failed to match the files to that ${mediaNoun}`);
     } finally {
-      setAssigning(false);
+      if (request === assignRequest.current) setAssigning(false);
     }
   }
 
@@ -396,7 +405,7 @@ function ManualImportContent() {
         <PageHeader
           title={isSonarr ? 'Select Series' : 'Select Movie'}
           subtitle={searchParams.get('title') || undefined}
-          onBack={() => { setView('files'); setMediaSearch(''); }}
+          onBack={() => { assignRequest.current++; setAssigning(false); setView('files'); setMediaSearch(''); }}
         />
 
         <div className="py-2 border-b border-border">
@@ -584,7 +593,7 @@ function ManualImportContent() {
               <div className="flex items-center gap-3 rounded-xl border border-border/40 bg-muted/30 p-3.5">
                 <p className="min-w-0 flex-1 text-sm">
                   {chosenTitle ? (
-                    <>Matched to <span className="font-medium">{chosenTitle}</span></>
+                    <>{isSonarr ? 'Series' : 'Movie'}: <span className="font-medium">{chosenTitle}</span></>
                   ) : (
                     `${isSonarr ? 'Sonarr' : 'Radarr'} could not match ${unplacedFiles.length === 1 ? 'this file' : 'these files'} to a ${mediaNoun}.`
                   )}

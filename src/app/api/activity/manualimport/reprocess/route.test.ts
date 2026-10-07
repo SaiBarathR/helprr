@@ -32,6 +32,7 @@ describe('POST /api/activity/manualimport/reprocess', () => {
     expect(res.status).toBe(403);
     expect(mocks.requireUserCapability).toHaveBeenCalledWith('activity.manage');
     expect(mocks.getSonarrClient).not.toHaveBeenCalled();
+    expect(mocks.getRadarrClient).not.toHaveBeenCalled();
   });
 
   it('asks the chosen arr instance to re-evaluate the files and returns its answer', async () => {

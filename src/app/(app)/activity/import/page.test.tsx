@@ -33,6 +33,12 @@ let requests: string[];
 let submitted: { source: string; files: Array<Record<string, unknown>> } | null;
 let commands: Array<{ url: string; body: Record<string, unknown> }>;
 let reprocessed: { source: string; instanceId?: string; items: Array<Record<string, unknown>> } | null;
+type ReprocessItem = Record<string, unknown>;
+// As the *arr answers: the same items with what it worked out for the choice, and no series/movie object.
+const arrAnswer = (items: ReprocessItem[]) => Response.json(items.map((item, i) => ('seriesId' in item
+  ? { id: item.id, path: item.path, seriesId: item.seriesId, seasonNumber: 1, episodes: [{ ...episode(Number(item.seriesId) * 100 + i, i + 1), seasonNumber: 1 }], languages: [{ id: 8, name: 'Japanese' }], releaseType: 'singleEpisode', rejections: [] }
+  : { id: item.id, path: item.path, movieId: item.movieId, rejections: [] })));
+let reprocessReply: (items: ReprocessItem[]) => Response | Promise<Response>;
 
 beforeEach(() => {
   (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -41,16 +47,14 @@ beforeEach(() => {
   submitted = null;
   commands = [];
   reprocessed = null;
+  reprocessReply = arrAnswer;
   mocks.back.mockClear(); mocks.track.mockClear();
   vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
     requests.push(url);
     if (init?.method === 'POST' && url.startsWith('/api/sonarr/command')) { commands.push({ url, body: JSON.parse(String(init.body)) }); return Response.json({}); }
     if (init?.method === 'POST' && url === '/api/activity/manualimport/reprocess') {
       reprocessed = JSON.parse(String(init.body));
-      // As the *arr answers: the same items with what it worked out for the choice, and no series/movie object.
-      return Response.json(reprocessed!.items.map((item, i) => ('seriesId' in item
-        ? { id: item.id, path: item.path, seriesId: item.seriesId, seasonNumber: 1, episodes: [{ ...episode(900 + i, i + 1), seasonNumber: 1 }], languages: [{ id: 8, name: 'Japanese' }], releaseType: 'singleEpisode', rejections: [] }
-        : { id: item.id, path: item.path, movieId: item.movieId, rejections: [] })));
+      return reprocessReply(reprocessed!.items);
     }
     if (url.startsWith('/api/sonarr?') || url === '/api/sonarr') return Response.json([{ id: 48, title: 'Other Show', year: 2020 }, { id: 47, title: 'Some Show', year: 2014 }]);
     if (url.startsWith('/api/radarr?') || url === '/api/radarr') return Response.json([{ id: 12, title: 'Movie', year: 2026 }]);
@@ -178,7 +182,7 @@ describe('manual import page', () => {
     })));
 
     // Its answer pre-selects season and episodes, as its own dialog does.
-    await waitFor(() => expect(text()).toContain('Matched to Some Show'));
+    await waitFor(() => expect(text()).toContain('Series: Some Show'));
     expect([...text().matchAll(/S01E0\d/g)].map((m) => m[0])).toEqual(['S01E01', 'S01E02']);
     expect(text()).not.toContain('Unknown Series');
     expect(button('Import 2 Files')!.disabled).toBe(false);
@@ -186,9 +190,114 @@ describe('manual import page', () => {
     await act(async () => button('Import 2 Files')!.click());
     await waitFor(() => expect(submitted).not.toBeNull());
     expect(submitted!.files).toEqual([
-      expect.objectContaining({ path: '/downloads/pack/[grp] Showw - 01.mkv', seriesId: 47, episodeIds: [900], seasonNumber: 1, languages: [{ id: 8, name: 'Japanese' }], releaseType: 'singleEpisode', downloadId: 'D' }),
-      expect.objectContaining({ path: '/downloads/pack/[grp] Showw - 02.mkv', seriesId: 47, episodeIds: [901], seasonNumber: 1, downloadId: 'D' }),
+      expect.objectContaining({ path: '/downloads/pack/[grp] Showw - 01.mkv', seriesId: 47, episodeIds: [4700], seasonNumber: 1, languages: [{ id: 8, name: 'Japanese' }], releaseType: 'singleEpisode', downloadId: 'D' }),
+      expect.objectContaining({ path: '/downloads/pack/[grp] Showw - 02.mkv', seriesId: 47, episodeIds: [4701], seasonNumber: 1, downloadId: 'D' }),
     ]);
+  });
+
+  // Shared by the tests below: a download whose files the arr could not match at all.
+  const unmatchedSonarrFiles = (count: number) => Array.from({ length: count }, (_, i) => ({
+    id: i + 1, path: `/downloads/pack/[grp] Showw - 0${i + 1}.mkv`, name: `[grp] Showw - 0${i + 1}`, relativePath: `[grp] Showw - 0${i + 1}.mkv`,
+    quality: { quality: { id: 7, name: 'Bluray-1080p' } }, languages: [{ id: 0, name: 'Unknown' }],
+    releaseType: 'unknown', indexerFlags: 0, rejections: [{ type: 'permanent', reason: 'Unknown Series' }],
+  }));
+  const buttonContaining = (label: string) => [...document.querySelectorAll('button')].find((b) => b.textContent?.includes(label));
+  const back = () => document.querySelector<HTMLButtonElement>('button[aria-label="Go back"]')!;
+  async function chooseSeries(title: string, opener = 'Choose series') {
+    await act(async () => button(opener)!.click());
+    await waitFor(() => expect(buttonContaining(title)).toBeDefined());
+    await act(async () => buttonContaining(title)!.click());
+  }
+
+  it('replaces an earlier choice, and keeps it when the arr fails to answer for a new one', async () => {
+    files = unmatchedSonarrFiles(1);
+    await renderPage('downloadId=D&source=sonarr&instanceId=son-1&title=Pack');
+    await waitFor(() => expect(text()).toContain('Import File'));
+    await chooseSeries('Some Show');
+    await waitFor(() => expect(text()).toContain('Series: Some Show'));
+
+    // A failed re-evaluation leaves the previous series and its episode in place.
+    reprocessReply = () => Response.json({ error: 'upstream' }, { status: 502 });
+    await chooseSeries('Other Show', 'Change');
+    await waitFor(() => expect(reprocessed!.items[0].seriesId).toBe(48));
+    await wait(30);
+    await act(async () => back().click());
+    await waitFor(() => expect(text()).toContain('Series: Some Show'));
+    expect(text()).toContain('S01E01');
+
+    // A successful one replaces it.
+    reprocessReply = arrAnswer;
+    await chooseSeries('Other Show', 'Change');
+    await waitFor(() => expect(text()).toContain('Series: Other Show'));
+    await act(async () => button('Import File')!.click());
+    await waitFor(() => expect(submitted).not.toBeNull());
+    expect(submitted!.files).toEqual([expect.objectContaining({ seriesId: 48, episodeIds: [4800] })]);
+  });
+
+  it('does not treat a file the arr left out of its answer as placed', async () => {
+    files = unmatchedSonarrFiles(2);
+    // An answer that cannot be tied back to the files: no paths.
+    reprocessReply = (items) => Response.json(items.map((item) => ({ id: item.id, seriesId: item.seriesId, seasonNumber: 1, episodes: [], rejections: [] })));
+    await renderPage('downloadId=D&source=sonarr&instanceId=son-1&title=Pack');
+    await waitFor(() => expect(text()).toContain('Import 2 Files'));
+    await chooseSeries('Some Show');
+    await waitFor(() => expect(reprocessed).not.toBeNull());
+    await wait(30);
+    // Still on the picker, nothing recorded: back on the list the files are as they were.
+    expect(text()).toContain('Select Series');
+    await act(async () => back().click());
+    await waitFor(() => expect(text()).toContain('Import 2 Files'));
+    expect(text()).toContain('Sonarr could not match these files to a series.');
+    expect(text()).toContain('Unknown Series');
+    expect(button('Import 2 Files')!.disabled).toBe(true);
+  });
+
+  it('drops an answer that arrives after the user backed out of the picker', async () => {
+    files = unmatchedSonarrFiles(1);
+    let answer: ((response: Response) => void) | null = null;
+    reprocessReply = () => new Promise<Response>((resolve) => { answer = resolve; });
+    await renderPage('downloadId=D&source=sonarr&instanceId=son-1&title=Pack');
+    await waitFor(() => expect(text()).toContain('Import File'));
+    await chooseSeries('Some Show');
+    await waitFor(() => expect(answer).not.toBeNull());
+
+    // Back to the list while the arr is still working, then its answer lands.
+    await act(async () => back().click());
+    await waitFor(() => expect(text()).toContain('Import File'));
+    await act(async () => { answer!(arrAnswer(reprocessed!.items)); await new Promise((done) => setTimeout(done, 30)); });
+    expect(text()).toContain('Sonarr could not match this file to a series.');
+    expect(text()).not.toContain('Series: Some Show');
+    expect(button('Import File')!.disabled).toBe(true);
+  });
+
+  it('keeps an episode pick on an already matched file when a series is chosen for the others', async () => {
+    // One file the arr matched itself (series 48) and one it could not place.
+    files = [
+      { ...sonarrFiles[0], path: '/downloads/pack/Other - 01.mkv', name: 'Other - 01.mkv', relativePath: 'Other - 01.mkv', series: { id: 48, title: 'Other Show' }, episodes: [episode(801, 1)] },
+      ...unmatchedSonarrFiles(1),
+    ];
+    await renderPage('downloadId=D&source=sonarr&instanceId=son-1&title=Pack');
+    await waitFor(() => expect(text()).toContain('Import 2 Files'));
+
+    // Only the matched file can be edited; move it to its second episode.
+    const change = [...document.querySelectorAll('button')].filter((b) => b.textContent?.includes('Change'));
+    expect(change).toHaveLength(1);
+    await act(async () => change[0].click());
+    await waitFor(() => expect(buttonContaining('Episode 2')).toBeDefined());
+    await act(async () => buttonContaining('Episode 2')!.click());
+    await waitFor(() => expect(text()).toContain('Import 2 Files'));
+
+    await chooseSeries('Some Show');
+    await waitFor(() => expect(text()).toContain('Series: Some Show'));
+    // Only the unplaced file was sent for re-evaluation.
+    expect(reprocessed!.items.map((item) => item.path)).toEqual(['/downloads/pack/[grp] Showw - 01.mkv']);
+
+    await act(async () => button('Import 2 Files')!.click());
+    await waitFor(() => expect(submitted).not.toBeNull());
+    expect(submitted!.files).toEqual(expect.arrayContaining([
+      expect.objectContaining({ path: '/downloads/pack/Other - 01.mkv', seriesId: 48, episodeIds: [802] }),
+      expect.objectContaining({ path: '/downloads/pack/[grp] Showw - 01.mkv', seriesId: 47, episodeIds: [4700] }),
+    ]));
   });
 
   it('lets the user choose the movie when Radarr could not match the file', async () => {
@@ -205,7 +314,7 @@ describe('manual import page', () => {
     await waitFor(() => expect(reprocessed).not.toBeNull());
     expect(reprocessed).toMatchObject({ source: 'radarr', instanceId: 'rad-1', items: [{ path: '/downloads/Movie.2026.mkv', movieId: 12, downloadId: 'D' }] });
 
-    await waitFor(() => expect(text()).toContain('Matched to Movie'));
+    await waitFor(() => expect(text()).toContain('Movie: Movie'));
     await act(async () => button('Import File')!.click());
     await waitFor(() => expect(submitted).not.toBeNull());
     expect(submitted).toMatchObject({ source: 'radarr', files: [{ path: '/downloads/Movie.2026.mkv', movieId: 12 }] });
@@ -214,6 +323,9 @@ describe('manual import page', () => {
   it('keeps using the queue item\'s series when the link carries one', async () => {
     await renderPage('downloadId=D&source=sonarr&seriesId=9&title=Pack');
     await waitFor(() => expect(text()).toContain('Import 2 Files'));
+    // A matched download is not offered the chooser.
+    expect(text()).not.toContain('could not match');
+    expect(button('Choose series')).toBeUndefined();
     await waitFor(() => expect(requests).toContain('/api/sonarr/9/episodes'));
     await act(async () => button('Import 2 Files')!.click());
     await waitFor(() => expect(submitted).not.toBeNull());
