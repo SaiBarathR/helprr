@@ -58,7 +58,13 @@ HLS playlists onto Helprr URLs and strips `api_key`. Playback DeviceId is
 per-browser so Helprr users do not clobber one shared Jellyfin session. PGS
 bitmaps are not advertised for client-side overlay so the server can burn them
 in; ASS/SSA uses the same libass worker as jellyfin-web, falling back to a
-server burn-in when that worker cannot render (which is the case on iOS).
+server burn-in when that worker cannot render. libass sizes its canvas once, at
+`loadedmetadata`, and Safari's native HLS reports no video dimensions until
+`loadeddata`, so on iOS the canvas was never sized and every ASS track fell
+back. The provider now waits for real dimensions (`whenVideoHasDimensions`),
+asks libass to size itself again, and only then starts the check that decides
+on the fallback. Verified on the iOS Simulator (iOS 27), not on a physical
+iPhone.
 
 Native text subtitles (WebVTT/SRT) are placed by writing `cue.line`, in one
 place only — `applyCueLine` in the playback provider. It has two modes. With

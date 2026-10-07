@@ -588,6 +588,32 @@ export function waitForLayout(el: HTMLElement, timeoutMs = 2000): Promise<void> 
   });
 }
 
+const VIDEO_DIMENSION_EVENTS = ['loadedmetadata', 'loadeddata', 'resize'] as const;
+
+/**
+ * Run `callback` once the video knows its own dimensions: straight away when it
+ * already does, otherwise at the first event that finds them. Returns a cancel.
+ *
+ * `loadedmetadata` alone is not that event. For native HLS, Safari fires it
+ * while `videoWidth` is still 0 and fills the dimensions in by `loadeddata`.
+ */
+export function whenVideoHasDimensions(el: HTMLVideoElement, callback: () => void): () => void {
+  if (el.videoWidth > 0) {
+    callback();
+    return () => {};
+  }
+  const cancel = () => {
+    for (const type of VIDEO_DIMENSION_EVENTS) el.removeEventListener(type, check);
+  };
+  const check = () => {
+    if (el.videoWidth <= 0) return;
+    cancel();
+    callback();
+  };
+  for (const type of VIDEO_DIMENSION_EVENTS) el.addEventListener(type, check);
+  return cancel;
+}
+
 /**
  * The position to report, which is not always the one the element shows.
  *
@@ -628,7 +654,7 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
   const cueLineRef = useRef(subtitleCueLine(subtitleAppearance.verticalPosition));
   const obstructionRef = useRef(0);
   const hlsRef = useRef<{ destroy: () => void } | null>(null);
-  const assRef = useRef<{ dispose?: () => void } | null>(null);
+  const assRef = useRef<{ dispose?: () => void; resize?: () => void } | null>(null);
   /**
    * Whether libass has already failed on this device.
    *
@@ -643,8 +669,8 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
    * a render later would be too late.
    */
   const assRenderBrokenRef = useRef(false);
-  /** Pending check that libass actually sized its canvas. */
-  const assProbeRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Cancels the pending check that libass actually sized its canvas. */
+  const assProbeRef = useRef<(() => void) | null>(null);
   /**
    * `restartWith`, reachable from `applySubtitleTrack` above it.
    *
@@ -772,10 +798,8 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
 
   /** Tear down whatever is rendering subtitles, leaving the video alone. */
   const destroySubtitles = useCallback(() => {
-    if (assProbeRef.current) {
-      clearTimeout(assProbeRef.current);
-      assProbeRef.current = null;
-    }
+    assProbeRef.current?.();
+    assProbeRef.current = null;
     try { assRef.current?.dispose?.(); } catch { /* already torn down */ }
     assRef.current = null;
     if (mediaRef.current) {
@@ -861,21 +885,40 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
       /**
        * Confirm it actually started, because failing quietly is its other mode.
        *
-       * On iOS 26 libass builds its canvas and then never sizes it — the
-       * element keeps the 300x150 default backing store and a zero CSS box, so
-       * nothing is ever painted and `onError` is never called. libass sizes
-       * itself from `loadedmetadata` or its own ResizeObserver, so a canvas
-       * still unsized well after both have had their chance is not a race worth
-       * waiting on any longer.
+       * On an iPhone libass built its canvas and then never sized it — the
+       * element kept the 300x150 default backing store and a zero CSS box, so
+       * nothing was ever painted and `onError` was never called. The cause is
+       * that libass sizes its canvas once, at `loadedmetadata`, and Safari's
+       * native HLS reports a `videoWidth` of 0 then, filling it in by
+       * `loadeddata`. So libass is asked to size itself again once the video
+       * really has dimensions, and only a canvas still unsized well after that
+       * is taken as a renderer that cannot run here.
+       *
+       * The clock waits for the same moment. Counted from construction it
+       * condemned a working renderer whenever the stream was slow to deliver
+       * its first frame.
        */
-      if (assProbeRef.current) clearTimeout(assProbeRef.current);
-      assProbeRef.current = setTimeout(() => {
-        assProbeRef.current = null;
-        if (!assRef.current) return;
-        const painted = Array.from(document.querySelectorAll('canvas'))
-          .some((canvas) => canvas.getBoundingClientRect().width > 0);
-        if (!painted) fallBackToBurnIn('canvas never sized');
-      }, ASS_RENDER_PROBE_MS);
+      assProbeRef.current?.();
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const cancelWait = whenVideoHasDimensions(el, () => {
+        assRef.current?.resize?.();
+        timer = setTimeout(() => {
+          assProbeRef.current = null;
+          if (!assRef.current) return;
+          const painted = Array.from(document.querySelectorAll('canvas'))
+            .some((canvas) => canvas.getBoundingClientRect().width > 0);
+          if (painted) return;
+          // Unlike the error path, libass is still running here. Left attached
+          // it sizes itself on the next stream and draws over the burned-in
+          // picture.
+          try { assRef.current.dispose?.(); } catch { /* already torn down */ }
+          fallBackToBurnIn('canvas never sized');
+        }, ASS_RENDER_PROBE_MS);
+      });
+      assProbeRef.current = () => {
+        cancelWait();
+        clearTimeout(timer);
+      };
       return;
     }
 
