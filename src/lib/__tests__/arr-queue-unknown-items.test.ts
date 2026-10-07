@@ -18,7 +18,7 @@ describe('arr queue: downloads the arr could not match', () => {
     await sonarr.getQueue(1, 50, true);
     expect(mocks.get).toHaveBeenLastCalledWith('/api/v3/queue', expect.anything());
     expect(paramsOfLastCall()).toMatchObject({ page: 1, pageSize: 50, includeUnknownSeriesItems: true });
-    // The queue cleaner and the polling service call without the flag and keep the default view.
+    // The queue cleaner calls without the flag and keeps the default view.
     await sonarr.getQueue(1, 50);
     expect(paramsOfLastCall()).not.toHaveProperty('includeUnknownSeriesItems');
   });

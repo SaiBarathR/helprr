@@ -26,20 +26,3 @@ export function classifyQueueIssue(
   }
   return null;
 }
-
-/**
- * A download the *arr tracks but could not match to a series or movie. The
- * *arr's default queue view omits these, so anything counted from that view —
- * the Activity nav badge — never included them.
- */
-export function isUnmatchedQueueItem(item: {
-  source?: string;
-  seriesId?: number | null;
-  series?: { id?: number } | null;
-  movieId?: number | null;
-  movie?: { id?: number } | null;
-}): boolean {
-  if (item.source === 'sonarr') return (item.seriesId ?? item.series?.id) == null;
-  if (item.source === 'radarr') return (item.movieId ?? item.movie?.id) == null;
-  return false;
-}
