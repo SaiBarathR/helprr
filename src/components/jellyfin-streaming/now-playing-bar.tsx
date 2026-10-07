@@ -3,8 +3,10 @@
 import { ListMusic, Pause, Play, Repeat, Repeat1, Shuffle, SkipBack, SkipForward, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useJellyfinPlayback } from '@/components/jellyfin-streaming/playback-provider';
+import { LiveBadge } from '@/components/jellyfin-streaming/live-badge';
 import { jellyfinPosterUrl } from '@/lib/jellyfin-playback/image';
 import { formatClock } from '@/lib/jellyfin-playback/device';
+import { isLiveStream } from '@/lib/jellyfin-playback/live-stream';
 import { FadeInImage } from '@/components/media/fade-in-image';
 
 export function NowPlayingBar() {
@@ -13,6 +15,7 @@ export function NowPlayingBar() {
   if (playback.videoExpanded) return null;
 
   const poster = jellyfinPosterUrl(playback.item, 120);
+  const live = isLiveStream(playback.item, playback.stream?.mediaSource);
 
   return (
     // Sits on the tab bar when the nav is at the bottom, else on the screen's
@@ -32,17 +35,24 @@ export function NowPlayingBar() {
         </button>
         <button type="button" className="min-w-0 flex-1 text-left" onClick={() => playback.setVideoExpanded(true)}>
           <p className="truncate text-sm font-medium">{playback.item.Name}</p>
-          <p className="truncate text-[11px] text-muted-foreground">
-            {playback.error
-              ? playback.error
-              : `${playback.item.Artists?.join(', ') || playback.item.SeriesName || playback.item.AlbumArtist || ''} · ${formatClock(playback.positionSeconds)} / ${formatClock(playback.durationSeconds)}`}
-          </p>
-          <div className="mt-1 h-1 overflow-hidden rounded bg-muted">
-            <div
-              className="h-full bg-[var(--hpr-amber)]"
-              style={{ width: `${playback.durationSeconds ? (playback.positionSeconds / playback.durationSeconds) * 100 : 0}%` }}
-            />
-          </div>
+          {live && !playback.error ? (
+            // A broadcast has no clock to show and no progress to fill.
+            <LiveBadge className="text-muted-foreground" />
+          ) : (
+            <>
+              <p className="truncate text-[11px] text-muted-foreground">
+                {playback.error
+                  ? playback.error
+                  : `${playback.item.Artists?.join(', ') || playback.item.SeriesName || playback.item.AlbumArtist || ''} · ${formatClock(playback.positionSeconds)} / ${formatClock(playback.durationSeconds)}`}
+              </p>
+              <div className="mt-1 h-1 overflow-hidden rounded bg-muted">
+                <div
+                  className="h-full bg-[var(--hpr-amber)]"
+                  style={{ width: `${playback.durationSeconds ? (playback.positionSeconds / playback.durationSeconds) * 100 : 0}%` }}
+                />
+              </div>
+            </>
+          )}
         </button>
         {/* On a phone only play, next, queue and stop fit; shuffle, previous and
             repeat are in the expanded player (tap the bar). */}

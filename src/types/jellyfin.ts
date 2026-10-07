@@ -240,6 +240,8 @@ export interface JellyfinMediaSource {
   EncoderProtocol?: string;
   IsRemote?: boolean;
   RequiresOpening?: boolean;
+  /** A broadcast with no end, such as a tuned Live TV channel. */
+  IsInfiniteStream?: boolean;
   LiveStreamId?: string;
   OpenToken?: string;
   MediaStreams?: JellyfinMediaStream[];
