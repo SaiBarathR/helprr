@@ -90,18 +90,34 @@ describe('cueLineFor', () => {
  * switch between them.
  */
 describe('applyCueLine', () => {
-  interface FakeCue { text: string; line: number | 'auto'; snapToLines: boolean; lineAlign: string }
+  interface FakeCue { text: string; line: number | 'auto'; snapToLines: boolean; lineAlign?: string }
 
-  /** A cue list shaped like the bits of TextTrack/VTTCue this writer touches. */
-  function trackOf(texts: string[], opts: { lineAlign?: boolean } = {}): { track: TextTrack; cues: FakeCue[] } {
-    const cues = texts.map((text) => {
-      const cue: FakeCue = { text, line: 'auto', snapToLines: true, lineAlign: 'start' };
-      if (opts.lineAlign === false) {
-        // A UA that does not implement lineAlign: the setter never sticks.
-        Object.defineProperty(cue, 'lineAlign', { get: () => 'start', set: () => {} });
-      }
-      return cue;
-    });
+  /**
+   * A cue list shaped like the bits of TextTrack/VTTCue this writer touches.
+   *
+   * `lineAlign` lives on the cue interface, as it does on `VTTCue.prototype`:
+   *  - 'native' is Safari and Firefox, where it is a working attribute;
+   *  - 'ignored' has the attribute but a setter that never sticks;
+   *  - 'absent' is Chrome, which has no such attribute at all.
+   */
+  function trackOf(
+    texts: string[],
+    opts: { lineAlign?: 'native' | 'ignored' | 'absent' } = {},
+  ): { track: TextTrack; cues: FakeCue[] } {
+    const support = opts.lineAlign ?? 'native';
+    const cueInterface = {};
+    if (support === 'native') {
+      const values = new WeakMap<object, string>();
+      Object.defineProperty(cueInterface, 'lineAlign', {
+        get(this: object) { return values.get(this) ?? 'start'; },
+        set(this: object, value: string) { values.set(this, value); },
+      });
+    } else if (support === 'ignored') {
+      Object.defineProperty(cueInterface, 'lineAlign', { get: () => 'start', set: () => {} });
+    }
+    const cues = texts.map((text) => (
+      Object.assign(Object.create(cueInterface), { text, line: 'auto', snapToLines: true }) as FakeCue
+    ));
     return { track: { cues } as unknown as TextTrack, cues };
   }
 
@@ -135,17 +151,54 @@ describe('applyCueLine', () => {
   it('falls back to rows when the UA ignores lineAlign', () => {
     // Without lineAlign a percentage line anchors the box top, which would push
     // it further into the chrome — strictly worse than the rows it replaced.
-    const { track, cues } = trackOf(['first\nsecond'], { lineAlign: false });
+    const { track, cues } = trackOf(['first\nsecond'], { lineAlign: 'ignored' });
     applyCueLine(track, -3, 101, 876);
     expect(cues[0].snapToLines).toBe(true);
     expect(cues[0].line).toBe(-4);
+  });
+
+  it('has the container raised in Chrome, which has no lineAlign to write', () => {
+    // Writing the property there only adds a plain one that reads back 'end',
+    // so a write-and-read probe passed and the cue was drawn through the seek
+    // bar: its top edge, not its bottom, landed on the line. Chrome can only
+    // move the whole cue container, so the cue sits on its floor and the
+    // caller is told how far to raise it.
+    const { track, cues } = trackOf(['one line', 'first\nsecond'], { lineAlign: 'absent' });
+    expect(applyCueLine(track, -3, 101, 876)).toBe(101);
+    expect(cues.map((c) => [c.snapToLines, c.line])).toEqual([[true, -1], [true, -2]]);
+  });
+
+  it('keeps doing so in Chrome after row placement has run', () => {
+    // Row placement resets lineAlign on every cue, which in Chrome leaves that
+    // plain property behind. It must not read as support the next time round.
+    const { track, cues } = trackOf(['first\nsecond'], { lineAlign: 'absent' });
+    expect(applyCueLine(track, -3, 0, 876)).toBe(0);
+    expect(cues[0].line).toBe(-4);
+    expect(applyCueLine(track, -3, 101, 876)).toBe(101);
+    expect([cues[0].snapToLines, cues[0].line]).toEqual([true, -2]);
+  });
+
+  it('does not raise the container in Chrome when the chrome covers the whole video', () => {
+    // A panel open in a short landscape window. The cue is pinned to the top of
+    // the box, which needs no lineAlign; a raise of the full height would move
+    // it out of the frame.
+    const { track, cues } = trackOf(['first\nsecond'], { lineAlign: 'absent' });
+    expect(applyCueLine(track, -3, 400, 318)).toBe(0);
+    expect([cues[0].snapToLines, cues[0].line]).toEqual([false, 0]);
+  });
+
+  it('asks for no lift where the cue can be placed directly', () => {
+    for (const lineAlign of ['native', 'ignored'] as const) {
+      const { track } = trackOf(['one line'], { lineAlign });
+      expect(applyCueLine(track, -3, 101, 876)).toBe(0);
+    }
   });
 
   it('restores row placement when the chrome goes away again', () => {
     const { track, cues } = trackOf(['first\nsecond']);
     applyCueLine(track, -3, 101, 876);
     applyCueLine(track, -3, 0, 876);
-    expect(cues[0]).toMatchObject({ snapToLines: true, lineAlign: 'start', line: -4 });
+    expect([cues[0].snapToLines, cues[0].lineAlign, cues[0].line]).toEqual([true, 'start', -4]);
   });
 
   it('does nothing to a track with no cues yet', () => {

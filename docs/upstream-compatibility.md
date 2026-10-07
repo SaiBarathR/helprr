@@ -35,7 +35,7 @@ product release number.
 | `LIDARR` | Lidarr | REST `/api/v1` | `3.1.2.4913` | Authenticated system-status probe; live track-file and album operations. Artist-list and health reads re-run 2026-10-07 |
 | `QBITTORRENT` | qBittorrent | Web API `/api/v2` | `v5.1.4` | Authenticated app-version probe; live queue, cleanup, keep-data, and delete-data operations. Torrent-list, transfer-summary, and category reads re-run 2026-10-07 |
 | `PROWLARR` | Prowlarr | REST `/api/v1` | `2.5.2.5491`; `2.4.0.5397` (earlier qualification) | Authenticated system-status probe on both; live indexer-list and status reads on `2.5.2.5491` |
-| `JELLYFIN` | Jellyfin | Unversioned REST routes such as `/System/Info`, `/Items`, `/Items/{id}/PlaybackInfo`, `/Videos/{id}/…`, `/Audio/{id}/…`, `/Sessions/Playing*`, `/Users/AuthenticateByName`, `/UserItems/{id}/UserData` | `12.2.0`; `12.0.0` and `10.11.11` (earlier qualifications) | On `12.2.0`: catalog reads, playback negotiation, HLS and subtitle delivery through the media proxy, member-attributed sessions under a new device id, resume, proxy refusals, and Playback Reporting reads (see below). On `12.0.0`: live v12 API, catalog, and Chrome HLS playback checks with legacy authorization disabled (see below) |
+| `JELLYFIN` | Jellyfin | Unversioned REST routes such as `/System/Info`, `/Items`, `/Items/{id}/PlaybackInfo`, `/Videos/{id}/…`, `/Audio/{id}/…`, `/Sessions/Playing*`, `/Users/AuthenticateByName`, `/UserItems/{id}/UserData` | `12.2.0`; `12.0.0` and `10.11.11` (earlier qualifications) | On `12.2.0`: catalog reads, playback negotiation, HLS and subtitle delivery through the media proxy, member-attributed sessions under a new device id, resume, proxy refusals, and Playback Reporting reads; in-player direct play, remux, transcode, track and quality changes, libass, burned-in PGS, and Live TV on 2026-10-08 (see below). On `12.0.0`: live v12 API, catalog, and Chrome HLS playback checks with legacy authorization disabled (see below) |
 | `TMDB` | TMDB | Hosted API `v3` | No product version exposed | Authenticated `/configuration` request succeeded; Discover read re-run 2026-10-07 |
 | `ANILIST` | AniList | Hosted GraphQL API at `graphql.anilist.co` | No product version exposed | OAuth-authenticated Viewer query succeeded; Anime home read re-run 2026-10-07 |
 | `SEERR` | Seerr | REST `/api/v1` | `3.4.1`; `3.3.0` (earlier qualification) | Authenticated current-user and status probes on both; live request-list and user-list reads on `3.4.1` |
@@ -115,6 +115,37 @@ week on the builds named with them.
     in a desktop browser at 1440×900. Both showed as a session under the member
     and left none behind when stopped. Two transcoded playbacks earlier that day,
     on the development server at `cc3494a` and on a local build, behaved the same.
+- **Jellyfin `12.2.0` in a player, 2026-10-08.** Played on the development stack
+  at `e1ee60c` (Helprr 1.6.0 plus documentation commits) as a Jellyfin-linked
+  administrator, in desktop Chrome 154 and in Safari on the iOS Simulator
+  (iOS 27). The delivery method was read from Jellyfin's session list, because
+  Helprr labels a remux as a transcode.
+  - **Direct play.** An H.264/AAC MP4 played from `stream.mp4` over range
+    requests under a `DirectPlay` session, in both browsers. An H.264 MKV played
+    directly in Chrome.
+  - **Remux and transcode.** A HEVC MKV played as fMP4 HLS with the video and
+    audio copied, in both browsers. A 4K Dolby Vision/HDR10 film played in Chrome
+    with the video copied and its E-AC-3 audio transcoded.
+  - **Changes inside a playing session.** In both browsers: switching the audio
+    track, switching the subtitle track, seeking by dragging the bar, and
+    lowering the quality, which delivered 1280×720. In Chrome also: a jump from
+    the chapter list, and a quality change while paused, which kept the exact
+    position. Stopping saved the resume position.
+  - **ASS/SSA through libass.** Rendered in both browsers. In Chrome all 23 of
+    an episode's attached fonts were fetched through the media proxy.
+  - **Burned-in PGS.** Present in the picture in both browsers; in Chrome
+    confirmed by comparing the same frame with the track on and off.
+  - **Live TV.** One channel played in Chrome as a live HLS transcode under a
+    `TvChannel` session. The player shows it with the on-demand seek bar.
+  - **Defects found, fixed in Helprr 1.6.1.** All three predate `12.2.0` and none
+    is a Jellyfin contract change: Chrome drew native text subtitles through the
+    seek bar while the controls were up (see the corrected cue-placement entry
+    under [Jellyfin in-app playback](#jellyfin-in-app-playback)); a single tap
+    on the seek bar in iOS Safari did not seek, and the next touch applied that
+    tap's position; and the Skip Intro and Next episode buttons covered the
+    controls of an open panel. The fixes were checked on a local build in
+    desktop Chrome, on the iOS Simulator, and in Chrome 149 on the Android
+    emulator.
 - **Not re-run on the newer versions.** These still rest on the earlier
   qualification named in the matrix:
   - Download Cleaner and Queue Cleaner removals, and every delete flow, on Sonarr,
@@ -124,10 +155,9 @@ week on the builds named with them.
     tests only: there was no unmatched movie download to try.
   - Prowlarr and Seerr beyond the reads above.
   - On Jellyfin `12.2.0`: token revocation, which means revoking a live member
-    token; audio-track, seek, and quality changes inside a playing session, as
-    opposed to the negotiations above; direct play and remux; ASS/SSA rendering
-    through libass, burned-in PGS, and trickplay; and alternate-version, Live TV,
-    and physical-iPhone playback.
+    token; trickplay and alternate versions, because none of the 707 items
+    checked on the reference server has either; Live TV in Safari; and playback
+    on a physical iPhone.
 
 ### Jellyfin 12 compatibility (2026-09-13)
 
@@ -223,8 +253,17 @@ stack on **2026-08-28**:
   and in landscape through the middle of a two-line one. Helprr now keeps the
   row placement only while the chrome is hidden, and pins the cue box's bottom
   to the top of the chrome (`snapToLines: false`, `lineAlign: 'end'`, a
-  percentage `line`) while it is up. Verified rendering on Chrome for Android
-  and Safari 26.4. Do not "restore parity" here without re-measuring on a phone.
+  percentage `line`) while it is up. Verified rendering on Safari 26.4. Do not
+  "restore parity" here without re-measuring on a phone.
+  **Corrected 2026-10-08.** The original entry also named Chrome for Android.
+  Blink has no `VTTCue.lineAlign`, so through Helprr 1.6.0 Chrome anchored the
+  percentage line at the cue's top edge and drew the cue through the seek bar.
+  From 1.6.1 Chrome keeps the cue on the bottom row and raises the browser's cue
+  container by the height of the chrome. Rendering was checked with the chrome up
+  and hidden in desktop Chrome 154 at four viewport sizes, in Chrome 149 on the
+  Android emulator in portrait and landscape, and in Safari on the iOS Simulator
+  (iOS 27), where placement was already correct and has not changed. Firefox was
+  not checked.
 - **Web Push on Android, verified 2026-09-04.** Exercised for the first time
   against the installed WebAPK over an HTTPS origin: `pushManager.subscribe`
   returned an FCM endpoint, the subscription persisted, and
@@ -232,11 +271,11 @@ stack on **2026-08-28**:
   posted by the WebAPK's own package (title, body, icon and origin subtext
   correct). Push cannot be exercised over a plain-HTTP origin at all — there is
   no secure context, so the service worker API is absent.
-- **Not qualified.** Live TV *playback* has never been exercised — no tuner is
-  configured on the reference server, so only channel listing is covered. Chapter
-  markers are likewise unexercised because no item reached during testing carried
-  chapters. Both degrade to an absent control rather than an error, but neither has
-  feature-flow evidence behind it.
+- **Not qualified at the time.** Live TV *playback* had not been exercised — no
+  tuner was configured on the reference server, so only channel listing was
+  covered. Chapter markers were likewise unexercised because no item reached
+  during testing carried chapters. Both were first exercised on `12.2.0` on
+  2026-10-08; see [2026-10-07 re-verification](#2026-10-07-re-verification).
 
 Jellyfin exposes these routes without an API version, so a future release can
 change them without a contract change. Re-run the flows above after upgrading rather

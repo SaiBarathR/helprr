@@ -426,12 +426,13 @@ export function VideoStage({ mediaContainer }: { mediaContainer: HTMLDivElement 
               <div className="absolute inset-0 flex items-center justify-center p-6 text-center text-sm text-red-300">{playback.error}</div>
             ) : null}
 
-            {intro && expanded && (
+            {/* Both sit where an open panel grows to, and covered its controls. */}
+            {intro && expanded && panel === 'none' && (
               <Button className="absolute right-4 bottom-36 z-10" onClick={() => playback.skipSegment(intro)}>
                 Skip {intro.Type}
               </Button>
             )}
-            {credits && expanded && (
+            {credits && expanded && panel === 'none' && (
               <Button variant="secondary" className="absolute right-4 bottom-36 z-10" onClick={() => void playback.next()}>
                 Next episode
               </Button>
@@ -812,7 +813,7 @@ function AudioLyrics({ itemId, positionSeconds }: { itemId: string; positionSeco
  * intermediate value used to call `seek()` — which on a non-HLS transcode is a
  * full stopEncodings + PlaybackInfo + restart cycle per drag step.
  */
-function SeekBar({
+export function SeekBar({
   positionSeconds,
   durationSeconds,
   onSeek,
@@ -833,10 +834,13 @@ function SeekBar({
   const [dragSeconds, setDragSeconds] = useState<number | null>(null);
   const [previewSeconds, setPreviewSeconds] = useState<number | null>(null);
   const dragRef = useRef<number | null>(null);
+  // Whether a pointer or key is still holding the thumb.
+  const heldRef = useRef(false);
   const max = durationSeconds > 0 ? durationSeconds : 1;
   const value = Math.min(dragSeconds ?? positionSeconds, max);
 
   const commit = useCallback(() => {
+    heldRef.current = false;
     const pending = dragRef.current;
     dragRef.current = null;
     setDragSeconds(null);
@@ -940,12 +944,19 @@ function SeekBar({
               ? 'accent-[var(--hpr-seek)]'
               : 'absolute inset-0 h-full cursor-pointer appearance-none bg-transparent [&::-moz-range-thumb]:size-3 [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-transparent [&::-webkit-slider-thumb]:size-3 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:bg-transparent',
           )}
+          onPointerDown={() => { heldRef.current = true; }}
+          onKeyDown={() => { heldRef.current = true; }}
           onChange={(event) => {
             const next = Number(event.target.value);
             dragRef.current = next;
             setDragSeconds(next);
+            // iOS sets a tapped slider's value after pointerup, so nothing is
+            // left to release: the preview stuck, and the next touch seeked to
+            // this tap's position instead of its own.
+            if (!heldRef.current) commit();
           }}
           onPointerUp={commit}
+          onPointerCancel={commit}
           onKeyUp={commit}
           onBlur={commit}
         />

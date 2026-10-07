@@ -71,7 +71,13 @@ phone the row placement drew the seek bar through the last line of a cue; a
 percentage measured against the obstacle clears it at any viewport, for any
 number of rendered rows including wrapped ones. The stage measures the
 obstruction (it owns that DOM) and reports it through
-`reportChromeObstruction`; a UA without `lineAlign` support falls back to rows.
+`reportChromeObstruction`. Blink has no `VTTCue.lineAlign`, so a percentage line
+there anchors the cue's top edge and draws it through the chrome. In Chrome the
+cue instead sits on the bottom row and the browser's cue container is raised by
+the obstruction: `applyCueLine` returns the distance, the provider sets
+`data-cue-lift` and `--hpr-cue-lift` on the video element, and the rule that
+reads them is in `globals.css`. A UA that has the attribute but ignores it falls
+back to rows.
 libass is not adjusted — it positions from the subtitle script inside the video
 frame whether or not the chrome is up.
 
