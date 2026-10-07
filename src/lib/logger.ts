@@ -492,6 +492,21 @@ export const logger = {
     writeLog('error', message, metadata, options),
 };
 
+/**
+ * A client that hung up while its response was still being written.
+ *
+ * Node's HTTP server destroys the request with exactly this error when the
+ * socket closes under an unfinished response. `next dev` can let it escape as
+ * an uncaught exception, which Next itself logs and survives. It means a closed
+ * tab or a player that dropped its stream, and leaves nothing in the process
+ * in doubt, so it must not take the server down with it.
+ */
+export function isClientAbort(error: unknown): boolean {
+  return error instanceof Error
+    && error.message === 'aborted'
+    && (error as NodeJS.ErrnoException).code === 'ECONNRESET';
+}
+
 export function initializeServerLogging(next?: Partial<LoggerConfig>): void {
   if (next) configureLogger(next);
   if (singleton.initialized) return;
@@ -524,6 +539,10 @@ export function initializeServerLogging(next?: Partial<LoggerConfig>): void {
   };
 
   process.on('uncaughtException', (error) => {
+    if (isClientAbort(error)) {
+      writeLog('warn', 'Client closed the connection mid-response', error, { scope: 'process' });
+      return;
+    }
     writeLog('error', 'Uncaught exception', error, { scope: 'process' });
     void flushPendingWrites().finally(() => process.exit(1));
   });
