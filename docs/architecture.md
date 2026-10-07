@@ -50,9 +50,10 @@ instance before invoking an upstream mutation.
 
 Jellyfin in-app playback follows the same boundary. The browser never talks to
 Jellyfin with an API key. Catalog and `PlaybackInfo` go through authenticated
-Helprr routes (`jellyfin.view`). Stream, subtitle, HLS, Live TV, and fallback
-font bytes go through `/api/jellyfin/media/...` after an allowlisted path check
-and the same per-item access rule as `/api/jellyfin/image`. The proxy rewrites
+Helprr routes (`jellyfin.view`). Stream, subtitle, HLS, Live TV, and attached
+subtitle-font bytes go through `/api/jellyfin/media/...` after an allowlisted path
+check and a per-item access check on every item path; libass's fallback font is a
+static asset under `/libass`. The proxy rewrites
 HLS playlists onto Helprr URLs and strips `api_key`. Playback DeviceId is
 per-browser so Helprr users do not clobber one shared Jellyfin session. PGS
 bitmaps are not advertised for client-side overlay so the server can burn them
@@ -71,8 +72,8 @@ percentage measured against the obstacle clears it at any viewport, for any
 number of rendered rows including wrapped ones. The stage measures the
 obstruction (it owns that DOM) and reports it through
 `reportChromeObstruction`; a UA without `lineAlign` support falls back to rows.
-libass is unaffected — it positions from the subtitle script inside the video
-frame and never meets the chrome.
+libass is not adjusted — it positions from the subtitle script inside the video
+frame whether or not the chrome is up.
 
 The authenticated shell keeps the Jellyfin watch and Seerr request providers
 mounted so their React Query caches and optimistic updates survive navigation.
@@ -117,7 +118,8 @@ One upstream failure must not cancel every other source.
 
 Cleanup scheduling lives separately in `src/lib/cleanup/scheduler.ts`. Timers and
 polling singletons are stored safely across development hot reloads, and shutdown
-drains in-flight polling/cleanup work before process exit.
+waits up to 30 seconds for in-flight polling/cleanup work to drain before process
+exit.
 
 ## Authentication and Authorization
 
@@ -197,9 +199,10 @@ member is asked to reconnect instead of every playback request failing.
 `JellyfinClient` takes the playback token beside the API key and **throws**
 rather than falling back when it is missing, because silently signing a playback
 call with the admin key is the exact defect this design removes.
-`getJellyfinPlaybackContext` is the single entry point for playback routes, and
-`jellyfinConnectGateResponse` is the single place that answers
-`409 { error: 'jellyfin_connect_required' }`. Both a missing token and a missing
+`getJellyfinPlaybackContext` is the entry point for the JSON playback routes, and
+`jellyfinConnectGateResponse` is where they answer
+`409 { error: 'jellyfin_connect_required' }`; the media proxy resolves the member's
+token itself and returns the same response. Both a missing token and a missing
 identity link map to that one response, since connecting also links.
 
 Revocation has no push signal: a Jellyfin admin deleting the device in
@@ -271,14 +274,17 @@ Interactive queue/download cleanup follows a two-stage protocol:
    upstream state are reflected in history and UI.
 
 Scheduled cleanup is a separate trusted background path and must not be forced
-through an interactive token. Scheduler locking and watchdogs prevent overlapping
-or indefinitely stuck cleanup cycles.
+through an interactive token. Scheduler locking prevents overlapping cleanup
+cycles. Every upstream call carries its own timeout, so a cycle always settles; the
+watchdog only logs one that runs past five minutes, and the next cycle stays
+blocked until it does.
 
 Cleanup evaluation fails closed on missing upstream data: a torrent whose
 tracker lookup failed is skipped whenever the ignore list or a tracker-scoped
 rule is configured; a torrent whose `private` flag is absent (qBittorrent < 5)
 is treated as private for deletion gating and matches only `both`-scoped rules;
-seed time uses qBittorrent's `seeding_time` (not wall-clock since completion);
+seed time uses qBittorrent's `seeding_time`, falling back to wall-clock time
+since completion only when that field is absent;
 import confirmation requires a complete import, not any import — an arr must
 have grabbed the download, and every episode/movie in that arr's history for it
 must have an import as its newest event (a newer failed or ignored event leaves
@@ -296,8 +302,9 @@ only when it delivers a records array that meets the arr's reported total; and
 slow-rule triggers only apply in active download states so completed/seeding
 torrents are never struck.
 Cleaner intervals are validated to at most 7 days and defensively clamped below
-the 32-bit `setInterval` limit. Cycles report `warnings` for anything skipped
-or aborted, surfaced in the preview dialog and the dashboard's last-cycle line.
+the 32-bit `setInterval` limit. Cycles report `warnings` when a cycle aborts and
+when torrents are skipped because an arr or tracker data could not be read,
+surfaced in the preview dialog and the dashboard's last-cycle line.
 
 ## PWA and Push
 
@@ -355,13 +362,15 @@ Persistent runtime data is bounded through the relevant subsystem:
   retention.
 - Expired sessions and old operation audit rows are pruned.
 - Disk samples and log files use their own retention windows.
-- Image-cache retention reconciles database/Redis generations and orphan files.
+- Image-cache retention reconciles Redis generation and metadata records with the
+  files on disk and removes orphans.
 
 The bundled stable and development Compose stacks persist image bytes in the
 distinct `helprr-image-cache` and `helprr-dev-image-cache` named volumes, both
 mounted at `/app/image-cache`. Authorization decisions are never stored there:
 both image routes reauthorize before cache lookup, and the Jellyfin route also
-rechecks per-item access. A generation bump remains authoritative over browser,
+rechecks per-item access unless the user is an admin or holds `jellyfin.sessions`
+or `jellyfin.stats`. A generation bump remains authoritative over browser,
 PWA, Redis, foreground fills, and background refreshes.
 
 Fresh files are returned without queue or rate accounting. Expired files inside

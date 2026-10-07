@@ -54,18 +54,18 @@ describe('upstream compatibility documentation', () => {
 
   it('records the live point versions without presenting them as supported ranges', () => {
     for (const version of [
-      '4.0.19.2979',
-      '6.2.1.10461',
+      '4.0.20.3014',
+      '6.4.4.10685',
       '3.1.2.4913',
       'v5.1.4',
-      '2.4.0.5397',
-      '10.11.11',
-      '3.3.0',
+      '2.5.2.5491',
+      '12.2.0',
+      '3.4.1',
     ]) {
       expect(compatibility).toContain(`\`${version}\``);
     }
 
-    expect(compatibility).toContain('Last verified: **2026-07-14**');
+    expect(compatibility).toContain('Last verified: **2026-10-07**');
     expect(compatibility).toContain('No minimum or maximum upstream version is claimed yet.');
     expect(compatibility).toMatch(/must not be read as a supported product-version\s+range/);
   });

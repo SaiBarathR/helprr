@@ -89,9 +89,9 @@ dedicated `helprr-dev-*` volumes and network. Always pass `--env-file .env.dev` 
 - `fix/<name>` contains one bug fix.
 - `chore/<name>` contains maintenance, documentation, CI, or release work.
 
-Prefer a short-lived branch and PR into `development` instead of pushing unfinished
-work directly to `development`. Every push to `development` starts native amd64 and
-arm64 image builds.
+Work on a short-lived branch and open a PR into `development`; the branch refuses
+direct pushes. Every merge into `development` starts native amd64 and arm64 image
+builds.
 
 ### Image tag purpose
 
@@ -123,25 +123,29 @@ to publish an exact release image.
 
 ### Branch protection
 
-Enforcement (configured 2026-07-16 in the repository settings; also enforced for
-administrators):
+Enforcement in the repository settings, also enforced for administrators. `main`
+was configured on 2026-07-16 and `development` was later given the same rule; both
+were read back on 2026-10-07:
 
 - **`main`** — direct pushes are blocked: changes land only through a pull request
   (no approval count required — solo maintainer), and the `lint-and-build` and
   `image-scan` checks must pass before merging. Force pushes and deletion are
   blocked. This means every release commit has passed the full gate, including the
   PR-time image scan, before it can reach `main`.
-- **`development`** — force pushes and branch deletion are blocked. Direct pushes
-  remain allowed (this branch is the day-to-day integration target), so CI on
-  `development` stays advisory; the preferred feature-branch PR flow gets the full
-  required-check treatment.
+- **`development`** — the same rule: changes land only through a pull request with
+  no approval count, the `lint-and-build` and `image-scan` checks must pass before
+  merging, and force pushes and deletion are blocked. Direct pushes are refused,
+  for administrators too.
+
+A repository ruleset also blocks deletion and non-fast-forward updates of `main` and
+requires linear history there; the admin and maintain roles bypass it.
 
 Version tags are not covered by branch protection; only the maintainer pushes tags,
 and the tag build re-runs the complete scan gate anyway.
 
 On a push to `development`, CI and Docker publish are separate workflows. Treat the
-new `edge` image as deployable only after both workflows are green. The preferred PR
-flow ensures the exact commit has already passed CI before it reaches `development`.
+new `edge` image as deployable only after both workflows are green. The PR flow means
+the change has already passed CI before it reaches `development`.
 
 ## End-to-end flow
 
@@ -471,7 +475,7 @@ Never run the `down -v` command against the normal stable Compose file.
 
 Then check:
 
-- Settings → Status shows `development` plus the expected commit SHA in both modes.
+- Settings → Service status shows `development` plus the expected commit SHA in both modes.
   For published-image testing, `docker compose ... ps` or `docker inspect helprr-dev`
   should identify `ghcr.io/saibarathr/helprr:edge` as the image.
 - Login works for admin and member accounts.
@@ -506,8 +510,8 @@ fixes can remain on `development` and `edge` until the next planned release.
 
 ## Part 4: prepare the release on development
 
-Set the intended version once in the current workstation shell. The examples use a
-future minor release; replace it with the actual semantic version:
+Set the intended version once in the current workstation shell. The examples use
+`1.2.0` as a placeholder; replace it with the actual semantic version:
 
 ```bash
 VERSION=1.2.0
@@ -619,7 +623,9 @@ data-safety guarantee merely to make the review disappear; document why it is un
 ### Preferred fast-forward method
 
 Helprr currently keeps `main` and `development` at the same commit after a release.
-After the release PR is reviewed and green:
+`main` refuses direct pushes, but GitHub accepts this one because its head commit is
+the head of the open release PR and that PR's required checks have passed. The
+release PR must therefore be open and green first:
 
 ```bash
 git switch development
@@ -891,7 +897,7 @@ expected current value.
 
 Also verify:
 
-- Settings → Status displays `$VERSION` and the tagged commit SHA.
+- Settings → Service status displays `$VERSION` and the tagged commit SHA.
 - Existing users, service connections, preferences, and history remain present.
 - Admin and restricted-member login work.
 - Sonarr, Radarr, Lidarr, qBittorrent, Prowlarr, Jellyfin, and other configured services
@@ -1121,7 +1127,7 @@ docker compose --env-file .env.dev -f docker-compose.dev.yml \
 ```
 
 Confirm `.env.dev` contains
-`HELPRR_DEV_IMAGE=ghcr.io/saibarathr/helprr:edge` and check Settings → Status.
+`HELPRR_DEV_IMAGE=ghcr.io/saibarathr/helprr:edge` and check Settings → Service status.
 
 ### "Stable was promoted, but users are still on the old version"
 
@@ -1179,7 +1185,7 @@ a new release.
 - [ ] Feature PR merged into `development`.
 - [ ] Development CI and Docker publish are green.
 - [ ] `edge` deployed against isolated development data.
-- [ ] Settings → Status shows the expected commit.
+- [ ] Settings → Service status shows the expected commit.
 - [ ] Manual feature and regression tests pass.
 
 ## Short stable-release checklist

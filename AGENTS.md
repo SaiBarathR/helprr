@@ -122,8 +122,8 @@ desktop is fully supported.
   publish `ghcr.io/saibarathr/helprr:edge`.
 - Normal work uses a focused branch and PR into `development`.
 - Tagged releases build an exact version image and draft release assets. The
-  qualified digest is backed up and smoke-tested before manual promotion moves
-  minor, major, and `stable` aliases.
+  production database is backed up and the exact image smoke-tested before manual
+  promotion moves the minor, major, and `stable` aliases to its digest.
 - Follow `docs/maintainer-development-release-workflow.md` for exact commands,
   qualification, rollback, promotion, and public asset verification.
 - Never commit, push, create/merge a PR, tag, publish, promote, or deploy unless
