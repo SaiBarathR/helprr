@@ -5,6 +5,96 @@ All notable changes to Helprr are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] - 2026-10-07
+
+### Added
+
+- Activity lists downloads that Sonarr or Radarr track but could not match to a
+  series or movie, such as a torrent added by hand into the arr's category. Each
+  shows the arr's reason and an Import button, counts in the Activity badge, and
+  raises "Manual Import Required" when it is waiting on an import. The first poll
+  after updating announces any such download already in the queue once.
+- The Activity import page takes the series or movie from each scanned file when
+  the download carries none, and offers "Choose series" or "Choose movie" when
+  the arr cannot match the files either. Import stays disabled until every file
+  has one.
+- qBittorrent settings, a torrent's own settings, Rename, and bulk Set Speed
+  Limits each open on a full page instead of a drawer, so the iPhone keyboard no
+  longer pushes the form off screen. A torrent's limits and options show
+  read-only in its detail drawer, and the bulk page shows the limit the selected
+  torrents share, or "Mixed".
+- The season page has per-episode Automatic and Interactive search.
+- Every filtered list names its active filters as removable chips, with a dot on
+  the filter button and Clear all. Instance menus say which app an instance
+  belongs to.
+- Recommendations shows how many titles are excluded and links to a new Excluded
+  titles page, where a title hidden with Not interested or a dislike can be
+  shown again.
+- Discover and Anime Explore say what a sort preset leaves out: the vote floor
+  behind Highly Rated and Most Loved, "not out yet" for Upcoming, and the season
+  behind Seasonal.
+- Torrents has a Layout setting: Automatic (a table on wide screens, cards on
+  phones), Cards, or Table.
+
+### Changed
+
+- Import-confirmed removals in the Download Cleaner are stricter (see Fixed).
+  A pack the arr never fully imports now stays in qBittorrent until it is
+  imported or removed by hand. A download no arr grabbed is never removed by
+  these rules. While one configured arr cannot be read, these removals pause and
+  the affected torrents are reported as skipped. Plain ratio and seed-time rules
+  are unchanged.
+- Links into Discover, Anime Explore, Anime Library, and Activity (a studio
+  chip, "View all", a notification) open a temporary view and no longer
+  overwrite saved filters.
+- Manually imported downloads leave the Activity queue on their own. Queue items
+  that need an import say why and offer Import.
+- Detail pages use the full width on desktop, and edit forms sit in a centred
+  column. Small controls get a 44px tap area on phones without moving.
+- Prowlarr's Delete indexer and Jellyfin's Restart and Shut down moved into
+  menus, away from one-tap reach.
+
+### Fixed
+
+- The Download Cleaner removed a torrent, with its files, that Sonarr had only
+  partly imported. A single import event for the torrent counted as imported, so
+  a season pack with one episode imported and nine held for manual import was
+  deleted. A torrent now counts as imported only when no arr queue still lists
+  it, every arr that grabbed it has an import as the newest event for each
+  episode or movie, and every configured arr's queue and history could be read
+  to the end.
+- A malformed arr queue response, or a page shorter than the arr's reported
+  total, counts as an unreadable queue instead of an empty one. The queue
+  cleaner already stops its cycle on an unreadable queue.
+- Activity's Sources filter no longer sticks on the app named in a notification
+  link.
+- Automatic searches no longer report "started" when the arr rejected them.
+- Manual imports from Activity carry the release group, indexer flags, and
+  release type, so imported files keep their release group.
+- After switching alternative speed limits, the torrent settings show the limits
+  now in force.
+- Long release names stay inside dialogs and drawers. Dialogs and sheets cap
+  their height and scroll, and save bars, the bulk bar, and toasts sit above the
+  tab bar and the home indicator.
+- On small phones the Monitor drawer keeps Apply and Cancel visible, Calendar
+  opens with today in view, the Activity queue detail drawer scrolls, and long
+  text no longer squeezes or spills at 344px.
+- The Recommendations Feed card no longer runs under the bottom tab bar or the
+  now-playing bar, which hid Share and Not interested.
+- The phone More menu no longer puts its first row under the status bar when the
+  navigation is at the bottom, and fits sixteen entries on an 874pt-tall phone
+  instead of hiding Settings behind a scroll.
+- The dashboard Edit button no longer sits on top of the mini video player.
+- Rails start at the page edge instead of flush against the screen, and text on
+  tinted pills and banners is readable in the light theme.
+
+### Security
+
+- Production dependencies were updated to patched releases: `next` 16.3.6,
+  `axios` 1.20.0, `undici` 7.29.1, `sharp` 0.35.5, `source-map-js` 1.2.2, and the
+  pinned `brace-expansion` 1, 2, and 5 lines. `npm audit --omit=dev` reports no
+  known advisories at release.
+
 ## [1.5.1] - 2026-09-17
 
 ### Fixed
