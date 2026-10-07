@@ -173,15 +173,23 @@ function readQueueSnapshots(raw: unknown): Map<number, QueueSnapshot | 'legacy'>
 // single page misses everything past it — failed items beyond page 1 would never
 // notify, and old items would look "new" when they finally scroll onto page 1.
 // We page until we've collected totalRecords, with a safety cap on runaway queues.
-async function fetchAllQueueRecords(client: {
-  getQueue: (page: number, pageSize: number) => Promise<QueueResponse>;
-}): Promise<QueueResponse> {
+//
+// `includeUnknown` (Sonarr/Radarr) adds downloads the *arr tracks but could not
+// match to a series or movie — a torrent added by hand into its category. They
+// wait on a manual import like any other blocked download, so they count in the
+// Activity badge and raise the same notifications, matching what the Activity
+// page lists. Without it they would be listed there but never counted or
+// announced.
+async function fetchAllQueueRecords(
+  client: { getQueue: (page: number, pageSize: number, includeUnknown?: boolean) => Promise<QueueResponse> },
+  includeUnknown: boolean = false,
+): Promise<QueueResponse> {
   const pageSize = 200;
   const maxPages = 50; // ~10k items; bounds a pathological queue
-  const first = await client.getQueue(1, pageSize);
+  const first = await client.getQueue(1, pageSize, includeUnknown);
   const records = [...first.records];
   for (let page = 2; records.length < first.totalRecords && page <= maxPages; page++) {
-    const next = await client.getQueue(page, pageSize);
+    const next = await client.getQueue(page, pageSize, includeUnknown);
     if (next.records.length === 0) break;
     records.push(...next.records);
   }
@@ -1246,7 +1254,7 @@ export class PollingService {
 
         // Queue polling
         const tagMap = await buildTagMap(client);
-        const queue = await fetchAllQueueRecords(client);
+        const queue = await fetchAllQueueRecords(client, true);
         const prevMap = readQueueSnapshots(state.lastQueueIds);
         const currentSnapshots: QueueSnapshot[] = queue.records.map((r) => ({
           id: r.id,
@@ -1486,7 +1494,7 @@ export class PollingService {
         const { state, firstRun } = await getPollingState(instanceId);
 
         const tagMap = await buildTagMap(client);
-        const queue = await fetchAllQueueRecords(client);
+        const queue = await fetchAllQueueRecords(client, true);
         const prevMap = readQueueSnapshots(state.lastQueueIds);
         const currentSnapshots: QueueSnapshot[] = queue.records.map((r) => ({
           id: r.id,
