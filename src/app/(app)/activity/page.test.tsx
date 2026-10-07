@@ -261,6 +261,45 @@ describe('Activity manual import from the queue', () => {
     expect(new URLSearchParams(href.split('?')[1]).get('downloadId')).toBe('c');
   });
 
+  it('lists a download the arr could not match to a series and offers Import for it', async () => {
+    // What Sonarr returns for a torrent added by hand into its category: no series, no episode.
+    const unmatched = {
+      id: 4, title: '[grp] Some Show 3rd Season (BD 1080p)', source: 'sonarr', instanceId: 'son-1', downloadId: 'D', size: 100, sizeleft: 0,
+      status: 'completed', trackedDownloadState: 'importBlocked', trackedDownloadStatus: 'warning',
+      seriesId: null, episodeId: null, seasonNumber: null, series: null, episode: null, indexer: null,
+      statusMessages: [{ title: '[grp] Some Show 3rd Season (BD 1080p)', messages: ['Series title mismatch; automatic import is not possible.'] }],
+    };
+    queueRecords = [...QUEUE, unmatched];
+    await renderPage();
+    await waitFor(() => expect(text()).toContain('[grp] Some Show 3rd Season (BD 1080p)'));
+    expect(text()).toContain('MANUAL IMPORT');
+    expect(text()).toContain('Series title mismatch');
+
+    await act(async () => button('Import')!.click());
+    const params = new URLSearchParams((mocks.push.mock.calls[0]?.[0] as string).split('?')[1]);
+    expect(params.get('downloadId')).toBe('D');
+    // No series on the queue record: the import page takes it from the files instead.
+    expect(params.has('seriesId')).toBe(false);
+  });
+
+  it('does not repeat a download\'s own name in its Failed-tab reason', async () => {
+    const name = '[grp] Some Show 3rd Season (BD 1080p)';
+    queueRecords = [{
+      id: 4, title: name, source: 'sonarr', instanceId: 'son-1', downloadId: 'D', size: 100, sizeleft: 0,
+      status: 'completed', trackedDownloadState: 'importBlocked', trackedDownloadStatus: 'warning', seriesId: null,
+      // Sonarr titles a download-level message with the download's name, a file-level one with the file's.
+      statusMessages: [
+        { title: name, messages: ['Series title mismatch; automatic import is not possible.'] },
+        { title: 'Some Show - 01.mkv', messages: ['Not an upgrade'] },
+      ],
+    }];
+    useUIStore.setState({ activityTab: 'failed' });
+    await renderPage();
+    await waitFor(() => expect(text()).toContain('Series title mismatch'));
+    expect(text()).toContain('Some Show - 01.mkv: Not an upgrade');
+    expect(text().split(name)).toHaveLength(2);
+  });
+
   it("offers no Import for a Lidarr download, which the import page can't do", async () => {
     queueRecords = [...QUEUE, { ...BLOCKED, source: 'lidarr', instanceId: 'lid-1', title: 'Album.2026' }];
     await renderPage();

@@ -54,13 +54,19 @@ async function loadQueue(page: number, pageSize: number): Promise<{ result: Queu
   // Fan out across every instance of a type; one unreachable instance must not
   // blank the rest. Tag each record with its source + instance.
   const fanOut = async (
-    clients: Array<{ connection: ServiceConnection; client: { getQueue(p: number, s: number): Promise<{ records: QueueItem[]; totalRecords: number }> } }>,
+    clients: Array<{ connection: ServiceConnection; client: { getQueue(p: number, s: number, includeUnknown?: boolean): Promise<{ records: QueueItem[]; totalRecords: number }> } }>,
     source: 'sonarr' | 'radarr' | 'lidarr',
   ) => {
+    // Sonarr and Radarr also track downloads they cannot match to a series or
+    // movie (a torrent added by hand into their category). Those wait on a
+    // manual import, so Activity must list them — as each arr's own queue page
+    // does. Lidarr is left on its default view: the import page cannot act on
+    // its items.
+    const includeUnknown = source !== 'lidarr';
     const perInstance = await Promise.all(
       clients.map(async ({ connection, client }) => {
         try {
-          const q = await client.getQueue(page, pageSize);
+          const q = await client.getQueue(page, pageSize, includeUnknown);
           return {
             records: q.records.map((record: QueueItem) => ({
               ...record,
