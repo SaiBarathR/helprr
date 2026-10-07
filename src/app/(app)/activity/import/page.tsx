@@ -20,6 +20,13 @@ import { trackManualImport } from '@/lib/manual-import-tracker';
 import type { ManualImportItem, SonarrEpisode } from '@/types';
 import { SearchInput } from '@/components/media/search-input';
 
+// The *arr returns scanned files in no particular order; list them by path, as
+// its own manual import dialog does, so a season reads episode 1, 2, 3…
+function sortFilesByPath(data: ManualImportItem[]): ManualImportItem[] {
+  const pathOf = (f: ManualImportItem) => f.relativePath || f.name || f.path || '';
+  return [...ensureArray(data)].sort((a, b) => pathOf(a).localeCompare(pathOf(b), undefined, { numeric: true }));
+}
+
 // ── View modes ──────────────────────────────────────────────────────────────
 
 type View = 'files' | 'episodes';
@@ -61,6 +68,12 @@ function ManualImportContent() {
   const isSonarr = source === 'sonarr';
   const queryClient = useQueryClient();
 
+  // A download the *arr could not match to a series or movie carries neither id
+  // in its queue record, so the link has none. The *arr still matches each
+  // scanned file on its own name; fall back to that match.
+  const seriesIdOf = (file?: ManualImportItem) => (seriesId ? Number(seriesId) : file?.series?.id);
+  const movieIdOf = (file?: ManualImportItem) => (movieId ? Number(movieId) : file?.movie?.id);
+
   // State
   const [submitting, setSubmitting] = useState(false);
 
@@ -91,20 +104,27 @@ function ManualImportContent() {
     queryKey: ['activity', 'manualimport', { downloadId, source, instanceId }],
     queryFn: jsonFetcher<ManualImportItem[]>(manualImportPath),
     enabled: Boolean(downloadId),
-    select: ensureArray,
+    select: sortFilesByPath,
   });
 
   // Same key shape as the series / season / episode views (queryKeys.episodes), so
   // this manual-import episode list shares their cache and picks up
   // patchEpisodesInCache monitor/file updates. instanceId '' → undefined normalizes
   // to 'default', matching how those views key off the ?instance= param.
-  const episodesKey = queryKeys.episodes(Number(seriesId), instanceId || undefined);
+  // The series whose episodes the picker offers: the link's when it carries
+  // one, otherwise that of the file being edited.
+  const pickerSeriesId = seriesIdOf(files[pickerFileIndex]);
+  // On the file list no file is being edited, so its Refresh is offered only
+  // when every file belongs to one series (a mixed download refreshes per file,
+  // from the picker).
+  const listSeriesId = files.every((f) => seriesIdOf(f) === pickerSeriesId) ? pickerSeriesId : undefined;
+  const episodesKey = queryKeys.episodes(Number(pickerSeriesId), instanceId || undefined);
   const { data: allEpisodes = [] } = useQuery({
     queryKey: episodesKey,
     queryFn: jsonFetcher<SonarrEpisode[]>(
-      withInstanceQuery(`/api/sonarr/${seriesId}/episodes`, instanceId || undefined)
+      withInstanceQuery(`/api/sonarr/${pickerSeriesId}/episodes`, instanceId || undefined)
     ),
-    enabled: isSonarr && Boolean(seriesId),
+    enabled: isSonarr && Boolean(pickerSeriesId),
     select: ensureArray,
   });
 
@@ -147,20 +167,20 @@ function ManualImportContent() {
   /**
    * Refreshes Sonarr for the current series and updates the local episode list.
    *
-   * If no `seriesId` is available, the function returns without performing any action.
+   * If no series is known for the file being edited, the function returns without performing any action.
    * While running, it marks the UI as refreshing, sends a Sonarr RefreshSeries command,
    * refetches the series' episodes, updates local episode state on success, and displays
    * a success or error toast. The refreshing state is cleared when the operation completes.
    */
   async function handleRefreshEpisodes() {
-    if (!seriesId) return;
+    if (!pickerSeriesId) return;
     setRefreshingEpisodes(true);
     try {
       const qs = instanceId ? `?instanceId=${instanceId}` : '';
       const commandRes = await fetch(`/api/sonarr/command${qs}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: 'RefreshSeries', seriesId: Number(seriesId) }),
+        body: JSON.stringify({ name: 'RefreshSeries', seriesId: pickerSeriesId }),
       });
       if (!commandRes.ok) throw new Error('Refresh failed');
       const command = await commandRes.json() as { id?: number };
@@ -219,20 +239,27 @@ function ManualImportContent() {
         if (isSonarr) {
           return {
             path: f.path,
-            seriesId: seriesId ? Number(seriesId) : undefined,
+            seriesId: seriesIdOf(f),
             episodeIds: episodes.map((ep) => ep.id),
             seasonNumber: episodes.length > 0 ? episodes[0].seasonNumber : f.seasonNumber,
             quality: f.quality,
             languages: f.languages,
+            // The *arr records only what the request carries: without these the
+            // imported file loses its release group, indexer flags and release type.
+            releaseGroup: f.releaseGroup,
+            indexerFlags: f.indexerFlags,
+            releaseType: f.releaseType,
             downloadId,
             importMode: 'move' as const,
           };
         }
         return {
           path: f.path,
-          movieId: movieId ? Number(movieId) : undefined,
+          movieId: movieIdOf(f),
           quality: f.quality,
           languages: f.languages,
+          releaseGroup: f.releaseGroup,
+          indexerFlags: f.indexerFlags,
           downloadId,
           importMode: 'move' as const,
         };
@@ -290,7 +317,7 @@ function ManualImportContent() {
           subtitle={currentFile?.name || currentFile?.relativePath || 'File'}
           onBack={() => { setView('files'); setEpisodeSearch(''); }}
           rightContent={
-            isSonarr && seriesId ? (
+            isSonarr && pickerSeriesId ? (
               <Button
                 variant="ghost"
                 size="icon"
@@ -400,7 +427,7 @@ function ManualImportContent() {
         ) : (
           <div className="py-3 space-y-3">
             {/* Refresh episodes button (Sonarr only) */}
-            {isSonarr && seriesId && (
+            {isSonarr && listSeriesId && (
               <Button
                 variant="outline"
                 size="sm"

@@ -46,7 +46,7 @@ import { useRestorableInfiniteQuery as useInfiniteQuery } from '@/lib/hooks/use-
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError, jsonFetcher, backoffRefetchInterval } from '@/lib/query-fetch';
 import { invalidateActivity } from '@/lib/query-invalidation';
-import { classifyQueueIssue } from '@/lib/queue-state';
+import { classifyQueueIssue, isUnmatchedQueueItem } from '@/lib/queue-state';
 import { applyPendingImports, pendingImportKey, usePendingImports } from '@/lib/manual-import-tracker';
 import { useUIStore } from '@/lib/store';
 import { type InstanceOption, withAppName } from '@/components/instance-filter';
@@ -928,7 +928,9 @@ function QueueTab({
       }
       toast.success(delta.count > 1 ? `Removed ${delta.count} ${packNoun(source)} from queue` : 'Removed from queue');
       // Optimistic nudge only on full success; the badge poll reconciles a partial delete.
-      adjustBadge('activity', -(delta.count || 1), -delta.attention);
+      // The badge never counted downloads the *arr could not match, so removing one must not lower it.
+      const badgeDelta = queueRemovalDelta(uiRemove.filter((it) => !isUnmatchedQueueItem(it)));
+      if (badgeDelta.count > 0) adjustBadge('activity', -badgeDelta.count, -badgeDelta.attention);
     } catch (e) {
       // Roll back the optimistic drop; the finally-refetch reconciles a partial delete.
       if (snapshot) queryClient.setQueryData(['activity', 'queue'], snapshot);
@@ -1597,7 +1599,8 @@ function FailedImportsTab({ filterBy, instanceFilter }: { filterBy: string[]; in
                   </Badge>
                   {item.statusMessages?.map((msg, i) => (
                     <p key={i} className="text-xs text-muted-foreground mt-1 break-words">
-                      {msg.title}: {msg.messages?.join(', ')}
+                      {/* The *arr titles a download-level message with the download's own name: don't repeat it. */}
+                      {msg.title && msg.title !== item.title ? `${msg.title}: ` : ''}{msg.messages?.join(', ')}
                     </p>
                   ))}
                 </div>
