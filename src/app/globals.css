@@ -211,11 +211,16 @@
 
    A full-width bar (the now-playing bar, an import bar) instead sits on top of
    the tab bar when there is one (--footer-bar-bottom), and otherwise on the very
-   bottom with the home indicator inside its own padding (--footer-bar-inset). */
+   bottom with the home indicator inside its own padding (--footer-bar-inset).
+
+   A full-bleed surface that runs to the edge of that chrome, rather than keeping
+   off the home indicator as well, stops at --footer-cover: the tab bar, plus the
+   now-playing bar while it is up. */
 :root {
   --footer-height: env(safe-area-inset-bottom, 0px);
   --footer-bar-bottom: 0px;
   --footer-bar-inset: env(safe-area-inset-bottom, 0px);
+  --footer-cover: var(--footer-bar-bottom);
 }
 
 @media (max-width: 767.98px) {
@@ -230,6 +235,13 @@
    (floating bars, toasts, the mini player and the page's last rows) clears it. */
 :root:has([data-now-playing-bar]) {
   --player-bar-height: 3.875rem;
+  --footer-cover: calc(var(--footer-height) + var(--player-bar-height));
+}
+
+/* The mini video player floats in the corner the dashboard's Edit button uses;
+   its 9rem height plus a gap lifts the button clear of it. */
+:root:has([data-mini-player]) {
+  --mini-player-clearance: 9.25rem;
 }
 
 :root:has([data-now-playing-bar]) .app-main {

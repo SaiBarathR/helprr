@@ -364,6 +364,7 @@ export function VideoStage({ mediaContainer }: { mediaContainer: HTMLDivElement 
     <>
       <div
         data-closing={sheet.exiting || undefined}
+        data-mini-player={mini || undefined}
         inert={sheet.exiting}
         onAnimationEnd={(event) => {
           if (event.target === event.currentTarget && event.animationName === 'watch-player-out') {
