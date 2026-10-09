@@ -127,8 +127,17 @@ export function buildHelprrStreamInfo(input: {
 
   return {
     item: input.item,
+    // Only what the player reads. The rest of the upstream source includes URLs
+    // Jellyfin signed with the member's token (`TranscodingUrl`) and, for a
+    // remote source, its provider's address and headers.
     mediaSource: {
-      ...source,
+      Id: source.Id,
+      Container: source.Container,
+      Bitrate: source.Bitrate,
+      RunTimeTicks: source.RunTimeTicks,
+      DefaultAudioStreamIndex: source.DefaultAudioStreamIndex,
+      DefaultSubtitleStreamIndex: source.DefaultSubtitleStreamIndex,
+      IsInfiniteStream: source.IsInfiniteStream,
       MediaStreams: source.MediaStreams?.map((stream) => (
         stream.DeliveryUrl
           ? { ...stream, DeliveryUrl: proxyUrl(stream.DeliveryUrl) }

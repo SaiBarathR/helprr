@@ -207,6 +207,10 @@ re-encrypted on the next write. A token that cannot be decrypted -- typically
 after a secret rotation -- is treated as absent rather than raising, so the
 member is asked to reconnect instead of every playback request failing.
 `toSafeUser` exposes only a boolean; the token itself never reaches a response.
+Jellyfin signs the URLs in its playback negotiation with that token
+(`TranscodingUrl` carries `ApiKey=`), so `buildHelprrStreamInfo` returns only the
+media-source fields the player reads and the proxied `mediaUrl`, never the
+upstream source as a whole.
 
 `JellyfinClient` takes the playback token beside the API key and **throws**
 rather than falling back when it is missing, because silently signing a playback
