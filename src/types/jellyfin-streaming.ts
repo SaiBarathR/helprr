@@ -93,9 +93,23 @@ export interface PlaybackInfoResponse {
   MediaSources: JellyfinMediaSource[];
 }
 
+/** The part of Jellyfin's media source the player reads; nothing else is sent to it. */
+export type HelprrMediaSource = Pick<
+  JellyfinMediaSource,
+  | 'Id'
+  | 'Container'
+  | 'Bitrate'
+  | 'RunTimeTicks'
+  | 'DefaultAudioStreamIndex'
+  | 'DefaultSubtitleStreamIndex'
+  | 'IsInfiniteStream'
+  | 'MediaStreams'
+  | 'MediaAttachments'
+>;
+
 export interface HelprrStreamInfo {
   item: JellyfinItem;
-  mediaSource: JellyfinMediaSource;
+  mediaSource: HelprrMediaSource;
   playMethod: JellyfinPlayMethod;
   playSessionId: string;
   mediaUrl: string;

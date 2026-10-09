@@ -90,6 +90,18 @@ week on the builds named with them.
     variant playlist, and the first media segment came back through
     `/api/jellyfin/media`, with every playlist entry on a Helprr URL and no
     `api_key` or `ApiKey`. A text subtitle (`mov_text`) was delivered as WebVTT.
+    This check read the playlists, not the negotiation response itself, which
+    still returned the upstream media source with `ApiKey` in its
+    `TranscodingUrl`. Its `mediaSource` is now limited to the fields the player
+    reads, and its item no longer carries the file path or a media source's
+    address and headers. On 2026-10-09 a local build of that fix, negotiating a
+    1080p H.264 film against the same server with a transcode-only and a
+    direct-play profile, returned no credential-shaped parameter anywhere in the
+    response (both negotiated a transcode), and the film played with its ASS
+    track in a desktop Chromium browser and in Safari on the iOS Simulator
+    (iOS 27). The negotiation and catalog item responses for a film, a series,
+    an episode and a Live TV channel carried no `Path`, `RequiredHttpHeaders`,
+    `EncoderPath`, `OpenToken`, `TranscodingUrl` or `DirectStreamUrl`.
   - **Token/DeviceId independence.** The member token had been minted against the
     per-account device id. Playback reports were then sent under a new, never-used
     browser device id: Jellyfin listed a session for that device id owned by the
