@@ -6,6 +6,7 @@ import type {
   PlaybackInfoResponse,
 } from '@/types/jellyfin-streaming';
 import { stripSensitiveQuery } from '@/lib/jellyfin-playback/media-path';
+import { withoutSourceLocation, withoutStreamPath } from '@/lib/jellyfin-playback/source-location';
 
 function proxyUrl(jellyfinPathAndQuery: string): string {
   const [pathPart, queryPart] = jellyfinPathAndQuery.split('?');
@@ -126,10 +127,19 @@ export function buildHelprrStreamInfo(input: {
     || '';
 
   return {
-    item: input.item,
+    item: withoutSourceLocation(input.item),
+    // Only what the player reads. The rest of the upstream source includes URLs
+    // Jellyfin signed with the member's token (`TranscodingUrl`) and, for a
+    // remote source, its provider's address and headers.
     mediaSource: {
-      ...source,
-      MediaStreams: source.MediaStreams?.map((stream) => (
+      Id: source.Id,
+      Container: source.Container,
+      Bitrate: source.Bitrate,
+      RunTimeTicks: source.RunTimeTicks,
+      DefaultAudioStreamIndex: source.DefaultAudioStreamIndex,
+      DefaultSubtitleStreamIndex: source.DefaultSubtitleStreamIndex,
+      IsInfiniteStream: source.IsInfiniteStream,
+      MediaStreams: source.MediaStreams?.map(withoutStreamPath).map((stream) => (
         stream.DeliveryUrl
           ? { ...stream, DeliveryUrl: proxyUrl(stream.DeliveryUrl) }
           : stream

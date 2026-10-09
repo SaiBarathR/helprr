@@ -174,4 +174,73 @@ describe('stream info builder', () => {
     expect(result.mediaUrl.startsWith('/api/jellyfin/media/videos/item1/master.m3u8')).toBe(true);
     expect(result.mediaUrl).not.toContain('api_key');
   });
+
+  // Jellyfin signs the URLs it returns with the member's own access token, and
+  // a remote source's path and headers can hold its provider's credentials.
+  it.each([
+    ['a transcode', {}],
+    ['a direct stream', { SupportsDirectStream: true }],
+  ])('returns no upstream URL or credential for %s', (_label, support) => {
+    // Jellyfin's single-item response repeats the media source, with its path.
+    const item: JellyfinItem = {
+      Id: 'item1',
+      Name: 'Movie',
+      Type: 'Movie',
+      MediaType: 'Video',
+      Path: '/media/SECRET/movie.strm',
+      MediaSources: [{
+        Id: 'src1',
+        Container: 'mkv',
+        Path: 'https://iptv.example/ch1.m3u8?access_token=SECRET',
+        MediaStreams: [{ Type: 'Video', Index: 0, Path: '/media/SECRET/movie.mkv' }],
+      }],
+    };
+    const source = {
+      Id: 'src1',
+      Container: 'mkv',
+      Bitrate: 8_000_000,
+      RunTimeTicks: 72_000_000_000,
+      DefaultAudioStreamIndex: 1,
+      DefaultSubtitleStreamIndex: 2,
+      IsInfiniteStream: false,
+      SupportsTranscoding: true,
+      TranscodingSubProtocol: 'hls',
+      TranscodingUrl: '/videos/item1/master.m3u8?MediaSourceId=src1&ApiKey=SECRET&PlaySessionId=p2',
+      DirectStreamUrl: '/videos/item1/stream.mkv?api_key=SECRET',
+      Path: 'https://iptv.example/ch1.m3u8?access_token=SECRET',
+      EncoderPath: 'http://127.0.0.1:8096/LiveTv/LiveStreamFiles/x/stream.ts?X-Emby-Token=SECRET',
+      OpenToken: 'SECRET',
+      RequiredHttpHeaders: { Authorization: 'Bearer SECRET' },
+      MediaStreams: [
+        { Type: 'Audio', Index: 1, Codec: 'aac' },
+        { Type: 'Subtitle', Index: 2, Codec: 'subrip', DeliveryMethod: 'External', Path: '/media/SECRET/movie.en.srt', DeliveryUrl: '/Videos/item1/src1/Subtitles/2/0/Stream.vtt?ApiKey=SECRET' },
+      ],
+      MediaAttachments: [{ Index: 0, FileName: 'font.ttf', DeliveryUrl: '/Videos/item1/src1/Attachments/0?api_key=SECRET' }],
+      ...support,
+    } as JellyfinMediaSource;
+    const result = buildHelprrStreamInfo({ item, playback: { MediaSources: [source] } });
+    expect('error' in result).toBe(false);
+    if ('error' in result) return;
+
+    const json = JSON.stringify(result);
+    expect(json).not.toContain('SECRET');
+    expect(json).not.toMatch(/api_?key|access_?token|x-emby-token|x-mediabrowser-token/i);
+    // What the player reads is still there.
+    expect(result.mediaSource).toEqual({
+      Id: 'src1',
+      Container: 'mkv',
+      Bitrate: 8_000_000,
+      RunTimeTicks: 72_000_000_000,
+      DefaultAudioStreamIndex: 1,
+      DefaultSubtitleStreamIndex: 2,
+      IsInfiniteStream: false,
+      MediaStreams: [
+        { Type: 'Audio', Index: 1, Codec: 'aac' },
+        { Type: 'Subtitle', Index: 2, Codec: 'subrip', DeliveryMethod: 'External', DeliveryUrl: '/api/jellyfin/media/Videos/item1/src1/Subtitles/2/0/Stream.vtt' },
+      ],
+      MediaAttachments: [{ Index: 0, FileName: 'font.ttf', DeliveryUrl: '/api/jellyfin/media/Videos/item1/src1/Attachments/0' }],
+    });
+    expect(result.subtitleTracks[0].url).toBe('/api/jellyfin/media/Videos/item1/src1/Subtitles/2/0/Stream.vtt');
+    expect(result.playSessionId).toBe('p2');
+  });
 });

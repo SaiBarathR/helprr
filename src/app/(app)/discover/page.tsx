@@ -76,6 +76,7 @@ import { useIsMobile } from '@/hooks/use-is-mobile';
 import {
   SECTION_TO_BROWSE,
   discoverFilterChips,
+  discoverLinkQuery,
   discoverLinkView,
   toReleaseState,
   type DiscoverView,
@@ -666,19 +667,24 @@ export default function DiscoverPage() {
   const setDiscoverFilters = useUIStore((s) => s.setDiscoverFilters);
 
   const isMobile = useIsMobile();
-  const [query, setQuery] = useRouteViewState('query', '');
+  const [typedQuery, setQuery] = useRouteViewState<string | null>('query', null);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [savedManualBrowseMode, setSavedManualBrowseMode] = useRouteViewState('manualBrowseMode', false);
   const [savedSectionKey, setSavedSectionKey] = useRouteViewState<string | null>('activeSectionKey', null);
 
-  // A link (cast credit, widget "View all", genre/studio/network chip) opens its
-  // own view. It applies to that URL only and never touches the saved filters,
-  // so following one can't leave every later plain visit filtered. Changes made
-  // on it stay with it too; route view state is keyed by the full URL, so they
-  // survive back-navigation and plain /discover keeps its own.
+  // A link (cast credit, widget "View all", genre/studio/network chip, search)
+  // opens its own view. It applies to that URL only and never touches the saved
+  // filters, so following one can't leave every later plain visit filtered.
+  // Changes made on it stay with it too; route view state is keyed by the full
+  // URL, so they survive back-navigation and plain /discover keeps its own.
   const searchParamsKey = searchParams.toString();
   const linkView = useMemo(() => discoverLinkView(new URLSearchParams(searchParamsKey)), [searchParamsKey]);
   const [linkEdits, setLinkEdits] = useRouteViewState<DiscoverView | null>('linkView', null);
+  // A search link's `?q=` fills the box until something is typed on that URL.
+  // It is only the fallback: typed text is never re-read from the URL, so an
+  // edited or cleared box stays that way.
+  const linkQuery = useMemo(() => discoverLinkQuery(new URLSearchParams(searchParamsKey)), [searchParamsKey]);
+  const query = typedQuery ?? linkQuery;
   const savedView = useMemo<DiscoverView>(() => ({
     contentType: savedContentType,
     sort: savedSort,
@@ -1215,8 +1221,14 @@ export default function DiscoverPage() {
         <div className="flex items-center gap-2">
           <div className="flex-1">
             <SearchBar
+              // A fresh box per Discover URL: carried across, the old box's
+              // empty text is written over the text the new URL remembers.
+              key={searchParamsKey}
               value={query}
               onChange={(value) => {
+                // The box reports its own text back after its debounce. That
+                // is not typing, and must leave an untouched link as it is.
+                if (value === query) return;
                 setQuery(value);
                 // Typing a query is an explicit browse intent: leave any active
                 // section and switch to grid mode (was a query-watching effect).
