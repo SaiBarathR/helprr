@@ -1,15 +1,39 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_DISCOVER_FILTERS } from '@/lib/store';
 import type { DiscoverFiltersResponse } from '@/types';
-import { discoverFilterChips, discoverLinkView, type DiscoverView } from './link-view';
+import { discoverFilterChips, discoverLinkQuery, discoverLinkView, type DiscoverView } from './link-view';
 
 const link = (query: string) => discoverLinkView(new URLSearchParams(query));
 
+describe('discoverLinkQuery', () => {
+  const text = (query: string) => discoverLinkQuery(new URLSearchParams(query));
+
+  it('reads the search text a link carries', () => {
+    expect(text('')).toBe('');
+    expect(text('genres=27')).toBe('');
+    expect(text('q=%20dune+part%20two%20')).toBe('dune part two');
+    expect(text(`q=${encodeURIComponent('a&b+c #1 100% é')}`)).toBe('a&b+c #1 100% é');
+  });
+});
+
 describe('discoverLinkView', () => {
-  it('is null for a plain visit or a search-only link', () => {
+  it('is null for a plain visit', () => {
     expect(link('')).toBeNull();
-    expect(link('q=dune')).toBeNull();
+    expect(link('q=%20')).toBeNull();
     expect(link('contentType=movie')).toBeNull();
+  });
+
+  it('opens a search link on the defaults, not the saved filters', () => {
+    expect(link('q=dune')).toEqual({
+      contentType: 'all',
+      sort: 'popular',
+      sortDirection: 'desc',
+      filters: DEFAULT_DISCOVER_FILTERS,
+      section: null,
+      manualBrowseMode: true,
+      person: null,
+      names: {},
+    });
   });
 
   it('starts a filter link from the defaults, not the saved filters', () => {

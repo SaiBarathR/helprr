@@ -48,7 +48,6 @@ vi.mock('@/lib/hooks/use-restorable-infinite-query', () => ({
     };
   },
 }));
-vi.mock('@/components/media/search-bar', () => ({ SearchBar: () => null }));
 vi.mock('@/components/hero-carousel', () => ({ HeroCarousel: () => null }));
 vi.mock('@/components/ui/sheet', () => ({
   Sheet: () => null,
@@ -90,6 +89,10 @@ vi.mock('@/lib/store', async () => {
     setDiscoverSortDirection: (discoverSortDirection: string) => set({ discoverSortDirection }),
     discoverFilters: DEFAULT_DISCOVER_FILTERS,
     setDiscoverFilters: (discoverFilters: unknown) => set({ discoverFilters }),
+    // The search box's recent-search list.
+    searchHistory: {},
+    addSearchTerm: () => {},
+    removeSearchTerm: () => {},
   }));
   return { DEFAULT_DISCOVER_FILTERS, useUIStore };
 });
@@ -142,7 +145,18 @@ async function click(label: string) {
   await act(async () => target.click());
 }
 
-const grid = () => mocks.gridKey?.[2] as { contentType: string; sort: string; filters: { genres: number[] } };
+const grid = () => mocks.gridKey?.[2] as { query: string; contentType: string; sort: string; filters: { genres: number[] } };
+const searchBox = () => document.querySelector<HTMLInputElement>('input[placeholder="Search movies and shows"]')!;
+
+/** Type into the search box and let its debounce report the text. */
+async function type(text: string) {
+  const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;
+  await act(async () => {
+    setValue.call(searchBox(), text);
+    searchBox().dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await act(async () => { vi.advanceTimersByTime(1000); });
+}
 const saved = () => {
   const { discoverContentType, discoverSort, discoverSortDirection, discoverFilters } = useUIStore.getState();
   return { discoverContentType, discoverSort, discoverSortDirection, discoverFilters };
@@ -209,5 +223,76 @@ describe('Discover links', () => {
     await open('');
 
     expect(document.body.textContent).not.toContain('Discover Results');
+  });
+});
+
+describe('Discover search links', () => {
+  beforeEach(() => { vi.useFakeTimers(); });
+  afterEach(() => { vi.useRealTimers(); });
+
+  it('searches for the text a link carries, without the saved filters', async () => {
+    await open('q=dune%20part%20two');
+
+    expect(searchBox().value).toBe('dune part two');
+    expect(grid()).toMatchObject({ query: 'dune part two', contentType: 'all', filters: { genres: [] } });
+    // The box reporting its own text back changes nothing.
+    await act(async () => { vi.advanceTimersByTime(2000); });
+    expect(searchBox().value).toBe('dune part two');
+    expect(grid()).toMatchObject({ query: 'dune part two', contentType: 'all' });
+    expect(saved()).toEqual(SAVED);
+  });
+
+  it('keeps text typed on a search link with that link', async () => {
+    await open('q=dune');
+    await type('arrival');
+    expect(grid()).toMatchObject({ query: 'arrival' });
+
+    // The Discover nav item, then Back: the page stays mounted through both.
+    await open('');
+    expect(searchBox().value).toBe('');
+    expect(grid()).toMatchObject({ query: '', contentType: 'show', filters: { genres: [18] } });
+    await open('q=dune');
+    expect(searchBox().value).toBe('arrival');
+    expect(grid()).toMatchObject({ query: 'arrival', contentType: 'all' });
+  });
+
+  it('keeps a plain visit\'s search out of a link, and gives it back afterwards', async () => {
+    await open('');
+    await type('heat');
+    expect(grid()).toMatchObject({ query: 'heat', contentType: 'show' });
+
+    await open('q=dune');
+    expect(searchBox().value).toBe('dune');
+    expect(grid()).toMatchObject({ query: 'dune', contentType: 'all' });
+    await open('');
+    expect(searchBox().value).toBe('heat');
+    expect(grid()).toMatchObject({ query: 'heat', contentType: 'show' });
+  });
+
+  it('leaves a cleared search link cleared when it is visited again', async () => {
+    await open('q=dune');
+    await type('');
+    expect(grid()).toMatchObject({ query: '' });
+    await act(async () => root.unmount());
+
+    root = createRoot(document.getElementById('root')!);
+    await open('q=dune');
+    expect(searchBox().value).toBe('');
+    expect(grid()).toMatchObject({ query: '' });
+  });
+
+  it('searches a link that also filters', async () => {
+    await open('q=dune&genres=27&contentType=movie');
+
+    expect(searchBox().value).toBe('dune');
+    expect(grid()).toMatchObject({ query: 'dune', contentType: 'movie', filters: { genres: [27] } });
+    expect(saved()).toEqual(SAVED);
+  });
+
+  it('opens a blank search link as a plain visit', async () => {
+    await open('q=%20');
+
+    expect(searchBox().value).toBe('');
+    expect(grid()).toMatchObject({ query: '', contentType: 'show', filters: { genres: [18] } });
   });
 });
