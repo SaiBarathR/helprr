@@ -67,6 +67,10 @@ describe('request paths built from ids', () => {
     '/Items/a b',
     '/Items/..\\System',
     '/Items/./x',
+    // The parser trims control characters from the ends, leaving `..`.
+    '/UserPlayedItems/..\u0000',
+    '/UserPlayedItems/..\u001f',
+    '\u0001/UserPlayedItems/x',
   ])('never sends %j', (url) => {
     expect(() => send(url)).toThrow('unsafe path');
   });

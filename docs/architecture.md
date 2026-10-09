@@ -53,9 +53,9 @@ pattern in the route first. Jellyfin ids are strings rather than numbers, and th
 URL parser resolves dot segments, so an id such as `../Items/<id>?` would turn a
 call signed with the server's key into a call to another endpoint. As a second
 line, `JellyfinClient` refuses to send any path carrying a dot segment, `?`, `#`,
-`%`, a backslash, or whitespace, and the media proxy rejects a path with `%` or a
-control character, which the parser would read as a traversal after the
-allowlist check.
+`%`, a backslash, whitespace, or a control character, and the media proxy rejects
+a path with `%` or a control character, which the parser would read as a
+traversal after the allowlist check.
 
 Jellyfin in-app playback follows the same boundary. The browser never talks to
 Jellyfin with an API key. Catalog and `PlaybackInfo` go through authenticated

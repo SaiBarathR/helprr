@@ -36,8 +36,10 @@ const CLIENT_VERSION = '1.0.0';
 const DEVICE_NAME = 'Helprr Server';
 export const DEVICE_ID = 'helprr-server';
 const AUTH_DEVICE_NAME = 'Helprr';
-// A dot segment, a query or fragment marker, an escape, a backslash or whitespace.
-const UNSAFE_PATH_RE = /(?:^|\/)\.{1,2}(?:\/|$)|[?#%\\\s]/;
+// A dot segment, a query or fragment marker, an escape, a backslash, whitespace
+// or a control character (the parser trims those from the ends before it
+// resolves dot segments).
+const UNSAFE_PATH_RE = /(?:^|\/)\.{1,2}(?:\/|$)|[?#%\\\s\p{Cc}]/u;
 
 /**
  * Device identity used when minting a *member's* own access token.
