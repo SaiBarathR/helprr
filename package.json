@@ -1,6 +1,6 @@
 {
   "name": "helprr",
-  "version": "1.6.1",
+  "version": "1.6.2",
   "private": true,
   "scripts": {
     "predev": "node scripts/copy-libass-assets.mjs",
