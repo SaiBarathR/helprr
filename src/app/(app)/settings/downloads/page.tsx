@@ -28,9 +28,17 @@ interface ScheduleResponse {
 const DAY_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
+// crypto.randomUUID() only exists in secure contexts. On a plain-http install
+// it would throw and Add rule would do nothing; the id only has to be unique.
+function newRuleId(): string {
+  return typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : `rule_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`;
+}
+
 function newRule(): BandwidthRule {
   return {
-    id: crypto.randomUUID(),
+    id: newRuleId(),
     name: 'Off-peak throttle',
     enabled: true,
     daysOfWeek: [1, 2, 3, 4, 5],
