@@ -288,10 +288,10 @@ actor, service/instance, operation, target, item count, whether files/data were
 deleted, structured details, success, and error information. Two paths do not
 write to it. An import from the Activity page is not recorded. Queue and download
 cleaner runs, scheduled or interactive, send their per-item outcomes to
-`CleanupHistory`, which records the trigger (`auto` or `manual`) and the preview
-id but no actor. Audit persistence is intentionally fail-soft so an audit outage
-never changes the real upstream result; it is not a substitute for
-authorization.
+`CleanupHistory`, which records the trigger (`auto` or `manual`) and, for an
+interactive run, the preview id, but no actor. Audit persistence is intentionally
+fail-soft so an audit outage never changes the real upstream result; it is not a
+substitute for authorization.
 
 Interactive queue/download cleanup follows a two-stage protocol:
 
