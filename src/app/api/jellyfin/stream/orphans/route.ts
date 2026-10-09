@@ -32,7 +32,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   }
 
   try {
-    const ended = await reapDeviceSessions(deviceId);
+    const ended = await reapDeviceSessions(deviceId, auth.user.id);
     return NextResponse.json({ ok: true, ended });
   } catch (error) {
     return upstreamErrorResponse(error, 'Failed to clear abandoned sessions');
