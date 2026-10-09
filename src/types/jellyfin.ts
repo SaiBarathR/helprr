@@ -155,6 +155,8 @@ export interface JellyfinItem {
   Chapters?: JellyfinChapter[];
   Trickplay?: Record<string, JellyfinTrickplayInfo[]>;
   MediaSources?: JellyfinMediaSource[];
+  /** Where the file lives on the server. Sent by Jellyfin, never to the browser. */
+  Path?: string;
   PrimaryImageAspectRatio?: number;
   AlbumArtist?: string;
   Album?: string;
@@ -197,6 +199,8 @@ export interface JellyfinChapter {
   Name?: string;
   ImageTag?: string;
   ImageDateModified?: string;
+  /** Where an extracted chapter image lives on the server. Never sent to the browser. */
+  ImagePath?: string;
 }
 
 export interface JellyfinTrickplayInfo {

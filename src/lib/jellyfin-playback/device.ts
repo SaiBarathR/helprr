@@ -26,7 +26,12 @@ export function getJellyfinPlaybackDeviceId(): string {
   try {
     const existing = window.localStorage.getItem(DEVICE_KEY);
     if (existing && existing.length >= 8) return existing;
-    const created = `helprr-pwa-${crypto.randomUUID()}`;
+    // crypto.randomUUID() only exists in secure contexts. On a plain-http
+    // install it would throw, leaving every browser on the shared id below.
+    const random = typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID()
+      : Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) => byte.toString(16).padStart(2, '0')).join('');
+    const created = `helprr-pwa-${random}`;
     window.localStorage.setItem(DEVICE_KEY, created);
     return created;
   } catch {

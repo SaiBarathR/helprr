@@ -3,6 +3,7 @@ import { getJellyfinClientForUser, JellyfinNotLinkedError } from '@/lib/service-
 import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { upstreamErrorResponse } from '@/lib/api-error';
+import { withoutSourceLocation } from '@/lib/jellyfin-playback/source-location';
 import type { CatalogItemDetailResponse } from '@/types/jellyfin-streaming';
 
 const ITEM_ID_RE = /^[a-f0-9-]+$/i;
@@ -27,7 +28,8 @@ async function getHandler(
     const client = (await getJellyfinClientForUser(auth.user)).withReadSignal(request.signal);
     const item = await client.getItem(itemId);
 
-    const payload: CatalogItemDetailResponse = { linked: true, item };
+    // These item endpoints take no field list, so Jellyfin returns everything.
+    const payload: CatalogItemDetailResponse = { linked: true, item: withoutSourceLocation(item) };
 
     const jobs: Array<Promise<void>> = [];
     if (wants('seasons') && (item.Type === 'Series' || item.Type === 'Season' || item.Type === 'Episode')) {
@@ -60,11 +62,11 @@ async function getHandler(
         (payload.failedExpansions ??= []).push('similar');
         payload.similar = [];
       }));
-      if (wants('specials')) jobs.push(client.getSpecialFeatures(itemId).then((items) => { payload.specialFeatures = items ?? []; }).catch(() => {
+      if (wants('specials')) jobs.push(client.getSpecialFeatures(itemId).then((items) => { payload.specialFeatures = (items ?? []).map(withoutSourceLocation); }).catch(() => {
         (payload.failedExpansions ??= []).push('specialFeatures');
         payload.specialFeatures = [];
       }));
-      if (wants('trailers')) jobs.push(client.getLocalTrailers(itemId).then((items) => { payload.localTrailers = items ?? []; }).catch(() => {
+      if (wants('trailers')) jobs.push(client.getLocalTrailers(itemId).then((items) => { payload.localTrailers = (items ?? []).map(withoutSourceLocation); }).catch(() => {
         (payload.failedExpansions ??= []).push('localTrailers');
         payload.localTrailers = [];
       }));
@@ -84,9 +86,9 @@ async function getHandler(
     if (expand.has('theme')) {
       jobs.push(client.getThemeMedia(itemId).then((data) => {
         payload.themeMedia = {
-          themeSongs: data.ThemeSongsResult?.Items ?? [],
-          themeVideos: data.ThemeVideosResult?.Items ?? [],
-          soundtrackSongs: data.SoundtrackSongsResult?.Items ?? [],
+          themeSongs: (data.ThemeSongsResult?.Items ?? []).map(withoutSourceLocation),
+          themeVideos: (data.ThemeVideosResult?.Items ?? []).map(withoutSourceLocation),
+          soundtrackSongs: (data.SoundtrackSongsResult?.Items ?? []).map(withoutSourceLocation),
         };
       }).catch(() => {
         payload.themeMedia = { themeSongs: [], themeVideos: [], soundtrackSongs: [] };
