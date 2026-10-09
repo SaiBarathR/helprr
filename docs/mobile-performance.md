@@ -37,8 +37,7 @@ are displayed before optional indexer names finish loading.
   playback. Actual transferred bytes depend on compression and cache state.
   Offline fallback precaching is unchanged. Allowlisted read-only authenticated
   API responses are served network-first with a two-second timeout and a labelled
-  snapshot that expires five minutes after it was fetched; other API reads stay
-  network-only.
+  snapshot that expires five minutes after it was fetched.
 
 ## Verification recorded on 2026-09-06
 
