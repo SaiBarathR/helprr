@@ -65,8 +65,10 @@ desktop is fully supported.
   token bound to user, cleaner, config, scope, and candidates. Scheduled cleanup
   uses a separate trusted path. Revalidate upstream state before deletion and
   preserve truthful per-item outcomes.
-- Destructive media, file, torrent, and queue operations use the unified
-  operation audit. Audit writes are fail-soft but never replace authorization.
+- Destructive media, file, torrent, and queue operations a user performs
+  directly use the unified operation audit; queue/download cleaner removals,
+  scheduled or interactive, are recorded in Cleanup History instead. Audit
+  writes are fail-soft but never replace authorization.
 - `/api/health` is dependency-free liveness. `/api/ready` checks PostgreSQL,
   Redis, and exact migration state. Keep both unauthenticated and non-secret.
 - Startup configuration validation must complete before polling, push, cleanup,

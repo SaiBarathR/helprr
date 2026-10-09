@@ -54,8 +54,11 @@ Helprr routes (`jellyfin.view`). Stream, subtitle, HLS, Live TV, and attached
 subtitle-font bytes go through `/api/jellyfin/media/...` after an allowlisted path
 check and a per-item access check on every item path; libass's fallback font is a
 static asset under `/libass`. The proxy rewrites
-HLS playlists onto Helprr URLs and strips `api_key`. Playback DeviceId is
-per-browser so Helprr users do not clobber one shared Jellyfin session. PGS
+HLS playlist entries on the Jellyfin origin onto Helprr URLs and strips token
+query parameters (`ApiKey`, legacy `api_key`) from them; an entry on any other
+origin is passed through unchanged. Playback DeviceId is per-browser, with a
+shared `helprr-pwa` fallback when browser storage is unavailable, so Helprr users
+do not clobber one shared Jellyfin session. PGS
 bitmaps are not advertised for client-side overlay so the server can burn them
 in; ASS/SSA uses the same libass worker as jellyfin-web, falling back to a
 server burn-in when that worker cannot render. libass sizes its canvas once, at
@@ -222,8 +225,11 @@ call with the admin key is the exact defect this design removes.
 `getJellyfinPlaybackContext` is the entry point for the JSON playback routes, and
 `jellyfinConnectGateResponse` is where they answer
 `409 { error: 'jellyfin_connect_required' }`; the media proxy resolves the member's
-token itself and returns the same response. Both a missing token and a missing
-identity link map to that one response, since connecting also links.
+token itself and returns the same response. On the JSON routes both a missing
+token and a missing identity link map to that one response, since connecting
+also links. On the media proxy only a missing or rejected token does: an item
+request from a member with no identity link fails the per-item access check
+first and returns `404`.
 
 Revocation has no push signal: a Jellyfin admin deleting the device in
 Dashboard -> Devices invalidates the token silently. A `401`/`403` on any
@@ -235,7 +241,8 @@ Device identity matters in two places and they are not the same. A member's
 token is minted against a stable per-account `DeviceId` derived from a hash of
 the Jellyfin username, so members stop overwriting one shared device row in
 Jellyfin's Devices view. Playback then presents that token with the *browser's*
-own device id, giving one Jellyfin session per browser. A token is accepted when
+own device id, giving one Jellyfin session per browser (browsers on the
+`helprr-pwa` fallback share one). A token is accepted when
 presented with a `DeviceId` other than the one it was minted against, which is
 what makes a single stored token per member sufficient; that behaviour is
 recorded as verified evidence in `docs/upstream-compatibility.md`.
@@ -274,10 +281,15 @@ Destructive actions require capability checks and, for file operations,
 ownership validation against the selected upstream media object. These checks
 must occur before deletion, import, or mutation.
 
-The unified `FileOperationAudit` model records file edits/imports and destructive
-whole-media, torrent, and queue operations. It stores actor, service/instance,
-operation, target, item count, whether files/data were deleted, structured
-details, success, and error information. Audit persistence is intentionally
+The unified `FileOperationAudit` model records file edits and deletes, imports
+started from a movie's or series' own file manager, and the destructive
+whole-media, torrent, and queue operations a user performs directly. It stores
+actor, service/instance, operation, target, item count, whether files/data were
+deleted, structured details, success, and error information. Two paths do not
+write to it. An import from the Activity page is not recorded. Queue and download
+cleaner runs, scheduled or interactive, send their per-item outcomes to
+`CleanupHistory`, which records the trigger (`auto` or `manual`) and, for an
+interactive run, the preview id, but no actor. Audit persistence is intentionally
 fail-soft so an audit outage never changes the real upstream result; it is not a
 substitute for authorization.
 
@@ -294,10 +306,11 @@ Interactive queue/download cleanup follows a two-stage protocol:
    upstream state are reflected in history and UI.
 
 Scheduled cleanup is a separate trusted background path and must not be forced
-through an interactive token. Scheduler locking prevents overlapping cleanup
-cycles. Every upstream call carries its own timeout, so a cycle always settles; the
-watchdog only logs one that runs past five minutes, and the next cycle stays
-blocked until it does.
+through an interactive token. Scheduler locking prevents overlapping cycles of
+the same cleaner; the queue and download cleaners hold separate slots and can run
+at the same time. Every upstream call carries its own timeout, so a cycle always
+settles; the watchdog only logs one that runs past five minutes, and that
+cleaner's next cycle stays blocked until it does.
 
 Cleanup evaluation fails closed on missing upstream data: a torrent whose
 tracker lookup failed is skipped whenever the ignore list or a tracker-scoped

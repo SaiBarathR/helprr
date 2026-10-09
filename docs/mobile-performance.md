@@ -16,7 +16,7 @@ Search has a closable loading dialog while its code downloads. The AniList
 context drawer opens before fetching an unknown list entry, displays loading or
 retry controls, and permits editing only after the entry is resolved. Closing
 or changing the selection cancels the obsolete request. Prowlarr test results
-are displayed before optional instance names finish loading.
+are displayed before optional indexer names finish loading.
 
 ## Reducing mobile-data work
 
@@ -35,9 +35,9 @@ are displayed before optional instance names finish loading.
 - PWA precaching excludes optional `public/libass` subtitle engines. The five
   files total 7,699,873 uncompressed bytes and remain available on demand for
   playback. Actual transferred bytes depend on compression and cache state.
-  Offline fallback precaching is unchanged. Read-only authenticated API responses
-  are served network-first with a two-second timeout and a labelled snapshot that
-  expires five minutes after it was fetched.
+  Offline fallback precaching is unchanged. Allowlisted read-only authenticated
+  API responses are served network-first with a two-second timeout and a labelled
+  snapshot that expires five minutes after it was fetched.
 
 ## Verification recorded on 2026-09-06
 
