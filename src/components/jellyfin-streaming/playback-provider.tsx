@@ -299,11 +299,11 @@ interface Playable {
 const SERIES_QUEUE_LIMIT = 500;
 
 /**
- * How long libass gets to size its canvas before it is treated as failed.
+ * How long libass gets to size its canvas, once the video has dimensions and it
+ * has been asked to resize, before it is treated as failed.
  *
- * Generous on purpose: it sizes itself off `loadedmetadata` or its own
- * ResizeObserver, and neither should be anywhere near this slow. Being wrong in
- * the impatient direction would cost a needless transcode.
+ * Generous on purpose: being wrong in the impatient direction would cost a
+ * needless transcode.
  */
 const ASS_RENDER_PROBE_MS = 4000;
 
@@ -659,12 +659,11 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
   /**
    * Whether libass has already failed on this device.
    *
-   * It cannot start at all in iOS Safari 26 — the worker dies during startup,
-   * with no message, on a bare `new Worker(...)` and no app code involved.
-   * jellyfin-web is no better off there: it pins the same libass build and
-   * turns the failure into a playback error. Rather than copy that, the first
-   * failure is remembered and every stream from then on asks Jellyfin to burn
-   * the subtitles in, which works everywhere at the cost of a transcode.
+   * It has two ways to fail (see `fallBackToBurnIn`), and jellyfin-web, which
+   * pins the same libass build, turns a failure into a playback error. Rather
+   * than copy that, the first failure is remembered and every stream from then
+   * on asks Jellyfin to burn the subtitles in, which works everywhere at the
+   * cost of a transcode.
    *
    * A ref, not state: the profile for the very next request has to see it, and
    * a render later would be too late.
@@ -1249,10 +1248,23 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
       destroyPlayers();
       const failedSession = streamRef.current?.playSessionId;
       if (failedSession) void stopEncodings(failedSession, AbortSignal.timeout(10_000));
+      // Nothing was granted for this item, so the stream still on the player is
+      // the one it was meant to replace, torn down just above. Left there, its
+      // clock sits under this item's error, Play resumes it and Stop reports it.
+      // A restart of the same item keeps its stream, and with it its position.
+      if (streamRef.current && streamRef.current.item.Id !== nextItem.Id) {
+        streamRef.current = null;
+        setStream(null);
+        setSegments([]);
+        mediaRef.current?.removeAttribute('src');
+        mediaRef.current?.load();
+        setPositionSeconds(0);
+        setDurationSeconds(0);
+      }
       setStatus('error');
       setError(message);
     }
-  }, [attachMedia, destroyPlayers, maxBitrate, muted, playbackRate, volume]);
+  }, [attachMedia, destroyPlayers, maxBitrate, muted, playbackRate, setPositionSeconds, volume]);
 
   const playItems = useCallback(async (items: JellyfinItem[], startIndex = 0, options?: PlayOptions) => {
     if (!items.length) return;
@@ -1485,8 +1497,12 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     // Rewinding is for a file. A broadcast is always "past five seconds" and
     // cannot be rewound, so it goes straight to the item before it.
     const current = streamRef.current;
+    // Until a pending item's stream arrives, the stream and the clock are the
+    // outgoing item's. Nothing of the pending one has played, so there is
+    // nothing to rewind.
+    const pending = current?.item.Id !== queueRef.current[indexRef.current]?.Id;
     const live = current ? isLiveStream(current.item, current) : false;
-    if (!live && positionRef.current > 5) {
+    if (!pending && !live && positionRef.current > 5) {
       seek(0);
       return;
     }

@@ -87,6 +87,8 @@ export interface Harness {
    */
   holdStreamInfo: () => void;
   releaseStreamInfo: () => void;
+  /** Make `/api/jellyfin/stream/info` answer 500 for this item from now on. */
+  failStreamInfoFor: (itemId: string) => void;
   act: (fn: () => void | Promise<void>) => Promise<void>;
   cleanup: () => void;
 }
@@ -145,6 +147,7 @@ export async function mountPlayback(options: { hls?: boolean } = {}): Promise<Ha
   let resolveCatalog: ((items: JellyfinItem[]) => void) | null = null;
   const catalogSignals: AbortSignal[] = [];
   let session = 0;
+  const failing = new Set<string>();
   let gate: Promise<void> | null = null;
   let openGate: (() => void) | null = null;
   let stopReportGate: Promise<void> | null = null;
@@ -185,8 +188,12 @@ export async function mountPlayback(options: { hls?: boolean } = {}): Promise<Ha
         audioStreamIndex: body.audioStreamIndex ?? null,
         startTimeTicks: body.startTimeTicks,
       });
+      if (failing.has(body.itemId)) {
+        return new Response(JSON.stringify({ error: 'NoCompatibleStream' }), { status: 500 });
+      }
       const stream: HelprrStreamInfo = {
-        item: ITEM,
+        // The item asked for, as the real route returns it.
+        item: { ...ITEM, Id: body.itemId },
         // Enough of a media source for the provider; the indexes are what the
         // restart carries and the tests assert on.
         mediaSource: { Id: 'source-1', RunTimeTicks: ITEM.RunTimeTicks, MediaStreams: [] } as never,
@@ -271,6 +278,7 @@ export async function mountPlayback(options: { hls?: boolean } = {}): Promise<Ha
     },
     holdStreamInfo: () => { gate = new Promise<void>((resolve) => { openGate = resolve; }); },
     releaseStreamInfo: () => { openGate?.(); gate = null; openGate = null; },
+    failStreamInfoFor: (itemId) => { failing.add(itemId); },
     act: run,
     cleanup: () => {
       act(() => { root.unmount(); });
