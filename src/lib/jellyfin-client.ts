@@ -36,6 +36,8 @@ const CLIENT_VERSION = '1.0.0';
 const DEVICE_NAME = 'Helprr Server';
 export const DEVICE_ID = 'helprr-server';
 const AUTH_DEVICE_NAME = 'Helprr';
+// A dot segment, a query or fragment marker, an escape, a backslash or whitespace.
+const UNSAFE_PATH_RE = /(?:^|\/)\.{1,2}(?:\/|$)|[?#%\\\s]/;
 
 /**
  * Device identity used when minting a *member's* own access token.
@@ -102,6 +104,15 @@ export class JellyfinClient {
       timeout: 30000, // 30 second timeout
       httpAgent: keepAliveHttpAgent,
       httpsAgent: keepAliveHttpsAgent,
+    });
+    // Ids are interpolated into request paths, and the URL parser resolves dot
+    // segments. An id such as `../Items/x?` would turn this signed call into a
+    // call to another endpoint, so a path that could be re-read is never sent.
+    this.client.interceptors.request.use((config) => {
+      if (UNSAFE_PATH_RE.test(config.url ?? '')) {
+        throw new Error('Refusing a Jellyfin request with an unsafe path');
+      }
+      return config;
     });
   }
 
@@ -831,9 +842,9 @@ export class JellyfinClient {
 
   async getLiveTvPrograms(params: Record<string, unknown> = {}): Promise<JellyfinItemsResponse> {
     return this.get<JellyfinItemsResponse>('/LiveTv/Programs', {
-      UserId: this.requireUserId(),
       EnableUserData: true,
-      ...params,
+      ...Object.fromEntries(Object.entries(params).filter(([key]) => key.toLowerCase() !== 'userid')),
+      UserId: this.requireUserId(),
     });
   }
 

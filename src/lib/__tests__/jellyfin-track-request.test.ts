@@ -15,7 +15,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const post = vi.fn().mockResolvedValue({ data: {} });
 
 vi.mock('axios', () => {
-  const create = () => ({ post, delete: vi.fn(), get: vi.fn(), put: vi.fn() });
+  const create = () => ({ post, delete: vi.fn(), get: vi.fn(), put: vi.fn(), interceptors: { request: { use: vi.fn() } } });
   return { default: { create, isAxiosError: () => false }, isAxiosError: () => false, create };
 });
 

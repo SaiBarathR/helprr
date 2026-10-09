@@ -11,6 +11,7 @@ import {
 } from '@/lib/cache/jellyfin-watch-status-cache';
 import type { WatchStatusMapResponse } from '@/types/watch-status';
 
+const ITEM_ID_RE = /^[a-f0-9-]+$/i;
 const EMPTY: WatchStatusMapResponse = { linked: false, items: [], keys: {} };
 
 async function getHandler(): Promise<NextResponse> {
@@ -42,7 +43,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   }
 
   const { jellyfinItemId, played, seriesId } = body;
-  if (typeof jellyfinItemId !== 'string' || !jellyfinItemId || typeof played !== 'boolean') {
+  if (typeof jellyfinItemId !== 'string' || !ITEM_ID_RE.test(jellyfinItemId) || typeof played !== 'boolean') {
     return NextResponse.json({ error: 'jellyfinItemId and played are required' }, { status: 400 });
   }
 

@@ -51,6 +51,16 @@ describe('Jellyfin 12 media authorization', () => {
     expect((await GET(request(), context)).status).toBe(404);
     expect(mocks.fetch).not.toHaveBeenCalled();
   });
+  // Next decodes a segment once and the route once more, so `%252e%252e`
+  // arrives here as `%2e%2e`, which the URL parser reads as `..`.
+  it.each([
+    [['fallbackfont', 'fonts', '%252e%252e', '%252e%252e', 'System', 'Info']],
+    [['Videos', '0123456789abcdef0123456789abcdef', '.\t.', '.\t.', 'Users']],
+  ])('refuses %j rather than forwarding it outside the allowlist', async (path) => {
+    const response = await GET(request(), { params: Promise.resolve({ path }) });
+    expect(response.status).toBe(404);
+    expect(mocks.fetch).not.toHaveBeenCalled();
+  });
   it('invalidates a revoked member token instead of retrying with the admin key', async () => {
     mocks.fetch.mockResolvedValue(new Response(null, { status: 401 }));
     expect((await GET(request(), context)).status).toBe(409);
