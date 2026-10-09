@@ -12,14 +12,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Three Jellyfin routes put an id from the request into the path of a call
   Helprr makes to Jellyfin with its own API key, without checking the id's
   shape. A signed-in member could craft one that sent the call to a different
-  Jellyfin endpoint: marking an item watched or unwatched could become deleting a
-  library item, and reading playback history could become reading other server
-  data, Jellyfin's API keys included. Starting or stopping a scheduled task had
-  the same flaw for accounts allowed to control the server. Each value is now
+  Jellyfin endpoint: marking an item unwatched could become deleting a library
+  item, and reading playback history could become reading other server data,
+  Jellyfin's API keys included. Starting or stopping a scheduled task had the
+  same flaw for accounts allowed to control the server. Each value is now
   checked before it is used, and Helprr refuses to send Jellyfin a request whose
   path could be read as another one. Update promptly if anyone you do not fully
-  trust can sign in. Nothing in Helprr records whether this was used; if you
-  cannot rule it out, replace the Jellyfin API key afterwards.
+  trust can sign in. Helprr has no dedicated record of this flaw being used.
+  Retained request logs may show it but cannot rule it out; if you are unsure,
+  replace the Jellyfin API key afterwards.
 - The media proxy's path check missed an encoded `..`, so a member could request
   Jellyfin paths outside the playback allowlist. Those requests carry the
   member's own Jellyfin token, so they reached only what Jellyfin already lets
@@ -28,9 +29,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   device id. Only the session's owner can now.
 - Starting playback returned Jellyfin's media source as received, which carried
   the member's own Jellyfin access token inside a URL and, for a remote source,
-  its provider's address and request headers. That response and the item detail
-  response now carry only the fields the player and the item page use, and no
-  server file paths. The token was only ever sent to the member it belongs to.
+  its provider's address and request headers. The playback response now limits
+  the negotiated media source to the fields the player uses, and it and the item
+  detail response leave out item, stream, and chapter-image paths and a media
+  source's address and request headers. The token was only ever sent to the
+  member it belongs to.
 - `next` was updated to 16.3.8 for a request-forgery advisory in image
   optimization (CVE-2026-94483). `npm audit --omit=dev` reports no known
   advisories at release.
@@ -45,9 +48,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   plain page.
 - A Live TV channel was shown with a seek bar, a position, and a time remaining
   that meant nothing. The player, the mini player, and the now-playing bar show
-  a LIVE indicator instead, and the skip controls are not offered.
+  a LIVE indicator instead, and the ten-second skip controls are not offered.
+  Previous now goes from a live channel to the title queued before it.
 - On iPhone and iPad, styled (ASS/SSA) subtitles were burned into the picture by
-  a server transcode. They are drawn in the browser, as on desktop.
+  a server transcode. They are drawn in the browser, as on desktop. In any
+  browser, a stream that was slow to start could be switched to burned-in
+  subtitles needlessly, and the browser's own subtitles could then be drawn on
+  top of the burned-in ones.
 - When a newly picked title failed to start, the previous title's position and
   length stayed on the player under the error, Play could resume the previous
   title, and closing the player could save its resume point in the wrong place.
