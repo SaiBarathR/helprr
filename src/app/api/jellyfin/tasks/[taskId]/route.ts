@@ -4,6 +4,8 @@ import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { upstreamErrorResponse } from '@/lib/api-error';
 
+const TASK_ID_RE = /^[a-f0-9-]+$/i;
+
 async function postHandler(
   _req: NextRequest,
   { params }: { params: Promise<{ taskId: string }> }
@@ -13,6 +15,9 @@ async function postHandler(
 
   try {
     const { taskId } = await params;
+    if (!TASK_ID_RE.test(taskId)) {
+      return NextResponse.json({ error: 'Invalid taskId' }, { status: 400 });
+    }
     const client = await getJellyfinClient();
     await client.startScheduledTask(taskId);
     return NextResponse.json({ ok: true });
@@ -30,6 +35,9 @@ async function deleteHandler(
 
   try {
     const { taskId } = await params;
+    if (!TASK_ID_RE.test(taskId)) {
+      return NextResponse.json({ error: 'Invalid taskId' }, { status: 400 });
+    }
     const client = await getJellyfinClient();
     await client.stopScheduledTask(taskId);
     return NextResponse.json({ ok: true });

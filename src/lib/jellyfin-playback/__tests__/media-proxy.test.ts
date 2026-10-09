@@ -49,6 +49,23 @@ describe('jellyfin media path allowlist — non-playback paths', () => {
     expect(normalizeMediaPath('/videos/abc//x.ts')).toBeNull();
   });
 
+  // The upstream URL parser reads these as `..` after the checks have run.
+  it.each([
+    '/fallbackfont/fonts/%2e%2e/%2e%2e/System/Info',
+    '/videos/abc123def456/%2E./%2e%2E/Users',
+    '/videos/abc123def456/.\t./.\t./Users',
+    '/videos/abc123def456/.\n./Users',
+  ])('rejects %j, which would be re-read as a traversal', (path) => {
+    expect(normalizeMediaPath(path)).toBeNull();
+    expect(isAllowedMediaPath(path)).toBe(false);
+    // What the parser would have made of it had it been let through.
+    expect(new URL(path, 'http://jellyfin.test/').pathname).not.toContain('abc123def456');
+  });
+
+  it('still allows a font file name with a space', () => {
+    expect(isAllowedMediaPath('/FallbackFont/Fonts/Noto Sans CJK.ttf')).toBe(true);
+  });
+
   it('allows trickplay sheets, which share the /videos/{id} prefix', () => {
     expect(isAllowedMediaPath('/Videos/abc123def456/Trickplay/320/0.jpg')).toBe(true);
     expect(itemIdFromMediaPath('/Videos/abc123def456/Trickplay/320/0.jpg')).toBe('abc123def456');

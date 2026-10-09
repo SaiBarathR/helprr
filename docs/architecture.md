@@ -48,6 +48,15 @@ the existing helpers. A mutating route must independently verify the actor,
 capability or role, ownership where relevant, request shape, and selected
 instance before invoking an upstream mutation.
 
+A value that becomes part of an upstream path is matched against a strict
+pattern in the route first. Jellyfin ids are strings rather than numbers, and the
+URL parser resolves dot segments, so an id such as `../Items/<id>?` would turn a
+call signed with the server's key into a call to another endpoint. As a second
+line, `JellyfinClient` refuses to send any path carrying a dot segment, `?`, `#`,
+`%`, a backslash, whitespace, or a control character, and the media proxy rejects
+a path with `%` or a control character, which the parser would read as a
+traversal after the allowlist check.
+
 Jellyfin in-app playback follows the same boundary. The browser never talks to
 Jellyfin with an API key. Catalog and `PlaybackInfo` go through authenticated
 Helprr routes (`jellyfin.view`). Stream, subtitle, HLS, Live TV, and attached

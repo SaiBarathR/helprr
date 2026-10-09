@@ -14,7 +14,7 @@ const post = vi.fn().mockResolvedValue({ data: {} });
 const del = vi.fn().mockResolvedValue({ data: {} });
 
 vi.mock('axios', () => {
-  const create = () => ({ post, delete: del, get: vi.fn(), put: vi.fn() });
+  const create = () => ({ post, delete: del, get: vi.fn(), put: vi.fn(), interceptors: { request: { use: vi.fn() } } });
   return { default: { create, isAxiosError: () => false }, isAxiosError: () => false, create };
 });
 

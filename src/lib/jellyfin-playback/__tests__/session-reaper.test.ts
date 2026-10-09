@@ -1,7 +1,12 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+vi.mock('@/lib/db', () => ({ prisma: { user: { findUnique: vi.fn().mockResolvedValue(null) } } }));
+vi.mock('@/lib/service-helpers', () => ({ getJellyfinPlaybackContext: vi.fn() }));
+
 import {
   SILENCE_MS,
   notePlaybackReport,
+  reapDeviceSessions,
   selectSilentSessions,
   trackedSessionCount,
   __resetReaperForTests,
@@ -116,6 +121,23 @@ describe('notePlaybackReport', () => {
 
   it('ignores a report with no play session, which nothing could be stopped by', () => {
     notePlaybackReport({ ...REPORT, event: 'playing', playSessionId: undefined });
+    expect(trackedSessionCount()).toBe(0);
+  });
+});
+
+describe('reapDeviceSessions', () => {
+  afterEach(() => { vi.useRealTimers(); });
+
+  it("ends only the asking member's own quiet session on a device", async () => {
+    vi.useFakeTimers();
+    notePlaybackReport(REPORT);
+    vi.advanceTimersByTime(60_000);
+
+    // A device id is not a secret, so naming someone else's is not enough.
+    expect(await reapDeviceSessions(REPORT.deviceId, 'user-2')).toBe(0);
+    expect(trackedSessionCount()).toBe(1);
+
+    expect(await reapDeviceSessions(REPORT.deviceId, REPORT.userId)).toBe(1);
     expect(trackedSessionCount()).toBe(0);
   });
 });

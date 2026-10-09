@@ -1,16 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { get, create, post } = vi.hoisted(() => ({
+const { get, create, post, onRequest } = vi.hoisted(() => ({
   get: vi.fn().mockResolvedValue({ data: { Items: [] } }),
   create: vi.fn(),
   post: vi.fn().mockResolvedValue({ data: { User: { Id: 'member', Name: 'Member' }, AccessToken: 'member-token' } }),
+  onRequest: vi.fn(),
 }));
 vi.mock('axios', () => ({ default: { create, post, isAxiosError: () => false } }));
 import { JellyfinClient } from '@/lib/jellyfin-client';
 
 beforeEach(() => {
   vi.clearAllMocks();
-  create.mockReturnValue({ get });
+  create.mockReturnValue({ get, interceptors: { request: { use: onRequest } } });
 });
 
 const client = () => new JellyfinClient('http://jellyfin.test', 'api-key', 'member');
@@ -34,9 +35,56 @@ describe('Jellyfin 12 documented catalog routes', () => {
     expect(keys).toEqual(['UserId']);
   });
 
+  it('getLiveTvPrograms preserves filters and cannot override the scoped user', async () => {
+    await client().getLiveTvPrograms({ userId: 'other', UserId: 'other', USERID: 'other', HasAired: false, Limit: 5 });
+    const params = get.mock.calls[0][1].params;
+    expect(get.mock.calls[0][0]).toBe('/LiveTv/Programs');
+    expect(params).toMatchObject({ UserId: 'member', EnableUserData: true, HasAired: false, Limit: 5 });
+    expect(Object.keys(params).filter((key) => key.toLowerCase() === 'userid')).toEqual(['UserId']);
+  });
+
   it('fails closed without a scoped user', async () => {
     await expect(new JellyfinClient('http://jellyfin.test', 'api-key').getCatalogItems()).rejects.toThrow('userId');
     expect(get).not.toHaveBeenCalled();
+  });
+});
+
+describe('request paths built from ids', () => {
+  // The interceptor every request of this client passes through.
+  const send = (url: string) => {
+    client();
+    return onRequest.mock.calls[0][0]({ url });
+  };
+
+  it.each([
+    '/UserPlayedItems/../Items/0123abcd',
+    '/UserPlayedItems/..',
+    '/ScheduledTasks/Running/../../System/Shutdown',
+    '/user_usage_stats/member/../../Auth/Keys?/GetItems',
+    '/Users#/GetItems',
+    '/Items/%2e%2e/Images',
+    '/Items/.\t./x',
+    '/Items/a b',
+    '/Items/..\\System',
+    '/Items/./x',
+    // The parser trims control characters from the ends, leaving `..`.
+    '/UserPlayedItems/..\u0000',
+    '/UserPlayedItems/..\u001f',
+    '\u0001/UserPlayedItems/x',
+  ])('never sends %j', (url) => {
+    expect(() => send(url)).toThrow('unsafe path');
+  });
+
+  it.each([
+    '/Items',
+    '/Items/0123456789abcdef0123456789abcdef',
+    '/Items/e2a5c1f0-1b2c-4d3e-8f90-abcdef012345/PlaybackInfo',
+    '/user_usage_stats/0123456789abcdef0123456789abcdef/2026-10-01/GetItems',
+    '/user_usage_stats/UserId/BreakdownReport',
+    '/Videos/ActiveEncodings',
+    '/System/Info',
+  ])('sends %j', (url) => {
+    expect(send(url)).toEqual({ url });
   });
 });
 

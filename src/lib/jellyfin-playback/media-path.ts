@@ -42,7 +42,9 @@ export function normalizeMediaPath(raw: string): string | null {
   }
   if (!path.startsWith('/')) path = `/${path}`;
   path = path.replace(/\\/g, '/');
-  if (path.includes('..') || path.includes('//')) return null;
+  // The path is parsed again when the upstream URL is built, and that parser
+  // reads `%2e%2e` as `..` and drops tabs and newlines. Neither may reach it.
+  if (path.includes('..') || path.includes('//') || /[%\p{Cc}]/u.test(path)) return null;
   return path;
 }
 

@@ -210,11 +210,14 @@ async function endAll(sessions: TrackedPlayback[], reason: string): Promise<numb
  * device is still holding a session, the previous run of the app was killed
  * rather than closed. A session that is still reporting is left alone, which is
  * what keeps this from stopping a second tab that shares the same device id.
+ * Only the asking member's own sessions count: a device id is not a secret.
  */
-export async function reapDeviceSessions(deviceId: string): Promise<number> {
+export async function reapDeviceSessions(deviceId: string, userId: string): Promise<number> {
   const now = Date.now();
   const stale = [...state.sessions.values()].filter(
-    (session) => session.deviceId === deviceId && now - session.lastReportAt >= RESTART_QUIET_MS,
+    (session) => session.deviceId === deviceId
+      && session.userId === userId
+      && now - session.lastReportAt >= RESTART_QUIET_MS,
   );
   logger.debug('Device asked for its abandoned sessions', {
     deviceId,
