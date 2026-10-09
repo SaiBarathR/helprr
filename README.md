@@ -55,7 +55,7 @@ Helprr is not trying to clone every setting from Sonarr, Radarr, Lidarr, qBittor
 
 ## Integrations
 
-All integrations are optional and configured in **Settings → Instances**. Features that depend on an integration stay unavailable until it is connected.
+All integrations are optional and configured in **Settings → Instances**. Features that depend on an integration stay unavailable until it is connected, except AniList's public anime/manga discovery and schedules, which work without connecting an account.
 
 
 | Integration | What Helprr uses it for                                                               |
@@ -377,7 +377,7 @@ Use Node.js **24** to match the Docker image, plus the isolated development stac
    npm run dev
   ```
 
-The two database commands explicitly load `.env.local` and stop if that file is
+`db:deploy` and `db:migrate` explicitly load `.env.local` and stop if that file is
 missing; Prisma otherwise auto-loads `.env`, which may describe a different Compose
 stack. `.env.dev` is only the isolated Compose interpolation file and intentionally
 does not contain `DATABASE_URL`. Open [http://localhost:3050](http://localhost:3050).
@@ -402,7 +402,7 @@ stored password unless `HELPRR_ADMIN_PASSWORD_RESET=true`.
 | ------------------- | ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `POSTGRES_PASSWORD` | Required by Compose; not used by a Node-only app | Password for the bundled PostgreSQL container. It is used to form Compose's default `DATABASE_URL`.                                                                          |
 | `DATABASE_URL`      | Required by the app                              | PostgreSQL Prisma connection string. In Compose it is optional if the bundled default is suitable; explicitly set it for an external database or a percent-encoded password. |
-| `REDIS_URL`         | Required by the app                              | Redis connection URL. Use `redis://helprr-redis:6379` inside Compose and `redis://localhost:6379` for a host-run Node process.                                               |
+| `REDIS_URL`         | Required by the app                              | Redis connection URL. Use `redis://helprr-redis:6379` inside Compose and `redis://localhost:6380` for a host-run Node process on the isolated development stack.             |
 | `REDIS_PASSWORD`    | Required by the app and Compose                  | Redis AUTH password. Compose starts Redis with this password.                                                                                                                |
 | `APP_PASSWORD`      | Needed to create/recover the bootstrap admin     | Seeds the bootstrap admin only. It is never used as the normal live login password after that account has a stored hash.                                                     |
 | `JWT_SECRET`        | Required by the app                              | Session-signing secret; must be at least 32 characters. Generate with `openssl rand -base64 48`.                                                                             |
@@ -565,9 +565,11 @@ it under `backups/stable/` with private permissions. If backup creation or valid
 fails, the update commands must not be run.
 
 Pending database migrations run automatically before the app starts. The
-container drains background work gracefully on replacement (bounded at 30
-seconds), so updating while downloads or cleanup are active is safe. The scoped
-`--no-deps helprr` command leaves PostgreSQL and Redis running during the update.
+container drains background work gracefully on replacement, waiting up to 30
+seconds for in-flight polling and cleanup, so updating while downloads or
+cleanup are active is normally safe; a cleanup cycle still running after 30
+seconds is interrupted. The scoped `--no-deps helprr` command leaves PostgreSQL
+and Redis running during the update.
 
 To stay on an exact version instead of a channel, set `HELPRR_VERSION` in
 `.env` (for example `HELPRR_VERSION=1.0.0`) and re-run the two Docker commands
@@ -707,8 +709,11 @@ records are retained for 365 days and cleanup history for 90 days:
 - **Cleanup** (queue, download, and seeding rules) — can remove downloads from
   qBittorrent *including their files* when a rule says so. Disabled by
   default; supports dry-run previews, and automatic mode is opt-in per cleaner.
-- **Delete movie / series / artist / album** — each has an optional
-  "also delete files" choice in its confirmation dialog (off by default).
+- **Delete movie / series / artist / album** — the library lists (single item
+  or bulk selection) and the artist and album pages offer an optional "also
+  delete files" choice in the confirmation dialog (off by default). Deleting
+  from a movie or series detail page always deletes the files from disk; its
+  confirmation says so and has no such choice.
 - **Delete episode file / track file / movie file** — deletes that file from
   disk; the media item stays in the library as missing.
 - **Activity queue removal** — optionally removes the download (and its data)

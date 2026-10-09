@@ -551,7 +551,8 @@ Update `CHANGELOG.md` with the release date and user-facing changes. Also verify
 - `.env.example` includes new runtime variables without secrets.
 - `docker-compose.yml` passes any required runtime variables.
 - New Prisma migrations are committed and non-destructive for a patch release.
-- The displayed application version matches `$VERSION`.
+- A source build with no `APP_VERSION` set displays `$VERSION` in Settings →
+  Service status, without the `v` a tagged image shows.
 
 Run the complete release gate:
 
@@ -562,7 +563,8 @@ npm run build
 npx prisma validate
 docker compose --env-file .env.example -f docker-compose.yml config --quiet
 docker compose --env-file .env.dev.example -f docker-compose.dev.yml config --quiet
-sh -n scripts/setup-env.sh scripts/backup.sh
+sh -n scripts/setup-env.sh
+sh -n scripts/backup.sh
 npm audit --omit=dev --audit-level=high
 git diff --check
 ```
@@ -897,7 +899,8 @@ expected current value.
 
 Also verify:
 
-- Settings → Service status displays `$VERSION` and the tagged commit SHA.
+- Settings → Service status displays `v$VERSION` (the Git tag name) and the first
+  seven characters of the tagged commit SHA.
 - Existing users, service connections, preferences, and history remain present.
 - Admin and restricted-member login work.
 - Sonarr, Radarr, Lidarr, qBittorrent, Prowlarr, Jellyfin, and other configured services
@@ -1010,7 +1013,8 @@ for mapping in \
   printf '%s matches tagged source: %s\n' "$asset_name" "$actual"
 done
 
-sh -n "$ASSET_DIR/setup-env.sh" "$ASSET_DIR/backup.sh"
+sh -n "$ASSET_DIR/setup-env.sh"
+sh -n "$ASSET_DIR/backup.sh"
 docker compose --env-file "$ASSET_DIR/env.example" \
   -f "$ASSET_DIR/docker-compose.yml" config --quiet
 ```
