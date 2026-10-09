@@ -31,8 +31,8 @@ describe('isLiveStream', () => {
   });
 
   it('ignores a source left over from the previous item', () => {
-    // Starting a film from a channel: the queue has moved on, the stream has
-    // not, and it never does if the film's negotiation fails.
+    // Starting a film from a channel: until the film's stream arrives, the
+    // queue has moved on and the stream has not.
     expect(isLiveStream(film, streamOf(channel, true))).toBe(false);
   });
 });

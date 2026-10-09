@@ -143,8 +143,11 @@ week on the builds named with them.
     lowering the quality, which delivered 1280×720. In Chrome also: a jump from
     the chapter list, and a quality change while paused, which kept the exact
     position. Stopping saved the resume position.
-  - **ASS/SSA through libass.** Rendered in both browsers. In Chrome all 23 of
-    an episode's attached fonts were fetched through the media proxy.
+  - **ASS/SSA through libass.** Rendered through libass in Chrome, where all 23
+    of an episode's attached fonts were fetched through the media proxy. On the
+    iOS Simulator this build burned ASS/SSA in instead: the libass canvas was
+    never sized under Safari's native HLS. That was fixed in #280, merged after
+    1.6.1.
   - **Burned-in PGS.** Present in the picture in both browsers; in Chrome
     confirmed by comparing the same frame with the track on and off.
   - **Live TV.** One channel played in Chrome as a live HLS transcode under a
@@ -229,9 +232,12 @@ stack on **2026-08-28**:
 
 - **Catalog and proxy flows, re-verified 2026-08-28.** Library views, home rails,
   next-up, search, filtered item queries, and Live TV channel listings returned live
-  data. The image and media proxies served real bytes, resolved each request to an
-  item, and refused non-allowlisted upstream paths, path traversal, and items the
-  requesting user cannot see.
+  data. The image and media proxies served real bytes, resolved each
+  item-specific request to an item (Jellyfin's `/FallbackFont/Fonts` is the one
+  allowlisted path with none), and refused non-allowlisted upstream paths, path
+  traversal, and items the requesting user cannot see. The image proxy is the
+  exception to the last: it serves server-wide artwork to admins and to
+  `jellyfin.view` users who also hold `jellyfin.sessions` or `jellyfin.stats`.
 - **Playback flows, from the development-stack testing recorded during this work.**
   Direct play, remux, and server-side HLS transcode selected from a browser
   capability profile; audio and subtitle track switching; ASS/SSA rendering through
@@ -300,7 +306,9 @@ than treating a successful connection test as proof that playback still works.
 1. In **Settings → Instances**, re-test the affected connection and record the exact
    upstream version.
 2. Reproduce the smallest affected Helprr flow. A successful connection test proves
-   authentication and the status endpoint only; it does not prove every feature.
+   authentication and that service's own probe endpoint only (for Jellyfin, also
+   that the key is an administrator's and resolves to a user); it does not prove
+   every feature.
 3. Download the admin support bundle from **Settings → Service status**. Review it
    before sharing because operational metadata and recent redacted logs may still be
    private.

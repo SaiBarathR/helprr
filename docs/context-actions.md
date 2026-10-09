@@ -10,10 +10,14 @@ and confirmation dialogs remain the primary, discoverable controls.
   product. Do not invent a second action only to make a menu appear.
 - **Entity-first:** Build each menu from that item's real product surface (detail-page operations,
   APIs, dialogs), not a generic template copied across unrelated entities.
-- **Anti-redundancy:** Do not put an action in the context menu when the same control is already a
-  visible icon on that entity's card or hero (for example schedule bell, watchlist bookmark). Prefer
-  promoting detail-only or list shortcuts instead. After demoting redundant overlay actions, if fewer
-  than two useful actions remain, the menu correctly stays hidden — poster icons still work.
+- **Anti-redundancy:** On media posters and detail heroes, avoid repeating an overlay action in the
+  context menu when the same control is already a visible icon there (for example schedule bell,
+  watchlist bookmark). Prefer promoting detail-only or list shortcuts instead. After demoting
+  redundant overlay actions, if fewer than two useful actions remain, the menu correctly stays
+  hidden — poster icons still work. Current exceptions: watchlist posters keep Remove from watchlist
+  in the menu (it is a visible icon only at desktop widths; on phones it sits in the overflow menu),
+  and administration rows such as Jellyfin devices, cleanup rules, log files, and custom Discover
+  carousels mirror their visible row icons (Edit, Delete, Download).
 - **Shortcut value:** Prefer actions that avoid opening the entity: Edit, Mark watched (Jellyfin),
   Interactive search, Manage files, Request, AniList score/status. Library list menus should expose
   Edit and Jellyfin watched when capabilities and data allow.
@@ -43,8 +47,10 @@ and confirmation dialogs remain the primary, discoverable controls.
 - Apply the same `useCan` capability checks as the visible action. The API remains the
   authoritative authorization boundary.
 - Preserve the selected Sonarr, Radarr, or Lidarr `instanceId` through every context action.
-- Destructive actions use the existing confirmation or undo flow. A context menu must never turn a
-  confirmed operation into a one-click destructive operation.
+- Destructive actions preserve any confirmation or undo flow the visible control has. A context
+  menu must never turn a confirmed operation into a one-click destructive operation. Pending-request
+  Decline and AniList Disconnect have no confirmation on their visible buttons, so their menu
+  entries also run at once.
 - Show pending and disabled states truthfully and do not count them toward the minimum of two
   currently available actions.
 
@@ -63,7 +69,8 @@ releases), Preview rename (when `activity.manage`), Manage files/episodes or Fil
 
 Interactive search on series belongs on season and episode context menus; on music it belongs on
 album, track, and artist file (single) context menus — not on the top-level series or artist library
-lists.
+lists. Lidarr searches releases by album or artist, so the track entry opens the album's search and
+the artist-file entry opens the artist's.
 
 **Discover / anime cards:** Open, Add or Open in library, Request (when applicable). Watchlist and
 Schedule are omitted from the menu when poster icon buttons already expose them.
