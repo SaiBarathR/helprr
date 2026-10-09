@@ -50,10 +50,16 @@ function parseIds(raw: string | null): number[] {
     : [];
 }
 
+/** The search text a link carries (`?q=`), or '' when it has none. */
+export function discoverLinkQuery(params: URLSearchParams): string {
+  return params.get('q')?.trim() ?? '';
+}
+
 /**
  * The view a Discover link asks for — cast links (`?person=`), widget "View all"
- * links (`?section=` or a full filter set) and genre/provider/network/company
- * chips — or null for a plain visit. A link view starts from Discover's
+ * links (`?section=` or a full filter set), genre/provider/network/company
+ * chips and search links (`?q=`, from the share screen and the `discover`
+ * shortcut) — or null for a plain visit. A link view starts from Discover's
  * defaults rather than the saved filters, and is never written to them.
  */
 export function discoverLinkView(params: URLSearchParams): DiscoverView | null {
@@ -66,7 +72,7 @@ export function discoverLinkView(params: URLSearchParams): DiscoverView | null {
   const sortBy = params.get('sortBy');
   const sortOrder = params.get('sortOrder');
   const hasFilterParam = FILTER_PARAMS.some((key) => params.get(key));
-  if (!person && !hasFilterParam && !section && !sortBy) return null;
+  if (!person && !hasFilterParam && !section && !sortBy && !discoverLinkQuery(params)) return null;
 
   const view: DiscoverView = {
     contentType: person ? 'movie' : 'all',
@@ -78,10 +84,14 @@ export function discoverLinkView(params: URLSearchParams): DiscoverView | null {
     person,
     names: {},
   };
-  if (!hasFilterParam && !section && !sortBy) return view;
-
   const rawContentType = params.get('contentType');
   const contentType = rawContentType === 'movie' || rawContentType === 'show' ? rawContentType : 'all';
+  if (!hasFilterParam && !section && !sortBy) {
+    // A search link may ask for movies or shows only. A cast link is always movies.
+    if (!person && contentType !== 'all') view.contentType = contentType;
+    return view;
+  }
+
   const mapped = section ? SECTION_TO_BROWSE[section] : undefined;
   view.section = section;
   if (mapped) {
