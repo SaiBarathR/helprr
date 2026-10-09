@@ -145,7 +145,9 @@ async function click(label: string) {
   await act(async () => target.click());
 }
 
-const grid = () => mocks.gridKey?.[2] as { query: string; contentType: string; sort: string; filters: { genres: number[] } };
+const grid = () => mocks.gridKey?.[2] as {
+  query: string; contentType: string; sort: string; filters: { genres: number[] }; activeSectionKey: string | null;
+};
 const searchBox = () => document.querySelector<HTMLInputElement>('input[placeholder="Search movies and shows"]')!;
 
 /** Type into the search box and let its debounce report the text. */
@@ -287,6 +289,25 @@ describe('Discover search links', () => {
     expect(searchBox().value).toBe('dune');
     expect(grid()).toMatchObject({ query: 'dune', contentType: 'movie', filters: { genres: [27] } });
     expect(saved()).toEqual(SAVED);
+  });
+
+  it('searches only movies when the link asks for them', async () => {
+    await open('q=dune&contentType=movie');
+
+    expect(searchBox().value).toBe('dune');
+    expect(grid()).toMatchObject({ query: 'dune', contentType: 'movie', filters: { genres: [] } });
+    expect(saved()).toEqual(SAVED);
+  });
+
+  it('leaves an untouched link alone when the box reports its own text', async () => {
+    await open('section=trending_movies&q=dune');
+    expect(grid()).toMatchObject({ query: 'dune', activeSectionKey: 'trending_movies' });
+
+    await act(async () => { vi.advanceTimersByTime(2000); });
+    expect(grid()).toMatchObject({ query: 'dune', activeSectionKey: 'trending_movies' });
+    // Typing is still what leaves the section.
+    await type('arrival');
+    expect(grid()).toMatchObject({ query: 'arrival', activeSectionKey: null });
   });
 
   it('opens a blank search link as a plain visit', async () => {

@@ -36,6 +36,14 @@ describe('discoverLinkView', () => {
     });
   });
 
+  it('lets a search link ask for movies or shows only', () => {
+    expect(link('q=dune&contentType=movie')).toMatchObject({ contentType: 'movie', filters: DEFAULT_DISCOVER_FILTERS });
+    expect(link('q=dune&contentType=show')).toMatchObject({ contentType: 'show' });
+    expect(link('q=dune&contentType=books')).toMatchObject({ contentType: 'all' });
+    // TMDB only filters movies by cast, so a cast link stays on movies.
+    expect(link('person=287&personName=Brad%20Pitt&contentType=show')).toMatchObject({ contentType: 'movie' });
+  });
+
   it('starts a filter link from the defaults, not the saved filters', () => {
     expect(link('companies=41077&companyName=A24&contentType=movie')).toEqual({
       contentType: 'movie',

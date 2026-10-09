@@ -1226,6 +1226,9 @@ export default function DiscoverPage() {
               key={searchParamsKey}
               value={query}
               onChange={(value) => {
+                // The box reports its own text back after its debounce. That
+                // is not typing, and must leave an untouched link as it is.
+                if (value === query) return;
                 setQuery(value);
                 // Typing a query is an explicit browse intent: leave any active
                 // section and switch to grid mode (was a query-watching effect).

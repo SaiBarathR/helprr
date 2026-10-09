@@ -84,10 +84,14 @@ export function discoverLinkView(params: URLSearchParams): DiscoverView | null {
     person,
     names: {},
   };
-  if (!hasFilterParam && !section && !sortBy) return view;
-
   const rawContentType = params.get('contentType');
   const contentType = rawContentType === 'movie' || rawContentType === 'show' ? rawContentType : 'all';
+  if (!hasFilterParam && !section && !sortBy) {
+    // A search link may ask for movies or shows only. A cast link is always movies.
+    if (!person && contentType !== 'all') view.contentType = contentType;
+    return view;
+  }
+
   const mapped = section ? SECTION_TO_BROWSE[section] : undefined;
   view.section = section;
   if (mapped) {
