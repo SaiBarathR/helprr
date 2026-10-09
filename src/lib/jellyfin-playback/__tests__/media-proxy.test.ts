@@ -164,7 +164,20 @@ describe('stream info builder', () => {
     ['a transcode', {}],
     ['a direct stream', { SupportsDirectStream: true }],
   ])('returns no upstream URL or credential for %s', (_label, support) => {
-    const item: JellyfinItem = { Id: 'item1', Name: 'Movie', Type: 'Movie', MediaType: 'Video' };
+    // Jellyfin's single-item response repeats the media source, with its path.
+    const item: JellyfinItem = {
+      Id: 'item1',
+      Name: 'Movie',
+      Type: 'Movie',
+      MediaType: 'Video',
+      Path: '/media/SECRET/movie.strm',
+      MediaSources: [{
+        Id: 'src1',
+        Container: 'mkv',
+        Path: 'https://iptv.example/ch1.m3u8?access_token=SECRET',
+        MediaStreams: [{ Type: 'Video', Index: 0, Path: '/media/SECRET/movie.mkv' }],
+      }],
+    };
     const source = {
       Id: 'src1',
       Container: 'mkv',
@@ -183,7 +196,7 @@ describe('stream info builder', () => {
       RequiredHttpHeaders: { Authorization: 'Bearer SECRET' },
       MediaStreams: [
         { Type: 'Audio', Index: 1, Codec: 'aac' },
-        { Type: 'Subtitle', Index: 2, Codec: 'subrip', DeliveryMethod: 'External', DeliveryUrl: '/Videos/item1/src1/Subtitles/2/0/Stream.vtt?ApiKey=SECRET' },
+        { Type: 'Subtitle', Index: 2, Codec: 'subrip', DeliveryMethod: 'External', Path: '/media/SECRET/movie.en.srt', DeliveryUrl: '/Videos/item1/src1/Subtitles/2/0/Stream.vtt?ApiKey=SECRET' },
       ],
       MediaAttachments: [{ Index: 0, FileName: 'font.ttf', DeliveryUrl: '/Videos/item1/src1/Attachments/0?api_key=SECRET' }],
       ...support,

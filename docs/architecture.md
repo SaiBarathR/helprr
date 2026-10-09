@@ -208,9 +208,13 @@ after a secret rotation -- is treated as absent rather than raising, so the
 member is asked to reconnect instead of every playback request failing.
 `toSafeUser` exposes only a boolean; the token itself never reaches a response.
 Jellyfin signs the URLs in its playback negotiation with that token
-(`TranscodingUrl` carries `ApiKey=`), so `buildHelprrStreamInfo` returns only the
-media-source fields the player reads and the proxied `mediaUrl`, never the
-upstream source as a whole.
+(`TranscodingUrl` carries `ApiKey=`), so the `mediaSource` that
+`buildHelprrStreamInfo` returns is limited to the fields the player reads, and
+`mediaUrl` and the subtitle and attachment URLs are rewritten onto the media
+proxy with token parameters stripped. The item beside it, and the catalog item
+route's item and extras, pass through `withoutSourceLocation`: Jellyfin's
+single-item endpoints return the server path and, for a remote source, its
+address and request headers, and none of that is sent to the browser.
 
 `JellyfinClient` takes the playback token beside the API key and **throws**
 rather than falling back when it is missing, because silently signing a playback
