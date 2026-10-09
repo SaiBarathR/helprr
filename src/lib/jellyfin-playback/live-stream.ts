@@ -13,9 +13,8 @@ import type { JellyfinItem, JellyfinMediaSource } from '@/types/jellyfin';
  * covers the moment before a source has been negotiated.
  *
  * The stream on the player is the *previous* item's until this one's has been
- * negotiated, and stays that way if the negotiation fails, so its source only
- * counts when it belongs to `item`. Otherwise a film started from a channel
- * would be shown as a broadcast.
+ * negotiated, so its source only counts when it belongs to `item`. Otherwise a
+ * film started from a channel would be shown as a broadcast.
  */
 export function isLiveStream(
   item: Pick<JellyfinItem, 'Id' | 'Type'> | null | undefined,
