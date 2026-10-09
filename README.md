@@ -55,7 +55,7 @@ Helprr is not trying to clone every setting from Sonarr, Radarr, Lidarr, qBittor
 
 ## Integrations
 
-All integrations are optional and configured in **Settings → Instances**. Features that depend on an integration stay unavailable until it is connected, except AniList's public anime/manga discovery and schedules, which work without connecting an account.
+All integrations are optional and configured in **Settings → Instances**. Features that depend on an integration stay unavailable until it is connected, except AniList's public catalog (discovery, title pages and schedules), which works without connecting an account.
 
 
 | Integration | What Helprr uses it for                                                               |

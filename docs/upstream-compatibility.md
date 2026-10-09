@@ -221,11 +221,11 @@ stack on **2026-08-28**:
 - **Catalog and proxy flows, re-verified 2026-08-28.** Library views, home rails,
   next-up, search, filtered item queries, and Live TV channel listings returned live
   data. The image and media proxies served real bytes, resolved each
-  item-specific request to an item (libass's static fallback font is the one
+  item-specific request to an item (Jellyfin's `/FallbackFont/Fonts` is the one
   allowlisted path with none), and refused non-allowlisted upstream paths, path
   traversal, and items the requesting user cannot see. The image proxy is the
-  exception to the last: it serves server-wide artwork to admins and to users
-  with `jellyfin.sessions` or `jellyfin.stats`.
+  exception to the last: it serves server-wide artwork to admins and to
+  `jellyfin.view` users who also hold `jellyfin.sessions` or `jellyfin.stats`.
 - **Playback flows, from the development-stack testing recorded during this work.**
   Direct play, remux, and server-side HLS transcode selected from a browser
   capability profile; audio and subtitle track switching; ASS/SSA rendering through

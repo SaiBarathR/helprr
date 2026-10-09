@@ -273,15 +273,17 @@ Destructive actions require capability checks and, for file operations,
 ownership validation against the selected upstream media object. These checks
 must occur before deletion, import, or mutation.
 
-The unified `FileOperationAudit` model records Manage files edits and imports and
-the destructive whole-media, torrent, and queue operations a user performs
-directly. It stores actor, service/instance, operation, target, item count,
-whether files/data were deleted, structured details, success, and error
-information. Queue and download cleaner runs, scheduled or interactive, do not
-write to it: their per-item outcomes go to `CleanupHistory`, which records the
-trigger (`auto` or `manual`) and the preview id but no actor. Audit persistence
-is intentionally fail-soft so an audit outage never changes the real upstream
-result; it is not a substitute for authorization.
+The unified `FileOperationAudit` model records file edits and deletes, imports
+started from a movie's or series' own file manager, and the destructive
+whole-media, torrent, and queue operations a user performs directly. It stores
+actor, service/instance, operation, target, item count, whether files/data were
+deleted, structured details, success, and error information. Two paths do not
+write to it. An import from the Activity page is not recorded. Queue and download
+cleaner runs, scheduled or interactive, send their per-item outcomes to
+`CleanupHistory`, which records the trigger (`auto` or `manual`) and the preview
+id but no actor. Audit persistence is intentionally fail-soft so an audit outage
+never changes the real upstream result; it is not a substitute for
+authorization.
 
 Interactive queue/download cleanup follows a two-stage protocol:
 
