@@ -199,6 +199,8 @@ export interface JellyfinChapter {
   Name?: string;
   ImageTag?: string;
   ImageDateModified?: string;
+  /** Where an extracted chapter image lives on the server. Never sent to the browser. */
+  ImagePath?: string;
 }
 
 export interface JellyfinTrickplayInfo {

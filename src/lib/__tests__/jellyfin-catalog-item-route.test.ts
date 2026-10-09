@@ -28,6 +28,7 @@ const located = (id: string) => ({
   Name: id,
   Type: 'Movie',
   Path: `/media/SECRET/${id}.mkv`,
+  Chapters: [{ StartPositionTicks: 0, Name: 'Opening', ImagePath: `/config/metadata/SECRET/${id}/0.jpg` }],
   MediaSources: [{
     Id: id,
     Container: 'mkv',
@@ -69,6 +70,7 @@ describe('GET /api/jellyfin/catalog/items/[itemId]', () => {
       Id: 'abc',
       Name: 'abc',
       Type: 'Movie',
+      Chapters: [{ StartPositionTicks: 0, Name: 'Opening' }],
       MediaSources: [{ Id: 'abc', Container: 'mkv', Size: 1, Bitrate: 2 }],
     });
     expect(body.specialFeatures.map((item: { Id: string }) => item.Id)).toEqual(['special']);

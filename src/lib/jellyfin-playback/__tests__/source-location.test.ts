@@ -9,6 +9,7 @@ describe('withoutSourceLocation', () => {
       Name: 'Channel',
       Type: 'TvChannel',
       Path: 'https://iptv.example/live/user/SECRET/1.ts',
+      Chapters: [{ StartPositionTicks: 0, Name: 'Opening', ImageTag: 'tag', ImagePath: '/config/metadata/SECRET/chapters/0.jpg' }],
       MediaStreams: [
         { Type: 'Video', Index: 0, Codec: 'h264' },
         { Type: 'Subtitle', Index: 2, Codec: 'subrip', IsExternal: true, Path: '/media/SECRET/film.en.srt' },
@@ -23,7 +24,7 @@ describe('withoutSourceLocation', () => {
         RequiredHttpHeaders: { Authorization: 'Bearer SECRET' },
         MediaStreams: [{ Type: 'Video', Index: 0, Path: '/media/SECRET/film.mkv' }],
       }],
-    } as JellyfinItem;
+    } as unknown as JellyfinItem;
 
     const safe = withoutSourceLocation(item);
 
@@ -32,6 +33,7 @@ describe('withoutSourceLocation', () => {
       Id: 'item1',
       Name: 'Channel',
       Type: 'TvChannel',
+      Chapters: [{ StartPositionTicks: 0, Name: 'Opening', ImageTag: 'tag' }],
       MediaStreams: [
         { Type: 'Video', Index: 0, Codec: 'h264' },
         { Type: 'Subtitle', Index: 2, Codec: 'subrip', IsExternal: true },
