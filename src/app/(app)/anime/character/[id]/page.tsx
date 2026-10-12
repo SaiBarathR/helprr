@@ -6,7 +6,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
 import Link from '@/components/ui/app-link';
 import { useParams } from 'next/navigation';
-import DOMPurify from 'isomorphic-dompurify';
+import { sanitizeHtml } from '@/lib/sanitize-html';
 import { useRestorableInfiniteQuery as useInfiniteQuery } from '@/lib/hooks/use-restorable-infinite-query';
 import { PageHeader } from '@/components/layout/page-header';
 import { PageSpinner } from '@/components/ui/page-spinner';
@@ -127,10 +127,10 @@ export default function CharacterDetailPage() {
   if (rawDesc) {
     if (spoilerVisible) {
       // Show everything, remove markers
-      sanitizedDesc = DOMPurify.sanitize(rawDesc.replace(/~!/g, '').replace(/!~/g, ''));
+      sanitizedDesc = sanitizeHtml(rawDesc.replace(/~!/g, '').replace(/!~/g, ''));
     } else {
       // Hide spoiler content
-      sanitizedDesc = DOMPurify.sanitize(rawDesc.replace(/~![\s\S]*?!~/g, '<em style="color: var(--muted-foreground); opacity: 0.6;">[Spoiler — click to reveal]</em>'));
+      sanitizedDesc = sanitizeHtml(rawDesc.replace(/~![\s\S]*?!~/g, '<em style="color: var(--muted-foreground); opacity: 0.6;">[Spoiler — click to reveal]</em>'));
     }
   }
 

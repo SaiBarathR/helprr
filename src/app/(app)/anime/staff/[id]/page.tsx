@@ -8,7 +8,7 @@ import { jsonFetcher } from '@/lib/query-fetch';
 import Image from 'next/image';
 import Link from '@/components/ui/app-link';
 import { useParams } from 'next/navigation';
-import DOMPurify from 'isomorphic-dompurify';
+import { sanitizeHtml } from '@/lib/sanitize-html';
 import { PageHeader } from '@/components/layout/page-header';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { Badge } from '@/components/ui/badge';
@@ -157,7 +157,7 @@ export default function StaffDetailPage() {
 
   const imgSrc = detail.image ? toCachedImageSrc(detail.image, 'anilist') || detail.image : null;
   const altNames = [detail.nameNative, ...detail.nameAlternative].filter(Boolean).join(', ');
-  const sanitizedDesc = detail.description ? DOMPurify.sanitize(detail.description) : '';
+  const sanitizedDesc = detail.description ? sanitizeHtml(detail.description) : '';
 
   const birthStr = formatFuzzyDate(detail.dateOfBirth);
   const deathStr = formatFuzzyDate(detail.dateOfDeath);

@@ -4,7 +4,7 @@ import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import Image from 'next/image';
-import DOMPurify from 'isomorphic-dompurify';
+import { sanitizeHtml } from '@/lib/sanitize-html';
 import { useParams, useSearchParams } from 'next/navigation';
 import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
 import Link from '@/components/ui/app-link';
@@ -788,7 +788,7 @@ export default function SeriesDetailPage() {
   const nextAiringSeconds = animeDetail?.nextAiringEpisode
     ? Math.max(0, animeDetail.nextAiringEpisode.airingAt - Math.floor(animeNowMs / 1000))
     : null;
-  const animeDescription = animeDetail?.description ? DOMPurify.sanitize(animeDetail.description) : '';
+  const animeDescription = animeDetail?.description ? sanitizeHtml(animeDetail.description) : '';
   const animeInfoRows: Array<{ label: string; value: string; valueNode?: ReactNode }> = [];
   if (animeDetail?.format) animeInfoRows.push({ label: 'Format', value: animeDetail.format.replace(/_/g, ' ') });
   const animeOriginCountry = formatRegionCode(animeDetail?.countryOfOrigin);

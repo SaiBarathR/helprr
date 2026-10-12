@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Image from 'next/image';
 import Link from '@/components/ui/app-link';
-import DOMPurify from 'isomorphic-dompurify';
+import { sanitizeHtml } from '@/lib/sanitize-html';
 import { PageHeader } from '@/components/layout/page-header';
 import { AnimeHero } from '@/components/anime/anime-hero';
 import { AnimeAddButton } from '@/components/anime/anime-add-button';
@@ -213,7 +213,7 @@ export default function AnimeDetailPage() {
   }
 
   const nonSpoilerTags = detail.tags.filter((t) => !t.isSpoiler);
-  const sanitizedDescription = detail.description ? DOMPurify.sanitize(detail.description) : '';
+  const sanitizedDescription = detail.description ? sanitizeHtml(detail.description) : '';
 
   // Build info rows
   const infoRows = [];
