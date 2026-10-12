@@ -70,6 +70,39 @@ describe('addToQueue', () => {
     expect(catalogCalls()).toHaveLength(before);
   });
 
+  it('queues a live channel as it is', async () => {
+    await playing();
+    const channel = { Id: 'channel-1', Name: 'News', Type: 'TvChannel', MediaType: 'Video' } as JellyfinItem;
+    await h.act(async () => { await h.playback().addToQueue([channel]); });
+    expect(queued()).toEqual([ITEM.Id, 'channel-1']);
+  });
+
+  it('keeps the order things were queued in when an earlier one is still being looked up', async () => {
+    await playing();
+    h.holdCatalog();
+    let series!: Promise<void>;
+    let film!: Promise<void>;
+    await h.act(() => {
+      series = h.playback().addToQueue([SERIES]);
+      film = h.playback().addToQueue([MOVIE]);
+    });
+    // The film needs no lookup, and used to land first.
+    expect(queued()).toEqual([ITEM.Id]);
+    await h.act(async () => { h.releaseCatalog(EPISODES); await series; await film; });
+    expect(queued()).toEqual([ITEM.Id, 's1e1', 's1e2', 's2e1', MOVIE.Id]);
+  });
+
+  it('adds nothing to a player that was stopped while the lookup ran', async () => {
+    await playing();
+    h.holdCatalog();
+    let adding!: Promise<void>;
+    await h.act(() => { adding = h.playback().addToQueue([SERIES]); });
+    await h.act(async () => { await h.playback().stop(); });
+    await h.act(async () => { h.releaseCatalog(EPISODES); await adding; });
+    expect(queued()).toEqual([]);
+    expect(h.playback().item).toBeNull();
+  });
+
   it('keeps what was queued when shuffle is turned on and off again', async () => {
     await playing();
     await queue(SERIES, EPISODES);

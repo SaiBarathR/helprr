@@ -169,3 +169,29 @@ describe('Seeking a progressive transcode while the next item is still being neg
     expect(h.playback().stream?.item.Id).toBe(NEXT.Id);
   });
 });
+
+describe('A media error on the outgoing item while the next one is still being negotiated', () => {
+  it('leaves the incoming item to its own start', async () => {
+    await watching(1200, 600 * 10_000_000);
+    h.holdStreamInfo();
+
+    let goingNext!: Promise<void>;
+    await h.act(() => { goingNext = h.playback().next(); });
+    const stopsBefore = h.encodingStops.length;
+    await h.act(async () => {
+      h.element().dispatchEvent(new Event('error'));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(h.encodingStops.slice(stopsBefore)).toEqual([]);
+
+    await h.act(async () => { h.releaseStreamInfo(); await goingNext; });
+
+    // Before the fix the recovery asked for NEXT at the outgoing item's
+    // position, as a transcode, and took the player from the first request.
+    expect(h.requests.filter((request) => request.itemId === NEXT.Id)).toEqual([
+      expect.objectContaining({ itemId: NEXT.Id, startTimeTicks: 0 }),
+    ]);
+    expect(h.playback().status).toBe('playing');
+    expect(h.playback().stream).toMatchObject({ item: { Id: NEXT.Id }, playMethod: 'DirectPlay' });
+  });
+});

@@ -434,26 +434,30 @@ async function resolvePlayable(item: JellyfinItem, signal?: AbortSignal): Promis
   return { items: [item], startIndex: 0 };
 }
 
-/** Something the player can be handed as it is, rather than a container of such things. */
-function isPlayableItem(item: JellyfinItem): boolean {
-  return !item.IsFolder && ['Episode', 'Movie', 'Audio', 'Video', 'Book'].includes(item.Type ?? '');
+const CONTAINER_TYPES = ['Series', 'Season', 'BoxSet', 'MusicAlbum', 'MusicArtist', 'Playlist', 'Folder', 'CollectionFolder'];
+
+/** Something that holds playable items and has no stream of its own. */
+function isContainer(item: JellyfinItem): boolean {
+  return Boolean(item.IsFolder) || CONTAINER_TYPES.includes(item.Type ?? '');
 }
 
 /**
  * What "add to queue" appends for an item: itself, or what it holds.
  *
- * A series, season, album or collection has no stream of its own, so queued as
- * it is the player reached it and failed. Unlike Play, which queues a whole
- * show so it can start anywhere in it, a queued season is only that season.
+ * A series, season, album or collection queued as it stood was a row the
+ * player reached and could not start. Anything else goes in as it is, a live
+ * channel included. Unlike Play, which queues a whole show so it can start
+ * anywhere in it, a queued season is only that season.
  */
 async function queueableItems(item: JellyfinItem): Promise<JellyfinItem[]> {
-  if (isPlayableItem(item)) return [item];
+  if (!isContainer(item)) return [item];
   const { items } = await resolvePlayable(item);
   const held = item.Type === 'Season'
     ? items.filter((candidate) => candidate.SeasonId === item.Id
       || (item.IndexNumber != null && candidate.ParentIndexNumber === item.IndexNumber))
     : items;
-  return held.filter(isPlayableItem);
+  // An empty container resolves to itself.
+  return held.filter((candidate) => !isContainer(candidate));
 }
 
 function shuffleInPlace<T>(items: T[]): T[] {
@@ -705,6 +709,8 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
   const queueRef = useRef<JellyfinItem[]>([]);
   const indexRef = useRef(0);
   const orderRef = useRef<JellyfinItem[]>([]);
+  // Queue additions in the order they were asked for; see `addToQueue`.
+  const queueAdditionsRef = useRef<Promise<void>>(Promise.resolve());
   const progressTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const retryingRef = useRef(false);
   /**
@@ -1315,7 +1321,7 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
       const resolved: Playable[] = new Array(items.length);
       // A concrete episode can start before its whole-show queue is fetched.
       const picked = items[wanted];
-      const concrete = isPlayableItem(picked);
+      const concrete = !picked.IsFolder && ['Episode', 'Movie', 'Audio', 'Video', 'Book'].includes(picked.Type ?? '');
       const selected = concrete && !shouldShuffle ? { items: [picked], startIndex: 0 } : await resolvePlayable(picked, controller.signal);
       if (!stillCurrent()) return;
       resolved[wanted] = selected;
@@ -1358,17 +1364,28 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     await playItems([next], 0, options);
   }, [playItems]);
 
-  const addToQueue = useCallback(async (items: JellyfinItem[]) => {
-    // A failed lookup adds nothing; the rest of the request still goes in.
-    const added = (await Promise.all(items.map((item) => queueableItems(item).catch(() => [])))).flat();
-    if (added.length === 0) return;
-    // Appended to whatever the queue is by now, which a start may have expanded
-    // while the lookup ran.
-    const next = [...queueRef.current, ...added];
-    queueRef.current = next;
-    // Shuffle rebuilds the queue from this order, so it has to hold them too.
-    if (orderRef.current.length) orderRef.current = [...orderRef.current, ...added];
-    setQueue(next);
+  const addToQueue = useCallback((items: JellyfinItem[]) => {
+    const hadQueue = queueRef.current.length > 0;
+    // Looked up at once, appended in the order asked for: a film queued after
+    // an album must not land ahead of it because it needed no lookup. A failed
+    // lookup adds nothing; the rest of the request still goes in.
+    const lookups = Promise.all(items.map((item) => queueableItems(item).catch((): JellyfinItem[] => [])));
+    const appended = queueAdditionsRef.current.then(async () => {
+      const added = (await lookups).flat();
+      if (added.length === 0) return;
+      // Stopped while the lookup ran. Appending now would bring back the player
+      // the viewer has just closed.
+      if (hadQueue && queueRef.current.length === 0) return;
+      // Appended to whatever the queue is by now, which a start may have
+      // expanded in the meantime.
+      const next = [...queueRef.current, ...added];
+      queueRef.current = next;
+      // Shuffle rebuilds the queue from this order, so it has to hold them too.
+      if (orderRef.current.length) orderRef.current = [...orderRef.current, ...added];
+      setQueue(next);
+    });
+    queueAdditionsRef.current = appended;
+    return appended;
   }, []);
 
   const playQueueIndex = useCallback(async (nextIndex: number) => {
@@ -1714,6 +1731,10 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     const onError = () => {
       const current = streamRef.current;
       const nextItem = queueRef.current[indexRef.current];
+      // Another item's start is in flight and owns the player (see
+      // `restartWith`). This error is the outgoing element's; recovering it
+      // would start the incoming item at the outgoing one's position.
+      if (current && nextItem && current.item.Id !== nextItem.Id) return;
       if (!current || !nextItem || retryingRef.current) {
         // failPlayback, not a bare error: a token revoked mid-stream reaches the
         // element as an indistinguishable media error.
