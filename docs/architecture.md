@@ -357,6 +357,10 @@ Cleaner intervals are validated to at most 7 days and defensively clamped below
 the 32-bit `setInterval` limit. Cycles report `warnings` when a cycle aborts and
 when torrents are skipped because an arr or tracker data could not be read,
 surfaced in the preview dialog and the dashboard's last-cycle line.
+A removal's outcome is decided from what the upstreams report afterwards, before
+its `CleanupHistory` row is written. If that row cannot be written the failure is
+logged and the outcome stands, so a torrent that was removed is never reported as
+a failed removal.
 
 ## PWA and Push
 

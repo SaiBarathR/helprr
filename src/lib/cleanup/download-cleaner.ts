@@ -817,30 +817,36 @@ async function writeDownloadHistory(
   previewId?: string,
 ): Promise<void> {
   const hashLc = d.torrent.hash.toLowerCase();
-  await prisma.cleanupHistory.create({
-    data: {
-      cleaner: 'download',
-      strikeType: null,
-      ruleId: d.rule.id,
-      ruleName: d.rule.name,
-      hash: hashLc,
-      shortHash: shortHash(hashLc),
-      torrentName: d.torrent.name,
-      reason: d.reason,
-      action: outcome.action,
-      filesDeleted: outcome.filesDeleted,
-      reSearched: false,
-      linkedArrSource: null,
-      linkedArrTitle: null,
-      linkedArrItemId: null,
-      torrentSize: BigInt(Math.max(0, Math.floor(d.torrent.size))),
-      torrentProgress: d.torrent.progress,
-      torrentRatio: d.torrent.ratio,
-      triggeredBy: triggeredBy === 'dryRun' ? 'manual' : triggeredBy,
-      errorMessage: outcome.errorMessage,
-      previewId: previewId ?? null,
-      outcomeStatus: outcome.status,
-      outcomeDetails: { message: outcome.message, targets: outcome.targets } as unknown as Prisma.InputJsonValue,
-    },
-  });
+  // The outcome is decided by now, and a removal has already happened. A row
+  // that cannot be written must not turn it into a reported failure.
+  try {
+    await prisma.cleanupHistory.create({
+      data: {
+        cleaner: 'download',
+        strikeType: null,
+        ruleId: d.rule.id,
+        ruleName: d.rule.name,
+        hash: hashLc,
+        shortHash: shortHash(hashLc),
+        torrentName: d.torrent.name,
+        reason: d.reason,
+        action: outcome.action,
+        filesDeleted: outcome.filesDeleted,
+        reSearched: false,
+        linkedArrSource: null,
+        linkedArrTitle: null,
+        linkedArrItemId: null,
+        torrentSize: BigInt(Math.max(0, Math.floor(d.torrent.size))),
+        torrentProgress: d.torrent.progress,
+        torrentRatio: d.torrent.ratio,
+        triggeredBy: triggeredBy === 'dryRun' ? 'manual' : triggeredBy,
+        errorMessage: outcome.errorMessage,
+        previewId: previewId ?? null,
+        outcomeStatus: outcome.status,
+        outcomeDetails: { message: outcome.message, targets: outcome.targets } as unknown as Prisma.InputJsonValue,
+      },
+    });
+  } catch (err) {
+    logger.error('Cleanup history write failed', { hash: hashLc, action: outcome.action, err: String(err) }, { scope: LOG });
+  }
 }
