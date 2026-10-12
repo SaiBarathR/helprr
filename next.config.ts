@@ -29,7 +29,8 @@ const nextConfig: NextConfig = {
   // Version identity, shown in Settings → Status. Baked in at build time on
   // purpose — unlike the VAPID key this is a property of the build itself.
   // Docker builds override via APP_VERSION/GIT_SHA build args (CI passes the
-  // image tag + commit); source builds fall back to package.json.
+  // Git ref name, a branch or a `v` tag, and the commit); source builds fall
+  // back to package.json.
   env: {
     NEXT_PUBLIC_APP_VERSION: process.env.APP_VERSION || pkg.version,
     NEXT_PUBLIC_GIT_SHA: process.env.GIT_SHA || '',

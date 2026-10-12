@@ -59,16 +59,18 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
     });
   }, [queryClient]);
   useEffect(() => {
-    const serviceWorker = navigator.serviceWorker;
-    if (!serviceWorker) return;
     const onMessage = (event: MessageEvent<unknown>) => {
       if (isNotificationSubscriptionsChangedMessage(event.data)) {
         void invalidateNotificationSubscriptions(queryClient);
         window.dispatchEvent(new Event(NOTIFICATION_SUBSCRIPTIONS_CHANGED));
       }
     };
-    serviceWorker.addEventListener('message', onMessage);
-    return () => serviceWorker.removeEventListener('message', onMessage);
+    // Optional chaining, not `if (!serviceWorker) return`: Turbopack takes
+    // `navigator.serviceWorker` to be always present and compiles that test
+    // away under `npm run dev`. Over plain http on a LAN address there is no
+    // such object, and the call below then threw on every signed-in page.
+    navigator.serviceWorker?.addEventListener('message', onMessage);
+    return () => navigator.serviceWorker?.removeEventListener('message', onMessage);
   }, [queryClient]);
   useEffect(() => {
     if (!authenticationBoundaryActive || boundaryClearStarted.current) return;
