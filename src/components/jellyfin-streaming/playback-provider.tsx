@@ -717,6 +717,9 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
   // the queue it was asked for; see `addToQueue`.
   const queueAdditionsRef = useRef<Promise<void>>(Promise.resolve());
   const queueEpochRef = useRef(0);
+  // What has been added to the current queue since it was started. A Play
+  // assigns the queue again as its container expands, and has to put these back.
+  const queueAddedRef = useRef<JellyfinItem[]>([]);
   const progressTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const retryingRef = useRef(false);
   /**
@@ -1315,6 +1318,12 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     // go with it; see `addToQueue`.
     queueEpochRef.current += 1;
     queueAdditionsRef.current = Promise.resolve();
+    queueAddedRef.current = [];
+    // Anything queued while this Play is still expanding goes after what it
+    // expands to. Assigning the expansion alone dropped it.
+    const withAdded = (list: JellyfinItem[]) => (
+      queueAddedRef.current.length ? [...list, ...queueAddedRef.current] : list
+    );
     // A tap owns the player immediately, including while a container expands.
     queueRef.current = items;
     indexRef.current = wanted;
@@ -1336,9 +1345,9 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
       if (!stillCurrent()) return;
       resolved[wanted] = selected;
       if (!shouldShuffle && selected.items.length) {
-        queueRef.current = selected.items;
+        queueRef.current = withAdded(selected.items);
         indexRef.current = selected.startIndex;
-        setQueue(selected.items);
+        setQueue(queueRef.current);
         setIndex(selected.startIndex);
         started = startItem(selected.items[selected.startIndex], options, stillCurrent);
       }
@@ -1352,9 +1361,9 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
       }));
       if (!stillCurrent()) return;
       const { items: flat, index: queueIndex } = flattenPlayables(resolved, wanted);
-      orderRef.current = flat;
+      orderRef.current = withAdded(flat);
       if (options?.shuffle) { shuffledRef.current = true; setShuffled(true); }
-      const nextQueue = shouldShuffle ? shuffleInPlace(flat) : flat;
+      const nextQueue = withAdded(shouldShuffle ? shuffleInPlace(flat) : flat);
       indexRef.current = shouldShuffle ? 0 : queueIndex;
       queueRef.current = nextQueue;
       setQueue(nextQueue);
@@ -1392,10 +1401,10 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
       // it. Appending now would bring back the player the viewer closed, or
       // land in whatever they started instead.
       if (epoch !== queueEpochRef.current) return;
-      // Appended to the queue as it is by now. A Play still expanding its
-      // container assigns the queue again when that lands, and an addition made
-      // in that moment goes with it; that was so before additions were looked
-      // up, and is not handled here.
+      // Appended to the queue as it is by now, and remembered: a Play still
+      // expanding its container assigns the queue again when that lands, and
+      // puts these back after it.
+      queueAddedRef.current = [...queueAddedRef.current, ...added];
       const next = [...queueRef.current, ...added];
       queueRef.current = next;
       // Shuffle rebuilds the queue from this order, so it has to hold them too.
@@ -1467,6 +1476,7 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     // wait behind them either.
     queueEpochRef.current += 1;
     queueAdditionsRef.current = Promise.resolve();
+    queueAddedRef.current = [];
     indexRef.current = 0;
     audioIndexRef.current = null;
     subtitleIndexRef.current = null;
