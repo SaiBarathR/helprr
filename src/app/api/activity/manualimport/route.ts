@@ -134,8 +134,10 @@ async function postHandler(request: NextRequest) {
     try {
       command = await client.submitManualImport(files);
     } catch (error) {
-      errorMessage = error instanceof Error ? error.message : 'Failed to submit import';
+      errorMessage = (error instanceof Error && error.message) || 'Failed to submit import';
     }
+    // Queued means the *arr answered with a command to follow.
+    const queued = command?.id != null && !errorMessage;
 
     // A pack can span several series, so the row names one only when all files agree.
     const mediaIds = [...new Set(files.map((file) => coercePositiveInt(isSonarr ? file.seriesId : file.movieId)))];
@@ -155,12 +157,12 @@ async function postHandler(request: NextRequest) {
         mediaIds: mediaIds.filter((id) => id !== null),
         commandId: command?.id ?? null,
       },
-      success: command?.id != null && !errorMessage,
+      success: queued,
       errorMessage,
     });
 
-    if (errorMessage) {
-      console.error('Failed to submit manual import:', errorMessage);
+    if (!queued) {
+      console.error('Failed to submit manual import:', errorMessage ?? 'no command was returned');
       return NextResponse.json(
         { error: 'Failed to submit manual import' },
         { status: 500 }

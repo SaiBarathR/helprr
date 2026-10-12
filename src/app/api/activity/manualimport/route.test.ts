@@ -129,6 +129,17 @@ describe('POST /api/activity/manualimport', () => {
     }));
   });
 
+  it.each([
+    ['fails without a message', () => mocks.submit.mockRejectedValue(new Error(''))],
+    ['answers without a command', () => mocks.submit.mockResolvedValue({})],
+  ])('does not report an import as queued when the arr %s', async (_label, arrange) => {
+    arrange();
+    const res = await post({ source: 'sonarr', files: [episode('/downloads/pack/e01.mkv')] });
+    expect(res.status).toBe(500);
+    expect(await res.json()).toEqual({ error: 'Failed to submit manual import' });
+    expect(mocks.audit).toHaveBeenCalledWith(expect.objectContaining({ success: false }));
+  });
+
   it('records an import the arr refused, and reports the failure', async () => {
     mocks.submit.mockRejectedValue(new Error('Request failed with status code 500'));
     const res = await post({ source: 'sonarr', files: [episode('/downloads/pack/e01.mkv')] });
