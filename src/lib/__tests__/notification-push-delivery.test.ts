@@ -61,6 +61,24 @@ async function optionsForTag(tag?: string): Promise<Record<string, unknown>> {
   return lastCall![2] as Record<string, unknown>;
 }
 
+// The endpoint is a URL the server posts to. The subscribe route refuses one
+// that is not a push service's, and the sender checks again for rows stored
+// before it did.
+describe('push destination', () => {
+  it.each([
+    'https://collector.example/hook',
+    'https://internal;.push.apple.com/device',
+    'http://fcm.googleapis.com/fcm/send/test-device',
+  ])('does not send to %s', async (endpoint) => {
+    const ok = await sendPushNotification({ ...subscription, endpoint }, { title: 'Title', body: 'Body' });
+    expect(ok).toBe(false);
+    expect(mocks.sendNotification).not.toHaveBeenCalled();
+    expect(mocks.update).not.toHaveBeenCalled();
+    expect(mocks.delete).not.toHaveBeenCalled();
+    expect(mocks.updateMany).not.toHaveBeenCalled();
+  });
+});
+
 // FCM only wakes a device in Doze for high-urgency pushes; the web-push
 // default ("normal") parks the message until the next maintenance window.
 // Every Helprr push displays a notification (src/app/sw.ts), so high urgency
