@@ -24,6 +24,7 @@ import { GroupedSection } from '@/components/settings/grouped-section';
 import { findServiceBySlug, type ServiceConfigType } from '@/lib/settings/service-config';
 import { invalidateExternalUrls } from '@/lib/hooks/use-external-urls';
 import { invalidateInstances } from '@/lib/query-invalidation';
+import { normalizeServiceUrl } from '@/lib/service-url';
 import {
   deleteServiceConnection,
   setServiceConnectionDefault,
@@ -121,6 +122,16 @@ function hasControlChar(s: string): boolean {
 type FieldKey = 'label' | 'url' | 'apiKey' | 'jellyfinUser';
 
 /** Inline field error, referenced by the input's aria-describedby. */
+/** Shown once the URL of a saved connection is edited while a saved secret is still in place. */
+function UrlChangeNote({ id, secret }: { id: string; secret: string }) {
+  return (
+    <p id={id} role="status" className="text-xs text-amber-400 light:text-amber-700">
+      The URL has changed, so the saved {secret} will not be used with it. Enter the {secret} again
+      before you test or save.
+    </p>
+  );
+}
+
 function FieldError({ id, message }: { id: string; message?: string }) {
   if (!message) return null;
   return (
@@ -181,6 +192,24 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
         : servicesQuery.data.find((c) => c.type === type))
     : undefined;
 
+  // A saved secret is only reused with the URL it was saved for: the server
+  // refuses its mask with any other (see resolveApiKeyForService). So once the
+  // URL is edited, a key or header value left as it was will not work, and the
+  // form says so up front rather than leaving a failed Test to explain it.
+  const urlChanged = Boolean(existingConn) && normalizeServiceUrl(url) !== normalizeServiceUrl(existingConn?.url ?? '');
+  // Compared as the server will see them: trimmed, and for a header name given
+  // twice only the last row, which is the one that is sent.
+  const savedKeyKept = urlChanged && apiKey.trim() === existingConn?.apiKey;
+  const isSavedHeaderValue = (h: HeaderRow) => {
+    const name = h.name.trim();
+    const value = h.value.trim();
+    return Boolean(name && value)
+      && existingConn?.customHeaders?.[name] === value
+      && headers.findLast((row) => row.name.trim() === name) === h;
+  };
+  const savedHeadersKept = urlChanged && canEditHeaders && headers.some(isSavedHeaderValue);
+  const secretNoun = isQbt ? 'password' : 'API key';
+
   // Seed the form from the matching connection. Re-seeds when the edited entity
   // changes — keyed by the full route context (service type + instance param),
   // since client-side navigation between services reuses this component — but
@@ -191,6 +220,8 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
   const [seededFor, setSeededFor] = useState<string | null>(null);
   if (servicesQuery.data && seededFor !== seedKey) {
     setSeededFor(seedKey);
+    setFieldErrors({});
+    setHeaderErrors({});
     setEditingConnId(existingConn?.id ?? null);
     setLabel(existingConn?.label ?? '');
     setIsDefault(existingConn?.isDefault ?? false);
@@ -420,6 +451,7 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
     const hdrErrors: Record<string, { name?: string; value?: string }> = {};
     if (!url.trim()) errors.url = 'URL is required';
     if (!apiKey.trim()) errors.apiKey = isQbt ? 'Password is required' : 'API key is required';
+    else if (savedKeyKept) errors.apiKey = `Enter the ${secretNoun} again for the new URL`;
     if (forSave) {
       if (isMultiInstance && !label.trim()) errors.label = 'Name this instance';
       if (isJellyfin && jellyfinValidated && !(username?.trim())) {
@@ -441,6 +473,7 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
         }
         const value = h.value.trim();
         if (!value) hdrErrors[h.id] = { value: 'Value required' };
+        else if (urlChanged && isSavedHeaderValue(h)) hdrErrors[h.id] = { value: 'Enter this value again for the new URL' };
         else if (value.length > MAX_HEADER_VALUE_LENGTH) {
           hdrErrors[h.id] = { value: `Too long (max ${MAX_HEADER_VALUE_LENGTH} characters)` };
         } else if (hasControlChar(h.value)) {
@@ -565,6 +598,10 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
             onChange={(e) => {
               setUrl(e.target.value);
               clearFieldError('url');
+              // "Enter it again for the new URL" depends on this field too; a
+              // Test or Save puts it back if it still applies.
+              clearFieldError('apiKey');
+              setHeaderErrors({});
               if (isJellyfin) {
                 setJellyfinValidated(null);
                 setJellyfinUsers([]);
@@ -603,9 +640,10 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
                 }}
                 className="h-10"
                 aria-invalid={fieldErrors.apiKey ? true : undefined}
-                aria-describedby={fieldErrors.apiKey ? 'conn-apiKey-error' : undefined}
+                aria-describedby={fieldErrors.apiKey ? 'conn-apiKey-error' : savedKeyKept ? 'conn-apiKey-note' : undefined}
               />
               <FieldError id="conn-apiKey-error" message={fieldErrors.apiKey} />
+              {savedKeyKept && !fieldErrors.apiKey && <UrlChangeNote id="conn-apiKey-note" secret={secretNoun} />}
             </div>
           </>
         ) : (
@@ -630,9 +668,10 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
                 }}
                 className="h-10"
                 aria-invalid={fieldErrors.apiKey ? true : undefined}
-                aria-describedby={fieldErrors.apiKey ? 'conn-apiKey-error' : undefined}
+                aria-describedby={fieldErrors.apiKey ? 'conn-apiKey-error' : savedKeyKept ? 'conn-apiKey-note' : undefined}
               />
               <FieldError id="conn-apiKey-error" message={fieldErrors.apiKey} />
+              {savedKeyKept && !fieldErrors.apiKey && <UrlChangeNote id="conn-apiKey-note" secret={secretNoun} />}
             </div>
             {isJellyfin && (
               <div className="px-4 py-3 border-b border-foreground/[0.06] space-y-1.5">
@@ -687,6 +726,7 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
               Sent on every request to this instance — for reverse proxies (Cloudflare Access,
               Authelia, basic auth). Saved with the connection below.
             </p>
+            {savedHeadersKept && <UrlChangeNote id="conn-headers-note" secret="header values" />}
             {headers.map((h) => (
               <div key={h.id} className="space-y-1">
                 <div className="flex items-center gap-2">
