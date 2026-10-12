@@ -30,6 +30,7 @@ vi.mock('@/lib/service-helpers', () => ({
 
 import { executeDownloadCleanerRemoval } from '@/lib/cleanup/download-cleaner';
 import { executeQueueCleanerRemoval } from '@/lib/cleanup/queue-cleaner';
+import { logger } from '@/lib/logger';
 
 function torrent(overrides: Partial<QBittorrentTorrent> = {}): QBittorrentTorrent {
   return {
@@ -174,5 +175,69 @@ describe('cleanup result reconciliation', () => {
 
     expect(outcome).toMatchObject({ kind: 'success', status: 'succeeded', action: 'removedFromClient' });
     expect(mocks.cleanupStrikeDeleteMany).toHaveBeenCalledWith({ where: { hash: 'abc123' } });
+  });
+
+  // By the time the history row is written the torrent is gone. Letting the
+  // write's failure escape made the cycle report the removal as failed, with no
+  // files deleted, and send a failure notification for it.
+  describe('when the history row cannot be written', () => {
+    beforeEach(() => {
+      mocks.cleanupHistoryCreate.mockRejectedValue(new Error('database unavailable'));
+    });
+
+    it('still reports a download removal that happened', async () => {
+      mocks.getQBittorrentClient.mockResolvedValue({
+        deleteTorrent: vi.fn().mockResolvedValue(undefined),
+        getTorrents: vi.fn().mockResolvedValue([]),
+      });
+      const decision: DownloadDecision = {
+        torrent: torrent(),
+        rule: { ...seedingRule, deleteSourceFiles: true },
+        reason: 'Ratio reached',
+        seedingHours: 4,
+        removalKind: 'seeding',
+      };
+
+      const outcome = await executeDownloadCleanerRemoval(decision, 'auto');
+
+      expect(outcome).toMatchObject({ kind: 'success', status: 'succeeded', action: 'removedFromClient', filesDeleted: true });
+      expect(logger.error).toHaveBeenCalledWith(
+        'Cleanup history write failed',
+        expect.objectContaining({ hash: 'abc123', action: 'removedFromClient' }),
+        expect.anything(),
+      );
+    });
+
+    it('still reports a queue removal that happened', async () => {
+      const sonarr = {
+        deleteQueueItem: vi.fn().mockResolvedValue(undefined),
+        getQueue: vi.fn().mockResolvedValue({ records: [], totalRecords: 0 }),
+      };
+      mocks.getSonarrClient.mockResolvedValue(sonarr);
+      mocks.getQBittorrentClient.mockResolvedValue({ getTorrents: vi.fn().mockResolvedValue([]) });
+      const link = queueLink('sonarr-1', 101);
+      const decision: QueueDecision = {
+        torrent: torrent(),
+        strikeType: 'stall',
+        ruleId: 'stall-1',
+        ruleName: 'Stalled',
+        strikeCount: 3,
+        maxStrikes: 3,
+        reason: 'Stalled for three cycles',
+        linked: link,
+        linkedAll: [link],
+        options: { changeCategory: false, deletePrivate: false, reSearch: false },
+      };
+
+      const outcome = await executeQueueCleanerRemoval(decision, 'auto');
+
+      expect(sonarr.deleteQueueItem).toHaveBeenCalledOnce();
+      expect(outcome).toMatchObject({ kind: 'success', status: 'succeeded', action: 'removedFromClient' });
+      expect(logger.error).toHaveBeenCalledWith(
+        'Cleanup history write failed',
+        expect.objectContaining({ hash: 'abc123', action: 'removedFromClient' }),
+        expect.anything(),
+      );
+    });
   });
 });
