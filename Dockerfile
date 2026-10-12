@@ -31,8 +31,9 @@ COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
 
-# Version identity for Settings → Status (CI passes the image tag + commit SHA;
-# defaults keep local builds working — next.config falls back to package.json).
+# Version identity for Settings → Status (CI passes the Git ref name, a branch
+# such as `development` or a tag such as `v1.6.2`, and the commit SHA; defaults
+# keep local builds working — next.config falls back to package.json).
 ARG APP_VERSION=""
 ARG GIT_SHA=""
 ENV APP_VERSION=$APP_VERSION
