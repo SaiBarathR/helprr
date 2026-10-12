@@ -199,7 +199,8 @@ export function BulkActionBar({
     (label) => !tags.some((t) => t.label.toLowerCase() === label.toLowerCase())
   );
 
-  const plural = count === 1 ? itemNoun : `${itemNoun}s`;
+  // "series" is its own plural.
+  const plural = count === 1 || itemNoun.endsWith('s') ? itemNoun : `${itemNoun}s`;
 
   return (
     <>

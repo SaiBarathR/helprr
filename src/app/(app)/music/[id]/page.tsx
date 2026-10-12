@@ -724,7 +724,14 @@ export default function ArtistDetailPage() {
         }}
       />
 
-      <Drawer open={showDelete} onOpenChange={setShowDelete}>
+      <Drawer
+        open={showDelete}
+        onOpenChange={(open) => {
+          // Opt in to deleting files each time, as the shared delete dialog does.
+          if (!open) setDeleteFiles(false);
+          setShowDelete(open);
+        }}
+      >
         <DrawerContent>
           <DrawerHeader>
             <DrawerTitle>Delete {artist.artistName}?</DrawerTitle>
