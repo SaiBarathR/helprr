@@ -17,7 +17,9 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
 
   const playSessionId = typeof body.playSessionId === 'string' ? body.playSessionId : '';
   const deviceId = typeof body.deviceId === 'string' ? body.deviceId : '';
-  if (!playSessionId || !deviceId) {
+  // Same bounds as the other stream routes: both device values go into the
+  // Authorization header of the call to Jellyfin.
+  if (!playSessionId || !deviceId || deviceId.length > 128) {
     return NextResponse.json({ error: 'playSessionId and deviceId are required' }, { status: 400 });
   }
 
@@ -26,7 +28,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     await client.stopActiveEncodings(
       playSessionId,
       deviceId,
-      typeof body.deviceName === 'string' ? body.deviceName : 'Helprr',
+      typeof body.deviceName === 'string' ? body.deviceName.slice(0, 80) : 'Helprr',
     );
     return NextResponse.json({ ok: true });
   } catch (error) {

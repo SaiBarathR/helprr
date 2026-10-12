@@ -1,0 +1,92 @@
+// @vitest-environment jsdom
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { ITEM, mountPlayback, type Harness } from './playback-restart-harness';
+import { getQueryClient } from '@/lib/query-client';
+import type { JellyfinItem } from '@/types/jellyfin';
+
+/**
+ * "Add to queue" on something that is not itself playable.
+ *
+ * A series, season, album or collection was appended as it stood. The player
+ * reached it, asked Jellyfin to play a series id, and failed.
+ */
+
+const MOVIE = { ...ITEM, Id: 'movie-1', Name: 'A Film', Type: 'Movie' } as JellyfinItem;
+const SERIES = { Id: 'series-1', Name: 'A Show', Type: 'Series', IsFolder: true } as JellyfinItem;
+const SEASON_2 = { Id: 'season-2', Name: 'Season 2', Type: 'Season', IsFolder: true, SeriesId: 'series-1', IndexNumber: 2 } as JellyfinItem;
+const episode = (id: string, season: number) => ({
+  ...ITEM, Id: id, Name: id, SeriesId: 'series-1', SeasonId: `season-${season}`, ParentIndexNumber: season,
+}) as JellyfinItem;
+const EPISODES = [episode('s1e1', 1), episode('s1e2', 1), episode('s2e1', 2)];
+
+let h: Harness;
+afterEach(() => {
+  h?.cleanup();
+  vi.restoreAllMocks();
+  getQueryClient().clear();
+});
+
+async function playing() {
+  h = await mountPlayback();
+  await h.act(async () => { await h.playback().playItems([ITEM]); });
+  return h;
+}
+
+/** Queue `item` while the catalog answers with `held`. */
+async function queue(item: JellyfinItem, held: JellyfinItem[]) {
+  h.holdCatalog();
+  let adding!: Promise<void>;
+  await h.act(() => { adding = h.playback().addToQueue([item]); });
+  await h.act(async () => { h.releaseCatalog(held); await adding; });
+}
+
+const queued = () => h.playback().queue.map((item) => item.Id);
+const catalogCalls = () => vi.mocked(fetch).mock.calls.filter(([input]) => String(input).includes('/api/jellyfin/catalog/'));
+
+describe('addToQueue', () => {
+  it('queues a series as its episodes', async () => {
+    await playing();
+    await queue(SERIES, EPISODES);
+    expect(queued()).toEqual([ITEM.Id, 's1e1', 's1e2', 's2e1']);
+  });
+
+  it('queues a season as that season only', async () => {
+    await playing();
+    await queue(SEASON_2, EPISODES);
+    expect(queued()).toEqual([ITEM.Id, 's2e1']);
+  });
+
+  it('adds nothing for a series with no episodes rather than the series itself', async () => {
+    await playing();
+    await queue(SERIES, []);
+    expect(queued()).toEqual([ITEM.Id]);
+  });
+
+  it('queues a film as it is, without looking anything up', async () => {
+    await playing();
+    const before = catalogCalls().length;
+    await h.act(async () => { await h.playback().addToQueue([MOVIE]); });
+    expect(queued()).toEqual([ITEM.Id, MOVIE.Id]);
+    expect(catalogCalls()).toHaveLength(before);
+  });
+
+  it('keeps what was queued when shuffle is turned on and off again', async () => {
+    await playing();
+    await queue(SERIES, EPISODES);
+
+    await h.act(() => { h.playback().toggleShuffle(); });
+    expect(queued()).toHaveLength(4);
+    expect(queued()[0]).toBe(ITEM.Id);
+
+    await h.act(() => { h.playback().toggleShuffle(); });
+    expect(queued()).toEqual([ITEM.Id, 's1e1', 's1e2', 's2e1']);
+  });
+
+  it('plays a queued episode when the player reaches it', async () => {
+    await playing();
+    await queue(SERIES, EPISODES);
+    await h.act(async () => { await h.playback().next(); });
+    expect(h.requests.at(-1)?.itemId).toBe('s1e1');
+    expect(h.playback().status).toBe('playing');
+  });
+});

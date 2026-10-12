@@ -111,3 +111,61 @@ describe('Previous while the next item is still being negotiated', () => {
     expect(h.media.currentTime()).toBe(0);
   });
 });
+
+describe('Stop while the next item is still being negotiated', () => {
+  it('reports the outgoing item where it was paused, not where it was started', async () => {
+    // Resumed at ten minutes, watched to twenty, then paused: a paused element
+    // sends no more time updates, so nothing re-marks it as past its start.
+    await watching(1200, 600 * 10_000_000);
+    await h.act(() => { h.playback().togglePause(); });
+    expect(h.media.paused()).toBe(true);
+    h.holdStreamInfo();
+
+    let goingNext!: Promise<void>;
+    await h.act(() => { goingNext = h.playback().next(); });
+    const reportsBefore = h.reports.length;
+    await h.act(async () => { await h.playback().stop(); });
+
+    const stopped = h.reports.slice(reportsBefore).filter((report) => report.event === 'stopped');
+    expect(stopped).toHaveLength(1);
+    // Before the fix this was the ten minutes it had been started from, which
+    // moved the member's resume point back.
+    expect(stopped[0]).toMatchObject({ playSessionId: 'session-1', positionTicks: 1200 * 10_000_000 });
+
+    await h.act(async () => { h.releaseStreamInfo(); await goingNext; });
+  });
+});
+
+describe('Seeking a progressive transcode while the next item is still being negotiated', () => {
+  it('leaves the incoming item to its own start', async () => {
+    await watching(600);
+    // A media error on a direct stream falls back to a transcode, which this
+    // harness serves as a plain file: the one case where a seek is a restart.
+    await h.act(async () => {
+      h.element().dispatchEvent(new Event('error'));
+      await vi.waitFor(() => expect(h.playback().stream?.playMethod).toBe('Transcode'));
+    });
+    h.holdStreamInfo();
+
+    let goingNext!: Promise<void>;
+    await h.act(() => { goingNext = h.playback().next(); });
+    const stopsBefore = h.encodingStops.length;
+    await h.act(async () => {
+      h.playback().seek(100);
+      // Long enough for the restart this used to begin to reach its request.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    // The outgoing encoder is not stopped by the seek either.
+    expect(h.encodingStops.slice(stopsBefore)).toEqual([]);
+
+    await h.act(async () => { h.releaseStreamInfo(); await goingNext; });
+
+    // Before the fix a second request asked for NEXT at 100 seconds, with the
+    // outgoing item's source id, and took the player from the first.
+    expect(h.requests.filter((request) => request.itemId === NEXT.Id)).toEqual([
+      expect.objectContaining({ itemId: NEXT.Id, startTimeTicks: 0 }),
+    ]);
+    expect(h.playback().status).toBe('playing');
+    expect(h.playback().stream?.item.Id).toBe(NEXT.Id);
+  });
+});
