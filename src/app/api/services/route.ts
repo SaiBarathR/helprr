@@ -14,6 +14,7 @@ import {
   serializeConnection,
 } from '@/lib/service-connection-secrets';
 import { withApiLogging } from '@/lib/api-logger';
+import { isRefusedRedirect, REDIRECT_REFUSED_MESSAGE } from '@/lib/redirect-guard';
 import { clearConnectionMemo, ensureDefaultForType, isArrType } from '@/lib/arr-instances';
 import { findServiceByType } from '@/lib/settings/service-config';
 
@@ -271,6 +272,9 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     }
 
     console.error('Failed to save service connection:', getErrorInfo(error));
+    if (isRefusedRedirect(error)) {
+      return NextResponse.json({ error: REDIRECT_REFUSED_MESSAGE }, { status: 502 });
+    }
     return NextResponse.json(
       { error: 'Failed to save service connection' },
       { status: 500 }

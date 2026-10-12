@@ -2,6 +2,7 @@ import axios, { AxiosInstance } from 'axios';
 import crypto from 'crypto';
 import { ConfigurationError } from '@/lib/config-error';
 import { keepAliveHttpAgent, keepAliveHttpsAgent } from '@/lib/http-agents';
+import { refuseRedirectToAnotherHost } from '@/lib/redirect-guard';
 import { getAppTimeZone, getLocalDateKey, getTimeZoneOffsetMinutes } from '@/lib/timezone';
 import type {
   JellyfinSystemInfo,
@@ -106,6 +107,7 @@ export class JellyfinClient {
       timeout: 30000, // 30 second timeout
       httpAgent: keepAliveHttpAgent,
       httpsAgent: keepAliveHttpsAgent,
+      beforeRedirect: refuseRedirectToAnotherHost,
     });
     // Ids are interpolated into request paths, and the URL parser resolves dot
     // segments. An id such as `../Items/x?` would turn this signed call into a
@@ -152,6 +154,7 @@ export class JellyfinClient {
             'Content-Type': 'application/json',
           },
           timeout: 15000,
+          beforeRedirect: refuseRedirectToAnotherHost,
         }
       );
       const data = response.data as {

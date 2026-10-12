@@ -19,6 +19,7 @@ import {
 } from '@/lib/service-connection-secrets';
 import type { ServiceType } from '@prisma/client';
 import { withApiLogging } from '@/lib/api-logger';
+import { isRefusedRedirect, REDIRECT_REFUSED_MESSAGE } from '@/lib/redirect-guard';
 
 /**
  * Handle POST requests to check connectivity and retrieve version information from supported services.
@@ -250,7 +251,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     }
 
     return NextResponse.json(
-      { success: false, error: 'Connection test failed' },
+      { success: false, error: isRefusedRedirect(error) ? REDIRECT_REFUSED_MESSAGE : 'Connection test failed' },
       { status: 502 }
     );
   }
