@@ -434,6 +434,9 @@ async function resolvePlayable(item: JellyfinItem, signal?: AbortSignal): Promis
   return { items: [item], startIndex: 0 };
 }
 
+/** How long "add to queue" waits for a container's contents before giving up on it. */
+const QUEUE_LOOKUP_TIMEOUT_MS = 15_000;
+
 const CONTAINER_TYPES = ['Series', 'Season', 'BoxSet', 'MusicAlbum', 'MusicArtist', 'Playlist', 'Folder', 'CollectionFolder'];
 
 /** Something that holds playable items and has no stream of its own. */
@@ -449,9 +452,9 @@ function isContainer(item: JellyfinItem): boolean {
  * channel included. Unlike Play, which queues a whole show so it can start
  * anywhere in it, a queued season is only that season.
  */
-async function queueableItems(item: JellyfinItem): Promise<JellyfinItem[]> {
+async function queueableItems(item: JellyfinItem, signal: AbortSignal): Promise<JellyfinItem[]> {
   if (!isContainer(item)) return [item];
-  const { items } = await resolvePlayable(item);
+  const { items } = await resolvePlayable(item, signal);
   const held = item.Type === 'Season'
     ? items.filter((candidate) => candidate.SeasonId === item.Id
       || (item.IndexNumber != null && candidate.ParentIndexNumber === item.IndexNumber))
@@ -709,8 +712,10 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
   const queueRef = useRef<JellyfinItem[]>([]);
   const indexRef = useRef(0);
   const orderRef = useRef<JellyfinItem[]>([]);
-  // Queue additions in the order they were asked for; see `addToQueue`.
+  // Queue additions in the order they were asked for, and a count of stops so
+  // one asked for before a stop is not applied after it; see `addToQueue`.
   const queueAdditionsRef = useRef<Promise<void>>(Promise.resolve());
+  const queueEpochRef = useRef(0);
   const progressTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const retryingRef = useRef(false);
   /**
@@ -1365,17 +1370,23 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
   }, [playItems]);
 
   const addToQueue = useCallback((items: JellyfinItem[]) => {
-    const hadQueue = queueRef.current.length > 0;
+    const epoch = queueEpochRef.current;
     // Looked up at once, appended in the order asked for: a film queued after
-    // an album must not land ahead of it because it needed no lookup. A failed
-    // lookup adds nothing; the rest of the request still goes in.
-    const lookups = Promise.all(items.map((item) => queueableItems(item).catch((): JellyfinItem[] => [])));
+    // an album must not land ahead of it because it needed no lookup. A lookup
+    // that fails, or is still unanswered after the timeout, adds nothing; it
+    // must not hold up what was queued after it.
+    const lookup = new AbortController();
+    const timer = setTimeout(() => lookup.abort(), QUEUE_LOOKUP_TIMEOUT_MS);
+    const lookups = Promise.all(
+      items.map((item) => queueableItems(item, lookup.signal).catch((): JellyfinItem[] => [])),
+    ).finally(() => clearTimeout(timer));
     const appended = queueAdditionsRef.current.then(async () => {
       const added = (await lookups).flat();
       if (added.length === 0) return;
-      // Stopped while the lookup ran. Appending now would bring back the player
-      // the viewer has just closed.
-      if (hadQueue && queueRef.current.length === 0) return;
+      // Stopped since it was asked for. The addition was for the playback that
+      // ended; appending now would bring back the player the viewer closed, or
+      // land in whatever they started next.
+      if (epoch !== queueEpochRef.current) return;
       // Appended to whatever the queue is by now, which a start may have
       // expanded in the meantime.
       const next = [...queueRef.current, ...added];
@@ -1445,6 +1456,10 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     // otherwise stay armed indefinitely after the user stopped playback.
     queueRef.current = [];
     orderRef.current = [];
+    // Additions still being looked up were for this playback. Later ones must
+    // not wait behind them either.
+    queueEpochRef.current += 1;
+    queueAdditionsRef.current = Promise.resolve();
     indexRef.current = 0;
     audioIndexRef.current = null;
     subtitleIndexRef.current = null;

@@ -103,6 +103,48 @@ describe('addToQueue', () => {
     expect(h.playback().item).toBeNull();
   });
 
+  it('does not carry an addition past a stop into what is played next', async () => {
+    await playing();
+    h.holdCatalog();
+    let adding!: Promise<void>;
+    await h.act(() => { adding = h.playback().addToQueue([SERIES]); });
+    await h.act(async () => { await h.playback().stop(); });
+    // A film needs no lookup, so it starts while the old one is still pending.
+    await h.act(async () => { await h.playback().playItems([MOVIE]); });
+    await h.act(async () => { h.releaseCatalog(EPISODES); await adding; });
+    expect(queued()).toEqual([MOVIE.Id]);
+  });
+
+  it('drops an addition asked for while idle once that playback is stopped', async () => {
+    h = await mountPlayback();
+    h.holdCatalog();
+    let adding!: Promise<void>;
+    await h.act(() => { adding = h.playback().addToQueue([SERIES]); });
+    await h.act(async () => { await h.playback().playItems([MOVIE]); });
+    await h.act(async () => { await h.playback().stop(); });
+    await h.act(async () => { h.releaseCatalog(EPISODES); await adding; });
+    expect(queued()).toEqual([]);
+  });
+
+  it('gives up on a lookup that never answers instead of holding up later additions', async () => {
+    await playing();
+    vi.useFakeTimers();
+    try {
+      h.holdCatalog();
+      let series!: Promise<void>;
+      let film!: Promise<void>;
+      await h.act(() => {
+        series = h.playback().addToQueue([SERIES]);
+        film = h.playback().addToQueue([MOVIE]);
+      });
+      expect(queued()).toEqual([ITEM.Id]);
+      await h.act(async () => { vi.advanceTimersByTime(15_000); await series; await film; });
+      expect(queued()).toEqual([ITEM.Id, MOVIE.Id]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('keeps what was queued when shuffle is turned on and off again', async () => {
     await playing();
     await queue(SERIES, EPISODES);
