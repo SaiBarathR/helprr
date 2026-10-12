@@ -710,11 +710,11 @@ cleanup history for 90 days:
 - **Cleanup** (queue, download, and seeding rules) — can remove downloads from
   qBittorrent *including their files* when a rule says so. Disabled by
   default; supports dry-run previews, and automatic mode is opt-in per cleaner.
-- **Delete movie / series / artist / album** — the library lists (single item
-  or bulk selection) and the artist and album pages offer an optional "also
-  delete files" choice in the confirmation dialog (off by default). Deleting
-  from a movie or series detail page always deletes the files from disk; its
-  confirmation says so and has no such choice.
+- **Delete movie / series / artist / album** — every confirmation, on the
+  library lists (single item or bulk selection) and on the movie, series,
+  artist and album pages, offers an optional "also delete files" choice (off by
+  default). Left off, the item is removed from the service and its files stay
+  on disk.
 - **Delete episode file / track file / movie file** — deletes that file from
   disk; the media item stays in the library as missing.
 - **Activity queue removal** — optionally removes the download (and its data)
