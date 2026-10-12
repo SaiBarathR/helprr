@@ -156,6 +156,57 @@ describe('addToQueue', () => {
     }
   });
 
+  // Play swaps its own queue in again once the container it was asked for has
+  // been fetched. An item queued in that moment used to vanish with the swap.
+  describe('while a Play is still expanding', () => {
+    it('keeps an item queued after an episode whose show is still being fetched', async () => {
+      h = await mountPlayback();
+      h.holdCatalog();
+      let playing!: Promise<void>;
+      await h.act(async () => {
+        playing = h.playback().playItems([EPISODES[1]]);
+        // The episode itself starts at once; its show arrives later.
+        await vi.waitFor(() => expect(h.requests).toHaveLength(1));
+      });
+      await h.act(async () => { await h.playback().addToQueue([MOVIE]); });
+      expect(queued()).toEqual(['s1e2', MOVIE.Id]);
+
+      await h.act(async () => { h.releaseCatalog(EPISODES); await playing; });
+
+      expect(queued()).toEqual(['s1e1', 's1e2', 's2e1', MOVIE.Id]);
+      expect(h.playback().index).toBe(1);
+      expect(h.playback().item?.Id).toBe('s1e2');
+    });
+
+    it('keeps an item queued after a series that has not been fetched yet', async () => {
+      h = await mountPlayback();
+      h.holdCatalog();
+      let playing!: Promise<void>;
+      await h.act(() => { playing = h.playback().playItems([SERIES]); });
+      await h.act(async () => { await h.playback().addToQueue([MOVIE]); });
+
+      await h.act(async () => { h.releaseCatalog(EPISODES); await playing; });
+
+      expect(queued()).toEqual(['s1e1', 's1e2', 's2e1', MOVIE.Id]);
+      expect(h.playback().item?.Id).toBe('s1e1');
+      expect(h.requests.at(-1)?.itemId).toBe('s1e1');
+    });
+
+    it('keeps it through shuffle as well', async () => {
+      h = await mountPlayback();
+      h.holdCatalog();
+      let playing!: Promise<void>;
+      await h.act(() => { playing = h.playback().playItems([SERIES]); });
+      await h.act(async () => { await h.playback().addToQueue([MOVIE]); });
+      await h.act(async () => { h.releaseCatalog(EPISODES); await playing; });
+
+      await h.act(() => { h.playback().toggleShuffle(); });
+      expect([...queued()].sort()).toEqual([MOVIE.Id, 's1e1', 's1e2', 's2e1'].sort());
+      await h.act(() => { h.playback().toggleShuffle(); });
+      expect(queued()).toEqual(['s1e1', 's1e2', 's2e1', MOVIE.Id]);
+    });
+  });
+
   it('keeps what was queued when shuffle is turned on and off again', async () => {
     await playing();
     await queue(SERIES, EPISODES);

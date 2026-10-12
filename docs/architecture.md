@@ -285,7 +285,10 @@ multi-megabyte payload.
 
 "Add to queue" appends what an item holds, never a container: a series becomes
 its episodes, a season only its own, an album its tracks. A container queued as
-it stood was a row the player could not start. While another item's start is in
+it stood was a row the player could not start. An addition belongs to the queue
+it was asked for: a Play or a Stop discards one still being looked up, and a
+Play that is still expanding its own container puts back, after the expansion,
+whatever was queued in the meantime. While another item's start is in
 flight the outgoing stream still belongs to the outgoing item, so nothing may
 act on it as if it were the incoming one: a seek that restarts the stream waits
 out the pending start, and the "has reached its start offset" flag is reset
