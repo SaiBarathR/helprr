@@ -115,6 +115,17 @@ describe('addToQueue', () => {
     expect(queued()).toEqual([MOVIE.Id]);
   });
 
+  it('does not carry an addition into a Play that replaced the queue', async () => {
+    await playing();
+    h.holdCatalog();
+    let adding!: Promise<void>;
+    await h.act(() => { adding = h.playback().addToQueue([SERIES]); });
+    // No Stop in between: picking something else replaces the queue outright.
+    await h.act(async () => { await h.playback().playItems([MOVIE]); });
+    await h.act(async () => { h.releaseCatalog(EPISODES); await adding; });
+    expect(queued()).toEqual([MOVIE.Id]);
+  });
+
   it('drops an addition asked for while idle once that playback is stopped', async () => {
     h = await mountPlayback();
     h.holdCatalog();

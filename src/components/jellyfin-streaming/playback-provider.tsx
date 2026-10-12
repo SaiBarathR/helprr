@@ -712,8 +712,9 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
   const queueRef = useRef<JellyfinItem[]>([]);
   const indexRef = useRef(0);
   const orderRef = useRef<JellyfinItem[]>([]);
-  // Queue additions in the order they were asked for, and a count of stops so
-  // one asked for before a stop is not applied after it; see `addToQueue`.
+  // Queue additions in the order they were asked for, and a count of the times
+  // the queue was replaced or cleared, so an addition is only ever applied to
+  // the queue it was asked for; see `addToQueue`.
   const queueAdditionsRef = useRef<Promise<void>>(Promise.resolve());
   const queueEpochRef = useRef(0);
   const progressTimer = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -1310,6 +1311,10 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     const owns = reserveStart(startTokenRef);
     const stillCurrent = () => owns() && !controller.signal.aborted;
     const wanted = Math.min(Math.max(0, startIndex), items.length - 1);
+    // The queue is replaced, so additions still being looked up for the old one
+    // go with it; see `addToQueue`.
+    queueEpochRef.current += 1;
+    queueAdditionsRef.current = Promise.resolve();
     // A tap owns the player immediately, including while a container expands.
     queueRef.current = items;
     indexRef.current = wanted;
@@ -1383,9 +1388,9 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     const appended = queueAdditionsRef.current.then(async () => {
       const added = (await lookups).flat();
       if (added.length === 0) return;
-      // Stopped since it was asked for. The addition was for the playback that
-      // ended; appending now would bring back the player the viewer closed, or
-      // land in whatever they started next.
+      // The queue it was meant for is gone: Stop cleared it, or a Play replaced
+      // it. Appending now would bring back the player the viewer closed, or
+      // land in whatever they started instead.
       if (epoch !== queueEpochRef.current) return;
       // Appended to whatever the queue is by now, which a start may have
       // expanded in the meantime.
@@ -1456,8 +1461,8 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     // otherwise stay armed indefinitely after the user stopped playback.
     queueRef.current = [];
     orderRef.current = [];
-    // Additions still being looked up were for this playback. Later ones must
-    // not wait behind them either.
+    // Additions still being looked up were for this queue. Later ones must not
+    // wait behind them either.
     queueEpochRef.current += 1;
     queueAdditionsRef.current = Promise.resolve();
     indexRef.current = 0;
