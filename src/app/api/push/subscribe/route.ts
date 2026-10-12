@@ -4,6 +4,7 @@ import { requireUser } from '@/lib/auth';
 import { ensureNotificationPreferences } from '@/lib/notification-events';
 import { withApiLogging } from '@/lib/api-logger';
 import { toNotificationDeviceSummary } from '@/lib/notification-subscriptions';
+import { isPushServiceEndpoint, pushEndpointHost } from '@/lib/push-endpoint';
 
 async function postHandler(request: NextRequest) {
   // Deliberately NOT gated on settings.notifications: the SW's
@@ -20,6 +21,12 @@ async function postHandler(request: NextRequest) {
 
     if (!endpoint || !keys?.p256dh || !keys?.auth) {
       return NextResponse.json({ error: 'Missing subscription data' }, { status: 400 });
+    }
+
+    // The server will POST to this URL, so it has to be a push service's.
+    if (!isPushServiceEndpoint(endpoint)) {
+      console.warn('Refused a push subscription outside the known push services:', pushEndpointHost(endpoint) ?? 'not a plain https URL');
+      return NextResponse.json({ error: 'This browser\'s push service is not supported' }, { status: 400 });
     }
 
     // Endpoint rotation (the SW's pushsubscriptionchange handler — iOS rotates the

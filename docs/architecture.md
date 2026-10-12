@@ -383,6 +383,13 @@ VAPID is runtime configuration. `VAPID_PUBLIC_KEY` is served by
 fallback. Subscriptions and preferences are per user/device, and notification
 capabilities are an outer gate around per-device event preferences.
 
+A subscription's endpoint is a URL the server posts to, and it arrives in a
+request. `src/lib/push-endpoint.ts` therefore accepts only the push services
+browsers use (FCM, Mozilla autopush, Apple, Windows Notification Services): the
+subscribe route refuses any other address and logs its host, and the sender
+checks again before every push. A browser on another push service cannot
+subscribe until its host is added there.
+
 ## Persistence, Migrations, and Retention
 
 Prisma 6 and PostgreSQL are intentional. Prisma migrations are the only schema

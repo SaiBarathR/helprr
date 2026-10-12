@@ -47,7 +47,7 @@ import {
 const storedSubscription = {
   id: 'device-1',
   userId: 'user-1',
-  endpoint: 'https://push.example/device',
+  endpoint: 'https://web.push.apple.com/device',
   p256dh: 'p256dh-secret',
   auth: 'auth-secret',
   deviceName: 'Phone',
@@ -94,7 +94,7 @@ describe('push subscription safe response contract', () => {
     expect(response.status).toBe(200);
     expect(body).toEqual({
       id: 'device-1',
-      endpoint: 'https://push.example/device',
+      endpoint: 'https://web.push.apple.com/device',
       deviceName: 'Phone',
       consecutiveFailures: 0,
       lastFailedAt: null,
@@ -107,21 +107,38 @@ describe('push subscription safe response contract', () => {
     expect(mocks.ensurePreferences).toHaveBeenCalledWith('device-1');
   });
 
+  it.each([
+    'https://collector.example/hook',
+    'http://web.push.apple.com/device',
+    'https://internal;.push.apple.com/device',
+    'https://web.push.apple.com:8443/device',
+  ])('refuses to store the endpoint %s', async (endpoint) => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const response = await POST(subscribeRequest({ endpoint, oldEndpoint: storedSubscription.endpoint }));
+    warn.mockRestore();
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "This browser's push service is not supported" });
+    expect(mocks.upsert).not.toHaveBeenCalled();
+    expect(mocks.update).not.toHaveBeenCalled();
+    expect(mocks.findUnique).not.toHaveBeenCalled();
+  });
+
   it('returns the same stable id after an owned endpoint rotation', async () => {
     mocks.findUnique.mockResolvedValue(storedSubscription);
     mocks.update.mockResolvedValue({
       ...storedSubscription,
-      endpoint: 'https://push.example/rotated',
+      endpoint: 'https://web.push.apple.com/rotated',
     });
 
     const response = await POST(subscribeRequest({
-      endpoint: 'https://push.example/rotated',
+      endpoint: 'https://web.push.apple.com/rotated',
       oldEndpoint: storedSubscription.endpoint,
     }));
 
     expect(await response.json()).toMatchObject({
       id: 'device-1',
-      endpoint: 'https://push.example/rotated',
+      endpoint: 'https://web.push.apple.com/rotated',
     });
     expect(mocks.update).toHaveBeenCalledWith(expect.objectContaining({
       where: { id: 'device-1' },
@@ -135,7 +152,7 @@ describe('push subscription safe response contract', () => {
 
     expect(body).toEqual([{
       id: 'device-1',
-      endpoint: 'https://push.example/device',
+      endpoint: 'https://web.push.apple.com/device',
       deviceName: 'Phone',
       consecutiveFailures: 0,
       lastFailedAt: null,

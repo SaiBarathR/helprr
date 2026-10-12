@@ -9,6 +9,7 @@ import { can } from '@/lib/permissions';
 import { getVapidPublicKey } from '@/lib/vapid';
 import { EVENT_TYPE_TO_CAPABILITY } from '@/lib/capabilities';
 import { isKnownEventType } from '@/lib/notification-events';
+import { isPushServiceEndpoint } from '@/lib/push-endpoint';
 import { getAppTimeZone, toZonedDate } from '@/lib/timezone';
 
 let vapidInitialized = false;
@@ -309,6 +310,12 @@ export async function sendPushNotification(
   // pushes work fine.
   initVapid();
   const endpointHash = hashEndpoint(subscription.endpoint);
+  // Checked again here, at the one place a request is made, so a row stored
+  // before the subscribe route validated endpoints cannot be used either.
+  if (!isPushServiceEndpoint(subscription.endpoint)) {
+    logger.warn('Skipping push to an endpoint outside the known push services', { endpointHash }, { scope: 'notifications' });
+    return false;
+  }
   if (!vapidInitialized) {
     logger.debug('Skipping push send because VAPID is not initialized', {
       endpointHash,
