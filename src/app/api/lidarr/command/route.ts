@@ -3,6 +3,7 @@ import { getLidarrClient } from '@/lib/service-helpers';
 import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { upstreamErrorResponse } from '@/lib/api-error';
+import { checkOwnership } from '@/lib/manage-files-guard';
 
 function toPositiveInt(value: unknown): number | null {
   const n = Number(value);
@@ -85,6 +86,15 @@ async function postHandler(request: NextRequest) {
         const files = toPositiveIntArray(body.files);
         if (files === null) {
           return NextResponse.json({ error: 'files must be a non-empty array of positive integers' }, { status: 400 });
+        }
+        // Lidarr renames whatever file ids it is handed, under the artist it
+        // is handed: it does not check that they belong together.
+        const owned = checkOwnership(files, await client.getTrackFiles({ artistId }));
+        if (!owned.ok) {
+          return NextResponse.json(
+            { error: `Track file id(s) not in artist ${artistId}: ${owned.missing.join(', ')}` },
+            { status: 400 }
+          );
         }
         result = await client.renameArtistFiles(artistId, files);
         break;

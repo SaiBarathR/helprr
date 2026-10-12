@@ -316,7 +316,9 @@ information. An import is checked before it is queued, because the *arr's
 `ManualImport` command moves whatever path it is handed: from a title's file
 manager every path must be in that title's folder, and from the Activity page
 every path must be one the *arr lists for the download. The command routes do
-not accept `ManualImport`. Renames are not audited; the *arr keeps them in its
+not accept `ManualImport`. A rename's file ids are checked against the title it
+names, as the file manager's edits and deletes are, because the *arr renames
+whatever ids it is handed. Renames are not audited; the *arr keeps them in its
 own history. Queue and download cleaner runs, scheduled or interactive, send
 their per-item outcomes to `CleanupHistory`, which records the trigger (`auto`
 or `manual`) and, for an interactive run, the preview id, but no actor. Audit

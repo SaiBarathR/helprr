@@ -3,6 +3,7 @@ import { getRadarrClient } from '@/lib/service-helpers';
 import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { upstreamErrorResponse } from '@/lib/api-error';
+import { checkOwnership, coercePositiveInt, coercePositiveIntArray } from '@/lib/manage-files-guard';
 
 async function postHandler(request: NextRequest) {
   const auth = await requireUserCapability('activity.manage');
@@ -37,7 +38,24 @@ async function postHandler(request: NextRequest) {
               { status: 400 }
             );
           }
-          result = await client.renameMovieFiles(body.movieId, body.files);
+          const movieId = coercePositiveInt(body.movieId);
+          const files = coercePositiveIntArray(body.files);
+          if (!movieId || !files) {
+            return NextResponse.json(
+              { error: 'movieId and files must be positive integers' },
+              { status: 400 }
+            );
+          }
+          // Radarr renames whatever file ids it is handed, under the movie it
+          // is handed: it does not check that they belong together.
+          const owned = checkOwnership(files, await client.getMovieFiles(movieId));
+          if (!owned.ok) {
+            return NextResponse.json(
+              { error: `Movie file id(s) not in movie ${movieId}: ${owned.missing.join(', ')}` },
+              { status: 400 }
+            );
+          }
+          result = await client.renameMovieFiles(movieId, files);
         } else {
           result = await client.renameMovie(body.movieId);
         }
