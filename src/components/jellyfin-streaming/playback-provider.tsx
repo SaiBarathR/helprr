@@ -1392,8 +1392,10 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
       // it. Appending now would bring back the player the viewer closed, or
       // land in whatever they started instead.
       if (epoch !== queueEpochRef.current) return;
-      // Appended to whatever the queue is by now, which a start may have
-      // expanded in the meantime.
+      // Appended to the queue as it is by now. A Play still expanding its
+      // container assigns the queue again when that lands, and an addition made
+      // in that moment goes with it; that was so before additions were looked
+      // up, and is not handled here.
       const next = [...queueRef.current, ...added];
       queueRef.current = next;
       // Shuffle rebuilds the queue from this order, so it has to hold them too.
