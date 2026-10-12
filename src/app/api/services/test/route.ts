@@ -13,6 +13,7 @@ import {
   isNonEmptyString,
   isServiceType,
   parseCustomHeaders,
+  REENTER_SECRET_MESSAGE,
   resolveApiKeyForService,
   resolveCustomHeadersForService,
 } from '@/lib/service-connection-secrets';
@@ -85,12 +86,17 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     // Unmask against the instance being tested — the default instance's key
     // must not substitute for a sibling's (multi-instance Sonarr/Radarr/Lidarr).
     const instanceId = isNonEmptyString(body.instanceId) ? body.instanceId.trim() : undefined;
-    const resolvedApiKey = await resolveApiKeyForService(type, apiKey, instanceId);
+    const resolvedApiKey = await resolveApiKeyForService(type, apiKey, url, instanceId);
     // Test with the same headers a live request would carry, so a proxied
     // instance is validated as it actually runs.
     const customHeaders = customHeadersEnabled()
-      ? await resolveCustomHeadersForService(type, parseCustomHeaders(body.customHeaders), instanceId)
+      ? await resolveCustomHeadersForService(type, parseCustomHeaders(body.customHeaders), url, instanceId)
       : undefined;
+    // A mask stands for a stored secret, and this request would send it to a
+    // URL other than the one it was stored for.
+    if (resolvedApiKey === null || customHeaders === null) {
+      return NextResponse.json({ success: false, error: REENTER_SECRET_MESSAGE }, { status: 400 });
+    }
     const cleanUrl = url.replace(/\/+$/, '');
 
     switch (type) {

@@ -58,7 +58,10 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   }
 
   const trimmedClientId = clientId.trim();
-  const resolvedSecret = await resolveApiKeyForService('ANILIST', clientSecret.trim());
+  const resolvedSecret = await resolveApiKeyForService('ANILIST', clientSecret.trim(), ANILIST_GRAPHQL_URL);
+  if (resolvedSecret === null) {
+    return NextResponse.json({ error: 'Enter the client secret again' }, { status: 400 });
+  }
 
   const existingAniList = await prisma.serviceConnection.findFirst({ where: { type: 'ANILIST' } });
   if (existingAniList) {

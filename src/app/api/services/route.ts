@@ -6,7 +6,9 @@ import {
   customHeadersEnabled,
   isNonEmptyString,
   isServiceType,
+  normalizeServiceUrl,
   parseCustomHeaders,
+  REENTER_SECRET_MESSAGE,
   resolveApiKeyForService,
   resolveCustomHeadersForService,
   serializeConnection,
@@ -141,14 +143,19 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
         : null;
 
     const idValue = typeof body.id === 'string' && body.id.trim() ? body.id.trim() : undefined;
-    const apiKeyToStore = await resolveApiKeyForService(type, apiKey, idValue);
+    const apiKeyToStore = await resolveApiKeyForService(type, apiKey, url, idValue);
 
     // Feature-gated: when disabled — or when the client doesn't send the field —
     // customHeaders is undefined, which leaves any stored value untouched. An
     // explicit {} (all rows removed in the UI) clears them.
     const customHeaders = customHeadersEnabled() && body.customHeaders !== undefined
-      ? await resolveCustomHeadersForService(type, parseCustomHeaders(body.customHeaders), idValue)
+      ? await resolveCustomHeadersForService(type, parseCustomHeaders(body.customHeaders), url, idValue)
       : undefined;
+    // A mask stands for a stored secret, and saving it under another URL would
+    // have every later request carry that secret there.
+    if (apiKeyToStore === null || customHeaders === null) {
+      return NextResponse.json({ error: REENTER_SECRET_MESSAGE }, { status: 400 });
+    }
 
     if (type === 'JELLYFIN') {
       const client = new JellyfinClient(url, apiKeyToStore, '', customHeaders);
@@ -220,12 +227,18 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: 'A name is required for this instance' }, { status: 400 });
     }
 
+    // Stored headers this request did not carry were entered for the old
+    // address, so a URL change drops them rather than sending them to the new one.
+    const headersToStore = customHeaders === undefined && existing && normalizeServiceUrl(existing.url) !== url
+      ? {}
+      : customHeaders;
+
     let connection;
     try {
       connection = existing
         ? await prisma.serviceConnection.update({
             where: { id: existing.id },
-            data: { url, apiKey: apiKeyToStore, username, label, ...(externalUrl !== undefined && { externalUrl }), ...(customHeaders !== undefined && { customHeaders }) },
+            data: { url, apiKey: apiKeyToStore, username, label, ...(externalUrl !== undefined && { externalUrl }), ...(headersToStore !== undefined && { customHeaders: headersToStore }) },
           })
         : await prisma.serviceConnection.create({
             data: { type, label, url, apiKey: apiKeyToStore, username, ...(externalUrl !== undefined && { externalUrl }), ...(customHeaders !== undefined && { customHeaders }) },
