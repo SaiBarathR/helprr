@@ -3,6 +3,7 @@ import { getSonarrClient } from '@/lib/service-helpers';
 import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { upstreamErrorResponse } from '@/lib/api-error';
+import { checkOwnership, coercePositiveInt, coercePositiveIntArray } from '@/lib/manage-files-guard';
 
 async function postHandler(request: NextRequest) {
   // Commands (search / refresh / rename) are activity-management actions;
@@ -72,15 +73,34 @@ async function postHandler(request: NextRequest) {
       case 'RenameSeries':
         result = await client.renameSeries(body.seriesId);
         break;
-      case 'RenameFiles':
+      case 'RenameFiles': {
         if (!Array.isArray(body.files) || body.files.length === 0) {
           return NextResponse.json(
             { error: 'files must be a non-empty array' },
             { status: 400 }
           );
         }
-        result = await client.renameFiles(body.seriesId, body.files);
+        const seriesId = coercePositiveInt(body.seriesId);
+        const files = coercePositiveIntArray(body.files);
+        if (!seriesId || !files) {
+          return NextResponse.json(
+            { error: 'seriesId and files must be positive integers' },
+            { status: 400 }
+          );
+        }
+        // Sonarr renames whatever file ids it is handed, under the series it is
+        // handed: it does not check that they belong together. So check here,
+        // as the file manager's edit and delete routes do.
+        const owned = checkOwnership(files, await client.getEpisodeFiles(seriesId));
+        if (!owned.ok) {
+          return NextResponse.json(
+            { error: `Episode file id(s) not in series ${seriesId}: ${owned.missing.join(', ')}` },
+            { status: 400 }
+          );
+        }
+        result = await client.renameFiles(seriesId, files);
         break;
+      }
       default:
         return NextResponse.json(
           { error: `Unknown command: ${body.name}` },
