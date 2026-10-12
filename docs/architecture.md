@@ -163,6 +163,13 @@ Permissions use code-defined admin/member templates plus per-user delta maps in
 `User.permissions`. Admins allow all. Member defaults are explicit, and an
 unknown or newly added capability is denied until intentionally granted.
 
+Stored service API keys and custom header values never leave the server; the
+settings API returns a mask. A mask sent back means "keep the stored value", and
+is honoured only with the URL that value was stored for. Testing or saving a
+connection under another URL needs the secret typed again, and a URL change drops
+stored headers the request does not carry. Otherwise managing instances would be
+enough to read a key by pointing its connection at another address.
+
 Local passwords use scrypt. New and reset passwords require at least 15 Unicode
 code points, while existing compatible hashes remain verifiable. A user may have
 no local hash when Jellyfin is the only login method. Signing in with Jellyfin

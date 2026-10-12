@@ -435,6 +435,10 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
           hdrErrors[h.id] = { name: 'Letters, numbers, and hyphens only' };
           continue;
         }
+        if (name.toLowerCase() === 'host') {
+          hdrErrors[h.id] = { name: 'Host cannot be set here' };
+          continue;
+        }
         const value = h.value.trim();
         if (!value) hdrErrors[h.id] = { value: 'Value required' };
         else if (value.length > MAX_HEADER_VALUE_LENGTH) {

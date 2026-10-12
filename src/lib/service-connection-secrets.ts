@@ -35,13 +35,17 @@ function hasControlChar(s: string): boolean {
 // Coerce an untrusted value (request body or stored JSON) into a validated
 // name→value map: safe header names only, non-empty trimmed values free of
 // control chars, capped in count and length. Invalid entries are dropped.
+//
+// `Host` is refused: the HTTP client resolves a relative redirect against that
+// header when it is set, so a redirect from the real server would carry the API
+// key and the other headers to whatever host it named.
 export function parseCustomHeaders(value: unknown): Record<string, string> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
   const result: Record<string, string> = {};
   for (const [rawName, rawValue] of Object.entries(value as Record<string, unknown>)) {
     if (Object.keys(result).length >= MAX_HEADERS) break;
     const name = rawName.trim();
-    if (!HEADER_NAME_PATTERN.test(name)) continue;
+    if (!HEADER_NAME_PATTERN.test(name) || name.toLowerCase() === 'host') continue;
     if (typeof rawValue !== 'string') continue;
     const val = rawValue.trim();
     if (!val || val.length > MAX_HEADER_VALUE_LENGTH || hasControlChar(val)) continue;
@@ -60,14 +64,21 @@ export function maskCustomHeaders(map: Record<string, string>): Record<string, s
 
 // Mirror resolveApiKeyForService for each header value: if the UI submits back
 // the masked value unchanged, keep the stored secret. The provided keyset wins
-// (a removed row is a removed header).
+// (a removed row is a removed header). `sameUrl` false means the stored values
+// may not be reused: a mask then resolves to null (see resolveApiKeyForService).
 export function resolveCustomHeaders(
   existing: Record<string, string>,
-  provided: Record<string, string>
-): Record<string, string> {
+  provided: Record<string, string>,
+  sameUrl = true
+): Record<string, string> | null {
   const resolved: Record<string, string> = {};
   for (const [name, value] of Object.entries(provided)) {
-    resolved[name] = name in existing && value === maskApiKey(existing[name]) ? existing[name] : value;
+    if (name in existing && value === maskApiKey(existing[name])) {
+      if (!sameUrl) return null;
+      resolved[name] = existing[name];
+    } else {
+      resolved[name] = value;
+    }
   }
   return resolved;
 }
@@ -107,37 +118,53 @@ export function serializeConnection(conn: ServiceConnection) {
   };
 }
 
+/** Shown when a mask is sent with a URL other than the one its secret was stored for. */
+export const REENTER_SECRET_MESSAGE = 'Enter the API key and any custom header values again to use a different URL';
+
+export function normalizeServiceUrl(url: string): string {
+  return url.trim().replace(/\/+$/, '');
+}
+
+// instanceId is scoped to the requested type: an id belonging to another
+// service type must not resolve (and leak) that row's secret.
+async function findStoredConnection(type: ServiceType, instanceId?: string) {
+  return instanceId
+    ? prisma.serviceConnection.findFirst({ where: { id: instanceId, type } })
+    : (await prisma.serviceConnection.findFirst({ where: { type, isDefault: true } }))
+      ?? (await prisma.serviceConnection.findFirst({ where: { type } }));
+}
+
+/**
+ * If the UI sends back a masked API key, keep the stored secret, but only for
+ * the URL it was stored for. A mask sent with another URL resolves to null:
+ * honouring it would send the stored key to an address the caller chose, which
+ * is how someone allowed to manage instances could read a key they cannot see.
+ */
 export async function resolveApiKeyForService(
   type: ServiceType,
   providedApiKey: string,
+  url: string,
   instanceId?: string
-): Promise<string> {
-  // instanceId is scoped to the requested type: an id belonging to another
-  // service type must not resolve (and leak) that row's secret.
-  const existing = instanceId
-    ? await prisma.serviceConnection.findFirst({ where: { id: instanceId, type } })
-    : (await prisma.serviceConnection.findFirst({ where: { type, isDefault: true } }))
-      ?? (await prisma.serviceConnection.findFirst({ where: { type } }));
-  if (!existing) return providedApiKey;
-
-  // If the UI sends back a masked API key, keep the stored secret.
-  if (providedApiKey === maskApiKey(existing.apiKey)) {
-    return existing.apiKey;
-  }
-  return providedApiKey;
+): Promise<string | null> {
+  const existing = await findStoredConnection(type, instanceId);
+  if (!existing || providedApiKey !== maskApiKey(existing.apiKey)) return providedApiKey;
+  return normalizeServiceUrl(existing.url) === normalizeServiceUrl(url) ? existing.apiKey : null;
 }
 
-// Same lookup as resolveApiKeyForService, applied to the custom-header map so a
-// re-save that echoes masked values keeps the stored secrets.
+// Same lookup and the same URL rule as resolveApiKeyForService, applied to the
+// custom-header map so a re-save that echoes masked values keeps the stored
+// secrets.
 export async function resolveCustomHeadersForService(
   type: ServiceType,
   provided: Record<string, string>,
+  url: string,
   instanceId?: string
-): Promise<Record<string, string>> {
-  const existing = instanceId
-    ? await prisma.serviceConnection.findFirst({ where: { id: instanceId, type } })
-    : (await prisma.serviceConnection.findFirst({ where: { type, isDefault: true } }))
-      ?? (await prisma.serviceConnection.findFirst({ where: { type } }));
+): Promise<Record<string, string> | null> {
+  const existing = await findStoredConnection(type, instanceId);
   if (!existing) return provided;
-  return resolveCustomHeaders(parseCustomHeaders(existing.customHeaders), provided);
+  return resolveCustomHeaders(
+    parseCustomHeaders(existing.customHeaders),
+    provided,
+    normalizeServiceUrl(existing.url) === normalizeServiceUrl(url)
+  );
 }
