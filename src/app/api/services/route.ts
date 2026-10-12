@@ -262,9 +262,11 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
         : attemptedType !== 'JELLYFIN'
           ? getUpstream4xxMessage(error)
           : 'Failed to save service connection';
+      // A 401 here is the service turning the key down, not this app's session
+      // ending, which is what the client takes a 401 from its own API to mean.
       return NextResponse.json(
         { error: errorMessage },
-        { status: responseStatus }
+        { status: responseStatus === 401 ? 400 : responseStatus }
       );
     }
 
