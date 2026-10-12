@@ -1,5 +1,8 @@
 import type { ServiceConnection, ServiceType } from '@prisma/client';
 import { prisma } from '@/lib/db';
+import { normalizeServiceUrl } from '@/lib/service-url';
+
+export { normalizeServiceUrl };
 
 export function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;
@@ -120,10 +123,6 @@ export function serializeConnection(conn: ServiceConnection) {
 
 /** Shown when a mask is sent with a URL other than the one its secret was stored for. */
 export const REENTER_SECRET_MESSAGE = 'Enter the API key and any custom header values again to use a different URL';
-
-export function normalizeServiceUrl(url: string): string {
-  return url.trim().replace(/\/+$/, '');
-}
 
 // instanceId is scoped to the requested type: an id belonging to another
 // service type must not resolve (and leak) that row's secret.

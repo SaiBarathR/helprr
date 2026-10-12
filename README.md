@@ -500,7 +500,7 @@ same bounded image-cache summary is included in administrator support bundles.
 ## First-run checklist
 
 1. Sign in with the bootstrap administrator.
-2. Open **Settings → Instances** and connect the services you actually use. Test each connection before relying on it.
+2. Open **Settings → Instances** and connect the services you actually use. Test each connection before relying on it. If you later change a connection's URL, enter its API key (or password) again as well: a saved key is only used with the URL it was saved for, and the form reminds you.
 3. In **Settings → Users**, create member accounts and grant only the capabilities they need.
 4. If you use the Watch section, have each member connect their Jellyfin account — signing in with the **Sign in with Jellyfin** button does it automatically, and anyone using a Helprr password can do it from **Settings → Account**. Until they do, Helprr asks them to sign in when they press play. **Settings → Users** shows who is still not connected.
 5. Configure preferences, dashboard layout, notifications, and optional cleanup/bandwidth rules.
