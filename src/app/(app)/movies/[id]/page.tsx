@@ -114,6 +114,7 @@ export default function MovieDetailPage() {
   const loading = movieQuery.isLoading;
   const [deleting, setDeleting] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
+  const [deleteFiles, setDeleteFiles] = useState(false);
   const [actionLoading, setActionLoading] = useState('');
   const [overviewExpanded, setOverviewExpanded] = useState(false);
   const [interactiveSearch, setInteractiveSearch] = useState(false);
@@ -274,7 +275,7 @@ export default function MovieDetailPage() {
     if (!movie) return;
     setDeleting(true);
     try {
-      const res = await arrMutationFetch(instance, `/api/radarr/${movie.id}?deleteFiles=true`, { method: 'DELETE' });
+      const res = await arrMutationFetch(instance, `/api/radarr/${movie.id}?deleteFiles=${deleteFiles}`, { method: 'DELETE' });
       if (!res.ok) throw new Error(`Delete failed (${res.status})`);
       invalidateMovies(queryClient);
       queryClient.removeQueries({ queryKey: queryKeys.detail('radarr', movie.id, instance) });
@@ -1010,15 +1011,34 @@ export default function MovieDetailPage() {
       )}
 
       {/* Delete Drawer (bottom sheet) */}
-      <Drawer open={showDelete} onOpenChange={setShowDelete}>
+      <Drawer
+        open={showDelete}
+        onOpenChange={(open) => {
+          // Opt in to deleting files each time, as the shared delete dialog does.
+          if (!open) setDeleteFiles(false);
+          setShowDelete(open);
+        }}
+      >
         <DrawerContent>
           <DrawerHeader>
             <DrawerTitle>Delete {movie.title}?</DrawerTitle>
             <DrawerDescription>
-              This will remove the movie from Radarr and delete all files from disk. This action
-              cannot be undone.
+              This removes the movie from Radarr. Optionally delete the files on disk too. This
+              action cannot be undone.
             </DrawerDescription>
           </DrawerHeader>
+          <div className="px-4">
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <input
+                type="checkbox"
+                checked={deleteFiles}
+                onChange={(e) => setDeleteFiles(e.target.checked)}
+                disabled={deleting}
+                className="h-4 w-4 accent-destructive"
+              />
+              Also delete all files from disk
+            </label>
+          </div>
           <DrawerFooter>
             <Button
               variant="destructive"

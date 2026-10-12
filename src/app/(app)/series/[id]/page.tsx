@@ -176,6 +176,7 @@ export default function SeriesDetailPage() {
   const refreshing = seriesQuery.isFetching || episodesQuery.isFetching;
 
   const [showDelete, setShowDelete] = useState(false);
+  const [deleteFiles, setDeleteFiles] = useState(false);
   const [showMonitorEdit, setShowMonitorEdit] = useState(false);
   const [showRenamePreview, setShowRenamePreview] = useState(false);
   const [monitorOption, setMonitorOption] = useState('');
@@ -709,7 +710,7 @@ export default function SeriesDetailPage() {
     if (!series) return;
     setDeleting(true);
     try {
-      const res = await arrMutationFetch(instance, `/api/sonarr/${series.id}?deleteFiles=true`, { method: 'DELETE' });
+      const res = await arrMutationFetch(instance, `/api/sonarr/${series.id}?deleteFiles=${deleteFiles}`, { method: 'DELETE' });
       if (!res.ok) throw new Error(`Delete failed (${res.status})`);
       invalidateSeries(queryClient);
       queryClient.removeQueries({ queryKey: queryKeys.detail('sonarr', series.id, instance) });
@@ -2156,18 +2157,37 @@ export default function SeriesDetailPage() {
       </Drawer>
 
       {/* Delete confirmation drawer */}
-      <Drawer open={showDelete} onOpenChange={setShowDelete}>
+      <Drawer
+        open={showDelete}
+        onOpenChange={(open) => {
+          // Opt in to deleting files each time, as the shared delete dialog does.
+          if (!open) setDeleteFiles(false);
+          setShowDelete(open);
+        }}
+      >
         <DrawerContent>
           <DrawerHeader className="text-center">
             <DrawerTitle>Delete {series.title}?</DrawerTitle>
             <DrawerDescription>
-              This will remove the series from Sonarr and delete all files from disk. This action cannot be undone.
+              This removes the series from Sonarr. Optionally delete the files on disk too. This action cannot be undone.
             </DrawerDescription>
           </DrawerHeader>
+          <div className="px-4">
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <input
+                type="checkbox"
+                checked={deleteFiles}
+                onChange={(e) => setDeleteFiles(e.target.checked)}
+                disabled={deleting}
+                className="h-4 w-4 accent-destructive"
+              />
+              Also delete all files from disk
+            </label>
+          </div>
           <DrawerFooter>
             <Button variant="destructive" onClick={handleDelete} disabled={deleting} className="w-full">
               {deleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Delete Series & Files
+              Delete Series
             </Button>
             <DrawerClose asChild>
               <Button variant="outline" className="w-full">Cancel</Button>
