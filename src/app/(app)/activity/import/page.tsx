@@ -369,7 +369,8 @@ function ManualImportContent() {
       const res = await fetch('/api/activity/manualimport', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ source, instanceId: instanceId || undefined, files: payload }),
+        // The title labels this import in the operation audit.
+        body: JSON.stringify({ source, instanceId: instanceId || undefined, title: itemTitle, files: payload }),
       });
 
       if (res.ok) {
@@ -385,7 +386,9 @@ function ManualImportContent() {
         });
         router.back();
       } else {
-        toast.error('Import failed');
+        // 409: the *arr no longer lists a submitted file for this download.
+        const data = res.status === 409 ? ((await res.json().catch(() => null)) as { error?: string } | null) : null;
+        toast.error(data?.error ?? 'Import failed');
       }
     } catch {
       toast.error('Import failed');

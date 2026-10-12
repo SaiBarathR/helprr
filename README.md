@@ -701,11 +701,11 @@ docker image rm ghcr.io/saibarathr/helprr:stable   # or your pinned :X.Y.Z tag
 ## Features that can delete media files
 
 For clarity, these are the places where Helprr can remove files from your
-disk. All are permission-gated. Manual file/media/torrent/queue actions write
-success or failure to **Settings → Operation audit**, except an import started
-from the Activity page, which is not recorded; cleaner actions retain their
-reconciled per-item outcomes in **Cleanup → History**. Operation-audit records
-are retained for 365 days and cleanup history for 90 days:
+disk. All are permission-gated. Manual file/media/torrent/queue actions,
+imports included, write success or failure to **Settings → Operation audit**;
+cleaner actions retain their reconciled per-item outcomes in
+**Cleanup → History**. Operation-audit records are retained for 365 days and
+cleanup history for 90 days:
 
 - **Cleanup** (queue, download, and seeding rules) — can remove downloads from
   qBittorrent *including their files* when a rule says so. Disabled by

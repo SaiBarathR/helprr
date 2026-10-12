@@ -16,6 +16,9 @@ async function postHandler(request: NextRequest) {
     let result;
     // Data-mutating commands routed here must also be listed in MUTATING_COMMANDS
     // (lib/cache/tagged-library.ts), or their completion won't drop the Redis caches.
+    // ManualImport is deliberately not one of them: it moves whatever path it is
+    // handed, so imports go through the routes that check the paths and write the
+    // audit row (/api/activity/manualimport and /api/radarr/manualimport/import).
     switch (body.name) {
       case 'MoviesSearch':
         result = await client.searchMovie(body.movieIds);
@@ -38,9 +41,6 @@ async function postHandler(request: NextRequest) {
         } else {
           result = await client.renameMovie(body.movieId);
         }
-        break;
-      case 'ManualImport':
-        result = await client.submitManualImport(body.files);
         break;
       default:
         return NextResponse.json(
