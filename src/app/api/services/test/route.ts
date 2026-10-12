@@ -234,12 +234,18 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     });
 
     if (typeof responseStatus === 'number' && responseStatus >= 400 && responseStatus < 500) {
-      const jellyfinAuthHint = attemptedType === 'JELLYFIN' && responseStatus === 401
-        ? 'Invalid Jellyfin API key or Jellyfin rejected token auth'
-        : 'Connection test failed';
+      const rejectedKey = responseStatus === 401;
+      const hint = !rejectedKey
+        ? 'Connection test failed'
+        : attemptedType === 'JELLYFIN'
+          ? 'Invalid Jellyfin API key or Jellyfin rejected token auth'
+          : 'The service rejected the API key';
+      // Not passed on as 401: from this app's own API that means the session
+      // has ended, and the client signs the user out on it. The service turning
+      // down a mistyped key is not that.
       return NextResponse.json(
-        { success: false, error: jellyfinAuthHint },
-        { status: responseStatus }
+        { success: false, error: hint },
+        { status: rejectedKey ? 400 : responseStatus }
       );
     }
 
