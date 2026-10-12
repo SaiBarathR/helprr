@@ -5,8 +5,11 @@ import { withApiLogging } from '@/lib/api-logger';
 import { upstreamErrorResponse } from '@/lib/api-error';
 
 async function postHandler(request: NextRequest) {
-  // Commands (search / refresh / rename / manual import) are activity-management
-  // actions; members are read-only here.
+  // Commands (search / refresh / rename) are activity-management actions;
+  // members are read-only here. ManualImport is deliberately not one of them:
+  // it moves whatever path it is handed, so imports go through the routes that
+  // check the paths and write the audit row (/api/activity/manualimport and
+  // /api/sonarr/manualimport/import).
   const auth = await requireUserCapability('activity.manage');
   if (!auth.ok) return auth.response;
 
@@ -77,9 +80,6 @@ async function postHandler(request: NextRequest) {
           );
         }
         result = await client.renameFiles(body.seriesId, body.files);
-        break;
-      case 'ManualImport':
-        result = await client.submitManualImport(body.files);
         break;
       default:
         return NextResponse.json(

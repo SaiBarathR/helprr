@@ -290,17 +290,20 @@ Destructive actions require capability checks and, for file operations,
 ownership validation against the selected upstream media object. These checks
 must occur before deletion, import, or mutation.
 
-The unified `FileOperationAudit` model records file edits and deletes, imports
-started from a movie's or series' own file manager, and the destructive
-whole-media, torrent, and queue operations a user performs directly. It stores
-actor, service/instance, operation, target, item count, whether files/data were
-deleted, structured details, success, and error information. Two paths do not
-write to it. An import from the Activity page is not recorded. Queue and download
-cleaner runs, scheduled or interactive, send their per-item outcomes to
-`CleanupHistory`, which records the trigger (`auto` or `manual`) and, for an
-interactive run, the preview id, but no actor. Audit persistence is intentionally
-fail-soft so an audit outage never changes the real upstream result; it is not a
-substitute for authorization.
+The unified `FileOperationAudit` model records file edits and deletes, manual
+imports, and the destructive whole-media, torrent, and queue operations a user
+performs directly. It stores actor, service/instance, operation, target, item
+count, whether files/data were deleted, structured details, success, and error
+information. An import is checked before it is queued, because the *arr's
+`ManualImport` command moves whatever path it is handed: from a title's file
+manager every path must be in that title's folder, and from the Activity page
+every path must be one the *arr lists for the download. The command routes do
+not accept `ManualImport`. Renames are not audited; the *arr keeps them in its
+own history. Queue and download cleaner runs, scheduled or interactive, send
+their per-item outcomes to `CleanupHistory`, which records the trigger (`auto`
+or `manual`) and, for an interactive run, the preview id, but no actor. Audit
+persistence is intentionally fail-soft so an audit outage never changes the real
+upstream result; it is not a substitute for authorization.
 
 Interactive queue/download cleanup follows a two-stage protocol:
 
