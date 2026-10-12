@@ -1,6 +1,7 @@
 import axios, { AxiosInstance } from 'axios';
 import { ARR_RELEASE_TIMEOUT_MS } from '@/lib/arr-release-timeout';
 import { keepAliveHttpAgent, keepAliveHttpsAgent } from '@/lib/http-agents';
+import { refuseRedirectToAnotherHost } from '@/lib/redirect-guard';
 import type {
   RadarrMovie,
   RadarrCollection,
@@ -78,6 +79,7 @@ export class RadarrClient {
       timeout: 30_000,
       httpAgent: keepAliveHttpAgent,
       httpsAgent: keepAliveHttpsAgent,
+      beforeRedirect: refuseRedirectToAnotherHost,
     });
   }
 

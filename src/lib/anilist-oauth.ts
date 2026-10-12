@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { refuseRedirectToAnotherHost } from '@/lib/redirect-guard';
 import crypto from 'crypto';
 import { prisma } from '@/lib/db';
 
@@ -152,6 +153,8 @@ export async function exchangeCodeForToken(params: {
     {
       timeout: 15_000,
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      // The body carries the client secret.
+      beforeRedirect: refuseRedirectToAnotherHost,
     }
   );
 
@@ -174,6 +177,8 @@ export async function refreshAccessToken(params: {
     {
       timeout: 15_000,
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      // The body carries the client secret.
+      beforeRedirect: refuseRedirectToAnotherHost,
     }
   );
 

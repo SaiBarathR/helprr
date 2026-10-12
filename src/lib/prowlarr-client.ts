@@ -1,5 +1,6 @@
 import axios, { AxiosInstance } from 'axios';
 import { keepAliveHttpAgent, keepAliveHttpsAgent } from '@/lib/http-agents';
+import { refuseRedirectToAnotherHost } from '@/lib/redirect-guard';
 
 interface SystemStatus {
   version: string;
@@ -197,6 +198,7 @@ export class ProwlarrClient {
       timeout: 30_000,
       httpAgent: keepAliveHttpAgent,
       httpsAgent: keepAliveHttpsAgent,
+      beforeRedirect: refuseRedirectToAnotherHost,
     });
   }
 

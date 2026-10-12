@@ -170,6 +170,15 @@ connection under another URL needs the secret typed again, and a URL change drop
 stored headers the request does not carry. Otherwise managing instances would be
 enough to read a key by pointing its connection at another address.
 
+For the same reason the service clients do not follow a redirect to another
+host. The HTTP library drops `Authorization` and `Cookie` when a redirect leaves
+the host, but not `X-Api-Key`, custom headers, or the body of a 307 or 308,
+which for a sign-in is the password. `refuseRedirectToAnotherHost`
+(`src/lib/redirect-guard.ts`) is passed as `beforeRedirect` to every client that
+carries a credential; the same host and port is still followed, including an
+upgrade from http to https. A connection whose URL redirects elsewhere fails
+until the URL is corrected.
+
 Local passwords use scrypt. New and reset passwords require at least 15 Unicode
 code points, while existing compatible hashes remain verifiable. A user may have
 no local hash when Jellyfin is the only login method. Signing in with Jellyfin

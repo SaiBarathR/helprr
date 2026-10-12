@@ -1,4 +1,5 @@
 import axios, { AxiosInstance } from 'axios';
+import { refuseRedirectToAnotherHost } from '@/lib/redirect-guard';
 import type {
   SeerrMediaDetail,
   SeerrMediaType,
@@ -75,6 +76,7 @@ export class SeerrClient {
         Accept: 'application/json',
       },
       timeout: 30000,
+      beforeRedirect: refuseRedirectToAnotherHost,
     });
   }
 

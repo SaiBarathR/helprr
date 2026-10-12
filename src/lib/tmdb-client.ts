@@ -1,4 +1,5 @@
 import axios, { AxiosInstance } from 'axios';
+import { refuseRedirectToAnotherHost } from '@/lib/redirect-guard';
 import {
   TMDB_CACHE_DEFAULT_TTL_SECONDS,
   TMDB_CACHE_DETAILS_TTL_SECONDS,
@@ -581,6 +582,7 @@ export class TmdbClient {
       headers: {
         Accept: 'application/json',
       },
+      beforeRedirect: refuseRedirectToAnotherHost,
     });
   }
 
