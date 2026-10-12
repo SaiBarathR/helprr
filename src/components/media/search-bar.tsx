@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useEffectEvent, useRef, useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { Loader2, Search, X } from 'lucide-react';
 import { useSearchHistory } from '@/lib/hooks/use-search-history';
@@ -24,20 +24,31 @@ export function SearchBar({ value, onChange, placeholder = 'Search...', historyK
   const wrapperRef = useRef<HTMLDivElement>(null);
   const { recent, add, remove } = useSearchHistory(historyKey ?? '');
 
+  // Read when a report is due rather than depended on, so the effect below
+  // runs for the box's own text only. Run on every parent render, it reported
+  // the text the box had mounted with over a value that arrived afterwards:
+  // a search restored after a reload was replaced by the empty box.
+  const parent = useEffectEvent(() => ({ value, onChange }));
+
   useEffect(() => {
+    // The parent already has this text; there is nothing to tell it.
+    if (internal === parent().value) {
+      setDebouncing(false);
+      return;
+    }
     if (internal === '') {
       setDebouncing(false);
-      onChange('');
+      parent().onChange('');
       return;
     }
 
     setDebouncing(true);
     const timer = setTimeout(() => {
       setDebouncing(false);
-      onChange(internal);
+      parent().onChange(internal);
     }, debounceMs);
     return () => clearTimeout(timer);
-  }, [internal, onChange, debounceMs]);
+  }, [internal, debounceMs]);
 
   useEffect(() => {
     setInternal(value);
