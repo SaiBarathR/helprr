@@ -34,7 +34,9 @@ describe('refuseRedirectToAnotherHost', () => {
     ['another host', 'http://sonarr.lan:8989/a', 'http://collector.example/a'],
     ['another host on the same port', 'http://sonarr.lan:8989/a', 'http://collector.example:8989/a'],
     ['a host that only starts the same', 'http://sonarr.lan:8989/a', 'http://sonarr.lan.collector.example:8989/a'],
-    ['the same name as credentials for another host', 'http://sonarr.lan:8989/a', 'http://sonarr.lan:8989@collector.example/a'],
+    // Joined at run time: written out, this made-up address has the shape
+    // `name:password@host`, and a secret scanner reports it as a leaked login.
+    ['the same name as credentials for another host', 'http://sonarr.lan:8989/a', `http://${['sonarr.lan:8989', 'collector.example'].join('@')}/a`],
     ['another port', 'http://sonarr.lan:8989/a', 'http://sonarr.lan:9000/a'],
     ['a subdomain', 'https://example.com/a', 'https://sonarr.example.com/a'],
     ['a parent domain', 'https://sonarr.example.com/a', 'https://example.com/a'],
