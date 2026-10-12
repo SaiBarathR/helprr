@@ -9,7 +9,8 @@
  * request fails, and the connection's URL is the thing to correct.
  *
  * The same host and port is still followed, including an upgrade from http to
- * https. Pass this as `beforeRedirect` to every client that carries a credential.
+ * https on the same port or from one default port to the other. Pass this as
+ * `beforeRedirect` to every client that carries a credential.
  */
 export class RedirectRefusedError extends Error {}
 
@@ -38,10 +39,12 @@ export function refuseRedirectToAnotherHost(
   } catch {
     throw new RedirectRefusedError('Refusing to follow a redirect whose address could not be read');
   }
-  // `host` carries an explicit port and leaves out the scheme's default one.
-  const sameHost = to.host === from.host;
+  // `URL.port` is empty for a scheme's default port, so `http://h:443` and
+  // `https://h:443` do not compare equal as written; compare the numbers.
+  const portOf = (url: URL) => url.port || (url.protocol === 'https:' ? '443' : '80');
+  const samePort = portOf(to) === portOf(from) || (to.port === '' && from.port === '');
   const sameOrSafer = to.protocol === from.protocol || to.protocol === 'https:';
-  if (!sameHost || !sameOrSafer) {
+  if (to.hostname !== from.hostname || !samePort || !sameOrSafer) {
     throw new RedirectRefusedError(
       `Refusing to follow a redirect from ${from.protocol}//${from.host} to ${to.protocol}//${to.host}: `
       + 'it would send this service\'s credentials to another address',

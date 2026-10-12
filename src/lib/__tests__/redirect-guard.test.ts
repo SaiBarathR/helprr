@@ -22,12 +22,19 @@ describe('refuseRedirectToAnotherHost', () => {
     ['an upgrade to https on the same host', 'http://sonarr.example.com/a', 'https://sonarr.example.com/a'],
     ['an upgrade to https on the same port', 'http://sonarr.lan:8989/a', 'https://sonarr.lan:8989/a'],
     ['a default port written out', 'https://sonarr.example.com:443/a', 'https://sonarr.example.com/b'],
+    // The URL parser drops a port only when it is the scheme's own default.
+    ['an upgrade to https on port 443', 'http://sonarr.lan:443/a', 'https://sonarr.lan:443/b'],
+    ['an upgrade to https on port 80', 'http://sonarr.lan:80/a', 'https://sonarr.lan:80/b'],
+    ['an IPv6 host', 'http://[::1]:8989/a', 'http://[::1]:8989/b'],
   ])('follows %s', (_label, from, to) => {
     expect(follow(from, to)).not.toThrow();
   });
 
   it.each([
     ['another host', 'http://sonarr.lan:8989/a', 'http://collector.example/a'],
+    ['another host on the same port', 'http://sonarr.lan:8989/a', 'http://collector.example:8989/a'],
+    ['a host that only starts the same', 'http://sonarr.lan:8989/a', 'http://sonarr.lan.collector.example:8989/a'],
+    ['the same name as credentials for another host', 'http://sonarr.lan:8989/a', 'http://sonarr.lan:8989@collector.example/a'],
     ['another port', 'http://sonarr.lan:8989/a', 'http://sonarr.lan:9000/a'],
     ['a subdomain', 'https://example.com/a', 'https://sonarr.example.com/a'],
     ['a parent domain', 'https://sonarr.example.com/a', 'https://example.com/a'],
@@ -84,6 +91,10 @@ describe('a service client that is redirected', () => {
   });
 
   it('does not take its API key or custom headers to another host', async () => {
+    // The other host is reachable under this name, so silence below is the refusal.
+    await fetch(redirectTo('/reachable'));
+    expect(seenElsewhere.map((seen) => seen.path)).toEqual(['/reachable']);
+    seenElsewhere.length = 0;
     const client = new SonarrClient(serviceUrl, 'the-real-api-key', { 'CF-Access-Client-Secret': 'proxy-secret' });
 
     const failure = await client.getSystemStatus().catch((error: unknown) => error);

@@ -1,4 +1,5 @@
 import axios, { AxiosError } from 'axios';
+import { refuseRedirectToAnotherHost } from '@/lib/redirect-guard';
 import { noteAniListRateHeaders, noteAniListRateLimited, rateLimitWait } from '@/lib/anilist-client';
 import {
   AniListReauthRequiredError,
@@ -32,6 +33,8 @@ async function performRequest<T>(
           Accept: 'application/json',
           Authorization: `Bearer ${accessToken}`,
         },
+        // The HTTP library keeps `Authorization` on a redirect to a subdomain.
+        beforeRedirect: refuseRedirectToAnotherHost,
       }
     );
     // Authenticated traffic shares the anonymous client's adaptive limiter/cooldown.
