@@ -420,7 +420,7 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
               </Button>
             )}
             {!stacked && (
-              <Button size="icon-lg" variant="secondary" className="rounded-full" aria-label="Add to queue" title="Add to queue" onClick={() => playback.addToQueue([item])}>
+              <Button size="icon-lg" variant="secondary" className="rounded-full" aria-label="Add to queue" title="Add to queue" onClick={() => void playback.addToQueue([item])}>
                 <ListPlus />
               </Button>
             )}
@@ -447,7 +447,7 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
             <div className="flex w-full items-start gap-8 pt-1">
               <FavoriteButton itemId={item.Id} favorite={Boolean(item.UserData?.IsFavorite)} stacked />
               <WatchedButton itemId={item.Id} played={Boolean(item.UserData?.Played)} seriesId={item.SeriesId} stacked />
-              <StackedAction label="Queue" onClick={() => playback.addToQueue([item])}>
+              <StackedAction label="Queue" onClick={() => void playback.addToQueue([item])}>
                 <ListPlus className="size-6" />
               </StackedAction>
               {item.IsFolder && (

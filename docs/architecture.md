@@ -283,6 +283,14 @@ one as playing. `resolvePlayable` therefore returns `{ items, startIndex }` and
 series queue is capped at 500 episodes so one Play cannot become a
 multi-megabyte payload.
 
+"Add to queue" appends what an item holds, never a container: a series becomes
+its episodes, a season only its own, an album its tracks. A container queued as
+it stood was a row the player could not start. While another item's start is in
+flight the outgoing stream still belongs to the outgoing item, so nothing may
+act on it as if it were the incoming one: a seek that restarts the stream waits
+out the pending start, and the "has reached its start offset" flag is reset
+only when the new stream is adopted, not when it is requested.
+
 Two consequences worth preserving. `el.play()` rejecting with `AbortError` or
 `NotAllowedError` is not a playback failure -- hls.js assigns its own
 MediaSource URL from `attachMedia`, so an interrupted start is routine; this
