@@ -35,13 +35,19 @@ export function MediaDeleteConfirmDialog({
 }: MediaDeleteConfirmDialogProps) {
   const [deleteFiles, setDeleteFiles] = useState(false);
 
+  // Reset on `open` rather than in onOpenChange: a parent that closes the
+  // dialog itself, as the bulk bar does after a confirm, never goes through
+  // that, and a delete that failed left the box ticked for the next attempt.
+  const [wasOpen, setWasOpen] = useState(open);
+  if (wasOpen !== open) {
+    setWasOpen(open);
+    if (!open) setDeleteFiles(false);
+  }
+
   return (
     <ConfirmDialog
       open={open}
-      onOpenChange={(next) => {
-        if (!next) setDeleteFiles(false);
-        onOpenChange(next);
-      }}
+      onOpenChange={onOpenChange}
       title={title}
       description={
         <span className="space-y-3">
