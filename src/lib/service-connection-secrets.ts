@@ -35,13 +35,17 @@ function hasControlChar(s: string): boolean {
 // Coerce an untrusted value (request body or stored JSON) into a validated
 // name→value map: safe header names only, non-empty trimmed values free of
 // control chars, capped in count and length. Invalid entries are dropped.
+//
+// `Host` is refused: the HTTP client resolves a relative redirect against that
+// header when it is set, so a redirect from the real server would carry the API
+// key and the other headers to whatever host it named.
 export function parseCustomHeaders(value: unknown): Record<string, string> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
   const result: Record<string, string> = {};
   for (const [rawName, rawValue] of Object.entries(value as Record<string, unknown>)) {
     if (Object.keys(result).length >= MAX_HEADERS) break;
     const name = rawName.trim();
-    if (!HEADER_NAME_PATTERN.test(name)) continue;
+    if (!HEADER_NAME_PATTERN.test(name) || name.toLowerCase() === 'host') continue;
     if (typeof rawValue !== 'string') continue;
     const val = rawValue.trim();
     if (!val || val.length > MAX_HEADER_VALUE_LENGTH || hasControlChar(val)) continue;

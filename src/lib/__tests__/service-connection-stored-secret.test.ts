@@ -62,7 +62,7 @@ vi.mock('@/lib/settings/service-config', () => ({ findServiceByType: () => ({ la
 
 import { POST as testConnection } from '@/app/api/services/test/route';
 import { POST as saveConnection } from '@/app/api/services/route';
-import { REENTER_SECRET_MESSAGE, resolveCustomHeaders } from '@/lib/service-connection-secrets';
+import { parseCustomHeaders, REENTER_SECRET_MESSAGE, resolveCustomHeaders } from '@/lib/service-connection-secrets';
 
 const stored = {
   id: 'conn-1',
@@ -179,6 +179,29 @@ describe('POST /api/services', () => {
     const res = await save({ id: undefined, label: 'Second', url: ELSEWHERE, apiKey: MASK });
     expect(res.status).toBe(400);
     expect(mocks.create).not.toHaveBeenCalled();
+  });
+});
+
+// With `Host` set, the HTTP client resolves a relative redirect against it and
+// sends the key there, so the stored URL alone would not confine the request.
+describe('a Host custom header', () => {
+  it.each(['Host', 'host', 'HOST', ' Host '])('is dropped when sent as %j', (name) => {
+    expect(parseCustomHeaders({ [name]: 'collector.example:8989', 'X-Token': 'value' })).toEqual({ 'X-Token': 'value' });
+  });
+
+  it('does not reach a connection test', async () => {
+    vi.stubEnv('HELPRR_CUSTOM_HEADERS', 'true');
+    const res = await post(testConnection, '/api/services/test', {
+      type: 'SONARR',
+      instanceId: 'conn-1',
+      url: STORED_URL,
+      apiKey: MASK,
+      customHeaders: { Host: 'collector.example:8989', 'CF-Access-Client-Secret': HEADER_MASK },
+    });
+    expect(res.status).toBe(200);
+    expect(mocks.clients).toEqual([
+      { url: STORED_URL, apiKey: STORED_KEY, headers: { 'CF-Access-Client-Secret': STORED_HEADER } },
+    ]);
   });
 });
 

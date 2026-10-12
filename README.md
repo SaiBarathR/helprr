@@ -421,7 +421,7 @@ stored password unless `HELPRR_ADMIN_PASSWORD_RESET=true`.
 | `LOG_DIR`                     | app `logs` directory; `/app/logs` in Docker | Location for server logs. Compose persists its default through the `helprr-logs` volume.                                                                       |
 | `APP_ORIGIN`                  | none                                        | Required for AniList OAuth in production. Use the public HTTPS origin, such as `https://helprr.example.com`.                                                   |
 | `TRUST_FORWARDED_PROTO`       | off                                         | Set to `true` only behind a trusted proxy that sanitizes `X-Forwarded-*`; enables secure cookies and forwarded client-IP rate limiting.                        |
-| `HELPRR_CUSTOM_HEADERS`       | off                                         | Set to `true` to expose per-connection custom HTTP headers for supported services behind an authenticating proxy (for example, Authelia or Cloudflare Access). |
+| `HELPRR_CUSTOM_HEADERS`       | off                                         | Set to `true` to expose per-connection custom HTTP headers for supported services behind an authenticating proxy (for example, Authelia or Cloudflare Access). A `Host` header is not accepted. |
 | `EXTRA_ALLOWED_IMAGE_HOSTS`   | none                                        | Comma-separated trusted external image hosts to permit through the image proxy. Do not add private/internal hosts.                                             |
 
 
