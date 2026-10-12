@@ -5,7 +5,7 @@ import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
 
 import { useParams } from 'next/navigation';
 import Link from '@/components/ui/app-link';
-import DOMPurify from 'isomorphic-dompurify';
+import { sanitizeHtml } from '@/lib/sanitize-html';
 import { PageHeader } from '@/components/layout/page-header';
 import { AnimeHero } from '@/components/anime/anime-hero';
 import { AnilistStatusPanel } from '@/components/anime/anilist-status-panel';
@@ -63,7 +63,7 @@ export default function MangaDetailPage() {
   }
 
   const nonSpoilerTags = detail.tags.filter((t) => !t.isSpoiler);
-  const sanitizedDescription = detail.description ? DOMPurify.sanitize(detail.description) : '';
+  const sanitizedDescription = detail.description ? sanitizeHtml(detail.description) : '';
 
   // Build info rows
   const infoRows = [];
