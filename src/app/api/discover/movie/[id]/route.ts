@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getTMDBClient, loadTaggedLibrary } from '@/lib/service-helpers';
-import { requireAuth } from '@/lib/auth';
+import { requireUserAnyCapability } from '@/lib/auth';
 import {
   buildLibraryLookups,
   matchMovieInLibrary,
@@ -34,8 +34,8 @@ async function getHandler(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
-  const authError = await requireAuth();
-  if (authError) return authError;
+  const auth = await requireUserAnyCapability(['discover.view', 'movies.view', 'series.view', 'recommendations.view', 'watchlist.view']);
+  if (!auth.ok) return auth.response;
 
   try {
     const { id: idStr } = await params;

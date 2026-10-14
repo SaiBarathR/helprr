@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth } from '@/lib/auth';
+import { requireUserCapability } from '@/lib/auth';
 import { loadTaggedLibrary } from '@/lib/service-helpers';
 import { getAnimeAiringSchedule } from '@/lib/anilist-client';
 import { getPreferredTitle, isMovieFormat } from '@/lib/anilist-helpers';
@@ -114,8 +114,8 @@ function parseTimestamp(value: string | null): number | null {
 }
 
 async function getHandler(request: NextRequest) {
-  const authError = await requireAuth();
-  if (authError) return authError;
+  const auth = await requireUserCapability('anime.view');
+  if (!auth.ok) return auth.response;
 
   try {
     const { searchParams } = new URL(request.url);

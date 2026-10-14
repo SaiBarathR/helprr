@@ -1,4 +1,3 @@
-import { notFound } from 'next/navigation';
 import { isAxiosError } from 'axios';
 import Image from 'next/image';
 import Link from '@/components/ui/app-link';
@@ -6,9 +5,10 @@ import { PageHeader } from '@/components/layout/page-header';
 import { Badge } from '@/components/ui/badge';
 import { Star, Film } from 'lucide-react';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
-import { getCurrentUser } from '@/lib/auth';
+import { TMDB_TITLE_PAGE_CAPABILITIES } from '@/lib/capabilities';
 import { ConfigurationError } from '@/lib/config-error';
 import { getDiscoverCollectionDetail } from '@/lib/discover-collection';
+import { assertPageAnyCapability } from '@/lib/page-guard';
 import { TmdbRateLimitError } from '@/lib/tmdb-client';
 import type { DiscoverCollectionDetail } from '@/types';
 
@@ -30,9 +30,10 @@ async function loadCollection(collectionId: number): Promise<DiscoverCollectionD
 }
 
 export default async function DiscoverCollectionPage({ params }: DiscoverCollectionPageProps) {
-  // Loads data directly, so it checks the session itself rather than relying
-  // on the (app) layout, which renders in parallel with the page.
-  if (!(await getCurrentUser())) notFound();
+  // Loads data directly, so it checks access itself rather than relying on the
+  // layouts, which render in parallel with the page. Same policy as the
+  // collection API route.
+  await assertPageAnyCapability(TMDB_TITLE_PAGE_CAPABILITIES);
 
   const { id } = await params;
   const collectionId = Number(id);

@@ -48,6 +48,8 @@ function buildDefinitionForSection(section: DiscoverLayoutSection): WidgetDefini
     desktopLayout: 'carousel',
     mobileLayout: 'carousel',
     requiredServices: ['TMDB'],
+    // /api/discover (sections and custom browse) requires discover.view.
+    requiredCapability: 'discover.view',
   };
 }
 

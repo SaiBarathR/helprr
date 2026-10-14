@@ -17,9 +17,11 @@ interface ShareResolutionViewProps {
     text?: string;
     url?: string;
   };
+  /** Whether the member may open TMDB title pages (any of TMDB_TITLE_PAGE_CAPABILITIES). */
+  canOpenTitle: boolean;
 }
 
-export function ShareResolutionView({ resolved, input }: ShareResolutionViewProps) {
+export function ShareResolutionView({ resolved, input, canOpenTitle }: ShareResolutionViewProps) {
   return (
     <div>
       <div className="px-1 pt-[calc(env(safe-area-inset-top)+0.25rem)] pb-2">
@@ -42,7 +44,7 @@ export function ShareResolutionView({ resolved, input }: ShareResolutionViewProp
         </p>
       </div>
 
-      {resolved.kind === 'tmdb' && <SingleHit hit={resolved.hit} />}
+      {resolved.kind === 'tmdb' && <SingleHit hit={resolved.hit} canOpenTitle={canOpenTitle} />}
 
       {resolved.kind === 'multi' && (
         <div>
@@ -51,7 +53,7 @@ export function ShareResolutionView({ resolved, input }: ShareResolutionViewProp
           </div>
           <div className="space-y-4">
             {resolved.hits.map((hit) => (
-              <SingleHit key={`${hit.mediaType}-${hit.tmdbId}`} hit={hit} />
+              <SingleHit key={`${hit.mediaType}-${hit.tmdbId}`} hit={hit} canOpenTitle={canOpenTitle} />
             ))}
           </div>
         </div>
@@ -95,7 +97,7 @@ function QueryFallback({ query }: { query: string }) {
   );
 }
 
-function SingleHit({ hit }: { hit: ResolvedTmdbHit }) {
+function SingleHit({ hit, canOpenTitle }: { hit: ResolvedTmdbHit; canOpenTitle: boolean }) {
   const [busy, setBusy] = useState<'watchlist' | 'request' | null>(null);
   const [watchlistAdded, setWatchlistAdded] = useState(false);
   const [requestSent, setRequestSent] = useState(false);
@@ -214,13 +216,15 @@ function SingleHit({ hit }: { hit: ResolvedTmdbHit }) {
         </Button>
       </div>
 
-      <Link
-        href={detailHref}
-        className="mt-3 inline-flex items-center gap-1 text-xs text-primary"
-      >
-        Open in Discover
-        <ExternalLink className="h-3 w-3" />
-      </Link>
+      {canOpenTitle && (
+        <Link
+          href={detailHref}
+          className="mt-3 inline-flex items-center gap-1 text-xs text-primary"
+        >
+          Open in Discover
+          <ExternalLink className="h-3 w-3" />
+        </Link>
+      )}
 
       {(watchlistAdded || requestSent) && (
         <div className="mt-3">

@@ -211,6 +211,7 @@ export default function SeriesDetailPage() {
   const canDeleteSeries = useCan('series.delete');
   const canManageFiles = useCan('series.manageFiles');
   const canScheduleAlert = useCan('scheduledAlerts.edit');
+  const canViewAnime = useCan('anime.view');
   const canEditSeries = canEditMonitoring || canEditTags || canChangePath;
   // AniList mapping mutations are admin-only server-side — hide their triggers
   // from members so they don't open a drawer whose saves would 403.
@@ -867,9 +868,11 @@ export default function SeriesDetailPage() {
     { label: 'AniList', url: `https://anilist.co/anime/${animeDetail.id}` },
     ...(animeDetail.malId ? [{ label: 'MyAnimeList', url: `https://myanimelist.net/anime/${animeDetail.malId}` }] : []),
   ] : [];
+  // Anime search (explore) needs anime.view; the detail page is also open to
+  // series.view, so the mapped link always shows.
   const openInAnimeHref = animeDetail?.id
     ? `/anime/${animeDetail.id}`
-    : `/anime/explore?search=${encodeURIComponent(series.title)}`;
+    : canViewAnime ? `/anime/explore?search=${encodeURIComponent(series.title)}` : null;
   const firstAired = formatDateValue(series.firstAired);
   const lastAired = formatDateValue(series.lastAired);
   const previousAiring = formatDateValue(series.previousAiring, true);
@@ -990,7 +993,7 @@ export default function SeriesDetailPage() {
     {
       id: 'links',
       actions: [
-        ...(isAnimeSeries ? [{ id: 'anime', label: 'Open in Anime', icon: <Sparkles className="h-4 w-4" />, href: openInAnimeHref }] : []),
+        ...(isAnimeSeries && openInAnimeHref ? [{ id: 'anime', label: 'Open in Anime', icon: <Sparkles className="h-4 w-4" />, href: openInAnimeHref }] : []),
         ...(series.imdbId ? [{ id: 'imdb', label: 'Open in IMDb', icon: <ExternalLink className="h-4 w-4" />, href: `https://www.imdb.com/title/${series.imdbId}`, external: true }] : []),
         ...(series.tvdbId > 0 ? [{ id: 'tvdb', label: 'Open in TVDB', icon: <ExternalLink className="h-4 w-4" />, href: `https://www.thetvdb.com/?id=${series.tvdbId}&tab=series`, external: true }] : []),
         ...(sonarrExternalUrl && series.titleSlug ? [{ id: 'sonarr', label: 'Open in Sonarr', icon: <Tv className="h-4 w-4" />, href: `${sonarrExternalUrl}/series/${series.titleSlug}`, external: true }] : []),
@@ -1052,7 +1055,7 @@ export default function SeriesDetailPage() {
                     Search Monitored
                   </DropdownMenuItem>
                 )}
-                {isAnimeSeries && (
+                {isAnimeSeries && openInAnimeHref && (
                   <DropdownMenuItem asChild>
                     <Link href={openInAnimeHref}>
                       <Sparkles className="h-4 w-4" />
@@ -1217,7 +1220,7 @@ export default function SeriesDetailPage() {
             studios={animeDetail.studios}
             bannerAction={(
               <Link
-                href={openInAnimeHref}
+                href={`/anime/${animeDetail.id}`}
                 className="inline-flex items-center gap-1.5 rounded-full bg-background/55 backdrop-blur-md text-foreground px-3 py-1.5 text-[11px] font-medium hover:bg-background/70 transition-colors"
               >
                 <Sparkles className="h-3.5 w-3.5" />

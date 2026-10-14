@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth } from '@/lib/auth';
+import { requireUserCapability } from '@/lib/auth';
 import { loadTaggedLibrary } from '@/lib/service-helpers';
 import { getAnimeHome } from '@/lib/anilist-client';
 import { normalizeAniListItem } from '@/lib/anilist-helpers';
@@ -46,8 +46,8 @@ function getHomePerPage(request: NextRequest): number {
 }
 
 async function getHandler(request: NextRequest): Promise<NextResponse> {
-  const authError = await requireAuth();
-  if (authError) return authError;
+  const auth = await requireUserCapability('anime.view');
+  if (!auth.ok) return auth.response;
 
   try {
     const current = getCurrentSeasonClient();

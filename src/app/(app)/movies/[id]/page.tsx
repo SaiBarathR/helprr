@@ -143,6 +143,7 @@ export default function MovieDetailPage() {
   const canDeleteMovie = useCan('movies.delete');
   const canManageFiles = useCan('movies.manageFiles');
   const canScheduleAlert = useCan('scheduledAlerts.edit');
+  const canViewAnime = useCan('anime.view');
   const movieWatchQuery = {
     kind: 'movie' as const,
     tmdbId: movie?.tmdbId,
@@ -423,7 +424,7 @@ export default function MovieDetailPage() {
     {
       id: 'links',
       actions: [
-        ...(movie.genres?.includes('Animation') ? [{ id: 'anilist', label: 'Search on AniList', icon: <Sparkles className="h-4 w-4" />, href: `/anime/explore?search=${encodeURIComponent(movie.title)}` }] : []),
+        ...(canViewAnime && movie.genres?.includes('Animation') ? [{ id: 'anilist', label: 'Search on AniList', icon: <Sparkles className="h-4 w-4" />, href: `/anime/explore?search=${encodeURIComponent(movie.title)}` }] : []),
         ...(movie.imdbId ? [{ id: 'imdb', label: 'Open in IMDb', icon: <ExternalLink className="h-4 w-4" />, href: `https://www.imdb.com/title/${movie.imdbId}`, external: true }] : []),
         ...(radarrExternalUrl && movie.tmdbId ? [{ id: 'radarr', label: 'Open in Radarr', icon: <Film className="h-4 w-4" />, href: `${radarrExternalUrl}/movie/${movie.tmdbId}`, external: true }] : []),
         ...(externalUrls.JELLYFIN && (movie.imdbId || movie.tmdbId) ? [{ id: 'jellyfin', label: 'Open in Jellyfin', icon: <ExternalLink className="h-4 w-4" />, onSelect: () => { void handleOpenInJellyfin(); }, disabled: jellyfinLoading }] : []),
@@ -484,7 +485,7 @@ export default function MovieDetailPage() {
                     Automatic Search
                   </DropdownMenuItem>
                 )}
-                {movie.genres?.includes('Animation') && (
+                {canViewAnime && movie.genres?.includes('Animation') && (
                   <DropdownMenuItem asChild>
                     <Link href={`/anime/explore?search=${encodeURIComponent(movie.title)}`}>
                       <Sparkles className="h-4 w-4" />

@@ -665,6 +665,8 @@ for (const id of DEFAULT_ANIME_CAROUSEL_ORDER) {
     // continue-watching / plan-to-watch read the shared operator's AniList
     // account (admin-only endpoints), so hide them from members.
     adminOnly: id === 'continueWatching' || id === 'planToWatch',
+    // /api/anime/home requires anime.view.
+    requiredCapability: 'anime.view',
   } as WidgetDefinition);
 }
 
@@ -735,6 +737,8 @@ const WIDGET_REQUIRED_CAPABILITY: Partial<Record<string, Capability | Capability
   'media-quality-scores': 'insights.view',
   // Page-feature widgets — each mirrors its data route's capability checks.
   'watchlist': 'watchlist.view',
+  // /api/recommendations/for-you requires recommendations.view.
+  'for-you': 'recommendations.view',
   // /api/library-gaps requires both library capabilities.
   'library-gaps': ['movies.view', 'series.view'],
   'random-watch': 'random.view',

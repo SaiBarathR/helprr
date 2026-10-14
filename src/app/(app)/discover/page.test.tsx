@@ -99,7 +99,7 @@ vi.mock('@/lib/store', async () => {
 
 import { DEFAULT_DISCOVER_FILTERS, useUIStore } from '@/lib/store';
 import { resetRouteViewStateForTests } from '@/lib/hooks/use-route-view-state';
-import DiscoverPage from './page';
+import DiscoverPage from './discover-home';
 
 const SAVED = {
   discoverContentType: 'show' as const,
