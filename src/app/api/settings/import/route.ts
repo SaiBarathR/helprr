@@ -58,6 +58,7 @@ import { sanitizeDashboardLayout } from '@/lib/widgets/sanitize';
 import { invalidateLayoutCache } from '@/lib/cache/dashboard-layout-cache';
 import type { WidgetInstance } from '@/lib/widgets/types';
 import {
+  isValidExternalId,
   isValidMediaType,
   isValidSource,
   normalizeTagName,
@@ -898,7 +899,7 @@ async function applyWatchlistInTxn(
     const externalId = typeof it.externalId === 'string' ? it.externalId
       : typeof it.externalId === 'number' ? String(it.externalId) : '';
     const titleRaw = typeof it.title === 'string' ? it.title.trim() : '';
-    if (!isValidSource(sourceRaw) || !isValidMediaType(mediaType) || !externalId || !titleRaw) {
+    if (!isValidSource(sourceRaw) || !isValidMediaType(mediaType) || !isValidExternalId(externalId) || !titleRaw) {
       skipped.push(`Watchlist item "${titleRaw || externalId}" skipped: invalid identifying fields`);
       continue;
     }

@@ -83,6 +83,15 @@ export function isValidSource(s: string): s is WatchlistSource {
   return (VALID_SOURCES as readonly string[]).includes(s);
 }
 
+/**
+ * Every watchlist source identifies a title by a positive integer id (TMDB,
+ * TVDB, AniList, and the Sonarr/Radarr library ids), and those ids end up in
+ * in-app links and numeric lookups.
+ */
+export function isValidExternalId(id: string): boolean {
+  return /^[1-9][0-9]{0,15}$/.test(id);
+}
+
 export function isValidMediaType(m: string): m is WatchlistMediaType {
   return (VALID_MEDIA_TYPES as readonly string[]).includes(m);
 }
@@ -92,6 +101,8 @@ export function watchlistHrefFor(
   externalId: string,
   mediaType: string
 ): string | null {
+  // A stored id that is not a plain number would only make a malformed link.
+  if (!isValidExternalId(externalId)) return null;
   if (source === 'ANILIST') return `/anime/${externalId}`;
   if (source === 'SONARR') return `/series/${externalId}`;
   if (source === 'RADARR') return `/movies/${externalId}`;

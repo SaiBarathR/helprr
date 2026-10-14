@@ -40,9 +40,23 @@ const PASS_RESPONSE_HEADERS = [
   'cache-control',
 ];
 
+// Second line behind the allowlist check: the path the URL parser actually
+// produced, decoded and without the configured base path, must still be an
+// allowed media path. Compared decoded because the parser encodes spaces.
+function resolvedPathStillAllowed(pathname: string, basePath: string): boolean {
+  if (!pathname.startsWith(`${basePath}/`)) return false;
+  try {
+    return isAllowedMediaPath(decodeURIComponent(pathname.slice(basePath.length)));
+  } catch {
+    return false;
+  }
+}
+
 async function forward(request: NextRequest, pathSegments: string[], user: User): Promise<Response> {
 
-  const joined = `/${pathSegments.map((segment) => decodeURIComponent(segment)).join('/')}`;
+  // Next has already decoded each segment once; decoding again would let a
+  // double-encoded value change shape after the checks below.
+  const joined = `/${pathSegments.join('/')}`;
   const path = normalizeMediaPath(joined);
   if (!path || !isAllowedMediaPath(path)) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
@@ -81,7 +95,7 @@ async function forward(request: NextRequest, pathSegments: string[], user: User)
   const query = stripSensitiveQuery(new URL(request.url).searchParams);
   const upstreamUrl = new URL(upstreamPath, `${origin}/`);
   upstreamUrl.search = query.toString();
-  if (upstreamUrl.origin !== origin) {
+  if (upstreamUrl.origin !== origin || !resolvedPathStillAllowed(upstreamUrl.pathname, basePath)) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
 

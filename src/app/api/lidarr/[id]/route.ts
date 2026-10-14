@@ -85,6 +85,8 @@ async function putHandler(
     if ('id' in body && Number((body as { id?: unknown }).id) !== pathId) {
       return NextResponse.json({ error: 'Path id and body id must match' }, { status: 400 });
     }
+    // Forward the validated path id, never the body's own spelling of it.
+    const update = { ...body, id: pathId };
     const moveFiles = new URL(request.url).searchParams.get('moveFiles') === 'true';
     const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
     const client = await getLidarrClient(instanceId);
@@ -93,7 +95,7 @@ async function putHandler(
     // changing monitoring / tags / root folder without the matching capability.
     if (auth.user.role !== 'admin') {
       const current = await client.getArtistById(pathId);
-      const guardError = guardResolvedLibraryEdit(auth.user, diffArtistEdit(current, body), {
+      const guardError = guardResolvedLibraryEdit(auth.user, diffArtistEdit(current, update), {
         tags: 'music.editTags',
         path: 'music.changePath',
         monitoring: 'music.editMonitoring',
@@ -101,7 +103,7 @@ async function putHandler(
       if (guardError) return guardError;
     }
 
-    const result = await client.updateArtist(body, moveFiles);
+    const result = await client.updateArtist(update, moveFiles);
     await invalidateTaggedLibrary('lidarr', instanceId);
     return NextResponse.json(result);
   } catch (error) {

@@ -14,7 +14,7 @@ const ITEM_ID = String.raw`[a-fA-F0-9-]{8,}`;
 const ALLOWED_PATHS: readonly RegExp[] = [
   new RegExp(String.raw`^/videos/${ITEM_ID}/`, 'i'),
   new RegExp(String.raw`^/audio/${ITEM_ID}/`, 'i'),
-  new RegExp(String.raw`^/fallbackfont/fonts`, 'i'),
+  new RegExp(String.raw`^/fallbackfont/fonts(?:/|$)`, 'i'),
 ];
 
 // Matched case-insensitively: Jellyfin 12 accepts `ApiKey`; older servers may
