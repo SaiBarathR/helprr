@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   endSession: vi.fn(),
   revokeResponse: null as null | (() => void),
+  revokeFailure: null as null | 'network' | 'refused',
 }));
 
 vi.mock('@/lib/client-cache', () => ({
@@ -68,10 +69,13 @@ async function confirmRevoke(rowButton: 'Sign out' | 'Revoke') {
 beforeEach(() => {
   mocks.endSession.mockReset();
   mocks.revokeResponse = null;
+  mocks.revokeFailure = null;
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
     if (url === '/api/sessions') return Response.json(SESSIONS);
     if (init?.method === 'POST' && url.endsWith('/revoke')) {
+      if (mocks.revokeFailure === 'network') throw new TypeError('Failed to fetch');
+      if (mocks.revokeFailure === 'refused') return Response.json({ error: 'Failed' }, { status: 500 });
       const body = Response.json({ wasCurrent: url.includes('/current/') });
       if (!mocks.revokeResponse) return body;
       // Hold the response until the test releases it.
@@ -111,6 +115,33 @@ describe('Settings → Sessions revoke', () => {
   });
 
   it('leaves this browser alone when another session is revoked', async () => {
+    await renderPage();
+    await confirmRevoke('Revoke');
+    await flush();
+
+    expect(mocks.endSession).not.toHaveBeenCalled();
+  });
+
+  it('ends this browser session when revoking it loses the response', async () => {
+    mocks.revokeFailure = 'network';
+    await renderPage();
+    await confirmRevoke('Sign out');
+    await flush();
+
+    expect(mocks.endSession).toHaveBeenCalledOnce();
+  });
+
+  it('keeps this browser session when the server refuses the revoke', async () => {
+    mocks.revokeFailure = 'refused';
+    await renderPage();
+    await confirmRevoke('Sign out');
+    await flush();
+
+    expect(mocks.endSession).not.toHaveBeenCalled();
+  });
+
+  it('does not end this browser session when revoking another one loses the response', async () => {
+    mocks.revokeFailure = 'network';
     await renderPage();
     await confirmRevoke('Revoke');
     await flush();

@@ -83,6 +83,12 @@ function relativeTime(iso: string | null): string {
   return new Date(iso).toLocaleDateString();
 }
 
+class RevokeRefusedError extends Error {
+  constructor() {
+    super('Failed to revoke session');
+  }
+}
+
 export default function SessionsPage() {
   const queryClient = useQueryClient();
   const [confirmTarget, setConfirmTarget] = useState<Session | null>(null);
@@ -108,9 +114,17 @@ export default function SessionsPage() {
 
   const revokeMutation = useMutation({
     mutationFn: async (session: Session) => {
-      const res = await fetch(`/api/sessions/${session.id}/revoke`, { method: 'POST' });
-      if (!res.ok) throw new Error('Failed to revoke session');
-      return (await res.json()) as { wasCurrent?: boolean };
+      try {
+        const res = await fetch(`/api/sessions/${session.id}/revoke`, { method: 'POST' });
+        if (!res.ok) throw new RevokeRefusedError();
+        return (await res.json()) as { wasCurrent?: boolean };
+      } catch (error) {
+        // A lost or unreadable response is indeterminate: the server may have
+        // revoked this browser's session already. As with Account sign-out,
+        // end it here too rather than keep a possibly dead session's data.
+        if (session.isCurrent && !(error instanceof RevokeRefusedError)) return { wasCurrent: true };
+        throw error;
+      }
     },
     onSuccess: (data, session) => {
       if (data.wasCurrent) {
