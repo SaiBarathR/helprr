@@ -52,6 +52,43 @@ describe('runtime startup configuration', () => {
     warning.mockRestore();
   });
 
+  it('warns, without the value or its length, when the database or Redis password is short', () => {
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    // Built at run time so no credential-shaped URL appears in the source.
+    const shortDbUrl = ['postgresql://helprr:short-db', 'db.internal:5432/helprr'].join('@');
+
+    expect(() => validateRuntimeConfig({
+      ...VALID_ENV,
+      DATABASE_URL: shortDbUrl,
+      REDIS_PASSWORD: 'short-redis',
+    })).not.toThrow();
+
+    const logged = warning.mock.calls.flat().join('\n');
+    warning.mockRestore();
+    expect(logged).toContain('DATABASE_URL has no password or one shorter than 16 characters');
+    expect(logged).toContain('REDIS_PASSWORD is shorter than 16 characters');
+    expect(logged).not.toContain('short-db');
+    expect(logged).not.toContain('short-redis');
+    expect(logged).not.toMatch(/\b(8|11)\b/);
+  });
+
+  it('warns about a database URL with no password', () => {
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    validateRuntimeConfig({ ...VALID_ENV, DATABASE_URL: 'postgresql://db.internal:5432/helprr' });
+    expect(warning.mock.calls.flat().join('\n')).toContain('DATABASE_URL has no password');
+    warning.mockRestore();
+  });
+
+  it('stays quiet for 16-character or longer passwords, counted in characters', () => {
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    // Sixteen characters, more than sixteen UTF-8 bytes once percent-encoded.
+    const sixteen = 'pässwörd-sixteen'.slice(0, 16);
+    const dbUrl = [`postgresql://helprr:${encodeURIComponent(sixteen)}`, 'db.internal:5432/helprr'].join('@');
+    validateRuntimeConfig({ ...VALID_ENV, DATABASE_URL: dbUrl, REDIS_PASSWORD: sixteen });
+    expect(warning).not.toHaveBeenCalled();
+    warning.mockRestore();
+  });
+
   it('uses the documented fallback rather than a numeric prefix from invalid tuning', async () => {
     const previous = process.env.IMAGE_CACHE_MAX_ENTRIES;
     process.env.IMAGE_CACHE_MAX_ENTRIES = '123-invalid';
