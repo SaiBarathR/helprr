@@ -42,6 +42,8 @@ vi.mock('@/lib/auth', () => ({
 vi.mock('@/lib/password', () => ({
   verifyPasswordHash: mocks.verifyPasswordHash,
   getDummyPasswordHash: mocks.getDummyPasswordHash,
+  passwordHashNeedsUpgrade: () => false,
+  hashPassword: vi.fn(),
 }));
 vi.mock('@/lib/login-rate-limit', () => ({
   getClientIp: mocks.getClientIp,

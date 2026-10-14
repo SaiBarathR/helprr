@@ -194,7 +194,11 @@ upgrade from http to https. A connection whose URL redirects elsewhere fails
 until the URL is corrected.
 
 Local passwords use scrypt. New and reset passwords require at least 15 Unicode
-code points, while existing compatible hashes remain verifiable. A user may have
+code points, while existing compatible hashes remain verifiable. A local login
+that verifies a hash weaker than the current scrypt parameters stores a fresh
+current-policy hash, replacing only the hash it verified, so a later cost
+increase reaches every active account without a reset. A stronger stored hash
+is kept. A user may have
 no local hash when Jellyfin is the only login method. Signing in with Jellyfin
 also connects that member's playback credential; see "Jellyfin Identity and
 Playback Credentials" below.
