@@ -163,6 +163,13 @@ Permissions use code-defined admin/member templates plus per-user delta maps in
 `User.permissions`. Admins allow all. Member defaults are explicit, and an
 unknown or newly added capability is denied until intentionally granted.
 
+A read that pages under different capabilities depend on is gated with
+`requireUserAnyCapability` (for example quality profiles, read by the library
+pages under `*.view` and the add pages under `*.add`), so gating it never breaks
+a page a member can already open. `get-route-capability-matrix.test.ts` assigns
+every GET route exactly one policy and fails when a route and its declared
+policy drift apart.
+
 Stored service API keys and custom header values never leave the server; the
 settings API returns a mask. A mask sent back means "keep the stored value", and
 is honoured only with the URL that value was stored for. Testing or saving a

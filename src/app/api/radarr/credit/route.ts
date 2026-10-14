@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getRadarrClient } from '@/lib/service-helpers';
-import { requireAuth } from '@/lib/auth';
+import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { upstreamErrorResponse } from '@/lib/api-error';
 
 async function getHandler(request: NextRequest) {
-  const authError = await requireAuth();
-  if (authError) return authError;
+  const auth = await requireUserCapability('movies.view');
+  if (!auth.ok) return auth.response;
 
   const rawMovieId = new URL(request.url).searchParams.get('movieId');
   if (!rawMovieId || rawMovieId.trim() === '') {

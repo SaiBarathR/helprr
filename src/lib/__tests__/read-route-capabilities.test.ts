@@ -6,7 +6,6 @@ const mocks = vi.hoisted(() => ({
   getSonarrClient: vi.fn(),
   getRadarrClient: vi.fn(),
   getLidarrClient: vi.fn(),
-  sonarrEpisodes: vi.fn(),
   sonarrRename: vi.fn(),
   sonarrManualImport: vi.fn(),
   radarrHistory: vi.fn(),
@@ -29,7 +28,6 @@ vi.mock('@/lib/service-helpers', () => ({
 }));
 
 import { GET as manualImportGet } from '@/app/api/activity/manualimport/route';
-import { GET as episodesGet } from '@/app/api/sonarr/[id]/episodes/route';
 import { GET as movieHistoryGet } from '@/app/api/radarr/history/movie/route';
 import { GET as tracksGet } from '@/app/api/lidarr/album/[albumId]/tracks/route';
 import { GET as sonarrRenameGet } from '@/app/api/sonarr/rename/route';
@@ -51,14 +49,6 @@ const cases: GetCase[] = [
     invoke: () => manualImportGet(request(
       '/api/activity/manualimport?source=sonarr&downloadId=download-1&instanceId=sonarr-hd',
     )),
-  },
-  {
-    name: 'Sonarr episodes',
-    capability: 'series.view',
-    invoke: () => episodesGet(
-      request('/api/sonarr/7/episodes?includeEpisodeFile=true&instanceId=sonarr-hd'),
-      { params: Promise.resolve({ id: '7' }) },
-    ),
   },
   {
     name: 'Radarr movie history',
@@ -102,7 +92,6 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.requireUserCapability.mockResolvedValue({ ok: true, user: { id: 'user-1' }, session: {} });
   mocks.getSonarrClient.mockResolvedValue({
-    getEpisodes: mocks.sonarrEpisodes.mockResolvedValue([]),
     getRenamePreview: mocks.sonarrRename.mockResolvedValue([]),
     getManualImport: mocks.sonarrManualImport.mockResolvedValue([]),
   });
@@ -164,7 +153,6 @@ describe('sensitive authenticated GET route capabilities', () => {
     await Promise.all(cases.map(({ invoke }) => invoke()));
 
     expect(mocks.getSonarrClient).toHaveBeenCalledWith('sonarr-hd');
-    expect(mocks.sonarrEpisodes).toHaveBeenCalledWith(7, true);
     expect(mocks.sonarrManualImport).toHaveBeenCalledWith('download-1');
     expect(mocks.sonarrRename).toHaveBeenCalledWith(7);
     expect(mocks.getRadarrClient).toHaveBeenCalledWith('radarr-4k');

@@ -23,7 +23,7 @@ vi.mock('@/lib/db', () => ({
   },
 }));
 
-import { requireAdmin, requireUserCapability, verifySession } from '@/lib/auth';
+import { requireAdmin, requireUserAnyCapability, requireUserCapability, verifySession } from '@/lib/auth';
 import { can } from '@/lib/permissions';
 
 function user(overrides: Record<string, unknown> = {}) {
@@ -161,5 +161,74 @@ describe('server-side session and role enforcement', () => {
   it('accepts an active, unrevoked session', async () => {
     mocks.sessionFindUnique.mockResolvedValue(session());
     await expect(verifySession('signed-token')).resolves.toBe(true);
+  });
+});
+
+describe('requireUserAnyCapability', () => {
+  it('returns 401 without a session and loads nothing else', async () => {
+    mocks.cookies.mockResolvedValue({ get: () => undefined });
+
+    const result = await requireUserAnyCapability(['series.view', 'series.add']);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.response.status).toBe(401);
+      expect(await result.response.json()).toEqual({ error: 'Unauthorized' });
+    }
+    expect(mocks.sessionFindUnique).not.toHaveBeenCalled();
+  });
+
+  it('returns 403 when the member holds none of the capabilities', async () => {
+    mocks.sessionFindUnique.mockResolvedValue(session({
+      user: user({ permissions: { 'series.view': false } }),
+    }));
+
+    const result = await requireUserAnyCapability(['series.view', 'series.add']);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.response.status).toBe(403);
+      expect(await result.response.json()).toEqual({ error: 'Forbidden' });
+    }
+  });
+
+  it.each([
+    ['the first', { 'series.view': true, 'series.add': false }],
+    ['the second', { 'series.view': false, 'series.add': true }],
+  ])('allows a member holding only %s capability', async (_label, permissions) => {
+    mocks.sessionFindUnique.mockResolvedValue(session({ user: user({ permissions }) }));
+
+    const result = await requireUserAnyCapability(['series.view', 'series.add']);
+
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.user.id).toBe('user-1');
+  });
+
+  it('allows an admin through can()', async () => {
+    mocks.sessionFindUnique.mockResolvedValue(session({
+      user: user({ role: 'admin', template: 'admin', permissions: { 'series.view': false } }),
+    }));
+
+    expect((await requireUserAnyCapability(['series.view', 'series.add'])).ok).toBe(true);
+  });
+
+  it('loads the JWT and the session once however many capabilities are listed', async () => {
+    mocks.sessionFindUnique.mockResolvedValue(session({
+      user: user({ permissions: { 'series.view': false, 'series.add': false } }),
+    }));
+
+    await requireUserAnyCapability(['series.view', 'series.add', 'activity.manage']);
+
+    expect(mocks.jwtVerify).toHaveBeenCalledTimes(1);
+    expect(mocks.sessionFindUnique).toHaveBeenCalledTimes(1);
+  });
+
+  it('denies a disabled member even when the capability is granted', async () => {
+    mocks.sessionFindUnique.mockResolvedValue(session({ user: user({ status: 'disabled' }) }));
+
+    const result = await requireUserAnyCapability(['series.view', 'series.add']);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.response.status).toBe(401);
   });
 });

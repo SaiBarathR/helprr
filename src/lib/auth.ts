@@ -245,6 +245,25 @@ export async function requireUserCapability(cap: Capability): Promise<RequireUse
 }
 
 /**
+ * requireUser + an any-of capability check, for a read that pages under
+ * different capabilities depend on (for example quality profiles, read by the
+ * library pages under *.view and by the add pages under *.add). Loads the
+ * session and user once; admins pass through can(); same 401/403 shape as
+ * requireUserCapability. Prefer requireUserCapability when one capability is
+ * the whole policy.
+ */
+export async function requireUserAnyCapability(
+  caps: readonly [Capability, ...Capability[]]
+): Promise<RequireUserResult> {
+  const result = await requireUser();
+  if (!result.ok) return result;
+  if (!caps.some((cap) => can(result.user, cap))) {
+    return { ok: false, response: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) };
+  }
+  return result;
+}
+
+/**
  * Capability gate for route handlers. Returns null when the current user holds
  * `cap`, a 401 when unauthenticated, or a 403 otherwise — same null-or-response
  * shape as requireAuth(), so it drops in right after it:
