@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getTMDBClient, loadTaggedLibrary } from '@/lib/service-helpers';
+import { getRadarrClients, getSonarrClients, getTMDBClient, loadTaggedLibrary } from '@/lib/service-helpers';
+import { getCachedTaggedLibrary, type Tagged } from '@/lib/cache/tagged-library';
 import { requireUserCapability } from '@/lib/auth';
 import { annotateDiscoverItems, dedupeDiscoverItems, normalizeTmdbItem } from '@/lib/discover';
 import { TmdbRateLimitError } from '@/lib/tmdb-client';
 import type {
   DiscoverContentType,
+  RadarrMovie,
+  SonarrSeries,
   DiscoverFilters,
   DiscoverItem,
   DiscoverResponse,
@@ -70,6 +73,10 @@ function clampInt(value: string | null, min: number, max: number, fallback: numb
   return Math.min(max, Math.max(min, Math.floor(n)));
 }
 
+// Process-wide catalog cache, shared by every user. Only TMDB-derived,
+// user-independent fields may enter it: never library ids, instance ids or
+// labels, or `exists` flags. Library state is applied per request by
+// annotateSectionsForCurrentLibrary(), so a newly added title shows at once.
 let sectionsCache:
   | {
       data: DiscoverSections;
@@ -227,7 +234,7 @@ async function getLibraries() {
   return loadTaggedLibrary();
 }
 
-async function buildSections() {
+async function buildCatalogSections() {
   const tmdb = await getTMDBClient();
   const partialFailures = new Set<string>();
 
@@ -400,9 +407,40 @@ async function buildSections() {
     },
   ];
 
-  const { movies, series } = await getLibraries();
+  return {
+    sections,
+    partialFailures: [...partialFailures],
+  };
+}
 
-  const normalizedSections: DiscoverSections = sections.map((section) => {
+// Library state comes from the shared tagged-library cache (the same entries
+// /api/radarr and /api/sonarr serve), which add/delete routes invalidate, so a
+// newly added title shows as present on the next request. If it cannot be read
+// the catalog is returned without library state rather than failing.
+async function annotateSectionsForCurrentLibrary(catalog: DiscoverSections): Promise<DiscoverSections> {
+  let movies: Tagged<RadarrMovie>[];
+  let series: Tagged<SonarrSeries>[];
+  try {
+    [{ items: movies }, { items: series }] = await Promise.all([
+      getCachedTaggedLibrary({
+        scope: 'radarr',
+        cacheKeySeed: 'all',
+        getInstances: getRadarrClients,
+        fetchOne: (client) => client.getMovies(),
+      }),
+      getCachedTaggedLibrary({
+        scope: 'sonarr',
+        cacheKeySeed: 'all',
+        getInstances: getSonarrClients,
+        fetchOne: (client) => client.getSeries(),
+      }),
+    ]);
+  } catch (error) {
+    console.warn('[Discover] Library state unavailable:', error instanceof Error ? error.message : error);
+    return catalog;
+  }
+
+  return catalog.map((section) => {
     if (section?.type !== 'media') return section;
 
     return {
@@ -410,11 +448,6 @@ async function buildSections() {
       items: annotateDiscoverItems(section.items as DiscoverItem[], movies, series),
     };
   });
-
-  return {
-    sections: normalizedSections,
-    partialFailures: [...partialFailures],
-  };
 }
 
 function hasMediaItems(sections: DiscoverSections): boolean {
@@ -555,8 +588,11 @@ async function getHandler(request: NextRequest) {
 
     if (mode === 'sections') {
       const now = Date.now();
+      // The body carries this user's library state, so no shared cache may
+      // keep it; offline reuse is left to the service worker.
       const sectionsHeaders = {
-        'Cache-Control': 'public, max-age=60, s-maxage=300, stale-while-revalidate=600',
+        'Cache-Control': 'private, max-age=0, must-revalidate',
+        Vary: 'Cookie',
       } as const;
       const perSectionLimit = clampInt(
         searchParams.get('perSectionLimit'),
@@ -572,15 +608,19 @@ async function getHandler(request: NextRequest) {
                 ? { ...section, items: (section.items as DiscoverItem[]).slice(0, perSectionLimit) }
                 : section,
             );
+      const respond = async (catalog: DiscoverSections) => {
+        const body: DiscoverResponse = {
+          mode: 'sections',
+          sections: await annotateSectionsForCurrentLibrary(applySectionLimit(catalog)),
+        };
+        return NextResponse.json(body, { headers: sectionsHeaders });
+      };
 
       if (sectionsCache && now < sectionsCache.expiresAt) {
-        return NextResponse.json(
-          { mode: 'sections', sections: applySectionLimit(sectionsCache.data) } satisfies DiscoverResponse,
-          { headers: sectionsHeaders }
-        );
+        return respond(sectionsCache.data);
       }
 
-      const { sections, partialFailures } = await buildSections();
+      const { sections, partialFailures } = await buildCatalogSections();
       const freshHasMedia = hasMediaItems(sections);
 
       if (freshHasMedia) {
@@ -596,12 +636,7 @@ async function getHandler(request: NextRequest) {
         );
       }
 
-      const fallbackSections = (!freshHasMedia && sectionsCache?.data) ? sectionsCache.data : sections;
-      const body: DiscoverResponse = {
-        mode: 'sections',
-        sections: applySectionLimit(fallbackSections || []),
-      };
-      return NextResponse.json(body, { headers: sectionsHeaders });
+      return respond((!freshHasMedia && sectionsCache?.data) ? sectionsCache.data : sections);
     }
 
     const startPage = Math.max(1, parseNumber(searchParams.get('page')) ?? 1);
