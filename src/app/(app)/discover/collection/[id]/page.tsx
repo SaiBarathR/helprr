@@ -1,53 +1,39 @@
-import { headers } from 'next/headers';
+import { notFound } from 'next/navigation';
+import { isAxiosError } from 'axios';
 import Image from 'next/image';
 import Link from '@/components/ui/app-link';
 import { PageHeader } from '@/components/layout/page-header';
 import { Badge } from '@/components/ui/badge';
 import { Star, Film } from 'lucide-react';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
+import { getCurrentUser } from '@/lib/auth';
+import { ConfigurationError } from '@/lib/config-error';
+import { getDiscoverCollectionDetail } from '@/lib/discover-collection';
+import { TmdbRateLimitError } from '@/lib/tmdb-client';
 import type { DiscoverCollectionDetail } from '@/types';
 
 type DiscoverCollectionPageProps = {
   params: Promise<{ id: string }>;
 };
 
-async function fetchCollection(collectionId: number): Promise<DiscoverCollectionDetail> {
-  const requestHeaders = await headers();
-  const host = requestHeaders.get('x-forwarded-host') ?? requestHeaders.get('host');
-  const proto = requestHeaders.get('x-forwarded-proto') ?? 'http';
-  const cookie = requestHeaders.get('cookie');
-
-  if (!host) {
+async function loadCollection(collectionId: number): Promise<DiscoverCollectionDetail> {
+  try {
+    return await getDiscoverCollectionDetail(collectionId);
+  } catch (error) {
+    // Same messages the collection API route gives for these failures.
+    if (error instanceof TmdbRateLimitError) throw new Error('TMDB rate limit reached');
+    console.error('[discover] Failed to load collection:', error instanceof Error ? error.message : error);
+    if (isAxiosError(error) && error.response?.status === 404) throw new Error('Not found');
+    if (error instanceof ConfigurationError) throw new Error(error.message);
     throw new Error('Failed to load collection');
   }
-
-  const res = await fetch(`${proto}://${host}/api/discover/collection/${collectionId}`, {
-    cache: 'no-store',
-    headers: cookie ? { cookie } : undefined,
-  });
-
-  if (!res.ok) {
-    let message = `Failed to load collection (${res.status})`;
-    try {
-      const text = await res.text();
-      if (text) {
-        try {
-          const parsed = JSON.parse(text) as { error?: string };
-          message = parsed.error || message;
-        } catch {
-          message = text;
-        }
-      }
-    } catch {
-      // Ignore body parse failures and keep default message.
-    }
-    throw new Error(message);
-  }
-
-  return res.json();
 }
 
 export default async function DiscoverCollectionPage({ params }: DiscoverCollectionPageProps) {
+  // Loads data directly, so it checks the session itself rather than relying
+  // on the (app) layout, which renders in parallel with the page.
+  if (!(await getCurrentUser())) notFound();
+
   const { id } = await params;
   const collectionId = Number(id);
 
@@ -58,7 +44,7 @@ export default async function DiscoverCollectionPage({ params }: DiscoverCollect
     error = 'Invalid collection ID';
   } else {
     try {
-      collection = await fetchCollection(collectionId);
+      collection = await loadCollection(collectionId);
     } catch (err) {
       error = err instanceof Error ? err.message : 'Failed to load collection';
     }

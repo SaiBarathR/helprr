@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getTMDBClient, loadTaggedLibrary } from '@/lib/service-helpers';
 import { requireAuth } from '@/lib/auth';
-import { normalizeTmdbItem, annotateDiscoverItems, tmdbImageUrl } from '@/lib/discover';
+import { getDiscoverCollectionDetail } from '@/lib/discover-collection';
 import { TmdbRateLimitError } from '@/lib/tmdb-client';
-import type { DiscoverCollectionDetail, DiscoverItem } from '@/types';
 import { withApiLogging } from '@/lib/api-logger';
 import { upstreamErrorResponse } from '@/lib/api-error';
 
@@ -21,34 +19,7 @@ async function getHandler(
       return NextResponse.json({ error: 'Invalid collection ID' }, { status: 400 });
     }
 
-    const tmdb = await getTMDBClient();
-
-    const [collection, { movies, series }] = await Promise.all([
-      tmdb.collectionDetails(id),
-      loadTaggedLibrary(),
-    ]);
-
-    const parts: DiscoverItem[] = (collection.parts || [])
-      .sort((a, b) => {
-        const dateA = a.release_date || '';
-        const dateB = b.release_date || '';
-        return dateA.localeCompare(dateB);
-      })
-      .map((item) => normalizeTmdbItem(item, 'movie'))
-      .filter((item): item is DiscoverItem => item !== null);
-
-    const annotatedParts = annotateDiscoverItems(parts, movies, series);
-
-    const payload: DiscoverCollectionDetail = {
-      id: collection.id,
-      name: collection.name,
-      overview: collection.overview || '',
-      posterPath: tmdbImageUrl(collection.poster_path),
-      backdropPath: tmdbImageUrl(collection.backdrop_path, 'w1280'),
-      parts: annotatedParts,
-    };
-
-    return NextResponse.json(payload);
+    return NextResponse.json(await getDiscoverCollectionDetail(id));
   } catch (error) {
     if (error instanceof TmdbRateLimitError) {
       return NextResponse.json(

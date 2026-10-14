@@ -4,6 +4,7 @@ import { prisma } from '@/lib/db';
 import { requireUserCapability } from '@/lib/auth';
 import { ANILIST_GRAPHQL_URL, buildAuthorizeUrl } from '@/lib/anilist-oauth';
 import { withApiLogging } from '@/lib/api-logger';
+import { resolvePublicAppOrigin } from '@/lib/request-utils';
 import {
   isNonEmptyString,
   resolveApiKeyForService,
@@ -11,28 +12,6 @@ import {
 
 const STATE_COOKIE_NAME = 'helprr-anilist-oauth-state';
 const STATE_COOKIE_MAX_AGE = 5 * 60; // 5 minutes
-
-function originFromRequest(request: NextRequest): string {
-  const forwardedProto = request.headers.get('x-forwarded-proto');
-  const forwardedHost = request.headers.get('x-forwarded-host');
-  if (forwardedProto && forwardedHost) {
-    return `${forwardedProto}://${forwardedHost}`;
-  }
-  return request.nextUrl.origin;
-}
-
-function trustedOrigin(request: NextRequest): string | null {
-  if (process.env.NODE_ENV !== 'production') return originFromRequest(request);
-  const configured = process.env.APP_ORIGIN;
-  if (!configured) return null;
-  try {
-    const url = new URL(configured);
-    if (url.protocol !== 'https:') return null;
-    return url.origin;
-  } catch {
-    return null;
-  }
-}
 
 async function postHandler(request: NextRequest): Promise<NextResponse> {
   const auth = await requireUserCapability('settings.instances');
@@ -54,6 +33,15 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json(
       { error: 'clientId and clientSecret are required' },
       { status: 400 }
+    );
+  }
+
+  // Checked before anything is saved, so a bad APP_ORIGIN leaves no half-set-up connection.
+  const origin = resolvePublicAppOrigin(request);
+  if (!origin) {
+    return NextResponse.json(
+      { error: 'APP_ORIGIN must be configured as a valid HTTPS origin in production' },
+      { status: 500 }
     );
   }
 
@@ -83,14 +71,6 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
         externalUrl: trimmedClientId,
       },
     });
-  }
-
-  const origin = trustedOrigin(request);
-  if (!origin) {
-    return NextResponse.json(
-      { error: 'APP_ORIGIN must be configured as a valid HTTPS origin in production' },
-      { status: 500 }
-    );
   }
 
   const state = randomBytes(24).toString('hex');
