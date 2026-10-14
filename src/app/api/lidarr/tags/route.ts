@@ -3,14 +3,14 @@ import { getLidarrClient } from '@/lib/service-helpers';
 import { LidarrClient } from '@/lib/lidarr-client';
 import { resolveConnection } from '@/lib/arr-instances';
 import { getConnectionHeaders } from '@/lib/service-connection-secrets';
-import { requireUserCapability } from '@/lib/auth';
+import { requireUserAnyCapability, requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { REFERENCE_CACHE_HEADERS } from '@/lib/cache/reference-headers';
 import { invalidateReferenceLabels } from '@/lib/cache/reference-labels';
 import { upstreamErrorResponse } from '@/lib/api-error';
 
 async function getHandler(request: NextRequest): Promise<NextResponse> {
-  const auth = await requireUserCapability('music.view');
+  const auth = await requireUserAnyCapability(['music.view', 'music.add']);
   if (!auth.ok) return auth.response;
 
   try {

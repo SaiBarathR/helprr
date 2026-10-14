@@ -191,7 +191,6 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
     'GET /api/lidarr/health',
     'GET /api/lidarr/history/artist',
     'GET /api/lidarr',
-    'GET /api/lidarr/tags',
     'GET /api/lidarr/trackfile',
     'GET /api/lidarr/wanted',
   ],
@@ -295,10 +294,11 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
     'GET /api/radarr/tags',
   ],
   'any:music.view|music.add': [
+    'GET /api/lidarr/tags',
     'GET /api/lidarr/metadataprofiles',
     'GET /api/lidarr/qualityprofiles',
   ],
-  'any:series.view|activity.manage': [
+  'any:series.view|activity.manage|series.manageFiles': [
     'GET /api/sonarr/[id]/episodes',
   ],
   'any:series.view|series.add': [

@@ -229,5 +229,6 @@ describe('requireUserAnyCapability', () => {
     const result = await requireUserAnyCapability(['series.view', 'series.add']);
 
     expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.response.status).toBe(401);
   });
 });

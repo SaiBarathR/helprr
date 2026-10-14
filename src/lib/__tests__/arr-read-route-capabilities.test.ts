@@ -65,6 +65,7 @@ import { GET as lidarrQualityProfiles } from '@/app/api/lidarr/qualityprofiles/r
 import { GET as lidarrMetadataProfiles } from '@/app/api/lidarr/metadataprofiles/route';
 import { GET as sonarrTags } from '@/app/api/sonarr/tags/route';
 import { GET as radarrTags } from '@/app/api/radarr/tags/route';
+import { GET as lidarrTags } from '@/app/api/lidarr/tags/route';
 import { GET as sonarrEpisodes } from '@/app/api/sonarr/[id]/episodes/route';
 import { GET as layoutsList } from '@/app/api/dashboard-layouts/route';
 import { GET as layoutsActive } from '@/app/api/dashboard-layouts/active/route';
@@ -114,7 +115,9 @@ const cases: Case[] = [
     invoke: (i) => sonarrTags(req('/api/sonarr/tags', i)) },
   { name: 'Radarr tags', anyOf: ['movies.view', 'movies.add'], service: 'radarr',
     invoke: (i) => radarrTags(req('/api/radarr/tags', i)) },
-  { name: 'Sonarr episodes', anyOf: ['series.view', 'activity.manage'], service: 'sonarr',
+  { name: 'Lidarr tags', anyOf: ['music.view', 'music.add'], service: 'lidarr',
+    invoke: (i) => lidarrTags(req('/api/lidarr/tags', i)) },
+  { name: 'Sonarr episodes', anyOf: ['series.view', 'activity.manage', 'series.manageFiles'], service: 'sonarr',
     invoke: (i) => sonarrEpisodes(req('/api/sonarr/7/episodes', i), withId('7')) },
   { name: 'dashboard layout list', anyOf: ['dashboard.view', 'settings.dashboardRefresh'], service: null,
     invoke: () => layoutsList() },

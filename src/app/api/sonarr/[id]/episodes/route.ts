@@ -8,7 +8,7 @@ async function getHandler(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const auth = await requireUserAnyCapability(['series.view', 'activity.manage']);
+  const auth = await requireUserAnyCapability(['series.view', 'activity.manage', 'series.manageFiles']);
   if (!auth.ok) return auth.response;
 
   try {
