@@ -8,6 +8,7 @@ import { sanitizeHtml } from '@/lib/sanitize-html';
 import { useParams, useSearchParams } from 'next/navigation';
 import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
 import Link from '@/components/ui/app-link';
+import { DiscoverFilterChip } from '@/components/discover/discover-filter-chip';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { PageSpinner } from '@/components/ui/page-spinner';
@@ -1992,7 +1993,7 @@ export default function SeriesDetailPage() {
                                 )
                                 : null;
                               return (
-                                <Link
+                                <DiscoverFilterChip
                                   key={network.id}
                                   href={`/discover?networks=${network.id}&networkName=${encodeURIComponent(network.name)}&contentType=show`}
                                   className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-border/50 bg-accent/30"
@@ -2010,7 +2011,7 @@ export default function SeriesDetailPage() {
                                     </div>
                                   )}
                                   <span className="text-xs font-medium">{network.name}</span>
-                                </Link>
+                                </DiscoverFilterChip>
                               );
                             })}
                           </div>
@@ -2029,7 +2030,7 @@ export default function SeriesDetailPage() {
                                 )
                                 : null;
                               return (
-                                <Link
+                                <DiscoverFilterChip
                                   key={company.id}
                                   href={`/discover?companies=${company.id}&companyName=${encodeURIComponent(company.name)}&contentType=show`}
                                   className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-border/50 bg-accent/30"
@@ -2047,7 +2048,7 @@ export default function SeriesDetailPage() {
                                     </div>
                                   )}
                                   <span className="text-xs font-medium">{company.name}</span>
-                                </Link>
+                                </DiscoverFilterChip>
                               );
                             })}
                           </div>

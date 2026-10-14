@@ -74,11 +74,11 @@ function GapCard({
   const FallbackIcon = item.search.kind === 'movie' || item.tmdbId ? Film : Tv;
 
   // A collection-gap card opens the whole collection (showing owned/missing members) rather
-  // than the single movie — but only when that page can actually load: TMDB configured + the
-  // user has Discover access. Otherwise fall back to item.href (the movie Discover page).
-  const canDiscover = useCan('discover.view');
+  // than the single movie — but only when that page can actually load: TMDB configured. The
+  // collection page is open to series.view, which this page already needs. Otherwise fall
+  // back to item.href (the movie Discover page).
   const tmdbConfigured = useMe()?.tmdbConfigured ?? false;
-  const usesCollection = Boolean(tmdbConfigured && canDiscover && item.collectionTmdbId);
+  const usesCollection = Boolean(tmdbConfigured && item.collectionTmdbId);
   const effectiveHref = usesCollection ? `/discover/collection/${item.collectionTmdbId}` : item.href;
 
   async function handleSearch() {

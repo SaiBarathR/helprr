@@ -61,6 +61,7 @@ import { pollCommand } from '@/lib/arr-command';
 import { useExternalUrls, useExternalUrlResolver } from '@/lib/hooks/use-external-urls';
 import { formatBytes } from '@/lib/format';
 import Link from '@/components/ui/app-link';
+import { DiscoverFilterChip } from '@/components/discover/discover-filter-chip';
 import { DiscoverVideoRail } from '@/components/discover/discover-video-rail';
 import { DiscoverMediaRail } from '@/components/discover/discover-media-rail';
 import { DiscoverWatchProvidersSection } from '@/components/discover/discover-watch-providers';
@@ -896,7 +897,7 @@ export default function MovieDetailPage() {
                               )
                             : null;
                           return (
-                            <Link
+                            <DiscoverFilterChip
                               key={company.id}
                               href={`/discover?companies=${company.id}&companyName=${encodeURIComponent(company.name)}&contentType=movie`}
                               className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-border/50 bg-accent/30"
@@ -914,7 +915,7 @@ export default function MovieDetailPage() {
                                 </div>
                               )}
                               <span className="text-xs font-medium">{company.name}</span>
-                            </Link>
+                            </DiscoverFilterChip>
                           );
                         })}
                       </div>
