@@ -345,7 +345,7 @@ for the complete feature, `edge`, release, promotion, rollback, and hotfix proce
 
 - Docker itself does not provide TLS. Put Helprr behind an HTTPS reverse proxy before relying on PWA installation or Web Push from a non-localhost address.
 - Set `TRUST_FORWARDED_PROTO=true` only when that proxy strips and sets forwarded headers itself. This enables correct secure-cookie and client-IP decisions.
-- Set `APP_ORIGIN=https://helprr.example.com` when enabling AniList OAuth in production. It must be a valid HTTPS origin.
+- Set `APP_ORIGIN=https://helprr.example.com` when enabling AniList OAuth in production. It must be a valid HTTPS origin (scheme, host and optional port, no path); the AniList redirect URI and the redirect back to Settings both use it, never the request's Host or `X-Forwarded-*` headers.
 - If the PostgreSQL password contains URL-reserved characters (`@`, `:`, `/`, `?`, `#`, …), set `DATABASE_URL` explicitly with the password percent-encoded.
 - The VAPID keys are runtime configuration: after adding or rotating them, run `docker compose up -d --no-build --no-deps helprr` — no rebuild or data-service restart is needed. After rotating keys, turn notifications off and on again on each device in **Settings → Notifications**: a subscription made under the old key keeps that key, even when the browser rotates its endpoint.
 
