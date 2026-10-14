@@ -79,6 +79,26 @@ describe('runtime startup configuration', () => {
     warning.mockRestore();
   });
 
+  it('counts decoded characters, not encoded bytes or UTF-16 units', () => {
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    // Fifteen characters whose percent-encoded form is far longer than 16.
+    const fifteen = 'pässwörd-fünfze';
+    const dbUrl = [`postgresql://helprr:${encodeURIComponent(fifteen)}`, 'db.internal:5432/helprr'].join('@');
+    // Eight emoji: 16 UTF-16 units but 8 characters.
+    validateRuntimeConfig({ ...VALID_ENV, DATABASE_URL: dbUrl, REDIS_PASSWORD: '🔑'.repeat(8) });
+    const logged = warning.mock.calls.flat().join('\n');
+    warning.mockRestore();
+    expect(logged).toContain('DATABASE_URL has no password or one shorter than 16 characters');
+    expect(logged).toContain('REDIS_PASSWORD is shorter than 16 characters');
+  });
+
+  it('reports a short placeholder password once, as the startup error', () => {
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    expect(() => validateRuntimeConfig({ ...VALID_ENV, REDIS_PASSWORD: 'changeme' })).toThrow(StartupConfigurationError);
+    expect(warning).not.toHaveBeenCalled();
+    warning.mockRestore();
+  });
+
   it('stays quiet for 16-character or longer passwords, counted in characters', () => {
     const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
     // Sixteen characters, more than sixteen UTF-8 bytes once percent-encoded.

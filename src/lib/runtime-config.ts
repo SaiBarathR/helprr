@@ -168,13 +168,19 @@ export function validateRuntimeConfig(env: RuntimeEnvironment = process.env): vo
   // Weak but not placeholder: warn rather than stop, so an existing install
   // still boots after updating. Never print the value or its length.
   const databasePassword = databaseUrl ? decodeUrlPassword(databaseUrl.password) : '';
-  if (databaseUrl && [...databasePassword].length < MIN_SERVICE_PASSWORD_LENGTH) {
+  // A placeholder password already stops startup above; one message is enough.
+  const databasePasswordIsPlaceholder = Boolean(databasePassword) && isKnownPlaceholderSecret(databasePassword);
+  if (databaseUrl && !databasePasswordIsPlaceholder && [...databasePassword].length < MIN_SERVICE_PASSWORD_LENGTH) {
     console.warn(
       `[Helprr] DATABASE_URL has no password or one shorter than ${MIN_SERVICE_PASSWORD_LENGTH} characters. ` +
         'Use a long random value (./scripts/setup-env.sh generates one).',
     );
   }
-  if (!isBlank(env.REDIS_PASSWORD) && [...env.REDIS_PASSWORD!].length < MIN_SERVICE_PASSWORD_LENGTH) {
+  if (
+    !isBlank(env.REDIS_PASSWORD)
+    && !isKnownPlaceholderSecret(env.REDIS_PASSWORD!)
+    && [...env.REDIS_PASSWORD!].length < MIN_SERVICE_PASSWORD_LENGTH
+  ) {
     console.warn(
       `[Helprr] REDIS_PASSWORD is shorter than ${MIN_SERVICE_PASSWORD_LENGTH} characters. ` +
         'Use a long random value (./scripts/setup-env.sh generates one).',
