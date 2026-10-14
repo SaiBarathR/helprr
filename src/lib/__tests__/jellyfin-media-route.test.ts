@@ -51,10 +51,13 @@ describe('Jellyfin 12 media authorization', () => {
     expect((await GET(request(), context)).status).toBe(404);
     expect(mocks.fetch).not.toHaveBeenCalled();
   });
-  // Next decodes a segment once and the route once more, so `%252e%252e`
-  // arrives here as `%2e%2e`, which the URL parser reads as `..`.
+  // Next decodes each segment once before the route sees it; the route no
+  // longer decodes again. A `%` left in a segment (double-encoded input) is
+  // refused rather than decoded into `..` by the upstream URL parser.
   it.each([
     [['fallbackfont', 'fonts', '%252e%252e', '%252e%252e', 'System', 'Info']],
+    [['fallbackfont', 'fonts', '%2e%2e', '%2e%2e', 'System', 'Info']],
+    [['Videos', '0123456789abcdef0123456789abcdef', 'Subtitles', 'a%2520b.vtt']],
     [['Videos', '0123456789abcdef0123456789abcdef', '.\t.', '.\t.', 'Users']],
   ])('refuses %j rather than forwarding it outside the allowlist', async (path) => {
     const response = await GET(request(), { params: Promise.resolve({ path }) });
@@ -66,5 +69,13 @@ describe('Jellyfin 12 media authorization', () => {
     expect((await GET(request(), context)).status).toBe(409);
     expect(mocks.invalidate).toHaveBeenCalledWith('member');
     expect(mocks.fetch).toHaveBeenCalledTimes(1);
+  });
+  it('forwards a legitimate name with a space, encoded once, under the base path', async () => {
+    const path = ['Videos', '0123456789abcdef0123456789abcdef', 'Subtitles', '0', '0', 'Main Track.vtt'];
+    const response = await GET(request(), { params: Promise.resolve({ path }) });
+    expect(response.status).toBe(206);
+    const [url] = mocks.fetch.mock.calls[0];
+    expect(new URL(url.toString()).pathname)
+      .toBe('/base/Videos/0123456789abcdef0123456789abcdef/Subtitles/0/0/Main%20Track.vtt');
   });
 });

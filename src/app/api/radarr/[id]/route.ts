@@ -88,6 +88,8 @@ async function putHandler(
         { status: 400 }
       );
     }
+    // Forward the validated path id, never the body's own spelling of it.
+    const update = { ...body, id: pathId };
     const moveFiles = new URL(request.url).searchParams.get('moveFiles') === 'true';
     const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
     const client = await getRadarrClient(instanceId);
@@ -98,7 +100,7 @@ async function putHandler(
     // transient detail-fetch error from failing an otherwise-valid admin edit.
     if (auth.user.role !== 'admin') {
       const current = await client.getMovieById(pathId);
-      const guardError = guardResolvedLibraryEdit(auth.user, diffMovieEdit(current, body), {
+      const guardError = guardResolvedLibraryEdit(auth.user, diffMovieEdit(current, update), {
         tags: 'movies.editTags',
         path: 'movies.changePath',
         monitoring: 'movies.editMonitoring',
@@ -106,7 +108,7 @@ async function putHandler(
       if (guardError) return guardError;
     }
 
-    const result = await client.updateMovie(body, moveFiles);
+    const result = await client.updateMovie(update, moveFiles);
     await invalidateTaggedLibrary('radarr', instanceId);
     return NextResponse.json(result);
   } catch (error) {

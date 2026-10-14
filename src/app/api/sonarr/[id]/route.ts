@@ -47,9 +47,13 @@ async function getHandler(
 
   try {
     const { id } = await params;
+    const seriesId = Number(id);
+    if (!Number.isInteger(seriesId) || seriesId <= 0) {
+      return NextResponse.json({ error: 'Invalid series id' }, { status: 400 });
+    }
     const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
     const client = await getSonarrClient(instanceId);
-    const series = await client.getSeriesById(Number(id));
+    const series = await client.getSeriesById(seriesId);
     return NextResponse.json(series);
   } catch (error) {
     return upstreamErrorResponse(error, 'Failed to fetch series');
@@ -76,6 +80,8 @@ async function putHandler(
     if ('id' in body && Number((body as { id?: unknown }).id) !== pathId) {
       return NextResponse.json({ error: 'Path id and body id must match' }, { status: 400 });
     }
+    // Forward the validated path id, never the body's own spelling of it.
+    const update = { ...body, id: pathId };
     const moveFiles = new URL(request.url).searchParams.get('moveFiles') === 'true';
     const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
     const client = await getSonarrClient(instanceId);
@@ -86,7 +92,7 @@ async function putHandler(
     // transient detail-fetch error from failing an otherwise-valid admin edit.
     if (auth.user.role !== 'admin') {
       const current = await client.getSeriesById(pathId);
-      const guardError = guardResolvedLibraryEdit(auth.user, diffSeriesEdit(current, body), {
+      const guardError = guardResolvedLibraryEdit(auth.user, diffSeriesEdit(current, update), {
         tags: 'series.editTags',
         path: 'series.changePath',
         monitoring: 'series.editMonitoring',
@@ -94,7 +100,7 @@ async function putHandler(
       if (guardError) return guardError;
     }
 
-    const result = await client.updateSeries(body, moveFiles);
+    const result = await client.updateSeries(update, moveFiles);
     await invalidateTaggedLibrary('sonarr', instanceId);
     return NextResponse.json(result);
   } catch (error) {

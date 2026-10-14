@@ -8,6 +8,9 @@ import { bumpQbitCacheVersion } from '@/lib/cache/qbittorrent-version';
 import { upstreamErrorResponse } from '@/lib/api-error';
 import { runWithOperationAudit, snapshotTorrentDeleteTargets } from '@/lib/file-audit';
 
+// A v1 info hash (SHA-1) or a v2 one (SHA-256), in hex.
+const SINGLE_TORRENT_HASH = /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/i;
+
 // Per-action capability: delete is the most destructive, bandwidth-limit changes
 // are their own grant, everything else is general torrent management.
 function actionCapability(action: unknown): Capability | null {
@@ -47,6 +50,12 @@ async function postHandler(
 
   try {
     const { hash } = await params;
+    // One torrent only: qBittorrent also reads `all` or a `|`-joined list here,
+    // which would turn a single-torrent action into a bulk one. Bulk actions
+    // go through POST /api/qbittorrent.
+    if (!SINGLE_TORRENT_HASH.test(hash)) {
+      return NextResponse.json({ error: 'Invalid torrent hash' }, { status: 400 });
+    }
     const body = await request.json();
     action = body?.action;
 

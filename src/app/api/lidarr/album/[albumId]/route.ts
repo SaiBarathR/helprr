@@ -51,7 +51,8 @@ async function putHandler(
     }
     const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
     const client = await getLidarrClient(instanceId);
-    const result = await client.updateAlbum(body);
+    // Forward the validated path id, never the body's own spelling of it.
+    const result = await client.updateAlbum({ ...body, id: pathId });
     return NextResponse.json(result);
   } catch (error) {
     return upstreamErrorResponse(error, 'Failed to update album');

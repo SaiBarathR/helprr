@@ -170,8 +170,8 @@ describe('destructive route audit wiring', () => {
     const responses = [
       await torrentAction(request('/api/qbittorrent', 'POST', { hash: 'abc', action: 'delete', deleteFiles: true })),
       await torrentHashAction(
-        request('/api/qbittorrent/abc', 'POST', { action: 'delete', deleteFiles: false }),
-        { params: Promise.resolve({ hash: 'abc' }) },
+        request('/api/qbittorrent/0123456789abcdef0123456789abcdef01234567', 'POST', { action: 'delete', deleteFiles: false }),
+        { params: Promise.resolve({ hash: '0123456789abcdef0123456789abcdef01234567' }) },
       ),
     ];
 
@@ -182,7 +182,7 @@ describe('destructive route audit wiring', () => {
       expect.objectContaining({ service: 'QBITTORRENT', operation: 'DELETE_TORRENT', filesDeleted: false }),
     ]);
     expect(mocks.qbit.deleteTorrent).toHaveBeenNthCalledWith(1, 'abc', true);
-    expect(mocks.qbit.deleteTorrent).toHaveBeenNthCalledWith(2, 'abc', false);
+    expect(mocks.qbit.deleteTorrent).toHaveBeenNthCalledWith(2, '0123456789abcdef0123456789abcdef01234567', false);
   });
 
   it('audits manual Arr queue removal and all destructive options', async () => {

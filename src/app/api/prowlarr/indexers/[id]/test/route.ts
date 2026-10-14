@@ -20,8 +20,12 @@ async function postHandler(
 
   try {
     const { id } = await params;
+    const parsedId = Number.parseInt(id, 10);
+    if (!/^\d+$/.test(id) || Number.isNaN(parsedId)) {
+      return NextResponse.json({ error: 'Invalid indexer id' }, { status: 400 });
+    }
     const client = await getProwlarrClient();
-    const result = await client.testIndexer(parseInt(id, 10));
+    const result = await client.testIndexer(parsedId);
     return NextResponse.json(result ?? { success: true });
   } catch (error) {
     return upstreamErrorResponse(error, 'Test failed');

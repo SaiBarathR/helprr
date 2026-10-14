@@ -7,6 +7,7 @@ import {
   isValidMediaType,
   isValidSource,
   normalizeTagName,
+  isValidExternalId,
 } from '@/lib/watchlist-helpers';
 import {
   getLibraryLookups,
@@ -127,6 +128,9 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   }
   if (!externalId) {
     return NextResponse.json({ error: 'externalId is required' }, { status: 400 });
+  }
+  if (!isValidExternalId(externalId)) {
+    return NextResponse.json({ error: 'Invalid externalId' }, { status: 400 });
   }
   if (!isValidMediaType(mediaType)) {
     return NextResponse.json({ error: 'Invalid mediaType' }, { status: 400 });
