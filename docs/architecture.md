@@ -170,6 +170,13 @@ a page a member can already open. `get-route-capability-matrix.test.ts` assigns
 every GET route exactly one policy and fails when a route and its declared
 policy drift apart.
 
+The same rule covers pages that several sections link to. Discover title,
+person and collection pages, and their routes, accept any capability in
+`TMDB_TITLE_PAGE_CAPABILITIES` (Discover, Movies, Series, Recommendations,
+Watchlist); Anime detail pages accept `ANIME_DETAIL_PAGE_CAPABILITIES`. The
+Discover and Anime home pages, the Anime schedule and explore pages, and their
+list routes need `discover.view` / `anime.view` themselves.
+
 Stored service API keys and custom header values never leave the server; the
 settings API returns a mask. A mask sent back means "keep the stored value", and
 is honoured only with the URL that value was stored for. Testing or saving a

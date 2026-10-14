@@ -17,6 +17,18 @@ export async function assertPageCapability(cap: Capability): Promise<void> {
 }
 
 /**
+ * Like assertPageCapability, for pages members reach from sections under
+ * different capabilities. Mirrors requireUserAnyCapability on the page's
+ * data routes.
+ */
+export async function assertPageAnyCapability(caps: readonly [Capability, ...Capability[]]): Promise<void> {
+  const user = await getCurrentUser();
+  if (!user || !caps.some((cap) => can(user, cap))) {
+    notFound();
+  }
+}
+
+/**
  * Server-side page guard for admin-only pages with no dedicated capability
  * (e.g. the AniList library, which is tied to the single shared operator
  * account). Renders a 404 for non-admins.

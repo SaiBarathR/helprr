@@ -167,6 +167,33 @@ export const CAPABILITIES: Capability[] = CAPABILITY_GROUPS.flatMap((group) =>
 
 const CAPABILITY_SET = new Set<string>(CAPABILITIES);
 
+/**
+ * Sections whose pages open the TMDB title pages (/discover/movie, tv, person,
+ * collection): Discover itself, the Movies and Series detail pages, Library
+ * gaps (under series.view), Recommendations and Watchlist. Those pages and the
+ * routes they read accept any of these, so revoking discover.view hides
+ * Discover without breaking a title page reached from another section.
+ */
+export const TMDB_TITLE_PAGE_CAPABILITIES = [
+  'discover.view',
+  'movies.view',
+  'series.view',
+  'recommendations.view',
+  'watchlist.view',
+] as const satisfies readonly Capability[];
+
+/**
+ * Sections whose pages open the Anime detail pages (/anime/[id], character,
+ * manga, staff, studio): Anime itself, Series detail (anime series link their
+ * AniList entry, studio and staff), Watchlist and Recommendations.
+ */
+export const ANIME_DETAIL_PAGE_CAPABILITIES = [
+  'anime.view',
+  'series.view',
+  'watchlist.view',
+  'recommendations.view',
+] as const satisfies readonly Capability[];
+
 export function isCapability(value: string): value is Capability {
   return CAPABILITY_SET.has(value);
 }

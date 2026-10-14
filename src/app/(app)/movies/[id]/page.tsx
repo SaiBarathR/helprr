@@ -61,6 +61,7 @@ import { pollCommand } from '@/lib/arr-command';
 import { useExternalUrls, useExternalUrlResolver } from '@/lib/hooks/use-external-urls';
 import { formatBytes } from '@/lib/format';
 import Link from '@/components/ui/app-link';
+import { DiscoverFilterChip } from '@/components/discover/discover-filter-chip';
 import { DiscoverVideoRail } from '@/components/discover/discover-video-rail';
 import { DiscoverMediaRail } from '@/components/discover/discover-media-rail';
 import { DiscoverWatchProvidersSection } from '@/components/discover/discover-watch-providers';
@@ -143,6 +144,7 @@ export default function MovieDetailPage() {
   const canDeleteMovie = useCan('movies.delete');
   const canManageFiles = useCan('movies.manageFiles');
   const canScheduleAlert = useCan('scheduledAlerts.edit');
+  const canViewAnime = useCan('anime.view');
   const movieWatchQuery = {
     kind: 'movie' as const,
     tmdbId: movie?.tmdbId,
@@ -423,7 +425,7 @@ export default function MovieDetailPage() {
     {
       id: 'links',
       actions: [
-        ...(movie.genres?.includes('Animation') ? [{ id: 'anilist', label: 'Search on AniList', icon: <Sparkles className="h-4 w-4" />, href: `/anime/explore?search=${encodeURIComponent(movie.title)}` }] : []),
+        ...(canViewAnime && movie.genres?.includes('Animation') ? [{ id: 'anilist', label: 'Search on AniList', icon: <Sparkles className="h-4 w-4" />, href: `/anime/explore?search=${encodeURIComponent(movie.title)}` }] : []),
         ...(movie.imdbId ? [{ id: 'imdb', label: 'Open in IMDb', icon: <ExternalLink className="h-4 w-4" />, href: `https://www.imdb.com/title/${movie.imdbId}`, external: true }] : []),
         ...(radarrExternalUrl && movie.tmdbId ? [{ id: 'radarr', label: 'Open in Radarr', icon: <Film className="h-4 w-4" />, href: `${radarrExternalUrl}/movie/${movie.tmdbId}`, external: true }] : []),
         ...(externalUrls.JELLYFIN && (movie.imdbId || movie.tmdbId) ? [{ id: 'jellyfin', label: 'Open in Jellyfin', icon: <ExternalLink className="h-4 w-4" />, onSelect: () => { void handleOpenInJellyfin(); }, disabled: jellyfinLoading }] : []),
@@ -484,7 +486,7 @@ export default function MovieDetailPage() {
                     Automatic Search
                   </DropdownMenuItem>
                 )}
-                {movie.genres?.includes('Animation') && (
+                {canViewAnime && movie.genres?.includes('Animation') && (
                   <DropdownMenuItem asChild>
                     <Link href={`/anime/explore?search=${encodeURIComponent(movie.title)}`}>
                       <Sparkles className="h-4 w-4" />
@@ -895,7 +897,7 @@ export default function MovieDetailPage() {
                               )
                             : null;
                           return (
-                            <Link
+                            <DiscoverFilterChip
                               key={company.id}
                               href={`/discover?companies=${company.id}&companyName=${encodeURIComponent(company.name)}&contentType=movie`}
                               className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-border/50 bg-accent/30"
@@ -913,7 +915,7 @@ export default function MovieDetailPage() {
                                 </div>
                               )}
                               <span className="text-xs font-medium">{company.name}</span>
-                            </Link>
+                            </DiscoverFilterChip>
                           );
                         })}
                       </div>

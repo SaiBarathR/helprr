@@ -5,6 +5,7 @@ import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
 import { useMemo } from 'react';
 import { useParams } from 'next/navigation';
 import Link from '@/components/ui/app-link';
+import { DiscoverFilterChip } from '@/components/discover/discover-filter-chip';
 import Image from 'next/image';
 import { useQuery } from '@tanstack/react-query';
 import { PageHeader } from '@/components/layout/page-header';
@@ -197,7 +198,7 @@ export default function DiscoverMovieDetailPage() {
                   ? toCachedImageSrc(`https://image.tmdb.org/t/p/w185${company.logoPath}`, 'tmdb')
                   : null;
                 return (
-                  <Link key={company.id} href={`/discover?companies=${company.id}&companyName=${encodeURIComponent(company.name)}&contentType=movie`} className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-border/50 bg-accent/30">
+                  <DiscoverFilterChip key={company.id} href={`/discover?companies=${company.id}&companyName=${encodeURIComponent(company.name)}&contentType=movie`} className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-border/50 bg-accent/30">
                     {logoSrc && (
                       <div className="relative h-5 w-8 overflow-hidden rounded-[3px] bg-white">
                         <Image
@@ -211,7 +212,7 @@ export default function DiscoverMovieDetailPage() {
                       </div>
                     )}
                     <span className="text-xs font-medium">{company.name}</span>
-                  </Link>
+                  </DiscoverFilterChip>
                 );
               })}
             </div>

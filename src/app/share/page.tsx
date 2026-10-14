@@ -1,5 +1,8 @@
 import { resolveSharedInput } from '@/lib/share/resolve-shared-input';
 import { ShareResolutionView } from '@/components/share/share-resolution-view';
+import { getCurrentUser } from '@/lib/auth';
+import { TMDB_TITLE_PAGE_CAPABILITIES } from '@/lib/capabilities';
+import { can } from '@/lib/permissions';
 
 interface SharePageProps {
   searchParams: Promise<{
@@ -13,6 +16,10 @@ export const dynamic = 'force-dynamic';
 
 export default async function SharePage({ searchParams }: SharePageProps) {
   const params = await searchParams;
+  const user = await getCurrentUser();
+  // Links only show for pages the member may open.
+  const canOpenTitle = Boolean(user && TMDB_TITLE_PAGE_CAPABILITIES.some((cap) => can(user, cap)));
+  const canOpenDiscover = Boolean(user && can(user, 'discover.view'));
   const resolved = await resolveSharedInput({
     title: params.title ?? null,
     text: params.text ?? null,
@@ -21,7 +28,7 @@ export default async function SharePage({ searchParams }: SharePageProps) {
 
   return (
     <div className="mx-auto w-full max-w-2xl animate-content-in pb-16">
-      <ShareResolutionView resolved={resolved} input={params} />
+      <ShareResolutionView resolved={resolved} input={params} canOpenTitle={canOpenTitle} canOpenDiscover={canOpenDiscover} />
     </div>
   );
 }

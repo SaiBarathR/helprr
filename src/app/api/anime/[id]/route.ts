@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth } from '@/lib/auth';
+import { requireUserAnyCapability } from '@/lib/auth';
 import { loadTaggedLibrary } from '@/lib/service-helpers';
 import { getAnimeDetail, getAnimeNextAiringEpisode } from '@/lib/anilist-client';
 import { normalizeAniListDetail, isMovieFormat } from '@/lib/anilist-helpers';
@@ -36,8 +36,8 @@ async function getHandler(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
-  const authError = await requireAuth();
-  if (authError) return authError;
+  const auth = await requireUserAnyCapability(['anime.view', 'series.view', 'watchlist.view', 'recommendations.view']);
+  if (!auth.ok) return auth.response;
 
   try {
     const { id: idStr } = await params;

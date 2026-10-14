@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getTMDBClient, loadTaggedLibrary } from '@/lib/service-helpers';
-import { requireAuth } from '@/lib/auth';
+import { requireUserCapability } from '@/lib/auth';
 import { buildLibraryLookups, matchMovieInLibrary, matchSeriesInLibrary, tmdbImageUrl } from '@/lib/discover';
 import { TmdbRateLimitError } from '@/lib/tmdb-client';
 import type { DiscoverDetail } from '@/types';
@@ -20,8 +20,8 @@ async function getLibraries() {
 }
 
 async function getHandler(request: NextRequest): Promise<NextResponse> {
-  const authError = await requireAuth();
-  if (authError) return authError;
+  const auth = await requireUserCapability('discover.view');
+  if (!auth.ok) return auth.response;
 
   try {
     const { searchParams } = new URL(request.url);

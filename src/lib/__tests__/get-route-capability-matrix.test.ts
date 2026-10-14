@@ -2,7 +2,7 @@ import { readFileSync, readdirSync } from 'fs';
 import path from 'path';
 import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
-import { CAPABILITIES } from '@/lib/capabilities';
+import { ANIME_DETAIL_PAGE_CAPABILITIES, CAPABILITIES, TMDB_TITLE_PAGE_CAPABILITIES } from '@/lib/capabilities';
 
 const AUTH_CALLS = new Set([
   'getCurrentSession',
@@ -32,20 +32,6 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
     'GET /api/users',
   ],
   authenticated: [
-    'GET /api/anime/[id]',
-    'GET /api/anime/character/[id]',
-    'GET /api/anime/home',
-    'GET /api/anime/manga/[id]',
-    'GET /api/anime/schedule',
-    'GET /api/anime/staff/[id]',
-    'GET /api/anime/studio/[id]',
-    'GET /api/discover/collection/[id]',
-    'GET /api/discover/filters',
-    'GET /api/discover/item',
-    'GET /api/discover/movie/[id]',
-    'GET /api/discover/person',
-    'GET /api/discover/tv/[id]',
-    'GET /api/discover/tv/[id]/season/[seasonNumber]',
     'GET /api/instances',
     'GET /api/settings/discover-layout',
     'GET /api/settings',
@@ -89,6 +75,8 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
     'GET /api/activity/wanted',
   ],
   'cap:anime.view': [
+    'GET /api/anime/home',
+    'GET /api/anime/schedule',
     'GET /api/anime/[id]/sonarr',
     'GET /api/anime',
   ],
@@ -108,6 +96,7 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
     'GET /api/cleanup/strikes',
   ],
   'cap:discover.view': [
+    'GET /api/discover/item',
     'GET /api/discover',
   ],
   'cap:insights.view': [
@@ -305,6 +294,23 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
     'GET /api/sonarr/qualityprofiles',
     'GET /api/sonarr/tags',
   ],
+  'any:anime.view|series.view|watchlist.view|recommendations.view': [
+    'GET /api/anime/[id]',
+    'GET /api/anime/character/[id]',
+    'GET /api/anime/manga/[id]',
+    'GET /api/anime/staff/[id]',
+    'GET /api/anime/studio/[id]',
+  ],
+  'any:discover.view|movies.view|series.view|recommendations.view|watchlist.view': [
+    'GET /api/discover/collection/[id]',
+    'GET /api/discover/movie/[id]',
+    'GET /api/discover/person',
+    'GET /api/discover/tv/[id]',
+    'GET /api/discover/tv/[id]/season/[seasonNumber]',
+  ],
+  'any:discover.view|settings.appearance': [
+    'GET /api/discover/filters',
+  ],
   'filtered-capability': [
     'GET /api/services/external-urls',
     'GET /api/services/health',
@@ -485,6 +491,11 @@ describe('GET API route capability matrix', () => {
         expect([...call!.stringArguments].sort(), route).toEqual([...capabilities].sort());
       }
     }
+  });
+
+  it('keeps the title and anime detail page guards in step with their routes', () => {
+    expect(POLICY_GROUPS[`any:${TMDB_TITLE_PAGE_CAPABILITIES.join('|')}`]).toContain('GET /api/discover/movie/[id]');
+    expect(POLICY_GROUPS[`any:${ANIME_DETAIL_PAGE_CAPABILITIES.join('|')}`]).toContain('GET /api/anime/[id]');
   });
 
   it('enforces the declared admin, authenticated, per-user, and public policies', () => {

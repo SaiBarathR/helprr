@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getTMDBClient } from '@/lib/service-helpers';
-import { requireAuth } from '@/lib/auth';
+import { requireUserAnyCapability } from '@/lib/auth';
 import { tmdbImageUrl } from '@/lib/discover';
 import { TmdbRateLimitError } from '@/lib/tmdb-client';
 import type { DiscoverSeasonDetailResponse } from '@/types';
@@ -11,8 +11,8 @@ async function getHandler(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string; seasonNumber: string }> }
 ): Promise<NextResponse> {
-  const authError = await requireAuth();
-  if (authError) return authError;
+  const auth = await requireUserAnyCapability(['discover.view', 'movies.view', 'series.view', 'recommendations.view', 'watchlist.view']);
+  if (!auth.ok) return auth.response;
 
   try {
     const { id: idStr, seasonNumber: seasonStr } = await params;

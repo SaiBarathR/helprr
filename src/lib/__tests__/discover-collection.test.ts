@@ -3,7 +3,7 @@ import { NextRequest } from 'next/server';
 import { AxiosError, AxiosHeaders } from 'axios';
 
 const mocks = vi.hoisted(() => ({
-  requireAuth: vi.fn(),
+  requireUserAnyCapability: vi.fn(),
   getCurrentUser: vi.fn(),
   getTMDBClient: vi.fn(),
   loadTaggedLibrary: vi.fn(),
@@ -12,7 +12,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('@/lib/auth', () => ({
-  requireAuth: mocks.requireAuth,
+  requireUserAnyCapability: mocks.requireUserAnyCapability,
   getCurrentUser: mocks.getCurrentUser,
 }));
 vi.mock('@/lib/api-logger', () => ({
@@ -67,7 +67,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.stubGlobal('fetch', fetchSpy);
   vi.spyOn(console, 'error').mockImplementation(() => {});
-  mocks.requireAuth.mockResolvedValue(null);
+  mocks.requireUserAnyCapability.mockResolvedValue({ ok: true, user: { id: 'member' }, session: {} });
   mocks.getCurrentUser.mockResolvedValue({ id: 'member', role: 'member' });
   mocks.getTMDBClient.mockResolvedValue({ collectionDetails: mocks.collectionDetails });
   mocks.collectionDetails.mockResolvedValue(COLLECTION);
@@ -148,9 +148,12 @@ describe('GET /api/discover/collection/[id]', () => {
     expect(await res.json()).toEqual({ error: 'Failed to load collection' });
   });
 
-  it('keeps unauthenticated requests out', async () => {
-    mocks.requireAuth.mockResolvedValueOnce(Response.json({ error: 'Unauthorized' }, { status: 401 }));
-    expect((await routeCall('10')).status).toBe(401);
+  it.each([401, 403])('stops a %i at the gate before TMDB', async (status) => {
+    mocks.requireUserAnyCapability.mockResolvedValueOnce({
+      ok: false,
+      response: Response.json({ error: status === 401 ? 'Unauthorized' : 'Forbidden' }, { status }),
+    });
+    expect((await routeCall('10')).status).toBe(status);
     expect(mocks.collectionDetails).not.toHaveBeenCalled();
   });
 });

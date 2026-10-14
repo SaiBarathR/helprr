@@ -17,9 +17,13 @@ interface ShareResolutionViewProps {
     text?: string;
     url?: string;
   };
+  /** Whether the member may open TMDB title pages (any of TMDB_TITLE_PAGE_CAPABILITIES). */
+  canOpenTitle: boolean;
+  /** Whether the member may open the Discover home (discover.view). */
+  canOpenDiscover: boolean;
 }
 
-export function ShareResolutionView({ resolved, input }: ShareResolutionViewProps) {
+export function ShareResolutionView({ resolved, input, canOpenTitle, canOpenDiscover }: ShareResolutionViewProps) {
   return (
     <div>
       <div className="px-1 pt-[calc(env(safe-area-inset-top)+0.25rem)] pb-2">
@@ -37,12 +41,16 @@ export function ShareResolutionView({ resolved, input }: ShareResolutionViewProp
         <p className="text-sm text-muted-foreground">
           {resolved.kind === 'tmdb' && 'We matched what you shared. Pick an action below.'}
           {resolved.kind === 'multi' && 'Multiple matches — pick which one you meant.'}
-          {resolved.kind === 'query' && 'We couldn’t auto-match this. Search in Discover instead.'}
-          {resolved.kind === 'unknown' && 'Nothing recognizable was shared. Try opening Discover.'}
+          {resolved.kind === 'query' && (canOpenDiscover
+            ? 'We couldn’t auto-match this. Search in Discover instead.'
+            : 'We couldn’t auto-match this.')}
+          {resolved.kind === 'unknown' && (canOpenDiscover
+            ? 'Nothing recognizable was shared. Try opening Discover.'
+            : 'Nothing recognizable was shared.')}
         </p>
       </div>
 
-      {resolved.kind === 'tmdb' && <SingleHit hit={resolved.hit} />}
+      {resolved.kind === 'tmdb' && <SingleHit hit={resolved.hit} canOpenTitle={canOpenTitle} />}
 
       {resolved.kind === 'multi' && (
         <div>
@@ -51,13 +59,13 @@ export function ShareResolutionView({ resolved, input }: ShareResolutionViewProp
           </div>
           <div className="space-y-4">
             {resolved.hits.map((hit) => (
-              <SingleHit key={`${hit.mediaType}-${hit.tmdbId}`} hit={hit} />
+              <SingleHit key={`${hit.mediaType}-${hit.tmdbId}`} hit={hit} canOpenTitle={canOpenTitle} />
             ))}
           </div>
         </div>
       )}
 
-      {resolved.kind === 'query' && <QueryFallback query={resolved.query} />}
+      {resolved.kind === 'query' && canOpenDiscover && <QueryFallback query={resolved.query} />}
 
       {resolved.kind === 'unknown' && (
         <GroupedSection>
@@ -68,13 +76,15 @@ export function ShareResolutionView({ resolved, input }: ShareResolutionViewProp
               {JSON.stringify(input, null, 2)}
             </pre>
           </div>
-          <Link
-            href="/discover"
-            className="grouped-row hover:bg-foreground/[0.03] active:bg-foreground/5 transition-colors"
-          >
-            <span className="text-sm">Open Discover</span>
-            <ExternalLink className="h-4 w-4 text-muted-foreground" />
-          </Link>
+          {canOpenDiscover && (
+            <Link
+              href="/discover"
+              className="grouped-row hover:bg-foreground/[0.03] active:bg-foreground/5 transition-colors"
+            >
+              <span className="text-sm">Open Discover</span>
+              <ExternalLink className="h-4 w-4 text-muted-foreground" />
+            </Link>
+          )}
         </GroupedSection>
       )}
     </div>
@@ -95,7 +105,7 @@ function QueryFallback({ query }: { query: string }) {
   );
 }
 
-function SingleHit({ hit }: { hit: ResolvedTmdbHit }) {
+function SingleHit({ hit, canOpenTitle }: { hit: ResolvedTmdbHit; canOpenTitle: boolean }) {
   const [busy, setBusy] = useState<'watchlist' | 'request' | null>(null);
   const [watchlistAdded, setWatchlistAdded] = useState(false);
   const [requestSent, setRequestSent] = useState(false);
@@ -214,13 +224,15 @@ function SingleHit({ hit }: { hit: ResolvedTmdbHit }) {
         </Button>
       </div>
 
-      <Link
-        href={detailHref}
-        className="mt-3 inline-flex items-center gap-1 text-xs text-primary"
-      >
-        Open in Discover
-        <ExternalLink className="h-3 w-3" />
-      </Link>
+      {canOpenTitle && (
+        <Link
+          href={detailHref}
+          className="mt-3 inline-flex items-center gap-1 text-xs text-primary"
+        >
+          Open in Discover
+          <ExternalLink className="h-3 w-3" />
+        </Link>
+      )}
 
       {(watchlistAdded || requestSent) && (
         <div className="mt-3">

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getTMDBClient } from '@/lib/service-helpers';
-import { requireAuth } from '@/lib/auth';
+import { requireUserAnyCapability } from '@/lib/auth';
 import { TmdbRateLimitError } from '@/lib/tmdb-client';
 import type { DiscoverFiltersResponse } from '@/types';
 import { withApiLogging } from '@/lib/api-logger';
@@ -31,8 +31,8 @@ async function safeTmdb<T>(
 }
 
 async function getHandler(request: NextRequest): Promise<NextResponse> {
-  const authError = await requireAuth();
-  if (authError) return authError;
+  const auth = await requireUserAnyCapability(['discover.view', 'settings.appearance']);
+  if (!auth.ok) return auth.response;
 
   try {
     const { searchParams } = new URL(request.url);
