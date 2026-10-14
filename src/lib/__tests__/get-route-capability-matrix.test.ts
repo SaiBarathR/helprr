@@ -47,7 +47,6 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
     'GET /api/discover/tv/[id]',
     'GET /api/discover/tv/[id]/season/[seasonNumber]',
     'GET /api/instances',
-    'GET /api/services/anilist/callback',
     'GET /api/settings/discover-layout',
     'GET /api/settings',
     'GET /api/settings/watch-provider-regions',
@@ -250,6 +249,7 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
     'GET /api/sonarr',
   ],
   'cap:settings.instances': [
+    'GET /api/services/anilist/callback',
     'GET /api/services',
   ],
   'cap:settings.notifications': [

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import { requireAuth } from '@/lib/auth';
+import { requireUserCapability } from '@/lib/auth';
 import {
   exchangeCodeForToken,
   loadAniListConnection,
@@ -9,20 +9,14 @@ import {
 } from '@/lib/anilist-oauth';
 import { fetchViewer } from '@/lib/anilist-mutations';
 import { withApiLogging } from '@/lib/api-logger';
+import { resolvePublicAppOrigin } from '@/lib/request-utils';
 
 const STATE_COOKIE_NAME = 'helprr-anilist-oauth-state';
 
-function originFromRequest(request: NextRequest): string {
-  const forwardedProto = request.headers.get('x-forwarded-proto');
-  const forwardedHost = request.headers.get('x-forwarded-host');
-  if (forwardedProto && forwardedHost) {
-    return `${forwardedProto}://${forwardedHost}`;
-  }
-  return request.nextUrl.origin;
-}
+const ORIGIN_NOT_CONFIGURED = 'APP_ORIGIN must be configured as a valid HTTPS origin in production';
 
-function settingsRedirect(request: NextRequest, params: Record<string, string>): NextResponse {
-  const url = new URL('/settings', originFromRequest(request));
+function settingsRedirect(origin: string, params: Record<string, string>): NextResponse {
+  const url = new URL('/settings', origin);
   for (const [key, value] of Object.entries(params)) {
     url.searchParams.set(key, value);
   }
@@ -31,44 +25,45 @@ function settingsRedirect(request: NextRequest, params: Record<string, string>):
   return response;
 }
 
-function trustedOrigin(request: NextRequest): string {
-  if (process.env.NODE_ENV !== 'production') return originFromRequest(request);
-  const configured = process.env.APP_ORIGIN;
-  if (!configured) return originFromRequest(request);
-  try {
-    return new URL(configured).origin;
-  } catch {
-    return originFromRequest(request);
-  }
-}
-
 async function getHandler(request: NextRequest): Promise<NextResponse> {
-  const authError = await requireAuth();
-  if (authError) return authError;
+  // Same capability as starting the flow: the callback replaces (or, on a
+  // failed exchange, clears) the one shared AniList connection, and its state
+  // check alone cannot stop a member who sets their own state cookie.
+  const auth = await requireUserCapability('settings.instances');
+  if (!auth.ok) return auth.response;
+
+  // Every redirect and the token exchange use the configured origin, never one
+  // built from Host or X-Forwarded-* headers.
+  const origin = resolvePublicAppOrigin(request);
+  if (!origin) {
+    const response = NextResponse.json({ error: ORIGIN_NOT_CONFIGURED }, { status: 500 });
+    response.cookies.delete(STATE_COOKIE_NAME);
+    return response;
+  }
 
   const code = request.nextUrl.searchParams.get('code');
   const state = request.nextUrl.searchParams.get('state');
   const oauthError = request.nextUrl.searchParams.get('error');
 
   if (oauthError) {
-    return settingsRedirect(request, { anilist: 'error', reason: 'denied' });
+    return settingsRedirect(origin, { anilist: 'error', reason: 'denied' });
   }
 
   const expectedState = request.cookies.get(STATE_COOKIE_NAME)?.value;
   if (!state || !expectedState || state !== expectedState) {
-    return settingsRedirect(request, { anilist: 'error', reason: 'state_mismatch' });
+    return settingsRedirect(origin, { anilist: 'error', reason: 'state_mismatch' });
   }
 
   if (!code) {
-    return settingsRedirect(request, { anilist: 'error', reason: 'missing_code' });
+    return settingsRedirect(origin, { anilist: 'error', reason: 'missing_code' });
   }
 
   const conn = await loadAniListConnection();
   if (!conn) {
-    return settingsRedirect(request, { anilist: 'error', reason: 'not_configured' });
+    return settingsRedirect(origin, { anilist: 'error', reason: 'not_configured' });
   }
 
-  const redirectUri = `${trustedOrigin(request)}/api/services/anilist/callback`;
+  const redirectUri = `${origin}/api/services/anilist/callback`;
   let viewerUnavailable = false;
 
   try {
@@ -94,7 +89,7 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
       viewerUnavailable = true;
     }
 
-    return settingsRedirect(request, {
+    return settingsRedirect(origin, {
       anilist: 'connected',
       ...(viewerUnavailable ? { reason: 'viewer_unavailable' } : {}),
     });
@@ -105,7 +100,7 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
       where: { type: 'ANILIST' },
       data: { accessToken: null, refreshToken: null, tokenExpiresAt: null, metadata: {}, username: null },
     }).catch(() => undefined);
-    return settingsRedirect(request, { anilist: 'error', reason: 'exchange_failed' });
+    return settingsRedirect(origin, { anilist: 'error', reason: 'exchange_failed' });
   }
 }
 
