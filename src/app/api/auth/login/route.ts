@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { createSession, verifyUserPassword, COOKIE_NAME, SESSION_DURATION } from '@/lib/auth';
-import { getDummyPasswordHash, verifyPasswordHash } from '@/lib/password';
+import {
+  getDummyPasswordHash,
+  hashPassword,
+  passwordHashNeedsUpgrade,
+  verifyPasswordHash,
+} from '@/lib/password';
 import {
   getClientIp,
   enforceLoginRateLimit,
@@ -20,6 +25,24 @@ import { readLoginCredentials } from '@/lib/server/login-input';
 
 // Generic so a probe can't tell "no such user" from "wrong password".
 const INVALID_CREDENTIALS = 'Invalid username or password';
+
+/**
+ * Store a current-policy hash after a hash with older scrypt parameters has
+ * just been verified. Only replaces the exact hash that was verified, so a
+ * password change made meanwhile is never overwritten. Best effort: login
+ * succeeds whether or not the write does.
+ */
+async function upgradePasswordHash(userId: string, verifiedHash: string, password: string): Promise<void> {
+  try {
+    await prisma.user.updateMany({
+      where: { id: userId, passwordHash: verifiedHash },
+      data: { passwordHash: await hashPassword(password) },
+    });
+  } catch (error) {
+    const reason = error instanceof Error ? `${error.name}: ${error.message}` : 'unknown error';
+    console.error(`[Auth] Password hash upgrade failed for user ${userId}: ${reason}`);
+  }
+}
 
 async function postHandler(request: NextRequest): Promise<NextResponse> {
   const malformedBackstop = await enforceMalformedLoginBackstop();
@@ -66,6 +89,10 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   }
 
   await clearUsernameBackoff(username);
+
+  if (user.passwordHash && passwordHashNeedsUpgrade(user.passwordHash)) {
+    await upgradePasswordHash(user.id, user.passwordHash, password);
+  }
 
   if (ip !== undefined) {
     try {

@@ -91,6 +91,23 @@ export function isSupportedPasswordHash(stored: string): boolean {
   return parsePasswordHash(stored) !== null;
 }
 
+/**
+ * Whether a supported stored hash was made with parameters other than the
+ * current policy (cost, key length, or a salt shorter than today's), so the
+ * login that just verified it should store a fresh hash. Malformed or
+ * unsupported values return false: they never verify, so there is nothing to
+ * upgrade.
+ */
+export function passwordHashNeedsUpgrade(stored: string): boolean {
+  const parsed = parsePasswordHash(stored);
+  if (!parsed) return false;
+  return parsed.N !== SCRYPT_N
+    || parsed.r !== SCRYPT_R
+    || parsed.p !== SCRYPT_P
+    || parsed.expected.length !== KEYLEN
+    || parsed.salt.length < SALT_BYTES;
+}
+
 /** Hash a plaintext password into a self-describing `scrypt$N$r$p$salt$hash` string. */
 export async function hashPassword(plain: string): Promise<string> {
   const salt = randomBytes(SALT_BYTES);
