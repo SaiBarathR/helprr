@@ -52,6 +52,16 @@ export function handleAuthError(error: unknown) {
   window.location.assign(`/login?next=${encodeURIComponent(next)}`);
 }
 
+/**
+ * Called when this browser's session has ended on purpose (sign-out, revoking
+ * the current session). Queries that refetch with the dead cookie must not
+ * jump to Login while the user-scoped caches are still being cleared; the
+ * caller navigates once the clear has finished.
+ */
+export function holdLoginRedirect(): void {
+  redirectingToLogin = true;
+}
+
 let browserQueryClient: QueryClient | undefined;
 
 export function getQueryClient(): QueryClient {

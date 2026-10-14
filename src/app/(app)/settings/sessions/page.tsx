@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import Link from '@/components/ui/app-link';
-import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
 import { ChevronLeft, Loader2, LogOut, Monitor, Pencil } from 'lucide-react';
 import { toast } from 'sonner';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -20,6 +19,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { endSessionInThisBrowser } from '@/lib/client-cache';
 import { Label } from '@/components/ui/label';
 
 interface Session {
@@ -83,8 +83,16 @@ function relativeTime(iso: string | null): string {
   return new Date(iso).toLocaleDateString();
 }
 
+const REVOKE_TIMEOUT_MS = 5_000;
+const GATEWAY_STATUSES = new Set([502, 503, 504]);
+
+class RevokeRefusedError extends Error {
+  constructor() {
+    super('Failed to revoke session');
+  }
+}
+
 export default function SessionsPage() {
-  const router = useRouter();
   const queryClient = useQueryClient();
   const [confirmTarget, setConfirmTarget] = useState<Session | null>(null);
   const [confirmOthers, setConfirmOthers] = useState(false);
@@ -109,14 +117,29 @@ export default function SessionsPage() {
 
   const revokeMutation = useMutation({
     mutationFn: async (session: Session) => {
-      const res = await fetch(`/api/sessions/${session.id}/revoke`, { method: 'POST' });
-      if (!res.ok) throw new Error('Failed to revoke session');
-      return (await res.json()) as { wasCurrent?: boolean };
+      try {
+        // Bounded like Account sign-out; the limit covers reading the body too.
+        const res = await fetch(`/api/sessions/${session.id}/revoke`, {
+          method: 'POST',
+          signal: AbortSignal.timeout(REVOKE_TIMEOUT_MS),
+        });
+        // A gateway error may come after the server already revoked it.
+        if (!res.ok && !GATEWAY_STATUSES.has(res.status)) throw new RevokeRefusedError();
+        if (!res.ok) throw new Error('Revoke response lost at the gateway');
+        return (await res.json()) as { wasCurrent?: boolean };
+      } catch (error) {
+        // A lost or unreadable response is indeterminate: the server may have
+        // revoked this browser's session already. As with Account sign-out,
+        // end it here too rather than keep a possibly dead session's data.
+        if (session.isCurrent && !(error instanceof RevokeRefusedError)) return { wasCurrent: true };
+        throw error;
+      }
     },
     onSuccess: (data, session) => {
       if (data.wasCurrent) {
-        toast.success('Signed out');
-        router.push('/login');
+        // This browser's own session ended: clear it like Account sign-out
+        // before Login, so the next user here never sees this one's data.
+        endSessionInThisBrowser();
         return;
       }
       toast.success(`Revoked ${displayName(session)}`);
