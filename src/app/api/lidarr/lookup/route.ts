@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getLidarrClient } from '@/lib/service-helpers';
-import { requireAuth } from '@/lib/auth';
+import { requireUserCapability } from '@/lib/auth';
 import type { LidarrArtistLookupResult } from '@/types';
 import { withApiLogging } from '@/lib/api-logger';
 import { upstreamErrorResponse } from '@/lib/api-error';
 
 async function getHandler(request: NextRequest) {
-  const authError = await requireAuth();
-  if (authError) return authError;
+  const auth = await requireUserCapability('music.add');
+  if (!auth.ok) return auth.response;
 
   try {
     const { searchParams } = new URL(request.url);

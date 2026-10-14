@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireUser, requireUserCapability } from '@/lib/auth';
+import { requireUserAnyCapability, requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import {
   createLayout,
@@ -10,7 +10,9 @@ import {
 } from '@/lib/dashboard-layouts';
 
 async function getHandler() {
-  const auth = await requireUser();
+  // The dashboard's layout switcher reads this under dashboard.view, and the
+  // Settings → Dashboard refresh page under settings.dashboardRefresh.
+  const auth = await requireUserAnyCapability(['dashboard.view', 'settings.dashboardRefresh']);
   if (!auth.ok) return auth.response;
 
   try {

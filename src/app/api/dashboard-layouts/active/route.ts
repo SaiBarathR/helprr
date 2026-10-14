@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireUser } from '@/lib/auth';
+import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { seedInitialLayouts, getActiveLayoutForUser } from '@/lib/dashboard-layouts';
 
 async function getHandler(request: NextRequest) {
-  const auth = await requireUser();
+  const auth = await requireUserCapability('dashboard.view');
   if (!auth.ok) return auth.response;
 
   const device = request.nextUrl.searchParams.get('device');

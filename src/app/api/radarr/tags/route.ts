@@ -3,15 +3,15 @@ import { getRadarrClient } from '@/lib/service-helpers';
 import { RadarrClient } from '@/lib/radarr-client';
 import { resolveConnection } from '@/lib/arr-instances';
 import { getConnectionHeaders } from '@/lib/service-connection-secrets';
-import { requireAuth, requireUserCapability } from '@/lib/auth';
+import { requireUserCapability, requireUserAnyCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { REFERENCE_CACHE_HEADERS } from '@/lib/cache/reference-headers';
 import { invalidateReferenceLabels } from '@/lib/cache/reference-labels';
 import { upstreamErrorResponse } from '@/lib/api-error';
 
 async function getHandler(request: NextRequest) {
-  const authError = await requireAuth();
-  if (authError) return authError;
+  const auth = await requireUserAnyCapability(['movies.view', 'movies.add']);
+  if (!auth.ok) return auth.response;
 
   try {
     const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;

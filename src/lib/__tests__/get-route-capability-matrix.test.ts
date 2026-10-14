@@ -13,6 +13,7 @@ const AUTH_CALLS = new Set([
   'requireCapability',
   'requireSession',
   'requireUser',
+  'requireUserAnyCapability',
   'requireUserCapability',
 ]);
 
@@ -46,31 +47,14 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
     'GET /api/discover/tv/[id]',
     'GET /api/discover/tv/[id]/season/[seasonNumber]',
     'GET /api/instances',
-    'GET /api/lidarr/lookup',
-    'GET /api/lidarr/metadataprofiles',
-    'GET /api/lidarr/qualityprofiles',
-    'GET /api/radarr/credit',
-    'GET /api/radarr/languages',
-    'GET /api/radarr/lookup',
-    'GET /api/radarr/qualitydefinitions',
-    'GET /api/radarr/qualityprofiles',
-    'GET /api/radarr/tags',
     'GET /api/services/anilist/callback',
     'GET /api/settings/discover-layout',
     'GET /api/settings',
     'GET /api/settings/watch-provider-regions',
-    'GET /api/sonarr/[id]/credits',
-    'GET /api/sonarr/languages',
-    'GET /api/sonarr/lookup',
-    'GET /api/sonarr/qualitydefinitions',
-    'GET /api/sonarr/qualityprofiles',
-    'GET /api/sonarr/tags',
   ],
   'authenticated/per-user': [
     'GET /api/account/jellyfin/link',
     'GET /api/badges',
-    'GET /api/dashboard-layouts/active',
-    'GET /api/dashboard-layouts',
     'GET /api/image',
     'GET /api/lidarr/rootfolders',
     'GET /api/me',
@@ -186,10 +170,13 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
     'GET /api/logs/search',
   ],
   'cap:movies.manageFiles': [
+    'GET /api/radarr/languages',
+    'GET /api/radarr/qualitydefinitions',
     'GET /api/radarr/config',
     'GET /api/radarr/manualimport/scan',
   ],
   'cap:movies.view': [
+    'GET /api/radarr/credit',
     'GET /api/radarr/[id]',
     'GET /api/radarr/collections',
     'GET /api/radarr/history/movie',
@@ -249,14 +236,16 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
     'GET /api/scheduled-alerts',
   ],
   'cap:series.manageFiles': [
+    'GET /api/sonarr/languages',
+    'GET /api/sonarr/qualitydefinitions',
     'GET /api/sonarr/config',
     'GET /api/sonarr/manualimport/scan',
   ],
   'cap:series.view': [
+    'GET /api/sonarr/[id]/credits',
     'GET /api/library-gaps',
     'GET /api/sonarr/[id]/anime/candidates',
     'GET /api/sonarr/[id]/anime',
-    'GET /api/sonarr/[id]/episodes',
     'GET /api/sonarr/[id]',
     'GET /api/sonarr/episodefile',
     'GET /api/sonarr',
@@ -285,6 +274,36 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
   'cap:watchlist.view': [
     'GET /api/watchlist',
     'GET /api/watchlist/tags',
+  ],
+  'cap:dashboard.view': [
+    'GET /api/dashboard-layouts/active',
+  ],
+  'cap:series.add': [
+    'GET /api/sonarr/lookup',
+  ],
+  'cap:movies.add': [
+    'GET /api/radarr/lookup',
+  ],
+  'cap:music.add': [
+    'GET /api/lidarr/lookup',
+  ],
+  'any:dashboard.view|settings.dashboardRefresh': [
+    'GET /api/dashboard-layouts',
+  ],
+  'any:movies.view|movies.add': [
+    'GET /api/radarr/qualityprofiles',
+    'GET /api/radarr/tags',
+  ],
+  'any:music.view|music.add': [
+    'GET /api/lidarr/metadataprofiles',
+    'GET /api/lidarr/qualityprofiles',
+  ],
+  'any:series.view|activity.manage': [
+    'GET /api/sonarr/[id]/episodes',
+  ],
+  'any:series.view|series.add': [
+    'GET /api/sonarr/qualityprofiles',
+    'GET /api/sonarr/tags',
   ],
   'filtered-capability': [
     'GET /api/services/external-urls',
@@ -447,6 +466,23 @@ describe('GET API route capability matrix', () => {
             || hasCall(evidence, 'requireUserCapability', capability),
           `${route} must require ${capability}`,
         ).toBe(true);
+      }
+    }
+  });
+
+  it('enforces every any-capability policy with the any-of helper', () => {
+    const known = new Set<string>(CAPABILITIES);
+    for (const [policy, routes] of Object.entries(POLICY_GROUPS)) {
+      if (!policy.startsWith('any:')) continue;
+      const capabilities = policy.slice(4).split('|');
+      expect(capabilities.length, policy).toBeGreaterThan(1);
+      for (const capability of capabilities) {
+        expect(known.has(capability), `Unknown GET matrix capability: ${capability}`).toBe(true);
+      }
+      for (const route of routes) {
+        const call = handlers.get(route)!.calls.find((c) => c.name === 'requireUserAnyCapability');
+        expect(call, `${route} must use requireUserAnyCapability`).toBeDefined();
+        expect([...call!.stringArguments].sort(), route).toEqual([...capabilities].sort());
       }
     }
   });

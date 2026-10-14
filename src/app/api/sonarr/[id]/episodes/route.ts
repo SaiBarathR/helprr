@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSonarrClient } from '@/lib/service-helpers';
-import { requireUserCapability } from '@/lib/auth';
+import { requireUserAnyCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { upstreamErrorResponse } from '@/lib/api-error';
 
@@ -8,7 +8,7 @@ async function getHandler(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const auth = await requireUserCapability('series.view');
+  const auth = await requireUserAnyCapability(['series.view', 'activity.manage']);
   if (!auth.ok) return auth.response;
 
   try {

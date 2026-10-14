@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSonarrClient, getTMDBClient } from '@/lib/service-helpers';
-import { requireAuth } from '@/lib/auth';
+import { requireUserCapability } from '@/lib/auth';
 import { tmdbImageUrl } from '@/lib/discover';
 import { crewRolePriority } from '@/lib/crew-priority';
 import { withApiLogging } from '@/lib/api-logger';
@@ -12,8 +12,8 @@ async function getHandler(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const authError = await requireAuth();
-  if (authError) return authError;
+  const auth = await requireUserCapability('series.view');
+  if (!auth.ok) return auth.response;
 
   try {
     const { id } = await params;
