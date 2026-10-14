@@ -41,10 +41,12 @@ export function resolvePublicAppOrigin(request: NextRequest): string | null {
   if (process.env.TRUST_FORWARDED_PROTO === 'true') {
     const proto = request.headers.get('x-forwarded-proto')?.trim().toLowerCase();
     const host = request.headers.get('x-forwarded-host')?.trim();
-    if (proto && host && !proto.includes(',') && !host.includes(',') && /^https?$/.test(proto)) {
+    // A bare host[:port] only: URL parsing would accept "host/path" or
+    // "name@host" and quietly turn them into some other origin.
+    const bareHost = /^(?:[a-z0-9.-]+|\[[0-9a-f:.]+\])(?::\d{1,5})?$/i;
+    if (proto && host && /^https?$/.test(proto) && bareHost.test(host)) {
       const forwarded = parseBareOrigin(`${proto}://${host}`, false);
-      // URL parsing would read "host/path" or "host@other" as a valid origin.
-      if (forwarded && new URL(forwarded).host === host.toLowerCase()) return forwarded;
+      if (forwarded) return forwarded;
     }
   }
   return request.nextUrl.origin;

@@ -36,6 +36,15 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     );
   }
 
+  // Checked before anything is saved, so a bad APP_ORIGIN leaves no half-set-up connection.
+  const origin = resolvePublicAppOrigin(request);
+  if (!origin) {
+    return NextResponse.json(
+      { error: 'APP_ORIGIN must be configured as a valid HTTPS origin in production' },
+      { status: 500 }
+    );
+  }
+
   const trimmedClientId = clientId.trim();
   const resolvedSecret = await resolveApiKeyForService('ANILIST', clientSecret.trim(), ANILIST_GRAPHQL_URL);
   if (resolvedSecret === null) {
@@ -62,14 +71,6 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
         externalUrl: trimmedClientId,
       },
     });
-  }
-
-  const origin = resolvePublicAppOrigin(request);
-  if (!origin) {
-    return NextResponse.json(
-      { error: 'APP_ORIGIN must be configured as a valid HTTPS origin in production' },
-      { status: 500 }
-    );
   }
 
   const state = randomBytes(24).toString('hex');

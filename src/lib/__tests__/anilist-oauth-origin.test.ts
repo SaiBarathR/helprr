@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
 const mocks = vi.hoisted(() => ({
-  requireAuth: vi.fn(),
   requireUserCapability: vi.fn(),
   exchangeCodeForToken: vi.fn(),
   loadAniListConnection: vi.fn(),
@@ -17,7 +16,6 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('@/lib/auth', () => ({
-  requireAuth: mocks.requireAuth,
   requireUserCapability: mocks.requireUserCapability,
 }));
 vi.mock('@/lib/api-logger', () => ({
@@ -73,7 +71,6 @@ function originOf(location: string | null) {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mocks.requireAuth.mockResolvedValue(null);
   mocks.requireUserCapability.mockResolvedValue({ ok: true, user: { id: 'admin', role: 'admin' } });
   mocks.loadAniListConnection.mockResolvedValue({ clientId: 'client-1', clientSecret: 'not-a-real-secret' });
   mocks.exchangeCodeForToken.mockResolvedValue({ access_token: 'token' });
@@ -113,6 +110,15 @@ describe('resolvePublicAppOrigin', () => {
     vi.stubEnv('TRUST_FORWARDED_PROTO', undefined);
     const request = new NextRequest('http://localhost:3050/api/services/anilist/callback', { headers: SPOOFED });
     expect(resolvePublicAppOrigin(request)).toBe('http://localhost:3050');
+  });
+
+  it('accepts a forwarded host with the default port', () => {
+    vi.stubEnv('NODE_ENV', 'development');
+    vi.stubEnv('TRUST_FORWARDED_PROTO', 'true');
+    const request = new NextRequest('http://localhost:3050/x', {
+      headers: { 'x-forwarded-host': 'dev.example:443', 'x-forwarded-proto': 'https' },
+    });
+    expect(resolvePublicAppOrigin(request)).toBe('https://dev.example');
   });
 
   it('honours one valid forwarded origin in development only with the trusted-proxy flag', () => {
@@ -192,6 +198,25 @@ describe('AniList OAuth routes in production', () => {
     const res = await authorizePost(authorizeRequest(SPOOFED));
     expect(res.status).toBe(500);
     expect((await res.json()).error).toMatch(/APP_ORIGIN/);
+  });
+});
+
+describe('AniList OAuth callback authorization', () => {
+  it('refuses a member without settings.instances before touching the connection', async () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('APP_ORIGIN', CONFIGURED);
+    mocks.requireUserCapability.mockResolvedValueOnce({
+      ok: false,
+      response: Response.json({ error: 'Forbidden' }, { status: 403 }),
+    });
+    // A member can choose a matching state query and cookie themselves.
+    const res = await callbackGet(callbackRequest('code=bad&state=state-1'));
+
+    expect(res.status).toBe(403);
+    expect(mocks.requireUserCapability).toHaveBeenCalledWith('settings.instances');
+    expect(mocks.exchangeCodeForToken).not.toHaveBeenCalled();
+    expect(mocks.persistTokenResponse).not.toHaveBeenCalled();
+    expect(mocks.updateMany).not.toHaveBeenCalled();
   });
 });
 

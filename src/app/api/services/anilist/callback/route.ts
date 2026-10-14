@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import { requireAuth } from '@/lib/auth';
+import { requireUserCapability } from '@/lib/auth';
 import {
   exchangeCodeForToken,
   loadAniListConnection,
@@ -26,8 +26,11 @@ function settingsRedirect(origin: string, params: Record<string, string>): NextR
 }
 
 async function getHandler(request: NextRequest): Promise<NextResponse> {
-  const authError = await requireAuth();
-  if (authError) return authError;
+  // Same capability as starting the flow: the callback replaces (or, on a
+  // failed exchange, clears) the one shared AniList connection, and its state
+  // check alone cannot stop a member who sets their own state cookie.
+  const auth = await requireUserCapability('settings.instances');
+  if (!auth.ok) return auth.response;
 
   // Every redirect and the token exchange use the configured origin, never one
   // built from Host or X-Forwarded-* headers.
