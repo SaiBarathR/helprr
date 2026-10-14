@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   requireUserCapability: vi.fn(),
   getTMDBClient: vi.fn(),
   loadTaggedLibrary: vi.fn(),
+  getCachedTaggedLibrary: vi.fn(),
 }));
 
 vi.mock('@/lib/auth', () => ({
@@ -16,7 +17,13 @@ vi.mock('@/lib/api-logger', () => ({
 }));
 vi.mock('@/lib/service-helpers', () => ({
   getTMDBClient: mocks.getTMDBClient,
-  loadTaggedLibrary: mocks.loadTaggedLibrary,
+  getRadarrClients: vi.fn(),
+  getSonarrClients: vi.fn(),
+}));
+// The route reads library state through the shared tagged-library cache; each
+// request asks for it once, and this mock answers from the current library.
+vi.mock('@/lib/cache/tagged-library', () => ({
+  getCachedTaggedLibrary: mocks.getCachedTaggedLibrary,
 }));
 
 const MOVIE = { id: 101, title: 'Catalog Movie', release_date: '2024-01-01', popularity: 5 };
@@ -82,6 +89,14 @@ describe('GET /api/discover sections cache', () => {
     vi.useRealTimers();
     mocks.requireUserCapability.mockResolvedValue(allowed);
     mocks.loadTaggedLibrary.mockResolvedValue(library([]));
+    let pending: Promise<ReturnType<typeof library>> | null = null;
+    mocks.getCachedTaggedLibrary.mockImplementation(async ({ scope }: { scope: string }) => {
+      // Radarr and Sonarr are read together; one library snapshot serves both.
+      pending ??= mocks.loadTaggedLibrary();
+      const snapshot = await pending;
+      if (scope === 'sonarr') pending = null;
+      return { items: scope === 'radarr' ? snapshot.movies : snapshot.series };
+    });
   });
 
   it('rejects an unauthenticated request before returning a warm cached body', async () => {
@@ -158,6 +173,33 @@ describe('GET /api/discover sections cache', () => {
 
     expect(before.library?.exists ?? false).toBe(false);
     expect(after.library).toMatchObject({ exists: true, id: MOVIE.id * 10 });
+  });
+
+  it('drops library state for an item removed between two requests', async () => {
+    mocks.getTMDBClient.mockResolvedValue(tmdbClient());
+    const { GET } = await loadRoute();
+
+    mocks.loadTaggedLibrary.mockResolvedValueOnce(library([MOVIE.id]));
+    const before = popularMovie(await (await GET(sectionsRequest())).json());
+    mocks.loadTaggedLibrary.mockResolvedValueOnce(library([]));
+    const after = popularMovie(await (await GET(sectionsRequest())).json());
+
+    expect(before.library).toMatchObject({ exists: true });
+    // Would still be present if an annotated body had reached the catalog cache.
+    expect(after.library?.exists ?? false).toBe(false);
+  });
+
+  it('still serves the catalog when library state cannot be read', async () => {
+    mocks.getTMDBClient.mockResolvedValue(tmdbClient());
+    const { GET } = await loadRoute();
+    mocks.getCachedTaggedLibrary.mockRejectedValue(new Error('database unavailable'));
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const res = await GET(sectionsRequest());
+    warn.mockRestore();
+
+    expect(res.status).toBe(200);
+    expect(popularMovie(await res.json())).toMatchObject({ title: MOVIE.title });
   });
 
   it('falls back to the cached catalog with the current library when TMDB fails', async () => {

@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getTMDBClient, loadTaggedLibrary } from '@/lib/service-helpers';
+import { getRadarrClients, getSonarrClients, getTMDBClient, loadTaggedLibrary } from '@/lib/service-helpers';
+import { getCachedTaggedLibrary, type Tagged } from '@/lib/cache/tagged-library';
 import { requireUserCapability } from '@/lib/auth';
 import { annotateDiscoverItems, dedupeDiscoverItems, normalizeTmdbItem } from '@/lib/discover';
 import { TmdbRateLimitError } from '@/lib/tmdb-client';
 import type {
   DiscoverContentType,
+  RadarrMovie,
+  SonarrSeries,
   DiscoverFilters,
   DiscoverItem,
   DiscoverResponse,
@@ -410,8 +413,32 @@ async function buildCatalogSections() {
   };
 }
 
+// Library state comes from the shared tagged-library cache (the same entries
+// /api/radarr and /api/sonarr serve), which add/delete routes invalidate, so a
+// newly added title shows as present on the next request. If it cannot be read
+// the catalog is returned without library state rather than failing.
 async function annotateSectionsForCurrentLibrary(catalog: DiscoverSections): Promise<DiscoverSections> {
-  const { movies, series } = await getLibraries();
+  let movies: Tagged<RadarrMovie>[];
+  let series: Tagged<SonarrSeries>[];
+  try {
+    [{ items: movies }, { items: series }] = await Promise.all([
+      getCachedTaggedLibrary({
+        scope: 'radarr',
+        cacheKeySeed: 'all',
+        getInstances: getRadarrClients,
+        fetchOne: (client) => client.getMovies(),
+      }),
+      getCachedTaggedLibrary({
+        scope: 'sonarr',
+        cacheKeySeed: 'all',
+        getInstances: getSonarrClients,
+        fetchOne: (client) => client.getSeries(),
+      }),
+    ]);
+  } catch (error) {
+    console.warn('[Discover] Library state unavailable:', error instanceof Error ? error.message : error);
+    return catalog;
+  }
 
   return catalog.map((section) => {
     if (section?.type !== 'media') return section;
