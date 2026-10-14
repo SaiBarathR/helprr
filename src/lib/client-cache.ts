@@ -114,6 +114,34 @@ export function subscribeToAuthenticationBoundaries(
   };
 }
 
+const sessionEndListeners = new Set<() => void>();
+
+/** QueryProvider registers here to run the boundary when this tab's session ends. */
+export function subscribeToSessionEnd(onSessionEnd: () => void): () => void {
+  sessionEndListeners.add(onSessionEnd);
+  return () => {
+    sessionEndListeners.delete(onSessionEnd);
+  };
+}
+
+/**
+ * This browser's own session has ended: Account sign-out, or revoking the
+ * current session from Sessions. Tells other tabs, then hands over to
+ * QueryProvider, which replaces the whole app with a neutral screen, clears the
+ * query cache and the user-scoped caches, and only then opens Login. It does
+ * not depend on the page that called it staying mounted.
+ */
+export function endSessionInThisBrowser(): void {
+  if (typeof window === 'undefined') return;
+  broadcastAuthenticationBoundary();
+  if (sessionEndListeners.size === 0) {
+    // Outside the app shell; Login clears the caches before signing in again.
+    window.location.replace('/login');
+    return;
+  }
+  for (const listener of [...sessionEndListeners]) listener();
+}
+
 export async function requestSessionLogout(): Promise<SessionLogoutResult> {
   if (typeof window === 'undefined') return 'failed';
 

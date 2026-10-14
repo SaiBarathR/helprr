@@ -16,6 +16,8 @@ const mocks = vi.hoisted(() => ({
   invalidateQueries: vi.fn(),
   invalidateExternalUrls: vi.fn(),
   subscribe: vi.fn(),
+  subscribeSessionEnd: vi.fn(),
+  holdLoginRedirect: vi.fn(),
 }));
 
 vi.mock('@tanstack/react-query', () => ({
@@ -25,6 +27,7 @@ vi.mock('@tanstack/react-query-devtools', () => ({
   ReactQueryDevtools: () => null,
 }));
 vi.mock('@/lib/query-client', () => ({
+  holdLoginRedirect: mocks.holdLoginRedirect,
   getQueryClient: () => ({
     cancelQueries: mocks.cancelQueries,
     clear: mocks.clearQueryClient,
@@ -37,12 +40,14 @@ vi.mock('@/lib/hooks/use-external-urls', () => ({
 vi.mock('@/lib/client-cache', () => ({
   clearUserScopedBrowserCaches: mocks.clearBrowserCaches,
   subscribeToAuthenticationBoundaries: mocks.subscribe,
+  subscribeToSessionEnd: mocks.subscribeSessionEnd,
 }));
 
 import { QueryProvider } from '@/components/query-provider';
 
 let root: Root;
 let boundaryCallback: (() => void) | undefined;
+let sessionEndCallback: (() => void) | undefined;
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -50,8 +55,13 @@ beforeEach(() => {
     IS_REACT_ACT_ENVIRONMENT: boolean;
   }).IS_REACT_ACT_ENVIRONMENT = true;
   boundaryCallback = undefined;
+  sessionEndCallback = undefined;
   mocks.subscribe.mockImplementation((callback: () => void) => {
     boundaryCallback = callback;
+    return vi.fn();
+  });
+  mocks.subscribeSessionEnd.mockImplementation((callback: () => void) => {
+    sessionEndCallback = callback;
     return vi.fn();
   });
   document.body.innerHTML = '<div id="root"></div>';
@@ -137,5 +147,59 @@ describe('QueryProvider authentication boundaries', () => {
     expect(mocks.clearBrowserCaches).toHaveBeenCalledOnce();
     expect(privateTreePresentWhenClearStarted).toBe(false);
     expect(boundaryScreenPresentWhenClearStarted).toBe(true);
+  });
+
+  it('reloads after another tab\'s boundary once the caches are clear', async () => {
+    const reload = vi.fn();
+    const replace = vi.fn();
+    vi.stubGlobal('location', { ...window.location, reload, replace });
+    mocks.clearBrowserCaches.mockResolvedValue(undefined);
+
+    await act(async () => {
+      root.render(createElement(QueryProvider, null, 'Private content'));
+    });
+    await act(async () => boundaryCallback?.());
+
+    expect(mocks.holdLoginRedirect).toHaveBeenCalledOnce();
+    expect(reload).toHaveBeenCalledOnce();
+    expect(replace).not.toHaveBeenCalled();
+  });
+
+  it('ends this tab\'s own session behind the whole-app screen, then opens Login', async () => {
+    const order: string[] = [];
+    const replace = vi.fn(() => order.push('replace /login'));
+    vi.stubGlobal('location', { ...window.location, reload: vi.fn(), replace });
+    mocks.holdLoginRedirect.mockImplementation(() => order.push('hold login redirect'));
+    mocks.clearQueryClient.mockImplementation(() => order.push('clear query client'));
+    mocks.clearBrowserCaches.mockImplementation(async () => {
+      order.push(document.querySelector('[data-private-content]') ? 'clear with app mounted' : 'clear behind screen');
+    });
+
+    await act(async () => {
+      root.render(createElement(
+        QueryProvider,
+        null,
+        createElement('div', { 'data-private-content': true }, 'Private content'),
+      ));
+    });
+    await act(async () => sessionEndCallback?.());
+
+    expect(order).toEqual(['hold login redirect', 'clear query client', 'clear behind screen', 'replace /login']);
+    expect(mocks.invalidateExternalUrls).toHaveBeenCalledOnce();
+  });
+
+  it('stays on the error screen without navigating when the clear fails', async () => {
+    const replace = vi.fn();
+    vi.stubGlobal('location', { ...window.location, reload: vi.fn(), replace });
+    mocks.clearBrowserCaches.mockRejectedValue(new Error('cache delete timed out'));
+
+    await act(async () => {
+      root.render(createElement(QueryProvider, null, 'Private content'));
+    });
+    await act(async () => sessionEndCallback?.());
+
+    expect(replace).not.toHaveBeenCalled();
+    expect(document.body.textContent).toContain('Browser data could not be cleared');
+    expect(document.body.textContent).not.toContain('Private content');
   });
 });

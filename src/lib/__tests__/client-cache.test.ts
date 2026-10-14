@@ -2,8 +2,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   broadcastAuthenticationBoundary,
   clearUserScopedBrowserCaches,
+  endSessionInThisBrowser,
   requestSessionLogout,
   subscribeToAuthenticationBoundaries,
+  subscribeToSessionEnd,
 } from '@/lib/client-cache';
 
 afterEach(() => {
@@ -227,5 +229,37 @@ describe('client authentication cache boundaries', () => {
     } as StorageEvent);
     expect(onBoundary).toHaveBeenCalledTimes(2);
     unsubscribe();
+  });
+});
+
+describe('ending this browser session', () => {
+  function stubWindow() {
+    const setItem = vi.fn();
+    const replace = vi.fn();
+    vi.stubGlobal('BroadcastChannel', undefined);
+    vi.stubGlobal('window', { localStorage: { setItem }, location: { replace } });
+    return { setItem, replace };
+  }
+
+  it('tells other tabs and hands over to the app shell', () => {
+    const { setItem, replace } = stubWindow();
+    const onSessionEnd = vi.fn();
+    const unsubscribe = subscribeToSessionEnd(onSessionEnd);
+
+    endSessionInThisBrowser();
+    unsubscribe();
+
+    expect(setItem).toHaveBeenCalledWith('helprr:authentication-boundary', expect.any(String));
+    expect(onSessionEnd).toHaveBeenCalledOnce();
+    // The app shell navigates once the caches are clear, not before.
+    expect(replace).not.toHaveBeenCalled();
+  });
+
+  it('goes to Login directly when no app shell is listening', () => {
+    const { replace } = stubWindow();
+
+    endSessionInThisBrowser();
+
+    expect(replace).toHaveBeenCalledWith('/login');
   });
 });

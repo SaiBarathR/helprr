@@ -4,10 +4,11 @@ import { useEffect, useRef, useState } from 'react';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import { refreshAfterReconnect } from '@/lib/reconnect-queries';
-import { getQueryClient } from '@/lib/query-client';
+import { getQueryClient, holdLoginRedirect } from '@/lib/query-client';
 import {
   clearUserScopedBrowserCaches,
   subscribeToAuthenticationBoundaries,
+  subscribeToSessionEnd,
 } from '@/lib/client-cache';
 import { invalidateExternalUrls } from '@/lib/hooks/use-external-urls';
 import { invalidateNotificationSubscriptions } from '@/lib/notification-subscription-cache';
@@ -19,7 +20,9 @@ import {
 export function QueryProvider({ children }: { children: React.ReactNode }) {
   // Singleton on the client (see getQueryClient); safe to call during render.
   const queryClient = getQueryClient();
-  const [authenticationBoundaryActive, setAuthenticationBoundaryActive] = useState(false);
+  // Where to go once the caches are clear: reload when another tab's session
+  // changed, Login when this tab's own session ended.
+  const [authenticationBoundary, setAuthenticationBoundary] = useState<'reload' | 'login' | null>(null);
   const [authenticationBoundaryError, setAuthenticationBoundaryError] = useState(false);
   const boundaryClearStarted = useRef(false);
   useEffect(() => {
@@ -47,16 +50,25 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
   }, [queryClient]);
   useEffect(() => {
     let handlingBoundary = false;
-    return subscribeToAuthenticationBoundaries(() => {
+    const begin = (destination: 'reload' | 'login') => {
       if (handlingBoundary) return;
       handlingBoundary = true;
+      // Queries that refetch with the dead cookie must not jump to Login
+      // while the caches below are still being cleared.
+      holdLoginRedirect();
       // Blank mounted state synchronously with the boundary notification. A
       // reload is safe only after this realm confirms its persistent caches are
       // gone; otherwise the service worker could replay the prior identity.
-      setAuthenticationBoundaryActive(true);
+      setAuthenticationBoundary(destination);
       queryClient.clear();
       invalidateExternalUrls();
-    });
+    };
+    const unsubscribeOtherTabs = subscribeToAuthenticationBoundaries(() => begin('reload'));
+    const unsubscribeThisTab = subscribeToSessionEnd(() => begin('login'));
+    return () => {
+      unsubscribeOtherTabs();
+      unsubscribeThisTab();
+    };
   }, [queryClient]);
   useEffect(() => {
     const onMessage = (event: MessageEvent<unknown>) => {
@@ -73,16 +85,19 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
     return () => navigator.serviceWorker?.removeEventListener('message', onMessage);
   }, [queryClient]);
   useEffect(() => {
-    if (!authenticationBoundaryActive || boundaryClearStarted.current) return;
+    if (!authenticationBoundary || boundaryClearStarted.current) return;
     boundaryClearStarted.current = true;
     // Effects run only after React commits the neutral boundary screen, so no
     // cached reload can race ahead of unmounting the authenticated tree.
     void clearUserScopedBrowserCaches()
-      .then(() => window.location.reload())
+      .then(() => {
+        if (authenticationBoundary === 'login') window.location.replace('/login');
+        else window.location.reload();
+      })
       .catch(() => setAuthenticationBoundaryError(true));
-  }, [authenticationBoundaryActive]);
+  }, [authenticationBoundary]);
 
-  if (authenticationBoundaryActive) {
+  if (authenticationBoundary) {
     return (
       <main className="min-h-screen flex items-center justify-center bg-background p-6">
         <p className="max-w-md text-center text-sm text-muted-foreground" role="status">

@@ -6,24 +6,12 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
-  events: [] as string[],
-  clearCaches: vi.fn(),
-  replace: vi.fn(),
+  endSession: vi.fn(),
+  revokeResponse: null as null | (() => void),
 }));
 
 vi.mock('@/lib/client-cache', () => ({
-  clearUserScopedBrowserCaches: () => {
-    mocks.events.push('clear browser caches');
-    return mocks.clearCaches();
-  },
-  broadcastAuthenticationBoundary: () => mocks.events.push('broadcast'),
-}));
-vi.mock('@/lib/query-client', () => ({
-  getQueryClient: () => ({ clear: () => mocks.events.push('clear query client') }),
-  holdLoginRedirect: () => mocks.events.push('hold login redirect'),
-}));
-vi.mock('@/lib/hooks/use-external-urls', () => ({
-  invalidateExternalUrls: () => mocks.events.push('invalidate external urls'),
+  endSessionInThisBrowser: mocks.endSession,
 }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 vi.mock('@/components/ui/app-link', () => ({
@@ -50,6 +38,7 @@ const SESSIONS = [
 
 let root: Root;
 let container: HTMLElement;
+let client: QueryClient;
 
 async function flush() {
   for (let i = 0; i < 10; i += 1) {
@@ -63,37 +52,32 @@ async function renderPage() {
   container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   await act(async () => {
     root.render(<QueryClientProvider client={client}><SessionsPage /></QueryClientProvider>);
   });
   await flush();
 }
 
-function button(label: string) {
-  const match = [...container.querySelectorAll('button')].find((b) => b.textContent?.trim() === label);
-  if (!match) throw new Error(`No button "${label}"`);
-  return match;
-}
-
-async function revoke(rowButton: 'Sign out' | 'Revoke') {
+async function confirmRevoke(rowButton: 'Sign out' | 'Revoke') {
   const rows = [...container.querySelectorAll('button')].filter((b) => b.textContent?.trim() === rowButton);
   await act(async () => rows[0].click());
-  const confirm = container.querySelector<HTMLButtonElement>('[data-confirm]')!;
-  await act(async () => confirm.click());
-  await flush();
+  await act(async () => container.querySelector<HTMLButtonElement>('[data-confirm]')!.click());
 }
 
 beforeEach(() => {
-  mocks.events = [];
-  mocks.clearCaches.mockReset().mockResolvedValue(undefined);
-  mocks.replace.mockReset().mockImplementation(() => mocks.events.push('navigate to /login'));
-  vi.stubGlobal('location', { ...window.location, replace: mocks.replace });
+  mocks.endSession.mockReset();
+  mocks.revokeResponse = null;
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
     if (url === '/api/sessions') return Response.json(SESSIONS);
     if (init?.method === 'POST' && url.endsWith('/revoke')) {
-      return Response.json({ wasCurrent: url.includes('/current/') });
+      const body = Response.json({ wasCurrent: url.includes('/current/') });
+      if (!mocks.revokeResponse) return body;
+      // Hold the response until the test releases it.
+      return new Promise<Response>((resolve) => {
+        mocks.revokeResponse = () => resolve(body);
+      });
     }
     throw new Error(`unexpected fetch ${url}`);
   }));
@@ -106,36 +90,31 @@ afterEach(() => {
 });
 
 describe('Settings → Sessions revoke', () => {
-  it('clears this browser before Login when the current session is revoked', async () => {
+  it('ends this browser session when the current session is revoked', async () => {
     await renderPage();
-    await revoke('Sign out');
+    await confirmRevoke('Sign out');
+    await flush();
 
-    expect(mocks.events).toEqual([
-      'hold login redirect',
-      'clear query client',
-      'invalidate external urls',
-      'broadcast',
-      'clear browser caches',
-      'navigate to /login',
-    ]);
-    expect(container.textContent).toContain('Securing this browser session');
+    expect(mocks.endSession).toHaveBeenCalledOnce();
   });
 
-  it('stays on an error screen and does not navigate when the clear fails', async () => {
-    mocks.clearCaches.mockRejectedValue(new Error('cache delete timed out'));
+  it('still ends this browser session when the page was left before the response', async () => {
+    mocks.revokeResponse = () => undefined;
     await renderPage();
-    await revoke('Sign out');
+    await confirmRevoke('Sign out');
+    act(() => root.unmount());
+    await act(async () => mocks.revokeResponse?.());
+    await flush();
 
-    expect(mocks.replace).not.toHaveBeenCalled();
-    expect(container.textContent).toContain('Browser data could not be cleared');
+    expect(mocks.endSession).toHaveBeenCalledOnce();
+    root = createRoot(container);
   });
 
-  it('clears nothing when another session is revoked', async () => {
+  it('leaves this browser alone when another session is revoked', async () => {
     await renderPage();
-    await revoke('Revoke');
+    await confirmRevoke('Revoke');
+    await flush();
 
-    expect(mocks.events).toEqual([]);
-    expect(mocks.replace).not.toHaveBeenCalled();
-    expect(button('Sign out')).toBeTruthy();
+    expect(mocks.endSession).not.toHaveBeenCalled();
   });
 });

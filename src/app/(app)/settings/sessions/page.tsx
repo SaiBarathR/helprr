@@ -19,10 +19,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-import {
-  AuthenticationBoundaryScreen,
-  useAuthenticationBoundary,
-} from '@/components/settings/authentication-boundary';
+import { endSessionInThisBrowser } from '@/lib/client-cache';
 import { Label } from '@/components/ui/label';
 
 interface Session {
@@ -88,7 +85,6 @@ function relativeTime(iso: string | null): string {
 
 export default function SessionsPage() {
   const queryClient = useQueryClient();
-  const authenticationBoundary = useAuthenticationBoundary();
   const [confirmTarget, setConfirmTarget] = useState<Session | null>(null);
   const [confirmOthers, setConfirmOthers] = useState(false);
   const [renameTarget, setRenameTarget] = useState<Session | null>(null);
@@ -120,7 +116,7 @@ export default function SessionsPage() {
       if (data.wasCurrent) {
         // This browser's own session ended: clear it like Account sign-out
         // before Login, so the next user here never sees this one's data.
-        authenticationBoundary.begin();
+        endSessionInThisBrowser();
         return;
       }
       toast.success(`Revoked ${displayName(session)}`);
@@ -186,10 +182,6 @@ export default function SessionsPage() {
   // "Revoke all other sessions" only touches the viewer's own devices, so the
   // count must exclude other members' rows that admins can see in the list.
   const otherCount = (sessions ?? []).filter((s) => s.isOwn && !s.isCurrent).length;
-
-  if (authenticationBoundary.active) {
-    return <AuthenticationBoundaryScreen failed={authenticationBoundary.failed} />;
-  }
 
   return (
     <div className="animate-content-in pb-12">

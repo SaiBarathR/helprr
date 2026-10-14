@@ -6,16 +6,10 @@ import { toast } from 'sonner';
 import { ChevronLeft, Loader2 } from 'lucide-react';
 import { GroupedSection } from '@/components/settings/grouped-section';
 import { JellyfinConnection } from '@/components/settings/jellyfin-connection';
-import {
-  AuthenticationBoundaryScreen,
-  useAuthenticationBoundary,
-} from '@/components/settings/authentication-boundary';
-import { requestSessionLogout } from '@/lib/client-cache';
+import { endSessionInThisBrowser, requestSessionLogout } from '@/lib/client-cache';
 
 export default function AccountSettingsPage() {
   const [signingOut, setSigningOut] = useState(false);
-  const authenticationBoundary = useAuthenticationBoundary();
-
   async function handleSignOut() {
     setSigningOut(true);
     try {
@@ -24,7 +18,7 @@ export default function AccountSettingsPage() {
         // A timeout or network error is indeterminate: the server may have
         // revoked the session before its response was lost. Treat it as an
         // authentication boundary and reconcile every browser realm.
-        authenticationBoundary.begin();
+        endSessionInThisBrowser();
       } else {
         toast.error('Failed to sign out');
         setSigningOut(false);
@@ -33,10 +27,6 @@ export default function AccountSettingsPage() {
       toast.error('Failed to sign out');
       setSigningOut(false);
     }
-  }
-
-  if (authenticationBoundary.active) {
-    return <AuthenticationBoundaryScreen failed={authenticationBoundary.failed} />;
   }
 
   return (
