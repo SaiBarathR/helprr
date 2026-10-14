@@ -39,7 +39,12 @@ async function upgradePasswordHash(userId: string, verifiedHash: string, passwor
       data: { passwordHash: await hashPassword(password) },
     });
   } catch (error) {
-    const reason = error instanceof Error ? `${error.name}: ${error.message}` : 'unknown error';
+    // Name and code only: a Prisma validation message can echo the arguments,
+    // which here are password hashes.
+    const code = (error as { code?: unknown } | null)?.code;
+    const reason = error instanceof Error
+      ? `${error.name}${typeof code === 'string' ? ` ${code}` : ''}`
+      : 'unknown error';
     console.error(`[Auth] Password hash upgrade failed for user ${userId}: ${reason}`);
   }
 }

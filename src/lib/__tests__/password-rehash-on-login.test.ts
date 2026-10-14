@@ -72,13 +72,21 @@ describe('passwordHashNeedsUpgrade', () => {
 
   it.each([
     ['a lower cost', { N: 1024 }],
-    ['a higher cost', { N: 32768 }],
-    ['another block size', { r: 4 }],
-    ['another parallelism', { p: 2 }],
-    ['a shorter key', { keylen: 32 }],
-    ['a shorter salt', { saltBytes: 8 }],
-  ])('flags a supported hash with %s', (_label, params) => {
+    ['a smaller block size', { N: 16384, r: 4 }],
+    ['a shorter key', { N: 16384, keylen: 32 }],
+    ['a shorter salt', { N: 16384, saltBytes: 8 }],
+  ])('flags a weaker hash with %s', (_label, params) => {
     expect(passwordHashNeedsUpgrade(legacyHash(TYPED, params))).toBe(true);
+  });
+
+  it.each([
+    ['a higher cost', { N: 32768 }],
+    ['a larger block size', { N: 16384, r: 16 }],
+    ['more parallelism', { N: 16384, p: 2 }],
+    ['a longer key', { N: 16384, keylen: 128 }],
+    ['a longer salt', { N: 16384, saltBytes: 32 }],
+  ])('keeps a stronger hash with %s', (_label, params) => {
+    expect(passwordHashNeedsUpgrade(legacyHash(TYPED, params))).toBe(false);
   });
 
   it.each(['', 'not-a-hash', 'scrypt$3$8$1$AAAA$AAAA', 'bcrypt$whatever'])(
@@ -112,6 +120,15 @@ describe('POST /api/auth/login password rehash', () => {
     expect(mocks.createSession).toHaveBeenCalledOnce();
   });
 
+  it('does not downgrade a stronger hash on login', async () => {
+    mocks.userFindFirst.mockResolvedValue({
+      id: 'user-1', role: 'member', passwordHash: legacyHash(TYPED, { N: 32768 }),
+    });
+
+    expect((await login(loginRequest(TYPED))).status).toBe(200);
+    expect(mocks.userUpdateMany).not.toHaveBeenCalled();
+  });
+
   it('never rewrites on a wrong password', async () => {
     mocks.userFindFirst.mockResolvedValue({ id: 'user-1', role: 'member', passwordHash: legacyHash(TYPED) });
 
@@ -140,7 +157,9 @@ describe('POST /api/auth/login password rehash', () => {
     expect(res.status).toBe(200);
     expect(mocks.createSession).toHaveBeenCalledOnce();
     expect(logged).toContain('user-1');
-    expect(logged).toContain('database unavailable');
+    expect(logged).toContain('Error');
+    // Messages can echo query arguments (the hashes), so none is logged.
+    expect(logged).not.toContain('database unavailable');
     expect(logged).not.toContain(TYPED);
   });
 

@@ -92,19 +92,19 @@ export function isSupportedPasswordHash(stored: string): boolean {
 }
 
 /**
- * Whether a supported stored hash was made with parameters other than the
- * current policy (cost, key length, or a salt shorter than today's), so the
- * login that just verified it should store a fresh hash. Malformed or
- * unsupported values return false: they never verify, so there is nothing to
- * upgrade.
+ * Whether a supported stored hash is weaker than the current policy (less
+ * memory, less total work, a shorter key or a shorter salt), so the login that
+ * just verified it should store a fresh hash. A hash at or above the policy is
+ * kept as it is, so an imported or rolled-back stronger hash is never
+ * downgraded. Malformed or unsupported values return false: they never verify,
+ * so there is nothing to upgrade.
  */
 export function passwordHashNeedsUpgrade(stored: string): boolean {
   const parsed = parsePasswordHash(stored);
   if (!parsed) return false;
-  return parsed.N !== SCRYPT_N
-    || parsed.r !== SCRYPT_R
-    || parsed.p !== SCRYPT_P
-    || parsed.expected.length !== KEYLEN
+  return parsed.N * parsed.r < SCRYPT_N * SCRYPT_R
+    || parsed.N * parsed.r * parsed.p < SCRYPT_N * SCRYPT_R * SCRYPT_P
+    || parsed.expected.length < KEYLEN
     || parsed.salt.length < SALT_BYTES;
 }
 
