@@ -83,6 +83,9 @@ function relativeTime(iso: string | null): string {
   return new Date(iso).toLocaleDateString();
 }
 
+const REVOKE_TIMEOUT_MS = 5_000;
+const GATEWAY_STATUSES = new Set([502, 503, 504]);
+
 class RevokeRefusedError extends Error {
   constructor() {
     super('Failed to revoke session');
@@ -115,8 +118,14 @@ export default function SessionsPage() {
   const revokeMutation = useMutation({
     mutationFn: async (session: Session) => {
       try {
-        const res = await fetch(`/api/sessions/${session.id}/revoke`, { method: 'POST' });
-        if (!res.ok) throw new RevokeRefusedError();
+        // Bounded like Account sign-out; the limit covers reading the body too.
+        const res = await fetch(`/api/sessions/${session.id}/revoke`, {
+          method: 'POST',
+          signal: AbortSignal.timeout(REVOKE_TIMEOUT_MS),
+        });
+        // A gateway error may come after the server already revoked it.
+        if (!res.ok && !GATEWAY_STATUSES.has(res.status)) throw new RevokeRefusedError();
+        if (!res.ok) throw new Error('Revoke response lost at the gateway');
         return (await res.json()) as { wasCurrent?: boolean };
       } catch (error) {
         // A lost or unreadable response is indeterminate: the server may have

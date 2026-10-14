@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   endSession: vi.fn(),
   revokeResponse: null as null | (() => void),
-  revokeFailure: null as null | 'network' | 'refused',
+  revokeFailure: null as null | 'network' | 'refused' | 'gateway' | 'stall',
 }));
 
 vi.mock('@/lib/client-cache', () => ({
@@ -76,6 +76,12 @@ beforeEach(() => {
     if (init?.method === 'POST' && url.endsWith('/revoke')) {
       if (mocks.revokeFailure === 'network') throw new TypeError('Failed to fetch');
       if (mocks.revokeFailure === 'refused') return Response.json({ error: 'Failed' }, { status: 500 });
+      if (mocks.revokeFailure === 'gateway') return new Response('Bad gateway', { status: 502 });
+      if (mocks.revokeFailure === 'stall') {
+        return new Promise<Response>((_resolve, reject) => {
+          init.signal?.addEventListener('abort', () => reject(init.signal?.reason));
+        });
+      }
       const body = Response.json({ wasCurrent: url.includes('/current/') });
       if (!mocks.revokeResponse) return body;
       // Hold the response until the test releases it.
@@ -147,5 +153,29 @@ describe('Settings → Sessions revoke', () => {
     await flush();
 
     expect(mocks.endSession).not.toHaveBeenCalled();
+  });
+
+  it('ends this browser session when a gateway error hides the revoke result', async () => {
+    mocks.revokeFailure = 'gateway';
+    await renderPage();
+    await confirmRevoke('Sign out');
+    await flush();
+
+    expect(mocks.endSession).toHaveBeenCalledOnce();
+  });
+
+  it('gives up waiting after the timeout and ends this browser session', async () => {
+    mocks.revokeFailure = 'stall';
+    const timeout = vi.spyOn(AbortSignal, 'timeout').mockImplementation(() => {
+      const controller = new AbortController();
+      setTimeout(() => controller.abort(new DOMException('timed out', 'TimeoutError')), 0);
+      return controller.signal;
+    });
+    await renderPage();
+    await confirmRevoke('Sign out');
+    await flush();
+    timeout.mockRestore();
+
+    expect(mocks.endSession).toHaveBeenCalledOnce();
   });
 });
