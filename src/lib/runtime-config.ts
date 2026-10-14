@@ -87,6 +87,9 @@ function jwtSecretIssue(value: string | undefined): StartupConfigurationIssue | 
   return null;
 }
 
+// Below this the database and Redis passwords draw a startup warning.
+const MIN_SERVICE_PASSWORD_LENGTH = 16;
+
 export class StartupConfigurationError extends Error {
   readonly issues: readonly StartupConfigurationIssue[];
 
@@ -160,6 +163,28 @@ export function validateRuntimeConfig(env: RuntimeEnvironment = process.env): vo
       variable: 'REDIS_PASSWORD',
       message: 'must not use an example or change-me value',
     });
+  }
+
+  // Weak but not placeholder: warn rather than stop, so an existing install
+  // still boots after updating. Never print the value or its length.
+  const databasePassword = databaseUrl ? decodeUrlPassword(databaseUrl.password) : '';
+  // A placeholder password already stops startup above; one message is enough.
+  const databasePasswordIsPlaceholder = Boolean(databasePassword) && isKnownPlaceholderSecret(databasePassword);
+  if (databaseUrl && !databasePasswordIsPlaceholder && [...databasePassword].length < MIN_SERVICE_PASSWORD_LENGTH) {
+    console.warn(
+      `[Helprr] DATABASE_URL has no password or one shorter than ${MIN_SERVICE_PASSWORD_LENGTH} characters. ` +
+        'Use a long random value (./scripts/setup-env.sh generates one).',
+    );
+  }
+  if (
+    !isBlank(env.REDIS_PASSWORD)
+    && !isKnownPlaceholderSecret(env.REDIS_PASSWORD!)
+    && [...env.REDIS_PASSWORD!].length < MIN_SERVICE_PASSWORD_LENGTH
+  ) {
+    console.warn(
+      `[Helprr] REDIS_PASSWORD is shorter than ${MIN_SERVICE_PASSWORD_LENGTH} characters. ` +
+        'Use a long random value (./scripts/setup-env.sh generates one).',
+    );
   }
 
   const jwtIssue = jwtSecretIssue(env.JWT_SECRET);

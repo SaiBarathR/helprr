@@ -114,7 +114,7 @@ export const CAPABILITY_GROUPS = [
     title: 'Admin subsystems',
     items: [
       { cap: 'cleanup.view', label: 'View cleanup rules & history' },
-      { cap: 'cleanup.manage', label: 'Manage cleanup rules' },
+      { cap: 'cleanup.manage', label: 'Manage cleanup rules, run cleanups & clear history (deletes downloads and files)' },
       { cap: 'prowlarr.view', label: 'View Prowlarr' },
       { cap: 'prowlarr.manage', label: 'Manage Prowlarr indexers' },
       { cap: 'logs.view', label: 'View logs' },
