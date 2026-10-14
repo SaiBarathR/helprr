@@ -161,6 +161,8 @@ async function getHandler(request: NextRequest) {
       {
         headers: {
           'Cache-Control': 'private, max-age=300, stale-while-revalidate=600',
+          // Annotated with this user's library; never reuse across accounts.
+          Vary: 'Cookie',
         },
       }
     );

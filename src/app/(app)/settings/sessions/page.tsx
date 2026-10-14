@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import Link from '@/components/ui/app-link';
-import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
 import { ChevronLeft, Loader2, LogOut, Monitor, Pencil } from 'lucide-react';
 import { toast } from 'sonner';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -20,6 +19,10 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import {
+  AuthenticationBoundaryScreen,
+  useAuthenticationBoundary,
+} from '@/components/settings/authentication-boundary';
 import { Label } from '@/components/ui/label';
 
 interface Session {
@@ -84,8 +87,8 @@ function relativeTime(iso: string | null): string {
 }
 
 export default function SessionsPage() {
-  const router = useRouter();
   const queryClient = useQueryClient();
+  const authenticationBoundary = useAuthenticationBoundary();
   const [confirmTarget, setConfirmTarget] = useState<Session | null>(null);
   const [confirmOthers, setConfirmOthers] = useState(false);
   const [renameTarget, setRenameTarget] = useState<Session | null>(null);
@@ -115,8 +118,9 @@ export default function SessionsPage() {
     },
     onSuccess: (data, session) => {
       if (data.wasCurrent) {
-        toast.success('Signed out');
-        router.push('/login');
+        // This browser's own session ended: clear it like Account sign-out
+        // before Login, so the next user here never sees this one's data.
+        authenticationBoundary.begin();
         return;
       }
       toast.success(`Revoked ${displayName(session)}`);
@@ -182,6 +186,10 @@ export default function SessionsPage() {
   // "Revoke all other sessions" only touches the viewer's own devices, so the
   // count must exclude other members' rows that admins can see in the list.
   const otherCount = (sessions ?? []).filter((s) => s.isOwn && !s.isCurrent).length;
+
+  if (authenticationBoundary.active) {
+    return <AuthenticationBoundaryScreen failed={authenticationBoundary.failed} />;
+  }
 
   return (
     <div className="animate-content-in pb-12">
