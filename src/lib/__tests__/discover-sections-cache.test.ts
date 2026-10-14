@@ -92,8 +92,8 @@ describe('GET /api/discover sections cache', () => {
     let pending: Promise<ReturnType<typeof library>> | null = null;
     mocks.getCachedTaggedLibrary.mockImplementation(async ({ scope }: { scope: string }) => {
       // Radarr and Sonarr are read together; one library snapshot serves both.
-      pending ??= mocks.loadTaggedLibrary();
-      const snapshot = await pending;
+      pending ??= mocks.loadTaggedLibrary() as Promise<ReturnType<typeof library>>;
+      const snapshot: ReturnType<typeof library> = await pending;
       if (scope === 'sonarr') pending = null;
       return { items: scope === 'radarr' ? snapshot.movies : snapshot.series };
     });
