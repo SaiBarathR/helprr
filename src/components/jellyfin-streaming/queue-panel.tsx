@@ -110,6 +110,8 @@ export function QueuePanel({
       )}
       role="dialog"
       aria-label={`${heading} queue`}
+      // Part of the player: its keyboard shortcuts keep working in here.
+      data-player-queue=""
     >
       {/* The panel is `inset-y-0`, so in the installed PWA it runs edge to edge
           and the title landed under the clock and the Dynamic Island. A browser
