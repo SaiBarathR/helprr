@@ -147,6 +147,7 @@ export function SeerrRequestModal({
   // service data resolves. Guard on the CURRENT value (via functional updaters)
   // rather than the initial prop, so a background refetch can't overwrite a
   // selection the user has already made.
+  const isNewRequest = initialTags == null;
   useEffect(() => {
     if (!open) return;
     const svc = serviceQuery.data;
@@ -156,14 +157,21 @@ export function SeerrRequestModal({
     // Only auto-fill default tags for a NEW request (initialTags nullish). An
     // existing request opened with an explicit [] tags must stay tagless — don't
     // inject defaults onto it (prev.length===0 alone can't tell the two apart).
-    if (initialTags == null && svc.defaultTags?.length) setTags((prev) => (prev.length === 0 ? svc.defaultTags! : prev));
+    if (isNewRequest && svc.defaultTags?.length) setTags((prev) => (prev.length === 0 ? svc.defaultTags! : prev));
+  }, [open, serviceQuery.data, isNewRequest]);
+
+  // Request as the user's own Seerr account by default, also when their
+  // identity arrives after the service data. Its own effect, so that arrival
+  // does not seed the tags again (an emptied selection looks unseeded).
+  const ownSeerrUserId = me?.seerrUserId;
+  useEffect(() => {
+    if (!open || !serviceQuery.data) return;
     setRequestAs((prev) => {
       if (prev != null) return prev;
-      const own = me?.seerrUserId ? Number.parseInt(me.seerrUserId, 10) : NaN;
+      const own = ownSeerrUserId ? Number.parseInt(ownSeerrUserId, 10) : NaN;
       return Number.isInteger(own) ? own : prev;
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, serviceQuery.data]);
+  }, [open, serviceQuery.data, ownSeerrUserId]);
 
   const selectableSeasons = useMemo(
     () => seasonsInfo.filter((s) => s.status !== SEERR_MEDIA_STATUS.AVAILABLE),

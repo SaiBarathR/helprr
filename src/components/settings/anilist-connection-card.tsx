@@ -1,7 +1,7 @@
 'use client';
 
 import { fetchAnilistViewer } from '@/lib/anilist-viewer';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { ApiError } from '@/lib/query-fetch';
 import { usePathname, useSearchParams } from 'next/navigation';
@@ -49,6 +49,7 @@ export function AnilistConnectionCard() {
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- the origin is known only in the browser
       setRedirectUri(`${window.location.origin}/api/services/anilist/callback`);
     }
   }, []);
@@ -67,8 +68,17 @@ export function AnilistConnectionCard() {
   // Surface OAuth callback result, but only fire the toast once per status
   const status = searchParams.get('anilist');
   const reason = searchParams.get('reason');
+  // The result handled last, so a re-run before the URL is cleaned (a new
+  // router or search-params identity) does not toast and reload again.
+  const handledResult = useRef<string | null>(null);
   useEffect(() => {
-    if (!status) return;
+    if (!status) {
+      handledResult.current = null;
+      return;
+    }
+    const result = `${status}:${reason ?? ''}`;
+    if (handledResult.current === result) return;
+    handledResult.current = result;
     if (status === 'connected') {
       toast.success('Connected to AniList', {
         icon: <Check className="h-4 w-4 text-green-500" />,
@@ -83,8 +93,7 @@ export function AnilistConnectionCard() {
     params.delete('reason');
     const query = params.toString();
     router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status, reason]);
+  }, [status, reason, searchParams, pathname, router, reload]);
 
   const isConnected = !!viewer?.connected;
   const isConfigured = !!viewer?.configured;

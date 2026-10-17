@@ -121,10 +121,10 @@ export function RenamePreviewDialog({
     }
     if (isSuccess && !loading && !seededRef.current) {
       seededRef.current = true;
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- seed the selection once per open, from fresh query data
       setSelected(new Set(rows.map((r) => r.fileId)));
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, isSuccess, loading]);
+  }, [open, isSuccess, loading, rows]);
 
   useEffect(() => {
     if (isError) toast.error('Failed to load rename preview');

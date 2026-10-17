@@ -134,7 +134,13 @@ export default function AnimeLibraryPage() {
   const [hydrated, setHydrated] = useState(false);
   const [editingEntry, setEditingEntry] = useState<AniListMediaListEntry | null>(null);
 
-  // Keep URL in sync with selected tab/type so back navigation lands on the same view
+  // Keep URL in sync with selected tab/type so back navigation lands on the same view.
+  // The router is read through a ref: a new router identity must not re-run this
+  // while a Back is still restoring the tab, or it would write the old tab back.
+  const routerRef = useRef(router);
+  useEffect(() => {
+    routerRef.current = router;
+  });
   useEffect(() => {
     if (!hydrated) return;
     const params = new URLSearchParams();
@@ -142,11 +148,11 @@ export default function AnimeLibraryPage() {
     if (status !== 'ALL') params.set('status', status);
     const query = params.toString();
     const target = query ? `${pathname}?${query}` : pathname;
-    const current = `${pathname}${urlParams.toString() ? `?${urlParams.toString()}` : ''}`;
-    if (target !== current) {
-      router.replace(target, { scroll: false });
+    // The URL as it is now, read when the effect runs (as Anime Explore does),
+    // so a replace that has not reached the search params yet is not repeated.
+    if (target !== `${window.location.pathname}${window.location.search}`) {
+      routerRef.current.replace(target, { scroll: false });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hydrated, type, status, pathname]);
 
   const cacheKey = tabKey(type, status);
@@ -222,6 +228,7 @@ export default function AnimeLibraryPage() {
     const cachedView = getListViewState(tabKey(restoredType, restoredStatus));
     const extras = (cachedView?.extras ?? {}) as PerTabExtras;
 
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- the URL and session view-state are read after hydration
     setType(restoredType);
     setStatus(restoredStatus);
     setRenderedCount(extras.renderedCount && extras.renderedCount > 0 ? extras.renderedCount : PAGE_SIZE);
@@ -260,10 +267,9 @@ export default function AnimeLibraryPage() {
 
     const savedView = getListViewState(cacheKey);
     const extras = (savedView?.extras ?? {}) as PerTabExtras;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- the tab's saved render count is in session storage
     setRenderedCount(extras.renderedCount && extras.renderedCount > 0 ? extras.renderedCount : PAGE_SIZE);
-
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hydrated, viewer?.connected, type, status]);
+  }, [hydrated, viewer?.connected, cacheKey]);
 
   const flatEntries = useMemo<AniListMediaListEntry[]>(() => {
     if (!collection) return [];
