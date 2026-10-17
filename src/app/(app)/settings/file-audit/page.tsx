@@ -22,6 +22,7 @@ interface AuditRecord {
   details: Record<string, unknown> | null;
   success: boolean;
   errorMessage: string | null;
+  requestId: string | null;
   createdAt: string;
 }
 
@@ -126,6 +127,9 @@ export default function FileAuditPage() {
                 ) : null}
                 {!r.success && r.errorMessage && (
                   <p className="mt-1 text-xs text-destructive">{r.errorMessage}</p>
+                )}
+                {r.requestId && (
+                  <p className="mt-1 break-all text-[11px] font-mono text-muted-foreground/80">request {r.requestId}</p>
                 )}
               </div>
             );

@@ -43,6 +43,9 @@ import { POST as queueRunPost } from '@/app/api/cleanup/queue/run/route';
 import { POST as downloadPreviewPost } from '@/app/api/cleanup/download/preview/route';
 import { POST as downloadRunPost } from '@/app/api/cleanup/download/run/route';
 import { StaleCleanupPreviewError } from '@/lib/cleanup/binding';
+import { InvalidCleanupPreviewError } from '@/lib/cleanup/preview-store';
+
+const owner = { id: 'user-1', username: 'owner' };
 
 const binding = {
   cleaner: 'queue',
@@ -65,7 +68,7 @@ describe('cleanup manual route safety', () => {
     vi.clearAllMocks();
     mocks.requireUserCapability.mockResolvedValue({
       ok: true,
-      user: { id: 'user-1' },
+      user: { ...owner, role: 'admin' },
       session: {},
     });
     mocks.runQueueCleanerCycle.mockResolvedValue({
@@ -109,7 +112,7 @@ describe('cleanup manual route safety', () => {
   it('creates a server-bound token from the dry-run binding', async () => {
     const response = await queuePreviewPost();
     expect(response.status).toBe(200);
-    expect(mocks.runQueueCleanerCycle).toHaveBeenCalledWith({ dryRun: true, triggeredBy: 'dryRun' });
+    expect(mocks.runQueueCleanerCycle).toHaveBeenCalledWith({ dryRun: true, triggeredBy: 'dryRun', actor: owner });
     expect(mocks.issueCleanupPreview).toHaveBeenCalledWith('user-1', binding);
     await expect(response.json()).resolves.toMatchObject({ previewToken: 't'.repeat(43), decisions: [] });
   });
@@ -121,6 +124,39 @@ describe('cleanup manual route safety', () => {
     const response = await post(request(path, { dryRun: false }));
     expect(response.status).toBe(428);
     expect(mocks.consumeCleanupPreview).not.toHaveBeenCalled();
+    expect(mocks.runQueueCleanerCycle).not.toHaveBeenCalled();
+    expect(mocks.runDownloadCleanerCycle).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['/api/cleanup/queue/run', queueRunPost, mocks.runQueueCleanerCycle],
+    ['/api/cleanup/download/run', downloadRunPost, mocks.runDownloadCleanerCycle],
+  ])('runs as the user who consumed the preview, without the token: %s', async (path, post, cycle) => {
+    mocks.consumeCleanupPreview.mockResolvedValue({ previewId: 'preview-1', binding });
+    cycle.mockResolvedValue({ triggeredBy: 'manual', dryRun: false, durationMs: 1, decisions: [], succeeded: 0, failed: 0, outcomes: [], warnings: [], binding });
+
+    const response = await post(request(path, { previewToken: 't'.repeat(43) }));
+
+    expect(response.status).toBe(200);
+    expect(cycle).toHaveBeenCalledWith({
+      dryRun: false,
+      triggeredBy: 'manual',
+      actor: owner,
+      expectedBinding: binding,
+      previewId: 'preview-1',
+    });
+  });
+
+  it.each([
+    ['/api/cleanup/queue/run', queueRunPost],
+    ['/api/cleanup/download/run', downloadRunPost],
+  ])('runs nothing for an invalid or reused preview token: %s', async (path, post) => {
+    mocks.consumeCleanupPreview.mockRejectedValue(new InvalidCleanupPreviewError());
+
+    const response = await post(request(path, { previewToken: 't'.repeat(43) }));
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({ code: 'PREVIEW_INVALID' });
     expect(mocks.runQueueCleanerCycle).not.toHaveBeenCalled();
     expect(mocks.runDownloadCleanerCycle).not.toHaveBeenCalled();
   });

@@ -106,6 +106,7 @@ async function putHandler(request: NextRequest): Promise<NextResponse> {
   let errorMessage: string | null = null;
   let caughtError: unknown;
   let result: MovieFileResource[] | undefined;
+  const startedAt = new Date();
   try {
     result = await client.bulkEditMovieFiles(edits.map(buildResource));
     success = true;
@@ -116,6 +117,7 @@ async function putHandler(request: NextRequest): Promise<NextResponse> {
 
   await recordFileAudit({
     user: auth.user,
+    startedAt,
     service: 'RADARR',
     instanceId,
     operation: 'EDIT',
@@ -180,6 +182,7 @@ async function deleteHandler(request: NextRequest): Promise<NextResponse> {
   let success = false;
   let errorMessage: string | null = null;
   let caughtError: unknown;
+  const startedAt = new Date();
   try {
     await client.deleteMovieFilesBulk(ids);
     success = true;
@@ -190,6 +193,7 @@ async function deleteHandler(request: NextRequest): Promise<NextResponse> {
 
   await recordFileAudit({
     user: auth.user,
+    startedAt,
     service: 'RADARR',
     instanceId,
     operation: 'DELETE',

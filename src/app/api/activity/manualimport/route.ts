@@ -131,6 +131,7 @@ async function postHandler(request: NextRequest) {
 
     let command: { id?: number } | null = null;
     let errorMessage: string | null = null;
+    const startedAt = new Date();
     try {
       command = await client.submitManualImport(files);
     } catch (error) {
@@ -143,6 +144,7 @@ async function postHandler(request: NextRequest) {
     const mediaIds = [...new Set(files.map((file) => coercePositiveInt(isSonarr ? file.seriesId : file.movieId)))];
     await recordOperationAudit({
       user: auth.user,
+      startedAt,
       service: isSonarr ? 'SONARR' : 'RADARR',
       instanceId,
       operation: 'IMPORT',

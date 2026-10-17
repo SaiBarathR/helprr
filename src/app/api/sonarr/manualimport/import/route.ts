@@ -143,6 +143,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
 
   let commandId: number | null = null;
   let errorMessage: string | null = null;
+  const startedAt = new Date();
   try {
     const command = await client.submitManualImport(payload, 'auto');
     commandId = command?.id ?? null;
@@ -152,6 +153,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
 
   await recordFileAudit({
     user: auth.user,
+    startedAt,
     service: 'SONARR',
     instanceId,
     operation: 'IMPORT',

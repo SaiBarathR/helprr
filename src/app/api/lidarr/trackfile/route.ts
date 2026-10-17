@@ -93,6 +93,7 @@ async function deleteHandler(request: NextRequest): Promise<NextResponse> {
   let success = false;
   let errorMessage: string | null = null;
   let caughtError: unknown;
+  const startedAt = new Date();
   try {
     await client.deleteTrackFilesBulk(ids);
     success = true;
@@ -103,6 +104,7 @@ async function deleteHandler(request: NextRequest): Promise<NextResponse> {
 
   await recordFileAudit({
     user: auth.user,
+    startedAt,
     service: 'LIDARR',
     instanceId,
     operation: 'DELETE',

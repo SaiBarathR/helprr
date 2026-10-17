@@ -352,7 +352,11 @@ The unified `FileOperationAudit` model records file edits and deletes, manual
 imports, and the destructive whole-media, torrent, and queue operations a user
 performs directly. It stores actor, service/instance, operation, target, item
 count, whether files/data were deleted, structured details, success, and error
-information. An import is checked before it is queued, because the *arr's
+information, plus when the upstream call started and, for a row written while
+an API request is handled, that request's `x-request-id` (`withApiLogging` opens
+an `AsyncLocalStorage` request context that `recordOperationAudit` reads). The
+row's `createdAt` is when the result was known: every caller writes it right
+after. An import is checked before it is queued, because the *arr's
 `ManualImport` command moves whatever path it is handed: from a title's file
 manager every path must be in that title's folder, and from the Activity page
 every path must be one the *arr lists for the download. The command routes do
@@ -361,7 +365,18 @@ names, as the file manager's edits and deletes are, because the *arr renames
 whatever ids it is handed. Renames are not audited; the *arr keeps them in its
 own history. Queue and download cleaner runs, scheduled or interactive, send
 their per-item outcomes to `CleanupHistory`, which records the trigger (`auto`
-or `manual`) and, for an interactive run, the preview id, but no actor. Audit
+or `manual`), the actor (`actorUserId`/`actorUsername`: the user who ran the
+preview or run, or `system:cleanup-scheduler` with a null id for a scheduled
+cycle) and, for an interactive run, the preview id. Every upstream call a
+cleaner makes that can delete something also gets its own operation-audit row,
+written once that target is reconciled: `DELETE_TORRENT` for a qBittorrent
+deletion, `REMOVE_QUEUE` with the service and instance for each *arr queue
+removal. `success` is true only when the target's intended final state was
+observed (the queue item gone and, when the call also removed the download from
+the client, the torrent gone too); its details hold the hash, queue item id,
+rule, preview id, options, before/after state and the call's error. Dry runs,
+stale or failed revalidations and re-searches write no audit row, and the
+preview token is never stored. Audit
 persistence is intentionally fail-soft so an audit outage never changes the real
 upstream result; it is not a substitute for authorization.
 

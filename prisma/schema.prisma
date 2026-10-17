@@ -651,6 +651,11 @@ model CleanupHistory {
   previewId       String?
   outcomeStatus   String?
   outcomeDetails  Json?
+  // Who ran the cycle, denormalized like FileOperationAudit so it outlives the
+  // user: the signed-in user for previews and manual runs, a null id with
+  // "system:cleanup-scheduler" for scheduled runs. Legacy rows keep both null.
+  actorUserId     String?
+  actorUsername   String?
 
   createdAt DateTime @default(now())
 
@@ -678,7 +683,7 @@ enum FileOperation {
 model FileOperationAudit {
   id           String        @id @default(cuid())
   userId       String? // acting user id at the time (not a FK — see above)
-  username     String // denormalized actor, retained after user deletion
+  username     String // denormalized actor, retained after user deletion; "system:<label>" for scheduled work
   service      ServiceType // SONARR | RADARR | LIDARR | QBITTORRENT
   instanceId   String? // which ServiceConnection instance the op ran against
   operation    FileOperation
@@ -690,7 +695,9 @@ model FileOperationAudit {
   details      Json? // target ids/hashes, paths, options, field deltas, command ids, per-item results
   success      Boolean
   errorMessage String?
-  createdAt    DateTime      @default(now())
+  requestId    String? // x-request-id of the API request that ran it; null for scheduled work and legacy rows
+  startedAt    DateTime? // when the upstream call started; null on legacy rows
+  createdAt    DateTime      @default(now()) // written as soon as the result is known
 
   @@index([createdAt])
   @@index([service, mediaId])

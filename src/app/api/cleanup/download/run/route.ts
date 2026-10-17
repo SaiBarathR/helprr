@@ -49,6 +49,7 @@ async function postHandler(req: NextRequest) {
       return runDownloadCleanerCycle({
         dryRun: false,
         triggeredBy: 'manual',
+        actor: { id: auth.user.id, username: auth.user.username },
         expectedBinding: preview.binding,
         previewId: preview.previewId,
       });

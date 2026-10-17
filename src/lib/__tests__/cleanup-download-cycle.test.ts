@@ -6,14 +6,14 @@ const mocks = vi.hoisted(() => ({
   configFindUnique: vi.fn(), ruleFindFirst: vi.fn(), ruleFindMany: vi.fn(), ruleCreate: vi.fn(),
   ruleUpdate: vi.fn(), ruleDelete: vi.fn(), ruleDeleteMany: vi.fn(), serviceFindMany: vi.fn(),
   historyCreate: vi.fn(), historyFindFirst: vi.fn(), strikeDeleteMany: vi.fn(), getQBittorrentClient: vi.fn(),
-  getSonarrClients: vi.fn(), getRadarrClients: vi.fn(),
+  getSonarrClients: vi.fn(), getRadarrClients: vi.fn(), auditCreate: vi.fn(),
 }));
 
 vi.mock('@/lib/db', () => ({ prisma: {
   downloadCleanerConfig: { findUnique: mocks.configFindUnique },
   seedingRule: { findFirst: mocks.ruleFindFirst, findMany: mocks.ruleFindMany, create: mocks.ruleCreate, update: mocks.ruleUpdate, delete: mocks.ruleDelete, deleteMany: mocks.ruleDeleteMany },
   serviceConnection: { findMany: mocks.serviceFindMany }, cleanupHistory: { create: mocks.historyCreate, findFirst: mocks.historyFindFirst },
-  cleanupStrike: { deleteMany: mocks.strikeDeleteMany },
+  cleanupStrike: { deleteMany: mocks.strikeDeleteMany }, fileOperationAudit: { create: mocks.auditCreate },
 } }));
 vi.mock('@/lib/logger', () => ({ logger: { error: vi.fn(), info: vi.fn(), warn: vi.fn() } }));
 vi.mock('@/lib/notification-service', () => ({ notifyEvent: vi.fn() }));
@@ -23,6 +23,10 @@ vi.mock('@/lib/service-helpers', () => ({
 }));
 
 import { runDownloadCleanerCycle } from '@/lib/cleanup/download-cleaner';
+import { StaleCleanupPreviewError } from '@/lib/cleanup/binding';
+
+const owner = { id: 'user-1', username: 'owner' };
+const scheduler = { id: null, username: 'system:cleanup-scheduler' };
 
 const baseConfig = { enabled: true, intervalMinutes: 60, ignoredDownloads: [], autoRemoveImportedEnabled: false, autoRemoveImportedCategories: ['sonarr', 'radarr', 'tv-sonarr'], autoRemoveImportedDeleteFiles: true, autoRemoveImportedPrivacyType: 'public', autoRunMode: 'disabled' };
 
@@ -81,7 +85,7 @@ function setRemovableTorrents(...torrents: QBittorrentTorrent[]) {
   return deleteTorrent;
 }
 
-const run = () => runDownloadCleanerCycle({ dryRun: true, triggeredBy: 'dryRun' });
+const run = () => runDownloadCleanerCycle({ dryRun: true, triggeredBy: 'dryRun', actor: owner });
 
 describe('download cleaner cycle', () => {
   beforeEach(() => {
@@ -90,6 +94,7 @@ describe('download cleaner cycle', () => {
     mocks.ruleFindMany.mockResolvedValue([]); mocks.serviceFindMany.mockResolvedValue([]);
     mocks.getSonarrClients.mockResolvedValue([]); mocks.getRadarrClients.mockResolvedValue([]);
     mocks.historyCreate.mockResolvedValue({}); mocks.historyFindFirst.mockResolvedValue(null); mocks.strikeDeleteMany.mockResolvedValue({ count: 0 });
+    mocks.auditCreate.mockResolvedValue({});
     setTorrents([]);
   });
 
@@ -195,7 +200,7 @@ describe('download cleaner cycle', () => {
     mocks.ruleFindMany.mockResolvedValue([importedRule()]);
     const deleteTorrent = setRemovableTorrents(packTorrent());
     setSonarrHistory({ records: [packImport(11267), ...packGrabs] });
-    const result = await runDownloadCleanerCycle({ dryRun: false, triggeredBy: 'auto' });
+    const result = await runDownloadCleanerCycle({ dryRun: false, triggeredBy: 'auto', actor: scheduler });
     expect(result.decisions).toHaveLength(0);
     expect(deleteTorrent).not.toHaveBeenCalled();
     expect(mocks.historyCreate).not.toHaveBeenCalled();
@@ -205,7 +210,7 @@ describe('download cleaner cycle', () => {
     mocks.ruleFindMany.mockResolvedValue([importedRule()]);
     const deleteTorrent = setRemovableTorrents(packTorrent());
     setSonarrHistory({ records: [packImport(11267)] });
-    const result = await runDownloadCleanerCycle({ dryRun: false, triggeredBy: 'auto' });
+    const result = await runDownloadCleanerCycle({ dryRun: false, triggeredBy: 'auto', actor: scheduler });
     expect(result.decisions).toHaveLength(0);
     expect(deleteTorrent).not.toHaveBeenCalled();
   });
@@ -214,16 +219,22 @@ describe('download cleaner cycle', () => {
     mocks.ruleFindMany.mockResolvedValue([importedRule()]);
     const deleteTorrent = setRemovableTorrents(packTorrent());
     setSonarrHistory({ records: [...PACK_EPISODES.map(packImport), ...packGrabs] });
-    const result = await runDownloadCleanerCycle({ dryRun: false, triggeredBy: 'auto' });
+    const result = await runDownloadCleanerCycle({ dryRun: false, triggeredBy: 'auto', actor: scheduler });
     expect(result).toMatchObject({ succeeded: 1, failed: 0 });
     expect(deleteTorrent).toHaveBeenCalledWith('206a85e74fc5563c703d8d65b2e6df6d1fbc3ecb', true);
+    expect(mocks.auditCreate).toHaveBeenCalledOnce();
+    expect(mocks.auditCreate.mock.calls[0][0].data).toMatchObject({
+      userId: null, username: 'system:cleanup-scheduler', requestId: null, operation: 'DELETE_TORRENT', success: true,
+      details: { triggeredBy: 'auto', previewId: null, hash: '206a85e74fc5563c703d8d65b2e6df6d1fbc3ecb' },
+    });
+    expect(mocks.historyCreate.mock.calls[0][0].data).toMatchObject({ triggeredBy: 'auto', actorUserId: null, actorUsername: 'system:cleanup-scheduler' });
   });
 
   it('reads each arr queue once for the evaluation pass and afresh before every removal', async () => {
     mocks.ruleFindMany.mockResolvedValue([importedRule()]);
     const deleteTorrent = setRemovableTorrents(packTorrent(), torrent({ hash: 'second', ratio: 0.5, added_on: PACK_ADDED_ON }), torrent({ hash: 'third', ratio: 0.5, added_on: PACK_ADDED_ON }));
     const { getQueue } = setSonarrHistory({ records: [...PACK_EPISODES.map(packImport), ...packGrabs] });
-    const result = await runDownloadCleanerCycle({ dryRun: false, triggeredBy: 'auto' });
+    const result = await runDownloadCleanerCycle({ dryRun: false, triggeredBy: 'auto', actor: scheduler });
     expect(result).toMatchObject({ succeeded: 3, failed: 0 });
     expect(deleteTorrent).toHaveBeenCalledTimes(3);
     expect(getQueue).toHaveBeenCalledTimes(1 + 3);
@@ -239,7 +250,7 @@ describe('download cleaner cycle', () => {
     getQueue.mockResolvedValueOnce(empty).mockResolvedValueOnce(empty).mockResolvedValue({
       records: ['FIRST', 'SECOND'].map((downloadId) => ({ downloadId, trackedDownloadState: 'importBlocked' })), totalRecords: 2,
     });
-    const result = await runDownloadCleanerCycle({ dryRun: false, triggeredBy: 'auto' });
+    const result = await runDownloadCleanerCycle({ dryRun: false, triggeredBy: 'auto', actor: scheduler });
     expect(result).toMatchObject({ succeeded: 1, failed: 1 });
     expect(result.outcomes.map((o) => o.status).sort()).toEqual(['stale', 'succeeded']);
     expect(deleteTorrent).toHaveBeenCalledTimes(1);
@@ -252,7 +263,7 @@ describe('download cleaner cycle', () => {
       { records: [...PACK_EPISODES.map(packImport), ...packGrabs] },
       [{ downloadId: '206A85E74FC5563C703D8D65B2E6DF6D1FBC3ECB', trackedDownloadState: 'importBlocked' }],
     );
-    const result = await runDownloadCleanerCycle({ dryRun: false, triggeredBy: 'auto' });
+    const result = await runDownloadCleanerCycle({ dryRun: false, triggeredBy: 'auto', actor: scheduler });
     expect(result.decisions).toHaveLength(0);
     expect(deleteTorrent).not.toHaveBeenCalled();
     expect(getHistory).not.toHaveBeenCalled();
@@ -265,22 +276,62 @@ describe('download cleaner cycle', () => {
     getQueue.mockResolvedValueOnce({ records: [], totalRecords: 0 }).mockResolvedValue({
       records: [{ downloadId: '206A85E74FC5563C703D8D65B2E6DF6D1FBC3ECB', trackedDownloadState: 'importPending' }], totalRecords: 1,
     });
-    const result = await runDownloadCleanerCycle({ dryRun: false, triggeredBy: 'auto' });
+    const result = await runDownloadCleanerCycle({ dryRun: false, triggeredBy: 'auto', actor: scheduler });
     expect(result.decisions).toHaveLength(1);
     expect(result.outcomes[0]).toMatchObject({ status: 'stale', action: 'skipped' });
     expect(deleteTorrent).not.toHaveBeenCalled();
     expect(getQueue).toHaveBeenCalledTimes(2);
+    expect(mocks.auditCreate).not.toHaveBeenCalled();
+  });
+
+  it('audits a manual removal as the user who ran it, with the exact hash', async () => {
+    mocks.ruleFindMany.mockResolvedValue([rule()]);
+    const deleteTorrent = setRemovableTorrents(torrent());
+    const preview = await run();
+    expect(mocks.auditCreate).not.toHaveBeenCalled();
+
+    const result = await runDownloadCleanerCycle({ dryRun: false, triggeredBy: 'manual', actor: owner, expectedBinding: preview.binding, previewId: 'preview-1' });
+
+    expect(result).toMatchObject({ succeeded: 1, failed: 0 });
+    expect(deleteTorrent).toHaveBeenCalledWith('ABC123', true);
+    expect(mocks.auditCreate).toHaveBeenCalledOnce();
+    const audit = mocks.auditCreate.mock.calls[0][0].data;
+    expect(audit).toMatchObject({
+      userId: 'user-1', username: 'owner', service: 'QBITTORRENT', instanceId: null, operation: 'DELETE_TORRENT',
+      mediaType: 'torrent', mediaId: null, mediaTitle: 'Example', fileCount: 1, filesDeleted: true, success: true, errorMessage: null,
+      details: {
+        cleaner: 'download', triggeredBy: 'manual', previewId: 'preview-1', hash: 'abc123', rule: { id: 'rule-a', name: 'Seed rule' },
+        deleteFiles: true, before: 'present', after: 'absent', callError: null,
+      },
+    });
+    expect(audit.startedAt).toBeInstanceOf(Date);
+    expect(JSON.stringify(audit)).not.toMatch(/token/i);
+    expect(mocks.historyCreate.mock.calls[0][0].data).toMatchObject({ previewId: 'preview-1', actorUserId: 'user-1', actorUsername: 'owner' });
+  });
+
+  it('deletes and audits nothing when the preview no longer matches', async () => {
+    mocks.ruleFindMany.mockResolvedValue([rule()]);
+    const deleteTorrent = setRemovableTorrents(torrent());
+    const preview = await run();
+    mocks.ruleFindMany.mockResolvedValue([rule({ maxRatio: 3 })]);
+
+    await expect(runDownloadCleanerCycle({ dryRun: false, triggeredBy: 'manual', actor: owner, expectedBinding: preview.binding, previewId: 'preview-1' }))
+      .rejects.toBeInstanceOf(StaleCleanupPreviewError);
+    expect(deleteTorrent).not.toHaveBeenCalled();
+    expect(mocks.auditCreate).not.toHaveBeenCalled();
+    expect(mocks.historyCreate).not.toHaveBeenCalled();
   });
 
   it('deduplicates automatic dry-run preview history', async () => {
     mocks.ruleFindMany.mockResolvedValue([rule()]); setTorrents([torrent()]);
-    await runDownloadCleanerCycle({ dryRun: true, triggeredBy: 'auto' });
-    expect(mocks.historyCreate).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ action: 'dryRunPreview' }) }));
+    await runDownloadCleanerCycle({ dryRun: true, triggeredBy: 'auto', actor: scheduler });
+    expect(mocks.historyCreate).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ action: 'dryRunPreview', actorUserId: null, actorUsername: 'system:cleanup-scheduler' }) }));
+    expect(mocks.auditCreate).not.toHaveBeenCalled();
     vi.clearAllMocks();
     mocks.configFindUnique.mockResolvedValue({ ...baseConfig }); mocks.serviceFindMany.mockResolvedValue([]);
     mocks.ruleFindMany.mockResolvedValue([rule()]); mocks.getSonarrClients.mockResolvedValue([]); mocks.getRadarrClients.mockResolvedValue([]);
     mocks.historyFindFirst.mockResolvedValue({ id: 'x' }); setTorrents([torrent()]);
-    await runDownloadCleanerCycle({ dryRun: true, triggeredBy: 'auto' });
+    await runDownloadCleanerCycle({ dryRun: true, triggeredBy: 'auto', actor: scheduler });
     expect(mocks.historyCreate).not.toHaveBeenCalled();
   });
 
@@ -288,7 +339,8 @@ describe('download cleaner cycle', () => {
     mocks.ruleFindMany.mockResolvedValue([rule({ requireImportedConfirmation: true })]); setTorrents([torrent()]);
     setSonarrHistory(new Error('offline')); const result = await run();
     expect(result.decisions).toHaveLength(0);
-    expect(mocks.historyCreate).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ action: 'skipped', reason: expect.stringContaining('unreachable') }) }));
+    expect(mocks.historyCreate).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ action: 'skipped', reason: expect.stringContaining('unreachable'), actorUserId: 'user-1', actorUsername: 'owner' }) }));
+    expect(mocks.auditCreate).not.toHaveBeenCalled();
   });
 
   it('skips ignored categories', async () => {
