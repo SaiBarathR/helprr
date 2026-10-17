@@ -20,7 +20,7 @@ import { invalidateSeries } from '@/lib/query-invalidation';
 import { useQualityProfiles, useRootFolders } from '@/lib/hooks/use-reference-data';
 import { useCan } from '@/components/permission-provider';
 import type { SonarrSeries } from '@/types';
-import { joinPath, lastPathSegment, parentPath } from '@/lib/paths';
+import { parentPath, pathInRootFolder } from '@/lib/paths';
 
 export default function SeriesEditPage() {
   const { id } = useParams();
@@ -84,12 +84,8 @@ export default function SeriesEditPage() {
         tags: selectedTags,
       };
 
-      if (rootFolder && series.path) {
-        const seriesFolder = lastPathSegment(series.path);
-        if (seriesFolder) {
-          updatedSeries.path = joinPath(rootFolder, seriesFolder);
-        }
-      }
+      const movedPath = rootFolderTouched && series.path ? pathInRootFolder(series.path, rootFolder) : null;
+      if (movedPath) updatedSeries.path = movedPath;
 
       const moveFiles = rootFolderTouched;
       const url = `/api/sonarr/${series.id}${moveFiles ? '?moveFiles=true' : ''}`;

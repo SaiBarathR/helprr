@@ -24,7 +24,7 @@ import { invalidateMovies } from '@/lib/query-invalidation';
 import { useQualityProfiles, useRootFolders } from '@/lib/hooks/use-reference-data';
 import { useCan } from '@/components/permission-provider';
 import type { RadarrMovie } from '@/types';
-import { parentPath, lastPathSegment, joinPath } from '@/lib/paths';
+import { parentPath, pathInRootFolder } from '@/lib/paths';
 
 export default function MovieEditPage() {
   const { id } = useParams();
@@ -99,9 +99,8 @@ export default function MovieEditPage() {
     };
 
     // Update root folder path if changed
-    if (rootFolder && movie.path) {
-      updatedMovie.path = joinPath(rootFolder, lastPathSegment(movie.path));
-    }
+    const movedPath = movie.path ? pathInRootFolder(movie.path, rootFolder) : null;
+    if (movedPath) updatedMovie.path = movedPath;
 
     saveMutation.mutate(updatedMovie);
   }
