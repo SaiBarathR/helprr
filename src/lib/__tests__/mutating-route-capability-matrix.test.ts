@@ -191,6 +191,7 @@ const POLICY_GROUPS: Record<string, readonly string[]> = {
   'cap:settings.backup': [
     'POST /api/settings/export',
     'POST /api/settings/import',
+    'POST /api/settings/import/follow-up',
   ],
   'cap:settings.instances': [
     'DELETE /api/services/[id]',
@@ -422,7 +423,7 @@ describe('mutating API route capability matrix', () => {
   const assignments = policyAssignments();
 
   it('explicitly assigns every mutating handler exactly once', () => {
-    expect(handlers.size).toBe(159);
+    expect(handlers.size).toBe(160);
     expect([...assignments.keys()].sort()).toEqual([...handlers.keys()].sort());
   });
 

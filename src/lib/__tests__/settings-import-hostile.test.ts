@@ -31,7 +31,7 @@ vi.mock('@/lib/cache/state', () => ({
   setCachedCacheImagesEnabled: vi.fn(),
   setCachedAnilistTtlSettings: vi.fn(),
 }));
-vi.mock('@/lib/cache/admin', () => ({ disableCachingAndPurgeCaches: vi.fn() }));
+vi.mock('@/lib/cache/admin', () => ({ purgeOlderCacheGenerations: vi.fn() }));
 vi.mock('@/lib/logger', () => ({ configureLogger: vi.fn() }));
 vi.mock('@/lib/app-settings', () => ({ getOrCreateAppSettings: vi.fn() }));
 vi.mock('@/lib/cleanup/scheduler', () => ({

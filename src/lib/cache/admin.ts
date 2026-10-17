@@ -16,11 +16,13 @@ import {
   buildImageUsageKey,
 } from '@/lib/cache/keys';
 import {
+  advanceCacheGeneration,
   bumpCacheGeneration,
   getCacheGeneration,
   getCachePurgeStatus,
   getLastCachePurgedAt,
   setCachePurgeStatus,
+  setCachePurgeStatusOrThrow,
   setLastCachePurgedAt,
 } from '@/lib/cache/state';
 
@@ -190,6 +192,70 @@ async function purgeGeneration(generation: number): Promise<CachePurgeResult> {
     deletedTotalBytes: imageUsage.bytes + tmdbUsage.bytes + anilistUsage.bytes + apiUsage.bytes,
     purgedAt,
   };
+}
+
+// Key families purgeGeneration removes, matched across every generation.
+const GENERATION_KEY_PATTERNS = [
+  'helprr:cache:image:v*',
+  'helprr:cache:image-index:v*',
+  'helprr:cache:image-lru:v*',
+  'helprr:cache:image-usage:v*',
+  'helprr:cache:tmdb:v*',
+  'helprr:cache:anilist:v*',
+  'helprr:cache:api:*',
+];
+
+function keyGeneration(key: string): number | null {
+  const match = /:v(\d+)(?::|$)/.exec(key);
+  return match ? Number(match[1]) : null;
+}
+
+/**
+ * disableCachingAndPurgeCaches for a caller that must know whether it worked:
+ * start a new generation, then remove every older one from disk and Redis.
+ * Any failure throws. Because it sweeps all older generations rather than just
+ * the previous one, running it again finishes whatever an earlier run left.
+ */
+export async function purgeOlderCacheGenerations(): Promise<void> {
+  await setCachePurgeStatus('purging');
+  try {
+    let entries: string[] = [];
+    try {
+      entries = await readdir(IMAGE_CACHE_DIR);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    }
+    const onDisk = entries
+      .map((name) => /^v(\d+)$/.exec(name))
+      .filter((match): match is RegExpExecArray => match !== null)
+      .map((match) => Number(match[1]));
+    const current = await advanceCacheGeneration(Math.max(0, ...onDisk));
+
+    for (const generation of onDisk) {
+      if (generation < current) {
+        await rm(generationImageDirectory(generation), { recursive: true, force: true });
+      }
+    }
+
+    const redis = await getRedisClient();
+    for (const pattern of GENERATION_KEY_PATTERNS) {
+      let cursor = '0';
+      do {
+        const result = await redis.scan(cursor, { MATCH: pattern, COUNT: 200 });
+        cursor = result.cursor;
+        const older = result.keys.filter((key) => {
+          const generation = keyGeneration(key);
+          return generation !== null && generation < current;
+        });
+        if (older.length > 0) await redis.del(older);
+      } while (cursor !== '0');
+    }
+
+    await setLastCachePurgedAt(new Date().toISOString());
+  } finally {
+    // A status left at 'purging' stops image-cache maintenance, so this must not fail quietly.
+    await setCachePurgeStatusOrThrow('idle');
+  }
 }
 
 export async function getActiveCacheUsage(): Promise<CacheUsageSummary> {

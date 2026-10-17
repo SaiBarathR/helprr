@@ -5,22 +5,15 @@ import { requireUserCapability } from '@/lib/auth';
 import { BOOTSTRAP_ADMIN_ID } from '@/lib/bootstrap-admin';
 import { withApiLogging } from '@/lib/api-logger';
 import { parseCustomHeaders } from '@/lib/service-connection-secrets';
-import { pollingService } from '@/lib/polling-service';
-import { setCachedCacheImagesEnabled } from '@/lib/cache/state';
-import { disableCachingAndPurgeCaches } from '@/lib/cache/admin';
-import { setAppTimeZone, isValidTimeZone, getEnvTimeZone } from '@/lib/timezone';
-import { configureLogger } from '@/lib/logger';
-import { configureApiLogging } from '@/lib/api-logger';
-import { getOrCreateAppSettings } from '@/lib/app-settings';
+import { isValidTimeZone, getEnvTimeZone } from '@/lib/timezone';
 import { EVENT_TYPES } from '@/lib/notification-events';
 import { isServiceType } from '@/lib/service-connection-secrets';
-import { isArrType, ensureDefaultForType, clearConnectionMemo } from '@/lib/arr-instances';
+import { isArrType } from '@/lib/arr-instances';
 import { findServiceByType } from '@/lib/settings/service-config';
 import { parseBandwidthSchedule } from '@/lib/bandwidth-scheduler/parse';
 import { parseDiskThresholds } from '@/lib/disk-space';
 import { parsePermissions } from '@/lib/permissions';
 import { normalizeRegionCode } from '@/lib/region';
-import { setCachedAnilistTtlSettings } from '@/lib/cache/state';
 import {
   MAX_IMPORT_BYTES,
   ANIME_MAPPING_STATES,
@@ -41,21 +34,17 @@ import {
 } from '@/lib/settings-export';
 import { isAlertScope, isScheduleMode, parseReleaseTypes } from '@/lib/scheduled-alerts/helpers';
 import { DEFAULT_OFFSET_MINUTES } from '@/lib/scheduled-alerts/constants';
-import { createResolverContext, resolveAlertOccurrencesResult } from '@/lib/scheduled-alerts/resolver';
-import { upsertOccurrencesForAlert } from '@/lib/scheduled-alerts/delivery';
 import {
   validateDiscoverLayout,
   reconcileDiscoverLayout,
 } from '@/lib/discover-layout-config';
-import { restartDownloadCleaner, restartQueueCleaner } from '@/lib/cleanup/scheduler';
-import { pruneStrikesForMissingRules } from '@/lib/cleanup/strikes';
 import {
   MAX_LAYOUTS,
   MAX_NAME_LENGTH as MAX_LAYOUT_NAME_LENGTH,
   MAX_WIDGETS_PER_LAYOUT,
 } from '@/lib/dashboard-layouts';
 import { sanitizeDashboardLayout } from '@/lib/widgets/sanitize';
-import { invalidateLayoutCache } from '@/lib/cache/dashboard-layout-cache';
+import { runImportFollowUps, type ImportWarning } from '@/lib/settings-import/follow-ups';
 import type { WidgetInstance } from '@/lib/widgets/types';
 import {
   isValidExternalId,
@@ -117,7 +106,8 @@ interface ImportResult {
     users: number;
   };
   skipped: string[];
-  pollingRestarted: boolean;
+  /** Saved, but not yet in effect on this server; each can be retried. */
+  warnings: ImportWarning[];
   discoverLayoutApplied: boolean;
 }
 
@@ -1728,108 +1718,29 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     );
   }
 
-  // All DB writes committed — now run side effects. Failures here are logged
-  // but don't roll back the import (the data is already persisted).
-  let pollingRestarted = true;
-  if (appSettingsTxnResult) {
-    const { settings, wasCachingEnabled, pollingIntervalSecsChanged } = appSettingsTxnResult;
-    setCachedCacheImagesEnabled(settings.cacheImagesEnabled);
-    setCachedAnilistTtlSettings({
-      sectionsTtlMin: settings.anilistSectionsTtlMin,
-      browseTtlMin: settings.anilistBrowseTtlMin,
-      detailTtlMin: settings.anilistDetailTtlMin,
-      airingTtlMin: settings.anilistAiringTtlMin,
-    });
-    setAppTimeZone(settings.timeZone);
-    configureLogger({
-      timeZone: settings.timeZone,
-      level: settings.logLevel as 'debug' | 'info' | 'warn' | 'error',
-      maxFileMb: settings.logMaxFileMb,
-      retentionDays: settings.logRetentionDays,
-      enabled: settings.logEnabled,
-    });
-    configureApiLogging({
-      enabled: settings.logEnabled,
-      failedRequestBodies: settings.logFailedRequestBodies,
-      failedResponseBodies: settings.logFailedResponseBodies,
-    });
-
-    if (wasCachingEnabled && settings.cacheImagesEnabled === false) {
-      try {
-        await disableCachingAndPurgeCaches();
-      } catch (err) {
-        console.error('Failed to purge cache after import-disable', err);
-      }
-    }
-
-    if (pollingIntervalSecsChanged !== null) {
-      try {
-        pollingService.restart(pollingIntervalSecsChanged * 1000);
-      } catch (err) {
-        pollingRestarted = false;
-        console.warn('Failed to restart polling after import', err);
-      }
-    }
-    // Ensure singleton init path runs and any in-process caches are seeded.
-    await getOrCreateAppSettings();
-  }
-
-  // After cleanup rules are replaced, restart the cleaner schedulers so the
-  // new intervals/modes take effect and prune any strikes whose ruleId no
-  // longer exists.
-  if (appliedCleanup) {
-    try {
-      await pruneStrikesForMissingRules();
-    } catch (err) {
-      console.warn('Failed to prune orphan strikes after cleanup import', err);
-    }
-    try {
-      await Promise.all([restartQueueCleaner(), restartDownloadCleaner()]);
-    } catch (err) {
-      console.warn('Failed to restart cleanup schedulers after import', err);
-    }
-  }
-
-  // Materialize occurrences for imported release_relative alerts, mirroring
-  // POST /api/scheduled-alerts. Without this they'd stay inert until the
-  // background refresh reaches them (it processes oldest-updated first, so
-  // fresh imports would be last in line).
-  if (createdReleaseRelative.length > 0) {
-    const ctx = createResolverContext({
-      maxOffsetMinutes: Math.max(...createdReleaseRelative.map((a) => a.offsetMinutes)),
-    });
-    for (const alert of createdReleaseRelative) {
-      try {
-        const { candidates, resolved } = await resolveAlertOccurrencesResult(alert, ctx);
-        await upsertOccurrencesForAlert(alert, candidates, { resolved });
-      } catch (err) {
-        console.warn('Failed to resolve occurrences for imported alert', alert.id, err);
-      }
-    }
-  }
-
-  // After dashboard layouts change, drop the cached active layouts so the next
-  // dashboard fetch reads the new defaults.
-  if (appliedDashboardLayouts > 0) {
-    try {
-      await invalidateLayoutCache();
-    } catch (err) {
-      console.warn('Failed to invalidate dashboard layout cache after import', err);
-    }
-  }
-
-  // Ensure exactly one default per imported type (export isDefault flags were
-  // applied on create; this promotes the oldest if none/many ended up flagged).
-  if (appliedServices.length > 0) {
-    for (const type of new Set(appliedServices)) {
-      try {
-        await ensureDefaultForType(type);
-      } catch (err) {
-        console.warn('Failed to ensure default instance after import', err);
-      }
-    }
-    clearConnectionMemo();
-  }
+  // Everything is committed. Bring this server in line with it; a step that
+  // fails comes back as a warning the operator can retry
+  // (POST /api/settings/import/follow-up) instead of failing a saved import.
+  const warnings = await runImportFollowUps({
+    appSettings: appSettingsTxnResult !== null,
+    imageCachePurge: Boolean(
+      appSettingsTxnResult?.wasCachingEnabled && appSettingsTxnResult.settings.cacheImagesEnabled === false,
+    ),
+    pollingRestart: appSettingsTxnResult?.pollingIntervalSecsChanged != null,
+    // Restart the cleaner schedulers so the new intervals/modes take effect,
+    // and drop strikes whose rule no longer exists.
+    cleanupStrikePrune: appliedCleanup,
+    cleanupSchedulers: appliedCleanup,
+    // Materialize occurrences for imported release_relative alerts, mirroring
+    // POST /api/scheduled-alerts. Without this they'd stay inert until the
+    // background refresh reaches them (it processes oldest-updated first, so
+    // fresh imports would be last in line).
+    alertIds: createdReleaseRelative.map((alert) => alert.id),
+    dashboardLayoutCache: appliedDashboardLayouts > 0,
+    // Exactly one default per imported type (export isDefault flags were
+    // applied on create; this promotes the oldest if none/many ended up flagged).
+    serviceTypes: appliedServices,
+  });
 
   const result: ImportResult = {
     applied: {
@@ -1845,7 +1756,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
       users: appliedUsers,
     },
     skipped,
-    pollingRestarted,
+    warnings,
     discoverLayoutApplied,
   };
   return NextResponse.json(result);
