@@ -1,5 +1,6 @@
 import type { CleanupAction } from '@prisma/client';
 import type { QBittorrentTorrent, QueueItem } from '@/types';
+import type { AuditActor } from '@/lib/file-audit';
 
 export type PrivacyType = 'public' | 'private' | 'both';
 export type PatternMode = 'include' | 'exclude';
@@ -12,6 +13,16 @@ export type RemovalAction = CleanupAction;
 export type TriggeredBy = 'auto' | 'manual' | 'dryRun';
 export type AutoRunMode = 'disabled' | 'dryRun' | 'enabled';
 export const AUTO_RUN_MODES: AutoRunMode[] = ['disabled', 'dryRun', 'enabled'];
+
+// How a cycle was started, carried into every Cleanup History and
+// operation-audit row it writes.
+export interface CleanupRunContext {
+  triggeredBy: TriggeredBy;
+  // The signed-in user for previews and manual runs;
+  // systemAuditActor('cleanup-scheduler') for scheduled ones.
+  actor: AuditActor;
+  previewId?: string;
+}
 
 export interface FailedImportConfig {
   maxStrikes: number; // 0 = disabled, else >= 3

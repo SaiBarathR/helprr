@@ -10,6 +10,7 @@ import {
   getRadarrClients,
 } from '@/lib/service-helpers';
 import { notifyEvent } from '@/lib/notification-service';
+import { recordOperationAudit } from '@/lib/file-audit';
 import {
   batchFetchTrackerDomains,
   buildSeedingReason,
@@ -30,9 +31,9 @@ import {
   DownloadEvaluationResult,
   PrivacyType,
   SeedingRuleShape,
-  TriggeredBy,
   CleanupExecutionBinding,
   CleanupItemOutcome,
+  CleanupRunContext,
 } from './types';
 
 const VALID_PRIVACY_TYPES: PrivacyType[] = ['public', 'private', 'both'];
@@ -189,11 +190,9 @@ function evaluatePredicate(t: QBittorrentTorrent, rule: SeedingRuleShape): Downl
   };
 }
 
-export interface RunOptions {
+export interface RunOptions extends CleanupRunContext {
   dryRun: boolean;
-  triggeredBy: TriggeredBy;
   expectedBinding?: CleanupExecutionBinding;
-  previewId?: string;
 }
 
 export async function runDownloadCleanerCycle(opts: RunOptions): Promise<DownloadEvaluationResult> {
@@ -327,6 +326,8 @@ export async function runDownloadCleanerCycle(opts: RunOptions): Promise<Downloa
               torrentProgress: t.progress,
               torrentRatio: t.ratio,
               triggeredBy: opts.triggeredBy === 'dryRun' ? 'manual' : opts.triggeredBy,
+              actorUserId: opts.actor.id,
+              actorUsername: opts.actor.username,
             },
           });
         }
@@ -419,6 +420,8 @@ export async function runDownloadCleanerCycle(opts: RunOptions): Promise<Downloa
             torrentProgress: d.torrent.progress,
             torrentRatio: d.torrent.ratio,
             triggeredBy: 'auto',
+            actorUserId: opts.actor.id,
+            actorUsername: opts.actor.username,
           },
         });
       }
@@ -428,8 +431,8 @@ export async function runDownloadCleanerCycle(opts: RunOptions): Promise<Downloa
       try {
         const revalidation = await revalidateDownloadDecision(d, configFingerprint, scopeFingerprint);
         const outcome = revalidation.ok
-          ? await executeDownloadCleanerRemoval(revalidation.decision, opts.triggeredBy, opts.previewId)
-          : await recordDownloadRevalidationOutcome(d, revalidation, opts.triggeredBy, opts.previewId);
+          ? await executeDownloadCleanerRemoval(revalidation.decision, opts)
+          : await recordDownloadRevalidationOutcome(d, revalidation, opts);
         if (outcome.kind === 'success') {
           succeededCount++;
           successDecisions.push({ decision: d, outcome });
@@ -727,8 +730,7 @@ async function revalidateDownloadDecision(
 async function recordDownloadRevalidationOutcome(
   decision: DownloadDecision,
   revalidation: Extract<DownloadRevalidation, { ok: false }>,
-  triggeredBy: TriggeredBy,
-  previewId?: string,
+  run: CleanupRunContext,
 ): Promise<DownloadRemovalOutcome> {
   const outcome: DownloadRemovalOutcome = {
     kind: 'failure',
@@ -739,19 +741,19 @@ async function recordDownloadRevalidationOutcome(
     errorMessage: revalidation.errorMessage,
     targets: [{ target: 'qbittorrent', attempted: false, before: 'unknown', after: 'unknown', errorMessage: revalidation.errorMessage }],
   };
-  await writeDownloadHistory(decision, outcome, triggeredBy, previewId);
+  await writeDownloadHistory(decision, outcome, run);
   return outcome;
 }
 
 export async function executeDownloadCleanerRemoval(
   d: DownloadDecision,
-  triggeredBy: TriggeredBy,
-  previewId?: string,
+  run: CleanupRunContext,
 ): Promise<DownloadRemovalOutcome> {
   const hashLc = d.torrent.hash.toLowerCase();
   const intendedFilesDeleted = d.rule.deleteSourceFiles;
   let deleteError: string | null = null;
   let qbit;
+  const startedAt = new Date();
   try {
     qbit = await getQBittorrentClient();
     await qbit.deleteTorrent(d.torrent.hash, intendedFilesDeleted);
@@ -781,7 +783,6 @@ export async function executeDownloadCleanerRemoval(
       errorMessage: null,
       targets: [{ target: 'qbittorrent', attempted: true, before: 'present', after, ...(deleteError ? { errorMessage: deleteError } : {}) }],
     };
-    await prisma.cleanupStrike.deleteMany({ where: { hash: hashLc } });
   } else if (after === 'present') {
     const errorMessage = deleteError ?? 'qBittorrent still reports the torrent after deletion';
     outcome = {
@@ -806,15 +807,38 @@ export async function executeDownloadCleanerRemoval(
     };
   }
 
-  await writeDownloadHistory(d, outcome, triggeredBy, previewId);
+  await recordOperationAudit({
+    user: run.actor,
+    service: 'QBITTORRENT',
+    operation: 'DELETE_TORRENT',
+    targetType: 'torrent',
+    targetTitle: d.torrent.name,
+    itemCount: 1,
+    filesDeleted: intendedFilesDeleted,
+    details: {
+      cleaner: 'download',
+      triggeredBy: run.triggeredBy,
+      previewId: run.previewId ?? null,
+      hash: hashLc,
+      rule: { id: d.rule.id, name: d.rule.name },
+      deleteFiles: intendedFilesDeleted,
+      before: 'present',
+      after,
+      callError: deleteError,
+    },
+    startedAt,
+    success: after === 'absent',
+    errorMessage: outcome.errorMessage,
+  });
+  if (after === 'absent') await prisma.cleanupStrike.deleteMany({ where: { hash: hashLc } });
+  await writeDownloadHistory(d, outcome, run);
   return outcome;
 }
 
 async function writeDownloadHistory(
   d: DownloadDecision,
   outcome: DownloadRemovalOutcome,
-  triggeredBy: TriggeredBy,
-  previewId?: string,
+  { triggeredBy, previewId, actor }: CleanupRunContext,
 ): Promise<void> {
   const hashLc = d.torrent.hash.toLowerCase();
   // The outcome is decided by now, and a removal has already happened. A row
@@ -844,6 +868,8 @@ async function writeDownloadHistory(
         previewId: previewId ?? null,
         outcomeStatus: outcome.status,
         outcomeDetails: { message: outcome.message, targets: outcome.targets } as unknown as Prisma.InputJsonValue,
+        actorUserId: actor.id,
+        actorUsername: actor.username,
       },
     });
   } catch (err) {

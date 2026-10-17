@@ -4,6 +4,7 @@ import { logger } from '@/lib/logger';
 import type { QBittorrentTorrent, QueueItem } from '@/types';
 import { getQBittorrentClient, getSonarrClient, getRadarrClient, getSonarrClients, getRadarrClients } from '@/lib/service-helpers';
 import { notifyEvent } from '@/lib/notification-service';
+import { recordOperationAudit } from '@/lib/file-audit';
 import { classifyQueueIssue } from '@/lib/queue-state';
 import {
   activeHours,
@@ -52,10 +53,10 @@ import {
   QueueEvaluationResult,
   SlowRuleShape,
   StallRuleShape,
-  TriggeredBy,
   PendingStrike,
   CleanupExecutionBinding,
   CleanupItemOutcome,
+  CleanupRunContext,
 } from './types';
 
 const LOG = 'queue-cleaner';
@@ -222,11 +223,9 @@ function isActiveDownloadState(state: string): boolean {
   return state === 'downloading' || state === 'stalledDL' || state === 'forcedDL';
 }
 
-export interface RunOptions {
+export interface RunOptions extends CleanupRunContext {
   dryRun: boolean;
-  triggeredBy: TriggeredBy;
   expectedBinding?: CleanupExecutionBinding;
-  previewId?: string;
 }
 
 export async function runQueueCleanerCycle(opts: RunOptions): Promise<QueueEvaluationResult> {
@@ -546,7 +545,7 @@ export async function runQueueCleanerCycle(opts: RunOptions): Promise<QueueEvalu
         logger.error('Strike persistence failed (auto-dryRun)', { err: String(err) }, { scope: LOG });
       }
 
-      await writeStrikeAddedHistory(pendingStrikes, opts.triggeredBy);
+      await writeStrikeAddedHistory(pendingStrikes, opts);
 
       for (const d of decisions) {
         const hashLc = d.torrent.hash.toLowerCase();
@@ -570,6 +569,8 @@ export async function runQueueCleanerCycle(opts: RunOptions): Promise<QueueEvalu
             torrentProgress: d.torrent.progress,
             torrentRatio: d.torrent.ratio,
             triggeredBy: 'auto',
+            actorUserId: opts.actor.id,
+            actorUsername: opts.actor.username,
           },
         });
         // Mirror the real-run flow's strike-clear after a successful removal
@@ -593,14 +594,14 @@ export async function runQueueCleanerCycle(opts: RunOptions): Promise<QueueEvalu
       logger.error('Strike persistence failed', { err: String(err) }, { scope: LOG });
     }
 
-    await writeStrikeAddedHistory(pendingStrikes, opts.triggeredBy);
+    await writeStrikeAddedHistory(pendingStrikes, opts);
 
     await processWithLimit(decisions, CLEANUP_CONCURRENCY, async (d) => {
       try {
         const revalidation = await revalidateQueueDecision(d, configFingerprint, scopeFingerprint);
         const outcome = revalidation.ok
-          ? await executeQueueCleanerRemoval(revalidation.decision, opts.triggeredBy, opts.previewId)
-          : await recordQueueRevalidationOutcome(d, revalidation, opts.triggeredBy, opts.previewId);
+          ? await executeQueueCleanerRemoval(revalidation.decision, opts)
+          : await recordQueueRevalidationOutcome(d, revalidation, opts);
         if (outcome.kind === 'success') {
           succeededCount++;
           successOutcomes.push({ decision: d, outcome });
@@ -1024,7 +1025,7 @@ function evaluateRules<R extends { id: string; enabled: boolean; priority: numbe
 
 async function writeStrikeAddedHistory(
   pendingStrikes: PendingStrike[],
-  triggeredBy: TriggeredBy,
+  { triggeredBy, actor }: CleanupRunContext,
 ): Promise<void> {
   for (const ps of pendingStrikes) {
     try {
@@ -1042,6 +1043,8 @@ async function writeStrikeAddedHistory(
           filesDeleted: false,
           reSearched: false,
           triggeredBy,
+          actorUserId: actor.id,
+          actorUsername: actor.username,
         },
       });
     } catch (err) {
@@ -1109,8 +1112,7 @@ function toQueueItemOutcome(d: QueueDecision, outcome: QueueRemovalOutcome): Cle
 async function recordQueueRevalidationOutcome(
   decision: QueueDecision,
   revalidation: Extract<QueueRevalidation, { ok: false }>,
-  triggeredBy: TriggeredBy,
-  previewId?: string,
+  run: CleanupRunContext,
 ): Promise<QueueRemovalOutcome> {
   const outcome: QueueRemovalOutcome = {
     kind: 'failure',
@@ -1122,7 +1124,7 @@ async function recordQueueRevalidationOutcome(
     errorMessage: revalidation.errorMessage,
     targets: [{ target: 'qbittorrent', attempted: false, before: 'unknown', after: 'unknown', errorMessage: revalidation.errorMessage }],
   };
-  await writeQueueHistory(decision, outcome, triggeredBy, previewId);
+  await writeQueueHistory(decision, outcome, run);
   return outcome;
 }
 
@@ -1206,8 +1208,7 @@ async function triggerQueueResearch(d: QueueDecision): Promise<{ reSearched: boo
 
 export async function executeQueueCleanerRemoval(
   d: QueueDecision,
-  triggeredBy: TriggeredBy,
-  previewId?: string,
+  run: CleanupRunContext,
 ): Promise<QueueRemovalOutcome> {
   const hashLc = d.torrent.hash.toLowerCase();
   const links = d.linkedAll ?? (d.linked ? [d.linked] : []);
@@ -1227,34 +1228,45 @@ export async function executeQueueCleanerRemoval(
       errorMessage: 'No linked Arr queue item could be removed without deleting the private torrent',
       targets: [{ target: 'qbittorrent', attempted: false, before: 'present', after: 'present' }],
     };
-    await writeQueueHistory(d, outcome, triggeredBy, previewId);
+    await writeQueueHistory(d, outcome, run);
     return outcome;
   }
+
+  // Every row this removal writes to the operation audit, one per upstream
+  // call that could delete something, each written once that target is
+  // reconciled: success means its intended final state was observed.
+  const auditDetails = {
+    cleaner: 'queue',
+    triggeredBy: run.triggeredBy,
+    previewId: run.previewId ?? null,
+    hash: hashLc,
+    rule: { id: d.ruleId, name: d.ruleName, strikeType: d.strikeType },
+  };
 
   let removedFromClientObserved = false;
   if (links.length > 0) {
     for (const link of links) {
       const removeFromClient = !d.options.changeCategory && shouldDeleteFromClient && !removedFromClientObserved;
+      const options = {
+        removeFromClient,
+        blocklist: !d.options.changeCategory && d.options.reSearch,
+        changeCategory: d.options.changeCategory,
+      };
       let callError: string | undefined;
+      const startedAt = new Date();
       try {
         const client = link.source === 'sonarr'
           ? await getSonarrClient(link.instanceId)
           : await getRadarrClient(link.instanceId);
-        await client.deleteQueueItem(link.queueItem.id, {
-          removeFromClient,
-          blocklist: !d.options.changeCategory && d.options.reSearch,
-          changeCategory: d.options.changeCategory,
-        });
+        await client.deleteQueueItem(link.queueItem.id, options);
       } catch (error) {
         callError = formatError(error);
       }
 
-      if (removeFromClient) {
-        const qbitState = await inspectQbit(d.torrent.hash);
-        if (qbitState.state === 'absent') removedFromClientObserved = true;
-        if (qbitState.errorMessage && !callError) callError = qbitState.errorMessage;
-      }
+      const clientAfter = removeFromClient ? await inspectQbit(d.torrent.hash) : null;
+      if (clientAfter?.state === 'absent') removedFromClientObserved = true;
       const after = await inspectQueueLink(link);
+      const errorMessage = [callError || clientAfter?.errorMessage, after.errorMessage].filter(Boolean).join('; ');
       targets.push({
         target: link.source,
         instanceId: link.instanceId,
@@ -1262,11 +1274,40 @@ export async function executeQueueCleanerRemoval(
         attempted: true,
         before: 'present',
         after: after.state,
-        ...((callError || after.errorMessage) ? { errorMessage: [callError, after.errorMessage].filter(Boolean).join('; ') } : {}),
+        ...(errorMessage ? { errorMessage } : {}),
+      });
+      const reached = after.state === 'absent' && (!clientAfter || clientAfter.state === 'absent');
+      await recordOperationAudit({
+        user: run.actor,
+        service: link.source === 'sonarr' ? 'SONARR' : 'RADARR',
+        instanceId: link.instanceId,
+        operation: 'REMOVE_QUEUE',
+        targetType: 'queue',
+        targetId: link.queueItem.id,
+        targetTitle: d.torrent.name,
+        itemCount: 1,
+        filesDeleted: removeFromClient,
+        details: {
+          ...auditDetails,
+          queueItemId: link.queueItem.id,
+          ...options,
+          before: 'present',
+          after: after.state,
+          clientAfter: clientAfter?.state ?? null,
+          callError: callError ?? null,
+        },
+        startedAt,
+        success: reached,
+        errorMessage: reached
+          ? null
+          : errorMessage || (after.state === 'present'
+            ? 'The queue item is still present after removal'
+            : 'qBittorrent still reports the torrent after removal'),
       });
     }
   } else {
     let callError: string | undefined;
+    const startedAt = new Date();
     try {
       const qbit = await getQBittorrentClient();
       await qbit.deleteTorrent(d.torrent.hash, true);
@@ -1274,12 +1315,34 @@ export async function executeQueueCleanerRemoval(
       callError = formatError(error);
     }
     const after = await inspectQbit(d.torrent.hash);
+    const errorMessage = [callError, after.errorMessage].filter(Boolean).join('; ');
     targets.push({
       target: 'qbittorrent',
       attempted: true,
       before: 'present',
       after: after.state,
-      ...((callError || after.errorMessage) ? { errorMessage: [callError, after.errorMessage].filter(Boolean).join('; ') } : {}),
+      ...(errorMessage ? { errorMessage } : {}),
+    });
+    await recordOperationAudit({
+      user: run.actor,
+      service: 'QBITTORRENT',
+      operation: 'DELETE_TORRENT',
+      targetType: 'torrent',
+      targetTitle: d.torrent.name,
+      itemCount: 1,
+      filesDeleted: true,
+      details: {
+        ...auditDetails,
+        deleteFiles: true,
+        before: 'present',
+        after: after.state,
+        callError: callError ?? null,
+      },
+      startedAt,
+      success: after.state === 'absent',
+      errorMessage: after.state === 'absent'
+        ? null
+        : errorMessage || 'qBittorrent still reports the torrent after deletion',
     });
   }
 
@@ -1352,15 +1415,14 @@ export async function executeQueueCleanerRemoval(
         errorMessage: errorMessage as string,
         targets,
       };
-  await writeQueueHistory(d, outcome, triggeredBy, previewId);
+  await writeQueueHistory(d, outcome, run);
   return outcome;
 }
 
 async function writeQueueHistory(
   d: QueueDecision,
   outcome: QueueRemovalOutcome,
-  triggeredBy: TriggeredBy,
-  previewId?: string,
+  { triggeredBy, previewId, actor }: CleanupRunContext,
 ): Promise<void> {
   const hashLc = d.torrent.hash.toLowerCase();
   // The outcome is decided by now, and a removal has already happened. A row
@@ -1390,6 +1452,8 @@ async function writeQueueHistory(
         previewId: previewId ?? null,
         outcomeStatus: outcome.status,
         outcomeDetails: { message: outcome.message, targets: outcome.targets } as unknown as Prisma.InputJsonValue,
+        actorUserId: actor.id,
+        actorUsername: actor.username,
       },
     });
   } catch (err) {

@@ -71,6 +71,7 @@ describe('POST /api/activity/manualimport', () => {
         mediaIds: [47],
         commandId: 900,
       },
+      startedAt: expect.any(Date),
       success: true,
       errorMessage: null,
     });

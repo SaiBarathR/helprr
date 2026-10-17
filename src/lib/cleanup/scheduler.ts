@@ -1,4 +1,6 @@
 import { logger } from '@/lib/logger';
+import { systemAuditActor } from '@/lib/file-audit';
+import { runOutsideRequestContext } from '@/lib/request-context';
 import { runQueueCleanerCycle, loadQueueCleanerConfig } from './queue-cleaner';
 import { runDownloadCleanerCycle, loadDownloadCleanerConfig } from './download-cleaner';
 import type {
@@ -8,6 +10,8 @@ import type {
 } from './types';
 
 const LOG = 'cleanup-scheduler';
+// Scheduled cycles act for no user; their history and audit rows name this.
+const SCHEDULER_ACTOR = systemAuditActor('cleanup-scheduler');
 
 // Watchdog on a single cleanup cycle. Every upstream HTTP call carries its own
 // 30s axios timeout, so a cycle always settles eventually; the watchdog only
@@ -109,7 +113,7 @@ async function safeRunQueue(): Promise<QueueEvaluationResult | null> {
   // writes dryRunPreview history rows so users can see what would happen.
   const dryRun = job.autoRunMode === 'dryRun';
   try {
-    const result = await runWithWatchdog('Queue cleaner', () => runQueueCleanerCycle({ dryRun, triggeredBy: 'auto' }));
+    const result = await runWithWatchdog('Queue cleaner', () => runQueueCleanerCycle({ dryRun, triggeredBy: 'auto', actor: SCHEDULER_ACTOR }));
     recordLastCycle(job, result);
     return result;
   } catch (err) {
@@ -123,7 +127,7 @@ async function safeRunDownload(): Promise<DownloadEvaluationResult | null> {
   const job = getState().download;
   const dryRun = job.autoRunMode === 'dryRun';
   try {
-    const result = await runWithWatchdog('Download cleaner', () => runDownloadCleanerCycle({ dryRun, triggeredBy: 'auto' }));
+    const result = await runWithWatchdog('Download cleaner', () => runDownloadCleanerCycle({ dryRun, triggeredBy: 'auto', actor: SCHEDULER_ACTOR }));
     recordLastCycle(job, result);
     return result;
   } catch (err) {
@@ -229,7 +233,9 @@ export async function restartQueueCleaner(): Promise<void> {
   // Anchor the countdown at the moment the timer is installed so the dashboard
   // can show "next run in N min" honestly until the first tick fires.
   s.queue.lastRunAt = Date.now();
-  s.queue.timer = setInterval(tickQueue, intervalMinutes * 60_000);
+  // A settings save restarts the timer from inside its API request; scheduled
+  // cycles must not inherit that request's id.
+  s.queue.timer = runOutsideRequestContext(() => setInterval(tickQueue, intervalMinutes * 60_000));
   logger.info('Queue cleaner timer started', {
     intervalMinutes,
     autoRunMode: cfg.autoRunMode,
@@ -252,7 +258,7 @@ export async function restartDownloadCleaner(): Promise<void> {
     return;
   }
   s.download.lastRunAt = Date.now();
-  s.download.timer = setInterval(tickDownload, intervalMinutes * 60_000);
+  s.download.timer = runOutsideRequestContext(() => setInterval(tickDownload, intervalMinutes * 60_000));
   logger.info('Download cleaner timer started', {
     intervalMinutes,
     autoRunMode: cfg.autoRunMode,

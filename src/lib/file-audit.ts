@@ -1,6 +1,7 @@
 import { Prisma, type FileOperation, type ServiceType } from '@prisma/client';
 import type { User } from '@prisma/client';
 import { prisma } from '@/lib/db';
+import { currentRequestContext } from '@/lib/request-context';
 import type { QBittorrentClient } from '@/lib/qbittorrent-client';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -13,7 +14,25 @@ import type { QBittorrentClient } from '@/lib/qbittorrent-client';
 // FAIL-SOFT: a failed audit write must never turn a completed (or failed) file
 // operation into a 500. The op already happened; the worst case is a missing log
 // line, which we surface via console.error rather than propagating.
+//
+// A row written while an API request is handled carries that request's
+// x-request-id (see withApiLogging), so it can be matched to the request's log
+// entry. startedAt is when the upstream call started; createdAt is when its
+// result was known, since every caller writes the row right after it.
 // ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Who a row is attributed to: the acting user, or a system process with a null
+ * id and a `system:<label>` name (see systemAuditActor).
+ */
+export interface AuditActor {
+  id: string | null;
+  username: string;
+}
+
+export function systemAuditActor(label: string): AuditActor {
+  return { id: null, username: `system:${label}` };
+}
 
 export interface FileAuditInput {
   /** Acting user; pass the resolved User from requireUser()/getCurrentUser(). */
@@ -34,12 +53,14 @@ export interface FileAuditInput {
    * whatever makes the action reconstructable later.
    */
   details?: Record<string, unknown> | null;
+  /** When the upstream call started. */
+  startedAt: Date;
   success: boolean;
   errorMessage?: string | null;
 }
 
 export interface OperationAuditInput {
-  user: Pick<User, 'id' | 'username'> | null;
+  user: AuditActor | null;
   service: Extract<ServiceType, 'SONARR' | 'RADARR' | 'LIDARR' | 'QBITTORRENT'>;
   instanceId?: string | null;
   operation: FileOperation;
@@ -51,6 +72,8 @@ export interface OperationAuditInput {
   itemCount: number;
   filesDeleted?: boolean | null;
   details?: Record<string, unknown> | null;
+  /** When the upstream call started. */
+  startedAt: Date;
   success: boolean;
   errorMessage?: string | null;
 }
@@ -75,6 +98,8 @@ export async function recordOperationAudit(input: OperationAuditInput): Promise<
             : (input.details as Prisma.InputJsonValue),
         success: input.success,
         errorMessage: input.errorMessage ?? null,
+        requestId: currentRequestContext()?.requestId ?? null,
+        startedAt: input.startedAt,
       },
     });
   } catch (err) {
@@ -96,6 +121,7 @@ export async function recordFileAudit(input: FileAuditInput): Promise<void> {
     itemCount: input.fileCount,
     filesDeleted: input.operation === 'DELETE' ? true : null,
     details: input.details,
+    startedAt: input.startedAt,
     success: input.success,
     errorMessage: input.errorMessage,
   });
@@ -106,16 +132,18 @@ export async function recordFileAudit(input: FileAuditInput): Promise<void> {
  * remain fail-soft so a logging outage never masks the real upstream response.
  */
 export async function runWithOperationAudit<T>(
-  input: Omit<OperationAuditInput, 'success' | 'errorMessage'>,
+  input: Omit<OperationAuditInput, 'startedAt' | 'success' | 'errorMessage'>,
   operation: () => Promise<T>,
 ): Promise<T> {
+  const startedAt = new Date();
   try {
     const result = await operation();
-    await recordOperationAudit({ ...input, success: true });
+    await recordOperationAudit({ ...input, startedAt, success: true });
     return result;
   } catch (error) {
     await recordOperationAudit({
       ...input,
+      startedAt,
       success: false,
       errorMessage: error instanceof Error ? error.message : 'Upstream operation failed',
     });

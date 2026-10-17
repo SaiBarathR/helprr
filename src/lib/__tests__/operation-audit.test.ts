@@ -10,9 +10,12 @@ vi.mock('@/lib/db', () => ({
 
 import {
   recordFileAudit,
+  recordOperationAudit,
   runWithOperationAudit,
   snapshotTorrentDeleteTargets,
+  systemAuditActor,
 } from '@/lib/file-audit';
+import { withApiLogging } from '@/lib/api-logger';
 
 const user = { id: 'user-1', username: 'owner' };
 
@@ -23,6 +26,7 @@ describe('unified operation audit', () => {
   });
 
   it('preserves legacy file-delete fields and marks files as deleted', async () => {
+    const startedAt = new Date('2026-10-17T10:00:00.000Z');
     await recordFileAudit({
       user,
       service: 'SONARR',
@@ -33,6 +37,7 @@ describe('unified operation audit', () => {
       mediaTitle: 'Example',
       fileCount: 2,
       details: { paths: ['a.mkv', 'b.mkv'] },
+      startedAt,
       success: true,
     });
 
@@ -44,7 +49,56 @@ describe('unified operation audit', () => {
         mediaTitle: 'Example',
         fileCount: 2,
         filesDeleted: true,
+        startedAt,
         success: true,
+      }),
+    });
+  });
+
+  it('ties a row to the API request that wrote it and to when its upstream call started', async () => {
+    let callStartedAt = 0;
+    const handler = withApiLogging(async () => {
+      await runWithOperationAudit({
+        user,
+        service: 'SONARR',
+        operation: 'DELETE_MEDIA',
+        targetType: 'series',
+        targetId: 3,
+        targetTitle: 'Series',
+        itemCount: 1,
+      }, async () => {
+        callStartedAt = Date.now();
+        await new Promise((resolve) => setTimeout(resolve, 5));
+      });
+      return new Response(null, { status: 204 });
+    });
+
+    const response = await handler();
+
+    const data = mocks.create.mock.calls[0][0].data;
+    expect(data.requestId).toBe(response.headers.get('x-request-id'));
+    expect(data.requestId).toMatch(/^[0-9a-f-]{36}$/);
+    expect(data.startedAt).toBeInstanceOf(Date);
+    expect(data.startedAt.getTime()).toBeLessThanOrEqual(callStartedAt);
+  });
+
+  it('records no request id outside an API request and names a system actor', async () => {
+    await recordOperationAudit({
+      user: systemAuditActor('cleanup-scheduler'),
+      service: 'QBITTORRENT',
+      operation: 'DELETE_TORRENT',
+      targetType: 'torrent',
+      targetTitle: 'Torrent',
+      itemCount: 1,
+      startedAt: new Date(),
+      success: true,
+    });
+
+    expect(mocks.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        userId: null,
+        username: 'system:cleanup-scheduler',
+        requestId: null,
       }),
     });
   });

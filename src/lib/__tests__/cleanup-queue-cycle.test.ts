@@ -6,7 +6,7 @@ const mocks = vi.hoisted(() => ({
   configFindUnique: vi.fn(), stallFindMany: vi.fn(), slowFindMany: vi.fn(), strikeFindMany: vi.fn(),
   serviceFindMany: vi.fn(), historyCreate: vi.fn(), strikeDeleteMany: vi.fn(),
   getQBittorrentClient: vi.fn(), getSonarrClients: vi.fn(), getRadarrClients: vi.fn(),
-  getSonarrClient: vi.fn(), getRadarrClient: vi.fn(),
+  getSonarrClient: vi.fn(), getRadarrClient: vi.fn(), auditCreate: vi.fn(),
 }));
 
 vi.mock('@/lib/db', () => ({ prisma: {
@@ -14,6 +14,7 @@ vi.mock('@/lib/db', () => ({ prisma: {
   stallRule: { findMany: mocks.stallFindMany }, slowRule: { findMany: mocks.slowFindMany },
   cleanupStrike: { findMany: mocks.strikeFindMany, deleteMany: mocks.strikeDeleteMany },
   serviceConnection: { findMany: mocks.serviceFindMany }, cleanupHistory: { create: mocks.historyCreate },
+  fileOperationAudit: { create: mocks.auditCreate },
 } }));
 vi.mock('@/lib/logger', () => ({ logger: { error: vi.fn(), info: vi.fn(), warn: vi.fn() } }));
 vi.mock('@/lib/notification-service', () => ({ notifyEvent: vi.fn() }));
@@ -24,6 +25,10 @@ vi.mock('@/lib/service-helpers', () => ({
 }));
 
 import { runQueueCleanerCycle } from '@/lib/cleanup/queue-cleaner';
+import { StaleCleanupPreviewError } from '@/lib/cleanup/binding';
+
+const owner = { id: 'user-1', username: 'owner' };
+const scheduler = { id: null, username: 'system:cleanup-scheduler' };
 
 const failedImportDefaults: FailedImportConfig = { maxStrikes: 0, ignorePrivate: false, deletePrivate: false, skipIfNotFoundInClient: true, patternMode: 'exclude', patterns: [], changeCategory: false };
 const baseConfig = { enabled: true, intervalMinutes: 5, ignoredDownloads: [], processNoContentId: false, downloadingMetadataMaxStrikes: 0, failedImport: failedImportDefaults, reSearchAfterRemoval: true, autoRunMode: 'disabled' };
@@ -61,7 +66,7 @@ function setSonarrQueue(items: QueueItem[] | Error) {
   mocks.getSonarrClients.mockResolvedValue([{ connection: { id: 'sonarr-1', label: 'Sonarr' }, client: { getQueue } }]);
 }
 
-const run = () => runQueueCleanerCycle({ dryRun: true, triggeredBy: 'dryRun' });
+const run = () => runQueueCleanerCycle({ dryRun: true, triggeredBy: 'dryRun', actor: owner });
 
 describe('queue cleaner cycle', () => {
   beforeEach(() => {
@@ -71,7 +76,31 @@ describe('queue cleaner cycle', () => {
     mocks.strikeFindMany.mockResolvedValue([]); mocks.serviceFindMany.mockResolvedValue([]);
     mocks.getSonarrClients.mockResolvedValue([]); mocks.getRadarrClients.mockResolvedValue([]);
     mocks.historyCreate.mockResolvedValue({}); mocks.strikeDeleteMany.mockResolvedValue({ count: 0 });
+    mocks.auditCreate.mockResolvedValue({});
     setTorrents([]);
+  });
+
+  it('names the scheduler on automatic dry-run rows and audits nothing', async () => {
+    setTorrents([torrent()]); mocks.stallFindMany.mockResolvedValue([stall()]);
+    mocks.strikeFindMany.mockResolvedValue([strikeRecord('stall', 'stall-a')]);
+    await runQueueCleanerCycle({ dryRun: true, triggeredBy: 'auto', actor: scheduler });
+    const rows = mocks.historyCreate.mock.calls.map(([arg]) => arg.data);
+    expect(rows.map((row) => row.action)).toContain('dryRunPreview');
+    for (const row of rows) expect(row).toMatchObject({ triggeredBy: 'auto', actorUserId: null, actorUsername: 'system:cleanup-scheduler' });
+    expect(mocks.auditCreate).not.toHaveBeenCalled();
+  });
+
+  it('deletes and audits nothing when the preview no longer matches', async () => {
+    setTorrents([torrent()]); mocks.stallFindMany.mockResolvedValue([stall()]);
+    mocks.strikeFindMany.mockResolvedValue([strikeRecord('stall', 'stall-a')]);
+    const preview = await run();
+    expect(preview.decisions).toHaveLength(1);
+    mocks.stallFindMany.mockResolvedValue([stall({ maxStrikes: 5 })]);
+    await expect(runQueueCleanerCycle({ dryRun: false, triggeredBy: 'manual', actor: owner, expectedBinding: preview.binding, previewId: 'preview-1' }))
+      .rejects.toBeInstanceOf(StaleCleanupPreviewError);
+    expect(mocks.getSonarrClient).not.toHaveBeenCalled();
+    expect(mocks.historyCreate).not.toHaveBeenCalled();
+    expect(mocks.auditCreate).not.toHaveBeenCalled();
   });
 
   it('short-circuits disabled and unavailable qBittorrent cycles', async () => {

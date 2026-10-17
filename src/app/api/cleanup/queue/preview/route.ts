@@ -11,7 +11,11 @@ async function postHandler() {
 
   try {
     const response = await runQueueCleanerExclusive(async () => {
-      const result = await runQueueCleanerCycle({ dryRun: true, triggeredBy: 'dryRun' });
+      const result = await runQueueCleanerCycle({
+        dryRun: true,
+        triggeredBy: 'dryRun',
+        actor: { id: auth.user.id, username: auth.user.username },
+      });
       const issued = await issueCleanupPreview(auth.user.id, result.binding);
       return {
         ...issued,

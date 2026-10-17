@@ -59,6 +59,8 @@ interface HistoryRow {
   createdAt: string;
   errorMessage: string | null;
   previewId: string | null;
+  // Who ran the cycle: a username, or system:cleanup-scheduler. Null on older rows.
+  actorUsername: string | null;
   outcomeStatus: string | null;
   outcomeDetails: {
     message?: string;
@@ -655,6 +657,7 @@ function HistoryRowCard({
         <span>{row.filesDeleted ? 'files deleted' : 'files kept'}</span>
         {row.reSearched && <span>re-searched</span>}
         <span>via: {row.triggeredBy}</span>
+        {row.actorUsername && <span className="break-all">by: {row.actorUsername}</span>}
         {row.previewId && <span>preview: {row.previewId.slice(0, 8)}</span>}
         <span className="ml-auto whitespace-nowrap">{new Date(row.createdAt).toLocaleString()}</span>
       </div>
@@ -758,6 +761,11 @@ function HistoryDetailDrawer({
                 <DetailField label="Triggered by">
                   <div className="text-sm break-words">{row.triggeredBy}</div>
                 </DetailField>
+                {row.actorUsername && (
+                  <DetailField label="Run by">
+                    <div className="text-sm break-all">{row.actorUsername}</div>
+                  </DetailField>
+                )}
                 {row.outcomeStatus && (
                   <DetailField label="Outcome">
                     <div className="text-sm break-words">{row.outcomeStatus}</div>
