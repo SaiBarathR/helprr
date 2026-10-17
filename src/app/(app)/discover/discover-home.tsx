@@ -82,6 +82,7 @@ import {
   type DiscoverView,
 } from './_components/link-view';
 import { discoverSortPresetNote, isFixedListSection } from '@/lib/discover-sort-presets';
+import { useHistoryEntryState } from '@/lib/hooks/use-history-entry-state';
 
 const SORT_OPTIONS = [
   { value: 'trending', label: 'Trending', icon: Flame },
@@ -669,7 +670,10 @@ export default function DiscoverPage() {
   const isMobile = useIsMobile();
   const [typedQuery, setQuery] = useRouteViewState<string | null>('query', null);
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const [savedManualBrowseMode, setSavedManualBrowseMode] = useRouteViewState('manualBrowseMode', false);
+  // A grid opened only by a pill (or typing, then clearing, a search) is for
+  // that visit only: kept per history entry, it comes back with Back, while a
+  // new plain visit opens on the home carousels.
+  const [savedManualBrowseMode, setSavedManualBrowseMode] = useHistoryEntryState('helprr:discoverManualBrowse', false);
   const [savedSectionKey, setSavedSectionKey] = useRouteViewState<string | null>('activeSectionKey', null);
 
   // A link (cast credit, widget "View all", genre/studio/network chip, search)
@@ -727,13 +731,6 @@ export default function DiscoverPage() {
     setSavedSectionKey,
     setSavedManualBrowseMode,
   ]);
-
-  // A plain visit opens on the home carousels unless a saved sort or filter
-  // asks for the grid: typing a search or tapping a pill switches to the grid
-  // for that visit only. Syncing state to the URL is a legitimate effect.
-  useEffect(() => {
-    if (!linkView) setSavedManualBrowseMode(false);
-  }, [linkView, setSavedManualBrowseMode]);
 
   const [draftFilters, setDraftFilters] = useState<DiscoverFiltersState>(discoverFilters);
   const [draftSort, setDraftSort] = useState(discoverSort);
