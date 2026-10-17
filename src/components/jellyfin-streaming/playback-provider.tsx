@@ -25,6 +25,13 @@ import { getQueryClient } from '@/lib/query-client';
 
 export type RepeatMode = 'RepeatNone' | 'RepeatAll' | 'RepeatOne';
 
+const REPEAT_MODE_NAMES: Record<RepeatMode, string> = { RepeatNone: 'off', RepeatAll: 'all', RepeatOne: 'one' };
+
+/** The Repeat button's accessible name, which says the current mode. */
+export function repeatLabel(mode: RepeatMode): string {
+  return `Repeat: ${REPEAT_MODE_NAMES[mode]}`;
+}
+
 export interface PlayOptions {
   startTimeTicks?: number;
   audioStreamIndex?: number | null;

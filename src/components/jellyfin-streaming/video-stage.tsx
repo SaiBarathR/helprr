@@ -27,6 +27,7 @@ import { Button } from '@/components/ui/button';
 import {
   audioStreams,
   playMethodLabel,
+  repeatLabel,
   subtitleStreams,
   transportShowsPlay,
   useJellyfinMediaRef,
@@ -338,7 +339,7 @@ export function VideoStage({ mediaContainer }: { mediaContainer: HTMLDivElement 
         size="icon"
         className="text-white"
         onClick={() => playback.setRepeat(playback.repeat === 'RepeatNone' ? 'RepeatAll' : playback.repeat === 'RepeatAll' ? 'RepeatOne' : 'RepeatNone')}
-        aria-label="Repeat"
+        aria-label={repeatLabel(playback.repeat)}
       >
         {playback.repeat === 'RepeatOne' ? <Repeat1 className="text-[var(--hpr-amber)]" /> : <Repeat className={playback.repeat === 'RepeatAll' ? 'text-[var(--hpr-amber)]' : undefined} />}
       </Button>
@@ -773,24 +774,24 @@ export function VideoStage({ mediaContainer }: { mediaContainer: HTMLDivElement 
               </div>
             )}
             <div className="flex items-center gap-3">
-              <Button variant="ghost" size="icon" onClick={playback.toggleShuffle} aria-pressed={playback.shuffled}>
+              <Button variant="ghost" size="icon" onClick={playback.toggleShuffle} aria-label="Shuffle" aria-pressed={playback.shuffled}>
                 <Shuffle className={playback.shuffled ? 'text-[var(--hpr-amber)]' : undefined} />
               </Button>
-              <Button variant="ghost" size="icon" onClick={() => void playback.previous()}><SkipBack /></Button>
-              <Button size="icon-lg" onClick={playback.togglePause}>
+              <Button variant="ghost" size="icon" onClick={() => void playback.previous()} aria-label="Previous"><SkipBack /></Button>
+              <Button size="icon-lg" onClick={playback.togglePause} aria-label={transportShowsPlay(playback.status) ? 'Play' : 'Pause'}>
                 {transportShowsPlay(playback.status) ? <Play className="fill-current" /> : <Pause />}
               </Button>
-              <Button variant="ghost" size="icon" onClick={() => void playback.next()}><SkipForward /></Button>
+              <Button variant="ghost" size="icon" onClick={() => void playback.next()} aria-label="Next"><SkipForward /></Button>
               {/* The now-playing bar drops Repeat on a phone, so it has to be here. */}
               <Button
                 variant="ghost"
                 size="icon"
                 onClick={() => playback.setRepeat(playback.repeat === 'RepeatNone' ? 'RepeatAll' : playback.repeat === 'RepeatAll' ? 'RepeatOne' : 'RepeatNone')}
-                aria-label="Repeat"
+                aria-label={repeatLabel(playback.repeat)}
               >
                 {playback.repeat === 'RepeatOne' ? <Repeat1 className="text-[var(--hpr-amber)]" /> : <Repeat className={playback.repeat === 'RepeatAll' ? 'text-[var(--hpr-amber)]' : undefined} />}
               </Button>
-              <Button variant="ghost" size="icon" onClick={() => playback.setQueueOpen(true)}><ListMusic /></Button>
+              <Button variant="ghost" size="icon" onClick={() => playback.setQueueOpen(true)} aria-label="Queue"><ListMusic /></Button>
             </div>
             <AudioLyrics itemId={playback.item.Id} positionSeconds={playback.positionSeconds} />
           </div>
