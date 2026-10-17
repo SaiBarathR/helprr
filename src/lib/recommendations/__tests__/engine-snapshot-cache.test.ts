@@ -15,7 +15,12 @@ const mocks = vi.hoisted(() => {
         counters.set(key, (counters.get(key) ?? 0) + 1);
         return counters.get(key)!;
       }),
+      set: vi.fn(async (key: string, value: string) => {
+        counters.set(key, Number(value));
+        return 'OK';
+      }),
     },
+    cachingEnabled: true,
   };
 });
 
@@ -32,7 +37,7 @@ vi.mock('@/lib/cache/json-cache', () => ({
   deleteCachedJson: vi.fn(async (scope: string, seed: string) => { mocks.store.delete(`${scope}:${seed}`); }),
 }));
 vi.mock('@/lib/cache/state', () => ({
-  getCacheImagesEnabled: vi.fn(async () => true),
+  getCacheImagesEnabled: vi.fn(async () => mocks.cachingEnabled),
   tryAcquireCacheLock: vi.fn(async () => 'lock'),
   releaseCacheLock: vi.fn(async () => undefined),
 }));
@@ -51,9 +56,11 @@ vi.mock('../candidates', () => ({
 }));
 vi.mock('../signals', () => ({ collectWatchlistSignals: vi.fn(async () => ({ itemKeys: new Set() })) }));
 vi.mock('../compose-rails', () => ({ composeRecommendations: mocks.compose }));
+vi.mock('@/lib/logger', () => ({ logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn() } }));
 
 import { getRecommendationRails, invalidateRecommendations } from '@/lib/recommendations/engine';
 import { buildTmdbDiscoveryCandidates } from '../candidates';
+import { setCachedJson } from '@/lib/cache/json-cache';
 
 const user = { id: 'user-1', role: 'member' as const, jellyfinUserId: null };
 
@@ -63,6 +70,7 @@ beforeEach(() => {
   mocks.counters.clear();
   mocks.feedback = [];
   mocks.discoveryGate = null;
+  mocks.cachingEnabled = true;
   mocks.compose.mockReset();
   // The rails list whatever the build was told to exclude, so a test can see
   // which feedback a snapshot was built from.
@@ -107,5 +115,41 @@ describe('recommendation snapshot cache', () => {
     const fresh = await getRecommendationRails(user);
     expect(fresh.rails[0]).toMatchObject({ items: ['tmdb:movie:1'] });
     expect(mocks.compose).toHaveBeenCalledTimes(2);
+  });
+
+  it('builds without the cache when the generation cannot be read', async () => {
+    await getRecommendationRails(user); // cached at the first generation
+    mocks.feedback.push({ itemKey: 'tmdb:movie:1', eventType: 'not_interested' });
+    await invalidateRecommendations(user.id);
+    vi.mocked(setCachedJson).mockClear();
+
+    // A read that cannot reach the counter must not fall back to the old snapshot.
+    mocks.redis.get.mockRejectedValueOnce(new Error('redis blip'));
+    const rails = await getRecommendationRails(user);
+
+    expect(rails.rails[0]).toMatchObject({ items: ['tmdb:movie:1'] });
+    expect(setCachedJson).not.toHaveBeenCalled();
+  });
+
+  it('moves to a new generation even when the counter cannot be incremented', async () => {
+    await getRecommendationRails(user);
+    mocks.feedback.push({ itemKey: 'tmdb:movie:1', eventType: 'not_interested' });
+    // Both attempts fail, as INCR does on a counter that is not a number.
+    mocks.redis.incr.mockRejectedValueOnce(new Error('WRONGTYPE')).mockRejectedValueOnce(new Error('WRONGTYPE'));
+
+    await invalidateRecommendations(user.id);
+    const rails = await getRecommendationRails(user);
+
+    expect(mocks.redis.set).toHaveBeenCalled();
+    expect(rails.rails[0]).toMatchObject({ items: ['tmdb:movie:1'] });
+  });
+
+  it('builds directly, without Redis, when caching is off', async () => {
+    mocks.cachingEnabled = false;
+    await getRecommendationRails(user);
+    await getRecommendationRails(user);
+
+    expect(mocks.compose).toHaveBeenCalledTimes(2);
+    expect(mocks.redis.get).not.toHaveBeenCalled();
   });
 });
