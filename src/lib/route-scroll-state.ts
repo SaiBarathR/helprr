@@ -7,6 +7,23 @@ export type NavigationStartDetail = {
   preserveScroll?: boolean;
 };
 
+// How the latest navigation started. A history traversal (Back, Forward, a
+// swipe) returns to a view the user left, so a view that a fresh visit resets
+// can keep its state then. Every in-app navigation reports itself through the
+// navigation provider; the browser's own Back arrives as popstate.
+let lastKind: NavigationStartDetail['kind'] | null = null;
+if (typeof window !== 'undefined') {
+  window.addEventListener(NAVIGATION_START_EVENT, (event) => {
+    lastKind = (event as CustomEvent<NavigationStartDetail>).detail?.kind ?? null;
+  });
+  window.addEventListener('popstate', () => { lastKind = 'traverse'; });
+}
+
+/** Whether the page now showing was reached by going back or forward in history. */
+export function reachedByHistoryTraversal(): boolean {
+  return lastKind === 'traverse';
+}
+
 export interface ScrollPoint { top: number; left: number }
 export interface RouteScrollState {
   document: ScrollPoint;

@@ -82,6 +82,7 @@ import {
   type DiscoverView,
 } from './_components/link-view';
 import { discoverSortPresetNote, isFixedListSection } from '@/lib/discover-sort-presets';
+import { reachedByHistoryTraversal } from '@/lib/route-scroll-state';
 
 const SORT_OPTIONS = [
   { value: 'trending', label: 'Trending', icon: Flame },
@@ -730,9 +731,10 @@ export default function DiscoverPage() {
 
   // A plain visit opens on the home carousels unless a saved sort or filter
   // asks for the grid: typing a search or tapping a pill switches to the grid
-  // for that visit only. Syncing state to the URL is a legitimate effect.
+  // for that visit only. Going back to that visit (from a title it opened)
+  // returns to its grid. Syncing state to the URL is a legitimate effect.
   useEffect(() => {
-    if (!linkView) setSavedManualBrowseMode(false);
+    if (!linkView && !reachedByHistoryTraversal()) setSavedManualBrowseMode(false);
   }, [linkView, setSavedManualBrowseMode]);
 
   const [draftFilters, setDraftFilters] = useState<DiscoverFiltersState>(discoverFilters);

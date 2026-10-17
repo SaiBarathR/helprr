@@ -100,6 +100,7 @@ vi.mock('@/lib/store', async () => {
 import { DEFAULT_DISCOVER_FILTERS, useUIStore } from '@/lib/store';
 import { resetRouteViewStateForTests } from '@/lib/hooks/use-route-view-state';
 import DiscoverPage from './discover-home';
+import { NAVIGATION_START_EVENT } from '@/lib/route-scroll-state';
 
 const SAVED = {
   discoverContentType: 'show' as const,
@@ -121,6 +122,8 @@ beforeEach(() => {
   mocks.routerReplace.mockClear();
   mocks.gridKey = undefined;
   resetRouteViewStateForTests();
+  // Each test starts as a fresh visit, not a return through history.
+  window.dispatchEvent(new CustomEvent(NAVIGATION_START_EVENT, { detail: { kind: 'push' } }));
   window.sessionStorage.clear();
   useUIStore.setState(SAVED);
   document.body.innerHTML = '<div id="root"></div>';
@@ -225,6 +228,21 @@ describe('Discover links', () => {
     await open('');
 
     expect(document.body.textContent).not.toContain('Discover Results');
+  });
+
+  it('returns to a grid-only browse when going back to it', async () => {
+    useUIStore.setState({
+      discoverContentType: 'all',
+      discoverSort: 'trending',
+      discoverSortDirection: 'desc',
+      discoverFilters: DEFAULT_DISCOVER_FILTERS,
+    });
+    // The grid a Trending pill opened, then a title opened from it, then Back.
+    window.sessionStorage.setItem('helprr:route-views:v1', JSON.stringify([['/discover?', { manualBrowseMode: true }]]));
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    await open('');
+
+    expect(document.body.textContent).toContain('Discover Results');
   });
 });
 
