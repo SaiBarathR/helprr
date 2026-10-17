@@ -830,7 +830,15 @@ export async function executeDownloadCleanerRemoval(
     success: after === 'absent',
     errorMessage: outcome.errorMessage,
   });
-  if (after === 'absent') await prisma.cleanupStrike.deleteMany({ where: { hash: hashLc } });
+  if (after === 'absent') {
+    // The removal happened. A strike left behind is pruned later and cannot
+    // remove anything by itself, so a failed clear must not report a failure.
+    try {
+      await prisma.cleanupStrike.deleteMany({ where: { hash: hashLc } });
+    } catch (err) {
+      logger.warn('Could not clear strikes after a removal', { hash: hashLc, err: String(err) }, { scope: LOG });
+    }
+  }
   await writeDownloadHistory(d, outcome, run);
   return outcome;
 }
