@@ -1,7 +1,9 @@
 import type { User } from '@prisma/client';
 import { prisma } from '@/lib/db';
-import { getCachedJson, setCachedJson, deleteCachedJson } from '@/lib/cache/json-cache';
+import { getCachedJson, setCachedJson } from '@/lib/cache/json-cache';
 import { getCacheImagesEnabled, releaseCacheLock, tryAcquireCacheLock } from '@/lib/cache/state';
+import { getRedisClient } from '@/lib/redis';
+import { logger } from '@/lib/logger';
 import { getJellyfinUserContext, isJellyfinUnavailable } from '@/lib/service-helpers';
 import { getAppTimeZone, normalizeTimeZone, toZonedDate } from '@/lib/timezone';
 import { arrKey } from '@/types/watch-status';
@@ -44,8 +46,31 @@ interface EngineSnapshot {
   builtAt: string;
 }
 
-function cacheSeed(userId: string): string {
-  return `user:${userId}`;
+// Every invalidation gives the user a new generation, a random token never
+// used before, and a snapshot is stored under the generation read before its
+// build started (so before it read any feedback). A build that began before an
+// invalidation therefore saves where no current read looks, instead of serving
+// a title the user just hid.
+const generationKey = (userId: string) => `helprr:cache:recommendations:generation:${userId}`;
+
+/** The user's generation, or null when it cannot be read. */
+async function getGeneration(userId: string): Promise<string | null> {
+  try {
+    const redis = await getRedisClient();
+    const key = generationKey(userId);
+    const current = await redis.get(key);
+    if (current) return current;
+    // No generation yet, or Redis dropped the key: start a fresh one, so no
+    // snapshot from before can be read again. NX makes concurrent reads agree.
+    await redis.set(key, crypto.randomUUID(), { NX: true });
+    return await redis.get(key);
+  } catch {
+    return null;
+  }
+}
+
+function cacheSeed(userId: string, generation: string): string {
+  return `user:${userId}:g:${generation}`;
 }
 
 // ─── Continue watching (Jellyfin resume → in-app items) ─────────────────────
@@ -236,16 +261,22 @@ async function buildSnapshot(user: EngineUser): Promise<EngineSnapshot> {
 }
 
 async function getSnapshot(user: EngineUser): Promise<EngineSnapshot> {
-  const seed = cacheSeed(user.id);
+  // When the global cache toggle is off the cache never fills, so waiting on
+  // the lock would only add latency — build directly (the toggle is an
+  // explicit operator choice).
+  if (!(await getCacheImagesEnabled())) return buildSnapshot(user);
+  // Without the generation a cached snapshot might predate the user's latest
+  // feedback, so neither read nor write one.
+  const generation = await getGeneration(user.id);
+  if (generation === null) return buildSnapshot(user);
+
+  const seed = cacheSeed(user.id, generation);
   const cached = await getCachedJson<EngineSnapshot>(CACHE_SCOPE, seed);
   if (cached) return cached;
 
-  // Single-flight on a cold key. When the global cache toggle is off the
-  // cache never fills, so waiting on the lock would only add latency — build
-  // directly (the toggle is an explicit operator choice).
-  const cachingEnabled = await getCacheImagesEnabled();
-  const lockToken = cachingEnabled ? await tryAcquireCacheLock(LOCK_SCOPE, seed, LOCK_TTL_MS) : null;
-  if (cachingEnabled && !lockToken) {
+  // Single-flight on a cold key.
+  const lockToken = await tryAcquireCacheLock(LOCK_SCOPE, seed, LOCK_TTL_MS);
+  if (!lockToken) {
     for (let attempt = 0; attempt < WAIT_ATTEMPTS; attempt++) {
       await new Promise((resolve) => setTimeout(resolve, WAIT_DELAY_MS));
       const entry = await getCachedJson<EngineSnapshot>(CACHE_SCOPE, seed);
@@ -287,8 +318,20 @@ export async function getRecommendationFeed(user: EngineUser, cursor: string | n
   };
 }
 
-/** Drop the cached rails/feed so the next read recomposes — instant feedback
- * after an explicit like/dislike/not_interested. */
+/** Move the user to a new generation so the next read recomposes — instant
+ * feedback after an explicit like/dislike/not_interested. A build already
+ * running for the old generation can only save under the old one. */
 export async function invalidateRecommendations(userId: string): Promise<void> {
-  await deleteCachedJson(CACHE_SCOPE, cacheSeed(userId));
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const redis = await getRedisClient();
+      await redis.set(generationKey(userId), crypto.randomUUID());
+      return;
+    } catch {
+      // Retry once.
+    }
+  }
+  // Redis is unreachable, so no snapshot can be read or saved now; one saved
+  // by a build that outlasts the outage may still predate this feedback.
+  logger.warn('Recommendations not invalidated: Redis unavailable', {}, { scope: 'recommendations' });
 }
