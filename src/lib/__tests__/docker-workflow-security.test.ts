@@ -74,6 +74,7 @@ describe('PR CI gates', () => {
     expect(step).toContain('docker tag helprr-pr-scan:local ghcr.io/saibarathr/helprr:ci-smoke');
     expect(step).toContain('HELPRR_VERSION=ci-smoke docker compose --env-file .env -f docker-compose.yml up -d');
     expect(step).toContain('for path in /api/health /api/ready; do');
+    expect(step).toContain("--max-time 5 \"http://127.0.0.1:3050$path\")\" = 200 ]");
     expect(step).toContain('exit 1');
   });
 
