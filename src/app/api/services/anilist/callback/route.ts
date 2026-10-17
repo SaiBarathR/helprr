@@ -15,8 +15,10 @@ const STATE_COOKIE_NAME = 'helprr-anilist-oauth-state';
 
 const ORIGIN_NOT_CONFIGURED = 'APP_ORIGIN must be configured as a valid HTTPS origin in production';
 
+// Back to the page holding the AniList card: it reads ?anilist= and ?reason=
+// to report the result. /settings is only the menu and would drop them.
 function settingsRedirect(origin: string, params: Record<string, string>): NextResponse {
-  const url = new URL('/settings', origin);
+  const url = new URL('/settings/instances', origin);
   for (const [key, value] of Object.entries(params)) {
     url.searchParams.set(key, value);
   }

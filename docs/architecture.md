@@ -429,6 +429,12 @@ caching, offline behavior, and push handling. `npm run build` explicitly uses
 webpack because the current Serwist integration is not compatible with the
 default Turbopack production build.
 
+The `pages`, `api-readonly`, and `api-images` caches belong to one signed-in
+session (`src/lib/client-cache.ts`). Login clears them when it opens and
+`/api/me` answers 401, which covers sign-out, expiry, and a session revoked from
+another device; a signed-in or offline visitor keeps them. Sign-in clears them
+again before it completes and refuses to sign in if it cannot.
+
 Development disables the Serwist build and registers `public/sw-push.js`, a
 lightweight push-only worker that avoids production precache URLs and Fast
 Refresh loops. `src/components/sw-register.tsx` selects the worker by

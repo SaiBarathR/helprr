@@ -12,6 +12,7 @@ import {
   broadcastAuthenticationBoundary,
   clearUserScopedBrowserCaches,
   requestSessionLogout,
+  subscribeToAuthenticationBoundaries,
 } from '@/lib/client-cache';
 
 const DEVICE_COOKIE = 'helprr-device';
@@ -62,6 +63,27 @@ export default function LoginPage() {
   // desktop-then-mobile reload thrash for iPhone users.
   useEffect(() => {
     setDeviceCookieFromMatchMedia();
+  }, []);
+
+  // A session that ended here (signed out, expired, or revoked from another
+  // device) leaves page shells carrying its identity, posters and saved reads
+  // in this browser. Drop them as soon as the server confirms there is no
+  // session, not only at the next sign-in, which still clears again and fails
+  // closed on its own. A signed-in visitor (Login opened from another tab) and
+  // an offline one keep them. A sign-in here or in another tab first makes the
+  // answer stale, so it cancels the clear rather than wipe the new session's.
+  useEffect(() => {
+    let active = true;
+    const unsubscribe = subscribeToAuthenticationBoundaries(() => {
+      active = false;
+    });
+    void fetch('/api/me', { cache: 'no-store' })
+      .then((res) => (active && res.status === 401 ? clearUserScopedBrowserCaches() : undefined))
+      .catch(() => undefined);
+    return () => {
+      active = false;
+      unsubscribe();
+    };
   }, []);
 
   // Tick once a second while a retry countdown is active; clear it when it hits 0.

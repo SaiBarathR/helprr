@@ -150,6 +150,8 @@ describe('AniList OAuth routes in production', () => {
     const res = await callbackGet(callbackRequest('code=abc&state=state-1', SPOOFED));
     expect(res.status).toBe(307);
     expect(originOf(res.headers.get('location'))).toBe(CONFIGURED);
+    // The AniList card that reports the result lives on Settings → Instances.
+    expect(new URL(res.headers.get('location')!).pathname).toBe('/settings/instances');
     expect(new URL(res.headers.get('location')!).searchParams.get('anilist')).toBe('connected');
     expect(mocks.exchangeCodeForToken).toHaveBeenCalledWith(expect.objectContaining({
       redirectUri: `${CONFIGURED}/api/services/anilist/callback`,
@@ -160,6 +162,7 @@ describe('AniList OAuth routes in production', () => {
     const res = await callbackGet(callbackRequest('code=abc&state=other', SPOOFED));
     const location = new URL(res.headers.get('location')!);
     expect(location.origin).toBe(CONFIGURED);
+    expect(location.pathname).toBe('/settings/instances');
     expect(location.searchParams.get('reason')).toBe('state_mismatch');
     expect(mocks.exchangeCodeForToken).not.toHaveBeenCalled();
   });
