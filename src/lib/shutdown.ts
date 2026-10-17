@@ -4,6 +4,7 @@ import { disconnectRedisClient } from '@/lib/redis';
 import { pollingService } from '@/lib/polling-service';
 import { stopCleanupJobs, awaitInFlightQueue, awaitInFlightDownload } from '@/lib/cleanup/scheduler';
 import { stopPlaybackSessionReaper } from '@/lib/jellyfin-playback/session-reaper';
+import { isShuttingDown, markShuttingDown } from '@/lib/shutdown-state';
 
 // Bounded drain: an in-flight cleanup cycle must settle before exit (killing it
 // mid-delete leaves qBittorrent/Arr state inconsistent — see
@@ -13,7 +14,6 @@ const DRAIN_TIMEOUT_MS = 30_000;
 
 const globalForShutdown = globalThis as typeof globalThis & {
   shutdownHandlersRegistered?: boolean;
-  shutdownInProgress?: boolean;
 };
 
 async function drain(signal: string): Promise<void> {
@@ -65,8 +65,9 @@ export function registerShutdownHandlers(): void {
 
   const onSignal = (signal: NodeJS.Signals) => {
     // Second signal = operator insisting — exit immediately.
-    if (globalForShutdown.shutdownInProgress) process.exit(130);
-    globalForShutdown.shutdownInProgress = true;
+    if (isShuttingDown()) process.exit(130);
+    // From here /api/ready reports the instance as stopping.
+    markShuttingDown();
 
     void drain(signal)
       .catch((err) => {

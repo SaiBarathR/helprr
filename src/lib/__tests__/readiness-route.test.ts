@@ -47,4 +47,16 @@ describe('readiness route', () => {
     expect(body).not.toContain('password');
     expect(body).not.toContain('migration_name');
   });
+
+  it('returns 503 while the instance is stopping', async () => {
+    mocks.assessReadiness.mockResolvedValue({
+      status: 'stopping',
+      checks: { database: 'ok', redis: 'ok', migrations: 'ok' },
+    });
+
+    const response = await GET();
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toMatchObject({ status: 'stopping' });
+  });
 });

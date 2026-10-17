@@ -1,11 +1,13 @@
 import { readdir } from 'fs/promises';
 import path from 'path';
+import { isShuttingDown } from '@/lib/shutdown-state';
 
 export type ReadinessCheckName = 'database' | 'redis' | 'migrations';
 export type ReadinessCheckStatus = 'ok' | 'error';
 
 export interface ReadinessReport {
-  status: 'ready' | 'not_ready';
+  /** `stopping` once a graceful shutdown has begun, whatever the checks say. */
+  status: 'ready' | 'not_ready' | 'stopping';
   checks: Record<ReadinessCheckName, ReadinessCheckStatus>;
 }
 
@@ -121,8 +123,11 @@ export async function assessReadiness(
   ]);
   const checks = { database, redis, migrations };
 
+  const healthy = Object.values(checks).every((status) => status === 'ok');
   return {
-    status: Object.values(checks).every((status) => status === 'ok') ? 'ready' : 'not_ready',
+    // A draining instance should get no new traffic, so it is not ready even
+    // while its dependencies still answer.
+    status: isShuttingDown() ? 'stopping' : healthy ? 'ready' : 'not_ready',
     checks,
   };
 }

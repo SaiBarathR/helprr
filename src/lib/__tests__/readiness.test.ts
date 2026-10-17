@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { markShuttingDown } from '@/lib/shutdown-state';
 import {
   assessReadiness,
   isMigrationHistoryCurrent,
@@ -26,6 +27,18 @@ function migration(
 }
 
 describe('readiness assessment', () => {
+  afterEach(() => {
+    delete (globalThis as { shutdownInProgress?: boolean }).shutdownInProgress;
+  });
+
+  it('reports stopping once a graceful shutdown has begun, even with healthy dependencies', async () => {
+    markShuttingDown();
+    await expect(assessReadiness(successfulDependencies(), 50)).resolves.toEqual({
+      status: 'stopping',
+      checks: { database: 'ok', redis: 'ok', migrations: 'ok' },
+    });
+  });
+
   it('reports ready only when every dependency check succeeds', async () => {
     await expect(assessReadiness(successfulDependencies(), 50)).resolves.toEqual({
       status: 'ready',
