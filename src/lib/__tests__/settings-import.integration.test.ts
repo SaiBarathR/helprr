@@ -134,7 +134,12 @@ describe.skipIf(!url)('settings import against PostgreSQL', () => {
     const tagLinks = async () => Number((await prisma.$queryRaw<{ n: bigint }[]>`SELECT count(*) AS n FROM "_WatchlistItemTags"`)[0].n);
     const doc = {
       watchlist: {
-        items: [watchlistItem(1, ['a']), { ...watchlistItem(1, ['b']), title: 'Renamed' }, watchlistItem(2, [])],
+        items: [
+          { ...watchlistItem(1, ['a']), addedAt: '2020-01-01T00:00:00.000Z' },
+          // A later duplicate: its title wins, its empty poster/overview/rating do not, nor does its addedAt.
+          { ...watchlistItem(1, ['b']), title: 'Renamed', posterUrl: null, overview: null, rating: null, addedAt: '2024-01-01T00:00:00.000Z' },
+          watchlistItem(2, []),
+        ],
         tags: [{ name: 'a', color: '#111111' }],
       },
       scheduledAlerts: { alerts: [alert(1), { ...alert(1), title: 'Duplicate' }, alert(2, 'absolute')] },
@@ -146,7 +151,10 @@ describe.skipIf(!url)('settings import against PostgreSQL', () => {
     // A later duplicate item wins and its tags join the earlier one's.
     expect(first.applied).toMatchObject({ watchlistItems: 2, scheduledAlerts: 2, animeMappings: 1 });
     const item = await prisma.watchlistItem.findFirstOrThrow({ where: { externalId: '100001' }, include: { tags: true } });
-    expect(item.title).toBe('Renamed');
+    expect(item).toMatchObject({
+      title: 'Renamed', posterUrl: 'https://image.tmdb.org/t/p/w342/1.jpg', overview: 'An overview.', rating: 70,
+      addedAt: new Date('2020-01-01T00:00:00.000Z'),
+    });
     expect(item.tags.map((t) => t.name).sort()).toEqual(['a', 'b']);
     expect((await prisma.watchlistTag.findFirstOrThrow({ where: { name: 'a' } })).color).toBe('#111111');
     // The first of two identical alerts is kept, and the absolute one has its occurrence.
@@ -159,11 +167,20 @@ describe.skipIf(!url)('settings import against PostgreSQL', () => {
     await prisma.watchlistItem.update({ where: { id: item.id }, data: { reminderNotifiedAt: new Date() } });
     await runImport.applySettingsImport({
       ...doc,
-      watchlist: { items: [{ ...watchlistItem(1, ['a']), title: 'Again', posterUrl: null, overview: null }], tags: [] },
+      watchlist: {
+        items: [
+          { ...watchlistItem(1, ['a']), posterUrl: 'https://image.tmdb.org/t/p/w342/new.jpg', overview: null },
+          { ...watchlistItem(1, ['a']), title: 'Again', posterUrl: null, overview: null, addedAt: '2025-01-01T00:00:00.000Z' },
+        ],
+        tags: [],
+      },
       animeMappings: { mappings: [mapping(1, 1)] },
     } as never, IMPORTER_ID);
     const again = await prisma.watchlistItem.findUniqueOrThrow({ where: { id: item.id } });
-    expect(again).toMatchObject({ title: 'Again', posterUrl: item.posterUrl, overview: item.overview, reminderNotifiedAt: null });
+    expect(again).toMatchObject({
+      title: 'Again', posterUrl: 'https://image.tmdb.org/t/p/w342/new.jpg', overview: item.overview,
+      addedAt: item.addedAt, reminderNotifiedAt: null,
+    });
     expect(await prisma.watchlistItem.count()).toBe(2);
     expect(await tagLinks()).toBe(2);
     expect(await prisma.scheduledAlert.count()).toBe(2);
@@ -190,6 +207,25 @@ describe.skipIf(!url)('settings import against PostgreSQL', () => {
 
     expect(await written()).toEqual({ appSettings: 0, services: 0, prefs: 0, stall: 0, layouts: 0, alerts: 0, watchlist: 0, mappings: 0, users: 0 });
   });
+
+  it('imports as many user accounts as the document limits allow within the transaction timeout', async () => {
+    const { validateSettingsImportComplexity } = await import('@/lib/settings-import-validation');
+    const account = (i: number) => ({
+      id: `bulk-user-${i}`, username: `user${i}`, displayName: `User ${i}`, role: 'member', status: 'active',
+      template: 'member', permissions: {}, jellyfinUserId: null, seerrUserId: null, settings: null, anilist: null,
+    });
+    const doc = { users: { accounts: Array.from({ length: 4_000 }, (_, i) => account(i)) } };
+    expect(validateSettingsImportComplexity(doc)).toBeNull();
+
+    const started = performance.now();
+    const outcome = await runImport.applySettingsImport(doc as never, IMPORTER_ID);
+    const firstMs = performance.now() - started;
+    const again = performance.now();
+    await runImport.applySettingsImport(doc as never, IMPORTER_ID);
+    console.log(`[benchmark] 4,000 accounts: ${Math.round(firstMs)} ms created, ${Math.round(performance.now() - again)} ms re-imported`);
+
+    expect(outcome.applied.users).toBe(4_000);
+  }, 180_000);
 
   it('imports a document at the size limits within the transaction timeout', async () => {
     const { validateSettingsImportComplexity } = await import('@/lib/settings-import-validation');

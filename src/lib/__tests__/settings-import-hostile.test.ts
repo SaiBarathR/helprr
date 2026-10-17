@@ -130,12 +130,12 @@ describe('hostile settings imports', () => {
   });
 
   it('rejects a section over its own limit before database work', async () => {
-    const raw = JSON.stringify({ scheduledAlerts: { alerts: Array(2_001).fill({}) } });
+    const raw = JSON.stringify({ dashboardLayouts: { layouts: Array(21).fill({}) } });
 
     const response = await importSettings(request(raw));
 
     expect(response.status).toBe(400);
-    expect((await response.json()).error).toBe('Scheduled alerts exceed the import limit of 2000');
+    expect((await response.json()).error).toBe('Dashboard layouts exceed the import limit of 20');
     expect(mocks.transaction).not.toHaveBeenCalled();
   });
 

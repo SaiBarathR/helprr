@@ -1,29 +1,22 @@
-// Per-section limits for a settings import, checked before any database work.
-// The global limits (bytes, array entries, object properties) bound the
-// document; these bound each section to what an export of a real install can
-// hold, with room to spare, so no one section can turn the import's single
-// transaction into minutes of row writes.
+// Per-section limits for a settings import, checked before any database work,
+// for sections the import would otherwise work through entry by entry. They
+// mirror limits the app has enforced since the data existed, so no export of a
+// real install is refused. Sections the app does not cap (watchlists, alerts,
+// anime mappings, users, rules) are bounded by the document limits (bytes,
+// array entries, object properties), and the import writes them in bulk so a
+// document at those limits still commits in seconds
+// (settings-import.integration.test.ts).
 
-import { MAX_LAYOUTS, MAX_WIDGETS_PER_LAYOUT } from '@/lib/dashboard-layouts';
+import { MAX_LAYOUTS } from '@/lib/dashboard-layouts';
 import type { ImportRequestBody } from './shared';
 
 export const IMPORT_SECTION_LIMITS = {
-  serviceConnections: 50,
+  // The app refuses a layout beyond this many per scope (global, or one user).
+  dashboardLayouts: MAX_LAYOUTS,
+  // One preference per event type and device; room for event types a newer
+  // build might add.
   notificationRules: 100,
-  cleanupRules: 100, // each of stall, slow and seeding rules
-  ruleListValues: 100, // categories, tracker patterns or tags of one rule
-  dashboardLayouts: MAX_LAYOUTS, // global, and per user
-  widgetsPerLayout: MAX_WIDGETS_PER_LAYOUT,
-  watchlistItems: 5_000, // per user
-  watchlistTags: 500, // per user
-  tagsPerItem: 50,
-  scheduledAlerts: 2_000, // per user
-  animeMappings: 5_000,
-  entriesPerMapping: 50,
-  users: 200,
 } as const;
-
-const RULE_LISTS = ['categories', 'trackerPatterns', 'tagsAny', 'tagsAll'];
 
 class SectionLimitError extends Error {}
 
@@ -41,46 +34,13 @@ function cap(limit: keyof typeof IMPORT_SECTION_LIMITS, value: unknown, what: st
   }
 }
 
-function checkWatchlist(watchlist: unknown, owner: string): void {
-  cap('watchlistItems', field(watchlist, 'items'), `${owner}watchlist items`);
-  cap('watchlistTags', field(watchlist, 'tags'), `${owner}watchlist tags`);
-  for (const item of list(field(watchlist, 'items'))) {
-    cap('tagsPerItem', field(item, 'tags'), `Tags on one of ${owner.toLowerCase()}watchlist items`);
-  }
-}
-
-function checkLayouts(layouts: unknown, owner: string): void {
-  cap('dashboardLayouts', layouts, `${owner}dashboard layouts`);
-  for (const layout of list(layouts)) {
-    cap('widgetsPerLayout', field(layout, 'widgets'), `Widgets in one of ${owner.toLowerCase()}dashboard layouts`);
-  }
-}
-
 /** The first section over its limit, as a message for the operator, or null. */
 export function validateImportSectionLimits(body: ImportRequestBody): string | null {
   try {
-    cap('serviceConnections', body.serviceConnections, 'Service connections');
     cap('notificationRules', field(body.notificationDevice, 'rules'), 'Notification rules');
-    for (const [key, what] of [['stallRules', 'Stall rules'], ['slowRules', 'Slow rules'], ['seedingRules', 'Seeding rules']]) {
-      const rules = field(body.cleanup, key);
-      cap('cleanupRules', rules, what);
-      for (const rule of list(rules)) {
-        for (const values of RULE_LISTS) cap('ruleListValues', field(rule, values), `Values in one cleanup rule's ${values}`);
-      }
-    }
-    checkLayouts(field(body.dashboardLayouts, 'layouts'), 'The ');
-    checkWatchlist(body.watchlist, 'The ');
-    cap('scheduledAlerts', field(body.scheduledAlerts, 'alerts'), 'Scheduled alerts');
-    const mappings = field(body.animeMappings, 'mappings');
-    cap('animeMappings', mappings, 'Anime mappings');
-    for (const mapping of list(mappings)) cap('entriesPerMapping', field(mapping, 'entries'), 'Entries in one anime mapping');
-
-    const accounts = field(body.users, 'accounts');
-    cap('users', accounts, 'User accounts');
-    for (const account of list(accounts)) {
-      checkWatchlist(field(account, 'watchlist'), "One user's ");
-      cap('scheduledAlerts', field(account, 'scheduledAlerts'), "One user's scheduled alerts");
-      checkLayouts(field(account, 'dashboardLayouts'), "One user's ");
+    cap('dashboardLayouts', field(body.dashboardLayouts, 'layouts'), 'Dashboard layouts');
+    for (const account of list(field(body.users, 'accounts'))) {
+      cap('dashboardLayouts', field(account, 'dashboardLayouts'), "One user's dashboard layouts");
     }
     return null;
   } catch (error) {

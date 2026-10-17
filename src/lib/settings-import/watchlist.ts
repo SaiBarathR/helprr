@@ -73,8 +73,10 @@ export function prepareWatchlist(data: ExportedWatchlist, skipped: string[]): Pr
     }
   }
 
-  // One entry per (source, externalId, mediaType): a later duplicate wins, and
-  // its tags join the earlier one's, as consecutive upserts with connect did.
+  // One entry per (source, externalId, mediaType), folded the way consecutive
+  // upserts left the row: the first occurrence's addedAt (only a create sets
+  // it), the last occurrence's other fields except that an empty poster,
+  // overview or rating keeps the one before, and every occurrence's tags.
   const items = new Map<string, PreparedItem>();
   for (const it of data.items) {
     if (!it || typeof it !== 'object') continue;
@@ -136,8 +138,16 @@ export function prepareWatchlist(data: ExportedWatchlist, skipped: string[]): Pr
       source: sourceRaw, externalId, mediaType, title, year, posterUrl, overview, rating, reminderAt, addedAt, tagNames,
     };
     const earlier = items.get(itemKey(item));
-    if (earlier) item.tagNames = [...new Set([...earlier.tagNames, ...item.tagNames])];
-    items.set(itemKey(item), item);
+    items.set(itemKey(item), earlier
+      ? {
+          ...item,
+          posterUrl: item.posterUrl ?? earlier.posterUrl,
+          overview: item.overview ?? earlier.overview,
+          rating: item.rating ?? earlier.rating,
+          addedAt: earlier.addedAt,
+          tagNames: [...new Set([...earlier.tagNames, ...item.tagNames])],
+        }
+      : item);
   }
 
   return { items: [...items.values()], tags };
