@@ -166,6 +166,50 @@ INSERT INTO "FileOperationAudit" (
 `;
 }
 
+// A database created by `prisma db push` before migrations existed: the
+// 0001_init tables and no migration history (README, "Database migrations").
+const dbPushSeedSql = `
+INSERT INTO "User" (
+  "id", "username", "displayName", "passwordHash", "role", "status",
+  "template", "permissions", "createdAt", "updatedAt"
+) VALUES (
+  'db-push-user', 'db-push-user', 'Db Push User', 'preserved-hash',
+  'member', 'active', 'member', '{}', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+);
+
+INSERT INTO "ServiceConnection" (
+  "id", "type", "label", "isDefault", "url", "apiKey", "createdAt", "updatedAt"
+) VALUES (
+  'db-push-service', 'RADARR', 'Db Push Radarr', true,
+  'http://radarr.invalid', 'preserved-api-key', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+);
+`;
+
+function dbPushAssertionSql(expectedMigrations) {
+  return `
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM "User" WHERE "id" = 'db-push-user' AND "passwordHash" = 'preserved-hash'
+  ) THEN
+    RAISE EXCEPTION 'db push user row was not preserved';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM "ServiceConnection"
+    WHERE "id" = 'db-push-service' AND "apiKey" = 'preserved-api-key' AND "customHeaders" IS NULL
+  ) THEN
+    RAISE EXCEPTION 'db push service row was not preserved';
+  END IF;
+
+  IF (SELECT COUNT(*) FROM "_prisma_migrations" WHERE "finished_at" IS NOT NULL AND "rolled_back_at" IS NULL)
+      <> ${expectedMigrations} THEN
+    RAISE EXCEPTION 'unexpected applied migration count after the baseline';
+  END IF;
+END $$;
+`;
+}
+
 const cleanupSql = 'DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public;';
 const snapshotFiles = readdirSync(snapshotsDir)
   .filter((name) => name.endsWith('.json'))
@@ -219,6 +263,18 @@ try {
       rmSync(temporaryRoot, { recursive: true, force: true });
     }
   }
+
+  // The documented one-time baseline for a db push database: mark 0001_init
+  // applied, then deploy every later migration.
+  const schema = path.join(root, 'prisma/schema.prisma');
+  process.stdout.write('Testing the baseline of a database created by prisma db push...\n');
+  runPrisma(['db', 'execute', '--stdin'], { input: cleanupSql, schema });
+  runPrisma(['db', 'execute', '--file', path.join(root, 'prisma/migrations/0001_init/migration.sql')], { schema });
+  runPrisma(['db', 'execute', '--stdin'], { input: dbPushSeedSql, schema });
+  runPrisma(['migrate', 'resolve', '--applied', '0001_init'], { schema });
+  runPrisma(['migrate', 'deploy'], { schema });
+  runPrisma(['db', 'execute', '--stdin'], { input: dbPushAssertionSql(currentCount), schema });
+  process.stdout.write('Baseline of a db push database passed.\n');
 } catch (error) {
   failure = error;
 } finally {

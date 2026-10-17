@@ -1,0 +1,41 @@
+{
+  "release": "1.4.0",
+  "migrations": [
+    {
+      "name": "0001_init",
+      "sha256": "d914ed8c4209a78ab8e909eb7efa456c3517e453bc42469b66a6cec3dec19a30"
+    },
+    {
+      "name": "20260706224508_polling_state_queue_baseline_nullable",
+      "sha256": "3a06d48adba32b513a7d5a13809f8ea81ce4bcdf3c296172c138418dc7040135"
+    },
+    {
+      "name": "20260707010000_notification_history_dedupe_unique",
+      "sha256": "1a0b2f4ffdc3474cd48dbb4b0106b776749b17a488541de9ac94aa3ba6dac8aa"
+    },
+    {
+      "name": "20260708155457_add_custom_headers",
+      "sha256": "23065070b1883e0a05653a19d1d4b9f3c1ef2c5c09811551595e1e6b8b2511a4"
+    },
+    {
+      "name": "20260714110000_cleanup_preview_outcomes",
+      "sha256": "96282fcaddfb96717b7c1d657ca957d86d1939eae20a0c6fb31947fb7b50acda"
+    },
+    {
+      "name": "20260714140000_unified_operation_audit",
+      "sha256": "31a109e465832ee3623c882957371cc0e0fedf3408dee9c280a4b860bc70bc1d"
+    },
+    {
+      "name": "20260714170000_retention_session_index",
+      "sha256": "0299c2aaa90fc0c25c45dc47c74781390cef434252c8b45d064cb0b062b9349e"
+    },
+    {
+      "name": "20260716100157_recommendation_events_taste_profile",
+      "sha256": "d931772cc7cb9fbd1b08c1a2873c84b8f90028b22812ee24534792159c3bfc25"
+    },
+    {
+      "name": "20260730050000_notification_unread_partial_indexes",
+      "sha256": "87428832eaf84a7755911e9cc39afd6795bc48f39457148b0181f0124e6a665c"
+    }
+  ]
+}
