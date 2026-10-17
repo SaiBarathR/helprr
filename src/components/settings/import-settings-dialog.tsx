@@ -34,11 +34,14 @@ import {
   validateImportFile,
 } from '@/lib/settings-export';
 import type { ServiceType } from '@prisma/client';
+import type { ImportWarning } from '@/lib/settings-import/follow-up-tasks';
+import { showImportWarnings } from '@/components/settings/import-warnings';
 
 interface ImportSettingsDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onImported?: () => void;
+  /** Receives what the import saved but could not put into effect yet. */
+  onImported?: (warnings: ImportWarning[]) => void;
 }
 
 interface ParsedFile {
@@ -301,6 +304,7 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
       // 1. Pre-compute UI prefs merge; defer the local mutation until after the server import succeeds
       //    so a server failure can't leave UI state half-applied.
       let mergedUiPrefs: Record<string, unknown> | null = null;
+      let importWarnings: ImportWarning[] = [];
       if (useUi.size > 0) {
         const merged: Record<string, unknown> = {};
         for (const id of useUi) {
@@ -372,9 +376,7 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
         } else {
           toast.success(successMsg);
         }
-        if (json?.pollingRestarted === false) {
-          toast.warning('Settings imported, but polling did not restart — restart the server to resume notifications.');
-        }
+        importWarnings = Array.isArray(json?.warnings) ? json.warnings : [];
       } else if (mergedUiPrefs) {
         applyImportedUiPrefs(mergedUiPrefs);
         toast.success('UI preferences imported.');
@@ -382,7 +384,8 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
         toast.info('Nothing to import.');
       }
 
-      onImported?.();
+      if (onImported) onImported(importWarnings);
+      else showImportWarnings(importWarnings);
       onOpenChange(false);
     } catch (err) {
       toast.error((err as Error)?.message || 'Import failed');

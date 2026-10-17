@@ -130,14 +130,16 @@ export async function getActiveLayoutCached(device: DashboardDevice): Promise<Ac
   }
 }
 
-export async function invalidateLayoutCache(): Promise<void> {
+/** Best-effort; resolves false when the cache could not be cleared. */
+export async function invalidateLayoutCache(): Promise<boolean> {
   try {
     const redis = await getRedisClient();
     await Promise.all([
       redis.del(buildKey('desktop')),
       redis.del(buildKey('mobile')),
     ]);
+    return true;
   } catch {
-    // noop
+    return false;
   }
 }

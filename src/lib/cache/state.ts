@@ -155,6 +155,27 @@ export async function bumpCacheGeneration(): Promise<number> {
   }
 }
 
+/**
+ * Start a new generation and fail loudly. The new one also exceeds `above`, a
+ * generation still on disk after Redis lost its counter, so a stale cache is
+ * never taken for the current one. One atomic step, so concurrent callers can
+ * never move the counter backwards.
+ */
+export async function advanceCacheGeneration(above = 0): Promise<number> {
+  const redis = await getRedisClient();
+  const next = Number(await redis.eval(
+    `local current = tonumber(redis.call('GET', KEYS[1])) or 0
+local next = math.max(current, tonumber(ARGV[1])) + 1
+redis.call('SET', KEYS[1], next)
+return next`,
+    { keys: [CACHE_GENERATION_KEY], arguments: [String(above)] },
+  ));
+  if (!Number.isInteger(next) || next < 1) throw new Error('Cache generation did not advance');
+  cachedGeneration = next;
+  cachedGenerationAt = Date.now();
+  return next;
+}
+
 export async function getCachePurgeStatus(): Promise<'idle' | 'purging'> {
   try {
     const redis = await getRedisClient();
@@ -167,11 +188,16 @@ export async function getCachePurgeStatus(): Promise<'idle' | 'purging'> {
 
 export async function setCachePurgeStatus(status: 'idle' | 'purging'): Promise<void> {
   try {
-    const redis = await getRedisClient();
-    await redis.set(CACHE_PURGE_STATUS_KEY, status);
+    await setCachePurgeStatusOrThrow(status);
   } catch {
     // noop
   }
+}
+
+/** setCachePurgeStatus for callers that must know it failed. */
+export async function setCachePurgeStatusOrThrow(status: 'idle' | 'purging'): Promise<void> {
+  const redis = await getRedisClient();
+  await redis.set(CACHE_PURGE_STATUS_KEY, status);
 }
 
 export async function getLastCachePurgedAt(): Promise<string | null> {

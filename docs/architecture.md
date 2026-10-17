@@ -551,6 +551,20 @@ credential shapes. A redacted support bundle is still private operational data.
 Settings imports are hostile input: validate schema, reject unsafe values, and
 preserve secret-handling behavior before applying any imported configuration.
 
+After the import transaction commits, `src/lib/settings-import/follow-ups.ts`
+brings the running server in line with it: loading app settings, purging the
+image cache (`purgeOlderCacheGenerations`, which fails loudly and sweeps every
+older generation, so a retry finishes what a failed run left; the Settings
+toggle keeps its fail-soft purge), restarting polling and the cleanup schedulers, pruning orphan
+strikes, resolving release alerts, clearing the dashboard layout cache and
+repairing default instances. A step that fails does not fail the saved import.
+It comes back in the response's `warnings` with fixed text (never an upstream
+error, credential or header). The Backup page keeps them across the reload that
+applies an import and shows them with a Retry button. Each step reads
+what it needs from the database, so `POST /api/settings/import/follow-up` can
+re-run it without the file. That retry keeps the import's boundary: a member may
+retry only the resolution of their own alerts.
+
 ## Docker and Release Boundaries
 
 The stable and development Compose files are standalone stacks. They use

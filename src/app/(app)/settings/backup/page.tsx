@@ -6,10 +6,16 @@ import { ChevronLeft, ChevronRight, Download as DownloadIcon, Upload } from 'luc
 import { ExportSettingsDialog } from '@/components/settings/export-settings-dialog';
 import { ImportSettingsDialog } from '@/components/settings/import-settings-dialog';
 import { GroupedSection } from '@/components/settings/grouped-section';
+import {
+  ImportWarningsNotice,
+  rememberImportWarnings,
+  useImportWarnings,
+} from '@/components/settings/import-warnings';
 
 export default function BackupSettingsPage() {
   const [exportOpen, setExportOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [importWarnings, setImportWarnings] = useImportWarnings();
 
   return (
     <div className="animate-content-in pb-12">
@@ -29,6 +35,9 @@ export default function BackupSettingsPage() {
           Move your settings between devices or back them up to a file.
         </p>
       </div>
+
+      {/* An import reloads the page to apply itself; what it could not put into effect shows here. */}
+      <ImportWarningsNotice warnings={importWarnings} onChange={setImportWarnings} />
 
       <GroupedSection footer="Includes service connections, preferences, and device-local UI prefs">
         <button
@@ -69,8 +78,10 @@ export default function BackupSettingsPage() {
       <ImportSettingsDialog
         open={importOpen}
         onOpenChange={setImportOpen}
-        onImported={() => {
-          window.setTimeout(() => window.location.reload(), 600);
+        onImported={(warnings) => {
+          // Warnings that cannot be kept across the reload are shown here instead.
+          if (rememberImportWarnings(warnings)) window.setTimeout(() => window.location.reload(), 600);
+          else setImportWarnings(warnings);
         }}
       />
     </div>
