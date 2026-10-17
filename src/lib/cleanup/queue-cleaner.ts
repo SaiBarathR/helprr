@@ -722,8 +722,14 @@ export async function runQueueCleanerCycle(opts: RunOptions): Promise<QueueEvalu
       }
     }
 
-    await pruneOrphanStrikes(torrents.map((t) => t.hash));
-    await pruneStrikesForMissingRules();
+    // The cycle's removals are done and recorded; a failed prune must not
+    // turn them into an errored cycle.
+    try {
+      await pruneOrphanStrikes(torrents.map((t) => t.hash));
+      await pruneStrikesForMissingRules();
+    } catch (err) {
+      logger.warn('Prune after cleanup cycle failed', { err: String(err) }, { scope: LOG });
+    }
   }
 
   if (skippedTrackerUnknown > 0) {
@@ -1390,8 +1396,8 @@ export async function executeQueueCleanerRemoval(
   }
 
   if (action !== 'failed') {
-    // The removal happened. A strike left behind is pruned later and cannot
-    // remove anything by itself, so a failed clear must not report a failure.
+    // The removal happened, so a failed clear must not report a failure. The
+    // strikes left behind are pruned once the hash is gone from qBittorrent.
     try {
       await prisma.cleanupStrike.deleteMany({ where: { hash: hashLc } });
     } catch (err) {
