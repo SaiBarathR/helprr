@@ -4,7 +4,7 @@ import { fetchAnilistViewer } from '@/lib/anilist-viewer';
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ApiError, jsonFetcher } from '@/lib/query-fetch';
-import Image from 'next/image';
+import { HeroImage } from '@/components/media/hero-image';
 import Link from '@/components/ui/app-link';
 import { AnimeMediaRail } from '@/components/anime/anime-media-rail';
 import { AnimeSearchOverlay } from '@/components/anime/anime-search-overlay';
@@ -100,7 +100,7 @@ function HeroBanner({ anime, priority = false }: { anime: AnimeItemWithLibrary; 
     <Link href={`/anime/${anime.id}`} className="block h-full">
       <div className="relative h-full overflow-hidden">
         {bannerSrc ? (
-          <Image
+          <HeroImage
             src={bannerSrc}
             alt={anime.title}
             fill
@@ -109,7 +109,7 @@ function HeroBanner({ anime, priority = false }: { anime: AnimeItemWithLibrary; 
             unoptimized={isProtectedApiImageSrc(bannerSrc)}
           />
         ) : coverSrc ? (
-          <Image
+          <HeroImage
             src={coverSrc}
             alt={anime.title}
             fill
