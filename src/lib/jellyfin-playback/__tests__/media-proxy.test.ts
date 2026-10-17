@@ -8,6 +8,7 @@ import {
 import { rewriteHlsPlaylist } from '@/lib/jellyfin-playback/hls-rewrite';
 import { buildHelprrStreamInfo } from '@/lib/jellyfin-playback/stream-info';
 import type { JellyfinItem, JellyfinMediaSource } from '@/types/jellyfin';
+import type { PlaybackInfoResponse } from '@/types/jellyfin-streaming';
 
 describe('jellyfin media path allowlist', () => {
   it('allows playback and subtitle paths and rejects admin APIs', () => {
@@ -186,6 +187,8 @@ describe('stream info builder', () => {
   it('reports NoCompatibleStream when there is no source, or none it can play', () => {
     const item: JellyfinItem = { Id: 'item1', Name: 'Movie', Type: 'Movie', MediaType: 'Video' };
     expect(buildHelprrStreamInfo({ item, playback: { MediaSources: [] } })).toEqual({ error: 'NoCompatibleStream' });
+    // A response can leave the list out altogether, whatever the type says.
+    expect(buildHelprrStreamInfo({ item, playback: {} as PlaybackInfoResponse })).toEqual({ error: 'NoCompatibleStream' });
 
     const unplayable: JellyfinMediaSource = {
       Id: 'src1',
