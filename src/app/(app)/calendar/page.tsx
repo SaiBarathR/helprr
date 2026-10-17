@@ -69,6 +69,8 @@ import { ScheduledAlertButton } from '@/components/scheduled-alerts/scheduled-al
 import { QuickContextMenu } from '@/components/ui/quick-context-menu';
 import type { ScheduledAlertDraft } from '@/lib/scheduled-alerts/types';
 import type { CalendarEvent } from '@/types';
+import Image from 'next/image';
+import { isProtectedApiImageSrc, toCachedImageSrc, type ImageServiceHint } from '@/lib/image';
 
 /** The app behind each event type, to tell same-named instances apart. */
 const EVENT_APP = { episode: 'sonarr', movie: 'radarr', album: 'lidarr' } as const;
@@ -84,9 +86,23 @@ function eventHref(event: CalendarEvent): string {
   return '/notifications/scheduled';
 }
 
+/** The event's own poster URL, as an alert stores it (not proxied). */
 function posterFromEvent(event: CalendarEvent): string | null {
   const img = event.images?.find((i) => i.coverType === 'poster');
   return img?.remoteUrl ?? img?.url ?? null;
+}
+
+// Calendar artwork goes through the image proxy, like every other poster in
+// the app: an *arr's own image URLs may be unreachable from the browser, and the
+// proxy caches and resizes them. Scheduled alerts carry TMDB or AniList art.
+function imageHint(event: CalendarEvent): ImageServiceHint | undefined {
+  if (event.origin === 'scheduled') return undefined;
+  return event.type === 'episode' ? 'sonarr' : event.type === 'movie' ? 'radarr' : 'lidarr';
+}
+
+/** A small poster for display: 160px covers the widest calendar poster at 3x. */
+function posterSrc(event: CalendarEvent): string | null {
+  return toCachedImageSrc(posterFromEvent(event), imageHint(event), { width: 160 });
 }
 
 /** Wide artwork for the mobile row backdrop (fanart, falling back to banner
@@ -97,7 +113,7 @@ function backdropFromEvent(event: CalendarEvent): string | null {
     images.find((i) => i.coverType === 'fanart') ??
     images.find((i) => i.coverType === 'banner') ??
     images.find((i) => i.coverType === 'cover');
-  return img?.remoteUrl ?? img?.url ?? null;
+  return toCachedImageSrc(img?.remoteUrl ?? img?.url ?? null, imageHint(event), { width: 640 });
 }
 
 /** Artwork layer behind an event row: dimmed backdrop fading toward the text
@@ -108,13 +124,14 @@ function RowBackdrop({ src }: { src: string | null }) {
   if (!src) return null;
   return (
     <div aria-hidden className="absolute inset-0 pointer-events-none">
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
+      <Image
         src={src}
         alt=""
-        loading="lazy"
-        className="h-full w-full object-cover"
+        fill
+        sizes="100vw"
+        className="object-cover"
         style={{ opacity: imageOpacity / 100 }}
+        unoptimized={isProtectedApiImageSrc(src)}
       />
       <div className="absolute inset-0 bg-gradient-to-r from-background via-background/80 to-background/40" />
     </div>
@@ -513,7 +530,7 @@ function AgendaEventRow({ row, showImages }: { row: AgendaRow; showImages: boole
   const href = eventHref(event);
   const eventDate = new Date(event.date);
   const scheduleDraft = event.origin !== 'scheduled' ? scheduleDraftFromEvent(event) : null;
-  const poster = posterFromEvent(event);
+  const poster = posterSrc(event);
 
   return (
     <div
@@ -543,13 +560,9 @@ function AgendaEventRow({ row, showImages }: { row: AgendaRow; showImages: boole
             {showImages && (
               <div className="hidden w-9 shrink-0 md:block">
                 {poster ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={poster}
-                    alt=""
-                    loading="lazy"
-                    className="aspect-[2/3] w-9 rounded bg-muted/40 object-cover"
-                  />
+                  <div className="relative aspect-[2/3] w-9 overflow-hidden rounded bg-muted/40">
+                    <Image src={poster} alt="" fill sizes="36px" className="object-cover" unoptimized={isProtectedApiImageSrc(poster)} />
+                  </div>
                 ) : (
                   <div className="aspect-[2/3] w-9 rounded bg-muted/30" />
                 )}
@@ -636,7 +649,7 @@ function MonthEventItem({ event, showImages }: { event: CalendarEvent; showImage
   const accentKey = event.releaseType ?? event.finaleType;
   const accent = getMonthBorderClass(accentKey);
   const eventDate = new Date(event.date);
-  const poster = posterFromEvent(event);
+  const poster = posterSrc(event);
   const scheduled = event.origin === 'scheduled' || Boolean(event.scheduleLabel);
 
   return (
@@ -682,13 +695,9 @@ function MonthEventItem({ event, showImages }: { event: CalendarEvent; showImage
       >
         <div className="flex gap-3">
           {showImages && poster && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={poster}
-              alt=""
-              loading="lazy"
-              className="w-14 shrink-0 self-start rounded object-cover aspect-[2/3] bg-muted"
-            />
+            <div className="relative w-14 shrink-0 self-start overflow-hidden rounded aspect-[2/3] bg-muted">
+              <Image src={poster} alt="" fill sizes="56px" className="object-cover" unoptimized={isProtectedApiImageSrc(poster)} />
+            </div>
           )}
           <div className="min-w-0 flex-1 space-y-1">
             <div className="flex items-center gap-1.5">
@@ -751,7 +760,7 @@ function DayEventRow({ event, showImages }: { event: CalendarEvent; showImages: 
   const href = eventHref(event);
   const eventDate = new Date(event.date);
   const scheduleDraft = event.origin !== 'scheduled' ? scheduleDraftFromEvent(event) : null;
-  const poster = posterFromEvent(event);
+  const poster = posterSrc(event);
 
   return (
     <div className="relative overflow-hidden flex items-center gap-1 border-b border-border/30 last:border-b-0">
@@ -768,13 +777,9 @@ function DayEventRow({ event, showImages }: { event: CalendarEvent; showImages: 
           {showImages && (
             <div className="w-8 shrink-0">
               {poster ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={poster}
-                  alt=""
-                  loading="lazy"
-                  className="w-8 aspect-[2/3] rounded object-cover bg-muted/40"
-                />
+                <div className="relative w-8 aspect-[2/3] overflow-hidden rounded bg-muted/40">
+                  <Image src={poster} alt="" fill sizes="32px" className="object-cover" unoptimized={isProtectedApiImageSrc(poster)} />
+                </div>
               ) : (
                 <div className="w-8 aspect-[2/3] rounded bg-muted/30" />
               )}
@@ -1118,7 +1123,7 @@ function WeekView({
               <div>
                 {dayEvents.map((event) => {
                   const href = eventHref(event);
-                  const poster = posterFromEvent(event);
+                  const poster = posterSrc(event);
                   return (
                     <CalendarEventContext key={event.id} event={event}>
                     <Link href={href} className="relative block overflow-hidden">
@@ -1131,13 +1136,9 @@ function WeekView({
                         {showImages && (
                           <div className="hidden md:block w-7 shrink-0">
                             {poster ? (
-                              // eslint-disable-next-line @next/next/no-img-element
-                              <img
-                                src={poster}
-                                alt=""
-                                loading="lazy"
-                                className="w-7 aspect-[2/3] rounded object-cover bg-muted/40"
-                              />
+                              <div className="relative w-7 aspect-[2/3] overflow-hidden rounded bg-muted/40">
+                                <Image src={poster} alt="" fill sizes="28px" className="object-cover" unoptimized={isProtectedApiImageSrc(poster)} />
+                              </div>
                             ) : (
                               <div className="w-7 aspect-[2/3] rounded bg-muted/30" />
                             )}

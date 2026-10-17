@@ -13,7 +13,8 @@ import {
   CommandItem,
 } from '@/components/ui/command';
 import { useMe, hasCapability } from '@/components/permission-provider';
-import { toCachedImageSrc } from '@/lib/image';
+import Image from 'next/image';
+import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import { suggestScopes } from '@/lib/search/parse-query';
 import { resolveProviderFromAlias } from '@/lib/search/provider-defs';
 import {
@@ -424,8 +425,7 @@ function LocalResultRow({
     <CommandItem value={result.id} onSelect={() => onSelect(primaryRoute)} className="gap-3">
       <div className="relative h-12 w-8 shrink-0 overflow-hidden rounded bg-muted">
         {poster && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={poster} alt="" className="h-full w-full object-cover" loading="lazy" />
+          <Image src={poster} alt="" fill sizes="32px" className="object-cover" unoptimized={isProtectedApiImageSrc(poster)} />
         )}
       </div>
       <div className="min-w-0 flex-1">
@@ -468,8 +468,7 @@ function ProviderResultRow({
     <CommandItem value={result.id} onSelect={() => onSelect(result.route)} className="gap-3">
       <div className="relative h-12 w-8 shrink-0 overflow-hidden rounded bg-muted">
         {poster && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={poster} alt="" className="h-full w-full object-cover" loading="lazy" />
+          <Image src={poster} alt="" fill sizes="32px" className="object-cover" unoptimized={isProtectedApiImageSrc(poster)} />
         )}
       </div>
       <div className="min-w-0 flex-1">
