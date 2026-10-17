@@ -931,11 +931,10 @@ export class JellyfinClient {
   /**
    * Persist resume position on the member's own account.
    *
-   * The /Sessions/Playing* endpoints attribute progress to the *session's* user,
-   * and Helprr authenticates with the admin API key, so those sessions carry no
-   * user and Jellyfin saves nothing — playing a title for minutes left
-   * PlaybackPositionTicks at 0. This is the same explicit-userId escape hatch
-   * `markPlayed` documents, and it is what actually makes Resume work.
+   * Session reports (/Sessions/Playing*) run on the member's own token, so
+   * Jellyfin attributes their progress to the member. This direct write, with
+   * the explicit userId `markPlayed` also uses, stays as the resume safety net;
+   * it is what made Resume work while sessions still ran on the admin API key.
    */
   async updateUserItemData(
     itemId: string,
@@ -956,8 +955,9 @@ export class JellyfinClient {
    *    allows. `PlaybackRate` and `MaxStreamingBitrate` have no Jellyfin
    *    equivalent and are dropped; shuffle travels as `PlaybackOrder`
    *    ('Default' | 'Shuffle'), not `ShuffleMode`.
-   *  - updateUserItemData persists the resume position against the member's
-   *    account, which the session path cannot do under admin-key auth.
+   *  - updateUserItemData also writes the resume position to the member's
+   *    account directly, as a safety net beside the session report. Both run
+   *    on the member's own token.
    */
   async reportPlayback(payload: PlaybackProgressPayload): Promise<void> {
     const headers = this.playbackHeaders(payload.deviceId, payload.deviceName);

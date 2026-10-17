@@ -41,7 +41,7 @@ model User {
   permissions    Json       @default("{}") // Partial<Record<Capability, boolean>> — DELTAS only
   jellyfinUserId String?    @unique
   seerrUserId    String?    @unique
-  jellyfinToken  String? // cached AccessToken from "Sign in with Jellyfin"; non-authoritative
+  jellyfinToken  String? // the member's Jellyfin AccessToken that playback is signed with; encrypted (enc:v1:), written by Jellyfin sign-in and Settings → Account; not a Helprr login credential
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
   sessions       Session[]
@@ -677,8 +677,9 @@ enum FileOperation {
 }
 
 // Unified accountability log for file operations and destructive media/download
-// operations. Every authorized, validated upstream attempt — success OR failure —
-// is recorded with the acting user. userId is intentionally not a FK and username
+// operations. Each authorized, validated upstream attempt of an audited operation
+// — success OR failure — is recorded, fail-soft, with the actor (renames are not
+// audited; see docs/architecture.md). userId is intentionally not a FK and username
 // is denormalized so the row outlives the user it references.
 model FileOperationAudit {
   id           String        @id @default(cuid())

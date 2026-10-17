@@ -28,9 +28,9 @@ export function upstreamErrorResponse(error: unknown, fallback: string): NextRes
 }
 
 /**
- * The one response every playback surface gives when it cannot act as the
- * member: they have no Jellyfin token, no identity link, or Jellyfin has
- * stopped accepting the token. The player watches for this exact code and
+ * The one response the playback JSON routes (stream info, session,
+ * stop-encodings) give when they cannot act as the member: they have no
+ * Jellyfin token, no identity link, or Jellyfin has stopped accepting the token. The player watches for this exact code and
  * shows the connect gate in place of the video.
  *
  * A 401/403 from Jellyfin means the token was revoked upstream (an admin

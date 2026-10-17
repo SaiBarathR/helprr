@@ -25,9 +25,10 @@ function rewriteTagLine(line: string, jellyfinOrigin: string, currentDir: string
 }
 
 /**
- * Rewrite an HLS playlist so every media URI goes through Helprr's authenticated
- * proxy, with Jellyfin API keys stripped. Tags that don't carry URIs are left
- * intact so EXT-X-KEY / MAP / STREAM-INF semantics survive.
+ * Rewrite an HLS playlist so every media URI on the Jellyfin origin goes through
+ * Helprr's authenticated proxy, with Jellyfin API keys stripped; a URI on another
+ * origin is left as it is. Tags that don't carry URIs are left intact so
+ * EXT-X-KEY / MAP / STREAM-INF semantics survive.
  */
 export function rewriteHlsPlaylist(
   body: string,

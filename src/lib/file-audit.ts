@@ -9,8 +9,10 @@ import type { QBittorrentClient } from '@/lib/qbittorrent-client';
 // torrent, and queue operations.
 //
 // These operations touch the user's own media on disk and are largely
-// irreversible, so EVERY attempt — success or failure — gets a FileOperationAudit
-// row stamped with the acting user. recordFileAudit() is fire-and-await but
+// irreversible, so each authorized, validated attempt of an audited operation —
+// success or failure — gets a FileOperationAudit row stamped with the actor (the
+// user, or system:cleanup-scheduler for a scheduled cleanup). Renames are not
+// audited (the *arr keeps them); docs/architecture.md lists the scope. recordFileAudit() is fire-and-await but
 // FAIL-SOFT: a failed audit write must never turn a completed (or failed) file
 // operation into a 500. The op already happened; the worst case is a missing log
 // line, which we surface via console.error rather than propagating.
