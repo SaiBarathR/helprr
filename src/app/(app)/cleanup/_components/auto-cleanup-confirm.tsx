@@ -20,7 +20,7 @@ export function startsAutomaticDeletion(saved: CleanerState | null | undefined, 
   return deletes(next) && !(saved && deletes(saved));
 }
 
-const CLEANER_NAMES = { queue: 'Queue Cleaner', download: 'Download Cleaner' } as const;
+export const CLEANER_NAMES = { queue: 'Queue Cleaner', download: 'Download Cleaner' } as const;
 
 // What a removal deletes. A queue removal takes the download's data with it
 // (a private torrent only when its rule allows that); a seeding rule decides

@@ -14,6 +14,11 @@ export type TriggeredBy = 'auto' | 'manual' | 'dryRun';
 export type AutoRunMode = 'disabled' | 'dryRun' | 'enabled';
 export const AUTO_RUN_MODES: AutoRunMode[] = ['disabled', 'dryRun', 'enabled'];
 
+/** A stored or imported auto-run mode; anything unknown is disabled. */
+export function toAutoRunMode(value: unknown): AutoRunMode {
+  return (AUTO_RUN_MODES as unknown[]).includes(value) ? value as AutoRunMode : 'disabled';
+}
+
 // How a cycle was started, carried into every Cleanup History and
 // operation-audit row it writes.
 export interface CleanupRunContext {
