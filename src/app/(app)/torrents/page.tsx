@@ -90,6 +90,7 @@ import { useCan } from '@/components/permission-provider';
 import { useBadgeActions } from '@/components/layout/badge-provider';
 import { formatSpeedLimit } from './_components/speed-limit-input';
 import { setSpeedLimitTargets } from './_components/speed-limit-targets';
+import { torrentsEmptyMessage } from './_components/empty-message';
 
 const TORRENT_ROW_HEIGHT = 160;
 
@@ -1611,15 +1612,7 @@ export default function TorrentsPage() {
       ) : filteredTorrents.length === 0 ? (
         <div className="rounded-xl bg-card p-8 text-center text-muted-foreground">
           {/* A filtered-out list must not read like an empty client. */}
-          <p>
-            {search.trim() && filter.length > 0
-              ? 'No torrents match your search and filters.'
-              : search.trim()
-                ? 'No torrents match your search.'
-                : filter.length > 0
-                  ? 'No torrents match the active filters.'
-                  : 'No torrents yet.'}
-          </p>
+          <p>{torrentsEmptyMessage(search.trim().length > 0, filter.length > 0)}</p>
           {(search.trim() || filter.length > 0) && (
             <Button
               variant="outline"

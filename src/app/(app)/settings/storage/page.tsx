@@ -20,50 +20,14 @@ import {
   imageCacheHealthLabel,
   toSafeImageCacheDiagnostics,
 } from '@/lib/cache/image-cache-support';
+import { parseUsage, type CacheUsageStats } from './parse-usage';
 
-interface CacheUsageStats {
-  imageBytes: number;
-  tmdbApiBytes: number;
-  anilistApiBytes: number;
-  apiBytes: number;
-  totalBytes: number;
-  imageFiles: number;
-  tmdbEntries: number;
-  anilistEntries: number;
-  apiEntries: number;
-  imageDiagnostics: ImageCacheDiagnostics | null;
-}
 function formatBytes(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';
   const units = ['B', 'KB', 'MB', 'GB', 'TB'];
   const exponent = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
   const value = bytes / 1024 ** exponent;
   return `${value.toFixed(value >= 10 ? 0 : 1)} ${units[exponent]}`;
-}
-
-function parseUsage(raw: unknown): CacheUsageStats | null {
-  if (!raw || typeof raw !== 'object') return null;
-  const u = raw as Partial<CacheUsageStats>;
-  // A payload without a numeric total is malformed — treat as unavailable
-  // rather than rendering it as a healthy 0 B.
-  if (typeof u.totalBytes !== 'number') return null;
-  return {
-    imageBytes: typeof u.imageBytes === 'number' ? u.imageBytes : 0,
-    tmdbApiBytes: typeof u.tmdbApiBytes === 'number' ? u.tmdbApiBytes : 0,
-    anilistApiBytes: typeof u.anilistApiBytes === 'number' ? u.anilistApiBytes : 0,
-    apiBytes: typeof u.apiBytes === 'number' ? u.apiBytes : 0,
-    totalBytes: typeof u.totalBytes === 'number' ? u.totalBytes : 0,
-    imageFiles: typeof u.imageFiles === 'number' ? u.imageFiles : 0,
-    tmdbEntries: typeof u.tmdbEntries === 'number' ? u.tmdbEntries : 0,
-    anilistEntries: typeof u.anilistEntries === 'number' ? u.anilistEntries : 0,
-    apiEntries: typeof u.apiEntries === 'number' ? u.apiEntries : 0,
-    imageDiagnostics:
-      u.imageDiagnostics
-      && typeof u.imageDiagnostics === 'object'
-      && typeof u.imageDiagnostics.accountingAvailable === 'boolean'
-        ? u.imageDiagnostics
-        : null,
-  };
 }
 
 const CACHE_USAGE_KEY = ['settings', 'cache-usage'] as const;
