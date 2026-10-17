@@ -18,6 +18,7 @@ import {
 } from '@/components/ui/select';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { AutoCleanupConfirmDialog, startsAutomaticDeletion } from './auto-cleanup-confirm';
 import { Loader2, Plus, Save, Trash2, AlertTriangle, Info, Pencil, ChevronUp, Power } from 'lucide-react';
 import { QuickContextMenu } from '@/components/ui/quick-context-menu';
 import type {
@@ -57,6 +58,7 @@ export function DownloadCleanerTab({ onDirtyChange }: Props) {
   const [editingIds, setEditingIds] = useState<Set<string>>(new Set());
 
   const serverSnapshot = useRef<SaveAllResponse | null>(null);
+  const [confirmAutoDelete, setConfirmAutoDelete] = useState(false);
   const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
   const scope = useScopeOptions();
@@ -155,6 +157,15 @@ export function DownloadCleanerTab({ onDirtyChange }: Props) {
     } finally {
       setSaving(false);
     }
+  };
+
+  // Saving the change that starts automatic deletion asks first.
+  const requestSave = () => {
+    if (cfg && startsAutomaticDeletion(serverSnapshot.current?.config, cfg)) {
+      setConfirmAutoDelete(true);
+      return;
+    }
+    void saveAll();
   };
 
   const discardChanges = () => {
@@ -469,12 +480,26 @@ export function DownloadCleanerTab({ onDirtyChange }: Props) {
           <FloatingActionBar>
             <span className="min-w-0 flex-1 text-sm text-muted-foreground">Unsaved changes</span>
             <Button variant="ghost" size="sm" onClick={discardChanges} disabled={saving}>Discard</Button>
-            <Button size="sm" onClick={saveAll} disabled={saving}>
+            <Button size="sm" onClick={requestSave} disabled={saving}>
               {saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}
               <span className="hidden sm:inline">Save all changes</span>
               <span className="sm:hidden">Save</span>
             </Button>
           </FloatingActionBar>
+        )}
+
+        {cfg && (
+          <AutoCleanupConfirmDialog
+            open={confirmAutoDelete}
+            onOpenChange={setConfirmAutoDelete}
+            cleaner="download"
+            intervalMinutes={cfg.intervalMinutes}
+            busy={saving}
+            onConfirm={async () => {
+              await saveAll();
+              setConfirmAutoDelete(false);
+            }}
+          />
         )}
 
         <ConfirmDialog
