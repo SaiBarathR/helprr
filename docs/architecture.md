@@ -551,6 +551,20 @@ credential shapes. A redacted support bundle is still private operational data.
 Settings imports are hostile input: validate schema, reject unsafe values, and
 preserve secret-handling behavior before applying any imported configuration.
 
+An import is checked before any database work: 4 MiB, 20,000 array entries and
+50,000 object properties for the document, then per-section limits
+(`src/lib/settings-import/limits.ts`) sized to what a real install exports. Each
+section lives in its own module under `src/lib/settings-import/`; the large
+ones (watchlists, alerts, anime mappings) are validated and normalized before
+the transaction opens and written with bulk statements. The whole import is one
+transaction, so a failure in any section saves nothing, with an explicit
+60-second timeout (`IMPORT_TRANSACTION_TIMEOUT_MS`). Its duration and per-section
+counts are logged, never values. A near-limit import takes well under a second
+into an empty database; `src/lib/__tests__/settings-import.integration.test.ts`
+measures it against a disposable PostgreSQL (`SETTINGS_IMPORT_TEST_DATABASE_URL`,
+a database named `helprr_import_test`) and checks that a failure in each section
+rolls back the others.
+
 After the import transaction commits, `src/lib/settings-import/follow-ups.ts`
 brings the running server in line with it: loading app settings, purging the
 image cache (`purgeOlderCacheGenerations`, which fails loudly and sweeps every

@@ -20,8 +20,35 @@ import {
   pickEnum,
 } from './shared';
 import { applyUserDashboardLayoutsInTxn } from './layouts';
-import { applyWatchlistInTxn } from './watchlist';
-import { applyScheduledAlertsInTxn } from './alerts';
+import { applyPreparedWatchlist, prepareWatchlist, type PreparedWatchlist } from './watchlist';
+import { applyPreparedScheduledAlerts, prepareScheduledAlerts, type PreparedAlert } from './alerts';
+
+export interface PreparedAccountContent {
+  watchlist: PreparedWatchlist | null;
+  alerts: PreparedAlert[] | null;
+}
+
+/**
+ * Validate and normalize each account's own watchlist and alerts before the
+ * transaction opens. Accounts whose username is invalid are skipped later, so
+ * their content is not prepared.
+ */
+export function prepareAccountContent(data: ExportedUsers, skipped: string[]): Map<unknown, PreparedAccountContent> {
+  const prepared = new Map<unknown, PreparedAccountContent>();
+  if (!Array.isArray(data.accounts)) return prepared;
+  for (const acc of data.accounts) {
+    if (!acc || typeof acc !== 'object') continue;
+    const username = typeof acc.username === 'string' ? normalizeLocalUsername(acc.username) : '';
+    if (localUsernameValidationError(username)) continue;
+    prepared.set(acc, {
+      watchlist: acc.watchlist && typeof acc.watchlist === 'object' ? prepareWatchlist(acc.watchlist, skipped) : null,
+      alerts: Array.isArray(acc.scheduledAlerts)
+        ? prepareScheduledAlerts(acc.scheduledAlerts, skipped, `User "${username}"`)
+        : null,
+    });
+  }
+  return prepared;
+}
 
 export async function applyUsersInTxn(
   tx: Prisma.TransactionClient,
@@ -29,6 +56,7 @@ export async function applyUsersInTxn(
   skipped: string[],
   importerId: string,
   createdReleaseRelative: ScheduledAlert[],
+  content: Map<unknown, PreparedAccountContent>,
 ): Promise<number> {
   if (!Array.isArray(data.accounts)) {
     skipped.push('Users: missing accounts array');
@@ -209,11 +237,12 @@ export async function applyUsersInTxn(
     // v2 per-account content: this user's watchlist, scheduled alerts, and
     // personal dashboard layouts. All optional — absent in v1 files.
     const ownerLabel = `User "${username}"`;
-    if (acc.watchlist && typeof acc.watchlist === 'object') {
-      await applyWatchlistInTxn(tx, acc.watchlist, skipped, userId);
+    const prepared = content.get(acc);
+    if (prepared?.watchlist) {
+      await applyPreparedWatchlist(tx, prepared.watchlist, userId);
     }
-    if (Array.isArray(acc.scheduledAlerts)) {
-      await applyScheduledAlertsInTxn(tx, acc.scheduledAlerts, skipped, userId, ownerLabel, createdReleaseRelative);
+    if (prepared?.alerts) {
+      await applyPreparedScheduledAlerts(tx, prepared.alerts, userId, createdReleaseRelative);
     }
     if (Array.isArray(acc.dashboardLayouts)) {
       await applyUserDashboardLayoutsInTxn(tx, acc.dashboardLayouts, skipped, userId, ownerLabel);

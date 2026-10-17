@@ -28,7 +28,7 @@ vi.mock('@/lib/polling-service', () => ({ pollingService: { restart: mocks.polli
 vi.mock('@/lib/cache/state', () => ({ setCachedCacheImagesEnabled: vi.fn(), setCachedAnilistTtlSettings: vi.fn() }));
 vi.mock('@/lib/cache/admin', () => ({ purgeOlderCacheGenerations: mocks.purgeOlderCacheGenerations }));
 vi.mock('@/lib/cache/dashboard-layout-cache', () => ({ invalidateLayoutCache: mocks.invalidateLayoutCache }));
-vi.mock('@/lib/logger', () => ({ configureLogger: vi.fn() }));
+vi.mock('@/lib/logger', () => ({ configureLogger: vi.fn(), logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 vi.mock('@/lib/app-settings', () => ({ getOrCreateAppSettings: mocks.getOrCreateAppSettings }));
 vi.mock('@/lib/cleanup/scheduler', () => ({
   restartDownloadCleaner: mocks.restartDownloadCleaner,
@@ -120,16 +120,22 @@ describe('settings import after commit', () => {
 // import code runs and commits through it.
 function emptyDatabaseTx(writes: string[]) {
   return new Proxy({}, {
-    get: (_tx, model) => new Proxy({}, {
-      get: (_model, method) => async (args?: { data?: object; create?: object }) => {
-        if (method === 'findMany') return [];
-        if (method === 'findUnique' || method === 'findFirst') return null;
-        if (method === 'count') return 0;
-        writes.push(`${String(model)}.${String(method)}`);
-        if (method === 'deleteMany' || method === 'updateMany' || method === 'createMany') return { count: 0 };
-        return { id: `${String(model)}-id`, ...(method === 'upsert' ? args?.create : args?.data) };
-      },
-    }),
+    get: (_tx, model) => {
+      if (model === '$executeRaw') return async () => 0;
+      return new Proxy({}, {
+        get: (_model, method) => async (args?: { data?: object | object[]; create?: object }) => {
+          if (method === 'findMany') return [];
+          if (method === 'findUnique' || method === 'findFirst') return null;
+          if (method === 'count') return 0;
+          writes.push(`${String(model)}.${String(method)}`);
+          if (method === 'deleteMany' || method === 'updateMany' || method === 'createMany') return { count: 0 };
+          if (method === 'createManyAndReturn') {
+            return (args?.data as object[]).map((row, i) => ({ id: `${String(model)}-id-${i}`, ...row }));
+          }
+          return { id: `${String(model)}-id`, ...(method === 'upsert' ? args?.create : args?.data) };
+        },
+      });
+    },
   });
 }
 
@@ -142,7 +148,7 @@ describe('each step that fails after the import commits', () => {
     ['cleanupSchedulers', { cleanup: { queueConfig: { enabled: false }, downloadConfig: { enabled: false } } },
       () => mocks.restartQueueCleaner.mockRejectedValue(SECRET), 'downloadCleanerConfig.upsert'],
     ['alertOccurrences', { scheduledAlerts: { alerts: [{ source: 'TMDB', mediaType: 'movie', externalId: '603', title: 'The Matrix', scheduleMode: 'release_relative', scope: 'movie', releaseTypes: ['digital'] }] } },
-      () => mocks.resolveAlertOccurrencesResult.mockRejectedValue(SECRET), 'scheduledAlert.create'],
+      () => mocks.resolveAlertOccurrencesResult.mockRejectedValue(SECRET), 'scheduledAlert.createManyAndReturn'],
     ['dashboardLayoutCache', { dashboardLayouts: { layouts: [{ slug: 'desktop', name: 'Desktop', widgets: [] }] } },
       () => mocks.invalidateLayoutCache.mockResolvedValue(false), 'dashboardLayout.create'],
     ['defaultInstances', { serviceConnections: [{ type: 'SONARR', url: 'http://sonarr:8989', apiKey: 'imported-key', label: 'Sonarr' }] },

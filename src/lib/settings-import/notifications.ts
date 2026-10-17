@@ -22,16 +22,22 @@ export async function applyNotificationDeviceInTxn(
     skipped.push('Notification prefs: current device push subscription not found');
     return 0;
   }
-  let applied = 0;
-  for (const rule of device.rules ?? []) {
-    if (typeof rule.eventType !== 'string' || !(EVENT_TYPES as readonly string[]).includes(rule.eventType)) {
+  // One rule per event type, the last one listed winning, so a file cannot
+  // repeat an event to multiply the writes.
+  const rules = new Map<string, (typeof device.rules)[number]>();
+  for (const rule of Array.isArray(device.rules) ? device.rules : []) {
+    if (!rule || typeof rule.eventType !== 'string' || !(EVENT_TYPES as readonly string[]).includes(rule.eventType)) {
       continue;
     }
+    rules.set(rule.eventType, rule);
+  }
+  let applied = 0;
+  for (const [eventType, rule] of rules) {
     await tx.notificationPreference.upsert({
       where: {
         subscriptionId_eventType: {
           subscriptionId: subscription.id,
-          eventType: rule.eventType,
+          eventType,
         },
       },
       update: {
@@ -42,7 +48,7 @@ export async function applyNotificationDeviceInTxn(
       },
       create: {
         subscriptionId: subscription.id,
-        eventType: rule.eventType,
+        eventType,
         enabled: Boolean(rule.enabled),
         tagFilter: rule.tagFilter ?? null,
         qualityFilter: rule.qualityFilter ?? null,

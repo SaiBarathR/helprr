@@ -4,6 +4,7 @@ import { BOOTSTRAP_ADMIN_ID } from '@/lib/bootstrap-admin';
 import { withApiLogging } from '@/lib/api-logger';
 import { MAX_IMPORT_BYTES } from '@/lib/settings-export';
 import { validateSettingsImportComplexity } from '@/lib/settings-import-validation';
+import { validateImportSectionLimits } from '@/lib/settings-import/limits';
 import { runImportFollowUps, type ImportWarning } from '@/lib/settings-import/follow-ups';
 import { applySettingsImport, type ImportApplied, type ImportOutcome } from '@/lib/settings-import/run-import';
 import type { ImportRequestBody } from '@/lib/settings-import/shared';
@@ -60,7 +61,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
   }
 
-  const complexityError = validateSettingsImportComplexity(body);
+  const complexityError = validateSettingsImportComplexity(body) ?? validateImportSectionLimits(body);
   if (complexityError) {
     return NextResponse.json({ error: complexityError }, { status: 400 });
   }

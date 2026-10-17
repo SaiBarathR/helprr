@@ -4,6 +4,7 @@
 
 import type { Prisma, ScheduledAlert, ServiceType } from '@prisma/client';
 import { prisma } from '@/lib/db';
+import { logger } from '@/lib/logger';
 import { validateDiscoverLayout, reconcileDiscoverLayout } from '@/lib/discover-layout-config';
 import type { ImportFollowUpPlan } from './follow-ups';
 import type { ImportRequestBody } from './shared';
@@ -12,10 +13,34 @@ import { applyServiceConnectionInTxn } from './services';
 import { applyNotificationDeviceInTxn } from './notifications';
 import { applyCleanupInTxn } from './cleanup';
 import { applyDashboardLayoutsInTxn } from './layouts';
-import { applyScheduledAlertsInTxn } from './alerts';
-import { applyWatchlistInTxn } from './watchlist';
-import { applyAnimeMappingsInTxn } from './anime-mappings';
-import { applyUsersInTxn } from './users';
+import { applyPreparedScheduledAlerts, prepareScheduledAlerts } from './alerts';
+import { applyPreparedWatchlist, prepareWatchlist } from './watchlist';
+import { applyPreparedAnimeMappings, prepareAnimeMappings } from './anime-mappings';
+import { applyUsersInTxn, prepareAccountContent } from './users';
+
+// A near-limit import (the benchmark in settings-import.integration.test.ts)
+// commits in a few seconds; the timeout leaves room for slower storage while
+// still bounding how long one import can hold the database. maxWait bounds the
+// wait for a connection from the pool.
+export const IMPORT_TRANSACTION_TIMEOUT_MS = 60_000;
+const IMPORT_TRANSACTION_MAX_WAIT_MS = 10_000;
+const LOG = 'settings-import';
+
+/** Entries per section, for the log: numbers only, never values. */
+function sectionCounts(body: ImportRequestBody): Record<string, number> {
+  const length = (value: unknown) => (Array.isArray(value) ? value.length : 0);
+  const accounts = Array.isArray(body.users?.accounts) ? body.users.accounts : [];
+  return {
+    serviceConnections: length(body.serviceConnections),
+    notificationRules: length(body.notificationDevice?.rules),
+    cleanupRules: length(body.cleanup?.stallRules) + length(body.cleanup?.slowRules) + length(body.cleanup?.seedingRules),
+    dashboardLayouts: length(body.dashboardLayouts?.layouts),
+    watchlistItems: length(body.watchlist?.items) + accounts.reduce((n, a) => n + length(a?.watchlist?.items), 0),
+    scheduledAlerts: length(body.scheduledAlerts?.alerts) + accounts.reduce((n, a) => n + length(a?.scheduledAlerts), 0),
+    animeMappings: length(body.animeMappings?.mappings),
+    users: accounts.length,
+  };
+}
 
 export interface ImportApplied {
   appSettings: boolean;
@@ -55,82 +80,102 @@ export async function applySettingsImport(body: ImportRequestBody, importerId: s
   // after commit (resolution hits Sonarr/Radarr/AniList — too slow for the txn).
   const createdReleaseRelative: ScheduledAlert[] = [];
 
-  const appSettingsTxnResult = await prisma.$transaction(async (tx) => {
-    let innerAppSettings: AppSettingsTxnResult | null = null;
-    if (body.appSettings && typeof body.appSettings === 'object') {
-      innerAppSettings = await applyAppSettingsInTxn(tx, body.appSettings);
-      appliedAppSettings = true;
-    }
-
-    if (Array.isArray(body.serviceConnections)) {
-      for (const conn of body.serviceConnections) {
-        const applied = await applyServiceConnectionInTxn(tx, conn, skipped);
-        if (applied) appliedServices.push(applied);
-      }
-    }
-
-    if (body.notificationDevice && typeof body.notificationDevice === 'object') {
-      appliedNotificationRules = await applyNotificationDeviceInTxn(
-        tx,
-        body.notificationDevice,
-        body.currentDeviceEndpoint,
-        skipped
-      );
-    }
-
-    if (body.cleanup && typeof body.cleanup === 'object') {
-      await applyCleanupInTxn(tx, body.cleanup, skipped);
-      appliedCleanup = true;
-    }
-
-    // Import discover layout
-    if (body.discoverLayout && typeof body.discoverLayout === 'object') {
-      const validated = validateDiscoverLayout(body.discoverLayout);
-      if (validated) {
-        const reconciled = reconcileDiscoverLayout(validated);
-        await tx.appSettings.upsert({
-          where: { id: 'singleton' },
-          update: { discoverLayout: reconciled as unknown as Prisma.InputJsonValue },
-          create: { id: 'singleton', discoverLayout: reconciled as unknown as Prisma.InputJsonValue },
-        });
-        discoverLayoutApplied = true;
-      } else {
-        skipped.push('Discover layout: invalid format, skipped');
-      }
-    }
-
-    if (body.dashboardLayouts && typeof body.dashboardLayouts === 'object') {
-      appliedDashboardLayouts = await applyDashboardLayoutsInTxn(tx, body.dashboardLayouts, skipped);
-    }
-
-    if (body.scheduledAlerts && typeof body.scheduledAlerts === 'object') {
-      const alerts = Array.isArray(body.scheduledAlerts.alerts) ? body.scheduledAlerts.alerts : [];
-      appliedScheduledAlerts = await applyScheduledAlertsInTxn(
-        tx,
-        alerts,
+  // Validate and normalize the large sections before the transaction opens,
+  // so it spends its time, and holds its locks, only on writes.
+  const alerts = body.scheduledAlerts && typeof body.scheduledAlerts === 'object'
+    ? prepareScheduledAlerts(
+        Array.isArray(body.scheduledAlerts.alerts) ? body.scheduledAlerts.alerts : [],
         skipped,
-        importerId,
         'Scheduled alerts',
-        createdReleaseRelative
-      );
-    }
+      )
+    : null;
+  const watchlist = body.watchlist && typeof body.watchlist === 'object'
+    ? prepareWatchlist(body.watchlist, skipped)
+    : null;
+  const mappings = body.animeMappings && typeof body.animeMappings === 'object'
+    ? prepareAnimeMappings(body.animeMappings, skipped)
+    : null;
+  const accountContent = body.users && typeof body.users === 'object'
+    ? prepareAccountContent(body.users, skipped)
+    : new Map();
 
-    if (body.watchlist && typeof body.watchlist === 'object') {
-      const r = await applyWatchlistInTxn(tx, body.watchlist, skipped, importerId);
-      appliedWatchlistItems = r.items;
-      appliedWatchlistTags = r.tags;
-    }
+  const counts = sectionCounts(body);
+  const started = performance.now();
+  let appSettingsTxnResult: AppSettingsTxnResult | null;
+  try {
+    appSettingsTxnResult = await prisma.$transaction(async (tx) => {
+      let innerAppSettings: AppSettingsTxnResult | null = null;
+      if (body.appSettings && typeof body.appSettings === 'object') {
+        innerAppSettings = await applyAppSettingsInTxn(tx, body.appSettings);
+        appliedAppSettings = true;
+      }
 
-    if (body.animeMappings && typeof body.animeMappings === 'object') {
-      appliedAnimeMappings = await applyAnimeMappingsInTxn(tx, body.animeMappings, skipped);
-    }
+      if (Array.isArray(body.serviceConnections)) {
+        for (const conn of body.serviceConnections) {
+          const applied = await applyServiceConnectionInTxn(tx, conn, skipped);
+          if (applied) appliedServices.push(applied);
+        }
+      }
 
-    if (body.users && typeof body.users === 'object') {
-      appliedUsers = await applyUsersInTxn(tx, body.users, skipped, importerId, createdReleaseRelative);
-    }
+      if (body.notificationDevice && typeof body.notificationDevice === 'object') {
+        appliedNotificationRules = await applyNotificationDeviceInTxn(
+          tx,
+          body.notificationDevice,
+          body.currentDeviceEndpoint,
+          skipped
+        );
+      }
 
-    return innerAppSettings;
-  });
+      if (body.cleanup && typeof body.cleanup === 'object') {
+        await applyCleanupInTxn(tx, body.cleanup, skipped);
+        appliedCleanup = true;
+      }
+
+      // Import discover layout
+      if (body.discoverLayout && typeof body.discoverLayout === 'object') {
+        const validated = validateDiscoverLayout(body.discoverLayout);
+        if (validated) {
+          const reconciled = reconcileDiscoverLayout(validated);
+          await tx.appSettings.upsert({
+            where: { id: 'singleton' },
+            update: { discoverLayout: reconciled as unknown as Prisma.InputJsonValue },
+            create: { id: 'singleton', discoverLayout: reconciled as unknown as Prisma.InputJsonValue },
+          });
+          discoverLayoutApplied = true;
+        } else {
+          skipped.push('Discover layout: invalid format, skipped');
+        }
+      }
+
+      if (body.dashboardLayouts && typeof body.dashboardLayouts === 'object') {
+        appliedDashboardLayouts = await applyDashboardLayoutsInTxn(tx, body.dashboardLayouts, skipped);
+      }
+
+      if (alerts) {
+        appliedScheduledAlerts = await applyPreparedScheduledAlerts(tx, alerts, importerId, createdReleaseRelative);
+      }
+
+      if (watchlist) {
+        const r = await applyPreparedWatchlist(tx, watchlist, importerId);
+        appliedWatchlistItems = r.items;
+        appliedWatchlistTags = r.tags;
+      }
+
+      if (mappings) {
+        appliedAnimeMappings = await applyPreparedAnimeMappings(tx, mappings, skipped);
+      }
+
+      if (body.users && typeof body.users === 'object') {
+        appliedUsers = await applyUsersInTxn(tx, body.users, skipped, importerId, createdReleaseRelative, accountContent);
+      }
+
+      return innerAppSettings;
+    }, { timeout: IMPORT_TRANSACTION_TIMEOUT_MS, maxWait: IMPORT_TRANSACTION_MAX_WAIT_MS });
+  } catch (error) {
+    logger.warn('Settings import rolled back', { durationMs: Math.round(performance.now() - started), ...counts }, { scope: LOG });
+    throw error;
+  }
+  logger.info('Settings import committed', { durationMs: Math.round(performance.now() - started), ...counts }, { scope: LOG });
 
   // What the running server must do to match the committed data
   // (src/lib/settings-import/follow-ups.ts).

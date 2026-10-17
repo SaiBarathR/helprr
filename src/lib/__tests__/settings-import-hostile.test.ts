@@ -32,7 +32,7 @@ vi.mock('@/lib/cache/state', () => ({
   setCachedAnilistTtlSettings: vi.fn(),
 }));
 vi.mock('@/lib/cache/admin', () => ({ purgeOlderCacheGenerations: vi.fn() }));
-vi.mock('@/lib/logger', () => ({ configureLogger: vi.fn() }));
+vi.mock('@/lib/logger', () => ({ configureLogger: vi.fn(), logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 vi.mock('@/lib/app-settings', () => ({ getOrCreateAppSettings: vi.fn() }));
 vi.mock('@/lib/cleanup/scheduler', () => ({
   restartDownloadCleaner: vi.fn(),
@@ -126,6 +126,16 @@ describe('hostile settings imports', () => {
 
     expect(response.status).toBe(400);
     expect(body.error).toContain('arrays exceed');
+    expect(mocks.transaction).not.toHaveBeenCalled();
+  });
+
+  it('rejects a section over its own limit before database work', async () => {
+    const raw = JSON.stringify({ scheduledAlerts: { alerts: Array(2_001).fill({}) } });
+
+    const response = await importSettings(request(raw));
+
+    expect(response.status).toBe(400);
+    expect((await response.json()).error).toBe('Scheduled alerts exceed the import limit of 2000');
     expect(mocks.transaction).not.toHaveBeenCalled();
   });
 
