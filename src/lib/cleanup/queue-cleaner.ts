@@ -26,6 +26,8 @@ import {
 } from './helpers';
 import {
   loadActiveStrikes,
+  strikesForCurrentTorrents,
+  torrentAddedAt,
   pruneOrphanStrikes,
   pruneStrikesForMissingRules,
   strikeKey,
@@ -261,10 +263,11 @@ export async function runQueueCleanerCycle(opts: RunOptions): Promise<QueueEvalu
     return emptyResult(opts, noCandidatesBinding, ['qBittorrent torrent listing failed — nothing was evaluated']);
   }
 
-  const [{ sonarr: sonarrInstances, radarr: radarrInstances, complete: arrQueuesComplete }, prevStrikes] = await Promise.all([
+  const [{ sonarr: sonarrInstances, radarr: radarrInstances, complete: arrQueuesComplete }, loadedStrikes] = await Promise.all([
     loadArrQueues(),
     loadActiveStrikes(),
   ]);
+  const prevStrikes = strikesForCurrentTorrents(loadedStrikes, torrents);
   if (!arrQueuesComplete) {
     logger.error('Queue cleaner aborted because at least one configured Arr queue could not be read completely', {}, { scope: LOG });
     if (opts.expectedBinding) assertExecutionBinding(opts.expectedBinding, noCandidatesBinding);
@@ -314,6 +317,7 @@ export async function runQueueCleanerCycle(opts: RunOptions): Promise<QueueEvalu
           ruleId: null,
           newCount,
           lastDownloadedBytes: BigInt(Math.max(0, Math.floor(t.downloaded))),
+          torrentAddedAt: torrentAddedAt(t.added_on),
         });
         pendingStrikes.push(toPending(t, 'downloadingMetadata', null, null, newCount, cfg.downloadingMetadataMaxStrikes));
         if (newCount >= cfg.downloadingMetadataMaxStrikes) {
@@ -373,6 +377,7 @@ export async function runQueueCleanerCycle(opts: RunOptions): Promise<QueueEvalu
                 ruleId: null,
                 newCount,
                 lastDownloadedBytes: null,
+                torrentAddedAt: torrentAddedAt(t.added_on),
               });
               pendingStrikes.push(toPending(t, 'failedImport', null, null, newCount, cfg.failedImport.maxStrikes));
               if (newCount >= cfg.failedImport.maxStrikes) {
@@ -839,7 +844,7 @@ async function revalidateQueueDecision(
     const correlation = buildCorrelationIndex(queues.sonarr, queues.radarr);
     const links = correlation.byHash.get(torrent.hash.toLowerCase()) ?? [];
     const linked = links.find((link) => link.source === 'sonarr') ?? links[0] ?? null;
-    const activeStrikes = await loadActiveStrikes();
+    const activeStrikes = strikesForCurrentTorrents(await loadActiveStrikes(), [torrent]);
     const strike = activeStrikes.get(strikeKey(torrent.hash, expected.strikeType, expected.ruleId));
     const count = strike?.count ?? 0;
     if (count < expected.maxStrikes) {
@@ -1019,6 +1024,7 @@ function evaluateRules<R extends { id: string; enabled: boolean; priority: numbe
       ruleId: rule.id,
       newCount,
       lastDownloadedBytes: BigInt(Math.max(0, Math.floor(t.downloaded))),
+      torrentAddedAt: torrentAddedAt(t.added_on),
     });
     pendingStrikes.push(toPending(t, strikeType, rule.id, rule.name, newCount, rule.maxStrikes));
     if (newCount >= rule.maxStrikes) {

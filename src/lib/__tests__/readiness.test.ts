@@ -87,7 +87,8 @@ describe('migration readiness', () => {
     expect(names).toContain('20260716100157_recommendation_events_taste_profile');
     expect(names).toContain('20260730050000_notification_unread_partial_indexes');
     expect(names).toContain('20261017120000_cleanup_actor_audit_request_fields');
+    expect(names).toContain('20261018010000_cleanup_strike_torrent_added_at');
     expect(names).not.toContain('migration_lock.toml');
-    expect(names).toHaveLength(10);
+    expect(names).toHaveLength(11);
   });
 });
