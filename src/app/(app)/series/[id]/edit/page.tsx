@@ -20,6 +20,7 @@ import { invalidateSeries } from '@/lib/query-invalidation';
 import { useQualityProfiles, useRootFolders } from '@/lib/hooks/use-reference-data';
 import { useCan } from '@/components/permission-provider';
 import type { SonarrSeries } from '@/types';
+import { joinPath, lastPathSegment, parentPath } from '@/lib/paths';
 
 export default function SeriesEditPage() {
   const { id } = useParams();
@@ -68,7 +69,7 @@ export default function SeriesEditPage() {
     setSeriesType(series.seriesType);
     setSeasonFolder(series.seasonFolder);
     setSelectedTags([...series.tags]);
-    setRootFolder(series.path ? series.path.split('/').slice(0, -1).join('/') : '');
+    setRootFolder(series.path ? parentPath(series.path) : '');
   }, [series]);
 
   async function handleSave() {
@@ -84,10 +85,9 @@ export default function SeriesEditPage() {
       };
 
       if (rootFolder && series.path) {
-        const segments = series.path.split('/').filter(Boolean);
-        const seriesFolder = segments[segments.length - 1];
+        const seriesFolder = lastPathSegment(series.path);
         if (seriesFolder) {
-          updatedSeries.path = `${rootFolder}/${seriesFolder}`;
+          updatedSeries.path = joinPath(rootFolder, seriesFolder);
         }
       }
 

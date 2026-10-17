@@ -5,16 +5,23 @@ function separatorOf(path: string): string {
   return path.includes('\\') ? '\\' : '/';
 }
 
+/** A trailing separator does not start an empty final segment. */
+function withoutTrailingSeparators(path: string, sep: string): string {
+  let end = path.length;
+  while (end > 1 && path[end - 1] === sep) end -= 1;
+  return path.slice(0, end);
+}
+
 /** Parent directory of a media path, e.g. "C:\Movies\X (2026)" → "C:\Movies". */
 export function parentPath(path: string): string {
   const sep = separatorOf(path);
-  return path.split(sep).slice(0, -1).join(sep);
+  return withoutTrailingSeparators(path, sep).split(sep).slice(0, -1).join(sep);
 }
 
 /** Final segment of a media path, e.g. "/mnt/movies/X (2026)" → "X (2026)". */
 export function lastPathSegment(path: string): string {
   const sep = separatorOf(path);
-  return path.split(sep).pop() ?? '';
+  return withoutTrailingSeparators(path, sep).split(sep).pop() ?? '';
 }
 
 /** Join a folder (root folder from the same instance) and a child segment using the folder's separator. */
