@@ -48,4 +48,11 @@ describe('orderYearRange', () => {
     const single = { ...filters, yearMin: '2020', yearMax: '' };
     expect(orderYearRange(single)).toBe(single);
   });
+
+  it('leaves a bound the API ignores where it is', () => {
+    for (const [yearMin, yearMax] of [['2020', '0'], ['0', '2020'], ['2020', 'x']]) {
+      const range = { ...filters, yearMin, yearMax };
+      expect(orderYearRange(range)).toBe(range);
+    }
+  });
 });

@@ -435,9 +435,11 @@ function yearRangeLabel(min?: string, max?: string): string | null {
 
 /** A year range picked high to low means the same years, low to high. */
 export function orderYearRange<T extends { yearMin: string; yearMax: string }>(filters: T): T {
-  const { yearMin, yearMax } = filters;
-  return yearMin && yearMax && Number(yearMin) > Number(yearMax)
-    ? { ...filters, yearMin: yearMax, yearMax: yearMin }
+  // Read as the API reads them; it ignores a bound that is not a year.
+  const min = Number.parseInt(filters.yearMin, 10);
+  const max = Number.parseInt(filters.yearMax, 10);
+  return min > 0 && max > 0 && min > max
+    ? { ...filters, yearMin: filters.yearMax, yearMax: filters.yearMin }
     : filters;
 }
 
