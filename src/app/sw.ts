@@ -81,9 +81,10 @@ const runtimeCaching: RuntimeCaching[] =
           // Read-only library/dashboard reads → fresh online, offline last-known-good.
           // networkTimeoutSeconds falls back to cache only if the network stalls.
           // `browseSnapshots` replaced CacheableResponsePlugin here: cacheBrowseSnapshot
-          // returns null for any status but 200, so 401/403/3xx are still never written
-          // and a revoked session can't read another user's stale data. Its
-          // fetchDidSucceed also drops the whole cache on a live 401/403.
+          // returns null for any status but 200, so 401/403/3xx are never written. That
+          // alone does not make an older cached 200 belong to whoever is signed in now:
+          // isolation comes from clearing user-scoped caches on sign-in (login page)
+          // and from fetchDidSucceed dropping the whole cache on a live 401/403.
           matcher: ({ sameOrigin, url: { pathname } }) => sameOrigin && READONLY_API_NETWORK_FIRST.test(pathname),
           method: 'GET',
           handler: new NetworkFirst({
