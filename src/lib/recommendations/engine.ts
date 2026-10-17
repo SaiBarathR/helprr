@@ -46,36 +46,27 @@ interface EngineSnapshot {
   builtAt: string;
 }
 
-// Every invalidation bumps a per-user generation, and a snapshot is stored
-// under the generation read before its build started (so before it read any
-// feedback). A build that began before an invalidation therefore saves where no
-// current read looks, instead of serving a title the user just hid.
+// Every invalidation gives the user a new generation, a random token never
+// used before, and a snapshot is stored under the generation read before its
+// build started (so before it read any feedback). A build that began before an
+// invalidation therefore saves where no current read looks, instead of serving
+// a title the user just hid.
 const generationKey = (userId: string) => `helprr:cache:recommendations:generation:${userId}`;
 
 /** The user's generation, or null when it cannot be read. */
-async function getGeneration(userId: string): Promise<number | null> {
+async function getGeneration(userId: string): Promise<string | null> {
   try {
     const redis = await getRedisClient();
-    const value = await redis.get(generationKey(userId));
-    const parsed = value ? Number.parseInt(value, 10) : Number.NaN;
-    // A missing key is 0, so the first bump (INCR creates it at 1) changes the seed.
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+    // Before the first invalidation (or once Redis has lost the key, and with
+    // it the snapshots) there is a single initial generation.
+    return (await redis.get(generationKey(userId))) ?? 'initial';
   } catch {
     return null;
   }
 }
 
-// One atomic step to a new generation: past the current one and at least the
-// current time in milliseconds. A counter that was lost or holds something
-// other than a number (counted as 0) restarts at the current millisecond, past
-// every generation an earlier millisecond produced.
-const BUMP_GENERATION = `local current = tonumber(redis.call('GET', KEYS[1])) or 0
-local next = math.max(current + 1, tonumber(ARGV[1]))
-redis.call('SET', KEYS[1], string.format('%d', next))
-return next`;
-
-function cacheSeed(userId: string, generation: number): string {
-  return `user:${userId}:g${generation}`;
+function cacheSeed(userId: string, generation: string): string {
+  return `user:${userId}:g:${generation}`;
 }
 
 // ─── Continue watching (Jellyfin resume → in-app items) ─────────────────────
@@ -330,7 +321,7 @@ export async function invalidateRecommendations(userId: string): Promise<void> {
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const redis = await getRedisClient();
-      await redis.eval(BUMP_GENERATION, { keys: [generationKey(userId)], arguments: [String(Date.now())] });
+      await redis.set(generationKey(userId), crypto.randomUUID());
       return;
     } catch {
       // Retry once.
