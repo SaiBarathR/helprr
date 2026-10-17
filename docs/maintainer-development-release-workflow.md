@@ -325,7 +325,9 @@ substitute for that primary-device gate.
 CI also starts a disposable PostgreSQL 16 database and runs
 `npm run test:migrations`. The migration runner reconstructs every recorded release
 snapshot, seeds representative rows, applies the current migrations, and checks both
-data preservation and the new schema. For a local run, point
+data preservation and the new schema. It also baselines a database created by the old
+`prisma db push` workflow (the `0001_init` tables with no migration history) the way the
+README documents, and checks the later migrations apply and its rows survive. For a local run, point
 `MIGRATION_TEST_DATABASE_URL` at a disposable database named exactly
 `helprr_migration_test`; the script refuses every other database name and clears the
 scratch schema afterward. Never point it at `helprr`, `helprr_dev`, or any database
@@ -582,6 +584,10 @@ Update `CHANGELOG.md` with the release date and user-facing changes. Also verify
 - `.env.example` includes new runtime variables without secrets.
 - `docker-compose.yml` passes any required runtime variables.
 - New Prisma migrations are committed and non-destructive for a patch release.
+- A release whose migration set differs from the previous release adds
+  `prisma/release-snapshots/v$VERSION.json`: the release and each migration's name
+  and sha256, in the format of the files already there. CI then tests upgrades from
+  this release and fails if one of its migrations is edited later.
 - A source build with no `APP_VERSION` set displays `$VERSION` in Settings →
   Service status, without the `v` a tagged image shows.
 
@@ -604,7 +610,7 @@ Commit and push the release preparation branch:
 
 ```bash
 git add package.json package-lock.json CHANGELOG.md README.md .env.example docker-compose.yml
-git add prisma/migrations 2>/dev/null || true
+git add prisma/migrations prisma/release-snapshots 2>/dev/null || true
 git commit -m "chore(release): prepare Helprr $VERSION"
 git push -u origin "$RELEASE_BRANCH"
 gh pr create \
