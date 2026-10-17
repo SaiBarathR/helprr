@@ -15,6 +15,14 @@ describe('seasonalSortNote', () => {
 
   it('adds nothing once the filters pick both, since their chips say it', () => {
     expect(seasonalSortNote({ season: 'WINTER', year: '2024' }, october)).toBeNull();
+    expect(seasonalSortNote({ season: 'WINTER', year: '', yearMin: '2010', yearMax: '2015' }, october)).toBeNull();
+  });
+
+  it('keeps a year range instead of this year', () => {
+    expect(seasonalSortNote({ season: '', year: '', yearMin: '2010', yearMax: '2015' }, october)).toBe('Only Fall anime from 2010–2015');
+    expect(seasonalSortNote({ season: '', year: '', yearMin: '2010', yearMax: '' }, october)).toBe('Only Fall anime from 2010 onward');
+    expect(seasonalSortNote({ season: 'SPRING', year: '', yearMin: '', yearMax: '2015' }, october)).toBeNull();
+    expect(seasonalSortNote({ season: '', year: '', yearMin: '', yearMax: '2015' }, october)).toBe('Only Fall anime up to 2015');
   });
 });
 

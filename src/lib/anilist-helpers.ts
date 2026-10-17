@@ -412,12 +412,25 @@ export function getCurrentSeason(now = new Date()): { season: AniListMediaSeason
  * filling in the current ones for whatever they leave out. Names that season
  * when any part of it was filled in, since nothing on screen says so.
  */
-export function seasonalSortNote(filters: { season: string; year: string }, now = new Date()): string | null {
-  if (filters.season && filters.year) return null;
+export function seasonalSortNote(
+  filters: { season: string; year: string; yearMin?: string; yearMax?: string },
+  now = new Date(),
+): string | null {
+  // A year range stands in for the year, as it does in browseAnime.
+  const range = filters.year ? null : yearRangeLabel(filters.yearMin, filters.yearMax);
+  if (filters.season && (filters.year || range)) return null;
   const current = getCurrentSeason(now);
   const season = filters.season || current.season;
   const label = season.charAt(0) + season.slice(1).toLowerCase();
+  if (range) return `Only ${label} anime ${range}`;
   return `Only anime from ${label} ${filters.year || current.year}`;
+}
+
+function yearRangeLabel(min?: string, max?: string): string | null {
+  if (min && max) return `from ${min}–${max}`;
+  if (min) return `from ${min} onward`;
+  if (max) return `up to ${max}`;
+  return null;
 }
 
 export function isMovieFormat(format: AniListMediaFormat | null): boolean {
