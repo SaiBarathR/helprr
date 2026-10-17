@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { AlertTriangle, FileJson, Loader2, Upload } from 'lucide-react';
 import {
@@ -36,6 +37,13 @@ import {
 import type { ServiceType } from '@prisma/client';
 import type { ImportWarning } from '@/lib/settings-import/follow-up-tasks';
 import { showImportWarnings } from '@/components/settings/import-warnings';
+import {
+  AutoCleanupConfirmDialog,
+  CLEANER_NAMES,
+  startsAutomaticDeletion,
+} from '@/app/(app)/cleanup/_components/auto-cleanup-confirm';
+import { toAutoRunMode, type AutoRunMode } from '@/lib/cleanup/types';
+import { jsonFetcher } from '@/lib/query-fetch';
 
 interface ImportSettingsDialogProps {
   open: boolean;
@@ -50,6 +58,25 @@ interface ParsedFile {
   uiPrefsMigrated: Partial<Record<UiPrefCategoryId, Record<string, unknown>>>;
   availableUi: UiPrefCategoryId[];
   availableServices: ServiceType[];
+}
+
+type Cleaner = 'queue' | 'download';
+const CLEANERS: Cleaner[] = ['queue', 'download'];
+
+interface CleanerState {
+  enabled: boolean;
+  autoRunMode: AutoRunMode;
+}
+
+// A cleaner's config from the file, read the way the import stores it.
+function importedCleaner(config: unknown): (CleanerState & { intervalMinutes: number }) | null {
+  if (!config || typeof config !== 'object') return null;
+  const c = config as Record<string, unknown>;
+  return {
+    enabled: Boolean(c.enabled),
+    autoRunMode: toAutoRunMode(c.autoRunMode),
+    intervalMinutes: Math.max(1, Number(c.intervalMinutes) || 60),
+  };
 }
 
 function buildMigratedUiPrefs(
@@ -105,6 +132,9 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
   const [importing, setImporting] = useState(false);
   const [currentEndpoint, setCurrentEndpoint] = useState<string | null>(null);
   const [pendingConfirm, setPendingConfirm] = useState<{ replaceAll: boolean } | null>(null);
+  // The cleaners still to confirm before an import that turns on their
+  // automatic deletion, one dialog each.
+  const [pendingCleanup, setPendingCleanup] = useState<{ replaceAll: boolean; cleaners: Cleaner[] } | null>(null);
   const applyImportedUiPrefs = useUIStore((s) => s.applyImportedUiPrefs);
   const setDiscoverLayout = useUIStore((s) => s.setDiscoverLayout);
 
@@ -124,6 +154,7 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
       setSelectedServices(new Set());
       setSelectedSourceDevice('');
       setPendingConfirm(null);
+      setPendingCleanup(null);
       return;
     }
     if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator && 'PushManager' in window) {
@@ -221,6 +252,26 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
     () => parsed?.payload.notificationPrefs ?? [],
     [parsed]
   );
+  // What each cleaner does now, to tell whether the file would start its
+  // automatic deletion.
+  const fileCleanup = isAdmin ? parsed?.payload.cleanup : undefined;
+  const currentCleaners = useQuery({
+    queryKey: ['settings-import', 'current-cleaners'],
+    queryFn: async ({ signal }) => {
+      const [queue, download] = await Promise.all(
+        CLEANERS.map((cleaner) => jsonFetcher<CleanerState>(`/api/cleanup/${cleaner}/config`)({ signal })),
+      );
+      return { queue, download };
+    },
+    enabled: open && !!fileCleanup,
+    staleTime: 0,
+  });
+  // A current state that could not be read counts as off, so the import asks.
+  const cleanersTurnedOn = useMemo(() => CLEANERS.filter((cleaner) => {
+    const next = importedCleaner(cleaner === 'queue' ? fileCleanup?.queueConfig : fileCleanup?.downloadConfig);
+    return next !== null && startsAutomaticDeletion(currentCleaners.data?.[cleaner], next);
+  }), [fileCleanup, currentCleaners.data]);
+
   const hasSelection = useMemo(() => (
     !!parsed && (
       selectedUi.size > 0
@@ -256,7 +307,29 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
       setPendingConfirm({ replaceAll });
       return;
     }
+    confirmCleanupThenImport(replaceAll);
+  }
+
+  // An import that turns on a cleaner's automatic deletion asks first, as a
+  // save on the Cleanup page does.
+  function confirmCleanupThenImport(replaceAll: boolean) {
+    const importsCleanup = replaceAll ? !!fileCleanup : selectedCleanup;
+    if (importsCleanup && cleanersTurnedOn.length > 0) {
+      setPendingCleanup({ replaceAll, cleaners: cleanersTurnedOn });
+      return;
+    }
     void runImport(replaceAll);
+  }
+
+  function confirmCleaner() {
+    if (!pendingCleanup) return;
+    const [, ...rest] = pendingCleanup.cleaners;
+    if (rest.length > 0) {
+      setPendingCleanup({ ...pendingCleanup, cleaners: rest });
+      return;
+    }
+    setPendingCleanup(null);
+    void runImport(pendingCleanup.replaceAll);
   }
 
   async function runImport(replaceAll: boolean) {
@@ -516,6 +589,12 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
                       + (parsed.payload.cleanup.slowRules?.length ?? 0)
                       + (parsed.payload.cleanup.seedingRules?.length ?? 0)} rule(s). Replaces existing rules.
                     </div>
+                    {cleanersTurnedOn.length > 0 && (
+                      <div className="mt-1 text-xs text-amber-600 dark:text-amber-500">
+                        Turns on automatic deletion for the {cleanersTurnedOn.map((c) => CLEANER_NAMES[c]).join(' and ')}.
+                        You&apos;ll be asked to confirm.
+                      </div>
+                    )}
                   </div>
                 </label>
               </section>
@@ -704,7 +783,7 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
               onClick={() => {
                 const replaceAll = pendingConfirm?.replaceAll ?? false;
                 setPendingConfirm(null);
-                void runImport(replaceAll);
+                confirmCleanupThenImport(replaceAll);
               }}
               disabled={importing}
             >
@@ -714,6 +793,18 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {pendingCleanup && (
+        <AutoCleanupConfirmDialog
+          open
+          onOpenChange={(o) => { if (!o) setPendingCleanup(null); }}
+          cleaner={pendingCleanup.cleaners[0]}
+          intervalMinutes={importedCleaner(pendingCleanup.cleaners[0] === 'queue'
+            ? fileCleanup?.queueConfig
+            : fileCleanup?.downloadConfig)?.intervalMinutes ?? 60}
+          busy={importing}
+          onConfirm={confirmCleaner}
+        />
+      )}
     </Dialog>
   );
 }

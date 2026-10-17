@@ -2,6 +2,7 @@
 
 import type { Prisma } from '@prisma/client';
 import type { ExportedCleanup } from '@/lib/settings-export';
+import { toAutoRunMode } from '@/lib/cleanup/types';
 
 export async function applyCleanupInTxn(
   tx: Prisma.TransactionClient,
@@ -22,7 +23,7 @@ export async function applyCleanupInTxn(
         downloadingMetadataMaxStrikes: Math.max(0, Number(c.downloadingMetadataMaxStrikes) || 0),
         failedImport: (c.failedImport ?? {}) as unknown as Prisma.InputJsonValue,
         reSearchAfterRemoval: Boolean(c.reSearchAfterRemoval),
-        autoRunMode: typeof c.autoRunMode === 'string' ? c.autoRunMode : 'disabled',
+        autoRunMode: toAutoRunMode(c.autoRunMode),
       },
       update: {
         enabled: Boolean(c.enabled),
@@ -32,7 +33,7 @@ export async function applyCleanupInTxn(
         downloadingMetadataMaxStrikes: Math.max(0, Number(c.downloadingMetadataMaxStrikes) || 0),
         failedImport: (c.failedImport ?? {}) as unknown as Prisma.InputJsonValue,
         reSearchAfterRemoval: Boolean(c.reSearchAfterRemoval),
-        autoRunMode: typeof c.autoRunMode === 'string' ? c.autoRunMode : 'disabled',
+        autoRunMode: toAutoRunMode(c.autoRunMode),
       },
     });
   } else {
@@ -56,7 +57,7 @@ export async function applyCleanupInTxn(
         autoRemoveImportedCategories: Array.isArray(c.autoRemoveImportedCategories) ? c.autoRemoveImportedCategories : [],
         autoRemoveImportedDeleteFiles: Boolean(c.autoRemoveImportedDeleteFiles),
         autoRemoveImportedPrivacyType: importedPrivacy,
-        autoRunMode: typeof c.autoRunMode === 'string' ? c.autoRunMode : 'disabled',
+        autoRunMode: toAutoRunMode(c.autoRunMode),
       },
       update: {
         enabled: Boolean(c.enabled),
@@ -66,7 +67,7 @@ export async function applyCleanupInTxn(
         autoRemoveImportedCategories: Array.isArray(c.autoRemoveImportedCategories) ? c.autoRemoveImportedCategories : [],
         autoRemoveImportedDeleteFiles: Boolean(c.autoRemoveImportedDeleteFiles),
         autoRemoveImportedPrivacyType: importedPrivacy,
-        autoRunMode: typeof c.autoRunMode === 'string' ? c.autoRunMode : 'disabled',
+        autoRunMode: toAutoRunMode(c.autoRunMode),
       },
     });
   } else {
