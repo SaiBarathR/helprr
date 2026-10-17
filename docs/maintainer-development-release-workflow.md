@@ -112,8 +112,8 @@ external updater they configured themselves. For the maintainer stack, use the s
 
 | Workflow | Trigger | Result |
 |---|---|---|
-| [CI](../.github/workflows/ci.yml) | Any PR; pushes to `development` or `main` | Runs `git diff --check` on the change, installs dependencies, generates Prisma, lints, tests, validates the schema, runs migration-upgrade tests, and builds |
-| CI (`image-scan` job) | Any PR only | Validates both Compose files with generated env files (each scope on its own), then builds the amd64 image without pushing and runs the same pinned, blocking Trivy gate as publishes, so vulnerabilities surface at review time |
+| [CI](../.github/workflows/ci.yml) | Any PR; pushes to `development` or `main` | Runs `git diff --check` on the change, installs dependencies, audits production dependencies (`npm audit --omit=dev --audit-level=high`), generates Prisma, lints, tests, validates the schema, runs migration-upgrade tests, and builds |
+| CI (`image-scan` job) | Any PR only | Validates both Compose files with generated env files (each scope on its own), then builds the amd64 image without pushing, starts it with the stable Compose file (its own database and Redis) until `/api/health` and `/api/ready` return 200, and runs the same pinned, blocking Trivy gate as publishes, so vulnerabilities surface at review time |
 | [Docker publish](../.github/workflows/docker-publish.yml) | Push to `development` | Builds and scans native amd64/arm64 images, then updates `edge` |
 | Docker publish | Push of a `vX.Y.Z` tag | Builds exact `X.Y.Z` image and creates a draft GitHub release with deployment assets (re-running on an existing tag skips creation instead of failing) |
 | [Docker promote](../.github/workflows/docker-promote.yml) | Manual workflow dispatch | Verifies a qualified digest, then moves minor, major, and `stable` aliases to it |

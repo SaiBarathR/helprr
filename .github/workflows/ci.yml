@@ -45,6 +45,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
+
       - name: Generate Prisma client
         run: npx prisma generate
 
@@ -111,6 +114,30 @@ jobs:
           # Read the publish workflow's build cache for this platform; the PR
           # scan never writes cache so it cannot churn the publish cache.
           cache-from: type=gha,scope=linux-amd64
+
+      # Boots the built image the way the stable Compose file runs it, with its
+      # own database and Redis, and waits until it is healthy and ready, so an
+      # image that fails at startup is caught before it is published.
+      - name: Smoke-test the image with the stable Compose file
+        run: |
+          trap 'docker compose --env-file .env -f docker-compose.yml down -v >/dev/null 2>&1 || true; rm -f .env' EXIT
+          sh scripts/setup-env.sh --stable
+          docker tag helprr-pr-scan:local ghcr.io/saibarathr/helprr:ci-smoke
+          HELPRR_VERSION=ci-smoke docker compose --env-file .env -f docker-compose.yml up -d --quiet-pull
+          # Exactly 200 (a redirect is not ready), each request capped, and two
+          # minutes in all per endpoint.
+          for path in /api/health /api/ready; do
+            deadline=$((SECONDS + 120))
+            until [ "$(curl -s -o /dev/null -w '%{http_code}' --connect-timeout 2 --max-time 5 "http://127.0.0.1:3050$path")" = 200 ]; do
+              if [ "$SECONDS" -ge "$deadline" ]; then
+                echo "$path did not return 200 within two minutes"
+                docker compose --env-file .env -f docker-compose.yml logs --no-color --tail=100 helprr
+                exit 1
+              fi
+              sleep 2
+            done
+            echo "$path returned 200"
+          done
 
       - name: Scan image for fixable high/critical vulnerabilities
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
