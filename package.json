@@ -45,7 +45,7 @@
     "react-dom": "19.2.3",
     "react-grid-layout": "^2.2.3",
     "recharts": "^3.7.0",
-    "redis": "^5.11.0",
+    "redis": "^5.12.1",
     "serwist": "^9.5.4",
     "sharp": "^0.35.5",
     "sonner": "^2.0.7",
