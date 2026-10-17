@@ -27,7 +27,7 @@ import {
 } from '@/components/ui/select';
 import { DEFAULT_ANIME_FILTERS, type AnimeFiltersState, useUIStore } from '@/lib/store';
 import { ActiveFilterBar, type ActiveFilter } from '@/components/ui/active-filter-bar';
-import { seasonalSortNote } from '@/lib/anilist-helpers';
+import { orderYearRange, seasonalSortNote } from '@/lib/anilist-helpers';
 import { exploreHref, exploreLinkView, type ExploreView } from './_components/link-view';
 import {
   ArrowDownAZ,
@@ -287,7 +287,7 @@ export default function AnimePage() {
   };
 
   const applyFilters = () => {
-    updateBrowse({ sort: draftSort, filters: draftFilters });
+    updateBrowse({ sort: draftSort, filters: orderYearRange(draftFilters) });
     setFilterOpen(false);
     setSearchQuery('');
     setViewMode('browse');

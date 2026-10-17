@@ -433,6 +433,14 @@ function yearRangeLabel(min?: string, max?: string): string | null {
   return null;
 }
 
+/** A year range picked high to low means the same years, low to high. */
+export function orderYearRange<T extends { yearMin: string; yearMax: string }>(filters: T): T {
+  const { yearMin, yearMax } = filters;
+  return yearMin && yearMax && Number(yearMin) > Number(yearMax)
+    ? { ...filters, yearMin: yearMax, yearMax: yearMin }
+    : filters;
+}
+
 export function isMovieFormat(format: AniListMediaFormat | null): boolean {
   return format === 'MOVIE';
 }

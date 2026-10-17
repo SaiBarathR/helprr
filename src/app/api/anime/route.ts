@@ -136,9 +136,12 @@ async function getHandler(request: NextRequest) {
     const yearParam = searchParams.get('year');
     const year = parseOptionalYear(yearParam);
     const yearMinParam = searchParams.get('yearMin');
-    const yearMin = parseOptionalYear(yearMinParam);
+    let yearMin = parseOptionalYear(yearMinParam);
     const yearMaxParam = searchParams.get('yearMax');
-    const yearMax = parseOptionalYear(yearMaxParam);
+    let yearMax = parseOptionalYear(yearMaxParam);
+    // A range given high to low means the same years; sent as two bounds,
+    // AniList would find nothing.
+    if (yearMin && yearMax && yearMin > yearMax) [yearMin, yearMax] = [yearMax, yearMin];
 
     const result = await browseAnime({
       page,
