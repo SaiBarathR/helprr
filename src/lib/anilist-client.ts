@@ -726,8 +726,12 @@ export async function browseAnime(params: {
 }): Promise<{ pageInfo: AniListPageInfo; media: AniListMedia[] }> {
   const currentSeason = getCurrentSeason();
   const sort = params.sort ?? 'seasonal';
+  // Seasonal fills in the current season and year only where the filters
+  // leave them out; a year range is a choice of years, so it keeps the year
+  // open instead of being intersected with this one.
+  const hasYearRange = params.yearLesser != null || params.yearGreater != null;
   const season = params.season ?? (sort === 'seasonal' ? currentSeason.season : undefined);
-  const seasonYear = params.year ?? (sort === 'seasonal' ? currentSeason.year : undefined);
+  const seasonYear = params.year ?? (sort === 'seasonal' && !hasYearRange ? currentSeason.year : undefined);
 
   const variables: Record<string, unknown> = {
     page: params.page ?? 1,
