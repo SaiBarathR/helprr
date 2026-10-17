@@ -144,7 +144,6 @@ Rankings, higher = better. Cost reflects what I actually pay (cursor composer 2.
 | gpt-6.1 sol  | 4    | 7            | 7     |
 | sonnet-5.5   | 2    | 5            | 6     |
 | opus-5.5     | 8    | 9            | 9     |
-| fable-5.1    | 2    | 9            | 10    |
 | composer-2.5-fast | 9    | 4            | 6     |
 | grok-4.7-high-fast | 5    | 6            | 7     |
 
@@ -153,10 +152,10 @@ How to apply:
 - Cost is a tie-breaker only; when axes conflict for anything that ships, intelligence > taste > cost.
 - Bulk/mechanical work (clear-spec implementation, data analysis, migrations, code reviews): gpt-6.1 sol – it's effectively free.
 - Anything user-facing (UI, copy, API design) needs taste ≥ 7.
-- Reviews of plans/implementations: fable-5 or opus-5.5 or gpt-6.1 sol, optionally composer-2.5-fast as an extra independent perspective.
-- Never use Haiku.
+- Reviews of plans/implementations: opus-5.5 or gpt-6.1 sol, optionally composer-2.5-fast as an extra independent perspective.
+- Never use Haiku or Fable.
 - Mechanics: gpt-6.1 sol is only reachable through the Codex CLI – `codex exec` / `codex review` (my `~/.codex/config.toml` defaults to gpt-6.1 sol). Use the codex-implementation, codex-review, and codex-computer-use skills; for work they don't cover (investigation, data analysis), run `codex exec -s read-only` directly with a self-contained prompt.
-- Claude models (sonnet-5.5, opus-5.5, fable-5.1) run via the Agent/Workflow model parameter.
+- Claude models (sonnet-5.5, opus-5.5) run via the Agent/Workflow model parameter.
 - Cursor workflows: Run via the Cursor CLI in non-interactive print mode: `cursor-agent -p --model composer-2.5-fast "your prompt here"` for composer-2.5-fast or `cursor-agent -p --model grok-4.7-high-fast "your prompt here"` for grok-4.7-high-fast. `-p` is required (without it the CLI opens an interactive session and hangs). `-p` mode can edit files and run shell commands, so add `--mode ask` (or `--plan`) for read-only reviews and investigation.
 
 ## Documentation Map
