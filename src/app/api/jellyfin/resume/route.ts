@@ -3,6 +3,7 @@ import { getJellyfinClientForUser, JellyfinNotLinkedError } from '@/lib/service-
 import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { upstreamErrorResponse } from '@/lib/api-error';
+import { parseInt32 } from '@/lib/pagination';
 
 async function getHandler(request: NextRequest): Promise<NextResponse> {
   const auth = await requireUserCapability('jellyfin.view');
@@ -10,7 +11,9 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
 
   try {
     const { searchParams } = new URL(request.url);
-    const limit = parseInt(searchParams.get('limit') ?? '10', 10);
+    // Covers the tallest dashboard Continue Watching widget (100 grid rows asks
+    // for about 220).
+    const limit = parseInt32(searchParams.get('limit'), { min: 1, max: 250 }) ?? 10;
     // Scoped to the caller's own Jellyfin user — a member sees their own resume,
     // never the admin's.
     const client = await getJellyfinClientForUser(auth.user);

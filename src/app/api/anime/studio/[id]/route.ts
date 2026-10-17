@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireUserAnyCapability } from '@/lib/auth';
-import { getStudioDetail } from '@/lib/anilist-client';
+import { getStudioDetail, maxAniListPage, ANILIST_DETAIL_PAGE_SIZE } from '@/lib/anilist-client';
 import type { AniListSort } from '@/types/anilist';
 import { withApiLogging } from '@/lib/api-logger';
+import { parsePageNumber } from '@/lib/pagination';
 
 const VALID_SORTS = new Set<AniListSort>([
   'START_DATE_DESC',
@@ -12,10 +13,6 @@ const VALID_SORTS = new Set<AniListSort>([
   'START_DATE',
   'TITLE_ROMAJI',
 ]);
-
-function parsePage(value: string | null): number {
-  return Math.max(1, parseInt(value || '1', 10) || 1);
-}
 
 async function getHandler(
   request: NextRequest,
@@ -32,7 +29,7 @@ async function getHandler(
     }
 
     const url = new URL(request.url);
-    const page = parsePage(url.searchParams.get('page'));
+    const page = parsePageNumber(url.searchParams, { max: maxAniListPage(ANILIST_DETAIL_PAGE_SIZE) });
     const sortParam = url.searchParams.get('sort') || 'START_DATE_DESC';
     if (!VALID_SORTS.has(sortParam as AniListSort)) {
       return NextResponse.json({ error: 'Invalid sort' }, { status: 400 });

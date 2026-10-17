@@ -3,6 +3,7 @@ import { requireAdmin } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { prisma } from '@/lib/db';
 import { upstreamErrorResponse } from '@/lib/api-error';
+import { parsePageParams } from '@/lib/pagination';
 
 // Admin-only viewer for the unified file/destructive operation trail.
 async function getHandler(request: NextRequest): Promise<NextResponse> {
@@ -11,8 +12,7 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
 
   try {
     const sp = request.nextUrl.searchParams;
-    const page = Math.max(1, Number(sp.get('page')) || 1);
-    const pageSize = Math.min(100, Math.max(1, Number(sp.get('pageSize')) || 50));
+    const { page, pageSize } = parsePageParams(sp, { defaultSize: 50, maxSize: 100 });
 
     const [records, total] = await Promise.all([
       prisma.fileOperationAudit.findMany({

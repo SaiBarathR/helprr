@@ -49,6 +49,17 @@ export function parsePageParams(
   return { page, pageSize, skip: (page - 1) * pageSize, take: pageSize };
 }
 
+// Highest page number passed to a service that pages itself.
+const MAX_PAGE_NUMBER = 10_000;
+
+/**
+ * A page number for a service that pages itself (AniList, TMDB), where the page
+ * size is fixed or bounded separately. Clamped to [1, max]; defaults to 1.
+ */
+export function parsePageNumber(sp: URLSearchParams, opts?: { max?: number }): number {
+  return parseInt32(sp.get('page'), { min: 1, max: opts?.max ?? MAX_PAGE_NUMBER }) ?? 1;
+}
+
 /**
  * skip/take for infinite-scroll clients that send a raw cursor offset.
  */

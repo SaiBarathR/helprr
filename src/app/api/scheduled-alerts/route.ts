@@ -3,6 +3,7 @@ import type { Prisma, ScheduledAlert } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
+import { parsePageParams } from '@/lib/pagination';
 import { getOrCreateAppSettings } from '@/lib/app-settings';
 import {
   getDefaultTimeZone,
@@ -74,8 +75,7 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
   if (!auth.ok) return auth.response;
 
   const params = request.nextUrl.searchParams;
-  const page = Math.max(1, Number.parseInt(params.get('page') ?? '1', 10) || 1);
-  const pageSize = Math.min(100, Math.max(1, Number.parseInt(params.get('pageSize') ?? '30', 10) || 30));
+  const { page, pageSize } = parsePageParams(params, { defaultSize: 30, maxSize: 100 });
   const sort = params.get('sort') ?? 'nextNotify';
   const includeOccurrences = params.get('includeOccurrences') === 'true';
 

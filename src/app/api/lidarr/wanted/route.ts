@@ -3,6 +3,7 @@ import { getLidarrClient } from '@/lib/service-helpers';
 import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { upstreamErrorResponse } from '@/lib/api-error';
+import { parsePageParams } from '@/lib/pagination';
 
 async function getHandler(request: NextRequest) {
   const auth = await requireUserCapability('music.view');
@@ -11,8 +12,7 @@ async function getHandler(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const kind = searchParams.get('kind'); // 'cutoff' | 'missing' (default)
-    const page = Number(searchParams.get('page') || '1');
-    const pageSize = Number(searchParams.get('pageSize') || '20');
+    const { page, pageSize } = parsePageParams(searchParams, { defaultSize: 20, maxSize: 100 });
     const instanceId = request.nextUrl.searchParams.get('instanceId') ?? undefined;
     const client = await getLidarrClient(instanceId);
     const data = kind === 'cutoff'

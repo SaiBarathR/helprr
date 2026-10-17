@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSonarrClients, getRadarrClients, getLidarrClients } from '@/lib/service-helpers';
 import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
+import { parsePageParams } from '@/lib/pagination';
 
 const WANTED_CACHE_HEADERS = {
   'Cache-Control': 'private, max-age=60, stale-while-revalidate=120',
@@ -126,10 +127,8 @@ async function buildWantedBuckets(type: WantedType, filter: WantedFilter = {}): 
 }
 
 async function fetchWantedPage(type: WantedType, page: number, pageSize: number, filter: WantedFilter = {}) {
-  const safePage = Number.isFinite(page) && page > 0 ? page : 1;
-  const safePageSize = Number.isFinite(pageSize) && pageSize > 0 ? pageSize : 20;
-  const startIndex = (safePage - 1) * safePageSize;
-  const endIndex = startIndex + safePageSize;
+  const startIndex = (page - 1) * pageSize;
+  const endIndex = startIndex + pageSize;
 
   const buckets = await buildWantedBuckets(type, filter);
 
@@ -139,15 +138,15 @@ async function fetchWantedPage(type: WantedType, page: number, pageSize: number,
   if (buckets.length === 1) {
     const bucket = buckets[0];
     try {
-      const upstream = await bucket.fetchPage(safePage, safePageSize);
+      const upstream = await bucket.fetchPage(page, pageSize);
       return {
-        page: safePage,
-        pageSize: safePageSize,
+        page,
+        pageSize,
         totalRecords: upstream.totalRecords ?? 0,
         records: upstream.records.map(bucket.tag),
       };
     } catch {
-      return { page: safePage, pageSize: safePageSize, totalRecords: 0, records: [] };
+      return { page, pageSize, totalRecords: 0, records: [] };
     }
   }
 
@@ -165,13 +164,13 @@ async function fetchWantedPage(type: WantedType, page: number, pageSize: number,
 
   const slices = await Promise.all(
     specs.map(({ bucket, sliceStart, sliceEnd }) =>
-      getWantedSlice(bucket.fetchPage, sliceStart, sliceEnd, safePageSize).then((records) => records.map(bucket.tag))
+      getWantedSlice(bucket.fetchPage, sliceStart, sliceEnd, pageSize).then((records) => records.map(bucket.tag))
     )
   );
 
   return {
-    page: safePage,
-    pageSize: safePageSize,
+    page,
+    pageSize,
     totalRecords: totals.reduce((sum, n) => sum + n, 0),
     records: slices.flat(),
   };
@@ -198,7 +197,7 @@ async function fetchWantedCounts(filter: WantedFilter = {}) {
  * Supports these query parameters on the request URL:
  * - `type`: optional; when present must be "missing" or "cutoff"
  * - `page`: 1-based page number (default 1)
- * - `pageSize`: number of items per page (default 20)
+ * - `pageSize`: number of items per page (default 20, at most 100)
  * - `sources`: optional CSV of "sonarr"/"radarr"/"lidarr"; restricts results to those
  *   backends (unknown tokens ignored; empty/absent = all). Falls back to the legacy
  *   single `source` param when `sources` is absent.
@@ -219,8 +218,7 @@ async function getHandler(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const typeParam = searchParams.get('type');
     const type = typeParam === null ? null : normalizeWantedType(typeParam);
-    const page = parseInt(searchParams.get('page') || '1', 10);
-    const pageSize = parseInt(searchParams.get('pageSize') || '20', 10);
+    const { page, pageSize } = parsePageParams(searchParams, { defaultSize: 20, maxSize: 100 });
 
     const isWantedSource = (value: string): value is WantedSource =>
       value === 'sonarr' || value === 'radarr' || value === 'lidarr';

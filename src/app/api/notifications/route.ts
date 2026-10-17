@@ -6,6 +6,11 @@ import { requireUserCapability } from '@/lib/auth';
 import { isKnownEventType } from '@/lib/notification-events';
 import { withApiLogging } from '@/lib/api-logger';
 import { upstreamErrorResponse } from '@/lib/api-error';
+import { parsePageParams } from '@/lib/pagination';
+
+// Covers the tallest dashboard Notifications widget (100 grid rows asks for
+// about 165); the history page asks for 30.
+const NOTIFICATIONS_MAX_PAGE_SIZE = 200;
 
 function buildWhere(searchParams: URLSearchParams): Prisma.NotificationHistoryWhereInput {
   const where: Prisma.NotificationHistoryWhereInput = {};
@@ -57,8 +62,7 @@ async function getHandler(request: NextRequest) {
 
   try {
     const { searchParams } = request.nextUrl;
-    const page = parseInt(searchParams.get('page') || '1');
-    const pageSize = parseInt(searchParams.get('pageSize') || '50');
+    const { page, pageSize, skip, take } = parsePageParams(searchParams, { defaultSize: 50, maxSize: NOTIFICATIONS_MAX_PAGE_SIZE });
 
     const where = buildWhere(searchParams);
     // Members see only their own owned events; admins see everything (incl. the
@@ -69,8 +73,8 @@ async function getHandler(request: NextRequest) {
       prisma.notificationHistory.findMany({
         where,
         orderBy: { createdAt: 'desc' },
-        skip: (page - 1) * pageSize,
-        take: pageSize,
+        skip,
+        take,
       }),
       prisma.notificationHistory.count({ where }),
     ]);

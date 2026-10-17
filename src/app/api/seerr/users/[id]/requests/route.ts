@@ -3,12 +3,7 @@ import { getSeerrClient } from '@/lib/service-helpers';
 import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { logger } from '@/lib/logger';
-
-function parseInt32(value: string | null): number | undefined {
-  if (!value) return undefined;
-  const n = Number.parseInt(value, 10);
-  return Number.isFinite(n) ? n : undefined;
-}
+import { parseSkipTake } from '@/lib/pagination';
 
 async function getHandler(
   request: NextRequest,
@@ -38,8 +33,7 @@ async function getHandler(
     const sp = request.nextUrl.searchParams;
     const client = await getSeerrClient();
     const data = await client.getUserRequests(id, {
-      take: parseInt32(sp.get('take')) ?? 20,
-      skip: parseInt32(sp.get('skip')) ?? 0,
+      ...parseSkipTake(sp, { defaultTake: 20, maxTake: 100 }),
     });
     return NextResponse.json(data);
   } catch (error) {

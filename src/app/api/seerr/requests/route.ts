@@ -10,7 +10,7 @@ import { logger } from '@/lib/logger';
 import { tmdbImageUrl } from '@/lib/discover';
 import { getLibraryLookups } from '@/lib/watchlist-library-lookup';
 import { getCachedSeerrMediaDetail } from '@/lib/seerr-helpers';
-import { parseInt32 } from '@/lib/pagination';
+import { parseInt32, parseSkipTake } from '@/lib/pagination';
 import type {
   EnrichedSeerrRequest,
   SeerrRequestFilter,
@@ -68,8 +68,7 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
 
     const client = await getSeerrClient();
     const data = await client.listRequests({
-      take: parseInt32(sp.get('take'), { min: 1, max: MAX_PAGE_SIZE }) ?? 50,
-      skip: parseInt32(sp.get('skip'), { min: 0 }) ?? 0,
+      ...parseSkipTake(sp, { defaultTake: 50, maxTake: MAX_PAGE_SIZE }),
       filter: parseFilter(sp.get('filter')) ?? 'all',
       sort: (sp.get('sort') === 'modified' ? 'modified' : 'added') as SeerrRequestSort,
       sortDirection: (sp.get('sortDirection') === 'asc' ? 'asc' : 'desc') as SeerrSortDirection,

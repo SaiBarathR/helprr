@@ -174,6 +174,15 @@ a page a member can already open. `get-route-capability-matrix.test.ts` assigns
 every GET route exactly one policy and fails when a route and its declared
 policy drift apart.
 
+List routes read `page`, `pageSize`, `skip`, `take` and `limit` through
+`src/lib/pagination.ts` (`parsePageParams`, `parseSkipTake`, `parsePageNumber`
+for AniList and TMDB page numbers, or `parseInt32` with a maximum), so a
+hand-written query string cannot ask the database or a service for an unbounded
+page or a deep offset. Invalid values fall back to the
+route's default and out-of-range ones are clamped. `route-pagination-guard.test.ts`
+fails when a route reads one of these parameters another way and is not listed
+there with the reason it is bounded.
+
 The same rule covers pages that several sections link to. Discover title,
 person and collection pages, and their routes, accept any capability in
 `TMDB_TITLE_PAGE_CAPABILITIES` (Discover, Movies, Series, Recommendations,
