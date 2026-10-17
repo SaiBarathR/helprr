@@ -18,7 +18,12 @@ const mocks = vi.hoisted(() => ({
   subscribe: vi.fn(),
   subscribeSessionEnd: vi.fn(),
   holdLoginRedirect: vi.fn(),
+  routerRefresh: vi.fn(),
+  refreshAfterReconnect: vi.fn(async () => {}),
 }));
+
+vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: mocks.routerRefresh }) }));
+vi.mock('@/lib/reconnect-queries', () => ({ refreshAfterReconnect: mocks.refreshAfterReconnect }));
 
 vi.mock('@tanstack/react-query', () => ({
   QueryClientProvider: ({ children }: { children: ReactNode }) => children,
@@ -201,5 +206,19 @@ describe('QueryProvider authentication boundaries', () => {
     expect(replace).not.toHaveBeenCalled();
     expect(document.body.textContent).toContain('Browser data could not be cleared');
     expect(document.body.textContent).not.toContain('Private content');
+  });
+});
+
+describe('QueryProvider reconnect', () => {
+  it('refreshes the server-rendered layout and the queries when the browser comes back online', async () => {
+    await act(async () => {
+      root.render(createElement(QueryProvider, null, 'Content'));
+    });
+    expect(mocks.routerRefresh).not.toHaveBeenCalled();
+
+    await act(async () => { window.dispatchEvent(new Event('online')); });
+
+    expect(mocks.routerRefresh).toHaveBeenCalledTimes(1);
+    expect(mocks.refreshAfterReconnect).toHaveBeenCalledTimes(1);
   });
 });

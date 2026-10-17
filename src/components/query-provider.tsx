@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import { refreshAfterReconnect } from '@/lib/reconnect-queries';
@@ -20,6 +21,7 @@ import {
 export function QueryProvider({ children }: { children: React.ReactNode }) {
   // Singleton on the client (see getQueryClient); safe to call during render.
   const queryClient = getQueryClient();
+  const router = useRouter();
   // Where to go once the caches are clear: reload when another tab's session
   // changed, Login when this tab's own session ended.
   const [authenticationBoundary, setAuthenticationBoundary] = useState<'reload' | 'login' | null>(null);
@@ -33,6 +35,10 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
       controller?.abort();
       controller = new AbortController();
       pending = false;
+      // What the server rendered into the layout (the user's capabilities,
+      // which services are configured) has no query to refetch. Refresh it in
+      // place: unlike a reload, this keeps client state such as playback.
+      router.refresh();
       void refreshAfterReconnect(queryClient, window.location.pathname, controller.signal);
     };
     const online = () => { pending = true; refresh(); };
@@ -47,7 +53,7 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
       window.removeEventListener('offline', offline);
       document.removeEventListener('visibilitychange', visible);
     };
-  }, [queryClient]);
+  }, [queryClient, router]);
   useEffect(() => {
     let handlingBoundary = false;
     const begin = (destination: 'reload' | 'login') => {
