@@ -830,7 +830,15 @@ export async function executeDownloadCleanerRemoval(
     success: after === 'absent',
     errorMessage: outcome.errorMessage,
   });
-  if (after === 'absent') await prisma.cleanupStrike.deleteMany({ where: { hash: hashLc } });
+  if (after === 'absent') {
+    // The removal happened, so a failed clear must not report a failure. The
+    // strikes left behind are pruned once the hash is gone from qBittorrent.
+    try {
+      await prisma.cleanupStrike.deleteMany({ where: { hash: hashLc } });
+    } catch (err) {
+      logger.warn('Could not clear strikes after a removal', { hash: hashLc, err: String(err) }, { scope: LOG });
+    }
+  }
   await writeDownloadHistory(d, outcome, run);
   return outcome;
 }

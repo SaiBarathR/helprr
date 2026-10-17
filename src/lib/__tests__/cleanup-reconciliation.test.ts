@@ -328,6 +328,71 @@ describe('cleanup result reconciliation', () => {
     expect(auditRows()).toEqual([expect.objectContaining({ userId: 'user-1', success: true })]);
   });
 
+  describe('when strike cleanup fails after a confirmed deletion', () => {
+    beforeEach(() => {
+      mocks.cleanupStrikeDeleteMany.mockRejectedValue(new Error('database unavailable'));
+    });
+
+    it('still reports and records a download removal', async () => {
+      mocks.getQBittorrentClient.mockResolvedValue({
+        deleteTorrent: vi.fn().mockResolvedValue(undefined),
+        getTorrents: vi.fn().mockResolvedValue([]),
+      });
+      const decision: DownloadDecision = {
+        torrent: torrent(),
+        rule: seedingRule,
+        reason: 'Ratio reached',
+        seedingHours: 4,
+        removalKind: 'seeding',
+      };
+
+      const outcome = await executeDownloadCleanerRemoval(decision, auto);
+
+      expect(outcome).toMatchObject({ kind: 'success', status: 'succeeded', action: 'removedFromClient' });
+      expect(mocks.cleanupHistoryCreate).toHaveBeenCalledWith(expect.objectContaining({
+        data: expect.objectContaining({ outcomeStatus: 'succeeded' }),
+      }));
+      expect(logger.warn).toHaveBeenCalledWith(
+        'Could not clear strikes after a removal',
+        expect.objectContaining({ hash: 'abc123' }),
+        expect.anything(),
+      );
+    });
+
+    it('still reports and records a queue removal', async () => {
+      mocks.getSonarrClient.mockResolvedValue({
+        deleteQueueItem: vi.fn().mockResolvedValue(undefined),
+        getQueue: vi.fn().mockResolvedValue({ records: [], totalRecords: 0 }),
+      });
+      mocks.getQBittorrentClient.mockResolvedValue({ getTorrents: vi.fn().mockResolvedValue([]) });
+      const link = queueLink('sonarr-1', 101);
+      const decision: QueueDecision = {
+        torrent: torrent(),
+        strikeType: 'stall',
+        ruleId: 'stall-1',
+        ruleName: 'Stalled',
+        strikeCount: 3,
+        maxStrikes: 3,
+        reason: 'Stalled for three cycles',
+        linked: link,
+        linkedAll: [link],
+        options: { changeCategory: false, deletePrivate: false, reSearch: false },
+      };
+
+      const outcome = await executeQueueCleanerRemoval(decision, auto);
+
+      expect(outcome).toMatchObject({ kind: 'success', status: 'succeeded', action: 'removedFromClient' });
+      expect(mocks.cleanupHistoryCreate).toHaveBeenCalledWith(expect.objectContaining({
+        data: expect.objectContaining({ outcomeStatus: 'succeeded' }),
+      }));
+      expect(logger.warn).toHaveBeenCalledWith(
+        'Could not clear strikes after a removal',
+        expect.objectContaining({ hash: 'abc123' }),
+        expect.anything(),
+      );
+    });
+  });
+
   describe('when the audit row cannot be written', () => {
     it('logs it and still reports the removal that happened', async () => {
       mocks.auditCreate.mockRejectedValue(new Error('database unavailable'));

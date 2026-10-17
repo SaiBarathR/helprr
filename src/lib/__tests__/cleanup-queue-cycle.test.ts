@@ -236,6 +236,29 @@ describe('queue cleaner cycle', () => {
     expect(second.binding).toMatchObject({ configFingerprint: first.binding.configFingerprint, candidatesFingerprint: first.binding.candidatesFingerprint });
   });
 
+  it('returns the removals it made when the final strike prune fails', async () => {
+    setTorrents([torrent()]); mocks.stallFindMany.mockResolvedValue([stall()]);
+    mocks.strikeFindMany.mockResolvedValue([strikeRecord('stall', 'stall-a')]);
+    setSonarrQueue([queue()]);
+    const preview = await run();
+    expect(preview.decisions).toHaveLength(1);
+    mocks.getSonarrClient.mockResolvedValue({
+      deleteQueueItem: vi.fn().mockResolvedValue(undefined),
+      getQueue: vi.fn().mockResolvedValue({ records: [], totalRecords: 0 }),
+    });
+    // Only the prune's own read fails; the evaluation still reads its strikes.
+    mocks.strikeFindMany.mockImplementation(async (args?: { select?: { updatedAt?: boolean } }) => {
+      if (args?.select?.updatedAt) throw new Error('database unavailable');
+      return [strikeRecord('stall', 'stall-a')];
+    });
+
+    const result = await runQueueCleanerCycle({ dryRun: false, triggeredBy: 'manual', actor: owner, expectedBinding: preview.binding, previewId: 'preview-1' });
+
+    expect(result.outcomes).toHaveLength(1);
+    expect(result.outcomes[0].status).not.toBe('failed');
+    expect(mocks.historyCreate).toHaveBeenCalled();
+  });
+
   it('returns no warnings for a normal run', async () => {
     expect((await run()).warnings).toEqual([]);
   });
