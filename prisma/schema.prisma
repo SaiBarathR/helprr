@@ -607,6 +607,9 @@ model CleanupStrike {
   strikeType          String
   count               Int      @default(0)
   lastDownloadedBytes BigInt?
+  // When qBittorrent added the torrent these strikes were counted for, so a
+  // re-added copy of the same hash starts from none. Null on older rows.
+  torrentAddedAt      DateTime?
   lastSeenAt          DateTime @default(now())
   updatedAt           DateTime @updatedAt
 

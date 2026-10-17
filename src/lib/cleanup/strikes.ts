@@ -13,6 +13,7 @@ export interface StrikeRecord {
   ruleId: string | null;
   count: number;
   lastDownloadedBytes: bigint | null;
+  torrentAddedAt: Date | null;
   lastSeenAt: Date;
 }
 
@@ -26,10 +27,38 @@ export async function loadActiveStrikes(): Promise<Map<string, StrikeRecord>> {
       ruleId: r.ruleId,
       count: r.count,
       lastDownloadedBytes: r.lastDownloadedBytes,
+      torrentAddedAt: r.torrentAddedAt,
       lastSeenAt: r.lastSeenAt,
     });
   }
   return map;
+}
+
+/** qBittorrent's added_on (epoch seconds) as a date; null when it reports none. */
+export function torrentAddedAt(addedOn: number): Date | null {
+  return Number.isFinite(addedOn) && addedOn > 0 ? new Date(addedOn * 1000) : null;
+}
+
+/**
+ * Drops strikes counted for an earlier copy of a torrent: a hash removed and
+ * added again (an Arr re-grabbing the same release) starts from no strikes,
+ * even if clearing the old ones failed. A strike with no recorded add time
+ * (from before it was recorded) cannot be told apart from an earlier copy's,
+ * so it is dropped too once qBittorrent reports the torrent's add time: strikes
+ * in progress at the upgrade restart once rather than carry over.
+ */
+export function strikesForCurrentTorrents(
+  strikes: Map<string, StrikeRecord>,
+  torrents: { hash: string; added_on: number }[],
+): Map<string, StrikeRecord> {
+  const addedAt = new Map(torrents.map((t) => [t.hash.toLowerCase(), torrentAddedAt(t.added_on)]));
+  const current = new Map<string, StrikeRecord>();
+  for (const [key, strike] of strikes) {
+    const torrentAdded = addedAt.get(strike.hash.toLowerCase());
+    if (torrentAdded && strike.torrentAddedAt?.getTime() !== torrentAdded.getTime()) continue;
+    current.set(key, strike);
+  }
+  return current;
 }
 
 export function strikeKey(hash: string, strikeType: StrikeType, ruleId: string | null): string {
@@ -44,6 +73,7 @@ export interface PendingChange {
   ruleId: string | null;
   newCount?: number;
   lastDownloadedBytes?: bigint | null;
+  torrentAddedAt?: Date | null;
 }
 
 export class StrikeJournal {
@@ -56,6 +86,7 @@ export class StrikeJournal {
     ruleId: string | null;
     newCount: number;
     lastDownloadedBytes: bigint | null;
+    torrentAddedAt: Date | null;
   }) {
     this.changes.push({ kind: 'upsert', ...input });
   }
@@ -86,6 +117,7 @@ export class StrikeJournal {
             torrentName: ch.torrentName,
             count: ch.newCount ?? 1,
             lastDownloadedBytes: ch.lastDownloadedBytes ?? null,
+            torrentAddedAt: ch.torrentAddedAt ?? null,
             lastSeenAt: new Date(),
           },
         });
@@ -98,6 +130,7 @@ export class StrikeJournal {
             ruleId: ch.ruleId,
             count: ch.newCount ?? 1,
             lastDownloadedBytes: ch.lastDownloadedBytes ?? null,
+            torrentAddedAt: ch.torrentAddedAt ?? null,
           },
         });
       }

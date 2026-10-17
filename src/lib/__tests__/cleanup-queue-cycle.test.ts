@@ -45,8 +45,8 @@ function slow(overrides: Partial<SlowRuleShape> = {}): SlowRuleShape {
   return { id: 'slow-a', name: 'Slow rule', enabled: true, priority: 0, maxStrikes: 3, privacyType: 'both', minCompletionPercentage: 0, maxCompletionPercentage: 100, minSpeedKbps: 100, maxTimeHours: null, ignoreAboveSizeBytes: null, resetStrikesOnProgress: true, changeCategory: false, deletePrivate: false, reSearchOverride: null, ...overrides };
 }
 
-function strikeRecord(strikeType: string, ruleId: string | null, count = 2, lastDownloadedBytes: bigint | null = BigInt(1000)) {
-  return { id: `${strikeType}-${ruleId}`, hash: 'abc123', torrentName: 'Example', strikeType, ruleId, count, lastDownloadedBytes, lastSeenAt: new Date(), updatedAt: new Date() };
+function strikeRecord(strikeType: string, ruleId: string | null, count = 2, lastDownloadedBytes: bigint | null = BigInt(1000), torrentAddedAt: Date | null = null) {
+  return { id: `${strikeType}-${ruleId}`, hash: 'abc123', torrentName: 'Example', strikeType, ruleId, count, lastDownloadedBytes, torrentAddedAt, lastSeenAt: new Date(), updatedAt: new Date() };
 }
 
 function queue(overrides: Partial<QueueItem> = {}): QueueItem {
@@ -257,6 +257,73 @@ describe('queue cleaner cycle', () => {
     expect(result.outcomes).toHaveLength(1);
     expect(result.outcomes[0].status).not.toBe('failed');
     expect(mocks.historyCreate).toHaveBeenCalled();
+  });
+
+  it('starts a re-added torrent from no strikes, whatever an earlier copy left behind', async () => {
+    mocks.stallFindMany.mockResolvedValue([stall()]);
+    setTorrents([torrent({ added_on: 5000 })]);
+    // Two strikes counted for the copy added at 1000 s (this copy was added at
+    // 5000 s), or recorded before add times were kept, so for an unknown copy.
+    for (const addedAt of [new Date(1_000_000), null]) {
+      mocks.strikeFindMany.mockResolvedValue([strikeRecord('stall', 'stall-a', 2, BigInt(1000), addedAt)]);
+      const result = await run();
+      expect(result.decisions, String(addedAt)).toHaveLength(0);
+      expect(result.pendingStrikes, String(addedAt)).toEqual([expect.objectContaining({ count: 1, ruleId: 'stall-a' })]);
+    }
+
+    // The same copy's strikes still count.
+    mocks.strikeFindMany.mockResolvedValue([strikeRecord('stall', 'stall-a', 2, BigInt(1000), new Date(5_000_000))]);
+    expect((await run()).decisions[0]).toMatchObject({ strikeCount: 3 });
+  });
+
+  it('clears strikes an earlier copy left behind, even when the new copy never strikes', async () => {
+    mocks.stallFindMany.mockResolvedValue([stall()]);
+    // The re-added copy is downloading fine: no stall strike of its own.
+    setTorrents([torrent({ added_on: 5000, state: 'downloading' })]);
+    for (const addedAt of [new Date(1_000_000), null]) {
+      mocks.strikeDeleteMany.mockClear();
+      mocks.strikeFindMany.mockResolvedValue([strikeRecord('stall', 'stall-a', 2, BigInt(1000), addedAt)]);
+
+      await runQueueCleanerCycle({ dryRun: true, triggeredBy: 'auto', actor: scheduler });
+
+      expect(mocks.strikeDeleteMany, String(addedAt)).toHaveBeenCalledWith({ where: { hash: 'abc123', strikeType: 'stall', ruleId: 'stall-a' } });
+    }
+  });
+
+  it('leaves strikes alone in an interactive preview', async () => {
+    mocks.stallFindMany.mockResolvedValue([stall()]);
+    setTorrents([torrent({ added_on: 5000, state: 'downloading' })]);
+    mocks.strikeFindMany.mockResolvedValue([strikeRecord('stall', 'stall-a', 2, BigInt(1000), new Date(1_000_000))]);
+
+    await run();
+
+    expect(mocks.strikeDeleteMany).not.toHaveBeenCalled();
+  });
+
+  it('deletes nothing when the torrent was re-added between the cycle and its removal', async () => {
+    mocks.stallFindMany.mockResolvedValue([stall()]);
+    mocks.strikeFindMany.mockResolvedValue([strikeRecord('stall', 'stall-a', 2, BigInt(1000), new Date(5_000_000))]);
+    setSonarrQueue([queue()]);
+    setTorrents([torrent({ added_on: 5000 })]);
+    const preview = await run();
+    expect(preview.decisions).toHaveLength(1);
+
+    // The cycle still lists the copy its strikes were counted for and records
+    // the third; the check right before removal finds a new copy of the hash.
+    mocks.strikeFindMany
+      .mockResolvedValueOnce([strikeRecord('stall', 'stall-a', 2, BigInt(1000), new Date(5_000_000))])
+      .mockResolvedValue([strikeRecord('stall', 'stall-a', 3, BigInt(1000), new Date(5_000_000))]);
+    const deleteQueueItem = vi.fn();
+    mocks.getSonarrClient.mockResolvedValue({ deleteQueueItem, getQueue: vi.fn().mockResolvedValue({ records: [], totalRecords: 0 }) });
+    mocks.getQBittorrentClient.mockResolvedValue({
+      getTorrents: vi.fn(async (...args: unknown[]) => [torrent({ added_on: args[4] ? 9000 : 5000 })]),
+      getTorrentTrackers: vi.fn().mockResolvedValue([]),
+    });
+    const result = await runQueueCleanerCycle({ dryRun: false, triggeredBy: 'manual', actor: owner, expectedBinding: preview.binding, previewId: 'preview-1' });
+
+    expect(deleteQueueItem).not.toHaveBeenCalled();
+    expect(mocks.auditCreate).not.toHaveBeenCalled();
+    expect(result.outcomes).toEqual([expect.objectContaining({ status: 'stale' })]);
   });
 
   it('returns no warnings for a normal run', async () => {
