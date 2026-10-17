@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { AlertTriangle, FileJson, Loader2, Upload } from 'lucide-react';
 import {
@@ -66,6 +66,15 @@ const CLEANERS: Cleaner[] = ['queue', 'download'];
 interface CleanerState {
   enabled: boolean;
   autoRunMode: AutoRunMode;
+}
+
+const CURRENT_CLEANERS_KEY = ['settings-import', 'current-cleaners'] as const;
+
+async function readCurrentCleaners({ signal }: { signal?: AbortSignal } = {}) {
+  const [queue, download] = await Promise.all(
+    CLEANERS.map((cleaner) => jsonFetcher<CleanerState>(`/api/cleanup/${cleaner}/config`)({ signal })),
+  );
+  return { queue, download };
 }
 
 // A cleaner's config from the file, read the way the import stores it.
@@ -253,24 +262,21 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
     [parsed]
   );
   // What each cleaner does now, to tell whether the file would start its
-  // automatic deletion.
+  // automatic deletion. A state that could not be read counts as off.
   const fileCleanup = isAdmin ? parsed?.payload.cleanup : undefined;
+  const queryClient = useQueryClient();
   const currentCleaners = useQuery({
-    queryKey: ['settings-import', 'current-cleaners'],
-    queryFn: async ({ signal }) => {
-      const [queue, download] = await Promise.all(
-        CLEANERS.map((cleaner) => jsonFetcher<CleanerState>(`/api/cleanup/${cleaner}/config`)({ signal })),
-      );
-      return { queue, download };
-    },
+    queryKey: CURRENT_CLEANERS_KEY,
+    queryFn: readCurrentCleaners,
     enabled: open && !!fileCleanup,
     staleTime: 0,
   });
-  // A current state that could not be read counts as off, so the import asks.
-  const cleanersTurnedOn = useMemo(() => CLEANERS.filter((cleaner) => {
+  const turnedOnBy = (current: Partial<Record<Cleaner, CleanerState>> | undefined) => CLEANERS.filter((cleaner) => {
     const next = importedCleaner(cleaner === 'queue' ? fileCleanup?.queueConfig : fileCleanup?.downloadConfig);
-    return next !== null && startsAutomaticDeletion(currentCleaners.data?.[cleaner], next);
-  }), [fileCleanup, currentCleaners.data]);
+    return next !== null && startsAutomaticDeletion(current?.[cleaner], next);
+  });
+  // For the note only; the import itself reads the cleaners again.
+  const cleanersTurnedOn = turnedOnBy(currentCleaners.data);
 
   const hasSelection = useMemo(() => (
     !!parsed && (
@@ -307,16 +313,26 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
       setPendingConfirm({ replaceAll });
       return;
     }
-    confirmCleanupThenImport(replaceAll);
+    void confirmCleanupThenImport(replaceAll);
   }
 
   // An import that turns on a cleaner's automatic deletion asks first, as a
   // save on the Cleanup page does.
-  function confirmCleanupThenImport(replaceAll: boolean) {
+  async function confirmCleanupThenImport(replaceAll: boolean) {
     const importsCleanup = replaceAll ? !!fileCleanup : selectedCleanup;
-    if (importsCleanup && cleanersTurnedOn.length > 0) {
-      setPendingCleanup({ replaceAll, cleaners: cleanersTurnedOn });
-      return;
+    if (importsCleanup) {
+      // Read the cleaners afresh: a cached state can be out of date. Applying
+      // stays blocked meanwhile.
+      setImporting(true);
+      const current = await queryClient
+        .fetchQuery({ queryKey: CURRENT_CLEANERS_KEY, queryFn: readCurrentCleaners, staleTime: 0 })
+        .catch(() => undefined);
+      setImporting(false);
+      const cleaners = turnedOnBy(current);
+      if (cleaners.length > 0) {
+        setPendingCleanup({ replaceAll, cleaners });
+        return;
+      }
     }
     void runImport(replaceAll);
   }
@@ -783,7 +799,7 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
               onClick={() => {
                 const replaceAll = pendingConfirm?.replaceAll ?? false;
                 setPendingConfirm(null);
-                confirmCleanupThenImport(replaceAll);
+                void confirmCleanupThenImport(replaceAll);
               }}
               disabled={importing}
             >

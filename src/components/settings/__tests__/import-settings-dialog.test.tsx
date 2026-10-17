@@ -16,6 +16,7 @@ import { ImportSettingsDialog } from '../import-settings-dialog';
 type Cleaner = { enabled: boolean; autoRunMode: string };
 let current: { queue: Cleaner; download: Cleaner };
 let imports: unknown[];
+let configReadFails: boolean;
 let root: Root;
 
 const off: Cleaner = { enabled: false, autoRunMode: 'disabled' };
@@ -60,8 +61,10 @@ beforeEach(() => {
   (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   current = { queue: off, download: off };
   imports = [];
+  configReadFails = false;
   vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
     const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200 });
+    if (url.endsWith('/config') && configReadFails) return new Response(null, { status: 503 });
     if (url === '/api/cleanup/queue/config') return json(current.queue);
     if (url === '/api/cleanup/download/config') return json(current.download);
     if (url.startsWith('/api/cleanup/history')) return json({ total: 1 });
@@ -118,6 +121,26 @@ describe('importing a cleanup section', () => {
     await click('Apply selected');
     expect(confirmTitle()).toBeNull();
     await vi.waitFor(() => expect(imports).toHaveLength(1));
+  });
+
+  it('reads the cleaners again before importing, so an out-of-date state cannot skip the question', async () => {
+    current = { queue: deleting, download: off };
+    await open(exportFile(deleting, off));
+    expect(document.body.textContent).not.toContain('Turns on automatic deletion');
+
+    // Switched off elsewhere since the dialog read it.
+    current = { queue: off, download: off };
+    await click('Apply selected');
+    expect(confirmTitle()).toBe('Turn on automatic deletion for the Queue Cleaner?');
+    await answer('Cancel');
+    expect(imports).toHaveLength(0);
+
+    // A read that fails counts as off.
+    current = { queue: deleting, download: off };
+    configReadFails = true;
+    await click('Apply selected');
+    await vi.waitFor(() => expect(confirmTitle()).toBe('Turn on automatic deletion for the Queue Cleaner?'));
+    expect(imports).toHaveLength(0);
   });
 
   it('does not ask when the cleanup section is left out', async () => {
