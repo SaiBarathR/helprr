@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSonarrClients, getRadarrClients } from '@/lib/service-helpers';
 import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
+import { parseInt32 } from '@/lib/pagination';
 
 const RECENT_CACHE_HEADERS = {
   'Cache-Control': 'private, max-age=60, stale-while-revalidate=120',
@@ -28,7 +29,9 @@ async function getHandler(request: NextRequest) {
 
   try {
     const { searchParams } = new URL(request.url);
-    const limit = parseInt(searchParams.get('limit') ?? '10', 10);
+    // Covers the tallest dashboard Recently Added widget (100 grid rows asks for
+    // about 220); there are never more than 50 per instance anyway.
+    const limit = parseInt32(searchParams.get('limit'), { min: 1, max: 250 }) ?? 10;
 
     const items: RecentItem[] = [];
 

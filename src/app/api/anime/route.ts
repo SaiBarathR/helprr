@@ -4,6 +4,7 @@ import { loadTaggedLibrary } from '@/lib/service-helpers';
 import {
   searchAnime,
   browseAnime,
+  maxAniListPage,
 } from '@/lib/anilist-client';
 import {
   normalizeAniListItem,
@@ -16,6 +17,7 @@ import type {
   AniListMediaStatus,
   AnimeBrowseSort,
 } from '@/types/anilist';
+import { parsePageNumber } from '@/lib/pagination';
 
 const VALID_SORTS = new Set<AnimeBrowseSort>([
   'seasonal',
@@ -74,8 +76,8 @@ async function getHandler(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const mode = searchParams.get('mode') || 'browse';
 
-    const page = parsePositiveInteger(searchParams.get('page'), 1);
     const perPage = Math.min(parsePositiveInteger(searchParams.get('perPage'), 20), 50);
+    const page = parsePageNumber(searchParams, { max: maxAniListPage(perPage) });
 
     if (mode === 'search') {
       const q = searchParams.get('q')?.trim();

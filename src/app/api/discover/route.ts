@@ -16,6 +16,7 @@ import type { TmdbDiscoverParams, TmdbListItem } from '@/lib/tmdb-client';
 import { withApiLogging } from '@/lib/api-logger';
 import { SORT_PRESET_VOTE_FLOOR } from '@/lib/discover-sort-presets';
 import { upstreamErrorResponse } from '@/lib/api-error';
+import { parsePageNumber } from '@/lib/pagination';
 type DiscoverSections = NonNullable<DiscoverResponse['sections']>;
 
 const SECTION_SORT_OVERRIDES: Record<string, Partial<{ sortBy: string; sortOrder: 'asc' | 'desc'; contentType: DiscoverContentType }>> = {
@@ -639,7 +640,8 @@ async function getHandler(request: NextRequest) {
       return respond((!freshHasMedia && sectionsCache?.data) ? sectionsCache.data : sections);
     }
 
-    const startPage = Math.max(1, parseNumber(searchParams.get('page')) ?? 1);
+    // TMDB serves pages 1 to 500 only.
+    const startPage = parsePageNumber(searchParams, { max: 500 });
     const query = searchParams.get('q') || '';
     const section = searchParams.get('section');
     const limit = clampInt(searchParams.get('limit'), 1, BROWSE_LIMIT_MAX, 20);

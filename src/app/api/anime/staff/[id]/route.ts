@@ -4,9 +4,12 @@ import {
   getStaffCharacterMediaPage,
   getStaffDetail,
   getStaffMediaPage,
+  maxAniListPage,
+  ANILIST_DETAIL_PAGE_SIZE,
 } from '@/lib/anilist-client';
 import type { AniListSort } from '@/types/anilist';
 import { withApiLogging } from '@/lib/api-logger';
+import { parsePageNumber } from '@/lib/pagination';
 
 const VALID_SORTS = new Set<AniListSort>([
   'POPULARITY_DESC',
@@ -18,10 +21,6 @@ const VALID_SORTS = new Set<AniListSort>([
 ]);
 
 type StaffMediaType = 'ANIME' | 'MANGA' | 'VOICE_ACTING';
-
-function parsePage(value: string | null): number {
-  return Math.max(1, parseInt(value || '1', 10) || 1);
-}
 
 function parseSort(value: string | null): AniListSort | null {
   const sort = value || 'POPULARITY_DESC';
@@ -48,7 +47,7 @@ async function getHandler(
     }
 
     const url = new URL(request.url);
-    const page = parsePage(url.searchParams.get('page'));
+    const page = parsePageNumber(url.searchParams, { max: maxAniListPage(ANILIST_DETAIL_PAGE_SIZE) });
     const sort = parseSort(url.searchParams.get('sort'));
     if (!sort) return NextResponse.json({ error: 'Invalid sort' }, { status: 400 });
 

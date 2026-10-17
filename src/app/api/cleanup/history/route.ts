@@ -3,6 +3,7 @@ import { CleanupAction, type Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
+import { parsePageParams } from '@/lib/pagination';
 
 const VALID_CLEANER = new Set(['queue', 'download']);
 const VALID_STRIKE_TYPE = new Set(['stall', 'slow', 'failedImport', 'downloadingMetadata']);
@@ -86,10 +87,7 @@ async function getHandler(req: NextRequest) {
     });
   }
 
-  const rawPage = Number(sp.get('page'));
-  const rawSize = Number(sp.get('pageSize'));
-  const page = Number.isFinite(rawPage) && rawPage >= 1 ? Math.floor(rawPage) : 1;
-  const pageSize = Number.isFinite(rawSize) && rawSize >= 1 ? Math.min(100, Math.floor(rawSize)) : 30;
+  const { page, pageSize } = parsePageParams(sp, { defaultSize: 30, maxSize: 100 });
   const whereResult = buildWhere(sp);
   if (!whereResult.ok) {
     return NextResponse.json({ error: whereResult.error }, { status: 400 });

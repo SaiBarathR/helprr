@@ -492,6 +492,18 @@ interface AiringSchedulePageData {
 }
 
 const SCHEDULE_PAGE_LIMIT = 20;
+/** Page size of the character, staff and studio media lists. */
+export const ANILIST_DETAIL_PAGE_SIZE = 25;
+
+// AniList refuses a page that reaches past its 5,000th entry ("Page depth
+// exceeds maximum allowed for API requests").
+const ANILIST_MAX_PAGE_DEPTH = 5_000;
+
+/** The last page AniList will serve at this page size. */
+export function maxAniListPage(perPage: number): number {
+  return Math.max(1, Math.floor(ANILIST_MAX_PAGE_DEPTH / perPage));
+}
+
 const SCHEDULE_PER_PAGE = 50;
 
 export async function getAnimeAiringSchedule(params: {
@@ -1091,7 +1103,7 @@ export async function getStaffMediaPage(
   type: 'ANIME' | 'MANGA',
   page: number,
   sort: AniListSort = 'POPULARITY_DESC',
-  perPage = 25
+  perPage = ANILIST_DETAIL_PAGE_SIZE
 ): Promise<{ pageInfo: AniListPageInfo; edges: AniListStaffMediaEdge[] }> {
   const gqlQuery = `
     query ($id: Int, $page: Int, $perPage: Int, $sort: [MediaSort], $type: MediaType) {
@@ -1136,7 +1148,7 @@ export async function getStaffCharacterMediaPage(
   id: number,
   page: number,
   sort: AniListSort = 'POPULARITY_DESC',
-  perPage = 25
+  perPage = ANILIST_DETAIL_PAGE_SIZE
 ): Promise<{ pageInfo: AniListPageInfo; edges: AniListStaffVoiceActingEdge[] }> {
   const gqlQuery = `
     query ($id: Int, $page: Int, $perPage: Int, $sort: [MediaSort]) {
@@ -1189,7 +1201,7 @@ export async function getCharacterDetail(
   id: number,
   page = 1,
   sort: AniListSort = 'POPULARITY_DESC',
-  perPage = 25
+  perPage = ANILIST_DETAIL_PAGE_SIZE
 ): Promise<AniListCharacterDetailResponse> {
   const gqlQuery = `
     query ($id: Int, $page: Int, $perPage: Int, $sort: [MediaSort]) {
@@ -1336,7 +1348,7 @@ export async function getStudioDetail(
   id: number,
   page = 1,
   sort: AniListSort = 'START_DATE_DESC',
-  perPage = 25
+  perPage = ANILIST_DETAIL_PAGE_SIZE
 ): Promise<AniListStudioDetailResponse> {
   const gqlQuery = `
     query ($id: Int, $page: Int, $perPage: Int, $sort: [MediaSort]) {

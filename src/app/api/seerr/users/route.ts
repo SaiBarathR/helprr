@@ -3,12 +3,7 @@ import { getSeerrClient } from '@/lib/service-helpers';
 import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { logger } from '@/lib/logger';
-
-function parseInt32(value: string | null): number | undefined {
-  if (!value) return undefined;
-  const n = Number.parseInt(value, 10);
-  return Number.isFinite(n) ? n : undefined;
-}
+import { parseSkipTake } from '@/lib/pagination';
 
 async function getHandler(request: NextRequest): Promise<NextResponse> {
   // Listing Seerr users is request-management (used for approvals + admin linking).
@@ -25,8 +20,7 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
 
     const client = await getSeerrClient();
     const data = await client.listUsers({
-      take: parseInt32(sp.get('take')) ?? 100,
-      skip: parseInt32(sp.get('skip')) ?? 0,
+      ...parseSkipTake(sp, { defaultTake: 100, maxTake: 100 }),
       sort,
     });
     return NextResponse.json(data);
