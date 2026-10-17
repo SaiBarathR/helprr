@@ -63,14 +63,19 @@ export function LogsDateRangePicker({ from, to, onChange }: LogsDateRangePickerP
   const [isDesktop, setIsDesktop] = useState(false);
   const [rangeError, setRangeError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!open) return;
-    setRange(fromDate || toDate ? { from: fromDate, to: toDate } : undefined);
-    setFromTime(toTimeInput(fromDate) || '00:00:00');
-    setToTime(toTimeInput(toDate) || '23:59:59');
-    setRangeError(null);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+  // Re-seed from the applied range each time the picker opens, so edits that
+  // were not applied do not survive a close. Adjusting state during render on
+  // the open transition reads the current dates, not ones captured earlier.
+  const [wasOpen, setWasOpen] = useState(open);
+  if (open !== wasOpen) {
+    setWasOpen(open);
+    if (open) {
+      setRange(fromDate || toDate ? { from: fromDate, to: toDate } : undefined);
+      setFromTime(toTimeInput(fromDate) || '00:00:00');
+      setToTime(toTimeInput(toDate) || '23:59:59');
+      setRangeError(null);
+    }
+  }
 
   useEffect(() => {
     const media = window.matchMedia('(min-width: 768px)');

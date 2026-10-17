@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
 import { Search, Loader2, CheckCircle2, XCircle, Tv } from 'lucide-react';
 import {
@@ -54,6 +54,13 @@ export function SonarrMapDrawer({
   const [clearingId, setClearingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // The page's callback, read when a load finishes: a new callback identity
+  // must not reload the drawer.
+  const onMappingsChangedRef = useRef(onMappingsChanged);
+  useEffect(() => {
+    onMappingsChangedRef.current = onMappingsChanged;
+  });
+
   useEffect(() => {
     if (!open) return;
 
@@ -74,7 +81,7 @@ export function SonarrMapDrawer({
       .then(([series, mappingsData]) => {
         setSeriesList(series.filter((item) => item.seriesType === 'anime'));
         setMappings(mappingsData.mappings);
-        onMappingsChanged?.(mappingsData.mappings);
+        onMappingsChangedRef.current?.(mappingsData.mappings);
       })
       .catch((fetchError: unknown) => {
         if (fetchError instanceof DOMException && fetchError.name === 'AbortError') return;
@@ -89,8 +96,6 @@ export function SonarrMapDrawer({
       });
 
     return () => controller.abort();
-    // onMappingsChanged is a state setter from the page — stable by contract.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, anilistMediaId, sonarrSeriesHint, sonarrInstanceHint]);
 
   const mappedKeys = useMemo(

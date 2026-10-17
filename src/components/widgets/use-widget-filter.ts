@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 const STORAGE_PREFIX = 'helprr-widget-filters:';
 
@@ -30,11 +30,16 @@ export function useWidgetFilter<T extends object>(
   // state (and its inline styles) to diverge between server and client.
   const [filters, setFilters] = useState<T>(defaults);
 
+  // Callers may pass a new defaults object on every render. Keep the latest in
+  // a ref: stored filters are read again when the widget id changes, not when
+  // the defaults' identity (or value) does.
+  const defaultsRef = useRef(defaults);
   useEffect(() => {
-    setFilters(readStored(widgetId, defaults));
-    // Re-read only on widgetId change; `defaults` is expected to be referentially
-    // stable per call site (it always is in current usages).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    defaultsRef.current = defaults;
+  });
+
+  useEffect(() => {
+    setFilters(readStored(widgetId, defaultsRef.current));
   }, [widgetId]);
 
   const update = useCallback(
@@ -62,8 +67,8 @@ export function useWidgetFilter<T extends object>(
         // ignore
       }
     }
-    setFilters(defaults);
-  }, [widgetId, defaults]);
+    setFilters(defaultsRef.current);
+  }, [widgetId]);
 
   // Re-sync if another tab updates this widget's filters
   useEffect(() => {
@@ -71,11 +76,11 @@ export function useWidgetFilter<T extends object>(
     const key = storageKey(widgetId);
     function onStorage(e: StorageEvent) {
       if (e.key !== key) return;
-      setFilters(readStored(widgetId, defaults));
+      setFilters(readStored(widgetId, defaultsRef.current));
     }
     window.addEventListener('storage', onStorage);
     return () => window.removeEventListener('storage', onStorage);
-  }, [widgetId, defaults]);
+  }, [widgetId]);
 
   return [filters, update, reset];
 }

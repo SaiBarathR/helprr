@@ -4,12 +4,12 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const mocks = vi.hoisted(() => ({ search: new URLSearchParams() }));
+const mocks = vi.hoisted(() => ({ search: new URLSearchParams(), replace: vi.fn() }));
 vi.mock('next/navigation', () => ({
   useSearchParams: () => mocks.search,
   usePathname: () => '/anime/library',
 }));
-vi.mock('@/components/layout/navigation-provider', () => ({ useAppRouter: () => ({ replace: vi.fn() }) }));
+vi.mock('@/components/layout/navigation-provider', () => ({ useAppRouter: () => ({ replace: mocks.replace }) }));
 vi.mock('@tanstack/react-query', () => ({
   useQuery: ({ queryKey }: { queryKey: readonly unknown[] }) => (queryKey[1] === 'viewer'
     ? { data: { configured: true, connected: true, requiresReauth: false, user: { id: 1, name: 'Tester', avatar: null, siteUrl: null, scoreFormat: null } } }
@@ -34,6 +34,7 @@ beforeEach(() => {
   vi.stubGlobal('IntersectionObserver', IntersectionObserverStub);
   vi.stubGlobal('scrollTo', vi.fn());
   window.sessionStorage.clear();
+  mocks.replace.mockClear();
   setListViewState(SHARED_KEY, { scrollY: 0, search: '', extras: { type: 'ANIME', status: 'COMPLETED' } });
   document.body.innerHTML = '<div id="root"></div>';
   root = createRoot(document.getElementById('root')!);
@@ -46,6 +47,7 @@ afterEach(async () => {
 
 async function open(query: string) {
   mocks.search = new URLSearchParams(query);
+  window.history.replaceState(null, '', query ? `/anime/library?${query}` : '/anime/library');
   await act(async () => root.render(<AnimeLibraryPage />));
 }
 
@@ -82,5 +84,31 @@ describe('Anime Library tabs', () => {
     await open('');
 
     expect(activeTab()).toBe('Completed');
+  });
+
+  it('leaves a URL that already shows the tab alone', async () => {
+    await open('status=CURRENT');
+    expect(mocks.replace).not.toHaveBeenCalled();
+  });
+
+  it('puts a picked tab in the URL once, and not again after the URL catches up', async () => {
+    await open('status=CURRENT');
+    const planning = [...document.querySelectorAll('button')].find((el) => el.textContent === 'Planning');
+    await act(async () => planning?.click());
+    expect(mocks.replace).toHaveBeenCalledTimes(1);
+    expect(mocks.replace).toHaveBeenCalledWith('/anime/library?status=PLANNING', { scroll: false });
+
+    // The router writes the URL; later renders find it current.
+    window.history.replaceState(null, '', '/anime/library?status=PLANNING');
+    await open('status=PLANNING');
+    expect(mocks.replace).toHaveBeenCalledTimes(1);
+  });
+
+  it('follows Back to another tab without writing the URL', async () => {
+    await open('status=PLANNING');
+    await open('status=CURRENT');
+
+    expect(activeTab()).toBe('Watching');
+    expect(mocks.replace).not.toHaveBeenCalled();
   });
 });
