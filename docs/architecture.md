@@ -590,10 +590,12 @@ ports. Source and `edge` builds belong only in the development stack. Stable
 application replacement must target only `helprr`; PostgreSQL and Redis remain
 running unless a separately authorized recovery procedure requires otherwise.
 
-GitHub CI runs `git diff --check` on the change, settings-export validation,
-ESLint, Vitest, Prisma validation, released-snapshot upgrade tests, and a
-production build. On a pull request it also validates both Compose files, each
-with its own generated env file, and builds and scans the amd64 image. Every
+GitHub CI runs `git diff --check` on the change, a production dependency audit,
+settings-export validation, ESLint, Vitest, Prisma validation, released-snapshot
+upgrade tests, and a production build. On a pull request it also validates both
+Compose files, each with its own generated env file, builds the amd64 image,
+starts it with the stable Compose file until `/api/health` and `/api/ready`
+answer 200, and scans it. Every
 workflow action is pinned to a commit SHA, and Dependabot proposes updates to
 those pins against `development`. Docker publication
 builds native amd64 and arm64 images, scans both with Trivy, and assembles the

@@ -59,6 +59,24 @@ describe('PR CI gates', () => {
     expect(ci).toContain('run: git diff --check HEAD^1 HEAD');
   });
 
+  it('audits production dependencies', () => {
+    expect(ci).toContain('run: npm audit --omit=dev --audit-level=high');
+  });
+
+  it('starts the built image with the stable Compose file until it is healthy and ready', () => {
+    const build = imageScan.indexOf('- name: Build image (amd64, not pushed)');
+    const smoke = imageScan.indexOf('- name: Smoke-test the image with the stable Compose file');
+    const scan = imageScan.indexOf('- name: Scan image for fixable high/critical vulnerabilities');
+    const step = imageScan.slice(smoke, scan);
+
+    expect(smoke).toBeGreaterThan(build);
+    expect(scan).toBeGreaterThan(smoke);
+    expect(step).toContain('docker tag helprr-pr-scan:local ghcr.io/saibarathr/helprr:ci-smoke');
+    expect(step).toContain('HELPRR_VERSION=ci-smoke docker compose --env-file .env -f docker-compose.yml up -d');
+    expect(step).toContain('for path in /api/health /api/ready; do');
+    expect(step).toContain('exit 1');
+  });
+
   it('validates both Compose scopes, then builds and scans the final image', () => {
     const compose = imageScan.indexOf('- name: Validate Compose files');
     const build = imageScan.indexOf('- name: Build image (amd64, not pushed)');
