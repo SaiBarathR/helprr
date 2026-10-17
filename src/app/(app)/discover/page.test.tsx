@@ -100,7 +100,6 @@ vi.mock('@/lib/store', async () => {
 import { DEFAULT_DISCOVER_FILTERS, useUIStore } from '@/lib/store';
 import { resetRouteViewStateForTests } from '@/lib/hooks/use-route-view-state';
 import DiscoverPage from './discover-home';
-import { NAVIGATION_START_EVENT } from '@/lib/route-scroll-state';
 
 const SAVED = {
   discoverContentType: 'show' as const,
@@ -122,8 +121,8 @@ beforeEach(() => {
   mocks.routerReplace.mockClear();
   mocks.gridKey = undefined;
   resetRouteViewStateForTests();
-  // Each test starts as a fresh visit, not a return through history.
-  window.dispatchEvent(new CustomEvent(NAVIGATION_START_EVENT, { detail: { kind: 'push' } }));
+  // Each test starts on a fresh history entry.
+  window.history.replaceState(null, '');
   window.sessionStorage.clear();
   useUIStore.setState(SAVED);
   document.body.innerHTML = '<div id="root"></div>';
@@ -223,25 +222,52 @@ describe('Discover links', () => {
       discoverSortDirection: 'desc',
       discoverFilters: DEFAULT_DISCOVER_FILTERS,
     });
-    // Left by a cleared search on an earlier plain visit in this tab.
-    window.sessionStorage.setItem('helprr:route-views:v1', JSON.stringify([['/discover?', { manualBrowseMode: true }]]));
+    // An earlier plain visit in this tab left a grid-only browse.
+    window.history.replaceState({ 'helprr:discoverManualBrowse': true }, '');
+    window.history.pushState(null, '', '/discover');
     await open('');
 
     expect(document.body.textContent).not.toContain('Discover Results');
   });
 
-  it('returns to a grid-only browse when going back to it', async () => {
+  it('keeps each visit\'s view: Back and Forward return to the one left', async () => {
     useUIStore.setState({
       discoverContentType: 'all',
       discoverSort: 'trending',
       discoverSortDirection: 'desc',
       discoverFilters: DEFAULT_DISCOVER_FILTERS,
     });
-    // The grid a Trending pill opened, then a title opened from it, then Back.
-    window.sessionStorage.setItem('helprr:route-views:v1', JSON.stringify([['/discover?', { manualBrowseMode: true }]]));
-    window.dispatchEvent(new PopStateEvent('popstate'));
-    await open('');
+    const traverse = async (go: () => void) => {
+      const arrived = new Promise((resolve) => window.addEventListener('popstate', resolve, { once: true }));
+      go();
+      await arrived;
+    };
 
+    // First visit: the home carousels.
+    window.history.replaceState(null, '', '/discover');
+    await open('');
+    expect(document.body.textContent).not.toContain('Discover Results');
+
+    // A later visit, where the Trending pill opens the grid.
+    await act(async () => root.unmount());
+    window.history.pushState(null, '', '/discover');
+    root = createRoot(document.getElementById('root')!);
+    await open('');
+    await click('Trending');
+    expect(document.body.textContent).toContain('Discover Results');
+
+    // Back to the first visit: still its carousels.
+    await act(async () => root.unmount());
+    await traverse(() => window.history.back());
+    root = createRoot(document.getElementById('root')!);
+    await open('');
+    expect(document.body.textContent).not.toContain('Discover Results');
+
+    // Forward to the second: its grid again.
+    await act(async () => root.unmount());
+    await traverse(() => window.history.forward());
+    root = createRoot(document.getElementById('root')!);
+    await open('');
     expect(document.body.textContent).toContain('Discover Results');
   });
 });
