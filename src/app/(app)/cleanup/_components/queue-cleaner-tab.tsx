@@ -487,7 +487,7 @@ export function QueueCleanerTab({ onDirtyChange }: Props) {
         </RuleSection>
 
         {configError && (
-          <div className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive light:text-red-800 flex items-start gap-2">
+          <div className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-red-400 light:text-red-800 flex items-start gap-2">
             <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
             <span>{configError}</span>
           </div>
