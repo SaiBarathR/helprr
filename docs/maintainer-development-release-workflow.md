@@ -537,6 +537,32 @@ RELEASE_BRANCH="chore/release-$VERSION"
 git switch -c "$RELEASE_BRANCH"
 ```
 
+### Security review (blocks every release)
+
+Before preparing the version, review everything the release adds since the
+previous tag in the six areas below. This is required for every release, patch
+releases included; a release with an unresolved finding in any of them does not
+proceed.
+
+```bash
+PREVIOUS_TAG="$(git describe --tags --abbrev=0 origin/main)"
+git log --oneline "$PREVIOUS_TAG"..development
+git diff --stat "$PREVIOUS_TAG"..development
+```
+
+| Area | What to check in the diff |
+|---|---|
+| Authentication and authorization | New or changed API routes call `requireUser`, `requireUserCapability`, or `requireAdmin` with the right capability, keep ownership and instance checks, and fail closed. Session, cookie, and password changes keep revocation working. |
+| SSRF boundaries | A server-side fetch of any URL a request or stored setting can influence stays on the configured service origin and allowlisted paths. |
+| Custom headers | Stored API keys and header values stay masked, are sent only with the URL they were stored for, and cannot set `Host`. |
+| Proxy trust | `Host` and `X-Forwarded-*` are trusted only where `TRUST_FORWARDED_PROTO=true` allows it; the AniList redirect URI and callback redirects use `APP_ORIGIN`. |
+| Image and other redirects | `/api/image` keeps its allowlist, re-checks every redirect hop, drops credentials across origins, and validates image bytes; the media proxies keep their path allowlists; service clients still refuse a redirect to another host. |
+| OAuth state | The AniList authorize and callback routes keep the state cookie check, the `settings.instances` gate, and the configured redirect URI. |
+
+Record the result in the release preparation PR body: the areas the diff
+touches, each finding and how it was resolved, or "nothing in scope". An
+independent reviewer or review tool may do the pass; the maintainer signs it off.
+
 Update `package.json` and `package-lock.json` without creating the Git tag yet:
 
 ```bash
@@ -580,7 +606,7 @@ gh pr create \
   --base development \
   --head "$RELEASE_BRANCH" \
   --title "chore(release): prepare Helprr $VERSION" \
-  --body "Version/changelog preparation, complete release-gate evidence, migration notes, and deployment-impact summary."
+  --body "Version/changelog preparation, security-review result, complete release-gate evidence, migration notes, and deployment-impact summary."
 ```
 
 Only stage files that actually belong to the release. The explicit list above is a
@@ -1196,6 +1222,8 @@ a new release.
 
 - [ ] All contents of `development` are intended for release.
 - [ ] Correct patch/minor/major version selected.
+- [ ] Security review of the six areas done on the diff since the previous tag,
+      recorded in the release PR, with no unresolved finding.
 - [ ] Package version, lockfile, changelog, docs, env, Compose, and migrations reviewed.
 - [ ] Full release gate passes.
 - [ ] Release PR into `main` is reviewed and green.
