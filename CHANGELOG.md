@@ -5,6 +5,87 @@ All notable changes to Helprr are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.3] - 2026-10-17
+
+### Security
+
+- Several read routes needed only a signed-in session, so a member whose
+  feature an admin had turned off could still read it by calling the route:
+  Sonarr and Radarr credits, the Sonarr, Radarr and Lidarr lookups, quality
+  definitions, languages, quality and metadata profiles, tag lists, dashboard
+  layouts, and the Anime and Discover detail routes. Each now requires the
+  feature's capability (or one of the capabilities of the pages that use it),
+  the Anime and Discover pages check it too, and the For You and Anime carousel
+  widgets declare the capability they need.
+- Discover sections carry your library state but were marked publicly
+  cacheable and kept in a shared server cache, so a browser cache shared by two
+  accounts or a proxy could hand one account's response to another, and a newly
+  added title kept showing as missing for up to five minutes. They are now
+  private to the session, and only the TMDB catalog is cached.
+- The Discover collection page fetched Helprr's own API at an address built
+  from forwarded request headers, sending the visitor's session cookie with it,
+  and the AniList sign-in built its redirects from the same headers. Both now
+  use `APP_ORIGIN` or the server itself, never request headers.
+- A saved API key or custom header value was reused whatever URL the
+  connection was changed to, so managing instances was enough to send a key to
+  another address. A saved secret is now used only with the URL it was saved
+  for, and a `Host` custom header is not accepted. Service connections also no
+  longer follow a redirect to another host with their API key, custom headers,
+  or sign-in body.
+- Push subscriptions are accepted only for the browsers' push services, checked
+  when subscribing and again before every send.
+- An import started from the Activity page could name any file the *arr could
+  reach. It is now limited to the files of that download and recorded in the
+  operation audit. Renaming files checks that every file belongs to the title.
+- A single-torrent action accepted `all` or a list of hashes, which
+  qBittorrent reads as many torrents, a delete included. It now takes exactly
+  one torrent. The media proxy decodes a path once and checks it again after
+  building the upstream address, and several routes validate ids before using
+  them.
+- Revoking this device's session from **Settings → Sessions** now clears this
+  browser the way signing out does. When a session ends any other way (it
+  expires, or is revoked from another device), the sign-in page clears what it
+  left in the browser (page copies that include the account's name and role,
+  saved lists, posters) as soon as it opens, rather than at the next sign-in.
+- A local password hash made with an older cost setting is upgraded at the
+  next successful sign-in. Startup now warns when the PostgreSQL or Redis
+  password is shorter than 16 characters.
+
+### Fixed
+
+- After connecting an AniList account, the result (connected, or why it
+  failed) was never shown: the sign-in returned to the Settings menu rather than
+  to Settings → Instances, where the AniList card reports it.
+- In Firefox, the second line of a two-line subtitle sat on the seek bar while
+  the player controls showed.
+- Player: "Add to queue" on a series, season, or album queues what it holds,
+  and an item queued while a Play is still being expanded is kept. A seek or a
+  media error while the next title is starting no longer disturbs that start,
+  and a seek no longer moves the title being left. When the next title fails
+  to start, Jellyfin is told the previous one stopped, at its real position,
+  instead of showing it as still playing, and the play button shows Play rather
+  than Pause. An expanded music player stays expanded from track to track.
+- A cleanup removal whose Cleanup History entry could not be written was
+  reported as failed although the download had been removed.
+- A delete dialog that was closed after a failed delete kept "Also delete
+  files" ticked for the next attempt. A restored search survives a reload.
+- In Settings, a service rejecting a connection's key no longer sends you to
+  the sign-in page as if your session had expired.
+- Descriptions are sanitised in the browser only, so the server no longer
+  loads a DOM library to do it.
+
+### Changed
+
+- Deleting a movie or series from its own page no longer always deletes its
+  files. Like the library lists, the confirmation offers "Also delete all files
+  from disk", off by default.
+- Editing a saved connection's URL now says straight away that its API key (or
+  password, or header values) has to be entered again.
+- The cleanup permission is now labelled "Manage cleanup rules & run cleanups
+  (deletes downloads and files)", which is what it already allowed.
+- The release runbook makes a security review of each release's changes a
+  required step.
+
 ## [1.6.2] - 2026-10-09
 
 ### Security
