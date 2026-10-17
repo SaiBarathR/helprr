@@ -6,11 +6,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('sonner', () => ({ toast: { warning: vi.fn(), success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
 vi.mock('@/components/permission-provider', () => ({ useMe: () => ({ role: 'admin' }) }));
+const store = vi.hoisted(() => ({ applyImportedUiPrefs: vi.fn(), setDiscoverLayout: vi.fn() }));
 vi.mock('@/lib/store', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/store')>()),
-  useUIStore: (select: (state: object) => unknown) => select({ applyImportedUiPrefs: vi.fn(), setDiscoverLayout: vi.fn() }),
+  useUIStore: (select: (state: object) => unknown) => select(store),
 }));
 
+import { STORE_VERSION } from '@/lib/store';
 import { ImportSettingsDialog } from '../import-settings-dialog';
 
 type Cleaner = { enabled: boolean; autoRunMode: string };
@@ -203,5 +205,27 @@ describe('importing a cleanup section', () => {
 
     await click('Apply selected');
     expect(confirmTitle()).toBeNull();
+  });
+
+  it('imports UI preferences alone when this browser has no push subscription', async () => {
+    store.applyImportedUiPrefs.mockClear();
+    const subtitleAppearance = { textSize: 'large', textColor: '#ffff00' };
+    await render(true, newClient());
+    const input = document.querySelector<HTMLInputElement>('input[type="file"]')!;
+    const file = {
+      kind: 'helprr-settings-export',
+      version: 2,
+      zustandVersion: STORE_VERSION,
+      uiPrefs: { playback: { subtitleAppearance } },
+      notificationPrefs: [{ deviceName: 'iPhone', rules: [] }],
+    };
+    Object.defineProperty(input, 'files', { value: [new File([JSON.stringify(file)], 'helprr.json')], configurable: true });
+    await act(async () => { input.dispatchEvent(new Event('change', { bubbles: true })); });
+    await vi.waitFor(() => expect(document.body.textContent).toContain('Notification Preferences'));
+
+    await click('Apply selected');
+
+    expect(imports).toEqual([]);
+    expect(store.applyImportedUiPrefs).toHaveBeenCalledWith({ subtitleAppearance });
   });
 });

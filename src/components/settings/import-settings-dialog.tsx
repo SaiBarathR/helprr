@@ -292,9 +292,9 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
       || selectedAnimeMappings
       || selectedUsers
       || selectedServices.size > 0
-      || (!!selectedSourceDevice && selectedSourceDevice !== '__none__' && availableNotifDevices.length > 0)
+      || (!!currentEndpoint && !!selectedSourceDevice && selectedSourceDevice !== '__none__' && availableNotifDevices.length > 0)
     )
-  ), [parsed, selectedUi, selectedAppSettings, selectedDiscoverLayout, selectedCleanup, selectedDashboardLayouts, selectedWatchlist, selectedScheduledAlerts, selectedAnimeMappings, selectedUsers, selectedServices, selectedSourceDevice, availableNotifDevices]);
+  ), [parsed, selectedUi, selectedAppSettings, selectedDiscoverLayout, selectedCleanup, selectedDashboardLayouts, selectedWatchlist, selectedScheduledAlerts, selectedAnimeMappings, selectedUsers, selectedServices, selectedSourceDevice, availableNotifDevices, currentEndpoint]);
 
   function requestImport(replaceAll: boolean) {
     if (!parsed) return;
@@ -396,7 +396,9 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
       }
 
       // 2. Send DB-side parts to import endpoint
-      const sourceDevice = availableNotifDevices.find((d) => d.deviceName === useDevice);
+      // Device rules apply to this browser's push subscription; without one the
+      // menu is disabled and the server would only skip them.
+      const sourceDevice = currentEndpoint ? availableNotifDevices.find((d) => d.deviceName === useDevice) : undefined;
       const body: Record<string, unknown> = {};
       if (useAppSettings && parsed.payload.appSettings) {
         body.appSettings = parsed.payload.appSettings;
