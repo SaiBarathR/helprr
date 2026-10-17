@@ -655,9 +655,13 @@ there after it is written:
   off the host:
 
   ```bash
-  age -r "$BACKUP_RECIPIENT" -o helprr.dump.age backups/stable/helprr-pre-upgrade-YYYYMMDD-HHMMSS.dump
-  scp helprr.dump.age backup-host:/srv/backups/helprr/
+  dump=backups/stable/helprr-pre-upgrade-YYYYMMDD-HHMMSS.dump
+  age -r "$BACKUP_RECIPIENT" -o "$dump.age" "$dump" &&
+    scp "$dump.age" backup-host:/srv/backups/helprr/
   ```
+
+  Each encrypted copy keeps its dump's timestamped name, so a new one never
+  replaces an older one, and it is copied only once encryption has succeeded.
 
 Helprr never deletes dumps, here or on the other machine, so prune old copies
 yourself. Before relying on an off-host copy, restore one into an isolated
