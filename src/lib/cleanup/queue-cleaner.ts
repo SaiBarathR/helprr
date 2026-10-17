@@ -278,6 +278,16 @@ export async function runQueueCleanerCycle(opts: RunOptions): Promise<QueueEvalu
   const correlation = buildCorrelationIndex(sonarrInstances, radarrInstances);
 
   const journal = new StrikeJournal();
+  // Strikes counted for an earlier copy of a torrent still listed now: clear
+  // them, or a copy that stays healthy (so never strikes over them) would keep
+  // showing the old count as active. Queued first, so a new strike for the
+  // same rule in this cycle is written after the clear.
+  const listedNames = new Map(torrents.map((t) => [t.hash.toLowerCase(), t.name]));
+  for (const [key, strike] of loadedStrikes) {
+    if (prevStrikes.has(key)) continue;
+    const hash = strike.hash.toLowerCase();
+    journal.clear({ hash, torrentName: listedNames.get(hash) ?? '', strikeType: strike.strikeType, ruleId: strike.ruleId });
+  }
   const decisions: QueueDecision[] = [];
   const pendingStrikes: PendingStrike[] = [];
   const warnings: string[] = [];

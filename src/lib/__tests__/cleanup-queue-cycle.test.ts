@@ -276,6 +276,27 @@ describe('queue cleaner cycle', () => {
     }
   });
 
+  it('clears strikes an earlier copy left behind, even when the new copy never strikes', async () => {
+    mocks.stallFindMany.mockResolvedValue([stall()]);
+    // The re-added copy is downloading fine: no stall strike of its own.
+    setTorrents([torrent({ added_on: 5000, state: 'downloading' })]);
+    mocks.strikeFindMany.mockResolvedValue([strikeRecord('stall', 'stall-a', 2, BigInt(1000), new Date(1_000_000))]);
+
+    await runQueueCleanerCycle({ dryRun: true, triggeredBy: 'auto', actor: scheduler });
+
+    expect(mocks.strikeDeleteMany).toHaveBeenCalledWith({ where: { hash: 'abc123', strikeType: 'stall', ruleId: 'stall-a' } });
+  });
+
+  it('leaves strikes alone in an interactive preview', async () => {
+    mocks.stallFindMany.mockResolvedValue([stall()]);
+    setTorrents([torrent({ added_on: 5000, state: 'downloading' })]);
+    mocks.strikeFindMany.mockResolvedValue([strikeRecord('stall', 'stall-a', 2, BigInt(1000), new Date(1_000_000))]);
+
+    await run();
+
+    expect(mocks.strikeDeleteMany).not.toHaveBeenCalled();
+  });
+
   it('deletes nothing when the torrent was re-added between the cycle and its removal', async () => {
     mocks.stallFindMany.mockResolvedValue([stall()]);
     mocks.strikeFindMany.mockResolvedValue([strikeRecord('stall', 'stall-a', 2, BigInt(1000), new Date(5_000_000))]);
