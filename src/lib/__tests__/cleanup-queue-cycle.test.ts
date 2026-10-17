@@ -261,30 +261,33 @@ describe('queue cleaner cycle', () => {
 
   it('starts a re-added torrent from no strikes, whatever an earlier copy left behind', async () => {
     mocks.stallFindMany.mockResolvedValue([stall()]);
-    // Two strikes counted for the copy added at 1000 s; this copy was added at 5000 s.
     setTorrents([torrent({ added_on: 5000 })]);
-    mocks.strikeFindMany.mockResolvedValue([strikeRecord('stall', 'stall-a', 2, BigInt(1000), new Date(1_000_000))]);
-    let result = await run();
-    expect(result.decisions).toHaveLength(0);
-    expect(result.pendingStrikes).toEqual([expect.objectContaining({ count: 1, ruleId: 'stall-a' })]);
-
-    // The same copy's strikes, or ones recorded before add times were kept, still count.
-    for (const addedAt of [new Date(5_000_000), null]) {
+    // Two strikes counted for the copy added at 1000 s (this copy was added at
+    // 5000 s), or recorded before add times were kept, so for an unknown copy.
+    for (const addedAt of [new Date(1_000_000), null]) {
       mocks.strikeFindMany.mockResolvedValue([strikeRecord('stall', 'stall-a', 2, BigInt(1000), addedAt)]);
-      result = await run();
-      expect(result.decisions[0], String(addedAt)).toMatchObject({ strikeCount: 3 });
+      const result = await run();
+      expect(result.decisions, String(addedAt)).toHaveLength(0);
+      expect(result.pendingStrikes, String(addedAt)).toEqual([expect.objectContaining({ count: 1, ruleId: 'stall-a' })]);
     }
+
+    // The same copy's strikes still count.
+    mocks.strikeFindMany.mockResolvedValue([strikeRecord('stall', 'stall-a', 2, BigInt(1000), new Date(5_000_000))]);
+    expect((await run()).decisions[0]).toMatchObject({ strikeCount: 3 });
   });
 
   it('clears strikes an earlier copy left behind, even when the new copy never strikes', async () => {
     mocks.stallFindMany.mockResolvedValue([stall()]);
     // The re-added copy is downloading fine: no stall strike of its own.
     setTorrents([torrent({ added_on: 5000, state: 'downloading' })]);
-    mocks.strikeFindMany.mockResolvedValue([strikeRecord('stall', 'stall-a', 2, BigInt(1000), new Date(1_000_000))]);
+    for (const addedAt of [new Date(1_000_000), null]) {
+      mocks.strikeDeleteMany.mockClear();
+      mocks.strikeFindMany.mockResolvedValue([strikeRecord('stall', 'stall-a', 2, BigInt(1000), addedAt)]);
 
-    await runQueueCleanerCycle({ dryRun: true, triggeredBy: 'auto', actor: scheduler });
+      await runQueueCleanerCycle({ dryRun: true, triggeredBy: 'auto', actor: scheduler });
 
-    expect(mocks.strikeDeleteMany).toHaveBeenCalledWith({ where: { hash: 'abc123', strikeType: 'stall', ruleId: 'stall-a' } });
+      expect(mocks.strikeDeleteMany, String(addedAt)).toHaveBeenCalledWith({ where: { hash: 'abc123', strikeType: 'stall', ruleId: 'stall-a' } });
+    }
   });
 
   it('leaves strikes alone in an interactive preview', async () => {

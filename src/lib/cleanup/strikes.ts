@@ -43,7 +43,9 @@ export function torrentAddedAt(addedOn: number): Date | null {
  * Drops strikes counted for an earlier copy of a torrent: a hash removed and
  * added again (an Arr re-grabbing the same release) starts from no strikes,
  * even if clearing the old ones failed. A strike with no recorded add time
- * (from before it was recorded) still counts.
+ * (from before it was recorded) cannot be told apart from an earlier copy's,
+ * so it is dropped too once qBittorrent reports the torrent's add time: strikes
+ * in progress at the upgrade restart once rather than carry over.
  */
 export function strikesForCurrentTorrents(
   strikes: Map<string, StrikeRecord>,
@@ -53,7 +55,7 @@ export function strikesForCurrentTorrents(
   const current = new Map<string, StrikeRecord>();
   for (const [key, strike] of strikes) {
     const torrentAdded = addedAt.get(strike.hash.toLowerCase());
-    if (strike.torrentAddedAt && torrentAdded && strike.torrentAddedAt.getTime() !== torrentAdded.getTime()) continue;
+    if (torrentAdded && strike.torrentAddedAt?.getTime() !== torrentAdded.getTime()) continue;
     current.set(key, strike);
   }
   return current;
