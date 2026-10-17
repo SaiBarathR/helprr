@@ -1533,6 +1533,22 @@ export default function SeriesDetailPage() {
                   retrying={episodesQuery.isFetching}
                 />
               )}
+              {/* A failed refresh keeps the last loaded episodes; say so rather
+                  than let them pass for current. */}
+              {episodesQuery.isError && episodes.length > 0 && (
+                <div className="mb-2 flex items-center justify-center gap-2 rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                  <span>Couldn&apos;t refresh episodes. Showing the last loaded list.</span>
+                  <Button
+                    variant="link"
+                    size="sm"
+                    className="h-auto p-0 text-xs text-destructive"
+                    onClick={() => episodesQuery.refetch()}
+                    disabled={episodesQuery.isFetching}
+                  >
+                    Retry
+                  </Button>
+                </div>
+              )}
               <div>
                 {seasonNumbers.map((sn) => {
                   const seasonEps = episodes.filter((e) => e.seasonNumber === sn);
