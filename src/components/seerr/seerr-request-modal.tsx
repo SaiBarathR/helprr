@@ -144,12 +144,10 @@ export function SeerrRequestModal({
   }, [serviceQuery.isError, seasonsQuery.isError, usersQuery.isError]);
 
   // Seed defaults that weren't pre-filled by an existing request, once the
-  // service data resolves, and again if the user's own Seerr id arrives later.
-  // Guard on the CURRENT value (via functional updaters) rather than the
-  // initial prop, so a background refetch can't overwrite a selection the
-  // user has already made.
+  // service data resolves. Guard on the CURRENT value (via functional updaters)
+  // rather than the initial prop, so a background refetch can't overwrite a
+  // selection the user has already made.
   const isNewRequest = initialTags == null;
-  const ownSeerrUserId = me?.seerrUserId;
   useEffect(() => {
     if (!open) return;
     const svc = serviceQuery.data;
@@ -160,12 +158,20 @@ export function SeerrRequestModal({
     // existing request opened with an explicit [] tags must stay tagless — don't
     // inject defaults onto it (prev.length===0 alone can't tell the two apart).
     if (isNewRequest && svc.defaultTags?.length) setTags((prev) => (prev.length === 0 ? svc.defaultTags! : prev));
+  }, [open, serviceQuery.data, isNewRequest]);
+
+  // Request as the user's own Seerr account by default, also when their
+  // identity arrives after the service data. Its own effect, so that arrival
+  // does not seed the tags again (an emptied selection looks unseeded).
+  const ownSeerrUserId = me?.seerrUserId;
+  useEffect(() => {
+    if (!open || !serviceQuery.data) return;
     setRequestAs((prev) => {
       if (prev != null) return prev;
       const own = ownSeerrUserId ? Number.parseInt(ownSeerrUserId, 10) : NaN;
       return Number.isInteger(own) ? own : prev;
     });
-  }, [open, serviceQuery.data, isNewRequest, ownSeerrUserId]);
+  }, [open, serviceQuery.data, ownSeerrUserId]);
 
   const selectableSeasons = useMemo(
     () => seasonsInfo.filter((s) => s.status !== SEERR_MEDIA_STATUS.AVAILABLE),
