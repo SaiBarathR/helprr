@@ -135,6 +135,22 @@ describe('codec gating', () => {
     expect(firefox.DirectPlayProfiles.some((entry) => (entry.VideoCodec ?? '').includes('hevc'))).toBe(false);
   });
 
+  it.each([
+    ['Chrome', CHROME_DESKTOP],
+    ['Safari', SAFARI_MAC],
+    ['Firefox', FIREFOX_DESKTOP],
+  ])('%s: advertises DTS for direct play only when the browser plays it in MP4', (_name, userAgent) => {
+    const mp4AudioCodecs = () => getDeviceProfile({ userAgent, maxTouchPoints: 0 }).DirectPlayProfiles
+      .find((entry) => entry.Type === 'Video' && entry.Container === 'mp4,m4v')?.AudioCodec?.split(',') ?? [];
+
+    stubCanPlayType([H264, /codecs="dts[-+]"/]);
+    expect(mp4AudioCodecs()).toEqual(expect.arrayContaining(['dca', 'dts']));
+
+    stubCanPlayType([H264]);
+    expect(mp4AudioCodecs()).not.toContain('dca');
+    expect(mp4AudioCodecs()).not.toContain('dts');
+  });
+
   it('advertises AV1 only when both 8-bit and 10-bit probe playable', () => {
     stubCanPlayType([H264, AV1]);
     const withAv1 = getDeviceProfile({ userAgent: CHROME_DESKTOP });
