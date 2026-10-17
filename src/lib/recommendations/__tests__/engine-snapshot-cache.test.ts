@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => {
   const store = new Map<string, unknown>();
-  const counters = new Map<string, number>();
+  const counters = new Map<string, string>();
   return {
     store,
     counters,
@@ -10,14 +10,13 @@ const mocks = vi.hoisted(() => {
     discoveryGate: null as Promise<void> | null,
     compose: vi.fn(),
     redis: {
-      get: vi.fn(async (key: string) => (counters.has(key) ? String(counters.get(key)) : null)),
-      incr: vi.fn(async (key: string) => {
-        counters.set(key, (counters.get(key) ?? 0) + 1);
-        return counters.get(key)!;
-      }),
-      set: vi.fn(async (key: string, value: string) => {
-        counters.set(key, Number(value));
-        return 'OK';
+      get: vi.fn(async (key: string) => counters.get(key) ?? null),
+      // What BUMP_GENERATION does: max(current + 1, now), a non-number counting as 0.
+      eval: vi.fn(async (_script: string, { keys: [key], arguments: [now] }: { keys: string[]; arguments: string[] }) => {
+        const current = Number.parseInt(counters.get(key) ?? '', 10);
+        const next = Math.max((Number.isFinite(current) ? current : 0) + 1, Number(now));
+        counters.set(key, String(next));
+        return next;
       }),
     },
     cachingEnabled: true,
@@ -131,17 +130,29 @@ describe('recommendation snapshot cache', () => {
     expect(setCachedJson).not.toHaveBeenCalled();
   });
 
-  it('moves to a new generation even when the counter cannot be incremented', async () => {
-    await getRecommendationRails(user);
-    mocks.feedback.push({ itemKey: 'tmdb:movie:1', eventType: 'not_interested' });
-    // Both attempts fail, as INCR does on a counter that is not a number.
-    mocks.redis.incr.mockRejectedValueOnce(new Error('WRONGTYPE')).mockRejectedValueOnce(new Error('WRONGTYPE'));
+  it('never returns to a generation it used, whatever the counter held', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      const used = new Set<string>();
+      const key = 'helprr:cache:recommendations:generation:user-1';
+      // Several invalidations within one millisecond still each get their own.
+      for (let i = 0; i < 5; i++) {
+        await invalidateRecommendations(user.id);
+        used.add(mocks.counters.get(key)!);
+      }
+      vi.advanceTimersByTime(1_000);
+      mocks.counters.set(key, 'not a number');
+      await invalidateRecommendations(user.id);
+      used.add(mocks.counters.get(key)!);
+      // A failed attempt is retried.
+      mocks.redis.eval.mockRejectedValueOnce(new Error('connection reset'));
+      await invalidateRecommendations(user.id);
+      used.add(mocks.counters.get(key)!);
 
-    await invalidateRecommendations(user.id);
-    const rails = await getRecommendationRails(user);
-
-    expect(mocks.redis.set).toHaveBeenCalled();
-    expect(rails.rails[0]).toMatchObject({ items: ['tmdb:movie:1'] });
+      expect(used.size).toBe(7);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('builds directly, without Redis, when caching is off', async () => {

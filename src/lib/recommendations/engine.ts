@@ -65,6 +65,15 @@ async function getGeneration(userId: string): Promise<number | null> {
   }
 }
 
+// One atomic step to a new generation: past the current one and at least the
+// current time in milliseconds. A counter that was lost or holds something
+// other than a number (counted as 0) restarts at the current millisecond, past
+// every generation an earlier millisecond produced.
+const BUMP_GENERATION = `local current = tonumber(redis.call('GET', KEYS[1])) or 0
+local next = math.max(current + 1, tonumber(ARGV[1]))
+redis.call('SET', KEYS[1], string.format('%d', next))
+return next`;
+
 function cacheSeed(userId: string, generation: number): string {
   return `user:${userId}:g${generation}`;
 }
@@ -321,20 +330,13 @@ export async function invalidateRecommendations(userId: string): Promise<void> {
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const redis = await getRedisClient();
-      await redis.incr(generationKey(userId));
+      await redis.eval(BUMP_GENERATION, { keys: [generationKey(userId)], arguments: [String(Date.now())] });
       return;
     } catch {
-      // Retry once, then try replacing the counter.
+      // Retry once.
     }
   }
-  try {
-    // INCR fails on a counter that is not a number: replace it with a value
-    // above any count, which moves the user to a new generation all the same.
-    const redis = await getRedisClient();
-    await redis.set(generationKey(userId), String(Date.now()));
-  } catch (error) {
-    // Redis is unreachable, so no snapshot can be read or saved now; one saved
-    // by a build that outlasts the outage may still predate this feedback.
-    logger.warn('Recommendations not invalidated: Redis unavailable', { err: String(error) }, { scope: 'recommendations' });
-  }
+  // Redis is unreachable, so no snapshot can be read or saved now; one saved
+  // by a build that outlasts the outage may still predate this feedback.
+  logger.warn('Recommendations not invalidated: Redis unavailable', {}, { scope: 'recommendations' });
 }
