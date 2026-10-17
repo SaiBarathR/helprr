@@ -81,10 +81,18 @@ const VIDEO_CLASS = 'hpr-jf-video';
  */
 const CONTROLS_HIDE_MS = 3500;
 
-function isTypingTarget(target: EventTarget | null): boolean {
+/**
+ * A key the player must leave alone: typed into a field, or pressed inside a
+ * dialog or a menu or list popup, whose keys are its own. A dialog's dropdown
+ * or select renders its popup in a portal outside the dialog, hence the popup
+ * roles. The player's queue panel is a dialog too, but part of the player: its
+ * shortcuts keep working there, Escape included.
+ */
+export function keyBelongsElsewhere(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
-  return target.isContentEditable
-    || Boolean(target.closest('input, textarea, select, [contenteditable="true"]'));
+  if (target.isContentEditable || target.closest('input, textarea, select, [contenteditable="true"]')) return true;
+  const owner = target.closest('[role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"]');
+  return owner !== null && !owner.hasAttribute('data-player-queue');
 }
 
 export function VideoStage({ mediaContainer }: { mediaContainer: HTMLDivElement }) {
@@ -183,7 +191,7 @@ export function VideoStage({ mediaContainer }: { mediaContainer: HTMLDivElement 
   useEffect(() => {
     if (!expanded) return undefined;
     const onKey = (event: KeyboardEvent) => {
-      if (event.defaultPrevented || isTypingTarget(event.target)) return;
+      if (event.defaultPrevented || keyBelongsElsewhere(event.target)) return;
       const p = playbackRef.current;
       if (!p.item) return;
       if (event.key === ' ' || event.key === 'k') { event.preventDefault(); p.togglePause(); }
