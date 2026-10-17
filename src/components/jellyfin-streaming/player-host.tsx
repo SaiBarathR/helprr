@@ -16,6 +16,9 @@ export function PlayerHost() {
   const parking = useRef<HTMLDivElement>(null);
   const [container, setContainer] = useState<HTMLDivElement | null>(null);
   const [activated, setActivated] = useState(false);
+  // Keep chrome mounted after first use; minimize, Stop and navigation retain
+  // native fullscreen/PiP/media ownership until the app itself unmounts.
+  if (item && !activated) setActivated(true);
   useEffect(() => {
     const node = document.createElement('div');
     node.className = 'h-full w-full';
@@ -24,12 +27,6 @@ export function PlayerHost() {
     setContainer(node);
     return () => node.remove();
   }, []);
-  useEffect(() => {
-    // Keep chrome mounted after first use; minimize, Stop and navigation retain
-    // native fullscreen/PiP/media ownership until the app itself unmounts.
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- latch first user playback intent
-    if (item) setActivated(true);
-  }, [item]);
   return <>
     <div ref={parking} hidden aria-hidden="true" />
     {container && createPortal(<video ref={mountMedia} className="hpr-jf-video h-full w-full bg-black object-contain" playsInline preload="metadata" />, container)}
