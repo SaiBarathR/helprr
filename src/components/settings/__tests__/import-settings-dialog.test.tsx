@@ -228,4 +228,37 @@ describe('importing a cleanup section', () => {
     expect(imports).toEqual([]);
     expect(store.applyImportedUiPrefs).toHaveBeenCalledWith({ subtitleAppearance });
   });
+
+  it('waits for a subscription lookup still under way, so a quick Apply keeps the device rules', async () => {
+    let resolveReady: (registration: unknown) => void = () => {};
+    vi.stubGlobal('PushManager', class {});
+    vi.stubGlobal('navigator', {
+      ...navigator,
+      serviceWorker: { ready: new Promise((resolve) => { resolveReady = resolve; }), addEventListener: () => {}, removeEventListener: () => {} },
+    });
+    await render(true, newClient());
+    const input = document.querySelector<HTMLInputElement>('input[type="file"]')!;
+    const file = {
+      kind: 'helprr-settings-export',
+      version: 2,
+      zustandVersion: STORE_VERSION,
+      uiPrefs: { playback: { subtitleAppearance: { textSize: 'large' } } },
+      notificationPrefs: [{ deviceName: 'iPhone', rules: [] }],
+    };
+    Object.defineProperty(input, 'files', { value: [new File([JSON.stringify(file)], 'helprr.json')], configurable: true });
+    await act(async () => { input.dispatchEvent(new Event('change', { bubbles: true })); });
+    await vi.waitFor(() => expect(document.body.textContent).toContain('Notification Preferences'));
+
+    await click('Apply selected');
+    expect(imports).toEqual([]);
+    await act(async () => {
+      resolveReady({ pushManager: { getSubscription: async () => ({ endpoint: 'https://push.example/device' }) } });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(imports).toEqual([expect.objectContaining({
+      notificationDevice: { deviceName: 'iPhone', rules: [] },
+      currentDeviceEndpoint: 'https://push.example/device',
+    })]);
+  });
 });

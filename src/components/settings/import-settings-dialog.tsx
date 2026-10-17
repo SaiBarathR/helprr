@@ -134,7 +134,10 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
   const [selectedServices, setSelectedServices] = useState<Set<ServiceType>>(new Set());
   const [selectedSourceDevice, setSelectedSourceDevice] = useState<string>('');
   const [importing, setImporting] = useState(false);
-  const [currentEndpoint, setCurrentEndpoint] = useState<string | null>(null);
+  // This browser's push subscription: undefined while it is being looked up,
+  // null when there is none.
+  const [currentEndpoint, setCurrentEndpoint] = useState<string | null | undefined>(undefined);
+  const endpointLookup = useRef<Promise<string | null>>(Promise.resolve(null));
   const [pendingConfirm, setPendingConfirm] = useState<{ replaceAll: boolean } | null>(null);
   // The cleaners still to confirm before an import that turns on their
   // automatic deletion, one dialog each.
@@ -162,13 +165,17 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
       return;
     }
     if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator && 'PushManager' in window) {
-      navigator.serviceWorker.ready
-        .then((reg) => reg.pushManager.getSubscription())
-        .then((sub) => setCurrentEndpoint(sub?.endpoint ?? null))
-        .catch(() => setCurrentEndpoint(null));
+      // `ready` never settles without a registered worker, so give up after 3 s.
+      endpointLookup.current = Promise.race([
+        navigator.serviceWorker.ready
+          .then((reg) => reg.pushManager.getSubscription())
+          .then((sub) => sub?.endpoint ?? null),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000)),
+      ]).catch(() => null);
     } else {
-      setCurrentEndpoint(null);
+      endpointLookup.current = Promise.resolve(null);
     }
+    void endpointLookup.current.then(setCurrentEndpoint);
   }, [open]);
 
   async function handleFile(file: File) {
@@ -292,7 +299,7 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
       || selectedAnimeMappings
       || selectedUsers
       || selectedServices.size > 0
-      || (!!currentEndpoint && !!selectedSourceDevice && selectedSourceDevice !== '__none__' && availableNotifDevices.length > 0)
+      || (currentEndpoint !== null && !!selectedSourceDevice && selectedSourceDevice !== '__none__' && availableNotifDevices.length > 0)
     )
   ), [parsed, selectedUi, selectedAppSettings, selectedDiscoverLayout, selectedCleanup, selectedDashboardLayouts, selectedWatchlist, selectedScheduledAlerts, selectedAnimeMappings, selectedUsers, selectedServices, selectedSourceDevice, availableNotifDevices, currentEndpoint]);
 
@@ -397,8 +404,10 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
 
       // 2. Send DB-side parts to import endpoint
       // Device rules apply to this browser's push subscription; without one the
-      // menu is disabled and the server would only skip them.
-      const sourceDevice = currentEndpoint ? availableNotifDevices.find((d) => d.deviceName === useDevice) : undefined;
+      // menu is disabled and the server would only skip them. A lookup still
+      // under way is waited for, so a quick Apply does not drop them.
+      const endpoint = currentEndpoint === undefined ? await endpointLookup.current : currentEndpoint;
+      const sourceDevice = endpoint ? availableNotifDevices.find((d) => d.deviceName === useDevice) : undefined;
       const body: Record<string, unknown> = {};
       if (useAppSettings && parsed.payload.appSettings) {
         body.appSettings = parsed.payload.appSettings;
@@ -410,7 +419,7 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
       }
       if (sourceDevice) {
         body.notificationDevice = sourceDevice;
-        if (currentEndpoint) body.currentDeviceEndpoint = currentEndpoint;
+        if (endpoint) body.currentDeviceEndpoint = endpoint;
       }
       if (useCleanup && parsed.payload.cleanup) {
         body.cleanup = parsed.payload.cleanup;
@@ -750,7 +759,7 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
                     ))}
                   </SelectContent>
                 </Select>
-                {!currentEndpoint && (
+                {currentEndpoint === null && (
                   <p className="text-xs text-amber-400 mt-2">
                     No push subscription on this browser. Enable notifications first to import these.
                   </p>
