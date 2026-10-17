@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, onlineManager } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('sonner', () => ({ toast: { warning: vi.fn(), success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
@@ -16,7 +16,8 @@ import { ImportSettingsDialog } from '../import-settings-dialog';
 type Cleaner = { enabled: boolean; autoRunMode: string };
 let current: { queue: Cleaner; download: Cleaner };
 let imports: unknown[];
-let configRead: 'ok' | 'fails' | 'hangs';
+let configRead: 'ok' | 'fails' | 'hangs' | 'held';
+let releaseHeld: () => void;
 let root: Root;
 
 const off: Cleaner = { enabled: false, autoRunMode: 'disabled' };
@@ -72,6 +73,11 @@ beforeEach(() => {
     const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200 });
     if (url.endsWith('/config') && configRead === 'fails') return new Response(null, { status: 503 });
     if (url.endsWith('/config') && configRead === 'hangs') return new Promise<Response>(() => {});
+    if (url === '/api/cleanup/download/config' && configRead === 'held') {
+      // Answers later with the state at the time it was asked.
+      const state = current.download;
+      return new Promise<Response>((resolve) => { releaseHeld = () => resolve(json(state)); });
+    }
     if (url === '/api/cleanup/queue/config') return json(current.queue);
     if (url === '/api/cleanup/download/config') return json(current.download);
     if (url.startsWith('/api/cleanup/history')) return json({ total: 1 });
@@ -153,6 +159,40 @@ describe('importing a cleanup section', () => {
     expect(confirmTitle()).toBe('Turn on automatic deletion for the Queue Cleaner?');
     await answer('Cancel');
     expect(imports).toHaveLength(0);
+  });
+
+  it('does not let a read from an earlier opening answer for this one', async () => {
+    const client = newClient();
+    current = { queue: deleting, download: off };
+    configRead = 'held';
+    await open(exportFile(deleting, off), client);
+    await render(false, client);
+
+    // Switched off elsewhere while closed; the earlier read finishes after reopening.
+    current = { queue: off, download: off };
+    configRead = 'ok';
+    await open(exportFile(deleting, off), client);
+    await act(async () => { releaseHeld(); await new Promise((resolve) => setTimeout(resolve, 0)); });
+    await click('Apply selected');
+    expect(confirmTitle()).toBe('Turn on automatic deletion for the Queue Cleaner?');
+    await answer('Cancel');
+    expect(imports).toHaveLength(0);
+  });
+
+  it('asks while a read waits to go online', async () => {
+    const client = newClient();
+    current = { queue: deleting, download: off };
+    await open(exportFile(deleting, off), client);
+    await render(false, client);
+
+    onlineManager.setOnline(false);
+    try {
+      await open(exportFile(deleting, off), client);
+      await click('Apply selected');
+      expect(confirmTitle()).toBe('Turn on automatic deletion for the Queue Cleaner?');
+    } finally {
+      onlineManager.setOnline(true);
+    }
   });
 
   it('does not ask when the cleanup section is left out', async () => {

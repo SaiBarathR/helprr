@@ -53,6 +53,8 @@ interface ImportSettingsDialogProps {
 }
 
 interface ParsedFile {
+  /** Tells each loaded file apart, so a read started for an earlier one cannot answer for it. */
+  id: number;
   payload: SettingsExportPayload;
   warnings: string[];
   uiPrefsMigrated: Partial<Record<UiPrefCategoryId, Record<string, unknown>>>;
@@ -67,6 +69,8 @@ interface CleanerState {
   enabled: boolean;
   autoRunMode: AutoRunMode;
 }
+
+let filesLoaded = 0;
 
 // A cleaner's config from the file, read the way the import stores it.
 function importedCleaner(config: unknown): (CleanerState & { intervalMinutes: number }) | null {
@@ -197,6 +201,7 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
       const availableServices = [...new Set((payload.serviceConnections ?? []).map((c) => c.type))];
 
       setParsed({
+        id: ++filesLoaded,
         payload,
         warnings: result.warnings,
         uiPrefsMigrated,
@@ -252,11 +257,11 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
     () => parsed?.payload.notificationPrefs ?? [],
     [parsed]
   );
-  // What each cleaner does now, read each time the dialog opens, to tell
-  // whether the file would start its automatic deletion.
+  // What each cleaner does now, read for each file loaded, to tell whether the
+  // file would start its automatic deletion.
   const fileCleanup = isAdmin ? parsed?.payload.cleanup : undefined;
   const currentCleaners = useQuery({
-    queryKey: ['settings-import', 'current-cleaners'],
+    queryKey: ['settings-import', 'current-cleaners', parsed?.id],
     queryFn: async ({ signal }) => {
       const [queue, download] = await Promise.all(
         CLEANERS.map((cleaner) => jsonFetcher<CleanerState>(`/api/cleanup/${cleaner}/config`)({ signal })),
@@ -266,11 +271,10 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
     enabled: open && !!fileCleanup,
     staleTime: 0,
   });
-  // Only a finished read counts. While one runs, or after one fails, an
-  // earlier result may be out of date: the state is unknown, counted as off,
-  // and the import asks.
-  const readingCleaners = currentCleaners.isFetching;
-  const knownCleaners = readingCleaners || currentCleaners.isError ? undefined : currentCleaners.data;
+  // Only a finished read counts. While one runs, waits to go online or has
+  // failed, the state is unknown, counted as off, and the import asks.
+  const readingCleaners = currentCleaners.fetchStatus !== 'idle';
+  const knownCleaners = !readingCleaners && currentCleaners.isSuccess ? currentCleaners.data : undefined;
   const cleanersTurnedOn = useMemo(() => CLEANERS.filter((cleaner) => {
     const next = importedCleaner(cleaner === 'queue' ? fileCleanup?.queueConfig : fileCleanup?.downloadConfig);
     return next !== null && startsAutomaticDeletion(knownCleaners?.[cleaner], next);
