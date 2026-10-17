@@ -284,6 +284,14 @@ stack on **2026-08-28**:
   Android emulator in portrait and landscape, and in Safari on the iOS Simulator
   (iOS 27), where placement was already correct and has not changed. Firefox was
   not checked.
+  **Corrected 2026-10-17.** Firefox 150 has `VTTCue.lineAlign` but swaps
+  `'end'` and `'center'` for a percentage line: `'end'` centres the box on the
+  line, so the second line of a two-line cue sat on the seek bar. Measured on a
+  plain page with one to three lines. From 1.6.3 Firefox anchors with
+  `'center'` (`cueBottomLineAlign`), which it draws as a bottom anchor; Chrome
+  and Safari are unchanged. Checked live with the chrome up in Firefox 150 and
+  Chromium at 1280x800: one-, two- and three-line cues all end above the
+  chrome (before, in Firefox, they ended 9 to 35 px into it).
 - **Web Push on Android, verified 2026-09-04.** Exercised for the first time
   against the installed WebAPK over an HTTPS origin: `pushManager.subscribe`
   returned an FCM endpoint, the subscription persisted, and

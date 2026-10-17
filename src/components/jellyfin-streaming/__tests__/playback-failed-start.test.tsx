@@ -49,6 +49,13 @@ describe('a start that fails after another item was playing', () => {
     expect(h.playback().durationSeconds).toBe(0);
     // The outgoing item's encoder is still released.
     expect(h.encodingStops).toContain('session-1');
+    // And Jellyfin is told it stopped, where it was, so the device is not left
+    // listed as playing it until something else plays there.
+    await h.act(async () => {
+      await vi.waitFor(() => expect(h.reports.filter((report) => report.event === 'stopped')).toEqual([
+        expect.objectContaining({ playSessionId: 'session-1', positionTicks: 1200 * 10_000_000 }),
+      ]));
+    });
 
     // Play must not resume the item that was replaced.
     await h.act(() => { h.playback().togglePause(); });
@@ -193,5 +200,43 @@ describe('A media error on the outgoing item while the next one is still being n
     ]);
     expect(h.playback().status).toBe('playing');
     expect(h.playback().stream).toMatchObject({ item: { Id: NEXT.Id }, playMethod: 'DirectPlay' });
+  });
+});
+
+describe('Seeking a direct stream while the next item is still being negotiated', () => {
+  it('leaves the title the viewer has left where it is', async () => {
+    await watching(600);
+    h.holdStreamInfo();
+
+    let goingNext!: Promise<void>;
+    await h.act(() => { goingNext = h.playback().next(); });
+    await h.act(() => { h.playback().seek(100); });
+    // Before the fix this moved the outgoing element and its clock to 100.
+    expect(h.media.currentTime()).toBe(600);
+    expect(h.playback().positionSeconds).toBe(600);
+
+    await h.act(async () => { h.releaseStreamInfo(); await goingNext; });
+    expect(h.playback().stream?.item.Id).toBe(NEXT.Id);
+    expect(h.requests.filter((request) => request.itemId === NEXT.Id)).toEqual([
+      expect.objectContaining({ itemId: NEXT.Id, startTimeTicks: 0 }),
+    ]);
+  });
+});
+
+describe('A start superseded by Stop', () => {
+  it("releases only its own grant, leaving the outgoing encoder to Stop", async () => {
+    await watching(600);
+    h.holdStreamInfo();
+
+    let goingNext!: Promise<void>;
+    await h.act(() => { goingNext = h.playback().next(); });
+    await h.act(async () => { await h.playback().stop(); });
+    await h.act(async () => { h.releaseStreamInfo(); await goingNext; });
+
+    // Stop released session-1. Before the fix the superseded start released it
+    // a second time on its way out.
+    expect(h.encodingStops.filter((session) => session === 'session-1')).toHaveLength(1);
+    expect(h.encodingStops).toContain('session-2');
+    expect(h.playback().status).toBe('idle');
   });
 });

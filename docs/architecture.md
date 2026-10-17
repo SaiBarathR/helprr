@@ -97,7 +97,9 @@ cue instead sits on the bottom row and the browser's cue container is raised by
 the obstruction: `applyCueLine` returns the distance, the provider sets
 `data-cue-lift` and `--hpr-cue-lift` on the video element, and the rule that
 reads them is in `globals.css`. A UA that has the attribute but ignores it falls
-back to rows.
+back to rows. Gecko has it but swaps `'end'` and `'center'` for a percentage
+line, so in Firefox `cueBottomLineAlign` anchors with `'center'`, which Gecko
+draws as a bottom anchor.
 libass is not adjusted — it positions from the subtitle script inside the video
 frame whether or not the chrome is up.
 

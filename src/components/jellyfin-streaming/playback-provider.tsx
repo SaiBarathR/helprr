@@ -489,6 +489,21 @@ export function cueLineFor(line: number, text: string): number {
 }
 
 /**
+ * The `lineAlign` that puts a cue box's bottom edge on a percentage `line`.
+ *
+ * The spec says 'end'. Gecko swaps 'end' and 'center' there: 'end' centres the
+ * box on the line and 'center' ends it on it (Firefox 150, measured on a plain
+ * page with one to three lines, 2026-10-17), so with 'end' every line past the
+ * first of a cue sat on the seek bar. Writing the value and reading it back
+ * cannot tell, so ask the engine's name. Should Gecko correct this, 'center'
+ * straddles the line, which is no worse than 'end' does today.
+ */
+export function cueBottomLineAlign(userAgent: string): LineAlignSetting {
+  // Gecko's own token. Blink and WebKit only say "like Gecko".
+  return /\bGecko\/\d/.test(userAgent) ? 'center' : 'end';
+}
+
+/**
  * Position a track's cues from that setting.
  *
  * One writer, deliberately: jellyfin-web sets `cue.line` here and nowhere else,
@@ -506,6 +521,7 @@ export function applyCueLine(track: TextTrack, line: number, obstruction = 0, vi
   // rather than counting rows from the viewport floor — see cueBottomPercent.
   let percent = cueBottomPercent(videoHeight, obstruction);
   let lift = 0;
+  const bottomAlign = cueBottomLineAlign(typeof navigator === 'undefined' ? '' : navigator.userAgent);
   if (percent !== null) {
     const probe = cues[0];
     // A UA without `lineAlign` anchors a percentage line at the box's *top*,
@@ -523,16 +539,16 @@ export function applyCueLine(track: TextTrack, line: number, obstruction = 0, vi
       }
     } else {
       probe.snapToLines = false;
-      probe.lineAlign = 'end';
+      probe.lineAlign = bottomAlign;
       // The attribute exists but does not take: rows, as before the chrome.
-      if (probe.lineAlign !== 'end') percent = null;
+      if (probe.lineAlign !== bottomAlign) percent = null;
     }
   }
 
   for (const cue of cues) {
     if (percent !== null) {
       cue.snapToLines = false;
-      cue.lineAlign = 'end';
+      cue.lineAlign = bottomAlign;
       cue.line = percent;
       continue;
     }
@@ -733,6 +749,8 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
    */
   const startTokenRef = useRef(0);
   const expansionRef = useRef<AbortController | null>(null);
+  /** The owner `playItems` passes to its start: a fresh pick, not a continuation. */
+  const freshPickRef = useRef<(() => boolean) | null>(null);
   useEffect(() => () => {
     startTokenRef.current += 1;
     expansionRef.current?.abort();
@@ -1150,6 +1168,7 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
      * has actually been granted.
      */
     const outgoingSession = streamRef.current?.playSessionId;
+    const outgoingWasAudio = streamRef.current?.item.MediaType === 'Audio';
     // Track/quality/seek recovery may already have released this session.
     // Carry that fact through this attempt instead of posting cleanup twice.
     // Latched before anything is awaited, so a second change arriving mid-attach
@@ -1182,16 +1201,18 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     };
     try {
       const nextStream = await fetchStream(nextItem.Id, request);
+      if (superseded()) {
+        // This attempt lost the race, so nothing will ever read the session it
+        // was just granted. Hand it back rather than leaving it to time out.
+        // The outgoing one is left to whatever superseded this — Stop or a
+        // newer start — which releases it itself.
+        void stopEncodings(nextStream.playSessionId);
+        return;
+      }
       if (outgoingSession && outgoingSession !== releasedSession && outgoingSession !== nextStream.playSessionId) {
         // Fire and forget: the viewer is waiting on the new stream, not on the
         // old one being tidied up.
         void stopEncodings(outgoingSession);
-      }
-      if (superseded()) {
-        // This attempt lost the race, so nothing will ever read the session it
-        // was just granted. Hand it back rather than leaving it to time out.
-        void stopEncodings(nextStream.playSessionId);
-        return;
       }
       streamRef.current = nextStream;
       // The replacement element starts at zero until it seeks itself into place.
@@ -1213,7 +1234,12 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
       setAudioStreamIndex(chosenAudio);
       setSubtitleStreamIndex(chosenSubtitle);
       setDurationSeconds(ticksToSeconds(nextStream.mediaSource.RunTimeTicks || nextItem.RunTimeTicks));
-      setVideoExpanded(nextItem.MediaType !== 'Audio');
+      // A video opens the stage, and a fresh pick of music starts in the mini
+      // player. Otherwise a track after a track keeps the player the way the
+      // listener left it: this runs for every track change and every restart,
+      // so collapsing here shut an expanded player on each one.
+      const freshPick = owner !== undefined && owner === freshPickRef.current;
+      setVideoExpanded((expanded) => nextItem.MediaType !== 'Audio' || (!freshPick && outgoingWasAudio && expanded));
       const ready = await attachMedia(nextStream, chosenSubtitle, stillCurrent);
       if (superseded()) return;
       // Autoplay rejection is a paused session, not a failed codec. Preserve
@@ -1279,6 +1305,25 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
           retryingRef.current = false;
         }
       }
+      // The item this one was replacing, when the failure leaves the player
+      // without it. Jellyfin still lists it as playing on this device, so it
+      // gets the Stopped report Stop would have sent, from a snapshot taken
+      // before the element is torn down.
+      const replaced = streamRef.current && streamRef.current.item.Id !== nextItem.Id ? streamRef.current : null;
+      const replacedReport: Parameters<typeof report>[2] | null = replaced ? {
+        positionTicks: positionToReport(mediaRef.current, replaced, reachedStartRef.current)
+          || secondsToTicks(positionRef.current),
+        isPaused: true,
+        volumeLevel: Math.round(volume * 100),
+        isMuted: muted,
+        playbackRate,
+        audioStreamIndex: audioIndexRef.current,
+        subtitleStreamIndex: subtitleIndexRef.current,
+        repeatMode: repeatRef.current,
+        shuffleMode: shuffledRef.current ? 'Shuffle' : 'Sorted',
+        playbackStartTimeTicks: playbackStartRef.current,
+        maxStreamingBitrate: maxBitrate || undefined,
+      } : null;
       // A visible terminal error must also end media work. Leaving hls.js
       // attached lets its network recovery keep requesting segments forever.
       // Retire callbacks before destruction so late loader events cannot retry.
@@ -1287,7 +1332,14 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
       mediaRef.current?.pause();
       destroyPlayers();
       const failedSession = streamRef.current?.playSessionId;
-      if (failedSession) void stopEncodings(failedSession, AbortSignal.timeout(10_000));
+      // Report before cleanup, as Stop does.
+      void (async () => {
+        if (replaced && replacedReport) {
+          await report('stopped', replaced, replacedReport, AbortSignal.timeout(10_000));
+          void getQueryClient().invalidateQueries({ queryKey: ['jellyfin', 'catalog'] });
+        }
+        if (failedSession) await stopEncodings(failedSession, AbortSignal.timeout(10_000));
+      })();
       // Nothing was granted for this item, so the stream still on the player is
       // the one it was meant to replace, torn down just above. Left there, its
       // clock sits under this item's error, Play resumes it and Stop reports it.
@@ -1313,6 +1365,7 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     expansionRef.current = controller;
     const owns = reserveStart(startTokenRef);
     const stillCurrent = () => owns() && !controller.signal.aborted;
+    freshPickRef.current = stillCurrent;
     const wanted = Math.min(Math.max(0, startIndex), items.length - 1);
     // The queue is replaced, so additions still being looked up for the old one
     // go with it; see `addToQueue`.
@@ -1523,12 +1576,14 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     // A broadcast has no position to move to. Refusing here covers every way
     // in: the skips, Previous, the keyboard and the lock-screen controls.
     if (isLiveStream(current.item, current)) return;
+    // Another item's start is in flight and owns the player (see
+    // `restartWith`). Until its stream arrives the element and the clock are
+    // the outgoing item's: a restart would take that claim and ask for the
+    // incoming item at this position with the outgoing item's source id, and a
+    // plain seek would move a title the viewer has already left.
+    if (current.item.Id !== queueRef.current[indexRef.current]?.Id) return;
     const isHls = current.mimeType.toLowerCase().includes('mpegurl') || current.mediaUrl.includes('.m3u8');
     if (current.playMethod === 'Transcode' && !isHls) {
-      // Another item's start is in flight and owns the player (see
-      // `restartWith`). Restarting here would take that claim and ask for the
-      // incoming item at this position, with the outgoing item's source id.
-      if (current.item.Id !== queueRef.current[indexRef.current]?.Id) return;
       void (async () => {
         const stillCurrent = reserveStart(startTokenRef);
         await stopEncodings(current.playSessionId);
@@ -2098,6 +2153,15 @@ export function audioStreams(stream: HelprrStreamInfo | null): JellyfinMediaStre
 
 export function subtitleStreams(stream: HelprrStreamInfo | null): JellyfinMediaStream[] {
   return (stream?.mediaSource.MediaStreams ?? []).filter((candidate) => candidate.Type === 'Subtitle');
+}
+
+/**
+ * Whether the transport shows Play rather than Pause. Only something playing,
+ * or on its way to playing, can be paused: after a failed start nothing is,
+ * and a Pause button there claimed otherwise.
+ */
+export function transportShowsPlay(status: PlaybackContextValue['status']): boolean {
+  return status !== 'playing' && status !== 'loading';
 }
 
 export function playMethodLabel(method: JellyfinPlayMethod | undefined): string {

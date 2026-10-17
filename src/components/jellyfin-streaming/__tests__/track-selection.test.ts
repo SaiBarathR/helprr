@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { applyCueLine, cueLineFor, positionToReport, reserveStart, subtitleNeedsOwnStream, waitForLayout, whenVideoHasDimensions } from '@/components/jellyfin-streaming/playback-provider';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { applyCueLine, cueBottomLineAlign, cueLineFor, positionToReport, reserveStart, subtitleNeedsOwnStream, transportShowsPlay, waitForLayout, whenVideoHasDimensions } from '@/components/jellyfin-streaming/playback-provider';
 import type { HelprrStreamInfo } from '@/types/jellyfin-streaming';
 
 /**
@@ -146,6 +146,30 @@ describe('applyCueLine', () => {
     const { track, cues } = trackOf(['a', 'a\nb', 'a\nb\nc']);
     applyCueLine(track, -3, 101, 876);
     expect(new Set(cues.map((c) => c.line)).size).toBe(1);
+  });
+
+  describe('in Firefox', () => {
+    const FIREFOX = 'Mozilla/5.0 (X11; Linux x86_64; rv:150.0) Gecko/20100101 Firefox/150.0';
+    afterEach(() => vi.unstubAllGlobals());
+
+    it("anchors with 'center', which Gecko draws the way the spec draws 'end'", () => {
+      // Firefox 150 centres an 'end' box on its line, so the second line of a
+      // two-line cue sat on the seek bar.
+      vi.stubGlobal('navigator', { userAgent: FIREFOX });
+      const { track, cues } = trackOf(['one line', 'first\nsecond']);
+      expect(applyCueLine(track, -3, 101, 876)).toBe(0);
+      for (const cue of cues) {
+        expect([cue.snapToLines, cue.lineAlign]).toEqual([false, 'center']);
+        expect(cue.line).toBeCloseTo(((876 - 101) / 876) * 100, 4);
+      }
+    });
+
+    it('still counts rows while the chrome is down', () => {
+      vi.stubGlobal('navigator', { userAgent: FIREFOX });
+      const { track, cues } = trackOf(['first\nsecond']);
+      applyCueLine(track, -3, 0, 876);
+      expect([cues[0].snapToLines, cues[0].lineAlign, cues[0].line]).toEqual([true, 'start', -4]);
+    });
   });
 
   it('falls back to rows when the UA ignores lineAlign', () => {
@@ -390,5 +414,28 @@ describe('whenVideoHasDimensions', () => {
     el.videoWidth = 1920;
     for (const type of ['loadedmetadata', 'loadeddata', 'resize']) el.dispatchEvent(new Event(type));
     expect(runs).toBe(0);
+  });
+});
+
+describe('cueBottomLineAlign', () => {
+  it("swaps to 'center' for Gecko and keeps 'end' everywhere else", () => {
+    expect(cueBottomLineAlign('Mozilla/5.0 (X11; Linux x86_64; rv:150.0) Gecko/20100101 Firefox/150.0')).toBe('center');
+    expect(cueBottomLineAlign('Mozilla/5.0 (Android 16; Mobile; rv:150.0) Gecko/150.0 Firefox/150.0')).toBe('center');
+    // Safari, Chrome and Firefox for iOS (WebKit) only say "like Gecko".
+    expect(cueBottomLineAlign('Mozilla/5.0 (iPhone; CPU iPhone OS 27_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.0 Mobile/15E148 Safari/604.1')).toBe('end');
+    expect(cueBottomLineAlign('Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36')).toBe('end');
+    expect(cueBottomLineAlign('Mozilla/5.0 (iPhone; CPU iPhone OS 27_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) FxiOS/150.0 Mobile/15E148 Safari/605.1.15')).toBe('end');
+    expect(cueBottomLineAlign('')).toBe('end');
+  });
+});
+
+describe('transportShowsPlay', () => {
+  it('offers Pause only while something is playing or about to', () => {
+    expect(transportShowsPlay('playing')).toBe(false);
+    expect(transportShowsPlay('loading')).toBe(false);
+    expect(transportShowsPlay('paused')).toBe(true);
+    // After a failed start nothing plays; a Pause button there claimed it did.
+    expect(transportShowsPlay('error')).toBe(true);
+    expect(transportShowsPlay('idle')).toBe(true);
   });
 });

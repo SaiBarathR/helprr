@@ -2,7 +2,7 @@
 
 import { ListMusic, Pause, Play, Repeat, Repeat1, Shuffle, SkipBack, SkipForward, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { useJellyfinPlayback } from '@/components/jellyfin-streaming/playback-provider';
+import { transportShowsPlay, useJellyfinPlayback } from '@/components/jellyfin-streaming/playback-provider';
 import { LiveBadge } from '@/components/jellyfin-streaming/live-badge';
 import { jellyfinPosterUrl } from '@/lib/jellyfin-playback/image';
 import { formatClock } from '@/lib/jellyfin-playback/device';
@@ -63,8 +63,8 @@ export function NowPlayingBar() {
           <Button variant="ghost" size="icon-sm" className="hidden sm:inline-flex" onClick={() => void playback.previous()} aria-label="Previous">
             <SkipBack />
           </Button>
-          <Button variant="ghost" size="icon-sm" onClick={playback.togglePause} aria-label={playback.status === 'paused' ? 'Play' : 'Pause'}>
-            {playback.status === 'paused' ? <Play className="fill-current" /> : <Pause className="fill-current" />}
+          <Button variant="ghost" size="icon-sm" onClick={playback.togglePause} aria-label={transportShowsPlay(playback.status) ? 'Play' : 'Pause'}>
+            {transportShowsPlay(playback.status) ? <Play className="fill-current" /> : <Pause className="fill-current" />}
           </Button>
           <Button variant="ghost" size="icon-sm" onClick={() => void playback.next()} aria-label="Next">
             <SkipForward />
