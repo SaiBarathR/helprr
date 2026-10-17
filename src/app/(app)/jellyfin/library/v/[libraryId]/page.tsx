@@ -22,12 +22,11 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/co
 import { cn } from '@/lib/utils';
 import type { CatalogCardShape } from '@/lib/jellyfin-playback/image';
 import type { CatalogFiltersResponse, CatalogItemsResponse } from '@/types/jellyfin-streaming';
+import { PLAY_ALL_MAX, collectForPlayAll } from './play-all';
 
 /** The reference install runs a 100-item library page; matching it keeps the
  *  "1-100 of 492" range honest and the grid a sane size. */
 const PAGE_SIZE = 100;
-const PLAY_ALL_MAX = 500;
-const PLAY_ALL_PAGE = 200;
 
 const SORT_FIELDS: Array<{ id: string; label: string }> = [
   { id: 'SortName', label: 'Name' },
@@ -168,17 +167,11 @@ export default function LibraryBrowserPage() {
   const playEverything = async (shuffle: boolean) => {
     setQueueing(true);
     try {
-      const collected: typeof items = [];
-      let startIndex = 0;
-      let count = Number.POSITIVE_INFINITY;
-      while (collected.length < Math.min(count, PLAY_ALL_MAX)) {
-        const chunk = await jsonFetcher<CatalogItemsResponse>(
-          `/api/jellyfin/catalog/items?${buildQuery(PLAY_ALL_PAGE, startIndex)}`,
-        )();
-        count = chunk.total;
-        if (chunk.items.length === 0) break;
-        collected.push(...chunk.items);
-        startIndex += chunk.items.length;
+      const { items: collected, total } = await collectForPlayAll((limit, startIndex) =>
+        jsonFetcher<CatalogItemsResponse>(`/api/jellyfin/catalog/items?${buildQuery(limit, startIndex)}`)(),
+      );
+      if (total > collected.length) {
+        console.warn(`[Jellyfin] Play all queued ${collected.length} of ${total} titles (limit ${PLAY_ALL_MAX})`);
       }
       if (collected.length > 0) await playback.playItems(collected, 0, shuffle ? { shuffle: true } : undefined);
     } finally {

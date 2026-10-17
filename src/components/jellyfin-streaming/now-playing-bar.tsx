@@ -2,7 +2,7 @@
 
 import { ListMusic, Pause, Play, Repeat, Repeat1, Shuffle, SkipBack, SkipForward, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { transportShowsPlay, useJellyfinPlayback } from '@/components/jellyfin-streaming/playback-provider';
+import { repeatLabel, transportShowsPlay, useJellyfinPlayback } from '@/components/jellyfin-streaming/playback-provider';
 import { LiveBadge } from '@/components/jellyfin-streaming/live-badge';
 import { jellyfinPosterUrl } from '@/lib/jellyfin-playback/image';
 import { formatClock } from '@/lib/jellyfin-playback/device';
@@ -74,7 +74,7 @@ export function NowPlayingBar() {
             size="icon-sm"
             className="hidden sm:inline-flex"
             onClick={() => playback.setRepeat(playback.repeat === 'RepeatNone' ? 'RepeatAll' : playback.repeat === 'RepeatAll' ? 'RepeatOne' : 'RepeatNone')}
-            aria-label="Repeat"
+            aria-label={repeatLabel(playback.repeat)}
           >
             {playback.repeat === 'RepeatOne' ? <Repeat1 className="text-[var(--hpr-amber)]" /> : <Repeat className={playback.repeat === 'RepeatAll' ? 'text-[var(--hpr-amber)]' : undefined} />}
           </Button>
