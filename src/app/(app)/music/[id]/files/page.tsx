@@ -26,11 +26,12 @@ import { useCan } from '@/components/permission-provider';
 import { QuickContextMenu, type ContextAction } from '@/components/ui/quick-context-menu';
 import { InteractiveSearchDialog } from '@/components/media/interactive-search-dialog';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { lastPathSegment } from '@/lib/paths';
 
 type DrawerRow = { label: string; value: string; breakValue?: boolean };
 
 function basename(path: string): string {
-  return path.split('/').pop() || path;
+  return lastPathSegment(path) || path;
 }
 
 function historyEventLabel(eventType: string): string {

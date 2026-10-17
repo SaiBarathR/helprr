@@ -27,7 +27,7 @@ import {
   useRootFolders,
 } from '@/lib/hooks/use-reference-data';
 import type { LidarrArtist } from '@/types';
-import { parentPath, lastPathSegment, joinPath } from '@/lib/paths';
+import { parentPath, pathInRootFolder } from '@/lib/paths';
 
 export default function ArtistEditPage() {
   const { id } = useParams();
@@ -101,9 +101,8 @@ export default function ArtistEditPage() {
       tags: selectedTags,
     };
 
-    if (rootFolder && artist.path) {
-      updated.path = joinPath(rootFolder, lastPathSegment(artist.path));
-    }
+    const movedPath = artist.path ? pathInRootFolder(artist.path, rootFolder) : null;
+    if (movedPath) updated.path = movedPath;
 
     saveMutation.mutate(updated);
   }

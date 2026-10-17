@@ -83,6 +83,7 @@ import { WatchStatusInline } from '@/components/jellyfin/watch-status-indicator'
 import { QuickContextMenu, type ContextActionGroup } from '@/components/ui/quick-context-menu';
 import { MediaDownloadProgress } from '@/components/media/media-download-progress';
 import { formatLanguageCode, formatRegionCodes } from '@/lib/media-locale';
+import { parentPath } from '@/lib/paths';
 
 export default function MovieDetailPage() {
   const { id } = useParams();
@@ -312,7 +313,7 @@ export default function MovieDetailPage() {
   const poster = getImageUrl(movie.images, 'poster', 'radarr');
   const qualityProfile = qualityProfiles.find((qp) => qp.id === movie.qualityProfileId);
   const movieTags = tags.filter((t) => movie.tags.includes(t.id));
-  const rootFolder = movie.path ? movie.path.split('/').slice(0, -1).join('/') : '';
+  const rootFolder = movie.path ? parentPath(movie.path) : '';
   const movieFileSize = movie.movieFile?.size ?? movie.sizeOnDisk;
 
   // Extract media info from movie file if available
