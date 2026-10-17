@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getCurrentSeason, seasonalSortNote } from './anilist-helpers';
+import { getCurrentSeason, orderYearRange, seasonalSortNote } from './anilist-helpers';
 
 const october = new Date(2026, 9, 2);
 
@@ -32,5 +32,27 @@ describe('getCurrentSeason', () => {
     expect(getCurrentSeason(new Date(2026, 3, 1))).toEqual({ season: 'SPRING', year: 2026 });
     expect(getCurrentSeason(new Date(2026, 8, 30))).toEqual({ season: 'SUMMER', year: 2026 });
     expect(getCurrentSeason(october)).toEqual({ season: 'FALL', year: 2026 });
+  });
+});
+
+describe('orderYearRange', () => {
+  const filters = { genres: [], year: '', season: '', formats: [], status: '' };
+
+  it('puts a range picked high to low in order', () => {
+    expect(orderYearRange({ ...filters, yearMin: '2020', yearMax: '2010' })).toMatchObject({ yearMin: '2010', yearMax: '2020' });
+  });
+
+  it('leaves an ordered range or a single bound as it is', () => {
+    const ordered = { ...filters, yearMin: '2010', yearMax: '2015' };
+    expect(orderYearRange(ordered)).toBe(ordered);
+    const single = { ...filters, yearMin: '2020', yearMax: '' };
+    expect(orderYearRange(single)).toBe(single);
+  });
+
+  it('leaves a bound the API ignores where it is', () => {
+    for (const [yearMin, yearMax] of [['2020', '0'], ['0', '2020'], ['2020', 'x']]) {
+      const range = { ...filters, yearMin, yearMax };
+      expect(orderYearRange(range)).toBe(range);
+    }
   });
 });

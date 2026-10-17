@@ -27,7 +27,7 @@ import {
 } from '@/components/ui/select';
 import { DEFAULT_ANIME_FILTERS, type AnimeFiltersState, useUIStore } from '@/lib/store';
 import { ActiveFilterBar, type ActiveFilter } from '@/components/ui/active-filter-bar';
-import { seasonalSortNote } from '@/lib/anilist-helpers';
+import { orderYearRange, seasonalSortNote } from '@/lib/anilist-helpers';
 import { exploreHref, exploreLinkView, type ExploreView } from './_components/link-view';
 import {
   ArrowDownAZ,
@@ -128,7 +128,12 @@ export default function AnimePage() {
     setLinkView(exploreLinkView(urlParams));
   }
   const animeSort = linkView ? linkView.sort : savedSort;
-  const animeFilters = linkView ? linkView.filters : savedFilters;
+  // A range given high to low (a link, or filters saved before ranges were
+  // ordered) shows and queries as the same years, low to high.
+  const animeFilters = useMemo(
+    () => orderYearRange(linkView ? linkView.filters : savedFilters),
+    [linkView, savedFilters],
+  );
 
   // The search and a link view's sort/filters are restored on back-nav from the
   // URL (write-back effect below keeps them there); list data is restored from the
@@ -287,7 +292,7 @@ export default function AnimePage() {
   };
 
   const applyFilters = () => {
-    updateBrowse({ sort: draftSort, filters: draftFilters });
+    updateBrowse({ sort: draftSort, filters: orderYearRange(draftFilters) });
     setFilterOpen(false);
     setSearchQuery('');
     setViewMode('browse');
