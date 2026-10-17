@@ -57,9 +57,13 @@ const generationKey = (userId: string) => `helprr:cache:recommendations:generati
 async function getGeneration(userId: string): Promise<string | null> {
   try {
     const redis = await getRedisClient();
-    // Before the first invalidation (or once Redis has lost the key, and with
-    // it the snapshots) there is a single initial generation.
-    return (await redis.get(generationKey(userId))) ?? 'initial';
+    const key = generationKey(userId);
+    const current = await redis.get(key);
+    if (current) return current;
+    // No generation yet, or Redis dropped the key: start a fresh one, so no
+    // snapshot from before can be read again. NX makes concurrent reads agree.
+    await redis.set(key, crypto.randomUUID(), { NX: true });
+    return await redis.get(key);
   } catch {
     return null;
   }

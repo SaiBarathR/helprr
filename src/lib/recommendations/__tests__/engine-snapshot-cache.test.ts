@@ -11,7 +11,8 @@ const mocks = vi.hoisted(() => {
     compose: vi.fn(),
     redis: {
       get: vi.fn(async (key: string) => counters.get(key) ?? null),
-      set: vi.fn(async (key: string, value: string) => {
+      set: vi.fn(async (key: string, value: string, options?: { NX?: boolean }) => {
+        if (options?.NX && counters.has(key)) return null;
         counters.set(key, value);
         return 'OK';
       }),
@@ -144,7 +145,20 @@ describe('recommendation snapshot cache', () => {
     used.push(mocks.counters.get(key)!);
 
     expect(new Set(used).size).toBe(7);
-    expect(used).not.toContain('initial');
+  });
+
+  it('starts a fresh generation when Redis has dropped the key, never an old one', async () => {
+    const key = 'helprr:cache:recommendations:generation:user-1';
+    await getRecommendationRails(user); // cached under the generation started now
+    const first = mocks.counters.get(key)!;
+    mocks.feedback.push({ itemKey: 'tmdb:movie:1', eventType: 'not_interested' });
+
+    // The key is evicted (the old snapshot is still there); no invalidation ran.
+    mocks.counters.delete(key);
+    const rails = await getRecommendationRails(user);
+
+    expect(mocks.counters.get(key)).not.toBe(first);
+    expect(rails.rails[0]).toMatchObject({ items: ['tmdb:movie:1'] });
   });
 
   it('builds directly, without Redis, when caching is off', async () => {
