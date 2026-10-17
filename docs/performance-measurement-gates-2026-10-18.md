@@ -37,9 +37,10 @@ covers the shapes it left out:
 
 ### Results
 
-Every newest-50 list stayed at or under 2.2 ms at 1,000,000 rows, served by
+For the event type and date filters and for common-term searches, every
+newest-50 list stayed at or under 2.2 ms at 1,000,000 rows, served by
 `NotificationHistory_createdAt_idx` or `NotificationHistory_userId_createdAt_idx`.
-The counts:
+The admin search for a rare term is the exception, below. The counts:
 
 | Count query | 10k rows | 100k rows | 1M rows | Plan at 1M |
 | --- | ---: | ---: | ---: | --- |
@@ -88,8 +89,9 @@ approaches a million rows.
 ## App-shell service query
 
 `getAppShellServiceFlags()` (`src/lib/app-shell-services.ts`) runs one
-`serviceConnection.findMany` on every authenticated navigation. The plan said
-to add a cross-request cache only if that query stays material.
+`serviceConnection.findMany` whenever the authenticated app layout renders on
+the server. The plan said to add a cross-request cache only if that query stays
+material.
 
 | Measurement (development stack) | Result |
 | --- | ---: |
@@ -98,6 +100,9 @@ to add a cross-request cache only if that query stays material.
 | Authenticated `/settings` document, TTFB median of 15 | 63.2 ms |
 | `/api/health` on the same network path, TTFB median of 15 | 46.5 ms |
 
-That puts the navigation's server time at about 17 ms, of which the query is
-about 2%. It is not material, so **no cache is added**. The session and user
+The two TTFB medians differ by 16.7 ms. The separately measured 0.35 ms
+query is about 2% of that difference. This is a rough comparison, not a
+measured share of SSR time; the query also runs alongside the user and cache
+generation lookups in the same `Promise.all`. Either way it is not material, so
+**no cache is added**. The session and user
 lookup on the same path stays uncached, as the plan requires.
