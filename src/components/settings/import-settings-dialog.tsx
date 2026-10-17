@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { AlertTriangle, FileJson, Loader2, Upload } from 'lucide-react';
 import {
@@ -66,15 +66,6 @@ const CLEANERS: Cleaner[] = ['queue', 'download'];
 interface CleanerState {
   enabled: boolean;
   autoRunMode: AutoRunMode;
-}
-
-const CURRENT_CLEANERS_KEY = ['settings-import', 'current-cleaners'] as const;
-
-async function readCurrentCleaners({ signal }: { signal?: AbortSignal } = {}) {
-  const [queue, download] = await Promise.all(
-    CLEANERS.map((cleaner) => jsonFetcher<CleanerState>(`/api/cleanup/${cleaner}/config`)({ signal })),
-  );
-  return { queue, download };
 }
 
 // A cleaner's config from the file, read the way the import stores it.
@@ -261,22 +252,29 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
     () => parsed?.payload.notificationPrefs ?? [],
     [parsed]
   );
-  // What each cleaner does now, to tell whether the file would start its
-  // automatic deletion. A state that could not be read counts as off.
+  // What each cleaner does now, read each time the dialog opens, to tell
+  // whether the file would start its automatic deletion.
   const fileCleanup = isAdmin ? parsed?.payload.cleanup : undefined;
-  const queryClient = useQueryClient();
   const currentCleaners = useQuery({
-    queryKey: CURRENT_CLEANERS_KEY,
-    queryFn: readCurrentCleaners,
+    queryKey: ['settings-import', 'current-cleaners'],
+    queryFn: async ({ signal }) => {
+      const [queue, download] = await Promise.all(
+        CLEANERS.map((cleaner) => jsonFetcher<CleanerState>(`/api/cleanup/${cleaner}/config`)({ signal })),
+      );
+      return { queue, download };
+    },
     enabled: open && !!fileCleanup,
     staleTime: 0,
   });
-  const turnedOnBy = (current: Partial<Record<Cleaner, CleanerState>> | undefined) => CLEANERS.filter((cleaner) => {
+  // Only a finished read counts. While one runs, or after one fails, an
+  // earlier result may be out of date: the state is unknown, counted as off,
+  // and the import asks.
+  const readingCleaners = currentCleaners.isFetching;
+  const knownCleaners = readingCleaners || currentCleaners.isError ? undefined : currentCleaners.data;
+  const cleanersTurnedOn = useMemo(() => CLEANERS.filter((cleaner) => {
     const next = importedCleaner(cleaner === 'queue' ? fileCleanup?.queueConfig : fileCleanup?.downloadConfig);
-    return next !== null && startsAutomaticDeletion(current?.[cleaner], next);
-  });
-  // For the note only; the import itself reads the cleaners again.
-  const cleanersTurnedOn = turnedOnBy(currentCleaners.data);
+    return next !== null && startsAutomaticDeletion(knownCleaners?.[cleaner], next);
+  }), [fileCleanup, knownCleaners]);
 
   const hasSelection = useMemo(() => (
     !!parsed && (
@@ -313,26 +311,16 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
       setPendingConfirm({ replaceAll });
       return;
     }
-    void confirmCleanupThenImport(replaceAll);
+    confirmCleanupThenImport(replaceAll);
   }
 
   // An import that turns on a cleaner's automatic deletion asks first, as a
   // save on the Cleanup page does.
-  async function confirmCleanupThenImport(replaceAll: boolean) {
+  function confirmCleanupThenImport(replaceAll: boolean) {
     const importsCleanup = replaceAll ? !!fileCleanup : selectedCleanup;
-    if (importsCleanup) {
-      // Read the cleaners afresh: a cached state can be out of date. Applying
-      // stays blocked meanwhile.
-      setImporting(true);
-      const current = await queryClient
-        .fetchQuery({ queryKey: CURRENT_CLEANERS_KEY, queryFn: readCurrentCleaners, staleTime: 0 })
-        .catch(() => undefined);
-      setImporting(false);
-      const cleaners = turnedOnBy(current);
-      if (cleaners.length > 0) {
-        setPendingCleanup({ replaceAll, cleaners });
-        return;
-      }
+    if (importsCleanup && cleanersTurnedOn.length > 0) {
+      setPendingCleanup({ replaceAll, cleaners: cleanersTurnedOn });
+      return;
     }
     void runImport(replaceAll);
   }
@@ -605,7 +593,7 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
                       + (parsed.payload.cleanup.slowRules?.length ?? 0)
                       + (parsed.payload.cleanup.seedingRules?.length ?? 0)} rule(s). Replaces existing rules.
                     </div>
-                    {cleanersTurnedOn.length > 0 && (
+                    {!readingCleaners && cleanersTurnedOn.length > 0 && (
                       <div className="mt-1 text-xs text-amber-600 dark:text-amber-500">
                         Turns on automatic deletion for the {cleanersTurnedOn.map((c) => CLEANER_NAMES[c]).join(' and ')}.
                         You&apos;ll be asked to confirm.
@@ -799,7 +787,7 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
               onClick={() => {
                 const replaceAll = pendingConfirm?.replaceAll ?? false;
                 setPendingConfirm(null);
-                void confirmCleanupThenImport(replaceAll);
+                confirmCleanupThenImport(replaceAll);
               }}
               disabled={importing}
             >
