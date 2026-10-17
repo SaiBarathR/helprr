@@ -637,6 +637,37 @@ restarts, updates, or migrates containers and never overwrites an existing dump.
 > but it is not a restore test. Periodically restore into an isolated environment and
 > retain an off-host copy according to your own recovery needs.
 
+**Keep a copy off the host.** A dump that exists only on the Docker host is lost
+with the host. Either write it straight to storage that lives elsewhere, or copy it
+there after it is written:
+
+- **Mounted storage.** Mount a share or disk that belongs to another machine (for
+  example over NFS, or an external drive) and point the helper at it. The helper
+  creates the directory if needed, restricts it to `0700` and each dump to `0600`,
+  and refuses a symlinked path, so use a mount that keeps Unix permissions:
+
+  ```bash
+  ./scripts/backup.sh --output-dir /mnt/offsite/helprr
+  ```
+
+- **Copy after writing.** Keep the default `backups/stable/` and copy new dumps to
+  another machine. Encrypt first, so the copy is protected wherever it lands, for
+  example with [age](https://github.com/FiloSottile/age) and a recipient key kept
+  off the host:
+
+  ```bash
+  dump=backups/stable/helprr-pre-upgrade-YYYYMMDD-HHMMSS.dump
+  age -r "$BACKUP_RECIPIENT" -o "$dump.age" "$dump" &&
+    scp "$dump.age" backup-host:/srv/backups/helprr/
+  ```
+
+  Each encrypted copy keeps its dump's timestamped name, so a new one never
+  replaces an older one, and it is copied only once encryption has succeeded.
+
+Helprr never deletes dumps, here or on the other machine, so prune old copies
+yourself. Before relying on an off-host copy, restore one into an isolated
+environment as described above.
+
 **Restore over an existing installation** (e.g. roll back after a bad change):
 
 ```bash
