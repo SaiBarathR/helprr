@@ -1,0 +1,13 @@
+# Proposes updates to the commit-pinned GitHub Actions as reviewable PRs
+# against development. Minor and patch updates come together; each major
+# update comes on its own.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: development
+    schedule:
+      interval: weekly
+    groups:
+      github-actions:
+        update-types: [minor, patch]
