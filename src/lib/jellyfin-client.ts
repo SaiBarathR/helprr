@@ -932,9 +932,10 @@ export class JellyfinClient {
    * Persist resume position on the member's own account.
    *
    * Session reports (/Sessions/Playing*) run on the member's own token, so
-   * Jellyfin attributes their progress to the member. This direct write, with
-   * the explicit userId `markPlayed` also uses, stays as the resume safety net;
-   * it is what made Resume work while sessions still ran on the admin API key.
+   * Jellyfin attributes their progress to the member. This direct write runs on
+   * the admin API key with the explicit userId `markPlayed` also uses, and stays
+   * as the resume safety net; it is what made Resume work while sessions still
+   * ran on the admin API key.
    */
   async updateUserItemData(
     itemId: string,
@@ -956,8 +957,9 @@ export class JellyfinClient {
    *    equivalent and are dropped; shuffle travels as `PlaybackOrder`
    *    ('Default' | 'Shuffle'), not `ShuffleMode`.
    *  - updateUserItemData also writes the resume position to the member's
-   *    account directly, as a safety net beside the session report. Both run
-   *    on the member's own token.
+   *    account directly, as a safety net beside the session report. Session
+   *    reports use the member's own token; the direct write uses the admin API
+   *    key with an explicit userId.
    */
   async reportPlayback(payload: PlaybackProgressPayload): Promise<void> {
     const headers = this.playbackHeaders(payload.deviceId, payload.deviceName);
