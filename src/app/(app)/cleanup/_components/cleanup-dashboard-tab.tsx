@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -132,6 +132,10 @@ export function CleanupDashboardTab({ onNavigate }: { onNavigate: (target: 'queu
       };
       return { stats: statsRes, strikes: strikesRes.records, strikeTotal: strikesRes.total, status };
     },
+    // Keep the last page while the next one loads. Without it the strike total
+    // read as 0 for a moment, the page clamp below sent Next straight back to
+    // page 1, and the list blanked between pages.
+    placeholderData: keepPreviousData,
     refetchInterval: backoffRefetchInterval(15000),
     refetchIntervalInBackground: false,
     refetchOnWindowFocus: true,
