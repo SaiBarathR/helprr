@@ -114,6 +114,10 @@ desktop is fully supported.
 - Minimum code-change gate: `npm run lint`, `npm test`, `npm run build`, and
   `git diff --check`.
 - Add `npx prisma validate` and `npm run test:migrations` for schema/release work.
+- For settings-import changes, also run
+  `src/lib/__tests__/settings-import.integration.test.ts` against a migrated,
+  disposable PostgreSQL database named exactly `helprr_import_test`
+  (`SETTINGS_IMPORT_TEST_DATABASE_URL`); it is skipped without one.
 - Validate both Compose files for Docker/runtime changes. Manually exercise the
   affected API/UI flow and relevant admin, restricted-member, ownership,
   partial-failure, and PWA/browser cases.
