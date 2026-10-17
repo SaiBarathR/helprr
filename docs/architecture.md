@@ -539,7 +539,8 @@ process can serve a request and says nothing about dependencies.
 
 `GET /api/ready` performs bounded checks for PostgreSQL, Redis, and the exact set
 of fully applied migration directories. It returns HTTP 200 only when all checks
-are `ok`, otherwise 503. Responses expose coarse status only, never connection
+are `ok`, otherwise 503. From the moment a SIGTERM/SIGINT drain begins it reports
+`stopping` (503), so nothing reading readiness sends the draining instance new work. Responses expose coarse status only, never connection
 details or secrets.
 
 Admin diagnostics include an update notice and downloadable support bundle. The

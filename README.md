@@ -280,7 +280,8 @@ Use `docker compose logs -f helprr` to follow startup. `GET /api/health` is an
 unauthenticated liveness probe that checks only whether the Node process responds.
 `GET /api/ready` is a separate unauthenticated readiness probe; it returns HTTP 200
 only when PostgreSQL, Redis, and the shipped Prisma migration history are ready, or
-HTTP 503 with redacted component status otherwise.
+HTTP 503 with redacted component status otherwise. Once Helprr has begun a graceful
+shutdown it returns 503 with status `stopping`.
 
 ### Isolated development stack
 
