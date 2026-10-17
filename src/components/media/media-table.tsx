@@ -1,7 +1,7 @@
 'use client';
 
 import Link from '@/components/ui/app-link';
-import { useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import { Eye, EyeOff } from 'lucide-react';
 import type { MediaImage } from '@/types';
 import { DataTable, type DataTableColumn } from '@/components/ui/data-table';
@@ -47,6 +47,8 @@ export interface MediaTableRow {
   trackProgress?: string;
 }
 
+const keyOf = (row: MediaTableRow) => `${row.instanceId ?? ''}:${row.id}`;
+
 export function MediaTable({
   rows,
   visibleFields,
@@ -85,8 +87,7 @@ export function MediaTable({
   const lookup = useWatchLookup(Boolean(
     watchScope && rows.some((row) => row.instanceId && row.id != null),
   ));
-  const keyOf = (row: MediaTableRow) => `${row.instanceId ?? ''}:${row.id}`;
-  const isSelected = (row: MediaTableRow) => selectedKeys?.has(keyOf(row)) ?? false;
+  const isSelected = useCallback((row: MediaTableRow) => selectedKeys?.has(keyOf(row)) ?? false, [selectedKeys]);
 
   const columns = useMemo(() => {
     const show = (field: string) => visibleFields.includes(field);
@@ -276,10 +277,7 @@ export function MediaTable({
       });
     }
     return cols;
-    // isSelected/lookup are stable enough per render; deps below capture what
-    // actually changes column construction.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visibleFields, type, selectable, selectedKeys, onToggleSelect, onNavigate, watchScope, lookup, sortKeys]);
+  }, [visibleFields, type, selectable, isSelected, onToggleSelect, onNavigate, watchScope, lookup, sortKeys]);
 
   return (
     <DataTable
