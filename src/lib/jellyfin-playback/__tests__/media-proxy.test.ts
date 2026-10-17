@@ -8,6 +8,7 @@ import {
 import { rewriteHlsPlaylist } from '@/lib/jellyfin-playback/hls-rewrite';
 import { buildHelprrStreamInfo } from '@/lib/jellyfin-playback/stream-info';
 import type { JellyfinItem, JellyfinMediaSource } from '@/types/jellyfin';
+import type { PlaybackInfoResponse } from '@/types/jellyfin-streaming';
 
 describe('jellyfin media path allowlist', () => {
   it('allows playback and subtitle paths and rejects admin APIs', () => {
@@ -118,6 +119,13 @@ describe('hls playlist rewrite — edge cases', () => {
     expect(out).toContain('/api/jellyfin/media/videos/abc/seg0.ts');
   });
 
+  it('keeps a blank line inside a playlist blank', () => {
+    const body = '#EXTM3U\n#EXT-X-TARGETDURATION:6\n\n#EXTINF:6.0,\nseg0.ts';
+    const lines = rewriteHlsPlaylist(body, 'https://jellyfin.example', '/videos/abc/main.m3u8').split('\n');
+    expect(lines[2]).toBe('');
+    expect(lines).toHaveLength(5);
+  });
+
   it('leaves URIs on other origins alone rather than proxying them', () => {
     const body = '#EXTM3U\nhttps://cdn.elsewhere.example/seg.ts';
     const out = rewriteHlsPlaylist(body, 'https://jellyfin.example', '/videos/abc/main.m3u8');
@@ -173,6 +181,27 @@ describe('stream info builder', () => {
     expect(result.playMethod).toBe('Transcode');
     expect(result.mediaUrl.startsWith('/api/jellyfin/media/videos/item1/master.m3u8')).toBe(true);
     expect(result.mediaUrl).not.toContain('api_key');
+    expect(JSON.stringify(result)).not.toContain('secret');
+  });
+
+  it('reports NoCompatibleStream when there is no source, or none it can play', () => {
+    const item: JellyfinItem = { Id: 'item1', Name: 'Movie', Type: 'Movie', MediaType: 'Video' };
+    expect(buildHelprrStreamInfo({ item, playback: { MediaSources: [] } })).toEqual({ error: 'NoCompatibleStream' });
+    // A response can leave the list out altogether, whatever the type says.
+    expect(buildHelprrStreamInfo({ item, playback: {} as PlaybackInfoResponse })).toEqual({ error: 'NoCompatibleStream' });
+
+    const unplayable: JellyfinMediaSource = {
+      Id: 'src1',
+      Container: 'mkv',
+      SupportsDirectPlay: false,
+      SupportsDirectStream: false,
+      SupportsTranscoding: false,
+      MediaStreams: [],
+    };
+    expect(buildHelprrStreamInfo({ item, playback: { MediaSources: [unplayable] } })).toEqual({ error: 'NoCompatibleStream' });
+    // Transcoding offered without a URL to transcode from is no stream either.
+    expect(buildHelprrStreamInfo({ item, playback: { MediaSources: [{ ...unplayable, SupportsTranscoding: true }] } }))
+      .toEqual({ error: 'NoCompatibleStream' });
   });
 
   // Jellyfin signs the URLs it returns with the member's own access token, and
