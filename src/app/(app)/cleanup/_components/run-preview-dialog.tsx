@@ -97,7 +97,7 @@ export function RunPreviewDialog(props: Props) {
             )}
 
             {(hasDeleteSourceFiles || hasDeletePrivate || hasQueueDataDeletes) && (
-              <div className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs text-destructive-foreground/90 dark:text-destructive">
+              <div className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs text-destructive light:text-red-800">
                 <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
                 <div>
                   {hasDeleteSourceFiles && <div>One or more rules will delete files from disk (not just remove from qBittorrent).</div>}
