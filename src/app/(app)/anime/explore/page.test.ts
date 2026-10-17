@@ -258,6 +258,19 @@ describe('Anime Explore links', () => {
     expect(mocks.setAnimeFilters).not.toHaveBeenCalled();
   });
 
+  it('shows a range given high to low as the same years, from a link or saved filters', async () => {
+    visit('sort=seasonal&yearMin=2020&yearMax=2010');
+    await renderPage();
+    expect(mocks.browseKey).toEqual(['anime', 'list', 'browse', 'seasonal', { ...NO_FILTERS, yearMin: '2010', yearMax: '2020' }]);
+    expect(button('Remove 2010–2020 filter')).toBeTruthy();
+
+    mocks.savedFilters = { ...NO_FILTERS, yearMin: '2020', yearMax: '2010' };
+    visit('');
+    await renderPage();
+    expect(mocks.browseKey).toEqual(['anime', 'list', 'browse', 'seasonal', { ...NO_FILTERS, yearMin: '2010', yearMax: '2020' }]);
+    expect(document.body.textContent).toContain('from 2010–2020');
+  });
+
   it('shows saved filters on a plain visit and saves changes made there', async () => {
     mocks.savedFilters = { ...NO_FILTERS, genres: ['Action'] };
     visit('');
