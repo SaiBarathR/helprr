@@ -123,7 +123,7 @@ function installMediaElement(state: { paused: boolean; currentTime: number }) {
  * audio index each restart actually asked Jellyfin for, and every session
  * report is recorded, so it can see the `isPaused` each start announced.
  */
-export async function mountPlayback(options: { hls?: boolean } = {}): Promise<Harness> {
+export async function mountPlayback(options: { hls?: boolean; audioIds?: string[] } = {}): Promise<Harness> {
   const state = { paused: true, currentTime: 0 };
   installMediaElement(state);
 
@@ -193,7 +193,9 @@ export async function mountPlayback(options: { hls?: boolean } = {}): Promise<Ha
       }
       const stream: HelprrStreamInfo = {
         // The item asked for, as the real route returns it.
-        item: { ...ITEM, Id: body.itemId },
+        item: options.audioIds?.includes(body.itemId)
+          ? { ...ITEM, Id: body.itemId, Type: 'Audio', MediaType: 'Audio' }
+          : { ...ITEM, Id: body.itemId },
         // Enough of a media source for the provider; the indexes are what the
         // restart carries and the tests assert on.
         mediaSource: { Id: 'source-1', RunTimeTicks: ITEM.RunTimeTicks, MediaStreams: [] } as never,

@@ -28,6 +28,7 @@ import {
   audioStreams,
   playMethodLabel,
   subtitleStreams,
+  transportShowsPlay,
   useJellyfinMediaRef,
   useJellyfinPlayback,
 } from '@/components/jellyfin-streaming/playback-provider';
@@ -626,9 +627,9 @@ export function VideoStage({ mediaContainer }: { mediaContainer: HTMLDivElement 
                         size="icon-lg"
                         className="text-white"
                         onClick={playback.togglePause}
-                        aria-label={playback.status === 'paused' ? 'Play' : 'Pause'}
+                        aria-label={transportShowsPlay(playback.status) ? 'Play' : 'Pause'}
                       >
-                        {playback.status === 'paused'
+                        {transportShowsPlay(playback.status)
                           ? <Play className="size-7 fill-current" />
                           : <Pause className="size-7 fill-current" />}
                       </Button>
@@ -709,7 +710,7 @@ export function VideoStage({ mediaContainer }: { mediaContainer: HTMLDivElement 
             {mini && (
               <div className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-1 bg-black/70 p-1">
                 <Button variant="ghost" size="icon-xs" className="text-white" onClick={(event) => { event.stopPropagation(); playback.togglePause(); }}>
-                  {playback.status === 'paused' ? <Play className="fill-current" /> : <Pause className="fill-current" />}
+                  {transportShowsPlay(playback.status) ? <Play className="fill-current" /> : <Pause className="fill-current" />}
                 </Button>
                 {live ? (
                   <LiveBadge className="flex-1 justify-center text-white" />
@@ -769,7 +770,7 @@ export function VideoStage({ mediaContainer }: { mediaContainer: HTMLDivElement 
               </Button>
               <Button variant="ghost" size="icon" onClick={() => void playback.previous()}><SkipBack /></Button>
               <Button size="icon-lg" onClick={playback.togglePause}>
-                {playback.status === 'paused' ? <Play className="fill-current" /> : <Pause />}
+                {transportShowsPlay(playback.status) ? <Play className="fill-current" /> : <Pause />}
               </Button>
               <Button variant="ghost" size="icon" onClick={() => void playback.next()}><SkipForward /></Button>
               {/* The now-playing bar drops Repeat on a phone, so it has to be here. */}
