@@ -83,7 +83,7 @@ describe('GitHub Actions pins', () => {
         .split('\n')
         .filter((line) => /^\s*(- )?uses:/.test(line));
       for (const line of uses) {
-        expect(line, `${file}: ${line.trim()}`).toMatch(/uses: [\w.-]+\/[\w.-]+@[0-9a-f]{40} # v\d+\.\d+\.\d+$/);
+        expect(line, `${file}: ${line.trim()}`).toMatch(/uses: [\w.-]+\/[\w./-]+@[0-9a-f]{40} # v\d+\.\d+\.\d+$/);
       }
     }
   });
