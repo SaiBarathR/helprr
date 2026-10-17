@@ -111,6 +111,10 @@ desktop is fully supported.
 
 - Add focused `*.test.ts` / `*.test.tsx` coverage near the feature or under
   `src/**/__tests__`.
+- Tests run in Node; a component test opts into a DOM with
+  `// @vitest-environment jsdom`. Prefer React Testing Library and user-event for
+  new component tests (`vitest.setup.ts` unmounts after each test); existing
+  `createRoot`/`act` tests stay as they are.
 - Minimum code-change gate: `npm run lint`, `npm test`, `npm run build`, and
   `git diff --check`.
 - Add `npx prisma validate` and `npm run test:migrations` for schema/release work.
