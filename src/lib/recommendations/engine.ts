@@ -2,6 +2,7 @@ import type { User } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { getCachedJson, setCachedJson, deleteCachedJson } from '@/lib/cache/json-cache';
 import { getCacheImagesEnabled, releaseCacheLock, tryAcquireCacheLock } from '@/lib/cache/state';
+import { getRedisClient } from '@/lib/redis';
 import { getJellyfinUserContext, isJellyfinUnavailable } from '@/lib/service-helpers';
 import { getAppTimeZone, normalizeTimeZone, toZonedDate } from '@/lib/timezone';
 import { arrKey } from '@/types/watch-status';
@@ -44,8 +45,27 @@ interface EngineSnapshot {
   builtAt: string;
 }
 
-function cacheSeed(userId: string): string {
-  return `user:${userId}`;
+// Every invalidation bumps a per-user generation, and a snapshot is stored
+// under the generation read before its build started (so before it read any
+// feedback). A build that began before an invalidation therefore saves where no
+// current read looks, instead of serving a title the user just hid.
+const generationKey = (userId: string) => `helprr:cache:recommendations:generation:${userId}`;
+
+async function getGeneration(userId: string): Promise<number> {
+  try {
+    const redis = await getRedisClient();
+    const value = await redis.get(generationKey(userId));
+    const parsed = value ? Number.parseInt(value, 10) : Number.NaN;
+    // A missing key is 0, so the first bump (INCR creates it at 1) changes the seed.
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+  } catch {
+    // Redis is unreachable, so nothing is cached either.
+    return 0;
+  }
+}
+
+function cacheSeed(userId: string, generation: number): string {
+  return `user:${userId}:g${generation}`;
 }
 
 // ─── Continue watching (Jellyfin resume → in-app items) ─────────────────────
@@ -236,7 +256,7 @@ async function buildSnapshot(user: EngineUser): Promise<EngineSnapshot> {
 }
 
 async function getSnapshot(user: EngineUser): Promise<EngineSnapshot> {
-  const seed = cacheSeed(user.id);
+  const seed = cacheSeed(user.id, await getGeneration(user.id));
   const cached = await getCachedJson<EngineSnapshot>(CACHE_SCOPE, seed);
   if (cached) return cached;
 
@@ -287,8 +307,15 @@ export async function getRecommendationFeed(user: EngineUser, cursor: string | n
   };
 }
 
-/** Drop the cached rails/feed so the next read recomposes — instant feedback
- * after an explicit like/dislike/not_interested. */
+/** Move the user to a new generation so the next read recomposes — instant
+ * feedback after an explicit like/dislike/not_interested. A build already
+ * running for the old generation can only save under the old one. */
 export async function invalidateRecommendations(userId: string): Promise<void> {
-  await deleteCachedJson(CACHE_SCOPE, cacheSeed(userId));
+  try {
+    const redis = await getRedisClient();
+    await redis.incr(generationKey(userId));
+  } catch {
+    // The counter could not be bumped: at least drop the current snapshot.
+    await deleteCachedJson(CACHE_SCOPE, cacheSeed(userId, await getGeneration(userId)));
+  }
 }
