@@ -732,7 +732,6 @@ export default function DiscoverPage() {
     setSavedManualBrowseMode,
   ]);
 
-
   const [draftFilters, setDraftFilters] = useState<DiscoverFiltersState>(discoverFilters);
   const [draftSort, setDraftSort] = useState(discoverSort);
   const [draftSortDirection, setDraftSortDirection] = useState(discoverSortDirection);
