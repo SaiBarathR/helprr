@@ -29,6 +29,12 @@ import {
   deleteServiceConnection,
   setServiceConnectionDefault,
 } from '@/lib/service-connection-actions';
+import {
+  MAX_HEADERS,
+  connectionFormErrors,
+  type FieldKey,
+  type HeaderRow,
+} from './connection-form';
 
 interface JellyfinUserOption {
   id: string;
@@ -45,12 +51,6 @@ interface ServiceRecord {
   username?: string | null;
   externalUrl?: string | null;
   customHeaders?: Record<string, string> | null;
-}
-
-interface HeaderRow {
-  id: string;
-  name: string;
-  value: string;
 }
 
 interface JellyfinApiUser {
@@ -105,21 +105,6 @@ function newRowId(): string {
     ? crypto.randomUUID()
     : `h_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`;
 }
-
-// Keep in sync with parseCustomHeaders in service-connection-secrets.ts (that lib
-// pulls in server-only deps, so it can't be imported into this client component).
-const HEADER_NAME_PATTERN = /^[A-Za-z0-9-]+$/;
-const MAX_HEADERS = 10;
-const MAX_HEADER_VALUE_LENGTH = 2048;
-function hasControlChar(s: string): boolean {
-  for (let i = 0; i < s.length; i++) {
-    const c = s.charCodeAt(i);
-    if (c < 0x20 || c === 0x7f) return true;
-  }
-  return false;
-}
-
-type FieldKey = 'label' | 'url' | 'apiKey' | 'jellyfinUser';
 
 /** Inline field error, referenced by the input's aria-describedby. */
 /** Shown once the URL of a saved connection is edited while a saved secret is still in place. */
@@ -447,40 +432,21 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
   // skipped local header validation and surfaced it as a generic connection
   // failure). Sets field/header errors and returns whether the form is valid.
   function validateConnection(forSave: boolean): boolean {
-    const errors: Partial<Record<FieldKey, string>> = {};
-    const hdrErrors: Record<string, { name?: string; value?: string }> = {};
-    if (!url.trim()) errors.url = 'URL is required';
-    if (!apiKey.trim()) errors.apiKey = isQbt ? 'Password is required' : 'API key is required';
-    else if (savedKeyKept) errors.apiKey = `Enter the ${secretNoun} again for the new URL`;
-    if (forSave) {
-      if (isMultiInstance && !label.trim()) errors.label = 'Name this instance';
-      if (isJellyfin && jellyfinValidated && !(username?.trim())) {
-        errors.jellyfinUser = 'Select a Jellyfin user';
-      }
-    }
-    if (canEditHeaders) {
-      // Surface what the server would otherwise silently drop.
-      for (const h of headers) {
-        const name = h.name.trim();
-        if (!name) continue; // blank rows are ignored, not an error
-        if (!HEADER_NAME_PATTERN.test(name)) {
-          hdrErrors[h.id] = { name: 'Letters, numbers, and hyphens only' };
-          continue;
-        }
-        if (name.toLowerCase() === 'host') {
-          hdrErrors[h.id] = { name: 'Host cannot be set here' };
-          continue;
-        }
-        const value = h.value.trim();
-        if (!value) hdrErrors[h.id] = { value: 'Value required' };
-        else if (urlChanged && isSavedHeaderValue(h)) hdrErrors[h.id] = { value: 'Enter this value again for the new URL' };
-        else if (value.length > MAX_HEADER_VALUE_LENGTH) {
-          hdrErrors[h.id] = { value: `Too long (max ${MAX_HEADER_VALUE_LENGTH} characters)` };
-        } else if (hasControlChar(h.value)) {
-          hdrErrors[h.id] = { value: 'Contains invalid characters' };
-        }
-      }
-    }
+    const { fields: errors, headers: hdrErrors } = connectionFormErrors({
+      url,
+      apiKey,
+      isQbt,
+      savedKeyKept,
+      isMultiInstance,
+      label,
+      isJellyfin,
+      jellyfinValidated: Boolean(jellyfinValidated),
+      username,
+      canEditHeaders,
+      headers,
+      urlChanged,
+      isSavedHeaderValue,
+    }, forSave);
     setFieldErrors(errors);
     setHeaderErrors(hdrErrors);
     const firstError = (Object.keys(errors) as FieldKey[]).find((k) => errors[k]);
