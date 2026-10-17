@@ -27,9 +27,17 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          # The checked-out commit's parent, for the whitespace check.
+          fetch-depth: 2
 
-      - uses: actions/setup-node@v5
+      # A pull request checks out its merge commit, whose first parent is the
+      # base branch, so this checks the whole change (on a push, the merge).
+      - name: Check whitespace errors and conflict markers
+        run: git diff --check HEAD^1 HEAD
+
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version: 24
           cache: npm
@@ -78,12 +86,23 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
 
-      - uses: docker/setup-buildx-action@v3
+      # Both Compose scopes, each with its own env file and never layered. The
+      # env files hold throwaway secrets that setup-env.sh never prints, and
+      # --quiet renders nothing on success.
+      - name: Validate Compose files
+        run: |
+          trap 'rm -f .env .env.dev' EXIT
+          sh scripts/setup-env.sh --stable
+          sh scripts/setup-env.sh --dev
+          docker compose --env-file .env -f docker-compose.yml config --quiet
+          docker compose --env-file .env.dev -f docker-compose.dev.yml config --quiet
+
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
 
       - name: Build image (amd64, not pushed)
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
           context: .
           platforms: linux/amd64
