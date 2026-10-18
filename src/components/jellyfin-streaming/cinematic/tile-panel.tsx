@@ -105,7 +105,7 @@ export function TilePanel({
             a title that is only a recommendation — get no button row at all
             rather than an empty 38px strip. */}
         {(onPlay || onToggleMyList || onMoreInfo || rate?.itemKey) && (
-        <div className="flex items-center gap-2">
+        <div className="relative flex items-center gap-2">
           {onPlay && (
             <CircleButton label={`Play ${title}`} filled onClick={onPlay}>
               <Play className="size-4 fill-current" />
@@ -126,8 +126,8 @@ export function TilePanel({
               title={title}
               genres={rate.genres}
               lazy
-              // The panel clips its overflow, so the menu opens within the row.
-              placement="beside"
+              // The panel clips its overflow, so the menu opens over the row's start.
+              placement="row"
               renderTrigger={(trigger) => (
                 <CircleButton label={trigger.label} expanded={trigger.open} onClick={trigger.onClick}>
                   <RatingIcon rating={trigger.rating} className="size-4" />

@@ -79,9 +79,13 @@ describe('ingestEvents', () => {
     expect(mocks.count).not.toHaveBeenCalled();
   });
 
-  it('falls back to counting stored events without Redis', async () => {
+  it('counts submissions in the process without Redis, so re-rating one title still reaches the limit', async () => {
     mocks.redis.mockRejectedValue(new Error('down'));
-    mocks.count.mockResolvedValue(1000);
-    expect(await ingestEvents('u1', [{ itemKey: 'tmdb:tv:3', eventType: 'click' }])).toEqual({ ok: false, rateLimited: true });
+    const like = [{ itemKey: 'tmdb:tv:3', eventType: 'like' as const }];
+    for (let i = 0; i < 1000; i += 1) expect(await ingestEvents('u-local', like)).toEqual({ ok: true, stored: 1 });
+    expect(await ingestEvents('u-local', like)).toEqual({ ok: false, rateLimited: true });
+    expect(mocks.count).not.toHaveBeenCalled();
+    // Another user has their own count.
+    expect(await ingestEvents('u-other', like)).toEqual({ ok: true, stored: 1 });
   });
 });

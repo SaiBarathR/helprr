@@ -145,17 +145,29 @@ async function countSubmitted(userId: string, count: number): Promise<number | n
   }
 }
 
+// Without Redis, submissions are counted in this process (stored rows would
+// undercount for the same reason as above). Windows other than the current one
+// are dropped as they pass.
+const localSubmitted = new Map<string, number>();
+
+function countSubmittedLocally(userId: string, count: number): number {
+  const window = Math.floor(Date.now() / RATE_WINDOW_MS);
+  for (const key of localSubmitted.keys()) {
+    if (!key.endsWith(`:${window}`)) localSubmitted.delete(key);
+  }
+  const key = `${userId}:${window}`;
+  const total = (localSubmitted.get(key) ?? 0) + count;
+  localSubmitted.set(key, total);
+  return total;
+}
+
 /**
  * Take `count` events from this user's quota; false when it is spent. Shared by
  * event ingestion and the Rate control's PUT, which write the same events.
  */
 export async function takeEventQuota(userId: string, count: number): Promise<boolean> {
-  const submitted = await countSubmitted(userId, count);
-  if (submitted !== null) return submitted <= RATE_MAX_EVENTS_PER_WINDOW;
-  const stored = await prisma.recommendationEvent.count({
-    where: { userId, createdAt: { gte: new Date(Date.now() - RATE_WINDOW_MS) } },
-  });
-  return stored + count <= RATE_MAX_EVENTS_PER_WINDOW;
+  const submitted = (await countSubmitted(userId, count)) ?? countSubmittedLocally(userId, count);
+  return submitted <= RATE_MAX_EVENTS_PER_WINDOW;
 }
 
 export async function ingestEvents(userId: string, events: IncomingEvent[]): Promise<IngestResult> {

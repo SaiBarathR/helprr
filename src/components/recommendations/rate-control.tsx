@@ -78,8 +78,12 @@ export function RateControl({
   title: string;
   genres?: string[];
   lazy?: boolean;
-  /** 'beside' keeps the menu inside a clipped container, such as a tile's popover. */
-  placement?: 'above' | 'beside';
+  /**
+   * 'row' opens the menu over the start of the trigger's row (the nearest
+   * positioned ancestor), for a clipped container such as a tile's popover,
+   * where neither above nor beside the trigger fits in a narrow portrait tile.
+   */
+  placement?: 'above' | 'row';
   renderTrigger: (props: RateTriggerProps) => React.ReactNode;
 }) {
   const canRate = useCan('recommendations.view');
@@ -167,7 +171,7 @@ export function RateControl({
   return (
     <span
       ref={rootRef}
-      className="relative inline-flex"
+      className={cn('inline-flex', placement === 'above' && 'relative')}
       // Tabbing away closes the menu, so its Escape handling never outlives it.
       // Only when focus lands on something else: Safari blurs the focused option
       // on a tap without focusing the tapped one (relatedTarget null), and
@@ -188,7 +192,7 @@ export function RateControl({
           aria-label={`Rate ${title}`}
           className={cn(
             'absolute z-30 flex items-center gap-1 rounded-full bg-[#232323] px-2 py-1.5 shadow-lg ring-1 ring-white/15',
-            placement === 'beside' ? 'left-full top-1/2 ml-2 -translate-y-1/2' : 'bottom-full left-1/2 mb-2 -translate-x-1/2',
+            placement === 'row' ? 'left-0 top-1/2 -translate-y-1/2' : 'bottom-full left-1/2 mb-2 -translate-x-1/2',
           )}
         >
           {OPTIONS.map((option) => (
