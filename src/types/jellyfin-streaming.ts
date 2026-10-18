@@ -220,6 +220,8 @@ export interface CatalogFiltersResponse {
 
 export interface LiveTvResponse {
   linked: boolean;
+  /** False when the member's Jellyfin account has Live TV switched off. */
+  liveTvAccess?: boolean;
   channels: JellyfinItem[];
   programs: JellyfinItem[];
   recordings: JellyfinItem[];

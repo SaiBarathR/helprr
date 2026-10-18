@@ -46,7 +46,7 @@ describe('Live TV listing', () => {
   it('is empty for an account without Live TV, and asks Jellyfin for nothing', async () => {
     mocks.liveTv.mockResolvedValue(false);
     const res = await liveGet(new NextRequest('http://helprr.test/api/jellyfin/catalog/live'));
-    expect(await res.json()).toEqual({ linked: true, channels: [], programs: [], recordings: [] });
+    expect(await res.json()).toEqual({ linked: true, liveTvAccess: false, channels: [], programs: [], recordings: [] });
     expect(mocks.channels).not.toHaveBeenCalled();
     expect(mocks.programs).not.toHaveBeenCalled();
   });

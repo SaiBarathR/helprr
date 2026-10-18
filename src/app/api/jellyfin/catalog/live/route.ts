@@ -15,7 +15,7 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
     const channelIds = searchParams.get('channelIds') ?? undefined;
     const client = await getJellyfinClientForUser(auth.user);
     if (!(await canUserAccessLiveTv(auth.user))) {
-      return NextResponse.json({ linked: true, channels: [], programs: [], recordings: [] } satisfies LiveTvResponse);
+      return NextResponse.json({ linked: true, liveTvAccess: false, channels: [], programs: [], recordings: [] } satisfies LiveTvResponse);
     }
     const [channels, programs, recordings] = await Promise.all([
       client.getLiveTvChannels({ limit: 400 }),

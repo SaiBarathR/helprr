@@ -68,7 +68,11 @@ export default function LiveTvPage() {
         <WatchTopBar />
       </div>
       {channels.length === 0 && (
-        <p className="text-sm text-muted-foreground">No Live TV tuners are configured on this Jellyfin server.</p>
+        <p className="text-sm text-muted-foreground">
+          {query.data?.liveTvAccess === false
+            ? 'Live TV is not enabled for your Jellyfin account.'
+            : 'No Live TV tuners are configured on this Jellyfin server.'}
+        </p>
       )}
       <div className="grid gap-2 sm:grid-cols-2">
         {channels.map((channel) => {
