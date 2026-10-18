@@ -194,6 +194,8 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
       lookup,
       new Promise<typeof LOOKUP_UNKNOWN>((resolve) => setTimeout(() => resolve(LOOKUP_UNKNOWN), 3000)),
     ]);
+    // Leaving the page ends this opening too, so a run still waiting stops.
+    return () => { lookupGeneration.current += 1; };
   }, [open]);
 
   async function handleFile(file: File) {

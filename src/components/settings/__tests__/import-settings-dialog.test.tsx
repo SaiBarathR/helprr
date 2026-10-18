@@ -391,4 +391,26 @@ describe('importing a cleanup section', () => {
     expect(imports).toEqual([]);
     expect(store.applyImportedUiPrefs).toHaveBeenCalledWith({ subtitleAppearance: { textSize: 'large' } });
   });
+
+  it('drops an import still waiting for the lookup when the page goes away', async () => {
+    store.applyImportedUiPrefs.mockClear();
+    let resolveReady: (registration: unknown) => void = () => {};
+    vi.stubGlobal('PushManager', class {});
+    vi.stubGlobal('navigator', { ...navigator, serviceWorker: { ready: new Promise((resolve) => { resolveReady = resolve; }), addEventListener: () => {}, removeEventListener: () => {} } });
+    await render(true, newClient());
+    await loadDeviceFile();
+    await click('Apply selected');
+    await act(async () => root.unmount());
+
+    await act(async () => {
+      resolveReady({ pushManager: { getSubscription: async () => ({ endpoint: 'https://push.example/device' }) } });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(imports).toEqual([]);
+    expect(store.applyImportedUiPrefs).not.toHaveBeenCalled();
+    // afterEach unmounts again.
+    document.body.innerHTML = '<div id="root"></div>';
+    root = createRoot(document.getElementById('root')!);
+  });
 });
