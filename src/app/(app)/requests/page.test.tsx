@@ -66,6 +66,17 @@ describe('RequestsPage', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it('hides a count cached before approval was revoked', async () => {
+    mocks.canApprove = true;
+    mocks.tab = 'requests';
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    client.setQueryData(['seerr', 'requests', 'count'], { pending: 7 });
+    mocks.canApprove = false;
+    act(() => root.render(<QueryClientProvider client={client}><TooltipProvider><RequestsPage /></TooltipProvider></QueryClientProvider>));
+    await flush();
+    expect(tabs()).toEqual(['Requests']);
+  });
+
   it('gives an approver both tabs and the pending count', async () => {
     mocks.canApprove = true;
     mocks.tab = 'requests';

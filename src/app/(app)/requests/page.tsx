@@ -58,7 +58,8 @@ export default function RequestsPage() {
     queryFn: jsonFetcher<SeerrRequestCount>('/api/seerr/requests/count'),
     enabled: canApprove,
   });
-  const counts = countsQuery.data ?? null;
+  // A cached count from before approval was revoked is not shown either.
+  const counts = canApprove ? countsQuery.data ?? null : null;
 
   const { refreshing, refresh: handleRefresh } = useRefreshAction(async () => {
     setRefreshTick((n) => n + 1);
