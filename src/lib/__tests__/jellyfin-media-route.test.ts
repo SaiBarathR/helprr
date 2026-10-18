@@ -96,6 +96,16 @@ describe('Jellyfin 12 media authorization', () => {
     expect(mocks.fetch).not.toHaveBeenCalled();
   });
 
+  it('refuses an itemId query naming another item, which subtitle routes prefer to the path', async () => {
+    const path = 'Videos/0123456789abcdef0123456789abcdef/0123456789abcdef0123456789abcdef/Subtitles/0/Stream.srt';
+    const ctx = { params: Promise.resolve({ path: path.split('/') }) };
+    const other = await GET(new NextRequest(`http://helprr.test/api/jellyfin/media/${path}?ItemId=ffffffffffffffffffffffffffffffff`), ctx);
+    expect(other.status).toBe(404);
+    expect(mocks.fetch).not.toHaveBeenCalled();
+    const same = await GET(new NextRequest(`http://helprr.test/api/jellyfin/media/${path}?itemId=01234567-89ab-cdef-0123-456789abcdef`), ctx);
+    expect(same.status).toBe(206);
+  });
+
   it('refuses inaccessible items before sending any credentials upstream', async () => {
     mocks.access.mockResolvedValue(false);
     expect((await GET(request(), context)).status).toBe(404);

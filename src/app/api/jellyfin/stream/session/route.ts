@@ -6,6 +6,7 @@ import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { jellyfinConnectGateResponse, upstreamErrorResponse } from '@/lib/api-error';
 import { notePlaybackReport } from '@/lib/jellyfin-playback/session-reaper';
+import { liveStreamBelongsTo, playSessionBelongsTo } from '@/lib/jellyfin-playback/live-stream-binding';
 import type { JellyfinPlayMethod, PlaybackProgressPayload } from '@/types/jellyfin-streaming';
 
 const ITEM_ID_RE = /^[a-f0-9-]+$/i;
@@ -61,6 +62,10 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   try {
     const { client } = await getJellyfinPlaybackContext(auth.user);
     await client.reportPlayback(payload);
+    // A long direct stream makes no further media requests: its reports keep
+    // its bindings alive (an existing binding only; a report never creates one).
+    if (payload.playSessionId) await playSessionBelongsTo(auth.user.id, payload.playSessionId, itemId);
+    if (payload.liveStreamId) await liveStreamBelongsTo(auth.user.id, payload.liveStreamId, itemId);
     if (event === 'stopped') invalidateJellyfinCatalog(auth.user.id);
     // These reports are the only liveness signal a player gives: an app killed
     // from the task switcher sends no Stopped, so the reaper notices the

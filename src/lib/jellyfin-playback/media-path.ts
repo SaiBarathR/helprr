@@ -71,12 +71,15 @@ export function legacyHlsTarget(path: string): { playlistId: string; file: strin
   return match ? { playlistId: match[1], file: match[2] } : null;
 }
 
-/** Whether `file` is one of the playlist's own: its playlist, or a segment named after it. */
+/**
+ * Whether `file` is one of the playlist's own: its playlist, or a segment named
+ * after it (`{playlistId}{n}.ts`, or the fMP4 init file `{playlistId}-1.mp4`).
+ */
 export function isLegacyHlsFileOf(playlistId: string, file: string): boolean {
   const lowerFile = file.toLowerCase();
   const prefix = playlistId.toLowerCase();
   return lowerFile === 'stream.m3u8'
-    || (lowerFile.startsWith(prefix) && /^\d+\.[a-z0-9]+$/.test(lowerFile.slice(prefix.length)));
+    || (lowerFile.startsWith(prefix) && /^(?:\d+|-1)\.[a-z0-9]+$/.test(lowerFile.slice(prefix.length)));
 }
 
 /** Legacy playlist ids a (rewritten) playlist points at, for binding to its item. */

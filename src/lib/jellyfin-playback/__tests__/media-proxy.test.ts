@@ -36,6 +36,9 @@ describe('jellyfin media path allowlist', () => {
   it('accepts only files of the named playlist, as Jellyfin picks segments by file name', () => {
     expect(isLegacyHlsFileOf('0f1e2d3c', '0f1e2d3c12.ts')).toBe(true);
     expect(isLegacyHlsFileOf('0f1e2d3c', 'stream.m3u8')).toBe(true);
+    // The fMP4 init file Jellyfin writes for EXT-X-MAP.
+    expect(isLegacyHlsFileOf('0f1e2d3c', '0f1e2d3c-1.mp4')).toBe(true);
+    expect(isLegacyHlsFileOf('0f1e2d3c', '0f1e2d3c-2.mp4')).toBe(false);
     expect(isLegacyHlsFileOf('0f1e2d3c', 'aa11bb2212.ts')).toBe(false);
     expect(isLegacyHlsFileOf('0f1e2d3c', '0f1e2d3c.ts')).toBe(false);
   });

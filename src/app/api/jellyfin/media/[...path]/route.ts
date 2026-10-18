@@ -56,6 +56,9 @@ function resolvedPathStillAllowed(pathname: string, basePath: string): boolean {
   }
 }
 
+// Path ids come in GUID form and catalog ids without dashes; both name one item.
+const sameItemId = (id: string) => id.toLowerCase().replace(/-/g, '');
+
 async function forward(request: NextRequest, pathSegments: string[], user: User): Promise<Response> {
 
   // Next has already decoded each segment once; decoding again would let a
@@ -79,6 +82,8 @@ async function forward(request: NextRequest, pathSegments: string[], user: User)
     for (const [name, value] of new URL(request.url).searchParams) {
       const lower = name.toLowerCase();
       if (lower === 'params') return new NextResponse(null, { status: 404 });
+      // Some routes (subtitles) take a query itemId over the path's: only the checked one.
+      if (lower === 'itemid' && sameItemId(value) !== sameItemId(itemId)) return new NextResponse(null, { status: 404 });
       if (lower === 'livestreamid' && value && !(await liveStreamBelongsTo(user.id, value, itemId))) {
         return new NextResponse(null, { status: 404 });
       }
