@@ -120,7 +120,8 @@ export function useDiscoverAddController(detail: DiscoverDetail): DiscoverAddCon
 
   // A title can live in several instances with their own profiles, so one held
   // by Radarr A stays addable to Radarr B. If a holder's instance is unknown,
-  // offer nothing rather than risk offering the holder itself.
+  // offer nothing rather than risk offering the holder itself; an instance whose
+  // library could not be read may hold it too, so it is not offered either.
   const wantsOtherInstances = detail.addTarget.exists && canAddDirectly;
   const { data: configured = [] } = useQuery({
     queryKey: ['arr-instances'],
@@ -129,9 +130,10 @@ export function useDiscoverAddController(detail: DiscoverDetail): DiscoverAddCon
     staleTime: 5 * 60_000,
   });
   const held = new Set(instances.map((instance) => instance.instanceId));
+  const unchecked = new Set(detail.addTarget.uncheckedInstanceIds ?? []);
   const missingInstances = wantsOtherInstances && !held.has('')
     ? (Array.isArray(configured) ? configured : [])
-        .filter((instance) => instance.type === (detail.mediaType === 'movie' ? 'RADARR' : 'SONARR') && !held.has(instance.id))
+        .filter((instance) => instance.type === (detail.mediaType === 'movie' ? 'RADARR' : 'SONARR') && !held.has(instance.id) && !unchecked.has(instance.id))
         .map((instance) => ({ id: instance.id, label: instance.label || targetService, href: buildAddPageHref(detail, instance.id) }))
     : [];
 

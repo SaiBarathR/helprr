@@ -93,6 +93,14 @@ describe('DiscoverAddButton across instances', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it('does not offer an instance whose library could not be read', async () => {
+    const detail = movie([{ instanceId: 'rad-a', instanceLabel: 'RADARR', id: 7 }]);
+    detail.addTarget.uncheckedInstanceIds = ['rad-b'];
+    await render(detail);
+    expect(container.textContent).not.toMatch(/Add to/);
+    expect(container.textContent).toContain('Open in Radarr');
+  });
+
   it('offers nothing when the holder\'s instance is unknown', async () => {
     await render(movie([{ instanceId: '', instanceLabel: '', id: 7 }]));
     expect(container.textContent).not.toMatch(/Add to/);

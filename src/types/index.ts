@@ -1304,6 +1304,8 @@ export interface DiscoverDetail extends DiscoverItem {
     // The instance the matched item lives in (when exists). Detail-page links use
     // it so a non-default-instance item caches under the same ?instance= slot.
     instanceId?: string;
+    // Instances whose library could not be read: whether they hold the title is unknown.
+    uncheckedInstanceIds?: string[];
   };
 }
 
