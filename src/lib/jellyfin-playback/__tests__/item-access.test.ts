@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { User } from '@prisma/client';
 
 const getItems = vi.fn();
+const getUser = vi.fn();
 const getJellyfinUserContext = vi.fn();
 const redisGet = vi.fn();
 const redisSet = vi.fn();
@@ -14,14 +15,14 @@ vi.mock('@/lib/redis', () => ({
   getRedisClient: () => getRedisClient(),
 }));
 
-const { canUserAccessItem } = await import('@/lib/jellyfin-playback/item-access');
+const { canUserAccessItem, canUserAccessLiveTv } = await import('@/lib/jellyfin-playback/item-access');
 
 const USER = { id: 'user-1' } as User;
 
 beforeEach(() => {
   vi.clearAllMocks();
   getJellyfinUserContext.mockResolvedValue({
-    client: { getItems },
+    client: { getItems, getUser },
     jellyfinUserId: 'jf-1',
     connectionFingerprint: 'fp-1',
   });
@@ -83,5 +84,49 @@ describe('canUserAccessItem', () => {
     getItems.mockRejectedValue(new Error('upstream 500'));
     expect(await canUserAccessItem(USER, 'item-8')).toBe(false);
     expect(redisSet).not.toHaveBeenCalled();
+  });
+
+  // Jellyfin returns a channel to /Items for any account and applies its Live TV
+  // policy only on /LiveTv routes, so the policy is checked here.
+  it('refuses a Live TV channel to an account whose Jellyfin policy has Live TV off', async () => {
+    getItems.mockResolvedValue({ Items: [{ Id: 'ch-1', Type: 'TvChannel' }] });
+    getUser.mockResolvedValue({ Id: 'jf-1', Policy: { EnableLiveTvAccess: false } });
+    expect(await canUserAccessItem(USER, 'ch-1')).toBe(false);
+    expect(getUser).toHaveBeenCalledWith('jf-1');
+  });
+
+  it('allows the channel with Live TV on, and to a Jellyfin administrator', async () => {
+    getItems.mockResolvedValue({ Items: [{ Id: 'ch-2', Type: 'TvChannel' }] });
+    getUser.mockResolvedValue({ Id: 'jf-1', Policy: { EnableLiveTvAccess: true } });
+    expect(await canUserAccessItem(USER, 'ch-2')).toBe(true);
+    getUser.mockResolvedValue({ Id: 'jf-1', Policy: { IsAdministrator: true } });
+    expect(await canUserAccessLiveTv(USER)).toBe(true);
+  });
+
+  it('refuses the channel when the policy cannot be read, and leaves other items alone', async () => {
+    getUser.mockRejectedValue(new Error('upstream 500'));
+    getItems.mockResolvedValue({ Items: [{ Id: 'ch-3', Type: 'TvChannel' }] });
+    expect(await canUserAccessItem(USER, 'ch-3')).toBe(false);
+    getUser.mockClear();
+    getItems.mockResolvedValue({ Items: [{ Id: 'movie-1', Type: 'Movie' }] });
+    expect(await canUserAccessItem(USER, 'movie-1')).toBe(true);
+    expect(getUser).not.toHaveBeenCalled();
+  });
+});
+
+describe('canUserAccessLiveTv', () => {
+  it('caches the verdict per connection and Jellyfin user', async () => {
+    getUser.mockResolvedValue({ Id: 'jf-1', Policy: { EnableLiveTvAccess: false } });
+    expect(await canUserAccessLiveTv(USER)).toBe(false);
+    expect(redisSet).toHaveBeenCalledWith('jellyfin:livetv-access:fp-1:jf-1', '0', { EX: 900 });
+    redisGet.mockResolvedValue('1');
+    getUser.mockClear();
+    expect(await canUserAccessLiveTv(USER)).toBe(true);
+    expect(getUser).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when the account is not linked', async () => {
+    getJellyfinUserContext.mockRejectedValue(new Error('not linked'));
+    expect(await canUserAccessLiveTv(USER)).toBe(false);
   });
 });

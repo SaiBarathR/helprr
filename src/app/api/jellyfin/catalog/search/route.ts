@@ -3,6 +3,7 @@ import { getJellyfinClientForUser, JellyfinNotLinkedError } from '@/lib/service-
 import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { upstreamErrorResponse } from '@/lib/api-error';
+import { canUserAccessLiveTv, isLiveTvItemType } from '@/lib/jellyfin-playback/item-access';
 import type { CatalogItemsResponse } from '@/types/jellyfin-streaming';
 
 async function getHandler(request: NextRequest): Promise<NextResponse> {
@@ -15,13 +16,21 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
     if (term.length < 1) {
       return NextResponse.json({ linked: true, items: [], total: 0, startIndex: 0 } satisfies CatalogItemsResponse);
     }
-    const includeItemTypes = searchParams.get('includeItemTypes') ?? undefined;
     const client = await getJellyfinClientForUser(auth.user);
+    // An account without Live TV gets no channels: drop the type, and stop if nothing is left.
+    let types = (searchParams.get('includeItemTypes') || 'Movie,Series,Episode,Person,MusicArtist,MusicAlbum,Audio,Book,BoxSet,LiveTvChannel,Playlist,Video')
+      .split(',');
+    if (types.some(isLiveTvItemType) && !(await canUserAccessLiveTv(auth.user))) {
+      types = types.filter((type) => !isLiveTvItemType(type));
+    }
+    if (types.length === 0) {
+      return NextResponse.json({ linked: true, items: [], total: 0, startIndex: 0 } satisfies CatalogItemsResponse);
+    }
     const items = await client.getCatalogItems({
       SearchTerm: term,
       Recursive: true,
       Limit: 50,
-      IncludeItemTypes: includeItemTypes || 'Movie,Series,Episode,Person,MusicArtist,MusicAlbum,Audio,Book,BoxSet,LiveTvChannel,Playlist,Video',
+      IncludeItemTypes: types.join(','),
     });
     return NextResponse.json({
       linked: true,
