@@ -231,7 +231,7 @@ describe('applyCueLine', () => {
 });
 
 describe('positionToReport', () => {
-  const stream = { startTimeTicks: 12_000_000_000 } as unknown as HelprrStreamInfo;
+  const stream = { startTimeTicks: 12_000_000_000, transcodingOffsetTicks: 0 } as unknown as HelprrStreamInfo;
   const element = (currentTime: number) => ({ currentTime }) as HTMLMediaElement;
 
   it('reports where the stream was started while the element is still at zero', () => {
@@ -247,6 +247,12 @@ describe('positionToReport', () => {
 
   it('lets a real seek back to the start be reported', () => {
     expect(positionToReport(element(0), stream, true)).toBe(0);
+  });
+
+  it('counts a progressive transcode from where it was started', () => {
+    // Served from 1200 s without copied timestamps: the element's 25 s is 1225 s.
+    const progressive = { startTimeTicks: 12_000_000_000, transcodingOffsetTicks: 12_000_000_000 } as unknown as HelprrStreamInfo;
+    expect(positionToReport(element(25), progressive, true)).toBe(12_250_000_000);
   });
 });
 
