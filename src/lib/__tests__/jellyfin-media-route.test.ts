@@ -2,8 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
 const mocks = vi.hoisted(() => ({
-  auth: vi.fn(), access: vi.fn(), connection: vi.fn(), token: vi.fn(), invalidate: vi.fn(), fetch: vi.fn(),
+  auth: vi.fn(), access: vi.fn(), connection: vi.fn(), token: vi.fn(), invalidate: vi.fn(), fetch: vi.fn(), liveStream: vi.fn(),
 }));
+vi.mock('@/lib/jellyfin-playback/live-stream-binding', () => ({ liveStreamBelongsTo: mocks.liveStream }));
 vi.mock('@/lib/auth', () => ({ requireUserCapability: mocks.auth }));
 vi.mock('@/lib/db', () => ({ prisma: { serviceConnection: { findFirst: mocks.connection } } }));
 vi.mock('@/lib/service-connection-secrets', () => ({ getConnectionHeaders: () => ({ 'X-Proxy-Auth': 'proxy' }) }));
@@ -46,6 +47,16 @@ describe('Jellyfin 12 media authorization', () => {
     expect((await GET(request(), context)).status).toBe(409);
     expect(mocks.fetch).not.toHaveBeenCalled();
   });
+  it.each(['LiveStreamId', 'livestreamid'])('refuses a %s not opened for this user and item', async (name) => {
+    mocks.liveStream.mockResolvedValue(false);
+    const req = new NextRequest(`http://helprr.test/api/jellyfin/media/Videos/0123456789abcdef0123456789abcdef/stream.mp4?${name}=ls-channel`);
+    expect((await GET(req, context)).status).toBe(404);
+    expect(mocks.liveStream).toHaveBeenCalledWith('member', 'ls-channel', '0123456789abcdef0123456789abcdef');
+    expect(mocks.fetch).not.toHaveBeenCalled();
+    mocks.liveStream.mockResolvedValue(true);
+    expect((await GET(req, context)).status).toBe(206);
+  });
+
   it('refuses inaccessible items before sending any credentials upstream', async () => {
     mocks.access.mockResolvedValue(false);
     expect((await GET(request(), context)).status).toBe(404);

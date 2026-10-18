@@ -7,8 +7,9 @@ import { NextRequest } from 'next/server';
 const mocks = vi.hoisted(() => ({
   auth: vi.fn(), liveTv: vi.fn(), itemAccess: vi.fn(),
   channels: vi.fn(), programs: vi.fn(), recordings: vi.fn(), catalogItems: vi.fn(),
-  getItem: vi.fn(), playbackInfo: vi.fn(),
+  getItem: vi.fn(), playbackInfo: vi.fn(), streamInfo: vi.fn(), bind: vi.fn(), belongs: vi.fn(),
 }));
+vi.mock('@/lib/jellyfin-playback/live-stream-binding', () => ({ bindLiveStream: mocks.bind, liveStreamBelongsTo: mocks.belongs }));
 vi.mock('@/lib/auth', () => ({ requireUserCapability: mocks.auth }));
 vi.mock('@/lib/service-helpers', () => ({
   JellyfinNotLinkedError: class JellyfinNotLinkedError extends Error {},
@@ -30,7 +31,7 @@ vi.mock('@/lib/jellyfin-playback/item-access', async (importOriginal) => ({
   canUserAccessLiveTv: mocks.liveTv,
   canUserAccessItem: mocks.itemAccess,
 }));
-vi.mock('@/lib/jellyfin-playback/stream-info', () => ({ buildHelprrStreamInfo: () => ({ ok: true }) }));
+vi.mock('@/lib/jellyfin-playback/stream-info', () => ({ buildHelprrStreamInfo: () => mocks.streamInfo() }));
 
 const { GET: liveGet } = await import('@/app/api/jellyfin/catalog/live/route');
 const { GET: searchGet } = await import('@/app/api/jellyfin/catalog/search/route');
@@ -47,6 +48,7 @@ beforeEach(() => {
   mocks.catalogItems.mockResolvedValue({ Items: [], TotalRecordCount: 0 });
   mocks.getItem.mockResolvedValue({ Id: 'ch-1', Type: 'TvChannel' });
   mocks.playbackInfo.mockResolvedValue({ MediaSources: [] });
+  mocks.streamInfo.mockReturnValue({ ok: true });
 });
 
 describe('Live TV listing', () => {
@@ -119,6 +121,14 @@ describe('Catalog items and item detail', () => {
     expect(body.total).toBe(0);
   });
 
+  it('drops a channel from a collection\'s children for that account', async () => {
+    mocks.liveTv.mockResolvedValue(false);
+    mocks.getItem.mockResolvedValue({ Id: 'b0c5e7', Type: 'BoxSet' });
+    mocks.catalogItems.mockResolvedValue({ Items: [{ Id: 'm1', Type: 'Movie' }, { Id: 'ch-1', Type: 'TvChannel' }] });
+    const res = await itemGet(new NextRequest('http://helprr.test/api/jellyfin/catalog/items/b0c5e7?expand=children'), { params: Promise.resolve({ itemId: 'b0c5e7' }) });
+    expect((await res.json()).children).toEqual([{ Id: 'm1', Type: 'Movie' }]);
+  });
+
   it('answers a channel\'s detail with 404 for that account, and leaves films alone', async () => {
     mocks.liveTv.mockResolvedValue(false);
     const detail = (id: string) => itemGet(new NextRequest(`http://helprr.test/api/jellyfin/catalog/items/${id}?expand=none`), { params: Promise.resolve({ itemId: id }) });
@@ -146,5 +156,24 @@ describe('Playback negotiation', () => {
     mocks.itemAccess.mockResolvedValue(true);
     expect((await negotiate()).status).toBe(200);
     expect(mocks.playbackInfo).toHaveBeenCalledTimes(1);
+  });
+
+  it('binds a live stream it opens to the user and item', async () => {
+    mocks.itemAccess.mockResolvedValue(true);
+    mocks.streamInfo.mockReturnValue({ ok: true, liveStreamId: 'ls-1' });
+    expect((await negotiate()).status).toBe(200);
+    expect(mocks.bind).toHaveBeenCalledWith('member', 'ls-1', 'abcdef0123');
+  });
+
+  it('refuses a live stream id that was not opened for this user and item', async () => {
+    mocks.itemAccess.mockResolvedValue(true);
+    mocks.belongs.mockResolvedValue(false);
+    const res = await infoPost(new NextRequest('http://helprr.test/api/jellyfin/stream/info', {
+      method: 'POST',
+      body: JSON.stringify({ itemId: 'abcdef0123', deviceId: 'device-1', deviceProfile: profile, liveStreamId: 'ls-channel' }),
+    }));
+    expect(res.status).toBe(404);
+    expect(mocks.belongs).toHaveBeenCalledWith('member', 'ls-channel', 'abcdef0123');
+    expect(mocks.playbackInfo).not.toHaveBeenCalled();
   });
 });

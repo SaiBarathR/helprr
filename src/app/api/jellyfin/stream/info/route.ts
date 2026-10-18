@@ -5,6 +5,7 @@ import { withApiLogging } from '@/lib/api-logger';
 import { jellyfinConnectGateResponse, upstreamErrorResponse } from '@/lib/api-error';
 import { buildHelprrStreamInfo } from '@/lib/jellyfin-playback/stream-info';
 import { canUserAccessItem } from '@/lib/jellyfin-playback/item-access';
+import { bindLiveStream, liveStreamBelongsTo } from '@/lib/jellyfin-playback/live-stream-binding';
 import type { JellyfinDeviceProfile, PlaybackInfoRequest } from '@/types/jellyfin-streaming';
 
 const ITEM_ID_RE = /^[a-f0-9-]+$/i;
@@ -66,6 +67,9 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     if (!(await canUserAccessItem(auth.user, itemId))) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
+    if (playbackRequest.liveStreamId && !(await liveStreamBelongsTo(auth.user.id, playbackRequest.liveStreamId, itemId))) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    }
     const [item, playback] = await Promise.all([
       client.getItem(itemId),
       client.getPlaybackInfo(playbackRequest),
@@ -79,6 +83,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     if ('error' in stream) {
       return NextResponse.json({ error: stream.error }, { status: 409 });
     }
+    if (stream.liveStreamId) await bindLiveStream(auth.user.id, stream.liveStreamId, itemId);
     return NextResponse.json(stream);
   } catch (error) {
     const gate = await jellyfinConnectGateResponse(auth.user, error);

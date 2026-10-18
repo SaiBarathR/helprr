@@ -5,6 +5,7 @@ import { requireUserCapability } from '@/lib/auth';
 import { getConnectionHeaders } from '@/lib/service-connection-secrets';
 import { invalidateJellyfinToken, readJellyfinToken } from '@/lib/jellyfin-token';
 import { canUserAccessItem } from '@/lib/jellyfin-playback/item-access';
+import { liveStreamBelongsTo } from '@/lib/jellyfin-playback/live-stream-binding';
 import {
   isAllowedMediaPath,
   isHlsPlaylist,
@@ -67,6 +68,12 @@ async function forward(request: NextRequest, pathSegments: string[], user: User)
     const allowed = await canUserAccessItem(user, itemId);
     if (!allowed) {
       return new NextResponse(null, { status: 404 });
+    }
+    // Jellyfin reads query names case-insensitively, so every spelling counts.
+    for (const [name, value] of new URL(request.url).searchParams) {
+      if (name.toLowerCase() === 'livestreamid' && value && !(await liveStreamBelongsTo(user.id, value, itemId))) {
+        return new NextResponse(null, { status: 404 });
+      }
     }
   } else if (!/^\/fallbackfont\b/i.test(path)) {
     // Everything playback-related carries an item id and is access-checked
