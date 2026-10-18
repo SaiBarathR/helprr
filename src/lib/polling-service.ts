@@ -21,7 +21,7 @@ import { startOfLocalDay, endOfLocalDay, toZonedDate, dateInTimeZone, getLocalDa
 import { buildActivityDigest, type ActivityDigestPeriod } from '@/lib/digests/build-activity-digest';
 import { parseBandwidthSchedule } from '@/lib/bandwidth-scheduler/parse';
 import { pickActiveRule } from '@/lib/bandwidth-scheduler/active-rule';
-import { logger } from '@/lib/logger';
+import { logger, redact } from '@/lib/logger';
 import {
   createPollingCycleContext,
   type PollingCycleContext,
@@ -513,7 +513,8 @@ export function nextSourceHealth(
     if (outcome.status === 'fulfilled') entry.lastSuccessAt = at;
     if (outcome.status === 'rejected') {
       entry.lastFailureAt = at;
-      entry.lastError = (outcome.error ?? 'Unknown error').slice(0, 300);
+      // Shown to admins: redacted like log output.
+      entry.lastError = String(redact(outcome.error ?? 'Unknown error')).slice(0, 300);
     }
     next.set(outcome.source, entry);
   }
@@ -621,6 +622,7 @@ export class PollingService {
   private async runPollSource(source: string, fn: () => Promise<void>, report?: JobReport): Promise<void> {
     if (this.activePollSources.has(source)) {
       logger.warn('Polling source skipped: previous run still active', { source }, { scope: 'polling' });
+      if (report) report.skipped = true;
       return;
     }
     this.activePollSources.add(source);
@@ -2462,6 +2464,7 @@ export class PollingService {
           dailyNotifyHour: settings.upcomingDailyNotifyHour,
           timeZone,
         }, { scope: 'polling' });
+        noteJobSkipped();
         return;
       }
 
@@ -2857,6 +2860,7 @@ export class PollingService {
         digestHour: settings.activityDigestHour,
         timeZone,
       }, { scope: 'polling' });
+      noteJobSkipped();
       return;
     }
 
@@ -2867,6 +2871,7 @@ export class PollingService {
         digestDayOfWeek: settings.activityDigestDayOfWeek,
         timeZone,
       }, { scope: 'polling' });
+      noteJobSkipped();
       return;
     }
 

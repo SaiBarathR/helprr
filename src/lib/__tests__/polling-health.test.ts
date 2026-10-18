@@ -17,6 +17,12 @@ describe('nextSourceHealth', () => {
     expect(first.get('pollRadarr')!.lastError).toHaveLength(300);
   });
 
+  it('redacts credentials in the error it keeps, as log output is', () => {
+    const next = nextSourceHealth(new Map(), [{ source: 'pollSonarr', status: 'rejected', error: 'GET http://sonarr:8989/api/v3/queue?apikey=abc123def failed' }], 't1');
+    expect(next.get('pollSonarr')?.lastError).not.toContain('abc123def');
+    expect(next.get('pollSonarr')?.lastError).toContain('[REDACTED]');
+  });
+
   it('does not count a job skipped behind its own earlier run as a success', () => {
     const before = new Map([['pollJellyfin', { lastSuccessAt: '2026-10-18T09:00:00.000Z', lastFailureAt: null, lastError: null }]]);
     const after = nextSourceHealth(before, [{ source: 'pollJellyfin', status: 'skipped' }], AT);

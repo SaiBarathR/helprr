@@ -28,6 +28,7 @@ vi.mock('@/lib/logger', () => ({
     info: mocks.info,
     warn: mocks.warn,
   },
+  redact: (value: unknown) => value,
 }));
 
 import { noteJobFailure, noteJobSkipped, PollingService } from '@/lib/polling-service';
@@ -218,6 +219,19 @@ describe('polling health from the cycle', () => {
     await internal.poll();
 
     expect(sourceHealth(service, 'sweepTasteProfiles')).toEqual(expect.objectContaining({ lastSuccessAt: null, lastError: 'database unavailable' }));
+  });
+
+  it('does not stamp a success for a warm still running from an earlier cycle', async () => {
+    const service = new PollingService();
+    const internal = stubCycle(service);
+    internal.warmCaches = vi.fn(async () => { throw new Error('warm timed out'); });
+    await internal.poll();
+    internal.warmCaches = vi.fn(async () => {});
+    internal.activePollSources.add('warmCaches');
+    await internal.poll();
+
+    expect(internal.warmCaches).not.toHaveBeenCalled();
+    expect(sourceHealth(service, 'warmCaches')).toEqual(expect.objectContaining({ lastSuccessAt: null, lastError: 'warm timed out' }));
   });
 
   it('records cache warming with the other jobs', async () => {
