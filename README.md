@@ -815,8 +815,9 @@ bundled. Every outbound request is one of these:
 - **Services you configure.** The Helprr server talks to Sonarr, Radarr, Lidarr,
   qBittorrent, Prowlarr, Jellyfin, Seerr, and TMDB at the addresses you enter.
 - **Update check.** On an admin visit, the server asks GitHub's public API for
-  Helprr's latest release, at most once every six hours (see
-  [Update notices](#update-notices-and-support-bundles)).
+  Helprr's latest release and keeps a successful answer for six hours (see
+  [Update notices](#update-notices-and-support-bundles)); after a failed check, the
+  next admin visit asks again.
 - **AniList.** The server reads AniList's public API (`graphql.anilist.co`) for the
   Anime pages and to map Sonarr anime to AniList, including a nightly run that sends
   never-mapped anime titles (**Settings → Anime mappings → Nightly auto-map**
@@ -827,12 +828,13 @@ bundled. Every outbound request is one of these:
   fanart.tv, TVmaze, AniList, and Lidarr's image host, plus any host in
   `EXTRA_ALLOWED_IMAGE_HOSTS`, and serves them through its own image proxy.
 - **Push notifications.** Notifications go through the push service of each
-  subscribed browser (Apple, Google, or Mozilla), encrypted as Web Push requires.
+  subscribed browser (Apple, Google, Mozilla, or Microsoft), encrypted as Web Push
+  requires.
 - **Loaded by the viewer's browser.** A few things load straight from the source
   rather than through Helprr: Seerr request posters from `image.tmdb.org`, a
   connected AniList account's avatar from AniList, trailer thumbnails from
-  `img.youtube.com`, and, when a trailer is played, the YouTube or Dailymotion
-  player.
+  `img.youtube.com` (and, for an anime's Dailymotion trailer, the thumbnail AniList
+  links to), and, when a trailer is played, the YouTube or Dailymotion player.
 
 Links to IMDb, TMDB, MusicBrainz, and similar sites are fetched only when you open
 them.

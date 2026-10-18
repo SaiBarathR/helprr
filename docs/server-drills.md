@@ -93,8 +93,11 @@ network before it holds real data:
 cd /tmp/helprr-fresh
 docker compose -p helprr-fresh down -v
 sed -i 's/^\( *driver: bridge\)$/\1\n    internal: true/' docker-compose.yml
-docker compose -p helprr-fresh config | grep -n 'internal: true'
+docker compose -p helprr-fresh config | grep -q 'internal: true' && echo isolated || echo 'NOT isolated'
 ```
+
+Do not go on unless it prints `isolated`: a copy on a normal network would run the
+real installation's cleaner rules against its services.
 
 In the copy's `.env`, set `HELPRR_ADMIN_USERNAME` to the real installation's
 value; otherwise the restored bootstrap admin is renamed on boot. Keep
