@@ -1393,6 +1393,32 @@ html[data-glass] {
   --chart-5: var(--hpr-pink);
 }
 
+/* Destructive red as text. One red cannot reach AA both as text on every page
+   and as a fill under white text, so text takes its own shade: red-800 on light
+   pages, red-400 on the non-glass dark palettes and on dark islands such as the
+   player, while dark glass keeps its rose. An element whose classes set red text
+   points --destructive at that shade for itself; fills elsewhere are unchanged.
+   The cinematic Watch skin is dark whatever the theme. */
+:root {
+  --destructive-on-dark: oklch(0.704 0.191 22.216);
+  --destructive-text: var(--destructive);
+}
+html[data-scheme='light'] {
+  --destructive-text: oklch(0.444 0.177 26.899);
+}
+html:not([data-glass]):not([data-scheme='light']),
+html[data-watch-skin='cinematic']:has(.hpr-watch) {
+  --destructive-text: var(--destructive-on-dark);
+}
+[class*='text-destructive']:not([class*='text-destructive-foreground']) {
+  --destructive: var(--destructive-text);
+}
+/* White on the light-glass rose is 3.4:1, so fills that carry white text take
+   Apple's deeper system red. */
+html[data-glass][data-glass-scheme='light'] :is([class*='text-destructive-foreground'], [class~='bg-destructive'][class~='text-white']) {
+  --destructive: #d70015;
+}
+
 /* Wallpaper: background-attachment: fixed is broken on iOS Safari, so the
    glass backdrop lives on a fixed pseudo-element instead of the body. */
 html[data-glass] body {
