@@ -33,6 +33,11 @@ describe('jellyfin media path allowlist', () => {
     expect(isAllowedMediaPath('/videos/abc123def456/hls1/main/12.mp4')).toBe(true);
   });
 
+  it('refuses the trickplay playlist, which follows any MediaSourceId, but not the tiles', () => {
+    expect(isAllowedMediaPath('/Videos/abc123def456/Trickplay/320/tiles.m3u8')).toBe(false);
+    expect(isAllowedMediaPath('/Videos/abc123def456/Trickplay/320/0.jpg')).toBe(true);
+  });
+
   it('accepts only files of the named playlist, as Jellyfin picks segments by file name', () => {
     expect(isLegacyHlsFileOf('0f1e2d3c', '0f1e2d3c12.ts')).toBe(true);
     expect(isLegacyHlsFileOf('0f1e2d3c', 'stream.m3u8')).toBe(true);

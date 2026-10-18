@@ -51,11 +51,16 @@ export function normalizeMediaPath(raw: string): string | null {
 const LEGACY_HLS_PREFIX = new RegExp(String.raw`^/(?:videos|audio)/${ITEM_ID}/hls/`, 'i');
 const LEGACY_HLS = new RegExp(String.raw`^/(?:videos|audio)/${ITEM_ID}/hls/([a-zA-Z0-9]+)/([^/]+)$`, 'i');
 
+// Jellyfin builds a trickplay playlist for whatever MediaSourceId it is given,
+// without checking that item; Helprr reads tiles directly and never needs it.
+const TRICKPLAY_PLAYLIST = new RegExp(String.raw`^/videos/${ITEM_ID}/trickplay/\d+/tiles\.m3u8$`, 'i');
+
 export function isAllowedMediaPath(path: string): boolean {
   const normalized = normalizeMediaPath(path);
   if (!normalized) return false;
   // Only the one legacy HLS shape the proxy can check (see legacyHlsTarget).
   if (LEGACY_HLS_PREFIX.test(normalized) && !LEGACY_HLS.test(normalized)) return false;
+  if (TRICKPLAY_PLAYLIST.test(normalized)) return false;
   return ALLOWED_PATHS.some((pattern) => pattern.test(normalized));
 }
 
