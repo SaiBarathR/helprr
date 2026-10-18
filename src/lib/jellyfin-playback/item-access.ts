@@ -15,15 +15,11 @@ export function isLiveTvItemType(type: string | null | undefined): boolean {
  * its Live TV policy only to /LiveTv routes called with the user's own token:
  * Helprr's catalog reads use the admin API key, and Jellyfin's item and media
  * routes serve a channel to any account, so Helprr checks the policy itself.
- * Cached like item access; any failure counts as no access.
+ * Cached like item access. Throws when the policy cannot be read, so a caller
+ * can tell a Jellyfin failure from a refusal; canUserAccessLiveTv fails closed.
  */
-export async function canUserAccessLiveTv(user: Pick<User, 'role' | 'jellyfinUserId'>): Promise<boolean> {
-  let context: Awaited<ReturnType<typeof getJellyfinUserContext>>;
-  try {
-    context = await getJellyfinUserContext(user);
-  } catch {
-    return false;
-  }
+export async function liveTvAccess(user: Pick<User, 'role' | 'jellyfinUserId'>): Promise<boolean> {
+  const context = await getJellyfinUserContext(user);
 
   const cacheKey = `jellyfin:livetv-access:${context.connectionFingerprint}:${context.jellyfinUserId}`;
   try {
@@ -34,13 +30,8 @@ export async function canUserAccessLiveTv(user: Pick<User, 'role' | 'jellyfinUse
     // Redis unavailable — fall through to a live check.
   }
 
-  let allowed: boolean;
-  try {
-    const { Policy: policy } = await context.client.getUser(context.jellyfinUserId);
-    allowed = policy?.IsAdministrator === true || policy?.EnableLiveTvAccess === true;
-  } catch {
-    return false;
-  }
+  const { Policy: policy } = await context.client.getUser(context.jellyfinUserId);
+  const allowed = policy?.IsAdministrator === true || policy?.EnableLiveTvAccess === true;
 
   try {
     const redis = await getRedisClient();
@@ -52,18 +43,19 @@ export async function canUserAccessLiveTv(user: Pick<User, 'role' | 'jellyfinUse
   return allowed;
 }
 
+/** liveTvAccess, failing closed: any failure counts as no access. */
+export function canUserAccessLiveTv(user: Pick<User, 'role' | 'jellyfinUserId'>): Promise<boolean> {
+  return liveTvAccess(user).catch(() => false);
+}
+
 /**
  * Whether this Helprr user may read this Jellyfin item. Uses the same Redis
  * cache as `/api/jellyfin/image` so a poster grid and a stream session share
- * one upstream probe.
+ * one upstream probe. Throws when Jellyfin cannot be asked; canUserAccessItem
+ * fails closed instead.
  */
-export async function canUserAccessItem(user: User, itemId: string): Promise<boolean> {
-  let context: Awaited<ReturnType<typeof getJellyfinUserContext>>;
-  try {
-    context = await getJellyfinUserContext(user);
-  } catch {
-    return false;
-  }
+export async function itemAccess(user: User, itemId: string): Promise<boolean> {
+  const context = await getJellyfinUserContext(user);
 
   // v2: verdicts cached before the Live TV check allowed channels to anyone.
   // A visible Live TV item is cached as 'live', not as allowed, so the policy
@@ -79,13 +71,9 @@ export async function canUserAccessItem(user: User, itemId: string): Promise<boo
   }
 
   if (visibility === null) {
-    try {
-      const result = await context.client.getItems({ ids: itemId, limit: 1 });
-      const item = result.Items?.[0];
-      visibility = item === undefined ? '0' : isLiveTvItemType(item.Type) ? 'live' : '1';
-    } catch {
-      return false;
-    }
+    const result = await context.client.getItems({ ids: itemId, limit: 1 });
+    const item = result.Items?.[0];
+    visibility = item === undefined ? '0' : isLiveTvItemType(item.Type) ? 'live' : '1';
     try {
       const redis = await getRedisClient();
       await redis.set(cacheKey, visibility, { EX: ITEM_ACCESS_TTL_SECONDS });
@@ -94,8 +82,13 @@ export async function canUserAccessItem(user: User, itemId: string): Promise<boo
     }
   }
 
-  if (visibility === 'live') return canUserAccessLiveTv(user);
+  if (visibility === 'live') return liveTvAccess(user);
   return visibility === '1';
+}
+
+/** itemAccess, failing closed: any failure counts as no access. */
+export function canUserAccessItem(user: User, itemId: string): Promise<boolean> {
+  return itemAccess(user, itemId).catch(() => false);
 }
 
 /** Drops Live TV items from a listing for an account without Live TV. */

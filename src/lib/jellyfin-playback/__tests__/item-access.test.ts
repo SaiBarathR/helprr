@@ -15,7 +15,7 @@ vi.mock('@/lib/redis', () => ({
   getRedisClient: () => getRedisClient(),
 }));
 
-const { canUserAccessItem, canUserAccessLiveTv } = await import('@/lib/jellyfin-playback/item-access');
+const { canUserAccessItem, canUserAccessLiveTv, itemAccess, liveTvAccess } = await import('@/lib/jellyfin-playback/item-access');
 
 const USER = { id: 'user-1' } as User;
 
@@ -131,6 +131,16 @@ describe('canUserAccessItem', () => {
     getItems.mockResolvedValue({ Items: [{ Id: 'movie-1', Type: 'Movie' }] });
     expect(await canUserAccessItem(USER, 'movie-1')).toBe(true);
     expect(getUser).not.toHaveBeenCalled();
+  });
+});
+
+describe('the strict checks', () => {
+  it('throw when Jellyfin cannot be asked, so callers can tell failure from refusal', async () => {
+    getUser.mockRejectedValue(new Error('upstream 500'));
+    await expect(liveTvAccess(USER)).rejects.toThrow('upstream 500');
+    getItems.mockRejectedValue(new Error('upstream 502'));
+    await expect(itemAccess(USER, 'item-9')).rejects.toThrow('upstream 502');
+    expect(await canUserAccessItem(USER, 'item-9')).toBe(false);
   });
 });
 

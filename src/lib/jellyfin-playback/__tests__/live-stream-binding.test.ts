@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const store = new Map<string, string>();
 const getRedisClient = vi.fn();
+const expire = vi.fn(async () => 1);
 vi.mock('@/lib/redis', () => ({ getRedisClient: () => getRedisClient() }));
 
 const { bindLiveStream, liveStreamBelongsTo } = await import('@/lib/jellyfin-playback/live-stream-binding');
@@ -11,6 +12,7 @@ beforeEach(() => {
   getRedisClient.mockResolvedValue({
     get: async (k: string) => store.get(k) ?? null,
     set: async (k: string, v: string) => { store.set(k, v); return 'OK'; },
+    expire: expire,
   });
 });
 
@@ -21,6 +23,16 @@ describe('live stream binding', () => {
     expect(await liveStreamBelongsTo('u1', 'ls-1', 'movie-1')).toBe(false);
     expect(await liveStreamBelongsTo('u2', 'ls-1', 'channel-1')).toBe(false);
     expect(await liveStreamBelongsTo('u1', 'ls-unknown', 'channel-1')).toBe(false);
+  });
+
+  it('keeps a binding in use alive', async () => {
+    await bindLiveStream('u1', 'ls-3', 'channel-3');
+    expire.mockClear();
+    await liveStreamBelongsTo('u1', 'ls-3', 'channel-3');
+    expect(expire).toHaveBeenCalledWith('jellyfin:live-stream:u1:ls-3', 12 * 60 * 60);
+    expire.mockClear();
+    await liveStreamBelongsTo('u1', 'ls-3', 'movie-1');
+    expect(expire).not.toHaveBeenCalled();
   });
 
   it('treats the dashed GUID form of an id as the same item', async () => {

@@ -29,7 +29,9 @@ vi.mock('@/lib/service-helpers', () => ({
 vi.mock('@/lib/jellyfin-playback/item-access', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/jellyfin-playback/item-access')>()),
   canUserAccessLiveTv: mocks.liveTv,
+  liveTvAccess: mocks.liveTv,
   canUserAccessItem: mocks.itemAccess,
+  itemAccess: mocks.itemAccess,
 }));
 vi.mock('@/lib/jellyfin-playback/stream-info', () => ({ buildHelprrStreamInfo: () => mocks.streamInfo() }));
 
@@ -58,6 +60,13 @@ describe('Live TV listing', () => {
     expect(await res.json()).toEqual({ linked: true, liveTvAccess: false, channels: [], programs: [], recordings: [] });
     expect(mocks.channels).not.toHaveBeenCalled();
     expect(mocks.programs).not.toHaveBeenCalled();
+  });
+
+  it('reports a policy read that failed as an error, not as Live TV switched off', async () => {
+    mocks.liveTv.mockRejectedValue(new Error('jellyfin down'));
+    const res = await liveGet(new NextRequest('http://helprr.test/api/jellyfin/catalog/live'));
+    expect(res.status).toBe(500);
+    expect((await res.json()).liveTvAccess).toBeUndefined();
   });
 
   it('lists channels for an account with Live TV', async () => {
@@ -150,6 +159,12 @@ describe('Playback negotiation', () => {
     expect((await negotiate()).status).toBe(404);
     expect(mocks.playbackInfo).not.toHaveBeenCalled();
     expect(mocks.itemAccess).toHaveBeenCalledWith(expect.objectContaining({ id: 'member' }), 'abcdef0123');
+  });
+
+  it('reports an access check that could not run as a failure to start, not a missing item', async () => {
+    mocks.itemAccess.mockRejectedValue(new Error('jellyfin down'));
+    expect((await negotiate()).status).toBe(500);
+    expect(mocks.playbackInfo).not.toHaveBeenCalled();
   });
 
   it('negotiates an item the access check allows', async () => {

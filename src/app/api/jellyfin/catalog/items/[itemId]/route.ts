@@ -4,7 +4,7 @@ import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { upstreamErrorResponse } from '@/lib/api-error';
 import { withoutSourceLocation } from '@/lib/jellyfin-playback/source-location';
-import { canUserAccessLiveTv, isLiveTvItemType, withoutLiveTvItems } from '@/lib/jellyfin-playback/item-access';
+import { isLiveTvItemType, liveTvAccess, withoutLiveTvItems } from '@/lib/jellyfin-playback/item-access';
 import type { CatalogItemDetailResponse } from '@/types/jellyfin-streaming';
 
 const ITEM_ID_RE = /^[a-f0-9-]+$/i;
@@ -28,7 +28,7 @@ async function getHandler(
     const wants = (name: string) => legacy || expand.has(name);
     const client = (await getJellyfinClientForUser(auth.user)).withReadSignal(request.signal);
     const item = await client.getItem(itemId);
-    if (isLiveTvItemType(item.Type) && !(await canUserAccessLiveTv(auth.user))) {
+    if (isLiveTvItemType(item.Type) && !(await liveTvAccess(auth.user))) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
 

@@ -23,7 +23,10 @@ export async function bindLiveStream(userId: string, liveStreamId: string, itemI
 export async function liveStreamBelongsTo(userId: string, liveStreamId: string, itemId: string): Promise<boolean> {
   try {
     const redis = await getRedisClient();
-    return (await redis.get(key(userId, liveStreamId))) === sameItem(itemId);
+    const matches = (await redis.get(key(userId, liveStreamId))) === sameItem(itemId);
+    // A channel can play for longer than the TTL: each use keeps the binding alive.
+    if (matches) await redis.expire(key(userId, liveStreamId), TTL_SECONDS).catch(() => undefined);
+    return matches;
   } catch {
     return false;
   }

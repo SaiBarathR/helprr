@@ -4,7 +4,7 @@ import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { jellyfinConnectGateResponse, upstreamErrorResponse } from '@/lib/api-error';
 import { buildHelprrStreamInfo } from '@/lib/jellyfin-playback/stream-info';
-import { canUserAccessItem } from '@/lib/jellyfin-playback/item-access';
+import { itemAccess } from '@/lib/jellyfin-playback/item-access';
 import { bindLiveStream, liveStreamBelongsTo } from '@/lib/jellyfin-playback/live-stream-binding';
 import type { JellyfinDeviceProfile, PlaybackInfoRequest } from '@/types/jellyfin-streaming';
 
@@ -64,7 +64,9 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     const { client } = await getJellyfinPlaybackContext(auth.user);
     // The media proxy's gate (and cache), checked before PlaybackInfo so a refused
     // item, such as a channel for an account without Live TV, opens no stream.
-    if (!(await canUserAccessItem(auth.user, itemId))) {
+    // Throws if Jellyfin cannot be asked, which the catch reports as a failure
+    // to start, not as a missing item.
+    if (!(await itemAccess(auth.user, itemId))) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
     if (playbackRequest.liveStreamId && !(await liveStreamBelongsTo(auth.user.id, playbackRequest.liveStreamId, itemId))) {
