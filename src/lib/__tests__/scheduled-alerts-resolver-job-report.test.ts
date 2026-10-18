@@ -1,11 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 
-const mocks = vi.hoisted(() => ({ getSonarrClients: vi.fn() }));
+const mocks = vi.hoisted(() => ({ getSonarrClients: vi.fn(), getRadarrClients: vi.fn(async () => [] as unknown[]), nextAiring: vi.fn() }));
 
-vi.mock('@/lib/service-helpers', () => ({ getSonarrClients: mocks.getSonarrClients, getRadarrClients: vi.fn(async () => []) }));
-vi.mock('@/lib/anilist-client', () => ({ getAnimeNextAiringEpisode: vi.fn() }));
+vi.mock('@/lib/service-helpers', () => ({ getSonarrClients: mocks.getSonarrClients, getRadarrClients: mocks.getRadarrClients }));
+vi.mock('@/lib/anilist-client', () => ({ getAnimeNextAiringEpisode: mocks.nextAiring }));
 
 import type { ScheduledAlert } from '@prisma/client';
+import { AxiosError, AxiosHeaders } from 'axios';
 import { jobReports, type JobReport } from '@/lib/polling-job-report';
 import { createResolverContext, resolveAlertOccurrencesResult } from '@/lib/scheduled-alerts/resolver';
 
@@ -28,5 +29,44 @@ describe('resolving a scheduled alert across instances', () => {
 
     expect(result).toEqual({ candidates: [], resolved: true });
     expect(report.failure).toBe('Sonarr answered 500');
+  });
+
+  const movieAlert = {
+    scheduleMode: 'release_relative', source: 'RADARR', mediaType: 'movie', externalId: '5', title: 'Film',
+    subtitle: null, posterUrl: null, href: null, instanceId: null, metadata: {}, scope: 'movie',
+    releaseTypes: ['digital'], offsetMinutes: 0, timeZone: 'UTC',
+  } as unknown as ScheduledAlert;
+  const status = (code: number) => new AxiosError('Request failed', undefined, undefined, undefined, {
+    status: code, statusText: '', headers: {}, config: { headers: new AxiosHeaders() }, data: null,
+  });
+  const resolveInJob = async (alert: ScheduledAlert) => {
+    const report: JobReport = { failure: null, skipped: false };
+    const result = await jobReports.run(report, () => resolveAlertOccurrencesResult(alert, createResolverContext()));
+    return { result, report };
+  };
+
+  it('reports a film lookup that failed even when the calendar answered, but not a film Radarr no longer has', async () => {
+    const getMovieById = vi.fn(async () => { throw status(500); });
+    mocks.getRadarrClients.mockResolvedValue([{ connection: { id: 'r1' }, client: { getMovieById, getCalendar: async () => [] } }]);
+
+    const failed = await resolveInJob(movieAlert);
+    expect(failed.result.resolved).toBe(true);
+    expect(failed.report.failure).not.toBeNull();
+
+    getMovieById.mockRejectedValueOnce(status(404));
+    expect((await resolveInJob(movieAlert)).report.failure).toBeNull();
+  });
+
+  it('reports instances that could not be listed', async () => {
+    mocks.getRadarrClients.mockRejectedValueOnce(new Error('database unavailable'));
+
+    expect((await resolveInJob(movieAlert)).report.failure).toBe('database unavailable');
+  });
+
+  it('reports an AniList airing lookup that failed', async () => {
+    mocks.nextAiring.mockRejectedValueOnce(new Error('AniList answered 500'));
+    const anime = { ...movieAlert, source: 'ANILIST', mediaType: 'anime', externalId: '21', scope: 'series', releaseTypes: ['airing'] } as unknown as ScheduledAlert;
+
+    expect((await resolveInJob(anime)).report.failure).toBe('AniList answered 500');
   });
 });

@@ -65,6 +65,17 @@ describe('taste-profile signals and the polling job report', () => {
     expect(report.failure).toBe('Jellyfin answered 500');
   });
 
+  it('reports a Playback Reporting query that failed, not one whose plugin is missing', async () => {
+    const queryItems = vi.fn(async () => ({ Items: [] }));
+    const submitCustomQuery = vi.fn(async () => null as unknown);
+    mocks.jellyfinContext.mockResolvedValue({ client: { queryItems, submitCustomQuery }, jellyfinUserId: 'jf1' });
+
+    expect((await inJob(() => collectJellyfinSignals({ role: 'member', jellyfinUserId: 'jf1' }))).failure).toBeNull();
+
+    submitCustomQuery.mockRejectedValueOnce(new Error('Playback Reporting answered 500'));
+    expect((await inJob(() => collectJellyfinSignals({ role: 'member', jellyfinUserId: 'jf1' }))).failure).toBe('Playback Reporting answered 500');
+  });
+
   it('leaves Jellyfin that is not set up to the empty signals, and lets a failed read throw', async () => {
     mocks.jellyfinContext.mockRejectedValueOnce(new Error('not configured'));
     expect(await inJob(() => collectJellyfinSignals({ role: 'member', jellyfinUserId: null }))).toEqual({ failure: null, skipped: false });

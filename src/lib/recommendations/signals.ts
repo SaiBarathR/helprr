@@ -116,7 +116,11 @@ async function collectPlaybackReporting(
     ORDER BY DateCreated DESC
     LIMIT ${PLAYBACK_REPORTING_ROW_LIMIT}
   `;
-  const result = await client.submitCustomQuery(query).catch(() => null);
+  // A missing plugin already answers null; a throw is a failed read.
+  const result = await client.submitCustomQuery(query).catch((error) => {
+    noteJobFailure(error);
+    return null;
+  });
   if (!result || !Array.isArray(result.results)) {
     return { playbackReportingPlays: [], playbackReportingAvailable: false, watchTimeMinByTitle: new Map() };
   }

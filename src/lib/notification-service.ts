@@ -356,7 +356,10 @@ export async function sendPushNotification(
     await prisma.pushSubscription.update({
       where: { endpoint: subscription.endpoint },
       data: { consecutiveFailures: 0, lastSucceededAt: new Date() },
-    }).catch(() => {});
+    }).catch((error) => {
+      // A subscription removed while this push was in flight is not a failure.
+      if (!(error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025')) noteJobFailure(error);
+    });
     return true;
   } catch (error: unknown) {
     const errObj = error as Record<string, unknown> & Partial<Error>;
@@ -601,6 +604,7 @@ export async function notifyEvent(event: {
     });
   } catch (err) {
     // The dedupe row already exists; only the embedded counts are stale.
+    noteJobFailure(err);
     logger.warn('Notification history count update failed', {
       eventType: event.eventType,
       reason: err instanceof Error ? err.message : String(err),

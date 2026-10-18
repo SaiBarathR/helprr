@@ -19,6 +19,7 @@ import {
 } from '@/lib/cache/config';
 import { buildImageIndexKey } from '@/lib/cache/keys';
 import { getRedisClient } from '@/lib/redis';
+import { noteJobFailure } from '@/lib/polling-job-report';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const IMAGE_ORPHAN_GRACE_MS = DAY_MS;
@@ -528,6 +529,7 @@ export async function pruneOrphanImageCache(
     } catch (error) {
       if (!isMissing(error)) {
         // Leave the metadata-free immutable file for the next orphan sweep.
+        noteJobFailure(error);
       }
     }
   }

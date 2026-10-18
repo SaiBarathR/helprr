@@ -1,4 +1,5 @@
 import { getRedisClient } from '@/lib/redis';
+import { noteJobFailure } from '@/lib/polling-job-report';
 import { buildAnilistDataKey, sha256Hex, stableStringify } from '@/lib/cache/keys';
 import {
   getCacheGeneration,
@@ -110,6 +111,8 @@ export async function getAnilistJsonWithCache<T>(options: AnilistCachedRequestOp
     return payload;
   } catch (error) {
     if (cachedEntry && now < cachedEntry.staleUntil) {
+      // Stale data stands in, but a polling job that asked still failed its refresh.
+      noteJobFailure(error);
       return cachedEntry.payload;
     }
     throw error;
