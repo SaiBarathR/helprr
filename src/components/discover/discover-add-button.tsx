@@ -1,8 +1,16 @@
 'use client';
 
 import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import Link from '@/components/ui/app-link';
-import { Inbox, Plus, Check } from 'lucide-react';
+import { ChevronDown, Inbox, Plus, Check } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { jsonFetcher } from '@/lib/query-fetch';
 import type { DiscoverDetail } from '@/types';
 import { WatchlistButton } from '@/components/watchlist/watchlist-button';
 import { RequestMediaButton } from '@/components/discover/request-media-button';
@@ -26,19 +34,21 @@ function buildAddHref(detail: DiscoverDetail): string | null {
       ? `/movies/${detail.addTarget.id}${q}`
       : `/series/${detail.addTarget.id}${q}`;
   }
+  return buildAddPageHref(detail);
+}
 
-  if (detail.mediaType === 'movie') {
-    const params = new URLSearchParams();
-    params.set('term', detail.title);
-    params.set('tmdbId', String(detail.tmdbId));
-    return `/movies/add?${params.toString()}`;
-  }
-
+/** The add page, prefilled; `instanceId` preselects the target instance. */
+function buildAddPageHref(detail: DiscoverDetail, instanceId?: string): string {
   const params = new URLSearchParams();
   params.set('term', detail.title);
   params.set('tmdbId', String(detail.tmdbId));
+  if (detail.mediaType === 'movie') {
+    if (instanceId) params.set('instance', instanceId);
+    return `/movies/add?${params.toString()}`;
+  }
   if (detail.tvdbId) params.set('tvdbId', String(detail.tvdbId));
   params.set('seriesType', 'standard');
+  if (instanceId) params.set('instance', instanceId);
   return `/series/add?${params.toString()}`;
 }
 
@@ -62,6 +72,8 @@ export interface DiscoverAddController {
     releaseDate: string | null;
   };
   instances: Array<{ instanceId: string; instanceLabel: string; id: number; titleSlug?: string }>;
+  /** Configured instances of the service that do not hold the title yet, each with its add link. */
+  missingInstances: Array<{ id: string; label: string; href: string }>;
   watchlistOpen: boolean;
   setWatchlistOpen: (open: boolean) => void;
   scheduleOpen: boolean;
@@ -105,6 +117,24 @@ export function useDiscoverAddController(detail: DiscoverDetail): DiscoverAddCon
       : [];
   const targetService = detail.addTarget.service === 'radarr' ? 'Radarr' : 'Sonarr';
   const type: 'movie' | 'series' = detail.addTarget.service === 'radarr' ? 'movie' : 'series';
+
+  // A title can live in several instances with their own profiles, so one held
+  // by Radarr A stays addable to Radarr B. If a holder's instance is unknown,
+  // offer nothing rather than risk offering the holder itself.
+  const wantsOtherInstances = detail.addTarget.exists && canAddDirectly;
+  const { data: configured = [] } = useQuery({
+    queryKey: ['arr-instances'],
+    queryFn: jsonFetcher<Array<{ id: string; label: string; type: string }>>('/api/instances'),
+    enabled: wantsOtherInstances,
+    staleTime: 5 * 60_000,
+  });
+  const held = new Set(instances.map((instance) => instance.instanceId));
+  const missingInstances = wantsOtherInstances && !held.has('')
+    ? (Array.isArray(configured) ? configured : [])
+        .filter((instance) => instance.type === (detail.mediaType === 'movie' ? 'RADARR' : 'SONARR') && !held.has(instance.id))
+        .map((instance) => ({ id: instance.id, label: instance.label || targetService, href: buildAddPageHref(detail, instance.id) }))
+    : [];
+
   const contextGroups: ContextActionGroup[] = [
     {
       id: 'library',
@@ -134,6 +164,7 @@ export function useDiscoverAddController(detail: DiscoverDetail): DiscoverAddCon
     requested,
     watchlistDraft,
     instances,
+    missingInstances,
     watchlistOpen,
     setWatchlistOpen,
     scheduleOpen,
@@ -154,6 +185,7 @@ export function DiscoverAddButton({ detail, controller }: DiscoverAddButtonProps
     canSchedule,
     watchlistDraft,
     instances,
+    missingInstances,
     watchlistOpen,
     setWatchlistOpen,
     scheduleOpen,
@@ -190,6 +222,31 @@ export function DiscoverAddButton({ detail, controller }: DiscoverAddButtonProps
           label={`Open in ${targetService}`}
           className="inline-flex items-center gap-1.5 rounded-full bg-background/55 backdrop-blur-md text-foreground px-3 py-1.5 text-[11px] font-medium hover:bg-background/70 transition-colors"
         />
+        {missingInstances.length === 1 && (
+          <Link
+            href={missingInstances[0].href}
+            className="inline-flex items-center gap-1.5 rounded-full bg-background/55 backdrop-blur-md text-foreground px-3 py-1.5 text-[11px] font-medium hover:bg-background/70 transition-colors"
+          >
+            <Plus className="h-3.5 w-3.5" strokeWidth={2.5} />
+            Add to {missingInstances[0].label}
+          </Link>
+        )}
+        {missingInstances.length > 1 && (
+          <DropdownMenu>
+            <DropdownMenuTrigger className="inline-flex items-center gap-1.5 rounded-full bg-background/55 backdrop-blur-md text-foreground px-3 py-1.5 text-[11px] font-medium hover:bg-background/70 transition-colors">
+              <Plus className="h-3.5 w-3.5" strokeWidth={2.5} />
+              Add to another
+              <ChevronDown className="h-3 w-3" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {missingInstances.map((instance) => (
+                <DropdownMenuItem key={instance.id} asChild>
+                  <Link href={instance.href}>{instance.label}</Link>
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
       </div>
     );
   }
