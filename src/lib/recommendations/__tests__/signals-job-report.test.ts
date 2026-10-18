@@ -51,6 +51,20 @@ describe('taste-profile signals and the polling job report', () => {
     expect(mocks.readAniList).not.toHaveBeenCalled();
   });
 
+  it('reports recent plays that could not be read, and keeps the rest', async () => {
+    const queryItems = vi.fn(async (query: { IncludeItemTypes: string }) => {
+      if (query.IncludeItemTypes === 'Episode,Movie') throw new Error('Jellyfin answered 500');
+      return { Items: [] };
+    });
+    mocks.jellyfinContext.mockResolvedValue({ client: { queryItems, submitCustomQuery: async () => null }, jellyfinUserId: 'jf1' });
+
+    const report = await inJob(async () => {
+      expect(await collectJellyfinSignals({ role: 'member', jellyfinUserId: 'jf1' })).toEqual(expect.objectContaining({ available: true, recentPlays: [] }));
+    });
+
+    expect(report.failure).toBe('Jellyfin answered 500');
+  });
+
   it('leaves Jellyfin that is not set up to the empty signals, and lets a failed read throw', async () => {
     mocks.jellyfinContext.mockRejectedValueOnce(new Error('not configured'));
     expect(await inJob(() => collectJellyfinSignals({ role: 'member', jellyfinUserId: null }))).toEqual({ failure: null, skipped: false });

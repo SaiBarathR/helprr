@@ -212,8 +212,9 @@ export async function collectJellyfinSignals(
         : (item.SeriesId ? seriesById.get(item.SeriesId)?.Genres ?? [] : []);
       recentPlays.push({ at, genres });
     }
-  } catch {
+  } catch (error) {
     // Fail-soft: moods degrade, engagement still works.
+    noteJobFailure(error);
   }
 
   const reporting = await collectPlaybackReporting(client, jellyfinUserId, titleGenres);

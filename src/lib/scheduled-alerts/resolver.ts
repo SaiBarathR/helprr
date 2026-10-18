@@ -7,6 +7,7 @@ import { getSonarrClients, getRadarrClients } from '@/lib/service-helpers';
 import { getAnimeNextAiringEpisode } from '@/lib/anilist-client';
 import { DEFAULT_HORIZON_DAYS } from '@/lib/scheduled-alerts/constants';
 import { applyOffset, defaultReminderLocal } from '@/lib/scheduled-alerts/helpers';
+import { noteJobFailure } from '@/lib/polling-job-report';
 import type {
   OccurrenceCandidate,
   PreviewResult,
@@ -293,8 +294,9 @@ async function resolveReleaseCandidates(
               ),
             );
           }
-        } catch {
-          // try next instance
+        } catch (error) {
+          // Try the next instance; the polling job still failed.
+          noteJobFailure(error);
         }
       }
       if (succeeded) outcomes.radarr = 'success';
@@ -345,8 +347,9 @@ async function resolveReleaseCandidates(
               ),
             );
           }
-        } catch {
-          // try next instance
+        } catch (error) {
+          // Try the next instance; the polling job still failed.
+          noteJobFailure(error);
         }
       }
       if (succeeded) outcomes.sonarr = 'success';
