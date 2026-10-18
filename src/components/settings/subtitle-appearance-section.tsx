@@ -15,7 +15,9 @@ import {
 } from '@/lib/jellyfin-playback/subtitle-appearance';
 import { cn } from '@/lib/utils';
 
-const TRIGGER_CLASS = 'w-auto h-auto border-0 bg-transparent px-2 py-1 gap-1 text-sm text-muted-foreground shadow-none focus:ring-0 [&>svg]:h-3.5 [&>svg]:w-3.5';
+// The Preferences row style, plus a visible keyboard focus ring (the base
+// trigger removes its outline).
+const TRIGGER_CLASS = 'w-auto h-auto border-0 bg-transparent px-2 py-1 gap-1 text-sm text-muted-foreground shadow-none focus:ring-0 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-ring [&>svg]:h-3.5 [&>svg]:w-3.5';
 
 function SelectRow<T extends string>({ label, value, options, onChange }: {
   label: string;
