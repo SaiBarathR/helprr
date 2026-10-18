@@ -153,7 +153,11 @@ week on the builds named with them.
   - **Live TV.** One channel played in Chrome as a live HLS transcode under a
     `TvChannel` session. The player showed it with the on-demand seek bar; it
     now reads `IsInfiniteStream` from the negotiated source and shows a LIVE
-    indicator instead, with no scrubber, clocks, or ten-second skips.
+    indicator instead, with no scrubber, clocks, or ten-second skips. On
+    2026-10-12 a channel also played in Safari on the iOS Simulator (iOS 27)
+    against the development server, marked LIVE with no seek bar. That was a
+    feature flow on the Simulator only; Safari on macOS and a physical iPhone
+    were not run.
   - **Defects found, fixed in Helprr 1.6.1.** All three predate `12.2.0` and none
     is a Jellyfin contract change: Chrome drew native text subtitles through the
     seek bar while the controls were up (see the corrected cue-placement entry
@@ -173,8 +177,9 @@ week on the builds named with them.
   - Prowlarr and Seerr beyond the reads above.
   - On Jellyfin `12.2.0`: token revocation, which means revoking a live member
     token; trickplay and alternate versions, because none of the 707 items
-    checked on the reference server has either; Live TV in Safari; and playback
-    on a physical iPhone.
+    checked on the reference server has either; Live TV in Safari on macOS
+    (Safari was run only on the iOS Simulator, above); and playback on a
+    physical iPhone.
 
 ### Jellyfin 12 compatibility (2026-09-13)
 
@@ -205,7 +210,9 @@ were compared with Helprr's client and media proxies. See also the
   movie/TV, and device breakdown reports. This is evidence for the installed
   plugin, not a promise that older plugin binaries work on v12.
 - Chrome 152 on macOS exercised Watch home, catalog/search, episode details,
-  artwork and HEVC/MKV HLS transcoding for Friends S1E1. After account connection,
+  artwork and HEVC/MKV HLS transcoding for Friends S1E1. The catalog check ran in
+  a 150 × 863 CSS-pixel viewport, which does not qualify a normal desktop layout
+  or an iPhone PWA; the playback check ran at 1728 × 997. After account connection,
   real UI clicks verified advancing unmuted video, pause/resume, seeking, English
   SUBRIP subtitles delivered as WebVTT (HTTP 200), and quality changes both paused
   and playing. Paused quality changes preserved the exact position and intent.

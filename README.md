@@ -200,6 +200,11 @@ https://github.com/user-attachments/assets/7fa980fd-0dc6-48a8-91c1-cd35453571fd
 
 Docker Compose starts Helprr, PostgreSQL 16, and password-protected Redis 7. It creates named volumes for database, Redis, and log data; waits for database/Redis health; runs pending Prisma migrations before Helprr starts; and exposes Helprr on port **3050**.
 
+**Requirements:** Docker Compose 2.18 or newer (`docker compose version`; older
+releases reject the Compose file's nested `DATABASE_URL` default) on a Docker Engine
+release that Docker still supports. The iPhone PWA supports the latest two major iOS
+versions, today iOS 26 and 27.
+
 ### 1. Download the deployment files
 
 No clone, no build — Helprr ships as a prebuilt multi-arch image
@@ -800,6 +805,33 @@ docker compose --env-file .env.dev -f docker-compose.dev.yml \
 ```
 
 
+
+## Privacy
+
+Helprr has no telemetry. It sends no usage, analytics, crash, or installation data
+anywhere, Next.js telemetry is turned off in the image, and fonts are bundled. Every
+outbound request is one of these:
+
+- **Services you configure.** The Helprr server talks to Sonarr, Radarr, Lidarr,
+  qBittorrent, Prowlarr, Jellyfin, Seerr, and TMDB at the addresses you enter.
+- **Update check.** On an admin visit, the server asks GitHub's public API for
+  Helprr's latest release, at most once every six hours (see
+  [Update notices](#update-notices-and-support-bundles)).
+- **AniList.** The server reads AniList's public API (`graphql.anilist.co`) for the
+  Anime pages and to map Sonarr anime to AniList, including a nightly run that sends
+  never-mapped anime titles (**Settings → Anime mappings → Nightly auto-map**
+  turns it off). A member who connects an AniList account signs in through
+  `anilist.co`, and Helprr then reads and updates that member's AniList list.
+- **Artwork.** The server fetches posters and backdrops from TMDB, TheTVDB,
+  fanart.tv, TVmaze, AniList, and Lidarr's image host, plus any host in
+  `EXTRA_ALLOWED_IMAGE_HOSTS`, and serves them through its own image proxy.
+- **Push notifications.** Notifications go through the push service of each
+  subscribed browser (Apple, Google, or Mozilla), encrypted as Web Push requires.
+- **Trailers.** The viewer's browser, not the server, loads trailer thumbnails from
+  `img.youtube.com` and, when a trailer is played, the YouTube or Dailymotion player.
+
+Links to IMDb, TMDB, MusicBrainz, and similar sites are fetched only when you open
+them.
 
 ## Security notes
 
