@@ -12,12 +12,17 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@/lib/auth', () => ({ requireUserCapability: mocks.auth }));
 vi.mock('@/lib/service-helpers', () => ({
   JellyfinNotLinkedError: class JellyfinNotLinkedError extends Error {},
-  getJellyfinClientForUser: async () => ({
-    getLiveTvChannels: mocks.channels,
-    getLiveTvPrograms: mocks.programs,
-    getLiveTvRecordings: mocks.recordings,
-    getCatalogItems: mocks.catalogItems,
-  }),
+  getJellyfinClientForUser: async () => {
+    const client = {
+      getLiveTvChannels: mocks.channels,
+      getLiveTvPrograms: mocks.programs,
+      getLiveTvRecordings: mocks.recordings,
+      getCatalogItems: mocks.catalogItems,
+      getItem: mocks.getItem,
+      withReadSignal: () => client,
+    };
+    return client;
+  },
   getJellyfinPlaybackContext: async () => ({ client: { getItem: mocks.getItem, getPlaybackInfo: mocks.playbackInfo } }),
 }));
 vi.mock('@/lib/jellyfin-playback/item-access', async (importOriginal) => ({
@@ -30,6 +35,8 @@ vi.mock('@/lib/jellyfin-playback/stream-info', () => ({ buildHelprrStreamInfo: (
 const { GET: liveGet } = await import('@/app/api/jellyfin/catalog/live/route');
 const { GET: searchGet } = await import('@/app/api/jellyfin/catalog/search/route');
 const { POST: infoPost } = await import('@/app/api/jellyfin/stream/info/route');
+const { GET: itemsGet } = await import('@/app/api/jellyfin/catalog/items/route');
+const { GET: itemGet } = await import('@/app/api/jellyfin/catalog/items/[itemId]/route');
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -76,6 +83,23 @@ describe('Jellyfin search', () => {
     expect(mocks.catalogItems).not.toHaveBeenCalled();
   });
 
+  it('cannot be steered past the check with spaces or empty entries', async () => {
+    mocks.liveTv.mockResolvedValue(false);
+    const body = await (await search('q=news&includeItemTypes=%20LiveTvChannel,')).json();
+    expect(body.items).toEqual([]);
+    expect(mocks.catalogItems).not.toHaveBeenCalled();
+    await search('q=news&includeItemTypes=Movie,%20LiveTvChannel');
+    expect(mocks.catalogItems.mock.calls[0][0].IncludeItemTypes).toBe('Movie');
+  });
+
+  it('drops a channel that comes back anyway', async () => {
+    mocks.liveTv.mockResolvedValue(false);
+    mocks.catalogItems.mockResolvedValue({ Items: [{ Id: 'm1', Type: 'Movie' }, { Id: 'ch-1', Type: 'TvChannel' }], TotalRecordCount: 2 });
+    const body = await (await search('q=news&includeItemTypes=Movie')).json();
+    expect(body.items).toEqual([{ Id: 'm1', Type: 'Movie' }]);
+    expect(body.total).toBe(1);
+  });
+
   it('keeps channels for an account with Live TV, and skips the check when none are asked for', async () => {
     mocks.liveTv.mockResolvedValue(true);
     await search('q=news');
@@ -83,6 +107,24 @@ describe('Jellyfin search', () => {
     mocks.liveTv.mockClear();
     await search('q=news&includeItemTypes=Movie,Series');
     expect(mocks.liveTv).not.toHaveBeenCalled();
+  });
+});
+
+describe('Catalog items and item detail', () => {
+  it('does not list a channel to an account without Live TV, even by id', async () => {
+    mocks.liveTv.mockResolvedValue(false);
+    mocks.catalogItems.mockResolvedValue({ Items: [{ Id: 'ch-1', Type: 'TvChannel' }], TotalRecordCount: 1 });
+    const body = await (await itemsGet(new NextRequest('http://helprr.test/api/jellyfin/catalog/items?ids=ch-1'))).json();
+    expect(body.items).toEqual([]);
+    expect(body.total).toBe(0);
+  });
+
+  it('answers a channel\'s detail with 404 for that account, and leaves films alone', async () => {
+    mocks.liveTv.mockResolvedValue(false);
+    const detail = (id: string) => itemGet(new NextRequest(`http://helprr.test/api/jellyfin/catalog/items/${id}?expand=none`), { params: Promise.resolve({ itemId: id }) });
+    expect((await detail('abc123')).status).toBe(404);
+    mocks.getItem.mockResolvedValue({ Id: 'def456', Type: 'Movie' });
+    expect((await detail('def456')).status).toBe(200);
   });
 });
 

@@ -66,30 +66,44 @@ export async function canUserAccessItem(user: User, itemId: string): Promise<boo
   }
 
   // v2: verdicts cached before the Live TV check allowed channels to anyone.
+  // A visible Live TV item is cached as 'live', not as allowed, so the policy
+  // (cached on its own) is consulted on every check and a revoked Live TV
+  // permission is not extended by this cache.
   const cacheKey = `jellyfin:item-access:v2:${context.connectionFingerprint}:${context.jellyfinUserId}:${itemId.toLowerCase()}`;
+  let visibility: string | null = null;
   try {
     const redis = await getRedisClient();
-    const cached = await redis.get(cacheKey);
-    if (cached !== null) return cached === '1';
+    visibility = await redis.get(cacheKey);
   } catch {
     // Redis unavailable — fall through to a live check.
   }
 
-  let allowed: boolean;
-  try {
-    const result = await context.client.getItems({ ids: itemId, limit: 1 });
-    const item = result.Items?.[0];
-    allowed = item !== undefined && (!isLiveTvItemType(item.Type) || await canUserAccessLiveTv(user));
-  } catch {
-    return false;
+  if (visibility === null) {
+    try {
+      const result = await context.client.getItems({ ids: itemId, limit: 1 });
+      const item = result.Items?.[0];
+      visibility = item === undefined ? '0' : isLiveTvItemType(item.Type) ? 'live' : '1';
+    } catch {
+      return false;
+    }
+    try {
+      const redis = await getRedisClient();
+      await redis.set(cacheKey, visibility, { EX: ITEM_ACCESS_TTL_SECONDS });
+    } catch {
+      // Best-effort cache write.
+    }
   }
 
-  try {
-    const redis = await getRedisClient();
-    await redis.set(cacheKey, allowed ? '1' : '0', { EX: ITEM_ACCESS_TTL_SECONDS });
-  } catch {
-    // Best-effort cache write.
-  }
+  if (visibility === 'live') return canUserAccessLiveTv(user);
+  return visibility === '1';
+}
 
-  return allowed;
+/** Drops Live TV items from a listing for an account without Live TV. */
+export async function withoutLiveTvItems<T extends { Type?: string | null }>(
+  user: Pick<User, 'role' | 'jellyfinUserId'>,
+  items: T[],
+): Promise<T[]> {
+  if (!items.some((item) => isLiveTvItemType(item.Type))) return items;
+  if (await canUserAccessLiveTv(user)) return items;
+  return items.filter((item) => !isLiveTvItemType(item.Type));
 }

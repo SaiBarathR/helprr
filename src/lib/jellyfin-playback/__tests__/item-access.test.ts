@@ -103,6 +103,19 @@ describe('canUserAccessItem', () => {
     expect(await canUserAccessLiveTv(USER)).toBe(true);
   });
 
+  it('caches a visible channel as live and reads the current policy on every check', async () => {
+    getItems.mockResolvedValue({ Items: [{ Id: 'ch-5', Type: 'TvChannel' }] });
+    getUser.mockResolvedValue({ Id: 'jf-1', Policy: { EnableLiveTvAccess: true } });
+    expect(await canUserAccessItem(USER, 'ch-5')).toBe(true);
+    expect(redisSet).toHaveBeenCalledWith('jellyfin:item-access:v2:fp-1:jf-1:ch-5', 'live', { EX: 900 });
+
+    // Later: the item verdict is still cached, but Live TV has been switched off.
+    getItems.mockClear();
+    redisGet.mockImplementation(async (key: string) => (key.startsWith('jellyfin:item-access') ? 'live' : '0'));
+    expect(await canUserAccessItem(USER, 'ch-5')).toBe(false);
+    expect(getItems).not.toHaveBeenCalled();
+  });
+
   it('does not read verdicts cached before the Live TV check', async () => {
     getItems.mockResolvedValue({ Items: [{ Id: 'ch-4', Type: 'TvChannel' }] });
     getUser.mockResolvedValue({ Id: 'jf-1', Policy: { EnableLiveTvAccess: false } });
