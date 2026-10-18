@@ -317,7 +317,7 @@ export function AniListRemapDrawer({
 
         <div className="px-4 pb-2 space-y-4 flex-1 min-h-0 flex flex-col overflow-y-auto">
           {error && (
-            <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+            <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-800 dark:text-red-300">
               {error}
             </div>
           )}
