@@ -167,6 +167,23 @@ week on the builds named with them.
     controls of an open panel. The fixes were checked on a local build in
     desktop Chrome, on the iOS Simulator, and in Chrome 149 on the Android
     emulator.
+- **Trickplay and alternate versions on `12.2.0`, 2026-10-18.** The reference
+  server has neither, so a synthetic two-minute test-pattern movie was made in
+  two versions (`- 1080p` and `- 720p` files, H.264/AAC in MKV) and put in a
+  temporary library with trickplay extraction on. Jellyfin grouped the files as
+  one movie with two media sources and generated 320 px tiles for each (10 × 10
+  sheets, one tile every 10 seconds). Played on the development server in
+  Chromium as a Jellyfin-linked member; the library and files were removed
+  afterwards.
+  - **Trickplay.** Hovering the seek bar at 1:12 showed that position's tile,
+    fetched through the media proxy from `/Videos/{id}/Trickplay/320/0.jpg` with
+    the playing version's `MediaSourceId`. A click there seeked, and playback
+    carried on.
+  - **Alternate versions.** Playback started the first version (1080p,
+    negotiated as HLS in this browser). Asking `/api/jellyfin/stream/info` for
+    the 720p source returned that source, 1280 pixels wide, as direct play.
+    Helprr has no version picker: the player always starts the first version,
+    where jellyfin-web lets the viewer choose.
 - **Not re-run on the newer versions.** These still rest on the earlier
   qualification named in the matrix:
   - Download Cleaner and Queue Cleaner removals, and every delete flow, on Sonarr,
@@ -176,10 +193,8 @@ week on the builds named with them.
     tests only: there was no unmatched movie download to try.
   - Prowlarr and Seerr beyond the reads above.
   - On Jellyfin `12.2.0`: token revocation, which means revoking a live member
-    token; trickplay and alternate versions, because none of the 707 items
-    checked on the reference server has either; Live TV in Safari on macOS
-    (Safari was run only on the iOS Simulator, above); and playback on a
-    physical iPhone.
+    token; Live TV in Safari on macOS (Safari was run only on the iOS
+    Simulator, above); and playback on a physical iPhone.
 
 ### Jellyfin 12 compatibility (2026-09-13)
 
