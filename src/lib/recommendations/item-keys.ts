@@ -30,6 +30,18 @@ export function jellyfinItemKey(jellyfinItemId: string): string {
   return `jf:${jellyfinItemId}`;
 }
 
+/**
+ * The key a Jellyfin film or series is rated and recommended under: its TMDB
+ * id when Jellyfin has one, else its Jellyfin id (as the profile builder keys
+ * engaged titles). Null for anything else, such as an episode.
+ */
+export function jellyfinTitleItemKey(item: { Id: string; Type?: string | null; ProviderIds?: Record<string, string | null | undefined> | null }): string | null {
+  const mediaType = item.Type === 'Movie' ? 'movie' : item.Type === 'Series' ? 'tv' : null;
+  if (!mediaType) return null;
+  const tmdbId = Number(item.ProviderIds?.Tmdb);
+  return Number.isInteger(tmdbId) && tmdbId > 0 ? tmdbItemKey(mediaType, tmdbId) : jellyfinItemKey(item.Id);
+}
+
 export interface ParsedItemKey {
   /** null for jf:* keys (media kind unknown from the key alone). */
   mediaType: RecMediaType | null;

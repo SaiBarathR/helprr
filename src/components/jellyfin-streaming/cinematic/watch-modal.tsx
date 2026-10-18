@@ -6,7 +6,7 @@ import { useCatalogDetail } from '@/lib/hooks/use-catalog-detail';
 import { createContext, useCallback, useContext, useMemo, useState } from 'react';
 import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
 import { useQuery } from '@tanstack/react-query';
-import { Check, ChevronDown, Play, Plus, RotateCcw, ThumbsUp, X } from 'lucide-react';
+import { Check, ChevronDown, Play, Plus, RotateCcw, X } from 'lucide-react';
 import { jsonFetcher } from '@/lib/query-fetch';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
@@ -21,6 +21,8 @@ import { HeroTitle } from '@/components/jellyfin-streaming/hero-title';
 import { PreviewBackdrop } from '@/components/jellyfin-streaming/cinematic/preview-backdrop';
 import { useFavoriteToggle } from '@/components/jellyfin-streaming/cinematic/use-favorite-toggle';
 import { useCan } from '@/components/permission-provider';
+import { RateControl, RatingIcon } from '@/components/recommendations/rate-control';
+import { jellyfinTitleItemKey } from '@/lib/recommendations/item-keys';
 import { CatalogPosterCard } from '@/components/jellyfin-streaming/poster-card';
 import { MediaRail } from '@/components/jellyfin-streaming/media-rail';
 import { useJellyfinPlaybackState } from '@/components/jellyfin-streaming/playback-provider';
@@ -91,10 +93,13 @@ export function useWatchModal(): WatchModalApi | null {
 /** 38px circle, 2px white/50 border on a dark fill — measured from the site. */
 function CircleButton({
   label,
+  expanded,
   onClick,
   children,
 }: {
   label: string;
+  /** Set for a button that opens a menu. */
+  expanded?: boolean;
   onClick?: () => void;
   children: React.ReactNode;
 }) {
@@ -103,6 +108,7 @@ function CircleButton({
       type="button"
       aria-label={label}
       title={label}
+      aria-expanded={expanded}
       onClick={onClick}
       className="flex size-[38px] shrink-0 items-center justify-center rounded-full border-2 border-white/50 bg-[rgba(42,42,42,0.6)] text-white transition-colors hover:border-white"
     >
@@ -496,20 +502,16 @@ function WatchDetailModal({ itemId, onClose }: { itemId: string | null; onClose:
                     </CircleButton>
                   )}
                   <MyListButton item={item} />
-                  {/* UNWIRED. Rate has no handler because it has nowhere to go
-                      yet — nothing in the app stores a user's opinion of a
-                      title. The destination is the recommendations engine,
-                      which already ingests `like` / `dislike` events
-                      (src/lib/recommendations/events.ts, EVENT_TYPES) and
-                      treats both as INSTANT_FEEDBACK that busts the rails
-                      cache. Wiring this means posting a `like` event for the
-                      item and deciding the shape of the control first: the
-                      site's is a hover menu of thumbs-down / thumbs-up /
-                      two-thumbs, and `dislike` and `not_interested` are
-                      separate signals the engine already understands. Left
-                      inert rather than removed at the owner's direction —
-                      see plans/2026-09-06-rate-button.md. */}
-                  <CircleButton label="Rate"><ThumbsUp className="size-[18px]" /></CircleButton>
+                  <RateControl
+                    itemKey={jellyfinTitleItemKey(item)}
+                    title={item.Name}
+                    genres={item.Genres}
+                    renderTrigger={(trigger) => (
+                      <CircleButton label={trigger.label} expanded={trigger.open} onClick={trigger.onClick}>
+                        <RatingIcon rating={trigger.rating} className="size-[18px]" />
+                      </CircleButton>
+                    )}
+                  />
                 </div>
               </div>
             </div>

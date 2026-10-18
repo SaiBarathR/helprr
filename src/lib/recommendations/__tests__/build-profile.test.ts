@@ -137,6 +137,23 @@ describe('buildTasteProfile', () => {
     expect(profile.negatives.dislikedGenres.romance).toBe(1);
   });
 
+  it('counts a "Love this" rating double in the genre vector', () => {
+    const profile = buildTasteProfile(input({
+      events: {
+        positives: [
+          { itemKey: 'tmdb:movie:3', genres: ['Drama'], at: NOW.toISOString(), strength: 2 },
+          { itemKey: 'tmdb:movie:4', genres: ['Comedy'], at: NOW.toISOString() },
+        ],
+        negatives: [],
+        excludedItemKeys: [],
+        likedItemKeys: ['tmdb:movie:3', 'tmdb:movie:4'],
+        impressionsWithoutClick: [],
+      },
+    }));
+    expect(profile.movie.genres.drama).toBe(1);
+    expect(profile.movie.genres.comedy).toBeCloseTo(0.5, 5);
+  });
+
   it('builds daypart mood vectors from the play stream', () => {
     const evening = new Date('2026-07-15T20:30:00');
     const morning = new Date('2026-07-15T08:30:00');

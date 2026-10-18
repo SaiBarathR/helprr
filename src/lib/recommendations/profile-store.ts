@@ -73,6 +73,7 @@ export async function rebuildTasteProfile(user: ProfileUser): Promise<TasteProfi
     // start. Lock the stored row, keep only the excludes still backed by an
     // event, then write: a restore's profile UPDATE waits for this lock and
     // then removes its key from what was written here.
+    await lockTasteProfile(tx, user.id);
     await tx.$queryRaw`SELECT 1 FROM "UserTasteProfile" WHERE "userId" = ${user.id} FOR UPDATE`;
     const excluded = built.profile.negatives.excludedItemKeys;
     if (excluded.length > 0) {
@@ -83,6 +84,17 @@ export async function rebuildTasteProfile(user: ProfileUser): Promise<TasteProfi
       });
       const live = new Set(stillExcluded.map((row) => row.itemKey));
       built.profile.negatives.excludedItemKeys = excluded.filter((key) => live.has(key));
+    }
+    // Likewise a like or love taken back meanwhile: keep only liked keys still rated.
+    const liked = built.profile.likedItemKeys;
+    if (liked.length > 0) {
+      const stillLiked = await tx.recommendationEvent.findMany({
+        where: { userId: user.id, eventType: { in: ['like', 'love'] }, itemKey: { in: liked } },
+        select: { itemKey: true },
+        distinct: ['itemKey'],
+      });
+      const live = new Set(stillLiked.map((row) => row.itemKey));
+      built.profile.likedItemKeys = liked.filter((key) => live.has(key));
     }
     const json = built.profile as unknown as Prisma.InputJsonValue;
     await tx.userTasteProfile.upsert({
@@ -103,6 +115,19 @@ function parseStoredProfile(row: { profile: Prisma.JsonValue; version: number; b
 }
 
 /**
+ * Serializes writes to one user's stored profile, including its first creation
+ * (when there is no row for FOR UPDATE to lock). Rating writers take it after
+ * all their title locks, a restore after deleting its events, and a rebuild
+ * before reading the events it reconciles against.
+ */
+export function lockTasteProfile(tx: RawExecutor, userId: string) {
+  return tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`taste-profile:${userId}`}))`;
+}
+
+/** Prisma's client or a transaction's, for the raw profile edits below. */
+type RawExecutor = Pick<Prisma.TransactionClient, '$executeRaw'>;
+
+/**
  * Drop item keys from the stored profile's hard excludes without a rebuild
  * (which costs Jellyfin scans), so a title the user asked to see again
  * returns on the next compose instead of after the profile's 6h staleness.
@@ -110,8 +135,8 @@ function parseStoredProfile(row: { profile: Prisma.JsonValue; version: number; b
  * back each other's stale list. Returns the query for a caller's transaction;
  * the built-at time is kept, since the rest of the profile is as fresh as before.
  */
-export function forgetExcludedItems(userId: string, itemKeys: string[]) {
-  return prisma.$executeRaw`
+export function forgetExcludedItems(userId: string, itemKeys: string[], db: RawExecutor = prisma) {
+  return db.$executeRaw`
     UPDATE "UserTasteProfile"
     SET "profile" = jsonb_set(
           "profile",
@@ -126,6 +151,25 @@ export function forgetExcludedItems(userId: string, itemKeys: string[]) {
         "updatedAt" = CURRENT_TIMESTAMP
     WHERE "userId" = ${userId}
       AND jsonb_typeof("profile"->'negatives'->'excludedItemKeys') = 'array'`;
+}
+
+/** Like forgetExcludedItems, for the liked keys a taken-back like should stop boosting. */
+export function forgetLikedItems(userId: string, itemKeys: string[], db: RawExecutor = prisma) {
+  return db.$executeRaw`
+    UPDATE "UserTasteProfile"
+    SET "profile" = jsonb_set(
+          "profile",
+          '{likedItemKeys}',
+          COALESCE(
+            (SELECT jsonb_agg(key)
+               FROM jsonb_array_elements("profile"->'likedItemKeys') AS key
+              WHERE NOT (key #>> '{}' = ANY(${itemKeys}::text[]))),
+            '[]'::jsonb
+          )
+        ),
+        "updatedAt" = CURRENT_TIMESTAMP
+    WHERE "userId" = ${userId}
+      AND jsonb_typeof("profile"->'likedItemKeys') = 'array'`;
 }
 
 /**

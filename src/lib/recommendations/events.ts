@@ -2,6 +2,8 @@ import { prisma } from '@/lib/db';
 import type { Prisma } from '@prisma/client';
 import { isItemKey } from './item-keys';
 import { invalidateRecommendations } from './engine';
+import { forgetInProfile, RATING_OF, replaceRating, type ProfileForget } from './ratings';
+import { getRedisClient } from '@/lib/redis';
 
 // Event ingestion: validated, batched, own-user only (the route passes the
 // authenticated user's id — client-supplied user ids are never accepted).
@@ -13,6 +15,8 @@ export const EVENT_TYPES = [
   'click',
   'play',
   'like',
+  // "Love this" — the two-thumbs rating; a stronger like.
+  'love',
   'dislike',
   'not_interested',
   'watchlist_add',
@@ -21,12 +25,18 @@ export const EVENT_TYPES = [
 export type RecommendationEventType = (typeof EVENT_TYPES)[number];
 
 /** Feedback that must change what the user sees immediately. */
-const INSTANT_FEEDBACK: ReadonlySet<string> = new Set(['like', 'dislike', 'not_interested']);
+const INSTANT_FEEDBACK: ReadonlySet<string> = new Set(['like', 'love', 'dislike', 'not_interested']);
 
 export const MAX_EVENTS_PER_BATCH = 50;
 const MAX_RAIL_ID_LENGTH = 80;
 const MAX_GENRES = 10;
 const MAX_GENRE_LENGTH = 40;
+
+export function isValidGenreList(genres: unknown): genres is string[] {
+  return Array.isArray(genres)
+    && genres.length <= MAX_GENRES
+    && genres.every((g) => typeof g === 'string' && g.length > 0 && g.length <= MAX_GENRE_LENGTH);
+}
 // Per-user ingestion ceiling: real browsing produces at most a few hundred
 // impressions per window, so anything past this is a runaway client or abuse
 // growing the events table. One indexed count() per batch checks it.
@@ -95,14 +105,10 @@ export function parseEventsBody(body: unknown): ParseResult {
         cleanContext.mode = mode;
       }
       if (genres !== undefined) {
-        if (
-          !Array.isArray(genres)
-          || genres.length > MAX_GENRES
-          || genres.some((g) => typeof g !== 'string' || g.length === 0 || g.length > MAX_GENRE_LENGTH)
-        ) {
+        if (!isValidGenreList(genres)) {
           return { ok: false, error: 'Invalid context.genres' };
         }
-        cleanContext.genres = genres as string[];
+        cleanContext.genres = genres;
       }
       if (exploration !== undefined) {
         if (typeof exploration !== 'boolean') return { ok: false, error: 'Invalid context.exploration' };
@@ -122,26 +128,85 @@ export function parseEventsBody(body: unknown): ParseResult {
 
 export type IngestResult = { ok: true; stored: number } | { ok: false; rateLimited: true };
 
+/**
+ * Events submitted in this window, this batch included. Counted as sent, not as
+ * stored: a rating replaces the title's previous one, so stored rows undercount.
+ * Null without Redis.
+ */
+async function countSubmitted(userId: string, count: number): Promise<number | null> {
+  try {
+    const redis = await getRedisClient();
+    const key = `recommendations:events:${userId}:${Math.floor(Date.now() / RATE_WINDOW_MS)}`;
+    // One MULTI, so the key never outlives its window without an expiry.
+    const [total] = await redis.multi().incrBy(key, count).expire(key, Math.ceil((2 * RATE_WINDOW_MS) / 1000)).exec();
+    return Number(total);
+  } catch {
+    return null;
+  }
+}
+
+// Without Redis, submissions are counted in this process (stored rows would
+// undercount for the same reason as above). Windows other than the current one
+// are dropped as they pass.
+const localSubmitted = new Map<string, number>();
+
+function countSubmittedLocally(userId: string, count: number): number {
+  const window = Math.floor(Date.now() / RATE_WINDOW_MS);
+  for (const key of localSubmitted.keys()) {
+    if (!key.endsWith(`:${window}`)) localSubmitted.delete(key);
+  }
+  const key = `${userId}:${window}`;
+  const total = (localSubmitted.get(key) ?? 0) + count;
+  localSubmitted.set(key, total);
+  return total;
+}
+
+/**
+ * Take `count` events from this user's quota; false when it is spent. Shared by
+ * event ingestion and the Rate control's PUT, which write the same events.
+ */
+export async function takeEventQuota(userId: string, count: number): Promise<boolean> {
+  const submitted = (await countSubmitted(userId, count)) ?? countSubmittedLocally(userId, count);
+  return submitted <= RATE_MAX_EVENTS_PER_WINDOW;
+}
+
 export async function ingestEvents(userId: string, events: IncomingEvent[]): Promise<IngestResult> {
-  const windowStart = new Date(Date.now() - RATE_WINDOW_MS);
-  const recentCount = await prisma.recommendationEvent.count({
-    where: { userId, createdAt: { gte: windowStart } },
-  });
-  if (recentCount + events.length > RATE_MAX_EVENTS_PER_WINDOW) {
+  if (!(await takeEventQuota(userId, events.length))) {
     return { ok: false, rateLimited: true };
   }
 
-  await prisma.recommendationEvent.createMany({
-    data: events.map((event) => ({
-      userId,
-      itemKey: event.itemKey,
-      eventType: event.eventType,
-      railId: event.railId ?? null,
-      context: (event.context ?? undefined) as Prisma.InputJsonValue | undefined,
-    })),
+  // A like, dislike or love is a rating: it replaces the title's previous one.
+  // The whole batch commits or none of it, as one createMany did. Ratings take
+  // their per-title locks in title order, so two batches cannot deadlock.
+  const ratings = events
+    .filter((event) => event.eventType in RATING_OF)
+    .sort((a, b) => (a.itemKey < b.itemKey ? -1 : a.itemKey > b.itemKey ? 1 : 0));
+  const others = events.filter((event) => !(event.eventType in RATING_OF));
+  await prisma.$transaction(async (tx) => {
+    const forgets: ProfileForget[] = [];
+    for (const event of ratings) {
+      forgets.push(await replaceRating(tx, userId, event.itemKey, RATING_OF[event.eventType], undefined, {
+        railId: event.railId,
+        context: (event.context ?? undefined) as Prisma.InputJsonValue | undefined,
+      }));
+    }
+    // A title rated twice in one batch: only its last change counts.
+    const last = new Map(forgets.map((forget) => [forget.itemKey, forget]));
+    await forgetInProfile(tx, userId, [...last.values()]);
+    if (others.length > 0) {
+      await tx.recommendationEvent.createMany({
+        data: others.map((event) => ({
+          userId,
+          itemKey: event.itemKey,
+          eventType: event.eventType,
+          railId: event.railId ?? null,
+          context: (event.context ?? undefined) as Prisma.InputJsonValue | undefined,
+        })),
+      });
+    }
   });
 
-  if (events.some((event) => INSTANT_FEEDBACK.has(event.eventType))) {
+  if (ratings.length > 0 || events.some((event) => INSTANT_FEEDBACK.has(event.eventType))) {
     await invalidateRecommendations(userId);
   }
   return { ok: true, stored: events.length };

@@ -9,6 +9,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, Film, HardDrive, Heart, ListPlus, Play, Plus, RotateCcw, Shuffle, User } from 'lucide-react';
 import { jsonFetcher } from '@/lib/query-fetch';
 import { Button } from '@/components/ui/button';
+import { RateControl, RatingIcon } from '@/components/recommendations/rate-control';
+import { jellyfinTitleItemKey } from '@/lib/recommendations/item-keys';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { ErrorState } from '@/components/ui/error-state';
 import { WatchTopBar } from '@/components/jellyfin-streaming/watch-top-bar';
@@ -437,6 +439,18 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
               </Button>
             )}
             {!stacked && <FavoriteButton itemId={item.Id} favorite={Boolean(item.UserData?.IsFavorite)} />}
+            {!stacked && (
+              <RateControl
+                itemKey={jellyfinTitleItemKey(item)}
+                title={item.Name}
+                genres={item.Genres}
+                renderTrigger={(trigger) => (
+                  <Button size="icon-lg" variant="secondary" className="rounded-full" aria-label={trigger.label} title={trigger.label} aria-expanded={trigger.open} onClick={trigger.onClick}>
+                    <RatingIcon rating={trigger.rating} />
+                  </Button>
+                )}
+              />
+            )}
             {!stacked && <WatchedButton itemId={item.Id} played={Boolean(item.UserData?.Played)} seriesId={item.SeriesId} />}
           </div>
 
@@ -446,6 +460,16 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
           {stacked && (
             <div className="flex w-full items-start gap-8 pt-1">
               <FavoriteButton itemId={item.Id} favorite={Boolean(item.UserData?.IsFavorite)} stacked />
+              <RateControl
+                itemKey={jellyfinTitleItemKey(item)}
+                title={item.Name}
+                genres={item.Genres}
+                renderTrigger={(trigger) => (
+                  <StackedAction label="Rate" ariaLabel={trigger.label} onClick={trigger.onClick} active={trigger.rating !== null} expanded={trigger.open}>
+                    <RatingIcon rating={trigger.rating} className="size-6" />
+                  </StackedAction>
+                )}
+              />
               <WatchedButton itemId={item.Id} played={Boolean(item.UserData?.Played)} seriesId={item.SeriesId} stacked />
               <StackedAction label="Queue" onClick={() => void playback.addToQueue([item])}>
                 <ListPlus className="size-6" />
@@ -771,18 +795,26 @@ function StackedAction({
   label,
   onClick,
   active = false,
+  expanded,
+  ariaLabel,
   children,
 }: {
   label: string;
   onClick: () => void;
   active?: boolean;
+  /** Set for a button that opens a menu (which then reports expanded, not pressed). */
+  expanded?: boolean;
+  /** A fuller name than the visible label, which it should contain. */
+  ariaLabel?: string;
   children: React.ReactNode;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      aria-pressed={active}
+      aria-pressed={expanded === undefined ? active : undefined}
+      aria-expanded={expanded}
+      aria-label={ariaLabel}
       className="flex min-w-14 flex-col items-center gap-1.5 text-[11px] text-white/85"
     >
       <span className="flex h-7 items-center justify-center">{children}</span>

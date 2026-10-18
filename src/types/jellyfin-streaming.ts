@@ -295,6 +295,9 @@ export const CATALOG_LIST_FIELDS = [
   // Drives the "Recently added" ribbon the site puts on fresh titles.
   'DateCreated',
   'Genres',
+  // The Rate control keys a film or series by its TMDB id, as the
+  // recommendations engine does; without it a tile would rate under jf:<id>.
+  'ProviderIds',
   'CommunityRating',
   'OfficialRating',
   'PremiereDate',

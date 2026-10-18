@@ -49,6 +49,8 @@ export interface EventSignalItem {
   /** Genres snapshotted into event context by the client (no lookup at build time). */
   genres?: string[];
   at: string;
+  /** Multiplier on the event's weight; a "Love this" rating counts double. */
+  strength?: number;
 }
 
 export interface EventSignals {
@@ -232,7 +234,7 @@ export function buildTasteProfile(input: BuildProfileInput): TasteProfile {
   // ── In-app feedback events ─────────────────────────────────────────────────
   for (const ev of input.events.positives) {
     if (!ev.genres?.length) continue;
-    const weight = 0.8 * decay(ev.at, now, EVENT_HALF_LIFE_DAYS);
+    const weight = 0.8 * (ev.strength ?? 1) * decay(ev.at, now, EVENT_HALF_LIFE_DAYS);
     addGenres(classes[mediaTypeOfKey(ev.itemKey)].genres, ev.genres, weight);
   }
 
