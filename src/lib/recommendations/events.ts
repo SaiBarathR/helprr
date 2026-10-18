@@ -13,6 +13,8 @@ export const EVENT_TYPES = [
   'click',
   'play',
   'like',
+  // "Love this" — the two-thumbs rating; a stronger like.
+  'love',
   'dislike',
   'not_interested',
   'watchlist_add',
@@ -21,12 +23,18 @@ export const EVENT_TYPES = [
 export type RecommendationEventType = (typeof EVENT_TYPES)[number];
 
 /** Feedback that must change what the user sees immediately. */
-const INSTANT_FEEDBACK: ReadonlySet<string> = new Set(['like', 'dislike', 'not_interested']);
+const INSTANT_FEEDBACK: ReadonlySet<string> = new Set(['like', 'love', 'dislike', 'not_interested']);
 
 export const MAX_EVENTS_PER_BATCH = 50;
 const MAX_RAIL_ID_LENGTH = 80;
 const MAX_GENRES = 10;
 const MAX_GENRE_LENGTH = 40;
+
+export function isValidGenreList(genres: unknown): genres is string[] {
+  return Array.isArray(genres)
+    && genres.length <= MAX_GENRES
+    && genres.every((g) => typeof g === 'string' && g.length > 0 && g.length <= MAX_GENRE_LENGTH);
+}
 // Per-user ingestion ceiling: real browsing produces at most a few hundred
 // impressions per window, so anything past this is a runaway client or abuse
 // growing the events table. One indexed count() per batch checks it.
@@ -95,14 +103,10 @@ export function parseEventsBody(body: unknown): ParseResult {
         cleanContext.mode = mode;
       }
       if (genres !== undefined) {
-        if (
-          !Array.isArray(genres)
-          || genres.length > MAX_GENRES
-          || genres.some((g) => typeof g !== 'string' || g.length === 0 || g.length > MAX_GENRE_LENGTH)
-        ) {
+        if (!isValidGenreList(genres)) {
           return { ok: false, error: 'Invalid context.genres' };
         }
-        cleanContext.genres = genres as string[];
+        cleanContext.genres = genres;
       }
       if (exploration !== undefined) {
         if (typeof exploration !== 'boolean') return { ok: false, error: 'Invalid context.exploration' };

@@ -9,6 +9,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, Film, HardDrive, Heart, ListPlus, Play, Plus, RotateCcw, Shuffle, User } from 'lucide-react';
 import { jsonFetcher } from '@/lib/query-fetch';
 import { Button } from '@/components/ui/button';
+import { RateControl, RatingIcon } from '@/components/recommendations/rate-control';
+import { jellyfinTitleItemKey } from '@/lib/recommendations/item-keys';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { ErrorState } from '@/components/ui/error-state';
 import { WatchTopBar } from '@/components/jellyfin-streaming/watch-top-bar';
@@ -437,6 +439,18 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
               </Button>
             )}
             {!stacked && <FavoriteButton itemId={item.Id} favorite={Boolean(item.UserData?.IsFavorite)} />}
+            {!stacked && (
+              <RateControl
+                itemKey={jellyfinTitleItemKey(item)}
+                title={item.Name}
+                genres={item.Genres}
+                renderTrigger={(trigger) => (
+                  <Button size="icon-lg" variant="secondary" className="rounded-full" aria-label={trigger.label} title={trigger.label} onClick={trigger.onClick}>
+                    <RatingIcon rating={trigger.rating} />
+                  </Button>
+                )}
+              />
+            )}
             {!stacked && <WatchedButton itemId={item.Id} played={Boolean(item.UserData?.Played)} seriesId={item.SeriesId} />}
           </div>
 
@@ -446,6 +460,16 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
           {stacked && (
             <div className="flex w-full items-start gap-8 pt-1">
               <FavoriteButton itemId={item.Id} favorite={Boolean(item.UserData?.IsFavorite)} stacked />
+              <RateControl
+                itemKey={jellyfinTitleItemKey(item)}
+                title={item.Name}
+                genres={item.Genres}
+                renderTrigger={(trigger) => (
+                  <StackedAction label="Rate" onClick={trigger.onClick} active={trigger.rating !== null}>
+                    <RatingIcon rating={trigger.rating} className="size-6" />
+                  </StackedAction>
+                )}
+              />
               <WatchedButton itemId={item.Id} played={Boolean(item.UserData?.Played)} seriesId={item.SeriesId} stacked />
               <StackedAction label="Queue" onClick={() => void playback.addToQueue([item])}>
                 <ListPlus className="size-6" />

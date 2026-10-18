@@ -2,6 +2,7 @@
 
 import { ChevronDown, Play, Plus, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { RateControl, RatingIcon } from '@/components/recommendations/rate-control';
 
 /**
  * What the hover popover says about a title.
@@ -77,6 +78,7 @@ export function TilePanel({
   onMoreInfo,
   onToggleMyList,
   inMyList = false,
+  rate,
 }: {
   title: string;
   content: TilePanelContent;
@@ -84,6 +86,8 @@ export function TilePanel({
   onMoreInfo?: () => void;
   onToggleMyList?: () => void;
   inMyList?: boolean;
+  /** The title's recommendations key, for the Rate control (films and series). */
+  rate?: { itemKey: string | null; genres?: string[] };
 }) {
   const facts = (content.facts ?? []).filter(Boolean) as string[];
   const showResume = typeof content.progressPct === 'number'
@@ -96,7 +100,7 @@ export function TilePanel({
         {/* Rails with nothing behind them in the library — an unreleased film,
             a title that is only a recommendation — get no button row at all
             rather than an empty 38px strip. */}
-        {(onPlay || onToggleMyList || onMoreInfo) && (
+        {(onPlay || onToggleMyList || onMoreInfo || rate?.itemKey) && (
         <div className="flex items-center gap-2">
           {onPlay && (
             <CircleButton label={`Play ${title}`} filled onClick={onPlay}>
@@ -111,6 +115,19 @@ export function TilePanel({
             >
               {inMyList ? <Check className="size-4" strokeWidth={3} /> : <Plus className="size-4" />}
             </CircleButton>
+          )}
+          {rate && (
+            <RateControl
+              itemKey={rate.itemKey}
+              title={title}
+              genres={rate.genres}
+              lazy
+              renderTrigger={(trigger) => (
+                <CircleButton label={trigger.label} onClick={trigger.onClick}>
+                  <RatingIcon rating={trigger.rating} className="size-4" />
+                </CircleButton>
+              )}
+            />
           )}
           {onMoreInfo && (
             <span className="ml-auto">

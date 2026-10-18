@@ -201,7 +201,7 @@ async function resolveLocalHour(userId: string, now: Date): Promise<number> {
  * compose (the ingest path busts the rails cache to force that compose). */
 async function loadLiveFeedback(userId: string): Promise<{ excluded: Set<string>; liked: Set<string> }> {
   const rows = await prisma.recommendationEvent.findMany({
-    where: { userId, eventType: { in: ['not_interested', 'dislike', 'like'] } },
+    where: { userId, eventType: { in: ['not_interested', 'dislike', 'like', 'love'] } },
     select: { itemKey: true, eventType: true },
     distinct: ['itemKey', 'eventType'],
     orderBy: { createdAt: 'desc' },
@@ -210,7 +210,7 @@ async function loadLiveFeedback(userId: string): Promise<{ excluded: Set<string>
   const excluded = new Set<string>();
   const liked = new Set<string>();
   for (const row of rows) {
-    if (row.eventType === 'like') liked.add(row.itemKey);
+    if (row.eventType === 'like' || row.eventType === 'love') liked.add(row.itemKey);
     else excluded.add(row.itemKey);
   }
   return { excluded, liked };

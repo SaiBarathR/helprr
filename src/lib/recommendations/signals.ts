@@ -367,7 +367,7 @@ export async function collectWatchlistSignals(userId: string): Promise<Watchlist
 
 // ─── Recommendation events ───────────────────────────────────────────────────
 
-const POSITIVE_EVENT_TYPES = ['click', 'play', 'like', 'watchlist_add', 'request'] as const;
+const POSITIVE_EVENT_TYPES = ['click', 'play', 'like', 'love', 'watchlist_add', 'request'] as const;
 const NEGATIVE_EVENT_TYPES = ['dislike', 'not_interested'] as const;
 
 function contextGenres(context: unknown): string[] | undefined {
@@ -407,7 +407,7 @@ export async function collectEventSignals(userId: string): Promise<EventSignals 
       take: 5000,
     }),
     prisma.recommendationEvent.findMany({
-      where: { userId, eventType: 'like' },
+      where: { userId, eventType: { in: ['like', 'love'] } },
       select: { itemKey: true },
       distinct: ['itemKey'],
       orderBy: { createdAt: 'desc' },
@@ -432,6 +432,7 @@ export async function collectEventSignals(userId: string): Promise<EventSignals 
       itemKey: e.itemKey,
       genres: contextGenres(e.context),
       at: e.createdAt.toISOString(),
+      ...(e.eventType === 'love' ? { strength: 2 } : {}),
     })),
     negatives: negatives.map((e) => ({
       itemKey: e.itemKey,
