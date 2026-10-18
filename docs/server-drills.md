@@ -197,7 +197,7 @@ that adds migrations.
    ```bash
    cd /tmp/helprr-fresh
    dump=backups/stable/helprr-pre-upgrade-YYYYMMDD-HHMMSS.dump
-   docker compose exec -T helprr-db pg_restore --list < "$dump" > /dev/null &&
+   docker compose exec -T helprr-db pg_restore --exit-on-error --file=/dev/null < "$dump" &&
      docker compose stop helprr &&
      docker compose exec -T helprr-db dropdb -U postgres --if-exists --force helprr &&
      docker compose exec -T helprr-db createdb -U postgres helprr &&
@@ -205,7 +205,7 @@ that adds migrations.
      docker compose up -d --no-build --no-deps --wait helprr
    ```
 
-   The dump is checked before anything is dropped. The database is recreated
+   The whole dump is read before anything is dropped. The database is recreated
    rather than restored with `--clean`, which would leave behind tables the
    newer release's migrations added.
 
