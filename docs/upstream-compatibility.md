@@ -182,8 +182,9 @@ week on the builds named with them.
   - **Alternate versions.** Playback started the first version (1080p,
     negotiated as HLS in this browser). Asking `/api/jellyfin/stream/info` for
     the 720p source returned that source, 1280 pixels wide, as direct play.
-    Helprr has no version picker: the player always starts the first version,
-    where jellyfin-web lets the viewer choose.
+    Helprr has no version picker: it picks a media source itself (the first
+    that can be direct played, then direct streamed, then transcoded), where
+    jellyfin-web lets the viewer choose.
 - **Not re-run on the newer versions.** These still rest on the earlier
   qualification named in the matrix:
   - Download Cleaner and Queue Cleaner removals, and every delete flow, on Sonarr,
