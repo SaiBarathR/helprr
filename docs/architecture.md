@@ -244,8 +244,10 @@ from the token alone -- the `/Sessions/Playing*` models carry no `UserId` field
 -- so an API-key session belongs to nobody. Before this split, every Helprr
 session showed no user in the Jellyfin dashboard, `/Sessions/Playing/Progress`
 was rejected on every tick, and Playback Reporting had nothing to attribute.
-Resume state was correct only because it is also written out-of-band through
-`POST /UserItems/{id}/UserData?userId=`, which the API key may do for any user.
+Resume state was correct then only because Helprr also wrote it out-of-band
+through `POST /UserItems/{id}/UserData?userId=`. With the member's token, Jellyfin
+saves the resume position from the session reports themselves, as it does for its
+own clients (the latest report wins), so Helprr no longer makes that extra write.
 
 Jellyfin has no impersonation endpoint, so an admin key cannot mint a member
 token. Each member authenticates once themselves, either through "Sign in with
