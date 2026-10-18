@@ -691,14 +691,18 @@ environment as described above.
 When rolling back an upgrade, first set `HELPRR_VERSION` in `.env` back to the
 version that wrote the dump. The database is recreated before the restore:
 `pg_restore --clean` drops only what is in the dump, so tables a newer release's
-migrations added would stay behind and break the next upgrade.
+migrations added would stay behind and break the next upgrade. The dump is
+checked first and each step runs only if the one before it succeeded, so a
+missing or damaged dump stops before anything is dropped.
 
 ```bash
-docker compose stop helprr
-docker compose exec -T helprr-db dropdb -U postgres --if-exists --force helprr
-docker compose exec -T helprr-db createdb -U postgres helprr
-docker compose exec -T helprr-db pg_restore -U postgres -d helprr < backups/stable/helprr-pre-upgrade-YYYYMMDD-HHMMSS.dump
-docker compose up -d --no-build --no-deps --wait helprr
+dump=backups/stable/helprr-pre-upgrade-YYYYMMDD-HHMMSS.dump
+docker compose exec -T helprr-db pg_restore --list < "$dump" > /dev/null &&
+  docker compose stop helprr &&
+  docker compose exec -T helprr-db dropdb -U postgres --if-exists --force helprr &&
+  docker compose exec -T helprr-db createdb -U postgres helprr &&
+  docker compose exec -T helprr-db pg_restore -U postgres --exit-on-error -d helprr < "$dump" &&
+  docker compose up -d --no-build --no-deps --wait helprr
 ```
 
 **Restore onto a fresh host** (disaster recovery):
