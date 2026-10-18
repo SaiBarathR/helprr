@@ -13,7 +13,7 @@ vi.mock('@/lib/db', () => {
 vi.mock('@/lib/recommendations/profile-store', () => ({ forgetExcludedItems: mocks.forgetExcludedItems, forgetLikedItems: mocks.forgetLikedItems }));
 vi.mock('@/lib/recommendations/engine', () => ({ invalidateRecommendations: mocks.invalidateRecommendations }));
 
-const { getRating, setRating } = await import('@/lib/recommendations/ratings');
+const { forgetInProfile, getRating, setRating } = await import('@/lib/recommendations/ratings');
 
 const RATING_TYPES = { in: ['dislike', 'like', 'love'] };
 
@@ -81,5 +81,17 @@ describe('setRating', () => {
     expect(mocks.create).toHaveBeenCalledWith({ data: { userId: 'u1', itemKey: 'tmdb:tv:2', eventType: 'love' } });
     expect(mocks.count).toHaveBeenCalledWith({ where: { userId: 'u1', itemKey: 'tmdb:tv:2', eventType: { in: ['dislike', 'not_interested'] } } });
     expect(mocks.forgetExcludedItems).not.toHaveBeenCalled();
+  });
+});
+
+describe('forgetInProfile', () => {
+  it('drops each title once, liked and excluded keys apart', async () => {
+    await forgetInProfile(tx as never, 'u1', [
+      { itemKey: 'a', liked: true, excluded: false },
+      { itemKey: 'b', liked: true, excluded: true },
+      { itemKey: 'a', liked: true, excluded: false },
+    ]);
+    expect(mocks.forgetLikedItems).toHaveBeenCalledWith('u1', ['a', 'b'], tx);
+    expect(mocks.forgetExcludedItems).toHaveBeenCalledWith('u1', ['b'], tx);
   });
 });

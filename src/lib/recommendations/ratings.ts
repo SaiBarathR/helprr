@@ -31,15 +31,35 @@ export async function getRating(userId: string, itemKey: string): Promise<Rating
 
 /** Replace (or clear, with null) this user's rating of one title. */
 export async function setRating(userId: string, itemKey: string, rating: Rating | null, genres?: string[]): Promise<void> {
-  await prisma.$transaction((tx) => replaceRating(tx, userId, itemKey, rating, genres));
+  await prisma.$transaction(async (tx) => {
+    const forget = await replaceRating(tx, userId, itemKey, rating, genres);
+    await forgetInProfile(tx, userId, [forget]);
+  });
   await invalidateRecommendations(userId);
+}
+
+/** What a rating change takes back from the stored profile (see forgetInProfile). */
+export interface ProfileForget { itemKey: string; liked: boolean; excluded: boolean }
+
+/**
+ * Drop what ratings took back from the stored profile, which keeps likes and
+ * excludes for up to 6 hours. Called once, after every title lock of the
+ * transaction: the UPDATE locks the user's profile row, and taking it between
+ * two title locks could deadlock with another save of the second title.
+ */
+export async function forgetInProfile(tx: Prisma.TransactionClient, userId: string, changes: ProfileForget[]): Promise<void> {
+  const liked = [...new Set(changes.filter((change) => change.liked).map((change) => change.itemKey))];
+  const excluded = [...new Set(changes.filter((change) => change.excluded).map((change) => change.itemKey))];
+  if (liked.length > 0) await forgetLikedItems(userId, liked, tx);
+  if (excluded.length > 0) await forgetExcludedItems(userId, excluded, tx);
 }
 
 /**
  * The rating change itself, inside the caller's transaction. Every rating goes
  * through here, the feed's thumbs included, so the latest always wins. `event`
- * keeps a feed rating's rail and context on the stored event. The caller
- * invalidates recommendations once its transaction has committed.
+ * keeps a feed rating's rail and context on the stored event. Returns what the
+ * caller must then drop from the profile (forgetInProfile, after all its title
+ * locks), and invalidates recommendations once its transaction has committed.
  */
 export async function replaceRating(
   tx: Prisma.TransactionClient,
@@ -48,7 +68,7 @@ export async function replaceRating(
   rating: Rating | null,
   genres?: string[],
   event?: { railId?: string; context?: Prisma.InputJsonValue },
-): Promise<void> {
+): Promise<ProfileForget> {
   // One rating change per user and title at a time: two quick clicks must not
   // both delete before either inserts and leave two ratings behind.
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`${userId}:${itemKey}`}))`;
@@ -66,14 +86,9 @@ export async function replaceRating(
       },
     });
   }
-  // The stored profile keeps likes and excludes for up to 6 hours; drop what
-  // this rating took back. A cleared thumbs-down lets the title back unless
-  // "Not interested" still holds it.
-  if (rating !== 'up' && rating !== 'love') await forgetLikedItems(userId, [itemKey], tx);
-  if (rating !== 'down') {
-    const stillExcluded = await tx.recommendationEvent.count({
-      where: { userId, itemKey, eventType: { in: EXCLUDE_EVENT_TYPES } },
-    });
-    if (stillExcluded === 0) await forgetExcludedItems(userId, [itemKey], tx);
-  }
+  // What this rating took back. A cleared thumbs-down lets the title back
+  // unless "Not interested" still holds it.
+  const excluded = rating !== 'down'
+    && (await tx.recommendationEvent.count({ where: { userId, itemKey, eventType: { in: EXCLUDE_EVENT_TYPES } } })) === 0;
+  return { itemKey, liked: rating !== 'up' && rating !== 'love', excluded };
 }

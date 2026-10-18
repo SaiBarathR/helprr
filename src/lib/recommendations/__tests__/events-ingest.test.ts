@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
-  count: vi.fn(), createMany: vi.fn(), replaceRating: vi.fn(), invalidate: vi.fn(), incrBy: vi.fn(), expire: vi.fn(), redis: vi.fn(),
+  count: vi.fn(), createMany: vi.fn(), replaceRating: vi.fn(), forgetInProfile: vi.fn(), invalidate: vi.fn(), exec: vi.fn(), redis: vi.fn(),
 }));
 const tx = vi.hoisted(() => ({} as Record<string, unknown>));
 vi.mock('@/lib/db', () => {
@@ -10,15 +10,22 @@ vi.mock('@/lib/db', () => {
 });
 vi.mock('@/lib/redis', () => ({ getRedisClient: mocks.redis }));
 vi.mock('../engine', () => ({ invalidateRecommendations: mocks.invalidate }));
-vi.mock('../ratings', () => ({ RATING_OF: { dislike: 'down', like: 'up', love: 'love' }, replaceRating: mocks.replaceRating }));
+vi.mock('../ratings', () => ({ RATING_OF: { dislike: 'down', like: 'up', love: 'love' }, replaceRating: mocks.replaceRating, forgetInProfile: mocks.forgetInProfile }));
 
 const { ingestEvents } = await import('../events');
 
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.count.mockResolvedValue(0);
-  mocks.redis.mockResolvedValue({ incrBy: mocks.incrBy, expire: mocks.expire });
-  mocks.incrBy.mockImplementation(async (_key: string, n: number) => n);
+  let submitted = 0;
+  mocks.redis.mockResolvedValue({
+    multi: () => {
+      const chain = { incrBy: (_key: string, n: number) => { submitted = n; return chain; }, expire: () => chain, exec: () => mocks.exec(submitted) };
+      return chain;
+    },
+  });
+  mocks.exec.mockImplementation(async (n: number) => [n, true]);
+  mocks.replaceRating.mockImplementation(async (_tx: unknown, _u: string, itemKey: string, rating: string) => ({ itemKey, liked: rating === 'down', excluded: rating !== 'down' }));
 });
 
 // The feed's and rec cards' thumbs are ratings too: they replace the title's
@@ -40,6 +47,20 @@ describe('ingestEvents', () => {
     expect(mocks.invalidate).toHaveBeenCalledTimes(1);
   });
 
+  it('edits the profile once, after every title lock of the batch, with each title\'s last change', async () => {
+    await ingestEvents('u1', [
+      { itemKey: 'tmdb:movie:1', eventType: 'like' },
+      { itemKey: 'tmdb:movie:1', eventType: 'dislike' },
+      { itemKey: 'tmdb:movie:5', eventType: 'love' },
+    ]);
+    expect(mocks.forgetInProfile).toHaveBeenCalledTimes(1);
+    expect(mocks.forgetInProfile.mock.invocationCallOrder[0]).toBeGreaterThan(Math.max(...mocks.replaceRating.mock.invocationCallOrder));
+    expect(mocks.forgetInProfile).toHaveBeenCalledWith(tx, 'u1', [
+      { itemKey: 'tmdb:movie:1', liked: true, excluded: false },
+      { itemKey: 'tmdb:movie:5', liked: false, excluded: true },
+    ]);
+  });
+
   it('commits nothing, and invalidates nothing, when one rating in the batch fails', async () => {
     mocks.replaceRating.mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('lock timeout'));
     await expect(ingestEvents('u1', [
@@ -52,7 +73,7 @@ describe('ingestEvents', () => {
   });
 
   it('counts submitted events, which replaced ratings do not reduce', async () => {
-    mocks.incrBy.mockResolvedValue(1001);
+    mocks.exec.mockResolvedValue([1001, true]);
     expect(await ingestEvents('u1', [{ itemKey: 'tmdb:tv:3', eventType: 'like' }])).toEqual({ ok: false, rateLimited: true });
     expect(mocks.replaceRating).not.toHaveBeenCalled();
     expect(mocks.count).not.toHaveBeenCalled();

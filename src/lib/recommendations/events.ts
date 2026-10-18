@@ -2,7 +2,7 @@ import { prisma } from '@/lib/db';
 import type { Prisma } from '@prisma/client';
 import { isItemKey } from './item-keys';
 import { invalidateRecommendations } from './engine';
-import { RATING_OF, replaceRating } from './ratings';
+import { forgetInProfile, RATING_OF, replaceRating, type ProfileForget } from './ratings';
 import { getRedisClient } from '@/lib/redis';
 
 // Event ingestion: validated, batched, own-user only (the route passes the
@@ -137,9 +137,9 @@ async function countSubmitted(userId: string, count: number): Promise<number | n
   try {
     const redis = await getRedisClient();
     const key = `recommendations:events:${userId}:${Math.floor(Date.now() / RATE_WINDOW_MS)}`;
-    const total = await redis.incrBy(key, count);
-    if (total === count) await redis.expire(key, Math.ceil((2 * RATE_WINDOW_MS) / 1000));
-    return total;
+    // One MULTI, so the key never outlives its window without an expiry.
+    const [total] = await redis.multi().incrBy(key, count).expire(key, Math.ceil((2 * RATE_WINDOW_MS) / 1000)).exec();
+    return Number(total);
   } catch {
     return null;
   }
@@ -164,12 +164,16 @@ export async function ingestEvents(userId: string, events: IncomingEvent[]): Pro
     .sort((a, b) => (a.itemKey < b.itemKey ? -1 : a.itemKey > b.itemKey ? 1 : 0));
   const others = events.filter((event) => !(event.eventType in RATING_OF));
   await prisma.$transaction(async (tx) => {
+    const forgets: ProfileForget[] = [];
     for (const event of ratings) {
-      await replaceRating(tx, userId, event.itemKey, RATING_OF[event.eventType], undefined, {
+      forgets.push(await replaceRating(tx, userId, event.itemKey, RATING_OF[event.eventType], undefined, {
         railId: event.railId,
         context: (event.context ?? undefined) as Prisma.InputJsonValue | undefined,
-      });
+      }));
     }
+    // A title rated twice in one batch: only its last change counts.
+    const last = new Map(forgets.map((forget) => [forget.itemKey, forget]));
+    await forgetInProfile(tx, userId, [...last.values()]);
     if (others.length > 0) {
       await tx.recommendationEvent.createMany({
         data: others.map((event) => ({

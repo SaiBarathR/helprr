@@ -163,8 +163,11 @@ export function RateControl({
       ref={rootRef}
       className="relative inline-flex"
       // Tabbing away closes the menu, so its Escape handling never outlives it.
+      // Only when focus lands on something else: Safari blurs the focused option
+      // on a tap without focusing the tapped one (relatedTarget null), and
+      // closing then would drop the tap. Taps outside close it on pointerdown.
       onBlur={(event) => {
-        if (open && !event.currentTarget.contains(event.relatedTarget as Node | null)) setOpen(false);
+        if (open && event.relatedTarget && !event.currentTarget.contains(event.relatedTarget as Node)) setOpen(false);
       }}
     >
       {renderTrigger({

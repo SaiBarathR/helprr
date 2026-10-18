@@ -465,7 +465,7 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
                 title={item.Name}
                 genres={item.Genres}
                 renderTrigger={(trigger) => (
-                  <StackedAction label="Rate" onClick={trigger.onClick} active={trigger.rating !== null} expanded={trigger.open}>
+                  <StackedAction label="Rate" ariaLabel={trigger.label} onClick={trigger.onClick} active={trigger.rating !== null} expanded={trigger.open}>
                     <RatingIcon rating={trigger.rating} className="size-6" />
                   </StackedAction>
                 )}
@@ -796,21 +796,25 @@ function StackedAction({
   onClick,
   active = false,
   expanded,
+  ariaLabel,
   children,
 }: {
   label: string;
   onClick: () => void;
   active?: boolean;
-  /** Set for a button that opens a menu. */
+  /** Set for a button that opens a menu (which then reports expanded, not pressed). */
   expanded?: boolean;
+  /** A fuller name than the visible label, which it should contain. */
+  ariaLabel?: string;
   children: React.ReactNode;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      aria-pressed={active}
+      aria-pressed={expanded === undefined ? active : undefined}
       aria-expanded={expanded}
+      aria-label={ariaLabel}
       className="flex min-w-14 flex-col items-center gap-1.5 text-[11px] text-white/85"
     >
       <span className="flex h-7 items-center justify-center">{children}</span>

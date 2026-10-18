@@ -127,6 +127,18 @@ describe('RateControl', () => {
     expect(byLabel('Rated The Matrix: Not for me')).not.toBeNull();
   });
 
+  it('stays open when focus goes nowhere, as Safari does on a tap, so the tap still saves', async () => {
+    render();
+    await flush();
+    act(() => byLabel('Rate The Matrix')!.click());
+    const option = byLabel('I like this')!;
+    act(() => { option.dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: null })); });
+    expect(byLabel('I like this')).not.toBeNull();
+    act(() => byLabel('I like this')!.click());
+    await flush();
+    expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'PUT')).toBe(true);
+  });
+
   it('closes when focus leaves it, and then leaves Escape to whatever has focus', async () => {
     render();
     await flush();
