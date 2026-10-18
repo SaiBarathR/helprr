@@ -5,6 +5,7 @@ import { Film, Tv, Download, HardDrive } from 'lucide-react';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
 import { fetchServicesStats } from '@/lib/widgets/widget-fetchers';
 import { useElementSize } from '@/lib/widgets/use-element-size';
+import { hasCapability, useMe } from '@/components/permission-provider';
 import { formatBytes } from '@/lib/format';
 import type { WidgetProps } from '@/lib/widgets/types';
 import { Eyebrow, FONT_DISPLAY, FONT_MONO, HPR, ICON_HIDE_HEIGHT_THRESHOLD, ICON_HIDE_THRESHOLD, mix } from './bento-primitives';
@@ -24,6 +25,7 @@ export function StatsGridWidget({
   narrow = false,
 }: WidgetProps) {
   const { ref, width, height } = useElementSize<HTMLDivElement>();
+  const me = useMe();
   const isVertical = height > 0 && height < ICON_HIDE_HEIGHT_THRESHOLD;
   // A small desktop-grid span (e.g. colSpan 4 in a ~600px tablet content area)
   // gives ~95px tiles — switch to compact from measured width, not just the
@@ -56,7 +58,8 @@ export function StatsGridWidget({
       label: 'Movies',
       value: loading ? '–' : data?.totalMovies ?? '--',
       color: HPR.blue,
-      href: '/movies',
+      // A tile links only to a page this user may open.
+      href: hasCapability(me, 'movies.view') ? '/movies' : undefined,
     },
     {
       icon: <Tv size={15} />,
@@ -67,14 +70,14 @@ export function StatsGridWidget({
           ? `${data.jellyfin.episodeCount.toLocaleString()} eps`
           : undefined,
       color: HPR.purple,
-      href: '/series',
+      href: hasCapability(me, 'series.view') ? '/series' : undefined,
     },
     {
       icon: <Download size={15} />,
       label: 'Downloading',
       value: loading ? '–' : data?.activeDownloads ?? '--',
       color: HPR.green,
-      href: '/activity',
+      href: hasCapability(me, 'activity.view') ? '/activity' : undefined,
     },
     {
       icon: <HardDrive size={15} />,
