@@ -257,6 +257,8 @@ function OverviewTab() {
   // Server info, scan/restart/shutdown, and scheduled tasks are admin-only —
   // members never see (or fetch) them.
   const canControl = useCan('jellyfin.control');
+  // Who is watching is jellyfin.sessions; without it there is nothing to ask for.
+  const canSessions = useCan('jellyfin.sessions');
 
   // ── Always-on slices ──────────────────────────────────────────────
   // sessions + resume are the live data (who's watching / progress) — they poll
@@ -267,6 +269,7 @@ function OverviewTab() {
     queryKey: ['jellyfin', 'sessions'],
     queryFn: jsonFetcher<{ sessions?: JellyfinSession[] }>('/api/jellyfin/sessions'),
     select: (d) => d.sessions ?? [],
+    enabled: canSessions,
     staleTime: 0,
     refetchInterval: 15_000,
     refetchIntervalInBackground: false,
@@ -405,13 +408,13 @@ function OverviewTab() {
   // All always-on slices failed with nothing cached to show: the server is
   // unreachable, not "empty" — every section below would silently vanish.
   if (
-    sessionsQuery.isError && resumeQuery.isError && countsQuery.isError && recentQuery.isError
+    (sessionsQuery.isError || !canSessions) && resumeQuery.isError && countsQuery.isError && recentQuery.isError
     && !sessionsQuery.data && !resumeQuery.data && !countsQuery.data && !recentQuery.data
   ) {
     return (
       <ServerErrorState
         onRetry={() => {
-          void sessionsQuery.refetch();
+          if (canSessions) void sessionsQuery.refetch();
           void resumeQuery.refetch();
           void countsQuery.refetch();
           void recentQuery.refetch();
@@ -501,7 +504,7 @@ function OverviewTab() {
           <StatCard icon={Film} color="blue" value={counts.MovieCount} label="Movies" />
           <StatCard icon={Tv} color="purple" value={counts.SeriesCount} label="Series" />
           <StatCard icon={Clapperboard} color="indigo" value={counts.EpisodeCount} label="Episodes" />
-          <StatCard icon={MonitorPlay} color="green" value={sessions.length} label="Streams" />
+          {canSessions && <StatCard icon={MonitorPlay} color="green" value={sessions.length} label="Streams" />}
         </div>
       )}
 
