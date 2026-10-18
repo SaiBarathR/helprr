@@ -8,6 +8,7 @@ import {
   mkdtempSync,
   readFileSync,
   readdirSync,
+  realpathSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -39,6 +40,7 @@ function createFixture(): { root: string; fakeBin: string; dockerLog: string } {
     fakeDocker,
     `#!/bin/sh
 printf '%s\\n' "$*" >> "$DOCKER_LOG"
+realpath . >> "$DOCKER_LOG.cwd"
 case " $* " in
   *" pg_dump "*)
     [ "\${FAKE_DUMP_FAILURE:-}" != 1 ] || exit 41
@@ -113,8 +115,10 @@ describe('backup.sh', () => {
     expect(result.stderr).not.toContain('stable-secret');
 
     const commands = readFileSync(dockerLog, 'utf8');
-    expect(commands).toContain('--env-file');
-    expect(commands).toContain('.env -f');
+    // Plain `docker compose` in the Helprr directory, as update.sh and the README use.
+    expect(commands).not.toContain('--env-file');
+    expect(commands).not.toContain(' -f ');
+    expect(new Set(readFileSync(`${dockerLog}.cwd`, 'utf8').trim().split('\n'))).toEqual(new Set([realpathSync(root)]));
     expect(commands).toContain('exec -T helprr-db');
     expect(commands).toContain('pg_dump');
     expect(commands).toContain('pg_restore --list');
@@ -200,6 +204,153 @@ describe('backup.sh', () => {
     expect(readFileSync(existing, 'utf8')).toBe('OWNER_BACKUP');
     expect(existsSync(dockerLog)).toBe(false);
     expectNoTemporaryFiles(directory);
+  });
+
+  describe('--keep', () => {
+    const stamp = (day: number) => `202607${String(day).padStart(2, '0')}-000000`;
+    const seed = (directory: string, prefix: string, days: number[]) => {
+      mkdirSync(directory, { recursive: true });
+      for (const day of days) writeFileSync(path.join(directory, `${prefix}-${stamp(day)}.dump`), `OLD-${day}`);
+    };
+
+    it('keeps the newest 10 of its own backups by default and leaves other files alone', () => {
+      const { root, fakeBin } = createFixture();
+      const directory = path.join(root, 'backups/stable');
+      seed(directory, 'helprr-pre-upgrade', [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
+      seed(directory, 'helprr-dev-pre-upgrade', [1]);
+      writeFileSync(path.join(directory, 'helprr-pre-upgrade-manual.dump'), 'MANUAL');
+      writeFileSync(path.join(directory, 'notes.txt'), 'NOTES');
+      const outside = path.join(root, 'outside.dump');
+      writeFileSync(outside, 'OUTSIDE');
+      symlinkSync(outside, path.join(directory, `helprr-pre-upgrade-${stamp(0)}.dump`));
+
+      const result = runBackup(root, fakeBin);
+
+      expect(result.status).toBe(0);
+      const remaining = backupFiles(directory).filter((name) => /^helprr-pre-upgrade-\d{8}-\d{6}\.dump$/.test(name)).sort();
+      expect(remaining).toEqual([
+        ...[3, 4, 5, 6, 7, 8, 9, 10, 11].map((day) => `helprr-pre-upgrade-${stamp(day)}.dump`),
+        'helprr-pre-upgrade-20260714-120000.dump',
+      ].concat(`helprr-pre-upgrade-${stamp(0)}.dump`).sort());
+      expect(result.stdout).toContain(`Removed older backup: ${path.join(directory, `helprr-pre-upgrade-${stamp(1)}.dump`)}`);
+      expect(result.stdout).toContain(`Removed older backup: ${path.join(directory, `helprr-pre-upgrade-${stamp(2)}.dump`)}`);
+      expect(result.stdout).toContain('Kept the newest 10 backups in this directory.');
+      expect(readFileSync(path.join(directory, `helprr-dev-pre-upgrade-${stamp(1)}.dump`), 'utf8')).toBe('OLD-1');
+      expect(readFileSync(path.join(directory, 'helprr-pre-upgrade-manual.dump'), 'utf8')).toBe('MANUAL');
+      expect(readFileSync(path.join(directory, 'notes.txt'), 'utf8')).toBe('NOTES');
+      expect(readFileSync(outside, 'utf8')).toBe('OUTSIDE');
+    });
+
+    it('keeps every backup with --keep 0', () => {
+      const { root, fakeBin } = createFixture();
+      const directory = path.join(root, 'backups/stable');
+      seed(directory, 'helprr-pre-upgrade', [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+
+      const result = runBackup(root, fakeBin, ['--keep', '0']);
+
+      expect(result.status).toBe(0);
+      expect(backupFiles(directory)).toHaveLength(13);
+      expect(result.stdout).not.toContain('Removed older backup');
+    });
+
+    it('removes only dumps older than the one it just wrote', () => {
+      // A newer dump is what a second backup running at the same time leaves;
+      // deleting it there could leave no backup at all.
+      const { root, fakeBin } = createFixture();
+      const directory = path.join(root, 'backups/stable');
+      seed(directory, 'helprr-pre-upgrade', [1]);
+      writeFileSync(path.join(directory, 'helprr-pre-upgrade-20990101-000000.dump'), 'NEWER');
+
+      const result = runBackup(root, fakeBin, ['--keep', '1']);
+
+      expect(result.status).toBe(0);
+      expect(backupFiles(directory).sort()).toEqual([
+        'helprr-pre-upgrade-20260714-120000.dump',
+        'helprr-pre-upgrade-20990101-000000.dump',
+      ]);
+    });
+
+    it('never removes a newer dump even when its own was already deleted by another run', () => {
+      // Run B pruned run A's dump before A pruned; A must still not touch B's.
+      // The fake ln publishes nothing, standing in for A's file being gone.
+      const { root, fakeBin } = createFixture();
+      writeFileSync(path.join(fakeBin, 'ln'), '#!/bin/sh\nexit 0\n');
+      chmodSync(path.join(fakeBin, 'ln'), 0o755);
+      const directory = path.join(root, 'backups/stable');
+      mkdirSync(directory, { recursive: true });
+      for (const name of ['helprr-pre-upgrade-20990101-000000.dump', 'helprr-pre-upgrade-20990102-000000.dump']) {
+        writeFileSync(path.join(directory, name), 'NEWER');
+      }
+
+      const result = runBackup(root, fakeBin, ['--keep', '1']);
+
+      expect(result.status).toBe(0);
+      expect(backupFiles(directory).sort()).toEqual([
+        'helprr-pre-upgrade-20990101-000000.dump',
+        'helprr-pre-upgrade-20990102-000000.dump',
+      ]);
+    });
+
+    it('counts a dump removed by another run between listing and pruning as already gone', () => {
+      // The fake rm deletes the next-oldest dump as a second run would, while
+      // this run removes the oldest; the retention count must still hold.
+      const { root, fakeBin } = createFixture();
+      const directory = path.join(root, 'backups/stable');
+      seed(directory, 'helprr-pre-upgrade', [1, 2, 3]);
+      writeFileSync(path.join(fakeBin, 'rm'), `#!/bin/sh
+for a in "$@"; do case "$a" in *-${'20260701'}-000000.dump) /bin/rm -f "$a" "\${a%01-000000.dump}02-000000.dump" ;; -*) ;; *) /bin/rm -f "$a" ;; esac; done
+`);
+      chmodSync(path.join(fakeBin, 'rm'), 0o755);
+
+      const result = runBackup(root, fakeBin, ['--keep', '2']);
+
+      expect(result.status).toBe(0);
+      expect(backupFiles(directory).sort()).toEqual([
+        'helprr-pre-upgrade-20260703-000000.dump',
+        'helprr-pre-upgrade-20260714-120000.dump',
+      ]);
+    });
+
+    it('prunes only development backups in dev mode', () => {
+      const { root, fakeBin } = createFixture();
+      const directory = path.join(root, 'shared');
+      seed(directory, 'helprr-pre-upgrade', [1, 2, 3]);
+      seed(directory, 'helprr-dev-pre-upgrade', [1, 2, 3]);
+
+      const result = runBackup(root, fakeBin, ['--dev', '--output-dir', directory, '--keep', '2']);
+
+      expect(result.status).toBe(0);
+      expect(backupFiles(directory).sort()).toEqual([
+        `helprr-dev-pre-upgrade-${stamp(3)}.dump`,
+        'helprr-dev-pre-upgrade-20260714-120000.dump',
+        ...[1, 2, 3].map((day) => `helprr-pre-upgrade-${stamp(day)}.dump`),
+      ].sort());
+    });
+
+    it('removes nothing when the new backup fails', () => {
+      const { root, fakeBin } = createFixture();
+      const directory = path.join(root, 'backups/stable');
+      const days = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+      seed(directory, 'helprr-pre-upgrade', days);
+
+      for (const failure of [{ FAKE_DUMP_FAILURE: '1' }, { FAKE_VERIFY_FAILURE: '1' }]) {
+        const result = runBackup(root, fakeBin, ['--keep', '1'], failure);
+        expect(result.status).toBe(1);
+        expect(backupFiles(directory)).toHaveLength(days.length);
+      }
+    });
+
+    it('rejects a value that is not a whole number before invoking Docker', () => {
+      for (const value of ['', 'ten', '-1', '01', '1.5']) {
+        const { root, fakeBin, dockerLog } = createFixture();
+        const result = runBackup(root, fakeBin, ['--keep', value]);
+        expect(result.status, value).toBe(1);
+        expect(result.stderr).toContain('--keep must be a whole number');
+        expect(existsSync(dockerLog)).toBe(false);
+      }
+      const { root, fakeBin } = createFixture();
+      expect(runBackup(root, fakeBin, ['--keep']).stderr).toContain('--keep requires a number.');
+    });
   });
 
   it('requires the selected environment file before invoking Docker', () => {

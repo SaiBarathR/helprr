@@ -4,20 +4,25 @@ set -eu
 
 usage() {
   cat <<'EOF'
-Usage: backup.sh [--stable|--dev] [--output-dir DIRECTORY]
+Usage: backup.sh [--stable|--dev] [--output-dir DIRECTORY] [--keep N]
 
 Creates and validates a private PostgreSQL custom-format backup without stopping
 or restarting Helprr.
   --stable                Back up the stable database (default)
   --dev                   Back up the isolated development database
   --output-dir DIRECTORY  Store the backup in DIRECTORY instead of the default
+  --keep N                After a new backup is validated, keep the newest N of
+                          this helper's backups in that directory and delete
+                          older ones (default 10; 0 keeps every backup)
 
 Default directories:
   stable: ./backups/stable
   dev:    ./backups/development
 
 Backup files contain secrets. The directory is restricted to 0700 and each dump
-to 0600. Existing files are never overwritten.
+to 0600. Existing files are never overwritten. Pruning removes only files this
+helper names helprr-pre-upgrade-<timestamp>.dump (helprr-dev-pre-upgrade- with
+--dev); other files in the directory are left alone.
 EOF
 }
 
@@ -28,6 +33,7 @@ fail() {
 
 mode=stable
 output_dir=
+keep=10
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -42,6 +48,11 @@ while [ "$#" -gt 0 ]; do
       [ "$#" -gt 0 ] || fail '--output-dir requires a directory.'
       output_dir=$1
       ;;
+    --keep)
+      shift
+      [ "$#" -gt 0 ] || fail '--keep requires a number.'
+      keep=$1
+      ;;
     -h|--help)
       usage
       exit 0
@@ -53,6 +64,10 @@ while [ "$#" -gt 0 ]; do
   esac
   shift
 done
+
+case $keep in
+  ''|*[!0-9]*|0?*) fail '--keep must be a whole number such as 10, or 0 to keep every backup.' ;;
+esac
 
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 if [ -f "$script_dir/docker-compose.yml" ]; then
@@ -111,7 +126,14 @@ cleanup() {
 trap cleanup 0 HUP INT TERM
 
 compose() {
-  docker compose --env-file "$env_file" -f "$compose_file" "$@"
+  if [ "$mode" = dev ]; then
+    docker compose --env-file "$env_file" -f "$compose_file" "$@"
+  else
+    # Plain `docker compose` in the Helprr directory, as in the README and
+    # update.sh, so .env, COMPOSE_FILE and docker-compose.override.yml select
+    # the same deployment that an update would replace.
+    (cd "$root_dir" && docker compose "$@")
+  fi
 }
 
 # pg_dump takes a transactionally consistent snapshot while Helprr remains online.
@@ -149,6 +171,46 @@ rm -f "$temporary"
 trap - 0 HUP INT TERM
 
 printf 'Created and validated PostgreSQL backup: %s\n' "$backup_file"
+
+# Prune only this helper's own dumps, oldest first: the timestamped names sort in
+# creation order. Only dumps older than this run's timestamp are removed, so two
+# runs at once never delete each other's newer dump (even if this run's own file
+# is already gone), and the new one always stays.
+if [ "$keep" -gt 0 ]; then
+  own_stamp=${timestamp%-*}${timestamp#*-}
+  # One listing for counting and pruning, so the two passes agree.
+  set --
+  for file in "$output_dir/$backup_prefix"-*.dump; do
+    case ${file##*/} in
+      "$backup_prefix"-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]-[0-9][0-9][0-9][0-9][0-9][0-9].dump) ;;
+      *) continue ;;
+    esac
+    [ -f "$file" ] && [ ! -L "$file" ] && set -- "$@" "$file"
+  done
+  excess=$(($# - keep))
+  removed=0
+  for file in "$@"; do
+    [ "$excess" -gt 0 ] || break
+    stamp=${file##*/}
+    stamp=${stamp#"$backup_prefix"-}
+    stamp=${stamp%.dump}
+    [ "${stamp%-*}${stamp#*-}" -lt "$own_stamp" ] || break
+    # Counted, but another run has removed it since: one fewer to remove.
+    if [ ! -e "$file" ]; then
+      excess=$((excess - 1))
+      continue
+    fi
+    if rm -f -- "$file"; then
+      removed=$((removed + 1))
+      printf 'Removed older backup: %s\n' "$file"
+    else
+      printf 'Warning: could not remove older backup: %s\n' "$file" >&2
+    fi
+    excess=$((excess - 1))
+  done
+  [ "$removed" -eq 0 ] || printf 'Kept the newest %s backups in this directory.\n' "$keep"
+fi
+
 printf 'Backup permissions are 0600; directory permissions are 0700.\n'
 printf 'No containers were stopped, restarted, updated, or migrated.\n'
 printf 'Keep the backup encrypted or otherwise protected, and periodically test restores.\n'
