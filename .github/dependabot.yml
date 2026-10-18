@@ -1,6 +1,8 @@
-# Proposes updates to the commit-pinned GitHub Actions as reviewable PRs
-# against development. Minor and patch updates come together; each major
-# update comes on its own.
+# Proposes updates to the commit-pinned GitHub Actions and the digest-pinned
+# Dockerfile base image as reviewable PRs against development. Action minor and
+# patch updates come together; each major update comes on its own. Node majors
+# are left to a manual decision. The Compose files keep major-line PostgreSQL and
+# Redis tags, so they are not watched here.
 version: 2
 updates:
   - package-ecosystem: github-actions
@@ -11,3 +13,11 @@ updates:
     groups:
       github-actions:
         update-types: [minor, patch]
+  - package-ecosystem: docker
+    directory: /
+    target-branch: development
+    schedule:
+      interval: weekly
+    ignore:
+      - dependency-name: node
+        update-types: [version-update:semver-major]
