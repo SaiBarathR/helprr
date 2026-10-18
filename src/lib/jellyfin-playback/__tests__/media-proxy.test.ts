@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   isAllowedMediaPath,
+  isLegacyHlsFileOf,
+  legacyHlsPlaylistIds,
+  legacyHlsTarget,
   itemIdFromMediaPath,
   normalizeMediaPath,
   stripSensitiveQuery,
@@ -20,6 +23,34 @@ describe('jellyfin media path allowlist', () => {
     expect(isAllowedMediaPath('/System/Info')).toBe(false);
     expect(isAllowedMediaPath('/videos/../System/Info')).toBe(false);
     expect(itemIdFromMediaPath('/videos/abc-123/hls1/main/seg.ts')).toBe('abc-123');
+  });
+
+  it('reads the legacy HLS routes live channels play through, and only their one shape', () => {
+    expect(legacyHlsTarget('/videos/abc123def456/hls/0f1e2d3c/0f1e2d3c12.ts')).toEqual({ playlistId: '0f1e2d3c', file: '0f1e2d3c12.ts' });
+    expect(legacyHlsTarget('/videos/abc123def456/hls1/main/12.mp4')).toBeNull();
+    expect(isAllowedMediaPath('/Videos/abc123def456/HLS/0f1e2d3c/0f1e2d3c12.ts')).toBe(true);
+    expect(isAllowedMediaPath('/videos/abc123def456/hls/0f1e2d3c/a/b.ts')).toBe(false);
+    expect(isAllowedMediaPath('/videos/abc123def456/hls1/main/12.mp4')).toBe(true);
+  });
+
+  it('refuses the trickplay playlist, which follows any MediaSourceId, but not the tiles', () => {
+    expect(isAllowedMediaPath('/Videos/abc123def456/Trickplay/320/tiles.m3u8')).toBe(false);
+    expect(isAllowedMediaPath('/Videos/abc123def456/Trickplay/320/0.jpg')).toBe(true);
+  });
+
+  it('accepts only files of the named playlist, as Jellyfin picks segments by file name', () => {
+    expect(isLegacyHlsFileOf('0f1e2d3c', '0f1e2d3c12.ts')).toBe(true);
+    expect(isLegacyHlsFileOf('0f1e2d3c', 'stream.m3u8')).toBe(true);
+    // The fMP4 init file Jellyfin writes for EXT-X-MAP.
+    expect(isLegacyHlsFileOf('0f1e2d3c', '0f1e2d3c-1.mp4')).toBe(true);
+    expect(isLegacyHlsFileOf('0f1e2d3c', '0f1e2d3c-2.mp4')).toBe(false);
+    expect(isLegacyHlsFileOf('0f1e2d3c', 'aa11bb2212.ts')).toBe(false);
+    expect(isLegacyHlsFileOf('0f1e2d3c', '0f1e2d3c.ts')).toBe(false);
+  });
+
+  it('lists the legacy playlists a rewritten playlist points at', () => {
+    const playlist = '#EXTM3U\n#EXTINF:6,\n/api/jellyfin/media/videos/abc123def456/hls/0f1e2d3c/0f1e2d3c0.ts\n/api/jellyfin/media/videos/abc123def456/hls/0f1e2d3c/0f1e2d3c1.ts\n/api/jellyfin/media/videos/abc123def456/hls1/main/0.mp4';
+    expect(legacyHlsPlaylistIds(playlist)).toEqual(['0f1e2d3c']);
   });
 
   it('strips Jellyfin API keys from query strings', () => {

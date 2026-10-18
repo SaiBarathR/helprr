@@ -2,7 +2,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
 const mocks = vi.hoisted(() => ({
-  auth: vi.fn(), access: vi.fn(), connection: vi.fn(), token: vi.fn(), invalidate: vi.fn(), fetch: vi.fn(),
+  auth: vi.fn(), access: vi.fn(), connection: vi.fn(), token: vi.fn(), invalidate: vi.fn(), fetch: vi.fn(), liveStream: vi.fn(), playSession: vi.fn(),
+  hlsPlaylist: vi.fn(), bindHls: vi.fn(),
+}));
+vi.mock('@/lib/jellyfin-playback/live-stream-binding', () => ({
+  liveStreamBelongsTo: mocks.liveStream, playSessionBelongsTo: mocks.playSession, hlsPlaylistBelongsTo: mocks.hlsPlaylist, bindHlsPlaylist: mocks.bindHls,
 }));
 vi.mock('@/lib/auth', () => ({ requireUserCapability: mocks.auth }));
 vi.mock('@/lib/db', () => ({ prisma: { serviceConnection: { findFirst: mocks.connection } } }));
@@ -46,6 +50,62 @@ describe('Jellyfin 12 media authorization', () => {
     expect((await GET(request(), context)).status).toBe(409);
     expect(mocks.fetch).not.toHaveBeenCalled();
   });
+  it.each(['LiveStreamId', 'livestreamid'])('refuses a %s not opened for this user and item', async (name) => {
+    mocks.liveStream.mockResolvedValue(false);
+    const req = new NextRequest(`http://helprr.test/api/jellyfin/media/Videos/0123456789abcdef0123456789abcdef/stream.mp4?${name}=ls-channel`);
+    expect((await GET(req, context)).status).toBe(404);
+    expect(mocks.liveStream).toHaveBeenCalledWith('member', 'ls-channel', '0123456789abcdef0123456789abcdef');
+    expect(mocks.fetch).not.toHaveBeenCalled();
+    mocks.liveStream.mockResolvedValue(true);
+    expect((await GET(req, context)).status).toBe(206);
+  });
+
+  it.each(['PlaySessionId', 'playsessionid'])('refuses a %s not handed out to this user for this item', async (name) => {
+    // An active transcode's play session serves its media under any item's path.
+    mocks.playSession.mockResolvedValue(false);
+    const req = new NextRequest(`http://helprr.test/api/jellyfin/media/Videos/0123456789abcdef0123456789abcdef/stream.ts?Static=true&${name}=channel-session`);
+    expect((await GET(req, context)).status).toBe(404);
+    expect(mocks.playSession).toHaveBeenCalledWith('member', 'channel-session', '0123456789abcdef0123456789abcdef');
+    expect(mocks.fetch).not.toHaveBeenCalled();
+    mocks.playSession.mockResolvedValue(true);
+    expect((await GET(req, context)).status).toBe(206);
+  });
+
+  it.each(['Params', 'params'])('refuses the packed %s parameter, which can carry a live stream id', async (name) => {
+    const req = new NextRequest(`http://helprr.test/api/jellyfin/media/Videos/0123456789abcdef0123456789abcdef/stream.ts?${name}=${encodeURIComponent(';'.repeat(22) + 'ls-channel')}`);
+    expect((await GET(req, context)).status).toBe(404);
+    expect(mocks.fetch).not.toHaveBeenCalled();
+  });
+
+  it('binds the legacy playlists a served playlist names, and serves their segments only to that user and item', async () => {
+    const channel = '0123456789abcdef0123456789abcdef';
+    mocks.fetch.mockResolvedValueOnce(new Response(`#EXTM3U\n#EXTINF:6,\nhls/aa11bb22/aa11bb220.ts\n`, { status: 200, headers: { 'Content-Type': 'application/x-mpegURL' } }));
+    const playlist = await GET(new NextRequest(`http://helprr.test/api/jellyfin/media/videos/${channel}/live.m3u8`), { params: Promise.resolve({ path: ['videos', channel, 'live.m3u8'] }) });
+    expect(await playlist.text()).toContain(`/api/jellyfin/media/videos/${channel}/hls/aa11bb22/aa11bb220.ts`);
+    expect(mocks.bindHls).toHaveBeenCalledWith('member', 'aa11bb22', channel);
+
+    const segment = (file: string) => GET(new NextRequest(`http://helprr.test/api/jellyfin/media/videos/${channel}/hls/aa11bb22/${file}`), { params: Promise.resolve({ path: ['videos', channel, 'hls', 'aa11bb22', file] }) });
+    mocks.hlsPlaylist.mockResolvedValue(false);
+    expect((await segment('aa11bb220.ts')).status).toBe(404);
+    mocks.hlsPlaylist.mockResolvedValue(true);
+    expect((await segment('aa11bb220.ts')).status).toBe(206);
+    expect(mocks.hlsPlaylist).toHaveBeenCalledWith('member', 'aa11bb22', channel);
+    // Jellyfin picks a segment by file name, so another playlist's file is refused even under a bound one.
+    mocks.fetch.mockClear();
+    expect((await segment('ffee99880.ts')).status).toBe(404);
+    expect(mocks.fetch).not.toHaveBeenCalled();
+  });
+
+  it('refuses an itemId query naming another item, which subtitle routes prefer to the path', async () => {
+    const path = 'Videos/0123456789abcdef0123456789abcdef/0123456789abcdef0123456789abcdef/Subtitles/0/Stream.srt';
+    const ctx = { params: Promise.resolve({ path: path.split('/') }) };
+    const other = await GET(new NextRequest(`http://helprr.test/api/jellyfin/media/${path}?ItemId=ffffffffffffffffffffffffffffffff`), ctx);
+    expect(other.status).toBe(404);
+    expect(mocks.fetch).not.toHaveBeenCalled();
+    const same = await GET(new NextRequest(`http://helprr.test/api/jellyfin/media/${path}?itemId=01234567-89ab-cdef-0123-456789abcdef`), ctx);
+    expect(same.status).toBe(206);
+  });
+
   it('refuses inaccessible items before sending any credentials upstream', async () => {
     mocks.access.mockResolvedValue(false);
     expect((await GET(request(), context)).status).toBe(404);

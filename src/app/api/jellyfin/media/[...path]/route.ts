@@ -5,10 +5,14 @@ import { requireUserCapability } from '@/lib/auth';
 import { getConnectionHeaders } from '@/lib/service-connection-secrets';
 import { invalidateJellyfinToken, readJellyfinToken } from '@/lib/jellyfin-token';
 import { canUserAccessItem } from '@/lib/jellyfin-playback/item-access';
+import { bindHlsPlaylist, hlsPlaylistBelongsTo, liveStreamBelongsTo, playSessionBelongsTo } from '@/lib/jellyfin-playback/live-stream-binding';
 import {
   isAllowedMediaPath,
   isHlsPlaylist,
+  isLegacyHlsFileOf,
   itemIdFromMediaPath,
+  legacyHlsPlaylistIds,
+  legacyHlsTarget,
   normalizeMediaPath,
   stripSensitiveQuery,
 } from '@/lib/jellyfin-playback/media-path';
@@ -52,6 +56,9 @@ function resolvedPathStillAllowed(pathname: string, basePath: string): boolean {
   }
 }
 
+// Path ids come in GUID form and catalog ids without dashes; both name one item.
+const sameItemId = (id: string) => id.toLowerCase().replace(/-/g, '');
+
 async function forward(request: NextRequest, pathSegments: string[], user: User): Promise<Response> {
 
   // Next has already decoded each segment once; decoding again would let a
@@ -66,6 +73,27 @@ async function forward(request: NextRequest, pathSegments: string[], user: User)
   if (itemId) {
     const allowed = await canUserAccessItem(user, itemId);
     if (!allowed) {
+      return new NextResponse(null, { status: 404 });
+    }
+    // Jellyfin reads query names case-insensitively, so every spelling counts.
+    // A live stream or play session id selects a stream on its own, whatever
+    // item the path names, so it must be one opened for this user and item.
+    // `Params` packs those ids (and more) into one value; Helprr never sends it.
+    for (const [name, value] of new URL(request.url).searchParams) {
+      const lower = name.toLowerCase();
+      if (lower === 'params') return new NextResponse(null, { status: 404 });
+      // Some routes (subtitles) take a query itemId over the path's: only the checked one.
+      if (lower === 'itemid' && sameItemId(value) !== sameItemId(itemId)) return new NextResponse(null, { status: 404 });
+      if (lower === 'livestreamid' && value && !(await liveStreamBelongsTo(user.id, value, itemId))) {
+        return new NextResponse(null, { status: 404 });
+      }
+      if (lower === 'playsessionid' && value && !(await playSessionBelongsTo(user.id, value, itemId))) {
+        return new NextResponse(null, { status: 404 });
+      }
+    }
+    const legacy = legacyHlsTarget(path);
+    if (legacy && (!isLegacyHlsFileOf(legacy.playlistId, legacy.file)
+      || !(await hlsPlaylistBelongsTo(user.id, legacy.playlistId, itemId)))) {
       return new NextResponse(null, { status: 404 });
     }
   } else if (!/^\/fallbackfont\b/i.test(path)) {
@@ -139,6 +167,9 @@ async function forward(request: NextRequest, pathSegments: string[], user: User)
   if (request.method === 'GET' && isHlsPlaylist(path, contentType)) {
     const body = await upstream.text();
     const rewritten = rewriteHlsPlaylist(body, origin, path);
+    if (itemId) {
+      for (const playlistId of legacyHlsPlaylistIds(rewritten)) await bindHlsPlaylist(user.id, playlistId, itemId);
+    }
     return new NextResponse(rewritten, {
       status: upstream.status,
       headers: {

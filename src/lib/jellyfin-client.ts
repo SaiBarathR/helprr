@@ -432,6 +432,10 @@ export class JellyfinClient {
     return this.get<JellyfinUser[]>('/Users');
   }
 
+  async getUser(userId: string): Promise<JellyfinUser> {
+    return this.get<JellyfinUser>(`/Users/${encodeURIComponent(userId)}`);
+  }
+
   async getAuthKeys(): Promise<JellyfinAuthKey[]> {
     const data = await this.get<{ Items?: JellyfinAuthKey[] } | JellyfinAuthKey[]>('/Auth/Keys');
     if (Array.isArray(data)) return data;
