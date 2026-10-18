@@ -93,10 +93,13 @@ export function useWatchModal(): WatchModalApi | null {
 /** 38px circle, 2px white/50 border on a dark fill — measured from the site. */
 function CircleButton({
   label,
+  expanded,
   onClick,
   children,
 }: {
   label: string;
+  /** Set for a button that opens a menu. */
+  expanded?: boolean;
   onClick?: () => void;
   children: React.ReactNode;
 }) {
@@ -105,6 +108,7 @@ function CircleButton({
       type="button"
       aria-label={label}
       title={label}
+      aria-expanded={expanded}
       onClick={onClick}
       className="flex size-[38px] shrink-0 items-center justify-center rounded-full border-2 border-white/50 bg-[rgba(42,42,42,0.6)] text-white transition-colors hover:border-white"
     >
@@ -503,7 +507,7 @@ function WatchDetailModal({ itemId, onClose }: { itemId: string | null; onClose:
                     title={item.Name}
                     genres={item.Genres}
                     renderTrigger={(trigger) => (
-                      <CircleButton label={trigger.label} onClick={trigger.onClick}>
+                      <CircleButton label={trigger.label} expanded={trigger.open} onClick={trigger.onClick}>
                         <RatingIcon rating={trigger.rating} className="size-[18px]" />
                       </CircleButton>
                     )}

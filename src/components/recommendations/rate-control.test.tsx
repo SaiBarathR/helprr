@@ -25,12 +25,14 @@ function render(lazy = false) {
         title="The Matrix"
         genres={['Action', 'Science Fiction']}
         lazy={lazy}
-        renderTrigger={(t) => <button type="button" aria-label={t.label} onClick={t.onClick}>{t.rating ?? 'none'}</button>}
+        renderTrigger={(t) => <button type="button" aria-label={t.label} aria-expanded={t.open} onClick={t.onClick}>{t.rating ?? 'none'}</button>}
       />
     </QueryClientProvider>,
   ));
+  return client;
 }
-const flush = () => act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+// A few macrotasks: the mocked fetch's Response body resolves over more than one.
+const flush = () => act(async () => { for (let i = 0; i < 5; i += 1) await new Promise((r) => setTimeout(r, 0)); });
 const byLabel = (label: string) => container.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`);
 
 beforeEach(() => {
@@ -79,6 +81,57 @@ describe('RateControl', () => {
     const put = fetchMock.mock.calls.find(([, init]) => init?.method === 'PUT')!;
     expect(JSON.parse(String(put[1].body)).rating).toBeNull();
     expect(byLabel('Rate The Matrix')).not.toBeNull();
+  });
+
+  it('refreshes the recommendation rails, the Watch rails and the Excluded list after a save', async () => {
+    const client = render();
+    await flush();
+    const invalidate = vi.spyOn(client, 'invalidateQueries');
+    act(() => byLabel('Rate The Matrix')!.click());
+    act(() => byLabel('Not for me')!.click());
+    await flush();
+    const keys = invalidate.mock.calls.map(([filters]) => JSON.stringify(filters?.queryKey));
+    expect(keys).toEqual(expect.arrayContaining([
+      '["recommendations"]', '["recommendations-excluded"]', '["recommendations-excluded-count"]', '["jellyfin","catalog","recommendation-rails"]',
+    ]));
+    expect(invalidate.mock.calls.every(([filters]) => filters?.refetchType === undefined)).toBe(true);
+  });
+
+  it('sends a second choice only after the first has been saved', async () => {
+    let release!: () => void;
+    fetchMock.mockImplementationOnce(async () => new Response(JSON.stringify({ rating: null })));
+    fetchMock.mockImplementationOnce(() => new Promise<Response>((resolve) => { release = () => resolve(new Response('{}')); }));
+    render();
+    await flush();
+    act(() => byLabel('Rate The Matrix')!.click());
+    act(() => byLabel('I like this')!.click());
+    await flush();
+    act(() => byLabel('Rated The Matrix: I like this')!.click());
+    act(() => byLabel('Not for me')!.click());
+    await flush();
+    const puts = () => fetchMock.mock.calls.filter(([, init]) => init?.method === 'PUT').length;
+    expect(puts()).toBe(1);
+    await act(async () => { release(); });
+    await flush();
+    expect(puts()).toBe(2);
+  });
+
+  it('opens on the pressed choice, and Escape closes only the menu', async () => {
+    stored = 'up';
+    render();
+    await flush();
+    const outer = vi.fn();
+    document.addEventListener('keydown', outer);
+    act(() => byLabel('Rated The Matrix: I like this')!.click());
+    expect(byLabel('Rated The Matrix: I like this')!.getAttribute('aria-expanded')).toBe('true');
+    expect(document.activeElement).toBe(byLabel('I like this'));
+    act(() => { document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); });
+    document.removeEventListener('keydown', outer);
+    expect(outer).not.toHaveBeenCalled();
+    expect(byLabel('I like this')).toBeNull();
+    const trigger = byLabel('Rated The Matrix: I like this')!;
+    expect(trigger.getAttribute('aria-expanded')).toBe('false');
+    expect(document.activeElement).toBe(trigger);
   });
 
   it('reads nothing until a lazy control is opened', async () => {

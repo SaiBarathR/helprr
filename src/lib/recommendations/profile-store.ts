@@ -102,6 +102,9 @@ function parseStoredProfile(row: { profile: Prisma.JsonValue; version: number; b
   return profile.version === PROFILE_VERSION ? profile : null;
 }
 
+/** Prisma's client or a transaction's, for the raw profile edits below. */
+type RawExecutor = Pick<Prisma.TransactionClient, '$executeRaw'>;
+
 /**
  * Drop item keys from the stored profile's hard excludes without a rebuild
  * (which costs Jellyfin scans), so a title the user asked to see again
@@ -110,8 +113,8 @@ function parseStoredProfile(row: { profile: Prisma.JsonValue; version: number; b
  * back each other's stale list. Returns the query for a caller's transaction;
  * the built-at time is kept, since the rest of the profile is as fresh as before.
  */
-export function forgetExcludedItems(userId: string, itemKeys: string[]) {
-  return prisma.$executeRaw`
+export function forgetExcludedItems(userId: string, itemKeys: string[], db: RawExecutor = prisma) {
+  return db.$executeRaw`
     UPDATE "UserTasteProfile"
     SET "profile" = jsonb_set(
           "profile",
@@ -126,6 +129,25 @@ export function forgetExcludedItems(userId: string, itemKeys: string[]) {
         "updatedAt" = CURRENT_TIMESTAMP
     WHERE "userId" = ${userId}
       AND jsonb_typeof("profile"->'negatives'->'excludedItemKeys') = 'array'`;
+}
+
+/** Like forgetExcludedItems, for the liked keys a taken-back like should stop boosting. */
+export function forgetLikedItems(userId: string, itemKeys: string[], db: RawExecutor = prisma) {
+  return db.$executeRaw`
+    UPDATE "UserTasteProfile"
+    SET "profile" = jsonb_set(
+          "profile",
+          '{likedItemKeys}',
+          COALESCE(
+            (SELECT jsonb_agg(key)
+               FROM jsonb_array_elements("profile"->'likedItemKeys') AS key
+              WHERE NOT (key #>> '{}' = ANY(${itemKeys}::text[]))),
+            '[]'::jsonb
+          )
+        ),
+        "updatedAt" = CURRENT_TIMESTAMP
+    WHERE "userId" = ${userId}
+      AND jsonb_typeof("profile"->'likedItemKeys') = 'array'`;
 }
 
 /**

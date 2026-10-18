@@ -36,6 +36,15 @@ export interface RateTriggerProps {
   onClick: () => void;
 }
 
+/** What a rating changes: the recommendation rails and feed, the Watch rails, and the Excluded titles list. */
+const AFFECTED_QUERIES = [
+  ['recommendations'],
+  ['recommendations-feed'],
+  ['recommendations-excluded'],
+  ['recommendations-excluded-count'],
+  ['jellyfin', 'catalog', 'recommendation-rails'],
+] as const;
+
 /**
  * The Rate control: thumbs-down, thumbs-up or "Love this!", sent to the
  * recommendations engine as the user's rating of the title. The pressed state
@@ -76,6 +85,8 @@ export function RateControl({
   });
 
   const mutation = useMutation({
+    // Two quick choices for one title are sent in order, never side by side.
+    scope: { id: `rating:${itemKey}` },
     mutationFn: async (rating: Rating | null) => {
       const res = await fetch('/api/recommendations/rating', {
         method: 'PUT',
@@ -96,20 +107,38 @@ export function RateControl({
       toast.error("Couldn't save your rating.");
     },
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['recommendations'], refetchType: 'none' });
+      for (const queryKey of AFFECTED_QUERIES) void queryClient.invalidateQueries({ queryKey });
     },
   });
 
+  // The trigger is the first button in the control; the menu's come after it.
+  const close = () => {
+    setOpen(false);
+    rootRef.current?.querySelector<HTMLButtonElement>('button')?.focus();
+  };
+
   useEffect(() => {
     if (!open) return;
-    const close = (event: Event) => {
-      if (event instanceof KeyboardEvent ? event.key === 'Escape' : !rootRef.current?.contains(event.target as Node)) setOpen(false);
+    const root = rootRef.current;
+    (root?.querySelector<HTMLButtonElement>('[role="group"] [aria-pressed="true"]')
+      ?? root?.querySelector<HTMLButtonElement>('[role="group"] button'))?.focus();
+    const onPointerDown = (event: PointerEvent) => {
+      if (!root?.contains(event.target as Node)) setOpen(false);
     };
-    document.addEventListener('pointerdown', close);
-    document.addEventListener('keydown', close);
+    // Window capture runs before the dialog's own document listener, so Escape
+    // closes this menu and not the Watch overlay around it.
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.stopPropagation();
+      event.preventDefault();
+      setOpen(false);
+      root?.querySelector<HTMLButtonElement>('button')?.focus();
+    };
+    document.addEventListener('pointerdown', onPointerDown);
+    window.addEventListener('keydown', onKeyDown, true);
     return () => {
-      document.removeEventListener('pointerdown', close);
-      document.removeEventListener('keydown', close);
+      document.removeEventListener('pointerdown', onPointerDown);
+      window.removeEventListener('keydown', onKeyDown, true);
     };
   }, [open]);
 
@@ -146,7 +175,7 @@ export function RateControl({
                 event.preventDefault();
                 event.stopPropagation();
                 mutation.mutate(rating === option.rating ? null : option.rating);
-                setOpen(false);
+                close();
               }}
               className={cn(
                 'flex size-9 items-center justify-center rounded-full text-white transition-colors hover:bg-white/15',

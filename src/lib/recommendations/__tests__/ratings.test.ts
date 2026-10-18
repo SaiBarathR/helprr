@@ -1,14 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
-  findFirst: vi.fn(), deleteMany: vi.fn(), create: vi.fn(), count: vi.fn(),
-  forgetExcludedItems: vi.fn(), invalidateRecommendations: vi.fn(),
+  findFirst: vi.fn(), deleteMany: vi.fn(), create: vi.fn(), count: vi.fn(), executeRaw: vi.fn(),
+  forgetExcludedItems: vi.fn(), forgetLikedItems: vi.fn(), invalidateRecommendations: vi.fn(),
 }));
+const tx = vi.hoisted(() => ({} as Record<string, unknown>));
 vi.mock('@/lib/db', () => {
   const recommendationEvent = { findFirst: mocks.findFirst, deleteMany: mocks.deleteMany, create: mocks.create, count: mocks.count };
-  return { prisma: { recommendationEvent, $transaction: (fn: (tx: unknown) => unknown) => fn({ recommendationEvent }) } };
+  Object.assign(tx, { recommendationEvent, $executeRaw: mocks.executeRaw });
+  return { prisma: { recommendationEvent, $transaction: (fn: (t: unknown) => unknown) => fn(tx) } };
 });
-vi.mock('@/lib/recommendations/profile-store', () => ({ forgetExcludedItems: mocks.forgetExcludedItems }));
+vi.mock('@/lib/recommendations/profile-store', () => ({ forgetExcludedItems: mocks.forgetExcludedItems, forgetLikedItems: mocks.forgetLikedItems }));
 vi.mock('@/lib/recommendations/engine', () => ({ invalidateRecommendations: mocks.invalidateRecommendations }));
 
 const { getRating, setRating } = await import('@/lib/recommendations/ratings');
@@ -42,6 +44,25 @@ describe('setRating', () => {
     expect(mocks.invalidateRecommendations).toHaveBeenCalledWith('u1');
   });
 
+  it('takes a per-title lock before replacing, so overlapping saves leave one rating', async () => {
+    await setRating('u1', 'tmdb:movie:1', 'up');
+    const [strings, lockKey] = mocks.executeRaw.mock.calls[0];
+    expect(strings.join('?')).toContain('pg_advisory_xact_lock');
+    expect(lockKey).toBe('u1:tmdb:movie:1');
+    expect(mocks.executeRaw.mock.invocationCallOrder[0]).toBeLessThan(mocks.deleteMany.mock.invocationCallOrder[0]);
+  });
+
+  it('stops boosting a title once its like is taken back, in the same transaction', async () => {
+    await setRating('u1', 'tmdb:movie:1', 'down');
+    expect(mocks.forgetLikedItems).toHaveBeenCalledWith('u1', ['tmdb:movie:1'], tx);
+    vi.clearAllMocks();
+    await setRating('u1', 'tmdb:movie:1', null);
+    expect(mocks.forgetLikedItems).toHaveBeenCalledWith('u1', ['tmdb:movie:1'], tx);
+    vi.clearAllMocks();
+    await setRating('u1', 'tmdb:movie:1', 'love');
+    expect(mocks.forgetLikedItems).not.toHaveBeenCalled();
+  });
+
   it('stores a thumbs-down as a dislike and leaves the exclude in place', async () => {
     await setRating('u1', 'tmdb:tv:2', 'down');
     expect(mocks.create).toHaveBeenCalledWith({ data: { userId: 'u1', itemKey: 'tmdb:tv:2', eventType: 'dislike' } });
@@ -51,7 +72,7 @@ describe('setRating', () => {
   it('lets a cleared thumbs-down back into recommendations', async () => {
     await setRating('u1', 'tmdb:tv:2', null);
     expect(mocks.create).not.toHaveBeenCalled();
-    expect(mocks.forgetExcludedItems).toHaveBeenCalledWith('u1', ['tmdb:tv:2']);
+    expect(mocks.forgetExcludedItems).toHaveBeenCalledWith('u1', ['tmdb:tv:2'], tx);
   });
 
   it('keeps the title excluded while "Not interested" still holds it', async () => {

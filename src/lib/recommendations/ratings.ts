@@ -1,6 +1,6 @@
 import { prisma } from '@/lib/db';
 import { invalidateRecommendations } from './engine';
-import { forgetExcludedItems } from './profile-store';
+import { forgetExcludedItems, forgetLikedItems } from './profile-store';
 
 // A title's rating from the Rate control: thumbs-down, thumbs-up or "Love this".
 // Stored as the recommendation events the engine already reads (dislike, like,
@@ -31,6 +31,9 @@ export async function getRating(userId: string, itemKey: string): Promise<Rating
 /** Replace (or clear, with null) this user's rating of one title. */
 export async function setRating(userId: string, itemKey: string, rating: Rating | null, genres?: string[]): Promise<void> {
   await prisma.$transaction(async (tx) => {
+    // One rating change per user and title at a time: two quick clicks must not
+    // both delete before either inserts and leave two ratings behind.
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`${userId}:${itemKey}`}))`;
     await tx.recommendationEvent.deleteMany({
       where: { userId, itemKey, eventType: { in: RATING_EVENT_TYPES } },
     });
@@ -39,13 +42,16 @@ export async function setRating(userId: string, itemKey: string, rating: Rating 
         data: { userId, itemKey, eventType: EVENT_OF[rating], ...(genres?.length ? { context: { genres } } : {}) },
       });
     }
+    // The stored profile keeps likes and excludes for up to 6 hours; drop what
+    // this rating took back. A cleared thumbs-down lets the title back unless
+    // "Not interested" still holds it.
+    if (rating !== 'up' && rating !== 'love') await forgetLikedItems(userId, [itemKey], tx);
+    if (rating !== 'down') {
+      const stillExcluded = await tx.recommendationEvent.count({
+        where: { userId, itemKey, eventType: { in: EXCLUDE_EVENT_TYPES } },
+      });
+      if (stillExcluded === 0) await forgetExcludedItems(userId, [itemKey], tx);
+    }
   });
-  // A cleared thumbs-down lets the title back, unless "Not interested" still holds it.
-  if (rating !== 'down') {
-    const stillExcluded = await prisma.recommendationEvent.count({
-      where: { userId, itemKey, eventType: { in: EXCLUDE_EVENT_TYPES } },
-    });
-    if (stillExcluded === 0) await forgetExcludedItems(userId, [itemKey]);
-  }
   await invalidateRecommendations(userId);
 }

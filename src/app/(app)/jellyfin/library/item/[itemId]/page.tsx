@@ -445,7 +445,7 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
                 title={item.Name}
                 genres={item.Genres}
                 renderTrigger={(trigger) => (
-                  <Button size="icon-lg" variant="secondary" className="rounded-full" aria-label={trigger.label} title={trigger.label} onClick={trigger.onClick}>
+                  <Button size="icon-lg" variant="secondary" className="rounded-full" aria-label={trigger.label} title={trigger.label} aria-expanded={trigger.open} onClick={trigger.onClick}>
                     <RatingIcon rating={trigger.rating} />
                   </Button>
                 )}
@@ -465,7 +465,7 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
                 title={item.Name}
                 genres={item.Genres}
                 renderTrigger={(trigger) => (
-                  <StackedAction label="Rate" onClick={trigger.onClick} active={trigger.rating !== null}>
+                  <StackedAction label="Rate" onClick={trigger.onClick} active={trigger.rating !== null} expanded={trigger.open}>
                     <RatingIcon rating={trigger.rating} className="size-6" />
                   </StackedAction>
                 )}
@@ -795,11 +795,14 @@ function StackedAction({
   label,
   onClick,
   active = false,
+  expanded,
   children,
 }: {
   label: string;
   onClick: () => void;
   active?: boolean;
+  /** Set for a button that opens a menu. */
+  expanded?: boolean;
   children: React.ReactNode;
 }) {
   return (
@@ -807,6 +810,7 @@ function StackedAction({
       type="button"
       onClick={onClick}
       aria-pressed={active}
+      aria-expanded={expanded}
       className="flex min-w-14 flex-col items-center gap-1.5 text-[11px] text-white/85"
     >
       <span className="flex h-7 items-center justify-center">{children}</span>

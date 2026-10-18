@@ -33,12 +33,15 @@ function CircleButton({
   label,
   filled = false,
   active = false,
+  expanded,
   onClick,
   children,
 }: {
   label: string;
   filled?: boolean;
   active?: boolean;
+  /** Set for a button that opens a menu. */
+  expanded?: boolean;
   onClick?: () => void;
   children: React.ReactNode;
 }) {
@@ -47,7 +50,8 @@ function CircleButton({
       type="button"
       aria-label={label}
       title={label}
-      aria-pressed={onClick && !filled ? active : undefined}
+      aria-pressed={onClick && !filled && expanded === undefined ? active : undefined}
+      aria-expanded={expanded}
       onClick={(event) => {
         // The tile's stretched link sits underneath; a control on top of it
         // must not also navigate.
@@ -125,7 +129,7 @@ export function TilePanel({
               // The panel clips its overflow, so the menu opens within the row.
               placement="beside"
               renderTrigger={(trigger) => (
-                <CircleButton label={trigger.label} onClick={trigger.onClick}>
+                <CircleButton label={trigger.label} expanded={trigger.open} onClick={trigger.onClick}>
                   <RatingIcon rating={trigger.rating} className="size-4" />
                 </CircleButton>
               )}
