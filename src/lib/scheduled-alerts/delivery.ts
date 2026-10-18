@@ -6,6 +6,7 @@ import { resolveHref } from '@/lib/scheduled-alerts/helpers';
 import { createResolverContext, resolveAlertOccurrencesResult } from '@/lib/scheduled-alerts/resolver';
 import type { OccurrenceCandidate } from '@/lib/scheduled-alerts/types';
 import type { ScheduledAlert, Prisma } from '@prisma/client';
+import { noteJobFailure } from '@/lib/polling-job-report';
 
 type DbClient = Prisma.TransactionClient | typeof prisma;
 
@@ -110,6 +111,7 @@ export async function refreshScheduledAlertOccurrences(): Promise<void> {
         data: { updatedAt: new Date() },
       });
     } catch (error) {
+      noteJobFailure(error);
       logger.warn('Failed to refresh scheduled alert occurrences', { alertId: alert.id, error }, { scope: 'polling' });
     }
   }
@@ -171,6 +173,7 @@ export async function checkScheduledAlerts(): Promise<void> {
       // subscriptions, matching the legacy watchlist reminder semantics.
       delivered = true;
     } catch (error) {
+      noteJobFailure(error);
       logger.warn('Scheduled alert push failed', { occurrenceId: occ.id, error }, { scope: 'polling' });
     }
 

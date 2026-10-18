@@ -1,4 +1,3 @@
-import { AsyncLocalStorage } from 'node:async_hooks';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { getSonarrClients, getRadarrClients, getLidarrClients, getQBittorrentClient, getJellyfinClient, getSeerrClient } from '@/lib/service-helpers';
@@ -22,6 +21,7 @@ import { buildActivityDigest, type ActivityDigestPeriod } from '@/lib/digests/bu
 import { parseBandwidthSchedule } from '@/lib/bandwidth-scheduler/parse';
 import { pickActiveRule } from '@/lib/bandwidth-scheduler/active-rule';
 import { logger, redact } from '@/lib/logger';
+import { jobReports, noteJobFailure, noteJobSkipped, type JobReport } from '@/lib/polling-job-report';
 import {
   createPollingCycleContext,
   type PollingCycleContext,
@@ -208,24 +208,29 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+
 /**
- * What a job reports about its own run beyond whether it threw: many jobs log a
- * failure and carry on (one bad instance must not stop the rest), and throttled
- * jobs return early when not due. Read by the health view.
+ * Warm one library. The loader keeps going past an instance that fails (one bad
+ * instance must not blank the rest), so a warm that read one is still a failure;
+ * no configured instance at all is not.
  */
-interface JobReport { failure: string | null; skipped: boolean }
-const jobReports = new AsyncLocalStorage<JobReport>();
-
-/** A job that logs an error and carries on still failed this cycle. */
-export function noteJobFailure(error: unknown): void {
-  const report = jobReports.getStore();
-  if (report && report.failure === null) report.failure = errorMessage(error);
-}
-
-/** A throttled job with nothing due this cycle: neither a success nor a failure. */
-export function noteJobSkipped(): void {
-  const report = jobReports.getStore();
-  if (report) report.skipped = true;
+async function warmLibrary<C, T extends object>(
+  scope: string,
+  getInstances: () => Promise<Array<{ connection: { id: string; label: string }; client: C }>>,
+  fetchOne: (client: C) => Promise<T[]>,
+): Promise<void> {
+  let configured = 0;
+  const result = await getCachedTaggedLibrary({
+    scope,
+    cacheKeySeed: 'all',
+    getInstances: async () => {
+      const instances = await getInstances();
+      configured = instances.length;
+      return instances;
+    },
+    fetchOne,
+  });
+  if (!result.complete && configured > 0) throw new Error(`${scope}: an instance did not answer`);
 }
 
 function toNumber(value: unknown): number | undefined {
@@ -570,6 +575,7 @@ export class PollingService {
       }, { scope: 'polling' });
       return sentCount;
     } catch (err) {
+      noteJobFailure(err);
       logger.warn('Polling notification failed', {
         ...context,
         eventType: event.eventType,
@@ -925,6 +931,7 @@ export class PollingService {
       // Sonarr/DB unavailable — release the claim WITHOUT stamping, so being
       // down at the scheduled hour doesn't consume the day; a later poll retries.
       this.animeMapRun = null;
+      noteJobFailure(error);
       logger.debug('Anime auto-map skipped: could not build its queue', {
         error: errorMessage(error),
       }, { scope: 'polling' });
@@ -1096,9 +1103,9 @@ export class PollingService {
     // allSettled + per-scope logging: one failing scope must not abort or mask
     // the other warmups.
     const warms = [
-      { scope: 'sonarr', run: () => getCachedTaggedLibrary({ scope: 'sonarr', cacheKeySeed: 'all', getInstances: getSonarrClients, fetchOne: (c) => c.getSeries() }) },
-      { scope: 'radarr', run: () => getCachedTaggedLibrary({ scope: 'radarr', cacheKeySeed: 'all', getInstances: getRadarrClients, fetchOne: (c) => c.getMovies() }) },
-      { scope: 'lidarr', run: () => getCachedTaggedLibrary({ scope: 'lidarr', cacheKeySeed: 'all', getInstances: getLidarrClients, fetchOne: (c) => c.getArtists() }) },
+      { scope: 'sonarr', run: () => warmLibrary('sonarr', getSonarrClients, (c) => c.getSeries()) },
+      { scope: 'radarr', run: () => warmLibrary('radarr', getRadarrClients, (c) => c.getMovies()) },
+      { scope: 'lidarr', run: () => warmLibrary('lidarr', getLidarrClients, (c) => c.getArtists()) },
     ] as const;
     const results = await Promise.allSettled(warms.map((w) => w.run()));
     results.forEach((result, i) => {
@@ -1127,11 +1134,14 @@ export class PollingService {
     const lastRun = settings.animeAutoMapLastRunAt;
     if (lastRun && getLocalDateKey(lastRun, timeZone) === getLocalDateKey(now, timeZone)) { noteJobSkipped(); return; }
 
-    void this.startAnimeAutoMapRun('scheduled', settings).catch((error) =>
+    // Awaited: building the queue is this job's work (and its failure); the
+    // mapping loop it starts runs on detached.
+    await this.startAnimeAutoMapRun('scheduled', settings).catch((error) => {
+      noteJobFailure(error);
       logger.error('Anime auto-map scheduled start failed', {
         error: errorMessage(error),
-      }, { scope: 'polling' })
-    );
+      }, { scope: 'polling' });
+    });
   }
 
   // Probes every configured service connection and fires a push when one

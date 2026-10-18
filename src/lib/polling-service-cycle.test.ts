@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   error: vi.fn(),
   info: vi.fn(),
   warn: vi.fn(),
+  loadLibrary: vi.fn(),
 }));
 
 vi.mock('@/lib/app-settings', async (importOriginal) => {
@@ -31,7 +32,15 @@ vi.mock('@/lib/logger', () => ({
   redact: (value: unknown) => value,
 }));
 
-import { noteJobFailure, noteJobSkipped, PollingService } from '@/lib/polling-service';
+// Cache warming reads libraries through the tagged-library loader, which keeps
+// going past an instance that fails and reports it as incomplete.
+vi.mock('@/lib/cache/tagged-library', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/cache/tagged-library')>()),
+  getCachedTaggedLibrary: mocks.loadLibrary,
+}));
+
+import { PollingService } from '@/lib/polling-service';
+import { noteJobFailure, noteJobSkipped } from '@/lib/polling-job-report';
 
 type TestContext = PollingCycleContext<{ notificationGroupingEnabled: boolean }>;
 type InternalPollingService = {
@@ -243,5 +252,28 @@ describe('polling health from the cycle', () => {
 
     expect(sourceHealth(service, 'warmCaches')).toEqual(expect.objectContaining({ lastError: 'warm timed out' }));
     expect(service.getHealth().lastCycle?.failed).toBe(1);
+  });
+});
+
+describe('cache warming health', () => {
+  it('counts a warm that read a configured instance that did not answer as failed', async () => {
+    const service = new PollingService();
+    const internal = stubCycle(service);
+    internal.warmCaches = (PollingService.prototype as unknown as { warmCaches: () => Promise<void> }).warmCaches.bind(service);
+    const services = await import('@/lib/service-helpers');
+    vi.spyOn(services, 'getSonarrClients').mockResolvedValue([{ connection: { id: 's1', label: 'Sonarr' }, client: {} }] as never);
+    // Sonarr has one configured instance, which failed: the loader still fulfills,
+    // incomplete. Radarr and Lidarr have none, which is not a failure.
+    mocks.loadLibrary.mockImplementation(async (opts: { getInstances: () => Promise<unknown[]> }) => {
+      await opts.getInstances();
+      return { items: [], cached: false, available: false, complete: false };
+    });
+    vi.spyOn(services, 'getRadarrClients').mockResolvedValue([] as never);
+    vi.spyOn(services, 'getLidarrClients').mockResolvedValue([] as never);
+
+    await internal.poll();
+
+    const warm = service.getHealth().sources.find((entry) => entry.source === 'warmCaches');
+    expect(warm).toEqual(expect.objectContaining({ lastSuccessAt: null, lastError: 'sonarr: an instance did not answer' }));
   });
 });
