@@ -92,13 +92,17 @@ describe('RateControl', () => {
     await flush();
     const keys = invalidate.mock.calls.map(([filters]) => JSON.stringify(filters?.queryKey));
     expect(keys).toEqual(expect.arrayContaining([
-      '["recommendations"]', '["recommendations-excluded"]', '["recommendations-excluded-count"]', '["jellyfin","catalog","recommendation-rails"]',
+      '["recommendations-excluded"]', '["recommendations-excluded-count"]', '["jellyfin","catalog","recommendation-rails"]',
     ]));
     expect(invalidate.mock.calls.every(([filters]) => filters?.refetchType === undefined)).toBe(true);
+    const predicates = invalidate.mock.calls.map(([filters]) => filters?.predicate).filter(Boolean);
+    const matches = (queryKey: unknown[]) => predicates.some((predicate) => predicate!({ queryKey } as never));
+    // The recommendation rails, but not other titles' ratings (one may have its own save pending).
+    expect(matches(['recommendations', 'rails'])).toBe(true);
+    expect(matches(['recommendations', 'rating', 'tmdb:movie:1'])).toBe(false);
     // The dashboard's For You widget too.
-    const predicate = invalidate.mock.calls.map(([filters]) => filters?.predicate).find(Boolean)!;
-    expect(predicate({ queryKey: ['widget-data', 'for-you-12'] } as never)).toBe(true);
-    expect(predicate({ queryKey: ['widget-data', 'calendar'] } as never)).toBe(false);
+    expect(matches(['widget-data', 'for-you-12'])).toBe(true);
+    expect(matches(['widget-data', 'calendar'])).toBe(false);
   });
 
   it('sends a second choice only after the first has been saved, and keeps showing it meanwhile', async () => {

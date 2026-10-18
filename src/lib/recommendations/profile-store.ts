@@ -73,6 +73,7 @@ export async function rebuildTasteProfile(user: ProfileUser): Promise<TasteProfi
     // start. Lock the stored row, keep only the excludes still backed by an
     // event, then write: a restore's profile UPDATE waits for this lock and
     // then removes its key from what was written here.
+    await lockTasteProfile(tx, user.id);
     await tx.$queryRaw`SELECT 1 FROM "UserTasteProfile" WHERE "userId" = ${user.id} FOR UPDATE`;
     const excluded = built.profile.negatives.excludedItemKeys;
     if (excluded.length > 0) {
@@ -111,6 +112,16 @@ function parseStoredProfile(row: { profile: Prisma.JsonValue; version: number; b
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const profile = value as unknown as TasteProfile;
   return profile.version === PROFILE_VERSION ? profile : null;
+}
+
+/**
+ * Serializes writes to one user's stored profile, including its first creation
+ * (when there is no row for FOR UPDATE to lock). Rating writers take it after
+ * all their title locks, a restore after deleting its events, and a rebuild
+ * before reading the events it reconciles against.
+ */
+export function lockTasteProfile(tx: RawExecutor, userId: string) {
+  return tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`taste-profile:${userId}`}))`;
 }
 
 /** Prisma's client or a transaction's, for the raw profile edits below. */

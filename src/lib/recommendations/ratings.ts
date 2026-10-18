@@ -1,7 +1,7 @@
 import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { invalidateRecommendations } from './engine';
-import { forgetExcludedItems, forgetLikedItems } from './profile-store';
+import { forgetExcludedItems, forgetLikedItems, lockTasteProfile } from './profile-store';
 
 // A title's rating from the Rate control: thumbs-down, thumbs-up or "Love this".
 // Stored as the recommendation events the engine already reads (dislike, like,
@@ -50,6 +50,8 @@ export interface ProfileForget { itemKey: string; liked: boolean; excluded: bool
 export async function forgetInProfile(tx: Prisma.TransactionClient, userId: string, changes: ProfileForget[]): Promise<void> {
   const liked = [...new Set(changes.filter((change) => change.liked).map((change) => change.itemKey))];
   const excluded = [...new Set(changes.filter((change) => change.excluded).map((change) => change.itemKey))];
+  if (liked.length === 0 && excluded.length === 0) return;
+  await lockTasteProfile(tx, userId);
   if (liked.length > 0) await forgetLikedItems(userId, liked, tx);
   if (excluded.length > 0) await forgetExcludedItems(userId, excluded, tx);
 }

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { isItemKey } from '@/lib/recommendations/item-keys';
-import { isValidGenreList } from '@/lib/recommendations/events';
+import { isValidGenreList, takeEventQuota } from '@/lib/recommendations/events';
 import { getRating, isRating, setRating } from '@/lib/recommendations/ratings';
 
 // The signed-in user's own rating of one title; no user id is ever accepted.
@@ -33,6 +33,10 @@ async function putHandler(request: NextRequest): Promise<NextResponse> {
   }
   if (genres !== undefined && !isValidGenreList(genres)) {
     return NextResponse.json({ error: 'Invalid genres' }, { status: 400 });
+  }
+  // The same quota as event ingestion, which writes the same events.
+  if (!(await takeEventQuota(auth.user.id, 1))) {
+    return NextResponse.json({ error: 'Too many ratings, slow down' }, { status: 429 });
   }
   await setRating(auth.user.id, itemKey, rating, genres);
   return NextResponse.json({ rating });

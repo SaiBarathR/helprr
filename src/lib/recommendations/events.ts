@@ -145,14 +145,21 @@ async function countSubmitted(userId: string, count: number): Promise<number | n
   }
 }
 
+/**
+ * Take `count` events from this user's quota; false when it is spent. Shared by
+ * event ingestion and the Rate control's PUT, which write the same events.
+ */
+export async function takeEventQuota(userId: string, count: number): Promise<boolean> {
+  const submitted = await countSubmitted(userId, count);
+  if (submitted !== null) return submitted <= RATE_MAX_EVENTS_PER_WINDOW;
+  const stored = await prisma.recommendationEvent.count({
+    where: { userId, createdAt: { gte: new Date(Date.now() - RATE_WINDOW_MS) } },
+  });
+  return stored + count <= RATE_MAX_EVENTS_PER_WINDOW;
+}
+
 export async function ingestEvents(userId: string, events: IncomingEvent[]): Promise<IngestResult> {
-  const submitted = await countSubmitted(userId, events.length);
-  const overLimit = submitted !== null
-    ? submitted > RATE_MAX_EVENTS_PER_WINDOW
-    : (await prisma.recommendationEvent.count({
-        where: { userId, createdAt: { gte: new Date(Date.now() - RATE_WINDOW_MS) } },
-      })) + events.length > RATE_MAX_EVENTS_PER_WINDOW;
-  if (overLimit) {
+  if (!(await takeEventQuota(userId, events.length))) {
     return { ok: false, rateLimited: true };
   }
 

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   findFirst: vi.fn(), deleteMany: vi.fn(), create: vi.fn(), count: vi.fn(), executeRaw: vi.fn(),
-  forgetExcludedItems: vi.fn(), forgetLikedItems: vi.fn(), invalidateRecommendations: vi.fn(),
+  forgetExcludedItems: vi.fn(), forgetLikedItems: vi.fn(), invalidateRecommendations: vi.fn(), lockTasteProfile: vi.fn(),
 }));
 const tx = vi.hoisted(() => ({} as Record<string, unknown>));
 vi.mock('@/lib/db', () => {
@@ -10,7 +10,9 @@ vi.mock('@/lib/db', () => {
   Object.assign(tx, { recommendationEvent, $executeRaw: mocks.executeRaw });
   return { prisma: { recommendationEvent, $transaction: (fn: (t: unknown) => unknown) => fn(tx) } };
 });
-vi.mock('@/lib/recommendations/profile-store', () => ({ forgetExcludedItems: mocks.forgetExcludedItems, forgetLikedItems: mocks.forgetLikedItems }));
+vi.mock('@/lib/recommendations/profile-store', () => ({
+  forgetExcludedItems: mocks.forgetExcludedItems, forgetLikedItems: mocks.forgetLikedItems, lockTasteProfile: mocks.lockTasteProfile,
+}));
 vi.mock('@/lib/recommendations/engine', () => ({ invalidateRecommendations: mocks.invalidateRecommendations }));
 
 const { forgetInProfile, getRating, setRating } = await import('@/lib/recommendations/ratings');
@@ -93,5 +95,13 @@ describe('forgetInProfile', () => {
     ]);
     expect(mocks.forgetLikedItems).toHaveBeenCalledWith('u1', ['a', 'b'], tx);
     expect(mocks.forgetExcludedItems).toHaveBeenCalledWith('u1', ['b'], tx);
+    // The profile lock first, which also covers a profile not yet created.
+    expect(mocks.lockTasteProfile).toHaveBeenCalledWith(tx, 'u1');
+    expect(mocks.lockTasteProfile.mock.invocationCallOrder[0]).toBeLessThan(mocks.forgetLikedItems.mock.invocationCallOrder[0]);
+  });
+
+  it('takes no profile lock when nothing is taken back', async () => {
+    await forgetInProfile(tx as never, 'u1', [{ itemKey: 'a', liked: false, excluded: false }]);
+    expect(mocks.lockTasteProfile).not.toHaveBeenCalled();
   });
 });

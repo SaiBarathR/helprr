@@ -73,6 +73,12 @@ describe('useRecEvents and the Rate control', () => {
 
     tracker.event('like', item(3), 'top-picks', 'rails');
     await act(async () => { await tracker.flush(); });
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['recommendations', 'rating'] });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['recommendations', 'rating'], predicate: expect.any(Function) });
+    // ...but not a title whose own save is still pending.
+    const predicate = invalidate.mock.calls.at(-1)![0]!.predicate!;
+    const pending = vi.spyOn(client, 'isMutating').mockImplementation((filters) => (JSON.stringify(filters?.mutationKey).includes('tmdb:movie:7') ? 1 : 0));
+    expect(predicate({ queryKey: ['recommendations', 'rating', 'tmdb:movie:7'] } as never)).toBe(false);
+    expect(predicate({ queryKey: ['recommendations', 'rating', 'tmdb:movie:3'] } as never)).toBe(true);
+    pending.mockRestore();
   });
 });

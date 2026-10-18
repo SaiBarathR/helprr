@@ -42,9 +42,14 @@ export interface RateTriggerProps {
   onClick: () => void;
 }
 
-/** What a rating changes: the recommendation rails and feed, the Watch rails, and the Excluded titles list. */
+/**
+ * What a rating changes: the recommendation rails and feed, the Watch rails, and
+ * the Excluded titles list. Other titles' ratings are left alone: one of them
+ * may have its own save pending, and a refetch would show its older value.
+ */
+const isRecommendationQuery = (query: { queryKey: readonly unknown[] }) =>
+  query.queryKey[0] === 'recommendations' && query.queryKey[1] !== 'rating';
 const AFFECTED_QUERIES = [
-  ['recommendations'],
   ['recommendations-feed'],
   ['recommendations-excluded'],
   ['recommendations-excluded-count'],
@@ -118,6 +123,7 @@ export function RateControl({
       // Read the saved rating even where the query is idle (a closed tile menu
       // is lazy), so a failed save never leaves its optimistic choice showing.
       void queryClient.fetchQuery({ queryKey: ratingKey(itemKey!), queryFn: () => fetchRating(itemKey!), staleTime: 0 }).catch(() => undefined);
+      void queryClient.invalidateQueries({ predicate: isRecommendationQuery });
       for (const queryKey of AFFECTED_QUERIES) void queryClient.invalidateQueries({ queryKey });
       void queryClient.invalidateQueries({ predicate: isForYouWidget });
     },

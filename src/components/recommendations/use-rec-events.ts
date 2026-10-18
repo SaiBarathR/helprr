@@ -61,7 +61,11 @@ export function useRecEvents(): RecEventTracker {
       })
         .then((res) => {
           if (res.ok && batch.some((event) => RATING_EVENTS.has(event.eventType))) {
-            void queryClient.invalidateQueries({ queryKey: ['recommendations', 'rating'] });
+            // Not a title with its own save pending: the Rate control reads that one back.
+            void queryClient.invalidateQueries({
+              queryKey: ['recommendations', 'rating'],
+              predicate: (query) => queryClient.isMutating({ mutationKey: ['recommendations', 'rating-save', query.queryKey[2]] }) === 0,
+            });
           }
         })
         // Lost telemetry is acceptable; never disturb the page for it.

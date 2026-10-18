@@ -4,7 +4,7 @@ import { loadCachedArrLibrary } from '@/lib/cache/arr-library';
 import { getAnimeSummaries } from '@/lib/anilist-client';
 import { invalidateRecommendations } from './engine';
 import { anilistItemKey, arrItemKey, isItemKey, parseItemKey, type RecMediaType } from './item-keys';
-import { forgetExcludedItems } from './profile-store';
+import { forgetExcludedItems, lockTasteProfile } from './profile-store';
 
 // Titles the user hid with "Not interested" or a dislike. Both are permanent
 // excludes (retention never prunes them), so this is the only way back: list
@@ -238,6 +238,8 @@ export async function restoreExcludedTitle(userId: string, itemKey: string): Pro
     prisma.recommendationEvent.deleteMany({
       where: { userId, itemKey, eventType: { in: [...EXCLUDE_EVENT_TYPES] } },
     }),
+    // After the delete, like a rating writer after its title locks.
+    lockTasteProfile(prisma, userId),
     forgetExcludedItems(userId, [itemKey]),
   ]);
   await invalidateRecommendations(userId);
