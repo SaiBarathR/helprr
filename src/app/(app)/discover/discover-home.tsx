@@ -9,6 +9,7 @@ import { ApiError } from '@/lib/query-fetch';
 import { queryKeys } from '@/lib/query-keys';
 import Link from '@/components/ui/app-link';
 import Image from 'next/image';
+import { HeroImage } from '@/components/media/hero-image';
 import { FadeInImage } from '@/components/media/fade-in-image';
 import { useSearchParams } from 'next/navigation';
 import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
@@ -277,7 +278,7 @@ function DiscoverHeroSlide({ item, priority = false }: { item: DiscoverItem; pri
     >
       <div className="relative h-full overflow-hidden">
         {src ? (
-          <Image
+          <HeroImage
             src={src}
             alt={item.title}
             fill
@@ -1003,17 +1004,15 @@ export default function DiscoverPage() {
     };
   })();
 
-  // Countdown ticker for the rate-limit banner (non-fetch interval); setState in
-  // the effect is inherent to a ticker, so the rule is suppressed.
+  // Countdown ticker for the rate-limit banner (non-fetch interval).
   useEffect(() => {
-    /* eslint-disable react-hooks/set-state-in-effect */
     if (!rateLimitInfo?.retryAfterSeconds) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- a ticker starts from each new retry-after value
       setRateLimitCountdown(null);
       return;
     }
 
     setRateLimitCountdown(rateLimitInfo.retryAfterSeconds);
-    /* eslint-enable react-hooks/set-state-in-effect */
     const timer = setInterval(() => {
       setRateLimitCountdown((current) => {
         if (current == null) return null;
@@ -1026,15 +1025,12 @@ export default function DiscoverPage() {
 
   // Re-seed the draft controls from the committed filters on each open (and keep
   // them in sync if the committed filters change while the sheet is open).
-  // Syncing local draft state to a prop-like source on an open transition is a
-  // legitimate effect, so the set-state-in-effect rule is suppressed here.
   useEffect(() => {
     if (!filtersOpen) return;
-    /* eslint-disable react-hooks/set-state-in-effect */
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- sync the drafts to the committed filters while the sheet is open
     setDraftFilters(discoverFilters);
     setDraftSort(discoverSort);
     setDraftSortDirection(discoverSortDirection);
-    /* eslint-enable react-hooks/set-state-in-effect */
   }, [filtersOpen, discoverFilters, discoverSort, discoverSortDirection]);
 
   const handleOpenItem = useCallback((item: DiscoverItem) => {

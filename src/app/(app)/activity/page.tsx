@@ -968,7 +968,7 @@ function QueueTab({
       {/* A failed background poll shouldn't blank a still-populated queue; show
           a small inline banner instead and keep the last-good records rendered. */}
       {queueQuery.isError && queue.length > 0 && (
-        <div className="mb-2 rounded-lg bg-destructive/10 px-3 py-2 text-center text-xs text-destructive">
+        <div className="mb-2 rounded-lg bg-destructive/10 px-3 py-2 text-center text-xs text-red-400 light:text-red-800">
           Live updates paused — retrying…
         </div>
       )}

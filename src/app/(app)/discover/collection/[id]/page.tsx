@@ -1,5 +1,6 @@
 import { isAxiosError } from 'axios';
 import Image from 'next/image';
+import { HeroImage } from '@/components/media/hero-image';
 import Link from '@/components/ui/app-link';
 import { PageHeader } from '@/components/layout/page-header';
 import { Badge } from '@/components/ui/badge';
@@ -74,7 +75,7 @@ export default async function DiscoverCollectionPage({ params }: DiscoverCollect
         {/* Hero */}
         <div className="relative h-[180px] bg-muted/40 -mx-2 md:-mx-6">
           {backdropSrc && (
-            <Image
+            <HeroImage
               src={backdropSrc}
               alt={collection.name}
               fill

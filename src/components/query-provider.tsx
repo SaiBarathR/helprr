@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import { refreshAfterReconnect } from '@/lib/reconnect-queries';
@@ -20,39 +21,75 @@ import {
 export function QueryProvider({ children }: { children: React.ReactNode }) {
   // Singleton on the client (see getQueryClient); safe to call during render.
   const queryClient = getQueryClient();
+  const router = useRouter();
   // Where to go once the caches are clear: reload when another tab's session
   // changed, Login when this tab's own session ended.
   const [authenticationBoundary, setAuthenticationBoundary] = useState<'reload' | 'login' | null>(null);
   const [authenticationBoundaryError, setAuthenticationBoundaryError] = useState(false);
   const boundaryClearStarted = useRef(false);
+  // Set once signing out or another tab's change begins: from then on that
+  // clean-up decides where the page goes, not a reconnect refresh.
+  const boundaryStarted = useRef(false);
   useEffect(() => {
     let controller: AbortController | null = null;
     let pending = false;
+    let retry: ReturnType<typeof setTimeout> | undefined;
+    // Once the server answers, refetch the queries and refresh what it
+    // rendered into the layout (the user's capabilities, which services are
+    // configured), which has no query of its own. The refresh keeps client
+    // state such as playback, but one that fails falls back to a full page
+    // load, the very reload reconnecting must not cause — hence the check.
+    const refreshWhenReachable = (signal: AbortSignal, retriesLeft: number) => {
+      // A probe that hangs counts as unanswered after 5 s.
+      const probe = new AbortController();
+      const timer = setTimeout(() => probe.abort(), 5_000);
+      const stop = () => probe.abort();
+      signal.addEventListener('abort', stop, { once: true });
+      void fetch('/api/health', { cache: 'no-store', signal: probe.signal })
+        .then((res) => {
+          if (!res.ok) throw new Error(`health ${res.status}`);
+          if (signal.aborted || boundaryStarted.current) return;
+          router.refresh();
+          void refreshAfterReconnect(queryClient, window.location.pathname, signal);
+        })
+        .catch(() => {
+          if (signal.aborted || boundaryStarted.current) return;
+          if (retriesLeft > 0) retry = setTimeout(() => refreshWhenReachable(signal, retriesLeft - 1), 5_000);
+          else pending = true;
+        })
+        .finally(() => {
+          clearTimeout(timer);
+          signal.removeEventListener('abort', stop);
+        });
+    };
     const refresh = () => {
-      if (!navigator.onLine || document.visibilityState === 'hidden') return;
+      if (boundaryStarted.current || !navigator.onLine || document.visibilityState === 'hidden') return;
       controller?.abort();
+      clearTimeout(retry);
       controller = new AbortController();
       pending = false;
-      void refreshAfterReconnect(queryClient, window.location.pathname, controller.signal);
+      refreshWhenReachable(controller.signal, 1);
     };
     const online = () => { pending = true; refresh(); };
     const visible = () => { if (pending) refresh(); };
-    const offline = () => controller?.abort();
+    const offline = () => { controller?.abort(); clearTimeout(retry); };
     window.addEventListener('online', online);
     window.addEventListener('offline', offline);
     document.addEventListener('visibilitychange', visible);
     return () => {
       controller?.abort();
+      clearTimeout(retry);
       window.removeEventListener('online', online);
       window.removeEventListener('offline', offline);
       document.removeEventListener('visibilitychange', visible);
     };
-  }, [queryClient]);
+  }, [queryClient, router]);
   useEffect(() => {
     let handlingBoundary = false;
     const begin = (destination: 'reload' | 'login') => {
       if (handlingBoundary) return;
       handlingBoundary = true;
+      boundaryStarted.current = true;
       // Queries that refetch with the dead cookie must not jump to Login
       // while the caches below are still being cleared.
       holdLoginRedirect();
