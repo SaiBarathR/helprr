@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { PLAY_ALL_MAX, collectForPlayAll } from './play-all';
+import { PLAY_ALL_MAX, collectForPlayAll, playAllNotice } from './play-all';
 
 // A catalog of `size` titles that pages like the route: at most `limit` from `startIndex`.
 function catalog(size: number) {
@@ -31,5 +31,21 @@ describe('collectForPlayAll', () => {
     const fetchPage = vi.fn(async () => ({ items: [] as number[], total: 50 }));
     expect(await collectForPlayAll(fetchPage)).toEqual({ items: [], total: 50 });
     expect(fetchPage).toHaveBeenCalledOnce();
+  });
+});
+
+describe('playAllNotice', () => {
+  it('says how many of the set were queued when the ceiling cut it', () => {
+    expect(playAllNotice(PLAY_ALL_MAX, 507, false)).toBe('Queued 500 of 507 titles');
+    expect(playAllNotice(PLAY_ALL_MAX, 507, true)).toBe('Shuffled 500 of 507 titles');
+  });
+
+  it('stays quiet when the whole set was queued or nothing was', () => {
+    expect(playAllNotice(492, 492, false)).toBeNull();
+    expect(playAllNotice(0, 507, false)).toBeNull();
+  });
+
+  it('also speaks up when the set came back shorter than its total', () => {
+    expect(playAllNotice(300, 492, false)).toBe('Queued 300 of 492 titles');
   });
 });
