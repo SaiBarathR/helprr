@@ -31,20 +31,22 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
     let controller: AbortController | null = null;
     let pending = false;
     let retry: ReturnType<typeof setTimeout> | undefined;
-    // What the server rendered into the layout (the user's capabilities,
-    // which services are configured) has no query to refetch. Refresh it in
-    // place, which keeps client state such as playback — but only once the
-    // server answers: a refresh that fails falls back to a full page load,
-    // the very reload reconnecting must not cause.
-    const refreshLayout = (signal: AbortSignal, retriesLeft: number) => {
+    // Once the server answers, refetch the queries and refresh what it
+    // rendered into the layout (the user's capabilities, which services are
+    // configured), which has no query of its own. The refresh keeps client
+    // state such as playback, but one that fails falls back to a full page
+    // load, the very reload reconnecting must not cause — hence the check.
+    const refreshWhenReachable = (signal: AbortSignal, retriesLeft: number) => {
       void fetch('/api/health', { cache: 'no-store', signal })
         .then((res) => {
           if (!res.ok) throw new Error(`health ${res.status}`);
-          if (!signal.aborted) router.refresh();
+          if (signal.aborted) return;
+          router.refresh();
+          void refreshAfterReconnect(queryClient, window.location.pathname, signal);
         })
         .catch(() => {
           if (signal.aborted) return;
-          if (retriesLeft > 0) retry = setTimeout(() => refreshLayout(signal, retriesLeft - 1), 5_000);
+          if (retriesLeft > 0) retry = setTimeout(() => refreshWhenReachable(signal, retriesLeft - 1), 5_000);
           else pending = true;
         });
     };
@@ -54,8 +56,7 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
       clearTimeout(retry);
       controller = new AbortController();
       pending = false;
-      refreshLayout(controller.signal, 1);
-      void refreshAfterReconnect(queryClient, window.location.pathname, controller.signal);
+      refreshWhenReachable(controller.signal, 1);
     };
     const online = () => { pending = true; refresh(); };
     const visible = () => { if (pending) refresh(); };

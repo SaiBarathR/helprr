@@ -236,6 +236,28 @@ describe('QueryProvider reconnect', () => {
 
     expect(fetch).toHaveBeenCalledTimes(2);
     expect(mocks.routerRefresh).not.toHaveBeenCalled();
+    expect(mocks.refreshAfterReconnect).not.toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
+  it('refreshes the layout and the queries once a retry finds the server', async () => {
+    vi.useFakeTimers();
+    let reachable = false;
+    vi.stubGlobal('fetch', vi.fn(async () => {
+      if (!reachable) throw new TypeError('Failed to fetch');
+      return new Response('{"status":"ok"}', { status: 200 });
+    }));
+    await act(async () => {
+      root.render(createElement(QueryProvider, null, 'Content'));
+    });
+
+    await act(async () => { window.dispatchEvent(new Event('online')); });
+    expect(mocks.refreshAfterReconnect).not.toHaveBeenCalled();
+    reachable = true;
+    await act(async () => { await vi.advanceTimersByTimeAsync(5_000); });
+
+    expect(mocks.routerRefresh).toHaveBeenCalledTimes(1);
+    expect(mocks.refreshAfterReconnect).toHaveBeenCalledTimes(1);
     vi.useRealTimers();
   });
 });
