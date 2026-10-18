@@ -1597,7 +1597,7 @@ export default function TorrentsPage() {
       {/* A failed background poll shouldn't blank a still-populated list; show a
           small inline banner instead and keep the last-good torrents rendered. */}
       {error && torrents.length > 0 && (
-        <div className="mb-2 rounded-lg bg-destructive/10 px-3 py-2 text-center text-xs text-destructive">
+        <div className="mb-2 rounded-lg bg-destructive/10 px-3 py-2 text-center text-xs text-red-400 light:text-red-800">
           {error}
         </div>
       )}
