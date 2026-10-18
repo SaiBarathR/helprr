@@ -9,6 +9,7 @@ import { ApiError } from '@/lib/query-fetch';
 import { queryKeys } from '@/lib/query-keys';
 import Link from '@/components/ui/app-link';
 import Image from 'next/image';
+import { HeroImage } from '@/components/media/hero-image';
 import { FadeInImage } from '@/components/media/fade-in-image';
 import { useSearchParams } from 'next/navigation';
 import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
@@ -277,7 +278,7 @@ function DiscoverHeroSlide({ item, priority = false }: { item: DiscoverItem; pri
     >
       <div className="relative h-full overflow-hidden">
         {src ? (
-          <Image
+          <HeroImage
             src={src}
             alt={item.title}
             fill
