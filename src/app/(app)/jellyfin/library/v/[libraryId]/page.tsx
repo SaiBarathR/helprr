@@ -175,7 +175,7 @@ export default function LibraryBrowserPage() {
       if (notice) {
         console.warn(`[Jellyfin] Play all queued ${collected.length} of ${total} titles (limit ${PLAY_ALL_MAX})`);
         toast.info(notice, collected.length >= PLAY_ALL_MAX
-          ? { description: `${shuffle ? 'Shuffle all' : 'Play all'} stops at ${PLAY_ALL_MAX} titles.` }
+          ? { description: shuffle ? `Shuffle all uses the first ${PLAY_ALL_MAX} titles in this sort.` : `Play all stops at ${PLAY_ALL_MAX} titles.` }
           : undefined);
       }
       if (collected.length > 0) await playback.playItems(collected, 0, shuffle ? { shuffle: true } : undefined);
