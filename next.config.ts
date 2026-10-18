@@ -7,6 +7,11 @@ const withSerwist = withSerwistInit({
   swSrc: 'src/app/sw.ts',
   swDest: 'public/sw.js',
   disable: process.env.NODE_ENV === 'development',
+  // Serwist reloads the page on every `online` event by default, so a network
+  // blip (Wi-Fi to cellular) ended playback and dropped unsaved forms. The app
+  // refetches its own queries on reconnect (refreshAfterReconnect), and the
+  // offline page has its own Try again.
+  reloadOnOnline: false,
   // Install only the offline shell and its build-graph dependencies. Route and
   // optional feature chunks use the existing runtime cache on first visit.
   globPublicPatterns: ['offline.html', 'manifest.json', 'favicon.ico', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png'],
