@@ -48,15 +48,42 @@ export function normalizeMediaPath(raw: string): string | null {
   return path;
 }
 
-// Jellyfin's legacy HLS routes pick the playlist by its hash and segments by
-// file name, ignoring the item in the path, so an allowed item's path could
-// reach another item's transcode. Helprr plays the dynamic `hls1/` routes only.
-const LEGACY_HLS = new RegExp(String.raw`^/(?:videos|audio)/${ITEM_ID}/hls/`, 'i');
+const LEGACY_HLS_PREFIX = new RegExp(String.raw`^/(?:videos|audio)/${ITEM_ID}/hls/`, 'i');
+const LEGACY_HLS = new RegExp(String.raw`^/(?:videos|audio)/${ITEM_ID}/hls/([a-zA-Z0-9]+)/([^/]+)$`, 'i');
 
 export function isAllowedMediaPath(path: string): boolean {
   const normalized = normalizeMediaPath(path);
-  if (!normalized || LEGACY_HLS.test(normalized)) return false;
+  if (!normalized) return false;
+  // Only the one legacy HLS shape the proxy can check (see legacyHlsTarget).
+  if (LEGACY_HLS_PREFIX.test(normalized) && !LEGACY_HLS.test(normalized)) return false;
   return ALLOWED_PATHS.some((pattern) => pattern.test(normalized));
+}
+
+/**
+ * A request on Jellyfin's legacy HLS routes (`…/hls/{playlistId}/{file}`), which
+ * live channels play through. Jellyfin picks the playlist by its id and each
+ * segment by file name alone, ignoring the item in the path, so the media proxy
+ * checks both against what it served this user (see `legacyHlsPlaylistIds`).
+ */
+export function legacyHlsTarget(path: string): { playlistId: string; file: string } | null {
+  const normalized = normalizeMediaPath(path);
+  const match = normalized?.match(LEGACY_HLS);
+  return match ? { playlistId: match[1], file: match[2] } : null;
+}
+
+/** Whether `file` is one of the playlist's own: its playlist, or a segment named after it. */
+export function isLegacyHlsFileOf(playlistId: string, file: string): boolean {
+  const lowerFile = file.toLowerCase();
+  const prefix = playlistId.toLowerCase();
+  return lowerFile === 'stream.m3u8'
+    || (lowerFile.startsWith(prefix) && /^\d+\.[a-z0-9]+$/.test(lowerFile.slice(prefix.length)));
+}
+
+/** Legacy playlist ids a (rewritten) playlist points at, for binding to its item. */
+export function legacyHlsPlaylistIds(playlist: string): string[] {
+  const ids = new Set<string>();
+  for (const match of playlist.matchAll(/\/(?:videos|audio)\/[a-fA-F0-9-]{8,}\/hls\/([a-zA-Z0-9]+)\//gi)) ids.add(match[1]);
+  return [...ids];
 }
 
 export function itemIdFromMediaPath(path: string): string | null {

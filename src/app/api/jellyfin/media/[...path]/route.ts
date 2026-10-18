@@ -5,11 +5,14 @@ import { requireUserCapability } from '@/lib/auth';
 import { getConnectionHeaders } from '@/lib/service-connection-secrets';
 import { invalidateJellyfinToken, readJellyfinToken } from '@/lib/jellyfin-token';
 import { canUserAccessItem } from '@/lib/jellyfin-playback/item-access';
-import { liveStreamBelongsTo, playSessionBelongsTo } from '@/lib/jellyfin-playback/live-stream-binding';
+import { bindHlsPlaylist, hlsPlaylistBelongsTo, liveStreamBelongsTo, playSessionBelongsTo } from '@/lib/jellyfin-playback/live-stream-binding';
 import {
   isAllowedMediaPath,
   isHlsPlaylist,
+  isLegacyHlsFileOf,
   itemIdFromMediaPath,
+  legacyHlsPlaylistIds,
+  legacyHlsTarget,
   normalizeMediaPath,
   stripSensitiveQuery,
 } from '@/lib/jellyfin-playback/media-path';
@@ -83,6 +86,11 @@ async function forward(request: NextRequest, pathSegments: string[], user: User)
         return new NextResponse(null, { status: 404 });
       }
     }
+    const legacy = legacyHlsTarget(path);
+    if (legacy && (!isLegacyHlsFileOf(legacy.playlistId, legacy.file)
+      || !(await hlsPlaylistBelongsTo(user.id, legacy.playlistId, itemId)))) {
+      return new NextResponse(null, { status: 404 });
+    }
   } else if (!/^\/fallbackfont\b/i.test(path)) {
     // Everything playback-related carries an item id and is access-checked
     // above. The only exception is the static fallback font libass needs.
@@ -154,6 +162,9 @@ async function forward(request: NextRequest, pathSegments: string[], user: User)
   if (request.method === 'GET' && isHlsPlaylist(path, contentType)) {
     const body = await upstream.text();
     const rewritten = rewriteHlsPlaylist(body, origin, path);
+    if (itemId) {
+      for (const playlistId of legacyHlsPlaylistIds(rewritten)) await bindHlsPlaylist(user.id, playlistId, itemId);
+    }
     return new NextResponse(rewritten, {
       status: upstream.status,
       headers: {
