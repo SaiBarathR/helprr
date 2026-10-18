@@ -36,6 +36,41 @@ export const DEFAULT_SUBTITLE_APPEARANCE: SubtitleAppearance = {
   verticalPosition: -3,
 };
 
+/** The choices offered in the player's subtitle panel and in Settings → Preferences. */
+export const TEXT_SIZE_OPTIONS: Array<{ value: SubtitleTextSize; label: string }> = [
+  { value: 'smaller', label: 'Smaller' },
+  { value: 'small', label: 'Small' },
+  { value: 'medium', label: 'Medium' },
+  { value: 'large', label: 'Large' },
+  { value: 'larger', label: 'Larger' },
+  { value: 'extralarge', label: 'Extra large' },
+];
+
+export const FONT_OPTIONS: Array<{ value: SubtitleFont; label: string }> = [
+  { value: 'default', label: 'Default' },
+  { value: 'typewriter', label: 'Typewriter' },
+  { value: 'print', label: 'Print' },
+  { value: 'console', label: 'Console' },
+  { value: 'cursive', label: 'Cursive' },
+  { value: 'casual', label: 'Casual' },
+  { value: 'smallcaps', label: 'Small caps' },
+];
+
+export const DROP_SHADOW_OPTIONS: Array<{ value: SubtitleDropShadow; label: string }> = [
+  { value: 'dropshadow', label: 'Drop shadow' },
+  { value: 'raised', label: 'Raised' },
+  { value: 'depressed', label: 'Depressed' },
+  { value: 'uniform', label: 'Uniform' },
+  { value: 'none', label: 'None' },
+];
+
+export const TEXT_COLOR_OPTIONS = ['#ffffff', '#ffff00', '#00ff00', '#00ffff', '#ff9900', '#000000'];
+export const TEXT_BACKGROUND_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: 'transparent', label: 'None' },
+  { value: 'rgba(0,0,0,0.5)', label: 'Dim' },
+  { value: '#000000', label: 'Solid' },
+];
+
 const FONT_SIZES: Record<SubtitleTextSize, string> = {
   smaller: '.8em',
   small: 'inherit',

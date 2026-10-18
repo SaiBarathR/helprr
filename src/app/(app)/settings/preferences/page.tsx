@@ -13,6 +13,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { GroupedSection } from '@/components/settings/grouped-section';
+import { SubtitleAppearanceSection } from '@/components/settings/subtitle-appearance-section';
+import { hasCapability, useMe } from '@/components/permission-provider';
 import { useAppSettings } from '@/lib/hooks/use-app-settings';
 import { useDebouncedCommit } from '@/lib/hooks/use-debounced-commit';
 
@@ -55,6 +57,7 @@ const REFRESH_OPTIONS = [
 
 export default function PreferencesPage() {
   const { settings, loading, update } = useAppSettings();
+  const me = useMe();
   const [draft, setDraft] = useState<string | null>(null);
   const displayedTz = draft ?? settings?.timeZone ?? '';
 
@@ -232,6 +235,8 @@ export default function PreferencesPage() {
           </span>
         </Link>
       </GroupedSection>
+
+      {hasCapability(me, 'jellyfin.view') && <SubtitleAppearanceSection />}
     </div>
   );
 }
