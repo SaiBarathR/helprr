@@ -122,15 +122,17 @@ installation. Run the same query in both:
 
 ```bash
 q='select (select count(*) from "User"), (select count(*) from "ServiceConnection"), (select count(*) from _prisma_migrations)'
+cd /tmp/helprr-fresh
 docker compose -p helprr-fresh exec -T helprr-db psql -U postgres -d helprr -tAc "$q"
-# In the real installation's directory:
+cd /path/to/helprr   # the real installation
 docker compose exec -T helprr-db psql -U postgres -d helprr -tAc "$q"
 ```
 
-Clean up. `down -v` is safe here only because the copy's image-cache volume was
-renamed; afterwards `helprr-image-cache` must still be listed:
+Clean up from the copy's directory. `down -v` is safe there only because the copy's
+image-cache volume was renamed; afterwards `helprr-image-cache` must still be listed:
 
 ```bash
+cd /tmp/helprr-fresh
 docker compose -p helprr-fresh down -v
 cd / && rm -rf /tmp/helprr-fresh
 docker volume ls -q | grep -x helprr-image-cache
@@ -143,9 +145,10 @@ hashes.
 ## Drill 3 — upgrade the real installation
 
 After Drills 0–2 pass, update as in README → Updating, replacing only the app
-container:
+container, from the real installation's directory:
 
 ```bash
+cd /path/to/helprr
 docker compose pull helprr
 docker compose up -d --no-build --no-deps --wait helprr
 docker compose ps helprr
