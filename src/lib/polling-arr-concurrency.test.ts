@@ -60,6 +60,7 @@ vi.mock('@/lib/logger', () => ({
 }));
 
 import { PollingService } from '@/lib/polling-service';
+import { jobReports, type JobReport } from '@/lib/polling-job-report';
 
 type InternalPollingService = {
   pollSonarr: (context: ReturnType<typeof cycleContext>) => Promise<void>;
@@ -306,5 +307,21 @@ describe('Arr polling concurrency', () => {
     expect(mocks.notify.mock.invocationCallOrder[0]).toBeLessThan(
       mocks.updateState.mock.invocationCallOrder[0],
     );
+  });
+
+  it('counts an instance whose tags could not be read as a failed job', async () => {
+    const client = {
+      getTags: async () => { throw new Error('tags unavailable'); },
+      getQueue: async () => queue(0),
+      getHistory: async () => history(),
+      getHealth: async () => [],
+    };
+    mocks.getSonarrClients.mockResolvedValue([{ connection: connection('sonarr-1'), client }]);
+    const service = new PollingService() as unknown as InternalPollingService;
+    const report: JobReport = { failure: null, skipped: false };
+
+    await jobReports.run(report, () => service.pollSonarr(cycleContext()));
+
+    expect(report.failure).toBe('tags unavailable');
   });
 });

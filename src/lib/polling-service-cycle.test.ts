@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   findConnections: vi.fn(async () => [] as unknown[]),
   findConnection: vi.fn(async () => null as unknown),
   findHistory: vi.fn(async () => null as unknown),
+  updateSettings: vi.fn(async () => ({})),
   findStates: vi.fn(async () => [] as unknown[]),
   upsertState: vi.fn<(args: unknown) => Promise<unknown>>(async () => ({})),
   probe: vi.fn(),
@@ -22,6 +23,7 @@ vi.mock('@/lib/db', () => ({
   prisma: {
     serviceConnection: { findMany: mocks.findConnections, findFirst: mocks.findConnection },
     notificationHistory: { findFirst: mocks.findHistory },
+    appSettings: { update: mocks.updateSettings },
     pollingState: { findMany: mocks.findStates, upsert: mocks.upsertState },
   },
 }));
@@ -59,7 +61,7 @@ vi.mock('@/lib/cache/tagged-library', async (importOriginal) => ({
 }));
 
 import { PollingService } from '@/lib/polling-service';
-import { noteJobFailure, noteJobSkipped } from '@/lib/polling-job-report';
+import { jobReports, noteJobFailure, noteJobSkipped, type JobReport } from '@/lib/polling-job-report';
 import { ConfigurationError } from '@/lib/config-error';
 
 type TestContext = PollingCycleContext<{ notificationGroupingEnabled: boolean }>;
@@ -399,6 +401,19 @@ describe('jobs that cannot load what they work on', () => {
 
     expect(mocks.findHistory).toHaveBeenCalledOnce();
     expect(sourceHealth(service, 'checkActivityDigest')).toEqual(expect.objectContaining({ lastSuccessAt: null, lastError: 'push failed' }));
+  });
+
+  it('counts an anime auto-map that could not record its run date as failed', async () => {
+    const service = new PollingService();
+    const services = await import('@/lib/service-helpers');
+    vi.spyOn(services, 'getSonarrClients').mockResolvedValue([] as never);
+    mocks.updateSettings.mockRejectedValueOnce(new Error('write failed'));
+    const report: JobReport = { failure: null, skipped: false };
+
+    const result = await jobReports.run(report, () => service.startAnimeAutoMapRun('scheduled', { animeAutoMapEnabled: true } as never));
+
+    expect(result).toEqual(expect.objectContaining({ reason: 'nothing-to-map' }));
+    expect(report.failure).toBe('write failed');
   });
 
   it('counts a reachability check whose result could not be saved as failed, and still checks the rest', async () => {

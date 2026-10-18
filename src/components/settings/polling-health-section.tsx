@@ -29,6 +29,8 @@ const JOB_LABELS: Record<string, string> = {
   warmCaches: 'Library cache warming',
 };
 
+const FOOTER = 'Checks the services for notifications, alerts, retention and schedules.';
+
 /** A job running this long has outlived any timeout and is stuck. */
 const STUCK_MS = 5 * 60 * 1000;
 
@@ -49,7 +51,21 @@ export function PollingHealthSection() {
     queryFn: jsonFetcher<PollingHealth>('/api/admin/polling-status'),
     refetchInterval: 30_000,
   });
-  if (!health) return null;
+  if (!health) {
+    if (!isError) return null;
+    // The first read failed: say so rather than leave the section out.
+    return (
+      <GroupedSection title="Background polling" footer={FOOTER}>
+        <div className="grouped-row items-start">
+          <div className="min-w-0 flex-1 pr-3">
+            <div className="text-sm font-medium">Status unavailable</div>
+            <div className="mt-0.5 text-xs text-muted-foreground">Couldn&apos;t read the polling status.</div>
+          </div>
+          <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-amber-500" aria-hidden />
+        </div>
+      </GroupedSection>
+    );
+  }
 
   // Judged at the time of the snapshot, not of this render.
   const problems = health.sources
@@ -60,10 +76,7 @@ export function PollingHealthSection() {
   const cycle = health.lastCycle;
 
   return (
-    <GroupedSection
-      title="Background polling"
-      footer="Checks the services for notifications, alerts, retention and schedules."
-    >
+    <GroupedSection title="Background polling" footer={FOOTER}>
       <div className="grouped-row items-start">
         <div className="min-w-0 flex-1 pr-3">
           <div className="text-sm font-medium">

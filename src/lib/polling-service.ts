@@ -104,7 +104,8 @@ async function buildTagMap(client: { getTags: () => Promise<Tag[]> }): Promise<M
   try {
     const tags = await client.getTags();
     return new Map(tags.map((t) => [t.id, t.label]));
-  } catch {
+  } catch (error) {
+    noteJobFailure(error);
     return new Map();
   }
 }
@@ -859,6 +860,7 @@ export class PollingService {
         data: { animeAutoMapLastRunAt: new Date() },
       });
     } catch (error) {
+      noteJobFailure(error);
       logger.error('Anime auto-map could not stamp its run date', {
         error: errorMessage(error),
       }, { scope: 'polling' });
