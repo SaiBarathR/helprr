@@ -48,12 +48,15 @@ export function RateControl({
   title,
   genres,
   lazy = false,
+  placement = 'above',
   renderTrigger,
 }: {
   itemKey: string | null;
   title: string;
   genres?: string[];
   lazy?: boolean;
+  /** 'beside' keeps the menu inside a clipped container, such as a tile's popover. */
+  placement?: 'above' | 'beside';
   renderTrigger: (props: RateTriggerProps) => React.ReactNode;
 }) {
   const canRate = useCan('recommendations.view');
@@ -126,7 +129,10 @@ export function RateControl({
         <span
           role="group"
           aria-label={`Rate ${title}`}
-          className="absolute bottom-full left-1/2 z-30 mb-2 flex -translate-x-1/2 items-center gap-1 rounded-full bg-[#232323] px-2 py-1.5 shadow-lg ring-1 ring-white/15"
+          className={cn(
+            'absolute z-30 flex items-center gap-1 rounded-full bg-[#232323] px-2 py-1.5 shadow-lg ring-1 ring-white/15',
+            placement === 'beside' ? 'left-full top-1/2 ml-2 -translate-y-1/2' : 'bottom-full left-1/2 mb-2 -translate-x-1/2',
+          )}
         >
           {OPTIONS.map((option) => (
             <button

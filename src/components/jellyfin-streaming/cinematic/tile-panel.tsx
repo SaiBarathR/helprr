@@ -122,6 +122,8 @@ export function TilePanel({
               title={title}
               genres={rate.genres}
               lazy
+              // The panel clips its overflow, so the menu opens within the row.
+              placement="beside"
               renderTrigger={(trigger) => (
                 <CircleButton label={trigger.label} onClick={trigger.onClick}>
                   <RatingIcon rating={trigger.rating} className="size-4" />
