@@ -5,6 +5,7 @@ import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
 import { useMemo, useState } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import { ArrowDownAZ, ChevronLeft, ChevronRight, Play, Shuffle, SlidersHorizontal } from 'lucide-react';
 import { jsonFetcher } from '@/lib/query-fetch';
 import { queryKeys } from '@/lib/query-keys';
@@ -22,7 +23,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/co
 import { cn } from '@/lib/utils';
 import type { CatalogCardShape } from '@/lib/jellyfin-playback/image';
 import type { CatalogFiltersResponse, CatalogItemsResponse } from '@/types/jellyfin-streaming';
-import { PLAY_ALL_MAX, collectForPlayAll } from './play-all';
+import { PLAY_ALL_MAX, collectForPlayAll, playAllNotice } from './play-all';
 
 /** The reference install runs a 100-item library page; matching it keeps the
  *  "1-100 of 492" range honest and the grid a sane size. */
@@ -170,8 +171,12 @@ export default function LibraryBrowserPage() {
       const { items: collected, total } = await collectForPlayAll((limit, startIndex) =>
         jsonFetcher<CatalogItemsResponse>(`/api/jellyfin/catalog/items?${buildQuery(limit, startIndex)}`)(),
       );
-      if (total > collected.length) {
+      const notice = playAllNotice(collected.length, total, shuffle);
+      if (notice) {
         console.warn(`[Jellyfin] Play all queued ${collected.length} of ${total} titles (limit ${PLAY_ALL_MAX})`);
+        toast.info(notice, collected.length >= PLAY_ALL_MAX
+          ? { description: shuffle ? `Shuffle all uses the first ${PLAY_ALL_MAX} titles in this sort.` : `Play all stops at ${PLAY_ALL_MAX} titles.` }
+          : undefined);
       }
       if (collected.length > 0) await playback.playItems(collected, 0, shuffle ? { shuffle: true } : undefined);
     } finally {

@@ -20,3 +20,9 @@ export async function collectForPlayAll<T>(
   }
   return { items, total: Number.isFinite(total) ? total : items.length };
 }
+
+/** The on-screen notice when the queue is shorter than the set on screen, or null. */
+export function playAllNotice(queued: number, total: number, shuffle: boolean): string | null {
+  if (queued === 0 || total <= queued) return null;
+  return `${shuffle ? 'Shuffled' : 'Queued'} ${queued} of ${total} titles`;
+}
