@@ -53,7 +53,7 @@ import { type InstanceOption, withAppName } from '@/components/instance-filter';
 import { ActiveFilterBar, FilterDot, filterButtonLabel, type ActiveFilter } from '@/components/ui/active-filter-bar';
 import { useCan } from '@/components/permission-provider';
 import { useBadgeActions } from '@/components/layout/badge-provider';
-import { RemoveQueueDialog, type RemoveQueueOptions } from './_components/remove-queue-dialog';
+import { RemoveQueueDialog, type RemoveQueueOptions } from '../_components/remove-queue-dialog';
 import {
   compareActivityQueueItems,
   getDefaultActivitySortDirection,
