@@ -125,7 +125,9 @@ Dockerfile's Node base image to an exact version and multi-arch digest.
 a manual change. It reads its configuration from `main`, so it starts once that file is
 released. Base-image fixes now arrive only through those PRs: if the image-scan gate
 reports a fixable finding in the base image, merge the pending base-image PR or bump
-the pin by hand. The Compose files keep major-line `postgres:16-alpine` and
+the pin by hand. While the pin does not move, the builds reuse their cached
+`apk upgrade` layer, so a fix that reaches the Alpine mirror before a new Node image
+needs a build without that cache. The Compose files keep major-line `postgres:16-alpine` and
 `redis:7-alpine` tags; an installation picks up their patch releases only when it
 pulls those services, since the documented update pulls only `helprr`.
 
