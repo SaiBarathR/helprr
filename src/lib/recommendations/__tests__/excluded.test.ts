@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   getAnimeSummaries: vi.fn(),
   loadCachedArrLibrary: vi.fn(),
   forgetExcludedItems: vi.fn(),
+  lockTasteProfile: vi.fn(),
   invalidateRecommendations: vi.fn(),
 }));
 
@@ -27,7 +28,7 @@ vi.mock('@/lib/service-helpers', () => ({
 }));
 vi.mock('@/lib/anilist-client', () => ({ getAnimeSummaries: mocks.getAnimeSummaries }));
 vi.mock('@/lib/cache/arr-library', () => ({ loadCachedArrLibrary: mocks.loadCachedArrLibrary }));
-vi.mock('@/lib/recommendations/profile-store', () => ({ forgetExcludedItems: mocks.forgetExcludedItems }));
+vi.mock('@/lib/recommendations/profile-store', () => ({ forgetExcludedItems: mocks.forgetExcludedItems, lockTasteProfile: mocks.lockTasteProfile }));
 vi.mock('@/lib/recommendations/engine', () => ({ invalidateRecommendations: mocks.invalidateRecommendations }));
 
 import { EXCLUDED_PAGE_SIZE, listExcludedTitles, parseExcludedCursor, restoreExcludedTitle } from '@/lib/recommendations/excluded';
@@ -158,7 +159,9 @@ describe('restoreExcludedTitle', () => {
 
     await expect(restoreExcludedTitle('user-1', 'tmdb:movie:603')).resolves.toBe(2);
     expect(mocks.transaction).toHaveBeenCalledTimes(1);
-    expect(mocks.transaction.mock.calls[0][0]).toHaveLength(2);
+    // Delete, then the profile lock, then the profile edit.
+    expect(mocks.transaction.mock.calls[0][0]).toHaveLength(3);
+    expect(mocks.lockTasteProfile).toHaveBeenCalledWith(expect.anything(), 'user-1');
     expect(mocks.deleteMany).toHaveBeenCalledWith({
       where: { userId: 'user-1', itemKey: 'tmdb:movie:603', eventType: { in: ['not_interested', 'dislike'] } },
     });

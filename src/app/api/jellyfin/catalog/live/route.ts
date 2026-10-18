@@ -3,6 +3,7 @@ import { getJellyfinClientForUser, JellyfinNotLinkedError } from '@/lib/service-
 import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { upstreamErrorResponse } from '@/lib/api-error';
+import { liveTvAccess } from '@/lib/jellyfin-playback/item-access';
 import type { LiveTvResponse } from '@/types/jellyfin-streaming';
 
 async function getHandler(request: NextRequest): Promise<NextResponse> {
@@ -13,6 +14,9 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
     const { searchParams } = new URL(request.url);
     const channelIds = searchParams.get('channelIds') ?? undefined;
     const client = await getJellyfinClientForUser(auth.user);
+    if (!(await liveTvAccess(auth.user))) {
+      return NextResponse.json({ linked: true, liveTvAccess: false, channels: [], programs: [], recordings: [] } satisfies LiveTvResponse);
+    }
     const [channels, programs, recordings] = await Promise.all([
       client.getLiveTvChannels({ limit: 400 }),
       client.getLiveTvPrograms({

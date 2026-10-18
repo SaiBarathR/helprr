@@ -432,7 +432,7 @@ model RecommendationEvent {
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   itemKey   String
-  // impression | click | play | like | dislike | not_interested |
+  // impression | click | play | like | love | dislike | not_interested |
   // watchlist_add | request — validated at the API layer.
   eventType String
   // Rail/surface that produced the event ("top-picks", "because:tmdb:tv:1399",

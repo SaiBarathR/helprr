@@ -613,7 +613,8 @@ export function VideoStage({ mediaContainer }: { mediaContainer: HTMLDivElement 
                         <SeekBar
                           positionSeconds={playback.positionSeconds}
                           durationSeconds={playback.durationSeconds}
-                          bufferedSeconds={bufferedSeconds}
+                          // Counted from where a progressive transcode was started, as the position is.
+                          bufferedSeconds={bufferedSeconds > 0 ? bufferedSeconds + ticksToSeconds(playback.stream?.transcodingOffsetTicks) : 0}
                           chapters={chapters}
                           onSeek={playback.seek}
                           trickplayAt={trickplayAt}

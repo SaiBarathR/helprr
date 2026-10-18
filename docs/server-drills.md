@@ -47,7 +47,8 @@ curl -fsSL -o docker-compose.yml "$HELPRR_ASSET_BASE/docker-compose.yml"
 curl -fsSL -o .env.example "$HELPRR_ASSET_BASE/env.example"
 curl -fsSL -o scripts/setup-env.sh "$HELPRR_ASSET_BASE/setup-env.sh"
 curl -fsSL -o scripts/backup.sh "$HELPRR_ASSET_BASE/backup.sh"
-chmod 700 scripts/setup-env.sh scripts/backup.sh
+curl -fsSL -o scripts/update.sh "$HELPRR_ASSET_BASE/update.sh"
+chmod 700 scripts/setup-env.sh scripts/backup.sh scripts/update.sh
 ./scripts/setup-env.sh
 sed -i "s/^#\? *HELPRR_VERSION=.*/HELPRR_VERSION=${HELPRR_RELEASE#v}/" .env
 grep '^HELPRR_VERSION=' .env
@@ -144,11 +145,18 @@ hashes.
 
 ## Drill 3 — upgrade the real installation
 
-After Drills 0–2 pass, update as in README → Updating, replacing only the app
-container, from the real installation's directory:
+After Drills 0–2 pass, update as in README → Updating, from the real
+installation's directory, with `HELPRR_VERSION` set to the new release.
+`update.sh` takes a validated backup first and replaces only the app container:
 
 ```bash
 cd /path/to/helprr
+./scripts/update.sh
+```
+
+By hand, after `./scripts/backup.sh`:
+
+```bash
 docker compose pull helprr
 docker compose up -d --no-build --no-deps --wait helprr
 docker compose ps helprr
@@ -171,6 +179,44 @@ and recreate the app container; after a migration the previous version cannot
 use, restore Drill 0's dump as in README → Backup and restore → Restore over an
 existing installation.
 
+## Drill 4 — failed upgrade and rollback
+
+Run on the scratch copy from Drill 1 (a fresh install of the previous release),
+never on the real installation. It rehearses the rollback rule across a release
+that adds migrations.
+
+1. Make startup fail after the pull: in the copy's `.env`, set `HELPRR_VERSION`
+   to the newer release and `JWT_SECRET` to something shorter than 32
+   characters. Run `./scripts/update.sh`. Pass: it takes a validated backup,
+   then stops with "Helprr restarted after the update" or "is unhealthy", and
+   prints the dump's path. The newer release has already applied its
+   migrations, because they run before the configuration check.
+2. Roll back: restore the previous `.env`, then pin the previous version and
+   restore that dump:
+
+   ```bash
+   cd /tmp/helprr-fresh
+   dump=backups/stable/helprr-pre-upgrade-YYYYMMDD-HHMMSS.dump
+   docker compose exec -T helprr-db pg_restore --exit-on-error --file=/dev/null < "$dump" &&
+     docker compose stop helprr &&
+     docker compose exec -T helprr-db dropdb -U postgres --if-exists --force helprr &&
+     docker compose exec -T helprr-db createdb -U postgres helprr &&
+     docker compose exec -T helprr-db pg_restore -U postgres --exit-on-error -d helprr < "$dump" &&
+     docker compose up -d --no-build --no-deps --wait helprr
+   ```
+
+   The whole dump is read before anything is dropped. The database is recreated
+   rather than restored with `--clean`, which would leave behind tables the
+   newer release's migrations added.
+
+   Pass: `/api/ready` is ready, the migration count is back to the previous
+   release's, and data added before the backup is there.
+3. Upgrade cleanly: set `HELPRR_VERSION` to the newer release and run
+   `./scripts/update.sh` again. Pass: healthy and ready, with the newer
+   release's migration count and the same data.
+
+Clean up as at the end of Drill 2.
+
 ## Record
 
 - **2026-10-18, v1.6.3.** Drills 0–2 run on the maintainer's host (Docker Engine
@@ -180,3 +226,17 @@ existing installation.
   connections, and migrations matching production; the copy could not resolve
   outside hosts. The real installation's `helprr-image-cache` volume was still
   present after the copy's `down -v`.
+- **2026-10-18, Drill 4, 1.6.3 → `edge`.** On the scratch copy with a marker
+  user: the failed upgrade stopped after 7 s with "Helprr restarted after the
+  update", with `edge`'s two new migrations already applied (11). Pinning 1.6.3
+  and restoring the dump brought back 9 migrations and the marker, and sign-in
+  worked; a clean `update.sh` to `edge` then reached ready with 11 migrations and
+  the marker intact. Repeated with the database recreated before the restore
+  (`dropdb`, `createdb`, `pg_restore` without `--clean`): the restore exited 0 and
+  the same results followed.
+- **2026-10-18, arm64.** The published `1.6.3` linux/arm64 image, run under QEMU
+  emulation on the amd64 host (`platform: linux/arm64` on the app only), booted
+  against an empty database in 18 s: all 9 migrations applied, `/api/health` and
+  `/api/ready` 200, the bootstrap admin signed in. Pulling another platform
+  re-points the local tag, so pull `--platform linux/amd64` afterwards before
+  the real installation is recreated.

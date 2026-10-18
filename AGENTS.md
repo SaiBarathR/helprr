@@ -29,8 +29,11 @@ desktop is fully supported.
   PostgreSQL database named exactly `helprr_migration_test`.
 - `./scripts/setup-env.sh [--dev]` — generate `.env` or `.env.dev` without
   overwriting an existing file or printing secrets.
-- `./scripts/backup.sh --stable|--dev` — create and validate an online private
-  PostgreSQL backup without restarting containers.
+- `./scripts/backup.sh --stable|--dev [--keep N]` — create and validate an online
+  private PostgreSQL backup without restarting containers, then keep the newest
+  `N` (default 10, `0` keeps all) of its dumps in that directory.
+- `./scripts/update.sh [--keep N]` — back up the stable database, then pull and
+  replace only the app container and wait until it is healthy and ready.
 
 ## Repository Map
 

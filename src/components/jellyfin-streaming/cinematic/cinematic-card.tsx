@@ -11,6 +11,7 @@ import { useCan } from '@/components/permission-provider';
 import { catalogHref, type CatalogCardProps } from '@/components/jellyfin-streaming/card-shared';
 import { TilePanel, type TilePanelContent } from '@/components/jellyfin-streaming/cinematic/tile-panel';
 import { useFavoriteToggle } from '@/components/jellyfin-streaming/cinematic/use-favorite-toggle';
+import { jellyfinTitleItemKey } from '@/lib/recommendations/item-keys';
 import { useCompactViewport } from '@/lib/hooks/use-compact-viewport';
 import { useMediaPreview } from '@/components/jellyfin-streaming/cinematic/media-preview';
 import { useHoverPreviewSlot } from '@/components/jellyfin-streaming/cinematic/hover-preview-slot';
@@ -310,6 +311,7 @@ export const CinematicCard = memo(function CinematicCard({
         onPlay={playable ? () => onPlay?.(item) : undefined}
         onToggleMyList={canFavorite ? () => favorite.toggle() : undefined}
         inMyList={favorite.isFavorite}
+        rate={{ itemKey: jellyfinTitleItemKey(item), genres: item.Genres }}
         onMoreInfo={() => { if (!modal?.open(item.Id)) router.push(href); }}
       />
       )}

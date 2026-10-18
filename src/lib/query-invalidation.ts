@@ -54,8 +54,10 @@ export const invalidateActivity = (qc: QueryClient) =>
 
 // Service connections appear in two lists: the settings list (queryKeys.instances())
 // and the activity per-instance filter (['arr-instances'], a deliberately separate key).
+// An added, re-pointed or removed instance also changes the libraries.
 export function invalidateInstances(qc: QueryClient) {
   qc.invalidateQueries({ queryKey: queryKeys.instances() });
   qc.invalidateQueries({ queryKey: ['arr-instances'] });
   qc.invalidateQueries({ queryKey: queryKeys.widgetServiceAvailability() });
+  for (const svc of ['radarr', 'sonarr', 'lidarr'] as const) qc.invalidateQueries({ queryKey: [svc, 'library'] });
 }

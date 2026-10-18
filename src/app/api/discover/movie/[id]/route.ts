@@ -26,8 +26,7 @@ function toYear(value?: string | null) {
 }
 
 async function getLibraries() {
-  const { movies, series } = await loadTaggedLibrary();
-  return { movies, series };
+  return loadTaggedLibrary();
 }
 
 async function getHandler(
@@ -149,6 +148,7 @@ async function getHandler(
         exists: library.exists,
         id: library.id,
         instanceId: library.instanceId,
+        uncheckedInstanceIds: libraryData.failedInstanceIds,
       },
       tagline: details.tagline || null,
       budget: details.budget || null,

@@ -3,6 +3,7 @@ import { getJellyfinClientForUser, JellyfinNotLinkedError } from '@/lib/service-
 import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { upstreamErrorResponse } from '@/lib/api-error';
+import { withoutLiveTvItems } from '@/lib/jellyfin-playback/item-access';
 import type { CatalogItemsResponse } from '@/types/jellyfin-streaming';
 
 const SORT_FIELDS = new Set([
@@ -90,10 +91,14 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
       ...(nameStartsWith ? { NameStartsWith: nameStartsWith } : {}),
     });
 
+    // The admin-key read returns Live TV items to any account (an explicit
+    // `ids` included), so an account without Live TV loses them here.
+    const all = data.Items ?? [];
+    const items = await withoutLiveTvItems(auth.user, all);
     const payload: CatalogItemsResponse = {
       linked: true,
-      items: data.Items ?? [],
-      total: data.TotalRecordCount ?? 0,
+      items,
+      total: Math.max(0, (data.TotalRecordCount ?? 0) - (all.length - items.length)),
       startIndex: data.StartIndex ?? startIndex,
     };
     return NextResponse.json(payload);

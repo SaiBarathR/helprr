@@ -675,7 +675,8 @@ export function whenVideoHasDimensions(el: HTMLVideoElement, callback: () => voi
  * point back to the beginning.
  */
 export function positionToReport(el: HTMLMediaElement | null, stream: HelprrStreamInfo, reachedStart: boolean): number {
-  if (reachedStart) return secondsToTicks(el?.currentTime ?? 0);
+  // A progressive transcode's element counts from where the stream was started.
+  if (reachedStart) return secondsToTicks(el?.currentTime ?? 0) + stream.transcodingOffsetTicks;
   return stream.startTimeTicks || secondsToTicks(el?.currentTime ?? 0);
 }
 
@@ -1038,7 +1039,9 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     const el = mediaRef.current;
     if (!el) throw new Error('Player is not ready');
     destroyPlayers();
-    const start = ticksToSeconds(next.startTimeTicks);
+    // A progressive transcode already begins at the requested position, so its
+    // element starts at zero; seeking it there again ran it to its own end.
+    const start = ticksToSeconds(next.startTimeTicks - next.transcodingOffsetTicks);
     const browser = detectBrowser();
     const isHls = next.mimeType.toLowerCase().includes('mpegurl') || next.mediaUrl.includes('.m3u8');
     const useNative = isHls && (canPlayNativeHls(el, browser) && (browser.iOS || (browser.safari && !canPlayHlsWithMse())));
@@ -1258,7 +1261,9 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
       // overwrite it back to playing.
       if (startPaused) mediaRef.current?.pause();
       await report('playing', nextStream, {
-        positionTicks: secondsToTicks(mediaRef.current?.currentTime || 0) || resumeTicks,
+        positionTicks: (mediaRef.current?.currentTime
+          ? secondsToTicks(mediaRef.current.currentTime) + nextStream.transcodingOffsetTicks
+          : 0) || resumeTicks,
         isPaused: startPaused,
         volumeLevel: Math.round(volume * 100),
         isMuted: muted,
@@ -1604,6 +1609,8 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
           subtitleStreamIndex: subtitleIndexRef.current,
           mediaSourceId: current.mediaSource.Id,
           maxStreamingBitrate: maxBitrate,
+          // A seek is not a request to play: a paused title stays paused.
+          startPaused: pausedIntentRef.current,
         }, stillCurrent, current.playSessionId);
       })();
       return;
@@ -1799,8 +1806,10 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     if (!el) return undefined;
     const onTime = () => {
       if (el.currentTime > 0) reachedStartRef.current = true;
-      setPositionSeconds(el.currentTime);
-      if (el.duration && Number.isFinite(el.duration)) setDurationSeconds(el.duration);
+      // A progressive transcode's element counts from where it was started.
+      const offset = ticksToSeconds(streamRef.current?.transcodingOffsetTicks);
+      setPositionSeconds(offset + el.currentTime);
+      if (el.duration && Number.isFinite(el.duration)) setDurationSeconds(offset + el.duration);
     };
     let stallTimer: ReturnType<typeof setTimeout> | undefined;
     const clearStall = () => { clearTimeout(stallTimer); stallTimer = undefined; };

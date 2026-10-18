@@ -203,6 +203,7 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
     'GET /api/recommendations/feed',
     'GET /api/recommendations/for-you',
     'GET /api/recommendations',
+    'GET /api/recommendations/rating',
     'GET /api/recommendations/trailer',
   ],
   'cap:requests.approve': [
