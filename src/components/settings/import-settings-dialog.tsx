@@ -114,6 +114,9 @@ function buildMigratedUiPrefs(
   return result;
 }
 
+/** A push subscription lookup that failed or did not answer in time. */
+const LOOKUP_UNKNOWN = Symbol('lookup unknown');
+
 export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportSettingsDialogProps) {
   // Global sections (app settings, services, users, …) are admin-only; the
   // server enforces this too — members with settings.backup import only their
@@ -134,7 +137,15 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
   const [selectedServices, setSelectedServices] = useState<Set<ServiceType>>(new Set());
   const [selectedSourceDevice, setSelectedSourceDevice] = useState<string>('');
   const [importing, setImporting] = useState(false);
-  const [currentEndpoint, setCurrentEndpoint] = useState<string | null>(null);
+  // This browser's push subscription: undefined while it is being looked up,
+  // null when there is none.
+  const [currentEndpoint, setCurrentEndpoint] = useState<string | null | undefined>(undefined);
+  // What an import waits for while the lookup is under way: the endpoint, or
+  // LOOKUP_UNKNOWN when it failed or has not answered within 3 s.
+  const endpointLookup = useRef<Promise<string | null | typeof LOOKUP_UNKNOWN>>(Promise.resolve(null));
+  // Each opening looks the subscription up afresh; an earlier opening's answer
+  // arriving late is ignored.
+  const lookupGeneration = useRef(0);
   const [pendingConfirm, setPendingConfirm] = useState<{ replaceAll: boolean } | null>(null);
   // The cleaners still to confirm before an import that turns on their
   // automatic deletion, one dialog each.
@@ -159,16 +170,32 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
       setSelectedSourceDevice('');
       setPendingConfirm(null);
       setPendingCleanup(null);
+      setCurrentEndpoint(undefined);
+      // A lookup still running from this opening must not answer the next one.
+      lookupGeneration.current += 1;
       return;
     }
-    if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator && 'PushManager' in window) {
-      navigator.serviceWorker.ready
-        .then((reg) => reg.pushManager.getSubscription())
-        .then((sub) => setCurrentEndpoint(sub?.endpoint ?? null))
-        .catch(() => setCurrentEndpoint(null));
-    } else {
-      setCurrentEndpoint(null);
-    }
+    const generation = ++lookupGeneration.current;
+    // No push support means no subscription; a lookup that fails says nothing.
+    const lookup: Promise<string | null | typeof LOOKUP_UNKNOWN> =
+      typeof navigator !== 'undefined' && 'serviceWorker' in navigator && 'PushManager' in window
+        ? navigator.serviceWorker.ready
+          .then((reg) => reg.pushManager.getSubscription())
+          .then((sub) => sub?.endpoint ?? null)
+          .catch(() => LOOKUP_UNKNOWN)
+        : Promise.resolve(null);
+    // A late answer still updates this opening.
+    void lookup.then((endpoint) => {
+      if (endpoint !== LOOKUP_UNKNOWN && lookupGeneration.current === generation) setCurrentEndpoint(endpoint);
+    });
+    // `ready` never settles without a registered worker, so an import waits
+    // at most 3 s.
+    endpointLookup.current = Promise.race([
+      lookup,
+      new Promise<typeof LOOKUP_UNKNOWN>((resolve) => setTimeout(() => resolve(LOOKUP_UNKNOWN), 3000)),
+    ]);
+    // Leaving the page ends this opening too, so a run still waiting stops.
+    return () => { lookupGeneration.current += 1; };
   }, [open]);
 
   async function handleFile(file: File) {
@@ -292,9 +319,9 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
       || selectedAnimeMappings
       || selectedUsers
       || selectedServices.size > 0
-      || (!!selectedSourceDevice && selectedSourceDevice !== '__none__' && availableNotifDevices.length > 0)
+      || (currentEndpoint !== null && !!selectedSourceDevice && selectedSourceDevice !== '__none__' && availableNotifDevices.length > 0)
     )
-  ), [parsed, selectedUi, selectedAppSettings, selectedDiscoverLayout, selectedCleanup, selectedDashboardLayouts, selectedWatchlist, selectedScheduledAlerts, selectedAnimeMappings, selectedUsers, selectedServices, selectedSourceDevice, availableNotifDevices]);
+  ), [parsed, selectedUi, selectedAppSettings, selectedDiscoverLayout, selectedCleanup, selectedDashboardLayouts, selectedWatchlist, selectedScheduledAlerts, selectedAnimeMappings, selectedUsers, selectedServices, selectedSourceDevice, availableNotifDevices, currentEndpoint]);
 
   function requestImport(replaceAll: boolean) {
     if (!parsed) return;
@@ -342,6 +369,8 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
 
   async function runImport(replaceAll: boolean) {
     if (!parsed) return;
+    // Closing (or closing and reopening) the dialog ends this run's opening.
+    const opening = lookupGeneration.current;
     let useUi = selectedUi;
     let useAppSettings = selectedAppSettings;
     let useDiscoverLayout = selectedDiscoverLayout;
@@ -396,7 +425,15 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
       }
 
       // 2. Send DB-side parts to import endpoint
-      const sourceDevice = availableNotifDevices.find((d) => d.deviceName === useDevice);
+      // Device rules apply to this browser's push subscription; with none the
+      // menu is disabled and the server would only skip them. A lookup still
+      // under way is waited for, so a quick Apply does not drop them. One that
+      // failed or has not answered still sends them, and the server reports
+      // the skip.
+      const deviceWanted = !!useDevice && useDevice !== '__none__' && availableNotifDevices.length > 0;
+      const endpoint = !deviceWanted ? null : currentEndpoint === undefined ? await endpointLookup.current : currentEndpoint;
+      if (lookupGeneration.current !== opening) return;
+      const sourceDevice = endpoint !== null ? availableNotifDevices.find((d) => d.deviceName === useDevice) : undefined;
       const body: Record<string, unknown> = {};
       if (useAppSettings && parsed.payload.appSettings) {
         body.appSettings = parsed.payload.appSettings;
@@ -408,7 +445,7 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
       }
       if (sourceDevice) {
         body.notificationDevice = sourceDevice;
-        if (currentEndpoint) body.currentDeviceEndpoint = currentEndpoint;
+        if (typeof endpoint === 'string') body.currentDeviceEndpoint = endpoint;
       }
       if (useCleanup && parsed.payload.cleanup) {
         body.cleanup = parsed.payload.cleanup;
@@ -467,7 +504,8 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
 
       if (onImported) onImported(importWarnings);
       else showImportWarnings(importWarnings);
-      onOpenChange(false);
+      // Not a later opening's to close.
+      if (lookupGeneration.current === opening) onOpenChange(false);
     } catch (err) {
       toast.error((err as Error)?.message || 'Import failed');
     } finally {
@@ -748,7 +786,7 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
                     ))}
                   </SelectContent>
                 </Select>
-                {!currentEndpoint && (
+                {currentEndpoint === null && (
                   <p className="text-xs text-amber-400 mt-2">
                     No push subscription on this browser. Enable notifications first to import these.
                   </p>

@@ -6,11 +6,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('sonner', () => ({ toast: { warning: vi.fn(), success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
 vi.mock('@/components/permission-provider', () => ({ useMe: () => ({ role: 'admin' }) }));
+const store = vi.hoisted(() => ({ applyImportedUiPrefs: vi.fn(), setDiscoverLayout: vi.fn() }));
 vi.mock('@/lib/store', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/store')>()),
-  useUIStore: (select: (state: object) => unknown) => select({ applyImportedUiPrefs: vi.fn(), setDiscoverLayout: vi.fn() }),
+  useUIStore: (select: (state: object) => unknown) => select(store),
 }));
 
+import { STORE_VERSION } from '@/lib/store';
 import { ImportSettingsDialog } from '../import-settings-dialog';
 
 type Cleaner = { enabled: boolean; autoRunMode: string };
@@ -203,5 +205,212 @@ describe('importing a cleanup section', () => {
 
     await click('Apply selected');
     expect(confirmTitle()).toBeNull();
+  });
+
+  it('imports UI preferences alone when this browser has no push subscription', async () => {
+    store.applyImportedUiPrefs.mockClear();
+    const subtitleAppearance = { textSize: 'large', textColor: '#ffff00' };
+    await render(true, newClient());
+    const input = document.querySelector<HTMLInputElement>('input[type="file"]')!;
+    const file = {
+      kind: 'helprr-settings-export',
+      version: 2,
+      zustandVersion: STORE_VERSION,
+      uiPrefs: { playback: { subtitleAppearance } },
+      notificationPrefs: [{ deviceName: 'iPhone', rules: [] }],
+    };
+    Object.defineProperty(input, 'files', { value: [new File([JSON.stringify(file)], 'helprr.json')], configurable: true });
+    await act(async () => { input.dispatchEvent(new Event('change', { bubbles: true })); });
+    await vi.waitFor(() => expect(document.body.textContent).toContain('Notification Preferences'));
+
+    await click('Apply selected');
+
+    expect(imports).toEqual([]);
+    expect(store.applyImportedUiPrefs).toHaveBeenCalledWith({ subtitleAppearance });
+  });
+
+  it('waits for a subscription lookup still under way, so a quick Apply keeps the device rules', async () => {
+    let resolveReady: (registration: unknown) => void = () => {};
+    vi.stubGlobal('PushManager', class {});
+    vi.stubGlobal('navigator', {
+      ...navigator,
+      serviceWorker: { ready: new Promise((resolve) => { resolveReady = resolve; }), addEventListener: () => {}, removeEventListener: () => {} },
+    });
+    await render(true, newClient());
+    const input = document.querySelector<HTMLInputElement>('input[type="file"]')!;
+    const file = {
+      kind: 'helprr-settings-export',
+      version: 2,
+      zustandVersion: STORE_VERSION,
+      uiPrefs: { playback: { subtitleAppearance: { textSize: 'large' } } },
+      notificationPrefs: [{ deviceName: 'iPhone', rules: [] }],
+    };
+    Object.defineProperty(input, 'files', { value: [new File([JSON.stringify(file)], 'helprr.json')], configurable: true });
+    await act(async () => { input.dispatchEvent(new Event('change', { bubbles: true })); });
+    await vi.waitFor(() => expect(document.body.textContent).toContain('Notification Preferences'));
+
+    await click('Apply selected');
+    expect(imports).toEqual([]);
+    await act(async () => {
+      resolveReady({ pushManager: { getSubscription: async () => ({ endpoint: 'https://push.example/device' }) } });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(imports).toEqual([expect.objectContaining({
+      notificationDevice: { deviceName: 'iPhone', rules: [] },
+      currentDeviceEndpoint: 'https://push.example/device',
+    })]);
+  });
+
+  async function loadDeviceFile() {
+    const input = document.querySelector<HTMLInputElement>('input[type="file"]')!;
+    const file = {
+      kind: 'helprr-settings-export',
+      version: 2,
+      zustandVersion: STORE_VERSION,
+      uiPrefs: { playback: { subtitleAppearance: { textSize: 'large' } } },
+      notificationPrefs: [{ deviceName: 'iPhone', rules: [] }],
+    };
+    Object.defineProperty(input, 'files', { value: [new File([JSON.stringify(file)], 'helprr.json')], configurable: true });
+    await act(async () => { input.dispatchEvent(new Event('change', { bubbles: true })); });
+    await vi.waitFor(() => expect(document.body.textContent).toContain('Notification Preferences'));
+  }
+
+  it('still sends the device rules when the lookup does not answer, so the server reports the skip', async () => {
+    vi.stubGlobal('PushManager', class {});
+    vi.stubGlobal('navigator', { ...navigator, serviceWorker: { ready: new Promise(() => {}), addEventListener: () => {}, removeEventListener: () => {} } });
+    await render(true, newClient());
+    await loadDeviceFile();
+
+    await click('Apply selected');
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 3200)); });
+
+    expect(imports).toHaveLength(1);
+    expect(imports[0]).toMatchObject({ notificationDevice: { deviceName: 'iPhone', rules: [] } });
+    expect(imports[0]).not.toHaveProperty('currentDeviceEndpoint');
+  }, 10_000);
+
+  it('looks the subscription up afresh each time the dialog opens', async () => {
+    // First opening: no push support, so no subscription.
+    await render(true, newClient());
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    await render(false, newClient());
+
+    // Reopened after push was enabled; Apply before the lookup answers.
+    let resolveReady: (registration: unknown) => void = () => {};
+    vi.stubGlobal('PushManager', class {});
+    vi.stubGlobal('navigator', { ...navigator, serviceWorker: { ready: new Promise((resolve) => { resolveReady = resolve; }), addEventListener: () => {}, removeEventListener: () => {} } });
+    const client = newClient();
+    await render(true, client);
+    await loadDeviceFile();
+    await click('Apply selected');
+    await act(async () => {
+      resolveReady({ pushManager: { getSubscription: async () => ({ endpoint: 'https://push.example/device' }) } });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(imports).toEqual([expect.objectContaining({
+      notificationDevice: { deviceName: 'iPhone', rules: [] },
+      currentDeviceEndpoint: 'https://push.example/device',
+    })]);
+  });
+
+  it('sends the device rules when the lookup fails, so the server reports the skip', async () => {
+    vi.stubGlobal('PushManager', class {});
+    vi.stubGlobal('navigator', { ...navigator, serviceWorker: { ready: Promise.resolve({ pushManager: { getSubscription: async () => { throw new DOMException('aborted', 'AbortError'); } } }), addEventListener: () => {}, removeEventListener: () => {} } });
+    await render(true, newClient());
+    await loadDeviceFile();
+
+    await click('Apply selected');
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+
+    expect(imports).toHaveLength(1);
+    expect(imports[0]).toMatchObject({ notificationDevice: { deviceName: 'iPhone', rules: [] } });
+    expect(imports[0]).not.toHaveProperty('currentDeviceEndpoint');
+  });
+
+  it('ignores a lookup from an earlier opening that lands while the dialog is closed', async () => {
+    let resolveFirst: (registration: unknown) => void = () => {};
+    vi.stubGlobal('PushManager', class {});
+    vi.stubGlobal('navigator', { ...navigator, serviceWorker: { ready: new Promise((resolve) => { resolveFirst = resolve; }), addEventListener: () => {}, removeEventListener: () => {} } });
+    await render(true, newClient());
+    await render(false, newClient());
+    // The first opening's lookup answers "no subscription" while closed.
+    await act(async () => {
+      resolveFirst({ pushManager: { getSubscription: async () => null } });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    let resolveSecond: (registration: unknown) => void = () => {};
+    vi.stubGlobal('navigator', { ...navigator, serviceWorker: { ready: new Promise((resolve) => { resolveSecond = resolve; }), addEventListener: () => {}, removeEventListener: () => {} } });
+    await render(true, newClient());
+    await loadDeviceFile();
+    await click('Apply selected');
+    await act(async () => {
+      resolveSecond({ pushManager: { getSubscription: async () => ({ endpoint: 'https://push.example/device' }) } });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(imports).toEqual([expect.objectContaining({ currentDeviceEndpoint: 'https://push.example/device' })]);
+  });
+
+  it('drops an import still waiting for the lookup when the dialog is closed and reopened', async () => {
+    store.applyImportedUiPrefs.mockClear();
+    let resolveReady: (registration: unknown) => void = () => {};
+    vi.stubGlobal('PushManager', class {});
+    vi.stubGlobal('navigator', { ...navigator, serviceWorker: { ready: new Promise((resolve) => { resolveReady = resolve; }), addEventListener: () => {}, removeEventListener: () => {} } });
+    await render(true, newClient());
+    await loadDeviceFile();
+    await click('Apply selected');
+    await render(false, newClient());
+    await render(true, newClient());
+
+    await act(async () => {
+      resolveReady({ pushManager: { getSubscription: async () => ({ endpoint: 'https://push.example/device' }) } });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(imports).toEqual([]);
+    expect(store.applyImportedUiPrefs).not.toHaveBeenCalled();
+  });
+
+  it('does not wait for the lookup when no device rules are imported', async () => {
+    store.applyImportedUiPrefs.mockClear();
+    vi.stubGlobal('PushManager', class {});
+    vi.stubGlobal('navigator', { ...navigator, serviceWorker: { ready: new Promise(() => {}), addEventListener: () => {}, removeEventListener: () => {} } });
+    await render(true, newClient());
+    const input = document.querySelector<HTMLInputElement>('input[type="file"]')!;
+    const file = { kind: 'helprr-settings-export', version: 2, zustandVersion: STORE_VERSION, uiPrefs: { playback: { subtitleAppearance: { textSize: 'large' } } } };
+    Object.defineProperty(input, 'files', { value: [new File([JSON.stringify(file)], 'helprr.json')], configurable: true });
+    await act(async () => { input.dispatchEvent(new Event('change', { bubbles: true })); });
+    await vi.waitFor(() => expect(document.body.textContent).toContain('Playback'));
+
+    await click('Apply selected');
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+
+    expect(imports).toEqual([]);
+    expect(store.applyImportedUiPrefs).toHaveBeenCalledWith({ subtitleAppearance: { textSize: 'large' } });
+  });
+
+  it('drops an import still waiting for the lookup when the page goes away', async () => {
+    store.applyImportedUiPrefs.mockClear();
+    let resolveReady: (registration: unknown) => void = () => {};
+    vi.stubGlobal('PushManager', class {});
+    vi.stubGlobal('navigator', { ...navigator, serviceWorker: { ready: new Promise((resolve) => { resolveReady = resolve; }), addEventListener: () => {}, removeEventListener: () => {} } });
+    await render(true, newClient());
+    await loadDeviceFile();
+    await click('Apply selected');
+    await act(async () => root.unmount());
+
+    await act(async () => {
+      resolveReady({ pushManager: { getSubscription: async () => ({ endpoint: 'https://push.example/device' }) } });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(imports).toEqual([]);
+    expect(store.applyImportedUiPrefs).not.toHaveBeenCalled();
+    // afterEach unmounts again.
+    document.body.innerHTML = '<div id="root"></div>';
+    root = createRoot(document.getElementById('root')!);
   });
 });
