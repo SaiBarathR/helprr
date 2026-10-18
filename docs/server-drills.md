@@ -69,7 +69,7 @@ Every container name must start with `fresh-`, the published port must be
 
 ```bash
 docker compose -p helprr-fresh pull
-docker compose -p helprr-fresh up -d
+docker compose -p helprr-fresh up -d --wait
 docker compose -p helprr-fresh ps
 curl -fsS http://localhost:3059/api/health
 curl -fsS http://localhost:3059/api/ready
@@ -102,15 +102,17 @@ value; otherwise the restored bootstrap admin is renamed on boot. Keep
 dump. Then restore, as in README → Backup and restore:
 
 ```bash
-docker compose -p helprr-fresh up -d helprr-db
-docker compose -p helprr-fresh exec -T helprr-db pg_restore -U postgres --clean --if-exists -d helprr < /path/to/helprr/backups/stable/helprr-pre-upgrade-YYYYMMDD-HHMMSS.dump
-docker compose -p helprr-fresh up -d
+docker compose -p helprr-fresh up -d --wait helprr-db
+docker compose -p helprr-fresh exec -T helprr-db pg_restore -U postgres --clean --if-exists -d helprr < /path/to/helprr/backups/stable/helprr-pre-upgrade-YYYYMMDD-HHMMSS.dump &&
+  docker compose -p helprr-fresh up -d --wait
 docker compose -p helprr-fresh exec -T helprr wget -qO- http://127.0.0.1:3050/api/health
 docker compose -p helprr-fresh exec -T helprr wget -qO- http://127.0.0.1:3050/api/ready
 ```
 
-An internal network publishes no port, so the probes run inside the container,
-and signing in to the restored copy is not part of this drill.
+`--wait` returns once the containers report healthy, and the app starts only if
+the restore succeeded. An internal network publishes no port, so the probes run
+inside the container, and signing in to the restored copy is not part of this
+drill.
 
 Pass: `/api/ready` reports `ready`, and the restored rows match the real
 installation. Run the same query in both:
@@ -142,7 +144,7 @@ container:
 
 ```bash
 docker compose pull helprr
-docker compose up -d --no-build --no-deps helprr
+docker compose up -d --no-build --no-deps --wait helprr
 docker compose ps helprr
 curl -fsS http://localhost:3050/api/health
 curl -fsS http://localhost:3050/api/ready
