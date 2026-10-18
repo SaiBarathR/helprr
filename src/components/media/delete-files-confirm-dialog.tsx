@@ -127,7 +127,7 @@ export function DeleteFilesConfirmDialog({
             </span>
           ) : permanent ? (
             <div className="space-y-1">
-              <span className="flex items-center gap-2 font-medium text-destructive">
+              <span className="flex items-center gap-2 font-medium text-red-400 light:text-red-800">
                 <AlertTriangle className="h-4 w-4 shrink-0" />
                 {configFailed
                   ? "Couldn't verify the Recycle Bin — treating this as permanent."
