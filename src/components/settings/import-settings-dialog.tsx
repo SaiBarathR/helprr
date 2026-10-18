@@ -114,8 +114,8 @@ function buildMigratedUiPrefs(
   return result;
 }
 
-/** A push subscription lookup that did not answer in time. */
-const LOOKUP_TIMED_OUT = Symbol('lookup timed out');
+/** A push subscription lookup that failed or did not answer in time. */
+const LOOKUP_UNKNOWN = Symbol('lookup unknown');
 
 export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportSettingsDialogProps) {
   // Global sections (app settings, services, users, …) are admin-only; the
@@ -141,8 +141,8 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
   // null when there is none.
   const [currentEndpoint, setCurrentEndpoint] = useState<string | null | undefined>(undefined);
   // What an import waits for while the lookup is under way: the endpoint, or
-  // LOOKUP_TIMED_OUT when it has not answered within 3 s.
-  const endpointLookup = useRef<Promise<string | null | typeof LOOKUP_TIMED_OUT>>(Promise.resolve(null));
+  // LOOKUP_UNKNOWN when it failed or has not answered within 3 s.
+  const endpointLookup = useRef<Promise<string | null | typeof LOOKUP_UNKNOWN>>(Promise.resolve(null));
   // Each opening looks the subscription up afresh; an earlier opening's answer
   // arriving late is ignored.
   const lookupGeneration = useRef(0);
@@ -171,25 +171,28 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
       setPendingConfirm(null);
       setPendingCleanup(null);
       setCurrentEndpoint(undefined);
+      // A lookup still running from this opening must not answer the next one.
+      lookupGeneration.current += 1;
       return;
     }
     const generation = ++lookupGeneration.current;
-    const lookup: Promise<string | null> =
+    // No push support means no subscription; a lookup that fails says nothing.
+    const lookup: Promise<string | null | typeof LOOKUP_UNKNOWN> =
       typeof navigator !== 'undefined' && 'serviceWorker' in navigator && 'PushManager' in window
         ? navigator.serviceWorker.ready
           .then((reg) => reg.pushManager.getSubscription())
           .then((sub) => sub?.endpoint ?? null)
-          .catch(() => null)
+          .catch(() => LOOKUP_UNKNOWN)
         : Promise.resolve(null);
     // A late answer still updates this opening.
     void lookup.then((endpoint) => {
-      if (lookupGeneration.current === generation) setCurrentEndpoint(endpoint);
+      if (endpoint !== LOOKUP_UNKNOWN && lookupGeneration.current === generation) setCurrentEndpoint(endpoint);
     });
     // `ready` never settles without a registered worker, so an import waits
     // at most 3 s.
     endpointLookup.current = Promise.race([
       lookup,
-      new Promise<typeof LOOKUP_TIMED_OUT>((resolve) => setTimeout(() => resolve(LOOKUP_TIMED_OUT), 3000)),
+      new Promise<typeof LOOKUP_UNKNOWN>((resolve) => setTimeout(() => resolve(LOOKUP_UNKNOWN), 3000)),
     ]);
   }, [open]);
 
@@ -421,7 +424,8 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
       // Device rules apply to this browser's push subscription; with none the
       // menu is disabled and the server would only skip them. A lookup still
       // under way is waited for, so a quick Apply does not drop them. One that
-      // has not answered still sends them, and the server reports the skip.
+      // failed or has not answered still sends them, and the server reports
+      // the skip.
       const endpoint = currentEndpoint === undefined ? await endpointLookup.current : currentEndpoint;
       const sourceDevice = endpoint !== null ? availableNotifDevices.find((d) => d.deviceName === useDevice) : undefined;
       const body: Record<string, unknown> = {};

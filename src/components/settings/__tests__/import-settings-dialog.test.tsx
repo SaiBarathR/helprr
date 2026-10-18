@@ -314,4 +314,43 @@ describe('importing a cleanup section', () => {
       currentDeviceEndpoint: 'https://push.example/device',
     })]);
   });
+
+  it('sends the device rules when the lookup fails, so the server reports the skip', async () => {
+    vi.stubGlobal('PushManager', class {});
+    vi.stubGlobal('navigator', { ...navigator, serviceWorker: { ready: Promise.resolve({ pushManager: { getSubscription: async () => { throw new DOMException('aborted', 'AbortError'); } } }), addEventListener: () => {}, removeEventListener: () => {} } });
+    await render(true, newClient());
+    await loadDeviceFile();
+
+    await click('Apply selected');
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+
+    expect(imports).toHaveLength(1);
+    expect(imports[0]).toMatchObject({ notificationDevice: { deviceName: 'iPhone', rules: [] } });
+    expect(imports[0]).not.toHaveProperty('currentDeviceEndpoint');
+  });
+
+  it('ignores a lookup from an earlier opening that lands while the dialog is closed', async () => {
+    let resolveFirst: (registration: unknown) => void = () => {};
+    vi.stubGlobal('PushManager', class {});
+    vi.stubGlobal('navigator', { ...navigator, serviceWorker: { ready: new Promise((resolve) => { resolveFirst = resolve; }), addEventListener: () => {}, removeEventListener: () => {} } });
+    await render(true, newClient());
+    await render(false, newClient());
+    // The first opening's lookup answers "no subscription" while closed.
+    await act(async () => {
+      resolveFirst({ pushManager: { getSubscription: async () => null } });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    let resolveSecond: (registration: unknown) => void = () => {};
+    vi.stubGlobal('navigator', { ...navigator, serviceWorker: { ready: new Promise((resolve) => { resolveSecond = resolve; }), addEventListener: () => {}, removeEventListener: () => {} } });
+    await render(true, newClient());
+    await loadDeviceFile();
+    await click('Apply selected');
+    await act(async () => {
+      resolveSecond({ pushManager: { getSubscription: async () => ({ endpoint: 'https://push.example/device' }) } });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(imports).toEqual([expect.objectContaining({ currentDeviceEndpoint: 'https://push.example/device' })]);
+  });
 });
