@@ -26,6 +26,7 @@ const JOB_LABELS: Record<string, string> = {
   checkRetention: 'Retention',
   checkAnimeAutoMap: 'Anime auto-map',
   sweepTasteProfiles: 'Recommendation profiles',
+  warmCaches: 'Library cache warming',
 };
 
 /** A job running this long has outlived any timeout and is stuck. */
@@ -43,7 +44,7 @@ function problem(source: PollingSourceHealth, now: number): string | null {
 
 /** Background polling health for administrators (Settings → Service status). */
 export function PollingHealthSection() {
-  const { data: health, dataUpdatedAt } = useQuery({
+  const { data: health, dataUpdatedAt, isError } = useQuery({
     queryKey: queryKeys.adminPolling(),
     queryFn: jsonFetcher<PollingHealth>('/api/admin/polling-status'),
     refetchInterval: 30_000,
@@ -54,7 +55,8 @@ export function PollingHealthSection() {
   const problems = health.sources
     .map((source) => ({ source, message: problem(source, dataUpdatedAt) }))
     .filter((entry): entry is { source: PollingSourceHealth; message: string } => entry.message !== null);
-  const healthy = health.running && problems.length === 0;
+  // A failed refresh leaves the last snapshot on screen; it is not shown as healthy.
+  const healthy = health.running && problems.length === 0 && !isError;
   const cycle = health.lastCycle;
 
   return (
@@ -70,9 +72,11 @@ export function PollingHealthSection() {
               : 'Stopped'}
           </div>
           <div className="mt-0.5 text-xs text-muted-foreground">
-            {cycle
-              ? `Last cycle finished ${formatDistanceToNowShort(cycle.finishedAt)} in ${(cycle.durationMs / 1000).toFixed(1)} s${cycle.failed ? `, ${cycle.failed} failed` : ''}`
-              : 'No cycle has finished yet.'}
+            {isError
+              ? `Couldn't refresh this status; last read ${formatDistanceToNowShort(new Date(dataUpdatedAt).toISOString())}.`
+              : cycle
+                ? `Last cycle finished ${formatDistanceToNowShort(cycle.finishedAt)} in ${(cycle.durationMs / 1000).toFixed(1)} s${cycle.failed ? `, ${cycle.failed} failed` : ''}`
+                : 'No cycle has finished yet.'}
           </div>
         </div>
         <span

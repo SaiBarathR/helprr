@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { getSonarrClients, getRadarrClients, getLidarrClients, getQBittorrentClient, getJellyfinClient, getSeerrClient } from '@/lib/service-helpers';
@@ -205,6 +206,26 @@ async function fetchAllQueueRecords(
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+/**
+ * What a job reports about its own run beyond whether it threw: many jobs log a
+ * failure and carry on (one bad instance must not stop the rest), and throttled
+ * jobs return early when not due. Read by the health view.
+ */
+interface JobReport { failure: string | null; skipped: boolean }
+const jobReports = new AsyncLocalStorage<JobReport>();
+
+/** A job that logs an error and carries on still failed this cycle. */
+export function noteJobFailure(error: unknown): void {
+  const report = jobReports.getStore();
+  if (report && report.failure === null) report.failure = errorMessage(error);
+}
+
+/** A throttled job with nothing due this cycle: neither a success nor a failure. */
+export function noteJobSkipped(): void {
+  const report = jobReports.getStore();
+  if (report) report.skipped = true;
 }
 
 function toNumber(value: unknown): number | undefined {
@@ -597,7 +618,7 @@ export class PollingService {
     }
   }
 
-  private async runPollSource(source: string, fn: () => Promise<void>): Promise<void> {
+  private async runPollSource(source: string, fn: () => Promise<void>, report?: JobReport): Promise<void> {
     if (this.activePollSources.has(source)) {
       logger.warn('Polling source skipped: previous run still active', { source }, { scope: 'polling' });
       return;
@@ -608,7 +629,7 @@ export class PollingService {
       ? POLL_SOURCE_TIMEOUT_MS[source]
       : 45_000;
     let timer: ReturnType<typeof setTimeout> | null = null;
-    const task = fn().finally(() => {
+    const task = (report ? jobReports.run(report, fn) : fn()).finally(() => {
       this.activePollSources.delete(source);
       this.sourceStartedAt.delete(source);
       if (timer) clearTimeout(timer);
@@ -634,16 +655,21 @@ export class PollingService {
       const context = createPollingCycleContext(getOrCreateAppSettings, {
         instanceConcurrency: 2,
       });
+      const reports = new Map<string, JobReport>();
       const sourceTask = (
         source: string,
         run: () => Promise<void>,
-      ): { source: string; run: () => Promise<void> } => ({
-        source,
-        run: () => context.runSource(
+      ): { source: string; run: () => Promise<void> } => {
+        const report: JobReport = { failure: null, skipped: false };
+        reports.set(source, report);
+        return {
           source,
-          () => this.runPollSource(source, run),
-        ),
-      });
+          run: () => context.runSource(
+            source,
+            () => this.runPollSource(source, run, report),
+          ),
+        };
+      };
       const pollTasks: Array<{ source: string; run: () => Promise<void> }> = [
         sourceTask('pollSonarr', () => this.pollSonarr(context)),
         sourceTask('pollRadarr', () => this.pollRadarr(context)),
@@ -656,6 +682,8 @@ export class PollingService {
         sourceTask('snapshotDiskUsage', async () => {
           if (await this.shouldSnapshotDiskUsage(context)) {
             await this.snapshotDiskUsage(context);
+          } else {
+            noteJobSkipped();
           }
         }),
       ];
@@ -683,14 +711,18 @@ export class PollingService {
       // write a pre-import snapshot back over that invalidation for the TTL.
       const activeArrSources = ['pollSonarr', 'pollRadarr', 'pollLidarr']
         .filter((source) => this.activePollSources.has(source));
+      const warmReport: JobReport = { failure: null, skipped: false };
+      reports.set('warmCaches', warmReport);
       if (activeArrSources.length === 0) {
         await context.runSource(
           'warmCaches',
-          () => this.runPollSource('warmCaches', () => this.warmCaches()),
+          () => this.runPollSource('warmCaches', () => this.warmCaches(), warmReport),
         ).catch((e) => {
+          warmReport.failure ??= errorMessage(e);
           logger.error('Cache warming failed', e, { scope: 'polling' });
         });
       } else {
+        warmReport.skipped = true;
         logger.warn('Cache warming skipped: Arr polling still active', {
           sources: activeArrSources,
         }, { scope: 'polling' });
@@ -702,12 +734,20 @@ export class PollingService {
       });
       const durationMs = Math.round((performance.now() - startedAt) * 10) / 10;
       const finishedAt = new Date().toISOString();
-      this.sourceHealth = nextSourceHealth(this.sourceHealth, results.map((result, index) => ({
-        source: pollSources[index],
-        status: skipped.has(pollSources[index]) ? 'skipped' : result.status,
-        error: result.status === 'rejected' ? errorMessage(result.reason) : undefined,
-      })), finishedAt);
-      this.lastCycle = { finishedAt, durationMs, failed: rejected.length };
+      // A job counts as failed if it threw or logged a failure and carried on.
+      const outcomes: SourceOutcome[] = results.map((result, index) => {
+        const source = pollSources[index];
+        const report = reports.get(source);
+        if (skipped.has(source)) return { source, status: 'skipped' };
+        if (result.status === 'rejected') return { source, status: 'rejected', error: errorMessage(result.reason) };
+        if (report?.failure) return { source, status: 'rejected', error: report.failure };
+        return { source, status: report?.skipped ? 'skipped' : 'fulfilled' };
+      });
+      outcomes.push(warmReport.failure
+        ? { source: 'warmCaches', status: 'rejected', error: warmReport.failure }
+        : { source: 'warmCaches', status: warmReport.skipped ? 'skipped' : 'fulfilled' });
+      this.sourceHealth = nextSourceHealth(this.sourceHealth, outcomes, finishedAt);
+      this.lastCycle = { finishedAt, durationMs, failed: outcomes.filter((outcome) => outcome.status === 'rejected').length };
       const cycleMetrics = context.getMetrics();
       logger.debug('Polling cycle completed', {
         cycleId: context.id,
@@ -1006,7 +1046,7 @@ export class PollingService {
   private lastTasteProfileSweepAt = 0;
   private async sweepTasteProfiles(): Promise<void> {
     const now = Date.now();
-    if (now - this.lastTasteProfileSweepAt < TASTE_PROFILE_SWEEP_INTERVAL_MS) return;
+    if (now - this.lastTasteProfileSweepAt < TASTE_PROFILE_SWEEP_INTERVAL_MS) { noteJobSkipped(); return; }
     this.lastTasteProfileSweepAt = now;
 
     const activeCutoff = new Date(now - TASTE_PROFILE_ACTIVE_WINDOW_MS);
@@ -1041,6 +1081,7 @@ export class PollingService {
       try {
         await rebuildTasteProfile(user);
       } catch (error) {
+        noteJobFailure(error);
         logger.warn('Taste profile rebuild failed', {
           userId: user.id,
           reason: errorMessage(error),
@@ -1060,6 +1101,7 @@ export class PollingService {
     const results = await Promise.allSettled(warms.map((w) => w.run()));
     results.forEach((result, i) => {
       if (result.status === 'rejected') {
+        noteJobFailure(result.reason);
         logger.warn('Cache warm failed', { scope: warms[i].scope, reason: errorMessage(result.reason) }, { scope: 'polling' });
       }
     });
@@ -1078,9 +1120,10 @@ export class PollingService {
 
     const timeZone = settings.timeZone;
     const now = new Date(context.startedAtMs);
-    if (toZonedDate(now, timeZone).getHours() < settings.animeAutoMapHour) return;
+    // Not due yet, or already run today: nothing to do this cycle.
+    if (toZonedDate(now, timeZone).getHours() < settings.animeAutoMapHour) { noteJobSkipped(); return; }
     const lastRun = settings.animeAutoMapLastRunAt;
-    if (lastRun && getLocalDateKey(lastRun, timeZone) === getLocalDateKey(now, timeZone)) return;
+    if (lastRun && getLocalDateKey(lastRun, timeZone) === getLocalDateKey(now, timeZone)) { noteJobSkipped(); return; }
 
     void this.startAnimeAutoMapRun('scheduled', settings).catch((error) =>
       logger.error('Anime auto-map scheduled start failed', {
@@ -1520,6 +1563,7 @@ export class PollingService {
         }, { scope: 'polling' });
         return counts;
       }).catch((error) => {
+        noteJobFailure(error);
         logger.warn('Sonarr instance poll failed', { instanceId, error: errorMessage(error) }, { scope: 'polling' });
         return counts;
       });
@@ -1746,6 +1790,7 @@ export class PollingService {
         }, { scope: 'polling' });
         return counts;
       }).catch((error) => {
+        noteJobFailure(error);
         logger.warn('Radarr instance poll failed', { instanceId, error: errorMessage(error) }, { scope: 'polling' });
         return counts;
       });
@@ -1939,6 +1984,7 @@ export class PollingService {
         }, { scope: 'polling' });
         return counts;
       }).catch((error) => {
+        noteJobFailure(error);
         logger.warn('Lidarr instance poll failed', { instanceId, error: errorMessage(error) }, { scope: 'polling' });
         return counts;
       });
@@ -2151,6 +2197,7 @@ export class PollingService {
         sessionCount: currentSessionIds.length,
       }, { scope: 'polling' });
     } catch (e) {
+      noteJobFailure(e);
       logger.warn('Jellyfin session poll failed', e, { scope: 'polling' });
     }
   }
@@ -2177,6 +2224,7 @@ export class PollingService {
     try {
       listing = await client.listRequests({ take: 50, skip: 0, sort: 'added', sortDirection: 'desc' });
     } catch (error) {
+      noteJobFailure(error);
       logger.warn('Seerr request poll failed', error, { scope: 'polling' });
       return;
     }
@@ -2502,6 +2550,7 @@ export class PollingService {
     try {
       sonarrClients = await getSonarrClients();
     } catch (error) {
+      noteJobFailure(error);
       logger.warn('Skipping Sonarr upcoming poll because clients are unavailable', { error }, { scope: 'polling' });
     }
     for (const { connection, client } of sonarrClients) {
@@ -2582,6 +2631,7 @@ export class PollingService {
         });
       }
     } catch (error) {
+      noteJobFailure(error);
       logger.warn('Sonarr upcoming calendar poll failed', error, { scope: 'polling' });
     }
     }
@@ -2591,6 +2641,7 @@ export class PollingService {
     try {
       radarrClients = await getRadarrClients();
     } catch (error) {
+      noteJobFailure(error);
       logger.warn('Skipping Radarr upcoming poll because clients are unavailable', { error }, { scope: 'polling' });
     }
     for (const { connection, client } of radarrClients) {
@@ -2672,6 +2723,7 @@ export class PollingService {
         }
       }
     } catch (error) {
+      noteJobFailure(error);
       logger.warn('Radarr upcoming calendar poll failed', error, { scope: 'polling' });
     }
     }
@@ -2681,6 +2733,7 @@ export class PollingService {
     try {
       lidarrClients = await getLidarrClients();
     } catch (error) {
+      noteJobFailure(error);
       logger.warn('Skipping Lidarr upcoming poll because clients are unavailable', { error }, { scope: 'polling' });
     }
     for (const { connection, client } of lidarrClients) {
@@ -2729,6 +2782,7 @@ export class PollingService {
         });
       }
     } catch (error) {
+      noteJobFailure(error);
       logger.warn('Lidarr upcoming calendar poll failed', error, { scope: 'polling' });
     }
     }
@@ -2741,7 +2795,7 @@ export class PollingService {
   // independently so Redis/filesystem trouble cannot block database pruning.
   private async checkRetention(context: CycleContext): Promise<void> {
     const now = context.startedAtMs;
-    if (now - this.lastRetentionPruneAt < 86_400_000) return;
+    if (now - this.lastRetentionPruneAt < 86_400_000) { noteJobSkipped(); return; }
 
     const settings = await context.getSettings();
     const result = await runRetentionSweep({
@@ -2754,6 +2808,7 @@ export class PollingService {
     this.lastRetentionPruneAt = now;
 
     if (result.imageCache.status === 'failed') {
+      noteJobFailure(result.imageCache.message);
       logger.warn('Image-cache retention failed', {
         message: result.imageCache.message,
       }, { scope: 'polling' });
@@ -2919,6 +2974,7 @@ export class PollingService {
       }, { scope: 'polling' });
       this.appliedBandwidth = null;
     } catch (error) {
+      noteJobFailure(error);
       logger.warn('Failed to restore bandwidth', {
         context,
         previousRuleId: previous.ruleId,
@@ -2989,6 +3045,7 @@ export class PollingService {
         uploadKbps: intent.uploadKbps,
       }, { scope: 'polling' });
     } catch (error) {
+      noteJobFailure(error);
       logger.warn('Failed to apply bandwidth schedule', { ruleId: intent.ruleId, error }, { scope: 'polling' });
     }
   }

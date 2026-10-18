@@ -30,7 +30,7 @@ vi.mock('@/lib/logger', () => ({
   },
 }));
 
-import { PollingService } from '@/lib/polling-service';
+import { noteJobFailure, noteJobSkipped, PollingService } from '@/lib/polling-service';
 
 type TestContext = PollingCycleContext<{ notificationGroupingEnabled: boolean }>;
 type InternalPollingService = {
@@ -192,5 +192,42 @@ describe('polling service cycle orchestration', () => {
       { sources: ['pollSonarr'] },
       { scope: 'polling' },
     );
+  });
+});
+
+describe('polling health from the cycle', () => {
+  const sourceHealth = (service: PollingService, source: string) => service.getHealth().sources.find((entry) => entry.source === source);
+
+  it('records a job that logs a failure and carries on as failed', async () => {
+    const service = new PollingService();
+    const internal = stubCycle(service);
+    internal.pollJellyfin = vi.fn(async () => { noteJobFailure(new Error('Jellyfin answered 401')); });
+
+    await internal.poll();
+
+    expect(sourceHealth(service, 'pollJellyfin')).toEqual(expect.objectContaining({ lastSuccessAt: null, lastError: 'Jellyfin answered 401' }));
+    expect(service.getHealth().lastCycle?.failed).toBe(1);
+  });
+
+  it('keeps a throttled job\'s last outcome while it has nothing due', async () => {
+    const service = new PollingService();
+    const internal = stubCycle(service);
+    internal.sweepTasteProfiles = vi.fn(async () => { throw new Error('database unavailable'); });
+    await internal.poll();
+    internal.sweepTasteProfiles = vi.fn(async () => { noteJobSkipped(); });
+    await internal.poll();
+
+    expect(sourceHealth(service, 'sweepTasteProfiles')).toEqual(expect.objectContaining({ lastSuccessAt: null, lastError: 'database unavailable' }));
+  });
+
+  it('records cache warming with the other jobs', async () => {
+    const service = new PollingService();
+    const internal = stubCycle(service);
+    internal.warmCaches = vi.fn(async () => { throw new Error('warm timed out'); });
+
+    await internal.poll();
+
+    expect(sourceHealth(service, 'warmCaches')).toEqual(expect.objectContaining({ lastError: 'warm timed out' }));
+    expect(service.getHealth().lastCycle?.failed).toBe(1);
   });
 });

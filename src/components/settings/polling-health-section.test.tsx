@@ -51,6 +51,26 @@ describe('PollingHealthSection', () => {
     expect(container.textContent).not.toContain('Sonarr');
   });
 
+  it('does not show a healthy status it could not refresh', async () => {
+    const health = {
+      running: true, intervalMs: 15000, cycleInProgress: false,
+      lastCycle: { finishedAt: minutesAgo(0.1), durationMs: 200, failed: 0 },
+      sources: [{ source: 'pollSonarr', lastSuccessAt: minutesAgo(0.1), lastFailureAt: null, lastError: null, runningSince: null }],
+    };
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify(health)));
+    vi.stubGlobal('fetch', fetchMock);
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    act(() => root.render(<QueryClientProvider client={client}><PollingHealthSection /></QueryClientProvider>));
+    for (let i = 0; i < 20 && !container.textContent; i++) await act(async () => { await new Promise((r) => setTimeout(r, 10)); });
+    expect(container.querySelector('.bg-emerald-500')).not.toBeNull();
+
+    fetchMock.mockResolvedValue(new Response('{}', { status: 500 }));
+    await act(async () => { await client.refetchQueries(); });
+    await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
+    expect(container.textContent).toContain("Couldn't refresh this status");
+    expect(container.querySelector('.bg-emerald-500')).toBeNull();
+  });
+
   it('lists no jobs when all is well, and says when polling is stopped', async () => {
     await render({ running: false, intervalMs: null, cycleInProgress: false, lastCycle: null, sources: [
       { source: 'pollSeerr', lastSuccessAt: minutesAgo(1), lastFailureAt: minutesAgo(5), lastError: 'old', runningSince: null },
