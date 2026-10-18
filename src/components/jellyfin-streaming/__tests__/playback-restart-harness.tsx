@@ -123,7 +123,7 @@ function installMediaElement(state: { paused: boolean; currentTime: number }) {
  * audio index each restart actually asked Jellyfin for, and every session
  * report is recorded, so it can see the `isPaused` each start announced.
  */
-export async function mountPlayback(options: { hls?: boolean; audioIds?: string[] } = {}): Promise<Harness> {
+export async function mountPlayback(options: { hls?: boolean; audioIds?: string[]; progressive?: boolean } = {}): Promise<Harness> {
   const state = { paused: true, currentTime: 0 };
   installMediaElement(state);
 
@@ -199,14 +199,16 @@ export async function mountPlayback(options: { hls?: boolean; audioIds?: string[
         // Enough of a media source for the provider; the indexes are what the
         // restart carries and the tests assert on.
         mediaSource: { Id: 'source-1', RunTimeTicks: ITEM.RunTimeTicks, MediaStreams: [] } as never,
-        playMethod: body.enableDirectPlay === false ? 'Transcode' : 'DirectPlay',
+        playMethod: options.progressive || body.enableDirectPlay === false ? 'Transcode' : 'DirectPlay',
         playSessionId: `session-${session}`,
         // Not `.m3u8` and not an mpegurl mime type, so `attachMedia` stays off
         // the hls.js path entirely.
         mediaUrl: options.hls ? 'https://example.invalid/stream.m3u8' : 'https://example.invalid/stream.mp4',
         mimeType: options.hls ? 'application/vnd.apple.mpegurl' : 'video/mp4',
         startTimeTicks: body.startTimeTicks ?? 0,
-        transcodingOffsetTicks: 0,
+        // A progressive (non-HLS) transcode begins at the requested position,
+        // as Jellyfin serves it without copied timestamps.
+        transcodingOffsetTicks: options.progressive ? body.startTimeTicks ?? 0 : 0,
         subtitleTracks: [],
       };
       return ok(stream);
