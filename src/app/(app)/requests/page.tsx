@@ -29,7 +29,10 @@ export default function RequestsPage() {
   const seerrUrl = externalUrls?.SEERR;
   const canApprove = useCan('requests.approve');
 
-  const tab = useUIStore((s) => s.requestsTab);
+  // Users (who requested what) is for approvers; everyone else has only their requests.
+  const storedTab = useUIStore((s) => s.requestsTab);
+  const tab = canApprove ? storedTab : 'requests';
+  const tabs = canApprove ? TABS : TABS.filter((t) => t.key === 'requests');
   const setTab = useUIStore((s) => s.setRequestsTab);
   const filter = useUIStore((s) => s.requestsFilter);
   const setFilter = useUIStore((s) => s.setRequestsFilter);
@@ -53,12 +56,13 @@ export default function RequestsPage() {
   const countsQuery = useQuery({
     queryKey: ['seerr', 'requests', 'count'],
     queryFn: jsonFetcher<SeerrRequestCount>('/api/seerr/requests/count'),
+    enabled: canApprove,
   });
   const counts = countsQuery.data ?? null;
 
   const { refreshing, refresh: handleRefresh } = useRefreshAction(async () => {
     setRefreshTick((n) => n + 1);
-    await countsQuery.refetch();
+    if (canApprove) await countsQuery.refetch();
   });
 
   const pendingBadge = useMemo(() => counts?.pending ?? 0, [counts]);
@@ -94,7 +98,7 @@ export default function RequestsPage() {
           className="flex-1 gap-0 sm:flex-none"
         >
           <TabsList className="flex w-full h-auto bg-muted/50 p-0.5 gap-0.5 sm:w-fit">
-            {TABS.map((t) => (
+            {tabs.map((t) => (
               <TabsTrigger
                 key={t.key}
                 value={t.key}
