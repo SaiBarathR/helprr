@@ -7,9 +7,9 @@ import { NextRequest } from 'next/server';
 const mocks = vi.hoisted(() => ({
   auth: vi.fn(), liveTv: vi.fn(), itemAccess: vi.fn(),
   channels: vi.fn(), programs: vi.fn(), recordings: vi.fn(), catalogItems: vi.fn(),
-  getItem: vi.fn(), playbackInfo: vi.fn(), streamInfo: vi.fn(), bind: vi.fn(), belongs: vi.fn(),
+  getItem: vi.fn(), playbackInfo: vi.fn(), streamInfo: vi.fn(), bind: vi.fn(), belongs: vi.fn(), bindSession: vi.fn(),
 }));
-vi.mock('@/lib/jellyfin-playback/live-stream-binding', () => ({ bindLiveStream: mocks.bind, liveStreamBelongsTo: mocks.belongs }));
+vi.mock('@/lib/jellyfin-playback/live-stream-binding', () => ({ bindLiveStream: mocks.bind, liveStreamBelongsTo: mocks.belongs, bindPlaySession: mocks.bindSession }));
 vi.mock('@/lib/auth', () => ({ requireUserCapability: mocks.auth }));
 vi.mock('@/lib/service-helpers', () => ({
   JellyfinNotLinkedError: class JellyfinNotLinkedError extends Error {},
@@ -178,6 +178,13 @@ describe('Playback negotiation', () => {
     mocks.streamInfo.mockReturnValue({ ok: true, liveStreamId: 'ls-1' });
     expect((await negotiate()).status).toBe(200);
     expect(mocks.bind).toHaveBeenCalledWith('member', 'ls-1', 'abcdef0123');
+  });
+
+  it('binds the play session it hands out to the user and item', async () => {
+    mocks.itemAccess.mockResolvedValue(true);
+    mocks.streamInfo.mockReturnValue({ ok: true, playSessionId: 'session-1' });
+    expect((await negotiate()).status).toBe(200);
+    expect(mocks.bindSession).toHaveBeenCalledWith('member', 'session-1', 'abcdef0123');
   });
 
   it('refuses a live stream id that was not opened for this user and item', async () => {

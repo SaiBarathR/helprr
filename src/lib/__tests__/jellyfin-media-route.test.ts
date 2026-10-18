@@ -2,9 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
 const mocks = vi.hoisted(() => ({
-  auth: vi.fn(), access: vi.fn(), connection: vi.fn(), token: vi.fn(), invalidate: vi.fn(), fetch: vi.fn(), liveStream: vi.fn(),
+  auth: vi.fn(), access: vi.fn(), connection: vi.fn(), token: vi.fn(), invalidate: vi.fn(), fetch: vi.fn(), liveStream: vi.fn(), playSession: vi.fn(),
 }));
-vi.mock('@/lib/jellyfin-playback/live-stream-binding', () => ({ liveStreamBelongsTo: mocks.liveStream }));
+vi.mock('@/lib/jellyfin-playback/live-stream-binding', () => ({ liveStreamBelongsTo: mocks.liveStream, playSessionBelongsTo: mocks.playSession }));
 vi.mock('@/lib/auth', () => ({ requireUserCapability: mocks.auth }));
 vi.mock('@/lib/db', () => ({ prisma: { serviceConnection: { findFirst: mocks.connection } } }));
 vi.mock('@/lib/service-connection-secrets', () => ({ getConnectionHeaders: () => ({ 'X-Proxy-Auth': 'proxy' }) }));
@@ -55,6 +55,23 @@ describe('Jellyfin 12 media authorization', () => {
     expect(mocks.fetch).not.toHaveBeenCalled();
     mocks.liveStream.mockResolvedValue(true);
     expect((await GET(req, context)).status).toBe(206);
+  });
+
+  it.each(['PlaySessionId', 'playsessionid'])('refuses a %s not handed out to this user for this item', async (name) => {
+    // An active transcode's play session serves its media under any item's path.
+    mocks.playSession.mockResolvedValue(false);
+    const req = new NextRequest(`http://helprr.test/api/jellyfin/media/Videos/0123456789abcdef0123456789abcdef/stream.ts?Static=true&${name}=channel-session`);
+    expect((await GET(req, context)).status).toBe(404);
+    expect(mocks.playSession).toHaveBeenCalledWith('member', 'channel-session', '0123456789abcdef0123456789abcdef');
+    expect(mocks.fetch).not.toHaveBeenCalled();
+    mocks.playSession.mockResolvedValue(true);
+    expect((await GET(req, context)).status).toBe(206);
+  });
+
+  it.each(['Params', 'params'])('refuses the packed %s parameter, which can carry a live stream id', async (name) => {
+    const req = new NextRequest(`http://helprr.test/api/jellyfin/media/Videos/0123456789abcdef0123456789abcdef/stream.ts?${name}=${encodeURIComponent(';'.repeat(22) + 'ls-channel')}`);
+    expect((await GET(req, context)).status).toBe(404);
+    expect(mocks.fetch).not.toHaveBeenCalled();
   });
 
   it('refuses inaccessible items before sending any credentials upstream', async () => {

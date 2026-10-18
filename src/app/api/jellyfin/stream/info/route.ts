@@ -5,7 +5,7 @@ import { withApiLogging } from '@/lib/api-logger';
 import { jellyfinConnectGateResponse, upstreamErrorResponse } from '@/lib/api-error';
 import { buildHelprrStreamInfo } from '@/lib/jellyfin-playback/stream-info';
 import { itemAccess } from '@/lib/jellyfin-playback/item-access';
-import { bindLiveStream, liveStreamBelongsTo } from '@/lib/jellyfin-playback/live-stream-binding';
+import { bindLiveStream, bindPlaySession, liveStreamBelongsTo } from '@/lib/jellyfin-playback/live-stream-binding';
 import type { JellyfinDeviceProfile, PlaybackInfoRequest } from '@/types/jellyfin-streaming';
 
 const ITEM_ID_RE = /^[a-f0-9-]+$/i;
@@ -86,6 +86,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: stream.error }, { status: 409 });
     }
     if (stream.liveStreamId) await bindLiveStream(auth.user.id, stream.liveStreamId, itemId);
+    if (stream.playSessionId) await bindPlaySession(auth.user.id, stream.playSessionId, itemId);
     return NextResponse.json(stream);
   } catch (error) {
     const gate = await jellyfinConnectGateResponse(auth.user, error);

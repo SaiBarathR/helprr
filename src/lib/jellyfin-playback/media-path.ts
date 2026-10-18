@@ -48,9 +48,14 @@ export function normalizeMediaPath(raw: string): string | null {
   return path;
 }
 
+// Jellyfin's legacy HLS routes pick the playlist by its hash and segments by
+// file name, ignoring the item in the path, so an allowed item's path could
+// reach another item's transcode. Helprr plays the dynamic `hls1/` routes only.
+const LEGACY_HLS = new RegExp(String.raw`^/(?:videos|audio)/${ITEM_ID}/hls/`, 'i');
+
 export function isAllowedMediaPath(path: string): boolean {
   const normalized = normalizeMediaPath(path);
-  if (!normalized) return false;
+  if (!normalized || LEGACY_HLS.test(normalized)) return false;
   return ALLOWED_PATHS.some((pattern) => pattern.test(normalized));
 }
 

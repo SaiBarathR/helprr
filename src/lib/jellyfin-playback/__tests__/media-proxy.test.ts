@@ -22,6 +22,13 @@ describe('jellyfin media path allowlist', () => {
     expect(itemIdFromMediaPath('/videos/abc-123/hls1/main/seg.ts')).toBe('abc-123');
   });
 
+  it('refuses the legacy HLS routes, which ignore the item in the path', () => {
+    expect(isAllowedMediaPath('/videos/abc123def456/hls/0f1e2d3c/stream.m3u8')).toBe(false);
+    expect(isAllowedMediaPath('/Videos/abc123def456/HLS/0f1e2d3c/12.ts')).toBe(false);
+    expect(isAllowedMediaPath('/audio/abc123def456/hls/0f1e2d3c/stream.mp3')).toBe(false);
+    expect(isAllowedMediaPath('/videos/abc123def456/hls1/main/12.mp4')).toBe(true);
+  });
+
   it('strips Jellyfin API keys from query strings', () => {
     const params = stripSensitiveQuery(new URLSearchParams('MediaSourceId=1&api_key=secret&PlaySessionId=p'));
     expect(params.get('api_key')).toBeNull();

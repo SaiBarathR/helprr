@@ -5,7 +5,7 @@ import { requireUserCapability } from '@/lib/auth';
 import { getConnectionHeaders } from '@/lib/service-connection-secrets';
 import { invalidateJellyfinToken, readJellyfinToken } from '@/lib/jellyfin-token';
 import { canUserAccessItem } from '@/lib/jellyfin-playback/item-access';
-import { liveStreamBelongsTo } from '@/lib/jellyfin-playback/live-stream-binding';
+import { liveStreamBelongsTo, playSessionBelongsTo } from '@/lib/jellyfin-playback/live-stream-binding';
 import {
   isAllowedMediaPath,
   isHlsPlaylist,
@@ -70,8 +70,16 @@ async function forward(request: NextRequest, pathSegments: string[], user: User)
       return new NextResponse(null, { status: 404 });
     }
     // Jellyfin reads query names case-insensitively, so every spelling counts.
+    // A live stream or play session id selects a stream on its own, whatever
+    // item the path names, so it must be one opened for this user and item.
+    // `Params` packs those ids (and more) into one value; Helprr never sends it.
     for (const [name, value] of new URL(request.url).searchParams) {
-      if (name.toLowerCase() === 'livestreamid' && value && !(await liveStreamBelongsTo(user.id, value, itemId))) {
+      const lower = name.toLowerCase();
+      if (lower === 'params') return new NextResponse(null, { status: 404 });
+      if (lower === 'livestreamid' && value && !(await liveStreamBelongsTo(user.id, value, itemId))) {
+        return new NextResponse(null, { status: 404 });
+      }
+      if (lower === 'playsessionid' && value && !(await playSessionBelongsTo(user.id, value, itemId))) {
         return new NextResponse(null, { status: 404 });
       }
     }
