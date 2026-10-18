@@ -422,7 +422,7 @@ export function VideoStage({ mediaContainer }: { mediaContainer: HTMLDivElement 
               <div className="absolute inset-0 flex items-center justify-center text-sm text-white/80">Loading stream…</div>
             )}
             {playback.needsJellyfinConnect ? (
-              <div className="absolute inset-0 z-20 flex items-center justify-center overflow-y-auto bg-black/90 p-6">
+              <div className="absolute inset-0 z-20 flex items-center justify-center overflow-y-auto bg-black/90 p-6 [--destructive-text:var(--destructive-on-dark)]">
                 <div className="w-full max-w-xs space-y-4">
                   <div className="space-y-1.5 text-center">
                     <p className="text-sm font-medium text-white">Connect your Jellyfin account</p>
