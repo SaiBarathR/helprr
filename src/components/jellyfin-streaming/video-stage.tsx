@@ -49,6 +49,11 @@ import { queryKeys } from '@/lib/query-keys';
 import type { LyricsResponse } from '@/types/jellyfin-streaming';
 import { useUIStore } from '@/lib/store';
 import {
+  DROP_SHADOW_OPTIONS as DROP_SHADOWS,
+  FONT_OPTIONS as SUBTITLE_FONTS,
+  TEXT_BACKGROUND_OPTIONS as TEXT_BACKGROUNDS,
+  TEXT_COLOR_OPTIONS as TEXT_COLORS,
+  TEXT_SIZE_OPTIONS as TEXT_SIZES,
   subtitleCueCss,
   type SubtitleAppearance,
   type SubtitleDropShadow,
@@ -994,40 +999,6 @@ export function SeekBar({
     </div>
   );
 }
-
-const TEXT_SIZES: Array<{ value: SubtitleTextSize; label: string }> = [
-  { value: 'smaller', label: 'Smaller' },
-  { value: 'small', label: 'Small' },
-  { value: 'medium', label: 'Medium' },
-  { value: 'large', label: 'Large' },
-  { value: 'larger', label: 'Larger' },
-  { value: 'extralarge', label: 'Extra large' },
-];
-
-const SUBTITLE_FONTS: Array<{ value: SubtitleFont; label: string }> = [
-  { value: 'default', label: 'Default' },
-  { value: 'typewriter', label: 'Typewriter' },
-  { value: 'print', label: 'Print' },
-  { value: 'console', label: 'Console' },
-  { value: 'cursive', label: 'Cursive' },
-  { value: 'casual', label: 'Casual' },
-  { value: 'smallcaps', label: 'Small caps' },
-];
-
-const DROP_SHADOWS: Array<{ value: SubtitleDropShadow; label: string }> = [
-  { value: 'dropshadow', label: 'Drop shadow' },
-  { value: 'raised', label: 'Raised' },
-  { value: 'depressed', label: 'Depressed' },
-  { value: 'uniform', label: 'Uniform' },
-  { value: 'none', label: 'None' },
-];
-
-const TEXT_COLORS = ['#ffffff', '#ffff00', '#00ff00', '#00ffff', '#ff9900', '#000000'];
-const TEXT_BACKGROUNDS: Array<{ value: string; label: string }> = [
-  { value: 'transparent', label: 'None' },
-  { value: 'rgba(0,0,0,0.5)', label: 'Dim' },
-  { value: '#000000', label: 'Solid' },
-];
 
 /**
  * Mirrors jellyfin-web's subtitle appearance settings. Disabled for ASS/SSA,
