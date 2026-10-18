@@ -23,6 +23,11 @@ describe('live stream binding', () => {
     expect(await liveStreamBelongsTo('u1', 'ls-unknown', 'channel-1')).toBe(false);
   });
 
+  it('treats the dashed GUID form of an id as the same item', async () => {
+    await bindLiveStream('u1', 'ls-2', 'cf48421ddae2e64ad06216e009d1615b');
+    expect(await liveStreamBelongsTo('u1', 'ls-2', 'cf48421d-dae2-e64a-d062-16e009d1615b')).toBe(true);
+  });
+
   it('fails closed without Redis', async () => {
     getRedisClient.mockRejectedValue(new Error('down'));
     await bindLiveStream('u1', 'ls-1', 'channel-1');

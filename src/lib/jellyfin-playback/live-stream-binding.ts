@@ -8,11 +8,13 @@ import { getRedisClient } from '@/lib/redis';
 
 const TTL_SECONDS = 12 * 60 * 60;
 const key = (userId: string, liveStreamId: string) => `jellyfin:live-stream:${userId}:${liveStreamId}`;
+// Catalog ids come without dashes and stream paths in GUID form; both name one item.
+const sameItem = (itemId: string) => itemId.toLowerCase().replace(/-/g, '');
 
 export async function bindLiveStream(userId: string, liveStreamId: string, itemId: string): Promise<void> {
   try {
     const redis = await getRedisClient();
-    await redis.set(key(userId, liveStreamId), itemId.toLowerCase(), { EX: TTL_SECONDS });
+    await redis.set(key(userId, liveStreamId), sameItem(itemId), { EX: TTL_SECONDS });
   } catch {
     // Without the binding the stream's later requests are refused: fail closed.
   }
@@ -21,7 +23,7 @@ export async function bindLiveStream(userId: string, liveStreamId: string, itemI
 export async function liveStreamBelongsTo(userId: string, liveStreamId: string, itemId: string): Promise<boolean> {
   try {
     const redis = await getRedisClient();
-    return (await redis.get(key(userId, liveStreamId))) === itemId.toLowerCase();
+    return (await redis.get(key(userId, liveStreamId))) === sameItem(itemId);
   } catch {
     return false;
   }
