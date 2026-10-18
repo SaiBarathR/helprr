@@ -1233,6 +1233,7 @@ export class PollingService {
     try {
       disks = await getAggregatedDiskSpace();
     } catch (error) {
+      noteJobFailure(error);
       logger.debug('Disk-space check skipped: could not read disk space', {
         error: errorMessage(error),
       }, { scope: 'polling' });
@@ -1318,6 +1319,7 @@ export class PollingService {
     try {
       disks = await getAggregatedDiskSpace();
     } catch (error) {
+      noteJobFailure(error);
       logger.debug('Disk-usage snapshot skipped: could not read disk space', {
         error: errorMessage(error),
       }, { scope: 'polling' });
@@ -2453,6 +2455,7 @@ export class PollingService {
         attention: counts.pending,
       });
     } catch (error) {
+      noteJobFailure(error);
       logger.debug('Seerr request-count badge fetch failed', { error }, { scope: 'polling' });
     }
   }

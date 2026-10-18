@@ -14,6 +14,8 @@ const mocks = vi.hoisted(() => ({
   findConnection: vi.fn(async () => null as unknown),
   findHistory: vi.fn(async () => null as unknown),
   updateSettings: vi.fn(async () => ({})),
+  updateState: vi.fn(async () => ({})),
+  readDisks: vi.fn(),
   findStates: vi.fn(async () => [] as unknown[]),
   upsertState: vi.fn<(args: unknown) => Promise<unknown>>(async () => ({})),
   probe: vi.fn(),
@@ -24,8 +26,14 @@ vi.mock('@/lib/db', () => ({
     serviceConnection: { findMany: mocks.findConnections, findFirst: mocks.findConnection },
     notificationHistory: { findFirst: mocks.findHistory },
     appSettings: { update: mocks.updateSettings },
-    pollingState: { findMany: mocks.findStates, upsert: mocks.upsertState },
+    user: { findMany: vi.fn(async () => []) },
+    pollingState: { findMany: mocks.findStates, upsert: mocks.upsertState, update: mocks.updateState },
   },
+}));
+
+vi.mock('@/lib/disk-space', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/disk-space')>()),
+  getAggregatedDiskSpace: mocks.readDisks,
 }));
 
 vi.mock('@/lib/service-health', async (importOriginal) => ({
@@ -414,6 +422,38 @@ describe('jobs that cannot load what they work on', () => {
 
     expect(result).toEqual(expect.objectContaining({ reason: 'nothing-to-map' }));
     expect(report.failure).toBe('write failed');
+  });
+
+  it('counts a Seerr poll whose pending count could not be read as failed', async () => {
+    const service = new PollingService();
+    const internal = stubCycle(service);
+    real(internal, service, 'pollSeerr');
+    const services = await import('@/lib/service-helpers');
+    vi.spyOn(services, 'getSeerrClient').mockResolvedValue({
+      listRequests: async () => ({ results: [] }),
+      getRequestCount: async () => { throw new Error('count unavailable'); },
+    } as never);
+    mocks.findConnection.mockResolvedValue({ id: 'se1', type: 'SEERR', label: 'Seerr' });
+
+    await internal.poll();
+
+    expect(mocks.updateState).toHaveBeenCalledOnce();
+    expect(sourceHealth(service, 'pollSeerr')).toEqual(expect.objectContaining({ lastSuccessAt: null, lastError: 'count unavailable' }));
+  });
+
+  it('counts a disk-space check that could not read the disks as failed', async () => {
+    mocks.settings.mockResolvedValue({
+      notificationGroupingEnabled: true,
+      diskThresholds: [{ diskId: 'd1', label: 'Media', path: '/media', minFreeGb: 10, enabled: true }],
+    });
+    const service = new PollingService();
+    const internal = stubCycle(service);
+    real(internal, service, 'checkDiskSpace');
+    mocks.readDisks.mockRejectedValue(new Error('disks unavailable'));
+
+    await internal.poll();
+
+    expect(sourceHealth(service, 'checkDiskSpace')).toEqual(expect.objectContaining({ lastSuccessAt: null, lastError: 'disks unavailable' }));
   });
 
   it('counts a reachability check whose result could not be saved as failed, and still checks the rest', async () => {

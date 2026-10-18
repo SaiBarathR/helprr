@@ -1,6 +1,7 @@
 import type { User } from '@prisma/client';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
+import { noteJobFailure } from '@/lib/polling-job-report';
 import { buildTasteProfile } from './build-profile';
 import { PROFILE_VERSION, type TasteProfile } from './profile-types';
 import {
@@ -30,7 +31,11 @@ export interface BuiltProfile {
 /** Collect every signal source (fail-soft each) and build a fresh profile. */
 export async function buildProfileForUser(user: ProfileUser): Promise<BuiltProfile> {
   const [jellyfin, anilist, watchlist, events] = await Promise.all([
-    collectJellyfinSignals(user).catch(() => null),
+    // Unlinked or unconfigured Jellyfin returns empty signals; a throw is a failed read.
+    collectJellyfinSignals(user).catch((error) => {
+      noteJobFailure(error);
+      return null;
+    }),
     collectAniListSignals(user),
     collectWatchlistSignals(user.id),
     collectEventSignals(user.id),
