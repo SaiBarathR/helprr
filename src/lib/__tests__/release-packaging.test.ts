@@ -11,6 +11,7 @@ describe('no-clone release packaging', () => {
     { releaseName: 'env.example', source: '.env.example', executable: false },
     { releaseName: 'setup-env.sh', source: 'scripts/setup-env.sh', executable: true },
     { releaseName: 'backup.sh', source: 'scripts/backup.sh', executable: true },
+    { releaseName: 'update.sh', source: 'scripts/update.sh', executable: true },
   ];
 
   it('keeps every required source file available and helper scripts executable', () => {
@@ -30,7 +31,8 @@ describe('no-clone release packaging', () => {
     expect(releaseJob).toContain('cp .env.example env.example');
     expect(releaseJob).toContain('install -m 0755 scripts/setup-env.sh setup-env.sh');
     expect(releaseJob).toContain('install -m 0755 scripts/backup.sh backup.sh');
-    expect(releaseJob).toContain('docker-compose.yml env.example setup-env.sh backup.sh');
+    expect(releaseJob).toContain('install -m 0755 scripts/update.sh update.sh');
+    expect(releaseJob).toContain('docker-compose.yml env.example setup-env.sh backup.sh update.sh');
     for (const asset of assets) {
       expect(releaseJob, asset.releaseName).toContain(asset.releaseName);
     }
@@ -46,9 +48,11 @@ describe('no-clone release packaging', () => {
     expect(readme).toContain('-o .env.example "$HELPRR_ASSET_BASE/env.example"');
     expect(readme).toContain('-o scripts/setup-env.sh "$HELPRR_ASSET_BASE/setup-env.sh"');
     expect(readme).toContain('-o scripts/backup.sh "$HELPRR_ASSET_BASE/backup.sh"');
-    expect(readme).toContain('chmod 700 scripts/setup-env.sh scripts/backup.sh');
+    expect(readme).toContain('-o scripts/update.sh "$HELPRR_ASSET_BASE/update.sh"');
+    expect(readme).toContain('chmod 700 scripts/setup-env.sh scripts/backup.sh scripts/update.sh');
     expect(readme).toContain('./scripts/setup-env.sh');
     expect(readme).toContain('./scripts/backup.sh');
+    expect(readme).toContain('./scripts/update.sh');
 
     expect(compose).toContain(
       'docker compose --env-file .env.dev -f docker-compose.dev.yml up -d --build',

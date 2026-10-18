@@ -209,7 +209,7 @@ versions, today iOS 26 and 27.
 
 No clone, no build — Helprr ships as a prebuilt multi-arch image
 (amd64/arm64) on `ghcr.io/saibarathr/helprr`. Each tagged release also carries
-the four files needed to install, configure, update, and back up Helprr. Download
+the five files needed to install, configure, update, and back up Helprr. Download
 the assets from the latest qualified release into this standalone layout:
 
 ```bash
@@ -219,13 +219,14 @@ curl -fsSL -o docker-compose.yml "$HELPRR_ASSET_BASE/docker-compose.yml"
 curl -fsSL -o .env.example "$HELPRR_ASSET_BASE/env.example"
 curl -fsSL -o scripts/setup-env.sh "$HELPRR_ASSET_BASE/setup-env.sh"
 curl -fsSL -o scripts/backup.sh "$HELPRR_ASSET_BASE/backup.sh"
-chmod 700 scripts/setup-env.sh scripts/backup.sh
+curl -fsSL -o scripts/update.sh "$HELPRR_ASSET_BASE/update.sh"
+chmod 700 scripts/setup-env.sh scripts/backup.sh scripts/update.sh
 ```
 
 For an exact release, use
 `HELPRR_ASSET_BASE=https://github.com/SaiBarathR/helprr/releases/download/vX.Y.Z`
 instead, then set `HELPRR_VERSION=X.Y.Z` in `.env` after generating it. Keep the
-Compose file and both helpers from the same release.
+Compose file and the helpers from the same release.
 
 ### 2. Configure
 
@@ -533,31 +534,37 @@ Prisma migrations are the database source of truth.
 
 ## Updating
 
-Tagged releases contain `docker-compose.yml`, `env.example`, `setup-env.sh`, and
-`backup.sh`. This lets an installation created without Git update without cloning
-the repository. To install an exact `vX.Y.Z` release from the existing Helprr
-directory, fetch the backup helper first and create a validated backup:
+Tagged releases contain `docker-compose.yml`, `env.example`, `setup-env.sh`,
+`backup.sh`, and `update.sh`. This lets an installation created without Git update
+without cloning the repository. To install an exact `vX.Y.Z` release from the
+existing Helprr directory, replace the non-secret deployment files and helper scripts,
+review the new `.env.example` against the existing `.env`, select the matching exact
+image version in `.env` (without the leading `v`), then run the update helper:
 
 ```bash
 mkdir -p scripts
 HELPRR_RELEASE=vX.Y.Z
 HELPRR_ASSET_BASE="https://github.com/SaiBarathR/helprr/releases/download/$HELPRR_RELEASE"
-curl -fsSL -o scripts/backup.sh "$HELPRR_ASSET_BASE/backup.sh"
-chmod 700 scripts/backup.sh
-./scripts/backup.sh
-```
-
-Only after that succeeds, replace the non-secret deployment files and helper scripts,
-review the new `.env.example` against the existing `.env`, select the matching exact
-image version in `.env` (without the leading `v`), then pull and restart:
-
-```bash
 curl -fsSL -o docker-compose.yml "$HELPRR_ASSET_BASE/docker-compose.yml"
 curl -fsSL -o .env.example "$HELPRR_ASSET_BASE/env.example"
 curl -fsSL -o scripts/setup-env.sh "$HELPRR_ASSET_BASE/setup-env.sh"
 curl -fsSL -o scripts/backup.sh "$HELPRR_ASSET_BASE/backup.sh"
-chmod 700 scripts/setup-env.sh scripts/backup.sh
+curl -fsSL -o scripts/update.sh "$HELPRR_ASSET_BASE/update.sh"
+chmod 700 scripts/setup-env.sh scripts/backup.sh scripts/update.sh
 # Set HELPRR_VERSION=X.Y.Z in .env after reviewing the release notes.
+./scripts/update.sh
+```
+
+`update.sh` first runs `backup.sh` and stops if the backup or its validation fails,
+so nothing is pulled or restarted without a validated backup. It then pulls the image
+and replaces only the Helprr app container, waits up to five minutes for it to report
+healthy, and checks `/api/ready` from inside the container. The dump path it prints is
+the restore point if you need to roll back. `--keep N` is passed to `backup.sh`.
+
+The same steps by hand:
+
+```bash
+./scripts/backup.sh
 docker compose pull helprr
 docker compose up -d --no-build --no-deps helprr
 docker compose ps helprr
@@ -565,10 +572,10 @@ curl -fsS http://localhost:3050/api/health
 curl -fsS http://localhost:3050/api/ready
 ```
 
-The helper keeps Helprr online while `pg_dump` takes a consistent snapshot, verifies
-that `pg_restore` can read the completed custom-format archive, and atomically writes
-it under `backups/stable/` with private permissions. If backup creation or validation
-fails, the update commands must not be run.
+The backup helper keeps Helprr online while `pg_dump` takes a consistent snapshot,
+verifies that `pg_restore` can read the completed custom-format archive, and
+atomically writes it under `backups/stable/` with private permissions. If backup
+creation or validation fails, the update commands must not be run.
 
 Pending database migrations run automatically before the app starts. The
 container drains background work gracefully on replacement, waiting up to 30
@@ -578,8 +585,8 @@ seconds is interrupted. The scoped `--no-deps helprr` command leaves PostgreSQL
 and Redis running during the update.
 
 To stay on an exact version instead of a channel, set `HELPRR_VERSION` in
-`.env` (for example `HELPRR_VERSION=1.0.0`) and re-run the two Docker commands
-to move between versions. Downgrading across releases is not supported once a
+`.env` (for example `HELPRR_VERSION=1.0.0`) and re-run `./scripts/update.sh` (or the
+two Docker commands) to move between versions. Downgrading across releases is not supported once a
 newer version has applied its migrations — restore the matching backup instead.
 
 
@@ -627,13 +634,20 @@ tokens** are selected.
 
 The no-clone quick start installs this helper under `scripts/` with mode `0700`.
 If it is missing from an older installation, download `backup.sh` from the exact
-target release as shown in **Updating** before changing Compose or pulling an image.
+target release as shown in **Updating**.
 Stable backups default to `backups/stable/`. Use
 `./scripts/backup.sh --output-dir /path/to/protected/storage` for a different local or
 mounted destination. Use `./scripts/backup.sh --dev` only for the standalone
 development stack; it explicitly selects `.env.dev`, `docker-compose.dev.yml`, and
 `helprr-dev-db` and defaults to `backups/development/`. The helper never stops,
 restarts, updates, or migrates containers and never overwrites an existing dump.
+
+After a new dump passes validation, the helper keeps the newest 10 of its own dumps
+in that directory and deletes older ones. Use `--keep N` to keep a different number,
+or `--keep 0` to keep every dump. Only files it names
+`helprr-pre-upgrade-<timestamp>.dump` (`helprr-dev-pre-upgrade-` with `--dev`) are
+counted or removed; other files in the directory are left alone, and only dumps older
+than the one just written are removed.
 
 > [!WARNING]
 > Dumps contain your service API keys and users' password hashes. Treat backup
@@ -669,16 +683,22 @@ there after it is written:
   Each encrypted copy keeps its dump's timestamped name, so a new one never
   replaces an older one, and it is copied only once encryption has succeeded.
 
-Helprr never deletes dumps, here or on the other machine, so prune old copies
+The helper prunes only the directory it writes to, so prune copies made elsewhere
 yourself. Before relying on an off-host copy, restore one into an isolated
 environment as described above.
 
-**Restore over an existing installation** (e.g. roll back after a bad change):
+**Restore over an existing installation** (e.g. roll back after a bad change).
+When rolling back an upgrade, first set `HELPRR_VERSION` in `.env` back to the
+version that wrote the dump. The database is recreated before the restore:
+`pg_restore --clean` drops only what is in the dump, so tables a newer release's
+migrations added would stay behind and break the next upgrade.
 
 ```bash
 docker compose stop helprr
-docker compose exec -T helprr-db pg_restore -U postgres --clean --if-exists -d helprr < backups/stable/helprr-pre-upgrade-YYYYMMDD-HHMMSS.dump
-docker compose start helprr
+docker compose exec -T helprr-db dropdb -U postgres --if-exists --force helprr
+docker compose exec -T helprr-db createdb -U postgres helprr
+docker compose exec -T helprr-db pg_restore -U postgres -d helprr < backups/stable/helprr-pre-upgrade-YYYYMMDD-HHMMSS.dump
+docker compose up -d --no-build --no-deps --wait helprr
 ```
 
 **Restore onto a fresh host** (disaster recovery):
@@ -716,7 +736,8 @@ Redis successfully, takes the narrowly scoped image-quota lock, and re-checks th
 active generation before touching files. If Redis is unavailable, the lock is
 busy, or an admin cache purge races the sweep, filesystem cleanup fails closed
 and waits for a later run. Log files continue to use the separate retention value in
-**Settings → Logging**. Database backups are never removed by Helprr retention.
+**Settings → Logging**. Database backups are never removed by this sweep; only
+`backup.sh` prunes them (see [Backup and restore](#backup-and-restore)).
 
 
 

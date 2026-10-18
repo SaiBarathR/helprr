@@ -610,6 +610,7 @@ docker compose --env-file .env.example -f docker-compose.yml config --quiet
 docker compose --env-file .env.dev.example -f docker-compose.dev.yml config --quiet
 sh -n scripts/setup-env.sh
 sh -n scripts/backup.sh
+sh -n scripts/update.sh
 npm audit --omit=dev --audit-level=high
 git diff --check
 ```
@@ -750,8 +751,9 @@ The version-tag push causes Docker publish to:
 1. Build the exact commit natively for amd64 and arm64.
 2. Create the multi-architecture `ghcr.io/saibarathr/helprr:$VERSION` manifest.
 3. Create a draft GitHub release.
-4. Attach `docker-compose.yml`, `env.example`, `setup-env.sh`, and `backup.sh` from
-   that exact tag. These are the complete no-clone install and backup assets.
+4. Attach `docker-compose.yml`, `env.example`, `setup-env.sh`, `backup.sh`, and
+   `update.sh` from that exact tag. These are the complete no-clone install, backup,
+   and update assets.
 
 At this point `stable` still points to the previous qualified release.
 
@@ -782,6 +784,7 @@ exactly these assets from the tagged commit:
 - `env.example`
 - `setup-env.sh`
 - `backup.sh`
+- `update.sh`
 
 Do not publish the draft merely to make its asset URLs public. Production qualification
 comes first.
@@ -879,7 +882,9 @@ online, validates the archive with `pg_restore --list`, publishes it atomically 
 stop, restart, update, or migrate any container. Stop qualification if it fails.
 
 Keep the resulting backup until the release has been stable long enough for your risk
-tolerance. Database dumps contain API keys and password hashes and must be treated as
+tolerance. The helper keeps only the newest 10 of its dumps in that directory, so copy
+this one elsewhere, or run later backups with `--keep 0`, if it must outlive ten more
+backups. Database dumps contain API keys and password hashes and must be treated as
 secrets. Archive validation is not a substitute for periodic isolated restore tests.
 
 ### 4. Pin and verify the exact image
@@ -1019,8 +1024,8 @@ The tag workflow creates a draft release. Before publishing it:
 2. Summarize user-visible features and fixes.
 3. Call out configuration changes and migrations.
 4. Include update and backup guidance.
-5. Confirm `docker-compose.yml`, `env.example`, `setup-env.sh`, and `backup.sh` are
-   attached and downloadable.
+5. Confirm `docker-compose.yml`, `env.example`, `setup-env.sh`, `backup.sh`, and
+   `update.sh` are attached and downloadable.
 6. Include the qualified multi-arch digest.
 7. Mark a stable release as the latest release, not as a prerelease.
 
@@ -1044,7 +1049,7 @@ compare every file with the tagged source:
 ```bash
 ASSET_DIR=$(mktemp -d /tmp/helprr-release-assets.XXXXXX)
 ASSET_BASE="https://github.com/SaiBarathR/helprr/releases/download/$TAG"
-for asset in docker-compose.yml env.example setup-env.sh backup.sh; do
+for asset in docker-compose.yml env.example setup-env.sh backup.sh update.sh; do
   curl -fsSL -o "$ASSET_DIR/$asset" "$ASSET_BASE/$asset"
 done
 
@@ -1052,7 +1057,8 @@ for mapping in \
   docker-compose.yml:docker-compose.yml \
   env.example:.env.example \
   setup-env.sh:scripts/setup-env.sh \
-  backup.sh:scripts/backup.sh; do
+  backup.sh:scripts/backup.sh \
+  update.sh:scripts/update.sh; do
   asset_name=${mapping%%:*}
   source_name=${mapping#*:}
   actual=$(shasum -a 256 "$ASSET_DIR/$asset_name" | awk '{print $1}')
@@ -1063,6 +1069,7 @@ done
 
 sh -n "$ASSET_DIR/setup-env.sh"
 sh -n "$ASSET_DIR/backup.sh"
+sh -n "$ASSET_DIR/update.sh"
 docker compose --env-file "$ASSET_DIR/env.example" \
   -f "$ASSET_DIR/docker-compose.yml" config --quiet
 ```

@@ -185,8 +185,9 @@ jobs:
           cp .env.example env.example
           install -m 0755 scripts/setup-env.sh setup-env.sh
           install -m 0755 scripts/backup.sh backup.sh
+          install -m 0755 scripts/update.sh update.sh
           gh release create "$GITHUB_REF_NAME" \
             --draft \
             --generate-notes \
             $prerelease_flag \
-            docker-compose.yml env.example setup-env.sh backup.sh
+            docker-compose.yml env.example setup-env.sh backup.sh update.sh
