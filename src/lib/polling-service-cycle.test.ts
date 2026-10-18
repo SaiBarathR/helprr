@@ -10,6 +10,22 @@ const mocks = vi.hoisted(() => ({
   info: vi.fn(),
   warn: vi.fn(),
   loadLibrary: vi.fn(),
+  findConnections: vi.fn(async () => [] as unknown[]),
+  findStates: vi.fn(async () => [] as unknown[]),
+  upsertState: vi.fn<(args: unknown) => Promise<unknown>>(async () => ({})),
+  probe: vi.fn(),
+}));
+
+vi.mock('@/lib/db', () => ({
+  prisma: {
+    serviceConnection: { findMany: mocks.findConnections },
+    pollingState: { findMany: mocks.findStates, upsert: mocks.upsertState },
+  },
+}));
+
+vi.mock('@/lib/service-health', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/service-health')>()),
+  probeServiceHealth: mocks.probe,
 }));
 
 vi.mock('@/lib/app-settings', async (importOriginal) => {
@@ -41,6 +57,7 @@ vi.mock('@/lib/cache/tagged-library', async (importOriginal) => ({
 
 import { PollingService } from '@/lib/polling-service';
 import { noteJobFailure, noteJobSkipped } from '@/lib/polling-job-report';
+import { ConfigurationError } from '@/lib/config-error';
 
 type TestContext = PollingCycleContext<{ notificationGroupingEnabled: boolean }>;
 type InternalPollingService = {
@@ -294,5 +311,79 @@ describe('cache warming that joins a load already running', () => {
 
     const warm = service.getHealth().sources.find((entry) => entry.source === 'warmCaches');
     expect(warm).toEqual(expect.objectContaining({ lastSuccessAt: null, lastError: 'sonarr: an instance did not answer' }));
+  });
+});
+
+describe('jobs that cannot load what they work on', () => {
+  const sourceHealth = (service: PollingService, source: string) => service.getHealth().sources.find((entry) => entry.source === source);
+  const real = (internal: InternalPollingService, service: PollingService, source: string) => {
+    internal[source] = (PollingService.prototype as unknown as Record<string, (...args: unknown[]) => Promise<void>>)[source].bind(service);
+  };
+
+  it('counts an Arr poll whose instances could not be read as failed', async () => {
+    const service = new PollingService();
+    const internal = stubCycle(service);
+    real(internal, service, 'pollSonarr');
+    const services = await import('@/lib/service-helpers');
+    vi.spyOn(services, 'getSonarrClients').mockRejectedValue(new Error('database unavailable'));
+
+    await internal.poll();
+
+    expect(sourceHealth(service, 'pollSonarr')).toEqual(expect.objectContaining({ lastSuccessAt: null, lastError: 'database unavailable' }));
+    expect(service.getHealth().lastCycle?.failed).toBe(1);
+  });
+
+  it('counts a qBittorrent lookup that failed, but not one that is simply not set up', async () => {
+    const service = new PollingService();
+    const internal = stubCycle(service);
+    real(internal, service, 'pollQBittorrent');
+    const services = await import('@/lib/service-helpers');
+    const lookup = vi.spyOn(services, 'getQBittorrentClient');
+
+    lookup.mockRejectedValue(new ConfigurationError('qBittorrent is not configured.'));
+    await internal.poll();
+    expect(sourceHealth(service, 'pollQBittorrent')).toEqual(expect.objectContaining({ lastSuccessAt: expect.any(String), lastError: null }));
+
+    lookup.mockRejectedValue(new Error('database unavailable'));
+    await internal.poll();
+    expect(sourceHealth(service, 'pollQBittorrent')).toEqual(expect.objectContaining({ lastError: 'database unavailable' }));
+    expect(service.getHealth().lastCycle?.failed).toBe(1);
+  });
+
+  it('counts a bandwidth release it could not carry out as failed', async () => {
+    const service = new PollingService();
+    const internal = stubCycle(service);
+    internal.appliedBandwidth = { ruleId: 'r1', downloadKbps: 100, uploadKbps: 50 };
+    internal.applyBandwidthSchedule = vi.fn(async () => {
+      await (internal.releaseAppliedBandwidth as (context: string) => Promise<void>).call(service, 'test');
+    });
+    const services = await import('@/lib/service-helpers');
+    vi.spyOn(services, 'getQBittorrentClient').mockRejectedValue(new Error('database unavailable'));
+
+    await internal.poll();
+
+    expect(sourceHealth(service, 'applyBandwidthSchedule')).toEqual(expect.objectContaining({ lastError: 'database unavailable' }));
+    expect(internal.appliedBandwidth).not.toBeNull();
+  });
+
+  it('counts a reachability check whose result could not be saved as failed, and still checks the rest', async () => {
+    const service = new PollingService();
+    const internal = stubCycle(service);
+    real(internal, service, 'pollServiceReachability');
+    mocks.findConnections.mockResolvedValue([
+      { id: 'c1', type: 'SONARR', label: 'Sonarr' },
+      { id: 'c2', type: 'RADARR', label: 'Radarr' },
+    ]);
+    mocks.probe.mockResolvedValue({ ok: true });
+    mocks.upsertState.mockImplementation(async (args: unknown) => {
+      if ((args as { where: { serviceConnectionId: string } }).where.serviceConnectionId === 'c1') throw new Error('write failed');
+      return {};
+    });
+
+    await internal.poll();
+
+    expect(mocks.upsertState).toHaveBeenCalledTimes(2);
+    expect(sourceHealth(service, 'pollServiceReachability')).toEqual(expect.objectContaining({ lastSuccessAt: null, lastError: 'write failed' }));
+    expect(service.getHealth().lastCycle?.failed).toBe(1);
   });
 });

@@ -1,6 +1,7 @@
 import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { getSonarrClients, getRadarrClients, getLidarrClients, getQBittorrentClient, getJellyfinClient, getSeerrClient } from '@/lib/service-helpers';
+import { ConfigurationError } from '@/lib/config-error';
 import {
   getAggregatedDiskSpace,
   diskId,
@@ -1204,8 +1205,9 @@ export class PollingService {
             where: { serviceConnectionId: connection.id },
             update: { lastReachable: ok },
             create: { serviceConnectionId: connection.id, lastReachable: ok },
-          }).catch(() => {});
+          });
         } catch (error) {
+          noteJobFailure(error);
           logger.debug('Reachability probe failed unexpectedly', {
             instanceId: connection.id,
             error: errorMessage(error),
@@ -1357,6 +1359,7 @@ export class PollingService {
       instances = await getSonarrClients();
     } catch (error) {
       context.markInstanceSourceReady('sonarr');
+      noteJobFailure(error);
       logger.debug('Skipping Sonarr poll because clients are unavailable', { error }, { scope: 'polling' });
       return;
     }
@@ -1599,6 +1602,7 @@ export class PollingService {
       instances = await getRadarrClients();
     } catch (error) {
       context.markInstanceSourceReady('radarr');
+      noteJobFailure(error);
       logger.debug('Skipping Radarr poll because clients are unavailable', { error }, { scope: 'polling' });
       return;
     }
@@ -1826,6 +1830,7 @@ export class PollingService {
       instances = await getLidarrClients();
     } catch (error) {
       context.markInstanceSourceReady('lidarr');
+      noteJobFailure(error);
       logger.debug('Skipping Lidarr poll because clients are unavailable', { error }, { scope: 'polling' });
       return;
     }
@@ -2018,6 +2023,7 @@ export class PollingService {
     try {
       client = await getQBittorrentClient();
     } catch (error) {
+      if (!(error instanceof ConfigurationError)) noteJobFailure(error);
       logger.debug('Skipping qBittorrent poll because client is unavailable', { error }, { scope: 'polling' });
       return;
     }
@@ -2110,6 +2116,7 @@ export class PollingService {
     try {
       client = await getJellyfinClient();
     } catch (error) {
+      if (!(error instanceof ConfigurationError)) noteJobFailure(error);
       logger.debug('Skipping Jellyfin poll because client is unavailable', { error }, { scope: 'polling' });
       return;
     }
@@ -2222,6 +2229,7 @@ export class PollingService {
     try {
       client = await getSeerrClient();
     } catch (error) {
+      if (!(error instanceof ConfigurationError)) noteJobFailure(error);
       logger.debug('Skipping Seerr poll because client is unavailable', { error }, { scope: 'polling' });
       return;
     }
@@ -2977,6 +2985,7 @@ export class PollingService {
     try {
       client = await getQBittorrentClient();
     } catch (error) {
+      if (!(error instanceof ConfigurationError)) noteJobFailure(error);
       logger.debug('Bandwidth schedule: release deferred, qBittorrent unavailable; will retry', { context, error }, { scope: 'polling' });
       return;
     }
@@ -3042,6 +3051,7 @@ export class PollingService {
     try {
       client = await getQBittorrentClient();
     } catch (error) {
+      if (!(error instanceof ConfigurationError)) noteJobFailure(error);
       logger.debug('Skipping bandwidth schedule because qBittorrent is unavailable', { error }, { scope: 'polling' });
       return;
     }
