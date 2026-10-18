@@ -456,6 +456,49 @@ function getMediaHrefFromIds(args: {
   return null;
 }
 
+/** One background job's latest outcome, for the admin status view. */
+export interface PollingSourceHealth {
+  source: string;
+  lastSuccessAt: string | null;
+  lastFailureAt: string | null;
+  lastError: string | null;
+  /** Set while the job is running; a job far past its timeout is stuck. */
+  runningSince: string | null;
+}
+
+export interface PollingHealth {
+  running: boolean;
+  intervalMs: number | null;
+  cycleInProgress: boolean;
+  lastCycle: { finishedAt: string; durationMs: number; failed: number } | null;
+  sources: PollingSourceHealth[];
+}
+
+type SourceOutcome = { source: string; status: 'fulfilled' | 'rejected' | 'skipped'; error?: string };
+
+/**
+ * Fold one cycle's outcomes into the per-source record. A job skipped because
+ * its previous run is still going is neither a success nor a failure, so a hung
+ * job does not look healthy.
+ */
+export function nextSourceHealth(
+  previous: ReadonlyMap<string, Omit<PollingSourceHealth, 'source' | 'runningSince'>>,
+  outcomes: SourceOutcome[],
+  at: string,
+): Map<string, Omit<PollingSourceHealth, 'source' | 'runningSince'>> {
+  const next = new Map(previous);
+  for (const outcome of outcomes) {
+    const entry = { ...(next.get(outcome.source) ?? { lastSuccessAt: null, lastFailureAt: null, lastError: null }) };
+    if (outcome.status === 'fulfilled') entry.lastSuccessAt = at;
+    if (outcome.status === 'rejected') {
+      entry.lastFailureAt = at;
+      entry.lastError = (outcome.error ?? 'Unknown error').slice(0, 300);
+    }
+    next.set(outcome.source, entry);
+  }
+  return next;
+}
+
 export class PollingService {
   private intervalId: ReturnType<typeof setInterval> | null = null;
   private currentIntervalMs: number | null = null;
@@ -465,6 +508,9 @@ export class PollingService {
   // killing DB/notification writes mid-flight.
   private currentPoll: Promise<void> | null = null;
   private activePollSources = new Set<string>();
+  private sourceStartedAt = new Map<string, string>();
+  private sourceHealth = new Map<string, Omit<PollingSourceHealth, 'source' | 'runningSince'>>();
+  private lastCycle: PollingHealth['lastCycle'] = null;
   // Epoch ms of the last retention sweep. The poll loop runs every ~30s but
   // the sweep is throttled to once/day; 0 = run on first cycle.
   private lastRetentionPruneAt = 0;
@@ -557,12 +603,14 @@ export class PollingService {
       return;
     }
     this.activePollSources.add(source);
+    this.sourceStartedAt.set(source, new Date().toISOString());
     const timeoutMs = source in POLL_SOURCE_TIMEOUT_MS
       ? POLL_SOURCE_TIMEOUT_MS[source]
       : 45_000;
     let timer: ReturnType<typeof setTimeout> | null = null;
     const task = fn().finally(() => {
       this.activePollSources.delete(source);
+      this.sourceStartedAt.delete(source);
       if (timer) clearTimeout(timer);
     });
     const timeout = new Promise<never>((_, reject) => {
@@ -622,6 +670,8 @@ export class PollingService {
         sourceTask('sweepTasteProfiles', () => this.sweepTasteProfiles()),
       );
       const pollSources = pollTasks.map((task) => task.source);
+      // Still running from an earlier cycle: runPollSource skips these.
+      const skipped = new Set(pollSources.filter((source) => this.activePollSources.has(source)));
       logger.debug('Polling cycle started', {
         cycleId: context.id,
         sources: pollSources,
@@ -651,6 +701,13 @@ export class PollingService {
         return [{ source: pollSources[index], reason: errorMessage(result.reason) }];
       });
       const durationMs = Math.round((performance.now() - startedAt) * 10) / 10;
+      const finishedAt = new Date().toISOString();
+      this.sourceHealth = nextSourceHealth(this.sourceHealth, results.map((result, index) => ({
+        source: pollSources[index],
+        status: skipped.has(pollSources[index]) ? 'skipped' : result.status,
+        error: result.status === 'rejected' ? errorMessage(result.reason) : undefined,
+      })), finishedAt);
+      this.lastCycle = { finishedAt, durationMs, failed: rejected.length };
       const cycleMetrics = context.getMetrics();
       logger.debug('Polling cycle completed', {
         cycleId: context.id,
@@ -693,6 +750,22 @@ export class PollingService {
         /* logged inside poll() */
       }
     }
+  }
+
+  /** Whether polling runs and how each background job last went, for administrators. */
+  getHealth(): PollingHealth {
+    const names = new Set([...this.sourceHealth.keys(), ...this.sourceStartedAt.keys()]);
+    return {
+      running: this.intervalId !== null,
+      intervalMs: this.currentIntervalMs,
+      cycleInProgress: this.isPolling,
+      lastCycle: this.lastCycle,
+      sources: [...names].sort().map((source) => ({
+        source,
+        ...(this.sourceHealth.get(source) ?? { lastSuccessAt: null, lastFailureAt: null, lastError: null }),
+        runningSince: this.sourceStartedAt.get(source) ?? null,
+      })),
+    };
   }
 
   /** Snapshot of the in-flight auto-map run for the status endpoint. */
