@@ -367,6 +367,8 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
 
   async function runImport(replaceAll: boolean) {
     if (!parsed) return;
+    // Closing (or closing and reopening) the dialog ends this run's opening.
+    const opening = lookupGeneration.current;
     let useUi = selectedUi;
     let useAppSettings = selectedAppSettings;
     let useDiscoverLayout = selectedDiscoverLayout;
@@ -426,7 +428,9 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
       // under way is waited for, so a quick Apply does not drop them. One that
       // failed or has not answered still sends them, and the server reports
       // the skip.
-      const endpoint = currentEndpoint === undefined ? await endpointLookup.current : currentEndpoint;
+      const deviceWanted = !!useDevice && useDevice !== '__none__' && availableNotifDevices.length > 0;
+      const endpoint = !deviceWanted ? null : currentEndpoint === undefined ? await endpointLookup.current : currentEndpoint;
+      if (lookupGeneration.current !== opening) return;
       const sourceDevice = endpoint !== null ? availableNotifDevices.find((d) => d.deviceName === useDevice) : undefined;
       const body: Record<string, unknown> = {};
       if (useAppSettings && parsed.payload.appSettings) {
@@ -498,7 +502,8 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
 
       if (onImported) onImported(importWarnings);
       else showImportWarnings(importWarnings);
-      onOpenChange(false);
+      // Not a later opening's to close.
+      if (lookupGeneration.current === opening) onOpenChange(false);
     } catch (err) {
       toast.error((err as Error)?.message || 'Import failed');
     } finally {
