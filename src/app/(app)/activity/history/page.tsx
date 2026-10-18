@@ -225,9 +225,7 @@ export default function HistoryPage() {
   });
 
   // Drop a stale instance selection if that instance no longer exists. Correcting
-  // invalid local state against freshly-loaded options is a legitimate effect; the
-  // set-state-in-effect rule (now reachable since the component became analyzable
-  // when handleLoadMore was removed) is suppressed here.
+  // invalid local state against freshly-loaded options is a legitimate effect.
   useEffect(() => {
     if (instanceFilter !== 'all' && !instanceOptions.some((i) => i.id === instanceFilter)) {
 

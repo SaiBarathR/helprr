@@ -14,7 +14,7 @@ vi.mock('next/image', () => ({
     void fill;
     void priority;
     void unoptimized;
-    // eslint-disable-next-line @next/next/no-img-element
+    // eslint-disable-next-line @next/next/no-img-element -- a stand-in for next/image
     return <img ref={ref} alt={alt ?? ''} {...props} />;
   }),
 }));

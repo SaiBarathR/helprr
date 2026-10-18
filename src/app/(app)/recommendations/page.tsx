@@ -3,7 +3,7 @@
 import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
 
 import { Suspense, useCallback, useMemo } from 'react';
-import Image from 'next/image';
+import { HeroImage } from '@/components/media/hero-image';
 import Link from '@/components/ui/app-link';
 import { useSearchParams } from 'next/navigation';
 import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
@@ -46,7 +46,7 @@ function HeroSlide({ item, railTitle, priority, tracker }: {
       className="block h-full"
     >
       <div className="relative h-full overflow-hidden">
-        <Image
+        <HeroImage
           src={backdrop}
           alt={item.title}
           fill

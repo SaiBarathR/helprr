@@ -204,7 +204,7 @@ export function RandomWatchView() {
 
               <div className="space-y-3 md:pt-24">
                 <div>
-                  <h1 className="text-2xl font-semibold leading-tight">{pick.title}</h1>
+                  <h2 className="text-2xl font-semibold leading-tight">{pick.title}</h2>
                   <div className="mt-1 flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
                     {pick.year !== null && <span>{pick.year}</span>}
                     {pick.runtime !== null && pick.runtime > 0 && (

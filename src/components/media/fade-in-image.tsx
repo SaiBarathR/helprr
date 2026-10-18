@@ -181,7 +181,7 @@ function RetryableImage({
             className="absolute inset-0 bg-[length:200%_100%] bg-gradient-to-r from-muted via-muted/50 to-muted animate-[shimmer_1.5s_ease-in-out_infinite] motion-reduce:animate-none"
           />
         )}
-        {/* eslint-disable-next-line @next/next/no-img-element */}
+        {/* eslint-disable-next-line @next/next/no-img-element -- sets its own protected-proxy src and srcSet, which next/image would rewrite */}
         <img
           {...imgProps}
           key={`${srcKey}:${attempt}`}

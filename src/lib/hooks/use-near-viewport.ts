@@ -19,8 +19,9 @@ export function useNearViewport<T extends Element>(
     const element = ref.current;
     if (!element) return;
     if (typeof IntersectionObserver === 'undefined') {
-      // Unsupported browsers should retain the pre-optimization behavior.
-      // eslint-disable-next-line react-hooks/set-state-in-effect
+      // Unsupported browsers should retain the pre-optimization behavior. Set
+      // after hydration: the server has no IntersectionObserver either.
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- the browser's support is known only after hydration
       setIsNearViewport(true);
       setHasEnteredViewport(true);
       return;
