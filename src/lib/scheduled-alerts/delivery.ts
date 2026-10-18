@@ -105,6 +105,8 @@ export async function refreshScheduledAlertOccurrences(): Promise<void> {
   for (const alert of alerts) {
     try {
       const { candidates, resolved } = await resolveAlertOccurrencesResult(alert, ctx);
+      // Unresolved means a release source it needs did not answer.
+      if (!resolved) noteJobFailure(new Error('A release source for a scheduled alert did not answer'));
       await upsertOccurrencesForAlert(alert, candidates, { resolved });
       await prisma.scheduledAlert.update({
         where: { id: alert.id },

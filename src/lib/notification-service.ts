@@ -11,6 +11,7 @@ import { EVENT_TYPE_TO_CAPABILITY } from '@/lib/capabilities';
 import { isKnownEventType } from '@/lib/notification-events';
 import { isPushServiceEndpoint } from '@/lib/push-endpoint';
 import { getAppTimeZone, toZonedDate } from '@/lib/timezone';
+import { noteJobFailure } from '@/lib/polling-job-report';
 
 let vapidInitialized = false;
 let vapidMissingLogged = false;
@@ -559,6 +560,8 @@ export async function notifyEvent(event: {
         { endpoint: sub.endpoint, p256dh: sub.p256dh, auth: sub.auth },
         { title: event.title, body: event.body, tag, url: targetUrl, actions, data: actionData }
       );
+      // A push that could not be sent fails the polling job that sent it (if any).
+      if (!success) noteJobFailure(new Error('A push notification could not be sent'));
       return { kind: success ? 'sent' : 'failed' };
   });
 

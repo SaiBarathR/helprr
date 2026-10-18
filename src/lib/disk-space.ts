@@ -1,5 +1,6 @@
 import type { DiskSpace } from '@/types/service-stats';
 import { getSonarrClients, getRadarrClients, getLidarrClients } from '@/lib/service-helpers';
+import { noteJobFailure } from '@/lib/polling-job-report';
 
 // Instances share storage AND containers see the same filesystem under
 // different mounts (/ vs /config, /mnt/disk vs /data vs a root-folder
@@ -51,7 +52,8 @@ async function diskSpaceForClients<C extends DiskClient>(
   let instances: Array<{ client: C }>;
   try {
     instances = await getClients();
-  } catch {
+  } catch (error) {
+    noteJobFailure(error);
     return [];
   }
   const per = await Promise.all(
@@ -59,7 +61,9 @@ async function diskSpaceForClients<C extends DiskClient>(
       try {
         const disks = await client.getDiskSpace();
         return Array.isArray(disks) ? disks.filter((d): d is DiskSpace => Boolean(d)) : [];
-      } catch {
+      } catch (error) {
+        // One instance must not blank the others, but the polling job failed.
+        noteJobFailure(error);
         return [] as DiskSpace[];
       }
     }),

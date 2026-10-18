@@ -230,7 +230,10 @@ async function warmLibrary<C, T extends object>(
     },
     fetchOne,
   });
-  if (!result.complete && configured > 0) throw new Error(`${scope}: an instance did not answer`);
+  // A load this warm joined (or a cache hit) never asked for the instances.
+  if (!result.complete && (configured || (await getInstances()).length) > 0) {
+    throw new Error(`${scope}: an instance did not answer`);
+  }
 }
 
 function toNumber(value: unknown): number | undefined {

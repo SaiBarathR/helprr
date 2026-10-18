@@ -277,3 +277,22 @@ describe('cache warming health', () => {
     expect(warm).toEqual(expect.objectContaining({ lastSuccessAt: null, lastError: 'sonarr: an instance did not answer' }));
   });
 });
+
+describe('cache warming that joins a load already running', () => {
+  it('still counts a configured instance that did not answer', async () => {
+    const service = new PollingService();
+    const internal = stubCycle(service);
+    internal.warmCaches = (PollingService.prototype as unknown as { warmCaches: () => Promise<void> }).warmCaches.bind(service);
+    const services = await import('@/lib/service-helpers');
+    vi.spyOn(services, 'getSonarrClients').mockResolvedValue([{ connection: { id: 's1', label: 'Sonarr' }, client: {} }] as never);
+    vi.spyOn(services, 'getRadarrClients').mockResolvedValue([] as never);
+    vi.spyOn(services, 'getLidarrClients').mockResolvedValue([] as never);
+    // Joined an in-flight load: the loader never asks this warm for instances.
+    mocks.loadLibrary.mockResolvedValue({ items: [], cached: false, available: false, complete: false });
+
+    await internal.poll();
+
+    const warm = service.getHealth().sources.find((entry) => entry.source === 'warmCaches');
+    expect(warm).toEqual(expect.objectContaining({ lastSuccessAt: null, lastError: 'sonarr: an instance did not answer' }));
+  });
+});

@@ -1,11 +1,18 @@
 import { describe, expect, it, vi } from 'vitest';
 
-vi.mock('@/lib/db', () => ({ prisma: { scheduledAlert: { findMany: vi.fn(async () => [{ id: 'alert-1', offsetMinutes: 30 }]) } } }));
+const mocks = vi.hoisted(() => ({ resolve: vi.fn(), upsert: vi.fn(), update: vi.fn() }));
+
+vi.mock('@/lib/db', () => ({
+  prisma: {
+    scheduledAlert: { findMany: vi.fn(async () => [{ id: 'alert-1', offsetMinutes: 30 }]), update: mocks.update },
+    scheduledAlertOccurrence: { findMany: vi.fn(async () => []), upsert: vi.fn(), deleteMany: vi.fn(), updateMany: vi.fn() },
+  },
+}));
 vi.mock('@/lib/logger', () => ({ logger: { warn: vi.fn(), info: vi.fn(), debug: vi.fn(), error: vi.fn() } }));
 vi.mock('@/lib/notification-service', () => ({ notifyEvent: vi.fn() }));
 vi.mock('@/lib/scheduled-alerts/resolver', () => ({
   createResolverContext: vi.fn(() => ({})),
-  resolveAlertOccurrencesResult: vi.fn(async () => { throw new Error('TMDB unavailable'); }),
+  resolveAlertOccurrencesResult: mocks.resolve,
 }));
 
 import { jobReports, type JobReport } from '@/lib/polling-job-report';
@@ -15,8 +22,18 @@ import { refreshScheduledAlertOccurrences } from '@/lib/scheduled-alerts/deliver
 // health view still sees that the job failed.
 describe('scheduled alerts and the polling job report', () => {
   it('reports a refresh failure to the running job', async () => {
+    mocks.resolve.mockRejectedValueOnce(new Error('TMDB unavailable'));
     const report: JobReport = { failure: null, skipped: false };
     await jobReports.run(report, () => refreshScheduledAlertOccurrences());
     expect(report.failure).toBe('TMDB unavailable');
+  });
+});
+
+describe('an unresolved scheduled alert', () => {
+  it('counts as a failure, as a release source it needs did not answer', async () => {
+    mocks.resolve.mockResolvedValueOnce({ candidates: [], resolved: false });
+    const report: JobReport = { failure: null, skipped: false };
+    await jobReports.run(report, () => refreshScheduledAlertOccurrences().catch(() => undefined));
+    expect(report.failure).toBe('A release source for a scheduled alert did not answer');
   });
 });
