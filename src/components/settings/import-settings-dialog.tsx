@@ -114,6 +114,9 @@ function buildMigratedUiPrefs(
   return result;
 }
 
+/** A push subscription lookup that did not answer in time. */
+const LOOKUP_TIMED_OUT = Symbol('lookup timed out');
+
 export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportSettingsDialogProps) {
   // Global sections (app settings, services, users, …) are admin-only; the
   // server enforces this too — members with settings.backup import only their
@@ -137,7 +140,12 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
   // This browser's push subscription: undefined while it is being looked up,
   // null when there is none.
   const [currentEndpoint, setCurrentEndpoint] = useState<string | null | undefined>(undefined);
-  const endpointLookup = useRef<Promise<string | null>>(Promise.resolve(null));
+  // What an import waits for while the lookup is under way: the endpoint, or
+  // LOOKUP_TIMED_OUT when it has not answered within 3 s.
+  const endpointLookup = useRef<Promise<string | null | typeof LOOKUP_TIMED_OUT>>(Promise.resolve(null));
+  // Each opening looks the subscription up afresh; an earlier opening's answer
+  // arriving late is ignored.
+  const lookupGeneration = useRef(0);
   const [pendingConfirm, setPendingConfirm] = useState<{ replaceAll: boolean } | null>(null);
   // The cleaners still to confirm before an import that turns on their
   // automatic deletion, one dialog each.
@@ -162,20 +170,27 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
       setSelectedSourceDevice('');
       setPendingConfirm(null);
       setPendingCleanup(null);
+      setCurrentEndpoint(undefined);
       return;
     }
-    if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator && 'PushManager' in window) {
-      // `ready` never settles without a registered worker, so give up after 3 s.
-      endpointLookup.current = Promise.race([
-        navigator.serviceWorker.ready
+    const generation = ++lookupGeneration.current;
+    const lookup: Promise<string | null> =
+      typeof navigator !== 'undefined' && 'serviceWorker' in navigator && 'PushManager' in window
+        ? navigator.serviceWorker.ready
           .then((reg) => reg.pushManager.getSubscription())
-          .then((sub) => sub?.endpoint ?? null),
-        new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000)),
-      ]).catch(() => null);
-    } else {
-      endpointLookup.current = Promise.resolve(null);
-    }
-    void endpointLookup.current.then(setCurrentEndpoint);
+          .then((sub) => sub?.endpoint ?? null)
+          .catch(() => null)
+        : Promise.resolve(null);
+    // A late answer still updates this opening.
+    void lookup.then((endpoint) => {
+      if (lookupGeneration.current === generation) setCurrentEndpoint(endpoint);
+    });
+    // `ready` never settles without a registered worker, so an import waits
+    // at most 3 s.
+    endpointLookup.current = Promise.race([
+      lookup,
+      new Promise<typeof LOOKUP_TIMED_OUT>((resolve) => setTimeout(() => resolve(LOOKUP_TIMED_OUT), 3000)),
+    ]);
   }, [open]);
 
   async function handleFile(file: File) {
@@ -403,11 +418,12 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
       }
 
       // 2. Send DB-side parts to import endpoint
-      // Device rules apply to this browser's push subscription; without one the
+      // Device rules apply to this browser's push subscription; with none the
       // menu is disabled and the server would only skip them. A lookup still
-      // under way is waited for, so a quick Apply does not drop them.
+      // under way is waited for, so a quick Apply does not drop them. One that
+      // has not answered still sends them, and the server reports the skip.
       const endpoint = currentEndpoint === undefined ? await endpointLookup.current : currentEndpoint;
-      const sourceDevice = endpoint ? availableNotifDevices.find((d) => d.deviceName === useDevice) : undefined;
+      const sourceDevice = endpoint !== null ? availableNotifDevices.find((d) => d.deviceName === useDevice) : undefined;
       const body: Record<string, unknown> = {};
       if (useAppSettings && parsed.payload.appSettings) {
         body.appSettings = parsed.payload.appSettings;
@@ -419,7 +435,7 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
       }
       if (sourceDevice) {
         body.notificationDevice = sourceDevice;
-        if (endpoint) body.currentDeviceEndpoint = endpoint;
+        if (typeof endpoint === 'string') body.currentDeviceEndpoint = endpoint;
       }
       if (useCleanup && parsed.payload.cleanup) {
         body.cleanup = parsed.payload.cleanup;

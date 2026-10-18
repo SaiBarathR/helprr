@@ -261,4 +261,57 @@ describe('importing a cleanup section', () => {
       currentDeviceEndpoint: 'https://push.example/device',
     })]);
   });
+
+  async function loadDeviceFile() {
+    const input = document.querySelector<HTMLInputElement>('input[type="file"]')!;
+    const file = {
+      kind: 'helprr-settings-export',
+      version: 2,
+      zustandVersion: STORE_VERSION,
+      uiPrefs: { playback: { subtitleAppearance: { textSize: 'large' } } },
+      notificationPrefs: [{ deviceName: 'iPhone', rules: [] }],
+    };
+    Object.defineProperty(input, 'files', { value: [new File([JSON.stringify(file)], 'helprr.json')], configurable: true });
+    await act(async () => { input.dispatchEvent(new Event('change', { bubbles: true })); });
+    await vi.waitFor(() => expect(document.body.textContent).toContain('Notification Preferences'));
+  }
+
+  it('still sends the device rules when the lookup does not answer, so the server reports the skip', async () => {
+    vi.stubGlobal('PushManager', class {});
+    vi.stubGlobal('navigator', { ...navigator, serviceWorker: { ready: new Promise(() => {}), addEventListener: () => {}, removeEventListener: () => {} } });
+    await render(true, newClient());
+    await loadDeviceFile();
+
+    await click('Apply selected');
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 3200)); });
+
+    expect(imports).toHaveLength(1);
+    expect(imports[0]).toMatchObject({ notificationDevice: { deviceName: 'iPhone', rules: [] } });
+    expect(imports[0]).not.toHaveProperty('currentDeviceEndpoint');
+  }, 10_000);
+
+  it('looks the subscription up afresh each time the dialog opens', async () => {
+    // First opening: no push support, so no subscription.
+    await render(true, newClient());
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    await render(false, newClient());
+
+    // Reopened after push was enabled; Apply before the lookup answers.
+    let resolveReady: (registration: unknown) => void = () => {};
+    vi.stubGlobal('PushManager', class {});
+    vi.stubGlobal('navigator', { ...navigator, serviceWorker: { ready: new Promise((resolve) => { resolveReady = resolve; }), addEventListener: () => {}, removeEventListener: () => {} } });
+    const client = newClient();
+    await render(true, client);
+    await loadDeviceFile();
+    await click('Apply selected');
+    await act(async () => {
+      resolveReady({ pushManager: { getSubscription: async () => ({ endpoint: 'https://push.example/device' }) } });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(imports).toEqual([expect.objectContaining({
+      notificationDevice: { deviceName: 'iPhone', rules: [] },
+      currentDeviceEndpoint: 'https://push.example/device',
+    })]);
+  });
 });
