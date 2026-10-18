@@ -2112,17 +2112,18 @@ export class PollingService {
   }
 
   private async pollJellyfin() {
+    const connection = await getDefaultConnection('JELLYFIN');
+    if (!connection) return;
+
+    // Jellyfin is set up, so a client it cannot build (no user context) is a failure.
     let client;
     try {
       client = await getJellyfinClient();
     } catch (error) {
-      if (!(error instanceof ConfigurationError)) noteJobFailure(error);
+      noteJobFailure(error);
       logger.debug('Skipping Jellyfin poll because client is unavailable', { error }, { scope: 'polling' });
       return;
     }
-
-    const connection = await getDefaultConnection('JELLYFIN');
-    if (!connection) return;
 
     const state = await prisma.pollingState.upsert({
       where: { serviceConnectionId: connection.id },
@@ -2911,6 +2912,7 @@ export class PollingService {
         period,
         dedupeKey,
       }, { scope: 'polling' });
+      noteJobSkipped();
       return;
     }
 

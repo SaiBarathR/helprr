@@ -11,6 +11,8 @@ const mocks = vi.hoisted(() => ({
   warn: vi.fn(),
   loadLibrary: vi.fn(),
   findConnections: vi.fn(async () => [] as unknown[]),
+  findConnection: vi.fn(async () => null as unknown),
+  findHistory: vi.fn(async () => null as unknown),
   findStates: vi.fn(async () => [] as unknown[]),
   upsertState: vi.fn<(args: unknown) => Promise<unknown>>(async () => ({})),
   probe: vi.fn(),
@@ -18,7 +20,8 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('@/lib/db', () => ({
   prisma: {
-    serviceConnection: { findMany: mocks.findConnections },
+    serviceConnection: { findMany: mocks.findConnections, findFirst: mocks.findConnection },
+    notificationHistory: { findFirst: mocks.findHistory },
     pollingState: { findMany: mocks.findStates, upsert: mocks.upsertState },
   },
 }));
@@ -364,6 +367,38 @@ describe('jobs that cannot load what they work on', () => {
 
     expect(sourceHealth(service, 'applyBandwidthSchedule')).toEqual(expect.objectContaining({ lastError: 'database unavailable' }));
     expect(internal.appliedBandwidth).not.toBeNull();
+  });
+
+  it('counts a Jellyfin connection without its user as failed, but not Jellyfin that is not set up', async () => {
+    const service = new PollingService();
+    const internal = stubCycle(service);
+    real(internal, service, 'pollJellyfin');
+    const services = await import('@/lib/service-helpers');
+    vi.spyOn(services, 'getJellyfinClient').mockRejectedValue(new ConfigurationError('Jellyfin user context is missing.'));
+
+    mocks.findConnection.mockResolvedValue(null);
+    await internal.poll();
+    expect(sourceHealth(service, 'pollJellyfin')).toEqual(expect.objectContaining({ lastSuccessAt: expect.any(String), lastError: null }));
+
+    mocks.findConnection.mockResolvedValue({ id: 'jf1', type: 'JELLYFIN', label: 'Jellyfin' });
+    await internal.poll();
+    expect(sourceHealth(service, 'pollJellyfin')).toEqual(expect.objectContaining({ lastError: 'Jellyfin user context is missing.' }));
+    expect(service.getHealth().lastCycle?.failed).toBe(1);
+  });
+
+  it('keeps a failed activity digest failed while its window has already been used', async () => {
+    mocks.settings.mockResolvedValue({ notificationGroupingEnabled: true, activityDigestMode: 'daily', activityDigestHour: 0, timeZone: 'UTC' });
+    const service = new PollingService();
+    const internal = stubCycle(service);
+    internal.checkActivityDigest = vi.fn(async () => { throw new Error('push failed'); });
+    await internal.poll();
+    real(internal, service, 'checkActivityDigest');
+    mocks.findHistory.mockResolvedValue({ id: 'h1' });
+
+    await internal.poll();
+
+    expect(mocks.findHistory).toHaveBeenCalledOnce();
+    expect(sourceHealth(service, 'checkActivityDigest')).toEqual(expect.objectContaining({ lastSuccessAt: null, lastError: 'push failed' }));
   });
 
   it('counts a reachability check whose result could not be saved as failed, and still checks the rest', async () => {

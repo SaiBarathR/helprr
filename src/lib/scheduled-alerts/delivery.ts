@@ -6,7 +6,7 @@ import { resolveHref } from '@/lib/scheduled-alerts/helpers';
 import { createResolverContext, resolveAlertOccurrencesResult } from '@/lib/scheduled-alerts/resolver';
 import type { OccurrenceCandidate } from '@/lib/scheduled-alerts/types';
 import type { ScheduledAlert, Prisma } from '@prisma/client';
-import { noteJobFailure } from '@/lib/polling-job-report';
+import { noteJobFailure, noteJobSkipped } from '@/lib/polling-job-report';
 
 type DbClient = Prisma.TransactionClient | typeof prisma;
 
@@ -97,7 +97,10 @@ export async function refreshScheduledAlertOccurrences(): Promise<void> {
     take: 100,
     orderBy: { updatedAt: 'asc' },
   });
-  if (alerts.length === 0) return;
+  if (alerts.length === 0) {
+    noteJobSkipped();
+    return;
+  }
 
   const ctx = createResolverContext({
     maxOffsetMinutes: Math.max(...alerts.map((alert) => alert.offsetMinutes)),
@@ -132,7 +135,10 @@ export async function checkScheduledAlerts(): Promise<void> {
     take: 50,
     orderBy: { notifyAt: 'asc' },
   });
-  if (due.length === 0) return;
+  if (due.length === 0) {
+    noteJobSkipped();
+    return;
+  }
 
   for (const occ of due) {
     const alert = occ.alert;
