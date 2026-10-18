@@ -162,6 +162,21 @@ describe('RateControl', () => {
     expect(document.activeElement).toBe(trigger);
   });
 
+  it('shows the saved rating again after a failed save from a closed tile menu', async () => {
+    stored = 'up';
+    render(true);
+    await flush();
+    act(() => byLabel('Rate The Matrix')!.click());
+    await flush();
+    fetchMock.mockImplementationOnce(async () => new Response('{}', { status: 500 }));
+    act(() => byLabel('Love this!')!.click());
+    await flush();
+    // The menu closed (the lazy query is now idle), the save failed, and the
+    // server still has "I like this".
+    expect(byLabel('Love this!')).toBeNull();
+    expect(byLabel('Rated The Matrix: I like this')).not.toBeNull();
+  });
+
   it('reads nothing until a lazy control is opened', async () => {
     render(true);
     await flush();

@@ -2,7 +2,8 @@ import { prisma } from '@/lib/db';
 import type { Prisma } from '@prisma/client';
 import { isItemKey } from './item-keys';
 import { invalidateRecommendations } from './engine';
-import { RATING_OF, setRating } from './ratings';
+import { RATING_OF, replaceRating } from './ratings';
+import { getRedisClient } from '@/lib/redis';
 
 // Event ingestion: validated, batched, own-user only (the route passes the
 // authenticated user's id — client-supplied user ids are never accepted).
@@ -127,36 +128,62 @@ export function parseEventsBody(body: unknown): ParseResult {
 
 export type IngestResult = { ok: true; stored: number } | { ok: false; rateLimited: true };
 
+/**
+ * Events submitted in this window, this batch included. Counted as sent, not as
+ * stored: a rating replaces the title's previous one, so stored rows undercount.
+ * Null without Redis.
+ */
+async function countSubmitted(userId: string, count: number): Promise<number | null> {
+  try {
+    const redis = await getRedisClient();
+    const key = `recommendations:events:${userId}:${Math.floor(Date.now() / RATE_WINDOW_MS)}`;
+    const total = await redis.incrBy(key, count);
+    if (total === count) await redis.expire(key, Math.ceil((2 * RATE_WINDOW_MS) / 1000));
+    return total;
+  } catch {
+    return null;
+  }
+}
+
 export async function ingestEvents(userId: string, events: IncomingEvent[]): Promise<IngestResult> {
-  const windowStart = new Date(Date.now() - RATE_WINDOW_MS);
-  const recentCount = await prisma.recommendationEvent.count({
-    where: { userId, createdAt: { gte: windowStart } },
-  });
-  if (recentCount + events.length > RATE_MAX_EVENTS_PER_WINDOW) {
+  const submitted = await countSubmitted(userId, events.length);
+  const overLimit = submitted !== null
+    ? submitted > RATE_MAX_EVENTS_PER_WINDOW
+    : (await prisma.recommendationEvent.count({
+        where: { userId, createdAt: { gte: new Date(Date.now() - RATE_WINDOW_MS) } },
+      })) + events.length > RATE_MAX_EVENTS_PER_WINDOW;
+  if (overLimit) {
     return { ok: false, rateLimited: true };
   }
 
   // A like, dislike or love is a rating: it replaces the title's previous one.
-  const ratings = events.filter((event) => event.eventType in RATING_OF);
+  // The whole batch commits or none of it, as one createMany did. Ratings take
+  // their per-title locks in title order, so two batches cannot deadlock.
+  const ratings = events
+    .filter((event) => event.eventType in RATING_OF)
+    .sort((a, b) => (a.itemKey < b.itemKey ? -1 : a.itemKey > b.itemKey ? 1 : 0));
   const others = events.filter((event) => !(event.eventType in RATING_OF));
-  for (const event of ratings) {
-    await setRating(userId, event.itemKey, RATING_OF[event.eventType], undefined, {
-      railId: event.railId,
-      context: (event.context ?? undefined) as Prisma.InputJsonValue | undefined,
-    });
-  }
-
-  if (others.length > 0) await prisma.recommendationEvent.createMany({
-    data: others.map((event) => ({
-      userId,
-      itemKey: event.itemKey,
-      eventType: event.eventType,
-      railId: event.railId ?? null,
-      context: (event.context ?? undefined) as Prisma.InputJsonValue | undefined,
-    })),
+  await prisma.$transaction(async (tx) => {
+    for (const event of ratings) {
+      await replaceRating(tx, userId, event.itemKey, RATING_OF[event.eventType], undefined, {
+        railId: event.railId,
+        context: (event.context ?? undefined) as Prisma.InputJsonValue | undefined,
+      });
+    }
+    if (others.length > 0) {
+      await tx.recommendationEvent.createMany({
+        data: others.map((event) => ({
+          userId,
+          itemKey: event.itemKey,
+          eventType: event.eventType,
+          railId: event.railId ?? null,
+          context: (event.context ?? undefined) as Prisma.InputJsonValue | undefined,
+        })),
+      });
+    }
   });
 
-  if (events.some((event) => INSTANT_FEEDBACK.has(event.eventType))) {
+  if (ratings.length > 0 || events.some((event) => INSTANT_FEEDBACK.has(event.eventType))) {
     await invalidateRecommendations(userId);
   }
   return { ok: true, stored: events.length };

@@ -29,6 +29,12 @@ export function RatingIcon({ rating, className }: { rating: Rating | null; class
 
 const ratingKey = (itemKey: string) => ['recommendations', 'rating', itemKey] as const;
 
+async function fetchRating(itemKey: string, signal?: AbortSignal): Promise<Rating | null> {
+  const res = await fetch(`/api/recommendations/rating?itemKey=${encodeURIComponent(itemKey)}`, { signal });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return ((await res.json()) as { rating: Rating | null }).rating;
+}
+
 export interface RateTriggerProps {
   label: string;
   rating: Rating | null;
@@ -78,11 +84,7 @@ export function RateControl({
 
   const query = useQuery({
     queryKey: ratingKey(itemKey ?? ''),
-    queryFn: async ({ signal }) => {
-      const res = await fetch(`/api/recommendations/rating?itemKey=${encodeURIComponent(itemKey!)}`, { signal });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      return ((await res.json()) as { rating: Rating | null }).rating;
-    },
+    queryFn: ({ signal }) => fetchRating(itemKey!, signal),
     enabled: canRate && itemKey !== null && (!lazy || open),
     staleTime: 60_000,
   });
@@ -113,6 +115,9 @@ export function RateControl({
     // refetch also puts back the saved rating after a failure.
     onSettled: () => {
       if (queryClient.isMutating({ mutationKey }) > 1) return;
+      // Read the saved rating even where the query is idle (a closed tile menu
+      // is lazy), so a failed save never leaves its optimistic choice showing.
+      void queryClient.fetchQuery({ queryKey: ratingKey(itemKey!), queryFn: () => fetchRating(itemKey!), staleTime: 0 }).catch(() => undefined);
       for (const queryKey of AFFECTED_QUERIES) void queryClient.invalidateQueries({ queryKey });
       void queryClient.invalidateQueries({ predicate: isForYouWidget });
     },

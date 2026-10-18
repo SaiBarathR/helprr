@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import type { RecItem } from '@/lib/recommendations/rec-types';
 
 // Client-side event beacon for the learning pipeline. Events queue locally and
@@ -33,7 +34,11 @@ export interface RecEventTracker {
   flush: () => Promise<void>;
 }
 
+// These replace the title's rating, which the Rate control shows.
+const RATING_EVENTS = new Set(['like', 'dislike', 'love']);
+
 export function useRecEvents(): RecEventTracker {
+  const queryClient = useQueryClient();
   const queue = useRef<QueuedEvent[]>([]);
   const seenImpressions = useRef<Set<string>>(new Set());
   const inflight = useRef<Promise<void> | null>(null);
@@ -54,7 +59,11 @@ export function useRecEvents(): RecEventTracker {
         body: JSON.stringify({ events: batch }),
         keepalive: true,
       })
-        .then(() => undefined)
+        .then((res) => {
+          if (res.ok && batch.some((event) => RATING_EVENTS.has(event.eventType))) {
+            void queryClient.invalidateQueries({ queryKey: ['recommendations', 'rating'] });
+          }
+        })
         // Lost telemetry is acceptable; never disturb the page for it.
         .catch(() => undefined)
         .finally(() => {
@@ -62,7 +71,7 @@ export function useRecEvents(): RecEventTracker {
         });
       await inflight.current;
     }
-  }, []);
+  }, [queryClient]);
 
   useEffect(() => {
     const interval = setInterval(() => void flush(), FLUSH_INTERVAL_MS);

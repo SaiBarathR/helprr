@@ -29,46 +29,51 @@ export async function getRating(userId: string, itemKey: string): Promise<Rating
   return row ? RATING_OF[row.eventType] ?? null : null;
 }
 
+/** Replace (or clear, with null) this user's rating of one title. */
+export async function setRating(userId: string, itemKey: string, rating: Rating | null, genres?: string[]): Promise<void> {
+  await prisma.$transaction((tx) => replaceRating(tx, userId, itemKey, rating, genres));
+  await invalidateRecommendations(userId);
+}
+
 /**
- * Replace (or clear, with null) this user's rating of one title. Every rating
- * goes through here, the feed's thumbs included, so the latest always wins.
- * `event` keeps a feed rating's rail and context on the stored event.
+ * The rating change itself, inside the caller's transaction. Every rating goes
+ * through here, the feed's thumbs included, so the latest always wins. `event`
+ * keeps a feed rating's rail and context on the stored event. The caller
+ * invalidates recommendations once its transaction has committed.
  */
-export async function setRating(
+export async function replaceRating(
+  tx: Prisma.TransactionClient,
   userId: string,
   itemKey: string,
   rating: Rating | null,
   genres?: string[],
   event?: { railId?: string; context?: Prisma.InputJsonValue },
 ): Promise<void> {
-  await prisma.$transaction(async (tx) => {
-    // One rating change per user and title at a time: two quick clicks must not
-    // both delete before either inserts and leave two ratings behind.
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`${userId}:${itemKey}`}))`;
-    await tx.recommendationEvent.deleteMany({
-      where: { userId, itemKey, eventType: { in: RATING_EVENT_TYPES } },
-    });
-    if (rating) {
-      await tx.recommendationEvent.create({
-        data: {
-          userId,
-          itemKey,
-          eventType: EVENT_OF[rating],
-          ...(event?.railId ? { railId: event.railId } : {}),
-          ...(event?.context ? { context: event.context } : genres?.length ? { context: { genres } } : {}),
-        },
-      });
-    }
-    // The stored profile keeps likes and excludes for up to 6 hours; drop what
-    // this rating took back. A cleared thumbs-down lets the title back unless
-    // "Not interested" still holds it.
-    if (rating !== 'up' && rating !== 'love') await forgetLikedItems(userId, [itemKey], tx);
-    if (rating !== 'down') {
-      const stillExcluded = await tx.recommendationEvent.count({
-        where: { userId, itemKey, eventType: { in: EXCLUDE_EVENT_TYPES } },
-      });
-      if (stillExcluded === 0) await forgetExcludedItems(userId, [itemKey], tx);
-    }
+  // One rating change per user and title at a time: two quick clicks must not
+  // both delete before either inserts and leave two ratings behind.
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`${userId}:${itemKey}`}))`;
+  await tx.recommendationEvent.deleteMany({
+    where: { userId, itemKey, eventType: { in: RATING_EVENT_TYPES } },
   });
-  await invalidateRecommendations(userId);
+  if (rating) {
+    await tx.recommendationEvent.create({
+      data: {
+        userId,
+        itemKey,
+        eventType: EVENT_OF[rating],
+        ...(event?.railId ? { railId: event.railId } : {}),
+        ...(event?.context ? { context: event.context } : genres?.length ? { context: { genres } } : {}),
+      },
+    });
+  }
+  // The stored profile keeps likes and excludes for up to 6 hours; drop what
+  // this rating took back. A cleared thumbs-down lets the title back unless
+  // "Not interested" still holds it.
+  if (rating !== 'up' && rating !== 'love') await forgetLikedItems(userId, [itemKey], tx);
+  if (rating !== 'down') {
+    const stillExcluded = await tx.recommendationEvent.count({
+      where: { userId, itemKey, eventType: { in: EXCLUDE_EVENT_TYPES } },
+    });
+    if (stillExcluded === 0) await forgetExcludedItems(userId, [itemKey], tx);
+  }
 }

@@ -2,6 +2,7 @@
 
 import { act, useEffect } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { RecItem } from '@/lib/recommendations/rec-types';
 import { useRecEvents, type RecEventTracker } from './use-rec-events';
@@ -12,6 +13,7 @@ let root: Root;
 let tracker: RecEventTracker;
 const sent: Array<{ events: Array<{ itemKey: string; eventType: string }> }> = [];
 let release: (() => void) | null = null;
+let client: QueryClient;
 
 function Probe({ onReady }: { onReady: (tracker: RecEventTracker) => void }) {
   const events = useRecEvents();
@@ -30,7 +32,10 @@ beforeEach(async () => {
   }));
   const host = document.createElement('div');
   root = createRoot(host);
-  await act(async () => root.render(<Probe onReady={(ready) => { tracker = ready; }} />));
+  client = new QueryClient();
+  await act(async () => root.render(
+    <QueryClientProvider client={client}><Probe onReady={(ready) => { tracker = ready; }} /></QueryClientProvider>,
+  ));
 });
 
 afterEach(async () => {
@@ -55,5 +60,19 @@ describe('useRecEvents flush', () => {
     await act(async () => { await Promise.all([first, second]); });
     expect(settled).toBe(true);
     expect(sent.map((batch) => batch.events.map((e) => e.eventType))).toEqual([['impression'], ['not_interested']]);
+  });
+});
+
+describe('useRecEvents and the Rate control', () => {
+  it('refreshes rating queries once a sent batch carried a like, dislike or love', async () => {
+    const invalidate = vi.spyOn(client, 'invalidateQueries');
+    tracker.impression(item(1), 'top-picks', 0, 'rails');
+    const first = tracker.flush();
+    await act(async () => { release?.(); await first; });
+    expect(invalidate).not.toHaveBeenCalled();
+
+    tracker.event('like', item(3), 'top-picks', 'rails');
+    await act(async () => { await tracker.flush(); });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['recommendations', 'rating'] });
   });
 });
