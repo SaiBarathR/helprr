@@ -2,6 +2,7 @@ import { prisma } from '@/lib/db';
 import type { Prisma } from '@prisma/client';
 import { isItemKey } from './item-keys';
 import { invalidateRecommendations } from './engine';
+import { RATING_OF, setRating } from './ratings';
 
 // Event ingestion: validated, batched, own-user only (the route passes the
 // authenticated user's id — client-supplied user ids are never accepted).
@@ -135,8 +136,18 @@ export async function ingestEvents(userId: string, events: IncomingEvent[]): Pro
     return { ok: false, rateLimited: true };
   }
 
-  await prisma.recommendationEvent.createMany({
-    data: events.map((event) => ({
+  // A like, dislike or love is a rating: it replaces the title's previous one.
+  const ratings = events.filter((event) => event.eventType in RATING_OF);
+  const others = events.filter((event) => !(event.eventType in RATING_OF));
+  for (const event of ratings) {
+    await setRating(userId, event.itemKey, RATING_OF[event.eventType], undefined, {
+      railId: event.railId,
+      context: (event.context ?? undefined) as Prisma.InputJsonValue | undefined,
+    });
+  }
+
+  if (others.length > 0) await prisma.recommendationEvent.createMany({
+    data: others.map((event) => ({
       userId,
       itemKey: event.itemKey,
       eventType: event.eventType,

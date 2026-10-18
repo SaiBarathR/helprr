@@ -1,3 +1,4 @@
+import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { invalidateRecommendations } from './engine';
 import { forgetExcludedItems, forgetLikedItems } from './profile-store';
@@ -11,7 +12,7 @@ export const RATINGS = ['down', 'up', 'love'] as const;
 export type Rating = (typeof RATINGS)[number];
 
 const EVENT_OF: Record<Rating, string> = { down: 'dislike', up: 'like', love: 'love' };
-const RATING_OF: Record<string, Rating> = { dislike: 'down', like: 'up', love: 'love' };
+export const RATING_OF: Record<string, Rating> = { dislike: 'down', like: 'up', love: 'love' };
 const RATING_EVENT_TYPES = Object.values(EVENT_OF);
 const EXCLUDE_EVENT_TYPES = ['dislike', 'not_interested'];
 
@@ -28,8 +29,18 @@ export async function getRating(userId: string, itemKey: string): Promise<Rating
   return row ? RATING_OF[row.eventType] ?? null : null;
 }
 
-/** Replace (or clear, with null) this user's rating of one title. */
-export async function setRating(userId: string, itemKey: string, rating: Rating | null, genres?: string[]): Promise<void> {
+/**
+ * Replace (or clear, with null) this user's rating of one title. Every rating
+ * goes through here, the feed's thumbs included, so the latest always wins.
+ * `event` keeps a feed rating's rail and context on the stored event.
+ */
+export async function setRating(
+  userId: string,
+  itemKey: string,
+  rating: Rating | null,
+  genres?: string[],
+  event?: { railId?: string; context?: Prisma.InputJsonValue },
+): Promise<void> {
   await prisma.$transaction(async (tx) => {
     // One rating change per user and title at a time: two quick clicks must not
     // both delete before either inserts and leave two ratings behind.
@@ -39,7 +50,13 @@ export async function setRating(userId: string, itemKey: string, rating: Rating 
     });
     if (rating) {
       await tx.recommendationEvent.create({
-        data: { userId, itemKey, eventType: EVENT_OF[rating], ...(genres?.length ? { context: { genres } } : {}) },
+        data: {
+          userId,
+          itemKey,
+          eventType: EVENT_OF[rating],
+          ...(event?.railId ? { railId: event.railId } : {}),
+          ...(event?.context ? { context: event.context } : genres?.length ? { context: { genres } } : {}),
+        },
       });
     }
     // The stored profile keeps likes and excludes for up to 6 hours; drop what

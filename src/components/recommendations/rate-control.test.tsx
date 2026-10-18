@@ -95,12 +95,18 @@ describe('RateControl', () => {
       '["recommendations"]', '["recommendations-excluded"]', '["recommendations-excluded-count"]', '["jellyfin","catalog","recommendation-rails"]',
     ]));
     expect(invalidate.mock.calls.every(([filters]) => filters?.refetchType === undefined)).toBe(true);
+    // The dashboard's For You widget too.
+    const predicate = invalidate.mock.calls.map(([filters]) => filters?.predicate).find(Boolean)!;
+    expect(predicate({ queryKey: ['widget-data', 'for-you-12'] } as never)).toBe(true);
+    expect(predicate({ queryKey: ['widget-data', 'calendar'] } as never)).toBe(false);
   });
 
-  it('sends a second choice only after the first has been saved', async () => {
+  it('sends a second choice only after the first has been saved, and keeps showing it meanwhile', async () => {
     let release!: () => void;
+    let releaseSecond!: () => void;
     fetchMock.mockImplementationOnce(async () => new Response(JSON.stringify({ rating: null })));
-    fetchMock.mockImplementationOnce(() => new Promise<Response>((resolve) => { release = () => resolve(new Response('{}')); }));
+    fetchMock.mockImplementationOnce(() => new Promise<Response>((resolve) => { release = () => { stored = 'up'; resolve(new Response('{}')); }; }));
+    fetchMock.mockImplementationOnce(() => new Promise<Response>((resolve) => { releaseSecond = () => { stored = 'down'; resolve(new Response('{}')); }; }));
     render();
     await flush();
     act(() => byLabel('Rate The Matrix')!.click());
@@ -114,6 +120,28 @@ describe('RateControl', () => {
     await act(async () => { release(); });
     await flush();
     expect(puts()).toBe(2);
+    // The first save's refetch must not show its older rating over the queued choice.
+    expect(byLabel('Rated The Matrix: Not for me')).not.toBeNull();
+    await act(async () => { releaseSecond(); });
+    await flush();
+    expect(byLabel('Rated The Matrix: Not for me')).not.toBeNull();
+  });
+
+  it('closes when focus leaves it, and then leaves Escape to whatever has focus', async () => {
+    render();
+    await flush();
+    const outside = document.createElement('button');
+    document.body.appendChild(outside);
+    const outer = vi.fn();
+    outside.addEventListener('keydown', outer);
+    act(() => byLabel('Rate The Matrix')!.click());
+    expect(byLabel('I like this')).not.toBeNull();
+    act(() => outside.focus());
+    expect(byLabel('I like this')).toBeNull();
+    act(() => { outside.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); });
+    expect(outer).toHaveBeenCalledTimes(1);
+    expect(document.activeElement).toBe(outside);
+    outside.remove();
   });
 
   it('opens on the pressed choice, and Escape closes only the menu', async () => {

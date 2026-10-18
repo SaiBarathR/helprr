@@ -44,6 +44,9 @@ const AFFECTED_QUERIES = [
   ['recommendations-excluded-count'],
   ['jellyfin', 'catalog', 'recommendation-rails'],
 ] as const;
+/** The dashboard's For You widget, cached as `['widget-data', 'for-you-<limit>']`. */
+const isForYouWidget = (query: { queryKey: readonly unknown[] }) =>
+  query.queryKey[0] === 'widget-data' && String(query.queryKey[1]).startsWith('for-you');
 
 /**
  * The Rate control: thumbs-down, thumbs-up or "Love this!", sent to the
@@ -84,7 +87,9 @@ export function RateControl({
     staleTime: 60_000,
   });
 
+  const mutationKey = ['recommendations', 'rating-save', itemKey];
   const mutation = useMutation({
+    mutationKey,
     // Two quick choices for one title are sent in order, never side by side.
     scope: { id: `rating:${itemKey}` },
     mutationFn: async (rating: Rating | null) => {
@@ -98,16 +103,18 @@ export function RateControl({
     onMutate: async (rating) => {
       const key = ratingKey(itemKey!);
       await queryClient.cancelQueries({ queryKey: key });
-      const previous = queryClient.getQueryData<Rating | null>(key);
       queryClient.setQueryData(key, rating);
-      return { previous };
     },
-    onError: (_error, _rating, context) => {
-      queryClient.setQueryData(ratingKey(itemKey!), context?.previous ?? null);
+    onError: () => {
       toast.error("Couldn't save your rating.");
     },
-    onSuccess: () => {
+    // Only once the title's last queued choice has settled: an earlier one's
+    // refetch would show the server's older rating over the newer choice. The
+    // refetch also puts back the saved rating after a failure.
+    onSettled: () => {
+      if (queryClient.isMutating({ mutationKey }) > 1) return;
       for (const queryKey of AFFECTED_QUERIES) void queryClient.invalidateQueries({ queryKey });
+      void queryClient.invalidateQueries({ predicate: isForYouWidget });
     },
   });
 
@@ -128,7 +135,7 @@ export function RateControl({
     // Window capture runs before the dialog's own document listener, so Escape
     // closes this menu and not the Watch overlay around it.
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
+      if (event.key !== 'Escape' || !root?.contains(document.activeElement)) return;
       event.stopPropagation();
       event.preventDefault();
       setOpen(false);
@@ -147,7 +154,14 @@ export function RateControl({
   const current = OPTIONS.find((option) => option.rating === rating);
 
   return (
-    <span ref={rootRef} className="relative inline-flex">
+    <span
+      ref={rootRef}
+      className="relative inline-flex"
+      // Tabbing away closes the menu, so its Escape handling never outlives it.
+      onBlur={(event) => {
+        if (open && !event.currentTarget.contains(event.relatedTarget as Node | null)) setOpen(false);
+      }}
+    >
       {renderTrigger({
         label: current ? `Rated ${title}: ${current.label}` : `Rate ${title}`,
         rating,

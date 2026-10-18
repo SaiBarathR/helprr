@@ -84,6 +84,17 @@ export async function rebuildTasteProfile(user: ProfileUser): Promise<TasteProfi
       const live = new Set(stillExcluded.map((row) => row.itemKey));
       built.profile.negatives.excludedItemKeys = excluded.filter((key) => live.has(key));
     }
+    // Likewise a like or love taken back meanwhile: keep only liked keys still rated.
+    const liked = built.profile.likedItemKeys;
+    if (liked.length > 0) {
+      const stillLiked = await tx.recommendationEvent.findMany({
+        where: { userId: user.id, eventType: { in: ['like', 'love'] }, itemKey: { in: liked } },
+        select: { itemKey: true },
+        distinct: ['itemKey'],
+      });
+      const live = new Set(stillLiked.map((row) => row.itemKey));
+      built.profile.likedItemKeys = liked.filter((key) => live.has(key));
+    }
     const json = built.profile as unknown as Prisma.InputJsonValue;
     await tx.userTasteProfile.upsert({
       where: { userId: user.id },
