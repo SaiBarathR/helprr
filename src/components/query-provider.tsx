@@ -27,6 +27,9 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
   const [authenticationBoundary, setAuthenticationBoundary] = useState<'reload' | 'login' | null>(null);
   const [authenticationBoundaryError, setAuthenticationBoundaryError] = useState(false);
   const boundaryClearStarted = useRef(false);
+  // Set once signing out or another tab's change begins: from then on that
+  // clean-up decides where the page goes, not a reconnect refresh.
+  const boundaryStarted = useRef(false);
   useEffect(() => {
     let controller: AbortController | null = null;
     let pending = false;
@@ -37,21 +40,30 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
     // state such as playback, but one that fails falls back to a full page
     // load, the very reload reconnecting must not cause — hence the check.
     const refreshWhenReachable = (signal: AbortSignal, retriesLeft: number) => {
-      void fetch('/api/health', { cache: 'no-store', signal })
+      // A probe that hangs counts as unanswered after 5 s.
+      const probe = new AbortController();
+      const timer = setTimeout(() => probe.abort(), 5_000);
+      const stop = () => probe.abort();
+      signal.addEventListener('abort', stop, { once: true });
+      void fetch('/api/health', { cache: 'no-store', signal: probe.signal })
         .then((res) => {
           if (!res.ok) throw new Error(`health ${res.status}`);
-          if (signal.aborted) return;
+          if (signal.aborted || boundaryStarted.current) return;
           router.refresh();
           void refreshAfterReconnect(queryClient, window.location.pathname, signal);
         })
         .catch(() => {
-          if (signal.aborted) return;
+          if (signal.aborted || boundaryStarted.current) return;
           if (retriesLeft > 0) retry = setTimeout(() => refreshWhenReachable(signal, retriesLeft - 1), 5_000);
           else pending = true;
+        })
+        .finally(() => {
+          clearTimeout(timer);
+          signal.removeEventListener('abort', stop);
         });
     };
     const refresh = () => {
-      if (!navigator.onLine || document.visibilityState === 'hidden') return;
+      if (boundaryStarted.current || !navigator.onLine || document.visibilityState === 'hidden') return;
       controller?.abort();
       clearTimeout(retry);
       controller = new AbortController();
@@ -77,6 +89,7 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
     const begin = (destination: 'reload' | 'login') => {
       if (handlingBoundary) return;
       handlingBoundary = true;
+      boundaryStarted.current = true;
       // Queries that refetch with the dead cookie must not jump to Login
       // while the caches below are still being cleared.
       holdLoginRedirect();

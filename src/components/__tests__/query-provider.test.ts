@@ -260,4 +260,44 @@ describe('QueryProvider reconnect', () => {
     expect(mocks.refreshAfterReconnect).toHaveBeenCalledTimes(1);
     vi.useRealTimers();
   });
+
+  it('treats a health check that hangs as unanswered, and tries again on the next return to the page', async () => {
+    vi.useFakeTimers();
+    // A request that never answers, until it is aborted.
+    vi.stubGlobal('fetch', vi.fn((_url: string, init?: RequestInit) => new Promise((_resolve, reject) => {
+      init?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
+    })));
+    await act(async () => {
+      root.render(createElement(QueryProvider, null, 'Content'));
+    });
+
+    await act(async () => { window.dispatchEvent(new Event('online')); });
+    // 5 s probe timeout, 5 s before the retry, 5 s retry timeout.
+    await act(async () => { await vi.advanceTimersByTimeAsync(15_000); });
+    expect(fetch).toHaveBeenCalledTimes(2);
+
+    await act(async () => { document.dispatchEvent(new Event('visibilitychange')); });
+    expect(fetch).toHaveBeenCalledTimes(3);
+    expect(mocks.routerRefresh).not.toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
+  it('does not refresh once signing out has begun, even when the health check answers after', async () => {
+    mocks.clearBrowserCaches.mockReturnValue(new Promise(() => {}));
+    let answer: (response: Response) => void = () => {};
+    vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>((resolve) => { answer = resolve; })));
+    await act(async () => {
+      root.render(createElement(QueryProvider, null, 'Content'));
+    });
+
+    await act(async () => { window.dispatchEvent(new Event('online')); });
+    await act(async () => { sessionEndCallback?.(); });
+    await act(async () => {
+      answer(new Response('{"status":"ok"}', { status: 200 }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(mocks.routerRefresh).not.toHaveBeenCalled();
+    expect(mocks.refreshAfterReconnect).not.toHaveBeenCalled();
+  });
 });
