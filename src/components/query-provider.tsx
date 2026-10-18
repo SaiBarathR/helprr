@@ -30,25 +30,42 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let controller: AbortController | null = null;
     let pending = false;
+    let retry: ReturnType<typeof setTimeout> | undefined;
+    // What the server rendered into the layout (the user's capabilities,
+    // which services are configured) has no query to refetch. Refresh it in
+    // place, which keeps client state such as playback — but only once the
+    // server answers: a refresh that fails falls back to a full page load,
+    // the very reload reconnecting must not cause.
+    const refreshLayout = (signal: AbortSignal, retriesLeft: number) => {
+      void fetch('/api/health', { cache: 'no-store', signal })
+        .then((res) => {
+          if (!res.ok) throw new Error(`health ${res.status}`);
+          if (!signal.aborted) router.refresh();
+        })
+        .catch(() => {
+          if (signal.aborted) return;
+          if (retriesLeft > 0) retry = setTimeout(() => refreshLayout(signal, retriesLeft - 1), 5_000);
+          else pending = true;
+        });
+    };
     const refresh = () => {
       if (!navigator.onLine || document.visibilityState === 'hidden') return;
       controller?.abort();
+      clearTimeout(retry);
       controller = new AbortController();
       pending = false;
-      // What the server rendered into the layout (the user's capabilities,
-      // which services are configured) has no query to refetch. Refresh it in
-      // place: unlike a reload, this keeps client state such as playback.
-      router.refresh();
+      refreshLayout(controller.signal, 1);
       void refreshAfterReconnect(queryClient, window.location.pathname, controller.signal);
     };
     const online = () => { pending = true; refresh(); };
     const visible = () => { if (pending) refresh(); };
-    const offline = () => controller?.abort();
+    const offline = () => { controller?.abort(); clearTimeout(retry); };
     window.addEventListener('online', online);
     window.addEventListener('offline', offline);
     document.addEventListener('visibilitychange', visible);
     return () => {
       controller?.abort();
+      clearTimeout(retry);
       window.removeEventListener('online', online);
       window.removeEventListener('offline', offline);
       document.removeEventListener('visibilitychange', visible);

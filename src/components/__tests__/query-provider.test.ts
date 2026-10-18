@@ -211,6 +211,7 @@ describe('QueryProvider authentication boundaries', () => {
 
 describe('QueryProvider reconnect', () => {
   it('refreshes the server-rendered layout and the queries when the browser comes back online', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{"status":"ok"}', { status: 200 })));
     await act(async () => {
       root.render(createElement(QueryProvider, null, 'Content'));
     });
@@ -218,7 +219,23 @@ describe('QueryProvider reconnect', () => {
 
     await act(async () => { window.dispatchEvent(new Event('online')); });
 
+    expect(fetch).toHaveBeenCalledWith('/api/health', expect.objectContaining({ cache: 'no-store' }));
     expect(mocks.routerRefresh).toHaveBeenCalledTimes(1);
     expect(mocks.refreshAfterReconnect).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves the layout alone while the server does not answer, since a failed refresh would reload the page', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('Failed to fetch'); }));
+    await act(async () => {
+      root.render(createElement(QueryProvider, null, 'Content'));
+    });
+
+    await act(async () => { window.dispatchEvent(new Event('online')); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(5_000); });
+
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(mocks.routerRefresh).not.toHaveBeenCalled();
+    vi.useRealTimers();
   });
 });
