@@ -35,7 +35,7 @@ product release number.
 | `LIDARR` | Lidarr | REST `/api/v1` | `3.1.2.4913` | Authenticated system-status probe; live track-file and album operations. Artist-list and health reads re-run 2026-10-07 |
 | `QBITTORRENT` | qBittorrent | Web API `/api/v2` | `v5.1.4` | Authenticated app-version probe; live queue, cleanup, keep-data, and delete-data operations. Torrent-list, transfer-summary, and category reads re-run 2026-10-07 |
 | `PROWLARR` | Prowlarr | REST `/api/v1` | `2.5.2.5491`; `2.4.0.5397` (earlier qualification) | Authenticated system-status probe on both; live indexer-list and status reads on `2.5.2.5491` |
-| `JELLYFIN` | Jellyfin | Unversioned REST routes such as `/System/Info`, `/Items`, `/Items/{id}/PlaybackInfo`, `/Videos/{id}/…`, `/Audio/{id}/…`, `/Sessions/Playing*`, `/Users/AuthenticateByName`, `/UserItems/{id}/UserData` | `12.2.0`; `12.0.0` and `10.11.11` (earlier qualifications) | On `12.2.0`: catalog reads, playback negotiation, HLS and subtitle delivery through the media proxy, member-attributed sessions under a new device id, resume, proxy refusals, and Playback Reporting reads; in-player direct play, remux, transcode, track and quality changes, libass, burned-in PGS, and Live TV on 2026-10-08 (see below). On `12.0.0`: live v12 API, catalog, and Chrome HLS playback checks with legacy authorization disabled (see below) |
+| `JELLYFIN` | Jellyfin | Unversioned REST routes such as `/System/Info`, `/Items`, `/Items/{id}/PlaybackInfo`, `/Videos/{id}/…`, `/Audio/{id}/…`, `/Sessions/Playing*`, `/Users/AuthenticateByName` | `12.2.0`; `12.0.0` and `10.11.11` (earlier qualifications) | On `12.2.0`: catalog reads, playback negotiation, HLS and subtitle delivery through the media proxy, member-attributed sessions under a new device id, resume, proxy refusals, and Playback Reporting reads; in-player direct play, remux, transcode, track and quality changes, libass, burned-in PGS, and Live TV on 2026-10-08 (see below). On `12.0.0`: live v12 API, catalog, and Chrome HLS playback checks with legacy authorization disabled (see below) |
 | `TMDB` | TMDB | Hosted API `v3` | No product version exposed | Authenticated `/configuration` request succeeded; Discover read re-run 2026-10-07 |
 | `ANILIST` | AniList | Hosted GraphQL API at `graphql.anilist.co` | No product version exposed | OAuth-authenticated Viewer query succeeded; Anime home read re-run 2026-10-07 |
 | `SEERR` | Seerr | REST `/api/v1` | `3.4.1`; `3.3.0` (earlier qualification) | Authenticated current-user and status probes on both; live request-list and user-list reads on `3.4.1` |
@@ -250,7 +250,10 @@ stack on **2026-08-28**:
   `/Sessions/Playing/Progress` returned `400`; under a member token the session
   reported that member and progress returned `204` with the position advancing
   across successive reads. `/Users/AuthenticateByName` issued the token and
-  `POST /UserItems/{id}/UserData?userId=` persisted resume position.
+  `POST /UserItems/{id}/UserData?userId=` persisted resume position. On
+  2026-10-18, on `12.2.0`, a probe with a member token and no user-data write
+  found the position saved from a playing progress report, a paused one, and the
+  stop report; Helprr now leaves resume to those reports.
 - **Token/DeviceId independence, verified 2026-08-28.** A member access token is
   accepted, and attributes correctly, when presented with a `DeviceId` other
   than the one it was minted against. Helprr's design depends on this: it stores

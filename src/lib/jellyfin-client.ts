@@ -929,47 +929,20 @@ export class JellyfinClient {
   }
 
   /**
-   * Persist resume position on the member's own account.
+   * Report playback state on the member's own token.
    *
-   * Session reports (/Sessions/Playing*) run on the member's own token, so
-   * Jellyfin attributes their progress to the member. This direct write runs on
-   * the admin API key with the explicit userId `markPlayed` also uses, and stays
-   * as the resume safety net; it is what made Resume work while sessions still
-   * ran on the admin API key.
-   */
-  async updateUserItemData(
-    itemId: string,
-    data: { PlaybackPositionTicks?: number; Played?: boolean; PlayCount?: number },
-  ): Promise<void> {
-    await this.client.post(`/UserItems/${itemId}/UserData`, data, {
-      params: { userId: this.requireUserId() },
-    });
-  }
-
-  /**
-   * Report playback state.
-   *
-   * Two things happen per event, and they are not interchangeable:
-   *  - /Sessions/Playing* drives Jellyfin's Now Playing / Active Devices view.
-   *    Each event takes a *different* model and Jellyfin 400s the whole payload
-   *    on any undeclared property, so each branch sends only what its schema
-   *    allows. `PlaybackRate` and `MaxStreamingBitrate` have no Jellyfin
-   *    equivalent and are dropped; shuffle travels as `PlaybackOrder`
-   *    ('Default' | 'Shuffle'), not `ShuffleMode`.
-   *  - updateUserItemData also writes the resume position to the member's
-   *    account directly, as a safety net beside the session report. Session
-   *    reports use the member's own token; the direct write uses the admin API
-   *    key with an explicit userId.
+   * /Sessions/Playing* drives Jellyfin's Now Playing / Active Devices view, and
+   * Jellyfin saves the resume position from every progress and stop report, as
+   * it does for its own clients: the latest report wins, with Jellyfin's resume
+   * and played thresholds applied. Each event takes a *different* model and
+   * Jellyfin 400s the whole payload on any undeclared property, so each branch
+   * sends only what its schema allows. `PlaybackRate` and `MaxStreamingBitrate`
+   * have no Jellyfin equivalent and are dropped; shuffle travels as
+   * `PlaybackOrder` ('Default' | 'Shuffle'), not `ShuffleMode`.
    */
   async reportPlayback(payload: PlaybackProgressPayload): Promise<void> {
     const headers = this.playbackHeaders(payload.deviceId, payload.deviceName);
     const positionTicks = Math.round(payload.positionTicks ?? 0);
-
-    if (payload.event !== 'playing') {
-      // Best-effort: a Now Playing hiccup must not lose the resume point.
-      await this.updateUserItemData(payload.itemId, { PlaybackPositionTicks: positionTicks })
-        .catch(() => undefined);
-    }
 
     // PlaybackStopInfo is much narrower than the start/progress models.
     if (payload.event === 'stopped') {

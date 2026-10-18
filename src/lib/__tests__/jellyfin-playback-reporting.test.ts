@@ -101,28 +101,15 @@ describe('reportPlayback', () => {
     expect(body).not.toHaveProperty('RepeatMode');
   });
 
-  it('persists resume position against the member account, not the admin session', async () => {
-    await client().reportPlayback({ ...base, event: 'progress' });
-    const call = post.mock.calls.find((c) => c[0] === `/UserItems/${ITEM_ID}/UserData`);
-    expect(call, 'progress must write user data or Resume never updates').toBeDefined();
-    expect(call![1]).toEqual({ PlaybackPositionTicks: base.positionTicks });
-    expect(call![2].params).toEqual({ userId: USER_ID });
-  });
-
-  it('writes user data on stop as well', async () => {
-    await client().reportPlayback({ ...base, event: 'stopped' });
-    expect(post.mock.calls.some((c) => c[0] === `/UserItems/${ITEM_ID}/UserData`)).toBe(true);
-  });
-
-  it('does not write user data on the initial playing event', async () => {
-    await client().reportPlayback({ ...base, event: 'playing' });
-    expect(post.mock.calls.some((c) => c[0] === `/UserItems/${ITEM_ID}/UserData`)).toBe(false);
-  });
-
-  it('still reports the session when the user-data write fails', async () => {
-    post.mockImplementationOnce(() => Promise.reject(new Error('user data down')));
-    await client().reportPlayback({ ...base, event: 'progress' });
-    expect(post.mock.calls.some((c) => c[0] === '/Sessions/Playing/Progress')).toBe(true);
+  it('leaves the resume position to the session reports, as Jellyfin clients do', async () => {
+    for (const event of ['playing', 'progress', 'stopped'] as const) {
+      post.mockClear();
+      await client().reportPlayback({ ...base, event, isPaused: event === 'progress' });
+      expect(post.mock.calls.map((c) => c[0]), event).toEqual([
+        event === 'playing' ? '/Sessions/Playing' : event === 'progress' ? '/Sessions/Playing/Progress' : '/Sessions/Playing/Stopped',
+      ]);
+      expect(bodyFor(post.mock.calls[0][0])!.PositionTicks).toBe(base.positionTicks);
+    }
   });
 
   it('rounds fractional position ticks, which Jellyfin models as int64', async () => {
