@@ -968,6 +968,9 @@ stop the application and restore the matching pre-upgrade PostgreSQL backup. Do 
 attempt an unsupported downgrade across migrations. See [README.md](../README.md) for
 the complete restore procedure.
 
+[Server drills](server-drills.md) rehearses a fresh install, a restore, and an upgrade
+on a scratch stack beside the real installation.
+
 ## Part 8: promote the tested digest to stable
 
 Once the exact image has passed production verification, run the manual promotion

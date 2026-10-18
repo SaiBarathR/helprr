@@ -50,6 +50,8 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
+# The entrypoint runs the Prisma CLI on every start; keep it from reporting usage.
+ENV CHECKPOINT_DISABLE=1
 
 # Patch the base image's OpenSSL from the Alpine mirror. node:24-alpine lags the
 # branch it is built from — it shipped libcrypto3/libssl3 3.5.7-r0 while Alpine
