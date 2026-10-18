@@ -8,7 +8,8 @@ import { setAppTimeZone } from '@/lib/timezone';
 import { configureLogger } from '@/lib/logger';
 import { configureApiLogging } from '@/lib/api-logger';
 import { getOrCreateAppSettings } from '@/lib/app-settings';
-import { ensureDefaultForType, clearConnectionMemo } from '@/lib/arr-instances';
+import { ensureDefaultForType, clearConnectionMemo, isArrType } from '@/lib/arr-instances';
+import { invalidateReferenceLabels } from '@/lib/cache/reference-labels';
 import { restartDownloadCleaner, restartQueueCleaner } from '@/lib/cleanup/scheduler';
 import { pruneStrikesForMissingRules } from '@/lib/cleanup/strikes';
 import { createResolverContext, resolveAlertOccurrencesResult } from '@/lib/scheduled-alerts/resolver';
@@ -171,6 +172,12 @@ export async function runImportFollowUps(plan: ImportFollowUpPlan): Promise<Impo
         }
       }
       clearConnectionMemo();
+      // Imported instances change the libraries and their profile and tag names.
+      for (const type of new Set(plan.serviceTypes)) {
+        if (!isArrType(type)) continue;
+        const connections = await prisma.serviceConnection.findMany({ where: { type }, select: { id: true } });
+        for (const { id } of connections) await invalidateReferenceLabels(type.toLowerCase(), id);
+      }
       if (failures.length > 0) throw failures[0];
     });
   }

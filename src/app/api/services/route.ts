@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { invalidateReferenceLabels } from '@/lib/cache/reference-labels';
 import { prisma } from '@/lib/db';
 import { JellyfinClient } from '@/lib/jellyfin-client';
 import { requireUserCapability } from '@/lib/auth';
@@ -253,6 +254,10 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
 
     await ensureDefaultForType(type);
     clearConnectionMemo();
+    // As the [id] routes do: an added or re-pointed instance changes the
+    // combined library, which would otherwise keep its old content for the TTL,
+    // and a re-pointed one has another server's quality profile and tag names.
+    if (isArrType(type)) await invalidateReferenceLabels(type.toLowerCase(), connection.id);
 
     return NextResponse.json(serializeConnection(connection));
   } catch (error) {

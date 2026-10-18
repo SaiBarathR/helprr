@@ -19,9 +19,14 @@ const mocks = vi.hoisted(() => ({
   createResolverContext: vi.fn(),
   resolveAlertOccurrencesResult: vi.fn(),
   upsertOccurrencesForAlert: vi.fn(),
+  connectionFindMany: vi.fn(),
+  invalidateReferenceLabels: vi.fn(),
 }));
 
-vi.mock('@/lib/db', () => ({ prisma: { scheduledAlert: { findMany: mocks.alertFindMany } } }));
+vi.mock('@/lib/db', () => ({
+  prisma: { scheduledAlert: { findMany: mocks.alertFindMany }, serviceConnection: { findMany: mocks.connectionFindMany } },
+}));
+vi.mock('@/lib/cache/reference-labels', () => ({ invalidateReferenceLabels: mocks.invalidateReferenceLabels }));
 vi.mock('@/lib/polling-service', () => ({ pollingService: { restart: mocks.pollingRestart } }));
 vi.mock('@/lib/cache/state', () => ({
   setCachedCacheImagesEnabled: mocks.setCachedCacheImagesEnabled,
@@ -36,6 +41,7 @@ vi.mock('@/lib/app-settings', () => ({ getOrCreateAppSettings: mocks.getOrCreate
 vi.mock('@/lib/arr-instances', () => ({
   ensureDefaultForType: mocks.ensureDefaultForType,
   clearConnectionMemo: mocks.clearConnectionMemo,
+  isArrType: (type: string) => ['SONARR', 'RADARR', 'LIDARR'].includes(type),
 }));
 vi.mock('@/lib/cleanup/scheduler', () => ({
   restartQueueCleaner: mocks.restartQueueCleaner,
@@ -92,6 +98,10 @@ beforeEach(() => {
   mocks.alertFindMany.mockResolvedValue([{ id: 'alert-1', offsetMinutes: 30 }]);
   mocks.resolveAlertOccurrencesResult.mockResolvedValue({ candidates: [], resolved: true });
   mocks.upsertOccurrencesForAlert.mockResolvedValue(undefined);
+  mocks.connectionFindMany.mockImplementation(async ({ where }: { where: { type: string } }) => (
+    where.type === 'SONARR' ? [{ id: 'son-1' }, { id: 'son-2' }] : [{ id: 'rad-1' }]
+  ));
+  mocks.invalidateReferenceLabels.mockResolvedValue(undefined);
   vi.spyOn(console, 'warn').mockImplementation(() => {});
 });
 
@@ -111,6 +121,8 @@ describe('settings import follow-ups', () => {
     expect(mocks.invalidateLayoutCache).toHaveBeenCalledOnce();
     expect(mocks.ensureDefaultForType.mock.calls).toEqual([['SONARR'], ['RADARR']]);
     expect(mocks.clearConnectionMemo).toHaveBeenCalledOnce();
+    // Imported instances change the libraries and their profile and tag names.
+    expect(mocks.invalidateReferenceLabels.mock.calls).toEqual([['sonarr', 'son-1'], ['sonarr', 'son-2'], ['radarr', 'rad-1']]);
   });
 
   it('runs nothing that was not planned', async () => {
