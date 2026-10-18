@@ -6,6 +6,7 @@ import { resolveHref } from '@/lib/scheduled-alerts/helpers';
 import { createResolverContext, resolveAlertOccurrencesResult } from '@/lib/scheduled-alerts/resolver';
 import type { OccurrenceCandidate } from '@/lib/scheduled-alerts/types';
 import type { ScheduledAlert, Prisma } from '@prisma/client';
+import { noteJobFailure, noteJobSkipped } from '@/lib/polling-job-report';
 
 type DbClient = Prisma.TransactionClient | typeof prisma;
 
@@ -96,7 +97,10 @@ export async function refreshScheduledAlertOccurrences(): Promise<void> {
     take: 100,
     orderBy: { updatedAt: 'asc' },
   });
-  if (alerts.length === 0) return;
+  if (alerts.length === 0) {
+    noteJobSkipped();
+    return;
+  }
 
   const ctx = createResolverContext({
     maxOffsetMinutes: Math.max(...alerts.map((alert) => alert.offsetMinutes)),
@@ -104,12 +108,15 @@ export async function refreshScheduledAlertOccurrences(): Promise<void> {
   for (const alert of alerts) {
     try {
       const { candidates, resolved } = await resolveAlertOccurrencesResult(alert, ctx);
+      // Unresolved means a release source it needs did not answer.
+      if (!resolved) noteJobFailure(new Error('A release source for a scheduled alert did not answer'));
       await upsertOccurrencesForAlert(alert, candidates, { resolved });
       await prisma.scheduledAlert.update({
         where: { id: alert.id },
         data: { updatedAt: new Date() },
       });
     } catch (error) {
+      noteJobFailure(error);
       logger.warn('Failed to refresh scheduled alert occurrences', { alertId: alert.id, error }, { scope: 'polling' });
     }
   }
@@ -128,7 +135,10 @@ export async function checkScheduledAlerts(): Promise<void> {
     take: 50,
     orderBy: { notifyAt: 'asc' },
   });
-  if (due.length === 0) return;
+  if (due.length === 0) {
+    noteJobSkipped();
+    return;
+  }
 
   for (const occ of due) {
     const alert = occ.alert;
@@ -171,6 +181,7 @@ export async function checkScheduledAlerts(): Promise<void> {
       // subscriptions, matching the legacy watchlist reminder semantics.
       delivered = true;
     } catch (error) {
+      noteJobFailure(error);
       logger.warn('Scheduled alert push failed', { occurrenceId: occ.id, error }, { scope: 'polling' });
     }
 

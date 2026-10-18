@@ -7,6 +7,9 @@ const mocks = vi.hoisted(() => ({
   delete: vi.fn(),
   updateMany: vi.fn(),
   findUnique: vi.fn(),
+  findMany: vi.fn(async () => [] as unknown[]),
+  createHistory: vi.fn(async () => ({ id: 'h1' })),
+  updateHistory: vi.fn(async () => ({})),
 }));
 
 vi.mock('web-push', () => ({
@@ -22,7 +25,9 @@ vi.mock('@/lib/db', () => ({
       delete: mocks.delete,
       updateMany: mocks.updateMany,
       findUnique: mocks.findUnique,
+      findMany: mocks.findMany,
     },
+    notificationHistory: { create: mocks.createHistory, update: mocks.updateHistory },
   },
 }));
 vi.mock('@/lib/vapid', () => ({
@@ -32,7 +37,9 @@ vi.mock('@/lib/logger', () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
-import { sendPushNotification } from '@/lib/notification-service';
+import { Prisma } from '@prisma/client';
+import { notifyEvent, sendPushNotification } from '@/lib/notification-service';
+import { jobReports, type JobReport } from '@/lib/polling-job-report';
 
 const subscription = {
   endpoint: 'https://fcm.googleapis.com/fcm/send/test-device',
@@ -135,5 +142,28 @@ describe('push TTL', () => {
       const options = await optionsForTag(tag);
       expect(options.TTL, `TTL for ${tag}`).toBe(24 * 60 * 60);
     }
+  });
+});
+
+// A push that went out still counts; the polling job is told its bookkeeping failed.
+describe('notification writes that fail after sending', () => {
+  const inJob = async (run: () => Promise<unknown>) => {
+    const report: JobReport = { failure: null, skipped: false };
+    await jobReports.run(report, run);
+    return report;
+  };
+
+  it('reports a delivery-state write that failed, but not one for a subscription removed meanwhile', async () => {
+    mocks.update.mockRejectedValueOnce(new Error('write failed'));
+    expect((await inJob(() => sendPushNotification(subscription, { title: 'Title', body: 'Body' }))).failure).toBe('write failed');
+
+    mocks.update.mockRejectedValueOnce(new Prisma.PrismaClientKnownRequestError('Record not found', { code: 'P2025', clientVersion: '6' }));
+    expect((await inJob(() => sendPushNotification(subscription, { title: 'Title', body: 'Body' }))).failure).toBeNull();
+  });
+
+  it('reports a delivery count that could not be saved', async () => {
+    mocks.updateHistory.mockRejectedValueOnce(new Error('count write failed'));
+
+    expect((await inJob(() => notifyEvent({ eventType: 'grabbed', title: 'Title', body: 'Body' }))).failure).toBe('count write failed');
   });
 });

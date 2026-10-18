@@ -9,6 +9,36 @@ const mocks = vi.hoisted(() => ({
   error: vi.fn(),
   info: vi.fn(),
   warn: vi.fn(),
+  loadLibrary: vi.fn(),
+  findConnections: vi.fn(async () => [] as unknown[]),
+  findConnection: vi.fn(async () => null as unknown),
+  findHistory: vi.fn(async () => null as unknown),
+  updateSettings: vi.fn(async () => ({})),
+  updateState: vi.fn(async () => ({})),
+  readDisks: vi.fn(),
+  findStates: vi.fn(async () => [] as unknown[]),
+  upsertState: vi.fn<(args: unknown) => Promise<unknown>>(async () => ({})),
+  probe: vi.fn(),
+}));
+
+vi.mock('@/lib/db', () => ({
+  prisma: {
+    serviceConnection: { findMany: mocks.findConnections, findFirst: mocks.findConnection },
+    notificationHistory: { findFirst: mocks.findHistory },
+    appSettings: { update: mocks.updateSettings },
+    user: { findMany: vi.fn(async () => []) },
+    pollingState: { findMany: mocks.findStates, upsert: mocks.upsertState, update: mocks.updateState },
+  },
+}));
+
+vi.mock('@/lib/disk-space', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/disk-space')>()),
+  getAggregatedDiskSpace: mocks.readDisks,
+}));
+
+vi.mock('@/lib/service-health', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/service-health')>()),
+  probeServiceHealth: mocks.probe,
 }));
 
 vi.mock('@/lib/app-settings', async (importOriginal) => {
@@ -28,9 +58,19 @@ vi.mock('@/lib/logger', () => ({
     info: mocks.info,
     warn: mocks.warn,
   },
+  redact: (value: unknown) => value,
+}));
+
+// Cache warming reads libraries through the tagged-library loader, which keeps
+// going past an instance that fails and reports it as incomplete.
+vi.mock('@/lib/cache/tagged-library', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/cache/tagged-library')>()),
+  getCachedTaggedLibrary: mocks.loadLibrary,
 }));
 
 import { PollingService } from '@/lib/polling-service';
+import { jobReports, noteJobFailure, noteJobSkipped, type JobReport } from '@/lib/polling-job-report';
+import { ConfigurationError } from '@/lib/config-error';
 
 type TestContext = PollingCycleContext<{ notificationGroupingEnabled: boolean }>;
 type InternalPollingService = {
@@ -192,5 +232,248 @@ describe('polling service cycle orchestration', () => {
       { sources: ['pollSonarr'] },
       { scope: 'polling' },
     );
+  });
+});
+
+describe('polling health from the cycle', () => {
+  const sourceHealth = (service: PollingService, source: string) => service.getHealth().sources.find((entry) => entry.source === source);
+
+  it('records a job that logs a failure and carries on as failed', async () => {
+    const service = new PollingService();
+    const internal = stubCycle(service);
+    internal.pollJellyfin = vi.fn(async () => { noteJobFailure(new Error('Jellyfin answered 401')); });
+
+    await internal.poll();
+
+    expect(sourceHealth(service, 'pollJellyfin')).toEqual(expect.objectContaining({ lastSuccessAt: null, lastError: 'Jellyfin answered 401' }));
+    expect(service.getHealth().lastCycle?.failed).toBe(1);
+  });
+
+  it('keeps a throttled job\'s last outcome while it has nothing due', async () => {
+    const service = new PollingService();
+    const internal = stubCycle(service);
+    internal.sweepTasteProfiles = vi.fn(async () => { throw new Error('database unavailable'); });
+    await internal.poll();
+    internal.sweepTasteProfiles = vi.fn(async () => { noteJobSkipped(); });
+    await internal.poll();
+
+    expect(sourceHealth(service, 'sweepTasteProfiles')).toEqual(expect.objectContaining({ lastSuccessAt: null, lastError: 'database unavailable' }));
+  });
+
+  it('does not stamp a success for a warm still running from an earlier cycle', async () => {
+    const service = new PollingService();
+    const internal = stubCycle(service);
+    internal.warmCaches = vi.fn(async () => { throw new Error('warm timed out'); });
+    await internal.poll();
+    internal.warmCaches = vi.fn(async () => {});
+    internal.activePollSources.add('warmCaches');
+    await internal.poll();
+
+    expect(internal.warmCaches).not.toHaveBeenCalled();
+    expect(sourceHealth(service, 'warmCaches')).toEqual(expect.objectContaining({ lastSuccessAt: null, lastError: 'warm timed out' }));
+  });
+
+  it('records cache warming with the other jobs', async () => {
+    const service = new PollingService();
+    const internal = stubCycle(service);
+    internal.warmCaches = vi.fn(async () => { throw new Error('warm timed out'); });
+
+    await internal.poll();
+
+    expect(sourceHealth(service, 'warmCaches')).toEqual(expect.objectContaining({ lastError: 'warm timed out' }));
+    expect(service.getHealth().lastCycle?.failed).toBe(1);
+  });
+});
+
+describe('cache warming health', () => {
+  it('counts a warm that read a configured instance that did not answer as failed', async () => {
+    const service = new PollingService();
+    const internal = stubCycle(service);
+    internal.warmCaches = (PollingService.prototype as unknown as { warmCaches: () => Promise<void> }).warmCaches.bind(service);
+    const services = await import('@/lib/service-helpers');
+    vi.spyOn(services, 'getSonarrClients').mockResolvedValue([{ connection: { id: 's1', label: 'Sonarr' }, client: {} }] as never);
+    // Sonarr has one configured instance, which failed: the loader still fulfills,
+    // incomplete. Radarr and Lidarr have none, which is not a failure.
+    mocks.loadLibrary.mockImplementation(async (opts: { getInstances: () => Promise<unknown[]> }) => {
+      await opts.getInstances();
+      return { items: [], cached: false, available: false, complete: false };
+    });
+    vi.spyOn(services, 'getRadarrClients').mockResolvedValue([] as never);
+    vi.spyOn(services, 'getLidarrClients').mockResolvedValue([] as never);
+
+    await internal.poll();
+
+    const warm = service.getHealth().sources.find((entry) => entry.source === 'warmCaches');
+    expect(warm).toEqual(expect.objectContaining({ lastSuccessAt: null, lastError: 'sonarr: an instance did not answer' }));
+  });
+});
+
+describe('cache warming that joins a load already running', () => {
+  it('still counts a configured instance that did not answer', async () => {
+    const service = new PollingService();
+    const internal = stubCycle(service);
+    internal.warmCaches = (PollingService.prototype as unknown as { warmCaches: () => Promise<void> }).warmCaches.bind(service);
+    const services = await import('@/lib/service-helpers');
+    vi.spyOn(services, 'getSonarrClients').mockResolvedValue([{ connection: { id: 's1', label: 'Sonarr' }, client: {} }] as never);
+    vi.spyOn(services, 'getRadarrClients').mockResolvedValue([] as never);
+    vi.spyOn(services, 'getLidarrClients').mockResolvedValue([] as never);
+    // Joined an in-flight load: the loader never asks this warm for instances.
+    mocks.loadLibrary.mockResolvedValue({ items: [], cached: false, available: false, complete: false });
+
+    await internal.poll();
+
+    const warm = service.getHealth().sources.find((entry) => entry.source === 'warmCaches');
+    expect(warm).toEqual(expect.objectContaining({ lastSuccessAt: null, lastError: 'sonarr: an instance did not answer' }));
+  });
+});
+
+describe('jobs that cannot load what they work on', () => {
+  const sourceHealth = (service: PollingService, source: string) => service.getHealth().sources.find((entry) => entry.source === source);
+  const real = (internal: InternalPollingService, service: PollingService, source: string) => {
+    internal[source] = (PollingService.prototype as unknown as Record<string, (...args: unknown[]) => Promise<void>>)[source].bind(service);
+  };
+
+  it('counts an Arr poll whose instances could not be read as failed', async () => {
+    const service = new PollingService();
+    const internal = stubCycle(service);
+    real(internal, service, 'pollSonarr');
+    const services = await import('@/lib/service-helpers');
+    vi.spyOn(services, 'getSonarrClients').mockRejectedValue(new Error('database unavailable'));
+
+    await internal.poll();
+
+    expect(sourceHealth(service, 'pollSonarr')).toEqual(expect.objectContaining({ lastSuccessAt: null, lastError: 'database unavailable' }));
+    expect(service.getHealth().lastCycle?.failed).toBe(1);
+  });
+
+  it('counts a qBittorrent lookup that failed, but not one that is simply not set up', async () => {
+    const service = new PollingService();
+    const internal = stubCycle(service);
+    real(internal, service, 'pollQBittorrent');
+    const services = await import('@/lib/service-helpers');
+    const lookup = vi.spyOn(services, 'getQBittorrentClient');
+
+    lookup.mockRejectedValue(new ConfigurationError('qBittorrent is not configured.'));
+    await internal.poll();
+    expect(sourceHealth(service, 'pollQBittorrent')).toEqual(expect.objectContaining({ lastSuccessAt: expect.any(String), lastError: null }));
+
+    lookup.mockRejectedValue(new Error('database unavailable'));
+    await internal.poll();
+    expect(sourceHealth(service, 'pollQBittorrent')).toEqual(expect.objectContaining({ lastError: 'database unavailable' }));
+    expect(service.getHealth().lastCycle?.failed).toBe(1);
+  });
+
+  it('counts a bandwidth release it could not carry out as failed', async () => {
+    const service = new PollingService();
+    const internal = stubCycle(service);
+    internal.appliedBandwidth = { ruleId: 'r1', downloadKbps: 100, uploadKbps: 50 };
+    internal.applyBandwidthSchedule = vi.fn(async () => {
+      await (internal.releaseAppliedBandwidth as (context: string) => Promise<void>).call(service, 'test');
+    });
+    const services = await import('@/lib/service-helpers');
+    vi.spyOn(services, 'getQBittorrentClient').mockRejectedValue(new Error('database unavailable'));
+
+    await internal.poll();
+
+    expect(sourceHealth(service, 'applyBandwidthSchedule')).toEqual(expect.objectContaining({ lastError: 'database unavailable' }));
+    expect(internal.appliedBandwidth).not.toBeNull();
+  });
+
+  it('counts a Jellyfin connection without its user as failed, but not Jellyfin that is not set up', async () => {
+    const service = new PollingService();
+    const internal = stubCycle(service);
+    real(internal, service, 'pollJellyfin');
+    const services = await import('@/lib/service-helpers');
+    vi.spyOn(services, 'getJellyfinClient').mockRejectedValue(new ConfigurationError('Jellyfin user context is missing.'));
+
+    mocks.findConnection.mockResolvedValue(null);
+    await internal.poll();
+    expect(sourceHealth(service, 'pollJellyfin')).toEqual(expect.objectContaining({ lastSuccessAt: expect.any(String), lastError: null }));
+
+    mocks.findConnection.mockResolvedValue({ id: 'jf1', type: 'JELLYFIN', label: 'Jellyfin' });
+    await internal.poll();
+    expect(sourceHealth(service, 'pollJellyfin')).toEqual(expect.objectContaining({ lastError: 'Jellyfin user context is missing.' }));
+    expect(service.getHealth().lastCycle?.failed).toBe(1);
+  });
+
+  it('keeps a failed activity digest failed while its window has already been used', async () => {
+    mocks.settings.mockResolvedValue({ notificationGroupingEnabled: true, activityDigestMode: 'daily', activityDigestHour: 0, timeZone: 'UTC' });
+    const service = new PollingService();
+    const internal = stubCycle(service);
+    internal.checkActivityDigest = vi.fn(async () => { throw new Error('push failed'); });
+    await internal.poll();
+    real(internal, service, 'checkActivityDigest');
+    mocks.findHistory.mockResolvedValue({ id: 'h1' });
+
+    await internal.poll();
+
+    expect(mocks.findHistory).toHaveBeenCalledOnce();
+    expect(sourceHealth(service, 'checkActivityDigest')).toEqual(expect.objectContaining({ lastSuccessAt: null, lastError: 'push failed' }));
+  });
+
+  it('counts an anime auto-map that could not record its run date as failed', async () => {
+    const service = new PollingService();
+    const services = await import('@/lib/service-helpers');
+    vi.spyOn(services, 'getSonarrClients').mockResolvedValue([] as never);
+    mocks.updateSettings.mockRejectedValueOnce(new Error('write failed'));
+    const report: JobReport = { failure: null, skipped: false };
+
+    const result = await jobReports.run(report, () => service.startAnimeAutoMapRun('scheduled', { animeAutoMapEnabled: true } as never));
+
+    expect(result).toEqual(expect.objectContaining({ reason: 'nothing-to-map' }));
+    expect(report.failure).toBe('write failed');
+  });
+
+  it('counts a Seerr poll whose pending count could not be read as failed', async () => {
+    const service = new PollingService();
+    const internal = stubCycle(service);
+    real(internal, service, 'pollSeerr');
+    const services = await import('@/lib/service-helpers');
+    vi.spyOn(services, 'getSeerrClient').mockResolvedValue({
+      listRequests: async () => ({ results: [] }),
+      getRequestCount: async () => { throw new Error('count unavailable'); },
+    } as never);
+    mocks.findConnection.mockResolvedValue({ id: 'se1', type: 'SEERR', label: 'Seerr' });
+
+    await internal.poll();
+
+    expect(mocks.updateState).toHaveBeenCalledOnce();
+    expect(sourceHealth(service, 'pollSeerr')).toEqual(expect.objectContaining({ lastSuccessAt: null, lastError: 'count unavailable' }));
+  });
+
+  it('counts a disk-space check that could not read the disks as failed', async () => {
+    mocks.settings.mockResolvedValue({
+      notificationGroupingEnabled: true,
+      diskThresholds: [{ diskId: 'd1', label: 'Media', path: '/media', minFreeGb: 10, enabled: true }],
+    });
+    const service = new PollingService();
+    const internal = stubCycle(service);
+    real(internal, service, 'checkDiskSpace');
+    mocks.readDisks.mockRejectedValue(new Error('disks unavailable'));
+
+    await internal.poll();
+
+    expect(sourceHealth(service, 'checkDiskSpace')).toEqual(expect.objectContaining({ lastSuccessAt: null, lastError: 'disks unavailable' }));
+  });
+
+  it('counts a reachability check whose result could not be saved as failed, and still checks the rest', async () => {
+    const service = new PollingService();
+    const internal = stubCycle(service);
+    real(internal, service, 'pollServiceReachability');
+    mocks.findConnections.mockResolvedValue([
+      { id: 'c1', type: 'SONARR', label: 'Sonarr' },
+      { id: 'c2', type: 'RADARR', label: 'Radarr' },
+    ]);
+    mocks.probe.mockResolvedValue({ ok: true });
+    mocks.upsertState.mockImplementation(async (args: unknown) => {
+      if ((args as { where: { serviceConnectionId: string } }).where.serviceConnectionId === 'c1') throw new Error('write failed');
+      return {};
+    });
+
+    await internal.poll();
+
+    expect(mocks.upsertState).toHaveBeenCalledTimes(2);
+    expect(sourceHealth(service, 'pollServiceReachability')).toEqual(expect.objectContaining({ lastSuccessAt: null, lastError: 'write failed' }));
+    expect(service.getHealth().lastCycle?.failed).toBe(1);
   });
 });

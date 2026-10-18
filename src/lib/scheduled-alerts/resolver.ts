@@ -3,10 +3,12 @@ import type { RadarrClient } from '@/lib/radarr-client';
 import type { RadarrCalendarEntry } from '@/types';
 import type { SonarrClient } from '@/lib/sonarr-client';
 import type { SonarrCalendarEntry } from '@/types';
+import axios from 'axios';
 import { getSonarrClients, getRadarrClients } from '@/lib/service-helpers';
 import { getAnimeNextAiringEpisode } from '@/lib/anilist-client';
 import { DEFAULT_HORIZON_DAYS } from '@/lib/scheduled-alerts/constants';
 import { applyOffset, defaultReminderLocal } from '@/lib/scheduled-alerts/helpers';
+import { noteJobFailure } from '@/lib/polling-job-report';
 import type {
   OccurrenceCandidate,
   PreviewResult,
@@ -247,7 +249,10 @@ async function resolveReleaseCandidates(
   }
 
   if (needsRadarr(draft)) {
-    const clients = await getRadarrClients().catch(() => []);
+    const clients = await getRadarrClients().catch((error) => {
+      noteJobFailure(error);
+      return [];
+    });
     const applicable = clients.filter(
       ({ connection }) => !draft.instanceId || connection.id === draft.instanceId,
     );
@@ -260,7 +265,11 @@ async function resolveReleaseCandidates(
           const movieId = Number.parseInt(draft.externalId, 10);
           let movie = null;
           if (Number.isFinite(movieId)) {
-            movie = await client.getMovieById(movieId).catch(() => null);
+            // A film Radarr no longer has falls back to the calendar; other errors are failures.
+            movie = await client.getMovieById(movieId).catch((error) => {
+              if (!(axios.isAxiosError(error) && error.response?.status === 404)) noteJobFailure(error);
+              return null;
+            });
           }
           if (!movie) {
             const cal = await getRadarrCalendarCached(ctx, connection.id, client, startIso, endIso);
@@ -293,8 +302,9 @@ async function resolveReleaseCandidates(
               ),
             );
           }
-        } catch {
-          // try next instance
+        } catch (error) {
+          // Try the next instance; the polling job still failed.
+          noteJobFailure(error);
         }
       }
       if (succeeded) outcomes.radarr = 'success';
@@ -302,7 +312,10 @@ async function resolveReleaseCandidates(
   }
 
   if (needsSonarr(draft)) {
-    const clients = await getSonarrClients().catch(() => []);
+    const clients = await getSonarrClients().catch((error) => {
+      noteJobFailure(error);
+      return [];
+    });
     const applicable = clients.filter(
       ({ connection }) => !draft.instanceId || connection.id === draft.instanceId,
     );
@@ -345,8 +358,9 @@ async function resolveReleaseCandidates(
               ),
             );
           }
-        } catch {
-          // try next instance
+        } catch (error) {
+          // Try the next instance; the polling job still failed.
+          noteJobFailure(error);
         }
       }
       if (succeeded) outcomes.sonarr = 'success';
@@ -376,7 +390,8 @@ async function resolveReleaseCandidates(
             );
           }
         }
-      } catch {
+      } catch (error) {
+        noteJobFailure(error);
         outcomes.anilist = 'failure';
       }
     }

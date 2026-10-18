@@ -7,6 +7,7 @@ import { queryKeys } from '@/lib/query-keys';
 import { ApiError, ensureArray, jsonFetcher } from '@/lib/query-fetch';
 import { Button } from '@/components/ui/button';
 import { GroupedSection } from '@/components/settings/grouped-section';
+import { PollingHealthSection } from '@/components/settings/polling-health-section';
 import { cn } from '@/lib/utils';
 import { useMe } from '@/components/permission-provider';
 import type { UpdateCheckResult } from '@/lib/update-check';
@@ -144,6 +145,12 @@ export default function ServiceStatusPage() {
             </div>
           ))}
         </GroupedSection>
+      )}
+
+      {isAdmin && (
+        <div className="mt-6">
+          <PollingHealthSection />
+        </div>
       )}
 
       <div className="mt-6">

@@ -19,6 +19,7 @@ const AUTH_CALLS = new Set([
 
 const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
   admin: [
+    'GET /api/admin/polling-status',
     'GET /api/admin/support-bundle',
     'GET /api/admin/update-check',
     'GET /api/anilist/library',
@@ -456,7 +457,7 @@ describe('GET API route capability matrix', () => {
   const assignments = policyAssignments();
 
   it('explicitly assigns every GET handler exactly once', () => {
-    expect(handlers.size).toBe(209);
+    expect(handlers.size).toBe(210);
     expect([...assignments.keys()].sort()).toEqual([...handlers.keys()].sort());
   });
 

@@ -9,11 +9,21 @@ import {
 } from 'fs';
 import os from 'os';
 import path from 'path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+
+const fsMocks = vi.hoisted(() => ({ unlink: vi.fn() }));
+
+// Real files throughout; a test can make one deletion fail.
+vi.mock('fs/promises', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('fs/promises')>();
+  fsMocks.unlink.mockImplementation(actual.unlink);
+  return { ...actual, unlink: fsMocks.unlink };
+});
 import {
   pruneOrphanImageCache,
   type ImageCacheRetentionOptions,
 } from '@/lib/cache/image-cache-retention';
+import { jobReports, type JobReport } from '@/lib/polling-job-report';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const NOW_MS = Date.UTC(2026, 6, 14, 12);
@@ -384,6 +394,39 @@ describe('pruneOrphanImageCache', () => {
     expect(existsSync(path.join(active, `${HASH_C}-${UUID_A}.bin`))).toBe(true);
     expect(Object.keys(redis.hashes.get('helprr:cache:image-index:v1') ?? {}))
       .toHaveLength(2);
+  });
+
+  it('reports an evicted file it could not delete to the polling job, and finishes the sweep', async () => {
+    const root = fixtureRoot();
+    const active = path.join(root, 'v1');
+    mkdirSync(active);
+    const redis = new FakeRedis();
+    redis.values.set('helprr:cache:generation', '1');
+    const indexed: Record<string, string> = {};
+    for (const item of [
+      { hash: HASH_A, usedAt: NOW_MS - 3_000 },
+      { hash: HASH_B, usedAt: NOW_MS - 2_000 },
+    ]) {
+      const relativePath = path.join('v1', `${item.hash}-${UUID_A}.bin`);
+      writeFileSync(path.join(root, relativePath), 'aaaa');
+      const entryKey = `helprr:cache:image:v1:${item.hash}`;
+      redis.values.set(entryKey, metadata(1, relativePath, 4, item.usedAt));
+      indexed[entryKey] = JSON.stringify({ entryKey, relativePath, sizeBytes: 4, lastUsedAt: item.usedAt });
+    }
+    redis.hashes.set('helprr:cache:image-index:v1', indexed);
+    const report: JobReport = { failure: null, skipped: false };
+    fsMocks.unlink.mockRejectedValueOnce(Object.assign(new Error('permission denied'), { code: 'EACCES' }));
+
+    const result = await jobReports.run(report, () => pruneOrphanImageCache({
+      rootDir: root,
+      nowMs: NOW_MS,
+      redis,
+      maxBytes: 4,
+      maxEntries: 1,
+    }));
+
+    expect(result).toMatchObject({ status: 'completed', evictedEntries: 1 });
+    expect(report.failure).toBe('permission denied');
   });
 
   it('does not mutate files or accounting while another quota mutation holds the lock', async () => {

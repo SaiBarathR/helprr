@@ -5,6 +5,7 @@ import { escapeSqlLiteral } from '@/lib/jellyfin-playback-query';
 import { loadAniListConnection } from '@/lib/anilist-oauth';
 import { fetchMediaListCollection, type AniListMediaListEntry } from '@/lib/anilist-mutations';
 import { getAnilistJsonWithCache } from '@/lib/cache/anilist-api-cache';
+import { noteJobFailure } from '@/lib/polling-job-report';
 import type { JellyfinItem } from '@/types/jellyfin';
 import { anilistItemKey, tmdbItemKey } from './item-keys';
 import type {
@@ -115,7 +116,11 @@ async function collectPlaybackReporting(
     ORDER BY DateCreated DESC
     LIMIT ${PLAYBACK_REPORTING_ROW_LIMIT}
   `;
-  const result = await client.submitCustomQuery(query).catch(() => null);
+  // A missing plugin already answers null; a throw is a failed read.
+  const result = await client.submitCustomQuery(query).catch((error) => {
+    noteJobFailure(error);
+    return null;
+  });
   if (!result || !Array.isArray(result.results)) {
     return { playbackReportingPlays: [], playbackReportingAvailable: false, watchTimeMinByTitle: new Map() };
   }
@@ -211,8 +216,9 @@ export async function collectJellyfinSignals(
         : (item.SeriesId ? seriesById.get(item.SeriesId)?.Genres ?? [] : []);
       recentPlays.push({ at, genres });
     }
-  } catch {
+  } catch (error) {
     // Fail-soft: moods degrade, engagement still works.
+    noteJobFailure(error);
   }
 
   const reporting = await collectPlaybackReporting(client, jellyfinUserId, titleGenres);
@@ -327,8 +333,9 @@ export async function collectAniListSignals(
       }
     }
     return { available: true, engagedTitles, planned, listedAnilistIds };
-  } catch {
+  } catch (error) {
     // Fail-soft: AniList down/rate-limited/unlinked must not sink the profile.
+    noteJobFailure(error);
     return empty;
   }
 }

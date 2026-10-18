@@ -11,6 +11,7 @@ import { EVENT_TYPE_TO_CAPABILITY } from '@/lib/capabilities';
 import { isKnownEventType } from '@/lib/notification-events';
 import { isPushServiceEndpoint } from '@/lib/push-endpoint';
 import { getAppTimeZone, toZonedDate } from '@/lib/timezone';
+import { noteJobFailure } from '@/lib/polling-job-report';
 
 let vapidInitialized = false;
 let vapidMissingLogged = false;
@@ -355,7 +356,10 @@ export async function sendPushNotification(
     await prisma.pushSubscription.update({
       where: { endpoint: subscription.endpoint },
       data: { consecutiveFailures: 0, lastSucceededAt: new Date() },
-    }).catch(() => {});
+    }).catch((error) => {
+      // A subscription removed while this push was in flight is not a failure.
+      if (!(error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025')) noteJobFailure(error);
+    });
     return true;
   } catch (error: unknown) {
     const errObj = error as Record<string, unknown> & Partial<Error>;
@@ -559,6 +563,8 @@ export async function notifyEvent(event: {
         { endpoint: sub.endpoint, p256dh: sub.p256dh, auth: sub.auth },
         { title: event.title, body: event.body, tag, url: targetUrl, actions, data: actionData }
       );
+      // A push that could not be sent fails the polling job that sent it (if any).
+      if (!success) noteJobFailure(new Error('A push notification could not be sent'));
       return { kind: success ? 'sent' : 'failed' };
   });
 
@@ -598,6 +604,7 @@ export async function notifyEvent(event: {
     });
   } catch (err) {
     // The dedupe row already exists; only the embedded counts are stale.
+    noteJobFailure(err);
     logger.warn('Notification history count update failed', {
       eventType: event.eventType,
       reason: err instanceof Error ? err.message : String(err),

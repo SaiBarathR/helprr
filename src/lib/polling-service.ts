@@ -1,6 +1,7 @@
 import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { getSonarrClients, getRadarrClients, getLidarrClients, getQBittorrentClient, getJellyfinClient, getSeerrClient } from '@/lib/service-helpers';
+import { ConfigurationError } from '@/lib/config-error';
 import {
   getAggregatedDiskSpace,
   diskId,
@@ -20,7 +21,8 @@ import { startOfLocalDay, endOfLocalDay, toZonedDate, dateInTimeZone, getLocalDa
 import { buildActivityDigest, type ActivityDigestPeriod } from '@/lib/digests/build-activity-digest';
 import { parseBandwidthSchedule } from '@/lib/bandwidth-scheduler/parse';
 import { pickActiveRule } from '@/lib/bandwidth-scheduler/active-rule';
-import { logger } from '@/lib/logger';
+import { logger, redact } from '@/lib/logger';
+import { jobReports, noteJobFailure, noteJobSkipped, type JobReport } from '@/lib/polling-job-report';
 import {
   createPollingCycleContext,
   type PollingCycleContext,
@@ -102,7 +104,8 @@ async function buildTagMap(client: { getTags: () => Promise<Tag[]> }): Promise<M
   try {
     const tags = await client.getTags();
     return new Map(tags.map((t) => [t.id, t.label]));
-  } catch {
+  } catch (error) {
+    noteJobFailure(error);
     return new Map();
   }
 }
@@ -205,6 +208,34 @@ async function fetchAllQueueRecords(
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+
+/**
+ * Warm one library. The loader keeps going past an instance that fails (one bad
+ * instance must not blank the rest), so a warm that read one is still a failure;
+ * no configured instance at all is not.
+ */
+async function warmLibrary<C, T extends object>(
+  scope: string,
+  getInstances: () => Promise<Array<{ connection: { id: string; label: string }; client: C }>>,
+  fetchOne: (client: C) => Promise<T[]>,
+): Promise<void> {
+  let configured = 0;
+  const result = await getCachedTaggedLibrary({
+    scope,
+    cacheKeySeed: 'all',
+    getInstances: async () => {
+      const instances = await getInstances();
+      configured = instances.length;
+      return instances;
+    },
+    fetchOne,
+  });
+  // A load this warm joined (or a cache hit) never asked for the instances.
+  if (!result.complete && (configured || (await getInstances()).length) > 0) {
+    throw new Error(`${scope}: an instance did not answer`);
+  }
 }
 
 function toNumber(value: unknown): number | undefined {
@@ -456,6 +487,50 @@ function getMediaHrefFromIds(args: {
   return null;
 }
 
+/** One background job's latest outcome, for the admin status view. */
+export interface PollingSourceHealth {
+  source: string;
+  lastSuccessAt: string | null;
+  lastFailureAt: string | null;
+  lastError: string | null;
+  /** Set while the job is running; a job far past its timeout is stuck. */
+  runningSince: string | null;
+}
+
+export interface PollingHealth {
+  running: boolean;
+  intervalMs: number | null;
+  cycleInProgress: boolean;
+  lastCycle: { finishedAt: string; durationMs: number; failed: number } | null;
+  sources: PollingSourceHealth[];
+}
+
+type SourceOutcome = { source: string; status: 'fulfilled' | 'rejected' | 'skipped'; error?: string };
+
+/**
+ * Fold one cycle's outcomes into the per-source record. A job skipped because
+ * its previous run is still going is neither a success nor a failure, so a hung
+ * job does not look healthy.
+ */
+export function nextSourceHealth(
+  previous: ReadonlyMap<string, Omit<PollingSourceHealth, 'source' | 'runningSince'>>,
+  outcomes: SourceOutcome[],
+  at: string,
+): Map<string, Omit<PollingSourceHealth, 'source' | 'runningSince'>> {
+  const next = new Map(previous);
+  for (const outcome of outcomes) {
+    const entry = { ...(next.get(outcome.source) ?? { lastSuccessAt: null, lastFailureAt: null, lastError: null }) };
+    if (outcome.status === 'fulfilled') entry.lastSuccessAt = at;
+    if (outcome.status === 'rejected') {
+      entry.lastFailureAt = at;
+      // Shown to admins: redacted like log output.
+      entry.lastError = String(redact(outcome.error ?? 'Unknown error')).slice(0, 300);
+    }
+    next.set(outcome.source, entry);
+  }
+  return next;
+}
+
 export class PollingService {
   private intervalId: ReturnType<typeof setInterval> | null = null;
   private currentIntervalMs: number | null = null;
@@ -465,6 +540,9 @@ export class PollingService {
   // killing DB/notification writes mid-flight.
   private currentPoll: Promise<void> | null = null;
   private activePollSources = new Set<string>();
+  private sourceStartedAt = new Map<string, string>();
+  private sourceHealth = new Map<string, Omit<PollingSourceHealth, 'source' | 'runningSince'>>();
+  private lastCycle: PollingHealth['lastCycle'] = null;
   // Epoch ms of the last retention sweep. The poll loop runs every ~30s but
   // the sweep is throttled to once/day; 0 = run on first cycle.
   private lastRetentionPruneAt = 0;
@@ -502,6 +580,7 @@ export class PollingService {
       }, { scope: 'polling' });
       return sentCount;
     } catch (err) {
+      noteJobFailure(err);
       logger.warn('Polling notification failed', {
         ...context,
         eventType: event.eventType,
@@ -551,18 +630,21 @@ export class PollingService {
     }
   }
 
-  private async runPollSource(source: string, fn: () => Promise<void>): Promise<void> {
+  private async runPollSource(source: string, fn: () => Promise<void>, report?: JobReport): Promise<void> {
     if (this.activePollSources.has(source)) {
       logger.warn('Polling source skipped: previous run still active', { source }, { scope: 'polling' });
+      if (report) report.skipped = true;
       return;
     }
     this.activePollSources.add(source);
+    this.sourceStartedAt.set(source, new Date().toISOString());
     const timeoutMs = source in POLL_SOURCE_TIMEOUT_MS
       ? POLL_SOURCE_TIMEOUT_MS[source]
       : 45_000;
     let timer: ReturnType<typeof setTimeout> | null = null;
-    const task = fn().finally(() => {
+    const task = (report ? jobReports.run(report, fn) : fn()).finally(() => {
       this.activePollSources.delete(source);
+      this.sourceStartedAt.delete(source);
       if (timer) clearTimeout(timer);
     });
     const timeout = new Promise<never>((_, reject) => {
@@ -586,16 +668,21 @@ export class PollingService {
       const context = createPollingCycleContext(getOrCreateAppSettings, {
         instanceConcurrency: 2,
       });
+      const reports = new Map<string, JobReport>();
       const sourceTask = (
         source: string,
         run: () => Promise<void>,
-      ): { source: string; run: () => Promise<void> } => ({
-        source,
-        run: () => context.runSource(
+      ): { source: string; run: () => Promise<void> } => {
+        const report: JobReport = { failure: null, skipped: false };
+        reports.set(source, report);
+        return {
           source,
-          () => this.runPollSource(source, run),
-        ),
-      });
+          run: () => context.runSource(
+            source,
+            () => this.runPollSource(source, run, report),
+          ),
+        };
+      };
       const pollTasks: Array<{ source: string; run: () => Promise<void> }> = [
         sourceTask('pollSonarr', () => this.pollSonarr(context)),
         sourceTask('pollRadarr', () => this.pollRadarr(context)),
@@ -608,6 +695,8 @@ export class PollingService {
         sourceTask('snapshotDiskUsage', async () => {
           if (await this.shouldSnapshotDiskUsage(context)) {
             await this.snapshotDiskUsage(context);
+          } else {
+            noteJobSkipped();
           }
         }),
       ];
@@ -622,6 +711,8 @@ export class PollingService {
         sourceTask('sweepTasteProfiles', () => this.sweepTasteProfiles()),
       );
       const pollSources = pollTasks.map((task) => task.source);
+      // Still running from an earlier cycle: runPollSource skips these.
+      const skipped = new Set(pollSources.filter((source) => this.activePollSources.has(source)));
       logger.debug('Polling cycle started', {
         cycleId: context.id,
         sources: pollSources,
@@ -633,14 +724,18 @@ export class PollingService {
       // write a pre-import snapshot back over that invalidation for the TTL.
       const activeArrSources = ['pollSonarr', 'pollRadarr', 'pollLidarr']
         .filter((source) => this.activePollSources.has(source));
+      const warmReport: JobReport = { failure: null, skipped: false };
+      reports.set('warmCaches', warmReport);
       if (activeArrSources.length === 0) {
         await context.runSource(
           'warmCaches',
-          () => this.runPollSource('warmCaches', () => this.warmCaches()),
+          () => this.runPollSource('warmCaches', () => this.warmCaches(), warmReport),
         ).catch((e) => {
+          warmReport.failure ??= errorMessage(e);
           logger.error('Cache warming failed', e, { scope: 'polling' });
         });
       } else {
+        warmReport.skipped = true;
         logger.warn('Cache warming skipped: Arr polling still active', {
           sources: activeArrSources,
         }, { scope: 'polling' });
@@ -651,6 +746,21 @@ export class PollingService {
         return [{ source: pollSources[index], reason: errorMessage(result.reason) }];
       });
       const durationMs = Math.round((performance.now() - startedAt) * 10) / 10;
+      const finishedAt = new Date().toISOString();
+      // A job counts as failed if it threw or logged a failure and carried on.
+      const outcomes: SourceOutcome[] = results.map((result, index) => {
+        const source = pollSources[index];
+        const report = reports.get(source);
+        if (skipped.has(source)) return { source, status: 'skipped' };
+        if (result.status === 'rejected') return { source, status: 'rejected', error: errorMessage(result.reason) };
+        if (report?.failure) return { source, status: 'rejected', error: report.failure };
+        return { source, status: report?.skipped ? 'skipped' : 'fulfilled' };
+      });
+      outcomes.push(warmReport.failure
+        ? { source: 'warmCaches', status: 'rejected', error: warmReport.failure }
+        : { source: 'warmCaches', status: warmReport.skipped ? 'skipped' : 'fulfilled' });
+      this.sourceHealth = nextSourceHealth(this.sourceHealth, outcomes, finishedAt);
+      this.lastCycle = { finishedAt, durationMs, failed: outcomes.filter((outcome) => outcome.status === 'rejected').length };
       const cycleMetrics = context.getMetrics();
       logger.debug('Polling cycle completed', {
         cycleId: context.id,
@@ -695,6 +805,22 @@ export class PollingService {
     }
   }
 
+  /** Whether polling runs and how each background job last went, for administrators. */
+  getHealth(): PollingHealth {
+    const names = new Set([...this.sourceHealth.keys(), ...this.sourceStartedAt.keys()]);
+    return {
+      running: this.intervalId !== null,
+      intervalMs: this.currentIntervalMs,
+      cycleInProgress: this.isPolling,
+      lastCycle: this.lastCycle,
+      sources: [...names].sort().map((source) => ({
+        source,
+        ...(this.sourceHealth.get(source) ?? { lastSuccessAt: null, lastFailureAt: null, lastError: null }),
+        runningSince: this.sourceStartedAt.get(source) ?? null,
+      })),
+    };
+  }
+
   /** Snapshot of the in-flight auto-map run for the status endpoint. */
   getAnimeAutoMapState(): {
     running: boolean;
@@ -734,6 +860,7 @@ export class PollingService {
         data: { animeAutoMapLastRunAt: new Date() },
       });
     } catch (error) {
+      noteJobFailure(error);
       logger.error('Anime auto-map could not stamp its run date', {
         error: errorMessage(error),
       }, { scope: 'polling' });
@@ -810,6 +937,7 @@ export class PollingService {
       // Sonarr/DB unavailable — release the claim WITHOUT stamping, so being
       // down at the scheduled hour doesn't consume the day; a later poll retries.
       this.animeMapRun = null;
+      noteJobFailure(error);
       logger.debug('Anime auto-map skipped: could not build its queue', {
         error: errorMessage(error),
       }, { scope: 'polling' });
@@ -933,7 +1061,7 @@ export class PollingService {
   private lastTasteProfileSweepAt = 0;
   private async sweepTasteProfiles(): Promise<void> {
     const now = Date.now();
-    if (now - this.lastTasteProfileSweepAt < TASTE_PROFILE_SWEEP_INTERVAL_MS) return;
+    if (now - this.lastTasteProfileSweepAt < TASTE_PROFILE_SWEEP_INTERVAL_MS) { noteJobSkipped(); return; }
     this.lastTasteProfileSweepAt = now;
 
     const activeCutoff = new Date(now - TASTE_PROFILE_ACTIVE_WINDOW_MS);
@@ -968,6 +1096,7 @@ export class PollingService {
       try {
         await rebuildTasteProfile(user);
       } catch (error) {
+        noteJobFailure(error);
         logger.warn('Taste profile rebuild failed', {
           userId: user.id,
           reason: errorMessage(error),
@@ -980,13 +1109,14 @@ export class PollingService {
     // allSettled + per-scope logging: one failing scope must not abort or mask
     // the other warmups.
     const warms = [
-      { scope: 'sonarr', run: () => getCachedTaggedLibrary({ scope: 'sonarr', cacheKeySeed: 'all', getInstances: getSonarrClients, fetchOne: (c) => c.getSeries() }) },
-      { scope: 'radarr', run: () => getCachedTaggedLibrary({ scope: 'radarr', cacheKeySeed: 'all', getInstances: getRadarrClients, fetchOne: (c) => c.getMovies() }) },
-      { scope: 'lidarr', run: () => getCachedTaggedLibrary({ scope: 'lidarr', cacheKeySeed: 'all', getInstances: getLidarrClients, fetchOne: (c) => c.getArtists() }) },
+      { scope: 'sonarr', run: () => warmLibrary('sonarr', getSonarrClients, (c) => c.getSeries()) },
+      { scope: 'radarr', run: () => warmLibrary('radarr', getRadarrClients, (c) => c.getMovies()) },
+      { scope: 'lidarr', run: () => warmLibrary('lidarr', getLidarrClients, (c) => c.getArtists()) },
     ] as const;
     const results = await Promise.allSettled(warms.map((w) => w.run()));
     results.forEach((result, i) => {
       if (result.status === 'rejected') {
+        noteJobFailure(result.reason);
         logger.warn('Cache warm failed', { scope: warms[i].scope, reason: errorMessage(result.reason) }, { scope: 'polling' });
       }
     });
@@ -1005,15 +1135,19 @@ export class PollingService {
 
     const timeZone = settings.timeZone;
     const now = new Date(context.startedAtMs);
-    if (toZonedDate(now, timeZone).getHours() < settings.animeAutoMapHour) return;
+    // Not due yet, or already run today: nothing to do this cycle.
+    if (toZonedDate(now, timeZone).getHours() < settings.animeAutoMapHour) { noteJobSkipped(); return; }
     const lastRun = settings.animeAutoMapLastRunAt;
-    if (lastRun && getLocalDateKey(lastRun, timeZone) === getLocalDateKey(now, timeZone)) return;
+    if (lastRun && getLocalDateKey(lastRun, timeZone) === getLocalDateKey(now, timeZone)) { noteJobSkipped(); return; }
 
-    void this.startAnimeAutoMapRun('scheduled', settings).catch((error) =>
+    // Awaited: building the queue is this job's work (and its failure); the
+    // mapping loop it starts runs on detached.
+    await this.startAnimeAutoMapRun('scheduled', settings).catch((error) => {
+      noteJobFailure(error);
       logger.error('Anime auto-map scheduled start failed', {
         error: errorMessage(error),
-      }, { scope: 'polling' })
-    );
+      }, { scope: 'polling' });
+    });
   }
 
   // Probes every configured service connection and fires a push when one
@@ -1073,8 +1207,9 @@ export class PollingService {
             where: { serviceConnectionId: connection.id },
             update: { lastReachable: ok },
             create: { serviceConnectionId: connection.id, lastReachable: ok },
-          }).catch(() => {});
+          });
         } catch (error) {
+          noteJobFailure(error);
           logger.debug('Reachability probe failed unexpectedly', {
             instanceId: connection.id,
             error: errorMessage(error),
@@ -1098,6 +1233,7 @@ export class PollingService {
     try {
       disks = await getAggregatedDiskSpace();
     } catch (error) {
+      noteJobFailure(error);
       logger.debug('Disk-space check skipped: could not read disk space', {
         error: errorMessage(error),
       }, { scope: 'polling' });
@@ -1183,6 +1319,7 @@ export class PollingService {
     try {
       disks = await getAggregatedDiskSpace();
     } catch (error) {
+      noteJobFailure(error);
       logger.debug('Disk-usage snapshot skipped: could not read disk space', {
         error: errorMessage(error),
       }, { scope: 'polling' });
@@ -1226,6 +1363,7 @@ export class PollingService {
       instances = await getSonarrClients();
     } catch (error) {
       context.markInstanceSourceReady('sonarr');
+      noteJobFailure(error);
       logger.debug('Skipping Sonarr poll because clients are unavailable', { error }, { scope: 'polling' });
       return;
     }
@@ -1447,6 +1585,7 @@ export class PollingService {
         }, { scope: 'polling' });
         return counts;
       }).catch((error) => {
+        noteJobFailure(error);
         logger.warn('Sonarr instance poll failed', { instanceId, error: errorMessage(error) }, { scope: 'polling' });
         return counts;
       });
@@ -1467,6 +1606,7 @@ export class PollingService {
       instances = await getRadarrClients();
     } catch (error) {
       context.markInstanceSourceReady('radarr');
+      noteJobFailure(error);
       logger.debug('Skipping Radarr poll because clients are unavailable', { error }, { scope: 'polling' });
       return;
     }
@@ -1673,6 +1813,7 @@ export class PollingService {
         }, { scope: 'polling' });
         return counts;
       }).catch((error) => {
+        noteJobFailure(error);
         logger.warn('Radarr instance poll failed', { instanceId, error: errorMessage(error) }, { scope: 'polling' });
         return counts;
       });
@@ -1693,6 +1834,7 @@ export class PollingService {
       instances = await getLidarrClients();
     } catch (error) {
       context.markInstanceSourceReady('lidarr');
+      noteJobFailure(error);
       logger.debug('Skipping Lidarr poll because clients are unavailable', { error }, { scope: 'polling' });
       return;
     }
@@ -1866,6 +2008,7 @@ export class PollingService {
         }, { scope: 'polling' });
         return counts;
       }).catch((error) => {
+        noteJobFailure(error);
         logger.warn('Lidarr instance poll failed', { instanceId, error: errorMessage(error) }, { scope: 'polling' });
         return counts;
       });
@@ -1884,6 +2027,7 @@ export class PollingService {
     try {
       client = await getQBittorrentClient();
     } catch (error) {
+      if (!(error instanceof ConfigurationError)) noteJobFailure(error);
       logger.debug('Skipping qBittorrent poll because client is unavailable', { error }, { scope: 'polling' });
       return;
     }
@@ -1972,16 +2116,18 @@ export class PollingService {
   }
 
   private async pollJellyfin() {
+    const connection = await getDefaultConnection('JELLYFIN');
+    if (!connection) return;
+
+    // Jellyfin is set up, so a client it cannot build (no user context) is a failure.
     let client;
     try {
       client = await getJellyfinClient();
     } catch (error) {
+      noteJobFailure(error);
       logger.debug('Skipping Jellyfin poll because client is unavailable', { error }, { scope: 'polling' });
       return;
     }
-
-    const connection = await getDefaultConnection('JELLYFIN');
-    if (!connection) return;
 
     const state = await prisma.pollingState.upsert({
       where: { serviceConnectionId: connection.id },
@@ -2078,6 +2224,7 @@ export class PollingService {
         sessionCount: currentSessionIds.length,
       }, { scope: 'polling' });
     } catch (e) {
+      noteJobFailure(e);
       logger.warn('Jellyfin session poll failed', e, { scope: 'polling' });
     }
   }
@@ -2087,6 +2234,7 @@ export class PollingService {
     try {
       client = await getSeerrClient();
     } catch (error) {
+      if (!(error instanceof ConfigurationError)) noteJobFailure(error);
       logger.debug('Skipping Seerr poll because client is unavailable', { error }, { scope: 'polling' });
       return;
     }
@@ -2104,6 +2252,7 @@ export class PollingService {
     try {
       listing = await client.listRequests({ take: 50, skip: 0, sort: 'added', sortDirection: 'desc' });
     } catch (error) {
+      noteJobFailure(error);
       logger.warn('Seerr request poll failed', error, { scope: 'polling' });
       return;
     }
@@ -2306,6 +2455,7 @@ export class PollingService {
         attention: counts.pending,
       });
     } catch (error) {
+      noteJobFailure(error);
       logger.debug('Seerr request-count badge fetch failed', { error }, { scope: 'polling' });
     }
   }
@@ -2341,6 +2491,7 @@ export class PollingService {
           dailyNotifyHour: settings.upcomingDailyNotifyHour,
           timeZone,
         }, { scope: 'polling' });
+        noteJobSkipped();
         return;
       }
 
@@ -2429,6 +2580,7 @@ export class PollingService {
     try {
       sonarrClients = await getSonarrClients();
     } catch (error) {
+      noteJobFailure(error);
       logger.warn('Skipping Sonarr upcoming poll because clients are unavailable', { error }, { scope: 'polling' });
     }
     for (const { connection, client } of sonarrClients) {
@@ -2509,6 +2661,7 @@ export class PollingService {
         });
       }
     } catch (error) {
+      noteJobFailure(error);
       logger.warn('Sonarr upcoming calendar poll failed', error, { scope: 'polling' });
     }
     }
@@ -2518,6 +2671,7 @@ export class PollingService {
     try {
       radarrClients = await getRadarrClients();
     } catch (error) {
+      noteJobFailure(error);
       logger.warn('Skipping Radarr upcoming poll because clients are unavailable', { error }, { scope: 'polling' });
     }
     for (const { connection, client } of radarrClients) {
@@ -2599,6 +2753,7 @@ export class PollingService {
         }
       }
     } catch (error) {
+      noteJobFailure(error);
       logger.warn('Radarr upcoming calendar poll failed', error, { scope: 'polling' });
     }
     }
@@ -2608,6 +2763,7 @@ export class PollingService {
     try {
       lidarrClients = await getLidarrClients();
     } catch (error) {
+      noteJobFailure(error);
       logger.warn('Skipping Lidarr upcoming poll because clients are unavailable', { error }, { scope: 'polling' });
     }
     for (const { connection, client } of lidarrClients) {
@@ -2656,6 +2812,7 @@ export class PollingService {
         });
       }
     } catch (error) {
+      noteJobFailure(error);
       logger.warn('Lidarr upcoming calendar poll failed', error, { scope: 'polling' });
     }
     }
@@ -2668,7 +2825,7 @@ export class PollingService {
   // independently so Redis/filesystem trouble cannot block database pruning.
   private async checkRetention(context: CycleContext): Promise<void> {
     const now = context.startedAtMs;
-    if (now - this.lastRetentionPruneAt < 86_400_000) return;
+    if (now - this.lastRetentionPruneAt < 86_400_000) { noteJobSkipped(); return; }
 
     const settings = await context.getSettings();
     const result = await runRetentionSweep({
@@ -2681,6 +2838,7 @@ export class PollingService {
     this.lastRetentionPruneAt = now;
 
     if (result.imageCache.status === 'failed') {
+      noteJobFailure(result.imageCache.message);
       logger.warn('Image-cache retention failed', {
         message: result.imageCache.message,
       }, { scope: 'polling' });
@@ -2729,6 +2887,7 @@ export class PollingService {
         digestHour: settings.activityDigestHour,
         timeZone,
       }, { scope: 'polling' });
+      noteJobSkipped();
       return;
     }
 
@@ -2739,6 +2898,7 @@ export class PollingService {
         digestDayOfWeek: settings.activityDigestDayOfWeek,
         timeZone,
       }, { scope: 'polling' });
+      noteJobSkipped();
       return;
     }
 
@@ -2757,6 +2917,7 @@ export class PollingService {
         period,
         dedupeKey,
       }, { scope: 'polling' });
+      noteJobSkipped();
       return;
     }
 
@@ -2831,6 +2992,7 @@ export class PollingService {
     try {
       client = await getQBittorrentClient();
     } catch (error) {
+      if (!(error instanceof ConfigurationError)) noteJobFailure(error);
       logger.debug('Bandwidth schedule: release deferred, qBittorrent unavailable; will retry', { context, error }, { scope: 'polling' });
       return;
     }
@@ -2846,6 +3008,7 @@ export class PollingService {
       }, { scope: 'polling' });
       this.appliedBandwidth = null;
     } catch (error) {
+      noteJobFailure(error);
       logger.warn('Failed to restore bandwidth', {
         context,
         previousRuleId: previous.ruleId,
@@ -2895,6 +3058,7 @@ export class PollingService {
     try {
       client = await getQBittorrentClient();
     } catch (error) {
+      if (!(error instanceof ConfigurationError)) noteJobFailure(error);
       logger.debug('Skipping bandwidth schedule because qBittorrent is unavailable', { error }, { scope: 'polling' });
       return;
     }
@@ -2916,6 +3080,7 @@ export class PollingService {
         uploadKbps: intent.uploadKbps,
       }, { scope: 'polling' });
     } catch (error) {
+      noteJobFailure(error);
       logger.warn('Failed to apply bandwidth schedule', { ruleId: intent.ruleId, error }, { scope: 'polling' });
     }
   }
