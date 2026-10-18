@@ -103,6 +103,13 @@ describe('canUserAccessItem', () => {
     expect(await canUserAccessLiveTv(USER)).toBe(true);
   });
 
+  it('does not read verdicts cached before the Live TV check', async () => {
+    getItems.mockResolvedValue({ Items: [{ Id: 'ch-4', Type: 'TvChannel' }] });
+    getUser.mockResolvedValue({ Id: 'jf-1', Policy: { EnableLiveTvAccess: false } });
+    await canUserAccessItem(USER, 'ch-4');
+    expect(redisGet.mock.calls[0][0]).toBe('jellyfin:item-access:v2:fp-1:jf-1:ch-4');
+  });
+
   it('refuses the channel when the policy cannot be read, and leaves other items alone', async () => {
     getUser.mockRejectedValue(new Error('upstream 500'));
     getItems.mockResolvedValue({ Items: [{ Id: 'ch-3', Type: 'TvChannel' }] });

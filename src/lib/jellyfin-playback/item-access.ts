@@ -65,7 +65,8 @@ export async function canUserAccessItem(user: User, itemId: string): Promise<boo
     return false;
   }
 
-  const cacheKey = `jellyfin:item-access:${context.connectionFingerprint}:${context.jellyfinUserId}:${itemId.toLowerCase()}`;
+  // v2: verdicts cached before the Live TV check allowed channels to anyone.
+  const cacheKey = `jellyfin:item-access:v2:${context.connectionFingerprint}:${context.jellyfinUserId}:${itemId.toLowerCase()}`;
   try {
     const redis = await getRedisClient();
     const cached = await redis.get(cacheKey);
