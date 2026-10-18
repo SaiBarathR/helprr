@@ -26,8 +26,7 @@ function toYear(value?: string | null) {
 }
 
 async function getLibraries() {
-  const { movies, series } = await loadTaggedLibrary();
-  return { movies, series };
+  return loadTaggedLibrary();
 }
 
 async function getHandler(
@@ -93,7 +92,7 @@ async function getHandler(
       : { page: 1, total_pages: 1, total_results: 0, results: [] };
     const libraryData = libraryResult.status === 'fulfilled'
       ? libraryResult.value
-      : { movies: [], series: [] };
+      : { movies: [], series: [], failedInstanceIds: [] as string[] };
 
     const lookups = buildLibraryLookups(libraryData.movies, libraryData.series);
 
@@ -170,6 +169,7 @@ async function getHandler(
         exists: library.exists,
         id: library.id,
         instanceId: library.instanceId,
+        uncheckedInstanceIds: libraryData.failedInstanceIds,
       },
       tagline: details.tagline || null,
       homepage: details.homepage || null,

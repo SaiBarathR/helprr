@@ -280,16 +280,24 @@ export async function getTMDBClient(): Promise<TmdbClient> {
 /**
  * Load the full library across every Radarr + Sonarr instance, tagging each item
  * with its instance. Per-instance failures are swallowed (one unreachable instance
- * must not blank the whole library). The single fan-out used by all library-matching
- * consumers (discover, anime, watchlist, recommendations, random, library-gaps).
+ * must not blank the whole library) and listed in `failedInstanceIds`, so a caller
+ * can tell "not in that instance" from "that instance did not answer". The single
+ * fan-out used by all library-matching consumers (discover, anime, watchlist,
+ * recommendations, random, library-gaps).
  */
-export async function loadTaggedLibrary(): Promise<{ movies: Tagged<RadarrMovie>[]; series: Tagged<SonarrSeries>[] }> {
+export async function loadTaggedLibrary(): Promise<{
+  movies: Tagged<RadarrMovie>[];
+  series: Tagged<SonarrSeries>[];
+  failedInstanceIds: string[];
+}> {
+  const failedInstanceIds: string[] = [];
   const movies = (
     await Promise.all(
       (await getRadarrClients()).map(async ({ connection, client }) => {
         try {
           return (await client.getMovies()).map((m) => ({ ...m, instanceId: connection.id, instanceLabel: connection.label }));
         } catch {
+          failedInstanceIds.push(connection.id);
           return [] as Tagged<RadarrMovie>[];
         }
       })
@@ -301,10 +309,11 @@ export async function loadTaggedLibrary(): Promise<{ movies: Tagged<RadarrMovie>
         try {
           return (await client.getSeries()).map((s) => ({ ...s, instanceId: connection.id, instanceLabel: connection.label }));
         } catch {
+          failedInstanceIds.push(connection.id);
           return [] as Tagged<SonarrSeries>[];
         }
       })
     )
   ).flat();
-  return { movies, series };
+  return { movies, series, failedInstanceIds };
 }
