@@ -108,6 +108,7 @@ describe('mapping the files of a fallback download', () => {
     mocks.preview = [{ fileId: 'f0', rejections: [] }];
     await user.click(screen.getByRole('button', { name: 'Check with Sonarr' }));
     expect(await screen.findByRole('button', { name: /Import 1 file/ })).toBeTruthy();
+    expect(screen.getByRole('status').textContent).toBe('Sonarr has no objection to this mapping.');
 
     // Mapped to another episode after the check: the earlier verdict no longer counts.
     const known = screen.getByText('Show.S01E05.mkv').closest('section')!;
@@ -115,9 +116,13 @@ describe('mapping the files of a fallback download', () => {
     await user.click(await within(known).findByRole('checkbox', { name: /S01E06/ }));
     expect(screen.queryByRole('button', { name: /Import 1 file/ })).toBeNull();
 
+    expect(screen.getByRole('status').textContent).toBe('');
+
     mocks.preview = [{ fileId: 'f0', rejections: ['Not an upgrade for existing episode file(s)'] }];
     await user.click(screen.getByRole('button', { name: 'Check with Sonarr' }));
-    await user.click(await screen.findByRole('button', { name: /Import 1 file/ }));
+    const importOne = await screen.findByRole('button', { name: /Import 1 file/ });
+    expect(screen.getByRole('status').textContent).toBe('Sonarr objects to one file.');
+    await user.click(importOne);
     const confirm = screen.getByRole('alertdialog');
     expect(within(confirm).getByText(/Show.S01E05.mkv: Not an upgrade for existing episode file/)).toBeTruthy();
     await user.click(within(confirm).getByRole('button', { name: 'Import anyway' }));
