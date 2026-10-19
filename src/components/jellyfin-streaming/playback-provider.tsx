@@ -2104,14 +2104,14 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     }
     // No startTimeTicks: the gated attempt never played, so startItem should
     // fall back to the item's own resume point like a fresh play would.
+    // Only when the stored stream is this item's — after a gate it may still
+    // be the one that was playing before, and so are the live track choices.
+    const own = streamRef.current?.item.Id === pending.Id;
+    const last = lastRequestRef.current?.itemId === pending.Id ? lastRequestRef.current : null;
     void startItem(pending, {
-      audioStreamIndex: audioIndexRef.current,
-      subtitleStreamIndex: subtitleIndexRef.current,
-      // Only when the stored stream is this item's — after a gate it may still
-      // be the one that was playing before.
-      mediaSourceId: streamRef.current?.item.Id === pending.Id
-        ? streamRef.current.mediaSource.Id
-        : undefined,
+      audioStreamIndex: own ? audioIndexRef.current : last?.request.audioStreamIndex,
+      subtitleStreamIndex: own ? subtitleIndexRef.current : last?.request.subtitleStreamIndex,
+      mediaSourceId: own ? streamRef.current!.mediaSource.Id : undefined,
       maxStreamingBitrate: maxBitrate,
     });
   }, [maxBitrate, startItem]);
@@ -2126,8 +2126,10 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     // played. Never the item's stored resume point.
     void startItem(pending, {
       startTimeTicks: last?.retryTicks ?? last?.request.startTimeTicks,
-      audioStreamIndex: audioIndexRef.current,
-      subtitleStreamIndex: subtitleIndexRef.current,
+      // The live track choices belong to the stream that is playing: for an item
+      // whose stream never attached, its own last request (or its defaults).
+      audioStreamIndex: current ? audioIndexRef.current : last?.request.audioStreamIndex,
+      subtitleStreamIndex: current ? subtitleIndexRef.current : last?.request.subtitleStreamIndex,
       mediaSourceId: last?.request.mediaSourceId ?? current?.mediaSource.Id,
       maxStreamingBitrate: maxBitrate,
       startPaused: pausedIntentRef.current,

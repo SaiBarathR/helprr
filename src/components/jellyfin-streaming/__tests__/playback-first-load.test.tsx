@@ -206,3 +206,22 @@ describe('Retry after a failed seek or a paused restart', () => {
     expect(h.requests.at(-1)).toEqual(expect.objectContaining({ startTimeTicks: 650 * 10_000_000 }));
   });
 });
+
+describe('Retry for an item whose stream never attached', () => {
+  it("does not carry the previous item's track choices", async () => {
+    media.startFails = false;
+    h = await mountPlayback({ hls: true });
+    await h.act(async () => { await h.playback().playItems([ITEM], 0, { startTimeTicks: START, audioStreamIndex: 5 }); });
+    await h.act(async () => { await vi.waitFor(() => expect(h.playback().status).toBe('playing')); });
+
+    const next = { ...ITEM, Id: 'item-2', Name: 'Next Episode' };
+    h.failStreamInfoFor(next.Id);
+    await h.act(async () => { await h.playback().playItems([next], 0); });
+    await h.act(async () => { await vi.waitFor(() => expect(h.playback().status).toBe('error')); });
+
+    const before = h.requests.length;
+    await h.act(async () => { h.playback().retry(); });
+    await h.act(async () => { await vi.waitFor(() => expect(h.requests.length).toBeGreaterThan(before)); });
+    expect(h.requests.at(-1)).toEqual(expect.objectContaining({ itemId: 'item-2', audioStreamIndex: null }));
+  });
+});
