@@ -58,6 +58,17 @@ type ClientCaptureState = {
 
 type ConsoleOriginals = Pick<Console, 'debug' | 'log' | 'info' | 'warn' | 'error'>;
 
+/**
+ * The browser rejects a page transition's promises when a navigation
+ * interrupts it (a quick Back, a swipe-back): the framework's own view
+ * transitions, not Helprr code. Noise, not a failure, so it is not sent to
+ * the server log.
+ */
+export function isSkippedViewTransition(reason: unknown): boolean {
+  const error = reason as { name?: unknown; message?: unknown } | null;
+  return typeof reason === 'object' && error !== null && error.name === 'AbortError' && error.message === 'Transition was skipped';
+}
+
 export interface ClientLogCaptureSettingsEvent {
   logEnabled?: boolean;
   logClientConsoleEnabled?: boolean;
@@ -183,6 +194,7 @@ export function ClientLogCapture() {
       enqueue('error', [event.error || event.message, { filename: event.filename, lineno: event.lineno, colno: event.colno }]);
     };
     const onUnhandledRejection = (event: PromiseRejectionEvent) => {
+      if (isSkippedViewTransition(event.reason)) return;
       enqueue('error', ['Unhandled promise rejection', event.reason]);
     };
     const onMessage = (event: MessageEvent) => {
