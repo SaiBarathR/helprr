@@ -156,6 +156,8 @@ export async function runWithOperationAudit<T>(
 export interface TorrentDeleteAuditSnapshot {
   targetTitle: string;
   itemCount: number;
+  /** How many of the hashes qBittorrent lists; null when it could not be asked. */
+  found: number | null;
   details: Record<string, unknown>;
 }
 
@@ -166,8 +168,10 @@ export async function snapshotTorrentDeleteTargets(
 ): Promise<TorrentDeleteAuditSnapshot> {
   const hashes = [...new Set(rawHashes.split('|').map((hash) => hash.trim()).filter(Boolean))];
   let torrents: Awaited<ReturnType<QBittorrentClient['getTorrents']>> = [];
+  let found: number | null = null;
   try {
     torrents = await client.getTorrents(undefined, undefined, undefined, undefined, hashes.join('|'));
+    found = torrents.length;
   } catch {
     // Snapshot enrichment must not change whether an already-authorized deletion runs.
   }
@@ -184,6 +188,25 @@ export async function snapshotTorrentDeleteTargets(
       ? targets[0].name
       : `${itemCount} ${itemCount === 1 ? 'torrent' : 'torrents'}`,
     itemCount,
+    found,
     details: { hashes, targets },
   };
+}
+
+/**
+ * Delete the torrents, then check that qBittorrent no longer lists them: it
+ * answers a delete with success even for a hash it does not have, and the
+ * audit row must not say a torrent was deleted when it was not.
+ */
+export async function deleteTorrentsConfirmed(client: QBittorrentClient, hashes: string, deleteFiles: boolean): Promise<void> {
+  await client.deleteTorrent(hashes, deleteFiles);
+  let remaining: Awaited<ReturnType<QBittorrentClient['getTorrents']>>;
+  try {
+    remaining = await client.getTorrents(undefined, undefined, undefined, undefined, hashes);
+  } catch (error) {
+    throw new Error(`qBittorrent took the delete but could not be asked whether the torrent is gone: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  if (remaining.length > 0) {
+    throw new Error(`qBittorrent still lists ${remaining.length === 1 ? 'the torrent' : `${remaining.length} of the torrents`} after the delete`);
+  }
 }

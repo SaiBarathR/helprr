@@ -6,7 +6,7 @@ import { logApiDuration } from '@/lib/server-perf';
 import { withApiLogging } from '@/lib/api-logger';
 import { bumpQbitCacheVersion } from '@/lib/cache/qbittorrent-version';
 import { upstreamErrorResponse } from '@/lib/api-error';
-import { runWithOperationAudit, snapshotTorrentDeleteTargets } from '@/lib/file-audit';
+import { deleteTorrentsConfirmed, runWithOperationAudit, snapshotTorrentDeleteTargets } from '@/lib/file-audit';
 
 // A v1 info hash (SHA-1) or a v2 one (SHA-256), in hex.
 const SINGLE_TORRENT_HASH = /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/i;
@@ -84,6 +84,11 @@ async function postHandler(
       case 'delete': {
         const deleteFiles = body.deleteFiles === true;
         const snapshot = await snapshotTorrentDeleteTargets(client, hash);
+        // qBittorrent would answer a delete of a torrent it no longer has with success.
+        if (snapshot.found === 0) {
+          logApiDuration('/api/qbittorrent/[hash]', startedAt, { method: 'POST', action, notFound: true });
+          return NextResponse.json({ error: 'That torrent is no longer in qBittorrent.' }, { status: 404 });
+        }
         await runWithOperationAudit({
           user: auth.user,
           service: 'QBITTORRENT',
@@ -93,7 +98,7 @@ async function postHandler(
           itemCount: snapshot.itemCount,
           filesDeleted: deleteFiles,
           details: { ...snapshot.details, deleteFiles },
-        }, () => client.deleteTorrent(hash, deleteFiles));
+        }, () => deleteTorrentsConfirmed(client, hash, deleteFiles));
         break;
       }
       case 'forceStart':

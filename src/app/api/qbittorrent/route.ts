@@ -11,7 +11,7 @@ import { logApiDuration } from '@/lib/server-perf';
 import { withApiLogging } from '@/lib/api-logger';
 import { bumpQbitCacheVersion } from '@/lib/cache/qbittorrent-version';
 import { upstreamErrorResponse } from '@/lib/api-error';
-import { runWithOperationAudit, snapshotTorrentDeleteTargets } from '@/lib/file-audit';
+import { deleteTorrentsConfirmed, runWithOperationAudit, snapshotTorrentDeleteTargets } from '@/lib/file-audit';
 
 const MAGNET_VERIFY_TIMEOUT_MS = 5000;
 const MAGNET_VERIFY_INTERVAL_MS = 500;
@@ -86,6 +86,8 @@ async function runTorrentAction(
     case 'delete': {
       const deleteFiles = booleanOr(body.deleteFiles, false);
       const snapshot = await snapshotTorrentDeleteTargets(client, hash);
+      // qBittorrent would answer a delete of a torrent it no longer has with success.
+      if (snapshot.found === 0) return NextResponse.json({ error: 'That torrent is no longer in qBittorrent.' }, { status: 404 });
       await runWithOperationAudit({
         user,
         service: 'QBITTORRENT',
@@ -95,7 +97,7 @@ async function runTorrentAction(
         itemCount: snapshot.itemCount,
         filesDeleted: deleteFiles,
         details: { ...snapshot.details, deleteFiles },
-      }, () => client.deleteTorrent(hash, deleteFiles));
+      }, () => deleteTorrentsConfirmed(client, hash, deleteFiles));
       break;
     }
     case 'forceStart':

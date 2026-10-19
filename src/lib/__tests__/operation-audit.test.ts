@@ -13,6 +13,7 @@ import {
   recordOperationAudit,
   runWithOperationAudit,
   snapshotTorrentDeleteTargets,
+  deleteTorrentsConfirmed,
   systemAuditActor,
 } from '@/lib/file-audit';
 import { withApiLogging } from '@/lib/api-logger';
@@ -183,6 +184,7 @@ describe('unified operation audit', () => {
     await expect(snapshotTorrentDeleteTargets(client as never, 'aaa|bbb|aaa')).resolves.toEqual({
       targetTitle: '2 torrents',
       itemCount: 2,
+      found: 2,
       details: {
         hashes: ['aaa', 'bbb'],
         targets: [
@@ -194,7 +196,25 @@ describe('unified operation audit', () => {
     await expect(snapshotTorrentDeleteTargets(client as never, 'aaa')).resolves.toEqual({
       targetTitle: '1 torrent',
       itemCount: 1,
+      found: null,
       details: { hashes: ['aaa'], targets: [] },
     });
+  });
+
+  it('confirms a torrent delete only when qBittorrent no longer lists the torrent', async () => {
+    const client = { deleteTorrent: vi.fn(async () => undefined), getTorrents: vi.fn() };
+    client.getTorrents.mockResolvedValueOnce([]);
+    await expect(deleteTorrentsConfirmed(client as never, 'aaa', true)).resolves.toBeUndefined();
+    expect(client.deleteTorrent).toHaveBeenCalledWith('aaa', true);
+    expect(client.getTorrents).toHaveBeenCalledWith(undefined, undefined, undefined, undefined, 'aaa');
+
+    client.getTorrents.mockResolvedValueOnce([{ hash: 'aaa' }]);
+    await expect(deleteTorrentsConfirmed(client as never, 'aaa', true)).rejects.toThrow('qBittorrent still lists the torrent after the delete');
+
+    client.getTorrents.mockResolvedValueOnce([{ hash: 'aaa' }, { hash: 'bbb' }]);
+    await expect(deleteTorrentsConfirmed(client as never, 'aaa|bbb', false)).rejects.toThrow('still lists 2 of the torrents');
+
+    client.getTorrents.mockRejectedValueOnce(new Error('ECONNREFUSED'));
+    await expect(deleteTorrentsConfirmed(client as never, 'aaa', false)).rejects.toThrow('could not be asked whether the torrent is gone: ECONNREFUSED');
   });
 });
