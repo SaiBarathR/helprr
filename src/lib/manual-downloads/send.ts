@@ -37,6 +37,8 @@ export class ManualDownloadRefusedError extends Error {
 
 const EPISODE_WAIT_MS = 30_000;
 const GRAB_CHECK_ATTEMPTS = 6;
+/** After a lost add answer Arr may still be adding the title (Sonarr looks up its metadata first). */
+const TITLE_CHECK_ATTEMPTS = 5;
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -272,14 +274,27 @@ class SendRun {
     return found?.id && found.id > 0 ? found.id : null;
   }
 
+  private async addedMeanwhile(): Promise<number | null> {
+    for (let attempt = 0; attempt < TITLE_CHECK_ATTEMPTS; attempt += 1) {
+      if (attempt > 0) await sleep(2_000);
+      const found = await this.findTitle().catch(() => null);
+      if (found) return found;
+    }
+    return null;
+  }
+
   /** Add the title with every automatic search off, from an allowlist of fields. */
   private async addTitle(): Promise<void> {
     try {
       await this.addTitleOnce();
     } catch (error) {
-      // The answer may be lost after Arr added it: the title it was not there before is this workflow's.
-      const added = await this.findTitle().catch(() => null);
-      if (!added) throw error;
+      // Arr answered, so it did not add the title (a 400 may mean someone else just did).
+      if (axios.isAxiosError(error) && error.response) throw error;
+      // The answer was lost, perhaps while Arr adds it: the title it was not there before is this workflow's.
+      const added = await this.addedMeanwhile();
+      if (!added) {
+        throw new Error(`${errorText(error)}. If ${this.plan.target!.title} shows up in ${this.plan.instance!.label} later, it was added for this download; remove it there if you do not want it`);
+      }
       this.arrItemId = added;
       this.createdArrItem = true;
       await prisma.manualDownload.update({ where: { id: this.id }, data: { arrItemId: added, createdArrItem: true } });

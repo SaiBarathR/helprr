@@ -27,10 +27,12 @@ import { fromQueue, importProof, reconcileManualDownloads } from '../status';
 
 const HASH = '382CC016FF22946008ECDDCB0DDA820F42B0CD5A';
 const minutesAgo = (m: number) => new Date(Date.now() - m * 60_000);
+const NOW = new Date().toISOString();
+const TWO_DAYS_AGO = minutesAgo(2 * 24 * 60).toISOString();
 const row = (extra: Record<string, unknown> = {}) => ({
   id: 'md1', mode: 'ARR_MANAGED', status: 'QUEUED', service: 'RADARR', instanceId: 'i1', instanceLabel: 'Radarr',
   infoHash: HASH, arrItemId: 15, arrItemTitle: 'Night of the Living Dead', createdArrItem: true, targetEpisodeIds: [],
-  baselineFileIds: [], lastError: null, arrQueueId: null, updatedAt: minutesAgo(5), ...extra,
+  baselineFileIds: [], lastError: null, arrQueueId: null, createdAt: minutesAgo(30), updatedAt: minutesAgo(5), ...extra,
 });
 const item = (extra: Record<string, unknown> = {}) => ({
   id: 101, downloadId: HASH.toLowerCase(), trackedDownloadState: 'downloading', trackedDownloadStatus: 'ok',
@@ -88,15 +90,15 @@ describe("the import proof from this release's own import events", () => {
 
   it("does not count another release's file for an episode this one did not import", () => {
     // This release imported episode 1 (file 90); another release supplied episode 2 (file 91).
-    const imports = [{ eventType: 'downloadFolderImported', episodeId: 1, data: { fileId: '90' } }] as never;
+    const imports = [{ date: NOW, eventType: 'downloadFolderImported', episodeId: 1, data: { fileId: '90' } }] as never;
     expect(importProof(sonarr, { 1: 90, 2: 91 }, imports)).toEqual({ proved: false, newFiles: [90], missing: [2] });
-    const both = [...imports, { eventType: 'downloadFolderImported', episodeId: 2, data: { fileId: '91' } }] as never;
+    const both = [...imports, { date: NOW, eventType: 'downloadFolderImported', episodeId: 2, data: { fileId: '91' } }] as never;
     expect(importProof(sonarr, { 1: 90, 2: 91 }, both).proved).toBe(true);
   });
 
   it("counts only the movie file this release imported, and only while the movie still has it", () => {
     const radarr = { service: 'RADARR' as const, baselineFileIds: [], targetEpisodeIds: [], arrItemId: 15 };
-    const imports = [{ eventType: 'downloadFolderImported', movieId: 15, data: { fileId: '7' } }] as never;
+    const imports = [{ date: NOW, eventType: 'downloadFolderImported', movieId: 15, data: { fileId: '7' } }] as never;
     expect(importProof(radarr, [7, 8], imports)).toEqual({ proved: true, newFiles: [7], missing: [] });
     expect(importProof(radarr, [8], imports).proved).toBe(false);
   });
@@ -136,7 +138,7 @@ describe('reconciling open manual downloads', () => {
   it('settles an item Arr still lists as imported from its history', async () => {
     mocks.rows = [row({ status: 'IMPORTING' })];
     mocks.queue.mockResolvedValue({ records: [item({ trackedDownloadState: 'imported' })] });
-    mocks.client.getHistory.mockResolvedValue({ records: [{ eventType: 'downloadFolderImported' }] });
+    mocks.client.getHistory.mockResolvedValue({ records: [{ date: NOW, eventType: 'downloadFolderImported' }] });
     mocks.client.getMovieFiles.mockResolvedValue([{ id: 7 }]);
     await run();
     expect(statusSet()).toEqual(['IMPORTED']);
@@ -144,7 +146,7 @@ describe('reconciling open manual downloads', () => {
 
   it('marks it imported only with new file ids, from history once it leaves the queue', async () => {
     mocks.rows = [row({ status: 'IMPORTING' })];
-    mocks.client.getHistory.mockResolvedValue({ records: [{ eventType: 'downloadFolderImported' }, { eventType: 'grabbed' }] });
+    mocks.client.getHistory.mockResolvedValue({ records: [{ date: NOW, eventType: 'downloadFolderImported' }, { date: NOW, eventType: 'grabbed' }] });
     mocks.client.getMovieFiles.mockResolvedValue([{ id: 7 }]);
     await run();
     expect(mocks.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: 'IMPORTED', importedFileIds: [7], completedAt: expect.any(Date) }) }));
@@ -157,18 +159,18 @@ describe('reconciling open manual downloads', () => {
 
   it('takes failed and ignored downloads from history', async () => {
     mocks.rows = [row()];
-    mocks.client.getHistory.mockResolvedValue({ records: [{ eventType: 'downloadFailed', data: { message: 'Manually marked as failed' } }] });
+    mocks.client.getHistory.mockResolvedValue({ records: [{ date: NOW, eventType: 'downloadFailed', data: { message: 'Manually marked as failed' } }] });
     await run();
     expect(mocks.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: 'FAILED', lastError: 'Radarr marked the download failed: Manually marked as failed' }) }));
 
     mocks.update.mockClear();
-    mocks.client.getHistory.mockResolvedValue({ records: [{ eventType: 'downloadIgnored' }] });
+    mocks.client.getHistory.mockResolvedValue({ records: [{ date: NOW, eventType: 'downloadIgnored' }] });
     await run();
     expect(statusSet()).toEqual(['CANCELLED']);
   });
 
   it('gives a fresh grab time to reach the queue, then says it is gone', async () => {
-    mocks.client.getHistory.mockResolvedValue({ records: [{ eventType: 'grabbed' }] });
+    mocks.client.getHistory.mockResolvedValue({ records: [{ date: NOW, eventType: 'grabbed' }] });
     mocks.rows = [row({ updatedAt: minutesAgo(0.5) })];
     await run();
     expect(mocks.update).not.toHaveBeenCalled();
@@ -184,7 +186,7 @@ describe('reconciling open manual downloads', () => {
     expect(mocks.update).not.toHaveBeenCalled();
 
     mocks.rows = [row({ status: 'SUBMITTING_RELEASE', updatedAt: minutesAgo(15) })];
-    mocks.client.getHistory.mockResolvedValue({ records: [{ eventType: 'grabbed' }] });
+    mocks.client.getHistory.mockResolvedValue({ records: [{ date: NOW, eventType: 'grabbed' }] });
     await run();
     expect(statusSet()).toEqual(['QUEUED']);
     expect(mocks.client.getHistory).toHaveBeenCalledWith(1, 1000, 'date', 'descending', { downloadId: HASH, eventType: 1 });
@@ -289,8 +291,8 @@ describe('reconciling: review round two', () => {
   it('takes a failure after a partial import as the end of the download', async () => {
     mocks.rows = [row({ service: 'SONARR', status: 'IMPORTING', targetEpisodeIds: [1, 2], baselineFileIds: { 1: 0, 2: 0 } })];
     mocks.client.getHistory.mockResolvedValue({ records: [
-      { eventType: 'downloadFailed', data: { message: 'Download stalled' } },
-      { eventType: 'downloadFolderImported', episodeId: 1, data: { fileId: '90' } },
+      { date: NOW, eventType: 'downloadFailed', data: { message: 'Download stalled' } },
+      { date: NOW, eventType: 'downloadFolderImported', episodeId: 1, data: { fileId: '90' } },
     ] });
     await run();
     expect(statusSet()).toEqual(['FAILED']);
@@ -298,11 +300,57 @@ describe('reconciling: review round two', () => {
 
   it("takes the episodes from the grab when a TVDB-matched Sonarr send was interrupted before it could", async () => {
     mocks.rows = [row({ service: 'SONARR', status: 'SUBMITTING_RELEASE', updatedAt: minutesAgo(15), targetEpisodeIds: [] })];
-    mocks.client.getHistory.mockResolvedValue({ records: [{ eventType: 'grabbed', seriesId: 15, episodeId: 501 }, { eventType: 'grabbed', seriesId: 15, episodeId: 502 }] });
+    mocks.client.getHistory.mockResolvedValue({ records: [{ date: NOW, eventType: 'grabbed', seriesId: 15, episodeId: 501 }, { date: NOW, eventType: 'grabbed', seriesId: 15, episodeId: 502 }] });
     await run();
     expect(mocks.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
       status: 'QUEUED', targetEpisodeIds: [501, 502], baselineFileIds: { 501: 0, 502: 0 },
     }) }));
+  });
+
+  it('fails a send interrupted before it pushed, whatever an earlier send of the release left in history', async () => {
+    mocks.client.getHistory.mockResolvedValue({ records: [{ date: NOW, eventType: 'grabbed', movieId: 15 }] });
+    mocks.rows = [row({ status: 'CREATING_MEDIA', updatedAt: minutesAgo(15) })];
+    await run();
+    expect(statusSet()).toEqual(['FAILED']);
+    expect(mocks.client.getHistory).not.toHaveBeenCalled();
+
+    mocks.update.mockClear();
+    mocks.client.getHistory.mockResolvedValue({ records: [{ date: TWO_DAYS_AGO, eventType: 'grabbed', movieId: 15 }] });
+    mocks.rows = [row({ status: 'SUBMITTING_RELEASE', updatedAt: minutesAgo(15) })];
+    await run();
+    expect(statusSet()).toEqual(['FAILED']);
+  });
+
+  it("does not take an earlier send's import of the same release as this one's", async () => {
+    mocks.rows = [row({ status: 'BLOCKED', lastError: 'Sent to Radarr, but Helprr could not confirm that Radarr grabbed it.' })];
+    mocks.client.getHistory.mockResolvedValue({ records: [
+      { date: TWO_DAYS_AGO, eventType: 'downloadFolderImported', movieId: 15, data: { fileId: '7' } },
+      { date: TWO_DAYS_AGO, eventType: 'grabbed', movieId: 15 },
+    ] });
+    mocks.client.getMovieFiles.mockResolvedValue([{ id: 7 }]);
+    await run();
+    expect(mocks.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
+      status: 'BLOCKED', lastError: 'Radarr has no record of this download any more.',
+    }) }));
+  });
+
+  it('takes the episodes from the grab for a TVDB-matched Sonarr send that ended unsure of it, then proves the import', async () => {
+    mocks.rows = [row({ service: 'SONARR', status: 'BLOCKED', targetEpisodeIds: [], baselineFileIds: {}, lastError: 'Sent to Sonarr, but Helprr could not confirm that Sonarr grabbed it.' })];
+    const grabs = [{ date: NOW, eventType: 'grabbed', seriesId: 15, episodeId: 501 }, { date: NOW, eventType: 'grabbed', seriesId: 15, episodeId: 502 }];
+    mocks.client.getHistory.mockImplementation(async (_page: number, _size: number, _key: string, _dir: string, filter: { eventType?: number }) => ({
+      records: filter.eventType === 1 ? grabs : [
+        { date: NOW, eventType: 'downloadFolderImported', seriesId: 15, episodeId: 502, data: { fileId: '91' } },
+        { date: NOW, eventType: 'downloadFolderImported', seriesId: 15, episodeId: 501, data: { fileId: '90' } },
+        ...grabs,
+      ],
+    }));
+    mocks.client.getEpisodes.mockResolvedValue([{ id: 501, episodeFileId: 90 }, { id: 502, episodeFileId: 91 }]);
+    (mocks.update as ReturnType<typeof vi.fn>).mockImplementationOnce(async ({ data }: { data: Record<string, unknown> }) => ({ ...mocks.rows[0], ...data, updatedAt: new Date() }));
+
+    await run();
+
+    expect(mocks.update).toHaveBeenNthCalledWith(1, expect.objectContaining({ data: { targetEpisodeIds: [501, 502], baselineFileIds: { 501: 0, 502: 0 } } }));
+    expect(mocks.update).toHaveBeenNthCalledWith(2, expect.objectContaining({ data: expect.objectContaining({ status: 'IMPORTED', importedFileIds: [90, 91] }) }));
   });
 
   it("keeps credentials out of Arr's messages", async () => {

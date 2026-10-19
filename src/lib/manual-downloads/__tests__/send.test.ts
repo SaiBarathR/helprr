@@ -278,6 +278,44 @@ describe('sending a film to Radarr', () => {
     expect(download).toEqual(expect.objectContaining({ status: 'QUEUED', arrItemId: 15, createdArrItem: true }));
   });
 
+  it('waits for a film Radarr is still adding after the answer timed out', async () => {
+    mocks.client.addMovie.mockRejectedValue(new AxiosError('timeout of 30000ms exceeded', 'ECONNABORTED'));
+    mocks.client.lookupMovie = vi.fn()
+      .mockResolvedValueOnce([{ tmdbId: 10331 }])
+      .mockResolvedValueOnce([{ tmdbId: 10331 }])
+      .mockResolvedValue([{ id: 15, tmdbId: 10331 }]);
+
+    const download = await send();
+
+    expect(download).toEqual(expect.objectContaining({ status: 'QUEUED', arrItemId: 15, createdArrItem: true }));
+    expect(mocks.client.lookupMovie).toHaveBeenCalledTimes(3);
+  });
+
+  it('says a film may still appear when Radarr never answered the add and it is not there', async () => {
+    mocks.client.addMovie.mockRejectedValue(new AxiosError('timeout of 30000ms exceeded', 'ECONNABORTED'));
+    mocks.client.lookupMovie = vi.fn(async () => [{ tmdbId: 10331 }]);
+
+    const download = await send();
+
+    expect(download.status).toBe('FAILED');
+    expect(download.lastError).toContain('If Night of the Living Dead shows up in Arr later, it was added for this download');
+    expect(mocks.client.lookupMovie).toHaveBeenCalledTimes(5);
+    expect(mocks.client.deleteMovie).not.toHaveBeenCalled();
+  });
+
+  it('never takes over a film Radarr refused to add, though it is there now', async () => {
+    const response = { status: 400, statusText: 'Bad Request', headers: {}, config: { headers: new AxiosHeaders() }, data: [{ errorMessage: 'This movie has already been added' }] };
+    mocks.client.addMovie.mockRejectedValue(new AxiosError('Request failed with status code 400', 'ERR_BAD_REQUEST', undefined, undefined, response));
+    mocks.client.lookupMovie = vi.fn(async () => [{ id: 99, tmdbId: 10331 }]);
+
+    const download = await send();
+
+    expect(download.status).toBe('FAILED');
+    expect(download.createdArrItem).toBeFalsy();
+    expect(mocks.client.lookupMovie).not.toHaveBeenCalled();
+    expect(mocks.client.deleteMovie).not.toHaveBeenCalled();
+  });
+
   it('fails the recorded workflow when the instance cannot be reached', async () => {
     mocks.connection.mockRejectedValue(new Error('That Radarr instance no longer exists.'));
     const download = await send();
