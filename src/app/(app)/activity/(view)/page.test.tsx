@@ -402,3 +402,69 @@ describe('Activity queue beyond its first page', () => {
     await waitFor(() => expect(text()).toContain('Episode has a TBA title and recently aired'));
   });
 });
+
+describe('Activity: wanted tabs, sorting and refresh', () => {
+  const fetchMock = () => globalThis.fetch as unknown as ReturnType<typeof vi.fn>;
+  const posts = () => fetchMock().mock.calls.filter(([, init]) => (init as RequestInit | undefined)?.method === 'POST');
+  const selectTab = async (name: string) => {
+    const tab = [...document.querySelectorAll('[role="tab"]')].find((t) => t.textContent?.includes(name))!;
+    await act(async () => tab.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 })));
+  };
+
+  it('lists a missing film and starts a search for it on its own instance', async () => {
+    const queue = fetchMock().getMockImplementation() as (url: string, init?: RequestInit) => Promise<Response>;
+    fetchMock().mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url.startsWith('/api/activity/wanted?')) {
+        expect(new URL(url, 'http://localhost').searchParams.get('type')).toBe('missing');
+        return Response.json({ records: [{ id: 42, title: 'Lost Film', year: 2001, mediaType: 'movie', source: 'radarr', instanceId: 'rad-1' }], totalRecords: 1 });
+      }
+      return queue(url, init);
+    });
+    await renderPage();
+    await selectTab('Missing');
+    await waitFor(() => expect(text()).toContain('Lost Film (2001)'));
+
+    await act(async () => (document.querySelector('button svg.lucide-search')!.closest('button') as HTMLButtonElement).click());
+
+    await waitFor(() => expect(posts()).toHaveLength(1));
+    const [url, init] = posts()[0];
+    expect(url).toBe('/api/radarr/command?instanceId=rad-1');
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual({ name: 'MoviesSearch', movieIds: [42] });
+  });
+
+  it('sorts the queue by a chosen key, and reverses it when the key is chosen again', async () => {
+    queueRecords = [
+      { ...QUEUE[0], title: 'Small.Show.S01E01', size: 100 },
+      { ...QUEUE[1], title: 'Big.Movie.2026', size: 900 },
+    ];
+    await renderPage();
+    await waitFor(() => expect(text()).toContain('2 Tasks'));
+    const trigger = document.querySelector('[aria-label^="Filter and sort"]') as HTMLButtonElement;
+    await act(async () => trigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })));
+    const sizeItem = () => [...document.querySelectorAll('[role="menuitemradio"]')].find((item) => item.textContent?.trim() === 'Size') as HTMLElement;
+    await waitFor(() => expect(sizeItem()).toBeTruthy());
+    const order = () => ['Small.Show', 'Big.Movie'].sort((a, b) => text().indexOf(a) - text().indexOf(b));
+
+    await act(async () => sizeItem().click());
+    expect(useUIStore.getState().activitySortBy).toBe('size');
+    const first = useUIStore.getState().activitySortDirection;
+    await waitFor(() => expect(order()).toEqual(first === 'desc' ? ['Big.Movie', 'Small.Show'] : ['Small.Show', 'Big.Movie']));
+
+    await act(async () => sizeItem().click());
+    expect(useUIStore.getState().activitySortDirection).toBe(first === 'desc' ? 'asc' : 'desc');
+    await waitFor(() => expect(order()).toEqual(first === 'desc' ? ['Small.Show', 'Big.Movie'] : ['Big.Movie', 'Small.Show']));
+  });
+
+  it('asks every Sonarr and Radarr instance to refresh its downloads', async () => {
+    await renderPage();
+    await waitFor(() => expect(text()).toContain('2 Tasks'));
+    await waitFor(() => expect(fetchMock().mock.calls.some(([url]) => url === '/api/instances')).toBe(true));
+    await wait(20);
+
+    await act(async () => button('Refresh')!.click());
+
+    await waitFor(() => expect(posts()).toHaveLength(2));
+    expect(posts().map(([url]) => url).sort()).toEqual(['/api/radarr/command?instanceId=rad-1', '/api/sonarr/command?instanceId=son-1']);
+    for (const [, init] of posts()) expect(JSON.parse((init as RequestInit).body as string)).toEqual({ name: 'RefreshMonitoredDownloads' });
+  });
+});
