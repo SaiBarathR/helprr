@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import { PageHeader } from '@/components/layout/page-header';
 import { PageSpinner } from '@/components/ui/page-spinner';
-import { ManualDownloadForm, type FallbackDraft, type LinkPrefill } from '@/components/torrents/manual-download-form';
+import { MANUAL_DOWNLOAD_MUTATION_KEY, ManualDownloadForm, type FallbackDraft, type LinkPrefill } from '@/components/torrents/manual-download-form';
 import { FallbackActions, fallbackMutationKey } from '@/components/torrents/fallback-actions';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -113,7 +113,13 @@ function AddTorrentPageContent() {
   const canAddTorrents = useCan('torrents.add');
   const canManageActivity = useCan('activity.manage');
   const canLink = canAddTorrents && canManageActivity && (canAddMovies || canAddSeries);
-  const [prefill] = useState(() => (canLink ? linkPrefill(searchParams) : null));
+  // "Send again" for a library this user may not add to starts a fresh form instead.
+  const [prefill] = useState(() => {
+    const link = canLink ? linkPrefill(searchParams) : null;
+    return link && (link.service === 'RADARR' ? canAddMovies : canAddSeries) ? link : null;
+  });
+  // A Sonarr/Radarr check or send on its way ends on its own page: no switching meanwhile.
+  const arrBusy = useIsMutating({ mutationKey: MANUAL_DOWNLOAD_MUTATION_KEY }) > 0;
   const [destination, setDestination] = useState<'arr' | 'client'>(canLink ? 'arr' : 'client');
   // The advanced fallback: the Sonarr/Radarr choices, kept while the files are chosen.
   const [fallback, setFallback] = useState<FallbackDraft | null>(null);
@@ -291,6 +297,7 @@ function AddTorrentPageContent() {
           <div className="space-y-2" role="radiogroup" aria-label="Where it goes">
             <DestinationOption
               selected={destination === 'arr'}
+              disabled={arrBusy}
               onSelect={() => setDestination('arr')}
               title="Send to Sonarr or Radarr"
               badge="Recommended"
@@ -298,6 +305,7 @@ function AddTorrentPageContent() {
             />
             <DestinationOption
               selected={destination === 'client'}
+              disabled={arrBusy}
               onSelect={() => setDestination('client')}
               title="Add to qBittorrent only"
               description="It downloads where you choose, and you can pick which files. Nothing is imported."
@@ -413,8 +421,9 @@ function AddTorrentPageContent() {
   );
 }
 
-function DestinationOption({ selected, onSelect, title, badge, description }: {
+function DestinationOption({ selected, disabled, onSelect, title, badge, description }: {
   selected: boolean;
+  disabled: boolean;
   onSelect: () => void;
   title: string;
   badge?: string;
@@ -425,8 +434,9 @@ function DestinationOption({ selected, onSelect, title, badge, description }: {
       type="button"
       role="radio"
       aria-checked={selected}
+      disabled={disabled}
       onClick={onSelect}
-      className={`press-feedback flex w-full items-start gap-3 rounded-lg border p-3 text-left transition-colors ${selected ? 'border-primary bg-primary/5' : 'border-border hover:bg-accent/40'}`}
+      className={`press-feedback flex w-full items-start gap-3 rounded-lg border p-3 text-left transition-colors disabled:opacity-60 ${selected ? 'border-primary bg-primary/5' : 'border-border hover:bg-accent/40'}`}
     >
       <span className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${selected ? 'border-primary' : 'border-muted-foreground'}`}>
         {selected && <span className="h-2 w-2 rounded-full bg-primary" />}

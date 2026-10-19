@@ -11,9 +11,14 @@ vi.mock('@/components/layout/navigation-provider', () => ({ useAppRouter: () => 
 vi.mock('@/components/layout/page-header', () => ({ PageHeader: ({ title }: { title: string }) => <h1>{title}</h1> }));
 vi.mock('@/components/torrents/manual-download-form', async () => {
   const { useState } = await import('react');
+  const { useMutation } = await import('@tanstack/react-query');
+  const MANUAL_DOWNLOAD_MUTATION_KEY = ['manual-downloads', 'submit'];
   return {
+    MANUAL_DOWNLOAD_MUTATION_KEY,
     ManualDownloadForm: function Form({ prefill, onChooseFiles }: { prefill: { title: string } | null; onChooseFiles?: (draft: unknown) => void }) {
       const [title, setTitle] = useState('');
+      // A send that has not answered yet.
+      const send = useMutation({ mutationKey: MANUAL_DOWNLOAD_MUTATION_KEY, mutationFn: () => new Promise(() => {}) });
       return (
         <div>
           Arr form{prefill ? ` for ${prefill.title}` : ''}
@@ -21,6 +26,7 @@ vi.mock('@/components/torrents/manual-download-form', async () => {
           {onChooseFiles && (
             <button type="button" onClick={() => onChooseFiles({ service: 'RADARR', instanceId: 'r1', externalId: 10331, title: 'Night of the Living Dead' })}>Next: choose files</button>
           )}
+          <button type="button" onClick={() => send.mutate()}>Arr send</button>
         </div>
       );
     },
@@ -82,6 +88,28 @@ describe('Add Torrent: where it goes', () => {
     renderPage();
     expect(await screen.findByText('Arr form for Night of the Living Dead')).toBeTruthy();
     expect(screen.getByText(/paste the magnet link or choose the .torrent file again/)).toBeTruthy();
+  });
+
+  it('does not name a "Send again" title for a library this user may not add to', async () => {
+    mocks.caps = new Set(['torrents.add', 'activity.manage', 'series.add']);
+    mocks.params = new URLSearchParams({ linkService: 'RADARR', linkInstance: 'r1', linkExternalId: '10331', linkTitle: 'Night of the Living Dead', linkRelease: 'R' });
+    renderPage();
+    expect(await screen.findByText('Arr form')).toBeTruthy();
+    expect(screen.queryByText(/Sending Night of the Living Dead again/)).toBeNull();
+  });
+
+  it('holds the choice of where it goes while a Sonarr/Radarr check or send is on its way', async () => {
+    mocks.caps = new Set(LINKER);
+    renderPage();
+    const qbittorrent = await screen.findByRole('radio', { name: /Add to qBittorrent only/ });
+    expect((qbittorrent as HTMLButtonElement).disabled).toBe(false);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Arr send' }));
+
+    expect((qbittorrent as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('radio', { name: /Send to Sonarr or Radarr/ }) as HTMLButtonElement).disabled).toBe(true);
+    await userEvent.click(qbittorrent);
+    expect(screen.queryByLabelText('Save at')).toBeNull();
   });
 
   describe('picking files for Sonarr/Radarr', () => {

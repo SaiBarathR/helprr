@@ -103,7 +103,8 @@ describe('migration readiness', () => {
     expect(names).toContain('20261018010000_cleanup_strike_torrent_added_at');
     expect(names).toContain('20261019120000_manual_downloads');
     expect(names).toContain('20261019140000_manual_download_files');
+    expect(names).toContain('20261019160000_manual_download_import_sent_at');
     expect(names).not.toContain('migration_lock.toml');
-    expect(names).toHaveLength(13);
+    expect(names).toHaveLength(14);
   });
 });

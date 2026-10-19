@@ -1,4 +1,5 @@
 import { Prisma, type ManualDownload, type ManualDownloadFile, type ManualDownloadSource, type ManualDownloadStatus } from '@prisma/client';
+import axios from 'axios';
 import { prisma } from '@/lib/db';
 import { resolveConnection } from '@/lib/arr-instances';
 import { getQBittorrentClient } from '@/lib/service-helpers';
@@ -79,11 +80,21 @@ const appOf = (service: ManualDownloadService | string) => (service === 'RADARR'
 const errorText = (error: unknown) => redactUpstreamText(error instanceof Error ? error.message : String(error));
 const isLost = (error: unknown) => error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025';
 
-/** Whether Arr sees a folder, or a file of this size. A missing folder lists as empty, so look from its parent. */
-export async function arrSees(client: RadarrClient | SonarrClient, path: string, size?: number): Promise<boolean> {
+type FolderListings = Map<string, ReturnType<RadarrClient['listFolder']>>;
+
+/**
+ * Whether Arr sees a folder, or a file of this size. A missing folder lists as
+ * empty, so look from its parent. `listings` lists each folder once across calls.
+ */
+export async function arrSees(client: RadarrClient | SonarrClient, path: string, size?: number, listings?: FolderListings): Promise<boolean> {
   const { folder, name } = splitPath(path.replace(/[\\/]+$/, ''));
   if (!folder || !name) return false;
-  const listing = await client.listFolder(folder);
+  let listed = listings?.get(folder);
+  if (!listed) {
+    listed = client.listFolder(folder);
+    listings?.set(folder, listed);
+  }
+  const listing = await listed;
   return size === undefined
     ? listing.directories.some((entry) => entry.name === name)
     : listing.files.some((entry) => entry.name === name && entry.size === size);
@@ -404,8 +415,9 @@ export async function scanFallback(download: DownloadWithFiles, client: RadarrCl
   const paths = chosen.map((file) => ({ file, arrPath: applyMapping(joinPath(located.savePath, file.path), located.mapping) }));
 
   const missing: string[] = [];
+  const listings: FolderListings = new Map();
   for (const { file, arrPath } of paths) {
-    if (!(await arrSees(client, arrPath, Number(file.size)))) missing.push(file.path);
+    if (!(await arrSees(client, arrPath, Number(file.size), listings))) missing.push(file.path);
   }
   if (missing.length > 0) return { missing, unambiguous: false, reasons: [] };
 
@@ -517,13 +529,14 @@ const after = (at: Date) => new Date(Math.max(Date.now(), at.getTime() + 1));
 /**
  * Take the download from the exact state it was read in (status and
  * updatedAt): of two scans, imports, cancels or recoveries that read the same
- * state, one wins.
+ * state, one wins. Only a recovery carries over the import the expired claim
+ * sent (`sentAt`); any other claim starts with none.
  */
-export async function claimFallback(download: ManualDownload, message: string): Promise<FallbackClaim | null> {
+export async function claimFallback(download: ManualDownload, message: string, sentAt: Date | null = null): Promise<FallbackClaim | null> {
   try {
     const row = await prisma.manualDownload.update({
       where: { id: download.id, status: download.status, updatedAt: download.updatedAt },
-      data: { status: 'IMPORT_PENDING', lastError: null, updatedAt: after(download.updatedAt), events: { create: { status: 'IMPORT_PENDING', message } } },
+      data: { status: 'IMPORT_PENDING', lastError: null, importSentAt: sentAt, updatedAt: after(download.updatedAt), events: { create: { status: 'IMPORT_PENDING', message } } },
       select: { updatedAt: true },
     });
     return { id: download.id, at: row.updatedAt };
@@ -559,6 +572,8 @@ export async function releaseClaim(
   const terminal = (TERMINAL_STATUSES as readonly string[]).includes(status);
   return underClaim(claim, {
     status,
+    // An import sent under the claim is settled by now (IMPORTING follows its command).
+    importSentAt: null,
     lastError: ERROR_STATUSES.includes(status) ? message : null,
     ...(terminal ? { completedAt: new Date() } : {}),
     ...data,
@@ -576,11 +591,11 @@ export async function releaseClaim(
 export async function settleDownloaded(download: ManualDownload, client: RadarrClient | SonarrClient): Promise<boolean> {
   const app = appOf(download.service);
   const current = await prisma.manualDownload.findUniqueOrThrow({ where: { id: download.id }, include: { files: true } });
-  // Decided files under an expired claim: Helprr stopped while sending an import.
-  if (download.status === 'IMPORT_PENDING' && current.files.some((file) => file.decision === 'IMPORT')) {
-    const claim = await claimFallback(download, `Interrupted while importing: checking whether ${app} took the import.`);
+  // An expired claim that had sent an import: Helprr stopped, or Arr did not answer, before it was settled.
+  if (download.status === 'IMPORT_PENDING' && current.importSentAt) {
+    const claim = await claimFallback(download, `Checking whether ${app} took the import.`, current.importSentAt);
     if (!claim) return false;
-    await recoverImport(current, claim, client, download.updatedAt);
+    await recoverImport(current, claim, client, current.importSentAt);
     return true;
   }
 
@@ -710,10 +725,11 @@ export async function importFallback(
     await moveFrom(download, checked.status, checked.message);
     throw new FallbackImportError(checked.message);
   }
+  const listings: FolderListings = new Map();
   for (const decision of importing) {
     const file = byId.get(decision.fileId)!;
     const arrPath = applyMapping(joinPath(checked.located.savePath, file.path), checked.located.mapping);
-    if (!samePath(arrPath, file.arrPath!) || !(await arrSees(client, arrPath, Number(file.size)))) {
+    if (!samePath(arrPath, file.arrPath!) || !(await arrSees(client, arrPath, Number(file.size), listings))) {
       const message = `${splitPath(file.path).name} is not where ${appOf(download.service)} read it any more. Scan again.`;
       await moveFrom(download, 'BLOCKED', message);
       throw new FallbackImportError(message);
@@ -791,11 +807,12 @@ async function submitAttempt(
     return fail(`${app} did not answer: ${errorText(error)}. Import again.`);
   }
 
+  const sentAt = new Date();
   try {
     claim.at = await prisma.$transaction(async (tx) => {
       const row = await tx.manualDownload.update({
         where: { id: claim.id, status: 'IMPORT_PENDING', updatedAt: claim.at },
-        data: { targetEpisodeIds, baselineFileIds: baseline, arrCommandId: null, updatedAt: after(claim.at) },
+        data: { targetEpisodeIds, baselineFileIds: baseline, arrCommandId: null, importSentAt: sentAt, updatedAt: after(claim.at) },
         select: { updatedAt: true },
       });
       await tx.manualDownloadFile.updateMany({ where: { downloadId: download.id }, data: { decision: 'PENDING', episodeIds: [] } });
@@ -811,7 +828,6 @@ async function submitAttempt(
     if (isLost(error)) return 'Another scan, import or cancel took this download meanwhile.';
     throw error;
   }
-  const keptAt = claim.at;
 
   const files = importing.map((decision) => importItem(download, byId.get(decision.fileId)!, decision));
   // Copy keeps the source, but Arr replaces (deletes or recycles) a file the import upgrades.
@@ -826,20 +842,27 @@ async function submitAttempt(
     }, () => client.submitManualImport(files, 'copy'));
   } catch (error) {
     // The answer may be lost after Arr took it: look before saying it did not.
-    const taken = await findImportCommand(client, files.map((file) => file.path), keptAt).catch(() => null);
-    if (!taken) return fail(`${app} did not take the import: ${errorText(error)}. Import again.`);
-    command = taken;
+    const taken = await findImportCommand(client, files.map((file) => file.path), sentAt).catch(() => null);
+    if (taken) command = taken;
+    else if (axios.isAxiosError(error) && error.response) return fail(`${app} did not take the import: ${errorText(error)}. Import again.`);
+    else {
+      // No answer, and no command to be seen (yet): never sent again on a guess. The
+      // attempt stays kept, and the status worker settles it once the claim expires.
+      await underClaim(claim, { events: { create: { status: 'IMPORT_PENDING', message: `${app} did not answer the import (${errorText(error)}). Helprr checks in a few minutes whether it took it.` } } });
+      return null;
+    }
   }
   await releaseClaim(claim, 'IMPORTING', `Importing ${files.length} file${files.length === 1 ? '' : 's'} into ${download.arrItemTitle}.`, { arrCommandId: command.id });
   return null;
 }
 
 /**
- * An import interrupted after its attempt was kept: done when Arr's history
- * has it, under way when Arr lists its command, otherwise left to the user to
- * check and import again. Never sent a second time on Helprr's own.
+ * An import sent but not settled (Helprr interrupted, or Arr's answer lost):
+ * done when Arr's history has it, under way when Arr lists its command since
+ * it was sent, otherwise left to the user to check and import again. Never
+ * sent a second time on Helprr's own.
  */
-async function recoverImport(download: DownloadWithFiles, claim: FallbackClaim, client: RadarrClient | SonarrClient, keptAt: Date): Promise<void> {
+async function recoverImport(download: DownloadWithFiles, claim: FallbackClaim, client: RadarrClient | SonarrClient, sentAt: Date): Promise<void> {
   const app = appOf(download.service);
   const proof = await fallbackImportProof(download, client);
   if (proof.proved) {
@@ -847,12 +870,12 @@ async function recoverImport(download: DownloadWithFiles, claim: FallbackClaim, 
     return;
   }
   const paths = download.files.filter((file) => file.decision === 'IMPORT' && file.arrPath).map((file) => file.arrPath!);
-  const command = await findImportCommand(client, paths, keptAt);
+  const command = await findImportCommand(client, paths, sentAt);
   if (command) {
-    await releaseClaim(claim, 'IMPORTING', `Importing into ${download.arrItemTitle}, picked up after Helprr was interrupted.`, { arrCommandId: command.id });
+    await releaseClaim(claim, 'IMPORTING', `Importing into ${download.arrItemTitle}, as ${app} took it.`, { arrCommandId: command.id });
     return;
   }
-  await releaseClaim(claim, 'BLOCKED', `Helprr was interrupted while sending the import, and ${app} shows no sign of it. Check ${download.arrItemTitle} in ${app}, then import again.`);
+  await releaseClaim(claim, 'BLOCKED', `Helprr could not confirm the import it sent, and ${app} shows no sign of it. Check ${download.arrItemTitle} in ${app}, then import again.`);
 }
 
 /**
