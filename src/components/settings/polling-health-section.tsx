@@ -15,6 +15,7 @@ const JOB_LABELS: Record<string, string> = {
   pollQBittorrent: 'qBittorrent',
   pollJellyfin: 'Jellyfin',
   pollSeerr: 'Seerr',
+  pollManualDownloads: 'Manual downloads',
   pollServiceReachability: 'Service reachability',
   checkDiskSpace: 'Disk space',
   snapshotDiskUsage: 'Disk usage history',

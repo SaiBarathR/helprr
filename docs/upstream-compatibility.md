@@ -375,6 +375,10 @@ test instances, with locally generated torrents of random bytes:
 - **Removal.** Removing the queue item with `removeFromClient=true` and no
   blocklist writes no history event, so pushes for that title are refused as a
   recent grab for 12 hours.
+- **Imports.** Each file Arr imports from a download writes a
+  `downloadFolderImported` history record with the release's `downloadId`
+  (Sonarr: one per episode, with its `episodeId`) and `data.fileId`, the id of
+  the file the import created.
 
 ## Before reporting an upstream compatibility problem
 

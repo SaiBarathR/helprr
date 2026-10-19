@@ -43,6 +43,7 @@ import { PROFILE_VERSION } from '@/lib/recommendations/profile-types';
 import { can } from '@/lib/permissions';
 import type { QueueItem, SonarrSeries, Tag } from '@/types';
 import { fetchAllQueueRecords } from '@/lib/activity-queue';
+import { reconcileManualDownloads } from '@/lib/manual-downloads/status';
 import crypto from 'crypto';
 
 type AppSettingsSnapshot = Awaited<ReturnType<typeof getOrCreateAppSettings>>;
@@ -231,6 +232,7 @@ const POLL_SOURCE_TIMEOUT_MS: Record<string, number> = {
   pollQBittorrent: 45_000,
   pollJellyfin: 15_000,
   pollSeerr: 45_000,
+  pollManualDownloads: 60_000,
   pollServiceReachability: 15_000,
   checkDiskSpace: 30_000,
   snapshotDiskUsage: 30_000,
@@ -657,6 +659,7 @@ export class PollingService {
         sourceTask('pollQBittorrent', () => this.pollQBittorrent(context)),
         sourceTask('pollJellyfin', () => this.pollJellyfin()),
         sourceTask('pollSeerr', () => this.pollSeerr()),
+        sourceTask('pollManualDownloads', () => this.pollManualDownloads()),
         sourceTask('pollServiceReachability', () => this.pollServiceReachability()),
         sourceTask('checkDiskSpace', () => this.checkDiskSpace(context)),
         sourceTask('snapshotDiskUsage', async () => {
@@ -2194,6 +2197,11 @@ export class PollingService {
       noteJobFailure(e);
       logger.warn('Jellyfin session poll failed', e, { scope: 'polling' });
     }
+  }
+
+  /** Manual downloads after their grab: Arr's queue, history and files decide (see manual-downloads/status). */
+  private async pollManualDownloads() {
+    await reconcileManualDownloads();
   }
 
   private async pollSeerr() {
