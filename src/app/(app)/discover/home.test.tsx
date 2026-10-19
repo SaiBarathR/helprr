@@ -261,6 +261,32 @@ describe('Discover home (characterization)', () => {
     await waitFor(() => expect(sectionTitles()).toContain('Trending'));
   });
 
+  it('stays on the results when the sheet is reset and applied while browsing a content type', async () => {
+    const user = renderHome();
+    await waitFor(() => expect(sectionTitles()).toContain('Trending'));
+    await user.click(screen.getByRole('menuitem', { name: 'Movies' }));
+    await waitFor(() => expect(lastGrid()).toEqual(expect.objectContaining({ contentType: 'movie' })));
+    await user.click(screen.getByRole('button', { name: 'Advanced filters' }));
+    const sheet = screen.getByRole('dialog', { name: 'Advanced Filters' });
+    await user.click(within(sheet).getByRole('button', { name: 'Reset' }));
+    await user.click(within(sheet).getByRole('button', { name: 'Apply' }));
+    expect(screen.getByText('Discover Results')).toBeTruthy();
+    expect(sectionTitles()).toEqual([]);
+  });
+
+  it('fetches the results again when only the sort direction changes', async () => {
+    const user = renderHome();
+    await user.click(await screen.findByRole('button', { name: 'Popular' }));
+    await waitFor(() => expect(lastGrid()).toEqual(expect.objectContaining({ sortBy: 'popular', sortOrder: 'desc' })));
+    const before = gridUrls().length;
+    await user.click(screen.getByRole('button', { name: 'Advanced filters' }));
+    const sheet = screen.getByRole('dialog', { name: 'Advanced Filters' });
+    await user.click(within(sheet).getByRole('button', { name: 'asc' }));
+    await user.click(within(sheet).getByRole('button', { name: 'Apply' }));
+    await waitFor(() => expect(gridUrls().length).toBe(before + 1));
+    expect(lastGrid()).toEqual(expect.objectContaining({ sortBy: 'popular', sortOrder: 'asc' }));
+  });
+
   it('loads the next page as the end of the grid comes into view, without repeating a title', async () => {
     mocks.grid = (url) => (url.searchParams.get('page') === '2'
       ? { items: [item(41, 'Grid Two'), item(42, 'Grid Three')], page: 2, totalPages: 2 }
