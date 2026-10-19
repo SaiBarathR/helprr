@@ -29,6 +29,45 @@ describe('client authentication cache boundaries', () => {
     ]);
   });
 
+  it('fences the worker before deleting the caches itself, and waits for its answer', async () => {
+    const order: string[] = [];
+    let replyPort: MessagePort | null = null;
+    const postMessage = vi.fn((message: { type: string }, transfer: Transferable[]) => {
+      order.push(message.type);
+      replyPort = transfer[0] as MessagePort;
+    });
+    vi.stubGlobal('window', {
+      caches: { delete: vi.fn(async (name: string) => { order.push(`delete ${name}`); return true; }) },
+      setTimeout: globalThis.setTimeout,
+      clearTimeout: globalThis.clearTimeout,
+    });
+    vi.stubGlobal('navigator', { serviceWorker: { controller: { postMessage } } });
+
+    const clearing = clearUserScopedBrowserCaches();
+    await vi.waitFor(() => expect(replyPort).not.toBeNull());
+    expect(order).toEqual(['helprr-fence-user-caches']);
+    replyPort!.postMessage({ ok: true });
+    await clearing;
+
+    expect(order).toEqual(['helprr-fence-user-caches', 'delete pages', 'delete api-readonly', 'delete api-images']);
+  });
+
+  it('still clears when the worker does not answer the fence', async () => {
+    vi.useFakeTimers();
+    const deleteCache = vi.fn(async () => true);
+    vi.stubGlobal('window', {
+      caches: { delete: deleteCache },
+      setTimeout: globalThis.setTimeout,
+      clearTimeout: globalThis.clearTimeout,
+    });
+    vi.stubGlobal('navigator', { serviceWorker: { controller: { postMessage: vi.fn() } } });
+
+    const clearing = clearUserScopedBrowserCaches();
+    await vi.advanceTimersByTimeAsync(1_000);
+    await clearing;
+    expect(deleteCache).toHaveBeenCalledTimes(3);
+  });
+
   it('fails closed when direct Cache Storage deletion stalls', async () => {
     vi.useFakeTimers();
     vi.stubGlobal('window', {

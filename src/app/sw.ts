@@ -19,6 +19,7 @@ import { cacheBrowseSnapshot, READONLY_API_NETWORK_FIRST, staleBrowseSnapshot } 
 import { cacheShellResponse, matchingShellResponse } from '@/lib/shell-cache';
 import { isImageResponseCacheable } from '@/lib/image-response-cache-policy';
 import { NOTIFICATION_SUBSCRIPTIONS_CHANGED } from '@/lib/notification-subscriptions';
+import { createUserCacheFence } from '@/lib/sw-user-cache-fence';
 
 declare global {
   interface WorkerGlobalScope extends SerwistGlobalConfig {
@@ -34,11 +35,20 @@ const cacheValidatedImageResponses: SerwistPlugin = {
   ),
 };
 
+// Moved to a new epoch by every user-scoped clear (a live 401/403 below, and
+// the messages at the end of this file), so a response fetched for a session
+// that has since ended is not written into the caches cleared for the next
+// one. First in each user-scoped cache's plugins.
+const userCacheFence = createUserCacheFence();
+
 const browseSnapshots: SerwistPlugin = {
   cacheWillUpdate: ({ response }) => cacheBrowseSnapshot(response),
   cachedResponseWillBeUsed: async ({ cachedResponse }) => staleBrowseSnapshot(cachedResponse),
   fetchDidSucceed: async ({ response }) => {
-    if (response.status === 401 || response.status === 403) await caches.delete('api-readonly');
+    if (response.status === 401 || response.status === 403) {
+      userCacheFence.advance();
+      await caches.delete('api-readonly');
+    }
     return response;
   },
 };
@@ -74,6 +84,7 @@ const runtimeCaching: RuntimeCaching[] =
             // healthy network responses (including 401/403) stay authoritative.
             networkTimeoutSeconds: 2,
             plugins: [
+              userCacheFence.plugin,
               browseSnapshots,
               new ExpirationPlugin({
                 maxEntries: 128,
@@ -95,6 +106,7 @@ const runtimeCaching: RuntimeCaching[] =
           handler: new CacheFirst({
             cacheName: 'api-images',
             plugins: [
+              userCacheFence.plugin,
               // A Redis/accounting bypass is returned with no-store and must
               // remain uncached even though the image bytes were validated.
               cacheValidatedImageResponses,
@@ -136,6 +148,7 @@ const runtimeCaching: RuntimeCaching[] =
           handler: new StaleWhileRevalidate({
             cacheName: 'pages',
             plugins: [
+              userCacheFence.plugin,
               matchingBuildShell,
               new CacheableResponsePlugin({ statuses: [200] }),
               new ExpirationPlugin({
@@ -514,8 +527,16 @@ self.addEventListener('unhandledrejection', (event) => {
 // api-images holds auth-gated posters, so it's user-scoped too.
 const USER_SCOPED_CACHES = ['pages', 'api-readonly', 'api-images'];
 self.addEventListener('message', (event) => {
-  if ((event.data as { type?: string } | undefined)?.type === 'helprr-clear-user-caches') {
+  const type = (event.data as { type?: string } | undefined)?.type;
+  // A page clearing the caches itself asks for the fence first, and waits for this answer.
+  if (type === 'helprr-fence-user-caches') {
+    userCacheFence.advance();
+    event.ports[0]?.postMessage({ ok: true });
+    return;
+  }
+  if (type === 'helprr-clear-user-caches') {
     const replyPort = event.ports[0];
+    userCacheFence.advance();
     event.waitUntil(
       Promise.all(USER_SCOPED_CACHES.map((name) => caches.delete(name)))
         .then(() => {
