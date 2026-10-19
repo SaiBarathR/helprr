@@ -91,9 +91,11 @@ describe('ingestEvents', () => {
 });
 
 describe('recordRequestEvent', () => {
+  const genres = (names: string[] | undefined) => vi.fn(async () => names);
+
   it("stores a request under the title's TMDB key with its genres, a plain signal that leaves the rails cached", async () => {
     mocks.findFirst.mockResolvedValue(null);
-    expect(await recordRequestEvent('u1', 'tv', 1399, ['Drama', 'Sci-Fi & Fantasy'])).toEqual({ ok: true, stored: 1 });
+    expect(await recordRequestEvent('u1', 'tv', 1399, genres(['Drama', 'Sci-Fi & Fantasy']))).toEqual({ ok: true, stored: 1 });
     expect(mocks.createMany).toHaveBeenCalledWith({
       data: [expect.objectContaining({ userId: 'u1', itemKey: 'tmdb:tv:1399', eventType: 'request', context: { genres: ['Drama', 'Sci-Fi & Fantasy'] } })],
     });
@@ -103,26 +105,31 @@ describe('recordRequestEvent', () => {
 
   it('stores it without genres when TMDB could not give any', async () => {
     mocks.findFirst.mockResolvedValue(null);
-    await recordRequestEvent('u1', 'movie', 603, undefined);
+    await recordRequestEvent('u1', 'movie', 603, genres(undefined));
     expect(mocks.createMany.mock.calls[0][0].data[0]).not.toHaveProperty('context.genres');
   });
 
-  it('records a title once: requesting it again adds no weight', async () => {
+  it('records a title once within the window the profile reads, without asking TMDB again', async () => {
     mocks.findFirst.mockResolvedValue({ id: 'earlier', context: { genres: ['Action'] } });
-    expect(await recordRequestEvent('u1', 'movie', 603, ['Action'])).toEqual({ ok: true, stored: 0 });
-    expect(mocks.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { userId: 'u1', itemKey: 'tmdb:movie:603', eventType: 'request' } }));
+    const lookup = genres(['Action']);
+    expect(await recordRequestEvent('u1', 'movie', 603, lookup)).toEqual({ ok: true, stored: 0 });
+    expect(lookup).not.toHaveBeenCalled();
     expect(mocks.createMany).not.toHaveBeenCalled();
     expect(mocks.update).not.toHaveBeenCalled();
+    // Older requests no longer count toward the profile, so they do not block a new one.
+    const where = mocks.findFirst.mock.calls[0][0].where;
+    expect(where).toEqual({ userId: 'u1', itemKey: 'tmdb:movie:603', eventType: 'request', createdAt: { gte: expect.any(Date) } });
+    expect(Date.now() - where.createdAt.gte.getTime()).toBeCloseTo(90 * 86_400_000, -4);
   });
 
   it('adds the genres to a request first recorded without them, still as one event', async () => {
     mocks.findFirst.mockResolvedValue({ id: 'earlier', context: null });
-    expect(await recordRequestEvent('u1', 'movie', 603, ['Action'])).toEqual({ ok: true, stored: 0 });
+    expect(await recordRequestEvent('u1', 'movie', 603, genres(['Action']))).toEqual({ ok: true, stored: 0 });
     expect(mocks.update).toHaveBeenCalledWith({ where: { id: 'earlier' }, data: { context: { genres: ['Action'] } } });
     expect(mocks.createMany).not.toHaveBeenCalled();
 
     mocks.update.mockClear();
-    await recordRequestEvent('u1', 'movie', 603, undefined);
+    await recordRequestEvent('u1', 'movie', 603, genres(undefined));
     expect(mocks.update).not.toHaveBeenCalled();
   });
 });

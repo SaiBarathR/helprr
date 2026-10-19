@@ -220,13 +220,14 @@ describe.skipIf(!url)('settings import against PostgreSQL', () => {
     const before = new Date();
     const outcome = await runImport.applySettingsImport(doc as never, IMPORTER_ID);
 
-    const profiles = await prisma.userTasteProfile.findMany({ orderBy: { userId: 'asc' }, select: { userId: true, builtAt: true, updatedAt: true } });
+    const profiles = await prisma.userTasteProfile.findMany({ orderBy: { userId: 'asc' }, select: { userId: true, builtAt: true, markedAt: true } });
     expect(profiles.map(({ userId, builtAt }) => ({ userId, builtAt }))).toEqual([
       { userId: 'member-1', builtAt: new Date(0) },
       { userId: 'other-1', builtAt: built },
     ]);
     // A rebuild under way tells a mark that landed meanwhile by this time.
-    expect(profiles[0].updatedAt.getTime()).toBeGreaterThanOrEqual(before.getTime());
+    expect(profiles[0].markedAt!.getTime()).toBeGreaterThanOrEqual(before.getTime());
+    expect(profiles[1].markedAt).toBeNull();
     // Their composed rails are dropped once the import has committed.
     expect(outcome.followUps.recommendationUserIds).toEqual(['member-1']);
   });

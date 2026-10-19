@@ -106,9 +106,11 @@ export async function rebuildTasteProfile(user: ProfileUser): Promise<TasteProfi
     // build read may already be out of date: a link changed while it ran (a
     // stale mark landed after it started), or the user it was handed was read
     // before a link or role change (a request in flight, a polling sweep's list).
-    const stored = await tx.userTasteProfile.findUnique({ where: { userId: user.id }, select: { builtAt: true, updatedAt: true } });
+    // Only markTasteProfileStale writes markedAt, so neither this write nor a
+    // forget* edit can pass for a mark.
+    const stored = await tx.userTasteProfile.findUnique({ where: { userId: user.id }, select: { markedAt: true } });
     const current = await tx.user.findUnique({ where: { id: user.id }, select: { role: true, jellyfinUserId: true } });
-    const markedMeanwhile = stored !== null && stored.builtAt.getTime() === 0 && stored.updatedAt >= startedAt;
+    const markedMeanwhile = stored?.markedAt != null && stored.markedAt >= startedAt;
     const userChanged = current !== null && (current.role !== user.role || current.jellyfinUserId !== user.jellyfinUserId);
     const builtAt = markedMeanwhile || userChanged ? new Date(0) : new Date();
     const json = built.profile as unknown as Prisma.InputJsonValue;
@@ -194,7 +196,7 @@ export function forgetLikedItems(userId: string, itemKeys: string[], db: RawExec
  */
 export function markTasteProfileStale(userIds: string | string[], db: Pick<Prisma.TransactionClient, 'userTasteProfile'> = prisma) {
   const userId = typeof userIds === 'string' ? userIds : { in: userIds };
-  return db.userTasteProfile.updateMany({ where: { userId }, data: { builtAt: new Date(0) } });
+  return db.userTasteProfile.updateMany({ where: { userId }, data: { builtAt: new Date(0), markedAt: new Date() } });
 }
 
 /**

@@ -105,7 +105,7 @@ beforeEach(() => {
     where.type === 'SONARR' ? [{ id: 'son-1' }, { id: 'son-2' }] : [{ id: 'rad-1' }]
   ));
   mocks.invalidateReferenceLabels.mockResolvedValue(undefined);
-  mocks.invalidateRecommendations.mockResolvedValue(undefined);
+  mocks.invalidateRecommendations.mockResolvedValue(true);
   vi.spyOn(console, 'warn').mockImplementation(() => {});
 });
 
@@ -129,6 +129,12 @@ describe('settings import follow-ups', () => {
     expect(mocks.invalidateReferenceLabels.mock.calls).toEqual([['sonarr', 'son-1'], ['sonarr', 'son-2'], ['radarr', 'rad-1']]);
     // Imported users' recommendation rails recompose with their new links.
     expect(mocks.invalidateRecommendations.mock.calls).toEqual([['member-1'], ['member-2']]);
+  });
+
+  it("stops dropping users' rails at the first sign Redis is down, so an outage logs once", async () => {
+    mocks.invalidateRecommendations.mockResolvedValue(false);
+    await expect(runImportFollowUps({ recommendationUserIds: ['u1', 'u2', 'u3'] })).resolves.toEqual([]);
+    expect(mocks.invalidateRecommendations.mock.calls).toEqual([['u1']]);
   });
 
   it('runs nothing that was not planned', async () => {

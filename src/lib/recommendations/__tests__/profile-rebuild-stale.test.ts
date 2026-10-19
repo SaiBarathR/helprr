@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const db = vi.hoisted(() => ({
-  stored: null as null | { builtAt: Date; updatedAt: Date },
+  stored: null as null | { builtAt?: Date; updatedAt?: Date; markedAt: Date | null },
   current: null as null | { role: string; jellyfinUserId: string | null },
   upsert: vi.fn(),
 }));
@@ -30,27 +30,47 @@ const { rebuildTasteProfile } = await import('../profile-store');
 const member = { id: 'u1', role: 'member' as const, jellyfinUserId: 'jf-1' };
 const EPOCH = new Date(0);
 const storedBuiltAt = () => (db.upsert.mock.calls[0][0] as { update: { builtAt: Date } }).update.builtAt;
+const minutes = (n: number) => new Date(Date.now() + n * 60_000);
 
 beforeEach(() => {
   vi.clearAllMocks();
-  db.stored = { builtAt: new Date(Date.now() - 7 * 3600_000), updatedAt: new Date(Date.now() - 7 * 3600_000) };
+  db.stored = { markedAt: null };
   db.current = { role: 'member', jellyfinUserId: 'jf-1' };
 });
 
 describe('rebuilding a taste profile', () => {
+  it("is not fooled by another rebuild's stale write or a forget edit, which change the row but are not marks", async () => {
+    // Another rebuild left it stale, or a restore edited it, after this one started: builtAt is the
+    // epoch and the row is newer, but no link changed, so this rebuild's profile is good.
+    db.stored = { builtAt: EPOCH, updatedAt: minutes(1), markedAt: minutes(-30) };
+    await rebuildTasteProfile(member);
+    expect(storedBuiltAt().getTime()).toBeGreaterThan(Date.now() - 5_000);
+  });
+
+  it('stores a first profile as fresh, and one for a user removed meanwhile as before', async () => {
+    db.stored = null;
+    await rebuildTasteProfile(member);
+    expect((db.upsert.mock.calls[0][0] as { create: { builtAt: Date } }).create.builtAt.getTime()).toBeGreaterThan(Date.now() - 5_000);
+
+    db.upsert.mockClear();
+    db.current = null;
+    await rebuildTasteProfile(member);
+    expect(storedBuiltAt().getTime()).toBeGreaterThan(Date.now() - 5_000);
+  });
+
   it('stores it as fresh when nothing it read has moved', async () => {
     await rebuildTasteProfile(member);
     expect(storedBuiltAt().getTime()).toBeGreaterThan(Date.now() - 5_000);
   });
 
   it('stores it as fresh when the stale mark was what asked for this rebuild', async () => {
-    db.stored = { builtAt: EPOCH, updatedAt: new Date(Date.now() - 60_000) };
+    db.stored = { builtAt: EPOCH, markedAt: minutes(-1) };
     await rebuildTasteProfile(member);
     expect(storedBuiltAt().getTime()).toBeGreaterThan(Date.now() - 5_000);
   });
 
   it('leaves it stale when a link was marked while it was building', async () => {
-    db.stored = { builtAt: EPOCH, updatedAt: new Date(Date.now() + 60_000) };
+    db.stored = { builtAt: EPOCH, markedAt: minutes(1) };
     await rebuildTasteProfile(member);
     expect(storedBuiltAt()).toEqual(EPOCH);
   });

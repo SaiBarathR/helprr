@@ -209,7 +209,7 @@ async function noteRequestForRecommendations(
 ): Promise<void> {
   if (requestedAsOther || !can(user, 'recommendations.view')) return;
   try {
-    await recordRequestEvent(user.id, mediaType, tmdbId, await requestedGenres(mediaType, tmdbId));
+    await recordRequestEvent(user.id, mediaType, tmdbId, () => requestedGenres(mediaType, tmdbId));
   } catch (err) {
     logger.warn('Request not recorded for recommendations', { err }, { scope: 'api/seerr/requests' });
   }

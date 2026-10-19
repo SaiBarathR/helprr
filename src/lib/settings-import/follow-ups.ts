@@ -185,11 +185,15 @@ export async function runImportFollowUps(plan: ImportFollowUpPlan): Promise<Impo
     });
   }
 
-  // No warning: invalidateRecommendations never throws (without Redis the
-  // rails are recomposed when their 15-minute snapshot expires).
+  // No warning: invalidateRecommendations never throws, and without Redis the
+  // rails are recomposed when their 15-minute snapshot expires. The first user
+  // tells whether Redis answers, so an outage costs one log line, not one per user.
   const users = plan.recommendationUserIds ?? [];
-  for (let i = 0; i < users.length; i += 100) {
-    await Promise.all(users.slice(i, i + 100).map((id) => invalidateRecommendations(id)));
+  if (users.length > 0 && (await invalidateRecommendations(users[0]))) {
+    for (let i = 1; i < users.length; i += 100) {
+      const reached = await Promise.all(users.slice(i, i + 100).map((id) => invalidateRecommendations(id)));
+      if (reached.includes(false)) break;
+    }
   }
 
   return warnings;
