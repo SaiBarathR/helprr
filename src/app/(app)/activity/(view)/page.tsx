@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from '@/components/ui/app-link';
 import { useSearchParams } from 'next/navigation';
 import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
+import { NAVIGATION_START_EVENT, type NavigationStartDetail } from '@/lib/route-scroll-state';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
@@ -383,7 +384,12 @@ function writeActivityLinkView(view: ActivityLinkView | null) {
     if (view.instance !== 'all') params.set('instance', view.instance);
   }
   const query = params.toString();
-  window.history.replaceState(null, '', query ? `/activity?${query}` : '/activity');
+  const href = query ? `/activity?${query}` : '/activity';
+  // A filter change keeps the list where it is: tell the scroll restorer this
+  // URL write is the same view, as a router replace with scroll:false would.
+  const detail: NavigationStartDetail = { kind: 'replace', href, preserveScroll: true };
+  window.dispatchEvent(new CustomEvent(NAVIGATION_START_EVENT, { detail }));
+  window.history.replaceState(null, '', href);
 }
 
 /**
