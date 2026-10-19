@@ -24,6 +24,9 @@ interface FallbackActionsProps {
 
 const APP = { RADARR: 'Radarr', SONARR: 'Sonarr' } as const;
 
+/** The fallback's check and start for one torrent: the file picker waits while either runs. */
+export const fallbackMutationKey = (hash: string) => ['manual-downloads', 'fallback', hash] as const;
+
 /**
  * The last step of the advanced fallback, under the file picker: Check what
  * Helprr will do with exactly these files, then start; the torrent only
@@ -45,36 +48,40 @@ export function FallbackActions({ hash, draft, source, selectedIndexes, disabled
   };
   const key = JSON.stringify(body);
   const result = checked?.key === key ? checked.result : null;
+  // Fixed when a button is pressed: an answer belongs to what was asked, not to what is on screen when it arrives.
+  type Asked = { key: string; body: typeof body };
 
   const onError = (error: unknown) => {
     if (error instanceof ApiError && error.status === 401) return;
     toast.error(error instanceof Error ? error.message : 'Something went wrong');
   };
-  const post = async (path: string, extra: Record<string, unknown> = {}) => {
-    const res = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, ...extra }) });
+  const post = async (path: string, payload: Record<string, unknown>) => {
+    const res = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     return { res, data: await res.json().catch(() => null) };
   };
   const check = useMutation({
-    mutationFn: async () => {
-      const { res, data } = await post('/api/manual-downloads/fallback/check');
+    mutationKey: fallbackMutationKey(hash),
+    mutationFn: async (asked: Asked) => {
+      const { res, data } = await post('/api/manual-downloads/fallback/check', asked.body);
       if (!res.ok) throw new ApiError(res.status, data?.error || 'The check could not run');
       return data as FallbackCheck;
     },
-    onSuccess: (data) => setChecked({ key, result: data }),
+    onSuccess: (data, asked) => setChecked({ key: asked.key, result: data }),
     onError,
   });
   const start = useMutation({
-    mutationFn: async () => {
+    mutationKey: fallbackMutationKey(hash),
+    mutationFn: async (asked: Asked) => {
       await beforeStart();
-      if (requestIdRef.current?.key !== key) requestIdRef.current = { key, id: newRequestId() };
-      const { res, data } = await post('/api/manual-downloads/fallback', { clientRequestId: requestIdRef.current.id });
+      if (requestIdRef.current?.key !== asked.key) requestIdRef.current = { key: asked.key, id: newRequestId() };
+      const { res, data } = await post('/api/manual-downloads/fallback', { ...asked.body, clientRequestId: requestIdRef.current.id });
       if (res.status === 409 && data?.plan) return { refused: data as FallbackCheck };
       if (!res.ok) throw new ApiError(res.status, data?.error || 'The download could not be started');
       return { download: data.download as { id: string; status: string } };
     },
-    onSuccess: (outcome) => {
+    onSuccess: (outcome, asked) => {
       if ('refused' in outcome && outcome.refused) {
-        setChecked({ key, result: outcome.refused });
+        setChecked({ key: asked.key, result: outcome.refused });
         return;
       }
       const download = outcome.download!;
@@ -90,12 +97,12 @@ export function FallbackActions({ hash, draft, source, selectedIndexes, disabled
     <div className="space-y-3 pb-4">
       {result && <FallbackSummary result={result} app={app} />}
       {result?.ok ? (
-        <Button className="w-full" onClick={() => start.mutate()} disabled={busy || selectedIndexes.length === 0}>
+        <Button className="w-full" onClick={() => start.mutate({ key, body })} disabled={busy || selectedIndexes.length === 0}>
           {start.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
           Start download
         </Button>
       ) : (
-        <Button className="w-full" onClick={() => check.mutate()} disabled={busy || selectedIndexes.length === 0}>
+        <Button className="w-full" onClick={() => check.mutate({ key, body })} disabled={busy || selectedIndexes.length === 0}>
           {check.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
           {checked ? 'Check again' : 'Check'}
         </Button>

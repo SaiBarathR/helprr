@@ -66,7 +66,7 @@ describe('mapping the files of a fallback download', () => {
     const doubtful = screen.getByText('random-name.mkv').closest('section')!;
     expect(within(doubtful).getByRole('button', { name: 'Leave it' }).getAttribute('aria-pressed')).toBe('true');
     expect(within(doubtful).getByText('Single episode file contains all episodes in seasons')).toBeTruthy();
-    expect(screen.getByText(/Also chosen, not videos: notes.nfo/)).toBeTruthy();
+    expect(screen.getByText(/Also chosen, not offered by Sonarr for import: notes.nfo/)).toBeTruthy();
     expect(screen.queryByText('other.mkv')).toBeNull();
   });
 
@@ -79,8 +79,10 @@ describe('mapping the files of a fallback download', () => {
     await user.click(within(doubtful).getByRole('button', { name: /S01E01, S01E02/ }));
     await user.click(within(doubtful).getByRole('checkbox', { name: /S01E01/ }));
     await user.click(within(doubtful).getByRole('checkbox', { name: /S01E02/ }));
-    expect(screen.getByRole('button', { name: /Import 2 files/ }).hasAttribute('disabled')).toBe(true);
+    expect(screen.getByRole('button', { name: 'Check with Sonarr' }).hasAttribute('disabled')).toBe(true);
     expect(screen.getByText('Choose the episodes for each file you import.')).toBeTruthy();
+    // Import is offered only once Sonarr has checked the mapping on screen.
+    expect(screen.queryByRole('button', { name: /Import 2 files/ })).toBeNull();
     await user.click(within(doubtful).getByRole('checkbox', { name: /S01E06/ }));
 
     mocks.preview = [{ fileId: 'f0', rejections: [] }, { fileId: 'f1', rejections: ['Single episode file contains all episodes in seasons'] }];
@@ -99,6 +101,65 @@ describe('mapping the files of a fallback download', () => {
     expect(mocks.posts[1].url).toBe('/api/manual-downloads/md1/import');
   });
 
+  it('asks Sonarr again about a changed mapping, and confirms the objections to that one', async () => {
+    renderPage();
+    const user = userEvent.setup();
+    await screen.findByText('Show.S01E05.mkv');
+    mocks.preview = [{ fileId: 'f0', rejections: [] }];
+    await user.click(screen.getByRole('button', { name: 'Check with Sonarr' }));
+    expect(await screen.findByRole('button', { name: /Import 1 file/ })).toBeTruthy();
+
+    // Mapped to another episode after the check: the earlier verdict no longer counts.
+    const known = screen.getByText('Show.S01E05.mkv').closest('section')!;
+    await user.click(within(known).getByRole('button', { name: /S01E05/ }));
+    await user.click(await within(known).findByRole('checkbox', { name: /S01E06/ }));
+    expect(screen.queryByRole('button', { name: /Import 1 file/ })).toBeNull();
+
+    mocks.preview = [{ fileId: 'f0', rejections: ['Not an upgrade for existing episode file(s)'] }];
+    await user.click(screen.getByRole('button', { name: 'Check with Sonarr' }));
+    await user.click(await screen.findByRole('button', { name: /Import 1 file/ }));
+    const confirm = screen.getByRole('alertdialog');
+    expect(within(confirm).getByText(/Show.S01E05.mkv: Not an upgrade for existing episode file/)).toBeTruthy();
+    await user.click(within(confirm).getByRole('button', { name: 'Import anyway' }));
+    await waitFor(() => expect(mocks.posts.at(-1)).toEqual({
+      url: '/api/manual-downloads/md1/import',
+      body: { files: [{ fileId: 'f0', decision: 'IMPORT', episodeIds: [26, 27] }, { fileId: 'f1', decision: 'IGNORE', episodeIds: [] }] },
+    }));
+  });
+
+  it('holds the mapping still while Sonarr checks it', async () => {
+    let answer!: (response: Response) => void;
+    renderPage();
+    const user = userEvent.setup();
+    const known = (await screen.findByText('Show.S01E05.mkv')).closest('section')!;
+    await user.click(await within(known).findByRole('button', { name: /S01E05/ }));
+    vi.mocked(fetch).mockImplementationOnce(async (url, init) => {
+      mocks.posts.push({ url: String(url), body: JSON.parse(String(init?.body)) });
+      return new Promise<Response>((resolve) => { answer = resolve; });
+    });
+    await user.click(screen.getByRole('button', { name: 'Check with Sonarr' }));
+    expect(within(known).getByRole('checkbox', { name: /S01E06/ }).hasAttribute('disabled')).toBe(true);
+    expect(within(known).getByRole('button', { name: 'Leave it' }).hasAttribute('disabled')).toBe(true);
+    answer(new Response(JSON.stringify({ files: [{ fileId: 'f0', rejections: [] }] })));
+    expect(await screen.findByRole('button', { name: /Import 1 file/ })).toBeTruthy();
+  });
+
+  it('leaves the choice to the user when several files read as the movie', async () => {
+    mocks.download = {
+      ...sonarrDownload(), service: 'RADARR', arrItemId: 15, arrItemTitle: 'Night of the Living Dead',
+      files: [
+        file('m0', 'Film/Film.1080p.mkv', arrRead({ series: null, movie: { id: 15, title: 'Night of the Living Dead' } })),
+        file('m1', 'Film/Film.720p.mkv', arrRead({ series: null, movie: { id: 15, title: 'Night of the Living Dead' } })),
+      ],
+    };
+    renderPage();
+    const first = (await screen.findByText('Film.1080p.mkv')).closest('section')!;
+    const second = screen.getByText('Film.720p.mkv').closest('section')!;
+    expect(within(first).getByRole('button', { name: 'Import' }).getAttribute('aria-pressed')).toBe('false');
+    expect(within(second).getByRole('button', { name: 'Import' }).getAttribute('aria-pressed')).toBe('false');
+    expect(screen.getByRole('button', { name: 'Check with Radarr' }).hasAttribute('disabled')).toBe(true);
+  });
+
   it('imports one file for a movie: choosing another leaves the first', async () => {
     mocks.download = {
       ...sonarrDownload(), service: 'RADARR', arrItemId: 15, arrItemTitle: 'Night of the Living Dead',
@@ -111,11 +172,12 @@ describe('mapping the files of a fallback download', () => {
     const user = userEvent.setup();
     const first = (await screen.findByText('Film.1080p.mkv')).closest('section')!;
     const second = screen.getByText('Film.720p.mkv').closest('section')!;
-    expect(within(first).getByRole('button', { name: 'Import' }).getAttribute('aria-pressed')).toBe('true');
-    expect(within(second).getByRole('button', { name: 'Import' }).getAttribute('aria-pressed')).toBe('false');
+    await user.click(within(first).getByRole('button', { name: 'Import' }));
     await user.click(within(second).getByRole('button', { name: 'Import' }));
     expect(within(first).getByRole('button', { name: 'Import' }).getAttribute('aria-pressed')).toBe('false');
-    await user.click(screen.getByRole('button', { name: /Import 1 file/ }));
-    await waitFor(() => expect(mocks.posts[0].body).toEqual({ files: [{ fileId: 'm0', decision: 'IGNORE', episodeIds: [] }, { fileId: 'm1', decision: 'IMPORT', episodeIds: [] }] }));
+    mocks.preview = [{ fileId: 'm1', rejections: [] }];
+    await user.click(screen.getByRole('button', { name: 'Check with Radarr' }));
+    await user.click(await screen.findByRole('button', { name: /Import 1 file/ }));
+    await waitFor(() => expect(mocks.posts[1].body).toEqual({ files: [{ fileId: 'm0', decision: 'IGNORE', episodeIds: [] }, { fileId: 'm1', decision: 'IMPORT', episodeIds: [] }] }));
   });
 });

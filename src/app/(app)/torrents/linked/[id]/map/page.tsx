@@ -25,19 +25,17 @@ const fileName = (path: string) => path.split(/[\\/]/).pop() ?? path;
 
 /** What the user decided before, or what Arr read when it read it as this title. */
 function initialDecisions(download: ManualDownloadView, files: MappedFile[]): Record<string, Decision> {
+  const forTarget = (file: MappedFile) => (download.service === 'RADARR' ? file.arr!.movie?.id : file.arr!.series?.id) === download.arrItemId;
+  // Suggested only when Arr reads it as this title and has no objection; anything else is the user's call.
+  const clean = (file: MappedFile) => forTarget(file) && file.arr!.rejections.length === 0;
+  // A movie takes one file: one is suggested only when it is the only clean reading, never picked from several.
+  const movieOpen = download.service !== 'RADARR'
+    || (files.filter((file) => file.decision === 'PENDING' && clean(file)).length === 1 && !files.some((file) => file.decision === 'IMPORT'));
   const decisions: Record<string, Decision> = {};
-  let movieChosen = false;
   for (const file of files) {
-    if (file.decision !== 'PENDING') {
-      decisions[file.id] = { include: file.decision === 'IMPORT', episodeIds: file.episodeIds };
-      continue;
-    }
-    const arr = file.arr!;
-    const forTarget = download.service === 'RADARR' ? arr.movie?.id === download.arrItemId : arr.series?.id === download.arrItemId;
-    // Suggested only when Arr reads it as this title and has no objection; anything else is the user's call.
-    const include = forTarget && arr.rejections.length === 0 && !(download.service === 'RADARR' && movieChosen);
-    if (include && download.service === 'RADARR') movieChosen = true;
-    decisions[file.id] = { include, episodeIds: forTarget ? arr.episodes.map((episode) => episode.id) : [] };
+    decisions[file.id] = file.decision !== 'PENDING'
+      ? { include: file.decision === 'IMPORT', episodeIds: file.episodeIds }
+      : { include: clean(file) && movieOpen, episodeIds: forTarget(file) ? file.arr!.episodes.map((episode) => episode.id) : [] };
   }
   return decisions;
 }
@@ -45,7 +43,8 @@ function initialDecisions(download: ManualDownloadView, files: MappedFile[]): Re
 /**
  * Map a fallback download's files: for each video Arr read, import it (and,
  * for a series, as which episodes) or leave it. Arr's own reading and
- * objections are shown; importing past an objection needs a confirmation.
+ * objections are shown. Import is offered once Arr has checked exactly the
+ * mapping on screen, and importing past its objections needs a confirmation.
  */
 export default function MapFilesPage() {
   const { id } = useParams<{ id: string }>();
@@ -86,25 +85,27 @@ export default function MapFilesPage() {
   const objectionsOf = (file: MappedFile) => verdict?.[file.id] ?? file.arr!.rejections;
   const included = files.filter((file) => current[file.id]?.include);
   const missingEpisodes = isSeries && included.some((file) => current[file.id].episodeIds.length === 0);
-  const objections = included.filter((file) => objectionsOf(file).length > 0);
+  // Arr's objections to this exact mapping (an earlier reading may not have seen, say, a better file already there).
+  const objections = verdict ? included.filter((file) => (verdict[file.id] ?? []).length > 0) : [];
 
   const onError = (error: unknown) => {
     if (error instanceof ApiError && error.status === 401) return;
     toast.error(error instanceof Error ? error.message : 'Something went wrong');
   };
-  const post = async (path: string) => {
-    const res = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: key });
+  // `asked`: the mapping as it was when the button was pressed; an answer belongs to it.
+  const post = async (path: string, asked: string) => {
+    const res = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: asked });
     const data = await res.json().catch(() => null);
     if (!res.ok) throw new ApiError(res.status, data?.error || 'Something went wrong');
     return data;
   };
   const check = useMutation({
-    mutationFn: () => post(`/api/manual-downloads/${id}/import?preview=1`) as Promise<{ files: Array<{ fileId: string; rejections: string[] }> }>,
-    onSuccess: (data) => setPreview({ key, rejections: Object.fromEntries(data.files.map((file) => [file.fileId, file.rejections])) }),
+    mutationFn: (asked: string) => post(`/api/manual-downloads/${id}/import?preview=1`, asked) as Promise<{ files: Array<{ fileId: string; rejections: string[] }> }>,
+    onSuccess: (data, asked) => setPreview({ key: asked, rejections: Object.fromEntries(data.files.map((file) => [file.fileId, file.rejections])) }),
     onError,
   });
   const importFiles = useMutation({
-    mutationFn: () => post(`/api/manual-downloads/${id}/import`),
+    mutationFn: (asked: string) => post(`/api/manual-downloads/${id}/import`, asked),
     onSuccess: () => {
       setConfirming(false);
       toast.success('Importing');
@@ -195,7 +196,7 @@ export default function MapFilesPage() {
                           <p className="tracked-caps text-[10px] text-muted-foreground">{season === 0 ? 'Specials' : `Season ${season}`}</p>
                           {list.map((episode) => (
                             <label key={episode.id} className="flex min-h-[40px] items-center gap-3 text-sm">
-                              <input type="checkbox" checked={decision.episodeIds.includes(episode.id)} onChange={() => toggleEpisode(file.id, episode.id)} className="h-4 w-4 shrink-0 rounded border-border" />
+                              <input type="checkbox" checked={decision.episodeIds.includes(episode.id)} onChange={() => toggleEpisode(file.id, episode.id)} disabled={busy || !canManage} className="h-4 w-4 shrink-0 rounded border-border" />
                               <span className="font-mono text-xs">{episodeLabel(episode)}</span>
                               <span className="min-w-0 truncate text-muted-foreground">{episode.title}</span>
                               {episode.hasFile && <span className="shrink-0 text-[10px] text-muted-foreground">has a file</span>}
@@ -213,20 +214,23 @@ export default function MapFilesPage() {
 
         {extras.length > 0 && (
           <p className="text-xs text-muted-foreground">
-            Also chosen, not videos: {extras.map((file) => fileName(file.path)).join(', ')}. {app} brings subtitles and extras along with a video it imports.
+            Also chosen, not offered by {app} for import: {extras.map((file) => fileName(file.path)).join(', ')}. {app} brings subtitles and extras along with a video it imports; a video it did not offer cannot be imported from here.
           </p>
         )}
 
         {canManage && waiting && files.length > 0 && (
           <div className="space-y-2">
-            <Button variant="outline" className="w-full" onClick={() => check.mutate()} disabled={busy || included.length === 0 || missingEpisodes}>
-              {check.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Check with {app}
-            </Button>
-            <Button className="w-full" onClick={() => (objections.length > 0 ? setConfirming(true) : importFiles.mutate())} disabled={busy || included.length === 0 || missingEpisodes}>
-              {importFiles.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Import {included.length} file{included.length === 1 ? '' : 's'}
-            </Button>
+            {verdict ? (
+              <Button className="w-full" onClick={() => (objections.length > 0 ? setConfirming(true) : importFiles.mutate(key))} disabled={busy || included.length === 0 || missingEpisodes}>
+                {importFiles.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Import {included.length} file{included.length === 1 ? '' : 's'}
+              </Button>
+            ) : (
+              <Button className="w-full" onClick={() => check.mutate(key)} disabled={busy || included.length === 0 || missingEpisodes}>
+                {check.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Check with {app}
+              </Button>
+            )}
             {missingEpisodes && <p className="text-center text-xs text-muted-foreground">Choose the episodes for each file you import.</p>}
           </div>
         )}
@@ -239,7 +243,7 @@ export default function MapFilesPage() {
         description={`${objections.map((file) => `${fileName(file.path)}: ${objectionsOf(file).join('; ')}`).join(' — ')}. ${app} imports them as you mapped them.`}
         confirmLabel="Import anyway"
         busy={importFiles.isPending}
-        onConfirm={() => importFiles.mutate()}
+        onConfirm={() => importFiles.mutate(key)}
       />
     </div>
   );
