@@ -63,7 +63,39 @@ describe('client authentication cache boundaries', () => {
     vi.stubGlobal('navigator', { serviceWorker: { controller: { postMessage: vi.fn() } } });
 
     const clearing = clearUserScopedBrowserCaches();
-    await vi.advanceTimersByTimeAsync(1_000);
+    await vi.advanceTimersByTimeAsync(999);
+    expect(deleteCache).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    await clearing;
+    expect(deleteCache).toHaveBeenCalledTimes(3);
+  });
+
+  it("fences the registration's active worker when none controls the page", async () => {
+    let replyPort: MessagePort | null = null;
+    const postMessage = vi.fn((_message: unknown, transfer: Transferable[]) => {
+      replyPort = transfer[0] as MessagePort;
+    });
+    const deleteCache = vi.fn(async () => true);
+    vi.stubGlobal('window', { caches: { delete: deleteCache }, setTimeout: globalThis.setTimeout, clearTimeout: globalThis.clearTimeout });
+    vi.stubGlobal('navigator', { serviceWorker: { controller: null, getRegistration: async () => ({ active: { postMessage } }) } });
+
+    const clearing = clearUserScopedBrowserCaches();
+    await vi.waitFor(() => expect(replyPort).not.toBeNull());
+    expect(postMessage.mock.calls[0][0]).toEqual({ type: 'helprr-fence-user-caches' });
+    expect(deleteCache).not.toHaveBeenCalled();
+    replyPort!.postMessage({ ok: true });
+    await clearing;
+    expect(deleteCache).toHaveBeenCalledTimes(3);
+  });
+
+  it('clears at once when the fence message cannot be sent', async () => {
+    vi.useFakeTimers();
+    const deleteCache = vi.fn(async () => true);
+    vi.stubGlobal('window', { caches: { delete: deleteCache }, setTimeout: globalThis.setTimeout, clearTimeout: globalThis.clearTimeout });
+    vi.stubGlobal('navigator', { serviceWorker: { controller: { postMessage: () => { throw new Error('worker gone'); } } } });
+
+    const clearing = clearUserScopedBrowserCaches();
+    await vi.advanceTimersByTimeAsync(0);
     await clearing;
     expect(deleteCache).toHaveBeenCalledTimes(3);
   });

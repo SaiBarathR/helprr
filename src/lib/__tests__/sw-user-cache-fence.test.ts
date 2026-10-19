@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { CacheFirst, NetworkFirst, StaleWhileRevalidate, type Strategy } from 'serwist';
+import { CacheFirst, CacheableResponsePlugin, NetworkFirst, StaleWhileRevalidate, type Strategy } from 'serwist';
 import { createUserCacheFence } from '@/lib/sw-user-cache-fence';
 
 // Cache Storage as the worker sees it, in memory. As in a browser, opening a
@@ -143,6 +143,15 @@ describe('user-scoped cache fence', () => {
       signOut(fence, 'pages'),
     );
     expect(await response.text()).toBe('old shell');
+    expect(await storage.has('pages')).toBe(false);
+  });
+
+  it("holds with the pages cache's other plugins after it", async () => {
+    const fence = createUserCacheFence();
+    const strategy = () => new StaleWhileRevalidate({ cacheName: 'pages', plugins: [fence.plugin, new CacheableResponsePlugin({ statuses: [200] })] });
+    await run(strategy(), 'https://helprr.test/series', async () => {});
+    expect((await storage.open('pages')).entries.size).toBe(1);
+    await run(strategy(), 'https://helprr.test/movies', signOut(fence, 'pages'));
     expect(await storage.has('pages')).toBe(false);
   });
 
