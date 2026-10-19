@@ -12,7 +12,7 @@ vi.mock('@/lib/redis', () => ({ getRedisClient: mocks.redis }));
 vi.mock('../engine', () => ({ invalidateRecommendations: mocks.invalidate }));
 vi.mock('../ratings', () => ({ RATING_OF: { dislike: 'down', like: 'up', love: 'love' }, replaceRating: mocks.replaceRating, forgetInProfile: mocks.forgetInProfile }));
 
-const { ingestEvents } = await import('../events');
+const { ingestEvents, recordRequestEvent } = await import('../events');
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -87,5 +87,16 @@ describe('ingestEvents', () => {
     expect(mocks.count).not.toHaveBeenCalled();
     // Another user has their own count.
     expect(await ingestEvents('u-other', like)).toEqual({ ok: true, stored: 1 });
+  });
+});
+
+describe('recordRequestEvent', () => {
+  it("stores a request as the title's TMDB key, a plain signal that leaves the rails cached", async () => {
+    expect(await recordRequestEvent('u1', 'tv', 1399)).toEqual({ ok: true, stored: 1 });
+    expect(mocks.createMany).toHaveBeenCalledWith({
+      data: [expect.objectContaining({ userId: 'u1', itemKey: 'tmdb:tv:1399', eventType: 'request' })],
+    });
+    expect(mocks.replaceRating).not.toHaveBeenCalled();
+    expect(mocks.invalidate).not.toHaveBeenCalled();
   });
 });

@@ -1,6 +1,6 @@
 import { prisma } from '@/lib/db';
 import type { Prisma } from '@prisma/client';
-import { isItemKey } from './item-keys';
+import { isItemKey, tmdbItemKey } from './item-keys';
 import { invalidateRecommendations } from './engine';
 import { forgetInProfile, RATING_OF, replaceRating, type ProfileForget } from './ratings';
 import { getRedisClient } from '@/lib/redis';
@@ -168,6 +168,11 @@ function countSubmittedLocally(userId: string, count: number): number {
 export async function takeEventQuota(userId: string, count: number): Promise<boolean> {
   const submitted = (await countSubmitted(userId, count)) ?? countSubmittedLocally(userId, count);
   return submitted <= RATE_MAX_EVENTS_PER_WINDOW;
+}
+
+/** A title the user requested through Seerr, from any surface: a positive taste signal. */
+export async function recordRequestEvent(userId: string, mediaType: 'movie' | 'tv', tmdbId: number): Promise<IngestResult> {
+  return ingestEvents(userId, [{ itemKey: tmdbItemKey(mediaType, tmdbId), eventType: 'request' }]);
 }
 
 export async function ingestEvents(userId: string, events: IncomingEvent[]): Promise<IngestResult> {
