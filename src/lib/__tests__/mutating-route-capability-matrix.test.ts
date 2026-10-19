@@ -57,6 +57,8 @@ const POLICY_GROUPS: Record<string, readonly string[]> = {
   ],
   'cap:activity.manage': [
     'POST /api/manual-downloads/[id]/cancel',
+    'POST /api/manual-downloads/[id]/import',
+    'POST /api/manual-downloads/[id]/rescan',
     'DELETE /api/manual-downloads/[id]',
     'POST /api/activity/manualimport',
     'POST /api/activity/manualimport/reprocess',
@@ -292,6 +294,17 @@ const SPECIAL_POLICIES: Record<string, SpecialPolicy> = {
     marker: 'SERVICE_ADD_CAPABILITY',
     capabilities: ['torrents.add', 'activity.manage'],
   },
+  // The fallback also sets file priorities and starts the torrent.
+  'POST /api/manual-downloads/fallback/check': {
+    kind: 'service-capabilities',
+    marker: 'SERVICE_ADD_CAPABILITY',
+    capabilities: ['torrents.add', 'torrents.manage', 'activity.manage'],
+  },
+  'POST /api/manual-downloads/fallback': {
+    kind: 'service-capabilities',
+    marker: 'SERVICE_ADD_CAPABILITY',
+    capabilities: ['torrents.add', 'torrents.manage', 'activity.manage'],
+  },
 };
 
 interface CallEvidence {
@@ -440,7 +453,7 @@ describe('mutating API route capability matrix', () => {
   const assignments = policyAssignments();
 
   it('explicitly assigns every mutating handler exactly once', () => {
-    expect(handlers.size).toBe(165);
+    expect(handlers.size).toBe(169);
     expect([...assignments.keys()].sort()).toEqual([...handlers.keys()].sort());
   });
 

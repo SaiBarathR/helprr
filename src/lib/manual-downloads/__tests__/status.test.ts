@@ -6,7 +6,11 @@ const mocks = vi.hoisted(() => ({
   queue: vi.fn(async () => ({ records: [] as unknown[] })),
   client: {} as Record<string, ReturnType<typeof vi.fn>>,
   connection: vi.fn(async () => ({ id: 'i1' })),
+  torrents: vi.fn(async () => [] as unknown[]),
+  settle: vi.fn(async () => true),
 }));
+vi.mock('@/lib/service-helpers', () => ({ getQBittorrentClient: async () => ({ getTorrents: mocks.torrents }) }));
+vi.mock('../fallback', () => ({ settleDownloaded: mocks.settle }));
 vi.mock('@/lib/db', () => ({ prisma: { manualDownload: { findMany: vi.fn(async () => mocks.rows), update: mocks.update } } }));
 vi.mock('@/lib/arr-instances', () => ({ resolveConnection: mocks.connection }));
 vi.mock('@/lib/activity-queue', () => ({ fetchAllQueueRecords: mocks.queue }));
@@ -39,6 +43,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.rows = [];
   mocks.queue.mockResolvedValue({ records: [] });
+  mocks.torrents.mockResolvedValue([]);
+  mocks.settle.mockResolvedValue(true);
   mocks.client = {
     getHistory: vi.fn(async () => ({ records: [] })),
     getMovieFiles: vi.fn(async () => []),
@@ -177,5 +183,70 @@ describe('reconciling open manual downloads', () => {
     const report = await run();
     expect(report.failure).toBe('ECONNREFUSED');
     expect(mocks.update).not.toHaveBeenCalled();
+  });
+});
+
+describe('following a fallback download', () => {
+  const fallback = (extra: Record<string, unknown> = {}) => row({ mode: 'QBIT_REVIEWED', status: 'DOWNLOADING', ...extra });
+  const torrent = (extra: Record<string, unknown> = {}) => ({ hash: HASH.toLowerCase(), progress: 0.4, state: 'downloading', save_path: '/mnt/exos22/Downloads/', ...extra });
+
+  it("follows qBittorrent, not Arr's queue, until the chosen files finish", async () => {
+    mocks.rows = [fallback()];
+    mocks.torrents.mockResolvedValue([torrent()]);
+    await run();
+    expect(mocks.queue).not.toHaveBeenCalled();
+    expect(mocks.update).not.toHaveBeenCalled();
+    expect(mocks.settle).not.toHaveBeenCalled();
+    expect(mocks.torrents).toHaveBeenCalledWith(undefined, undefined, undefined, undefined, HASH.toLowerCase());
+
+    mocks.torrents.mockResolvedValue([torrent({ progress: 1, state: 'moving' })]);
+    await run();
+    expect(mocks.settle).not.toHaveBeenCalled();
+  });
+
+  it("hands finished files to Arr's reading once, and leaves what waits for the user", async () => {
+    mocks.rows = [fallback()];
+    mocks.torrents.mockResolvedValue([torrent({ progress: 1, state: 'stalledUP' })]);
+    await run();
+    expect(mocks.settle).toHaveBeenCalledWith(expect.objectContaining({ id: 'md1' }), mocks.client, '/mnt/exos22/Downloads/');
+
+    for (const waiting of [fallback({ status: 'NEEDS_MAPPING' }), fallback({ status: 'BLOCKED' }), fallback({ status: 'IMPORT_PENDING', updatedAt: minutesAgo(2) })]) {
+      mocks.settle.mockClear();
+      mocks.rows = [waiting];
+      await run();
+      expect(mocks.settle).not.toHaveBeenCalled();
+    }
+    expect(mocks.update).not.toHaveBeenCalled();
+
+    // A scan or import that never finished (a restart) runs again.
+    mocks.rows = [fallback({ status: 'IMPORT_PENDING', updatedAt: minutesAgo(15) })];
+    await run();
+    expect(mocks.settle).toHaveBeenCalledTimes(1);
+  });
+
+  it('says so when the torrent leaves qBittorrent, and leaves everything when qBittorrent does not answer', async () => {
+    mocks.rows = [fallback()];
+    await run();
+    expect(statusSet()).toEqual(['BLOCKED']);
+
+    mocks.update.mockClear();
+    mocks.torrents.mockRejectedValue(new Error('ECONNREFUSED'));
+    expect((await run()).failure).toBe('ECONNREFUSED');
+    expect(mocks.update).not.toHaveBeenCalled();
+  });
+
+  it('proves its own import by new file ids, or reports the failed command', async () => {
+    mocks.rows = [fallback({ status: 'IMPORTING', arrCommandId: 77, baselineFileIds: [] })];
+    mocks.client.getMovieFiles.mockResolvedValue([{ id: 9 }]);
+    await run();
+    expect(mocks.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: 'IMPORTED', importedFileIds: [9] }) }));
+
+    mocks.update.mockClear();
+    mocks.client.getMovieFiles.mockResolvedValue([]);
+    mocks.client.getCommand = vi.fn(async () => ({ status: 'failed', message: 'Access to the path is denied' }));
+    await run();
+    expect(mocks.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
+      status: 'BLOCKED', lastError: "Radarr's import failed: Access to the path is denied. Fix it, then import again.",
+    }) }));
   });
 });

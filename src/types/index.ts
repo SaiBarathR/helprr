@@ -814,6 +814,23 @@ export interface DownloadClient {
   implementation: string;
   /** A tagged client is used only for titles sharing one of its tags. */
   tags?: number[];
+  /** Implementation settings, e.g. qBittorrent's movieCategory / tvCategory. */
+  fields?: Array<{ name: string; value?: unknown }>;
+}
+
+/** Arr's mapping of a download client's paths to its own (Settings → Download Clients). */
+export interface ArrRemotePathMapping {
+  id: number;
+  host: string;
+  remotePath: string;
+  localPath: string;
+}
+
+/** A folder as Arr sees it (GET /api/v3/filesystem). A missing folder lists as empty, not as an error. */
+export interface ArrFolderListing {
+  parent?: string;
+  directories: Array<{ name: string; path: string }>;
+  files: Array<{ name: string; path: string; size: number }>;
 }
 
 /** Arr's own reading of a release title (GET /api/v3/parse). */

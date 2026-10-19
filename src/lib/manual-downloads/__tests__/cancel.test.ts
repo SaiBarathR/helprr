@@ -4,7 +4,9 @@ const mocks = vi.hoisted(() => ({
   client: {} as Record<string, ReturnType<typeof vi.fn>>,
   update: vi.fn(async () => ({})),
   audits: [] as Array<{ operation: string; filesDeleted: boolean | null }>,
+  qbit: { getTorrents: vi.fn(async () => [{ hash: 'x' }]), deleteTorrent: vi.fn(async () => {}) },
 }));
+vi.mock('@/lib/service-helpers', () => ({ getQBittorrentClient: async () => mocks.qbit }));
 vi.mock('@/lib/db', () => ({ prisma: { manualDownload: { update: mocks.update } } }));
 vi.mock('@/lib/arr-instances', () => ({ resolveConnection: vi.fn(async () => ({ id: 'i1' })) }));
 vi.mock('@/lib/cache/tagged-library', () => ({ invalidateTaggedLibrary: vi.fn(async () => {}) }));
@@ -13,6 +15,7 @@ vi.mock('@/lib/activity-queue', () => ({
   fetchAllQueueRecords: (client: { getQueue: () => Promise<unknown> }) => client.getQueue(),
 }));
 vi.mock('@/lib/file-audit', () => ({
+  snapshotTorrentDeleteTargets: async () => ({ targetTitle: 'Night.of.the.Living.Dead', itemCount: 1, details: {} }),
   runWithOperationAudit: async (input: { operation: string; filesDeleted: boolean | null }, call: () => Promise<unknown>) => {
     mocks.audits.push({ operation: input.operation, filesDeleted: input.filesDeleted });
     return call();
@@ -140,5 +143,23 @@ describe('cancelling a manual download', () => {
 
   it('refuses a download still being sent', async () => {
     await expect(cancelManualDownload(download({ status: 'SUBMITTING_RELEASE' }), none, actor)).rejects.toBeInstanceOf(ManualDownloadCancelError);
+  });
+
+  describe('a fallback download (its torrent is Helprr\'s own, not in Arr\'s queue)', () => {
+    const fallback = (extra: Record<string, unknown> = {}) => download({ mode: 'QBIT_REVIEWED', status: 'NEEDS_MAPPING', ...extra });
+
+    it('deletes the torrent and its data from qBittorrent when asked, never touching Arr\'s queue', async () => {
+      const message = await cancelManualDownload(fallback(), { ...none, removeFromClient: true, removeTitle: true }, actor);
+      expect(mocks.qbit.deleteTorrent).toHaveBeenCalledWith(HASH.toLowerCase(), true);
+      expect(mocks.audits.map((audit) => audit.operation)).toEqual(['DELETE_TORRENT', 'DELETE_MEDIA']);
+      expect(mocks.client.getQueue).not.toHaveBeenCalled();
+      expect(message).toContain('removed the torrent and its data from qBittorrent');
+    });
+
+    it('keeps the torrent unless asked, and waits while Arr imports', async () => {
+      expect(await cancelManualDownload(fallback(), none, actor)).toContain('the torrent stays in qBittorrent');
+      expect(mocks.qbit.deleteTorrent).not.toHaveBeenCalled();
+      await expect(cancelManualDownload(fallback({ status: 'IMPORTING' }), none, actor)).rejects.toBeInstanceOf(ManualDownloadCancelError);
+    });
   });
 });

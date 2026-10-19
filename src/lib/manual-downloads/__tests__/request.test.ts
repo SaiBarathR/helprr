@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ManualDownloadRequestError, readManualDownloadRequest } from '../request';
+import { ManualDownloadRequestError, readFallbackRequest, readFileDecisions, readManualDownloadRequest } from '../request';
 
 const HASH = '382cc016ff22946008ecddcb0dda820f42b0cd5a';
 const MAGNET = `magnet:?xt=urn:btih:${HASH}&dn=Night.of.the.Living.Dead.1968.1080p.BluRay.x264-GRP`;
@@ -51,5 +51,32 @@ describe('readManualDownloadRequest', () => {
     await refused({ ...base, clientRequestId: 'bad id!' });
     await refused({ ...base, add: { qualityProfileId: 1, rootFolderPath: '/m', minimumAvailability: 'soon' } });
     await refused({ ...base, add: { qualityProfileId: 1, rootFolderPath: '/m', tags: ['x'] } });
+  });
+});
+
+describe('reading a fallback request', () => {
+  const body = { service: 'SONARR', instanceId: 'i1', externalId: 329822, infoHash: '382cc016ff22946008ecddcb0dda820f42b0cd5a', selectedFileIndexes: [3, 0, 3], clientRequestId: 'req-00001' };
+
+  it('takes the torrent by hash and the chosen file indexes, once each', () => {
+    expect(readFallbackRequest(body)).toEqual({
+      input: { service: 'SONARR', instanceId: 'i1', externalId: 329822, infoHash: '382CC016FF22946008ECDDCB0DDA820F42B0CD5A', selectedFileIndexes: [3, 0], source: 'MAGNET', add: undefined },
+      clientRequestId: 'req-00001',
+    });
+  });
+
+  it('refuses anything else', () => {
+    expect(() => readFallbackRequest({ ...body, infoHash: 'xyz' })).toThrow('Invalid torrent.');
+    expect(() => readFallbackRequest({ ...body, selectedFileIndexes: [-1] })).toThrow('Invalid file choice.');
+    expect(() => readFallbackRequest({ ...body, selectedFileIndexes: '0' })).toThrow('Invalid file choice.');
+    expect(() => readFallbackRequest({ ...body, service: 'LIDARR' })).toThrow('Choose Radarr or Sonarr.');
+  });
+
+  it('reads per-file decisions strictly', () => {
+    expect(readFileDecisions({ files: [{ fileId: 'f0', decision: 'IMPORT', episodeIds: [5] }, { fileId: 'f1', decision: 'IGNORE' }] })).toEqual([
+      { fileId: 'f0', decision: 'IMPORT', episodeIds: [5] }, { fileId: 'f1', decision: 'IGNORE', episodeIds: [] },
+    ]);
+    expect(() => readFileDecisions({ files: [{ fileId: 'f0', decision: 'MOVE' }] })).toThrow('Invalid file decisions.');
+    expect(() => readFileDecisions({ files: [{ fileId: 'f0', decision: 'IMPORT', episodeIds: [0] }] })).toThrow('Invalid episodes.');
+    expect(() => readFileDecisions({ files: [] })).toThrow('Invalid file decisions.');
   });
 });

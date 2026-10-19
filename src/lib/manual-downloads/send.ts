@@ -7,7 +7,7 @@ import { invalidateTaggedLibrary } from '@/lib/cache/tagged-library';
 import type { RadarrClient } from '@/lib/radarr-client';
 import type { SonarrClient } from '@/lib/sonarr-client';
 import type { ArrReleasePushInput, HistoryItem } from '@/types';
-import { arrClientFor, preflightManualDownload, resolveArrCallbackOrigin, TERMINAL_STATUSES, type PreflightInput, type PreflightResult } from './preflight';
+import { addTitlePayload, arrClientFor, preflightManualDownload, resolveArrCallbackOrigin, TERMINAL_STATUSES, type PreflightInput, type PreflightResult } from './preflight';
 import { offerTorrentToArr, withdrawTorrentLink } from './torrent-link';
 
 /**
@@ -42,14 +42,14 @@ function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-async function withEvents(id: string): Promise<ManualDownloadWithEvents> {
+export async function withEvents(id: string): Promise<ManualDownloadWithEvents> {
   return prisma.manualDownload.findUniqueOrThrow({
     where: { id },
     include: { events: { orderBy: { at: 'asc' }, select: { at: true, status: true, message: true } } },
   });
 }
 
-async function moveTo(
+export async function moveTo(
   id: string,
   status: ManualDownloadStatus,
   message: string | null,
@@ -61,7 +61,7 @@ async function moveTo(
     data: {
       ...data,
       status,
-      ...(status === 'FAILED' || status === 'BLOCKED' ? { lastError: message } : {}),
+      ...(status === 'FAILED' || status === 'BLOCKED' || status === 'NEEDS_MAPPING' ? { lastError: message } : { lastError: null }),
       ...(terminal ? { completedAt: new Date() } : {}),
       events: { create: { status, message } },
     },
@@ -246,35 +246,14 @@ class SendRun {
 
   /** Add the title with every automatic search off, from an allowlist of fields. */
   private async addTitle(): Promise<void> {
-    const add = this.input.add!;
     const target = this.plan.target!;
+    const payload = addTitlePayload(this.input.service, target, this.input.add!);
     if (this.input.service === 'RADARR') {
-      const movie = await this.audit('CREATE_MEDIA', { tmdbId: target.externalId }, () => this.radarr.addMovie({
-        title: target.title,
-        tmdbId: target.externalId,
-        year: target.year,
-        qualityProfileId: add.qualityProfileId,
-        rootFolderPath: add.rootFolderPath,
-        tags: add.tags,
-        monitored: true,
-        minimumAvailability: add.minimumAvailability ?? 'released',
-        addOptions: { searchForMovie: false, monitor: 'movieOnly' },
-      } as never));
+      const movie = await this.audit('CREATE_MEDIA', { tmdbId: target.externalId }, () => this.radarr.addMovie(payload as never));
       this.arrItemId = movie.id;
     } else {
-      // Added unmonitored with no searches; the series and the release's
-      // episodes are monitored once Sonarr has its episodes.
-      const series = await this.audit('CREATE_MEDIA', { tvdbId: target.externalId }, () => this.sonarr.addSeries({
-        title: target.title,
-        tvdbId: target.externalId,
-        qualityProfileId: add.qualityProfileId,
-        rootFolderPath: add.rootFolderPath,
-        tags: add.tags,
-        seriesType: add.seriesType ?? 'standard',
-        seasonFolder: add.seasonFolder !== false,
-        monitored: false,
-        addOptions: { monitor: 'none', searchForMissingEpisodes: false, searchForCutoffUnmetEpisodes: false },
-      } as never));
+      // The series and the release's episodes are monitored once Sonarr has its episodes.
+      const series = await this.audit('CREATE_MEDIA', { tvdbId: target.externalId }, () => this.sonarr.addSeries(payload as never));
       this.arrItemId = series.id;
     }
     this.createdArrItem = true;

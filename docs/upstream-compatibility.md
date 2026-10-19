@@ -367,6 +367,34 @@ test instances, with locally generated torrents of random bytes:
   blocklist writes no history event, so pushes for that title are refused as a
   recent grab for 12 hours.
 
+### Sonarr and Radarr manual import (advanced fallback)
+
+Live-probed on 2026-10-19 against the same versions. The fallback downloads in
+Helprr's qBittorrent, outside any Arr category, and imports through Arr's manual
+import.
+
+- **Scan a path, not a title.** `GET /api/v3/manualimport?folder=<path>` lists the
+  video files under that folder, or just that file when the path is a file. Each
+  candidate carries Arr's mapping (movie, or series and episodes, including anime
+  absolute numbering), quality, languages, release group and rejections such as
+  `Sample`, `Unknown Series` or `Not an upgrade for existing episode file(s)`.
+  Non-video files are not listed.
+- **No title id with a folder.** Adding `movieId` or `seriesId` makes Arr scan the
+  title's own library folder instead of the given one; Radarr answers 500 when that
+  folder does not exist yet.
+- **Visibility.** `GET /api/v3/filesystem?path=<folder>/&includeFiles=true` lists
+  names and sizes. A missing folder lists as empty rather than failing, and
+  `filesystem/type` reports `folder` for a missing path, so Helprr checks a path by
+  listing its parent and matching the name (and size for files). qBittorrent's
+  paths are translated through Arr's remote path mappings (longest remote path
+  first, then the path unchanged), and only a translation Arr can list is used.
+- **Import.** `POST /api/v3/command` with `name: ManualImport`,
+  `importMode: copy` and the candidate's `path`, `movieId` or
+  `seriesId`/`episodeIds`, `quality`, `languages` and `releaseGroup` hardlinks the
+  file into the library (the source stays, so the torrent keeps seeding). History
+  records `downloadFolderImported` without a download id; the new movie or episode
+  file id is the proof.
+
 ## Before reporting an upstream compatibility problem
 
 1. In **Settings → Instances**, re-test the affected connection and record the exact

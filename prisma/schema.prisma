@@ -771,11 +771,37 @@ model ManualDownload {
   createdAt          DateTime              @default(now())
   updatedAt          DateTime              @updatedAt
   completedAt        DateTime?
+  pathMapping        Json? // fallback: { mapping } — the remote path mapping Arr reads the files through, null for the same path
+  arrCommandId       Int? // fallback: the ManualImport command Helprr started
   events             ManualDownloadEvent[]
+  files              ManualDownloadFile[]
 
   @@unique([createdByUserId, clientRequestId])
   @@index([status, updatedAt])
   @@index([instanceId, infoHash])
+}
+
+enum ManualDownloadFileDecision {
+  PENDING
+  IMPORT
+  IGNORE
+}
+
+// Fallback mode: the torrent's files exactly as chosen before the download, and what happens to each.
+model ManualDownloadFile {
+  id         String                     @id @default(cuid())
+  downloadId String
+  download   ManualDownload             @relation(fields: [downloadId], references: [id], onDelete: Cascade)
+  fileIndex  Int // qBittorrent's index of the file in the torrent
+  path       String // the file's path inside the torrent, as qBittorrent names it
+  size       BigInt
+  selected   Boolean
+  arrPath    String? // where Arr sees the file once it is downloaded
+  candidate  Json? // Arr's manual-import reading of it: mapping, quality, languages, rejections
+  decision   ManualDownloadFileDecision @default(PENDING)
+  episodeIds Int[] // Sonarr: the episodes confirmed for it
+
+  @@unique([downloadId, fileIndex])
 }
 
 model ManualDownloadEvent {

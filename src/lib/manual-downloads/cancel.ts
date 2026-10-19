@@ -2,7 +2,8 @@ import type { ManualDownload } from '@prisma/client';
 import axios from 'axios';
 import { prisma } from '@/lib/db';
 import { resolveConnection } from '@/lib/arr-instances';
-import { runWithOperationAudit, type AuditActor } from '@/lib/file-audit';
+import { runWithOperationAudit, snapshotTorrentDeleteTargets, type AuditActor } from '@/lib/file-audit';
+import { getQBittorrentClient } from '@/lib/service-helpers';
 import { bumpQueueCacheVersion, fetchAllQueueRecords } from '@/lib/activity-queue';
 import { invalidateTaggedLibrary } from '@/lib/cache/tagged-library';
 import type { RadarrClient } from '@/lib/radarr-client';
@@ -57,51 +58,79 @@ export async function cancelManualDownload(download: ManualDownload, options: Ca
   const client = arrClientFor(service, connection);
   const done: string[] = [];
 
-  const listed = async () => (await fetchAllQueueRecords(client, true)).records
-    .filter((record) => record.downloadId?.toUpperCase() === download.infoHash);
-  let items = await listed();
-  if (items.length === 0) {
-    // A fresh grab not yet settled belongs in the queue: ask Arr to look, and wait.
-    const history = await client.getHistory(1, 50, 'date', 'descending', { downloadId: download.infoHash });
-    const grab = history.records.find((record) => record.eventType === 'grabbed');
-    const settled = history.records.some((record) => SETTLED_EVENTS.includes(record.eventType));
-    // An unknown grab time counts as fresh.
-    const fresh = grab !== undefined && !(Date.now() - Date.parse(grab.date) >= FRESH_GRAB_MS);
-    if (fresh && !settled) {
-      await client.refreshMonitoredDownloads().catch(() => null);
-      for (const deadline = Date.now() + QUEUE_WAIT_MS; items.length === 0 && Date.now() < deadline;) {
-        await sleep(1_500);
-        items = await listed();
+  if (download.mode === 'QBIT_REVIEWED') {
+    if (download.status === 'IMPORTING') throw new ManualDownloadCancelError(`${app} is importing it. Try again once it has finished.`);
+    // The torrent is Helprr's own in qBittorrent; Arr's queue never had it.
+    if (options.removeFromClient) {
+      const qbit = await getQBittorrentClient();
+      const hash = download.infoHash.toLowerCase();
+      const present = (await qbit.getTorrents(undefined, undefined, undefined, undefined, hash)).length > 0;
+      if (present) {
+        const snapshot = await snapshotTorrentDeleteTargets(qbit, hash);
+        await runWithOperationAudit({
+          user: actor,
+          service: 'QBITTORRENT',
+          operation: 'DELETE_TORRENT',
+          targetType: 'torrent',
+          targetTitle: snapshot.targetTitle,
+          itemCount: snapshot.itemCount,
+          filesDeleted: true,
+          details: { ...snapshot.details, deleteFiles: true, manualDownloadId: download.id },
+        }, () => qbit.deleteTorrent(hash, true));
+        done.push('removed the torrent and its data from qBittorrent');
+      } else {
+        done.push('the torrent is not in qBittorrent any more');
       }
-      if (items.length === 0) {
-        throw new ManualDownloadCancelError(`${app} has not listed this download in its queue yet, so nothing was changed. Try again in a moment.`);
+    } else {
+      done.push('the torrent stays in qBittorrent');
+    }
+  } else {
+    const listed = async () => (await fetchAllQueueRecords(client, true)).records
+      .filter((record) => record.downloadId?.toUpperCase() === download.infoHash);
+    let items = await listed();
+    if (items.length === 0) {
+      // A fresh grab not yet settled belongs in the queue: ask Arr to look, and wait.
+      const history = await client.getHistory(1, 50, 'date', 'descending', { downloadId: download.infoHash });
+      const grab = history.records.find((record) => record.eventType === 'grabbed');
+      const settled = history.records.some((record) => SETTLED_EVENTS.includes(record.eventType));
+      // An unknown grab time counts as fresh.
+      const fresh = grab !== undefined && !(Date.now() - Date.parse(grab.date) >= FRESH_GRAB_MS);
+      if (fresh && !settled) {
+        await client.refreshMonitoredDownloads().catch(() => null);
+        for (const deadline = Date.now() + QUEUE_WAIT_MS; items.length === 0 && Date.now() < deadline;) {
+          await sleep(1_500);
+          items = await listed();
+        }
+        if (items.length === 0) {
+          throw new ManualDownloadCancelError(`${app} has not listed this download in its queue yet, so nothing was changed. Try again in a moment.`);
+        }
       }
     }
-  }
-  // Removing one record with the client removes the whole torrent; without it, each record is ignored.
-  // A blocklisted removal counts as a failed download in Arr: skipRedownload keeps Arr from searching for another release.
-  const toRemove = options.removeFromClient ? items.slice(0, 1) : items;
-  for (const item of toRemove) {
-    await runWithOperationAudit({
-      user: actor,
-      service,
-      instanceId: download.instanceId,
-      operation: 'REMOVE_QUEUE',
-      targetType: 'queue',
-      targetId: item.id,
-      targetTitle: download.arrItemTitle,
-      itemCount: options.removeFromClient ? items.length : 1,
-      filesDeleted: options.removeFromClient,
-      details: { manualDownloadId: download.id, infoHash: download.infoHash, removeFromClient: options.removeFromClient, blocklist: options.blocklist },
-    }, () => client.deleteQueueItem(item.id, { removeFromClient: options.removeFromClient, blocklist: options.blocklist, skipRedownload: true }));
-  }
-  if (items.length > 0) {
-    await bumpQueueCacheVersion();
-    done.push(options.removeFromClient
-      ? `removed from ${app}'s queue with the torrent and its data${options.blocklist ? ', and blocklisted' : ''}`
-      : `removed from ${app}'s queue; the torrent stays in the download client${options.blocklist ? ', and the release is blocklisted' : ''}`);
-  } else {
-    done.push(`not in ${app}'s queue any more`);
+    // Removing one record with the client removes the whole torrent; without it, each record is ignored.
+    // A blocklisted removal counts as a failed download in Arr: skipRedownload keeps Arr from searching for another release.
+    const toRemove = options.removeFromClient ? items.slice(0, 1) : items;
+    for (const item of toRemove) {
+      await runWithOperationAudit({
+        user: actor,
+        service,
+        instanceId: download.instanceId,
+        operation: 'REMOVE_QUEUE',
+        targetType: 'queue',
+        targetId: item.id,
+        targetTitle: download.arrItemTitle,
+        itemCount: options.removeFromClient ? items.length : 1,
+        filesDeleted: options.removeFromClient,
+        details: { manualDownloadId: download.id, infoHash: download.infoHash, removeFromClient: options.removeFromClient, blocklist: options.blocklist },
+      }, () => client.deleteQueueItem(item.id, { removeFromClient: options.removeFromClient, blocklist: options.blocklist, skipRedownload: true }));
+    }
+    if (items.length > 0) {
+      await bumpQueueCacheVersion();
+      done.push(options.removeFromClient
+        ? `removed from ${app}'s queue with the torrent and its data${options.blocklist ? ', and blocklisted' : ''}`
+        : `removed from ${app}'s queue; the torrent stays in the download client${options.blocklist ? ', and the release is blocklisted' : ''}`);
+    } else {
+      done.push(`not in ${app}'s queue any more`);
+    }
   }
 
   if (options.removeTitle) {
