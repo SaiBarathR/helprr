@@ -117,7 +117,8 @@ export default function FileAuditPage() {
                   {countLabel(r)}
                   {fields?.length ? ` · ${fields.join(', ')}` : ''}
                   {totalBytes != null ? ` · ${formatBytes(totalBytes)}` : ''}
-                  {r.filesDeleted === true ? ' · files/data deleted' : r.filesDeleted === false ? ' · files/data kept' : ''}
+                  {/* The choice made; a failed operation may not have deleted anything. */}
+                  {r.filesDeleted === true ? (r.success ? ' · files/data deleted' : ' · files/data were to be deleted') : r.filesDeleted === false ? ' · files/data kept' : ''}
                   {' · by '}{r.username}
                 </p>
                 {paths?.length ? (
