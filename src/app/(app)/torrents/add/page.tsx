@@ -45,6 +45,7 @@ type ApiResult = {
   success?: boolean;
   error?: string;
   hash?: string;
+  gone?: boolean;
 };
 
 const NO_CATEGORY = '__none__';
@@ -597,6 +598,8 @@ function ReviewStep({
       });
       if (!res.ok) {
         const data = await parseApiResult(res);
+        // qBittorrent no longer has it, which is what Cancel wants.
+        if (res.status === 404 && data.gone === true) return;
         throw new ApiError(res.status, data.error || 'Failed to remove torrent');
       }
     },

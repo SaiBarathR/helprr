@@ -6,7 +6,7 @@ import { logApiDuration } from '@/lib/server-perf';
 import { withApiLogging } from '@/lib/api-logger';
 import { bumpQbitCacheVersion } from '@/lib/cache/qbittorrent-version';
 import { upstreamErrorResponse } from '@/lib/api-error';
-import { runWithOperationAudit, snapshotTorrentDeleteTargets } from '@/lib/file-audit';
+import { deleteTorrentsAudited, TORRENT_DELETE_REFUSALS } from '@/lib/file-audit';
 
 // A v1 info hash (SHA-1) or a v2 one (SHA-256), in hex.
 const SINGLE_TORRENT_HASH = /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/i;
@@ -82,18 +82,14 @@ async function postHandler(
         await client.resumeTorrent(hash);
         break;
       case 'delete': {
-        const deleteFiles = body.deleteFiles === true;
-        const snapshot = await snapshotTorrentDeleteTargets(client, hash);
-        await runWithOperationAudit({
-          user: auth.user,
-          service: 'QBITTORRENT',
-          operation: 'DELETE_TORRENT',
-          targetType: 'torrent',
-          targetTitle: snapshot.targetTitle,
-          itemCount: snapshot.itemCount,
-          filesDeleted: deleteFiles,
-          details: { ...snapshot.details, deleteFiles },
-        }, () => client.deleteTorrent(hash, deleteFiles));
+        const outcome = await deleteTorrentsAudited(client, auth.user, hash, body.deleteFiles === true);
+        if (outcome !== 'deleted') {
+          // The list may have changed (or a delete may have gone through): let the next read see it.
+          await bumpQbitCacheVersion();
+          logApiDuration('/api/qbittorrent/[hash]', startedAt, { method: 'POST', action, refused: outcome });
+          const { status, ...refusal } = TORRENT_DELETE_REFUSALS[outcome];
+          return NextResponse.json(refusal, { status });
+        }
         break;
       }
       case 'forceStart':

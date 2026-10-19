@@ -8,7 +8,7 @@ const mocks = vi.hoisted(() => ({
   requireUserCapability: vi.fn(),
   getCurrentUser: vi.fn(),
   runWithOperationAudit: vi.fn(),
-  snapshotTorrentDeleteTargets: vi.fn(),
+  deleteTorrentsAudited: vi.fn(),
   invalidateTaggedLibrary: vi.fn(),
   invalidateReferenceLabels: vi.fn(),
   bumpQbitCacheVersion: vi.fn(),
@@ -51,9 +51,10 @@ vi.mock('@/lib/service-helpers', () => ({
   getLidarrClient: vi.fn().mockResolvedValue(mocks.lidarr),
   getQBittorrentClient: vi.fn().mockResolvedValue(mocks.qbit),
 }));
-vi.mock('@/lib/file-audit', () => ({
+vi.mock('@/lib/file-audit', async (importOriginal) => ({
+  TORRENT_DELETE_REFUSALS: (await importOriginal<typeof import('@/lib/file-audit')>()).TORRENT_DELETE_REFUSALS,
   runWithOperationAudit: mocks.runWithOperationAudit,
-  snapshotTorrentDeleteTargets: mocks.snapshotTorrentDeleteTargets,
+  deleteTorrentsAudited: mocks.deleteTorrentsAudited,
 }));
 vi.mock('@/lib/cache/tagged-library', () => ({
   invalidateTaggedLibrary: mocks.invalidateTaggedLibrary,
@@ -112,11 +113,7 @@ describe('destructive route audit wiring', () => {
     mocks.requireUserCapability.mockResolvedValue({ ok: true, user, session: {} });
     mocks.getCurrentUser.mockResolvedValue(user);
     mocks.runWithOperationAudit.mockImplementation(async (_input, operation: () => Promise<unknown>) => operation());
-    mocks.snapshotTorrentDeleteTargets.mockResolvedValue({
-      targetTitle: 'Example torrent',
-      itemCount: 1,
-      details: { hashes: ['abc'], targets: [{ hash: 'abc', name: 'Example torrent' }] },
-    });
+    mocks.deleteTorrentsAudited.mockResolvedValue('deleted');
     mocks.sonarr.getSeriesById.mockResolvedValue({ id: 12, title: 'Series' });
     mocks.radarr.getMovieById.mockResolvedValue({ id: 5, title: 'Movie' });
     mocks.lidarr.getArtistById.mockResolvedValue({ id: 7, artistName: 'Artist' });
@@ -166,7 +163,7 @@ describe('destructive route audit wiring', () => {
     expect(mocks.lidarr.deleteArtistsBulk).toHaveBeenCalledWith([7, 9], true);
   });
 
-  it('audits both qBittorrent delete action endpoints, including delete-data choice', async () => {
+  it('deletes through the audited torrent delete on both endpoints, with the delete-data choice', async () => {
     const responses = [
       await torrentAction(request('/api/qbittorrent', 'POST', { hash: 'abc', action: 'delete', deleteFiles: true })),
       await torrentHashAction(
@@ -176,13 +173,44 @@ describe('destructive route audit wiring', () => {
     ];
 
     expect(responses.map((response) => response.status)).toEqual([200, 200]);
-    expect(mocks.runWithOperationAudit).toHaveBeenCalledTimes(2);
-    expect(mocks.runWithOperationAudit.mock.calls.map(([input]) => input)).toEqual([
-      expect.objectContaining({ service: 'QBITTORRENT', operation: 'DELETE_TORRENT', filesDeleted: true }),
-      expect.objectContaining({ service: 'QBITTORRENT', operation: 'DELETE_TORRENT', filesDeleted: false }),
+    expect(mocks.deleteTorrentsAudited.mock.calls.map(([, actor, hashes, deleteFiles]) => [actor, hashes, deleteFiles])).toEqual([
+      [user, 'abc', true],
+      [user, '0123456789abcdef0123456789abcdef01234567', false],
     ]);
-    expect(mocks.qbit.deleteTorrent).toHaveBeenNthCalledWith(1, 'abc', true);
-    expect(mocks.qbit.deleteTorrent).toHaveBeenNthCalledWith(2, '0123456789abcdef0123456789abcdef01234567', false);
+  });
+
+  it.each([
+    ['gone', 404, 'That torrent is no longer in qBittorrent.'],
+    ['unconfirmed', 502, 'qBittorrent did not confirm the delete. Check the torrent list.'],
+    ['invalid', 400, 'Name the torrents to delete by their hashes.'],
+  ])('answers a %s delete with %i and a fixed message, and refreshes the cached list', async (outcome, status, error) => {
+    mocks.deleteTorrentsAudited.mockResolvedValue(outcome);
+    const responses = [
+      await torrentAction(request('/api/qbittorrent', 'POST', { hash: 'abc', action: 'delete', deleteFiles: true })),
+      await torrentHashAction(
+        request('/api/qbittorrent/0123456789abcdef0123456789abcdef01234567', 'POST', { action: 'delete', deleteFiles: true }),
+        { params: Promise.resolve({ hash: '0123456789abcdef0123456789abcdef01234567' }) },
+      ),
+    ];
+    expect(responses.map((response) => response.status)).toEqual([status, status]);
+    const body = { error, ...(outcome === 'gone' ? { gone: true } : {}) };
+    expect(await responses[0].json()).toEqual(body);
+    expect(await responses[1].json()).toEqual(body);
+    expect(mocks.bumpQbitCacheVersion).toHaveBeenCalledTimes(2);
+  });
+
+  it('refuses a delete to a user without torrents.delete before asking qBittorrent anything', async () => {
+    mocks.requireUserCapability.mockResolvedValue({ ok: false, response: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) });
+    mocks.requireUser.mockResolvedValue({ ok: true, user: { ...user, role: 'member', template: 'member', permissions: {} }, session: {} });
+    const responses = [
+      await torrentAction(request('/api/qbittorrent', 'POST', { hash: 'abc', action: 'delete', deleteFiles: true })),
+      await torrentHashAction(
+        request('/api/qbittorrent/0123456789abcdef0123456789abcdef01234567', 'POST', { action: 'delete', deleteFiles: true }),
+        { params: Promise.resolve({ hash: '0123456789abcdef0123456789abcdef01234567' }) },
+      ),
+    ];
+    expect(responses.map((response) => response.status)).toEqual([403, 403]);
+    expect(mocks.deleteTorrentsAudited).not.toHaveBeenCalled();
   });
 
   it('audits manual Arr queue removal and all destructive options', async () => {
