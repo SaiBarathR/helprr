@@ -170,14 +170,30 @@ function parseSeasons(value: unknown): number[] | 'all' | undefined {
   return cleaned;
 }
 
-/** The title's TMDB genre names, as recommendations name them; undefined when TMDB cannot say. */
+// The request waits for this lookup, so a slow TMDB (its own timeout is 10 s)
+// must not hold it: past this, the request is recorded without genres, and a
+// later request of the title adds them.
+const GENRE_LOOKUP_TIMEOUT_MS = 2_000;
+
+/** The title's TMDB genre names, as recommendations name them; undefined when TMDB cannot say in time. */
 async function requestedGenres(mediaType: 'movie' | 'tv', tmdbId: number): Promise<string[] | undefined> {
+  const lookup = (async () => {
+    try {
+      const tmdb = await getTMDBClient();
+      const detail = mediaType === 'movie' ? await tmdb.movieDetails(tmdbId) : await tmdb.tvDetails(tmdbId);
+      return (detail.genres ?? []).map((genre) => genre.name).filter(Boolean);
+    } catch {
+      return undefined;
+    }
+  })();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<undefined>((resolve) => {
+    timer = setTimeout(() => resolve(undefined), GENRE_LOOKUP_TIMEOUT_MS);
+  });
   try {
-    const tmdb = await getTMDBClient();
-    const detail = mediaType === 'movie' ? await tmdb.movieDetails(tmdbId) : await tmdb.tvDetails(tmdbId);
-    return (detail.genres ?? []).map((genre) => genre.name).filter(Boolean);
-  } catch {
-    return undefined;
+    return await Promise.race([lookup, late]);
+  } finally {
+    clearTimeout(timer);
   }
 }
 

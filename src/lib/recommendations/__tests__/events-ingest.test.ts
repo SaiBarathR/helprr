@@ -1,12 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
-  count: vi.fn(), findFirst: vi.fn(), createMany: vi.fn(), replaceRating: vi.fn(), forgetInProfile: vi.fn(), invalidate: vi.fn(), exec: vi.fn(), redis: vi.fn(),
+  count: vi.fn(), findFirst: vi.fn(), update: vi.fn(), createMany: vi.fn(), replaceRating: vi.fn(), forgetInProfile: vi.fn(), invalidate: vi.fn(), exec: vi.fn(), redis: vi.fn(),
 }));
 const tx = vi.hoisted(() => ({} as Record<string, unknown>));
 vi.mock('@/lib/db', () => {
   Object.assign(tx, { recommendationEvent: { createMany: mocks.createMany } });
-  return { prisma: { recommendationEvent: { count: mocks.count, findFirst: mocks.findFirst }, $transaction: async (fn: (t: unknown) => unknown) => fn(tx) } };
+  return { prisma: { recommendationEvent: { count: mocks.count, findFirst: mocks.findFirst, update: mocks.update }, $transaction: async (fn: (t: unknown) => unknown) => fn(tx) } };
 });
 vi.mock('@/lib/redis', () => ({ getRedisClient: mocks.redis }));
 vi.mock('../engine', () => ({ invalidateRecommendations: mocks.invalidate }));
@@ -108,9 +108,21 @@ describe('recordRequestEvent', () => {
   });
 
   it('records a title once: requesting it again adds no weight', async () => {
-    mocks.findFirst.mockResolvedValue({ id: 'earlier' });
+    mocks.findFirst.mockResolvedValue({ id: 'earlier', context: { genres: ['Action'] } });
     expect(await recordRequestEvent('u1', 'movie', 603, ['Action'])).toEqual({ ok: true, stored: 0 });
     expect(mocks.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { userId: 'u1', itemKey: 'tmdb:movie:603', eventType: 'request' } }));
     expect(mocks.createMany).not.toHaveBeenCalled();
+    expect(mocks.update).not.toHaveBeenCalled();
+  });
+
+  it('adds the genres to a request first recorded without them, still as one event', async () => {
+    mocks.findFirst.mockResolvedValue({ id: 'earlier', context: null });
+    expect(await recordRequestEvent('u1', 'movie', 603, ['Action'])).toEqual({ ok: true, stored: 0 });
+    expect(mocks.update).toHaveBeenCalledWith({ where: { id: 'earlier' }, data: { context: { genres: ['Action'] } } });
+    expect(mocks.createMany).not.toHaveBeenCalled();
+
+    mocks.update.mockClear();
+    await recordRequestEvent('u1', 'movie', 603, undefined);
+    expect(mocks.update).not.toHaveBeenCalled();
   });
 });

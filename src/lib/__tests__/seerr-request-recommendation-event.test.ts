@@ -94,6 +94,22 @@ describe('a Seerr request as a recommendations signal', () => {
     expect(mocks.recordRequestEvent).not.toHaveBeenCalled();
   });
 
+  it('does not hold the request for a slow TMDB: past two seconds it is recorded without genres', async () => {
+    vi.useFakeTimers();
+    try {
+      mocks.user = admin;
+      mocks.tmdb.movieDetails.mockImplementation(() => new Promise(() => {}));
+      const responding = request({});
+      await vi.advanceTimersByTimeAsync(1_999);
+      expect(mocks.recordRequestEvent).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      expect((await responding).status).toBe(200);
+      expect(mocks.recordRequestEvent).toHaveBeenCalledWith('admin-1', 'movie', 603, undefined);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('never fails the request when the signal cannot be stored', async () => {
     mocks.user = admin;
     mocks.recordRequestEvent.mockRejectedValue(new Error('db down'));

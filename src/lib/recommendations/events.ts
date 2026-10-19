@@ -182,9 +182,16 @@ export async function recordRequestEvent(
   genres?: string[],
 ): Promise<IngestResult> {
   const itemKey = tmdbItemKey(mediaType, tmdbId);
-  const seen = await prisma.recommendationEvent.findFirst({ where: { userId, itemKey, eventType: 'request' }, select: { id: true } });
-  if (seen) return { ok: true, stored: 0 };
   const known = genres?.filter((genre) => genre.length > 0 && genre.length <= MAX_GENRE_LENGTH).slice(0, MAX_GENRES);
+  const seen = await prisma.recommendationEvent.findFirst({ where: { userId, itemKey, eventType: 'request' }, select: { id: true, context: true } });
+  if (seen) {
+    // Recorded before without genres (TMDB could not say then): add them now.
+    const seenGenres = (seen.context as { genres?: unknown } | null)?.genres;
+    if (known?.length && !(Array.isArray(seenGenres) && seenGenres.length > 0)) {
+      await prisma.recommendationEvent.update({ where: { id: seen.id }, data: { context: { genres: known } } });
+    }
+    return { ok: true, stored: 0 };
+  }
   return ingestEvents(userId, [{ itemKey, eventType: 'request', ...(known?.length ? { context: { genres: known } } : {}) }]);
 }
 
