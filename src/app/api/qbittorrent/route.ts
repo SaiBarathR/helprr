@@ -11,7 +11,7 @@ import { logApiDuration } from '@/lib/server-perf';
 import { withApiLogging } from '@/lib/api-logger';
 import { bumpQbitCacheVersion } from '@/lib/cache/qbittorrent-version';
 import { upstreamErrorResponse } from '@/lib/api-error';
-import { deleteTorrentsConfirmed, runWithOperationAudit, snapshotTorrentDeleteTargets } from '@/lib/file-audit';
+import { deleteTorrentsAudited, TORRENT_DELETE_REFUSALS } from '@/lib/file-audit';
 
 const MAGNET_VERIFY_TIMEOUT_MS = 5000;
 const MAGNET_VERIFY_INTERVAL_MS = 500;
@@ -84,20 +84,13 @@ async function runTorrentAction(
       await client.resumeTorrent(hash);
       break;
     case 'delete': {
-      const deleteFiles = booleanOr(body.deleteFiles, false);
-      const snapshot = await snapshotTorrentDeleteTargets(client, hash);
-      // qBittorrent would answer a delete of a torrent it no longer has with success.
-      if (snapshot.found === 0) return NextResponse.json({ error: 'That torrent is no longer in qBittorrent.' }, { status: 404 });
-      await runWithOperationAudit({
-        user,
-        service: 'QBITTORRENT',
-        operation: 'DELETE_TORRENT',
-        targetType: 'torrent',
-        targetTitle: snapshot.targetTitle,
-        itemCount: snapshot.itemCount,
-        filesDeleted: deleteFiles,
-        details: { ...snapshot.details, deleteFiles },
-      }, () => deleteTorrentsConfirmed(client, hash, deleteFiles));
+      const outcome = await deleteTorrentsAudited(client, user, hash, booleanOr(body.deleteFiles, false));
+      if (outcome !== 'deleted') {
+        // The list may have changed (or a delete may have gone through): let the next read see it.
+        await bumpQbitCacheVersion();
+        const { status, error } = TORRENT_DELETE_REFUSALS[outcome];
+        return NextResponse.json({ error }, { status });
+      }
       break;
     }
     case 'forceStart':
@@ -327,7 +320,10 @@ async function postHandler(request: NextRequest) {
     const body = rawBody as Record<string, unknown>;
     if (body.action !== undefined) {
       const actionResponse = await runTorrentAction(client, body, auth.user);
-      if (actionResponse) return actionResponse;
+      if (actionResponse) {
+        logApiDuration('/api/qbittorrent', startedAt, { method: 'POST', mode: 'action', action: body.action, status: actionResponse.status });
+        return actionResponse;
+      }
       // Bust the summary cache so the client's reconcile refetch sees post-action state.
       await bumpQbitCacheVersion();
       logApiDuration('/api/qbittorrent', startedAt, { method: 'POST', mode: 'action', action: body.action });

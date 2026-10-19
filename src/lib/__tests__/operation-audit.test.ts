@@ -14,6 +14,8 @@ import {
   runWithOperationAudit,
   snapshotTorrentDeleteTargets,
   deleteTorrentsConfirmed,
+  deleteTorrentsAudited,
+  TorrentDeleteUnconfirmedError,
   systemAuditActor,
 } from '@/lib/file-audit';
 import { withApiLogging } from '@/lib/api-logger';
@@ -184,6 +186,7 @@ describe('unified operation audit', () => {
     await expect(snapshotTorrentDeleteTargets(client as never, 'aaa|bbb|aaa')).resolves.toEqual({
       targetTitle: '2 torrents',
       itemCount: 2,
+      hashes: ['aaa', 'bbb'],
       found: 2,
       details: {
         hashes: ['aaa', 'bbb'],
@@ -196,6 +199,7 @@ describe('unified operation audit', () => {
     await expect(snapshotTorrentDeleteTargets(client as never, 'aaa')).resolves.toEqual({
       targetTitle: '1 torrent',
       itemCount: 1,
+      hashes: ['aaa'],
       found: null,
       details: { hashes: ['aaa'], targets: [] },
     });
@@ -215,6 +219,55 @@ describe('unified operation audit', () => {
     await expect(deleteTorrentsConfirmed(client as never, 'aaa|bbb', false)).rejects.toThrow('still lists 2 of the torrents');
 
     client.getTorrents.mockRejectedValueOnce(new Error('ECONNREFUSED'));
-    await expect(deleteTorrentsConfirmed(client as never, 'aaa', false)).rejects.toThrow('could not be asked whether the torrent is gone: ECONNREFUSED');
+    await expect(deleteTorrentsConfirmed(client as never, 'aaa', false)).rejects.toThrow(TorrentDeleteUnconfirmedError);
+  });
+
+  describe("a user's torrent delete", () => {
+    const torrent = (hash: string, name = hash) => ({ hash, name, size: 1, progress: 1 });
+    const qbit = () => ({ deleteTorrent: vi.fn(async () => undefined), getTorrents: vi.fn() });
+    const row = () => (mocks.create.mock.calls.at(-1)?.[0] as { data: Record<string, unknown> } | undefined)?.data;
+
+    it('deletes and audits only what qBittorrent lists, by the cleaned hashes', async () => {
+      const client = qbit();
+      client.getTorrents.mockResolvedValueOnce([torrent('aaa', 'One')]).mockResolvedValueOnce([]);
+      expect(await deleteTorrentsAudited(client as never, user, 'aaa| bbb|aaa', true)).toBe('deleted');
+      expect(client.deleteTorrent).toHaveBeenCalledWith('aaa|bbb', true);
+      expect(client.getTorrents).toHaveBeenLastCalledWith(undefined, undefined, undefined, undefined, 'aaa|bbb');
+      expect(row()).toEqual(expect.objectContaining({
+        operation: 'DELETE_TORRENT', success: true, fileCount: 1, mediaTitle: 'One', filesDeleted: true,
+        details: expect.objectContaining({ hashes: ['aaa', 'bbb'], notFound: ['bbb'], deleteFiles: true }),
+      }));
+    });
+
+    it('deletes nothing and writes no row when qBittorrent lists none of them', async () => {
+      const client = qbit();
+      client.getTorrents.mockResolvedValueOnce([]);
+      expect(await deleteTorrentsAudited(client as never, user, 'aaa', true)).toBe('gone');
+      expect(client.deleteTorrent).not.toHaveBeenCalled();
+      expect(mocks.create).not.toHaveBeenCalled();
+    });
+
+    it('still deletes, and audits, when qBittorrent could not be asked first', async () => {
+      const client = qbit();
+      client.getTorrents.mockRejectedValueOnce(new Error('ECONNREFUSED')).mockResolvedValueOnce([]);
+      expect(await deleteTorrentsAudited(client as never, user, 'aaa', false)).toBe('deleted');
+      expect(client.deleteTorrent).toHaveBeenCalledWith('aaa', false);
+      expect(row()).toEqual(expect.objectContaining({ success: true, fileCount: 1, filesDeleted: false }));
+    });
+
+    it('fails the row when qBittorrent does not confirm the delete', async () => {
+      const client = qbit();
+      client.getTorrents.mockResolvedValueOnce([torrent('aaa'), torrent('bbb')]).mockResolvedValueOnce([torrent('bbb')]);
+      expect(await deleteTorrentsAudited(client as never, user, 'aaa|bbb', true)).toBe('unconfirmed');
+      expect(row()).toEqual(expect.objectContaining({ success: false, fileCount: 2, errorMessage: 'qBittorrent still lists the torrent after the delete' }));
+    });
+
+    it('refuses "all", which qBittorrent reads as every torrent', async () => {
+      const client = qbit();
+      expect(await deleteTorrentsAudited(client as never, user, 'all', true)).toBe('invalid');
+      expect(client.getTorrents).not.toHaveBeenCalled();
+      expect(client.deleteTorrent).not.toHaveBeenCalled();
+      expect(mocks.create).not.toHaveBeenCalled();
+    });
   });
 });

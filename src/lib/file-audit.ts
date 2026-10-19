@@ -156,6 +156,8 @@ export async function runWithOperationAudit<T>(
 export interface TorrentDeleteAuditSnapshot {
   targetTitle: string;
   itemCount: number;
+  /** The hashes asked for, trimmed and without repeats: what is deleted and checked. */
+  hashes: string[];
   /** How many of the hashes qBittorrent lists; null when it could not be asked. */
   found: number | null;
   details: Record<string, unknown>;
@@ -182,15 +184,27 @@ export async function snapshotTorrentDeleteTargets(
     size: torrent.size,
     progress: torrent.progress,
   }));
-  const itemCount = hashes.length || 1;
+  // Only what qBittorrent lists is deleted; the rest is named as not found.
+  const listed = new Set(targets.map((target) => target.hash.toLowerCase()));
+  const notFound = found === null ? [] : hashes.filter((hash) => !listed.has(hash.toLowerCase()));
+  const itemCount = (found || hashes.length) || 1;
   return {
     targetTitle: targets.length === 1
       ? targets[0].name
       : `${itemCount} ${itemCount === 1 ? 'torrent' : 'torrents'}`,
     itemCount,
+    hashes,
     found,
-    details: { hashes, targets },
+    details: { hashes, targets, ...(notFound.length > 0 ? { notFound } : {}) },
   };
+}
+
+/** qBittorrent took a delete but did not confirm it: it still lists a torrent, or could not be asked. */
+export class TorrentDeleteUnconfirmedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'TorrentDeleteUnconfirmedError';
+  }
 }
 
 /**
@@ -204,9 +218,53 @@ export async function deleteTorrentsConfirmed(client: QBittorrentClient, hashes:
   try {
     remaining = await client.getTorrents(undefined, undefined, undefined, undefined, hashes);
   } catch (error) {
-    throw new Error(`qBittorrent took the delete but could not be asked whether the torrent is gone: ${error instanceof Error ? error.message : String(error)}`);
+    throw new TorrentDeleteUnconfirmedError(`qBittorrent took the delete but could not be asked whether the torrent is gone: ${error instanceof Error ? error.message : String(error)}`);
   }
   if (remaining.length > 0) {
-    throw new Error(`qBittorrent still lists ${remaining.length === 1 ? 'the torrent' : `${remaining.length} of the torrents`} after the delete`);
+    throw new TorrentDeleteUnconfirmedError(`qBittorrent still lists ${remaining.length === 1 ? 'the torrent' : `${remaining.length} of the torrents`} after the delete`);
   }
+}
+
+export type TorrentDeleteOutcome = 'deleted' | 'gone' | 'unconfirmed' | 'invalid';
+
+/** What each refused delete answers; the message never carries upstream text. */
+export const TORRENT_DELETE_REFUSALS: Record<Exclude<TorrentDeleteOutcome, 'deleted'>, { status: number; error: string }> = {
+  invalid: { status: 400, error: 'Name the torrents to delete by their hashes.' },
+  gone: { status: 404, error: 'That torrent is no longer in qBittorrent.' },
+  unconfirmed: { status: 502, error: 'qBittorrent did not confirm the delete. Check the torrent list.' },
+};
+
+/**
+ * A user's torrent delete, audited: nothing is deleted or audited when
+ * qBittorrent lists none of the torrents ('gone'), and the row fails when
+ * qBittorrent does not confirm the delete ('unconfirmed').
+ */
+export async function deleteTorrentsAudited(
+  client: QBittorrentClient,
+  user: AuditActor,
+  rawHashes: string,
+  deleteFiles: boolean,
+): Promise<TorrentDeleteOutcome> {
+  // qBittorrent reads "all" as every torrent: a delete names them.
+  const named = rawHashes.split('|').map((hash) => hash.trim()).filter(Boolean);
+  if (named.length === 0 || named.some((hash) => hash.toLowerCase() === 'all')) return 'invalid';
+  const snapshot = await snapshotTorrentDeleteTargets(client, rawHashes);
+  // qBittorrent would answer a delete of a torrent it no longer has with success.
+  if (snapshot.found === 0) return 'gone';
+  try {
+    await runWithOperationAudit({
+      user,
+      service: 'QBITTORRENT',
+      operation: 'DELETE_TORRENT',
+      targetType: 'torrent',
+      targetTitle: snapshot.targetTitle,
+      itemCount: snapshot.itemCount,
+      filesDeleted: deleteFiles,
+      details: { ...snapshot.details, deleteFiles },
+    }, () => deleteTorrentsConfirmed(client, snapshot.hashes.join('|'), deleteFiles));
+  } catch (error) {
+    if (error instanceof TorrentDeleteUnconfirmedError) return 'unconfirmed';
+    throw error;
+  }
+  return 'deleted';
 }

@@ -906,7 +906,7 @@ export default function TorrentsPage() {
     action: string,
     extra?: Record<string, unknown>,
     opts?: { silent?: boolean },
-  ): Promise<boolean> => {
+  ): Promise<boolean | 'gone'> => {
     // Optimistically patch the touched rows so the UI reacts instantly; the
     // patched field is also registered as a pending override (deletes as
     // tombstones) so a poll racing the action can't revert the rows.
@@ -942,17 +942,20 @@ export default function TorrentsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ hash, action, ...extra }),
       });
-      if (!res.ok) {
+      // A delete of torrents qBittorrent no longer has: they are gone, as asked.
+      const alreadyGone = action === 'delete' && res.status === 404;
+      if (!res.ok && !alreadyGone) {
         const data = await res.json();
         throw new Error(data.error || 'Action failed');
       }
       if (!opts?.silent) {
-        toast.success(torrentActionMessage(action, 'single'));
+        if (alreadyGone) toast.info('It was already gone from qBittorrent');
+        else toast.success(torrentActionMessage(action, 'single'));
       }
       setTimeout(() => {
         void refetchSummary();
       }, 500);
-      return true;
+      return alreadyGone ? 'gone' : true;
     } catch (err) {
       // Roll back only the touched rows: a wholesale snapshot restore would
       // clobber poll updates and other optimistic actions that landed in flight.
@@ -983,7 +986,7 @@ export default function TorrentsPage() {
     const count = selectedTorrents.size;
     const hashes = Array.from(selectedTorrents).join('|');
     const verb = torrentActionMessage(action, 'bulk');
-    const ok = await torrentAction(hashes, action, extra, { silent: true });
+    const ok = (await torrentAction(hashes, action, extra, { silent: true })) !== false;
     if (ok) {
       reportBulkTorrent(verb, count, 0);
       setSelectedTorrents(new Set());
@@ -1015,7 +1018,8 @@ export default function TorrentsPage() {
       const ok = await torrentAction(deleteDrawer.hash, 'delete', { deleteFiles: deleteDrawer.deleteFiles });
       // Only adjust the badge / close the drawer when the delete actually succeeded.
       if (ok) {
-        if (inFlight || attention) adjustBadge('downloads', -inFlight, -attention);
+        // Torrents already gone had already left the badge.
+        if (ok !== 'gone' && (inFlight || attention)) adjustBadge('downloads', -inFlight, -attention);
         setDeleteDrawer({ open: false, hash: '', name: '', deleteFiles: false });
       }
     } finally {

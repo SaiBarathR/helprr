@@ -471,7 +471,8 @@ function ReviewStep({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'delete', deleteFiles: false }),
       });
-      if (!res.ok) {
+      // 404: qBittorrent no longer has it, which is what Cancel wants.
+      if (!res.ok && res.status !== 404) {
         const data = await parseApiResult(res);
         throw new ApiError(res.status, data.error || 'Failed to remove torrent');
       }
