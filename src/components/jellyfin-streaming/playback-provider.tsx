@@ -87,6 +87,8 @@ interface PlaybackContextValue {
   needsJellyfinConnect: boolean;
   /** Re-attempt the pending item once the member has connected. */
   retryAfterConnect: () => void;
+  /** Start the current item again after a failure, from where that attempt was to start. */
+  retry: () => void;
   positionSeconds: number;
   durationSeconds: number;
   volume: number;
@@ -800,6 +802,17 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
    * away where they had got to.
    */
   const reachedStartRef = useRef(false);
+  /**
+   * hls.js could not reach the current attempt's stream: its latest network
+   * event was a connection failure (no HTTP status, not a timeout) and nothing
+   * has loaded since. Reset by every start attempt.
+   */
+  const unreachableRef = useRef(false);
+  /**
+   * The latest start attempt's request, whether its stream attached, and where
+   * Retry should start, taken when it failed (before teardown resets the clock).
+   */
+  const lastRequestRef = useRef<{ itemId: string; request: PlayOptions; attached: boolean; retryTicks?: number } | null>(null);
   const shuffledRef = useRef(false);
   const repeatRef = useRef<RepeatMode>('RepeatNone');
 
@@ -1014,7 +1027,19 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
    * revocation and the member should get the gate, not a dead end. Only runs on
    * an actual failure, so the extra request costs nothing in the normal case.
    */
+  // Where Retry should start: where the viewer was once the stream had played,
+  // otherwise where the attempt was asked to start. Taken before any teardown.
+  const noteRetryPosition = useCallback(() => {
+    const last = lastRequestRef.current;
+    if (!last) return;
+    const current = streamRef.current;
+    last.retryTicks = last.attached && reachedStartRef.current && current && current.item.Id === last.itemId
+      ? positionToReport(mediaRef.current, current, true) || secondsToTicks(positionRef.current)
+      : last.request.startTimeTicks;
+  }, []);
+
   const failPlayback = useCallback(async (fallbackMessage: string) => {
+    noteRetryPosition();
     setStatus('error');
     const connected = await fetch('/api/account/jellyfin/link')
       .then((res) => (res.ok ? res.json() : null))
@@ -1028,7 +1053,7 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
       return;
     }
     setError(fallbackMessage);
-  }, []);
+  }, [noteRetryPosition]);
 
   const attachMedia = useCallback(async (
     next: HelprrStreamInfo,
@@ -1090,6 +1115,11 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
         let mediaErrorRecoveries = 0;
         hls.on(Hls.Events.ERROR, (_event, data) => {
           if (!isCurrent()) return;
+          // The latest network error decides. A timeout can come from a reachable
+          // but slow stream, which a transcode may help.
+          if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+            unreachableRef.current = !data.response?.code && !String(data.details).endsWith('TimeOut');
+          }
           // Checked before the fatal guard and before the retry below. hls.js
           // retries NETWORK_ERROR indefinitely, so any upstream refusal — a 409
           // for a revoked token, a 404 for an item the member lost access to, a
@@ -1124,6 +1154,7 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
         hls.attachMedia(el);
         hls.on(Hls.Events.FRAG_LOADED, (_event, data) => {
           if (!isCurrent()) return;
+          unreachableRef.current = false;
           bandwidthRef.current.observe(data.frag.stats.loaded, data.frag.stats.loading.end - data.frag.stats.loading.start);
         });
         hlsRef.current = hls;
@@ -1135,6 +1166,7 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
         await new Promise<void>((resolve) => {
           const done = window.setTimeout(resolve, 10_000);
           hls.once(Hls.Events.MANIFEST_PARSED, () => {
+            if (isCurrent()) unreachableRef.current = false;
             window.clearTimeout(done);
             resolve();
           });
@@ -1185,6 +1217,7 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     // reads the viewer's intent and not the element `attachMedia` has just
     // played. Absent for a fresh start — picking a title means playing it.
     pausedIntentRef.current = Boolean(options.startPaused);
+    unreachableRef.current = false;
     setStatus('loading');
     setError(null);
     setNeedsJellyfinConnect(false);
@@ -1209,6 +1242,8 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
       // a later episode must not retry a renderer already known to be broken.
       enableSsaRender: !assRenderBrokenRef.current,
     };
+    const attempt = { itemId: nextItem.Id, request, attached: false };
+    lastRequestRef.current = attempt;
     try {
       const nextStream = await fetchStream(nextItem.Id, request);
       if (superseded()) {
@@ -1225,6 +1260,7 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
         void stopEncodings(outgoingSession);
       }
       streamRef.current = nextStream;
+      attempt.attached = true;
       // The replacement element starts at zero until it seeks itself into place.
       // Reset here and not before the request: until this line the outgoing
       // stream is still the one a stop or a progress report describes, and its
@@ -1285,6 +1321,7 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
       // A newer attempt owns the player now; this one's failure is not the
       // viewer's problem and must not replace what is actually on screen.
       if (superseded()) return;
+      noteRetryPosition();
       const message = cause instanceof Error ? cause.message : 'Playback failed';
       if (cause instanceof JellyfinConnectRequiredError) {
         setStatus('error');
@@ -1297,7 +1334,11 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
         setVideoExpanded(true);
         return;
       }
-      const canRetryDirect = options.enableDirectPlay !== false && !retryingRef.current;
+      // The stream could not be reached at all: network errors with no HTTP
+      // status and no data. A transcode would fail the same way, after another
+      // full wait, so say so now.
+      const unreachable = unreachableRef.current && (mediaRef.current?.readyState ?? 0) === HTMLMediaElement.HAVE_NOTHING;
+      const canRetryDirect = !unreachable && options.enableDirectPlay !== false && !retryingRef.current;
       if (canRetryDirect) {
         retryingRef.current = true;
         // Release whatever the failed attempt opened, or Jellyfin is left with
@@ -1366,9 +1407,9 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
         setDurationSeconds(0);
       }
       setStatus('error');
-      setError(message);
+      setError(unreachable ? "The stream couldn't be reached. Check the connection and try again." : message);
     }
-  }, [attachMedia, destroyPlayers, maxBitrate, muted, playbackRate, setPositionSeconds, volume]);
+  }, [attachMedia, destroyPlayers, maxBitrate, muted, noteRetryPosition, playbackRate, setPositionSeconds, volume]);
 
   const playItems = useCallback(async (items: JellyfinItem[], startIndex = 0, options?: PlayOptions) => {
     if (!items.length) return;
@@ -2063,15 +2104,35 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     }
     // No startTimeTicks: the gated attempt never played, so startItem should
     // fall back to the item's own resume point like a fresh play would.
+    // Only when the stored stream is this item's — after a gate it may still
+    // be the one that was playing before, and so are the live track choices.
+    const own = streamRef.current?.item.Id === pending.Id;
+    const last = lastRequestRef.current?.itemId === pending.Id ? lastRequestRef.current : null;
     void startItem(pending, {
-      audioStreamIndex: audioIndexRef.current,
-      subtitleStreamIndex: subtitleIndexRef.current,
-      // Only when the stored stream is this item's — after a gate it may still
-      // be the one that was playing before.
-      mediaSourceId: streamRef.current?.item.Id === pending.Id
-        ? streamRef.current.mediaSource.Id
-        : undefined,
+      audioStreamIndex: own ? audioIndexRef.current : last?.request.audioStreamIndex,
+      subtitleStreamIndex: own ? subtitleIndexRef.current : last?.request.subtitleStreamIndex,
+      mediaSourceId: own ? streamRef.current!.mediaSource.Id : undefined,
       maxStreamingBitrate: maxBitrate,
+    });
+  }, [maxBitrate, startItem]);
+
+  const retry = useCallback(() => {
+    const pending = queueRef.current[indexRef.current];
+    if (!pending) return;
+    const current = streamRef.current?.item.Id === pending.Id ? streamRef.current : null;
+    const last = lastRequestRef.current?.itemId === pending.Id ? lastRequestRef.current : null;
+    // Taken when the attempt failed: its own target if it never attached (a
+    // seek or quality change mid-title), where the viewer was if it had
+    // played. Never the item's stored resume point.
+    void startItem(pending, {
+      startTimeTicks: last?.retryTicks ?? last?.request.startTimeTicks,
+      // The live track choices belong to the stream that is playing: for an item
+      // whose stream never attached, its own last request (or its defaults).
+      audioStreamIndex: current ? audioIndexRef.current : last?.request.audioStreamIndex,
+      subtitleStreamIndex: current ? subtitleIndexRef.current : last?.request.subtitleStreamIndex,
+      mediaSourceId: last?.request.mediaSourceId ?? current?.mediaSource.Id,
+      maxStreamingBitrate: maxBitrate,
+      startPaused: pausedIntentRef.current,
     });
   }, [maxBitrate, startItem]);
 
@@ -2084,6 +2145,7 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     error,
     needsJellyfinConnect,
     retryAfterConnect,
+    retry,
     volume,
     muted,
     playbackRate,
@@ -2122,7 +2184,7 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     reportChromeObstruction,
   }), [
     addToQueue, audioStreamIndex, error, index, item, maxBitrate, effectiveMaxBitrate, muted,
-    needsJellyfinConnect, next, playItem, retryAfterConnect,
+    needsJellyfinConnect, next, playItem, retry, retryAfterConnect,
     playItems, playQueueIndex, playbackRate, previous, queue, queueOpen, repeat, seek,
     segments, reportChromeObstruction, setAudioStream, setMaxBitrate, setMuted, setPlaybackRate, setRepeatMode, setSubtitleOffset,
     setSubtitleStream, setVolume, shuffled, skip, skipSegment, status, stop, stream, subtitleOffsetSeconds,
