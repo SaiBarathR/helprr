@@ -11,9 +11,10 @@ function itemWith(widths: number[]): JellyfinItem {
     Type: 'Movie',
     MediaType: 'Video',
     Trickplay: {
-      [SOURCE]: widths.map((width) => ({
+      // Jellyfin keys each source's tilesets by width.
+      [SOURCE]: Object.fromEntries(widths.map((width) => [String(width), {
         Width: width, Height: Math.round(width * 0.5625), TileWidth: 10, TileHeight: 10, ThumbnailCount: 400, Interval: 10_000,
-      })),
+      }])),
     },
   };
 }

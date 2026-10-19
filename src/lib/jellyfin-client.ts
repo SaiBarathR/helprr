@@ -175,19 +175,6 @@ export class JellyfinClient {
     }
   }
 
-  getImageUrl(
-    itemId: string,
-    type: string = 'Primary',
-    params: Record<string, string | number> = {}
-  ): string {
-    const query = new URLSearchParams();
-    for (const [key, value] of Object.entries(params)) {
-      query.set(key, String(value));
-    }
-    const qs = query.toString();
-    return `${this.serverUrl}/Items/${itemId}/Images/${type}${qs ? `?${qs}` : ''}`;
-  }
-
   private async get<T>(endpoint: string, params?: Record<string, unknown>): Promise<T> {
     const response = await this.client.get<T>(endpoint, { params, signal: this.readSignal });
     return response.data;
@@ -994,11 +981,6 @@ export class JellyfinClient {
       params: { deviceId, playSessionId },
       headers: this.playbackHeaders(deviceId, deviceName),
     });
-  }
-
-  buildUpstreamUrl(path: string, search: URLSearchParams): string {
-    const qs = search.toString();
-    return `${this.serverUrl}${path}${qs ? `?${qs}` : ''}`;
   }
 
   tokenHeader(): Record<string, string> {

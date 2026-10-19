@@ -153,7 +153,8 @@ export interface JellyfinItem {
   Studios?: Array<{ Name?: string; Id?: string }>;
   People?: JellyfinPerson[];
   Chapters?: JellyfinChapter[];
-  Trickplay?: Record<string, JellyfinTrickplayInfo[]>;
+  /** Tilesets by media source id, then by width (as Jellyfin returns them). */
+  Trickplay?: Record<string, Record<string, JellyfinTrickplayInfo>>;
   MediaSources?: JellyfinMediaSource[];
   /** Where the file lives on the server. Sent by Jellyfin, never to the browser. */
   Path?: string;

@@ -367,8 +367,9 @@ export function VideoStage({ mediaContainer }: { mediaContainer: HTMLDivElement 
         aria-label="Picture in picture"
         onClick={() => {
           const el = mediaRef.current;
-          if (el && document.pictureInPictureElement) void document.exitPictureInPicture();
-          else if (el) void el.requestPictureInPicture?.();
+          // A browser may refuse either call; nothing to do then.
+          if (el && document.pictureInPictureElement) void document.exitPictureInPicture().catch(() => undefined);
+          else if (el) void el.requestPictureInPicture?.()?.catch(() => undefined);
         }}
       >
         <PictureInPicture2 />
