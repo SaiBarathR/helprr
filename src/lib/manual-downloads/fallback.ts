@@ -620,6 +620,13 @@ export async function settleDownloaded(download: ManualDownload, client: RadarrC
     return true;
   }
 
+  // An expired claim that sent no import (an interrupted scan, or a cancel the user may still
+  // want) is read again but never imported on Helprr's own.
+  if (download.status === 'IMPORT_PENDING') {
+    await releaseClaim(claim, 'NEEDS_MAPPING', `Helprr was interrupted while it had this download. ${app} is sure of every file: import them, or cancel.`);
+    return true;
+  }
+
   const scanned = await prisma.manualDownload.findUniqueOrThrow({ where: { id: download.id }, include: { files: true } });
   const decisions: FileDecision[] = scanned.files.filter((file) => file.selected && file.candidate).map((file) => {
     const candidate = file.candidate as unknown as Candidate;
@@ -844,11 +851,12 @@ async function submitAttempt(
     // The answer may be lost after Arr took it: look before saying it did not.
     const taken = await findImportCommand(client, files.map((file) => file.path), sentAt).catch(() => null);
     if (taken) command = taken;
-    else if (axios.isAxiosError(error) && error.response) return fail(`${app} did not take the import: ${errorText(error)}. Import again.`);
+    // Arr's own 4xx: it did not take it. A gateway's 5xx in front of Arr says nothing about that.
+    else if (axios.isAxiosError(error) && error.response && error.response.status < 500) return fail(`${app} did not take the import: ${errorText(error)}. Import again.`);
     else {
       // No answer, and no command to be seen (yet): never sent again on a guess. The
       // attempt stays kept, and the status worker settles it once the claim expires.
-      await underClaim(claim, { events: { create: { status: 'IMPORT_PENDING', message: `${app} did not answer the import (${errorText(error)}). Helprr checks in a few minutes whether it took it.` } } });
+      await underClaim(claim, { events: { create: { status: 'IMPORT_PENDING', message: `${app} did not answer the import (${errorText(error)}). Helprr checks in about ten minutes whether it took it.` } } });
       return null;
     }
   }

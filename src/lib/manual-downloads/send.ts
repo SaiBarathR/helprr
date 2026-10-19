@@ -39,6 +39,17 @@ const EPISODE_WAIT_MS = 30_000;
 const GRAB_CHECK_ATTEMPTS = 6;
 /** After a lost add answer Arr may still be adding the title (Sonarr looks up its metadata first). */
 const TITLE_CHECK_ATTEMPTS = 5;
+/**
+ * Arr refuses a release grabbed in the last 12 hours, so an earlier grab of
+ * the same release is far older than this send; this only allows for Arr's
+ * clock differing from Helprr's.
+ */
+const CLOCK_SKEW_MS = 60 * 60_000;
+
+/** Arr itself answered (4xx): a gateway's 5xx in front of it says nothing about what Arr did. */
+const arrRefused = (error: unknown) => axios.isAxiosError(error) && !!error.response && error.response.status < 500;
+/** The request never reached Arr. */
+const neverSent = (error: unknown) => axios.isAxiosError(error) && ['ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN'].includes(error.code ?? '');
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -176,6 +187,7 @@ export async function sendManualDownload(
 }
 
 class SendRun {
+  private readonly startedAt = Date.now();
   private arrItemId: number | null;
   private createdArrItem = false;
   /** The release went to Arr: from here a failure may follow a grab, so the title stays. */
@@ -289,7 +301,7 @@ class SendRun {
       await this.addTitleOnce();
     } catch (error) {
       // Arr answered, so it did not add the title (a 400 may mean someone else just did).
-      if (axios.isAxiosError(error) && error.response) throw error;
+      if (arrRefused(error) || neverSent(error)) throw error;
       // The answer was lost, perhaps while Arr adds it: the title it was not there before is this workflow's.
       const added = await this.addedMeanwhile();
       if (!added) {
@@ -398,7 +410,7 @@ class SendRun {
     const grabs = await this.grabRecords();
     if (grabs.length === 0 && pushError) {
       // Arr answered with an error and wrote no grab: it did not take the release.
-      if (axios.isAxiosError(pushError) && pushError.response) {
+      if (arrRefused(pushError)) {
         await this.failAndUndo(`${this.app} did not answer as expected: ${errorText(pushError)}`);
         return;
       }
@@ -429,12 +441,14 @@ class SendRun {
     await moveTo(this.id, 'QUEUED', `${this.app} grabbed the release${clientName ? ` and sent it to ${clientName}` : ''}.`, { downloadClientName: clientName });
   }
 
-  /** History "grabbed" records for this release; Arr writes them before the push returns. */
+  /** This send's "grabbed" records for the release; Arr writes them before the push returns. */
   private async grabRecords(): Promise<HistoryItem[]> {
+    const since = this.startedAt - CLOCK_SKEW_MS;
     for (let attempt = 0; attempt < GRAB_CHECK_ATTEMPTS; attempt += 1) {
       // One release's records only, so a season pack's every episode fits one page.
       const history = await this.client.getHistory(1, 1000, 'date', 'descending', { downloadId: this.input.source.infoHash });
-      const grabs = history.records.filter((record) => record.eventType === 'grabbed');
+      // An earlier send of the same release (12 hours or more ago) is not this one.
+      const grabs = history.records.filter((record) => record.eventType === 'grabbed' && Date.parse(record.date) >= since);
       if (grabs.length > 0) return grabs;
       await sleep(500);
     }

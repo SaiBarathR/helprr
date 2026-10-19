@@ -260,6 +260,16 @@ const splitName = (path: string) => path.split('/').at(-1)!;
 const sonarrSees = (...names: string[]) => mocks.arr.listFolder.mockResolvedValue({ directories: [{ name: 'Downloads', path: '' }], files: names.map((name) => ({ name, path: '', size: 5 })) });
 
 describe('after the chosen files finish', () => {
+  it('reads the files again after an interrupted scan or cancel, but leaves the import to the user', async () => {
+    downloaded('RADARR', [file('f0', 0, `${FILM}/${FILM}.mkv`, 1000, true)], 'IMPORT_PENDING', { updatedAt: new Date(Date.now() - 15 * 60_000), importSentAt: null });
+    mocks.arr.scanImportPath.mockResolvedValue([candidate(`/data/Downloads/${FILM}/${FILM}.mkv`)]);
+
+    expect(await settleDownloaded(mocks.rows.get('md1') as never, mocks.arr as never)).toBe(true);
+
+    expect(mocks.arr.submitManualImport).not.toHaveBeenCalled();
+    expect(mocks.moves.at(-1)).toEqual(expect.objectContaining({ status: 'NEEDS_MAPPING', message: expect.stringContaining('import them, or cancel') }));
+  });
+
   it('imports, by copy, the one file Radarr is sure of, and only from the chosen files', async () => {
     const download = downloaded('RADARR', [file('f0', 0, `${FILM}/${FILM}.mkv`, 1000, true), file('f1', 1, `${FILM}/Sample/${FILM}.sample.mkv`, 10, false)]);
     // Radarr's scan also lists the unchosen (part-written) sample; it must be left out.
@@ -629,10 +639,17 @@ describe("importing the user's decisions", () => {
     expect(mocks.arr.submitManualImport).toHaveBeenCalledTimes(1);
 
     mocks.moves = [];
-    const response = { status: 500, statusText: 'Internal Server Error', headers: {}, config: { headers: new AxiosHeaders() }, data: {} };
-    mocks.arr.submitManualImport.mockRejectedValue(new AxiosError('Request failed with status code 500', 'ERR_BAD_RESPONSE', undefined, undefined, response));
-    await expect(importFallback(scanned('RADARR'), mocks.arr as never, [{ fileId: 'f0', decision: 'IMPORT' }], actor)).rejects.toThrow('did not take the import: Request failed with status code 500');
+    const response = { status: 400, statusText: 'Bad Request', headers: {}, config: { headers: new AxiosHeaders() }, data: {} };
+    mocks.arr.submitManualImport.mockRejectedValue(new AxiosError('Request failed with status code 400', 'ERR_BAD_REQUEST', undefined, undefined, response));
+    await expect(importFallback(scanned('RADARR'), mocks.arr as never, [{ fileId: 'f0', decision: 'IMPORT' }], actor)).rejects.toThrow('did not take the import: Request failed with status code 400');
     expect(mocks.moves.at(-1)).toEqual(expect.objectContaining({ status: 'BLOCKED' }));
+  });
+
+  it("waits to settle an import a gateway's 5xx answered, rather than offering it again", async () => {
+    const response = { status: 502, statusText: 'Bad Gateway', headers: {}, config: { headers: new AxiosHeaders() }, data: {} };
+    mocks.arr.submitManualImport.mockRejectedValue(new AxiosError('Request failed with status code 502', 'ERR_BAD_RESPONSE', undefined, undefined, response));
+    await importFallback(scanned('RADARR'), mocks.arr as never, [{ fileId: 'f0', decision: 'IMPORT' }], actor);
+    expect(mocks.rows.get('md1')).toEqual(expect.objectContaining({ status: 'IMPORT_PENDING', importSentAt: expect.any(Date) }));
   });
 
   it('never offers to import again when Arr did not answer and its commands cannot be read', async () => {
