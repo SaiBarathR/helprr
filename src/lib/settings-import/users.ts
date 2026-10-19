@@ -58,6 +58,8 @@ export async function applyUsersInTxn(
   importerId: string,
   createdReleaseRelative: ScheduledAlert[],
   content: Map<unknown, PreparedAccountContent>,
+  /** Filled with the existing users this import changed, for their recommendations to recompose. */
+  updatedUserIds: string[] = [],
 ): Promise<number> {
   if (!Array.isArray(data.accounts)) {
     skipped.push('Users: missing accounts array');
@@ -65,7 +67,6 @@ export async function applyUsersInTxn(
   }
 
   let applied = 0;
-  const updatedUserIds: string[] = [];
   for (const acc of data.accounts) {
     if (!acc || typeof acc !== 'object') continue;
     const username = typeof acc.username === 'string'

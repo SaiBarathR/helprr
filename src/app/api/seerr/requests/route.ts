@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isAxiosError } from 'axios';
 import { prisma } from '@/lib/db';
-import { getSeerrClient } from '@/lib/service-helpers';
+import { getSeerrClient, getTMDBClient } from '@/lib/service-helpers';
 import { requireUserCapability } from '@/lib/auth';
 import { can } from '@/lib/permissions';
 import { notifyEvent } from '@/lib/notification-service';
@@ -170,19 +170,33 @@ function parseSeasons(value: unknown): number[] | 'all' | undefined {
   return cleaned;
 }
 
+/** The title's TMDB genre names, as recommendations name them; undefined when TMDB cannot say. */
+async function requestedGenres(mediaType: 'movie' | 'tv', tmdbId: number): Promise<string[] | undefined> {
+  try {
+    const tmdb = await getTMDBClient();
+    const detail = mediaType === 'movie' ? await tmdb.movieDetails(tmdbId) : await tmdb.tvDetails(tmdbId);
+    return (detail.genres ?? []).map((genre) => genre.name).filter(Boolean);
+  } catch {
+    return undefined;
+  }
+}
+
 // A request is a taste signal for the person who made it, from any surface:
 // not for one an admin makes as someone else, and only for a user who has
-// recommendations. Recording it never fails the request.
+// recommendations. The profile learns from its genres. Recording it never
+// fails the request.
 async function noteRequestForRecommendations(
-  user: Parameters<typeof can>[0] & { id: string; seerrUserId: string | null },
-  attributeUserId: number | undefined,
+  user: Parameters<typeof can>[0] & { id: string },
+  requestedAsOther: boolean,
   mediaType: 'movie' | 'tv',
   tmdbId: number,
 ): Promise<void> {
-  if (!can(user, 'recommendations.view')) return;
-  if (attributeUserId !== undefined && String(attributeUserId) !== user.seerrUserId) return;
-  await recordRequestEvent(user.id, mediaType, tmdbId).catch((err) =>
-    logger.warn('Request not recorded for recommendations', { err }, { scope: 'api/seerr/requests' }));
+  if (requestedAsOther || !can(user, 'recommendations.view')) return;
+  try {
+    await recordRequestEvent(user.id, mediaType, tmdbId, await requestedGenres(mediaType, tmdbId));
+  } catch (err) {
+    logger.warn('Request not recorded for recommendations', { err }, { scope: 'api/seerr/requests' });
+  }
 }
 
 async function postHandler(request: NextRequest): Promise<NextResponse> {
@@ -237,7 +251,9 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
 
   // Admins may attribute the request to another Seerr user via "Request As";
   // members are always pinned to their own linked account (set above).
+  let requestedAsOther = false;
   if (auth.user.role === 'admin' && typeof body.requestAs === 'number' && Number.isInteger(body.requestAs) && body.requestAs > 0) {
+    requestedAsOther = body.requestAs !== attributeUserId;
     attributeUserId = body.requestAs;
   }
 
@@ -291,7 +307,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
       userIds: adminIds.length ? adminIds : undefined,
     }).catch((err) => logger.warn('Pending-request notify failed', { err }, { scope: 'api/seerr/requests' }));
 
-    await noteRequestForRecommendations(auth.user, attributeUserId, mediaType, tmdbId);
+    await noteRequestForRecommendations(auth.user, requestedAsOther, mediaType, tmdbId);
     return NextResponse.json({ pending: true, id: pending.id });
   }
 
@@ -305,7 +321,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
       userId: attributeUserId,
       ...overrides,
     });
-    await noteRequestForRecommendations(auth.user, attributeUserId, mediaType, tmdbId);
+    await noteRequestForRecommendations(auth.user, requestedAsOther, mediaType, tmdbId);
     return NextResponse.json({ request: created });
   } catch (error) {
     logger.error(

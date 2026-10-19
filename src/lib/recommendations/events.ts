@@ -170,9 +170,22 @@ export async function takeEventQuota(userId: string, count: number): Promise<boo
   return submitted <= RATE_MAX_EVENTS_PER_WINDOW;
 }
 
-/** A title the user requested through Seerr, from any surface: a positive taste signal. */
-export async function recordRequestEvent(userId: string, mediaType: 'movie' | 'tv', tmdbId: number): Promise<IngestResult> {
-  return ingestEvents(userId, [{ itemKey: tmdbItemKey(mediaType, tmdbId), eventType: 'request' }]);
+/**
+ * A title the user requested through Seerr, from any surface: a positive
+ * taste signal through its genres (the profile learns events' genres, not
+ * their titles). Recorded once per title, so requesting it again adds no weight.
+ */
+export async function recordRequestEvent(
+  userId: string,
+  mediaType: 'movie' | 'tv',
+  tmdbId: number,
+  genres?: string[],
+): Promise<IngestResult> {
+  const itemKey = tmdbItemKey(mediaType, tmdbId);
+  const seen = await prisma.recommendationEvent.findFirst({ where: { userId, itemKey, eventType: 'request' }, select: { id: true } });
+  if (seen) return { ok: true, stored: 0 };
+  const known = genres?.filter((genre) => genre.length > 0 && genre.length <= MAX_GENRE_LENGTH).slice(0, MAX_GENRES);
+  return ingestEvents(userId, [{ itemKey, eventType: 'request', ...(known?.length ? { context: { genres: known } } : {}) }]);
 }
 
 export async function ingestEvents(userId: string, events: IncomingEvent[]): Promise<IngestResult> {

@@ -146,9 +146,10 @@ async function patchHandler(
         { status: 409 }
       );
     }
-    // A new Jellyfin link changes what the user's recommendations read. A
-    // failure only delays that until the profile's next rebuild.
-    if (result.updated.jellyfinUserId !== existing.jellyfinUserId) {
+    // A new Jellyfin link or role changes what the user's recommendations read
+    // (an admin falls back to the operator's Jellyfin user and AniList
+    // account). A failure only delays that until the profile's next rebuild.
+    if (result.updated.jellyfinUserId !== existing.jellyfinUserId || result.updated.role !== existing.role) {
       await refreshRecommendationsAfterLink(id).catch((error) =>
         console.error('[Users] Failed to refresh recommendations after a Jellyfin link change:', error),
       );

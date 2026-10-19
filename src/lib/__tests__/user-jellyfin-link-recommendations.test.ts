@@ -48,6 +48,11 @@ describe("an admin changing a user's Jellyfin link", () => {
     expect(mocks.refreshRecommendations).toHaveBeenCalledWith('user-1');
   });
 
+  it("rebuilds them on next use when the role changes (an admin falls back to the operator's accounts)", async () => {
+    expect((await patch({ role: 'admin' })).status).toBe(200);
+    expect(mocks.refreshRecommendations).toHaveBeenCalledWith('user-1');
+  });
+
   it('leaves recommendations alone when the link stays the same or is not part of the change', async () => {
     expect((await patch({ jellyfinUserId: 'jf-old' })).status).toBe(200);
     expect((await patch({ displayName: 'Renamed' })).status).toBe(200);

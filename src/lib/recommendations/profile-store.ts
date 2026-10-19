@@ -71,6 +71,7 @@ export async function buildProfileForUser(user: ProfileUser): Promise<BuiltProfi
 
 /** Rebuild and persist. Returns the fresh profile. */
 export async function rebuildTasteProfile(user: ProfileUser): Promise<TasteProfile> {
+  const startedAt = new Date();
   const built = await buildProfileForUser(user);
   await prisma.$transaction(async (tx) => {
     // A build takes a while (Jellyfin scans), and a title restored meanwhile
@@ -101,11 +102,20 @@ export async function rebuildTasteProfile(user: ProfileUser): Promise<TasteProfi
       const live = new Set(stillLiked.map((row) => row.itemKey));
       built.profile.likedItemKeys = liked.filter((key) => live.has(key));
     }
+    // Stored, but left stale for the next read to rebuild, when what this
+    // build read may already be out of date: a link changed while it ran (a
+    // stale mark landed after it started), or the user it was handed was read
+    // before a link or role change (a request in flight, a polling sweep's list).
+    const stored = await tx.userTasteProfile.findUnique({ where: { userId: user.id }, select: { builtAt: true, updatedAt: true } });
+    const current = await tx.user.findUnique({ where: { id: user.id }, select: { role: true, jellyfinUserId: true } });
+    const markedMeanwhile = stored !== null && stored.builtAt.getTime() === 0 && stored.updatedAt >= startedAt;
+    const userChanged = current !== null && (current.role !== user.role || current.jellyfinUserId !== user.jellyfinUserId);
+    const builtAt = markedMeanwhile || userChanged ? new Date(0) : new Date();
     const json = built.profile as unknown as Prisma.InputJsonValue;
     await tx.userTasteProfile.upsert({
       where: { userId: user.id },
-      create: { userId: user.id, profile: json, version: PROFILE_VERSION, builtAt: new Date() },
-      update: { profile: json, version: PROFILE_VERSION, builtAt: new Date() },
+      create: { userId: user.id, profile: json, version: PROFILE_VERSION, builtAt },
+      update: { profile: json, version: PROFILE_VERSION, builtAt },
     });
   });
   return built.profile;

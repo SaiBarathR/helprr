@@ -217,13 +217,18 @@ describe.skipIf(!url)('settings import against PostgreSQL', () => {
     const doc = fullDocument();
     doc.users.accounts[0].anilist = { anilistUserId: 77, username: 'ani' } as never;
 
-    await runImport.applySettingsImport(doc as never, IMPORTER_ID);
+    const before = new Date();
+    const outcome = await runImport.applySettingsImport(doc as never, IMPORTER_ID);
 
-    const profiles = await prisma.userTasteProfile.findMany({ orderBy: { userId: 'asc' }, select: { userId: true, builtAt: true } });
-    expect(profiles).toEqual([
+    const profiles = await prisma.userTasteProfile.findMany({ orderBy: { userId: 'asc' }, select: { userId: true, builtAt: true, updatedAt: true } });
+    expect(profiles.map(({ userId, builtAt }) => ({ userId, builtAt }))).toEqual([
       { userId: 'member-1', builtAt: new Date(0) },
       { userId: 'other-1', builtAt: built },
     ]);
+    // A rebuild under way tells a mark that landed meanwhile by this time.
+    expect(profiles[0].updatedAt.getTime()).toBeGreaterThanOrEqual(before.getTime());
+    // Their composed rails are dropped once the import has committed.
+    expect(outcome.followUps.recommendationUserIds).toEqual(['member-1']);
   });
 
   it('imports as many user accounts as the document limits allow within the transaction timeout', async () => {
