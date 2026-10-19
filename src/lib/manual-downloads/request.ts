@@ -1,6 +1,7 @@
 import type { Capability } from '@/lib/capabilities';
 import { MAX_TORRENT_BYTES, parseMagnet, parseTorrentFile, ReleaseSourceError, type ReleaseSource } from './release-source';
 import type { AddOptions, ManualDownloadService, PreflightInput } from './preflight';
+import type { FallbackInput, FileDecision } from './fallback';
 
 /**
  * Reading a manual-download request from the browser: multipart form data with
@@ -105,4 +106,54 @@ export async function readManualDownloadRequest(form: FormData): Promise<ManualD
     },
     clientRequestId: body.clientRequestId as string | undefined,
   };
+}
+
+export interface FallbackRequest {
+  input: FallbackInput;
+  clientRequestId?: string;
+}
+
+/** The advanced fallback: a JSON body naming a torrent already in qBittorrent and the files to download. */
+export function readFallbackRequest(body: unknown): FallbackRequest {
+  if (!body || typeof body !== 'object') throw new ManualDownloadRequestError('Invalid request.');
+  const value = body as Record<string, unknown>;
+  const service = value.service;
+  if (service !== 'RADARR' && service !== 'SONARR') throw new ManualDownloadRequestError('Choose Radarr or Sonarr.');
+  if (typeof value.instanceId !== 'string' || !value.instanceId) throw new ManualDownloadRequestError('Choose an instance.');
+  if (!positiveInt(value.externalId)) throw new ManualDownloadRequestError('Choose a title.');
+  if (typeof value.infoHash !== 'string' || !/^[0-9a-fA-F]{40}$/.test(value.infoHash)) throw new ManualDownloadRequestError('Invalid torrent.');
+  const indexes = value.selectedFileIndexes;
+  if (!Array.isArray(indexes) || indexes.length > 10_000 || !indexes.every((index) => Number.isSafeInteger(index) && index >= 0)) {
+    throw new ManualDownloadRequestError('Invalid file choice.');
+  }
+  if (value.source !== undefined && value.source !== 'MAGNET' && value.source !== 'TORRENT_FILE') throw new ManualDownloadRequestError('Invalid source.');
+  if (value.clientRequestId !== undefined && (typeof value.clientRequestId !== 'string' || !/^[A-Za-z0-9-]{8,64}$/.test(value.clientRequestId))) {
+    throw new ManualDownloadRequestError('Invalid request id.');
+  }
+  return {
+    input: {
+      service,
+      instanceId: value.instanceId,
+      externalId: value.externalId,
+      infoHash: value.infoHash.toUpperCase(),
+      selectedFileIndexes: [...new Set(indexes as number[])],
+      source: (value.source as 'MAGNET' | 'TORRENT_FILE' | undefined) ?? 'MAGNET',
+      add: readAdd(service, value.add),
+    },
+    clientRequestId: value.clientRequestId as string | undefined,
+  };
+}
+
+/** Per-file decisions for a fallback import. */
+export function readFileDecisions(body: unknown): FileDecision[] {
+  const files = (body as { files?: unknown } | null)?.files;
+  if (!Array.isArray(files) || files.length === 0 || files.length > 10_000) throw new ManualDownloadRequestError('Invalid file decisions.');
+  return files.map((entry) => {
+    const file = entry as Record<string, unknown>;
+    if (typeof file.fileId !== 'string' || !file.fileId) throw new ManualDownloadRequestError('Invalid file decisions.');
+    if (file.decision !== 'IMPORT' && file.decision !== 'IGNORE') throw new ManualDownloadRequestError('Invalid file decisions.');
+    const episodeIds = file.episodeIds ?? [];
+    if (!Array.isArray(episodeIds) || episodeIds.length > 1_000 || !episodeIds.every(positiveInt)) throw new ManualDownloadRequestError('Invalid episodes.');
+    return { fileId: file.fileId, decision: file.decision, episodeIds: episodeIds as number[] };
+  });
 }

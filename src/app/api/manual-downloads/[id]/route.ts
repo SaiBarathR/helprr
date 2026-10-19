@@ -14,7 +14,10 @@ async function getHandler(_request: Request, { params }: Context) {
   const { id } = await params;
   const download = await prisma.manualDownload.findUnique({
     where: { id },
-    include: { events: { orderBy: { at: 'asc' }, select: { at: true, status: true, message: true } } },
+    include: {
+      events: { orderBy: { at: 'asc' }, select: { at: true, status: true, message: true } },
+      files: { orderBy: { fileIndex: 'asc' } },
+    },
   });
   if (!download) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   return NextResponse.json({ download: serializeManualDownload(download) });

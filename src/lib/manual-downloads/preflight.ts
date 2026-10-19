@@ -108,6 +108,46 @@ export function defaultDownloadClient(clients: DownloadClient[], itemTags: numbe
   return group.length === 1 ? group[0] : null;
 }
 
+/** Add options that do not belong to the instance. */
+export function addOptionIssues(add: AddOptions, options: { profiles: QualityProfile[]; folders: RootFolder[]; tags: Tag[] }, label: string): PreflightIssue[] {
+  const issues: PreflightIssue[] = [];
+  if (!options.profiles.some((profile) => profile.id === add.qualityProfileId)) issues.push({ code: 'PROFILE_INVALID', message: `That quality profile is not in ${label}.` });
+  if (!options.folders.some((folder) => folder.path === add.rootFolderPath)) issues.push({ code: 'ROOT_FOLDER_INVALID', message: `That root folder is not in ${label}.` });
+  if (add.tags.some((tag) => !options.tags.some((known) => known.id === tag))) issues.push({ code: 'TAG_INVALID', message: `A chosen tag is not in ${label}.` });
+  return issues;
+}
+
+/**
+ * What Helprr sends to add a title: an allowlist of fields, with every
+ * automatic search off. A movie is monitored (Radarr only takes releases for
+ * monitored movies); a series starts unmonitored, its episodes monitored later.
+ */
+export function addTitlePayload(service: ManualDownloadService, target: { title: string; externalId: number; year: number }, add: AddOptions) {
+  return service === 'RADARR'
+    ? {
+        title: target.title,
+        tmdbId: target.externalId,
+        year: target.year,
+        qualityProfileId: add.qualityProfileId,
+        rootFolderPath: add.rootFolderPath,
+        tags: add.tags,
+        monitored: true,
+        minimumAvailability: add.minimumAvailability ?? 'released',
+        addOptions: { searchForMovie: false, monitor: 'movieOnly' },
+      }
+    : {
+        title: target.title,
+        tvdbId: target.externalId,
+        qualityProfileId: add.qualityProfileId,
+        rootFolderPath: add.rootFolderPath,
+        tags: add.tags,
+        seriesType: add.seriesType ?? 'standard',
+        seasonFolder: add.seasonFolder !== false,
+        monitored: false,
+        addOptions: { monitor: 'none', searchForMissingEpisodes: false, searchForCutoffUnmetEpisodes: false },
+      };
+}
+
 function qualityName(quality: { quality: { name: string } } | undefined): string | null {
   return quality?.quality?.name ?? null;
 }
@@ -208,9 +248,7 @@ export async function preflightManualDownload(input: PreflightInput): Promise<Pr
     if (!input.add) {
       error('ADD_OPTIONS_REQUIRED', `${found.title} is not in ${connection.label} yet: choose a quality profile and root folder.`);
     } else if (options) {
-      if (!options.profiles.some((profile) => profile.id === input.add!.qualityProfileId)) error('PROFILE_INVALID', `That quality profile is not in ${connection.label}.`);
-      if (!options.folders.some((folder) => folder.path === input.add!.rootFolderPath)) error('ROOT_FOLDER_INVALID', `That root folder is not in ${connection.label}.`);
-      if (input.add.tags.some((tag) => !options!.tags.some((known) => known.id === tag))) error('TAG_INVALID', `A chosen tag is not in ${connection.label}.`);
+      errors.push(...addOptionIssues(input.add, options, connection.label));
     }
   }
 

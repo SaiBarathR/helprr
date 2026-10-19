@@ -1,12 +1,15 @@
 import { Prisma, type ManualDownload, type ManualDownloadStatus } from '@prisma/client';
+import axios from 'axios';
 import { prisma } from '@/lib/db';
 import { resolveConnection } from '@/lib/arr-instances';
 import { fetchAllQueueRecords } from '@/lib/activity-queue';
 import { noteJobFailure, noteJobSkipped } from '@/lib/polling-job-report';
+import { getQBittorrentClient } from '@/lib/service-helpers';
 import type { RadarrClient } from '@/lib/radarr-client';
 import type { SonarrClient } from '@/lib/sonarr-client';
-import type { HistoryItem, QueueItem } from '@/types';
+import type { HistoryItem, QBittorrentTorrent, QueueItem } from '@/types';
 import { arrClientFor, TERMINAL_STATUSES } from './preflight';
+import { fallbackImportProof, settleDownloaded, SETTLING_STATES } from './fallback';
 import { redactUpstreamText } from './redact';
 
 /**
@@ -86,9 +89,10 @@ const fileIdOf = (event: HistoryItem) => Number(event.data?.fileId) || 0;
  * Whether the import is proved. With this release's own import events (Arr
  * records the file each one imported): Radarr, an imported movie file that
  * the movie still has; Sonarr, every target episode holds the file this
- * release imported for it. Without them (Helprr's own fallback imports, which
- * have no download id): Radarr, a movie file id not in the baseline; Sonarr,
- * every target episode holds a file id it did not hold before.
+ * release imported for it. Without them (events that record no file):
+ * Radarr, a movie file id not in the baseline; Sonarr, every target episode
+ * holds a file id it did not hold before. Fallback imports have their own
+ * proof (fallbackImportProof).
  */
 export function importProof(
   download: Pick<ManualDownload, 'service' | 'baselineFileIds' | 'targetEpisodeIds'> & { arrItemId?: number | null },
@@ -176,9 +180,9 @@ async function fromHistory(download: ManualDownload, client: RadarrClient | Sona
   return { status: 'BLOCKED', message: `${app} has no record of this download any more.` };
 }
 
-const isError = (status: ManualDownloadStatus) => status === 'BLOCKED' || status === 'FAILED';
+const isError = (status: ManualDownloadStatus) => status === 'BLOCKED' || status === 'FAILED' || status === 'NEEDS_MAPPING';
 
-async function apply(download: ManualDownload, outcome: Outcome): Promise<void> {
+export async function apply(download: ManualDownload, outcome: Outcome): Promise<void> {
   // A new event only when the status changes, or when a problem's reason does.
   const same = outcome.status === download.status && (!isError(outcome.status) || outcome.message === download.lastError);
   if (same && (outcome.data?.arrQueueId === undefined || outcome.data.arrQueueId === download.arrQueueId)) return;
@@ -221,6 +225,48 @@ async function settleInterrupted(download: ManualDownload, client: RadarrClient 
   return { status: 'FAILED', message: `The send was interrupted before ${app} grabbed the release.${added}` };
 }
 
+/** A fallback import Helprr started: proved by Arr's history of its own files, or failed as Arr's command says. */
+async function followImport(download: ManualDownload, client: RadarrClient | SonarrClient, app: string): Promise<Outcome | null> {
+  const proof = await fallbackImportProof(download, client);
+  if (proof.proved) return { status: 'IMPORTED', message: `${app} imported it.`, data: { importedFileIds: proof.fileIds } };
+  if (!download.arrCommandId) return null;
+  let command;
+  try {
+    command = await client.getCommand(download.arrCommandId);
+  } catch (error) {
+    if (!(axios.isAxiosError(error) && error.response?.status === 404)) throw error;
+    return { status: 'BLOCKED', message: `${app} no longer knows the import, and ${download.arrItemTitle} has no new file. Import again.` };
+  }
+  if (command.status === 'failed' || command.status === 'aborted' || command.status === 'cancelled') {
+    return { status: 'BLOCKED', message: `${app}'s import failed: ${command.message || 'no reason given'}. Fix it, then import again.` };
+  }
+  if (command.status === 'completed') {
+    const which = download.service === 'SONARR' && proof.missing > 0 ? ` for ${proof.missing} of the episodes` : '';
+    return { status: 'BLOCKED', message: `${app} finished the import, but ${download.arrItemTitle} has no new file${which}. Check ${app}'s logs, then import again.` };
+  }
+  return null;
+}
+
+/**
+ * A fallback download: qBittorrent until the chosen files are complete, then
+ * Arr's reading of them (settleDownloaded), then the import. NEEDS_MAPPING and
+ * BLOCKED wait for the user (import, scan again, or cancel).
+ */
+async function fromFallback(download: ManualDownload, client: RadarrClient | SonarrClient, app: string, torrent: QBittorrentTorrent | undefined): Promise<Outcome | null> {
+  if (download.status === 'IMPORTING') return followImport(download, client, app);
+  if (download.status === 'NEEDS_MAPPING' || download.status === 'BLOCKED') return null;
+  if (download.status === 'IMPORT_PENDING') {
+    // A scan, import or cancel is under way; one taking longer than this was interrupted and is picked up.
+    if (Date.now() - download.updatedAt.getTime() >= INTERRUPTED_AFTER_MS) await settleDownloaded(download, client);
+    return null;
+  }
+  if (!torrent) return { status: 'BLOCKED', message: 'The torrent is no longer in qBittorrent.' };
+  if (torrent.progress < 1 || SETTLING_STATES.has(torrent.state)) return { status: 'DOWNLOADING', message: 'Downloading.' };
+  // Checks each chosen file in qBittorrent, and records its own outcome.
+  await settleDownloaded(download, client);
+  return null;
+}
+
 /**
  * Sonarr matched by TVDB id, and the send ended (BLOCKED, unsure of the grab)
  * before it took the episodes from the grab: take them now. Null when the
@@ -240,7 +286,7 @@ async function withGrabbedEpisodes(download: ManualDownload, client: RadarrClien
 /** Reconcile every open manual download against its own Arr instance. */
 export async function reconcileManualDownloads(): Promise<void> {
   const open = await prisma.manualDownload.findMany({
-    where: { status: { notIn: [...TERMINAL_STATUSES] }, mode: 'ARR_MANAGED' },
+    where: { status: { notIn: [...TERMINAL_STATUSES] } },
     orderBy: { createdAt: 'asc' },
   });
   const active = open.filter((download) => !SENDING.includes(download.status) || Date.now() - download.updatedAt.getTime() > INTERRUPTED_AFTER_MS);
@@ -258,16 +304,36 @@ export async function reconcileManualDownloads(): Promise<void> {
     byInstance.set(download.instanceId, [...(byInstance.get(download.instanceId) ?? []), download]);
   }
 
+  // Fallback downloads live in Helprr's qBittorrent: one look for all of them.
+  const fallbackHashes = active.filter((download) => download.mode === 'QBIT_REVIEWED').map((download) => download.infoHash.toLowerCase());
+  let torrents: QBittorrentTorrent[] | null = null;
+  if (fallbackHashes.length > 0) {
+    try {
+      torrents = await (await getQBittorrentClient()).getTorrents(undefined, undefined, undefined, undefined, fallbackHashes.join('|'));
+    } catch (error) {
+      noteJobFailure(error);
+    }
+  }
+
   for (const [instanceId, downloads] of byInstance) {
     const service = downloads[0].service === 'RADARR' ? 'RADARR' : 'SONARR';
     const app = service === 'RADARR' ? 'Radarr' : 'Sonarr';
     try {
       const client = arrClientFor(service, await resolveConnection(service, instanceId));
-      const queue = (await fetchAllQueueRecords(client, true)).records;
+      const queue = downloads.some((download) => download.mode === 'ARR_MANAGED') ? (await fetchAllQueueRecords(client, true)).records : [];
       for (const found of downloads) {
         try {
           if (SENDING.includes(found.status)) {
-            await apply(found, await settleInterrupted(found, client, app));
+            await apply(found, found.mode === 'ARR_MANAGED'
+              ? await settleInterrupted(found, client, app)
+              : { status: 'FAILED', message: `Starting the download was interrupted.${found.createdArrItem ? ` ${found.arrItemTitle} was added to ${found.instanceLabel} for it; remove it in ${app} if you do not want it.` : ''} Start it again from Add Torrent.` });
+            continue;
+          }
+          if (found.mode === 'QBIT_REVIEWED') {
+            // Without an answer from qBittorrent the torrent's state is unknown; an import is Arr's alone.
+            if (!torrents && found.status !== 'IMPORTING' && found.status !== 'IMPORT_PENDING') continue;
+            const outcome = await fromFallback(found, client, app, torrents?.find((torrent) => torrent.hash.toUpperCase() === found.infoHash));
+            if (outcome) await apply(found, outcome);
             continue;
           }
           const download = found.service === 'SONARR' && found.targetEpisodeIds.length === 0 ? await withGrabbedEpisodes(found, client) : found;

@@ -22,6 +22,8 @@ import type {
   HealthCheck,
   RadarrLookupResult,
   Release,
+  ArrFolderListing,
+  ArrRemotePathMapping,
   DownloadClient,
   RadarrParseResult,
   ArrReleasePushInput,
@@ -59,6 +61,7 @@ interface CommandResponse {
   queued: string;
   started?: string;
   ended?: string;
+  message?: string;
 }
 
 interface DeleteQueueOptions {
@@ -184,6 +187,15 @@ export class RadarrClient {
     return this.get<DownloadClient[]>('/api/v3/downloadclient');
   }
 
+  async getRemotePathMappings(): Promise<ArrRemotePathMapping[]> {
+    return this.get<ArrRemotePathMapping[]>('/api/v3/remotepathmapping');
+  }
+
+  /** A folder's subfolders and files as Arr sees them; the path needs its trailing separator. */
+  async listFolder(path: string): Promise<ArrFolderListing> {
+    return this.get<ArrFolderListing>('/api/v3/filesystem', { path, includeFiles: true });
+  }
+
   // Wanted
   async getWantedMissing(page = 1, pageSize = 20): Promise<{ page: number; pageSize: number; totalRecords: number; records: RadarrMovie[] }> {
     return this.get('/api/v3/wanted/missing', { page, pageSize, sortKey: 'date', sortDirection: 'descending' });
@@ -259,8 +271,11 @@ export class RadarrClient {
     return this.get<HistoryResponse>('/api/v3/history', params);
   }
 
-  async getMovieHistory(movieId: number): Promise<HistoryItem[]> {
-    return this.get<HistoryItem[]>('/api/v3/history/movie', { movieId });
+  /** One movie's history, unpaged. eventType 3 = downloadFolderImported. */
+  async getMovieHistory(movieId: number, eventType?: number): Promise<HistoryItem[]> {
+    const params: Record<string, unknown> = { movieId };
+    if (eventType !== undefined) params.eventType = eventType;
+    return this.get<HistoryItem[]>('/api/v3/history/movie', params);
   }
 
   // Movie files — Manage Files
@@ -301,6 +316,11 @@ export class RadarrClient {
 
   // Re-run the import decision engine after a row edit (rejections + CF score).
   // No disk changes.
+  /** Arr's manual-import reading of one folder or file, and only that (no title id: with one, Arr scans the title's folder). */
+  async scanImportPath(path: string): Promise<ManualImportItem[]> {
+    return this.get<ManualImportItem[]>('/api/v3/manualimport', { folder: path, filterExistingFiles: false });
+  }
+
   async reprocessManualImport(items: unknown[]): Promise<ManualImportItem[]> {
     return this.post<ManualImportItem[]>('/api/v3/manualimport', items);
   }
@@ -337,6 +357,11 @@ export class RadarrClient {
       name: 'RefreshMovie',
       movieIds: [movieId],
     });
+  }
+
+  /** The commands Radarr has run or queued lately (kept in memory until it restarts), with their bodies. */
+  async getCommands(): Promise<Array<CommandResponse & { body?: { files?: Array<{ path?: string }> } }>> {
+    return this.get('/api/v3/command');
   }
 
   async getCommand(id: number): Promise<CommandResponse> {
