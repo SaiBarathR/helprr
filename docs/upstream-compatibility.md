@@ -335,6 +335,47 @@ Jellyfin exposes these routes without an API version, so a future release can
 change them without a contract change. Re-run the flows above after upgrading rather
 than treating a successful connection test as proof that playback still works.
 
+### Sonarr and Radarr manual releases
+
+Manual downloads hand a magnet or .torrent to Sonarr or Radarr as a release, so
+Arr picks the client, downloads, imports and renames. Probed live on **2026-10-19**
+against Sonarr `4.0.20.3014` and Radarr `6.4.4.10685` (qBittorrent `5.1.4`), on
+test instances, with locally generated torrents of random bytes:
+
+- **Ingestion.** `POST /api/v3/release/push` with `title`, `protocol: "torrent"`,
+  `publishDate` and `magnetUrl` (or `downloadUrl`) on both. There is no upload
+  endpoint: a .torrent must be at a URL Arr can reach, which Arr fetches once,
+  during the push, without credentials, and passes to the client as bytes.
+  `downloadClientId` picks the client; without it Arr takes the lowest priority
+  number and rotates between equals.
+- **Success.** `approved: true` does not mean the release was grabbed: a failed
+  .torrent fetch, an unknown client id or a hash the client already holds all
+  return it with nothing grabbed. The proof is a history `grabbed` record whose
+  `downloadId` is the uppercase v1 info hash (written before the push returns;
+  the lookup is case-sensitive). The queue item follows about 5 s later.
+- **Mapping.** Arr maps a pushed release by parsing `title`; `movieId`,
+  `seriesId` and `episodeIds` are ignored. Radarr's `tmdbId` matches only when
+  the parsed year equals the movie's (or its secondary year), or when the name
+  has no year (Radarr reads it below 1800; per its `ParsingService` source, not
+  probed live). Sonarr's `tvdbId` is used only when the
+  title parses to no library series, so a title naming another library series is
+  grabbed for that series. An unparseable title is refused (400) and an
+  `Unknown` quality is rejected by profiles. `GET /api/v3/parse?title=` shows the
+  mapping without side effects, for titles already in the library.
+- **Monitoring.** The movie, or the series and every episode the release covers,
+  must be monitored. Adding a series with `addOptions.monitor: "none"` leaves the
+  series unmonitored.
+- **Recent grabs.** Arr's history specification looks at the newest history
+  event of the movie (Sonarr: of each episode): while that is a grab under 12
+  hours old, Arr refuses any release that is not an upgrade of it, whichever
+  release was grabbed; an older grab is ignored only with Completed Download
+  Handling on. Helprr's preflight checks only for a recent grab of the same
+  hash (an older one is a warning); the other cases surface as Arr's push
+  rejection.
+- **Removal.** Removing the queue item with `removeFromClient=true` and no
+  blocklist writes no history event, so pushes for that title are refused as a
+  recent grab for 12 hours.
+
 ## Before reporting an upstream compatibility problem
 
 1. In **Settings → Instances**, re-test the affected connection and record the exact

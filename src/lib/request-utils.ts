@@ -11,7 +11,7 @@ export function isHttpsRequest(request: NextRequest, trustProxy = false): boolea
 }
 
 // Accept a bare http(s) origin only: no credentials, path, query or fragment.
-function parseBareOrigin(value: string, requireHttps: boolean): string | null {
+export function parseBareOrigin(value: string, requireHttps: boolean): string | null {
   let url: URL;
   try {
     url = new URL(value);

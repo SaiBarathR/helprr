@@ -812,6 +812,61 @@ export interface DownloadClient {
   protocol: string;
   priority: number;
   implementation: string;
+  /** A tagged client is used only for titles sharing one of its tags. */
+  tags?: number[];
+}
+
+/** Arr's own reading of a release title (GET /api/v3/parse). */
+export interface ArrParsedQuality {
+  quality: { id: number; name: string };
+}
+
+export interface RadarrParseResult {
+  title: string;
+  parsedMovieInfo?: { movieTitles?: string[]; year?: number; quality?: ArrParsedQuality } | null;
+  /** The library movie the title maps to, when there is one. */
+  movie?: { id: number; title: string; year: number; tmdbId: number; monitored: boolean } | null;
+}
+
+export interface SonarrParseResult {
+  title: string;
+  parsedEpisodeInfo?: {
+    seriesTitle?: string;
+    seasonNumber?: number;
+    episodeNumbers?: number[];
+    absoluteEpisodeNumbers?: number[];
+    fullSeason?: boolean;
+    isDaily?: boolean;
+    quality?: ArrParsedQuality;
+  } | null;
+  /** The library series the title maps to, when there is one, and the episodes it covers. */
+  series?: { id: number; title: string; tvdbId: number; monitored: boolean } | null;
+  episodes?: Array<{ id: number; seasonNumber: number; episodeNumber: number; monitored: boolean; episodeFileId?: number }>;
+}
+
+/** A hand-supplied release for POST /api/v3/release/push. Arr maps it by parsing `title`. */
+export interface ArrReleasePushInput {
+  title: string;
+  protocol: 'torrent';
+  publishDate: string;
+  magnetUrl?: string;
+  downloadUrl?: string;
+  downloadClientId?: number;
+  tmdbId?: number;
+  tvdbId?: number;
+}
+
+/** Arr's decision on a pushed release. `approved` alone does not mean it was grabbed. */
+export interface ArrReleasePushResult {
+  title: string;
+  approved: boolean;
+  rejected: boolean;
+  temporarilyRejected?: boolean;
+  rejections?: string[];
+  infoHash?: string;
+  mappedMovieId?: number;
+  mappedSeriesId?: number;
+  mappedEpisodeInfo?: Array<{ id: number; seasonNumber: number; episodeNumber: number }>;
 }
 
 export interface DiskSpace {
