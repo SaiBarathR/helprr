@@ -57,7 +57,9 @@ export const invalidateActivity = (qc: QueryClient) =>
 // An added, re-pointed or removed instance also changes the libraries.
 export function invalidateInstances(qc: QueryClient) {
   qc.invalidateQueries({ queryKey: queryKeys.instances() });
-  qc.invalidateQueries({ queryKey: queryKeys.arrInstances() });
+  // Add pages pick their starting instance from this list once, so drop it rather
+  // than mark it stale: a page opened next must not start from the old default.
+  qc.resetQueries({ queryKey: queryKeys.arrInstances() });
   qc.invalidateQueries({ queryKey: queryKeys.widgetServiceAvailability() });
   for (const svc of ['radarr', 'sonarr', 'lidarr'] as const) qc.invalidateQueries({ queryKey: [svc, 'library'] });
 }
