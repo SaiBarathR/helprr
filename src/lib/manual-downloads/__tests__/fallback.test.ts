@@ -287,8 +287,8 @@ describe("importing the user's decisions", () => {
       { fileId: 'f0', decision: 'IMPORT', episodeIds: [501] }, { fileId: 'f1', decision: 'IMPORT', episodeIds: [502] },
     ], actor);
     expect(mocks.arr.submitManualImport).toHaveBeenCalledWith([
-      expect.objectContaining({ path: '/data/Downloads/Show/a.mkv', seriesId: 15, episodeIds: [501] }),
-      expect.objectContaining({ path: '/data/Downloads/Show/b.mkv', seriesId: 15, episodeIds: [502] }),
+      expect.objectContaining({ path: '/data/Downloads/Show/a.mkv', seriesId: 15, episodeIds: [501], releaseType: 'singleEpisode' }),
+      expect.objectContaining({ path: '/data/Downloads/Show/b.mkv', seriesId: 15, episodeIds: [502], releaseType: 'singleEpisode' }),
     ], 'copy');
     expect(mocks.moves[0].data).toEqual(expect.objectContaining({ targetEpisodeIds: [501, 502], baselineFileIds: { 501: 0, 502: 33 } }));
   });

@@ -504,12 +504,14 @@ function importItem(download: ManualDownload, file: ManualDownloadFile, decision
   const candidate = (file.candidate ?? {}) as Partial<Candidate>;
   return {
     path: file.arrPath,
-    ...(download.service === 'RADARR' ? { movieId: download.arrItemId } : { seriesId: download.arrItemId, episodeIds: decision.episodeIds }),
+    // A file set to its episodes is one (or a multi-episode) release, whatever its folder made Arr think.
+    ...(download.service === 'RADARR'
+      ? { movieId: download.arrItemId }
+      : { seriesId: download.arrItemId, episodeIds: decision.episodeIds, releaseType: (decision.episodeIds?.length ?? 0) > 1 ? 'multiEpisode' : 'singleEpisode' }),
     quality: candidate.quality,
     languages: candidate.languages ?? [],
     releaseGroup: candidate.releaseGroup ?? '',
     indexerFlags: candidate.indexerFlags ?? 0,
-    ...(candidate.releaseType ? { releaseType: candidate.releaseType } : {}),
     downloadId: '',
   };
 }
