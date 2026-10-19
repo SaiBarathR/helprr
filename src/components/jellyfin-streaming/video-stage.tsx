@@ -442,7 +442,12 @@ export function VideoStage({ mediaContainer }: { mediaContainer: HTMLDivElement 
                 </div>
               </div>
             ) : playback.error ? (
-              <div className="absolute inset-0 flex items-center justify-center p-6 text-center text-sm text-red-300">{playback.error}</div>
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 p-6 text-center text-sm text-red-300">
+                <p>{playback.error}</p>
+                {playback.item && (
+                  <Button size="sm" variant="secondary" onClick={() => playback.retry()}>Retry</Button>
+                )}
+              </div>
             ) : null}
 
             {/* Both sit where an open panel grows to, and covered its controls. */}
