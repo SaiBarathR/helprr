@@ -41,7 +41,7 @@ export default function InstancesIndexPage() {
     mutationFn: (connection: LoadedConnection) => setServiceConnectionDefault(connection.id),
     onSuccess: (_data, connection) => {
       toast.success(`${connection.label} is now the default`);
-      void queryClient.invalidateQueries({ queryKey: queryKeys.instances() });
+      invalidateInstances(queryClient);
     },
     onError: (error) => toast.error(error instanceof Error ? error.message : 'Failed to update instance'),
   });

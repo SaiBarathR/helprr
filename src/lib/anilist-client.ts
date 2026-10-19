@@ -39,6 +39,14 @@ export class AniListRateLimitError extends Error {
   }
 }
 
+/** AniList has no entry with that id — routes map this to HTTP 404. */
+export class AniListNotFoundError extends Error {
+  constructor(message = 'Not found on AniList') {
+    super(message);
+    this.name = 'AniListNotFoundError';
+  }
+}
+
 // Rate limiting: nominally 90 req/min, but AniList currently runs degraded at
 // 30/min — so the local sliding window adapts to the X-RateLimit-Limit header
 // (limit − 3 buffer). A real 429 (or predicted exhaustion via
@@ -91,7 +99,9 @@ export function noteAniListRateLimited(headers: unknown): AniListRateLimitError 
 export function noteAniListRateHeaders(headers: unknown): void {
   const limit = Number(getHeader(headers, 'x-ratelimit-limit'));
   if (Number.isFinite(limit) && limit > 0) serverRateLimit = limit;
-  const remaining = Number(getHeader(headers, 'x-ratelimit-remaining'));
+  // A missing header is not "0 remaining" (Number(null) is 0).
+  const remainingHeader = getHeader(headers, 'x-ratelimit-remaining');
+  const remaining = remainingHeader === null ? NaN : Number(remainingHeader);
   if (Number.isFinite(remaining) && remaining >= 0) serverRateRemaining = remaining;
   const reset = Number(getHeader(headers, 'x-ratelimit-reset'));
   if (Number.isFinite(reset) && reset > 0) serverRateResetMs = reset * 1000;
@@ -352,6 +362,8 @@ async function gqlRequest<T>(query: string, variables: Record<string, unknown>):
       if (error.response.status === 429) {
         throw noteAniListRateLimited(error.response.headers);
       }
+      // An unknown id: AniList answers 404 with a GraphQL "Not Found." error.
+      if (error.response.status === 404) throw new AniListNotFoundError();
     }
     throw error;
   }
@@ -363,6 +375,7 @@ async function gqlRequest<T>(query: string, variables: Record<string, unknown>):
     if (response.data.errors.some((error) => error.status === 429)) {
       throw noteAniListRateLimited(response.headers);
     }
+    if (response.data.errors.some((error) => error.status === 404)) throw new AniListNotFoundError();
     const messages = response.data.errors.map((error) => error.message).join('; ');
     throw new Error(`AniList API error: ${messages}`);
   }
@@ -1073,7 +1086,7 @@ export async function getStaffDetail(
   });
 
   const s = result.Staff;
-  if (!s) throw new Error('Staff not found');
+  if (!s) throw new AniListNotFoundError('Staff not found');
 
   return {
     id: s.id,
@@ -1140,7 +1153,7 @@ export async function getStaffMediaPage(
     fetcher: () => gqlRequest<StaffPageResponse>(gqlQuery, variables),
   });
 
-  if (!result.Staff) throw new Error('Staff not found');
+  if (!result.Staff) throw new AniListNotFoundError('Staff not found');
 
   return {
     pageInfo: result.Staff.staffMedia.pageInfo,
@@ -1191,7 +1204,7 @@ export async function getStaffCharacterMediaPage(
     fetcher: () => gqlRequest<StaffCharacterMediaPageResponse>(gqlQuery, variables),
   });
 
-  if (!result.Staff) throw new Error('Staff not found');
+  if (!result.Staff) throw new AniListNotFoundError('Staff not found');
 
   return {
     pageInfo: result.Staff.characterMedia.pageInfo,
@@ -1303,7 +1316,7 @@ export async function getCharacterDetail(
   });
 
   const c = result.Character;
-  if (!c) throw new Error('Character not found');
+  if (!c) throw new AniListNotFoundError('Character not found');
 
   return {
     id: c.id,
@@ -1436,7 +1449,7 @@ export async function getStudioDetail(
   });
 
   const st = result.Studio;
-  if (!st) throw new Error('Studio not found');
+  if (!st) throw new AniListNotFoundError('Studio not found');
 
   // AniList can return the same media twice when a studio has multiple roles
   // (e.g., main + producer). Collapse by node id, preferring the main-studio edge.

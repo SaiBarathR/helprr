@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { AniListRateLimitError } from '@/lib/anilist-client';
+import { AniListNotFoundError, AniListRateLimitError } from '@/lib/anilist-client';
 
 /**
  * Map an AniList rate-limit error to an HTTP 429 with a Retry-After header so
@@ -17,4 +17,10 @@ export function anilistRateLimitResponse(error: unknown): NextResponse | null {
     },
     { status: 429, headers: { 'Retry-After': String(error.retryAfterSeconds) } }
   );
+}
+
+/** Map AniList's "no entry with that id" to a 404; null for any other error. */
+export function anilistNotFoundResponse(error: unknown): NextResponse | null {
+  if (!(error instanceof AniListNotFoundError)) return null;
+  return NextResponse.json({ error: error.message }, { status: 404 });
 }

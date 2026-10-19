@@ -9,6 +9,7 @@ import {
 } from '@/lib/anilist-client';
 import type { AniListSort } from '@/types/anilist';
 import { withApiLogging } from '@/lib/api-logger';
+import { anilistNotFoundResponse } from '@/lib/anilist-http';
 import { parsePageNumber } from '@/lib/pagination';
 
 const VALID_SORTS = new Set<AniListSort>([
@@ -78,6 +79,8 @@ async function getHandler(
     const detail = await getStaffDetail(id, 1, 1, 1, animeSort, mangaSort, vaSort);
     return NextResponse.json(detail);
   } catch (error) {
+    const notFound = anilistNotFoundResponse(error);
+    if (notFound) return notFound;
     const message = error instanceof Error ? error.message : 'Failed to load staff detail';
     console.error('[Staff Detail API]', message);
     return NextResponse.json({ error: message }, { status: 500 });

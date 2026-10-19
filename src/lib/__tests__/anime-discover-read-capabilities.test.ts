@@ -45,6 +45,7 @@ vi.mock('@/lib/service-helpers', () => ({
 }));
 vi.mock('@/lib/anilist-client', () => ({
   AniListRateLimitError: class AniListRateLimitError extends Error {},
+  AniListNotFoundError: class AniListNotFoundError extends Error {},
   ANILIST_DETAIL_PAGE_SIZE: 25,
   maxAniListPage: () => 200,
   getAnimeDetail: reached('anilist'),

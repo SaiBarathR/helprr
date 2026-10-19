@@ -11,6 +11,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { jsonFetcher } from '@/lib/query-fetch';
+import { queryKeys } from '@/lib/query-keys';
 import type { DiscoverDetail } from '@/types';
 import { WatchlistButton } from '@/components/watchlist/watchlist-button';
 import { RequestMediaButton } from '@/components/discover/request-media-button';
@@ -124,7 +125,7 @@ export function useDiscoverAddController(detail: DiscoverDetail): DiscoverAddCon
   // library could not be read may hold it too, so it is not offered either.
   const wantsOtherInstances = detail.addTarget.exists && canAddDirectly;
   const { data: configured = [] } = useQuery({
-    queryKey: ['arr-instances'],
+    queryKey: queryKeys.arrInstances(),
     queryFn: jsonFetcher<Array<{ id: string; label: string; type: string }>>('/api/instances'),
     enabled: wantsOtherInstances,
     staleTime: 5 * 60_000,

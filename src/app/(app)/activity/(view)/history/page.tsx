@@ -7,6 +7,7 @@ import Link from '@/components/ui/app-link';
 import { useRestorableInfiniteQuery as useInfiniteQuery } from '@/lib/hooks/use-restorable-infinite-query';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { jsonFetcher } from '@/lib/query-fetch';
+import { queryKeys } from '@/lib/query-keys';
 import { PageHeader } from '@/components/layout/page-header';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -217,7 +218,7 @@ export default function HistoryPage() {
     // Distinct from queryKeys.instances() (['instances','all'] → /api/services); this
     // is the /api/instances connection list for the filter. Shares with the activity
     // page's same-key query, and can't prefix-collide with the services key.
-    queryKey: ['arr-instances'],
+    queryKey: queryKeys.arrInstances(),
     queryFn: jsonFetcher<Array<{ id: string; label: string; type: string }>>('/api/instances'),
     select: (conns): InstanceOption[] =>
       Array.isArray(conns) ? conns.map((c) => ({ id: c.id, label: withAppName(c.label, c.type) })) : [],

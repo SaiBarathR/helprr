@@ -3,6 +3,7 @@ import { requireUserAnyCapability } from '@/lib/auth';
 import { getMangaDetail } from '@/lib/anilist-client';
 import { normalizeAniListMangaDetail } from '@/lib/anilist-helpers';
 import { withApiLogging } from '@/lib/api-logger';
+import { anilistNotFoundResponse } from '@/lib/anilist-http';
 
 async function getHandler(
   _request: NextRequest,
@@ -23,6 +24,8 @@ async function getHandler(
 
     return NextResponse.json(normalized);
   } catch (error) {
+    const notFound = anilistNotFoundResponse(error);
+    if (notFound) return notFound;
     const message = error instanceof Error ? error.message : 'Failed to load manga detail';
     console.error('[Manga Detail API]', message);
     return NextResponse.json({ error: message }, { status: 500 });
