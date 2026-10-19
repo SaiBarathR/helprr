@@ -1,5 +1,9 @@
 const USER_SCOPED_CACHE_NAMES = ['pages', 'api-readonly', 'api-images'] as const;
 const CLEAR_USER_CACHES_MESSAGE = { type: 'helprr-clear-user-caches' } as const;
+const FENCE_USER_CACHES_MESSAGE = { type: 'helprr-fence-user-caches' } as const;
+// The fence only narrows a race, so a worker that does not answer in time
+// does not hold up the clear itself.
+const CACHE_FENCE_TIMEOUT_MS = 1_000;
 const AUTH_BOUNDARY_CHANNEL_NAME = 'helprr-authentication-boundary';
 const AUTH_BOUNDARY_STORAGE_KEY = 'helprr:authentication-boundary';
 const AUTH_BOUNDARY_MESSAGE_TYPE = 'helprr-authentication-boundary';
@@ -207,6 +211,35 @@ async function askWorkerToClearUserCaches(worker: ServiceWorker): Promise<void> 
   });
 }
 
+/**
+ * Before the page deletes the caches itself: move the worker's fence, so a
+ * response it is still fetching for the old session is not written into
+ * them afterwards. Best effort, and bounded by CACHE_FENCE_TIMEOUT_MS.
+ */
+async function fenceWorkerCacheWrites(): Promise<void> {
+  if (typeof MessageChannel === 'undefined' || !navigator.serviceWorker) return;
+  const worker = navigator.serviceWorker.controller
+    ?? (await navigator.serviceWorker.getRegistration?.().catch(() => undefined))?.active;
+  if (!worker) return;
+
+  await new Promise<void>((resolve) => {
+    const channel = new MessageChannel();
+    const done = () => {
+      window.clearTimeout(timeout);
+      channel.port1.close();
+      resolve();
+    };
+    const timeout = window.setTimeout(done, CACHE_FENCE_TIMEOUT_MS);
+    channel.port1.onmessage = done;
+    channel.port1.start();
+    try {
+      worker.postMessage(FENCE_USER_CACHES_MESSAGE, [channel.port2]);
+    } catch {
+      done();
+    }
+  });
+}
+
 async function withCacheClearTimeout<T>(operation: Promise<T>): Promise<T> {
   let timeout: ReturnType<typeof globalThis.setTimeout> | undefined;
   try {
@@ -232,6 +265,7 @@ async function withCacheClearTimeout<T>(operation: Promise<T>): Promise<T> {
 async function clearUserScopedBrowserCachesImpl(): Promise<void> {
   let directClearError: unknown;
   if ('caches' in window) {
+    await fenceWorkerCacheWrites();
     try {
       await Promise.all(USER_SCOPED_CACHE_NAMES.map((name) => window.caches.delete(name)));
       return;
