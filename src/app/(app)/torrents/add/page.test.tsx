@@ -112,6 +112,19 @@ describe('Add Torrent: where it goes', () => {
     expect(screen.queryByLabelText('Save at')).toBeNull();
   });
 
+  it('holds the choice of where it goes while a qBittorrent add is on its way', async () => {
+    mocks.caps = new Set(LINKER);
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => (
+      url === '/api/qbittorrent' && init?.method === 'POST' ? new Promise<Response>(() => {}) : new Response('{}')
+    )));
+    renderPage();
+    await userEvent.click(await screen.findByRole('radio', { name: /Add to qBittorrent only/ }));
+    await userEvent.type(screen.getByPlaceholderText('magnet:?xt=urn:btih:...'), 'magnet:?xt=urn:btih:382CC016FF22946008ECDDCB0DDA820F42B0CD5A');
+    await userEvent.click(screen.getByRole('button', { name: 'Add Torrent' }));
+
+    expect((screen.getByRole('radio', { name: /Send to Sonarr or Radarr/ }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
   describe('picking files for Sonarr/Radarr', () => {
     const REVIEWER = [...LINKER, 'torrents.manage', 'torrents.delete'];
 

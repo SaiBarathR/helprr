@@ -365,6 +365,30 @@ describe('reconciling: review round two', () => {
     expect(mocks.update).toHaveBeenNthCalledWith(2, expect.objectContaining({ data: expect.objectContaining({ status: 'IMPORTED', importedFileIds: [90, 91] }) }));
   });
 
+  it('leaves a row a cancel changed meanwhile to the next run, rather than taking its episodes', async () => {
+    mocks.rows = [row({ service: 'SONARR', status: 'BLOCKED', targetEpisodeIds: [], baselineFileIds: {} })];
+    mocks.client.getHistory.mockResolvedValue({ records: [{ date: NOW, eventType: 'grabbed', seriesId: 15, episodeId: 501 }] });
+    mocks.update.mockRejectedValueOnce(new Prisma.PrismaClientKnownRequestError('No record was found', { code: 'P2025', clientVersion: '6' }));
+    const report = await run();
+    expect(report.failure).toBeNull();
+    expect(mocks.update).toHaveBeenCalledTimes(1);
+    expect(mocks.queue).toHaveBeenCalledTimes(1);
+  });
+
+  it('counts records from an hour before the workflow began, and none older', async () => {
+    const created = minutesAgo(30);
+    const at = (minutesBefore: number) => new Date(created.getTime() - minutesBefore * 60_000).toISOString();
+    mocks.rows = [row({ status: 'SUBMITTING_RELEASE', createdAt: created, updatedAt: minutesAgo(15) })];
+    mocks.client.getHistory.mockResolvedValue({ records: [{ date: at(61), eventType: 'grabbed', movieId: 15 }] });
+    await run();
+    expect(statusSet()).toEqual(['FAILED']);
+
+    mocks.update.mockClear();
+    mocks.client.getHistory.mockResolvedValue({ records: [{ date: at(59), eventType: 'grabbed', movieId: 15 }] });
+    await run();
+    expect(statusSet()).toEqual(['QUEUED']);
+  });
+
   it("keeps credentials out of Arr's messages", async () => {
     mocks.rows = [row()];
     mocks.queue.mockResolvedValue({ records: [item({ trackedDownloadState: 'importBlocked', statusMessages: [{ title: 'x', messages: ['Cannot reach http://qbit:8080/api?apikey=s3cret'] }] })] });
