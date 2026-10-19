@@ -147,6 +147,13 @@ describe('recommendation snapshot cache', () => {
     expect(new Set(used).size).toBe(7);
   });
 
+  it('reports whether Redis took the new generation: one failed attempt is retried, two are a miss', async () => {
+    mocks.redis.set.mockRejectedValueOnce(new Error('connection reset'));
+    await expect(invalidateRecommendations(user.id)).resolves.toBe(true);
+    mocks.redis.set.mockRejectedValueOnce(new Error('connection reset')).mockRejectedValueOnce(new Error('connection reset'));
+    await expect(invalidateRecommendations(user.id)).resolves.toBe(false);
+  });
+
   it('starts a fresh generation when Redis has dropped the key, never an old one', async () => {
     const key = 'helprr:cache:recommendations:generation:user-1';
     await getRecommendationRails(user); // cached under the generation started now

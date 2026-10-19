@@ -71,7 +71,9 @@ export async function buildProfileForUser(user: ProfileUser): Promise<BuiltProfi
 
 /** Rebuild and persist. Returns the fresh profile. */
 export async function rebuildTasteProfile(user: ProfileUser): Promise<TasteProfile> {
-  const startedAt = new Date();
+  // The mark as this build found it: a different one at write time means a
+  // link changed while it ran (or a mark committed after it started).
+  const markBefore = (await prisma.userTasteProfile.findUnique({ where: { userId: user.id }, select: { markedAt: true } }))?.markedAt ?? null;
   const built = await buildProfileForUser(user);
   await prisma.$transaction(async (tx) => {
     // A build takes a while (Jellyfin scans), and a title restored meanwhile
@@ -103,14 +105,14 @@ export async function rebuildTasteProfile(user: ProfileUser): Promise<TasteProfi
       built.profile.likedItemKeys = liked.filter((key) => live.has(key));
     }
     // Stored, but left stale for the next read to rebuild, when what this
-    // build read may already be out of date: a link changed while it ran (a
-    // stale mark landed after it started), or the user it was handed was read
+    // build read may already be out of date: a link changed while it ran (the
+    // mark is not the one it started with), or the user it was handed was read
     // before a link or role change (a request in flight, a polling sweep's list).
     // Only markTasteProfileStale writes markedAt, so neither this write nor a
     // forget* edit can pass for a mark.
     const stored = await tx.userTasteProfile.findUnique({ where: { userId: user.id }, select: { markedAt: true } });
     const current = await tx.user.findUnique({ where: { id: user.id }, select: { role: true, jellyfinUserId: true } });
-    const markedMeanwhile = stored?.markedAt != null && stored.markedAt >= startedAt;
+    const markedMeanwhile = (stored?.markedAt?.getTime() ?? null) !== (markBefore?.getTime() ?? null);
     const userChanged = current !== null && (current.role !== user.role || current.jellyfinUserId !== user.jellyfinUserId);
     const builtAt = markedMeanwhile || userChanged ? new Date(0) : new Date();
     const json = built.profile as unknown as Prisma.InputJsonValue;

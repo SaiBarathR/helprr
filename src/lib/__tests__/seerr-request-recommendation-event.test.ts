@@ -78,6 +78,14 @@ describe('a Seerr request as a recommendations signal', () => {
     expect(mocks.recordRequestEvent.mock.calls.map((call) => call[0])).toEqual(['admin-1', 'admin-1', 'member-1']);
   });
 
+  it('leaves TMDB alone when the title is already recorded with genres', async () => {
+    mocks.user = admin;
+    mocks.recordRequestEvent.mockResolvedValue({ ok: true, stored: 0 });
+    expect((await request({})).status).toBe(200);
+    expect(mocks.recordRequestEvent).toHaveBeenCalledOnce();
+    expect(mocks.tmdb.movieDetails).not.toHaveBeenCalled();
+  });
+
   it('still records the request when TMDB cannot give its genres', async () => {
     mocks.user = admin;
     mocks.tmdb.movieDetails.mockRejectedValue(new Error('TMDB not configured'));

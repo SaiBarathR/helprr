@@ -137,6 +137,15 @@ describe('settings import follow-ups', () => {
     expect(mocks.invalidateRecommendations.mock.calls).toEqual([['u1']]);
   });
 
+  it('stops after the batch where Redis first misses, part way through a large import', async () => {
+    const users = Array.from({ length: 250 }, (_, i) => `u${i}`);
+    mocks.invalidateRecommendations.mockImplementation(async (id: string) => id !== 'u50');
+    await runImportFollowUps({ recommendationUserIds: users });
+    // u0 alone, then the batch u1-u100 that held the miss; nothing after it.
+    expect(mocks.invalidateRecommendations).toHaveBeenCalledTimes(101);
+    expect(mocks.invalidateRecommendations).not.toHaveBeenCalledWith('u101');
+  });
+
   it('runs nothing that was not planned', async () => {
     await expect(runImportFollowUps({})).resolves.toEqual([]);
     for (const fn of [mocks.getOrCreateAppSettings, mocks.pollingRestart, mocks.restartQueueCleaner, mocks.alertFindMany, mocks.invalidateLayoutCache, mocks.ensureDefaultForType, mocks.invalidateRecommendations]) {
