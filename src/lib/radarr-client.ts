@@ -271,8 +271,11 @@ export class RadarrClient {
     return this.get<HistoryResponse>('/api/v3/history', params);
   }
 
-  async getMovieHistory(movieId: number): Promise<HistoryItem[]> {
-    return this.get<HistoryItem[]>('/api/v3/history/movie', { movieId });
+  /** One movie's history, unpaged. eventType 3 = downloadFolderImported. */
+  async getMovieHistory(movieId: number, eventType?: number): Promise<HistoryItem[]> {
+    const params: Record<string, unknown> = { movieId };
+    if (eventType !== undefined) params.eventType = eventType;
+    return this.get<HistoryItem[]>('/api/v3/history/movie', params);
   }
 
   // Movie files — Manage Files
@@ -354,6 +357,11 @@ export class RadarrClient {
       name: 'RefreshMovie',
       movieIds: [movieId],
     });
+  }
+
+  /** The commands Radarr has run or queued lately (kept in memory until it restarts), with their bodies. */
+  async getCommands(): Promise<Array<CommandResponse & { body?: { files?: Array<{ path?: string }> } }>> {
+    return this.get('/api/v3/command');
   }
 
   async getCommand(id: number): Promise<CommandResponse> {

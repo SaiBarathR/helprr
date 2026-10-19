@@ -4,7 +4,7 @@ import { prisma } from '@/lib/db';
 import { requireUserAllCapabilities } from '@/lib/auth';
 import { can } from '@/lib/permissions';
 import { withApiLogging } from '@/lib/api-logger';
-import { ManualDownloadRequestError, readManualDownloadRequest, SERVICE_ADD_CAPABILITY } from '@/lib/manual-downloads/request';
+import { ManualDownloadRequestError, readManualDownloadRequest, SERVICE_ADD_CAPABILITY, SERVICE_MONITOR_CAPABILITY } from '@/lib/manual-downloads/request';
 import { ManualDownloadRefusedError, sendManualDownload } from '@/lib/manual-downloads/send';
 import { serializeManualDownload } from '@/lib/manual-downloads/serialize';
 
@@ -43,6 +43,9 @@ async function postHandler(request: Request) {
   }
   if (!can(auth.user, SERVICE_ADD_CAPABILITY[parsed.input.service])) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+  if (parsed.input.monitorTarget && !can(auth.user, SERVICE_MONITOR_CAPABILITY[parsed.input.service])) {
+    return NextResponse.json({ error: 'Changing monitoring is not allowed for this account.' }, { status: 403 });
   }
   if (!parsed.clientRequestId) return NextResponse.json({ error: 'Missing request id.' }, { status: 400 });
 

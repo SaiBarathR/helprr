@@ -8,7 +8,10 @@ import { bumpQueueCacheVersion, fetchAllQueueRecords } from '@/lib/activity-queu
 import { invalidateTaggedLibrary } from '@/lib/cache/tagged-library';
 import type { RadarrClient } from '@/lib/radarr-client';
 import type { SonarrClient } from '@/lib/sonarr-client';
-import { arrClientFor, TERMINAL_STATUSES } from './preflight';
+import { arrClientFor, SENDING_STATUSES, TERMINAL_STATUSES } from './preflight';
+import { titleInUse } from './title-use';
+import { claimFallback, releaseClaim, type FallbackClaim } from './fallback';
+import { redactUpstreamText } from './redact';
 
 /**
  * Cancelling a manual download. Arr owns the download, so cancelling removes
@@ -33,7 +36,6 @@ const QUEUE_WAIT_MS = 15_000;
 /** An older grab missing from the queue was removed outside Helprr (the status worker's grace too). */
 const FRESH_GRAB_MS = 2 * 60_000;
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-const SENDING = ['PREFLIGHT', 'CREATING_MEDIA', 'SUBMITTING_RELEASE'];
 /** History events after which a download is no longer in Arr's queue. */
 const SETTLED_EVENTS = ['downloadFolderImported', 'downloadFailed', 'downloadIgnored'];
 
@@ -48,18 +50,36 @@ export async function cancelManualDownload(download: ManualDownload, options: Ca
   if ((TERMINAL_STATUSES as readonly string[]).includes(download.status)) {
     throw new ManualDownloadCancelError('This download has already finished.');
   }
-  if (SENDING.includes(download.status)) {
+  if ((SENDING_STATUSES as readonly string[]).includes(download.status)) {
     throw new ManualDownloadCancelError('This download is still being sent. Try again once it has been.');
   }
   if (!download.instanceId) throw new ManualDownloadCancelError(`${download.instanceLabel} no longer exists in Helprr.`);
+  if (download.mode !== 'QBIT_REVIEWED') return cancelSteps(download, options, actor, null);
+
+  const app = download.service === 'RADARR' ? 'Radarr' : 'Sonarr';
+  if (download.status === 'IMPORTING') throw new ManualDownloadCancelError(`${app} is importing it. Try again once it has finished.`);
+  if (download.status === 'IMPORT_PENDING') throw new ManualDownloadCancelError('Helprr is reading or importing the files. Try again in a moment.');
+  // A cancel takes the download like a scan or an import does, so none of them runs while it is cancelled.
+  const claim = await claimFallback(download, 'Cancelling.');
+  if (!claim) throw new ManualDownloadCancelError('This download changed meanwhile. Look at it again, then cancel.');
+  try {
+    return await cancelSteps(download, options, actor, claim);
+  } catch (error) {
+    // Back as it was, so it can be cancelled again.
+    await releaseClaim(claim, download.status, `Cancelling did not finish: ${redactUpstreamText(error instanceof Error ? error.message : String(error))}`, { lastError: download.lastError }).catch(() => false);
+    throw error;
+  }
+}
+
+/** What cancelling does; under a claim for a fallback download, whose final write needs it still held. */
+async function cancelSteps(download: ManualDownload, options: CancelOptions, actor: AuditActor, claim: FallbackClaim | null): Promise<string> {
   const service = download.service === 'RADARR' ? 'RADARR' : 'SONARR';
   const app = service === 'RADARR' ? 'Radarr' : 'Sonarr';
-  const connection = await resolveConnection(service, download.instanceId);
+  const connection = await resolveConnection(service, download.instanceId!);
   const client = arrClientFor(service, connection);
   const done: string[] = [];
 
   if (download.mode === 'QBIT_REVIEWED') {
-    if (download.status === 'IMPORTING') throw new ManualDownloadCancelError(`${app} is importing it. Try again once it has finished.`);
     // The torrent is Helprr's own in qBittorrent; Arr's queue never had it.
     if (options.removeFromClient) {
       const qbit = await getQBittorrentClient();
@@ -90,7 +110,7 @@ export async function cancelManualDownload(download: ManualDownload, options: Ca
     let items = await listed();
     if (items.length === 0) {
       // A fresh grab not yet settled belongs in the queue: ask Arr to look, and wait.
-      const history = await client.getHistory(1, 50, 'date', 'descending', { downloadId: download.infoHash });
+      const history = await client.getHistory(1, 1000, 'date', 'descending', { downloadId: download.infoHash });
       const grab = history.records.find((record) => record.eventType === 'grabbed');
       const settled = history.records.some((record) => SETTLED_EVENTS.includes(record.eventType));
       // An unknown grab time counts as fresh.
@@ -104,6 +124,10 @@ export async function cancelManualDownload(download: ManualDownload, options: Ca
         if (items.length === 0) {
           throw new ManualDownloadCancelError(`${app} has not listed this download in its queue yet, so nothing was changed. Try again in a moment.`);
         }
+      }
+      // A send whose answer was lost: Arr may still be taking the release.
+      if (!grab && Date.now() - download.updatedAt.getTime() < FRESH_GRAB_MS) {
+        throw new ManualDownloadCancelError(`${app} may still be taking this release, so nothing was changed. Try again in a couple of minutes.`);
       }
     }
     // Removing one record with the client removes the whole torrent; without it, each record is ignored.
@@ -143,6 +167,8 @@ export async function cancelManualDownload(download: ManualDownload, options: Ca
           : (await (client as SonarrClient).getEpisodeFiles(download.arrItemId)).length > 0;
         if (hasFiles) {
           done.push(`${download.arrItemTitle} has files now, so it stays`);
+        } else if (await titleInUse(download, client)) {
+          done.push(`another download is on its way for ${download.arrItemTitle}, so it stays`);
         } else {
           await runWithOperationAudit({
             user: actor,
@@ -158,7 +184,7 @@ export async function cancelManualDownload(download: ManualDownload, options: Ca
           }, () => (service === 'RADARR'
             ? (client as RadarrClient).deleteMovie(download.arrItemId!, false, false)
             : (client as SonarrClient).deleteSeries(download.arrItemId!, false)));
-          void invalidateTaggedLibrary(service === 'RADARR' ? 'radarr' : 'sonarr', download.instanceId).catch(() => {});
+          void invalidateTaggedLibrary(service === 'RADARR' ? 'radarr' : 'sonarr', connection.id).catch(() => {});
           done.push(`${download.arrItemTitle}, which this download had added, was removed`);
         }
       } catch (error) {
@@ -170,6 +196,10 @@ export async function cancelManualDownload(download: ManualDownload, options: Ca
   }
 
   const message = `Cancelled: ${done.join('; ')}.`;
+  if (claim) {
+    if (!(await releaseClaim(claim, 'CANCELLED', message))) throw new ManualDownloadCancelError('This download changed meanwhile. Look at it again.');
+    return message;
+  }
   await prisma.manualDownload.update({
     where: { id: download.id },
     data: { status: 'CANCELLED', completedAt: new Date(), events: { create: { status: 'CANCELLED', message } } },

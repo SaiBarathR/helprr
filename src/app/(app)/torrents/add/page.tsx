@@ -302,19 +302,23 @@ function AddTorrentPageContent() {
           </div>
         )}
 
-        {destination === 'arr' ? (
-          <ManualDownloadForm
-            release={addMode === 'magnet' ? { kind: 'magnet', magnet: magnetLink } : { kind: 'file', file: torrentFile }}
-            suggestedName={addMode === 'magnet' ? magnetDisplayName(magnetLink.trim()) ?? '' : ''}
-            prefill={prefill}
-            // Picking files adds the torrent stopped first (the same step as "Choose Files").
-            onChooseFiles={canReview ? (draft) => {
-              setFallback(draft);
-              addMutation.mutate({ review: true });
-            } : undefined}
-            choosingFiles={adding}
-          />
-        ) : (
+        {/* Kept mounted while hidden: a look at the other option keeps the title, the check and a sent request's id. */}
+        {canLink && (
+          <div hidden={destination !== 'arr'}>
+            <ManualDownloadForm
+              release={addMode === 'magnet' ? { kind: 'magnet', magnet: magnetLink } : { kind: 'file', file: torrentFile }}
+              suggestedName={addMode === 'magnet' ? magnetDisplayName(magnetLink.trim()) ?? '' : ''}
+              prefill={prefill}
+              // Picking files adds the torrent stopped first (the same step as "Choose Files").
+              onChooseFiles={canReview ? (draft) => {
+                setFallback(draft);
+                addMutation.mutate({ review: true });
+              } : undefined}
+              choosingFiles={adding}
+            />
+          </div>
+        )}
+        {destination === 'client' && (
         <>
         <div className="space-y-3 pt-1">
           <div className="space-y-1.5">

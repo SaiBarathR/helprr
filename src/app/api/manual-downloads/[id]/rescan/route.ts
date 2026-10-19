@@ -3,7 +3,6 @@ import { prisma } from '@/lib/db';
 import { requireUserAllCapabilities } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { resolveConnection } from '@/lib/arr-instances';
-import { getQBittorrentClient } from '@/lib/service-helpers';
 import { arrClientFor } from '@/lib/manual-downloads/preflight';
 import { settleDownloaded } from '@/lib/manual-downloads/fallback';
 import { serializeManualDownload } from '@/lib/manual-downloads/serialize';
@@ -24,12 +23,10 @@ async function postHandler(_request: Request, { params }: { params: Promise<{ id
   }
 
   try {
-    const [torrent] = await (await getQBittorrentClient()).getTorrents(undefined, undefined, undefined, undefined, download.infoHash.toLowerCase());
-    if (!torrent) return NextResponse.json({ error: 'The torrent is no longer in qBittorrent.' }, { status: 409 });
-    if (torrent.progress < 1) return NextResponse.json({ error: 'The chosen files have not finished downloading.' }, { status: 409 });
     const service = download.service === 'RADARR' ? 'RADARR' : 'SONARR';
     const client = arrClientFor(service, await resolveConnection(service, download.instanceId));
-    if (!(await settleDownloaded(download, client, torrent.save_path))) {
+    // Checks the chosen files in qBittorrent first, and records what it finds.
+    if (!(await settleDownloaded(download, client))) {
       return NextResponse.json({ error: 'A scan or import is already running.' }, { status: 409 });
     }
     const updated = await prisma.manualDownload.findUniqueOrThrow({
