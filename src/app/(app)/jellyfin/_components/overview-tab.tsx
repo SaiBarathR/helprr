@@ -305,7 +305,7 @@ export function OverviewTab() {
           </div>
         </div>
       )}
-      
+
       {canControl && tasks.length > 0 && <ScheduledTasksList tasks={tasks} onRefresh={refreshTasks} />}
 
       {counts && (
