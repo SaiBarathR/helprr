@@ -442,10 +442,12 @@ export function VideoStage({ mediaContainer }: { mediaContainer: HTMLDivElement 
                 </div>
               </div>
             ) : playback.error ? (
-              <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 p-6 text-center text-sm text-red-300">
+              // Above the controls layer so Retry can be pressed, but only the
+              // button takes clicks: the controls stay usable around it.
+              <div className="pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 p-6 text-center text-sm text-red-300">
                 <p>{playback.error}</p>
                 {playback.item && (
-                  <Button size="sm" variant="secondary" onClick={() => playback.retry()}>Retry</Button>
+                  <Button size="sm" variant="secondary" className="pointer-events-auto" onClick={() => playback.retry()}>Retry</Button>
                 )}
               </div>
             ) : null}
