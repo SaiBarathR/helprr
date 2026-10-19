@@ -1004,15 +1004,16 @@ export default function DiscoverPage() {
     };
   })();
 
-  // Countdown ticker for the rate-limit banner (non-fetch interval).
+  // Countdown for the rate-limit banner: it restarts from each new retry-after
+  // value (set while rendering), and the interval only ticks it down.
+  const retryAfterSeconds = rateLimitInfo?.retryAfterSeconds ?? null;
+  const [countdownFrom, setCountdownFrom] = useState<number | null>(null);
+  if (retryAfterSeconds !== countdownFrom) {
+    setCountdownFrom(retryAfterSeconds);
+    setRateLimitCountdown(retryAfterSeconds);
+  }
   useEffect(() => {
-    if (!rateLimitInfo?.retryAfterSeconds) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- a ticker starts from each new retry-after value
-      setRateLimitCountdown(null);
-      return;
-    }
-
-    setRateLimitCountdown(rateLimitInfo.retryAfterSeconds);
+    if (!retryAfterSeconds) return;
     const timer = setInterval(() => {
       setRateLimitCountdown((current) => {
         if (current == null) return null;
@@ -1021,17 +1022,23 @@ export default function DiscoverPage() {
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [rateLimitInfo?.retryAfterSeconds]);
+  }, [retryAfterSeconds]);
 
-  // Re-seed the draft controls from the committed filters on each open (and keep
-  // them in sync if the committed filters change while the sheet is open).
-  useEffect(() => {
-    if (!filtersOpen) return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- sync the drafts to the committed filters while the sheet is open
-    setDraftFilters(discoverFilters);
-    setDraftSort(discoverSort);
-    setDraftSortDirection(discoverSortDirection);
-  }, [filtersOpen, discoverFilters, discoverSort, discoverSortDirection]);
+  // Opening the sheet seeds the drafts (handleOpenFilters); while it is open,
+  // they follow the committed filters when those change. Adjusted while rendering.
+  const [draftsFollow, setDraftsFollow] = useState({ discoverFilters, discoverSort, discoverSortDirection });
+  if (
+    draftsFollow.discoverFilters !== discoverFilters
+    || draftsFollow.discoverSort !== discoverSort
+    || draftsFollow.discoverSortDirection !== discoverSortDirection
+  ) {
+    setDraftsFollow({ discoverFilters, discoverSort, discoverSortDirection });
+    if (filtersOpen) {
+      setDraftFilters(discoverFilters);
+      setDraftSort(discoverSort);
+      setDraftSortDirection(discoverSortDirection);
+    }
+  }
 
   const handleOpenItem = useCallback((item: DiscoverItem) => {
     router.push(`/discover/${item.mediaType === 'movie' ? 'movie' : 'tv'}/${item.tmdbId}`);

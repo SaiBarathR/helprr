@@ -4,7 +4,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const mocks = vi.hoisted(() => ({ search: new URLSearchParams(), replace: vi.fn() }));
+const mocks = vi.hoisted(() => ({ search: new URLSearchParams(), replace: vi.fn(), entries: [] as unknown[] }));
 vi.mock('next/navigation', () => ({
   useSearchParams: () => mocks.search,
   usePathname: () => '/anime/library',
@@ -13,7 +13,7 @@ vi.mock('@/components/layout/navigation-provider', () => ({ useAppRouter: () => 
 vi.mock('@tanstack/react-query', () => ({
   useQuery: ({ queryKey }: { queryKey: readonly unknown[] }) => (queryKey[1] === 'viewer'
     ? { data: { configured: true, connected: true, requiresReauth: false, user: { id: 1, name: 'Tester', avatar: null, siteUrl: null, scoreFormat: null } } }
-    : { data: { collection: { lists: [] } }, isPending: false, isFetching: false, isError: false }),
+    : { data: { collection: { lists: [{ entries: mocks.entries }] } }, isPending: false, isFetching: false, isError: false }),
 }));
 vi.mock('@/components/anime/anilist-status-drawer', () => ({ AnilistStatusDrawer: () => null }));
 
@@ -35,6 +35,7 @@ beforeEach(() => {
   vi.stubGlobal('scrollTo', vi.fn());
   window.sessionStorage.clear();
   mocks.replace.mockClear();
+  mocks.entries = [];
   setListViewState(SHARED_KEY, { scrollY: 0, search: '', extras: { type: 'ANIME', status: 'COMPLETED' } });
   document.body.innerHTML = '<div id="root"></div>';
   root = createRoot(document.getElementById('root')!);
@@ -110,5 +111,22 @@ describe('Anime Library tabs', () => {
 
     expect(activeTab()).toBe('Watching');
     expect(mocks.replace).not.toHaveBeenCalled();
+  });
+
+  it("restores each tab's own count of shown entries when the user switches to it", async () => {
+    mocks.entries = Array.from({ length: 70 }, (_, i) => ({
+      id: i + 1, mediaId: 1000 + i, status: 'COMPLETED', score: 0, progress: 0,
+      media: { id: 1000 + i, title: { romaji: `Show ${i}`, english: null, native: null, userPreferred: `Show ${i}` }, coverImage: { large: null }, format: 'TV', episodes: 12 },
+    }));
+    setListViewState('anime-library:ANIME:COMPLETED', { scrollY: 0, search: '', extras: { renderedCount: 60 } });
+    const shown = () => document.querySelectorAll('a[href^="/anime/1"]').length;
+
+    await open('');
+    expect(shown()).toBe(60);
+
+    // A tab with nothing saved starts from one page.
+    const watching = [...document.querySelectorAll('button')].find((el) => el.textContent === 'Watching')!;
+    await act(async () => watching.click());
+    expect(shown()).toBe(30);
   });
 });

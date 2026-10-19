@@ -159,12 +159,10 @@ export function CleanupDashboardTab({ onNavigate }: { onNavigate: (target: 'queu
   const scheduler = schedulerQuery.data ?? null;
 
   // Strikes may have been resolved since the last poll — if the current page is
-  // now past the end, clamp back so the list doesn't render blank.
-  useEffect(() => {
-    const maxStrikePage = Math.max(1, Math.ceil(strikeTotal / STRIKES_PAGE_SIZE));
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- clamp once when strikes resolve past the current page
-    if (strikePage > maxStrikePage) setStrikePage(maxStrikePage);
-  }, [strikeTotal, strikePage]);
+  // now past the end, clamp back so the list doesn't render blank. Adjusted
+  // while rendering (guarded, so it settles), not in an effect after a blank paint.
+  const maxStrikePage = Math.max(1, Math.ceil(strikeTotal / STRIKES_PAGE_SIZE));
+  if (strikePage > maxStrikePage) setStrikePage(maxStrikePage);
 
   useEffect(() => {
     if (dashboardQuery.isError) toast.error('Failed to load dashboard');
