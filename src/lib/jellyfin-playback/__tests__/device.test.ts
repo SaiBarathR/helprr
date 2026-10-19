@@ -5,6 +5,7 @@ import { getJellyfinPlaybackDeviceId } from '@/lib/jellyfin-playback/device';
 
 beforeEach(() => {
   window.localStorage.clear();
+  window.sessionStorage.clear();
 });
 
 afterEach(() => {
@@ -31,10 +32,30 @@ describe('getJellyfinPlaybackDeviceId', () => {
     expect(getJellyfinPlaybackDeviceId()).not.toBe(id);
   });
 
-  it('falls back to the shared id only when storage is unavailable', () => {
+  it('gives a tab its own id, kept in session storage, when local storage is refused', () => {
+    vi.spyOn(window, 'localStorage', 'get').mockImplementation(() => {
+      throw new Error('storage disabled');
+    });
+    const id = getJellyfinPlaybackDeviceId();
+    expect(id).toMatch(/^helprr-pwa-.{8,}$/);
+    expect(getJellyfinPlaybackDeviceId()).toBe(id);
+    expect(window.sessionStorage.getItem('helprr-jellyfin-device-id')).toBe(id);
+  });
+
+  it('gives each tab its own id, held in memory, when all storage is refused', async () => {
     vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
       throw new Error('storage disabled');
     });
-    expect(getJellyfinPlaybackDeviceId()).toBe('helprr-pwa');
+    vi.resetModules();
+    const first = (await import('@/lib/jellyfin-playback/device')).getJellyfinPlaybackDeviceId;
+    const id = first();
+    expect(id).toMatch(/^helprr-pwa-.{8,}$/);
+    expect(first()).toBe(id);
+
+    // Another tab loads the module afresh.
+    vi.resetModules();
+    const other = (await import('@/lib/jellyfin-playback/device')).getJellyfinPlaybackDeviceId;
+    expect(other()).toMatch(/^helprr-pwa-.{8,}$/);
+    expect(other()).not.toBe(id);
   });
 });

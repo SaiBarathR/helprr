@@ -21,21 +21,42 @@ export function formatClock(seconds: number): string {
 
 const DEVICE_KEY = 'helprr-jellyfin-device-id';
 
+// Jellyfin keeps one device record per id and hands it to whoever signed in
+// last, so a browser that refuses storage (some private modes) must not fall
+// back to an id shared with other people: it gets one of its own for the tab.
+let tabDeviceId: string | null = null;
+
+function newDeviceId(): string {
+  // crypto.randomUUID() only exists in secure contexts. On a plain-http
+  // install it would throw, so fall back to getRandomValues.
+  const random = typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) => byte.toString(16).padStart(2, '0')).join('');
+  return `helprr-pwa-${random}`;
+}
+
+function storedDeviceId(storage: Storage): string {
+  const existing = storage.getItem(DEVICE_KEY);
+  if (existing && existing.length >= 8) return existing;
+  const created = newDeviceId();
+  storage.setItem(DEVICE_KEY, created);
+  return created;
+}
+
 export function getJellyfinPlaybackDeviceId(): string {
   if (typeof window === 'undefined') return 'helprr-pwa';
   try {
-    const existing = window.localStorage.getItem(DEVICE_KEY);
-    if (existing && existing.length >= 8) return existing;
-    // crypto.randomUUID() only exists in secure contexts. On a plain-http
-    // install it would throw, leaving every browser on the shared id below.
-    const random = typeof crypto.randomUUID === 'function'
-      ? crypto.randomUUID()
-      : Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) => byte.toString(16).padStart(2, '0')).join('');
-    const created = `helprr-pwa-${random}`;
-    window.localStorage.setItem(DEVICE_KEY, created);
-    return created;
+    return storedDeviceId(window.localStorage);
   } catch {
-    return 'helprr-pwa';
+    // Kept in the tab's session storage when it allows that, so a reload is
+    // still the same device; otherwise in memory for this page.
+    if (tabDeviceId) return tabDeviceId;
+    try {
+      tabDeviceId = storedDeviceId(window.sessionStorage);
+    } catch {
+      tabDeviceId = newDeviceId();
+    }
+    return tabDeviceId;
   }
 }
 
