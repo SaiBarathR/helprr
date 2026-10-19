@@ -13,7 +13,8 @@ import { useMe } from '@/components/permission-provider';
 import type { UpdateCheckResult } from '@/lib/update-check';
 
 // Inlined at build time (see next.config.ts `env`) — identifies the running build.
-const APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION || 'unknown';
+// Release images carry the tag ("v1.6.3"); show it as the update notice does ("1.6.3").
+const APP_VERSION = (process.env.NEXT_PUBLIC_APP_VERSION || 'unknown').replace(/^v(?=\d)/, '');
 const GIT_SHA = process.env.NEXT_PUBLIC_GIT_SHA || '';
 
 interface ServiceHealthStatus {

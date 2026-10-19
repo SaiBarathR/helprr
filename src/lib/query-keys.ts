@@ -43,7 +43,10 @@ export const queryKeys = {
   libraryGaps: () => ['library-gaps'] as const,
 
   // ── Config / account ─────────────────────────────────────────────
+  /** /api/services: every connection with its settings (admin screens). */
   instances: (type?: string) => ['instances', type ?? 'all'] as const,
+  /** /api/instances: the id/type/label list for pickers and filters. */
+  arrInstances: () => ['arr-instances'] as const,
   settings: () => ['settings'] as const,
   adminUpdate: () => ['admin', 'update-check'] as const,
   notifications: () => ['notifications'] as const,

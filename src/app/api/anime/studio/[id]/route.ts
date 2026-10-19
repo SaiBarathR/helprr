@@ -3,6 +3,7 @@ import { requireUserAnyCapability } from '@/lib/auth';
 import { getStudioDetail, maxAniListPage, ANILIST_DETAIL_PAGE_SIZE } from '@/lib/anilist-client';
 import type { AniListSort } from '@/types/anilist';
 import { withApiLogging } from '@/lib/api-logger';
+import { anilistNotFoundResponse } from '@/lib/anilist-http';
 import { parsePageNumber } from '@/lib/pagination';
 
 const VALID_SORTS = new Set<AniListSort>([
@@ -39,6 +40,8 @@ async function getHandler(
     const detail = await getStudioDetail(id, page, sort);
     return NextResponse.json(detail);
   } catch (error) {
+    const notFound = anilistNotFoundResponse(error);
+    if (notFound) return notFound;
     const message = error instanceof Error ? error.message : 'Failed to load studio detail';
     console.error('[Studio Detail API]', message);
     return NextResponse.json({ error: message }, { status: 500 });

@@ -45,6 +45,7 @@ import { getRefreshIntervalMs } from '@/lib/client-refresh-settings';
 import { useRestorableInfiniteQuery as useInfiniteQuery } from '@/lib/hooks/use-restorable-infinite-query';
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError, jsonFetcher, backoffRefetchInterval } from '@/lib/query-fetch';
+import { queryKeys } from '@/lib/query-keys';
 import { invalidateActivity } from '@/lib/query-invalidation';
 import { classifyQueueIssue } from '@/lib/queue-state';
 import { applyPendingImports, pendingImportKey, usePendingImports } from '@/lib/manual-import-tracker';
@@ -418,7 +419,7 @@ export default function ActivityPage() {
     // Distinct from queryKeys.instances() (['instances','all'] → /api/services); this
     // is the /api/instances connection list for the filter. Keep it from prefix-
     // overlapping the services key so the two can't cross-invalidate.
-    queryKey: ['arr-instances'],
+    queryKey: queryKeys.arrInstances(),
     queryFn: jsonFetcher<Array<{ id: string; label: string; type: string }>>('/api/instances'),
     select: (conns) => Array.isArray(conns)
       ? conns.filter((c) => c.type === 'SONARR' || c.type === 'RADARR' || c.type === 'LIDARR')

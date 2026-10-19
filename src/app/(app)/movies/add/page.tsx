@@ -49,7 +49,7 @@ function AddMoviePageContent() {
   const [instanceId, setInstanceId] = useState<string | undefined>(undefined);
 
   const instancesQuery = useQuery({
-    queryKey: queryKeys.instances(),
+    queryKey: queryKeys.arrInstances(),
     queryFn: jsonFetcher<Array<{ id: string; type: string; label: string; isDefault: boolean }>>('/api/instances'),
     select: (all) =>
       (Array.isArray(all) ? all : [])
