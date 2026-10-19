@@ -30,9 +30,18 @@ describe('the scheduled alert dialog', () => {
     expect(more.getAttribute('aria-expanded')).toBe('true');
     const kinds = within(screen.getByRole('group', { name: 'Release types' })).getAllByRole('button');
     expect(kinds.length).toBeGreaterThan(0);
-    expect(kinds.every((chip) => chip.hasAttribute('aria-pressed'))).toBe(true);
+    // Toggling a chip flips its pressed state.
+    const chip = kinds[0];
+    const before = chip.getAttribute('aria-pressed');
+    expect(before === 'true' || before === 'false').toBe(true);
+    await user.click(chip);
+    expect(chip.getAttribute('aria-pressed')).toBe(before === 'true' ? 'false' : 'true');
 
+    // Custom date: pressed, Release reminder not, and the release panel (gone) is not reported expanded.
     await user.click(within(type).getByRole('button', { name: 'Custom date' }));
     expect(within(type).getByRole('button', { name: 'Custom date' }).getAttribute('aria-pressed')).toBe('true');
+    expect(within(type).getByRole('button', { name: 'Release reminder' }).getAttribute('aria-pressed')).toBe('false');
+    expect(screen.queryByRole('group', { name: 'Release types' })).toBeNull();
+    expect(more.getAttribute('aria-expanded')).toBe('false');
   });
 });

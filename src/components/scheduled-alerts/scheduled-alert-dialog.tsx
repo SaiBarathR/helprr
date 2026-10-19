@@ -294,7 +294,8 @@ export function ScheduledAlertDialog({
 
             <button
               type="button"
-              aria-expanded={showAdvanced}
+              // The panel shows only for release reminders.
+              aria-expanded={showAdvanced && scheduleMode === 'release_relative'}
               onClick={() => setShowAdvanced((v) => !v)}
               className="flex items-center gap-1 text-xs text-primary"
             >
