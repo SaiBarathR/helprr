@@ -175,6 +175,24 @@ describe('Activity source filter', () => {
     expect(useUIStore.getState().activityFilterBy).toEqual([]);
   });
 
+  it("tells the scroll restorer a link view's filter change is the same view", async () => {
+    mocks.search = new URLSearchParams('tab=queue&source=sonarr,radarr');
+    window.history.replaceState(null, '', '/activity?tab=queue&source=sonarr,radarr');
+    const starts: unknown[] = [];
+    const onStart = (event: Event) => starts.push((event as CustomEvent).detail);
+    window.addEventListener('helprr:navigation-start', onStart);
+    try {
+      await renderPage();
+      await waitFor(() => expect(text()).toContain('2 Tasks'));
+      await act(async () => button('Remove Sonarr filter')!.click());
+      await waitFor(() => expect(text()).toContain('1 Task'));
+    } finally {
+      window.removeEventListener('helprr:navigation-start', onStart);
+    }
+    // Sent before the URL changes, for the URL it changes to, keeping the scroll.
+    expect(starts).toContainEqual({ kind: 'replace', href: '/activity?tab=queue&source=radarr', preserveScroll: true });
+  });
+
   it('starts a link from every instance rather than the saved one', async () => {
     useUIStore.setState({ activityInstanceFilter: 'son-1' });
     mocks.search = new URLSearchParams('tab=queue&source=radarr');
