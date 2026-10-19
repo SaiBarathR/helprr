@@ -13,7 +13,7 @@ try {
     '-d',
     '--name', container,
     '-p', '127.0.0.1::6379',
-    'redis:7-alpine',
+    'redis:8-alpine',
   );
   let ready = false;
   for (let attempt = 0; attempt < 50; attempt += 1) {
