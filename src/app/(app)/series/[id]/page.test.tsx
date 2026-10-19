@@ -490,6 +490,8 @@ describe('series detail page (characterization)', () => {
       mocks.remapResult = { mapping: { state: 'MANUAL_NONE', entries: [] }, details: [] };
       await user.click(drawer().getByRole('button', { name: 'Apply mapping' }));
       expect(mocks.toast.success).toHaveBeenLastCalledWith('AniList mapping cleared');
+      expect(await screen.findByText('Adam Scott (Mark Scout · 19 ep)')).toBeTruthy();
+      expect(screen.queryByRole('banner', { name: 'Anime hero' })).toBeNull();
     });
 
     it('offers a retry when a season cannot load, and loads it on retry', async () => {
