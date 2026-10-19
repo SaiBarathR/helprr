@@ -77,6 +77,8 @@ describe('queue record links', () => {
   it('links the most specific page it knows, on the record\'s instance', () => {
     expect(getQueueMediaHref(record({ seriesId: 4, seasonNumber: 1, episodeId: 9, instanceId: 'i2' }))).toBe('/series/4/season/1/episode/9?instance=i2');
     expect(getQueueMediaHref(record({ series: { id: 4 }, episode: { seasonNumber: 2 } }))).toBe('/series/4/season/2');
+    expect(getQueueMediaHref(record({ seriesId: 4, seasonNumber: 0, episodeId: 9 }))).toBe('/series/4/season/0/episode/9');
+    expect(getQueueMediaHref(record({ series: { id: 4 }, episode: { seasonNumber: 0 } }))).toBe('/series/4/season/0');
     expect(getQueueMediaHref(record({ source: 'radarr', movie: { id: 12 } }))).toBe('/movies/12');
     expect(getQueueMediaHref(record({ source: 'lidarr', albumId: 3, artistId: 8 }))).toBe('/music/album/3');
     expect(getQueueMediaHref(record({ source: 'lidarr', artist: { id: 8 } }))).toBe('/music/8');

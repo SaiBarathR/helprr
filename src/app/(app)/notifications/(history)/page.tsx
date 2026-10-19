@@ -63,6 +63,7 @@ import { QuickContextMenu } from '@/components/ui/quick-context-menu';
 import { PullToRefresh } from '@/components/ui/pull-to-refresh';
 import { NotificationDetailDrawer, type GroupedNotificationItem } from '@/components/notifications/notification-detail-drawer';
 import { EVENT_TYPE_TO_CAPABILITY } from '@/lib/capabilities';
+import { getMediaHrefFromIds } from '@/lib/media-href';
 import { useMe, hasCapability } from '@/components/permission-provider';
 import { useBadgeActions } from '@/components/layout/badge-provider';
 import type { HistoryItem, QueueItem } from '@/types';
@@ -76,6 +77,7 @@ interface NotificationMetadata {
   seriesId?: number;
   seasonNumber?: number;
   episodeId?: number;
+  instanceId?: string;
   redirect?: string;
   hash?: string;
   sessionId?: string;
@@ -131,32 +133,6 @@ function toNumber(value: unknown): number | undefined {
     return Number.isFinite(parsed) ? parsed : undefined;
   }
   return undefined;
-}
-
-function getMediaHrefFromIds(args: {
-  seriesId?: unknown;
-  seasonNumber?: unknown;
-  episodeId?: unknown;
-  movieId?: unknown;
-  instanceId?: unknown;
-}): string | null {
-  const q = typeof args.instanceId === 'string' && args.instanceId ? `?instance=${args.instanceId}` : '';
-  const movieId = toNumber(args.movieId);
-  if (movieId) return `/movies/${movieId}${q}`;
-
-  const seriesId = toNumber(args.seriesId);
-  const seasonNumber = toNumber(args.seasonNumber);
-  const episodeId = toNumber(args.episodeId);
-  if (seriesId && seasonNumber && episodeId) {
-    return `/series/${seriesId}/season/${seasonNumber}/episode/${episodeId}${q}`;
-  }
-  if (seriesId && seasonNumber) {
-    return `/series/${seriesId}/season/${seasonNumber}${q}`;
-  }
-  if (seriesId) {
-    return `/series/${seriesId}${q}`;
-  }
-  return null;
 }
 
 function toIsoDate(value: Date): string {
@@ -442,6 +418,7 @@ export default function NotificationsPage() {
         seriesId: metadata?.seriesId,
         seasonNumber: metadata?.seasonNumber,
         episodeId: metadata?.episodeId,
+        instanceId: metadata?.instanceId,
       });
       if (directMediaHref) {
         return directMediaHref;
