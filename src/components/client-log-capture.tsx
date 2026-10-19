@@ -67,10 +67,13 @@ type ConsoleOriginals = Pick<Console, 'debug' | 'log' | 'info' | 'warn' | 'error
 export function isSkippedViewTransition(reason: unknown): boolean {
   const error = reason as { name?: unknown; message?: unknown } | null;
   if (typeof reason !== 'object' || error === null || error.name !== 'AbortError' || typeof error.message !== 'string') return false;
-  // Chromium ("Transition was skipped", newer versions add ". <reason>"), WebKit, Gecko.
+  // Chromium ("Transition was skipped", newer versions add ". <reason>"), then WebKit and Gecko,
+  // each for a transition replaced by another and for one skipped by skipTransition().
   return /^Transition was skipped(\. .*)?$/.test(error.message)
     || error.message === 'Old view transition aborted by new view transition.'
-    || error.message === 'Skipped ViewTransition due to another transition starting';
+    || error.message === 'Skipping view transition because skipTransition() was called.'
+    || error.message === 'Skipped ViewTransition due to another transition starting'
+    || error.message === 'Skipped ViewTransition due to skipTransition() call';
 }
 
 export interface ClientLogCaptureSettingsEvent {
