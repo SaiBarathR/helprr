@@ -72,6 +72,25 @@ describe('the import proof', () => {
   });
 });
 
+describe("the import proof from this release's own import events", () => {
+  const sonarr = { service: 'SONARR' as const, baselineFileIds: { 1: 0, 2: 0 }, targetEpisodeIds: [1, 2], arrItemId: 3 };
+
+  it("does not count another release's file for an episode this one did not import", () => {
+    // This release imported episode 1 (file 90); another release supplied episode 2 (file 91).
+    const imports = [{ eventType: 'downloadFolderImported', episodeId: 1, data: { fileId: '90' } }] as never;
+    expect(importProof(sonarr, { 1: 90, 2: 91 }, imports)).toEqual({ proved: false, newFiles: [90], missing: [2] });
+    const both = [...imports, { eventType: 'downloadFolderImported', episodeId: 2, data: { fileId: '91' } }] as never;
+    expect(importProof(sonarr, { 1: 90, 2: 91 }, both).proved).toBe(true);
+  });
+
+  it("counts only the movie file this release imported, and only while the movie still has it", () => {
+    const radarr = { service: 'RADARR' as const, baselineFileIds: [], targetEpisodeIds: [], arrItemId: 15 };
+    const imports = [{ eventType: 'downloadFolderImported', movieId: 15, data: { fileId: '7' } }] as never;
+    expect(importProof(radarr, [7, 8], imports)).toEqual({ proved: true, newFiles: [7], missing: [] });
+    expect(importProof(radarr, [8], imports).proved).toBe(false);
+  });
+});
+
 describe('reconciling open manual downloads', () => {
   it('has nothing to do when nothing is open', async () => {
     expect(await run()).toEqual({ failure: null, skipped: true });
@@ -83,7 +102,8 @@ describe('reconciling open manual downloads', () => {
     await run();
     expect(statusSet()).toEqual(['DOWNLOADING']);
 
-    expect(mocks.update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'md1', status: 'QUEUED' } }));
+    // Only from the state the run read: the status and when it was last written.
+    expect(mocks.update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'md1', status: 'QUEUED', updatedAt: expect.any(Date) } }));
 
     mocks.update.mockClear();
     mocks.rows = [row({ status: 'DOWNLOADING', arrQueueId: 101 })];
@@ -92,7 +112,7 @@ describe('reconciling open manual downloads', () => {
 
     mocks.queue.mockResolvedValue({ records: [item({ id: 102 })] });
     await run();
-    expect(mocks.update).toHaveBeenCalledWith({ where: { id: 'md1', status: 'DOWNLOADING' }, data: { arrQueueId: 102 } });
+    expect(mocks.update).toHaveBeenCalledWith({ where: { id: 'md1', status: 'DOWNLOADING', updatedAt: expect.any(Date) }, data: { arrQueueId: 102 } });
   });
 
   it('leaves a download a cancel settled while the run was reading Arr', async () => {
@@ -156,7 +176,7 @@ describe('reconciling open manual downloads', () => {
     mocks.client.getHistory.mockResolvedValue({ records: [{ eventType: 'grabbed' }] });
     await run();
     expect(statusSet()).toEqual(['QUEUED']);
-    expect(mocks.client.getHistory).toHaveBeenCalledWith(1, 50, 'date', 'descending', { downloadId: HASH, eventType: 1 });
+    expect(mocks.client.getHistory).toHaveBeenCalledWith(1, 1000, 'date', 'descending', { downloadId: HASH, eventType: 1 });
 
     mocks.update.mockClear();
     mocks.client.getHistory.mockResolvedValue({ records: [] });
@@ -177,5 +197,42 @@ describe('reconciling open manual downloads', () => {
     const report = await run();
     expect(report.failure).toBe('ECONNREFUSED');
     expect(mocks.update).not.toHaveBeenCalled();
+  });
+});
+
+describe('reconciling: review round two', () => {
+  it("keeps a grab for another title blocked, though Arr's queue says it is downloading", async () => {
+    mocks.rows = [row({ status: 'BLOCKED', lastError: 'Radarr grabbed the release for a different title than Night of the Living Dead. Cancel it from its queue.' })];
+    mocks.queue.mockResolvedValue({ records: [item({ movieId: 99 })] });
+    await run();
+    expect(mocks.update).not.toHaveBeenCalled();
+  });
+
+  it('takes a failure after a partial import as the end of the download', async () => {
+    mocks.rows = [row({ service: 'SONARR', status: 'IMPORTING', targetEpisodeIds: [1, 2], baselineFileIds: { 1: 0, 2: 0 } })];
+    mocks.client.getHistory.mockResolvedValue({ records: [
+      { eventType: 'downloadFailed', data: { message: 'Download stalled' } },
+      { eventType: 'downloadFolderImported', episodeId: 1, data: { fileId: '90' } },
+    ] });
+    await run();
+    expect(statusSet()).toEqual(['FAILED']);
+  });
+
+  it("takes the episodes from the grab when a TVDB-matched Sonarr send was interrupted before it could", async () => {
+    mocks.rows = [row({ service: 'SONARR', status: 'SUBMITTING_RELEASE', updatedAt: minutesAgo(15), targetEpisodeIds: [] })];
+    mocks.client.getHistory.mockResolvedValue({ records: [{ eventType: 'grabbed', seriesId: 15, episodeId: 501 }, { eventType: 'grabbed', seriesId: 15, episodeId: 502 }] });
+    await run();
+    expect(mocks.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
+      status: 'QUEUED', targetEpisodeIds: [501, 502], baselineFileIds: { 501: 0, 502: 0 },
+    }) }));
+  });
+
+  it("keeps credentials out of Arr's messages", async () => {
+    mocks.rows = [row()];
+    mocks.queue.mockResolvedValue({ records: [item({ trackedDownloadState: 'importBlocked', statusMessages: [{ title: 'x', messages: ['Cannot reach http://qbit:8080/api?apikey=s3cret'] }] })] });
+    await run();
+    expect(mocks.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
+      lastError: 'Radarr cannot import it: Cannot reach http://qbit:8080/api?apikey=[REDACTED]',
+    }) }));
   });
 });
