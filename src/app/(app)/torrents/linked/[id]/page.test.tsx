@@ -37,7 +37,7 @@ function blocked(extra: Record<string, unknown> = {}) {
 }
 
 beforeEach(() => {
-  mocks.caps = new Set(['activity.manage', 'torrents.add', 'torrents.delete', 'movies.delete']);
+  mocks.caps = new Set(['activity.manage', 'torrents.add', 'torrents.delete', 'movies.add', 'movies.delete']);
   mocks.push.mockReset();
   mocks.replace.mockReset();
   mocks.calls = [];
@@ -101,6 +101,18 @@ describe('a linked download', () => {
     await screen.findAllByText('Needs attention');
     expect(screen.queryByRole('button', { name: /Cancel download/ })).toBeNull();
     expect(screen.queryByRole('button', { name: /Unlink/ })).toBeNull();
+  });
+
+  it('offers "Send again" only to someone who may send that release to that library', async () => {
+    mocks.download = blocked({ status: 'FAILED', completedAt: now });
+    for (const missing of ['movies.add', 'activity.manage', 'torrents.add']) {
+      mocks.caps = new Set(['activity.manage', 'torrents.add', 'movies.add', 'series.add']);
+      mocks.caps.delete(missing);
+      const { unmount } = renderPage();
+      await screen.findAllByText('Failed');
+      expect(screen.queryByRole('button', { name: /Send again/ }), missing).toBeNull();
+      unmount();
+    }
   });
 
   it('offers to send a failed one again with its title and release name, and unlinks', async () => {

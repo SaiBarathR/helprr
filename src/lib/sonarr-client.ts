@@ -9,6 +9,7 @@ import type {
   SonarrRenamePreview,
   QueueResponse,
   HistoryResponse,
+  HistoryItem,
   ManualImportItem,
   EpisodeFileResource,
   QualityProfile,
@@ -250,6 +251,11 @@ export class SonarrClient {
     return this.get<CommandResponse>(`/api/v3/command/${id}`);
   }
 
+  /** The commands Sonarr has run or queued lately (kept in memory until it restarts), with their bodies. */
+  async getCommands(): Promise<Array<CommandResponse & { body?: { files?: Array<{ path?: string }> } }>> {
+    return this.get('/api/v3/command');
+  }
+
   async renameSeries(seriesId: number): Promise<CommandResponse> {
     return this.post<CommandResponse>('/api/v3/command', {
       name: 'RenameSeries',
@@ -371,6 +377,13 @@ export class SonarrClient {
     if (filters?.eventType !== undefined) params.eventType = filters.eventType;
     if (filters?.downloadId) params.downloadId = filters.downloadId;
     return this.get<HistoryResponse>('/api/v3/history', params);
+  }
+
+  /** One series' history, unpaged (/history ignores a series filter). eventType 3 = downloadFolderImported. */
+  async getSeriesHistory(seriesId: number, eventType?: number): Promise<HistoryItem[]> {
+    const params: Record<string, unknown> = { seriesId };
+    if (eventType !== undefined) params.eventType = eventType;
+    return this.get<HistoryItem[]>('/api/v3/history/series', params);
   }
 
   async getEpisodesByIds(episodeIds: number[]): Promise<SonarrEpisode[]> {

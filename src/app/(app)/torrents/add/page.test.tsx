@@ -1,25 +1,47 @@
 // @vitest-environment jsdom
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const mocks = vi.hoisted(() => ({ caps: new Set<string>(), params: new URLSearchParams() }));
+const mocks = vi.hoisted(() => ({ caps: new Set<string>(), params: new URLSearchParams(), adds: [] as Array<() => Response> }));
 vi.mock('next/navigation', () => ({ useSearchParams: () => mocks.params }));
 vi.mock('@/components/permission-provider', () => ({ useCan: (cap: string) => mocks.caps.has(cap) }));
 vi.mock('@/components/layout/navigation-provider', () => ({ useAppRouter: () => ({ push: vi.fn(), replace: vi.fn() }) }));
 vi.mock('@/components/layout/page-header', () => ({ PageHeader: ({ title }: { title: string }) => <h1>{title}</h1> }));
-vi.mock('@/components/torrents/manual-download-form', () => ({
-  ManualDownloadForm: ({ prefill }: { prefill: { title: string } | null }) => <div>Arr form{prefill ? ` for ${prefill.title}` : ''}</div>,
-}));
+vi.mock('@/components/torrents/manual-download-form', async () => {
+  const { useState } = await import('react');
+  return {
+    ManualDownloadForm: function Form({ prefill, onChooseFiles }: { prefill: { title: string } | null; onChooseFiles?: (draft: unknown) => void }) {
+      const [title, setTitle] = useState('');
+      return (
+        <div>
+          Arr form{prefill ? ` for ${prefill.title}` : ''}
+          <input aria-label="Arr title" value={title} onChange={(event) => setTitle(event.target.value)} />
+          {onChooseFiles && (
+            <button type="button" onClick={() => onChooseFiles({ service: 'RADARR', instanceId: 'r1', externalId: 10331, title: 'Night of the Living Dead' })}>Next: choose files</button>
+          )}
+        </div>
+      );
+    },
+  };
+});
 
 import AddTorrentPage from './page';
 
 const LINKER = ['torrents.add', 'activity.manage', 'movies.add'];
 
+const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });
 beforeEach(() => {
   mocks.params = new URLSearchParams();
-  vi.stubGlobal('fetch', vi.fn(async () => new Response('{}')));
+  mocks.adds = [];
+  vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+    if (url === '/api/qbittorrent' && init?.method === 'POST') return mocks.adds.shift()!();
+    if (url === '/api/qbittorrent/abc/files') return json({ files: [{ index: 0, name: 'Film/a.mkv', size: 10, priority: 1, progress: 0 }] });
+    // The fallback's check: still running.
+    if (url === '/api/manual-downloads/fallback/check') return new Promise<Response>(() => {});
+    return json({});
+  }));
 });
 afterEach(() => vi.unstubAllGlobals());
 
@@ -36,9 +58,15 @@ describe('Add Torrent: where it goes', () => {
     expect(screen.getByText('Arr form')).toBeTruthy();
     expect(screen.queryByLabelText('Save at')).toBeNull();
 
+    await userEvent.type(screen.getByLabelText('Arr title'), 'Night');
     await userEvent.click(screen.getByRole('radio', { name: /Add to qBittorrent only/ }));
     expect(screen.getByLabelText('Save at')).toBeTruthy();
-    expect(screen.queryByText('Arr form')).toBeNull();
+    expect(screen.queryByRole('textbox', { name: 'Arr title' })).toBeNull();
+
+    // A look at the other option loses nothing already chosen for Sonarr/Radarr.
+    await userEvent.click(screen.getByRole('radio', { name: /Send to Sonarr or Radarr/ }));
+    expect((screen.getByRole('textbox', { name: 'Arr title' }) as HTMLInputElement).value).toBe('Night');
+    expect(screen.queryByLabelText('Save at')).toBeNull();
   });
 
   it('is the plain qBittorrent add for a user who may not send to Sonarr/Radarr', async () => {
@@ -54,5 +82,40 @@ describe('Add Torrent: where it goes', () => {
     renderPage();
     expect(await screen.findByText('Arr form for Night of the Living Dead')).toBeTruthy();
     expect(screen.getByText(/paste the magnet link or choose the .torrent file again/)).toBeTruthy();
+  });
+
+  describe('picking files for Sonarr/Radarr', () => {
+    const REVIEWER = [...LINKER, 'torrents.manage', 'torrents.delete'];
+
+    it('holds the file selection still while the fallback checks it', async () => {
+      mocks.caps = new Set(REVIEWER);
+      mocks.adds.push(() => json({ success: true, hash: 'abc' }));
+      renderPage();
+      const user = userEvent.setup();
+      await user.click(await screen.findByRole('button', { name: 'Next: choose files' }));
+      const file = await screen.findByRole('checkbox', { name: 'Select a.mkv' });
+      expect(file.matches(':disabled')).toBe(false);
+
+      await user.click(screen.getByRole('button', { name: 'Check' }));
+      await waitFor(() => expect(file.matches(':disabled')).toBe(true));
+      expect(screen.getByRole('button', { name: 'Select None' }).matches(':disabled')).toBe(true);
+    });
+
+    it('forgets the Sonarr/Radarr choices of an add that failed, so "qBittorrent only" stays plain', async () => {
+      mocks.caps = new Set(REVIEWER);
+      mocks.adds.push(() => json({ error: 'qBittorrent did not answer' }, 502));
+      mocks.adds.push(() => json({ success: true, hash: 'abc' }));
+      renderPage();
+      const user = userEvent.setup();
+      await user.click(await screen.findByRole('button', { name: 'Next: choose files' }));
+      await waitFor(() => expect(mocks.adds).toHaveLength(1));
+
+      await user.click(screen.getByRole('radio', { name: /Add to qBittorrent only/ }));
+      await user.type(screen.getByPlaceholderText('magnet:?xt=urn:btih:...'), 'magnet:?xt=urn:btih:382CC016FF22946008ECDDCB0DDA820F42B0CD5A');
+      await user.click(screen.getByRole('button', { name: 'Next: Choose Files' }));
+      await screen.findByRole('checkbox', { name: 'Select a.mkv' });
+      expect(screen.getByRole('button', { name: /Add (Stopped|& Start)/ })).toBeTruthy();
+      expect(screen.queryByRole('button', { name: 'Check' })).toBeNull();
+    });
   });
 });

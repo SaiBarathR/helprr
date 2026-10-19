@@ -10,6 +10,10 @@ const mocks = vi.hoisted(() => ({
   audits: [] as Array<{ operation: string; details: Record<string, unknown> }>,
   offer: vi.fn(async () => 'http://helprr.lan/api/manual-downloads/torrent/TOKEN'),
   withdraw: vi.fn(async () => {}),
+  // Other open workflows for the same title, and Arr's queue.
+  others: 0,
+  queue: [] as unknown[],
+  connection: vi.fn(async () => ({ id: 'i1', label: 'Arr' })),
 }));
 
 vi.mock('@/lib/db', () => {
@@ -24,6 +28,7 @@ vi.mock('@/lib/db', () => {
     findUniqueOrThrow: vi.fn(async ({ where }: { where: { id: string } }) => mocks.rows.get(where.id)!),
     // The active workflow for the same instance and release, as the lock-protected check sees it.
     findFirst: vi.fn(async () => [...mocks.rows.values()].find((r) => !['IMPORTED', 'FAILED', 'CANCELLED'].includes(r.status as string)) ?? null),
+    count: vi.fn(async () => mocks.others),
     create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
       const id = `md${mocks.rows.size + 1}`;
       const { events, ...rest } = data as { events: { create: { status: string; message: string } } };
@@ -49,7 +54,8 @@ vi.mock('@/lib/db', () => {
   };
   return { prisma: { manualDownload, $transaction } };
 });
-vi.mock('@/lib/arr-instances', () => ({ resolveConnection: vi.fn(async () => ({ id: 'i1', label: 'Arr' })) }));
+vi.mock('@/lib/arr-instances', () => ({ resolveConnection: mocks.connection }));
+vi.mock('@/lib/activity-queue', () => ({ fetchAllQueueRecords: async () => ({ records: mocks.queue }) }));
 vi.mock('@/lib/cache/tagged-library', () => ({ invalidateTaggedLibrary: vi.fn(async () => {}) }));
 vi.mock('@/lib/file-audit', () => ({
   runWithOperationAudit: async (input: { operation: string; details: Record<string, unknown> }, call: () => Promise<unknown>) => {
@@ -113,6 +119,9 @@ const send = (overrides: Record<string, unknown> = {}, requestId = 'req-00001') 
 beforeEach(() => {
   vi.useFakeTimers();
   mocks.rows.clear();
+  mocks.others = 0;
+  mocks.queue = [];
+  mocks.connection.mockResolvedValue({ id: 'i1', label: 'Arr' });
   mocks.audits.length = 0;
   vi.clearAllMocks();
   mocks.client = radarrClient();
@@ -131,7 +140,7 @@ describe('sending a film to Radarr', () => {
     expect(mocks.client.pushRelease).toHaveBeenCalledWith(expect.objectContaining({
       title: RELEASE, protocol: 'torrent', magnetUrl: source.magnetUrl, tmdbId: 10331, downloadClientId: 1,
     }));
-    expect(mocks.client.getHistory).toHaveBeenCalledWith(1, 50, 'date', 'descending', { downloadId: HASH });
+    expect(mocks.client.getHistory).toHaveBeenCalledWith(1, 1000, 'date', 'descending', { downloadId: HASH });
     expect(download).toEqual(expect.objectContaining({ status: 'QUEUED', arrItemId: 15, createdArrItem: true, downloadClientName: 'qBittorrent', attempts: 1 }));
     expect(download.events.map((event) => event.status)).toEqual(['PREFLIGHT', 'CREATING_MEDIA', 'SUBMITTING_RELEASE', 'QUEUED']);
     expect(mocks.audits.map((audit) => audit.operation)).toEqual(['CREATE_MEDIA', 'PUSH_RELEASE']);
@@ -239,6 +248,43 @@ describe('sending a film to Radarr', () => {
     expect(mocks.withdraw).toHaveBeenCalledWith('http://helprr.lan/api/manual-downloads/torrent/TOKEN');
   });
 
+  it('returns the workflow the same submission recorded while its preflight ran', async () => {
+    const first = await send();
+    // The second copy looked before the first recorded, then its preflight saw the first as active.
+    mocks.preflight.mockResolvedValue({ ...plan('RADARR'), ok: false, errors: [{ code: 'ALREADY_ACTIVE', message: 'This release is already being sent.' }] });
+    const original = mocks.rows.get(first.id)!;
+    vi.mocked((await import('@/lib/db')).prisma.manualDownload.findUnique)
+      .mockResolvedValueOnce(null as never)
+      .mockResolvedValueOnce(original as never);
+    expect((await send()).id).toBe(first.id);
+  });
+
+  it('keeps a film it added when another download is on its way for it', async () => {
+    mocks.client.pushRelease.mockResolvedValue({ approved: false, rejected: true, rejections: ['nope'] });
+    mocks.others = 1;
+
+    const download = await send();
+
+    expect(download.lastError).toContain('another download is on its way for it');
+    expect(mocks.client.deleteMovie).not.toHaveBeenCalled();
+  });
+
+  it('adopts a film Radarr added though its answer was lost, and carries on', async () => {
+    mocks.client.addMovie.mockRejectedValue(new Error('socket hang up'));
+    mocks.client.lookupMovie = vi.fn(async () => [{ id: 15, tmdbId: 10331 }]);
+
+    const download = await send();
+
+    expect(download).toEqual(expect.objectContaining({ status: 'QUEUED', arrItemId: 15, createdArrItem: true }));
+  });
+
+  it('fails the recorded workflow when the instance cannot be reached', async () => {
+    mocks.connection.mockRejectedValue(new Error('That Radarr instance no longer exists.'));
+    const download = await send();
+    expect(download.status).toBe('FAILED');
+    expect(mocks.client.addMovie).not.toHaveBeenCalled();
+  });
+
   it('returns the same workflow for a repeated request, and creates nothing when the preflight refuses', async () => {
     const first = await send();
     const again = await send();
@@ -303,8 +349,12 @@ describe('sending an episode to Sonarr', () => {
     expect(mocks.client.pushRelease).not.toHaveBeenCalled();
   });
 
-  it('takes the episodes from the grab when Sonarr matched an existing series by its TVDB id', async () => {
+  it('takes the episodes from the grab when Sonarr matched an existing series by its TVDB id, with files from before the push', async () => {
     mocks.preflight.mockResolvedValue(plan('SONARR', { target: { externalId: 71471, title: 'The Beverly Hillbillies', year: 1962, existingId: 6 } }));
+    // Sonarr imports in the seconds after the push: the baseline is what was there before it.
+    mocks.client.getEpisodes
+      .mockResolvedValueOnce([{ id: 236, episodeFileId: 0 }, { id: 237, episodeFileId: 0 }])
+      .mockResolvedValue([{ id: 236, episodeFileId: 99 }, { id: 237, episodeFileId: 0 }]);
 
     const download = await sonarr({ add: undefined });
 

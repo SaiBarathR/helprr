@@ -64,4 +64,26 @@ describe('starting the advanced fallback', () => {
     expect(started.body).toEqual({ ...checked.body, clientRequestId: expect.stringMatching(/^[0-9a-f]{32}$/) });
     expect(mocks.order).toEqual(['/api/manual-downloads/fallback/check', 'stop settled', '/api/manual-downloads/fallback']);
   });
+
+  it('keeps a late check with the files it checked, not the ones chosen when it arrives', async () => {
+    let answer!: (response: Response) => void;
+    vi.mocked(fetch).mockImplementationOnce(async () => new Promise<Response>((resolve) => { answer = resolve; }));
+    const client = new QueryClient();
+    const view = (selectedIndexes: number[]) => (
+      <QueryClientProvider client={client}>
+        <FallbackActions
+          hash={HASH}
+          draft={{ service: 'RADARR', instanceId: 'r1', externalId: 10331, title: 'Night of the Living Dead' }}
+          source="MAGNET" selectedIndexes={selectedIndexes} disabled={false} beforeStart={vi.fn(async () => {})} cancelling={false} onCancel={vi.fn()}
+        />
+      </QueryClientProvider>
+    );
+    const { rerender } = render(view([0]));
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Check' }));
+    rerender(view([1]));
+    answer(new Response(JSON.stringify(check)));
+
+    expect(await screen.findByRole('button', { name: 'Check again' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Start download' })).toBeNull();
+  });
 });

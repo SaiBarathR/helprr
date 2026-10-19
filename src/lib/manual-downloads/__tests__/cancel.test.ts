@@ -3,11 +3,15 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   client: {} as Record<string, ReturnType<typeof vi.fn>>,
   update: vi.fn(async () => ({})),
+  others: 0,
   audits: [] as Array<{ operation: string; filesDeleted: boolean | null }>,
   qbit: { getTorrents: vi.fn(async () => [{ hash: 'x' }]), deleteTorrent: vi.fn(async () => {}) },
+  claim: vi.fn(async (): Promise<{ id: string; at: Date } | null> => ({ id: 'md1', at: new Date() })),
+  release: vi.fn(async (...args: unknown[]) => args.length > 0),
 }));
+vi.mock('../fallback', () => ({ claimFallback: mocks.claim, releaseClaim: mocks.release }));
 vi.mock('@/lib/service-helpers', () => ({ getQBittorrentClient: async () => mocks.qbit }));
-vi.mock('@/lib/db', () => ({ prisma: { manualDownload: { update: mocks.update } } }));
+vi.mock('@/lib/db', () => ({ prisma: { manualDownload: { update: mocks.update, count: async () => mocks.others } } }));
 vi.mock('@/lib/arr-instances', () => ({ resolveConnection: vi.fn(async () => ({ id: 'i1' })) }));
 vi.mock('@/lib/cache/tagged-library', () => ({ invalidateTaggedLibrary: vi.fn(async () => {}) }));
 vi.mock('@/lib/activity-queue', () => ({
@@ -29,7 +33,7 @@ import { cancelManualDownload, ManualDownloadCancelError } from '../cancel';
 const HASH = '382CC016FF22946008ECDDCB0DDA820F42B0CD5A';
 const download = (extra: Record<string, unknown> = {}) => ({
   id: 'md1', status: 'QUEUED', service: 'RADARR', instanceId: 'i1', instanceLabel: 'Radarr', infoHash: HASH,
-  arrItemId: 15, arrItemTitle: 'Night of the Living Dead', createdArrItem: true, ...extra,
+  arrItemId: 15, arrItemTitle: 'Night of the Living Dead', createdArrItem: true, updatedAt: new Date(Date.now() - 10 * 60_000), ...extra,
 }) as never;
 const actor = { id: 'u1', username: 'admin' };
 const none = { removeFromClient: false, blocklist: false, removeTitle: false };
@@ -37,6 +41,7 @@ const none = { removeFromClient: false, blocklist: false, removeTitle: false };
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.audits.length = 0;
+  mocks.others = 0;
   mocks.client = {
     getQueue: vi.fn(async () => ({ records: [{ id: 101, downloadId: HASH }, { id: 102, downloadId: 'OTHER' }] })),
     deleteQueueItem: vi.fn(async () => {}),
@@ -141,6 +146,24 @@ describe('cancelling a manual download', () => {
     expect(mocks.update).toHaveBeenCalled();
   });
 
+  it('waits while a send whose answer was lost may still be taken by Radarr', async () => {
+    mocks.client.getQueue.mockResolvedValue({ records: [] });
+    mocks.client.getHistory.mockResolvedValue({ records: [] });
+    await expect(cancelManualDownload(download({ status: 'BLOCKED', updatedAt: new Date() }), { ...none, removeTitle: true }, actor))
+      .rejects.toThrow('may still be taking this release');
+    expect(mocks.client.deleteMovie).not.toHaveBeenCalled();
+
+    // Two minutes on, with still no grab: nothing of it is in Radarr, and the film it added goes.
+    expect(await cancelManualDownload(download({ status: 'BLOCKED' }), { ...none, removeTitle: true }, actor)).toContain('was removed');
+  });
+
+  it('keeps a film it added while another download is on its way for it', async () => {
+    mocks.others = 1;
+    const message = await cancelManualDownload(download(), { ...none, removeTitle: true }, actor);
+    expect(message).toContain('another download is on its way for Night of the Living Dead');
+    expect(mocks.client.deleteMovie).not.toHaveBeenCalled();
+  });
+
   it('refuses a download still being sent', async () => {
     await expect(cancelManualDownload(download({ status: 'SUBMITTING_RELEASE' }), none, actor)).rejects.toBeInstanceOf(ManualDownloadCancelError);
   });
@@ -150,9 +173,14 @@ describe('cancelling a manual download', () => {
 
     it('deletes the torrent and its data from qBittorrent when asked, never touching Arr\'s queue', async () => {
       const message = await cancelManualDownload(fallback(), { ...none, removeFromClient: true, removeTitle: true }, actor);
+      // Taken first, like a scan or an import, and cancelled only while still held.
+      expect(mocks.claim).toHaveBeenCalledWith(expect.objectContaining({ id: 'md1', status: 'NEEDS_MAPPING' }), 'Cancelling.');
+      expect(mocks.release).toHaveBeenCalledExactlyOnceWith({ id: 'md1', at: expect.any(Date) }, 'CANCELLED', message);
+      expect(mocks.update).not.toHaveBeenCalled();
       expect(mocks.qbit.deleteTorrent).toHaveBeenCalledWith(HASH.toLowerCase(), true);
       expect(mocks.audits.map((audit) => audit.operation)).toEqual(['DELETE_TORRENT', 'DELETE_MEDIA']);
-      expect(mocks.client.getQueue).not.toHaveBeenCalled();
+      // The queue is only read, for another download of the title.
+      expect(mocks.client.deleteQueueItem).not.toHaveBeenCalled();
       expect(message).toContain('removed the torrent and its data from qBittorrent');
     });
 
@@ -160,6 +188,23 @@ describe('cancelling a manual download', () => {
       expect(await cancelManualDownload(fallback(), none, actor)).toContain('the torrent stays in qBittorrent');
       expect(mocks.qbit.deleteTorrent).not.toHaveBeenCalled();
       await expect(cancelManualDownload(fallback({ status: 'IMPORTING' }), none, actor)).rejects.toBeInstanceOf(ManualDownloadCancelError);
+    });
+
+    it('never runs alongside a scan or an import of the files', async () => {
+      await expect(cancelManualDownload(fallback({ status: 'IMPORT_PENDING' }), { ...none, removeFromClient: true }, actor)).rejects.toThrow('reading or importing the files');
+      mocks.claim.mockResolvedValueOnce(null);
+      await expect(cancelManualDownload(fallback(), { ...none, removeFromClient: true }, actor)).rejects.toThrow('changed meanwhile');
+      expect(mocks.qbit.deleteTorrent).not.toHaveBeenCalled();
+      expect(mocks.release).not.toHaveBeenCalled();
+    });
+
+    it('puts it back as it was when removing it fails, so it can be cancelled again', async () => {
+      mocks.qbit.deleteTorrent.mockRejectedValueOnce(new Error('qBittorrent at http://admin:hunter2@qbit:8080 refused'));
+      await expect(cancelManualDownload(fallback({ lastError: 'Confirm what the files are.' }), { ...none, removeFromClient: true }, actor)).rejects.toThrow('refused');
+      expect(mocks.release).toHaveBeenCalledExactlyOnceWith(
+        { id: 'md1', at: expect.any(Date) }, 'NEEDS_MAPPING', expect.stringMatching(/^Cancelling did not finish: .*refused$/), { lastError: 'Confirm what the files are.' },
+      );
+      expect(String(mocks.release.mock.calls[0][2])).not.toContain('hunter2');
     });
   });
 });

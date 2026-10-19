@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PreflightResult } from '@/lib/manual-downloads/preflight';
 
 const mocks = vi.hoisted(() => ({
-  caps: new Set(['movies.add', 'series.add']),
+  caps: new Set<string>(),
   push: vi.fn(),
   preflight: [] as Array<() => Response>,
   send: [] as Array<() => Response | Promise<Response>>,
@@ -17,7 +17,7 @@ vi.mock('@/components/layout/navigation-provider', () => ({ useAppRouter: () => 
 vi.mock('@/components/media/tag-selector', () => ({ TagSelector: () => null }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() } }));
 
-import { ManualDownloadForm, type ReleaseInput } from '../manual-download-form';
+import { ManualDownloadForm, type LinkPrefill, type ReleaseInput } from '../manual-download-form';
 
 const MAGNET = 'magnet:?xt=urn:btih:382CC016FF22946008ECDDCB0DDA820F42B0CD5A&dn=Night.of.the.Living.Dead.1968.1080p.BluRay.x264-GRP';
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });
@@ -35,6 +35,7 @@ function plan(overrides: Partial<PreflightResult> = {}): PreflightResult {
 }
 
 beforeEach(() => {
+  mocks.caps = new Set(['movies.add', 'series.add', 'movies.editMonitoring', 'series.editMonitoring']);
   mocks.push.mockReset();
   mocks.preflight = [];
   mocks.send = [];
@@ -54,13 +55,15 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllGlobals());
 
-function renderForm(release: ReleaseInput = { kind: 'magnet', magnet: MAGNET }) {
+function renderForm(release: ReleaseInput = { kind: 'magnet', magnet: MAGNET }, prefill: LinkPrefill | null = null) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
+  const view = (next: ReleaseInput) => (
     <QueryClientProvider client={client}>
-      <ManualDownloadForm release={release} suggestedName="Night.of.the.Living.Dead.1968.1080p.BluRay.x264-GRP" prefill={null} />
-    </QueryClientProvider>,
+      <ManualDownloadForm release={next} suggestedName="Night.of.the.Living.Dead.1968.1080p.BluRay.x264-GRP" prefill={prefill} />
+    </QueryClientProvider>
   );
+  const result = render(view(release));
+  return { ...result, changeRelease: (next: ReleaseInput) => result.rerender(view(next)) };
 }
 
 async function chooseFilm() {
@@ -144,6 +147,57 @@ describe('sending a release to Sonarr/Radarr', () => {
     expect(mocks.bodies[0].torrent).toBeInstanceOf(File);
     expect(mocks.bodies[0].request).not.toHaveProperty('magnetUrl');
     expect(mocks.bodies[0].request).not.toHaveProperty('releaseTitle');
+  });
+
+  it('keeps a late answer with the release it checked, not the one on screen when it arrives', async () => {
+    let answer!: (response: Response) => void;
+    mocks.preflight.push(() => new Promise<Response>((resolve) => { answer = resolve; }) as unknown as Response);
+    const { changeRelease } = renderForm();
+    const user = await chooseFilm();
+    await user.click(screen.getByRole('button', { name: 'Check' }));
+    await waitFor(() => expect(mocks.bodies).toHaveLength(1));
+
+    // The release changes (on the add page, outside this form) while the check runs.
+    changeRelease({ kind: 'magnet', magnet: MAGNET.replace('382CC016', '482CC016') });
+    answer(json(plan({ ok: false, errors: [{ code: 'TARGET_UNMONITORED', message: 'Night of the Living Dead is not monitored.' }] })));
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Check again' }).hasAttribute('disabled')).toBe(false));
+    expect(screen.queryByText('Night of the Living Dead is not monitored.')).toBeNull();
+    expect(screen.queryByRole('checkbox', { name: /Monitor/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Send to Radarr' })).toBeNull();
+  });
+
+  it('treats a different .torrent file as a new release even with the same name, size and date', async () => {
+    mocks.preflight.push(() => json(plan()));
+    const picked = (bytes: number[]) => new File([new Uint8Array(bytes)], 'release.torrent', { lastModified: 1_700_000_000_000 });
+    const { changeRelease } = renderForm({ kind: 'file', file: picked([1, 2]) });
+    const user = await chooseFilm();
+    await user.click(screen.getByRole('button', { name: 'Check' }));
+    await screen.findByText('Ready: Radarr will take it');
+
+    changeRelease({ kind: 'file', file: picked([3, 4]) });
+    expect(screen.queryByText('Ready: Radarr will take it')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Send to Radarr' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Check again' })).toBeTruthy();
+  });
+
+  it('does not offer to monitor the title to someone who may not change monitoring', async () => {
+    mocks.caps.delete('movies.editMonitoring');
+    mocks.preflight.push(() => json(plan({ ok: false, errors: [{ code: 'TARGET_UNMONITORED', message: 'Night of the Living Dead is not monitored.' }] })));
+    renderForm();
+    const user = await chooseFilm();
+    await user.click(screen.getByRole('button', { name: 'Check' }));
+    expect(await screen.findByText('Night of the Living Dead is not monitored.')).toBeTruthy();
+    expect(screen.queryByRole('checkbox', { name: /Monitor/ })).toBeNull();
+    expect(screen.getByText(/this account may not change monitoring/)).toBeTruthy();
+  });
+
+  it('starts fresh when "Send again" names a library this user may not add to', async () => {
+    mocks.caps = new Set(['movies.add']);
+    renderForm({ kind: 'magnet', magnet: MAGNET }, { service: 'SONARR', instanceId: 's1', externalId: 81189, title: 'Breaking Bad', release: 'Breaking.Bad.S01.1080p' });
+    expect(await screen.findByLabelText('Movie')).toBeTruthy();
+    expect(screen.queryByLabelText('Series')).toBeNull();
+    expect((screen.getByLabelText('Release name') as HTMLInputElement).value).not.toBe('Breaking.Bad.S01.1080p');
   });
 
   it('asks for the release before anything can be checked', async () => {

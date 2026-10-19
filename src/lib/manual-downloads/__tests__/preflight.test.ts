@@ -75,6 +75,10 @@ describe('Radarr preflight', () => {
     mocks.radarr = arrMock([movie], { parsedMovieInfo: { year: 1990, quality: quality('Bluray-1080p') }, movie: { id: 9, title: 'Other Film', year: 1990 } });
     expect(codes((await preflightManualDownload(radarrInput())).errors)).toEqual(['RELEASE_OTHER_TITLE']);
 
+    // A name without a year (Radarr reads it as 0) maps by TMDB id too.
+    mocks.radarr = arrMock([movie], { parsedMovieInfo: { year: 0, quality: quality('Bluray-1080p') }, movie: { id: 9, title: 'Other Film', year: 1990 } });
+    expect((await preflightManualDownload(radarrInput())).ok).toBe(true);
+
     // The year agrees, so Radarr maps it by TMDB id before it looks at the title.
     mocks.radarr = arrMock([movie], { parsedMovieInfo: { year: 1968, quality: quality('Bluray-1080p') }, movie: { id: 9, title: 'Other Film', year: 1968 } });
     expect((await preflightManualDownload(radarrInput())).ok).toBe(true);
@@ -116,8 +120,13 @@ describe('Radarr preflight', () => {
 
   it('refuses a release already grabbed, or already on its way, and an instance that does not answer', async () => {
     mocks.radarr = arrMock([movie], { parsedMovieInfo: { year: 1968, quality: quality('Bluray-1080p') } });
-    mocks.radarr.getHistory.mockResolvedValue({ records: [{ eventType: 'grabbed' }] });
+    mocks.radarr.getHistory.mockResolvedValue({ records: [{ eventType: 'grabbed', date: new Date(Date.now() - 3_600_000).toISOString() }] });
     expect(codes((await preflightManualDownload(radarrInput())).errors)).toEqual(['ALREADY_GRABBED']);
+    // Arr's own rule: an older grab (since failed, removed or imported) may be sent again.
+    mocks.radarr.getHistory.mockResolvedValue({ records: [{ eventType: 'grabbed', date: new Date(Date.now() - 13 * 3_600_000).toISOString() }] });
+    const older = await preflightManualDownload(radarrInput());
+    expect(older.ok).toBe(true);
+    expect(codes(older.warnings)).toEqual(['GRABBED_BEFORE']);
 
     mocks.radarr.getHistory.mockResolvedValue({ records: [] });
     mocks.active.mockResolvedValue({ id: 'md1', arrItemTitle: movie.title });
