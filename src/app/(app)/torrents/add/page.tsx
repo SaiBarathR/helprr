@@ -18,7 +18,8 @@ import {
 } from 'lucide-react';
 import { PageHeader } from '@/components/layout/page-header';
 import { PageSpinner } from '@/components/ui/page-spinner';
-import { MANUAL_DOWNLOAD_MUTATION_KEY, ManualDownloadForm, type LinkPrefill } from '@/components/torrents/manual-download-form';
+import { MANUAL_DOWNLOAD_MUTATION_KEY, ManualDownloadForm, type FallbackDraft, type LinkPrefill } from '@/components/torrents/manual-download-form';
+import { FallbackActions, fallbackMutationKey } from '@/components/torrents/fallback-actions';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -120,6 +121,8 @@ function AddTorrentPageContent() {
   // A Sonarr/Radarr check or send, or a qBittorrent add, on its way ends on its own page: no switching meanwhile.
   const arrBusy = useIsMutating({ mutationKey: MANUAL_DOWNLOAD_MUTATION_KEY }) > 0;
   const [destination, setDestination] = useState<'arr' | 'client'>(canLink ? 'arr' : 'client');
+  // The advanced fallback: the Sonarr/Radarr choices, kept while the files are chosen.
+  const [fallback, setFallback] = useState<FallbackDraft | null>(null);
 
   const categoriesQuery = useQuery({
     queryKey: ['qbittorrent', 'categories'],
@@ -134,7 +137,8 @@ function AddTorrentPageContent() {
   const categorySavePath = categories.find((c) => c.name === selectedCategory)?.savePath;
 
   const addMutation = useMutation({
-    mutationFn: async ({ review }: { review: boolean }) => {
+    // `draft`: the Sonarr/Radarr choices when the files are picked for them (the advanced fallback).
+    mutationFn: async ({ review }: { review: boolean; draft?: FallbackDraft }) => {
       // With review, add .torrent files stopped so files can be deselected
       // before any data downloads. Magnets can't fetch metadata while stopped,
       // so they start with stopCondition=MetadataReceived: qBittorrent stops
@@ -171,9 +175,11 @@ function AddTorrentPageContent() {
       }
       return data;
     },
-    onSuccess: (data, { review }) => {
+    onSuccess: (data, { review, draft }) => {
       if (review) {
         if (data.hash) {
+          // The files go to Sonarr/Radarr only when this add was for them.
+          setFallback(draft ?? null);
           setReviewHash(data.hash);
           return;
         }
@@ -217,6 +223,7 @@ function AddTorrentPageContent() {
         displayName={displayName}
         startTorrent={startTorrent}
         stopOnMetadata={addMode === 'magnet'}
+        fallback={fallback ? { draft: fallback, source: addMode === 'magnet' ? 'MAGNET' : 'TORRENT_FILE' } : undefined}
       />
     );
   }
@@ -313,6 +320,9 @@ function AddTorrentPageContent() {
               release={addMode === 'magnet' ? { kind: 'magnet', magnet: magnetLink } : { kind: 'file', file: torrentFile }}
               suggestedName={addMode === 'magnet' ? magnetDisplayName(magnetLink.trim()) ?? '' : ''}
               prefill={prefill}
+              // Picking files adds the torrent stopped first (the same step as "Choose Files").
+              onChooseFiles={canReview ? (draft) => addMutation.mutate({ review: true, draft }) : undefined}
+              choosingFiles={adding}
             />
           </div>
         )}
@@ -447,11 +457,14 @@ function ReviewStep({
   displayName,
   startTorrent,
   stopOnMetadata,
+  fallback,
 }: {
   hash: string;
   displayName: string;
   startTorrent: boolean;
   stopOnMetadata: boolean;
+  /** Sending to Sonarr/Radarr (the advanced fallback): its check and start replace Add / Cancel. */
+  fallback?: { draft: FallbackDraft; source: 'MAGNET' | 'TORRENT_FILE' };
 }) {
   const router = useRouter();
   const [excluded, setExcluded] = useState<Set<number>>(new Set());
@@ -598,6 +611,14 @@ function ReviewStep({
   });
 
   const busy = confirmMutation.isPending || cancelMutation.isPending;
+  // The selection is what is being checked or started: it holds still meanwhile.
+  const fallbackRunning = useIsMutating({ mutationKey: fallbackMutationKey(hash) }) > 0;
+  const locked = busy || fallbackRunning;
+  const selectedIndexes = useMemo(() => files.filter((f) => !excluded.has(f.index)).map((f) => f.index), [files, excluded]);
+  const beforeStart = useCallback(async () => {
+    if (stopRequestRef.current) await stopRequestRef.current;
+  }, []);
+  const cancelTorrent = useCallback(() => cancelMutation.mutate(), [cancelMutation]);
 
   return (
     <div className="space-y-3 animate-content-in">
@@ -630,6 +651,7 @@ function ReviewStep({
         </div>
       ) : (
         <>
+          <fieldset disabled={locked} className="min-w-0 space-y-3">
           {/* Selection summary + bulk controls */}
           <div className="rounded-xl bg-card p-3 space-y-2.5">
             <div className="flex items-center justify-between text-xs text-muted-foreground">
@@ -685,7 +707,20 @@ function ReviewStep({
               ))
             )}
           </div>
+          </fieldset>
 
+          {fallback ? (
+            <FallbackActions
+              hash={hash}
+              draft={fallback.draft}
+              source={fallback.source}
+              selectedIndexes={selectedIndexes}
+              disabled={busy}
+              beforeStart={beforeStart}
+              cancelling={cancelMutation.isPending}
+              onCancel={cancelTorrent}
+            />
+          ) : (
           <div className="flex gap-2 pb-4">
             <Button
               className="flex-1"
@@ -713,6 +748,7 @@ function ReviewStep({
               Cancel
             </Button>
           </div>
+          )}
         </>
       )}
     </div>

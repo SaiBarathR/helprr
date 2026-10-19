@@ -39,11 +39,23 @@ interface Target {
   inLibrary: boolean;
 }
 
+/** What the advanced fallback needs from this form before the files are chosen. */
+export interface FallbackDraft {
+  service: Service;
+  instanceId: string;
+  externalId: number;
+  title: string;
+  add?: Record<string, unknown>;
+}
+
 interface ManualDownloadFormProps {
   release: ReleaseInput;
   /** The release's own name (the magnet's dn, or the .torrent's file name). */
   suggestedName: string;
   prefill: LinkPrefill | null;
+  /** Offered when the user may pick files: add the torrent stopped and choose its files next. */
+  onChooseFiles?: (draft: FallbackDraft) => void;
+  choosingFiles?: boolean;
 }
 
 // Each picked .torrent file gets its own identity: two files with the same
@@ -59,7 +71,7 @@ function fileIdentity(file: File): string {
 }
 
 // The idempotency key of one submission; works on plain-http installs too.
-function newRequestId(): string {
+export function newRequestId(): string {
   return Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
@@ -75,7 +87,7 @@ const APP = { RADARR: 'Radarr', SONARR: 'Sonarr' } as const;
  * everything first (the preflight) and shows what Arr will do; sending is
  * only offered for the exact choices that were checked.
  */
-export function ManualDownloadForm({ release, suggestedName, prefill }: ManualDownloadFormProps) {
+export function ManualDownloadForm({ release, suggestedName, prefill, onChooseFiles, choosingFiles = false }: ManualDownloadFormProps) {
   const router = useRouter();
   const canMovies = useCan('movies.add');
   const canSeries = useCan('series.add');
@@ -100,6 +112,7 @@ export function ManualDownloadForm({ release, suggestedName, prefill }: ManualDo
   const [downloadClientId, setDownloadClientId] = useState<number | undefined>(undefined);
   const [clientChoices, setClientChoices] = useState<PreflightResult['plan']['downloadClientChoices']>([]);
   const [checked, setChecked] = useState<{ key: string; result: PreflightResult } | null>(null);
+  const [advanced, setAdvanced] = useState(false);
   const requestIdRef = useRef<{ key: string; id: string } | null>(null);
 
   const path = SERVICE_PATH[service];
@@ -250,7 +263,8 @@ export function ManualDownloadForm({ release, suggestedName, prefill }: ManualDo
     },
     onError,
   });
-  const busy = check.isPending || send.isPending;
+  const busy = check.isPending || send.isPending || choosingFiles;
+  const draftReady = Boolean(target && instanceId && sourceReady && (!addOptions || (profileId && rootFolder)));
 
   return (
     <div className="space-y-4">
@@ -376,6 +390,19 @@ export function ManualDownloadForm({ release, suggestedName, prefill }: ManualDo
         </div>
       )}
 
+      {onChooseFiles && (
+        <label className="flex min-h-[44px] items-start gap-3 py-1">
+          <input type="checkbox" checked={advanced} onChange={(event) => setAdvanced(event.target.checked)} disabled={busy} className="mt-0.5 h-4 w-4 shrink-0 rounded border-border" />
+          <span className="text-sm">
+            Choose files before download (advanced)
+            <span className="block text-xs text-muted-foreground">
+              qBittorrent downloads only the files you pick, then {app} is asked what each one is. Less automatic: when {app} is unsure of a file, you decide what it is.
+            </span>
+          </span>
+        </label>
+      )}
+
+      {!advanced && (
       <Field label="Release name" htmlFor="link-release" hint={`${app} reads the title, episodes and quality from this name.`}>
         <Input
           id="link-release"
@@ -385,13 +412,14 @@ export function ManualDownloadForm({ release, suggestedName, prefill }: ManualDo
           disabled={busy}
         />
       </Field>
+      )}
 
-      {monitorOffered && target && !(service === 'RADARR' ? canMonitorMovies : canMonitorSeries) && (
+      {!advanced && monitorOffered && target && !(service === 'RADARR' ? canMonitorMovies : canMonitorSeries) && (
         <p className="text-xs text-muted-foreground">
           {app} only takes a release for a monitored title, and this account may not change monitoring: ask someone who may to monitor {target.title}{service === 'SONARR' ? ' and the episodes this release covers' : ''} first.
         </p>
       )}
-      {monitorOffered && target && (service === 'RADARR' ? canMonitorMovies : canMonitorSeries) && (
+      {!advanced && monitorOffered && target && (service === 'RADARR' ? canMonitorMovies : canMonitorSeries) && (
         <label className="flex min-h-[44px] items-start gap-3 py-1">
           <input type="checkbox" checked={monitorTarget} onChange={(event) => setMonitorTarget(event.target.checked)} disabled={busy} className="mt-0.5 h-4 w-4 shrink-0 rounded border-border" />
           <span className="text-sm">
@@ -401,7 +429,7 @@ export function ManualDownloadForm({ release, suggestedName, prefill }: ManualDo
         </label>
       )}
 
-      {clientChoices.length > 1 && (
+      {!advanced && clientChoices.length > 1 && (
         <Field label="Download client" htmlFor="link-client" hint={`${app} has several torrent clients; choose the one to use.`}>
           <Select value={downloadClientId ? String(downloadClientId) : ''} onValueChange={(value) => setDownloadClientId(Number(value))} disabled={busy}>
             <SelectTrigger id="link-client" className="w-full"><SelectValue placeholder="Choose" /></SelectTrigger>
@@ -410,10 +438,19 @@ export function ManualDownloadForm({ release, suggestedName, prefill }: ManualDo
         </Field>
       )}
 
-      {result && <PreflightSummary result={result} app={app} />}
+      {!advanced && result && <PreflightSummary result={result} app={app} />}
 
       <div className="space-y-2 pt-1">
-        {result?.ok ? (
+        {advanced ? (
+          <Button
+            className="w-full"
+            disabled={busy || !draftReady}
+            onClick={() => onChooseFiles!({ service, instanceId: instanceId!, externalId: target!.externalId, title: target!.title, ...(addOptions ? { add: addOptions } : {}) })}
+          >
+            {choosingFiles && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            Next: choose files
+          </Button>
+        ) : result?.ok ? (
           <Button
             className="w-full"
             onClick={() => {

@@ -133,4 +133,29 @@ describe('a linked download', () => {
     await waitFor(() => expect(mocks.replace).toHaveBeenCalledWith('/torrents/linked'));
     expect(mocks.calls).toEqual([{ url: '/api/manual-downloads/md1', method: 'DELETE', body: undefined }]);
   });
+
+  it('offers a fallback download waiting on the user its files, a scan, and a cancel without Arr\'s queue', async () => {
+    mocks.download = blocked({
+      mode: 'QBIT_REVIEWED', status: 'NEEDS_MAPPING', lastError: 'Confirm what the files are. random.mkv: Unknown Movie.',
+      files: [
+        { id: 'f0', fileIndex: 0, path: 'Film/random.mkv', size: 1000, selected: true, decision: 'PENDING', episodeIds: [], scanned: true, arr: { movie: null, series: null, episodes: [], quality: 'HDTV-720p', languages: [], releaseGroup: null, rejections: ['Unknown Movie'] } },
+        { id: 'f1', fileIndex: 1, path: 'Film/skip.mkv', size: 10, selected: false, decision: 'PENDING', episodeIds: [], scanned: false, arr: null },
+      ],
+    });
+    renderPage();
+    const user = userEvent.setup();
+    expect(await screen.findByText('Files: 1 of 2 chosen')).toBeTruthy();
+    expect(screen.getByText(/is not sure what some files are/)).toBeTruthy();
+    expect(screen.getByText('What to confirm')).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: /Map files/ }));
+    expect(mocks.push).toHaveBeenCalledWith('/torrents/linked/md1/map');
+
+    await user.click(screen.getByRole('button', { name: /Scan again/ }));
+    await waitFor(() => expect(mocks.calls).toEqual([{ url: '/api/manual-downloads/md1/rescan', method: 'POST', body: undefined }]));
+
+    await user.click(screen.getByRole('button', { name: /Cancel download/ }));
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).queryByRole('checkbox', { name: /Blocklist/ })).toBeNull();
+    expect(within(dialog).queryByText(/queue/)).toBeNull();
+  });
 });
