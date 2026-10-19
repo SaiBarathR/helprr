@@ -26,6 +26,13 @@ export interface CancelOptions {
   removeTitle: boolean;
 }
 
+// Arr lists a grab in its queue a few seconds after the push.
+const QUEUE_WAIT_MS = 15_000;
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+const SENDING = ['PREFLIGHT', 'CREATING_MEDIA', 'SUBMITTING_RELEASE'];
+/** History events after which a download is no longer in Arr's queue. */
+const SETTLED_EVENTS = ['downloadFolderImported', 'downloadFailed', 'downloadIgnored'];
+
 export class ManualDownloadCancelError extends Error {
   constructor(message: string) {
     super(message);
@@ -37,6 +44,9 @@ export async function cancelManualDownload(download: ManualDownload, options: Ca
   if ((TERMINAL_STATUSES as readonly string[]).includes(download.status)) {
     throw new ManualDownloadCancelError('This download has already finished.');
   }
+  if (SENDING.includes(download.status)) {
+    throw new ManualDownloadCancelError('This download is still being sent. Try again once it has been.');
+  }
   if (!download.instanceId) throw new ManualDownloadCancelError(`${download.instanceLabel} no longer exists in Helprr.`);
   const service = download.service === 'RADARR' ? 'RADARR' : 'SONARR';
   const app = service === 'RADARR' ? 'Radarr' : 'Sonarr';
@@ -44,8 +54,25 @@ export async function cancelManualDownload(download: ManualDownload, options: Ca
   const client = arrClientFor(service, connection);
   const done: string[] = [];
 
-  const queue = await fetchAllQueueRecords(client, true);
-  const items = queue.records.filter((record) => record.downloadId?.toUpperCase() === download.infoHash);
+  const listed = async () => (await fetchAllQueueRecords(client, true)).records
+    .filter((record) => record.downloadId?.toUpperCase() === download.infoHash);
+  let items = await listed();
+  if (items.length === 0) {
+    // Grabbed and not settled means it belongs in the queue: ask Arr to look, and wait.
+    const history = await client.getHistory(1, 50, 'date', 'descending', { downloadId: download.infoHash });
+    const grabbed = history.records.some((record) => record.eventType === 'grabbed');
+    const settled = history.records.some((record) => SETTLED_EVENTS.includes(record.eventType));
+    if (grabbed && !settled) {
+      await client.refreshMonitoredDownloads().catch(() => null);
+      for (const deadline = Date.now() + QUEUE_WAIT_MS; items.length === 0 && Date.now() < deadline;) {
+        await sleep(1_500);
+        items = await listed();
+      }
+      if (items.length === 0) {
+        throw new ManualDownloadCancelError(`${app} has not listed this download in its queue yet, so nothing was changed. Try again in a moment.`);
+      }
+    }
+  }
   // Removing one record with the client removes the whole torrent; without it, each record is ignored.
   const toRemove = options.removeFromClient ? items.slice(0, 1) : items;
   for (const item of toRemove) {

@@ -38,6 +38,8 @@ beforeEach(() => {
     deleteQueueItem: vi.fn(async () => {}),
     getMovieFiles: vi.fn(async () => []),
     deleteMovie: vi.fn(async () => {}),
+    getHistory: vi.fn(async () => ({ records: [{ eventType: 'grabbed' }] })),
+    refreshMonitoredDownloads: vi.fn(async () => ({ id: 1 })),
   };
 });
 
@@ -70,5 +72,51 @@ describe('cancelling a manual download', () => {
 
   it('refuses a download that has finished', async () => {
     await expect(cancelManualDownload(download({ status: 'IMPORTED' }), none, actor)).rejects.toBeInstanceOf(ManualDownloadCancelError);
+  });
+
+  it('waits for Arr to list a fresh grab before removing it', async () => {
+    vi.useFakeTimers();
+    try {
+      mocks.client.getQueue
+        .mockResolvedValueOnce({ records: [] })
+        .mockResolvedValue({ records: [{ id: 101, downloadId: HASH }] });
+      const cancelling = cancelManualDownload(download(), { ...none, removeFromClient: true }, actor);
+      await vi.advanceTimersByTimeAsync(2_000);
+      await cancelling;
+      expect(mocks.client.refreshMonitoredDownloads).toHaveBeenCalledOnce();
+      expect(mocks.client.deleteQueueItem).toHaveBeenCalledWith(101, { removeFromClient: true, blocklist: false });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('changes nothing when a grab never shows up in the queue', async () => {
+    vi.useFakeTimers();
+    try {
+      mocks.client.getQueue.mockResolvedValue({ records: [] });
+      const cancelling = cancelManualDownload(download(), { removeFromClient: true, blocklist: false, removeTitle: true }, actor);
+      const outcome = cancelling.catch((error: unknown) => error);
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(await outcome).toBeInstanceOf(ManualDownloadCancelError);
+      expect(mocks.client.deleteQueueItem).not.toHaveBeenCalled();
+      expect(mocks.client.deleteMovie).not.toHaveBeenCalled();
+      expect(mocks.update).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('cancels a download Arr already finished with, without waiting', async () => {
+    mocks.client.getQueue.mockResolvedValue({ records: [] });
+    mocks.client.getHistory.mockResolvedValue({ records: [{ eventType: 'grabbed' }, { eventType: 'downloadFailed' }] });
+
+    const message = await cancelManualDownload(download(), none, actor);
+
+    expect(message).toContain('not in Radarr');
+    expect(mocks.client.refreshMonitoredDownloads).not.toHaveBeenCalled();
+  });
+
+  it('refuses a download still being sent', async () => {
+    await expect(cancelManualDownload(download({ status: 'SUBMITTING_RELEASE' }), none, actor)).rejects.toBeInstanceOf(ManualDownloadCancelError);
   });
 });
