@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { ApiError, jsonFetcher } from '@/lib/query-fetch';
 import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
@@ -16,6 +17,8 @@ import {
   Search,
 } from 'lucide-react';
 import { PageHeader } from '@/components/layout/page-header';
+import { PageSpinner } from '@/components/ui/page-spinner';
+import { ManualDownloadForm, type LinkPrefill } from '@/components/torrents/manual-download-form';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -59,8 +62,31 @@ function magnetDisplayName(link: string): string | null {
   return new URLSearchParams(link.slice(queryStart + 1)).get('dn');
 }
 
+/** "Send again" from a linked download prefills its service, instance, title and release name. */
+function linkPrefill(params: URLSearchParams): LinkPrefill | null {
+  const service = params.get('linkService');
+  const externalId = Number(params.get('linkExternalId'));
+  if ((service !== 'RADARR' && service !== 'SONARR') || !Number.isInteger(externalId) || externalId <= 0) return null;
+  return {
+    service,
+    instanceId: params.get('linkInstance') ?? undefined,
+    externalId,
+    title: params.get('linkTitle') ?? '',
+    release: params.get('linkRelease') ?? '',
+  };
+}
+
 export default function AddTorrentPage() {
+  return (
+    <Suspense fallback={<PageSpinner />}>
+      <AddTorrentPageContent />
+    </Suspense>
+  );
+}
+
+function AddTorrentPageContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [addMode, setAddMode] = useState<'magnet' | 'file'>('magnet');
@@ -79,6 +105,15 @@ export default function AddTorrentPage() {
   const canManage = useCan('torrents.manage');
   const canDelete = useCan('torrents.delete');
   const canReview = canManage && canDelete;
+
+  // Sending to Sonarr/Radarr adds a title and pushes a release on the user's behalf.
+  const canAddMovies = useCan('movies.add');
+  const canAddSeries = useCan('series.add');
+  const canAddTorrents = useCan('torrents.add');
+  const canManageActivity = useCan('activity.manage');
+  const canLink = canAddTorrents && canManageActivity && (canAddMovies || canAddSeries);
+  const [prefill] = useState(() => (canLink ? linkPrefill(searchParams) : null));
+  const [destination, setDestination] = useState<'arr' | 'client'>(canLink ? 'arr' : 'client');
 
   const categoriesQuery = useQuery({
     queryKey: ['qbittorrent', 'categories'],
@@ -188,6 +223,11 @@ export default function AddTorrentPage() {
         <p className="text-sm text-muted-foreground">
           Add a torrent via magnet link or .torrent file.
         </p>
+        {prefill && (
+          <p className="text-xs text-muted-foreground">
+            Sending {prefill.title} again: paste the magnet link or choose the .torrent file again. Helprr does not keep them.
+          </p>
+        )}
 
         <div className="flex gap-2">
           <Button
@@ -240,6 +280,32 @@ export default function AddTorrentPage() {
           </>
         )}
 
+        {canLink && (
+          <div className="space-y-2" role="radiogroup" aria-label="Where it goes">
+            <DestinationOption
+              selected={destination === 'arr'}
+              onSelect={() => setDestination('arr')}
+              title="Send to Sonarr or Radarr"
+              badge="Recommended"
+              description="For a movie or an episode: it downloads through Sonarr or Radarr, which import and rename it into your library like anything they grab."
+            />
+            <DestinationOption
+              selected={destination === 'client'}
+              onSelect={() => setDestination('client')}
+              title="Add to qBittorrent only"
+              description="It downloads where you choose, and you can pick which files. Nothing is imported."
+            />
+          </div>
+        )}
+
+        {destination === 'arr' ? (
+          <ManualDownloadForm
+            release={addMode === 'magnet' ? { kind: 'magnet', magnet: magnetLink } : { kind: 'file', file: torrentFile }}
+            suggestedName={addMode === 'magnet' ? magnetDisplayName(magnetLink.trim()) ?? '' : ''}
+            prefill={prefill}
+          />
+        ) : (
+        <>
         <div className="space-y-3 pt-1">
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-muted-foreground" htmlFor="save-path">
@@ -326,8 +392,39 @@ export default function AddTorrentPage() {
             </Button>
           </div>
         </div>
+        </>
+        )}
       </div>
     </div>
+  );
+}
+
+function DestinationOption({ selected, onSelect, title, badge, description }: {
+  selected: boolean;
+  onSelect: () => void;
+  title: string;
+  badge?: string;
+  description: string;
+}) {
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={selected}
+      onClick={onSelect}
+      className={`press-feedback flex w-full items-start gap-3 rounded-lg border p-3 text-left transition-colors ${selected ? 'border-primary bg-primary/5' : 'border-border hover:bg-accent/40'}`}
+    >
+      <span className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${selected ? 'border-primary' : 'border-muted-foreground'}`}>
+        {selected && <span className="h-2 w-2 rounded-full bg-primary" />}
+      </span>
+      <span className="space-y-0.5">
+        <span className="flex items-center gap-2 text-sm font-medium">
+          {title}
+          {badge && <span className="rounded border border-primary/40 px-1 text-[10px] font-medium text-primary">{badge}</span>}
+        </span>
+        <span className="block text-xs text-muted-foreground">{description}</span>
+      </span>
+    </button>
   );
 }
 
