@@ -8,6 +8,7 @@ type MockContextAction = { id: string; label: string; onSelect?: () => void };
 
 const mocks = vi.hoisted(() => ({
   search: 'instance=lid-2',
+  canManageActivity: true,
   dialog: null as null | { open: boolean; title: string; service: string; searchParams: Record<string, unknown> },
 }));
 
@@ -15,7 +16,7 @@ vi.mock('next/navigation', () => ({
   useParams: () => ({ id: '9' }),
   useSearchParams: () => new URLSearchParams(mocks.search),
 }));
-vi.mock('@/components/permission-provider', () => ({ useCan: () => true }));
+vi.mock('@/components/permission-provider', () => ({ useCan: (cap: string) => cap !== 'activity.manage' || mocks.canManageActivity }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 vi.mock('@/components/layout/page-header', () => ({ PageHeader: ({ title }: { title: string }) => <h1>{title}</h1> }));
 // Each file row's quick actions as plain buttons beside it.
@@ -50,6 +51,7 @@ const routes: Record<string, unknown> = {
 
 beforeEach(() => {
   mocks.dialog = null;
+  mocks.canManageActivity = true;
   vi.stubGlobal('fetch', vi.fn(async (input: string) => {
     const url = new URL(input, 'http://localhost');
     return new Response(JSON.stringify(routes[url.pathname] ?? []), { status: 200, headers: { 'Content-Type': 'application/json' } });
@@ -75,5 +77,13 @@ describe('artist files page', () => {
     await user.click(within(screen.getByRole('group', { name: 'Actions for 01 - One.flac' })).getByRole('button', { name: 'Interactive search…' }));
     expect(screen.getByRole('dialog', { name: 'First Album' })).toBeTruthy();
     expect(mocks.dialog?.searchParams).toEqual({ albumId: 31, instanceId: 'lid-2' });
+  });
+
+  it('offers no Interactive search to a user who cannot manage activity', async () => {
+    mocks.canManageActivity = false;
+    renderPage();
+    const actions = await screen.findByRole('group', { name: 'Actions for 01 - Two.flac' });
+    expect(within(actions).queryByRole('button', { name: 'Interactive search…' })).toBeNull();
+    expect(within(actions).getByRole('button', { name: 'View information' })).toBeTruthy();
   });
 });
