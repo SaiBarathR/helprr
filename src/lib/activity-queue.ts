@@ -45,6 +45,12 @@ export async function bumpQueueCacheVersion(): Promise<void> {
 export type QueueResult = { records: QueueItem[]; totalRecords: number };
 const inflightQueue = new Map<string, Promise<QueueResult>>();
 
+// An instance that just failed is skipped for a while. The Activity page reads
+// its queue page by page and refetches every loaded page on each poll, so one
+// hung instance would otherwise cost a full timeout per page.
+const FAILED_INSTANCE_BACKOFF_MS = 30_000;
+const failedInstances = new Map<string, number>();
+
 type QueueClient = {
   getQueue(page: number, pageSize: number, includeUnknown?: boolean): Promise<QueueResponse>;
 };
@@ -107,8 +113,13 @@ async function loadQueue(read: QueueRead): Promise<{ result: QueueResult; comple
     const includeUnknown = source !== 'lidarr';
     const perInstance = await Promise.all(
       clients.map(async ({ connection, client }) => {
+        if ((failedInstances.get(connection.id) ?? 0) > Date.now()) {
+          complete = false;
+          return { records: [] as QueueItem[], totalRecords: 0 };
+        }
         try {
           const q = await read(client, includeUnknown);
+          failedInstances.delete(connection.id);
           return {
             records: q.records.map((record: QueueItem) => ({
               ...record,
@@ -120,6 +131,7 @@ async function loadQueue(read: QueueRead): Promise<{ result: QueueResult; comple
           };
         } catch {
           complete = false;
+          failedInstances.set(connection.id, Date.now() + FAILED_INSTANCE_BACKOFF_MS);
           return { records: [] as QueueItem[], totalRecords: 0 };
         }
       }),

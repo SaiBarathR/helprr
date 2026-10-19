@@ -43,4 +43,18 @@ describe('Activity queue reads', () => {
     expect(result.records.map((r) => r.id)).toEqual(Array.from({ length: 50 }, (_, n) => 51 + n));
     expect(result.totalRecords).toBe(450);
   });
+
+  it('skips an instance that just failed on the next pages, instead of waiting on it for each', async () => {
+    const down = { getQueue: vi.fn(async () => { throw new Error('timeout of 30000ms exceeded'); }) };
+    mocks.radarr.mockResolvedValue([
+      { connection: { id: 'r1', label: 'Radarr' }, client },
+      { connection: { id: 'r-down', label: 'Down' }, client: down },
+    ]);
+
+    await getQueueCached(1, 50);
+    const second = await getQueueCached(2, 50);
+
+    expect(down.getQueue).toHaveBeenCalledOnce();
+    expect(second.records).toHaveLength(50);
+  });
 });
