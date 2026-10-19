@@ -193,8 +193,9 @@ describe('destructive route audit wiring', () => {
       ),
     ];
     expect(responses.map((response) => response.status)).toEqual([status, status]);
-    expect(await responses[0].json()).toEqual({ error });
-    expect(await responses[1].json()).toEqual({ error });
+    const body = { error, ...(outcome === 'gone' ? { gone: true } : {}) };
+    expect(await responses[0].json()).toEqual(body);
+    expect(await responses[1].json()).toEqual(body);
     expect(mocks.bumpQbitCacheVersion).toHaveBeenCalledTimes(2);
   });
 

@@ -942,14 +942,15 @@ export default function TorrentsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ hash, action, ...extra }),
       });
-      // A delete of torrents qBittorrent no longer has: they are gone, as asked.
-      const alreadyGone = action === 'delete' && res.status === 404;
-      if (!res.ok && !alreadyGone) {
-        const data = await res.json();
-        throw new Error(data.error || 'Action failed');
+      let alreadyGone = false;
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        // A delete of torrents qBittorrent no longer has: they are gone, as asked.
+        if (action === 'delete' && res.status === 404 && data.gone === true) alreadyGone = true;
+        else throw new Error(data.error || 'Action failed');
       }
       if (!opts?.silent) {
-        if (alreadyGone) toast.info('It was already gone from qBittorrent');
+        if (alreadyGone) toast.info(hashes.size === 1 ? 'It was already gone from qBittorrent' : 'They were already gone from qBittorrent');
         else toast.success(torrentActionMessage(action, 'single'));
       }
       setTimeout(() => {

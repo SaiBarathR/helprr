@@ -87,8 +87,8 @@ async function postHandler(
           // The list may have changed (or a delete may have gone through): let the next read see it.
           await bumpQbitCacheVersion();
           logApiDuration('/api/qbittorrent/[hash]', startedAt, { method: 'POST', action, refused: outcome });
-          const { status, error } = TORRENT_DELETE_REFUSALS[outcome];
-          return NextResponse.json({ error }, { status });
+          const { status, ...refusal } = TORRENT_DELETE_REFUSALS[outcome];
+          return NextResponse.json(refusal, { status });
         }
         break;
       }

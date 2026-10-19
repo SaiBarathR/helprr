@@ -216,7 +216,7 @@ describe('unified operation audit', () => {
     await expect(deleteTorrentsConfirmed(client as never, 'aaa', true)).rejects.toThrow('qBittorrent still lists the torrent after the delete');
 
     client.getTorrents.mockResolvedValueOnce([{ hash: 'aaa' }, { hash: 'bbb' }]);
-    await expect(deleteTorrentsConfirmed(client as never, 'aaa|bbb', false)).rejects.toThrow('still lists 2 of the torrents');
+    await expect(deleteTorrentsConfirmed(client as never, 'aaa|bbb', false)).rejects.toThrow('still lists 2 of the 2 torrents');
 
     client.getTorrents.mockRejectedValueOnce(new Error('ECONNREFUSED'));
     await expect(deleteTorrentsConfirmed(client as never, 'aaa', false)).rejects.toThrow(TorrentDeleteUnconfirmedError);
@@ -259,7 +259,7 @@ describe('unified operation audit', () => {
       const client = qbit();
       client.getTorrents.mockResolvedValueOnce([torrent('aaa'), torrent('bbb')]).mockResolvedValueOnce([torrent('bbb')]);
       expect(await deleteTorrentsAudited(client as never, user, 'aaa|bbb', true)).toBe('unconfirmed');
-      expect(row()).toEqual(expect.objectContaining({ success: false, fileCount: 2, errorMessage: 'qBittorrent still lists the torrent after the delete' }));
+      expect(row()).toEqual(expect.objectContaining({ success: false, fileCount: 2, errorMessage: 'qBittorrent still lists 1 of the 2 torrents after the delete' }));
     });
 
     it('refuses "all", which qBittorrent reads as every torrent', async () => {

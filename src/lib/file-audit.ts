@@ -213,6 +213,7 @@ export class TorrentDeleteUnconfirmedError extends Error {
  * audit row must not say a torrent was deleted when it was not.
  */
 export async function deleteTorrentsConfirmed(client: QBittorrentClient, hashes: string, deleteFiles: boolean): Promise<void> {
+  const asked = hashes.split('|').length;
   await client.deleteTorrent(hashes, deleteFiles);
   let remaining: Awaited<ReturnType<QBittorrentClient['getTorrents']>>;
   try {
@@ -221,16 +222,19 @@ export async function deleteTorrentsConfirmed(client: QBittorrentClient, hashes:
     throw new TorrentDeleteUnconfirmedError(`qBittorrent took the delete but could not be asked whether the torrent is gone: ${error instanceof Error ? error.message : String(error)}`);
   }
   if (remaining.length > 0) {
-    throw new TorrentDeleteUnconfirmedError(`qBittorrent still lists ${remaining.length === 1 ? 'the torrent' : `${remaining.length} of the torrents`} after the delete`);
+    throw new TorrentDeleteUnconfirmedError(`qBittorrent still lists ${asked === 1 ? 'the torrent' : `${remaining.length} of the ${asked} torrents`} after the delete`);
   }
 }
 
 export type TorrentDeleteOutcome = 'deleted' | 'gone' | 'unconfirmed' | 'invalid';
 
-/** What each refused delete answers; the message never carries upstream text. */
-export const TORRENT_DELETE_REFUSALS: Record<Exclude<TorrentDeleteOutcome, 'deleted'>, { status: number; error: string }> = {
+/**
+ * What each refused delete answers; the message never carries upstream text.
+ * `gone` tells this 404 apart from any other (qBittorrent's own, a proxy's).
+ */
+export const TORRENT_DELETE_REFUSALS: Record<Exclude<TorrentDeleteOutcome, 'deleted'>, { status: number; error: string; gone?: true }> = {
   invalid: { status: 400, error: 'Name the torrents to delete by their hashes.' },
-  gone: { status: 404, error: 'That torrent is no longer in qBittorrent.' },
+  gone: { status: 404, error: 'That torrent is no longer in qBittorrent.', gone: true },
   unconfirmed: { status: 502, error: 'qBittorrent did not confirm the delete. Check the torrent list.' },
 };
 
