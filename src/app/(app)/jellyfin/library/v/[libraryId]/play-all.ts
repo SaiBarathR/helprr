@@ -26,10 +26,12 @@ export async function collectForPlayAll<T>(
  * collection type) the recursive listing also returns folders beside the
  * titles inside them, and each folder would be expanded again when queued:
  * titles twice, past the ceiling. Asking for titles only (IsNotFolder) avoids
- * that, and keeps the total a count of titles.
+ * that, and keeps the total a count of titles. Not while anything narrows the
+ * set (favourites, a genre, a tag, a letter…): a matching folder whose titles
+ * do not match themselves would then be dropped with its contents.
  */
-export function playAllFilters(filter: string, includeItemTypes: string | undefined): string {
-  return includeItemTypes ? filter : [filter, 'IsNotFolder'].filter(Boolean).join(',');
+export function playAllFilters(filter: string, includeItemTypes: string | undefined, narrowed: boolean): string {
+  return includeItemTypes || narrowed ? filter : 'IsNotFolder';
 }
 
 /** The on-screen notice when the queue is shorter than the set on screen, or null. */

@@ -131,7 +131,7 @@ export default function LibraryBrowserPage() {
       startIndex: String(startIndex),
     });
     if (includeItemTypes) next.set('includeItemTypes', includeItemTypes);
-    const filters = titlesOnly ? playAllFilters(filter, includeItemTypes) : filter;
+    const filters = titlesOnly ? playAllFilters(filter, includeItemTypes, activeFilters > 0) : filter;
     if (filters) next.set('filters', filters);
     if (genre) next.set('genres', genre);
     if (decade) {

@@ -51,13 +51,17 @@ describe('playAllNotice', () => {
 });
 
 describe('playAllFilters', () => {
-  it('asks for titles only when the library gives no item types, keeping the chosen filter', () => {
-    expect(playAllFilters('', undefined)).toBe('IsNotFolder');
-    expect(playAllFilters('IsUnplayed', undefined)).toBe('IsUnplayed,IsNotFolder');
+  it('asks for titles only when the library gives no item types and nothing narrows the set', () => {
+    expect(playAllFilters('', undefined, false)).toBe('IsNotFolder');
+  });
+
+  it('keeps folders while a filter narrows the set: a matching folder plays its titles', () => {
+    expect(playAllFilters('IsFavorite', undefined, true)).toBe('IsFavorite');
+    expect(playAllFilters('', undefined, true)).toBe('');
   });
 
   it('leaves a typed listing alone: its item types already exclude folders where they should', () => {
-    expect(playAllFilters('', 'Movie')).toBe('');
-    expect(playAllFilters('IsFavorite', 'MusicAlbum')).toBe('IsFavorite');
+    expect(playAllFilters('', 'Movie', false)).toBe('');
+    expect(playAllFilters('IsFavorite', 'MusicAlbum', true)).toBe('IsFavorite');
   });
 });
