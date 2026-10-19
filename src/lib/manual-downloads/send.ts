@@ -10,6 +10,7 @@ import type { ArrReleasePushInput, HistoryItem } from '@/types';
 import { arrClientFor, preflightManualDownload, resolveArrCallbackOrigin, TERMINAL_STATUSES, type PreflightInput, type PreflightResult } from './preflight';
 import { offerTorrentToArr, withdrawTorrentLink } from './torrent-link';
 import { titleInUse } from './title-use';
+import { redactUpstreamText } from './redact';
 
 /**
  * Sending a manual download to Sonarr/Radarr (the default, Arr-managed mode):
@@ -39,8 +40,9 @@ const GRAB_CHECK_ATTEMPTS = 6;
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+/** An error's text as kept on the workflow: upstream text can quote credentials. */
 function errorText(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+  return redactUpstreamText(error instanceof Error ? error.message : String(error));
 }
 
 async function withEvents(id: string): Promise<ManualDownloadWithEvents> {
@@ -394,7 +396,7 @@ class SendRun {
     }
 
     if (!pushError && (!result || result.rejected || !result.approved)) {
-      const reasons = result?.rejections?.length ? result.rejections.join('; ') : 'no reason given';
+      const reasons = result?.rejections?.length ? redactUpstreamText(result.rejections.join('; ')) : 'no reason given';
       await this.failAndUndo(`${this.app} turned the release down: ${reasons}.`);
       return;
     }
