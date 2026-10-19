@@ -391,14 +391,25 @@ import.
   names and sizes. A missing folder lists as empty rather than failing, and
   `filesystem/type` reports `folder` for a missing path, so Helprr checks a path by
   listing its parent and matching the name (and size for files). qBittorrent's
-  paths are translated through Arr's remote path mappings (longest remote path
-  first, then the path unchanged), and only a translation Arr can list is used.
+  paths are translated through Arr's remote path mappings for the host Arr's
+  qBittorrent download client names (Arr applies a mapping only to its own
+  host), longest remote path first, then the path unchanged, and only a
+  translation Arr can list is used.
 - **Import.** `POST /api/v3/command` with `name: ManualImport`,
   `importMode: copy` and the candidate's `path`, `movieId` or
   `seriesId`/`episodeIds`, `quality`, `languages` and `releaseGroup` hardlinks the
   file into the library (the source stays, so the torrent keeps seeding). History
-  records `downloadFolderImported` without a download id; the new movie or episode
-  file id is the proof.
+  records `downloadFolderImported` without a download id, with `droppedPath` (the
+  source) and `fileId`; that event, from the file's own path into a new file, is
+  the proof. An upgrade replaces (deletes or recycles) the file already there.
+- **Extras.** With **Import Extra Files** on (`config/mediamanagement`
+  `importExtraFiles`, `extraFileExtensions` such as `srt, .sub`), each import also
+  takes files with those extensions from the video's folder. Without a
+  `folderName` in the command, only that folder's top level is searched
+  (`ExtraService` in Sonarr `4.0.20.3014`).
+- **History filters.** Sonarr's paged `/api/v3/history` ignores `seriesId` (it
+  takes `seriesIds`); `GET /api/v3/history/series?seriesId=&eventType=3` and
+  Radarr's `/api/v3/history/movie?movieId=&eventType=3` return one title's imports.
 
 ## Before reporting an upstream compatibility problem
 
