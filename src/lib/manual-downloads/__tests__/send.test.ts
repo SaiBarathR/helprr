@@ -93,7 +93,7 @@ function plan(service: 'RADARR' | 'SONARR', overrides: Partial<PreflightResult['
     },
   };
 }
-const grab = (extra: Record<string, unknown> = {}) => ({ eventType: 'grabbed', movieId: 15, data: { downloadClientName: 'qBittorrent' }, ...extra });
+const grab = (extra: Record<string, unknown> = {}) => ({ eventType: 'grabbed', date: new Date().toISOString(), movieId: 15, data: { downloadClientName: 'qBittorrent' }, ...extra });
 
 function radarrClient() {
   return {
@@ -199,15 +199,35 @@ describe('sending a film to Radarr', () => {
   });
 
   it('removes the film it added when Radarr answers the push with an error and grabs nothing', async () => {
-    const response = { status: 500, statusText: 'Internal Server Error', headers: {}, config: { headers: new AxiosHeaders() }, data: {} };
-    mocks.client.pushRelease.mockRejectedValue(new AxiosError('Request failed with status code 500', 'ERR_BAD_RESPONSE', undefined, undefined, response));
+    const response = { status: 400, statusText: 'Bad Request', headers: {}, config: { headers: new AxiosHeaders() }, data: {} };
+    mocks.client.pushRelease.mockRejectedValue(new AxiosError('Request failed with status code 400', 'ERR_BAD_REQUEST', undefined, undefined, response));
     mocks.client.getHistory.mockResolvedValue({ records: [] });
 
     const download = await send();
 
     expect(download.status).toBe('FAILED');
-    expect(download.lastError).toContain('status code 500');
+    expect(download.lastError).toContain('status code 400');
     expect(mocks.client.deleteMovie).toHaveBeenCalledWith(15, false, false);
+  });
+
+  it("keeps the film when a gateway's 5xx stands between Helprr and Radarr's answer", async () => {
+    const response = { status: 504, statusText: 'Gateway Timeout', headers: {}, config: { headers: new AxiosHeaders() }, data: {} };
+    mocks.client.pushRelease.mockRejectedValue(new AxiosError('Request failed with status code 504', 'ERR_BAD_RESPONSE', undefined, undefined, response));
+    mocks.client.getHistory.mockResolvedValue({ records: [] });
+
+    const download = await send();
+
+    expect(download.status).toBe('BLOCKED');
+    expect(mocks.client.deleteMovie).not.toHaveBeenCalled();
+  });
+
+  it("does not take an earlier send's grab of the same release as this one's", async () => {
+    mocks.client.getHistory.mockResolvedValue({ records: [grab({ date: new Date(Date.now() - 13 * 3_600_000).toISOString() })] });
+
+    const download = await send();
+
+    expect(download.status).toBe('FAILED');
+    expect(download.lastError).toContain('accepted the release but did not grab it');
   });
 
   it('hands the same submission sent twice at once the one workflow', async () => {
@@ -303,6 +323,17 @@ describe('sending a film to Radarr', () => {
     expect(mocks.client.deleteMovie).not.toHaveBeenCalled();
   });
 
+  it('fails at once when Radarr could not be reached to add the film', async () => {
+    mocks.client.addMovie.mockRejectedValue(new AxiosError('connect ECONNREFUSED 127.0.0.1:7878', 'ECONNREFUSED'));
+    mocks.client.lookupMovie = vi.fn(async () => [{ tmdbId: 10331 }]);
+
+    const download = await send();
+
+    expect(download.status).toBe('FAILED');
+    expect(download.lastError).not.toContain('shows up');
+    expect(mocks.client.lookupMovie).not.toHaveBeenCalled();
+  });
+
   it('never takes over a film Radarr refused to add, though it is there now', async () => {
     const response = { status: 400, statusText: 'Bad Request', headers: {}, config: { headers: new AxiosHeaders() }, data: [{ errorMessage: 'This movie has already been added' }] };
     mocks.client.addMovie.mockRejectedValue(new AxiosError('Request failed with status code 400', 'ERR_BAD_REQUEST', undefined, undefined, response));
@@ -346,7 +377,7 @@ describe('sending an episode to Sonarr', () => {
     getEpisodeFiles: vi.fn(async () => []),
     deleteSeries: vi.fn(async () => {}),
     pushRelease: vi.fn(async () => ({ approved: true, rejected: false, rejections: [] })),
-    getHistory: vi.fn(async () => ({ records: [{ eventType: 'grabbed', seriesId: 6, episodeId: 236, data: {} }] })),
+    getHistory: vi.fn(async () => ({ records: [{ eventType: 'grabbed', date: new Date().toISOString(), seriesId: 6, episodeId: 236, data: {} }] })),
   });
   const sonarr = (overrides: Record<string, unknown> = {}) => settle(sendManualDownload({
     service: 'SONARR', instanceId: 'i1', externalId: 71471, source, releaseTitle: 'The.Beverly.Hillbillies.S01E01.720p.WEB',
