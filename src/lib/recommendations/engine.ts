@@ -10,7 +10,7 @@ import { arrKey } from '@/types/watch-status';
 import type { JellyfinItem } from '@/types/jellyfin';
 import { composeRecommendations } from './compose-rails';
 import { buildAnimeCandidates, buildLibraryCandidates, buildTmdbDiscoveryCandidates } from './candidates';
-import { getTasteProfile } from './profile-store';
+import { getTasteProfile, markTasteProfileStale } from './profile-store';
 import { collectWatchlistSignals } from './signals';
 import { jellyfinItemKey, tmdbItemKey } from './item-keys';
 import type { Candidate, FeedResponse, RecItem, RecommendationsResponse } from './rec-types';
@@ -321,6 +321,16 @@ export async function getRecommendationFeed(user: EngineUser, cursor: string | n
 /** Move the user to a new generation so the next read recomposes — instant
  * feedback after an explicit like/dislike/not_interested. A build already
  * running for the old generation can only save under the old one. */
+/**
+ * A linked account changed what the user's profile reads (their Jellyfin user
+ * or AniList link): rebuild the profile on its next use and drop the composed
+ * rails, so the link shows without waiting out the profile's 6-hour age.
+ */
+export async function refreshRecommendationsAfterLink(userId: string): Promise<void> {
+  await markTasteProfileStale(userId);
+  await invalidateRecommendations(userId);
+}
+
 export async function invalidateRecommendations(userId: string): Promise<void> {
   for (let attempt = 0; attempt < 2; attempt++) {
     try {

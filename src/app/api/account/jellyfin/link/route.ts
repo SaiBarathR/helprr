@@ -18,6 +18,7 @@ import {
 } from '@/lib/login-rate-limit';
 import { withApiLogging } from '@/lib/api-logger';
 import { readLoginCredentials } from '@/lib/server/login-input';
+import { refreshRecommendationsAfterLink } from '@/lib/recommendations/engine';
 
 /**
  * Connect the signed-in member's own Jellyfin account.
@@ -97,6 +98,11 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
       }
       throw error;
     }
+    // Recommendations now read this Jellyfin user's history. A failure here
+    // only delays that until the profile's next rebuild, so it does not fail the link.
+    await refreshRecommendationsAfterLink(auth.user.id).catch((error) =>
+      console.error('[Account] Failed to refresh recommendations after linking:', error),
+    );
   }
 
   await storeJellyfinToken(auth.user.id, result.accessToken);

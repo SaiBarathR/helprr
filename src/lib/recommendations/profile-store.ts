@@ -178,6 +178,16 @@ export function forgetLikedItems(userId: string, itemKeys: string[], db: RawExec
 }
 
 /**
+ * Leave the stored profile to be rebuilt on its next read, or by the polling
+ * sweep, instead of rebuilding it now (a rebuild scans Jellyfin). For a change
+ * to what the profile reads: the user's Jellyfin user or AniList link.
+ */
+export function markTasteProfileStale(userIds: string | string[], db: Pick<Prisma.TransactionClient, 'userTasteProfile'> = prisma) {
+  const userId = typeof userIds === 'string' ? userIds : { in: userIds };
+  return db.userTasteProfile.updateMany({ where: { userId }, data: { builtAt: new Date(0) } });
+}
+
+/**
  * Load the user's profile, rebuilding when missing, shape-versioned stale, or
  * older than PROFILE_MAX_AGE_MS. The read path is what most requests hit — a
  * fresh row costs one Postgres read.

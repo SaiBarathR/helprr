@@ -81,6 +81,7 @@ beforeEach(() => {
   const tx = {
     user: { findUnique: mocks.userFindUnique, update: mocks.userUpdate },
     session: { updateMany: mocks.sessionUpdateMany },
+    userTasteProfile: { updateMany: vi.fn(async () => ({ count: 0 })) },
   };
   mocks.transaction.mockImplementation(async (callback: (value: typeof tx) => unknown) => callback(tx));
 });
