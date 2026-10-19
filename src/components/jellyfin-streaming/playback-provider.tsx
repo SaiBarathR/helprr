@@ -808,8 +808,8 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
    * has loaded since. Reset by every start attempt.
    */
   const unreachableRef = useRef(false);
-  /** The latest start attempt's request, so Retry can repeat it. */
-  const lastRequestRef = useRef<{ itemId: string; request: PlayOptions } | null>(null);
+  /** The latest start attempt's request, and whether its stream attached, so Retry can repeat it. */
+  const lastRequestRef = useRef<{ itemId: string; request: PlayOptions; attached: boolean } | null>(null);
   const shuffledRef = useRef(false);
   const repeatRef = useRef<RepeatMode>('RepeatNone');
 
@@ -1226,7 +1226,8 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
       // a later episode must not retry a renderer already known to be broken.
       enableSsaRender: !assRenderBrokenRef.current,
     };
-    lastRequestRef.current = { itemId: nextItem.Id, request };
+    const attempt = { itemId: nextItem.Id, request, attached: false };
+    lastRequestRef.current = attempt;
     try {
       const nextStream = await fetchStream(nextItem.Id, request);
       if (superseded()) {
@@ -1243,6 +1244,7 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
         void stopEncodings(outgoingSession);
       }
       streamRef.current = nextStream;
+      attempt.attached = true;
       // The replacement element starts at zero until it seeks itself into place.
       // Reset here and not before the request: until this line the outgoing
       // stream is still the one a stop or a progress report describes, and its
@@ -2101,19 +2103,22 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     const pending = queueRef.current[indexRef.current];
     if (!pending) return;
     const current = streamRef.current?.item.Id === pending.Id ? streamRef.current : null;
-    const failed = lastRequestRef.current?.itemId === pending.Id ? lastRequestRef.current.request : null;
-    // Where the viewer was: the stream's position once it had played, otherwise
-    // where the failed attempt was asked to start (a seek or quality change
-    // mid-title), not the item's resume point.
-    const startTimeTicks = current && reachedStartRef.current
-      ? positionToReport(mediaRef.current, current, true) || secondsToTicks(positionRef.current)
-      : failed?.startTimeTicks;
+    const last = lastRequestRef.current?.itemId === pending.Id ? lastRequestRef.current : null;
+    // An attempt that failed before its stream attached (a seek or quality
+    // change mid-title) is retried at its own target; one that played and then
+    // failed, at where the viewer was. Never the item's stored resume point.
+    const startTimeTicks = last && !last.attached
+      ? last.request.startTimeTicks
+      : current && reachedStartRef.current
+        ? positionToReport(mediaRef.current, current, true) || secondsToTicks(positionRef.current)
+        : last?.request.startTimeTicks;
     void startItem(pending, {
       startTimeTicks,
       audioStreamIndex: audioIndexRef.current,
       subtitleStreamIndex: subtitleIndexRef.current,
-      mediaSourceId: failed?.mediaSourceId ?? current?.mediaSource.Id,
+      mediaSourceId: last?.request.mediaSourceId ?? current?.mediaSource.Id,
       maxStreamingBitrate: maxBitrate,
+      startPaused: pausedIntentRef.current,
     });
   }, [maxBitrate, startItem]);
 

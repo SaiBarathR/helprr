@@ -89,6 +89,8 @@ export interface Harness {
   releaseStreamInfo: () => void;
   /** Make `/api/jellyfin/stream/info` answer 500 for this item from now on. */
   failStreamInfoFor: (itemId: string) => void;
+  /** Let `/api/jellyfin/stream/info` answer for this item again. */
+  restoreStreamInfoFor: (itemId: string) => void;
   act: (fn: () => void | Promise<void>) => Promise<void>;
   cleanup: () => void;
 }
@@ -283,6 +285,7 @@ export async function mountPlayback(options: { hls?: boolean; audioIds?: string[
     holdStreamInfo: () => { gate = new Promise<void>((resolve) => { openGate = resolve; }); },
     releaseStreamInfo: () => { openGate?.(); gate = null; openGate = null; },
     failStreamInfoFor: (itemId) => { failing.add(itemId); },
+    restoreStreamInfoFor: (itemId) => { failing.delete(itemId); },
     act: run,
     cleanup: () => {
       act(() => { root.unmount(); });

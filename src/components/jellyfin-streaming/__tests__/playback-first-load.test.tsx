@@ -40,8 +40,9 @@ vi.mock('hls.js', () => ({
 }));
 // The start bound running out, without waiting 30 s for it.
 vi.mock('@/lib/jellyfin-playback/play-media', () => ({
-  playMedia: async () => {
+  playMedia: async (el: HTMLMediaElement) => {
     if (media.startFails) throw new Error('Playback did not start. Try again or choose another quality.');
+    await el.play();
     return true;
   },
 }));
@@ -132,5 +133,41 @@ describe('Retry after the title had played', () => {
     await h.act(async () => { h.playback().retry(); });
     await h.act(async () => { await vi.waitFor(() => expect(h.requests.length).toBeGreaterThan(before)); });
     expect(h.requests.at(-1)).toEqual(expect.objectContaining({ itemId: ITEM.Id, startTimeTicks: 1200 * 10_000_000 }));
+  });
+});
+
+describe('Retry after a failed seek or a paused restart', () => {
+  it('retries a progressive seek that failed at its target, not where the stream had played to', async () => {
+    media.startFails = false;
+    h = await mountPlayback({ progressive: true });
+    await h.act(async () => { await h.playback().playItems([ITEM], 0, { startTimeTicks: 0 }); });
+    await h.act(() => {
+      h.element().currentTime = 30;
+      h.element().dispatchEvent(new Event('timeupdate'));
+    });
+    h.failStreamInfoFor(ITEM.Id);
+    await h.act(async () => { h.playback().seek(600); });
+    await h.act(async () => { await vi.waitFor(() => expect(h.playback().status).toBe('error')); });
+
+    const before = h.requests.length;
+    await h.act(async () => { h.playback().retry(); });
+    await h.act(async () => { await vi.waitFor(() => expect(h.requests.length).toBeGreaterThan(before)); });
+    expect(h.requests.at(-1)).toEqual(expect.objectContaining({ startTimeTicks: 600 * 10_000_000 }));
+  });
+
+  it('keeps a paused title paused when Retry succeeds', async () => {
+    media.startFails = false;
+    h = await mountPlayback({ hls: true });
+    await h.act(async () => { await h.playback().playItems([ITEM], 0, { startTimeTicks: START }); });
+    await h.act(async () => { h.playback().togglePause(); });
+    await h.act(async () => { await vi.waitFor(() => expect(h.playback().status).toBe('paused')); });
+    h.failStreamInfoFor(ITEM.Id);
+    await h.act(async () => { await h.playback().setMaxBitrate(4_000_000); });
+    await h.act(async () => { await vi.waitFor(() => expect(h.playback().status).toBe('error')); });
+
+    h.restoreStreamInfoFor(ITEM.Id);
+    await h.act(async () => { h.playback().retry(); });
+    await h.act(async () => { await vi.waitFor(() => expect(h.playback().status).toBe('paused')); });
+    expect(h.media.paused()).toBe(true);
   });
 });
