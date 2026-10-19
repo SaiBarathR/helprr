@@ -43,7 +43,7 @@ import { toast } from 'sonner';
 import type { QueueItem } from '@/types';
 import { getRefreshIntervalMs } from '@/lib/client-refresh-settings';
 import { useRestorableInfiniteQuery as useInfiniteQuery } from '@/lib/hooks/use-restorable-infinite-query';
-import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query';
 import { ApiError, jsonFetcher, backoffRefetchInterval } from '@/lib/query-fetch';
 import { queryKeys } from '@/lib/query-keys';
 import { invalidateActivity } from '@/lib/query-invalidation';
@@ -251,6 +251,26 @@ function appNameFor(source?: string): string {
   if (source === 'radarr') return 'Radarr';
   if (source === 'lidarr') return 'Lidarr';
   return 'Sonarr';
+}
+
+// The Queue tab loads each instance's queue QUEUE_PAGE_SIZE downloads at a time.
+const QUEUE_QUERY_KEY = ['activity', 'queue', 'pages'] as const;
+const QUEUE_PAGE_SIZE = 50;
+type QueuePage = { records?: QueueRecord[]; totalRecords: number };
+
+/** Queue ids are only unique per *arr instance, so a record's identity includes its source and instance. */
+function queueRecordKey(rec: { source?: string; instanceId?: string; id: number }): string {
+  return `${rec.source ?? ''}|${rec.instanceId ?? ''}|${rec.id}`;
+}
+
+function uniqueQueueRecords(records: QueueRecord[]): QueueRecord[] {
+  const seen = new Set<string>();
+  return records.filter((rec) => {
+    const key = queueRecordKey(rec);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 /** What the remove dialog is acting on: a single queue record or a whole season-pack group. */
@@ -822,20 +842,31 @@ function QueueTab({
   }, []);
 
   // Poll the queue: pause when the tab is hidden, refetch on return, back off on
-  // failure — same behavior the old useVisibleInterval provided.
-  const queueQuery = useQuery({
-    queryKey: ['activity', 'queue'],
-    queryFn: jsonFetcher<{ records?: (QueueItem & { source?: string })[] }>('/api/activity/queue'),
-    select: (d) => d.records ?? [],
+  // failure — same behavior the old useVisibleInterval provided. Page N holds
+  // each instance's Nth QUEUE_PAGE_SIZE downloads; Load more adds a page.
+  const queueQuery = useInfiniteQuery({
+    queryKey: QUEUE_QUERY_KEY,
+    queryFn: async ({ pageParam, signal }) => {
+      const res = await fetch(`/api/activity/queue?page=${pageParam}&pageSize=${QUEUE_PAGE_SIZE}`, { signal });
+      if (!res.ok) throw new ApiError(res.status, `GET /api/activity/queue → ${res.status}`);
+      return (await res.json()) as QueuePage;
+    },
+    initialPageParam: 1,
+    getNextPageParam: (lastPage, allPages) => {
+      const loaded = allPages.reduce((sum, page) => sum + (page.records?.length ?? 0), 0);
+      return (lastPage.records?.length ?? 0) > 0 && loaded < (allPages[0]?.totalRecords ?? 0) ? allPages.length + 1 : undefined;
+    },
     refetchInterval: backoffRefetchInterval(refreshIntervalMs),
     refetchIntervalInBackground: false,
     refetchOnWindowFocus: true,
     staleTime: 0,
   });
+  const queueTotal = queueQuery.data?.pages[0]?.totalRecords ?? 0;
   // Imports started from the import page read as importing until the *arr's
-  // queue says how they went.
+  // queue says how they went. A download that moved between pages while they
+  // were fetched would otherwise show twice.
   const queue = useMemo(
-    () => applyPendingImports(queueQuery.data ?? [], pendingImports),
+    () => applyPendingImports(uniqueQueueRecords(queueQuery.data?.pages.flatMap((page) => page.records ?? []) ?? []), pendingImports),
     [queueQuery.data, pendingImports],
   );
   // The drawer offers the import when any record of the selected download needs
@@ -898,17 +929,16 @@ function QueueTab({
     // Optimistically drop the rows so removal feels instant: stop a racing poll
     // from clobbering the patch, snapshot for rollback, then patch the raw
     // { records } cache shape (the query's `select` derives the array from it).
-    await queryClient.cancelQueries({ queryKey: ['activity', 'queue'] });
-    const snapshot = queryClient.getQueryData<{ records?: (QueueItem & { source?: string })[] }>(['activity', 'queue']);
-    if (snapshot?.records) {
-      // Queue ids are only unique per *arr instance, so scope the identity by
-      // source + instance too — a bare id could drop an unrelated record.
-      const recordKey = (rec: { source?: string; instanceId?: string; id: number }) =>
-        `${rec.source ?? ''}|${rec.instanceId ?? ''}|${rec.id}`;
-      const removeIds = new Set(uiRemove.map(recordKey));
-      queryClient.setQueryData(['activity', 'queue'], {
+    await queryClient.cancelQueries({ queryKey: QUEUE_QUERY_KEY });
+    const snapshot = queryClient.getQueryData<InfiniteData<QueuePage>>(QUEUE_QUERY_KEY);
+    if (snapshot) {
+      const removeIds = new Set(uiRemove.map(queueRecordKey));
+      queryClient.setQueryData<InfiniteData<QueuePage>>(QUEUE_QUERY_KEY, {
         ...snapshot,
-        records: snapshot.records.filter((rec) => !removeIds.has(recordKey(rec))),
+        pages: snapshot.pages.map((page) => ({
+          ...page,
+          records: (page.records ?? []).filter((rec) => !removeIds.has(queueRecordKey(rec))),
+        })),
       });
     }
     try {
@@ -932,7 +962,7 @@ function QueueTab({
       adjustBadge('activity', -(delta.count || 1), -delta.attention);
     } catch (e) {
       // Roll back the optimistic drop; the finally-refetch reconciles a partial delete.
-      if (snapshot) queryClient.setQueryData(['activity', 'queue'], snapshot);
+      if (snapshot) queryClient.setQueryData(QUEUE_QUERY_KEY, snapshot);
       toast.error(e instanceof Error ? e.message : 'Failed to remove');
     }
     finally {
@@ -1325,6 +1355,24 @@ function QueueTab({
             </SwipeRow>
           );
         })}
+        {queue.length < queueTotal && (
+          <div className="space-y-1 pt-1 text-center">
+            <p className="text-xs text-muted-foreground">
+              {queue.length.toLocaleString()} of {queueTotal.toLocaleString()} queue items loaded
+            </p>
+            {queueQuery.hasNextPage && (
+              <Button
+                variant="ghost"
+                className="w-full"
+                onClick={() => queueQuery.fetchNextPage()}
+                disabled={queueQuery.isFetchingNextPage}
+              >
+                {queueQuery.isFetchingNextPage ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                Load more
+              </Button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Queue item detail drawer */}
@@ -1511,12 +1559,11 @@ function FailedImportsTab({ filterBy, instanceFilter }: { filterBy: string[]; in
     loadRefreshInterval();
   }, []);
 
-  // Shares the ['activity','queue'] cache with the Queue tab (same endpoint). The
-  // tabs are mutually exclusive, so this tab needs its own poller — QueueTab's
-  // interval doesn't run while Failed Imports is mounted.
+  // The server looks through every instance's whole queue for downloads waiting
+  // on a manual import, however far past the Queue tab's first pages they sit.
   const queueQuery = useQuery({
-    queryKey: ['activity', 'queue'],
-    queryFn: jsonFetcher<{ records?: (QueueItem & { source?: string })[] }>('/api/activity/queue'),
+    queryKey: ['activity', 'queue', 'needs-import'],
+    queryFn: jsonFetcher<{ records?: (QueueItem & { source?: string })[] }>('/api/activity/queue?view=needs-import'),
     select: (d) => d.records ?? [],
     refetchInterval: backoffRefetchInterval(refreshIntervalMs),
     refetchIntervalInBackground: false,

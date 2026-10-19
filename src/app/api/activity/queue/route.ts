@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
-import { getQueueCached } from '@/lib/activity-queue';
+import { getQueueCached, getQueueNeedingImportCached } from '@/lib/activity-queue';
 import { parsePageParams } from '@/lib/pagination';
 import { resolveConnection } from '@/lib/arr-instances';
 import {
@@ -30,6 +30,10 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
 
   try {
     const { searchParams } = new URL(request.url);
+    // The Failed tab: downloads waiting on a manual import, from the whole queue.
+    if (searchParams.get('view') === 'needs-import') {
+      return NextResponse.json(await getQueueNeedingImportCached(), { headers: QUEUE_CACHE_HEADERS });
+    }
     const { page, pageSize } = parsePageParams(searchParams, { defaultSize: 50, maxSize: 200 });
 
     const sourceValue = searchParams.get('source');

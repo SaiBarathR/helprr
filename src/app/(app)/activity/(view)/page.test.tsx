@@ -36,6 +36,8 @@ vi.mock('@/lib/store', async () => {
 });
 import { useUIStore } from '@/lib/store';
 import { resetPendingImportsForTests, trackManualImport } from '@/lib/manual-import-tracker';
+import { classifyQueueIssue } from '@/lib/queue-state';
+import { resetRouteViewStateForTests } from '@/lib/hooks/use-route-view-state';
 import ActivityPage from './page';
 
 const QUEUE = [
@@ -48,7 +50,18 @@ const BLOCKED = {
   status: 'completed', trackedDownloadState: 'importPending', trackedDownloadStatus: 'warning', seriesId: 9,
   statusMessages: [{ title: 'Show.S01E02.mkv', messages: ['Episode has a TBA title and recently aired'] }],
 };
-let queueRecords: unknown[] = QUEUE;
+type QueueFixture = { trackedDownloadState?: string; trackedDownloadStatus?: string; [key: string]: unknown };
+let queueRecords: QueueFixture[] = QUEUE;
+// The Queue tab pages each instance's queue; the Failed tab asks for the whole queue's stuck imports.
+function queueResponse(url: string): Response | null {
+  const params = new URL(url, 'http://localhost').searchParams;
+  if (!url.startsWith('/api/activity/queue?')) return null;
+  if (params.get('view') === 'needs-import') {
+    return Response.json({ records: queueRecords.filter((r) => classifyQueueIssue(r.trackedDownloadState, r.trackedDownloadStatus) === 'import') });
+  }
+  const page = Number(params.get('page')), size = Number(params.get('pageSize'));
+  return Response.json({ records: queueRecords.slice((page - 1) * size, page * size), totalRecords: queueRecords.length });
+}
 const INSTANCES = [
   { id: 'son-1', label: 'main', type: 'SONARR' },
   { id: 'rad-1', label: 'main', type: 'RADARR' },
@@ -65,9 +78,13 @@ beforeEach(() => {
   mocks.push.mockClear();
   queueRecords = QUEUE;
   resetPendingImportsForTests();
+  // Load more is remembered per route; each test starts from the first page.
+  window.sessionStorage.clear();
+  resetRouteViewStateForTests();
   window.history.replaceState(null, '', '/activity');
   vi.stubGlobal('fetch', vi.fn(async (url: string) => {
-    if (url === '/api/activity/queue') return Response.json({ records: queueRecords });
+    const queue = queueResponse(url);
+    if (queue) return queue;
     if (url === '/api/instances') return Response.json(INSTANCES);
     return Response.json({});
   }));
@@ -338,4 +355,32 @@ describe('Activity manual import from the queue', () => {
     await waitFor(() => expect(text()).not.toContain('Show.S01E02'));
     expect(text()).toContain('2 Tasks');
   }, 10_000);
+});
+
+describe('Activity queue beyond its first page', () => {
+  const download = (n: number) => ({ id: 100 + n, title: `Film.${n}`, source: 'radarr', instanceId: 'rad-1', downloadId: `d${n}`, size: 100, sizeleft: 50, status: 'downloading', trackedDownloadState: 'downloading' });
+
+  it('says how much of the queue is loaded and loads more on request', async () => {
+    queueRecords = Array.from({ length: 120 }, (_, n) => download(n));
+    await renderPage();
+    await waitFor(() => expect(text()).toContain('50 of 120 queue items loaded'));
+
+    await act(async () => button('Load more')!.click());
+    await waitFor(() => expect(text()).toContain('100 of 120 queue items loaded'));
+    await act(async () => button('Load more')!.click());
+    await waitFor(() => expect(text()).toContain('120 Tasks'));
+    expect(text()).not.toContain('queue items loaded');
+    expect(button('Load more')).toBeUndefined();
+  });
+
+  it('finds a stuck import on the Failed tab however far down the queue it is', async () => {
+    queueRecords = [...Array.from({ length: 80 }, (_, n) => download(n)), BLOCKED];
+    await renderPage();
+    await waitFor(() => expect(text()).toContain('50 of 81 queue items loaded'));
+    expect(text()).not.toContain('Show.S01E02');
+
+    const failedTab = [...document.querySelectorAll('[role="tab"]')].find((t) => t.textContent?.includes('Failed'))!;
+    await act(async () => failedTab.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 })));
+    await waitFor(() => expect(text()).toContain('Episode has a TBA title and recently aired'));
+  });
 });
