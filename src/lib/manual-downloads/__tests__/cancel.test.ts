@@ -20,6 +20,7 @@ vi.mock('@/lib/file-audit', () => ({
 }));
 vi.mock('../preflight', async (importOriginal) => ({ ...(await importOriginal<typeof import('../preflight')>()), arrClientFor: () => mocks.client }));
 
+import { AxiosError, AxiosHeaders } from 'axios';
 import { cancelManualDownload, ManualDownloadCancelError } from '../cancel';
 
 const HASH = '382CC016FF22946008ECDDCB0DDA820F42B0CD5A';
@@ -114,6 +115,27 @@ describe('cancelling a manual download', () => {
 
     expect(message).toContain('not in Radarr');
     expect(mocks.client.refreshMonitoredDownloads).not.toHaveBeenCalled();
+  });
+
+  it('cancels an older grab that is not listed, as one removed outside Helprr, without waiting', async () => {
+    mocks.client.getQueue.mockResolvedValue({ records: [] });
+    mocks.client.getHistory.mockResolvedValue({ records: [{ eventType: 'grabbed', date: new Date(Date.now() - 10 * 60_000).toISOString() }] });
+
+    const message = await cancelManualDownload(download({ status: 'BLOCKED' }), { ...none, removeTitle: true }, actor);
+
+    expect(message).toContain('not in Radarr');
+    expect(mocks.client.refreshMonitoredDownloads).not.toHaveBeenCalled();
+    expect(mocks.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: 'CANCELLED' }) }));
+  });
+
+  it('cancels when the film it added was already removed in Radarr', async () => {
+    const response = { status: 404, statusText: 'Not Found', headers: {}, config: { headers: new AxiosHeaders() }, data: {} };
+    mocks.client.deleteMovie.mockRejectedValue(new AxiosError('Request failed with status code 404', 'ERR_BAD_REQUEST', undefined, undefined, response));
+
+    const message = await cancelManualDownload(download(), { ...none, removeTitle: true }, actor);
+
+    expect(message).toContain('Night of the Living Dead is no longer in Radarr');
+    expect(mocks.update).toHaveBeenCalled();
   });
 
   it('refuses a download still being sent', async () => {

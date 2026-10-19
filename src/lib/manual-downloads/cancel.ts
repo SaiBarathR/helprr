@@ -1,4 +1,5 @@
 import type { ManualDownload } from '@prisma/client';
+import axios from 'axios';
 import { prisma } from '@/lib/db';
 import { resolveConnection } from '@/lib/arr-instances';
 import { runWithOperationAudit, type AuditActor } from '@/lib/file-audit';
@@ -28,6 +29,8 @@ export interface CancelOptions {
 
 // Arr lists a grab in its queue a few seconds after the push.
 const QUEUE_WAIT_MS = 15_000;
+/** An older grab missing from the queue was removed outside Helprr (the status worker's grace too). */
+const FRESH_GRAB_MS = 2 * 60_000;
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const SENDING = ['PREFLIGHT', 'CREATING_MEDIA', 'SUBMITTING_RELEASE'];
 /** History events after which a download is no longer in Arr's queue. */
@@ -58,11 +61,13 @@ export async function cancelManualDownload(download: ManualDownload, options: Ca
     .filter((record) => record.downloadId?.toUpperCase() === download.infoHash);
   let items = await listed();
   if (items.length === 0) {
-    // Grabbed and not settled means it belongs in the queue: ask Arr to look, and wait.
+    // A fresh grab not yet settled belongs in the queue: ask Arr to look, and wait.
     const history = await client.getHistory(1, 50, 'date', 'descending', { downloadId: download.infoHash });
-    const grabbed = history.records.some((record) => record.eventType === 'grabbed');
+    const grab = history.records.find((record) => record.eventType === 'grabbed');
     const settled = history.records.some((record) => SETTLED_EVENTS.includes(record.eventType));
-    if (grabbed && !settled) {
+    // An unknown grab time counts as fresh.
+    const fresh = grab !== undefined && !(Date.now() - Date.parse(grab.date) >= FRESH_GRAB_MS);
+    if (fresh && !settled) {
       await client.refreshMonitoredDownloads().catch(() => null);
       for (const deadline = Date.now() + QUEUE_WAIT_MS; items.length === 0 && Date.now() < deadline;) {
         await sleep(1_500);
@@ -103,28 +108,34 @@ export async function cancelManualDownload(download: ManualDownload, options: Ca
     if (!download.createdArrItem || !download.arrItemId) {
       done.push(`${download.arrItemTitle} was already in ${download.instanceLabel}, so it stays`);
     } else {
-      const hasFiles = service === 'RADARR'
-        ? (await (client as RadarrClient).getMovieFiles(download.arrItemId)).length > 0
-        : (await (client as SonarrClient).getEpisodeFiles(download.arrItemId)).length > 0;
-      if (hasFiles) {
-        done.push(`${download.arrItemTitle} has files now, so it stays`);
-      } else {
-        await runWithOperationAudit({
-          user: actor,
-          service,
-          instanceId: download.instanceId,
-          operation: 'DELETE_MEDIA',
-          targetType: service === 'RADARR' ? 'movie' : 'series',
-          targetId: download.arrItemId,
-          targetTitle: download.arrItemTitle,
-          itemCount: 1,
-          filesDeleted: false,
-          details: { manualDownloadId: download.id, reason: 'manual download cancelled' },
-        }, () => (service === 'RADARR'
-          ? (client as RadarrClient).deleteMovie(download.arrItemId!, false, false)
-          : (client as SonarrClient).deleteSeries(download.arrItemId!, false)));
-        void invalidateTaggedLibrary(service === 'RADARR' ? 'radarr' : 'sonarr', download.instanceId).catch(() => {});
-        done.push(`${download.arrItemTitle}, which this download had added, was removed`);
+      try {
+        const hasFiles = service === 'RADARR'
+          ? (await (client as RadarrClient).getMovieFiles(download.arrItemId)).length > 0
+          : (await (client as SonarrClient).getEpisodeFiles(download.arrItemId)).length > 0;
+        if (hasFiles) {
+          done.push(`${download.arrItemTitle} has files now, so it stays`);
+        } else {
+          await runWithOperationAudit({
+            user: actor,
+            service,
+            instanceId: download.instanceId,
+            operation: 'DELETE_MEDIA',
+            targetType: service === 'RADARR' ? 'movie' : 'series',
+            targetId: download.arrItemId,
+            targetTitle: download.arrItemTitle,
+            itemCount: 1,
+            filesDeleted: false,
+            details: { manualDownloadId: download.id, reason: 'manual download cancelled' },
+          }, () => (service === 'RADARR'
+            ? (client as RadarrClient).deleteMovie(download.arrItemId!, false, false)
+            : (client as SonarrClient).deleteSeries(download.arrItemId!, false)));
+          void invalidateTaggedLibrary(service === 'RADARR' ? 'radarr' : 'sonarr', download.instanceId).catch(() => {});
+          done.push(`${download.arrItemTitle}, which this download had added, was removed`);
+        }
+      } catch (error) {
+        // Removed in Arr already.
+        if (!(axios.isAxiosError(error) && error.response?.status === 404)) throw error;
+        done.push(`${download.arrItemTitle} is no longer in ${download.instanceLabel}`);
       }
     }
   }
