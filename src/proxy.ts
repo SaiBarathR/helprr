@@ -5,8 +5,10 @@ import { getJwtSecret } from '@/lib/jwt-secret';
 
 const COOKIE_NAME = 'helprr-session';
 
-// Prefix-matched public routes (login page + auth endpoints).
-const PUBLIC_PATHS = ['/login', '/api/auth/login', '/api/auth/jellyfin'];
+// Prefix-matched public routes (login page + auth endpoints), and the
+// single-use .torrent links Sonarr/Radarr fetch, which carry no session: the
+// unguessable token in the path is the credential (manual-downloads/torrent-link).
+const PUBLIC_PATHS = ['/login', '/api/auth/login', '/api/auth/jellyfin', '/api/manual-downloads/torrent/'];
 // Probes and the static offline document must work without a session. The worker
 // installs on /login too; redirecting offline.html would precache login HTML.
 // Match exactly so neighboring paths do not become silently exposed.

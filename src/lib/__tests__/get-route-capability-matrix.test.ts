@@ -13,6 +13,7 @@ const AUTH_CALLS = new Set([
   'requireCapability',
   'requireSession',
   'requireUser',
+  'requireUserAllCapabilities',
   'requireUserAnyCapability',
   'requireUserCapability',
 ]);
@@ -321,6 +322,12 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
   public: [
     'GET /api/health',
     'GET /api/ready',
+    // Sonarr/Radarr fetch it with no session; the single-use token is the credential.
+    'GET /api/manual-downloads/torrent/[token]',
+  ],
+  'all:torrents.view|activity.view': [
+    'GET /api/manual-downloads',
+    'GET /api/manual-downloads/[id]',
   ],
 };
 
@@ -457,7 +464,7 @@ describe('GET API route capability matrix', () => {
   const assignments = policyAssignments();
 
   it('explicitly assigns every GET handler exactly once', () => {
-    expect(handlers.size).toBe(210);
+    expect(handlers.size).toBe(213);
     expect([...assignments.keys()].sort()).toEqual([...handlers.keys()].sort());
   });
 
@@ -490,6 +497,22 @@ describe('GET API route capability matrix', () => {
       for (const route of routes) {
         const call = handlers.get(route)!.calls.find((c) => c.name === 'requireUserAnyCapability');
         expect(call, `${route} must use requireUserAnyCapability`).toBeDefined();
+        expect([...call!.stringArguments].sort(), route).toEqual([...capabilities].sort());
+      }
+    }
+  });
+
+  it('enforces every all-capability policy with the all-of helper', () => {
+    const known = new Set<string>(CAPABILITIES);
+    for (const [policy, routes] of Object.entries(POLICY_GROUPS)) {
+      if (!policy.startsWith('all:')) continue;
+      const capabilities = policy.slice(4).split('|');
+      for (const capability of capabilities) {
+        expect(known.has(capability), `Unknown GET matrix capability: ${capability}`).toBe(true);
+      }
+      for (const route of routes) {
+        const call = handlers.get(route)!.calls.find((c) => c.name === 'requireUserAllCapabilities');
+        expect(call, `${route} must use requireUserAllCapabilities`).toBeDefined();
         expect([...call!.stringArguments].sort(), route).toEqual([...capabilities].sort());
       }
     }

@@ -1,0 +1,74 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const mocks = vi.hoisted(() => ({
+  client: {} as Record<string, ReturnType<typeof vi.fn>>,
+  update: vi.fn(async () => ({})),
+  audits: [] as Array<{ operation: string; filesDeleted: boolean | null }>,
+}));
+vi.mock('@/lib/db', () => ({ prisma: { manualDownload: { update: mocks.update } } }));
+vi.mock('@/lib/arr-instances', () => ({ resolveConnection: vi.fn(async () => ({ id: 'i1' })) }));
+vi.mock('@/lib/cache/tagged-library', () => ({ invalidateTaggedLibrary: vi.fn(async () => {}) }));
+vi.mock('@/lib/activity-queue', () => ({
+  bumpQueueCacheVersion: vi.fn(async () => {}),
+  fetchAllQueueRecords: (client: { getQueue: () => Promise<unknown> }) => client.getQueue(),
+}));
+vi.mock('@/lib/file-audit', () => ({
+  runWithOperationAudit: async (input: { operation: string; filesDeleted: boolean | null }, call: () => Promise<unknown>) => {
+    mocks.audits.push({ operation: input.operation, filesDeleted: input.filesDeleted });
+    return call();
+  },
+}));
+vi.mock('../preflight', async (importOriginal) => ({ ...(await importOriginal<typeof import('../preflight')>()), arrClientFor: () => mocks.client }));
+
+import { cancelManualDownload, ManualDownloadCancelError } from '../cancel';
+
+const HASH = '382CC016FF22946008ECDDCB0DDA820F42B0CD5A';
+const download = (extra: Record<string, unknown> = {}) => ({
+  id: 'md1', status: 'QUEUED', service: 'RADARR', instanceId: 'i1', instanceLabel: 'Radarr', infoHash: HASH,
+  arrItemId: 15, arrItemTitle: 'Night of the Living Dead', createdArrItem: true, ...extra,
+}) as never;
+const actor = { id: 'u1', username: 'admin' };
+const none = { removeFromClient: false, blocklist: false, removeTitle: false };
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  mocks.audits.length = 0;
+  mocks.client = {
+    getQueue: vi.fn(async () => ({ records: [{ id: 101, downloadId: HASH }, { id: 102, downloadId: 'OTHER' }] })),
+    deleteQueueItem: vi.fn(async () => {}),
+    getMovieFiles: vi.fn(async () => []),
+    deleteMovie: vi.fn(async () => {}),
+  };
+});
+
+describe('cancelling a manual download', () => {
+  it("removes only this release from Arr's queue, keeping the torrent unless asked", async () => {
+    const message = await cancelManualDownload(download(), none, actor);
+
+    expect(mocks.client.deleteQueueItem).toHaveBeenCalledExactlyOnceWith(101, { removeFromClient: false, blocklist: false });
+    expect(message).toContain('the torrent stays in the download client');
+    expect(mocks.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: 'CANCELLED' }) }));
+  });
+
+  it('removes the torrent and data, and the film it added while it has no files', async () => {
+    const message = await cancelManualDownload(download(), { removeFromClient: true, blocklist: true, removeTitle: true }, actor);
+
+    expect(mocks.client.deleteQueueItem).toHaveBeenCalledWith(101, { removeFromClient: true, blocklist: true });
+    expect(mocks.client.deleteMovie).toHaveBeenCalledWith(15, false, false);
+    expect(mocks.audits).toEqual([{ operation: 'REMOVE_QUEUE', filesDeleted: true }, { operation: 'DELETE_MEDIA', filesDeleted: false }]);
+    expect(message).toContain('was removed');
+  });
+
+  it('never removes a film that was already there, or that has files', async () => {
+    await cancelManualDownload(download({ createdArrItem: false }), { ...none, removeTitle: true }, actor);
+    mocks.client.getMovieFiles.mockResolvedValue([{ id: 7 }]);
+    const message = await cancelManualDownload(download(), { ...none, removeTitle: true }, actor);
+
+    expect(mocks.client.deleteMovie).not.toHaveBeenCalled();
+    expect(message).toContain('has files now, so it stays');
+  });
+
+  it('refuses a download that has finished', async () => {
+    await expect(cancelManualDownload(download({ status: 'IMPORTED' }), none, actor)).rejects.toBeInstanceOf(ManualDownloadCancelError);
+  });
+});

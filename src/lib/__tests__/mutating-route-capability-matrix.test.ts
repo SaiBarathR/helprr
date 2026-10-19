@@ -56,6 +56,8 @@ const POLICY_GROUPS: Record<string, readonly string[]> = {
     'POST /api/users',
   ],
   'cap:activity.manage': [
+    'POST /api/manual-downloads/[id]/cancel',
+    'DELETE /api/manual-downloads/[id]',
     'POST /api/activity/manualimport',
     'POST /api/activity/manualimport/reprocess',
     'DELETE /api/activity/queue/[id]',
@@ -285,6 +287,11 @@ const SPECIAL_POLICIES: Record<string, SpecialPolicy> = {
     marker: 'SERVICE_ADD_CAPABILITY',
     capabilities: ['torrents.add', 'activity.manage'],
   },
+  'POST /api/manual-downloads': {
+    kind: 'service-capabilities',
+    marker: 'SERVICE_ADD_CAPABILITY',
+    capabilities: ['torrents.add', 'activity.manage'],
+  },
 };
 
 interface CallEvidence {
@@ -424,6 +431,7 @@ function hasCall(evidence: HandlerEvidence, name: string, stringArgument?: strin
 function hasCapabilityGuard(evidence: HandlerEvidence, capability: string): boolean {
   return hasCall(evidence, 'requireCapability', capability)
     || hasCall(evidence, 'requireUserCapability', capability)
+    || hasCall(evidence, 'requireUserAllCapabilities', capability)
     || evidence.handlerText.includes(`can(auth.user, '${capability}')`);
 }
 
@@ -432,7 +440,7 @@ describe('mutating API route capability matrix', () => {
   const assignments = policyAssignments();
 
   it('explicitly assigns every mutating handler exactly once', () => {
-    expect(handlers.size).toBe(162);
+    expect(handlers.size).toBe(165);
     expect([...assignments.keys()].sort()).toEqual([...handlers.keys()].sort());
   });
 
