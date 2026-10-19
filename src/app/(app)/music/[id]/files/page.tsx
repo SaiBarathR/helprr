@@ -81,6 +81,8 @@ export default function ArtistFilesPage() {
   const [selectedFile, setSelectedFile] = useState<LidarrTrackFile | null>(null);
   const [pendingDeleteFile, setPendingDeleteFile] = useState<LidarrTrackFile | null>(null);
   const [interactiveSearchOpen, setInteractiveSearchOpen] = useState(false);
+  // The album whose files the row belongs to: Interactive search looks for that album's releases.
+  const [searchAlbum, setSearchAlbum] = useState<{ id: number; title: string } | null>(null);
 
   const canDelete = useCan('music.delete');
   const canManageActivity = useCan('activity.manage');
@@ -238,7 +240,10 @@ export default function ArtistFilesPage() {
                           id: 'interactive',
                           label: 'Interactive search…',
                           icon: <Search className="h-4 w-4" />,
-                          onSelect: () => setInteractiveSearchOpen(true),
+                          onSelect: () => {
+                            setSearchAlbum({ id: group.albumId, title: group.title });
+                            setInteractiveSearchOpen(true);
+                          },
                         }] : []),
                         {
                           id: 'information',
@@ -348,14 +353,14 @@ export default function ArtistFilesPage() {
           )}
         </DrawerContent>
       </Drawer>
-      {artist && (
+      {searchAlbum && (
         <InteractiveSearchDialog
           open={interactiveSearchOpen}
           onOpenChange={setInteractiveSearchOpen}
-          title={artist.artistName}
+          title={searchAlbum.title}
           service="lidarr"
           searchParams={{
-            artistId: artist.id,
+            albumId: searchAlbum.id,
             ...(instance ? { instanceId: instance } : {}),
           }}
         />
