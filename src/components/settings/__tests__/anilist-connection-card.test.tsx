@@ -55,3 +55,11 @@ it('says connected once and cleans the URL once, however often it re-renders fir
   expect(toast.error).toHaveBeenCalledTimes(1);
   expect(mocks.replace).toHaveBeenCalledTimes(2);
 });
+
+it("shows the redirect URL for this browser's own origin in the setup steps", async () => {
+  mocks.search = new URLSearchParams('tab=anime');
+  mocks.viewer.mockResolvedValue({ configured: false, connected: false, user: null } as never);
+  await render();
+  await act(async () => (document.querySelector('button.grouped-row') as HTMLButtonElement).click());
+  expect(document.body.textContent).toContain(`${window.location.origin}/api/services/anilist/callback`);
+});

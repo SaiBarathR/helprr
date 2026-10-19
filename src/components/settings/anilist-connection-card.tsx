@@ -1,7 +1,7 @@
 'use client';
 
 import { fetchAnilistViewer } from '@/lib/anilist-viewer';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { ApiError } from '@/lib/query-fetch';
 import { usePathname, useSearchParams } from 'next/navigation';
@@ -36,6 +36,9 @@ const REASON_MESSAGES: Record<string, string> = {
   viewer_unavailable: 'Connected to AniList, but profile details could not be fetched yet.',
 };
 
+const subscribeToNothing = () => () => {};
+const browserRedirectUri = () => `${window.location.origin}/api/services/anilist/callback`;
+
 export function AnilistConnectionCard() {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -45,14 +48,8 @@ export function AnilistConnectionCard() {
   const [clientSecret, setClientSecret] = useState('');
   // Field-level validation (set by Connect, cleared per-field on change).
   const [fieldErrors, setFieldErrors] = useState<{ clientId?: string; clientSecret?: string }>({});
-  const [redirectUri, setRedirectUri] = useState('');
-
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- the origin is known only in the browser
-      setRedirectUri(`${window.location.origin}/api/services/anilist/callback`);
-    }
-  }, []);
+  // The origin is known only in the browser: empty while server rendering.
+  const redirectUri = useSyncExternalStore(subscribeToNothing, browserRedirectUri, () => '');
 
   const viewerQuery = useQuery({
     queryKey: ['anilist', 'viewer'],
