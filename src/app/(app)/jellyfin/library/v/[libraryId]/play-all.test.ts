@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { PLAY_ALL_MAX, collectForPlayAll, playAllNotice } from './play-all';
+import { PLAY_ALL_MAX, collectForPlayAll, playAllFilters, playAllNotice } from './play-all';
 
 // A catalog of `size` titles that pages like the route: at most `limit` from `startIndex`.
 function catalog(size: number) {
@@ -47,5 +47,21 @@ describe('playAllNotice', () => {
 
   it('also speaks up when the set came back shorter than its total', () => {
     expect(playAllNotice(300, 492, false)).toBe('Queued 300 of 492 titles');
+  });
+});
+
+describe('playAllFilters', () => {
+  it('asks for titles only when the library gives no item types and nothing narrows the set', () => {
+    expect(playAllFilters('', undefined, false)).toBe('IsNotFolder');
+  });
+
+  it('keeps folders while a filter narrows the set: a matching folder plays its titles', () => {
+    expect(playAllFilters('IsFavorite', undefined, true)).toBe('IsFavorite');
+    expect(playAllFilters('', undefined, true)).toBe('');
+  });
+
+  it('leaves a typed listing alone: its item types already exclude folders where they should', () => {
+    expect(playAllFilters('', 'Movie', false)).toBe('');
+    expect(playAllFilters('IsFavorite', 'MusicAlbum', true)).toBe('IsFavorite');
   });
 });

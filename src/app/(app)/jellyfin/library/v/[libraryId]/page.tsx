@@ -23,7 +23,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/co
 import { cn } from '@/lib/utils';
 import type { CatalogCardShape } from '@/lib/jellyfin-playback/image';
 import type { CatalogFiltersResponse, CatalogItemsResponse } from '@/types/jellyfin-streaming';
-import { PLAY_ALL_MAX, collectForPlayAll, playAllNotice } from './play-all';
+import { PLAY_ALL_MAX, collectForPlayAll, playAllFilters, playAllNotice } from './play-all';
 
 /** The reference install runs a 100-item library page; matching it keeps the
  *  "1-100 of 492" range honest and the grid a sane size. */
@@ -121,7 +121,7 @@ export default function LibraryBrowserPage() {
   const includeItemTypes = defaultInclude(collectionType, view);
   const shape = shapeFor(collectionType, view, cinematic);
 
-  const buildQuery = (limit: number, startIndex: number): string => {
+  const buildQuery = (limit: number, startIndex: number, titlesOnly = false): string => {
     const next = new URLSearchParams({
       parentId: params.libraryId,
       recursive: 'true',
@@ -131,7 +131,8 @@ export default function LibraryBrowserPage() {
       startIndex: String(startIndex),
     });
     if (includeItemTypes) next.set('includeItemTypes', includeItemTypes);
-    if (filter) next.set('filters', filter);
+    const filters = titlesOnly ? playAllFilters(filter, includeItemTypes, activeFilters > 0) : filter;
+    if (filters) next.set('filters', filters);
     if (genre) next.set('genres', genre);
     if (decade) {
       // Jellyfin takes a comma-separated year list, so expand the bucket.
@@ -169,7 +170,7 @@ export default function LibraryBrowserPage() {
     setQueueing(true);
     try {
       const { items: collected, total } = await collectForPlayAll((limit, startIndex) =>
-        jsonFetcher<CatalogItemsResponse>(`/api/jellyfin/catalog/items?${buildQuery(limit, startIndex)}`)(),
+        jsonFetcher<CatalogItemsResponse>(`/api/jellyfin/catalog/items?${buildQuery(limit, startIndex, true)}`)(),
       );
       const notice = playAllNotice(collected.length, total, shuffle);
       if (notice) {
