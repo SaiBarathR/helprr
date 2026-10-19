@@ -66,6 +66,7 @@ import {
   Filter,
   FolderOpen,
   Settings,
+  Link2,
   Gauge,
   Copy,
   CheckCircle2,
@@ -670,6 +671,7 @@ export default function TorrentsPage() {
   const canDeleteTorrents = useCan('torrents.delete');
   const canBandwidthTorrents = useCan('torrents.bandwidth');
   const canAddTorrents = useCan('torrents.add');
+  const canViewLinked = useCan('activity.view');
   const hasHydrated = useUIStore((s) => s.hasHydrated);
   const filter = useUIStore((s) => s.torrentsFilter);
   const setFilter = useUIStore((s) => s.setTorrentsFilter);
@@ -1480,6 +1482,21 @@ export default function TorrentsPage() {
                 </button>
               </TooltipTrigger>
               <TooltipContent>Settings</TooltipContent>
+            </Tooltip>
+          )}
+
+          {canViewLinked && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent active:bg-accent/80 transition-colors"
+                  onClick={() => router.push('/torrents/linked')}
+                  aria-label="Linked downloads"
+                >
+                  <Link2 className="h-5 w-5" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>Linked downloads (sent to Sonarr/Radarr)</TooltipContent>
             </Tooltip>
           )}
 

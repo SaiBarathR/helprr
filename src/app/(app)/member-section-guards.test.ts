@@ -13,6 +13,7 @@ describe('section page guards', () => {
     ['activity/import', 'activity.manage'],
     ['calendar', 'calendar.view'],
     ['insights', 'insights.view'],
+    ['torrents/linked', 'activity.view'],
   ])('/%s requires %s', async (section, capability) => {
     const { default: Layout } = await import(`./${section}/layout`);
     await Layout({ children: null });

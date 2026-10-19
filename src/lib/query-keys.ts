@@ -41,6 +41,9 @@ export const queryKeys = {
   adminPolling: () => ['admin', 'polling-status'] as const,
   widgetServiceAvailability: () => ['services', 'widget-availability'] as const,
   libraryGaps: () => ['library-gaps'] as const,
+  /** Manual downloads sent to Sonarr/Radarr: lists by filter, and one with its events. */
+  manualDownloads: (filter: string) => ['manual-downloads', 'list', filter] as const,
+  manualDownload: (id: string) => ['manual-downloads', 'detail', id] as const,
 
   // ── Config / account ─────────────────────────────────────────────
   /** /api/services: every connection with its settings (admin screens). */
