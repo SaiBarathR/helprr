@@ -63,6 +63,9 @@ function newRequestId(): string {
   return Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
+/** Check and Send both run under this key, so the page can hold still while either is on its way. */
+export const MANUAL_DOWNLOAD_MUTATION_KEY = ['manual-downloads', 'submit'] as const;
+
 const SERVICE_PATH = { RADARR: 'radarr', SONARR: 'sonarr' } as const;
 const APP = { RADARR: 'Radarr', SONARR: 'Sonarr' } as const;
 
@@ -72,14 +75,12 @@ const APP = { RADARR: 'Radarr', SONARR: 'Sonarr' } as const;
  * everything first (the preflight) and shows what Arr will do; sending is
  * only offered for the exact choices that were checked.
  */
-export function ManualDownloadForm({ release, suggestedName, prefill: requested }: ManualDownloadFormProps) {
+export function ManualDownloadForm({ release, suggestedName, prefill }: ManualDownloadFormProps) {
   const router = useRouter();
   const canMovies = useCan('movies.add');
   const canSeries = useCan('series.add');
   const canMonitorMovies = useCan('movies.editMonitoring');
   const canMonitorSeries = useCan('series.editMonitoring');
-  // "Send again" for a service this user may not add to starts a fresh form instead.
-  const prefill = requested && (requested.service === 'RADARR' ? canMovies : canSeries) ? requested : null;
 
   const [service, setService] = useState<Service>(prefill?.service ?? (canMovies ? 'RADARR' : 'SONARR'));
   const [instanceId, setInstanceId] = useState<string | undefined>(undefined);
@@ -216,6 +217,7 @@ export function ManualDownloadForm({ release, suggestedName, prefill: requested 
   };
 
   const check = useMutation({
+    mutationKey: MANUAL_DOWNLOAD_MUTATION_KEY,
     mutationFn: async (asked: { key: string; data: FormData }) => {
       const res = await fetch('/api/manual-downloads/preflight', { method: 'POST', body: asked.data });
       const data = await res.json().catch(() => null);
@@ -227,6 +229,7 @@ export function ManualDownloadForm({ release, suggestedName, prefill: requested 
   });
 
   const send = useMutation({
+    mutationKey: MANUAL_DOWNLOAD_MUTATION_KEY,
     mutationFn: async (asked: { key: string; data: FormData }) => {
       const res = await fetch('/api/manual-downloads', { method: 'POST', body: asked.data });
       const data = await res.json().catch(() => null);
@@ -385,7 +388,7 @@ export function ManualDownloadForm({ release, suggestedName, prefill: requested 
 
       {monitorOffered && target && !(service === 'RADARR' ? canMonitorMovies : canMonitorSeries) && (
         <p className="text-xs text-muted-foreground">
-          {app} only takes a release for a monitored title, and this account may not change monitoring: ask someone who may to monitor {target.title} first.
+          {app} only takes a release for a monitored title, and this account may not change monitoring: ask someone who may to monitor {target.title}{service === 'SONARR' ? ' and the episodes this release covers' : ''} first.
         </p>
       )}
       {monitorOffered && target && (service === 'RADARR' ? canMonitorMovies : canMonitorSeries) && (
