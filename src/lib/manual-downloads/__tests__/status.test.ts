@@ -8,9 +8,14 @@ const mocks = vi.hoisted(() => ({
   connection: vi.fn(async () => ({ id: 'i1' })),
   torrents: vi.fn(async () => [] as unknown[]),
   settle: vi.fn(async () => true),
+  proof: vi.fn(async () => ({ proved: false, fileIds: [] as number[], missing: 1 })),
 }));
 vi.mock('@/lib/service-helpers', () => ({ getQBittorrentClient: async () => ({ getTorrents: mocks.torrents }) }));
-vi.mock('../fallback', () => ({ settleDownloaded: mocks.settle }));
+vi.mock('../fallback', () => ({
+  settleDownloaded: mocks.settle,
+  fallbackImportProof: mocks.proof,
+  SETTLING_STATES: new Set(['moving', 'checkingUP', 'checkingDL', 'checkingResumeData', 'metaDL', 'forcedMetaDL']),
+}));
 vi.mock('@/lib/db', () => ({ prisma: { manualDownload: { findMany: vi.fn(async () => mocks.rows), update: mocks.update } } }));
 vi.mock('@/lib/arr-instances', () => ({ resolveConnection: mocks.connection }));
 vi.mock('@/lib/activity-queue', () => ({ fetchAllQueueRecords: mocks.queue }));
@@ -228,7 +233,7 @@ describe('following a fallback download', () => {
     mocks.rows = [fallback()];
     mocks.torrents.mockResolvedValue([torrent({ progress: 1, state: 'stalledUP' })]);
     await run();
-    expect(mocks.settle).toHaveBeenCalledWith(expect.objectContaining({ id: 'md1' }), mocks.client, '/mnt/exos22/Downloads/');
+    expect(mocks.settle).toHaveBeenCalledWith(expect.objectContaining({ id: 'md1' }), mocks.client);
 
     for (const waiting of [fallback({ status: 'NEEDS_MAPPING' }), fallback({ status: 'BLOCKED' }), fallback({ status: 'IMPORT_PENDING', updatedAt: minutesAgo(2) })]) {
       mocks.settle.mockClear();
@@ -238,10 +243,12 @@ describe('following a fallback download', () => {
     }
     expect(mocks.update).not.toHaveBeenCalled();
 
-    // A scan or import that never finished (a restart) runs again.
+    // A scan, import or cancel that never finished (a restart) is picked up, even with the torrent gone.
+    mocks.torrents.mockResolvedValue([]);
     mocks.rows = [fallback({ status: 'IMPORT_PENDING', updatedAt: minutesAgo(15) })];
     await run();
     expect(mocks.settle).toHaveBeenCalledTimes(1);
+    expect(mocks.update).not.toHaveBeenCalled();
   });
 
   it('says so when the torrent leaves qBittorrent, and leaves everything when qBittorrent does not answer', async () => {
@@ -255,14 +262,14 @@ describe('following a fallback download', () => {
     expect(mocks.update).not.toHaveBeenCalled();
   });
 
-  it('proves its own import by new file ids, or reports the failed command', async () => {
+  it("proves its own import by Arr's history of its files, or reports the failed command", async () => {
     mocks.rows = [fallback({ status: 'IMPORTING', arrCommandId: 77, baselineFileIds: [] })];
-    mocks.client.getMovieFiles.mockResolvedValue([{ id: 9 }]);
+    mocks.proof.mockResolvedValueOnce({ proved: true, fileIds: [9], missing: 0 });
     await run();
+    expect(mocks.proof).toHaveBeenCalledWith(expect.objectContaining({ id: 'md1' }), mocks.client);
     expect(mocks.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: 'IMPORTED', importedFileIds: [9] }) }));
 
     mocks.update.mockClear();
-    mocks.client.getMovieFiles.mockResolvedValue([]);
     mocks.client.getCommand = vi.fn(async () => ({ status: 'failed', message: 'Access to the path is denied' }));
     await run();
     expect(mocks.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({

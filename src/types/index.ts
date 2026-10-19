@@ -1212,6 +1212,10 @@ export interface MediaManagementConfig {
   autoUnmonitorPreviouslyDownloadedMovies?: boolean;
   /** Import copies as hardlinks when possible instead of byte-copy. */
   copyUsingHardlinks?: boolean;
+  /** Import files with these extensions found next to an imported video (subtitles, nfo...). */
+  importExtraFiles?: boolean;
+  /** Comma-separated, e.g. "srt, .sub". */
+  extraFileExtensions?: string;
 }
 
 // Lookup results

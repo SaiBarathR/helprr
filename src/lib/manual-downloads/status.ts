@@ -9,7 +9,7 @@ import type { RadarrClient } from '@/lib/radarr-client';
 import type { SonarrClient } from '@/lib/sonarr-client';
 import type { HistoryItem, QBittorrentTorrent, QueueItem } from '@/types';
 import { arrClientFor, TERMINAL_STATUSES } from './preflight';
-import { settleDownloaded } from './fallback';
+import { fallbackImportProof, settleDownloaded, SETTLING_STATES } from './fallback';
 import { redactUpstreamText } from './redact';
 
 /**
@@ -212,13 +212,10 @@ async function settleInterrupted(download: ManualDownload, client: RadarrClient 
   return { status: 'FAILED', message: `The send was interrupted before ${app} grabbed the release.${added}` };
 }
 
-// qBittorrent states in which the files are not settled on disk yet.
-const BUSY = new Set(['moving', 'checkingUP', 'checkingDL', 'checkingResumeData', 'metaDL', 'forcedMetaDL']);
-
-/** A fallback import Helprr started: proved by new file ids, or failed as Arr's command says. */
+/** A fallback import Helprr started: proved by Arr's history of its own files, or failed as Arr's command says. */
 async function followImport(download: ManualDownload, client: RadarrClient | SonarrClient, app: string): Promise<Outcome | null> {
-  const proof = importProof(download, await currentFiles(download, client));
-  if (proof.proved) return { status: 'IMPORTED', message: `${app} imported it.`, data: { importedFileIds: proof.newFiles } };
+  const proof = await fallbackImportProof(download, client);
+  if (proof.proved) return { status: 'IMPORTED', message: `${app} imported it.`, data: { importedFileIds: proof.fileIds } };
   if (!download.arrCommandId) return null;
   let command;
   try {
@@ -231,7 +228,7 @@ async function followImport(download: ManualDownload, client: RadarrClient | Son
     return { status: 'BLOCKED', message: `${app}'s import failed: ${command.message || 'no reason given'}. Fix it, then import again.` };
   }
   if (command.status === 'completed') {
-    const which = download.service === 'SONARR' && proof.missing.length > 0 ? ` for ${proof.missing.length} of the episodes` : '';
+    const which = download.service === 'SONARR' && proof.missing > 0 ? ` for ${proof.missing} of the episodes` : '';
     return { status: 'BLOCKED', message: `${app} finished the import, but ${download.arrItemTitle} has no new file${which}. Check ${app}'s logs, then import again.` };
   }
   return null;
@@ -245,12 +242,15 @@ async function followImport(download: ManualDownload, client: RadarrClient | Son
 async function fromFallback(download: ManualDownload, client: RadarrClient | SonarrClient, app: string, torrent: QBittorrentTorrent | undefined): Promise<Outcome | null> {
   if (download.status === 'IMPORTING') return followImport(download, client, app);
   if (download.status === 'NEEDS_MAPPING' || download.status === 'BLOCKED') return null;
-  // A scan or import is under way; one taking longer than this was interrupted and runs again.
-  if (download.status === 'IMPORT_PENDING' && Date.now() - download.updatedAt.getTime() < INTERRUPTED_AFTER_MS) return null;
+  if (download.status === 'IMPORT_PENDING') {
+    // A scan, import or cancel is under way; one taking longer than this was interrupted and is picked up.
+    if (Date.now() - download.updatedAt.getTime() >= INTERRUPTED_AFTER_MS) await settleDownloaded(download, client);
+    return null;
+  }
   if (!torrent) return { status: 'BLOCKED', message: 'The torrent is no longer in qBittorrent.' };
-  if (torrent.progress < 1 || BUSY.has(torrent.state)) return { status: 'DOWNLOADING', message: 'Downloading.' };
-  // Records its own outcome.
-  await settleDownloaded(download, client, torrent.save_path);
+  if (torrent.progress < 1 || SETTLING_STATES.has(torrent.state)) return { status: 'DOWNLOADING', message: 'Downloading.' };
+  // Checks each chosen file in qBittorrent, and records its own outcome.
+  await settleDownloaded(download, client);
   return null;
 }
 

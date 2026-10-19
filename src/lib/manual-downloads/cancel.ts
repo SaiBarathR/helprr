@@ -10,6 +10,8 @@ import type { RadarrClient } from '@/lib/radarr-client';
 import type { SonarrClient } from '@/lib/sonarr-client';
 import { arrClientFor, SENDING_STATUSES, TERMINAL_STATUSES } from './preflight';
 import { titleInUse } from './title-use';
+import { claimFallback, releaseClaim, type FallbackClaim } from './fallback';
+import { redactUpstreamText } from './redact';
 
 /**
  * Cancelling a manual download. Arr owns the download, so cancelling removes
@@ -52,14 +54,32 @@ export async function cancelManualDownload(download: ManualDownload, options: Ca
     throw new ManualDownloadCancelError('This download is still being sent. Try again once it has been.');
   }
   if (!download.instanceId) throw new ManualDownloadCancelError(`${download.instanceLabel} no longer exists in Helprr.`);
+  if (download.mode !== 'QBIT_REVIEWED') return cancelSteps(download, options, actor, null);
+
+  const app = download.service === 'RADARR' ? 'Radarr' : 'Sonarr';
+  if (download.status === 'IMPORTING') throw new ManualDownloadCancelError(`${app} is importing it. Try again once it has finished.`);
+  if (download.status === 'IMPORT_PENDING') throw new ManualDownloadCancelError('Helprr is reading or importing the files. Try again in a moment.');
+  // A cancel takes the download like a scan or an import does, so none of them runs while it is cancelled.
+  const claim = await claimFallback(download, 'Cancelling.');
+  if (!claim) throw new ManualDownloadCancelError('This download changed meanwhile. Look at it again, then cancel.');
+  try {
+    return await cancelSteps(download, options, actor, claim);
+  } catch (error) {
+    // Back as it was, so it can be cancelled again.
+    await releaseClaim(claim, download.status, `Cancelling did not finish: ${redactUpstreamText(error instanceof Error ? error.message : String(error))}`, { lastError: download.lastError }).catch(() => false);
+    throw error;
+  }
+}
+
+/** What cancelling does; under a claim for a fallback download, whose final write needs it still held. */
+async function cancelSteps(download: ManualDownload, options: CancelOptions, actor: AuditActor, claim: FallbackClaim | null): Promise<string> {
   const service = download.service === 'RADARR' ? 'RADARR' : 'SONARR';
   const app = service === 'RADARR' ? 'Radarr' : 'Sonarr';
-  const connection = await resolveConnection(service, download.instanceId);
+  const connection = await resolveConnection(service, download.instanceId!);
   const client = arrClientFor(service, connection);
   const done: string[] = [];
 
   if (download.mode === 'QBIT_REVIEWED') {
-    if (download.status === 'IMPORTING') throw new ManualDownloadCancelError(`${app} is importing it. Try again once it has finished.`);
     // The torrent is Helprr's own in qBittorrent; Arr's queue never had it.
     if (options.removeFromClient) {
       const qbit = await getQBittorrentClient();
@@ -164,7 +184,7 @@ export async function cancelManualDownload(download: ManualDownload, options: Ca
           }, () => (service === 'RADARR'
             ? (client as RadarrClient).deleteMovie(download.arrItemId!, false, false)
             : (client as SonarrClient).deleteSeries(download.arrItemId!, false)));
-          void invalidateTaggedLibrary(service === 'RADARR' ? 'radarr' : 'sonarr', download.instanceId).catch(() => {});
+          void invalidateTaggedLibrary(service === 'RADARR' ? 'radarr' : 'sonarr', connection.id).catch(() => {});
           done.push(`${download.arrItemTitle}, which this download had added, was removed`);
         }
       } catch (error) {
@@ -176,6 +196,10 @@ export async function cancelManualDownload(download: ManualDownload, options: Ca
   }
 
   const message = `Cancelled: ${done.join('; ')}.`;
+  if (claim) {
+    if (!(await releaseClaim(claim, 'CANCELLED', message))) throw new ManualDownloadCancelError('This download changed meanwhile. Look at it again.');
+    return message;
+  }
   await prisma.manualDownload.update({
     where: { id: download.id },
     data: { status: 'CANCELLED', completedAt: new Date(), events: { create: { status: 'CANCELLED', message } } },
