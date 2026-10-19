@@ -71,6 +71,17 @@ export function isOpen(download: Pick<ManualDownloadView, 'status'>): boolean {
 /** What happens next, or what the user can do about it. */
 export function nextStep(download: ManualDownloadView): string {
   const app = appName(download);
+  if (download.mode === 'QBIT_REVIEWED') {
+    // The advanced fallback: Helprr's own torrent, imported through Arr's manual import.
+    switch (download.status) {
+      case 'DOWNLOADING': return 'Downloading the chosen files in qBittorrent.';
+      case 'IMPORT_PENDING': return `Downloaded. Helprr is asking ${app} what the files are.`;
+      case 'IMPORTING': return `${app} is importing the files.`;
+      case 'NEEDS_MAPPING': return `${app} is not sure what some files are: map them, or fix it in ${app} and scan again.`;
+      case 'BLOCKED': return `Fix what is in the way, then scan again or map the files. Or cancel it here.`;
+      default: break;
+    }
+  }
   switch (download.status) {
     case 'PREFLIGHT':
     case 'CREATING_MEDIA':
@@ -89,7 +100,7 @@ export function nextStep(download: ManualDownloadView): string {
     case 'BLOCKED':
       return `Fix it in ${app} (Activity → Queue, or its manual import), or cancel it here. Helprr keeps checking.`;
     case 'NEEDS_MAPPING':
-      return 'Choose which files go where.';
+      return 'Choose what the files are.';
     case 'FAILED':
       return 'Nothing more will happen. Send the release again once the reason is fixed.';
     case 'CANCELLED':

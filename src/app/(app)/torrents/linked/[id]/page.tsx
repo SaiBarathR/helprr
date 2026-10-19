@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useParams } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Check, ExternalLink, Loader2, RotateCcw, Unlink, X } from 'lucide-react';
+import { Check, ExternalLink, ListChecks, Loader2, RefreshCw, RotateCcw, Unlink, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
 import { PageHeader } from '@/components/layout/page-header';
@@ -12,7 +12,7 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useCan } from '@/components/permission-provider';
 import { ApiError, jsonFetcher } from '@/lib/query-fetch';
 import { queryKeys } from '@/lib/query-keys';
-import { formatDistanceToNowShort } from '@/lib/format';
+import { formatBytes, formatDistanceToNowShort } from '@/lib/format';
 import {
   appName,
   isOpen,
@@ -70,6 +70,14 @@ export default function LinkedDownloadPage() {
     },
     onError: onActionError,
   });
+  const rescan = useMutation({
+    mutationFn: () => sendJson(`/api/manual-downloads/${id}/rescan`, 'POST'),
+    onSuccess: () => {
+      toast.success('Scanned again');
+      void queryClient.invalidateQueries({ queryKey: ['manual-downloads'] });
+    },
+    onError: onActionError,
+  });
   const unlink = useMutation({
     mutationFn: () => sendJson(`/api/manual-downloads/${id}`, 'DELETE'),
     onSuccess: () => {
@@ -105,6 +113,10 @@ export default function LinkedDownloadPage() {
   const reached = Math.max(-1, ...events.map((event) => pipelineStep(event.status)), pipelineStep(download.status));
   const troubled = statusTone(download.status) === 'attention';
   const href = titleHref(download);
+  const fallback = download.mode === 'QBIT_REVIEWED';
+  const waitingOnUser = fallback && (download.status === 'NEEDS_MAPPING' || download.status === 'BLOCKED');
+  const chosenFiles = (download.files ?? []).filter((file) => file.selected);
+  const scanned = chosenFiles.some((file) => file.scanned);
   const resendHref = `/torrents/add?${new URLSearchParams({
     linkService: download.service,
     ...(download.instanceId ? { linkInstance: download.instanceId } : {}),
@@ -156,6 +168,18 @@ export default function LinkedDownloadPage() {
               Open {download.service === 'RADARR' ? 'movie' : 'series'}
             </Button>
           )}
+          {canManage && waitingOnUser && scanned && (
+            <Button size="sm" onClick={() => router.push(`/torrents/linked/${download.id}/map`)}>
+              <ListChecks className="mr-1.5 h-4 w-4" />
+              Map files
+            </Button>
+          )}
+          {canManage && waitingOnUser && (
+            <Button variant="outline" size="sm" onClick={() => rescan.mutate()} disabled={rescan.isPending}>
+              {rescan.isPending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-1.5 h-4 w-4" />}
+              Scan again
+            </Button>
+          )}
           {canAdd && !isOpen(download) && download.status !== 'IMPORTED' && (
             <Button variant="outline" size="sm" onClick={() => router.push(resendHref)}>
               <RotateCcw className="mr-1.5 h-4 w-4" />
@@ -193,6 +217,27 @@ export default function LinkedDownloadPage() {
             {download.completedAt && <Row label="Finished">{formatDistanceToNowShort(download.completedAt)}</Row>}
           </dl>
         </section>
+
+        {fallback && chosenFiles.length > 0 && (
+          <section className="space-y-2">
+            <h2 className="tracked-caps text-[11px] text-muted-foreground">
+              Files: {chosenFiles.length} of {download.files!.length} chosen
+            </h2>
+            <ul className="divide-y divide-border rounded-xl border bg-card">
+              {chosenFiles.map((file) => (
+                <li key={file.id} className="space-y-0.5 px-4 py-2.5">
+                  <p className="break-all text-sm">{file.path.split(/[\\/]/).pop()}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {formatBytes(file.size)}
+                    {file.decision === 'IMPORT' ? ' · Imported as decided' : file.decision === 'IGNORE' ? ' · Left out' : ''}
+                    {file.arr ? ` · ${app} reads: ${[file.arr.movie?.title ?? file.arr.series?.title, file.arr.episodes.map((episode) => `S${String(episode.seasonNumber).padStart(2, '0')}E${String(episode.episodeNumber).padStart(2, '0')}`).join(', '), file.arr.quality].filter(Boolean).join(' · ') || 'nothing'}` : ''}
+                  </p>
+                  {file.arr && file.arr.rejections.length > 0 && <p className="text-xs text-amber-500">{file.arr.rejections.join('; ')}</p>}
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
 
         <section className="space-y-2">
           <h2 className="tracked-caps text-[11px] text-muted-foreground">History</h2>

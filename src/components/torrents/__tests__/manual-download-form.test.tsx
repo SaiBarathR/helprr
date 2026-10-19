@@ -151,4 +151,23 @@ describe('sending a release to Sonarr/Radarr', () => {
     expect(await screen.findByText('Paste a magnet link first.')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Check' }).hasAttribute('disabled')).toBe(true);
   });
+
+  it('offers choosing files first, handing over the title and add options instead of checking a release', async () => {
+    const onChooseFiles = vi.fn();
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <ManualDownloadForm release={{ kind: 'magnet', magnet: MAGNET }} suggestedName="x" prefill={null} onChooseFiles={onChooseFiles} />
+      </QueryClientProvider>,
+    );
+    const user = await chooseFilm();
+    await user.click(screen.getByRole('checkbox', { name: /Choose files before download/ }));
+    expect(screen.queryByLabelText('Release name')).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Next: choose files' }));
+    expect(onChooseFiles).toHaveBeenCalledWith({
+      service: 'RADARR', instanceId: 'r1', externalId: 10331, title: 'Night of the Living Dead',
+      add: { qualityProfileId: 4, rootFolderPath: '/data/Movies', tags: [], minimumAvailability: 'released' },
+    });
+    expect(mocks.bodies).toEqual([]);
+  });
 });

@@ -35,6 +35,8 @@ export function CancelManualDownloadDialog({ open, onOpenChange, download, busy,
   const canDeleteTitle = useCan(download.service === 'RADARR' ? 'movies.delete' : 'series.delete');
   const offerTitle = download.createdArrItem && download.arrItemId !== null && canDeleteTitle;
   const client = download.downloadClientName ?? 'the download client';
+  // The fallback's torrent is Helprr's own: Arr never queued it, so there is nothing to remove or blocklist there.
+  const fallback = download.mode === 'QBIT_REVIEWED';
 
   const [choices, setChoices] = useState<CancelChoices>({ removeFromClient: canDeleteTorrent, blocklist: false, removeTitle: offerTitle });
   // Fresh defaults each time it opens (adjusted during render, not in an effect).
@@ -45,9 +47,9 @@ export function CancelManualDownloadDialog({ open, onOpenChange, download, busy,
   }
 
   const effects = [
-    `Remove it from ${app}'s queue on ${download.instanceLabel}.`,
+    ...(fallback ? [] : [`Remove it from ${app}'s queue on ${download.instanceLabel}.`]),
     choices.removeFromClient ? `Delete the torrent and its downloaded data from ${client}.` : `Leave the torrent in ${client}.`,
-    ...(choices.blocklist ? [`Blocklist this release in ${app}, without searching for another.`] : []),
+    ...(choices.blocklist && !fallback ? [`Blocklist this release in ${app}, without searching for another.`] : []),
     ...(choices.removeTitle ? [`Remove ${download.arrItemTitle} from ${download.instanceLabel}, only if it still has no files.`] : []),
   ];
 
@@ -68,13 +70,15 @@ export function CancelManualDownloadDialog({ open, onOpenChange, download, busy,
               label={`Delete the torrent and its data from ${client}`}
             />
           )}
-          <Choice
-            checked={choices.blocklist}
-            onChange={(blocklist) => setChoices({ ...choices, blocklist })}
-            disabled={busy}
-            label={`Blocklist this release in ${app}`}
-            hint={`${app} refuses it from now on.`}
-          />
+          {!fallback && (
+            <Choice
+              checked={choices.blocklist}
+              onChange={(blocklist) => setChoices({ ...choices, blocklist })}
+              disabled={busy}
+              label={`Blocklist this release in ${app}`}
+              hint={`${app} refuses it from now on.`}
+            />
+          )}
           {offerTitle && (
             <Choice
               checked={choices.removeTitle}
@@ -84,7 +88,7 @@ export function CancelManualDownloadDialog({ open, onOpenChange, download, busy,
               hint="This download added it. It stays if it has files by then."
             />
           )}
-          {choices.removeFromClient && !choices.blocklist && !choices.removeTitle && (
+          {!fallback && choices.removeFromClient && !choices.blocklist && !choices.removeTitle && (
             <p className="text-xs text-muted-foreground">
               Without a blocklist, {app} counts this as a recent grab and may turn down another release of this title for 12 hours.
             </p>
@@ -100,7 +104,7 @@ export function CancelManualDownloadDialog({ open, onOpenChange, download, busy,
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={busy}>Keep it</Button>
-          <Button variant="destructive" onClick={() => onConfirm(choices)} disabled={busy}>
+          <Button variant="destructive" onClick={() => onConfirm(fallback ? { ...choices, blocklist: false } : choices)} disabled={busy}>
             {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Cancel download
           </Button>
