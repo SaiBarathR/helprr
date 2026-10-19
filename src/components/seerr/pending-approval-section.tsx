@@ -138,15 +138,9 @@ export function PendingApprovalSection({
                 onSelect: () => remove(r.id),
               },
             ]
-          : [
-              {
-                id: 'cancel',
-                label: 'Cancel request',
-                icon: <X className="h-4 w-4" />,
-                destructive: true,
-                onSelect: () => remove(r.id),
-              },
-            ];
+          // A member's only action is Cancel, which is already a visible button;
+          // the menu needs at least two actions, so it offers none.
+          : [];
         return (
           <QuickContextMenu
             key={r.id}
