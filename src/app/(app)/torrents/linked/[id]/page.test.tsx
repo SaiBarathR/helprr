@@ -22,7 +22,7 @@ import LinkedDownloadPage from './page';
 const now = new Date().toISOString();
 function blocked(extra: Record<string, unknown> = {}) {
   return {
-    id: 'md1', mode: 'ARR_MANAGED', status: 'BLOCKED', service: 'RADARR', instanceId: 'r1', instanceLabel: 'radarr-anime',
+    id: 'md1', mode: 'ARR_MANAGED', status: 'BLOCKED', service: 'RADARR', instanceId: 'r1', instanceLabel: 'radarr-4k',
     externalId: 10331, arrItemId: 15, arrItemTitle: 'Night of the Living Dead', createdArrItem: true, targetEpisodeIds: [],
     releaseTitle: 'Night.of.the.Living.Dead.1968.1080p.BluRay.x264-GRP', source: 'MAGNET', infoHash: 'ABC', torrentName: 'x',
     downloadClientName: 'qBittorrent', lastError: 'Radarr cannot import it: Sample', attempts: 1, createdByUsername: 'admin',
@@ -73,7 +73,7 @@ describe('a linked download', () => {
     await user.click(await screen.findByRole('button', { name: /Cancel download/ }));
     const dialog = screen.getByRole('dialog');
     expect(within(dialog).getByText('Delete the torrent and its downloaded data from qBittorrent.')).toBeTruthy();
-    expect(within(dialog).getByText('Remove Night of the Living Dead from radarr-anime, only if it still has no files.')).toBeTruthy();
+    expect(within(dialog).getByText('Remove Night of the Living Dead from radarr-4k, only if it still has no files.')).toBeTruthy();
 
     await user.click(within(dialog).getByRole('checkbox', { name: /Blocklist this release/ }));
     await user.click(within(dialog).getByRole('checkbox', { name: /Remove Night of the Living Dead/ }));

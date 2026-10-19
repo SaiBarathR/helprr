@@ -432,6 +432,56 @@ its `CleanupHistory` row is written. If that row cannot be written the failure i
 logged and the outcome stands, so a torrent that was removed is never reported as
 a failed removal.
 
+## Manual Downloads (Sonarr/Radarr)
+
+Add Torrent can send a magnet or `.torrent` to Sonarr or Radarr for one title
+(`src/lib/manual-downloads/`, `src/app/api/manual-downloads/`, model
+`ManualDownload` with its `ManualDownloadEvent` history). Arr owns the download;
+Helprr authors no parsing and never trusts its own reading of a release.
+
+- **Arr-managed (default).** `preflight.ts` asks Arr: the title by TMDB/TVDB id,
+  the add options, `GET /api/v3/parse` for the release name (Radarr maps by TMDB
+  id only when the year agrees; Sonarr maps by title first), monitoring, an
+  earlier grab of the same hash, and the download client (Arr's tag and priority
+  rules; several eligible clients mean the user chooses). `send.ts` records the
+  workflow under an advisory lock (one active workflow per instance and hash;
+  `@@unique([createdByUserId, clientRequestId])` makes a retried submission
+  return the same workflow), adds the title with searches off when it is new,
+  pushes the release (`POST /api/v3/release/push` with `downloadClientId`), and
+  proves the grab from Arr's history by download id. A `.torrent` is offered to
+  Arr through a single-use link: the bytes sit in Redis under a 256-bit token
+  for two minutes (`GETDEL`), served by the public, unlogged
+  `/api/manual-downloads/torrent/[token]` at `ARR_CALLBACK_ORIGIN` (else
+  `APP_ORIGIN`). A failure before the release reaches Arr removes a title the
+  workflow added while it has no files; after it, the title stays and the
+  workflow goes to `BLOCKED` for the status worker to follow.
+- **Advanced fallback (`QBIT_REVIEWED`).** For choosing files first: the torrent
+  is Helprr's own in qBittorrent, outside any Arr category, and every file is
+  recorded (`ManualDownloadFile`) as chosen or not. The check proves Arr can see
+  qBittorrent's save folder (remote path mappings, longest first, then the path
+  unchanged, each confirmed by Arr's own folder listing). After completion,
+  Arr's manual import reads each chosen file (never with a title id, which makes
+  Arr scan the title's folder); only the chosen files' answers are kept. Helprr
+  imports on its own only when Arr maps every chosen video to the target without
+  objection, otherwise `NEEDS_MAPPING` until the user decides per file on the
+  Map files page. Imports use `ManualImport` with `importMode: copy`
+  (hardlinks), so the torrent keeps seeding. A scan or import first claims the
+  workflow (a conditional update to `IMPORT_PENDING`), so races import once.
+- **Status authority.** The `pollManualDownloads` polling source reconciles
+  every open workflow each cycle against its own instance: Arr's queue, then its
+  history, or qBittorrent for the fallback. `IMPORTED` requires file ids the
+  target did not have before (a new movie file; for Sonarr, a new file on every
+  target episode). Writes apply only from the status read at the start of the
+  cycle, so a cancel landing meanwhile wins. Sends interrupted by a restart are
+  settled after 10 minutes from Arr's grab history.
+- **Permissions and audit.** Sending needs `torrents.add` + `activity.manage` +
+  the service's `movies.add` / `series.add` (the fallback also `torrents.manage`);
+  reading needs `torrents.view` + `activity.view`; cancel's removals need
+  `torrents.delete` and `movies.delete` / `series.delete`. Adding a title
+  (`CREATE_MEDIA`), pushing a release (`PUSH_RELEASE`), imports, queue removals,
+  torrent and title deletions are all operation-audited. Magnets and torrent
+  links are never stored or logged: a workflow keeps the info hash and name.
+
 ## PWA and Push
 
 Authenticated routes share scroll restoration in `AppShell`. Navigation captures

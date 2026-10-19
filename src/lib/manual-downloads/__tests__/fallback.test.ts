@@ -45,7 +45,7 @@ vi.mock('@/lib/db', () => {
     },
   };
 });
-vi.mock('@/lib/arr-instances', () => ({ resolveConnection: vi.fn(async () => ({ id: 'i1', label: 'radarr-anime' })) }));
+vi.mock('@/lib/arr-instances', () => ({ resolveConnection: vi.fn(async () => ({ id: 'i1', label: 'radarr-4k' })) }));
 vi.mock('@/lib/service-helpers', () => ({ getQBittorrentClient: async () => mocks.qbit }));
 vi.mock('@/lib/cache/tagged-library', () => ({ invalidateTaggedLibrary: vi.fn(async () => {}) }));
 vi.mock('@/lib/file-audit', () => ({
@@ -87,7 +87,7 @@ beforeEach(() => {
   mocks.audits = [];
   mocks.active = null;
   mocks.qbit = {
-    getTorrents: vi.fn(async () => [{ hash: HASH.toLowerCase(), name: FILM, state: 'stoppedDL', category: '', save_path: '/mnt/exos22/Downloads/', progress: 0 }]),
+    getTorrents: vi.fn(async () => [{ hash: HASH.toLowerCase(), name: FILM, state: 'stoppedDL', category: '', save_path: '/mnt/media/Downloads/', progress: 0 }]),
     getTorrentFiles: vi.fn(async () => torrentFiles),
     setFilePriority: vi.fn(async () => {}),
     resumeTorrent: vi.fn(async () => {}),
@@ -95,11 +95,11 @@ beforeEach(() => {
   mocks.arr = {
     lookupMovie: vi.fn(async () => [{ title: 'Night of the Living Dead', year: 1968, tmdbId: 10331, id: 0 }]),
     getDownloadClients: vi.fn(async () => [{ id: 1, name: 'qBittorrent', enable: true, protocol: 'torrent', priority: 1, fields: [{ name: 'movieCategory', value: 'radarr' }] }]),
-    getRemotePathMappings: vi.fn(async () => [{ id: 1, host: 'host.docker.internal', remotePath: '/mnt/exos22/', localPath: '/data/' }]),
+    getRemotePathMappings: vi.fn(async () => [{ id: 1, host: 'qbittorrent', remotePath: '/mnt/media/', localPath: '/data/' }]),
     getQualityProfiles: vi.fn(async () => [{ id: 1, name: 'HD' }]),
     getRootFolders: vi.fn(async () => [{ path: '/data/Movies' }]),
     getTags: vi.fn(async () => []),
-    // Arr sees /data/Downloads (through the mapping), not /mnt/exos22/Downloads.
+    // Arr sees /data/Downloads (through the mapping), not /mnt/media/Downloads.
     listFolder: vi.fn(async (folder: string) => {
       if (folder === '/data/') return { directories: [{ name: 'Downloads', path: '/data/Downloads/' }], files: [] };
       if (folder === `/data/Downloads/${FILM}/`) return { directories: [], files: [{ name: `${FILM}.mkv`, path: '', size: 1000 }, { name: `${FILM}.nfo`, path: '', size: 1 }] };
@@ -119,7 +119,7 @@ describe('checking the fallback before the torrent starts', () => {
     const result = await checkFallback(input());
     expect(result.ok).toBe(true);
     expect(result.plan.arrSavePath).toBe('/data/Downloads/');
-    expect(result.plan.mapping).toEqual({ remotePath: '/mnt/exos22/', localPath: '/data/' });
+    expect(result.plan.mapping).toEqual({ remotePath: '/mnt/media/', localPath: '/data/' });
     expect(result.plan.torrent?.files.map((file) => file.selected)).toEqual([true, false, false]);
   });
 
@@ -131,11 +131,11 @@ describe('checking the fallback before the torrent starts', () => {
   });
 
   it('refuses a torrent that started, sits in a category Radarr watches, or has a file that is not there', async () => {
-    mocks.qbit.getTorrents.mockResolvedValue([{ hash: HASH.toLowerCase(), name: FILM, state: 'downloading', category: 'radarr', save_path: '/mnt/exos22/Downloads/', progress: 0.1 }]);
+    mocks.qbit.getTorrents.mockResolvedValue([{ hash: HASH.toLowerCase(), name: FILM, state: 'downloading', category: 'radarr', save_path: '/mnt/media/Downloads/', progress: 0.1 }]);
     const result = await checkFallback(input({ selectedFileIndexes: [0, 9] }));
     expect(result.errors.map((issue) => issue.code)).toEqual(['FILE_INDEX_INVALID', 'TORRENT_RUNNING', 'TORRENT_IN_ARR_CATEGORY']);
 
-    mocks.qbit.getTorrents.mockResolvedValue([{ hash: HASH.toLowerCase(), name: FILM, state: 'checkingResumeData', category: '', save_path: '/mnt/exos22/Downloads/', progress: 0 }]);
+    mocks.qbit.getTorrents.mockResolvedValue([{ hash: HASH.toLowerCase(), name: FILM, state: 'checkingResumeData', category: '', save_path: '/mnt/media/Downloads/', progress: 0 }]);
     expect((await checkFallback(input())).errors.map((issue) => issue.code)).toEqual(['TORRENT_CHECKING']);
   });
 
@@ -151,7 +151,7 @@ describe('starting the fallback', () => {
   it('records every file as chosen or not, adds the film with searches off, and downloads only the chosen files', async () => {
     const download = await startFallbackDownload(input(), 'req-00001', { id: 'u1', username: 'admin' });
     const created = mocks.rows.get('md1')!;
-    expect(created).toEqual(expect.objectContaining({ mode: 'QBIT_REVIEWED', infoHash: HASH, pathMapping: { mapping: { remotePath: '/mnt/exos22/', localPath: '/data/' } } }));
+    expect(created).toEqual(expect.objectContaining({ mode: 'QBIT_REVIEWED', infoHash: HASH, pathMapping: { mapping: { remotePath: '/mnt/media/', localPath: '/data/' } } }));
     expect((created.files as { create: unknown[] }).create).toEqual([
       { fileIndex: 0, path: `${FILM}/${FILM}.mkv`, size: BigInt(1000), selected: true },
       { fileIndex: 1, path: `${FILM}/Sample/${FILM}.sample.mkv`, size: BigInt(10), selected: false },
@@ -175,9 +175,9 @@ describe('starting the fallback', () => {
 
 function downloaded(service: 'RADARR' | 'SONARR', files: Array<Record<string, unknown>>, status = 'DOWNLOADING') {
   const row = {
-    id: 'md1', mode: 'QBIT_REVIEWED', status, service, instanceId: 'i1', instanceLabel: 'radarr-anime', arrItemId: 15,
+    id: 'md1', mode: 'QBIT_REVIEWED', status, service, instanceId: 'i1', instanceLabel: 'radarr-4k', arrItemId: 15,
     arrItemTitle: service === 'RADARR' ? 'Night of the Living Dead' : 'Classroom of the Elite', createdArrItem: true,
-    pathMapping: { mapping: { remotePath: '/mnt/exos22/', localPath: '/data/' } }, files,
+    pathMapping: { mapping: { remotePath: '/mnt/media/', localPath: '/data/' } }, files,
   };
   mocks.rows.set('md1', row);
   return row as never;
@@ -195,7 +195,7 @@ describe('after the chosen files finish', () => {
       candidate(`/data/Downloads/${FILM}/Sample/${FILM}.sample.mkv`, { rejections: [{ reason: 'Sample' }] }),
     ]);
 
-    expect(await settleDownloaded(download, mocks.arr as never, '/mnt/exos22/Downloads/')).toBe(true);
+    expect(await settleDownloaded(download, mocks.arr as never, '/mnt/media/Downloads/')).toBe(true);
 
     expect(mocks.arr.scanImportPath).toHaveBeenCalledWith(`/data/Downloads/${FILM}`);
     expect(mocks.arr.submitManualImport).toHaveBeenCalledWith([expect.objectContaining({
@@ -211,7 +211,7 @@ describe('after the chosen files finish', () => {
     const download = downloaded('RADARR', [file('f0', 0, `${FILM}/${FILM}.mkv`, 1000, true)]);
     mocks.arr.scanImportPath.mockResolvedValue([candidate(`/data/Downloads/${FILM}/${FILM}.mkv`, { movie: null, rejections: [{ reason: 'Unknown Movie' }] })]);
 
-    await settleDownloaded(download, mocks.arr as never, '/mnt/exos22/Downloads/');
+    await settleDownloaded(download, mocks.arr as never, '/mnt/media/Downloads/');
 
     expect(mocks.moves).toEqual([{ status: 'NEEDS_MAPPING', message: expect.stringContaining(`${FILM}.mkv: Unknown Movie`), data: undefined }]);
     expect(mocks.arr.submitManualImport).not.toHaveBeenCalled();
@@ -219,7 +219,7 @@ describe('after the chosen files finish', () => {
 
   it('stops when Radarr cannot see a downloaded file where it should', async () => {
     const download = downloaded('RADARR', [file('f0', 0, `${FILM}/${FILM}.mkv`, 999, true)]);
-    await settleDownloaded(download, mocks.arr as never, '/mnt/exos22/Downloads/');
+    await settleDownloaded(download, mocks.arr as never, '/mnt/media/Downloads/');
     expect(mocks.moves).toEqual([{ status: 'BLOCKED', message: expect.stringContaining('remote path mappings'), data: undefined }]);
     expect(mocks.arr.scanImportPath).not.toHaveBeenCalled();
   });
@@ -232,7 +232,7 @@ describe('after the chosen files finish', () => {
       candidate('/data/Downloads/Show/a.mkv', { movie: null, series: { id: 15, title: 'Classroom of the Elite' }, episodes: [episode] }),
       candidate('/data/Downloads/Show/b.mkv', { movie: null, series: { id: 15, title: 'Classroom of the Elite' }, episodes: [episode] }),
     ]);
-    await settleDownloaded(download, mocks.arr as never, '/mnt/exos22/Downloads/');
+    await settleDownloaded(download, mocks.arr as never, '/mnt/media/Downloads/');
     expect(mocks.moves[0].message).toContain('b.mkv: another file holds the same episode');
   });
 
@@ -247,16 +247,16 @@ describe('after the chosen files finish', () => {
         rejections: [{ reason: 'Single episode file contains all episodes in seasons. Review file name or manually import' }, { reason: 'Sample' }],
       }),
     ]);
-    await settleDownloaded(download, mocks.arr as never, '/mnt/exos22/Downloads/');
+    await settleDownloaded(download, mocks.arr as never, '/mnt/media/Downloads/');
     expect(mocks.moves[0]).toEqual(expect.objectContaining({ status: 'NEEDS_MAPPING', message: expect.stringContaining('random.mkv: Single episode file contains all episodes') }));
     expect(mocks.arr.submitManualImport).not.toHaveBeenCalled();
   });
 
   it('scans once when two scans race', async () => {
     const download = downloaded('RADARR', [file('f0', 0, `${FILM}/${FILM}.mkv`, 1000, true)]);
-    await settleDownloaded(download, mocks.arr as never, '/mnt/exos22/Downloads/');
+    await settleDownloaded(download, mocks.arr as never, '/mnt/media/Downloads/');
     // The second one still holds the download as it read it (DOWNLOADING).
-    expect(await settleDownloaded({ ...(download as object), status: 'DOWNLOADING' } as never, mocks.arr as never, '/mnt/exos22/Downloads/')).toBe(false);
+    expect(await settleDownloaded({ ...(download as object), status: 'DOWNLOADING' } as never, mocks.arr as never, '/mnt/media/Downloads/')).toBe(false);
     expect(mocks.arr.submitManualImport).toHaveBeenCalledTimes(1);
   });
 });

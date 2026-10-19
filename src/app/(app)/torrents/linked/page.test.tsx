@@ -13,7 +13,7 @@ import LinkedDownloadsPage from './page';
 
 const now = new Date().toISOString();
 const row = (id: string, status: string, extra: Record<string, unknown> = {}) => ({
-  id, status, service: 'RADARR', instanceLabel: 'radarr-anime', arrItemTitle: `Film ${id}`, releaseTitle: `Release.${id}`,
+  id, status, service: 'RADARR', instanceLabel: 'radarr-4k', arrItemTitle: `Film ${id}`, releaseTitle: `Release.${id}`,
   lastError: null, updatedAt: now, ...extra,
 });
 

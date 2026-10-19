@@ -14,9 +14,9 @@ const HASH = '382CC016FF22946008ECDDCB0DDA820F42B0CD5A';
 const check = {
   ok: true, errors: [], warnings: [{ code: 'ARR_CLIENT_WITHOUT_CATEGORY', message: 'A download client has no category.' }],
   plan: {
-    instance: { id: 'r1', label: 'radarr-anime' }, target: { externalId: 10331, title: 'Night of the Living Dead', year: 1968, existingId: null },
-    torrent: { name: 'Film', savePath: '/mnt/exos22/Downloads', files: [{ index: 0, path: 'Film/a.mkv', size: 1, selected: true }, { index: 1, path: 'Film/b.mkv', size: 1, selected: false }] },
-    arrSavePath: '/data/Downloads', mapping: { remotePath: '/mnt/exos22/', localPath: '/data/' },
+    instance: { id: 'r1', label: 'radarr-4k' }, target: { externalId: 10331, title: 'Night of the Living Dead', year: 1968, existingId: null },
+    torrent: { name: 'Film', savePath: '/mnt/media/Downloads', files: [{ index: 0, path: 'Film/a.mkv', size: 1, selected: true }, { index: 1, path: 'Film/b.mkv', size: 1, selected: false }] },
+    arrSavePath: '/data/Downloads', mapping: { remotePath: '/mnt/media/', localPath: '/data/' },
   },
 };
 

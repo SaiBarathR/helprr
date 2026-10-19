@@ -24,7 +24,7 @@ const file = (id: string, path: string, arr: unknown, extra: Record<string, unkn
   id, fileIndex: 0, path, size: 1000, selected: true, decision: 'PENDING', episodeIds: [], scanned: true, arr, ...extra,
 });
 const sonarrDownload = () => ({
-  id: 'md1', mode: 'QBIT_REVIEWED', status: 'NEEDS_MAPPING', service: 'SONARR', instanceId: 's1', instanceLabel: 'sonarr-anime',
+  id: 'md1', mode: 'QBIT_REVIEWED', status: 'NEEDS_MAPPING', service: 'SONARR', instanceId: 's1', instanceLabel: 'sonarr-4k',
   arrItemId: 3, arrItemTitle: 'Classroom of the Elite',
   files: [
     file('f0', 'Show.S01/Show.S01E05.mkv', arrRead({ episodes: [{ id: 26, seasonNumber: 1, episodeNumber: 5 }] })),
