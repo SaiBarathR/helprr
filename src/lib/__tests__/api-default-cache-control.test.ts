@@ -7,6 +7,7 @@ vi.mock('@/lib/logger', () => ({
 }));
 
 import { configureApiLogging, withApiLogging } from '@/lib/api-logger';
+import { cacheBrowseSnapshot } from '@/lib/offline-snapshot';
 
 // Per-user API answers must not be stored by the browser or a proxy unless the
 // route chooses a policy itself.
@@ -32,5 +33,18 @@ describe('default Cache-Control on API responses', () => {
     const response = await handler();
     expect(response.status).toBe(500);
     expect(response.headers.get('Cache-Control')).toBe('private, no-store');
+  });
+
+  it('keeps the reads the service worker snapshots storable, revalidated on every use', async () => {
+    const handler = withApiLogging(async (request: Request) => NextResponse.json({ path: new URL(request.url).pathname }));
+
+    const watchlist = await handler(new Request('http://localhost/api/watchlist'));
+    expect(watchlist.headers.get('Cache-Control')).toBe('private, no-cache');
+    expect(await cacheBrowseSnapshot(watchlist)).not.toBeNull();
+
+    const me = await handler(new Request('http://localhost/api/me'));
+    expect(me.headers.get('Cache-Control')).toBe('private, no-store');
+    const post = await handler(new Request('http://localhost/api/watchlist', { method: 'POST' }));
+    expect(post.headers.get('Cache-Control')).toBe('private, no-store');
   });
 });

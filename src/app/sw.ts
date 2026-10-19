@@ -15,7 +15,7 @@ import {
   Serwist,
   StaleWhileRevalidate,
 } from 'serwist';
-import { cacheBrowseSnapshot, staleBrowseSnapshot } from '@/lib/offline-snapshot';
+import { cacheBrowseSnapshot, READONLY_API_NETWORK_FIRST, staleBrowseSnapshot } from '@/lib/offline-snapshot';
 import { cacheShellResponse, matchingShellResponse } from '@/lib/shell-cache';
 import { isImageResponseCacheable } from '@/lib/image-response-cache-policy';
 import { NOTIFICATION_SUBSCRIPTIONS_CHANGED } from '@/lib/notification-subscriptions';
@@ -27,25 +27,6 @@ declare global {
 }
 
 declare const self: ServiceWorkerGlobalScope & typeof globalThis;
-
-// Read-only library/dashboard GET routes served NetworkFirst: an online PWA
-// always gets fresh data (so a TanStack refetch right after a mutation returns
-// the new value — StaleWhileRevalidate used to hand back the cached body and
-// only revalidate for the *next* request, which made saves look like they didn't
-// stick), falling back to last-known-good only when offline. Allowlist, not
-// denylist: anything not matched here stays NetworkOnly, so a future mutation-ish
-// or auth-sensitive GET can't silently become cacheable. `/api/me`, `/api/badges`,
-// status polls, and auth/session routes are deliberately excluded (per-user /
-// must-be-fresh). Live, second-to-second reads (`/api/activity/queue`,
-// `/api/qbittorrent/*`) are intentionally *not* listed — they fall through to the
-// catch-all NetworkOnly below so a cached copy can never show removed downloads.
-// Under the *arr prefixes, action-sensitive/transient subpaths (command status
-// polls, rename previews, manual-import scans, interactive-search releases,
-// lookups, file lists, per-item history/wanted) are carved out via the negative
-// lookahead: their answers change the moment an action lands, so a ≤5-min-old
-// cached body is exactly the stale data this allowlist must never serve.
-const READONLY_API_NETWORK_FIRST =
-  /^\/api\/(?:(?:sonarr|radarr|lidarr)(?!\/(?:command|rename|manualimport|release|lookup|moviefile|episodefile|trackfile|history|wanted)\b)|calendar|library-gaps|dashboard-layouts|watchlist|discover|recommendations\/for-you|activity\/(?:history|wanted))(?:\/.*)?$/;
 
 const cacheValidatedImageResponses: SerwistPlugin = {
   cacheWillUpdate: async ({ response }) => (
