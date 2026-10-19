@@ -138,7 +138,7 @@ export default function LinkedDownloadPage() {
           <p className="text-sm">{nextStep(download)}</p>
           {download.lastError && (
             <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3">
-              <p className="tracked-caps text-[10px] text-destructive">What went wrong</p>
+              <p className="tracked-caps text-[10px] text-destructive">{download.status === 'NEEDS_MAPPING' ? 'What to confirm' : 'What went wrong'}</p>
               <p className="mt-1 whitespace-pre-wrap break-words text-sm">{download.lastError}</p>
             </div>
           )}

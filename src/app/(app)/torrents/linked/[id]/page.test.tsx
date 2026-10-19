@@ -134,6 +134,7 @@ describe('a linked download', () => {
     const user = userEvent.setup();
     expect(await screen.findByText('Files: 1 of 2 chosen')).toBeTruthy();
     expect(screen.getByText(/is not sure what some files are/)).toBeTruthy();
+    expect(screen.getByText('What to confirm')).toBeTruthy();
     await user.click(screen.getByRole('button', { name: /Map files/ }));
     expect(mocks.push).toHaveBeenCalledWith('/torrents/linked/md1/map');
 

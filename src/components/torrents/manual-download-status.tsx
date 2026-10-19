@@ -54,8 +54,9 @@ export const PIPELINE = ['Sent', 'Downloading', 'Importing', 'Imported'] as cons
 export function pipelineStep(status: ManualDownloadStatus): number {
   switch (status) {
     case 'QUEUED': return 0;
-    case 'DOWNLOADING': return 1;
-    case 'IMPORT_PENDING':
+    // Downloaded and waiting to be imported is as far as Downloading.
+    case 'DOWNLOADING':
+    case 'IMPORT_PENDING': return 1;
     case 'IMPORTING': return 2;
     case 'IMPORTED': return 3;
     default: return -1;
