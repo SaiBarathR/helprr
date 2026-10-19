@@ -88,6 +88,14 @@ export interface ApiLoggingOptions {
   redactQueryParams?: readonly string[];
 }
 
+// API answers are per user; nothing may be stored unless the route says so.
+const DEFAULT_CACHE_CONTROL = 'private, no-store';
+
+function withDefaultCacheControl(response: Response): Response {
+  if (!response.headers.has('Cache-Control')) response.headers.set('Cache-Control', DEFAULT_CACHE_CONTROL);
+  return response;
+}
+
 export function withApiLogging<T extends (...args: never[]) => Promise<Response> | Response>(
   handler: T,
   scope?: string,
@@ -115,7 +123,7 @@ export function withApiLogging<T extends (...args: never[]) => Promise<Response>
       );
       if (!prefs.enabled) {
         response.headers.set('x-request-id', requestId);
-        return response;
+        return withDefaultCacheControl(response);
       }
       const durationMs = Math.round((performance.now() - startedAt) * 10) / 10;
       const status = response.status;
@@ -139,7 +147,7 @@ export function withApiLogging<T extends (...args: never[]) => Promise<Response>
         requestId,
       });
       response.headers.set('x-request-id', requestId);
-      return response;
+      return withDefaultCacheControl(response);
     } catch (error) {
       const durationMs = Math.round((performance.now() - startedAt) * 10) / 10;
       if (prefs.enabled) {
@@ -159,7 +167,7 @@ export function withApiLogging<T extends (...args: never[]) => Promise<Response>
       }
       return NextResponse.json(
         { error: 'Internal server error', requestId },
-        { status: 500, headers: { 'x-request-id': requestId } }
+        { status: 500, headers: { 'x-request-id': requestId, 'Cache-Control': DEFAULT_CACHE_CONTROL } }
       );
     }
   }) as T;
