@@ -48,10 +48,10 @@ export function getQueueMediaHref(item: QueueItem & { source?: string }): string
   const seriesId = item.seriesId ?? item.series?.id;
   const seasonNumber = item.seasonNumber ?? item.episode?.seasonNumber;
   const episodeId = item.episodeId ?? item.episode?.id;
-  if (seriesId && seasonNumber && episodeId) {
+  if (seriesId && seasonNumber != null && episodeId) {
     return `/series/${seriesId}/season/${seasonNumber}/episode/${episodeId}${q}`;
   }
-  if (seriesId && seasonNumber) {
+  if (seriesId && seasonNumber != null) {
     return `/series/${seriesId}/season/${seasonNumber}${q}`;
   }
   if (seriesId) {

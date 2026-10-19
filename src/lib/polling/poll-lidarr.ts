@@ -8,8 +8,9 @@ import { writeBadgeSlice } from '@/lib/cache/badge-counts';
 import { invalidateTaggedLibrary } from '@/lib/cache/tagged-library';
 import { PollNotificationCollector } from '@/lib/notification-grouping';
 import { fetchAllQueueRecords } from '@/lib/activity-queue';
+import { getMediaHrefFromIds } from '@/lib/media-href';
 import crypto from 'crypto';
-import { importFailureBody, downloadFailureBody, buildTagMap, mediaFilterMeta, readQueueSnapshots, errorMessage, getPollingState, historyCursorFromState, fetchNewHistoryPages, advanceHistoryCursor, getMediaHrefFromIds, notifyAndLog, instanceTitle, type CycleContext, type QueueSnapshot } from './shared';
+import { importFailureBody, downloadFailureBody, buildTagMap, mediaFilterMeta, readQueueSnapshots, errorMessage, getPollingState, historyCursorFromState, fetchNewHistoryPages, advanceHistoryCursor, notifyAndLog, instanceTitle, type CycleContext, type QueueSnapshot } from './shared';
 
 export async function pollLidarr(context: CycleContext) {
   context.registerInstanceSource('lidarr');
