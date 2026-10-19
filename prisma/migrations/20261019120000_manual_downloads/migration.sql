@@ -84,4 +84,3 @@ ALTER TABLE "ManualDownload" ADD CONSTRAINT "ManualDownload_instanceId_fkey" FOR
 
 -- AddForeignKey
 ALTER TABLE "ManualDownloadEvent" ADD CONSTRAINT "ManualDownloadEvent_downloadId_fkey" FOREIGN KEY ("downloadId") REFERENCES "ManualDownload"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
