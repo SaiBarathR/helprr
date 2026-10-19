@@ -47,6 +47,8 @@ export default function LinkedDownloadPage() {
   const queryClient = useQueryClient();
   const canManage = useCan('activity.manage');
   const canAdd = useCan('torrents.add');
+  const canAddMovies = useCan('movies.add');
+  const canAddSeries = useCan('series.add');
   const [cancelOpen, setCancelOpen] = useState(false);
   const [unlinkOpen, setUnlinkOpen] = useState(false);
 
@@ -156,7 +158,7 @@ export default function LinkedDownloadPage() {
               Open {download.service === 'RADARR' ? 'movie' : 'series'}
             </Button>
           )}
-          {canAdd && !isOpen(download) && download.status !== 'IMPORTED' && (
+          {canAdd && canManage && (download.service === 'RADARR' ? canAddMovies : canAddSeries) && !isOpen(download) && download.status !== 'IMPORTED' && (
             <Button variant="outline" size="sm" onClick={() => router.push(resendHref)}>
               <RotateCcw className="mr-1.5 h-4 w-4" />
               Send again
