@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import Image from 'next/image';
+import { FadeInImage } from '@/components/media/fade-in-image';
 import Link from '@/components/ui/app-link';
 import { Ban, Bookmark, ExternalLink, Film, HardDriveDownload, Heart, Sparkles, Star, Tv } from 'lucide-react';
 import { QuickContextMenu, type ContextAction } from '@/components/ui/quick-context-menu';
@@ -139,7 +139,7 @@ export function RecCard({ item, railId, position, mode, tracker, onNotInterested
         >
           <div className="relative aspect-[2/3] overflow-hidden rounded-lg bg-muted ring-1 ring-border transition-transform duration-200 group-hover:scale-[1.03]">
             {poster ? (
-              <Image
+              <FadeInImage
                 src={poster}
                 alt={item.title}
                 fill

@@ -1,6 +1,6 @@
 'use client';
 
-import Image from 'next/image';
+import { FadeInImage } from '@/components/media/fade-in-image';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import type { DiscoverWatchProviders, DiscoverWatchProviderEntry } from '@/types';
 
@@ -23,7 +23,7 @@ function ProviderGroup({ label, entries }: { label: string; entries: DiscoverWat
               title={p.providerName}
             >
               {logoSrc && (
-                <Image
+                <FadeInImage
                   src={logoSrc}
                   alt={p.providerName}
                   fill

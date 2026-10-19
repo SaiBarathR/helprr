@@ -6,7 +6,7 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { ApiError } from '@/lib/query-fetch';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
-import Image from 'next/image';
+import { FadeInImage } from '@/components/media/fade-in-image';
 import { Sparkles, Loader2, ChevronRight, ExternalLink, AlertTriangle, Check, Unplug } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -199,14 +199,16 @@ export function AnilistConnectionCard() {
           >
             <div className="flex items-center gap-3 min-w-0">
               {isConnected && viewer?.user?.avatar ? (
-                <Image
-                  src={viewer.user.avatar}
-                  alt={viewer.user.name}
-                  width={28}
-                  height={28}
-                  className="rounded-full object-cover w-7 h-7"
-                  unoptimized
-                />
+                <span className="relative block h-7 w-7 shrink-0 overflow-hidden rounded-full bg-muted">
+                  <FadeInImage
+                    src={viewer.user.avatar}
+                    alt={viewer.user.name}
+                    width={28}
+                    height={28}
+                    className="rounded-full object-cover w-7 h-7"
+                    unoptimized
+                  />
+                </span>
               ) : (
                 <span className="flex w-7 h-7 items-center justify-center rounded-full bg-pink-500/15 text-pink-400">
                   <Sparkles className="h-4 w-4" />

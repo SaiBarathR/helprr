@@ -1,6 +1,6 @@
 'use client';
 
-import Image from 'next/image';
+import { HeroImage } from '@/components/media/hero-image';
 import { useQuery } from '@tanstack/react-query';
 import { jsonFetcher } from '@/lib/query-fetch';
 import { queryKeys } from '@/lib/query-keys';
@@ -66,7 +66,7 @@ export function CatalogElsewhere({
                 >
                   {logo && (
                     <span className="relative size-5 overflow-hidden rounded-full">
-                      <Image src={logo} alt="" fill sizes="20px" unoptimized className="object-cover" />
+                      <HeroImage src={logo} alt="" fill sizes="20px" unoptimized className="object-cover" />
                     </span>
                   )}
                   <span className="text-xs">{entry.providerName}</span>

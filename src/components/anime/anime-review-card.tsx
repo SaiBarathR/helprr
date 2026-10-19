@@ -2,7 +2,7 @@
 
 import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
 
-import Image from 'next/image';
+import { FadeInImage } from '@/components/media/fade-in-image';
 import { Star, ChevronDown, ChevronUp, ThumbsUp } from 'lucide-react';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import type { AniListReview } from '@/types/anilist';
@@ -38,7 +38,7 @@ function ReviewItem({ review }: { review: AniListReview }) {
       <div className="flex items-center gap-2 mb-2">
         <div className="relative w-7 h-7 rounded-full overflow-hidden bg-muted shrink-0">
           {imgSrc ? (
-            <Image
+            <FadeInImage
               src={imgSrc}
               alt={review.user.name}
               fill

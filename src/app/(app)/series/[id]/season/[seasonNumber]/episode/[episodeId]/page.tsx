@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import Image from 'next/image';
+import { HeroImage } from '@/components/media/hero-image';
 import Link from '@/components/ui/app-link';
 import { useParams, useSearchParams } from 'next/navigation';
 import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
@@ -480,7 +480,7 @@ export default function EpisodeDetailPage() {
       {tmdbEpisode?.stillPath && (
         <QuickContextMenu label={`${episode.title || epCode} actions`} groups={episodeContextGroups}>
         <div className="relative w-full h-[220px] overflow-hidden bg-muted/40">
-          <Image
+          <HeroImage
             src={toCachedImageSrc(tmdbEpisode.stillPath, 'tmdb', { width: 1280 }) || tmdbEpisode.stillPath}
             alt=""
             fill

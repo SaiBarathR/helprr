@@ -1,6 +1,6 @@
 'use client';
 
-import Image from 'next/image';
+import { FadeInImage } from '@/components/media/fade-in-image';
 import Link from '@/components/ui/app-link';
 import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
@@ -50,7 +50,7 @@ export function ExpandedSeasonEpisodes({
             <>
               {ep.stillPath && (
                 <div className="relative w-[90px] h-[50px] rounded overflow-hidden shrink-0 bg-muted">
-                  <Image
+                  <FadeInImage
                     src={toCachedImageSrc(ep.stillPath, 'tmdb') || ep.stillPath}
                     alt=""
                     fill

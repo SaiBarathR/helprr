@@ -1,6 +1,7 @@
 'use client';
 
-import Image from 'next/image';
+import { HeroImage } from '@/components/media/hero-image';
+import { FadeInImage } from '@/components/media/fade-in-image';
 import type { ReactNode } from 'react';
 import { Star, Check, Clock } from 'lucide-react';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
@@ -80,7 +81,7 @@ export function AnimeHero({
       <div className="relative h-[260px] sm:h-[340px] md:h-[420px] lg:h-[480px] w-full overflow-hidden bg-background">
         {bannerSrc ? (
           <>
-            <Image
+            <HeroImage
               src={bannerSrc}
               alt=""
               fill
@@ -102,7 +103,7 @@ export function AnimeHero({
           </>
         ) : coverSrc ? (
           <>
-            <Image
+            <HeroImage
               src={coverSrc}
               alt=""
               fill
@@ -143,7 +144,7 @@ export function AnimeHero({
         <div className="relative w-[110px] h-[165px] md:w-[140px] md:h-[210px] shrink-0">
           <div className="absolute inset-0 rounded-md overflow-hidden bg-card ring-1 ring-border shadow-[0_20px_50px_-15px_rgba(0,0,0,0.7)]">
             {coverSrc ? (
-              <Image
+              <FadeInImage
                 src={coverSrc}
                 alt={title}
                 fill

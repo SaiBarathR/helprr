@@ -69,7 +69,8 @@ import { ScheduledAlertButton } from '@/components/scheduled-alerts/scheduled-al
 import { QuickContextMenu } from '@/components/ui/quick-context-menu';
 import type { ScheduledAlertDraft } from '@/lib/scheduled-alerts/types';
 import type { CalendarEvent } from '@/types';
-import Image from 'next/image';
+import { FadeInImage } from '@/components/media/fade-in-image';
+import { HeroImage } from '@/components/media/hero-image';
 import { isProtectedApiImageSrc, toCachedImageSrc, type ImageServiceHint } from '@/lib/image';
 
 /** The app behind each event type, to tell same-named instances apart. */
@@ -124,7 +125,7 @@ function RowBackdrop({ src }: { src: string | null }) {
   if (!src) return null;
   return (
     <div aria-hidden className="absolute inset-0 pointer-events-none">
-      <Image
+      <HeroImage
         src={src}
         alt=""
         fill
@@ -561,7 +562,7 @@ function AgendaEventRow({ row, showImages }: { row: AgendaRow; showImages: boole
               <div className="hidden w-9 shrink-0 md:block">
                 {poster ? (
                   <div className="relative aspect-[2/3] w-9 overflow-hidden rounded bg-muted/40">
-                    <Image src={poster} alt="" fill sizes="36px" className="object-cover" unoptimized={isProtectedApiImageSrc(poster)} />
+                    <FadeInImage src={poster} alt="" fill sizes="36px" className="object-cover" unoptimized={isProtectedApiImageSrc(poster)} />
                   </div>
                 ) : (
                   <div className="aspect-[2/3] w-9 rounded bg-muted/30" />
@@ -696,7 +697,7 @@ function MonthEventItem({ event, showImages }: { event: CalendarEvent; showImage
         <div className="flex gap-3">
           {showImages && poster && (
             <div className="relative w-14 shrink-0 self-start overflow-hidden rounded aspect-[2/3] bg-muted">
-              <Image src={poster} alt="" fill sizes="56px" className="object-cover" unoptimized={isProtectedApiImageSrc(poster)} />
+              <FadeInImage src={poster} alt="" fill sizes="56px" className="object-cover" unoptimized={isProtectedApiImageSrc(poster)} />
             </div>
           )}
           <div className="min-w-0 flex-1 space-y-1">
@@ -778,7 +779,7 @@ function DayEventRow({ event, showImages }: { event: CalendarEvent; showImages: 
             <div className="w-8 shrink-0">
               {poster ? (
                 <div className="relative w-8 aspect-[2/3] overflow-hidden rounded bg-muted/40">
-                  <Image src={poster} alt="" fill sizes="32px" className="object-cover" unoptimized={isProtectedApiImageSrc(poster)} />
+                  <FadeInImage src={poster} alt="" fill sizes="32px" className="object-cover" unoptimized={isProtectedApiImageSrc(poster)} />
                 </div>
               ) : (
                 <div className="w-8 aspect-[2/3] rounded bg-muted/30" />
@@ -1137,7 +1138,7 @@ function WeekView({
                           <div className="hidden md:block w-7 shrink-0">
                             {poster ? (
                               <div className="relative w-7 aspect-[2/3] overflow-hidden rounded bg-muted/40">
-                                <Image src={poster} alt="" fill sizes="28px" className="object-cover" unoptimized={isProtectedApiImageSrc(poster)} />
+                                <FadeInImage src={poster} alt="" fill sizes="28px" className="object-cover" unoptimized={isProtectedApiImageSrc(poster)} />
                               </div>
                             ) : (
                               <div className="w-7 aspect-[2/3] rounded bg-muted/30" />

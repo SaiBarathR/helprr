@@ -2,7 +2,7 @@
 
 import { Users } from 'lucide-react';
 import { useCallback, useRef, useState } from 'react';
-import Image from 'next/image';
+import { FadeInImage } from '@/components/media/fade-in-image';
 import { Badge } from '@/components/ui/badge';
 import {
   Drawer,
@@ -169,9 +169,9 @@ export function JellyfinUserActivityWidget({ refreshInterval, editMode = false, 
                 >
                   <div className="flex items-center gap-3 @max-[219px]/cell:gap-2">
                     {/* Avatar is decoration — dropped on compact cells. */}
-                    <div className="h-9 w-9 rounded-full bg-[var(--hpr-cyan)]/20 flex items-center justify-center shrink-0 overflow-hidden @max-[219px]/cell:hidden">
+                    <div className="relative h-9 w-9 rounded-full bg-[var(--hpr-cyan)]/20 flex items-center justify-center shrink-0 overflow-hidden @max-[219px]/cell:hidden">
                       {avatarSrc ? (
-                        <Image
+                        <FadeInImage
                           src={avatarSrc}
                           alt={user.user_name}
                           width={36}

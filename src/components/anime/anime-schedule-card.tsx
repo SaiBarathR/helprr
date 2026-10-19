@@ -1,6 +1,6 @@
 'use client';
 
-import Image from 'next/image';
+import { FadeInImage } from '@/components/media/fade-in-image';
 import Link from '@/components/ui/app-link';
 import { Check, Star } from 'lucide-react';
 import { ScheduledAlertButton } from '@/components/scheduled-alerts/scheduled-alert-dialog';
@@ -51,7 +51,7 @@ export function AnimeScheduleCard({ entry, now }: AnimeScheduleCardProps) {
       >
       <div className="relative aspect-[4/5] w-16 sm:w-[72px] shrink-0 overflow-hidden rounded-md bg-muted">
         {cover ? (
-          <Image
+          <FadeInImage
             src={cover}
             alt={media.title}
             fill

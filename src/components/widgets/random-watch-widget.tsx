@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useState } from 'react';
-import Image from 'next/image';
+import { HeroImage } from '@/components/media/hero-image';
 import Link from '@/components/ui/app-link';
 import { Clock, Dices, Film, RefreshCw, Star, Tv } from 'lucide-react';
 import { ApiError } from '@/lib/query-fetch';
@@ -217,7 +217,7 @@ function PickHero({
     >
       {backdrop && !narrow && (
         <>
-          <Image
+          <HeroImage
             src={backdrop}
             alt=""
             fill

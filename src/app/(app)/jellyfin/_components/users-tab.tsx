@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { jsonFetcher } from '@/lib/query-fetch';
-import Image from 'next/image';
+import { FadeInImage } from '@/components/media/fade-in-image';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { Badge } from '@/components/ui/badge';
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
@@ -75,8 +75,8 @@ export function UsersTab() {
           return (
             <button key={user.user_id} onClick={() => openUserHistory(user)} className="w-full text-left rounded-xl bg-muted/30 p-3 active:bg-muted/50 transition-colors">
               <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-full bg-[var(--hpr-cyan)]/20 flex items-center justify-center shrink-0 overflow-hidden">
-                  {avatarSrc ? <Image src={avatarSrc} alt={user.user_name} width={40} height={40} className="object-cover" unoptimized /> : (
+                <div className="relative h-10 w-10 rounded-full bg-[var(--hpr-cyan)]/20 flex items-center justify-center shrink-0 overflow-hidden">
+                  {avatarSrc ? <FadeInImage src={avatarSrc} alt={user.user_name} width={40} height={40} className="object-cover" unoptimized /> : (
                     <span className="text-sm font-bold text-[var(--hpr-cyan)]">{user.user_name.charAt(0).toUpperCase()}</span>
                   )}
                 </div>

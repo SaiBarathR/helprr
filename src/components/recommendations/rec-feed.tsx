@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import Image from 'next/image';
+import { FadeInImage } from '@/components/media/fade-in-image';
 import Link from '@/components/ui/app-link';
 import { useRestorableInfiniteQuery as useInfiniteQuery } from '@/lib/hooks/use-restorable-infinite-query';
 import { toast } from 'sonner';
@@ -160,7 +160,7 @@ function FeedCard({ item, position, tracker, onHide }: {
     <div ref={ref} className={`relative w-full snap-start overflow-hidden ${CARD_HEIGHT} ${CARD_SNAP_MARGIN}`}>
       <Link href={item.href} onClick={() => tracker.event('click', item, 'feed', 'feed')} className="absolute inset-0 block">
         {media ? (
-          <Image
+          <FadeInImage
             src={media}
             alt={item.title}
             fill

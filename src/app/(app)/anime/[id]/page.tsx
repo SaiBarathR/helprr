@@ -4,7 +4,7 @@ import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
 
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
-import Image from 'next/image';
+import { FadeInImage } from '@/components/media/fade-in-image';
 import Link from '@/components/ui/app-link';
 import { sanitizeHtml } from '@/lib/sanitize-html';
 import { PageHeader } from '@/components/layout/page-header';
@@ -617,7 +617,7 @@ export default function AnimeDetailPage() {
                   >
                     <div className="relative w-10 h-10 rounded-full overflow-hidden bg-muted shrink-0">
                       {staffImgSrc ? (
-                        <Image
+                        <FadeInImage
                           src={staffImgSrc}
                           alt={person.name}
                           fill

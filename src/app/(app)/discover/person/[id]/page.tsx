@@ -3,7 +3,7 @@
 import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
 
 import { useMemo, useState } from 'react';
-import Image from 'next/image';
+import { FadeInImage } from '@/components/media/fade-in-image';
 import Link from '@/components/ui/app-link';
 import { useParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
@@ -207,7 +207,7 @@ export default function PersonDetailPage() {
       >
         <div className="relative aspect-[2/3] rounded-xl overflow-hidden bg-muted/60 border border-border/40">
           {posterSrc ? (
-            <Image
+            <FadeInImage
               src={posterSrc}
               alt={credit.title}
               fill
@@ -298,7 +298,7 @@ export default function PersonDetailPage() {
         <div className="flex gap-4">
           <div className="relative w-[120px] h-[120px] rounded-full overflow-hidden bg-muted shrink-0">
             {profileSrc ? (
-              <Image
+              <FadeInImage
                 src={profileSrc}
                 alt={person.name}
                 fill

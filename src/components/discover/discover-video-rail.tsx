@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import Image from 'next/image';
+import { FadeInImage } from '@/components/media/fade-in-image';
 import { Play } from 'lucide-react';
 import { VideoPlayerDialog, type PlayableVideo } from '@/components/media/video-player-dialog';
 import type { DiscoverVideo } from '@/types';
@@ -43,7 +43,7 @@ export function DiscoverVideoRail({ title, videos }: DiscoverVideoRailProps) {
               className="group shrink-0 w-[220px] sm:w-[260px] text-left"
             >
               <div className="relative aspect-video rounded-lg overflow-hidden bg-muted border border-border/40">
-                <Image
+                <FadeInImage
                   src={thumbnailUrl}
                   alt={video.title || 'Video'}
                   fill

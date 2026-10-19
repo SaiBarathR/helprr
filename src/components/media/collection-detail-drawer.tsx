@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useMemo } from 'react';
-import Image from 'next/image';
+import { FadeInImage } from '@/components/media/fade-in-image';
 import Link from '@/components/ui/app-link';
 import { Check, Plus, Search, Loader2, Film, Bookmark } from 'lucide-react';
 import { toast } from 'sonner';
@@ -214,7 +214,7 @@ export function CollectionDetailDrawer({ collection, multiInstance, onClose }: P
               <div className="flex gap-3">
                 <div className="relative w-16 h-24 shrink-0 overflow-hidden rounded-lg bg-muted">
                   {headerPoster ? (
-                    <Image
+                    <FadeInImage
                       src={headerPoster}
                       alt={collection.title}
                       fill
@@ -336,7 +336,7 @@ function CollectionMoviePoster({
       )}
     >
       {poster ? (
-        <Image
+        <FadeInImage
           src={poster}
           alt={movie.title}
           fill

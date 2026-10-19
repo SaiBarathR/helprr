@@ -5,7 +5,7 @@ import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
 import { useMemo, useState } from 'react';
 import { arrMutationFetch } from '@/lib/query-fetch';
 import { handleAuthError } from '@/lib/query-client';
-import Image from 'next/image';
+import { FadeInImage } from '@/components/media/fade-in-image';
 import Link from '@/components/ui/app-link';
 import { useParams, useSearchParams } from 'next/navigation';
 import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
@@ -404,7 +404,7 @@ export default function AlbumDetailPage() {
             <QuickContextMenu label={`${album.title} actions`} groups={albumContextGroups}>
             <div className="relative aspect-square rounded-lg overflow-hidden bg-muted shadow-sm">
               {cover ? (
-                <Image src={cover} alt={album.title} fill sizes="130px" className="object-cover" unoptimized={isProtectedApiImageSrc(cover)} />
+                <FadeInImage src={cover} alt={album.title} fill sizes="130px" className="object-cover" unoptimized={isProtectedApiImageSrc(cover)} />
               ) : (
                 <div className="absolute inset-0 flex items-center justify-center text-muted-foreground"><Disc3 className="h-10 w-10" /></div>
               )}

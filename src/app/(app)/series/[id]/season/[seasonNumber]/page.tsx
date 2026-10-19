@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import Image from 'next/image';
+import { FadeInImage } from '@/components/media/fade-in-image';
 import { useParams, useSearchParams } from 'next/navigation';
 import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
 import Link from '@/components/ui/app-link';
@@ -475,7 +475,7 @@ export default function SeasonDetailPage() {
               {series?.seriesType !== 'anime' && (
                 tmdbEp?.stillPath ? (
                   <div className="relative w-[100px] h-[56px] rounded-lg overflow-hidden shrink-0 bg-muted">
-                    <Image
+                    <FadeInImage
                       src={toCachedImageSrc(tmdbEp.stillPath, 'tmdb') || tmdbEp.stillPath}
                       alt=""
                       fill

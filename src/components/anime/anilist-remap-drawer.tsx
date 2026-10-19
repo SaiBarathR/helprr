@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import Image from 'next/image';
+import { FadeInImage } from '@/components/media/fade-in-image';
 import { Search, Loader2, Plus, X, Star, Trash2 } from 'lucide-react';
 import {
   Drawer,
@@ -336,7 +336,7 @@ export function AniListRemapDrawer({
                   >
                     <div className="relative h-[72px] w-[48px] shrink-0 overflow-hidden rounded-md bg-muted">
                       {coverSrc && (
-                        <Image
+                        <FadeInImage
                           src={coverSrc}
                           alt={detail?.title ?? ''}
                           fill
@@ -408,7 +408,7 @@ export function AniListRemapDrawer({
                   >
                     <div className="relative h-[72px] w-[48px] shrink-0 overflow-hidden rounded-md bg-muted">
                       {coverSrc && (
-                        <Image
+                        <FadeInImage
                           src={coverSrc}
                           alt={relation.title}
                           fill
@@ -482,7 +482,7 @@ export function AniListRemapDrawer({
                   >
                     <div className="relative h-[72px] w-[48px] shrink-0 overflow-hidden rounded-md bg-muted">
                       {coverSrc && (
-                        <Image
+                        <FadeInImage
                           src={coverSrc}
                           alt={candidate.title}
                           fill

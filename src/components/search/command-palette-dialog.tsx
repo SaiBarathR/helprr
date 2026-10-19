@@ -13,7 +13,7 @@ import {
   CommandItem,
 } from '@/components/ui/command';
 import { useMe, hasCapability } from '@/components/permission-provider';
-import Image from 'next/image';
+import { FadeInImage } from '@/components/media/fade-in-image';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import { suggestScopes } from '@/lib/search/parse-query';
 import { resolveProviderFromAlias } from '@/lib/search/provider-defs';
@@ -425,7 +425,7 @@ function LocalResultRow({
     <CommandItem value={result.id} onSelect={() => onSelect(primaryRoute)} className="gap-3">
       <div className="relative h-12 w-8 shrink-0 overflow-hidden rounded bg-muted">
         {poster && (
-          <Image src={poster} alt="" fill sizes="32px" className="object-cover" unoptimized={isProtectedApiImageSrc(poster)} />
+          <FadeInImage src={poster} alt="" fill sizes="32px" className="object-cover" unoptimized={isProtectedApiImageSrc(poster)} />
         )}
       </div>
       <div className="min-w-0 flex-1">
@@ -468,7 +468,7 @@ function ProviderResultRow({
     <CommandItem value={result.id} onSelect={() => onSelect(result.route)} className="gap-3">
       <div className="relative h-12 w-8 shrink-0 overflow-hidden rounded bg-muted">
         {poster && (
-          <Image src={poster} alt="" fill sizes="32px" className="object-cover" unoptimized={isProtectedApiImageSrc(poster)} />
+          <FadeInImage src={poster} alt="" fill sizes="32px" className="object-cover" unoptimized={isProtectedApiImageSrc(poster)} />
         )}
       </div>
       <div className="min-w-0 flex-1">

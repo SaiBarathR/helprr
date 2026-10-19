@@ -3,7 +3,7 @@
 import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import Image from 'next/image';
+import { FadeInImage } from '@/components/media/fade-in-image';
 import Link from '@/components/ui/app-link';
 import { useParams } from 'next/navigation';
 import { useRestorableInfiniteQuery as useInfiniteQuery } from '@/lib/hooks/use-restorable-infinite-query';
@@ -232,7 +232,7 @@ function StudioMediaCard({ item }: { item: AniListStudioMediaNode }) {
     <Link href={href} className="group">
       <div className="relative aspect-[2/3] rounded-lg overflow-hidden bg-muted shadow-sm group-hover:shadow-md transition-shadow border border-border/30 group-hover:border-primary/40">
         {imgSrc ? (
-          <Image
+          <FadeInImage
             src={imgSrc}
             alt={item.title}
             fill

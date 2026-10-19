@@ -2,7 +2,6 @@
 
 import { fetchAnilistViewer } from '@/lib/anilist-viewer';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import Image from 'next/image';
 import Link from '@/components/ui/app-link';
 import { FadeInImage } from '@/components/media/fade-in-image';
 import { usePathname, useSearchParams } from 'next/navigation';
@@ -363,14 +362,16 @@ export default function AnimeLibraryPage() {
       <div className="flex items-center justify-between gap-3 pt-1 pb-3">
         <div className="flex items-center gap-3 min-w-0">
           {viewer.user?.avatar && (
-            <Image
-              src={viewer.user.avatar}
-              alt={viewer.user.name}
-              width={40}
-              height={40}
-              className="rounded-full object-cover w-10 h-10"
-              unoptimized
-            />
+            <span className="relative block h-10 w-10 shrink-0 overflow-hidden rounded-full bg-muted">
+              <FadeInImage
+                src={viewer.user.avatar}
+                alt={viewer.user.name}
+                width={40}
+                height={40}
+                className="rounded-full object-cover w-10 h-10"
+                unoptimized
+              />
+            </span>
           )}
           <div className="min-w-0">
             <p className="tracked-caps text-muted-foreground">My AniList</p>
