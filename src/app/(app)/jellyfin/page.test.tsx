@@ -118,6 +118,31 @@ describe('Jellyfin page (characterization)', () => {
     await waitFor(() => expect(mocks.sent.at(-1)).toEqual({ method: 'POST', path: '/api/jellyfin/system/control', body: { action: 'restart' } }));
   });
 
+  it('runs an idle scheduled task', async () => {
+    const user = renderPage();
+    await user.click(await screen.findByRole('button', { name: /Library\s*1 task/ }));
+    await user.click(await screen.findByRole('button', { name: 'Run Scan Media Library' }));
+    await waitFor(() => expect(mocks.sent).toEqual([{ method: 'POST', path: '/api/jellyfin/tasks/t1', body: null }]));
+  });
+
+  it('stops a running scheduled task', async () => {
+    overrides['/api/jellyfin/tasks'] = () => Response.json({ tasks: [{ Id: 't1', Name: 'Scan Media Library', Key: 'RefreshLibrary', State: 'Running', CurrentProgressPercentage: 40, Category: 'Library' }] });
+    const user = renderPage();
+    await user.click((await screen.findAllByRole('button', { name: 'Stop Scan Media Library' }))[0]);
+    await waitFor(() => expect(mocks.sent).toEqual([{ method: 'DELETE', path: '/api/jellyfin/tasks/t1', body: null }]));
+  });
+
+  it('says the Playback Reporting plugin is missing on Users and History', async () => {
+    overrides['/api/jellyfin/playback/users'] = () => Response.json({ users: [], pluginAvailable: false });
+    overrides['/api/jellyfin/playback/user-list'] = () => Response.json({ users: [], pluginAvailable: false });
+    overrides['/api/jellyfin/playback/custom-history'] = () => Response.json({ items: [], total: 0, pluginAvailable: false });
+    const user = renderPage();
+    await user.click(await screen.findByRole('tab', { name: 'Users' }));
+    expect(await screen.findByText('Playback Reporting Plugin not detected')).toBeTruthy();
+    await user.click(screen.getByRole('tab', { name: 'History' }));
+    expect(await screen.findByText('Playback Reporting Plugin not detected')).toBeTruthy();
+  });
+
   it("gives a member only Overview and History, and never asks for the admin data", async () => {
     mocks.caps = new Set();
     renderPage();
