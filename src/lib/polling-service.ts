@@ -739,9 +739,11 @@ export class PollingService {
       }, { scope: 'polling' });
     });
   }
+
   private pollServiceReachability() {
     return pollServiceReachabilityPoller();
   }
+
   private checkDiskSpace(context: CycleContext) {
     return checkDiskSpacePoller(context);
   }
@@ -801,18 +803,23 @@ export class PollingService {
       await prisma.diskUsageSnapshot.deleteMany({ where: { capturedAt: { lt: cutoff } } });
     }
   }
+
   private pollSonarr(context: CycleContext) {
     return pollSonarrPoller(context);
   }
+
   private pollRadarr(context: CycleContext) {
     return pollRadarrPoller(context);
   }
+
   private pollLidarr(context: CycleContext) {
     return pollLidarrPoller(context);
   }
+
   private pollQBittorrent(context: CycleContext) {
     return pollQBittorrentPoller(context);
   }
+
   private pollJellyfin() {
     return pollJellyfinPoller();
   }
@@ -821,9 +828,11 @@ export class PollingService {
   private async pollManualDownloads() {
     await reconcileManualDownloads();
   }
+
   private pollSeerr() {
     return pollSeerrPoller();
   }
+
   private checkUpcoming(context: CycleContext) {
     return checkUpcomingPoller(context);
   }
@@ -870,6 +879,7 @@ export class PollingService {
       }, { scope: 'polling' });
     }
   }
+
   private checkActivityDigest(context: CycleContext) {
     return checkActivityDigestPoller(context);
   }

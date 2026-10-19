@@ -12,7 +12,7 @@ import type { QueueItem, Tag } from '@/types';
 export type AppSettingsSnapshot = Awaited<ReturnType<typeof getOrCreateAppSettings>>;
 export type CycleContext = PollingCycleContext<AppSettingsSnapshot>;
 
-export function firstStatusMessage(item: QueueItem): string | null {
+function firstStatusMessage(item: QueueItem): string | null {
   const messages = item.statusMessages;
   if (!messages || messages.length === 0) return null;
   for (const group of messages) {
@@ -103,7 +103,7 @@ export function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-export function toNumber(value: unknown): number | undefined {
+function toNumber(value: unknown): number | undefined {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
   if (typeof value === 'string' && value.trim().length > 0) {
     const parsed = Number.parseInt(value, 10);
@@ -119,13 +119,13 @@ const HISTORY_PAGE_SIZE = 50;
 const HISTORY_MAX_PAGES = 20;
 const HISTORY_SEEN_ID_CAP = 500;
 
-export type HistoryCursorState = {
+type HistoryCursorState = {
   lastHistoryDate: Date | null;
   lastHistoryId: number | null;
   lastHistorySeenIds: number[];
 };
 
-export function parseSeenIds(raw: unknown): number[] {
+function parseSeenIds(raw: unknown): number[] {
   if (!Array.isArray(raw)) return [];
   return raw.filter((x): x is number => typeof x === 'number' && Number.isFinite(x));
 }
@@ -157,7 +157,7 @@ export function historyCursorFromState(state: {
   };
 }
 
-export function filterNewHistory<T extends { id: number; date: string }>(
+function filterNewHistory<T extends { id: number; date: string }>(
   records: T[],
   cursor: HistoryCursorState,
 ): T[] {
@@ -355,7 +355,6 @@ export async function notifyAndLog(
     return null;
   }
 }
-
 
 /** Prefix a notification title with the instance label only when >1 instance of the type is connected. */
 export function instanceTitle(base: string, label: string, instanceCount: number): string {

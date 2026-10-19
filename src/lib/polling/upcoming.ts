@@ -16,7 +16,6 @@ const BEFORE_AIR_GRACE_MIN = 5;
 // edge isn't excluded by clock skew between us and Sonarr/Radarr.
 const FETCH_END_BUFFER_MS = 60_000;
 
-
 export async function checkUpcoming(context: CycleContext) {
   const settings = await context.getSettings();
   const timeZone = settings.timeZone;

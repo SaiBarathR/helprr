@@ -2,8 +2,9 @@
 // before they are moved out of polling-service.ts (Workstream 15). Each poller
 // runs once on fixed fixtures at a fixed time; everything it sends out —
 // notifications, polling-state and settings writes, badge slices, library
-// invalidations — must match polling-pollers.golden.json, recorded from the
-// original code. UPDATE_POLLING_GOLDEN=1 rewrites the file (only on purpose).
+// invalidations, warnings, and the job's own report (failed or skipped) — must
+// match polling-pollers.golden.json, recorded from the original code.
+// UPDATE_POLLING_GOLDEN=1 rewrites the file (only on purpose).
 import { readFileSync, writeFileSync } from 'fs';
 import path from 'path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -26,6 +27,8 @@ const mocks = vi.hoisted(() => ({
   digestRows: [] as unknown[],
   disks: [] as unknown[],
   probe: (() => ({ ok: true })) as (connection: { id: string }) => { ok: boolean; error?: string },
+  failClients: {} as Record<string, Error>,
+  digestSent: null as unknown,
 }));
 
 const record = (kind: string, ...args: unknown[]) => { mocks.out.push({ [kind]: args.length === 1 ? args[0] : args }); };
@@ -54,7 +57,7 @@ vi.mock('@/lib/db', () => {
       appSettings: { update: vi.fn(async (args: unknown) => { record('appSettings.update', args); return {}; }) },
       notificationHistory: {
         findMany: vi.fn(async (args: { where: { eventType?: unknown } }) => (args.where.eventType === 'upcomingPremiere' ? mocks.history : mocks.digestRows)),
-        findFirst: vi.fn(async () => null),
+        findFirst: vi.fn(async () => mocks.digestSent),
       },
     },
   };
@@ -63,14 +66,20 @@ vi.mock('@/lib/notification-service', () => ({
   notifyEvent: vi.fn(async (event: unknown) => { record('notify', event); return 1; }),
   initVapid: vi.fn(),
 }));
-vi.mock('@/lib/service-helpers', () => ({
-  getSonarrClients: vi.fn(async () => mocks.sonarr),
-  getRadarrClients: vi.fn(async () => mocks.radarr),
-  getLidarrClients: vi.fn(async () => mocks.lidarr),
-  getQBittorrentClient: vi.fn(async () => mocks.qbit),
-  getJellyfinClient: vi.fn(async () => mocks.jellyfin),
-  getSeerrClient: vi.fn(async () => mocks.seerr),
-}));
+vi.mock('@/lib/service-helpers', () => {
+  const clients = (name: string, value: () => unknown) => vi.fn(async () => {
+    if (mocks.failClients[name]) throw mocks.failClients[name];
+    return value();
+  });
+  return {
+    getSonarrClients: clients('sonarr', () => mocks.sonarr),
+    getRadarrClients: clients('radarr', () => mocks.radarr),
+    getLidarrClients: clients('lidarr', () => mocks.lidarr),
+    getQBittorrentClient: clients('qbit', () => mocks.qbit),
+    getJellyfinClient: clients('jellyfin', () => mocks.jellyfin),
+    getSeerrClient: clients('seerr', () => mocks.seerr),
+  };
+});
 vi.mock('@/lib/arr-instances', () => ({ getDefaultConnection: vi.fn(async (type: string) => mocks.connections[type] ?? null) }));
 vi.mock('@/lib/activity-queue', () => ({ fetchAllQueueRecords: vi.fn(async (client: { queue: unknown }) => client.queue) }));
 vi.mock('@/lib/cache/badge-counts', () => ({ writeBadgeSlice: vi.fn(async (...args: unknown[]) => record('badge', ...args)) }));
@@ -92,12 +101,19 @@ vi.mock('@/lib/seerr-helpers', async (importOriginal) => ({
 }));
 vi.mock('@/lib/manual-downloads/status', () => ({ reconcileManualDownloads: vi.fn() }));
 vi.mock('@/lib/logger', () => ({
-  logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+  logger: {
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn((message: string) => record('log.warn', message)),
+    error: vi.fn((message: string) => record('log.error', message)),
+  },
   redact: (value: unknown) => value,
 }));
 
 import { PollingService } from '@/lib/polling-service';
 import { createPollingCycleContext } from '@/lib/polling-cycle';
+import { jobReports, type JobReport } from '@/lib/polling-job-report';
+import { ConfigurationError } from '@/lib/config-error';
 
 const SETTINGS = {
   notificationGroupingEnabled: false,
@@ -124,7 +140,7 @@ const GB = 1024 ** 3;
 const at = (iso: string) => new Date(iso).toISOString();
 
 /** A Sonarr/Radarr/Lidarr instance: an earlier queue, a queue now, history since the cursor, and changed health. */
-function arrInstance(id: string, label: string, kind: 'sonarr' | 'radarr' | 'lidarr', previous: boolean) {
+function arrInstance(id: string, label: string, kind: 'sonarr' | 'radarr' | 'lidarr', previous: boolean, extraImports = 0) {
   const media = kind === 'sonarr'
     ? (n: number) => ({ seriesId: 7, episodeId: 70 + n, seasonNumber: 1, series: { tags: [1] } })
     : kind === 'radarr'
@@ -151,6 +167,10 @@ function arrInstance(id: string, label: string, kind: 'sonarr' | 'radarr' | 'lid
     { id: 500, date: at('2026-10-19T03:00:00Z'), eventType: imported, sourceTitle: `${label}.Seen.500`, ...media(0) },
     { id: 499, date: at('2026-10-19T02:59:00Z'), eventType: imported, sourceTitle: `${label}.Old.499`, ...media(9) },
   ];
+  // A burst of imports (e.g. a season pack), newest first, for the grouping case.
+  for (let n = 1; n <= extraImports; n += 1) {
+    history.unshift({ id: 503 + n, date: at(`2026-10-19T03:3${n}:00Z`), eventType: imported, sourceTitle: `${label}.Burst.${503 + n}`, ...media(3 + n), episode: { seasonNumber: 1, id: 73 + n }, ...quality });
+  }
   const client = {
     queue: {
       totalRecords: 5,
@@ -169,10 +189,95 @@ function arrInstance(id: string, label: string, kind: 'sonarr' | 'radarr' | 'lid
   return { connection: { id, label, isDefault: true }, client };
 }
 
+function qbitFixture() {
+  mocks.connections.QBITTORRENT = { id: 'q1' };
+  mocks.qbit = { getTorrents: vi.fn(async () => [
+    { hash: 'a', name: 'A', progress: 1, state: 'uploading' },
+    { hash: 'b', name: 'B', progress: 1, state: 'stalledUP' },
+    { hash: 'c', name: 'C', progress: 0.1, state: 'stalledDL' },
+    { hash: 'd', name: 'D', progress: 0.4, state: 'downloading' },
+  ]) };
+}
+
+function jellyfinFixture() {
+  mocks.connections.JELLYFIN = { id: 'j1' };
+  mocks.users = (args) => ((args as { where: { status?: string } }).where.status === 'active' ? [{ id: 'u1' }, { id: 'u2' }, { id: 'u3' }] : [{ id: 'u2', jellyfinUserId: 'jf-ana' }]);
+  mocks.jellyfin = { getActiveSessions: vi.fn(async () => [
+    { Id: 's-old', UserId: 'jf-ana', UserName: 'ana', NowPlayingItem: { Name: 'Old' } },
+    { Id: 's-new', UserId: 'jf-ana', UserName: 'ana', NowPlayingItem: { Name: 'Good News About Hell', SeriesName: 'Severance' } },
+    { Id: 's-guest', UserId: 'jf-guest', UserName: 'guest', NowPlayingItem: { Name: 'Perfect Days' } },
+    { Id: 's-idle', UserId: 'jf-ana', UserName: 'ana' },
+  ]) };
+}
+
+function seerrFixture() {
+  mocks.connections.SEERR = { id: 'se1' };
+  mocks.users = (args) => ((args as { where: { role?: string } }).where.role === 'admin' ? [{ id: 'admin1' }] : [{ id: 'u7', seerrUserId: '7' }]);
+  const request = (id: number, status: number, mediaStatus: number, type: 'movie' | 'tv', requester: Record<string, unknown>) => ({
+    id, status, type, media: { status: mediaStatus, tmdbId: 1000 + id }, requestedBy: requester,
+  });
+  mocks.seerr = {
+    listRequests: vi.fn(async () => ({ results: [
+      request(31, 1, 2, 'movie', { id: 7, displayName: 'Ana' }),
+      request(25, 1, 2, 'tv', { id: 8, username: 'ben' }),
+      request(20, 2, 3, 'movie', { id: 7, displayName: 'Ana' }),
+      request(21, 3, 2, 'tv', { id: 9, plexUsername: 'cy' }),
+      request(22, 4, 2, 'movie', { id: 7, displayName: 'Ana' }),
+      request(23, 2, 5, 'tv', { id: 7, displayName: 'Ana' }),
+      request(30, 1, 2, 'movie', {}),
+    ] })),
+    getRequestCount: vi.fn(async () => ({ pending: 3 })),
+  };
+}
+
+/** Episodes, movie releases and albums around NOW, and what was already sent. */
+function upcomingFixture() {
+  const episode = (id: number, airDateUtc: string, extra: Record<string, unknown> = {}) => ({
+    id, seriesId: 7, seasonNumber: 2, episodeNumber: id, title: `Episode ${id}`, airDateUtc, series: { title: 'Severance' }, ...extra,
+  });
+  mocks.history = [
+    { dedupeKey: `sonarr-s1-ep-3-${Date.parse('2026-10-19T04:10:00Z')}`, body: 'x', metadata: null },
+    { dedupeKey: null, body: 'Old body', metadata: { grouped: true, itemDedupeKeys: [`radarr-r1-41-digital-${Date.parse('2026-10-19T04:20:00Z')}`] } },
+  ];
+  mocks.sonarr = [{ connection: { id: 's1', label: 'main', isDefault: true }, client: { getCalendar: vi.fn(async () => [
+    episode(1, '2026-10-19T04:30:00Z', { finaleType: 'season' }),
+    episode(2, '2026-10-19T06:00:00Z'),
+    episode(3, '2026-10-19T04:10:00Z'),
+    episode(4, '2026-10-19T03:58:00Z', { finaleType: 'series' }),
+    episode(5, '2026-10-19T04:40:00Z', { series: undefined }),
+  ]) } }];
+  mocks.radarr = [
+    { connection: { id: 'r1', label: 'main', isDefault: true }, client: { getCalendar: vi.fn(async () => [
+      { id: 40, title: 'Film A', year: 2026, inCinemas: '2026-10-19T04:50:00Z', physicalRelease: '2026-12-01T00:00:00Z' },
+      { id: 41, title: 'Film B', year: 2026, digitalRelease: '2026-10-19T04:20:00Z' },
+    ]) } },
+    { connection: { id: 'r2', label: '4k', isDefault: false }, client: { getCalendar: vi.fn(async () => [
+      { id: 40, title: 'Film A', year: 2026, inCinemas: '2026-10-19T04:50:00Z' },
+    ]) } },
+  ];
+  mocks.lidarr = [{ connection: { id: 'l1', label: 'music', isDefault: true }, client: { getCalendar: vi.fn(async () => [
+    { id: 90, title: 'Album X', releaseDate: '2026-10-19T04:15:00Z', artist: { artistName: 'Band' } },
+    { id: 91, title: 'Album Y', releaseDate: '2026-10-20T04:15:00Z' },
+  ]) } }];
+}
+
+/** Notification history for yesterday (Asia/Kolkata), as the digest reads it. */
+function digestFixture() {
+  mocks.digestRows = [
+    { eventType: 'imported', body: 'Severance S02E01', metadata: { source: 'sonarr' }, createdAt: new Date('2026-10-18T12:00:00Z') },
+    { eventType: 'imported', body: 'Film A', metadata: { source: 'radarr' }, createdAt: new Date('2026-10-18T13:00:00Z') },
+    { eventType: 'downloadFailed', body: 'Something', metadata: { source: 'sonarr' }, createdAt: new Date('2026-10-18T14:00:00Z') },
+    { eventType: 'torrentCompleted', body: 'C', metadata: { source: 'qbittorrent' }, createdAt: new Date('2026-10-18T15:00:00Z') },
+  ];
+}
+
 let service: PollingService;
-async function run(method: string) {
-  const context = createPollingCycleContext(async () => SETTINGS as never, { instanceConcurrency: 2, startedAtMs: NOW, cycleId: 'golden' });
-  await (service as unknown as Record<string, (context: unknown) => Promise<void>>)[method](context);
+async function run(method: string, settings: typeof SETTINGS = SETTINGS) {
+  const context = createPollingCycleContext(async () => settings as never, { instanceConcurrency: 2, startedAtMs: NOW, cycleId: 'golden' });
+  // As the cycle does: the job runs inside its report, which says whether it failed or skipped.
+  const report: JobReport = { failure: null, skipped: false };
+  await jobReports.run(report, () => (service as unknown as Record<string, (context: unknown) => Promise<void>>)[method](context));
+  record('jobReport', report);
   return JSON.parse(JSON.stringify(mocks.out)) as unknown[];
 }
 
@@ -190,6 +295,15 @@ beforeEach(() => {
   mocks.history = [];
   mocks.digestRows = [];
   mocks.users = () => [];
+  mocks.qbit = null;
+  mocks.jellyfin = null;
+  mocks.seerr = null;
+  mocks.connections = {};
+  mocks.serviceConnections = [];
+  mocks.disks = [];
+  mocks.probe = () => ({ ok: true });
+  mocks.failClients = {};
+  mocks.digestSent = null;
   service = new PollingService();
 });
 afterEach(() => {
@@ -213,52 +327,23 @@ describe('pollers on fixed fixtures (golden)', () => {
   });
 
   it('pollQBittorrent: added, completed and removed torrents, and the downloads badge', async () => {
-    mocks.connections.QBITTORRENT = { id: 'q1' };
+    qbitFixture();
     mocks.states.set('q1', { serviceConnectionId: 'q1', lastQueueIds: [{ hash: 'a', progress: 0.5, name: 'A' }, { hash: 'b', progress: 1, name: 'B' }, { hash: 'gone', progress: 0.2, name: 'Gone' }] });
-    mocks.qbit = { getTorrents: vi.fn(async () => [
-      { hash: 'a', name: 'A', progress: 1, state: 'uploading' },
-      { hash: 'b', name: 'B', progress: 1, state: 'stalledUP' },
-      { hash: 'c', name: 'C', progress: 0.1, state: 'stalledDL' },
-      { hash: 'd', name: 'D', progress: 0.4, state: 'downloading' },
-    ]) };
     expectGolden('pollQBittorrent', await run('pollQBittorrent'));
   });
 
   it('pollJellyfin: new playback, for linked and unlinked streamers', async () => {
-    mocks.connections.JELLYFIN = { id: 'j1' };
+    jellyfinFixture();
     mocks.states.set('j1', { serviceConnectionId: 'j1', lastQueueIds: ['s-old'] });
-    mocks.users = (args) => ((args as { where: { status?: string } }).where.status === 'active' ? [{ id: 'u1' }, { id: 'u2' }, { id: 'u3' }] : [{ id: 'u2', jellyfinUserId: 'jf-ana' }]);
-    mocks.jellyfin = { getActiveSessions: vi.fn(async () => [
-      { Id: 's-old', UserId: 'jf-ana', UserName: 'ana', NowPlayingItem: { Name: 'Old' } },
-      { Id: 's-new', UserId: 'jf-ana', UserName: 'ana', NowPlayingItem: { Name: 'Good News About Hell', SeriesName: 'Severance' } },
-      { Id: 's-guest', UserId: 'jf-guest', UserName: 'guest', NowPlayingItem: { Name: 'Perfect Days' } },
-      { Id: 's-idle', UserId: 'jf-ana', UserName: 'ana' },
-    ]) };
     expectGolden('pollJellyfin', await run('pollJellyfin'));
   });
 
   it('pollSeerr: created, approved, declined, failed and available requests, and the requests badge', async () => {
-    mocks.connections.SEERR = { id: 'se1' };
+    seerrFixture();
     mocks.states.set('se1', { serviceConnectionId: 'se1', lastQueueIds: [
       { id: 20, reqStatus: 1, mediaStatus: 2 }, { id: 21, reqStatus: 1, mediaStatus: 2 }, { id: 22, reqStatus: 1, mediaStatus: 2 },
       { id: 23, reqStatus: 2, mediaStatus: 3 }, { id: 30, reqStatus: 1, mediaStatus: 2 },
     ] });
-    mocks.users = (args) => ((args as { where: { role?: string } }).where.role === 'admin' ? [{ id: 'admin1' }] : [{ id: 'u7', seerrUserId: '7' }]);
-    const request = (id: number, status: number, mediaStatus: number, type: 'movie' | 'tv', requester: Record<string, unknown>) => ({
-      id, status, type, media: { status: mediaStatus, tmdbId: 1000 + id }, requestedBy: requester,
-    });
-    mocks.seerr = {
-      listRequests: vi.fn(async () => ({ results: [
-        request(31, 1, 2, 'movie', { id: 7, displayName: 'Ana' }),
-        request(25, 1, 2, 'tv', { id: 8, username: 'ben' }),
-        request(20, 2, 3, 'movie', { id: 7, displayName: 'Ana' }),
-        request(21, 3, 2, 'tv', { id: 9, plexUsername: 'cy' }),
-        request(22, 4, 2, 'movie', { id: 7, displayName: 'Ana' }),
-        request(23, 2, 5, 'tv', { id: 7, displayName: 'Ana' }),
-        request(30, 1, 2, 'movie', {}),
-      ] })),
-      getRequestCount: vi.fn(async () => ({ pending: 3 })),
-    };
     expectGolden('pollSeerr', await run('pollSeerr'));
   });
 
@@ -283,43 +368,79 @@ describe('pollers on fixed fixtures (golden)', () => {
   });
 
   it('checkUpcoming: episodes, movie releases and albums inside the before-air window, deduplicated', async () => {
-    const episode = (id: number, airDateUtc: string, extra: Record<string, unknown> = {}) => ({
-      id, seriesId: 7, seasonNumber: 2, episodeNumber: id, title: `Episode ${id}`, airDateUtc, series: { title: 'Severance' }, ...extra,
-    });
-    mocks.history = [
-      { dedupeKey: `sonarr-s1-ep-3-${Date.parse('2026-10-19T04:10:00Z')}`, body: 'x', metadata: null },
-      { dedupeKey: null, body: 'Old body', metadata: { grouped: true, itemDedupeKeys: [`radarr-r1-41-digital-${Date.parse('2026-10-19T04:20:00Z')}`] } },
-    ];
-    mocks.sonarr = [{ connection: { id: 's1', label: 'main', isDefault: true }, client: { getCalendar: vi.fn(async () => [
-      episode(1, '2026-10-19T04:30:00Z', { finaleType: 'season' }),
-      episode(2, '2026-10-19T06:00:00Z'),
-      episode(3, '2026-10-19T04:10:00Z'),
-      episode(4, '2026-10-19T03:58:00Z', { finaleType: 'series' }),
-      episode(5, '2026-10-19T04:40:00Z', { series: undefined }),
-    ]) } }];
-    mocks.radarr = [
-      { connection: { id: 'r1', label: 'main', isDefault: true }, client: { getCalendar: vi.fn(async () => [
-        { id: 40, title: 'Film A', year: 2026, inCinemas: '2026-10-19T04:50:00Z', physicalRelease: '2026-12-01T00:00:00Z' },
-        { id: 41, title: 'Film B', year: 2026, digitalRelease: '2026-10-19T04:20:00Z' },
-      ]) } },
-      { connection: { id: 'r2', label: '4k', isDefault: false }, client: { getCalendar: vi.fn(async () => [
-        { id: 40, title: 'Film A', year: 2026, inCinemas: '2026-10-19T04:50:00Z' },
-      ]) } },
-    ];
-    mocks.lidarr = [{ connection: { id: 'l1', label: 'music', isDefault: true }, client: { getCalendar: vi.fn(async () => [
-      { id: 90, title: 'Album X', releaseDate: '2026-10-19T04:15:00Z', artist: { artistName: 'Band' } },
-      { id: 91, title: 'Album Y', releaseDate: '2026-10-20T04:15:00Z' },
-    ]) } }];
+    upcomingFixture();
     expectGolden('checkUpcoming', await run('checkUpcoming'));
   });
 
   it("checkActivityDigest: yesterday's events summarized once the digest hour has passed", async () => {
-    mocks.digestRows = [
-      { eventType: 'imported', body: 'Severance S02E01', metadata: { source: 'sonarr' }, createdAt: new Date('2026-10-18T12:00:00Z') },
-      { eventType: 'imported', body: 'Film A', metadata: { source: 'radarr' }, createdAt: new Date('2026-10-18T13:00:00Z') },
-      { eventType: 'downloadFailed', body: 'Something', metadata: { source: 'sonarr' }, createdAt: new Date('2026-10-18T14:00:00Z') },
-      { eventType: 'torrentCompleted', body: 'C', metadata: { source: 'qbittorrent' }, createdAt: new Date('2026-10-18T15:00:00Z') },
-    ];
+    digestFixture();
     expectGolden('checkActivityDigest', await run('checkActivityDigest'));
+  });
+
+  it('pollSonarr with grouping on: a burst of imports sent as one grouped notification', async () => {
+    mocks.sonarr = [arrInstance('i1', 'Main', 'sonarr', true, 3)];
+    expectGolden('pollSonarr:grouped', await run('pollSonarr', { ...SETTINGS, notificationGroupingEnabled: true }));
+  });
+
+  it('pollRadarr: an instance whose history fails is reported while the other carries on', async () => {
+    const failing = arrInstance('i1', 'Main', 'radarr', true);
+    failing.client.getHistory = vi.fn(async () => { throw new Error('history down'); });
+    mocks.radarr = [failing, arrInstance('i2', 'Anime', 'radarr', true)];
+    expectGolden('pollRadarr:instanceFails', await run('pollRadarr'));
+  });
+
+  it('pollSonarr: clients that cannot be built fail the job and send nothing', async () => {
+    mocks.failClients.sonarr = new Error('decrypt failed');
+    expectGolden('pollSonarr:clientsFail', await run('pollSonarr'));
+  });
+
+  it.each([
+    ['pollQBittorrent', qbitFixture],
+    ['pollJellyfin', jellyfinFixture],
+    ['pollSeerr', seerrFixture],
+  ] as const)('%s: a first run with no saved state', async (method, fixture) => {
+    fixture();
+    expectGolden(`${method}:firstRun`, await run(method));
+  });
+
+  it('pollQBittorrent and pollSeerr: not configured is not a failure; a broken client is', async () => {
+    mocks.failClients.qbit = new ConfigurationError('qBittorrent is not configured.');
+    mocks.failClients.seerr = new Error('Seerr unreachable');
+    const qbit = await run('pollQBittorrent');
+    mocks.out = [];
+    expectGolden('pollQBittorrent+pollSeerr:clientErrors', [...qbit, ...(await run('pollSeerr'))]);
+  });
+
+  it('checkDiskSpace: no thresholds set does nothing', async () => {
+    mocks.disks = [{ path: '/mnt/media', label: 'Media', freeSpace: 1 * GB, totalSpace: 4000 * GB }];
+    expectGolden('checkDiskSpace:noThresholds', await run('checkDiskSpace', { ...SETTINGS, diskThresholds: [] }));
+  });
+
+  it("checkUpcoming in daily digest mode: today's items at the digest hour (09:00 here), skipped an hour after or before it", async () => {
+    upcomingFixture();
+    const out: unknown[] = [];
+    for (const hour of [9, 8, 10]) {
+      mocks.out = [];
+      out.push(...(await run('checkUpcoming', { ...SETTINGS, upcomingNotifyMode: 'daily_digest', upcomingDailyNotifyHour: hour })));
+    }
+    expectGolden('checkUpcoming:dailyDigest', out);
+  });
+
+  it('checkActivityDigest: weekly on its day; skipped before the hour, on another day, or when already sent', async () => {
+    digestFixture();
+    const runs = [
+      { ...SETTINGS, activityDigestMode: 'weekly', activityDigestDayOfWeek: 1 },
+      { ...SETTINGS, activityDigestHour: 10 },
+      { ...SETTINGS, activityDigestMode: 'weekly', activityDigestDayOfWeek: 2 },
+    ];
+    const out: unknown[] = [];
+    for (const settings of runs) {
+      mocks.out = [];
+      out.push(...(await run('checkActivityDigest', settings)));
+    }
+    mocks.out = [];
+    mocks.digestSent = { id: 'sent' };
+    out.push(...(await run('checkActivityDigest')));
+    expectGolden('checkActivityDigest:modes', out);
   });
 });

@@ -202,6 +202,12 @@
      "attention": 6
     }
    ]
+  },
+  {
+   "jobReport": {
+    "failure": null,
+    "skipped": false
+   }
   }
  ],
  "pollRadarr": [
@@ -399,6 +405,12 @@
      "attention": 6
     }
    ]
+  },
+  {
+   "jobReport": {
+    "failure": null,
+    "skipped": false
+   }
   }
  ],
  "pollLidarr": [
@@ -600,6 +612,12 @@
      "attention": 6
     }
    ]
+  },
+  {
+   "jobReport": {
+    "failure": null,
+    "skipped": false
+   }
   }
  ],
  "pollQBittorrent": [
@@ -695,6 +713,12 @@
      ]
     }
    }
+  },
+  {
+   "jobReport": {
+    "failure": null,
+    "skipped": false
+   }
   }
  ],
  "pollJellyfin": [
@@ -759,6 +783,12 @@
       "s-idle"
      ]
     }
+   }
+  },
+  {
+   "jobReport": {
+    "failure": null,
+    "skipped": false
    }
   }
  ],
@@ -932,6 +962,12 @@
      "attention": 3
     }
    ]
+  },
+  {
+   "jobReport": {
+    "failure": null,
+    "skipped": false
+   }
   }
  ],
  "pollServiceReachability": [
@@ -1016,6 +1052,12 @@
      "lastReachable": true
     }
    }
+  },
+  {
+   "jobReport": {
+    "failure": null,
+    "skipped": false
+   }
   }
  ],
  "checkDiskSpace": [
@@ -1072,6 +1114,12 @@
       }
      }
     }
+   }
+  },
+  {
+   "jobReport": {
+    "failure": null,
+    "skipped": false
    }
   }
  ],
@@ -1163,6 +1211,12 @@
     },
     "url": "/music/album/90?instance=l1"
    }
+  },
+  {
+   "jobReport": {
+    "failure": null,
+    "skipped": false
+   }
   }
  ],
  "checkActivityDigest": [
@@ -1185,6 +1239,786 @@
      "redirect": "/notifications"
     },
     "url": "/notifications"
+   }
+  },
+  {
+   "jobReport": {
+    "failure": null,
+    "skipped": false
+   }
+  }
+ ],
+ "pollSonarr:grouped": [
+  {
+   "invalidateLibrary": [
+    "sonarr",
+    "i1"
+   ]
+  },
+  {
+   "notify": {
+    "eventType": "healthWarning",
+    "title": "Sonarr Health Warning",
+    "body": "Main indexer is down",
+    "url": "/settings"
+   }
+  },
+  {
+   "notify": {
+    "eventType": "importFailed",
+    "title": "Manual Import Required",
+    "body": "Main.Release.11 — No files found are eligible for import",
+    "metadata": {
+     "source": "sonarr",
+     "instanceId": "i1",
+     "instanceLabel": "Main",
+     "id": 11,
+     "seriesId": 7,
+     "seasonNumber": 1,
+     "episodeId": 81,
+     "qualityName": "WEBDL-1080p",
+     "tags": [
+      "kids"
+     ],
+     "redirect": "/activity?tab=failed&source=sonarr",
+     "state": "importPending"
+    },
+    "url": "/activity?tab=failed&source=sonarr"
+   }
+  },
+  {
+   "notify": {
+    "eventType": "grabbed",
+    "title": "Download Started",
+    "body": "Main.Release.12",
+    "metadata": {
+     "source": "sonarr",
+     "instanceId": "i1",
+     "instanceLabel": "Main",
+     "id": 12,
+     "seriesId": 7,
+     "seasonNumber": 1,
+     "episodeId": 82,
+     "qualityName": "WEBDL-1080p",
+     "tags": [
+      "kids"
+     ],
+     "redirect": "/series/7/season/1/episode/82?instance=i1"
+    },
+    "url": "/series/7/season/1/episode/82?instance=i1"
+   }
+  },
+  {
+   "notify": {
+    "eventType": "downloadFailed",
+    "title": "Download Failed",
+    "body": "Main.Release.13 — Tracker said no",
+    "metadata": {
+     "source": "sonarr",
+     "instanceId": "i1",
+     "instanceLabel": "Main",
+     "id": 13,
+     "seriesId": 7,
+     "seasonNumber": 1,
+     "episodeId": 83,
+     "qualityName": "WEBDL-1080p",
+     "tags": [
+      "kids"
+     ],
+     "redirect": "/activity?tab=queue&source=sonarr",
+     "state": "failedPending"
+    },
+    "url": "/activity?tab=queue&source=sonarr"
+   }
+  },
+  {
+   "notify": {
+    "eventType": "imported",
+    "title": "4 Episodes Imported",
+    "body": "Main.Burst.506 · Main.Burst.505 · Main.Burst.504 · …and 1 more",
+    "metadata": {
+     "grouped": true,
+     "groupCount": 4,
+     "items": [
+      {
+       "body": "Main.Burst.506",
+       "redirect": "/series/7/season/1/episode/76?instance=i1",
+       "seasonNumber": 1,
+       "episodeId": 76
+      },
+      {
+       "body": "Main.Burst.505",
+       "redirect": "/series/7/season/1/episode/75?instance=i1",
+       "seasonNumber": 1,
+       "episodeId": 75
+      },
+      {
+       "body": "Main.Burst.504",
+       "redirect": "/series/7/season/1/episode/74?instance=i1",
+       "seasonNumber": 1,
+       "episodeId": 74
+      },
+      {
+       "body": "Main.Imported.503",
+       "redirect": "/series/7/season/1/episode/73?instance=i1",
+       "seasonNumber": 1,
+       "episodeId": 73
+      }
+     ],
+     "redirect": "/series/7?instance=i1",
+     "source": "sonarr",
+     "instanceId": "i1",
+     "instanceLabel": "Main",
+     "qualityName": "WEBDL-1080p",
+     "qualityNames": [
+      "WEBDL-1080p"
+     ],
+     "tags": [
+      "kids"
+     ]
+    },
+    "url": "/series/7?instance=i1"
+   }
+  },
+  {
+   "pollingState.update": {
+    "where": {
+     "serviceConnectionId": "i1"
+    },
+    "data": {
+     "lastQueueIds": [
+      {
+       "id": 10,
+       "state": "downloading",
+       "status": "ok"
+      },
+      {
+       "id": 11,
+       "state": "importPending",
+       "status": "warning"
+      },
+      {
+       "id": 9,
+       "state": "failedPending",
+       "status": "warning"
+      },
+      {
+       "id": 12,
+       "state": "downloading",
+       "status": "ok"
+      },
+      {
+       "id": 13,
+       "state": "failedPending",
+       "status": "warning"
+      }
+     ],
+     "lastHistoryDate": "2026-10-19T03:33:00.000Z",
+     "lastHistoryId": 506,
+     "lastHistorySeenIds": [
+      506
+     ],
+     "lastHealthHash": "1dc48c84c93114c5e75df92baad8631c"
+    }
+   }
+  },
+  {
+   "badge": [
+    "activity",
+    "sonarr",
+    {
+     "total": 5,
+     "attention": 3
+    }
+   ]
+  },
+  {
+   "jobReport": {
+    "failure": null,
+    "skipped": false
+   }
+  }
+ ],
+ "pollRadarr:instanceFails": [
+  {
+   "invalidateLibrary": [
+    "radarr",
+    "i2"
+   ]
+  },
+  {
+   "log.warn": "Radarr instance poll failed"
+  },
+  {
+   "notify": {
+    "eventType": "healthWarning",
+    "title": "Anime · Radarr Health Warning",
+    "body": "Anime indexer is down",
+    "url": "/settings"
+   }
+  },
+  {
+   "notify": {
+    "eventType": "importFailed",
+    "title": "Anime · Movie Manual Import Required",
+    "body": "Anime.Release.11 — No files found are eligible for import",
+    "metadata": {
+     "source": "radarr",
+     "instanceId": "i2",
+     "instanceLabel": "Anime",
+     "id": 11,
+     "movieId": 51,
+     "qualityName": "WEBDL-1080p",
+     "tags": [
+      "kids"
+     ],
+     "redirect": "/activity?tab=failed&source=radarr",
+     "state": "importPending"
+    },
+    "url": "/activity?tab=failed&source=radarr"
+   }
+  },
+  {
+   "notify": {
+    "eventType": "grabbed",
+    "title": "Anime · Movie Download Started",
+    "body": "Anime.Release.12",
+    "metadata": {
+     "source": "radarr",
+     "instanceId": "i2",
+     "instanceLabel": "Anime",
+     "id": 12,
+     "movieId": 52,
+     "qualityName": "WEBDL-1080p",
+     "tags": [
+      "kids"
+     ],
+     "redirect": "/movies/52?instance=i2"
+    },
+    "url": "/movies/52?instance=i2"
+   }
+  },
+  {
+   "notify": {
+    "eventType": "downloadFailed",
+    "title": "Anime · Movie Download Failed",
+    "body": "Anime.Release.13 — Tracker said no",
+    "metadata": {
+     "source": "radarr",
+     "instanceId": "i2",
+     "instanceLabel": "Anime",
+     "id": 13,
+     "movieId": 53,
+     "qualityName": "WEBDL-1080p",
+     "tags": [
+      "kids"
+     ],
+     "redirect": "/activity?tab=queue&source=radarr",
+     "state": "failedPending"
+    },
+    "url": "/activity?tab=queue&source=radarr"
+   }
+  },
+  {
+   "notify": {
+    "eventType": "imported",
+    "title": "Anime · Movie Imported",
+    "body": "Anime.Imported.503",
+    "metadata": {
+     "source": "radarr",
+     "instanceId": "i2",
+     "instanceLabel": "Anime",
+     "id": 503,
+     "movieId": 43,
+     "qualityName": "WEBDL-1080p",
+     "tags": [
+      "kids"
+     ],
+     "redirect": "/movies/43?instance=i2"
+    },
+    "url": "/movies/43?instance=i2"
+   }
+  },
+  {
+   "pollingState.update": {
+    "where": {
+     "serviceConnectionId": "i2"
+    },
+    "data": {
+     "lastQueueIds": [
+      {
+       "id": 10,
+       "state": "downloading",
+       "status": "ok"
+      },
+      {
+       "id": 11,
+       "state": "importPending",
+       "status": "warning"
+      },
+      {
+       "id": 9,
+       "state": "failedPending",
+       "status": "warning"
+      },
+      {
+       "id": 12,
+       "state": "downloading",
+       "status": "ok"
+      },
+      {
+       "id": 13,
+       "state": "failedPending",
+       "status": "warning"
+      }
+     ],
+     "lastHistoryDate": "2026-10-19T03:30:00.000Z",
+     "lastHistoryId": 503,
+     "lastHistorySeenIds": [
+      503
+     ],
+     "lastHealthHash": "df5b4ecc7b649c7c88b37f476dc607f3"
+    }
+   }
+  },
+  {
+   "badge": [
+    "activity",
+    "radarr",
+    {
+     "total": 10,
+     "attention": 6
+    }
+   ]
+  },
+  {
+   "jobReport": {
+    "failure": "history down",
+    "skipped": false
+   }
+  }
+ ],
+ "pollSonarr:clientsFail": [
+  {
+   "jobReport": {
+    "failure": "decrypt failed",
+    "skipped": false
+   }
+  }
+ ],
+ "pollQBittorrent:firstRun": [
+  {
+   "pollingState.create": {
+    "serviceConnectionId": "q1"
+   }
+  },
+  {
+   "badge": [
+    "downloads",
+    "qbittorrent",
+    {
+     "total": 2,
+     "attention": 1
+    }
+   ]
+  },
+  {
+   "pollingState.update": {
+    "where": {
+     "serviceConnectionId": "q1"
+    },
+    "data": {
+     "lastQueueIds": [
+      {
+       "hash": "a",
+       "progress": 1,
+       "name": "A"
+      },
+      {
+       "hash": "b",
+       "progress": 1,
+       "name": "B"
+      },
+      {
+       "hash": "c",
+       "progress": 0.1,
+       "name": "C"
+      },
+      {
+       "hash": "d",
+       "progress": 0.4,
+       "name": "D"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "jobReport": {
+    "failure": null,
+    "skipped": false
+   }
+  }
+ ],
+ "pollJellyfin:firstRun": [
+  {
+   "pollingState.upsert": {
+    "where": {
+     "serviceConnectionId": "j1"
+    },
+    "update": {},
+    "create": {
+     "serviceConnectionId": "j1",
+     "lastQueueIds": []
+    }
+   }
+  },
+  {
+   "notify": {
+    "eventType": "jellyfinPlaybackStart",
+    "title": "Playback Started",
+    "body": "ana is watching Old",
+    "metadata": {
+     "source": "jellyfin",
+     "sessionId": "s-old",
+     "jellyfinUserId": "jf-ana",
+     "jellyfinUserName": "ana",
+     "redirect": "/jellyfin"
+    },
+    "url": "/jellyfin",
+    "userIds": [
+     "u1",
+     "u3"
+    ],
+    "ownerUserId": "u2"
+   }
+  },
+  {
+   "notify": {
+    "eventType": "jellyfinPlaybackStart",
+    "title": "Playback Started",
+    "body": "ana is watching Severance - Good News About Hell",
+    "metadata": {
+     "source": "jellyfin",
+     "sessionId": "s-new",
+     "jellyfinUserId": "jf-ana",
+     "jellyfinUserName": "ana",
+     "redirect": "/jellyfin"
+    },
+    "url": "/jellyfin",
+    "userIds": [
+     "u1",
+     "u3"
+    ],
+    "ownerUserId": "u2"
+   }
+  },
+  {
+   "notify": {
+    "eventType": "jellyfinPlaybackStart",
+    "title": "Playback Started",
+    "body": "guest is watching Perfect Days",
+    "metadata": {
+     "source": "jellyfin",
+     "sessionId": "s-guest",
+     "jellyfinUserId": "jf-guest",
+     "jellyfinUserName": "guest",
+     "redirect": "/jellyfin"
+    },
+    "url": "/jellyfin",
+    "ownerUserId": null
+   }
+  },
+  {
+   "pollingState.update": {
+    "where": {
+     "serviceConnectionId": "j1"
+    },
+    "data": {
+     "lastQueueIds": [
+      "s-old",
+      "s-new",
+      "s-guest",
+      "s-idle"
+     ]
+    }
+   }
+  },
+  {
+   "jobReport": {
+    "failure": null,
+    "skipped": false
+   }
+  }
+ ],
+ "pollSeerr:firstRun": [
+  {
+   "pollingState.upsert": {
+    "where": {
+     "serviceConnectionId": "se1"
+    },
+    "update": {},
+    "create": {
+     "serviceConnectionId": "se1",
+     "lastQueueIds": []
+    }
+   }
+  },
+  {
+   "pollingState.update": {
+    "where": {
+     "serviceConnectionId": "se1"
+    },
+    "data": {
+     "lastQueueIds": [
+      {
+       "id": 31,
+       "reqStatus": 1,
+       "mediaStatus": 2
+      },
+      {
+       "id": 25,
+       "reqStatus": 1,
+       "mediaStatus": 2
+      },
+      {
+       "id": 20,
+       "reqStatus": 2,
+       "mediaStatus": 3
+      },
+      {
+       "id": 21,
+       "reqStatus": 3,
+       "mediaStatus": 2
+      },
+      {
+       "id": 22,
+       "reqStatus": 4,
+       "mediaStatus": 2
+      },
+      {
+       "id": 23,
+       "reqStatus": 2,
+       "mediaStatus": 5
+      },
+      {
+       "id": 30,
+       "reqStatus": 1,
+       "mediaStatus": 2
+      }
+     ]
+    }
+   }
+  },
+  {
+   "badge": [
+    "requests",
+    "seerr",
+    {
+     "total": 3,
+     "attention": 3
+    }
+   ]
+  },
+  {
+   "jobReport": {
+    "failure": null,
+    "skipped": false
+   }
+  }
+ ],
+ "pollQBittorrent+pollSeerr:clientErrors": [
+  {
+   "jobReport": {
+    "failure": null,
+    "skipped": false
+   }
+  },
+  {
+   "jobReport": {
+    "failure": "Seerr unreachable",
+    "skipped": false
+   }
+  }
+ ],
+ "checkDiskSpace:noThresholds": [
+  {
+   "jobReport": {
+    "failure": null,
+    "skipped": false
+   }
+  }
+ ],
+ "checkUpcoming:dailyDigest": [
+  {
+   "notify": {
+    "eventType": "upcomingPremiere",
+    "title": "Upcoming Episode",
+    "body": "Severance S02E01 - Episode 1 (Season Finale)",
+    "dedupeKey": "sonarr-s1-ep-1-1792384200000",
+    "metadata": {
+     "source": "sonarr",
+     "instanceId": "s1",
+     "instanceLabel": "main",
+     "seriesId": 7,
+     "seasonNumber": 2,
+     "episodeId": 1,
+     "finaleType": "season",
+     "redirect": "/series/7/season/2/episode/1?instance=s1"
+    },
+    "url": "/series/7?instance=s1"
+   }
+  },
+  {
+   "notify": {
+    "eventType": "upcomingPremiere",
+    "title": "Upcoming Episode",
+    "body": "Severance S02E02 - Episode 2",
+    "dedupeKey": "sonarr-s1-ep-2-1792389600000",
+    "metadata": {
+     "source": "sonarr",
+     "instanceId": "s1",
+     "instanceLabel": "main",
+     "seriesId": 7,
+     "seasonNumber": 2,
+     "episodeId": 2,
+     "redirect": "/series/7/season/2/episode/2?instance=s1"
+    },
+    "url": "/series/7?instance=s1"
+   }
+  },
+  {
+   "notify": {
+    "eventType": "upcomingPremiere",
+    "title": "Series Finale Airing Soon",
+    "body": "Severance S02E04 - Episode 4 (Series Finale)",
+    "dedupeKey": "sonarr-s1-ep-4-1792382280000",
+    "metadata": {
+     "source": "sonarr",
+     "instanceId": "s1",
+     "instanceLabel": "main",
+     "seriesId": 7,
+     "seasonNumber": 2,
+     "episodeId": 4,
+     "finaleType": "series",
+     "redirect": "/series/7/season/2/episode/4?instance=s1"
+    },
+    "url": "/series/7?instance=s1"
+   }
+  },
+  {
+   "notify": {
+    "eventType": "upcomingPremiere",
+    "title": "main · Upcoming Movie",
+    "body": "Film A (2026) — In Cinemas",
+    "dedupeKey": "radarr-r1-40-cinema-1792385400000",
+    "metadata": {
+     "source": "radarr",
+     "instanceId": "r1",
+     "instanceLabel": "main",
+     "movieId": 40,
+     "releaseType": "cinema",
+     "redirect": "/movies/40?instance=r1"
+    },
+    "url": "/movies/40?instance=r1"
+   }
+  },
+  {
+   "notify": {
+    "eventType": "upcomingPremiere",
+    "title": "4k · Upcoming Movie",
+    "body": "Film A (2026) — In Cinemas",
+    "dedupeKey": "radarr-r2-40-cinema-1792385400000",
+    "metadata": {
+     "source": "radarr",
+     "instanceId": "r2",
+     "instanceLabel": "4k",
+     "movieId": 40,
+     "releaseType": "cinema",
+     "redirect": "/movies/40?instance=r2"
+    },
+    "url": "/movies/40?instance=r2"
+   }
+  },
+  {
+   "notify": {
+    "eventType": "upcomingPremiere",
+    "title": "Upcoming Album",
+    "body": "Band — Album X",
+    "dedupeKey": "lidarr-l1-90-1792383300000",
+    "metadata": {
+     "source": "lidarr",
+     "instanceId": "l1",
+     "instanceLabel": "music",
+     "albumId": 90,
+     "redirect": "/music/album/90?instance=l1"
+    },
+    "url": "/music/album/90?instance=l1"
+   }
+  },
+  {
+   "jobReport": {
+    "failure": null,
+    "skipped": false
+   }
+  },
+  {
+   "jobReport": {
+    "failure": null,
+    "skipped": true
+   }
+  },
+  {
+   "jobReport": {
+    "failure": null,
+    "skipped": true
+   }
+  }
+ ],
+ "checkActivityDigest:modes": [
+  {
+   "notify": {
+    "eventType": "activityDigest",
+    "title": "This week on Helprr",
+    "body": "2 imports · 1 failed download · 1 torrent completed. Something · Film A · Severance S02E01. via 2 Sonarr, 1 Radarr, 1 qBittorrent",
+    "dedupeKey": "activity-digest-weekly-2026-10-19",
+    "metadata": {
+     "source": "digest",
+     "period": "weekly",
+     "windowStart": "2026-10-13T00:00:00.000+05:30",
+     "eventCount": 4,
+     "sourceCounts": {
+      "sonarr": 2,
+      "radarr": 1,
+      "qbittorrent": 1
+     },
+     "redirect": "/notifications"
+    },
+    "url": "/notifications"
+   }
+  },
+  {
+   "jobReport": {
+    "failure": null,
+    "skipped": false
+   }
+  },
+  {
+   "jobReport": {
+    "failure": null,
+    "skipped": true
+   }
+  },
+  {
+   "jobReport": {
+    "failure": null,
+    "skipped": true
+   }
+  },
+  {
+   "jobReport": {
+    "failure": null,
+    "skipped": true
    }
   }
  ]
