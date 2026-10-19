@@ -2,6 +2,7 @@ import { withPerformanceScope } from '@/lib/server-perf';
 import { runWithRequestContext } from '@/lib/request-context';
 import { NextResponse } from 'next/server';
 import { logger, redact } from '@/lib/logger';
+import { READONLY_API_NETWORK_FIRST } from '@/lib/offline-snapshot';
 
 interface ApiLoggingPrefs {
   enabled: boolean;
@@ -88,6 +89,18 @@ export interface ApiLoggingOptions {
   redactQueryParams?: readonly string[];
 }
 
+// API answers are per user; nothing may be stored unless the route says so.
+const DEFAULT_CACHE_CONTROL = 'private, no-store';
+
+function withDefaultCacheControl(response: Response, request: Request | null): Response {
+  if (response.headers.has('Cache-Control')) return response;
+  // Reads the service worker keeps as offline snapshots must stay storable; no-cache
+  // still sends every use back to the server.
+  const snapshot = request?.method === 'GET' && READONLY_API_NETWORK_FIRST.test(new URL(request.url).pathname);
+  response.headers.set('Cache-Control', snapshot ? 'private, no-cache' : DEFAULT_CACHE_CONTROL);
+  return response;
+}
+
 export function withApiLogging<T extends (...args: never[]) => Promise<Response> | Response>(
   handler: T,
   scope?: string,
@@ -115,7 +128,7 @@ export function withApiLogging<T extends (...args: never[]) => Promise<Response>
       );
       if (!prefs.enabled) {
         response.headers.set('x-request-id', requestId);
-        return response;
+        return withDefaultCacheControl(response, request);
       }
       const durationMs = Math.round((performance.now() - startedAt) * 10) / 10;
       const status = response.status;
@@ -139,7 +152,7 @@ export function withApiLogging<T extends (...args: never[]) => Promise<Response>
         requestId,
       });
       response.headers.set('x-request-id', requestId);
-      return response;
+      return withDefaultCacheControl(response, request);
     } catch (error) {
       const durationMs = Math.round((performance.now() - startedAt) * 10) / 10;
       if (prefs.enabled) {
@@ -159,7 +172,7 @@ export function withApiLogging<T extends (...args: never[]) => Promise<Response>
       }
       return NextResponse.json(
         { error: 'Internal server error', requestId },
-        { status: 500, headers: { 'x-request-id': requestId } }
+        { status: 500, headers: { 'x-request-id': requestId, 'Cache-Control': DEFAULT_CACHE_CONTROL } }
       );
     }
   }) as T;
