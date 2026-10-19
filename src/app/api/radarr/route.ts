@@ -80,20 +80,26 @@ async function getHandler(request: NextRequest) {
       cacheKeySeed,
       projectionKey: full ? 'full' : 'list',
       buildPayload: async () => {
+        // Labels load alongside the library, so a slow instance costs one timeout, not two.
+        const labelMapsPromise = full ? null : resolveInstances().then((instances) => getInstanceLabelMaps('radarr', instances));
+        // Awaited below; if the library read throws first, this must not reject unhandled.
+        labelMapsPromise?.catch(() => {});
         // Cache the raw tagged library (full objects) so both ?full=true and the slim list
         // view are served from one entry. Authorized callers all get identical bytes (binary
         // capability gate), so no per-user filtering is needed after the read.
-        const { items: tagged, complete } = await getCachedTaggedLibrary({
+        const { items: tagged, complete, available } = await getCachedTaggedLibrary({
           scope: 'radarr',
           cacheKeySeed,
           getInstances: resolveInstances,
           fetchOne: (client) => client.getMovies(),
         });
+        // Every configured instance failed: an error, not an empty library.
+        if (!available && (await resolveInstances()).length > 0) throw new Error('No Radarr instance answered');
         if (full) return { payload: tagged, itemCount: tagged.length, cacheable: complete };
 
         // Resolve quality-profile / tag IDs to names against each item's OWN instance, so a
         // movie from a non-default Radarr isn't mislabelled by the default instance's lookup.
-        const labelMaps = await getInstanceLabelMaps('radarr', await resolveInstances());
+        const labelMaps = await labelMapsPromise!;
         return {
           itemCount: tagged.length,
           cacheable: complete && [...labelMaps.values()].every((map) => map.complete !== false),
