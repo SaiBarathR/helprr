@@ -264,6 +264,18 @@ describe('following a fallback download', () => {
     expect(mocks.update).not.toHaveBeenCalled();
   });
 
+  it('follows an import with Arr while qBittorrent does not answer', async () => {
+    mocks.torrents.mockRejectedValue(new Error('ECONNREFUSED'));
+    mocks.rows = [fallback({ status: 'IMPORTING', arrCommandId: 77, baselineFileIds: [] })];
+    mocks.proof.mockResolvedValueOnce({ proved: true, fileIds: [9], missing: 0 });
+    await run();
+    expect(statusSet()).toEqual(['IMPORTED']);
+
+    mocks.rows = [fallback({ status: 'IMPORT_PENDING', updatedAt: minutesAgo(15) })];
+    await run();
+    expect(mocks.settle).toHaveBeenCalledTimes(1);
+  });
+
   it("proves its own import by Arr's history of its files, or reports the failed command", async () => {
     mocks.rows = [fallback({ status: 'IMPORTING', arrCommandId: 77, baselineFileIds: [] })];
     mocks.proof.mockResolvedValueOnce({ proved: true, fileIds: [9], missing: 0 });

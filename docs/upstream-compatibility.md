@@ -405,8 +405,21 @@ import.
   `importMode: copy` and the candidate's `path`, `movieId` or
   `seriesId`/`episodeIds`, `quality`, `languages` and `releaseGroup` hardlinks the
   file into the library (the source stays, so the torrent keeps seeding). History
-  records `downloadFolderImported` without a download id; the new movie or episode
-  file id is the proof.
+  records `downloadFolderImported` without a download id, with `data.droppedPath`
+  (the file imported from) and `data.fileId` (the library file it created). That
+  pair, for a file id the title did not have before, in the title's own history
+  (`GET /api/v3/history/movie?movieId=` or `/history/series?seriesId=`, with
+  `eventType=3`; Sonarr's records carry the `episodeId`), is the proof.
+- **Commands.** `GET /api/v3/command` lists recent commands, a `ManualImport` with
+  its `queued` time and `body.files[].path`, so an import whose answer was lost can
+  be found; Arr forgets its commands when it restarts.
+- **Remote path mappings** (`GET /api/v3/remotepathmapping`) carry the download
+  client's `host` as Arr knows it; only the mappings for the host Arr uses for
+  Helprr's qBittorrent apply.
+- **Extra files.** With Import Extra Files on, a manual import without
+  `folderName` also imports files with the configured extra extensions that sit
+  next to the video, in its folder only (no subfolders). Probed on Sonarr; Helprr
+  applies the same check to Radarr.
 
 ## Before reporting an upstream compatibility problem
 

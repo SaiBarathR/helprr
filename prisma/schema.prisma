@@ -773,6 +773,7 @@ model ManualDownload {
   completedAt        DateTime?
   pathMapping        Json? // fallback: { mapping } — the remote path mapping Arr reads the files through, null for the same path
   arrCommandId       Int? // fallback: the ManualImport command Helprr started
+  importSentAt       DateTime? // fallback: when the import under the current claim was sent; cleared once it is settled
   events             ManualDownloadEvent[]
   files              ManualDownloadFile[]
 

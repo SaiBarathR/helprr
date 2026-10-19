@@ -89,9 +89,10 @@ const fileIdOf = (event: HistoryItem) => Number(event.data?.fileId) || 0;
  * Whether the import is proved. With this release's own import events (Arr
  * records the file each one imported): Radarr, an imported movie file that
  * the movie still has; Sonarr, every target episode holds the file this
- * release imported for it. Without them (Helprr's own fallback imports, which
- * have no download id): Radarr, a movie file id not in the baseline; Sonarr,
- * every target episode holds a file id it did not hold before.
+ * release imported for it. Without them (events that record no file):
+ * Radarr, a movie file id not in the baseline; Sonarr, every target episode
+ * holds a file id it did not hold before. Fallback imports have their own
+ * proof (fallbackImportProof).
  */
 export function importProof(
   download: Pick<ManualDownload, 'service' | 'baselineFileIds' | 'targetEpisodeIds'> & { arrItemId?: number | null },
@@ -329,9 +330,9 @@ export async function reconcileManualDownloads(): Promise<void> {
             continue;
           }
           if (found.mode === 'QBIT_REVIEWED') {
-            // Without an answer from qBittorrent the state is unknown: leave it.
-            if (!torrents) continue;
-            const outcome = await fromFallback(found, client, app, torrents.find((torrent) => torrent.hash.toUpperCase() === found.infoHash));
+            // Without an answer from qBittorrent the torrent's state is unknown; an import is Arr's alone.
+            if (!torrents && found.status !== 'IMPORTING' && found.status !== 'IMPORT_PENDING') continue;
+            const outcome = await fromFallback(found, client, app, torrents?.find((torrent) => torrent.hash.toUpperCase() === found.infoHash));
             if (outcome) await apply(found, outcome);
             continue;
           }
