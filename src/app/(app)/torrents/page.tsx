@@ -2,665 +2,43 @@
 
 import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
 
-import { passiveTorrentRefreshIntervalMs } from '@/lib/qbittorrent-summary';
-import { applyTorrentDelta, type TorrentDeltaResponse } from '@/lib/qbittorrent-delta';
-
-import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useWindowVirtualizer } from '@tanstack/react-virtual';
 import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
-import { SearchInput } from '@/components/media/search-input';
-import {
-  ActiveFilterBar,
-  FilterDot,
-  filterButtonLabel,
-  multiSelectFilters,
-  searchFilter,
-} from '@/components/ui/active-filter-bar';
+import { ActiveFilterBar, multiSelectFilters, searchFilter } from '@/components/ui/active-filter-bar';
 import { PullToRefresh } from '@/components/ui/pull-to-refresh';
-import { useRefreshAction } from '@/lib/hooks/use-refresh-action';
 import { useIsMobile } from '@/hooks/use-is-mobile';
-import { Badge } from '@/components/ui/badge';
-import { Progress } from '@/components/ui/progress';
-import { getRefreshIntervalMs } from '@/lib/client-refresh-settings';
 import { reportBulkTorrent } from '@/lib/bulk-fan-out';
-import { useQuery } from '@tanstack/react-query';
-import { backoffRefetchInterval } from '@/lib/query-fetch';
-import {
-  Drawer,
-  DrawerContent,
-  DrawerHeader,
-  DrawerTitle,
-  DrawerDescription,
-  DrawerFooter,
-  DrawerClose,
-} from '@/components/ui/drawer';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuCheckboxItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { ListSkeleton } from '@/components/ui/list-skeleton';
-import { DataTable, type DataTableColumn } from '@/components/ui/data-table';
-import { SwipeRow } from '@/components/ui/swipe-row';
-import { QuickContextMenu, type ContextActionGroup } from '@/components/ui/quick-context-menu';
-import {
-  Play,
-  Pause,
-  Zap,
-  Trash2,
-  Plus,
-  MoreVertical,
-  Loader2,
-  ArrowDown,
-  ArrowUp,
-  ArrowUpDown,
-  RefreshCw,
-  Search,
-  Filter,
-  FolderOpen,
-  Settings,
-  Link2,
-  Gauge,
-  Copy,
-  CheckCircle2,
-  Megaphone,
-  Tag,
-  Pencil,
-  Info,
-  SlidersHorizontal,
-} from 'lucide-react';
-import type {
-  QBittorrentTorrent,
-  QBittorrentSummaryResponse,
-  QBittorrentTransferInfo,
-} from '@/types';
+import { DataTable } from '@/components/ui/data-table';
+import type { QBittorrentTorrent } from '@/types';
 import type { TorrentFile, TorrentTracker } from '@/lib/qbittorrent-client';
-import {
-  useUIStore,
-  type TorrentsFilterPreference as FilterType,
-  type TorrentsSortKeyPreference as SortKey,
-} from '@/lib/store';
+import { useUIStore, type TorrentsSortKeyPreference as SortKey } from '@/lib/store';
 import { useCan } from '@/components/permission-provider';
 import { useBadgeActions } from '@/components/layout/badge-provider';
-import { formatSpeedLimit } from './_components/speed-limit-input';
 import { setSpeedLimitTargets } from './_components/speed-limit-targets';
 import { torrentsEmptyMessage } from './_components/empty-message';
+import {
+  OPTIMISTIC_OVERRIDE_FIELD,
+  OPTIMISTIC_ROW_PATCHES,
+  OPTIMISTIC_STATE_TTL_MS,
+  TORRENT_ROW_HEIGHT,
+  compareTorrents,
+  filterOptions,
+  matchesTorrentFilter,
+  torrentActionMessage,
+} from './_components/torrent-list';
+import { TorrentRow } from './_components/torrent-row';
+import { useTorrentsSummary } from './_components/use-torrents-summary';
+import { useTorrentTable } from './_components/use-torrent-table';
+import { TorrentsToolbar } from './_components/torrents-toolbar';
+import { TorrentsBulkBar } from './_components/torrents-bulk-bar';
+import { TorrentDetailDrawer } from './_components/torrent-detail-drawer';
+import { TorrentDeleteDrawer } from './_components/torrent-delete-drawer';
+import { TorrentCategoryDrawer } from './_components/torrent-category-drawer';
 
-const TORRENT_ROW_HEIGHT = 160;
-
-const TORRENT_ACTION_MESSAGES: Record<string, { single: string; bulk?: string }> = {
-  start: { single: 'Started', bulk: 'start' },
-  stop: { single: 'Stopped', bulk: 'stop' },
-  forceStart: { single: 'Force started', bulk: 'force start' },
-  delete: { single: 'Deleted', bulk: 'delete' },
-  recheck: { single: 'Rechecking', bulk: 'recheck' },
-  reannounce: { single: 'Reannounced', bulk: 'reannounce' },
-  setCategory: { single: 'Category set', bulk: 'set category for' },
-};
-
-function torrentActionMessage(action: string, mode: 'single' | 'bulk'): string {
-  const message = TORRENT_ACTION_MESSAGES[action];
-  if (!message) return mode === 'bulk' ? 'Updated' : 'Action successful';
-  return mode === 'bulk' ? message.bulk ?? message.single : message.single;
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 B';
-  const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
-}
-
-function formatSpeed(bytesPerSec: number): string {
-  return formatBytes(bytesPerSec) + '/s';
-}
-
-function formatEta(seconds: number): string {
-  if (seconds <= 0 || seconds === 8640000) return '';
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = seconds % 60;
-  if (h > 0) return `${h}h ${m}m`;
-  if (m > 0) return `${m}m ${s}s`;
-  return `${s}s`;
-}
-
-function formatSeedingTime(seconds: number): string {
-  if (seconds <= 0) return '-';
-  const d = Math.floor(seconds / 86400);
-  const h = Math.floor((seconds % 86400) / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const parts: string[] = [];
-  if (d > 0) parts.push(`${d}d`);
-  if (h > 0) parts.push(`${h}h`);
-  if (m > 0 || parts.length === 0) parts.push(`${m}m`);
-  return parts.join(' ');
-}
-
-function getStateBadge(state: string) {
-  const stateMap: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' }> = {
-    downloading: { label: 'Downloading', variant: 'default' },
-    stalledDL: { label: 'Stalled', variant: 'secondary' },
-    uploading: { label: 'Seeding', variant: 'default' },
-    stalledUP: { label: 'Seeding', variant: 'secondary' },
-    pausedDL: { label: 'Paused', variant: 'outline' },
-    pausedUP: { label: 'Paused', variant: 'outline' },
-    stoppedDL: { label: 'Stopped', variant: 'outline' },
-    stoppedUP: { label: 'Stopped', variant: 'outline' },
-    queuedDL: { label: 'Queued', variant: 'secondary' },
-    queuedUP: { label: 'Queued', variant: 'secondary' },
-    checkingDL: { label: 'Checking', variant: 'secondary' },
-    checkingUP: { label: 'Checking', variant: 'secondary' },
-    forcedDL: { label: 'Forced DL', variant: 'default' },
-    forcedUP: { label: 'Forced UL', variant: 'default' },
-    missingFiles: { label: 'Missing', variant: 'destructive' },
-    error: { label: 'Error', variant: 'destructive' },
-    moving: { label: 'Moving', variant: 'secondary' },
-  };
-
-  const s = stateMap[state] || { label: state, variant: 'secondary' as const };
-  return <Badge variant={s.variant} className="text-[10px] px-1.5 py-0">{s.label}</Badge>;
-}
-
-const filterOptions: { value: FilterType; label: string }[] = [
-  { value: 'downloading', label: 'Downloading' },
-  { value: 'seeding', label: 'Seeding' },
-  { value: 'completed', label: 'Completed' },
-  { value: 'paused', label: 'Paused' },
-  { value: 'active', label: 'Active' },
-];
-
-const DOWNLOADING_STATES = new Set([
-  'downloading', 'metaDL', 'allocating', 'stalledDL', 'queuedDL', 'checkingDL', 'forcedDL',
-]);
-const SEEDING_STATES = new Set([
-  'uploading', 'stalledUP', 'queuedUP', 'checkingUP', 'forcedUP', 'pausedUP', 'stoppedUP',
-]);
-// qBittorrent 5.x renamed pausedDL/pausedUP to stoppedDL/stoppedUP.
-const PAUSED_STATES = new Set(['pausedDL', 'pausedUP', 'stoppedDL', 'stoppedUP']);
-
-function matchesTorrentFilter(t: QBittorrentTorrent, f: FilterType): boolean {
-  switch (f) {
-    case 'all': return true;
-    case 'downloading': return DOWNLOADING_STATES.has(t.state);
-    case 'seeding': return SEEDING_STATES.has(t.state);
-    case 'completed': return t.progress >= 1;
-    case 'paused': return PAUSED_STATES.has(t.state);
-    case 'active': return t.dlspeed > 0 || t.upspeed > 0;
-    default: return true;
-  }
-}
-
-const SORT_OPTIONS: { key: SortKey; label: string }[] = [
-  { key: 'name', label: 'Name' },
-  { key: 'size', label: 'Size' },
-  { key: 'progress', label: 'Progress' },
-  { key: 'dlspeed', label: 'Download Speed' },
-  { key: 'upspeed', label: 'Upload Speed' },
-  { key: 'eta', label: 'ETA' },
-  { key: 'ratio', label: 'Ratio' },
-  { key: 'added_on', label: 'Date Added' },
-  { key: 'completion_on', label: 'Date Completed' },
-  { key: 'num_seeds', label: 'Seeds' },
-  { key: 'num_leechs', label: 'Peers' },
-  { key: 'priority', label: 'Priority' },
-  { key: 'category', label: 'Category' },
-  { key: 'state', label: 'Status' },
-  { key: 'uploaded', label: 'Uploaded' },
-  { key: 'downloaded', label: 'Downloaded' },
-  { key: 'amount_left', label: 'Remaining' },
-  { key: 'time_active', label: 'Time Active' },
-  { key: 'seeding_time', label: 'Seeding Time' },
-];
-
-function compareTorrents(a: QBittorrentTorrent, b: QBittorrentTorrent, key: SortKey): number {
-  switch (key) {
-    case 'name': return a.name.localeCompare(b.name);
-    case 'category': return (a.category || '').localeCompare(b.category || '');
-    case 'state': return a.state.localeCompare(b.state);
-    case 'size':
-    case 'progress':
-    case 'dlspeed':
-    case 'upspeed':
-    case 'eta':
-    case 'ratio':
-    case 'added_on':
-    case 'completion_on':
-    case 'num_seeds':
-    case 'num_leechs':
-    case 'priority':
-    case 'uploaded':
-    case 'downloaded':
-    case 'amount_left':
-    case 'time_active':
-    case 'seeding_time':
-      return a[key] - b[key];
-    default: {
-      return 0;
-    }
-  }
-}
-
-function sameTorrent(a: QBittorrentTorrent, b: QBittorrentTorrent): boolean {
-  return (
-    a.hash === b.hash
-    && a.name === b.name
-    && a.size === b.size
-    && a.progress === b.progress
-    && a.dlspeed === b.dlspeed
-    && a.upspeed === b.upspeed
-    && a.num_seeds === b.num_seeds
-    && a.num_leechs === b.num_leechs
-    && a.state === b.state
-    && a.eta === b.eta
-    && a.category === b.category
-    && a.tags === b.tags
-    && a.added_on === b.added_on
-    && a.completion_on === b.completion_on
-    && a.save_path === b.save_path
-    && a.ratio === b.ratio
-    && a.downloaded === b.downloaded
-    && a.uploaded === b.uploaded
-    && a.amount_left === b.amount_left
-    && a.priority === b.priority
-    && a.time_active === b.time_active
-    && a.seeding_time === b.seeding_time
-    && a.dl_limit === b.dl_limit
-    && a.up_limit === b.up_limit
-  );
-}
-
-function mergeTorrents(prev: QBittorrentTorrent[], next: QBittorrentTorrent[]): QBittorrentTorrent[] {
-  if (prev.length === 0) return next;
-
-  const prevByHash = new Map(prev.map((torrent) => [torrent.hash, torrent]));
-  let changed = prev.length !== next.length;
-
-  const merged = next.map((torrent) => {
-    const existing = prevByHash.get(torrent.hash);
-    if (existing && sameTorrent(existing, torrent)) {
-      return existing;
-    }
-    changed = true;
-    return torrent;
-  });
-
-  return changed ? merged : prev;
-}
-
-// Optimistic row patches applied to the touched rows before the POST resolves.
-// qBittorrent applies actions ASYNCHRONOUSLY: a poll landing right after the
-// POST can still report the pre-action data, so each patch's key field is also
-// held as a pending override (see the merge effect) until a poll confirms the
-// value actually changed — otherwise the reconcile would revert the row.
-const OPTIMISTIC_ROW_PATCHES: Record<
-  string,
-  (t: QBittorrentTorrent, extra?: Record<string, unknown>) => QBittorrentTorrent
-> = {
-  start: (t) => ({ ...t, state: t.progress >= 1 ? 'uploading' : 'downloading' }),
-  resume: (t) => ({ ...t, state: t.progress >= 1 ? 'uploading' : 'downloading' }),
-  forceStart: (t) => ({ ...t, state: t.progress >= 1 ? 'forcedUP' : 'forcedDL' }),
-  stop: (t) => ({ ...t, state: t.progress >= 1 ? 'stoppedUP' : 'stoppedDL', dlspeed: 0, upspeed: 0 }),
-  pause: (t) => ({ ...t, state: t.progress >= 1 ? 'pausedUP' : 'pausedDL', dlspeed: 0, upspeed: 0 }),
-  setCategory: (t, extra) => ({ ...t, category: String(extra?.category ?? '') }),
-};
-
-// The field each action's override guards (the one the reconcile must not revert).
-const OPTIMISTIC_OVERRIDE_FIELD: Record<string, 'state' | 'category'> = {
-  start: 'state',
-  resume: 'state',
-  forceStart: 'state',
-  stop: 'state',
-  pause: 'state',
-  setCategory: 'category',
-};
-
-// How long an optimistic override (or delete tombstone) may outlive polls that
-// still report the pre-action data before we give up and accept the server.
-const OPTIMISTIC_STATE_TTL_MS = 10_000;
-
-type PendingFieldOverride = {
-  field: 'state' | 'category';
-  value: string;
-  prev: string;
-  until: number;
-};
-
-// --- Row actions dropdown (shared by card and table rows) ---
-
-interface TorrentRowProps {
-  torrent: QBittorrentTorrent;
-  selected: boolean;
-  onToggleSelect: (hash: string) => void;
-  onFetchDetail: (hash: string) => void;
-  onTorrentAction: (hash: string, action: string, extra?: Record<string, unknown>) => void;
-  onOpenDeleteDrawer: (hash: string, name: string, deleteFiles: boolean) => void;
-  onOpenCategoryDrawer: (hash: string) => void;
-  onRename: (hash: string) => void;
-}
-
-function torrentContextActionGroups({
-  torrent,
-  selected,
-  onToggleSelect,
-  onFetchDetail,
-  onTorrentAction,
-  onOpenDeleteDrawer,
-  onOpenCategoryDrawer,
-  onRename,
-  canManageTorrents,
-  canDeleteTorrents,
-}: TorrentRowProps & {
-  canManageTorrents: boolean;
-  canDeleteTorrents: boolean;
-}): ContextActionGroup[] {
-  return [
-    {
-      id: 'navigation',
-      actions: [
-        {
-          id: 'view-details',
-          label: 'View details',
-          icon: <Info className="h-4 w-4" />,
-          onSelect: () => onFetchDetail(torrent.hash),
-        },
-        {
-          id: 'toggle-selection',
-          label: selected ? 'Deselect' : 'Select',
-          icon: <CheckCircle2 className="h-4 w-4" />,
-          onSelect: () => onToggleSelect(torrent.hash),
-        },
-      ],
-    },
-    {
-      id: 'control',
-      actions: canManageTorrents
-        ? [
-            {
-              id: 'start',
-              label: 'Start',
-              icon: <Play className="h-4 w-4" />,
-              onSelect: () => onTorrentAction(torrent.hash, 'start'),
-            },
-            {
-              id: 'stop',
-              label: 'Stop',
-              icon: <Pause className="h-4 w-4" />,
-              onSelect: () => onTorrentAction(torrent.hash, 'stop'),
-            },
-            {
-              id: 'force-start',
-              label: 'Force Start',
-              icon: <Zap className="h-4 w-4" />,
-              onSelect: () => onTorrentAction(torrent.hash, 'forceStart'),
-            },
-          ]
-        : [],
-    },
-    {
-      id: 'manage',
-      actions: canManageTorrents
-        ? [
-            {
-              id: 'recheck',
-              label: 'Recheck',
-              icon: <CheckCircle2 className="h-4 w-4" />,
-              onSelect: () => onTorrentAction(torrent.hash, 'recheck'),
-            },
-            {
-              id: 'reannounce',
-              label: 'Reannounce',
-              icon: <Megaphone className="h-4 w-4" />,
-              onSelect: () => onTorrentAction(torrent.hash, 'reannounce'),
-            },
-            {
-              id: 'set-category',
-              label: 'Set Category',
-              icon: <Tag className="h-4 w-4" />,
-              onSelect: () => onOpenCategoryDrawer(torrent.hash),
-            },
-            {
-              id: 'rename',
-              label: 'Rename',
-              icon: <Pencil className="h-4 w-4" />,
-              onSelect: () => onRename(torrent.hash),
-            },
-          ]
-        : [],
-    },
-    {
-      id: 'destructive',
-      actions: canDeleteTorrents
-        ? [
-            {
-              id: 'delete-keep-files',
-              label: 'Delete (keep files)',
-              icon: <Trash2 className="h-4 w-4" />,
-              destructive: true,
-              onSelect: () => onOpenDeleteDrawer(torrent.hash, torrent.name, false),
-            },
-            {
-              id: 'delete-with-files',
-              label: 'Delete with files',
-              icon: <Trash2 className="h-4 w-4" />,
-              destructive: true,
-              onSelect: () => onOpenDeleteDrawer(torrent.hash, torrent.name, true),
-            },
-          ]
-        : [],
-    },
-  ];
-}
-
-function TorrentRowActions({
-  torrent,
-  onTorrentAction,
-  onOpenDeleteDrawer,
-  onOpenCategoryDrawer,
-  onRename,
-  triggerClassName,
-}: Omit<TorrentRowProps, 'selected' | 'onToggleSelect' | 'onFetchDetail'> & { triggerClassName?: string }) {
-  const canManageTorrents = useCan('torrents.manage');
-  const canDeleteTorrents = useCan('torrents.delete');
-  if (!canManageTorrents && !canDeleteTorrents) return null;
-
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          variant="ghost"
-          size="icon"
-          className={triggerClassName ?? 'h-7 w-7 shrink-0'}
-          aria-label="Torrent actions"
-        >
-          <MoreVertical className="h-4 w-4" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        {canManageTorrents && (
-          <>
-            <DropdownMenuItem onClick={() => onTorrentAction(torrent.hash, 'start')}>
-              <Play className="mr-2 h-4 w-4" /> Start
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => onTorrentAction(torrent.hash, 'stop')}>
-              <Pause className="mr-2 h-4 w-4" /> Stop
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => onTorrentAction(torrent.hash, 'forceStart')}>
-              <Zap className="mr-2 h-4 w-4" /> Force Start
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => onTorrentAction(torrent.hash, 'recheck')}>
-              <CheckCircle2 className="mr-2 h-4 w-4" /> Recheck
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => onTorrentAction(torrent.hash, 'reannounce')}>
-              <Megaphone className="mr-2 h-4 w-4" /> Reannounce
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => onOpenCategoryDrawer(torrent.hash)}>
-              <Tag className="mr-2 h-4 w-4" /> Set Category
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => onRename(torrent.hash)}>
-              <Pencil className="mr-2 h-4 w-4" /> Rename
-            </DropdownMenuItem>
-          </>
-        )}
-        {canManageTorrents && canDeleteTorrents && <DropdownMenuSeparator />}
-        {canDeleteTorrents && (
-          <>
-            <DropdownMenuItem onClick={() => onOpenDeleteDrawer(torrent.hash, torrent.name, false)}>
-              <Trash2 className="mr-2 h-4 w-4" /> Delete (keep files)
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              className="text-destructive"
-              onClick={() => onOpenDeleteDrawer(torrent.hash, torrent.name, true)}
-            >
-              <Trash2 className="mr-2 h-4 w-4" /> Delete with files
-            </DropdownMenuItem>
-          </>
-        )}
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
-
-// --- TorrentRow component (card view) ---
-
-const TorrentRow = memo(function TorrentRow({
-  torrent,
-  selected,
-  onToggleSelect,
-  onFetchDetail,
-  onTorrentAction,
-  onOpenDeleteDrawer,
-  onOpenCategoryDrawer,
-  onRename,
-}: TorrentRowProps) {
-  const hasSpeedLimit = torrent.dl_limit > 0 || torrent.up_limit > 0;
-  const canManageTorrents = useCan('torrents.manage');
-  const canDeleteTorrents = useCan('torrents.delete');
-  const stopped = PAUSED_STATES.has(torrent.state);
-  const contextGroups = torrentContextActionGroups({
-    torrent,
-    selected,
-    onToggleSelect,
-    onFetchDetail,
-    onTorrentAction,
-    onOpenDeleteDrawer,
-    onOpenCategoryDrawer,
-    onRename,
-    canManageTorrents,
-    canDeleteTorrents,
-  });
-
-  return (
-    <SwipeRow
-      contentClassName="bg-card"
-      leftAction={canManageTorrents ? {
-        label: stopped ? 'Start' : 'Stop',
-        icon: stopped ? <Play className="h-4 w-4" /> : <Pause className="h-4 w-4" />,
-        className: 'bg-primary text-primary-foreground',
-        onAction: () => onTorrentAction(torrent.hash, stopped ? 'start' : 'stop'),
-      } : undefined}
-      rightAction={canDeleteTorrents ? {
-        label: 'Delete',
-        icon: <Trash2 className="h-4 w-4" />,
-        className: 'bg-destructive text-destructive-foreground',
-        onAction: () => onOpenDeleteDrawer(torrent.hash, torrent.name, false),
-      } : undefined}
-    >
-    <QuickContextMenu label={`Actions for ${torrent.name}`} groups={contextGroups}>
-    <div className="px-3 py-3 sm:px-4">
-      <div className="flex items-start gap-3">
-        {/* The label carries the 44px hit area (a native checkbox can't), and
-            is marked so a long press on it selects instead of opening the menu. */}
-        <label className="relative mt-1 flex touch-target" data-context-menu-ignore>
-          <input
-            type="checkbox"
-            checked={selected}
-            onChange={() => onToggleSelect(torrent.hash)}
-            className="rounded border-border"
-            aria-label={`Select ${torrent.name}`}
-          />
-        </label>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-start justify-between gap-2">
-            <button
-              className="text-sm font-medium truncate text-left hover:underline"
-              onClick={() => onFetchDetail(torrent.hash)}
-            >
-              {torrent.name}
-            </button>
-            <TorrentRowActions
-              torrent={torrent}
-              onTorrentAction={onTorrentAction}
-              onOpenDeleteDrawer={onOpenDeleteDrawer}
-              onOpenCategoryDrawer={onOpenCategoryDrawer}
-              onRename={onRename}
-              triggerClassName="h-7 w-7 shrink-0 -mt-0.5"
-            />
-          </div>
-
-          <div className="flex flex-wrap items-center gap-1.5 mt-1">
-            {getStateBadge(torrent.state)}
-            <span className="text-[11px] text-muted-foreground">{formatBytes(torrent.size)}</span>
-            {torrent.category && (
-              <Badge variant="outline" className="text-[10px] px-1.5 py-0 truncate max-w-[120px]">
-                {torrent.category}
-              </Badge>
-            )}
-            {hasSpeedLimit && (
-              <Gauge className="h-3 w-3 text-yellow-500" />
-            )}
-          </div>
-
-          <div className="mt-2">
-            <div className="flex justify-between text-[11px] text-muted-foreground mb-1 flex-wrap gap-x-2">
-              <span>{(torrent.progress * 100).toFixed(1)}%</span>
-              <span className="flex items-center flex-wrap gap-x-2">
-                {torrent.dlspeed > 0 && (
-                  <span className="text-green-500">
-                    <ArrowDown className="inline h-3 w-3" /> {formatSpeed(torrent.dlspeed)}
-                  </span>
-                )}
-                {torrent.upspeed > 0 && (
-                  <span className="text-blue-500">
-                    <ArrowUp className="inline h-3 w-3" /> {formatSpeed(torrent.upspeed)}
-                  </span>
-                )}
-                {torrent.eta > 0 && torrent.eta < 8640000 && (
-                  <span>ETA: {formatEta(torrent.eta)}</span>
-                )}
-              </span>
-            </div>
-            <Progress value={torrent.progress * 100} className="h-1" />
-          </div>
-
-          <div className="flex items-center flex-wrap gap-x-3 gap-y-0.5 mt-1.5 text-[11px] text-muted-foreground">
-            <span>Seeds: {torrent.num_seeds}</span>
-            <span>Peers: {torrent.num_leechs}</span>
-            <span>Ratio: {(torrent.ratio ?? 0).toFixed(2)}</span>
-          </div>
-          <div className="flex items-center flex-wrap gap-x-3 gap-y-0.5 mt-0.5 text-[11px] text-muted-foreground">
-            <span>DL: {formatBytes(torrent.downloaded ?? 0)}</span>
-            <span>UL: {formatBytes(torrent.uploaded ?? 0)}</span>
-            {torrent.progress < 1 && torrent.amount_left > 0 && (
-              <span>Rem: {formatBytes(torrent.amount_left)}</span>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-    </QuickContextMenu>
-    </SwipeRow>
-  );
-}, (prevProps, nextProps) => prevProps.selected === nextProps.selected && prevProps.torrent === nextProps.torrent);
 
 // --- Main page ---
 
@@ -683,10 +61,6 @@ export default function TorrentsPage() {
   // 'auto' picks the table from Tailwind's lg breakpoint up.
   const isBelowLg = useIsMobile(1023);
   const isTableView = viewMode === 'table' || (viewMode === 'auto' && !isBelowLg);
-  const [torrents, setTorrents] = useState<QBittorrentTorrent[]>([]);
-  const [transferInfo, setTransferInfo] = useState<QBittorrentTransferInfo | null>(null);
-  const [speedLimitsMode, setSpeedLimitsMode] = useState(0);
-  const [refreshIntervalMs, setRefreshIntervalMs] = useState(5000);
   const [search, setSearch] = useRouteViewState('search', '');
   const [selectedTorrents, setSelectedTorrents] = useState<Set<string>>(new Set());
   const [listOffsetTop, setListOffsetTop] = useState(0);
@@ -721,123 +95,24 @@ export default function TorrentsPage() {
   const [categories, setCategories] = useState<Record<string, { name: string; savePath: string }>>({});
   const [categoriesLoading, setCategoriesLoading] = useState(false);
 
+  const {
+    torrents,
+    setTorrents,
+    transferInfo,
+    speedLimitsMode,
+    setSpeedLimitsMode,
+    refetchSummary,
+    pendingFieldRef,
+    pendingDeleteRef,
+    pendingSpeedModeRef,
+    torrentsRef,
+    loading,
+    refreshing,
+    refresh,
+    error,
+  } = useTorrentsSummary(filter, hasHydrated);
+
   const listRef = useRef<HTMLDivElement | null>(null);
-  // When exactly one filter is active, push it to qBittorrent so the server slims
-  // the payload. Multi-select uses OR semantics the qBit `filter` param doesn't
-  // support, so we fetch all + filter client-side in that case. The signature is
-  // part of the query key so switching filters refetches immediately.
-  const filterSignature = filter.length === 1 ? filter[0] : filter.length === 0 ? '__all__' : '__multi__';
-  const deltaSnapshots = useRef(new Map<string, { cursor: string; payload: QBittorrentSummaryResponse }>());
-
-  const summaryQuery = useQuery({
-    queryKey: ['torrents', 'summary', filterSignature],
-    queryFn: async ({ signal }): Promise<QBittorrentSummaryResponse> => {
-      const params = new URLSearchParams();
-      if (filterSignature !== '__all__' && filterSignature !== '__multi__') params.set('filter', filterSignature);
-      const previous = deltaSnapshots.current.get(filterSignature);
-      params.set('view', 'delta');
-      if (previous) params.set('cursor', previous.cursor);
-      const qs = params.toString();
-      const res = await fetch(qs ? `/api/qbittorrent/summary?${qs}` : '/api/qbittorrent/summary', { signal });
-      if (!res.ok) throw new Error('Failed to fetch');
-      const data = (await res.json()) as TorrentDeltaResponse & { error?: string };
-      if (data.error) throw new Error(data.error);
-      signal.throwIfAborted();
-      try {
-        const payload = applyTorrentDelta(previous?.payload, data);
-        deltaSnapshots.current.set(filterSignature, { cursor: data.cursor, payload });
-        // The finite upstream filter set is small; cap defensively as well.
-        if (deltaSnapshots.current.size > 16) deltaSnapshots.current.delete(deltaSnapshots.current.keys().next().value!);
-        return payload;
-      } catch (error) {
-        deltaSnapshots.current.delete(filterSignature);
-        throw error; // The next query retry requests a full reset.
-      }
-    },
-    enabled: hasHydrated,
-    refetchInterval: backoffRefetchInterval(passiveTorrentRefreshIntervalMs(refreshIntervalMs, typeof navigator === 'undefined' ? undefined : (navigator as Navigator & { connection?: { saveData?: boolean; effectiveType?: string } }).connection)),
-    refetchIntervalInBackground: false,
-    refetchOnWindowFocus: true,
-    staleTime: 0,
-  });
-  const refetchSummary = summaryQuery.refetch;
-
-  // Optimistic overrides awaiting server confirmation, keyed by hash.
-  // qBittorrent applies actions asynchronously, so a poll can still report the
-  // pre-action data right after an action; while an override is pending (and
-  // unexpired) such a poll must not revert the row. Deletes get tombstones
-  // (hash → expiry) that suppress re-insertion until the server stops
-  // reporting the torrent.
-  const pendingFieldRef = useRef(new Map<string, PendingFieldOverride>());
-  const pendingDeleteRef = useRef(new Map<string, number>());
-  // Optimistic alt-speed-mode flip awaiting confirmation (same idea, one value).
-  const pendingSpeedModeRef = useRef<{ value: number; prev: number; until: number } | null>(null);
-
-  // Mirror of `torrents` so the merge effect and torrentAction can read the
-  // committed list without adding it to deps (which would churn row callbacks).
-  const torrentsRef = useRef(torrents);
-  torrentsRef.current = torrents;
-
-  // Merge new data into local state so polls preserve UI ordering/identity
-  // (mergeTorrents reconciles by hash instead of replacing the list wholesale).
-  // Reconciliation of pending overrides happens HERE, outside the setTorrents
-  // updater: updaters must stay pure (they can re-run), and deleting overrides
-  // inside one could clear them before the state is actually committed.
-  useEffect(() => {
-    const data = summaryQuery.data;
-    if (!data) return;
-    const now = Date.now();
-    let merged = mergeTorrents(torrentsRef.current, data.torrents);
-
-    const tombstones = pendingDeleteRef.current;
-    if (tombstones.size > 0) {
-      const serverHashes = new Set(data.torrents.map((t) => t.hash));
-      for (const [hash, until] of tombstones) {
-        // Confirmed (server no longer reports it) or expired.
-        if (!serverHashes.has(hash) || now > until) tombstones.delete(hash);
-      }
-      if (tombstones.size > 0) merged = merged.filter((t) => !tombstones.has(t.hash));
-    }
-
-    const pending = pendingFieldRef.current;
-    if (pending.size > 0) {
-      merged = merged.map((t) => {
-        const override = pending.get(t.hash);
-        if (!override) return t;
-        if (t[override.field] !== override.prev || now > override.until) {
-          // Confirmed (field moved off the pre-action value) or expired.
-          pending.delete(t.hash);
-          return t;
-        }
-        return { ...t, [override.field]: override.value };
-      });
-      for (const hash of pending.keys()) {
-        if (!merged.some((t) => t.hash === hash)) pending.delete(hash);
-      }
-    }
-
-    setTorrents(merged);
-    setTransferInfo(data.transferInfo);
-
-    const serverMode = data.speedLimitsMode ?? 0;
-    const modeOverride = pendingSpeedModeRef.current;
-    if (modeOverride && serverMode === modeOverride.prev && now <= modeOverride.until) {
-      setSpeedLimitsMode(modeOverride.value);
-    } else {
-      pendingSpeedModeRef.current = null;
-      setSpeedLimitsMode(serverMode);
-    }
-  }, [summaryQuery.data]);
-
-  // The query is disabled until the store hydrates, so isLoading stays false in
-  // that gap — treat it as loading to avoid a brief "No torrents found" flash.
-  const loading = !hasHydrated || summaryQuery.isLoading;
-  const { refreshing, refresh } = useRefreshAction(refetchSummary);
-  const error = summaryQuery.isError
-    ? summaryQuery.error instanceof Error
-      ? summaryQuery.error.message
-      : 'Failed to fetch torrents'
-    : null;
 
   const fetchDetail = useCallback(async (hash: string) => {
     detailAbortRef.current?.abort();
@@ -863,14 +138,6 @@ export default function TorrentsPage() {
     } finally {
       if (detailHashRef.current === hash) setDetailLoading(false);
     }
-  }, []);
-
-  useEffect(() => {
-    async function loadRefreshInterval() {
-      const intervalMs = await getRefreshIntervalMs('torrentsRefreshIntervalSecs', 5);
-      setRefreshIntervalMs(intervalMs);
-    }
-    loadRefreshInterval();
   }, []);
 
   useEffect(() => {
@@ -982,7 +249,7 @@ export default function TorrentsPage() {
       if (!opts?.silent) toast.error(err instanceof Error ? err.message : 'Action failed');
       return false;
     }
-  }, [refetchSummary]);
+  }, [refetchSummary, pendingDeleteRef, pendingFieldRef, setTorrents, torrentsRef]);
 
   const bulkAction = useCallback(async (action: string, extra?: Record<string, unknown>): Promise<boolean> => {
     if (selectedTorrents.size === 0) return false;
@@ -1102,7 +369,7 @@ export default function TorrentsPage() {
       setSpeedLimitsMode(prev);
       toast.error('Failed to toggle speed mode');
     }
-  }, [refetchSummary, speedLimitsMode]);
+  }, [refetchSummary, speedLimitsMode, pendingSpeedModeRef, setSpeedLimitsMode]);
 
   const filteredTorrents = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -1186,434 +453,58 @@ export default function TorrentsPage() {
 
   const allSelected = selectedTorrents.size === filteredTorrents.length && filteredTorrents.length > 0;
 
-  const tableColumns = useMemo((): DataTableColumn<QBittorrentTorrent>[] => [
-    {
-      id: 'select',
-      label: (
-        <label className="relative flex touch-target" data-context-menu-ignore>
-          <input
-            type="checkbox"
-            checked={allSelected}
-            onChange={selectAll}
-            className="block rounded border-border"
-            aria-label="Select all"
-          />
-        </label>
-      ),
-      width: 40,
-      minWidth: 40,
-      fixed: true,
-      cell: (t) => (
-        <label className="relative flex touch-target" data-context-menu-ignore>
-          <input
-            type="checkbox"
-            checked={selectedTorrents.has(t.hash)}
-            onChange={() => toggleSelect(t.hash)}
-            className="block rounded border-border"
-            aria-label={`Select ${t.name}`}
-          />
-        </label>
-      ),
-    },
-    // Widths sum to 1008px, the content width at 1280px with the sidebar open,
-    // so the default table fits without scrolling; Name absorbs any extra.
-    {
-      id: 'name',
-      label: 'Name',
-      width: 184,
-      minWidth: 160,
-      grow: true,
-      sortKey: 'name',
-      cell: (t) => (
-        <div className="flex items-center gap-1.5 min-w-0">
-          <button
-            className="text-sm font-medium truncate text-left hover:underline min-w-0"
-            title={t.name}
-            onClick={() => fetchDetail(t.hash)}
-          >
-            {t.name}
-          </button>
-          {t.category && (
-            <Badge variant="outline" className="text-[10px] px-1.5 py-0 shrink-0 max-w-[120px] truncate">
-              {t.category}
-            </Badge>
-          )}
-          {(t.dl_limit > 0 || t.up_limit > 0) && <Gauge className="h-3 w-3 text-yellow-500 shrink-0" />}
-        </div>
-      ),
-    },
-    {
-      id: 'state',
-      label: 'Status',
-      width: 96,
-      sortKey: 'state',
-      cell: (t) => getStateBadge(t.state),
-    },
-    {
-      id: 'progress',
-      label: 'Progress',
-      width: 116,
-      minWidth: 90,
-      sortKey: 'progress',
-      cell: (t) => (
-        <div className="flex items-center gap-1.5">
-          <Progress value={t.progress * 100} className="h-1 flex-1" />
-          <span className="text-[10px] text-muted-foreground w-8 text-right shrink-0">
-            {(t.progress * 100).toFixed(0)}%
-          </span>
-        </div>
-      ),
-    },
-    {
-      id: 'size',
-      label: 'Size',
-      width: 80,
-      align: 'right',
-      sortKey: 'size',
-      cell: (t) => <span className="text-xs text-muted-foreground">{formatBytes(t.size)}</span>,
-    },
-    {
-      id: 'dlspeed',
-      label: 'DL',
-      width: 88,
-      align: 'right',
-      sortKey: 'dlspeed',
-      cell: (t) => t.dlspeed > 0
-        ? <span className="text-xs text-green-500">{formatSpeed(t.dlspeed)}</span>
-        : <span className="text-xs text-muted-foreground">&mdash;</span>,
-    },
-    {
-      id: 'upspeed',
-      label: 'UL',
-      width: 88,
-      align: 'right',
-      sortKey: 'upspeed',
-      cell: (t) => t.upspeed > 0
-        ? <span className="text-xs text-blue-500">{formatSpeed(t.upspeed)}</span>
-        : <span className="text-xs text-muted-foreground">&mdash;</span>,
-    },
-    {
-      id: 'eta',
-      label: 'ETA',
-      width: 76,
-      align: 'right',
-      sortKey: 'eta',
-      cell: (t) => (
-        <span className="text-xs text-muted-foreground whitespace-nowrap">
-          {t.eta > 0 && t.eta < 8640000 ? formatEta(t.eta) : '—'}
-        </span>
-      ),
-    },
-    {
-      id: 'num_seeds',
-      label: 'Seeds',
-      width: 64,
-      align: 'right',
-      sortKey: 'num_seeds',
-      cell: (t) => <span className="text-xs text-muted-foreground">{t.num_seeds}</span>,
-    },
-    {
-      id: 'num_leechs',
-      label: 'Peers',
-      width: 64,
-      align: 'right',
-      sortKey: 'num_leechs',
-      cell: (t) => <span className="text-xs text-muted-foreground">{t.num_leechs}</span>,
-    },
-    {
-      id: 'ratio',
-      label: 'Ratio',
-      width: 64,
-      align: 'right',
-      sortKey: 'ratio',
-      cell: (t) => <span className="text-xs text-muted-foreground">{(t.ratio ?? 0).toFixed(2)}</span>,
-    },
-    {
-      id: 'actions',
-      label: '',
-      width: 48,
-      minWidth: 48,
-      fixed: true,
-      cell: (t) => (
-        <TorrentRowActions
-          torrent={t}
-          onTorrentAction={torrentAction}
-          onOpenDeleteDrawer={openDeleteDrawer}
-          onOpenCategoryDrawer={openCategoryDrawer}
-          onRename={openRename}
-        />
-      ),
-    },
-  ], [allSelected, selectAll, selectedTorrents, toggleSelect, fetchDetail, torrentAction, openDeleteDrawer, openCategoryDrawer, openRename]);
-
-  const wrapTableRow = useCallback((torrent: QBittorrentTorrent, tr: ReactElement) => (
-    <QuickContextMenu
-      label={`Actions for ${torrent.name}`}
-      groups={torrentContextActionGroups({
-        torrent,
-        selected: selectedTorrents.has(torrent.hash),
-        onToggleSelect: toggleSelect,
-        onFetchDetail: fetchDetail,
-        onTorrentAction: torrentAction,
-        onOpenDeleteDrawer: openDeleteDrawer,
-        onOpenCategoryDrawer: openCategoryDrawer,
-        onRename: openRename,
-        canManageTorrents,
-        canDeleteTorrents,
-      })}
-    >
-      {tr}
-    </QuickContextMenu>
-  ), [selectedTorrents, toggleSelect, fetchDetail, torrentAction, openDeleteDrawer, openCategoryDrawer, openRename, canManageTorrents, canDeleteTorrents]);
+  const { tableColumns, wrapTableRow } = useTorrentTable({
+    allSelected,
+    selectAll,
+    selectedTorrents,
+    toggleSelect,
+    fetchDetail,
+    torrentAction,
+    openDeleteDrawer,
+    openCategoryDrawer,
+    openRename,
+    canManageTorrents,
+    canDeleteTorrents,
+  });
 
   return (
     <div className="space-y-3 animate-content-in">
       <PullToRefresh onRefresh={() => refetchSummary()} />
       <h1 className="sr-only">Torrents</h1>
-      <div className="page-toolbar page-toolbar-flush pb-2 app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 space-y-2">
-        <div className="flex items-center gap-2">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button
-                className="relative p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent active:bg-accent/80 transition-colors"
-                aria-label={filterButtonLabel(
-                  `Filter: ${menuFilters.map((f) => f.label).join(', ') || 'All'}`,
-                  menuFilters.length > 0,
-                )}
-              >
-                <Filter className="h-5 w-5" />
-                <FilterDot active={menuFilters.length > 0} />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-48">
-              <DropdownMenuLabel>Filter</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuCheckboxItem
-                checked={filter.length === 0}
-                onCheckedChange={() => setFilter([])}
-                onSelect={(e) => e.preventDefault()}
-              >
-                All
-              </DropdownMenuCheckboxItem>
-              {filterOptions.map((opt) => (
-                <DropdownMenuCheckboxItem
-                  key={opt.value}
-                  checked={filter.includes(opt.value)}
-                  onCheckedChange={() => setFilter(
-                    filter.includes(opt.value)
-                      ? filter.filter((f) => f !== opt.value)
-                      : [...filter, opt.value]
-                  )}
-                  onSelect={(e) => e.preventDefault()}
-                >
-                  {opt.label}
-                </DropdownMenuCheckboxItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button
-                className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent active:bg-accent/80 transition-colors"
-                aria-label="Sort"
-              >
-                <ArrowUpDown className="h-5 w-5" />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-52 max-h-80 overflow-y-auto">
-              <DropdownMenuLabel>Sort by</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              {SORT_OPTIONS.map((opt) => (
-                <DropdownMenuCheckboxItem
-                  key={opt.key}
-                  checked={sortKey === opt.key}
-                  onCheckedChange={() => handleHeaderSort(opt.key)}
-                  onSelect={(e) => e.preventDefault()}
-                >
-                  {opt.label}
-                  {sortKey === opt.key && (
-                    <span className="ml-auto text-[10px] text-muted-foreground">{sortDir === 'asc' ? '↑' : '↓'}</span>
-                  )}
-                </DropdownMenuCheckboxItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent active:bg-accent/80 transition-colors disabled:opacity-60 disabled:cursor-default"
-                onClick={refresh}
-                disabled={refreshing}
-                aria-label="Refresh"
-              >
-                <RefreshCw className={`h-5 w-5 ${refreshing ? 'animate-spin' : ''}`} />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent>Refresh</TooltipContent>
-          </Tooltip>
-
-          {canBandwidthTorrents && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  className={`p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg transition-colors ${
-                    speedLimitsMode === 1
-                      ? 'bg-yellow-500/20 text-yellow-500 hover:bg-yellow-500/30'
-                      : 'hover:bg-accent active:bg-accent/80'
-                  }`}
-                  onClick={toggleAltSpeedMode}
-                  aria-label="Alternative Speed Limits"
-                >
-                  <Gauge className="h-5 w-5" />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>{speedLimitsMode === 1 ? 'Alt Speed: ON' : 'Alt Speed: OFF'}</TooltipContent>
-            </Tooltip>
-          )}
-
-          <div className="flex-1" />
-
-          {canBandwidthTorrents && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent active:bg-accent/80 transition-colors"
-                  onClick={() => router.push('/torrents/settings')}
-                  aria-label="Settings"
-                >
-                  <Settings className="h-5 w-5" />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>Settings</TooltipContent>
-            </Tooltip>
-          )}
-
-          {canViewLinked && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent active:bg-accent/80 transition-colors"
-                  onClick={() => router.push('/torrents/linked')}
-                  aria-label="Linked downloads"
-                >
-                  <Link2 className="h-5 w-5" />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>Linked downloads (sent to Sonarr/Radarr)</TooltipContent>
-            </Tooltip>
-          )}
-
-          {canAddTorrents && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/80 transition-colors"
-                  onClick={() => router.push('/torrents/add')}
-                  aria-label="Add Torrent"
-                >
-                  <Plus className="h-5 w-5" />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>Add Torrent</TooltipContent>
-            </Tooltip>
-          )}
-        </div>
-
-        {transferInfo && (
-          <div className="flex items-center gap-3 text-xs text-muted-foreground">
-            <span className="flex items-center gap-1">
-              <ArrowDown className="h-3 w-3 text-green-500" />
-              {formatSpeed(transferInfo.dl_info_speed)}
-            </span>
-            <span className="flex items-center gap-1">
-              <ArrowUp className="h-3 w-3 text-blue-500" />
-              {formatSpeed(transferInfo.up_info_speed)}
-            </span>
-          </div>
-        )}
-
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <SearchInput
-            clearable
-            placeholder="Search torrents..."
-            value={search}
-            onChange={setSearch}
-            historyKey="torrents"
-            className="pl-9"
-          />
-        </div>
-      </div>
+      <TorrentsToolbar
+        menuFilters={menuFilters}
+        filter={filter}
+        setFilter={setFilter}
+        sortKey={sortKey}
+        sortDir={sortDir}
+        handleHeaderSort={handleHeaderSort}
+        refresh={refresh}
+        refreshing={refreshing}
+        canBandwidthTorrents={canBandwidthTorrents}
+        speedLimitsMode={speedLimitsMode}
+        toggleAltSpeedMode={toggleAltSpeedMode}
+        router={router}
+        canViewLinked={canViewLinked}
+        canAddTorrents={canAddTorrents}
+        transferInfo={transferInfo}
+        search={search}
+        setSearch={setSearch}
+      />
       {/* Below the sticky toolbar, so it can't push over sticky table headers;
           the filter button's dot stays in view. */}
       <ActiveFilterBar filters={activeFilters} onClearAll={clearFilters} />
 
       {selectedTorrents.size > 0 && (
-        <div className="flex items-center gap-1 px-2 py-1.5 bg-muted/60 rounded-xl">
-          <span className="text-xs text-muted-foreground mx-1 shrink-0">{selectedTorrents.size}</span>
-          {canManageTorrents && (
-            <button
-              className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg hover:bg-accent"
-              onClick={() => void bulkAction('start')}
-              aria-label="Start"
-            >
-              <Play className="h-4 w-4" />
-            </button>
-          )}
-          {canManageTorrents && (
-            <button
-              className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg hover:bg-accent"
-              onClick={() => void bulkAction('stop')}
-              aria-label="Stop"
-            >
-              <Pause className="h-4 w-4" />
-            </button>
-          )}
-          {canManageTorrents && (
-            <button
-              className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg hover:bg-accent"
-              onClick={() => void bulkAction('forceStart')}
-              aria-label="Force Start"
-            >
-              <Zap className="h-4 w-4" />
-            </button>
-          )}
-          {canBandwidthTorrents && (
-            <button
-              className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg hover:bg-accent"
-              onClick={openBulkSpeedLimits}
-              aria-label="Speed Limits"
-            >
-              <Gauge className="h-4 w-4" />
-            </button>
-          )}
-          {canDeleteTorrents && (
-            <button
-              className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg hover:bg-accent text-destructive"
-              onClick={() => {
-                const hashes = Array.from(selectedTorrents).join('|');
-                setDeleteDrawer({
-                  open: true,
-                  hash: hashes,
-                  name: `${selectedTorrents.size} torrents`,
-                  deleteFiles: false,
-                });
-              }}
-              aria-label="Delete"
-            >
-              <Trash2 className="h-4 w-4" />
-            </button>
-          )}
-          <div className="flex-1" />
-          <button
-            className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg hover:bg-accent text-xs text-muted-foreground"
-            onClick={() => setSelectedTorrents(new Set())}
-          >
-            Clear
-          </button>
-        </div>
+        <TorrentsBulkBar
+          selectedTorrents={selectedTorrents}
+          canManageTorrents={canManageTorrents}
+          bulkAction={bulkAction}
+          canBandwidthTorrents={canBandwidthTorrents}
+          openBulkSpeedLimits={openBulkSpeedLimits}
+          canDeleteTorrents={canDeleteTorrents}
+          setDeleteDrawer={setDeleteDrawer}
+          setSelectedTorrents={setSelectedTorrents}
+        />
       )}
 
       {/* A failed background poll shouldn't blank a still-populated list; show a
@@ -1716,314 +607,36 @@ export default function TorrentsPage() {
       )}
 
       {/* Detail Drawer */}
-      <Drawer
-        open={!!detailHash}
-        onOpenChange={(open) => {
-          if (!open) {
-            setDetailHash(null);
-            setDetailData(null);
-          }
-        }}
-      >
-        <DrawerContent>
-          <DrawerHeader>
-            <DrawerTitle className="text-sm break-all leading-snug">
-              {detailHash ? torrentNameByHash.get(detailHash) || 'Torrent Details' : 'Torrent Details'}
-            </DrawerTitle>
-          </DrawerHeader>
-          <div className="px-4 pb-6 flex-1 min-h-0 overflow-y-auto space-y-4">
-            {detailLoading ? (
-              <div className="flex items-center justify-center py-12">
-                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-              </div>
-            ) : detailData ? (
-              <>
-                {/* Transfer */}
-                <div>
-                  <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Transfer</h3>
-                  <div className="rounded-lg border divide-y">
-                    <DetailRow label="Total Size" value={formatBytes(Number(detailData.properties.total_size) || 0)} />
-                    <DetailRow label="Downloaded" value={formatBytes(Number(detailData.properties.total_downloaded) || 0)} />
-                    <DetailRow label="Uploaded" value={formatBytes(Number(detailData.properties.total_uploaded) || 0)} />
-                    {detailTorrent && detailTorrent.progress < 1 && (
-                      <DetailRow label="Remaining" value={formatBytes(detailTorrent.amount_left || 0)} />
-                    )}
-                    <DetailRow label="Ratio" value={Number(detailData.properties.share_ratio || 0).toFixed(2)} />
-                    {/* qBittorrent reports -1 when availability doesn't apply (e.g. seeding). */}
-                    <DetailRow label="Availability" value={(detailTorrent?.availability ?? -1) >= 0 ? detailTorrent!.availability.toFixed(2) : '—'} />
-                    {Number(detailData.properties.dl_speed) > 0 && (
-                      <DetailRow label="DL Speed" value={formatSpeed(Number(detailData.properties.dl_speed))} />
-                    )}
-                    {Number(detailData.properties.up_speed) > 0 && (
-                      <DetailRow label="UL Speed" value={formatSpeed(Number(detailData.properties.up_speed))} />
-                    )}
-                  </div>
-                </div>
-
-                {/* Session Stats */}
-                {detailTorrent && (detailTorrent.downloaded_session > 0 || detailTorrent.uploaded_session > 0) && (
-                  <div>
-                    <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Session Stats</h3>
-                    <div className="rounded-lg border divide-y">
-                      <DetailRow label="Session Downloaded" value={formatBytes(detailTorrent.downloaded_session)} />
-                      <DetailRow label="Session Uploaded" value={formatBytes(detailTorrent.uploaded_session)} />
-                    </div>
-                  </div>
-                )}
-
-                {/* Settings: read-only here. Editing lives on its own page, where
-                    the on-screen keyboard can't push a drawer out of view. */}
-                <div>
-                  <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Settings</h3>
-                  <div className="rounded-lg border divide-y">
-                    <DetailRow label="Download Limit" value={formatSpeedLimit(Number(detailData.properties.dl_limit) || 0)} />
-                    <DetailRow label="Upload Limit" value={formatSpeedLimit(Number(detailData.properties.up_limit) || 0)} />
-                    {detailTorrent && (
-                      <>
-                        <DetailRow label="Sequential Download" value={detailTorrent.seq_dl ? 'On' : 'Off'} />
-                        <DetailRow label="First/Last Piece Priority" value={detailTorrent.f_l_piece_prio ? 'On' : 'Off'} />
-                        <DetailRow label="Auto Torrent Management" value={detailTorrent.auto_tmm ? 'On' : 'Off'} />
-                      </>
-                    )}
-                  </div>
-                  {detailHash && (canBandwidthTorrents || canManageTorrents) && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="w-full text-xs mt-2"
-                      onClick={() => {
-                        const hash = detailHash;
-                        setDetailHash(null);
-                        setDetailData(null);
-                        router.push(`/torrents/${hash}/settings`);
-                      }}
-                    >
-                      <SlidersHorizontal className="mr-2 h-3.5 w-3.5" />
-                      Edit Settings
-                    </Button>
-                  )}
-                </div>
-
-                {/* Timing */}
-                <div>
-                  <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Timing</h3>
-                  <div className="rounded-lg border divide-y">
-                    {Number(detailData.properties.addition_date) > 0 && (
-                      <DetailRow label="Added" value={new Date(Number(detailData.properties.addition_date) * 1000).toLocaleString()} />
-                    )}
-                    {Number(detailData.properties.completion_date) > 0 && (
-                      <DetailRow label="Completed" value={new Date(Number(detailData.properties.completion_date) * 1000).toLocaleString()} />
-                    )}
-                    <DetailRow label="Seeding Time" value={formatSeedingTime(Number(detailData.properties.seeding_time) || 0)} />
-                    <DetailRow label="Time Elapsed" value={formatSeedingTime(Number(detailData.properties.time_elapsed) || 0)} />
-                    {detailTorrent && detailTorrent.eta > 0 && detailTorrent.eta < 8640000 && (
-                      <DetailRow label="ETA" value={formatEta(detailTorrent.eta)} />
-                    )}
-                  </div>
-                </div>
-
-                {/* Network */}
-                <div>
-                  <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Network</h3>
-                  <div className="rounded-lg border divide-y">
-                    <DetailRow label="Seeds" value={`${detailData.properties.seeds} (${detailData.properties.seeds_total} total)`} />
-                    <DetailRow label="Peers" value={`${detailData.properties.peers} (${detailData.properties.peers_total} total)`} />
-                    <DetailRow label="Connections" value={String(detailData.properties.nb_connections || 0)} />
-                    <DetailRow label="Wasted" value={formatBytes(Number(detailData.properties.total_wasted) || 0)} />
-                    <DetailRow label="Save Path" value={String(detailData.properties.save_path || '-')} />
-                  </div>
-                </div>
-
-                {/* Magnet Link */}
-                {detailTorrent?.magnet_uri && (
-                  <div>
-                    <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Magnet Link</h3>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="w-full text-xs"
-                      onClick={() => {
-                        navigator.clipboard.writeText(detailTorrent.magnet_uri).then(
-                          () => toast.success('Magnet URI copied'),
-                          () => toast.error('Failed to copy')
-                        );
-                      }}
-                    >
-                      <Copy className="mr-2 h-3.5 w-3.5" />
-                      Copy Magnet URI
-                    </Button>
-                  </div>
-                )}
-
-                {/* Files */}
-                {detailData.files.length > 0 && (
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                        Files ({detailData.files.length})
-                      </h3>
-                      <button
-                        className="flex items-center gap-1.5 text-xs text-primary hover:underline"
-                        onClick={() => {
-                          const name = detailHash ? torrentNameByHash.get(detailHash) || '' : '';
-                          setDetailHash(null);
-                          setDetailData(null);
-                          router.push(`/torrents/${detailHash}/files?name=${encodeURIComponent(name)}`);
-                        }}
-                      >
-                        <FolderOpen className="h-3.5 w-3.5" />
-                        Manage Files
-                      </button>
-                    </div>
-                    <div className="space-y-1.5">
-                      {detailData.files.slice(0, 5).map((file) => (
-                        <div key={file.index} className="rounded-lg bg-muted/40 p-2.5 space-y-1">
-                          <p className="text-xs font-medium break-all leading-snug">{file.name}</p>
-                          <div className="flex items-center gap-2">
-                            <Progress value={file.progress * 100} className="h-1 flex-1" />
-                            <span className="text-[10px] text-muted-foreground shrink-0">
-                              {(file.progress * 100).toFixed(0)}%
-                            </span>
-                          </div>
-                          <p className="text-[10px] text-muted-foreground">{formatBytes(file.size)}</p>
-                        </div>
-                      ))}
-                      {detailData.files.length > 5 && (
-                        <p className="text-[10px] text-muted-foreground text-center py-1">
-                          +{detailData.files.length - 5} more files
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {/* Trackers */}
-                {detailData.trackers.length > 0 && (
-                  <div>
-                    <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
-                      Trackers ({detailData.trackers.filter((t) => t.url.startsWith('http')).length})
-                    </h3>
-                    <div className="rounded-lg border divide-y">
-                      {detailData.trackers
-                        .filter((t) => t.url.startsWith('http'))
-                        .map((tracker, i) => (
-                          <div key={i} className="px-3 py-2 space-y-0.5">
-                            <p className="text-xs break-all">{tracker.url}</p>
-                            <p className="text-[10px] text-muted-foreground">
-                              Seeds: {tracker.num_seeds} &middot; Peers: {tracker.num_leeches}
-                              {tracker.msg && ` &middot; ${tracker.msg}`}
-                            </p>
-                          </div>
-                        ))}
-                    </div>
-                  </div>
-                )}
-              </>
-            ) : null}
-          </div>
-        </DrawerContent>
-      </Drawer>
+      <TorrentDetailDrawer
+        detailHash={detailHash}
+        setDetailHash={setDetailHash}
+        setDetailData={setDetailData}
+        torrentNameByHash={torrentNameByHash}
+        detailLoading={detailLoading}
+        detailData={detailData}
+        detailTorrent={detailTorrent}
+        canBandwidthTorrents={canBandwidthTorrents}
+        canManageTorrents={canManageTorrents}
+        router={router}
+      />
 
       {/* Delete Drawer */}
-      <Drawer open={deleteDrawer.open} onOpenChange={(open) => !open && setDeleteDrawer({ ...deleteDrawer, open: false })}>
-        <DrawerContent>
-          <DrawerHeader>
-            <DrawerTitle>Delete Torrent</DrawerTitle>
-            <DrawerDescription>
-              Are you sure you want to delete &ldquo;{deleteDrawer.name}&rdquo;?
-            </DrawerDescription>
-          </DrawerHeader>
-
-          <div className="px-4 space-y-3">
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={deleteDrawer.deleteFiles}
-                onChange={(e) => setDeleteDrawer({ ...deleteDrawer, deleteFiles: e.target.checked })}
-                className="rounded border-border"
-              />
-              <span className="text-sm">Also delete downloaded files</span>
-            </label>
-            {deleteDrawer.deleteFiles && (
-              <p className="text-xs text-destructive">
-                Warning: This will permanently delete the downloaded files from disk.
-              </p>
-            )}
-          </div>
-
-          <DrawerFooter>
-            <Button variant="destructive" onClick={handleDelete} disabled={deleting} className="w-full">
-              {deleting ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Deleting...
-                </>
-              ) : (
-                'Delete'
-              )}
-            </Button>
-            <DrawerClose asChild>
-              <Button variant="outline" className="w-full">Cancel</Button>
-            </DrawerClose>
-          </DrawerFooter>
-        </DrawerContent>
-      </Drawer>
+      <TorrentDeleteDrawer
+        deleteDrawer={deleteDrawer}
+        setDeleteDrawer={setDeleteDrawer}
+        handleDelete={handleDelete}
+        deleting={deleting}
+      />
 
       {/* Category Picker Drawer */}
-      <Drawer open={categoryDrawer.open} onOpenChange={(open) => !open && setCategoryDrawer({ open: false, hash: '' })}>
-        <DrawerContent>
-          <DrawerHeader>
-            <DrawerTitle>Set Category</DrawerTitle>
-          </DrawerHeader>
-          <div className="px-4 pb-6 flex-1 min-h-0 overflow-y-auto">
-            {categoriesLoading ? (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-              </div>
-            ) : (
-              <div className="rounded-lg border divide-y">
-                <button
-                  className="flex items-center w-full px-3 py-3 text-sm hover:bg-accent transition-colors"
-                  onClick={async () => {
-                    await torrentAction(categoryDrawer.hash, 'setCategory', { category: '' });
-                    setCategoryDrawer({ open: false, hash: '' });
-                  }}
-                >
-                  <span className="text-muted-foreground italic">None</span>
-                </button>
-                {Object.entries(categories).map(([key, cat]) => (
-                  <button
-                    key={key}
-                    className="flex items-center justify-between gap-3 w-full px-3 py-3 text-sm hover:bg-accent transition-colors"
-                    onClick={async () => {
-                      await torrentAction(categoryDrawer.hash, 'setCategory', { category: cat.name });
-                      setCategoryDrawer({ open: false, hash: '' });
-                    }}
-                  >
-                    <span className="min-w-0 truncate text-left">{cat.name}</span>
-                    {cat.savePath && (
-                      <span className="text-[10px] text-muted-foreground truncate max-w-[50%]">{cat.savePath}</span>
-                    )}
-                  </button>
-                ))}
-                {Object.keys(categories).length === 0 && (
-                  <p className="px-3 py-3 text-sm text-muted-foreground text-center">No categories found</p>
-                )}
-              </div>
-            )}
-          </div>
-        </DrawerContent>
-      </Drawer>
+      <TorrentCategoryDrawer
+        categoryDrawer={categoryDrawer}
+        setCategoryDrawer={setCategoryDrawer}
+        categoriesLoading={categoriesLoading}
+        categories={categories}
+        torrentAction={torrentAction}
+      />
 
-    </div>
-  );
-}
-
-function DetailRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-center justify-between px-3 py-2">
-      <span className="text-xs text-muted-foreground">{label}</span>
-      <span className="text-xs text-right max-w-[60%] break-words">{value}</span>
     </div>
   );
 }
