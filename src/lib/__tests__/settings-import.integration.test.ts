@@ -208,6 +208,29 @@ describe.skipIf(!url)('settings import against PostgreSQL', () => {
     expect(await written()).toEqual({ appSettings: 0, services: 0, prefs: 0, stall: 0, layouts: 0, alerts: 0, watchlist: 0, mappings: 0, users: 0 });
   });
 
+  it("leaves an existing user's taste profile to be rebuilt, since their links may have changed", async () => {
+    const built = new Date('2026-10-20T00:00:00.000Z');
+    for (const [id, username] of [['member-1', 'member'], ['other-1', 'other']]) {
+      await prisma.user.create({ data: { id, username, displayName: username, role: 'member', template: 'member' } });
+      await prisma.userTasteProfile.create({ data: { userId: id, profile: {}, version: 1, builtAt: built } });
+    }
+    const doc = fullDocument();
+    doc.users.accounts[0].anilist = { anilistUserId: 77, username: 'ani' } as never;
+
+    const before = new Date();
+    const outcome = await runImport.applySettingsImport(doc as never, IMPORTER_ID);
+
+    const profiles = await prisma.userTasteProfile.findMany({ orderBy: { userId: 'asc' }, select: { userId: true, builtAt: true, updatedAt: true } });
+    expect(profiles.map(({ userId, builtAt }) => ({ userId, builtAt }))).toEqual([
+      { userId: 'member-1', builtAt: new Date(0) },
+      { userId: 'other-1', builtAt: built },
+    ]);
+    // A rebuild under way tells a mark that landed meanwhile by this time.
+    expect(profiles[0].updatedAt.getTime()).toBeGreaterThanOrEqual(before.getTime());
+    // Their composed rails are dropped once the import has committed.
+    expect(outcome.followUps.recommendationUserIds).toEqual(['member-1']);
+  });
+
   it('imports as many user accounts as the document limits allow within the transaction timeout', async () => {
     const { validateSettingsImportComplexity } = await import('@/lib/settings-import-validation');
     const account = (i: number) => ({

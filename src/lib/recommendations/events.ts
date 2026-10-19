@@ -1,6 +1,6 @@
 import { prisma } from '@/lib/db';
 import type { Prisma } from '@prisma/client';
-import { isItemKey } from './item-keys';
+import { isItemKey, tmdbItemKey } from './item-keys';
 import { invalidateRecommendations } from './engine';
 import { forgetInProfile, RATING_OF, replaceRating, type ProfileForget } from './ratings';
 import { getRedisClient } from '@/lib/redis';
@@ -168,6 +168,31 @@ function countSubmittedLocally(userId: string, count: number): number {
 export async function takeEventQuota(userId: string, count: number): Promise<boolean> {
   const submitted = (await countSubmitted(userId, count)) ?? countSubmittedLocally(userId, count);
   return submitted <= RATE_MAX_EVENTS_PER_WINDOW;
+}
+
+/**
+ * A title the user requested through Seerr, from any surface: a positive
+ * taste signal through its genres (the profile learns events' genres, not
+ * their titles). Recorded once per title, so requesting it again adds no weight.
+ */
+export async function recordRequestEvent(
+  userId: string,
+  mediaType: 'movie' | 'tv',
+  tmdbId: number,
+  genres?: string[],
+): Promise<IngestResult> {
+  const itemKey = tmdbItemKey(mediaType, tmdbId);
+  const known = genres?.filter((genre) => genre.length > 0 && genre.length <= MAX_GENRE_LENGTH).slice(0, MAX_GENRES);
+  const seen = await prisma.recommendationEvent.findFirst({ where: { userId, itemKey, eventType: 'request' }, select: { id: true, context: true } });
+  if (seen) {
+    // Recorded before without genres (TMDB could not say then): add them now.
+    const seenGenres = (seen.context as { genres?: unknown } | null)?.genres;
+    if (known?.length && !(Array.isArray(seenGenres) && seenGenres.length > 0)) {
+      await prisma.recommendationEvent.update({ where: { id: seen.id }, data: { context: { genres: known } } });
+    }
+    return { ok: true, stored: 0 };
+  }
+  return ingestEvents(userId, [{ itemKey, eventType: 'request', ...(known?.length ? { context: { genres: known } } : {}) }]);
 }
 
 export async function ingestEvents(userId: string, events: IncomingEvent[]): Promise<IngestResult> {

@@ -22,6 +22,7 @@ import {
 import { applyUserDashboardLayoutsInTxn } from './layouts';
 import { applyPreparedWatchlist, prepareWatchlist, type PreparedWatchlist } from './watchlist';
 import { applyPreparedScheduledAlerts, prepareScheduledAlerts, type PreparedAlert } from './alerts';
+import { markTasteProfileStale } from '@/lib/recommendations/profile-store';
 
 export interface PreparedAccountContent {
   watchlist: PreparedWatchlist | null;
@@ -57,6 +58,8 @@ export async function applyUsersInTxn(
   importerId: string,
   createdReleaseRelative: ScheduledAlert[],
   content: Map<unknown, PreparedAccountContent>,
+  /** Filled with the existing users this import changed, for their recommendations to recompose. */
+  updatedUserIds: string[] = [],
 ): Promise<number> {
   if (!Array.isArray(data.accounts)) {
     skipped.push('Users: missing accounts array');
@@ -234,6 +237,8 @@ export async function applyUsersInTxn(
       });
     }
 
+    if (target) updatedUserIds.push(userId);
+
     // v2 per-account content: this user's watchlist, scheduled alerts, and
     // personal dashboard layouts. All optional — absent in v1 files.
     const ownerLabel = `User "${username}"`;
@@ -290,5 +295,9 @@ export async function applyUsersInTxn(
       }
     }
   }
+  // An existing user's Jellyfin user and AniList link may have just changed,
+  // and the taste profile reads both: rebuild those on their next use. One
+  // statement for all of them, inside the import's time-limited transaction.
+  if (updatedUserIds.length > 0) await markTasteProfileStale(updatedUserIds, tx);
   return applied;
 }

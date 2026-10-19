@@ -14,6 +14,7 @@ import { restartDownloadCleaner, restartQueueCleaner } from '@/lib/cleanup/sched
 import { pruneStrikesForMissingRules } from '@/lib/cleanup/strikes';
 import { createResolverContext, resolveAlertOccurrencesResult } from '@/lib/scheduled-alerts/resolver';
 import { upsertOccurrencesForAlert } from '@/lib/scheduled-alerts/delivery';
+import { invalidateRecommendations } from '@/lib/recommendations/engine';
 import type { ImportFollowUp, ImportWarning } from './follow-up-tasks';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -56,6 +57,8 @@ export interface ImportFollowUpPlan {
   dashboardLayoutCache?: boolean;
   /** Service types that must end up with exactly one default instance. */
   serviceTypes?: ServiceType[];
+  /** Users whose composed recommendation rails to drop. */
+  recommendationUserIds?: string[];
 }
 
 export const ALL_SERVICE_TYPES = Object.values(ServiceType);
@@ -180,6 +183,13 @@ export async function runImportFollowUps(plan: ImportFollowUpPlan): Promise<Impo
       }
       if (failures.length > 0) throw failures[0];
     });
+  }
+
+  // No warning: invalidateRecommendations never throws (without Redis the
+  // rails are recomposed when their 15-minute snapshot expires).
+  const users = plan.recommendationUserIds ?? [];
+  for (let i = 0; i < users.length; i += 100) {
+    await Promise.all(users.slice(i, i + 100).map((id) => invalidateRecommendations(id)));
   }
 
   return warnings;

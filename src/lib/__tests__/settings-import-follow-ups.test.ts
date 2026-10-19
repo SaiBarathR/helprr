@@ -21,6 +21,7 @@ const mocks = vi.hoisted(() => ({
   upsertOccurrencesForAlert: vi.fn(),
   connectionFindMany: vi.fn(),
   invalidateReferenceLabels: vi.fn(),
+  invalidateRecommendations: vi.fn(),
 }));
 
 vi.mock('@/lib/db', () => ({
@@ -53,6 +54,7 @@ vi.mock('@/lib/scheduled-alerts/resolver', () => ({
   resolveAlertOccurrencesResult: mocks.resolveAlertOccurrencesResult,
 }));
 vi.mock('@/lib/scheduled-alerts/delivery', () => ({ upsertOccurrencesForAlert: mocks.upsertOccurrencesForAlert }));
+vi.mock('@/lib/recommendations/engine', () => ({ invalidateRecommendations: mocks.invalidateRecommendations }));
 
 import { runImportFollowUps, type ImportFollowUpPlan } from '@/lib/settings-import/follow-ups';
 
@@ -81,6 +83,7 @@ const fullPlan: ImportFollowUpPlan = {
   alertIds: ['alert-1'],
   dashboardLayoutCache: true,
   serviceTypes: ['SONARR', 'RADARR', 'SONARR'],
+  recommendationUserIds: ['member-1', 'member-2'],
 };
 
 // An upstream error that must never reach the operator.
@@ -102,6 +105,7 @@ beforeEach(() => {
     where.type === 'SONARR' ? [{ id: 'son-1' }, { id: 'son-2' }] : [{ id: 'rad-1' }]
   ));
   mocks.invalidateReferenceLabels.mockResolvedValue(undefined);
+  mocks.invalidateRecommendations.mockResolvedValue(undefined);
   vi.spyOn(console, 'warn').mockImplementation(() => {});
 });
 
@@ -123,11 +127,13 @@ describe('settings import follow-ups', () => {
     expect(mocks.clearConnectionMemo).toHaveBeenCalledOnce();
     // Imported instances change the libraries and their profile and tag names.
     expect(mocks.invalidateReferenceLabels.mock.calls).toEqual([['sonarr', 'son-1'], ['sonarr', 'son-2'], ['radarr', 'rad-1']]);
+    // Imported users' recommendation rails recompose with their new links.
+    expect(mocks.invalidateRecommendations.mock.calls).toEqual([['member-1'], ['member-2']]);
   });
 
   it('runs nothing that was not planned', async () => {
     await expect(runImportFollowUps({})).resolves.toEqual([]);
-    for (const fn of [mocks.getOrCreateAppSettings, mocks.pollingRestart, mocks.restartQueueCleaner, mocks.alertFindMany, mocks.invalidateLayoutCache, mocks.ensureDefaultForType]) {
+    for (const fn of [mocks.getOrCreateAppSettings, mocks.pollingRestart, mocks.restartQueueCleaner, mocks.alertFindMany, mocks.invalidateLayoutCache, mocks.ensureDefaultForType, mocks.invalidateRecommendations]) {
       expect(fn).not.toHaveBeenCalled();
     }
   });

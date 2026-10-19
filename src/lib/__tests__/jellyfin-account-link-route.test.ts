@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   recordUsernameFailure: vi.fn(),
   recordGlobalLoginFailure: vi.fn(),
   readJellyfinToken: vi.fn(),
+  refreshRecommendations: vi.fn(),
 }));
 
 vi.mock('@/lib/auth', () => ({ requireUser: mocks.requireUser }));
@@ -41,6 +42,7 @@ vi.mock('@/lib/login-rate-limit', () => ({
   recordMalformedLoginRequest: vi.fn().mockResolvedValue(null),
 }));
 vi.mock('@/lib/api-logger', () => ({ withApiLogging: (handler: unknown) => handler }));
+vi.mock('@/lib/recommendations/engine', () => ({ refreshRecommendationsAfterLink: mocks.refreshRecommendations }));
 
 import { DELETE, GET, POST } from '@/app/api/account/jellyfin/link/route';
 
@@ -65,6 +67,7 @@ describe('POST /api/account/jellyfin/link', () => {
     mocks.connectionFindFirst.mockResolvedValue({ url: 'http://jf.local' });
     mocks.userUpdate.mockResolvedValue({});
     mocks.storeJellyfinToken.mockResolvedValue(undefined);
+    mocks.refreshRecommendations.mockResolvedValue(undefined);
   });
 
   it('rejects an unauthenticated caller', async () => {
@@ -85,6 +88,8 @@ describe('POST /api/account/jellyfin/link', () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ connected: true, jellyfinUsername: 'sai' });
     expect(mocks.storeJellyfinToken).toHaveBeenCalledWith('helprr-1', 'tok');
+    // Reconnecting the same account changes nothing recommendations read.
+    expect(mocks.refreshRecommendations).not.toHaveBeenCalled();
   });
 
   it('refuses credentials for a different Jellyfin account and stores nothing', async () => {
@@ -109,6 +114,22 @@ describe('POST /api/account/jellyfin/link', () => {
       data: { jellyfinUserId: 'jf-new' },
     });
     expect(mocks.storeJellyfinToken).toHaveBeenCalledWith('helprr-1', 'tok');
+    // Recommendations now read this Jellyfin user: the profile is rebuilt on next use.
+    expect(mocks.refreshRecommendations).toHaveBeenCalledWith('helprr-1');
+  });
+
+  it('still links when recommendations cannot be refreshed', async () => {
+    signedInAs(null);
+    mocks.authenticateByName.mockResolvedValue({
+      ok: true, userId: 'jf-new', accessToken: 'tok', userName: 'newbie',
+    });
+    mocks.refreshRecommendations.mockRejectedValue(new Error('db down'));
+    const quiet = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const res = await POST(request());
+    quiet.mockRestore();
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ connected: true, jellyfinUsername: 'newbie' });
+    expect(mocks.storeJellyfinToken).toHaveBeenCalledWith('helprr-1', 'tok');
   });
 
   it('refuses to auto-link a Jellyfin account another profile already claims', async () => {
@@ -123,6 +144,7 @@ describe('POST /api/account/jellyfin/link', () => {
     const res = await POST(request());
     expect(res.status).toBe(409);
     expect(mocks.storeJellyfinToken).not.toHaveBeenCalled();
+    expect(mocks.refreshRecommendations).not.toHaveBeenCalled();
   });
 
   it('maps a bad Jellyfin password to 401 and records the failure', async () => {

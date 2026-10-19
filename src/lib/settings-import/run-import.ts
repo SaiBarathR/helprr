@@ -79,6 +79,7 @@ export async function applySettingsImport(body: ImportRequestBody, importerId: s
   // release_relative alerts created during the import; occurrences are resolved
   // after commit (resolution hits Sonarr/Radarr/AniList — too slow for the txn).
   const createdReleaseRelative: ScheduledAlert[] = [];
+  const updatedUserIds: string[] = [];
 
   // Validate and normalize the large sections before the transaction opens,
   // so it spends its time, and holds its locks, only on writes.
@@ -166,7 +167,7 @@ export async function applySettingsImport(body: ImportRequestBody, importerId: s
       }
 
       if (body.users && typeof body.users === 'object') {
-        appliedUsers = await applyUsersInTxn(tx, body.users, skipped, importerId, createdReleaseRelative, accountContent);
+        appliedUsers = await applyUsersInTxn(tx, body.users, skipped, importerId, createdReleaseRelative, accountContent, updatedUserIds);
       }
 
       return innerAppSettings;
@@ -198,6 +199,9 @@ export async function applySettingsImport(body: ImportRequestBody, importerId: s
     // Exactly one default per imported type (export isDefault flags were
     // applied on create; this promotes the oldest if none/many ended up flagged).
     serviceTypes: appliedServices,
+    // Their taste profiles were marked stale in the transaction; their
+    // composed rails live in Redis, so they are dropped once it has committed.
+    recommendationUserIds: updatedUserIds,
   };
 
 

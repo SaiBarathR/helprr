@@ -11,6 +11,7 @@ import {
 import { toSafeUser } from '@/lib/user-dto';
 import { parsePermissions } from '@/lib/permissions';
 import { withApiLogging } from '@/lib/api-logger';
+import { refreshRecommendationsAfterLink } from '@/lib/recommendations/engine';
 
 const ROLES = new Set(['admin', 'member']);
 const STATUSES = new Set(['active', 'pending', 'disabled']);
@@ -143,6 +144,14 @@ async function patchHandler(
       return NextResponse.json(
         { error: 'Cannot demote or disable the last active admin' },
         { status: 409 }
+      );
+    }
+    // A new Jellyfin link or role changes what the user's recommendations read
+    // (an admin falls back to the operator's Jellyfin user and AniList
+    // account). A failure only delays that until the profile's next rebuild.
+    if (result.updated.jellyfinUserId !== existing.jellyfinUserId || result.updated.role !== existing.role) {
+      await refreshRecommendationsAfterLink(id).catch((error) =>
+        console.error('[Users] Failed to refresh recommendations after a Jellyfin link change:', error),
       );
     }
     return NextResponse.json(toSafeUser(result.updated));

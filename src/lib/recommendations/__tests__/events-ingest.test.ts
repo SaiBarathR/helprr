@@ -1,18 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
-  count: vi.fn(), createMany: vi.fn(), replaceRating: vi.fn(), forgetInProfile: vi.fn(), invalidate: vi.fn(), exec: vi.fn(), redis: vi.fn(),
+  count: vi.fn(), findFirst: vi.fn(), update: vi.fn(), createMany: vi.fn(), replaceRating: vi.fn(), forgetInProfile: vi.fn(), invalidate: vi.fn(), exec: vi.fn(), redis: vi.fn(),
 }));
 const tx = vi.hoisted(() => ({} as Record<string, unknown>));
 vi.mock('@/lib/db', () => {
   Object.assign(tx, { recommendationEvent: { createMany: mocks.createMany } });
-  return { prisma: { recommendationEvent: { count: mocks.count }, $transaction: async (fn: (t: unknown) => unknown) => fn(tx) } };
+  return { prisma: { recommendationEvent: { count: mocks.count, findFirst: mocks.findFirst, update: mocks.update }, $transaction: async (fn: (t: unknown) => unknown) => fn(tx) } };
 });
 vi.mock('@/lib/redis', () => ({ getRedisClient: mocks.redis }));
 vi.mock('../engine', () => ({ invalidateRecommendations: mocks.invalidate }));
 vi.mock('../ratings', () => ({ RATING_OF: { dislike: 'down', like: 'up', love: 'love' }, replaceRating: mocks.replaceRating, forgetInProfile: mocks.forgetInProfile }));
 
-const { ingestEvents } = await import('../events');
+const { ingestEvents, recordRequestEvent } = await import('../events');
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -87,5 +87,42 @@ describe('ingestEvents', () => {
     expect(mocks.count).not.toHaveBeenCalled();
     // Another user has their own count.
     expect(await ingestEvents('u-other', like)).toEqual({ ok: true, stored: 1 });
+  });
+});
+
+describe('recordRequestEvent', () => {
+  it("stores a request under the title's TMDB key with its genres, a plain signal that leaves the rails cached", async () => {
+    mocks.findFirst.mockResolvedValue(null);
+    expect(await recordRequestEvent('u1', 'tv', 1399, ['Drama', 'Sci-Fi & Fantasy'])).toEqual({ ok: true, stored: 1 });
+    expect(mocks.createMany).toHaveBeenCalledWith({
+      data: [expect.objectContaining({ userId: 'u1', itemKey: 'tmdb:tv:1399', eventType: 'request', context: { genres: ['Drama', 'Sci-Fi & Fantasy'] } })],
+    });
+    expect(mocks.replaceRating).not.toHaveBeenCalled();
+    expect(mocks.invalidate).not.toHaveBeenCalled();
+  });
+
+  it('stores it without genres when TMDB could not give any', async () => {
+    mocks.findFirst.mockResolvedValue(null);
+    await recordRequestEvent('u1', 'movie', 603, undefined);
+    expect(mocks.createMany.mock.calls[0][0].data[0]).not.toHaveProperty('context.genres');
+  });
+
+  it('records a title once: requesting it again adds no weight', async () => {
+    mocks.findFirst.mockResolvedValue({ id: 'earlier', context: { genres: ['Action'] } });
+    expect(await recordRequestEvent('u1', 'movie', 603, ['Action'])).toEqual({ ok: true, stored: 0 });
+    expect(mocks.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { userId: 'u1', itemKey: 'tmdb:movie:603', eventType: 'request' } }));
+    expect(mocks.createMany).not.toHaveBeenCalled();
+    expect(mocks.update).not.toHaveBeenCalled();
+  });
+
+  it('adds the genres to a request first recorded without them, still as one event', async () => {
+    mocks.findFirst.mockResolvedValue({ id: 'earlier', context: null });
+    expect(await recordRequestEvent('u1', 'movie', 603, ['Action'])).toEqual({ ok: true, stored: 0 });
+    expect(mocks.update).toHaveBeenCalledWith({ where: { id: 'earlier' }, data: { context: { genres: ['Action'] } } });
+    expect(mocks.createMany).not.toHaveBeenCalled();
+
+    mocks.update.mockClear();
+    await recordRequestEvent('u1', 'movie', 603, undefined);
+    expect(mocks.update).not.toHaveBeenCalled();
   });
 });
