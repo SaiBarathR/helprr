@@ -21,6 +21,17 @@ export async function collectForPlayAll<T>(
   return { items, total: Number.isFinite(total) ? total : items.length };
 }
 
+/**
+ * The filters Play all asks with. Without item types (a library with no
+ * collection type) the recursive listing also returns folders beside the
+ * titles inside them, and each folder would be expanded again when queued:
+ * titles twice, past the ceiling. Asking for titles only (IsNotFolder) avoids
+ * that, and keeps the total a count of titles.
+ */
+export function playAllFilters(filter: string, includeItemTypes: string | undefined): string {
+  return includeItemTypes ? filter : [filter, 'IsNotFolder'].filter(Boolean).join(',');
+}
+
 /** The on-screen notice when the queue is shorter than the set on screen, or null. */
 export function playAllNotice(queued: number, total: number, shuffle: boolean): string | null {
   if (queued === 0 || total <= queued) return null;
