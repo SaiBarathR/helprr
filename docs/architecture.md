@@ -452,9 +452,12 @@ Helprr authors no parsing and never trusts its own reading of a release.
   Arr through a single-use link: the bytes sit in Redis under a 256-bit token
   for two minutes (`GETDEL`), served by the public, unlogged
   `/api/manual-downloads/torrent/[token]` at `ARR_CALLBACK_ORIGIN` (else
-  `APP_ORIGIN`). A failure before the release reaches Arr removes a title the
-  workflow added while it has no files; after it, the title stays and the
-  workflow goes to `BLOCKED` for the status worker to follow.
+  `APP_ORIGIN`). When Arr cannot have the release (a failure before the push,
+  a release Arr turns down or answers with its own 4xx, or one it accepts
+  without grabbing), a title the workflow added is removed while it has no
+  files and nothing else uses it. When the outcome is unknown (a lost answer, a
+  gateway's 5xx), the title stays and the workflow goes to `BLOCKED` for the
+  status worker to follow.
 - **Advanced fallback (`QBIT_REVIEWED`).** For choosing files first: the torrent
   is Helprr's own in qBittorrent, outside any category Arr watches, and every
   file is recorded (`ManualDownloadFile`) as chosen or not; one workflow per
@@ -484,8 +487,9 @@ Helprr authors no parsing and never trusts its own reading of a release.
   not answer, stays claimed until the status worker proves it from history,
   adopts it from Arr's command list (queued since it was sent), or leaves it to
   the user; it is never sent again on Helprr's own. Only a claim that sent an
-  import is recovered this way; an interrupted scan or cancel reads the files
-  again and leaves any import to the user (`NEEDS_MAPPING`).
+  import is recovered this way; any other expired claim (a scan, a cancel, or an
+  import interrupted before it was sent) reads the files again and leaves the
+  import to the user (`NEEDS_MAPPING`).
 - **Status authority.** The `pollManualDownloads` polling source reconciles
   every open workflow each cycle against its own instance: Arr's queue, then its
   history, or qBittorrent for the fallback. `IMPORTED` requires file ids the
@@ -494,7 +498,9 @@ Helprr authors no parsing and never trusts its own reading of a release.
   fallback, from the decided file's own path. Writes apply only from the status
   and `updatedAt` read at the start of the cycle, so a cancel landing meanwhile
   wins. Sends interrupted by a restart are settled after 10 minutes from Arr's
-  grab history.
+  grab history. Only Arr history from an hour before the workflow began counts
+  (an earlier send of the release is at least 12 hours older), so Helprr's and
+  Arr's clocks must agree within that hour.
 - **Permissions and audit.** Sending needs `torrents.add` + `activity.manage` +
   the service's `movies.add` / `series.add` (the fallback also `torrents.manage`);
   reading needs `torrents.view` + `activity.view`; importing, scanning again,
