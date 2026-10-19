@@ -16,6 +16,15 @@ import { useCan } from '@/components/permission-provider';
 import { canManualImport, getQueueMediaHref, manualImportHref, needsManualImport, statusLabel } from './queue-records';
 import { TabErrorState } from './shared';
 
+/**
+ * Render the Failed Imports tab: list queue items that failed import and offer a manual import action.
+ *
+ * Shows loading skeletons while fetching; if no failed imports are found it renders an empty-state message;
+ * otherwise it renders each failed item with its messages and an Import button that navigates to the manual import page.
+ *
+ * @param filterBy - Selected sources to apply (`'sonarr'`, `'radarr'`, `'lidarr'`); an empty array means all sources.
+ * @returns The tab content JSX: loading skeletons, empty-state, or a list of failed import items with Import actions
+ */
 export function FailedImportsTab({ filterBy, instanceFilter }: { filterBy: string[]; instanceFilter: string }) {
   const router = useRouter();
   const canManageActivity = useCan('activity.manage');

@@ -53,7 +53,6 @@ function isFilterKey(value: string): value is FilterKey {
 }
 
 /** The filters a deep link (?source=) opens, kept for that visit only. */
-
 export interface ActivityLinkView {
   sources: string[];
   instance: string;
@@ -65,7 +64,6 @@ export interface ActivityLinkView {
  * back as `?source=sonarr,radarr`, `?source=all` (every source) and
  * `&instance=<id>`. A link starts from every instance rather than the saved one.
  */
-
 export function activityLinkView(params: URLSearchParams): ActivityLinkView | null {
   const raw = params.get('source');
   if (!raw) return null;
@@ -77,7 +75,6 @@ export function activityLinkView(params: URLSearchParams): ActivityLinkView | nu
 }
 
 /** Write a link view into the current history entry, or drop it (null). */
-
 export function writeActivityLinkView(view: ActivityLinkView | null) {
   const params = new URLSearchParams(window.location.search);
   params.delete('source');
@@ -94,11 +91,3 @@ export function writeActivityLinkView(view: ActivityLinkView | null) {
   window.dispatchEvent(new CustomEvent(NAVIGATION_START_EVENT, { detail }));
   window.history.replaceState(null, '', href);
 }
-
-/**
- * Renders the Activity page with header controls (filter, sort, history, refresh) and tabbed views for Queue, Failed imports, Missing, and Cutoff items.
- *
- * The component manages local UI state for the active tab, refresh state, sort and filter selection, and queue count. It triggers background refresh commands for Sonarr and Radarr, navigates to history and import routes, and passes sorting/filtering props to the tab panels.
- *
- * @returns The Activity page React element
- */

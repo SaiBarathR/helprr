@@ -41,6 +41,18 @@ import { QUEUE_PAGE_SIZE, QUEUE_QUERY_KEY, QueuePage, QueueRecord, RemoveTarget,
 import { ManualImportStrip, TabErrorState } from './shared';
 import { SortKey } from './view-state';
 
+/**
+ * Renders the Queue tab UI for activity, showing current download/import queue items.
+ *
+ * Polls the server for queue records at a configurable interval, applies the provided filter and sort,
+ * reports the visible item count via `onCountChange`, and exposes per-item details and removal from the queue.
+ *
+ * @param sortBy - Key used to sort visible queue items (title, progress, timeleft, or size)
+ * @param sortDirection - Direction applied to the selected queue sort
+ * @param filterBy - Selected sources to limit items to (`'sonarr'`, `'radarr'`, `'lidarr'`); an empty array means all sources.
+ * @param onCountChange - Callback invoked with the current number of visible items after filtering and sorting
+ * @returns The rendered Queue tab content as a JSX element
+ */
 export function QueueTab({
   sortBy,
   sortDirection,
@@ -776,13 +788,3 @@ function InfoRow({ label, value }: { label: string; value: string }) {
     </div>
   );
 }
-
-/**
- * Render the Failed Imports tab: list queue items that failed import and offer a manual import action.
- *
- * Shows loading skeletons while fetching; if no failed imports are found it renders an empty-state message;
- * otherwise it renders each failed item with its messages and an Import button that navigates to the manual import page.
- *
- * @param filterBy - Selected sources to apply (`'sonarr'`, `'radarr'`, `'lidarr'`); an empty array means all sources.
- * @returns The tab content JSX: loading skeletons, empty-state, or a list of failed import items with Import actions
- */

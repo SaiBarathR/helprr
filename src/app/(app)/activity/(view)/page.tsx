@@ -40,6 +40,13 @@ import { QueueTab } from './_components/queue-tab';
 import { ActivityLinkView, FILTER_OPTIONS, SORT_OPTIONS_BY_TAB, SortKey, TABS, TabKey, activityLinkView, isSortKey, isTabKey, writeActivityLinkView } from './_components/view-state';
 import { WantedTab } from './_components/wanted-tab';
 
+/**
+ * Renders the Activity page with header controls (filter, sort, history, refresh) and tabbed views for Queue, Failed imports, Missing, and Cutoff items.
+ *
+ * The component manages local UI state for the active tab, refresh state, sort and filter selection, and queue count. It triggers background refresh commands for Sonarr and Radarr, navigates to history and import routes, and passes sorting/filtering props to the tab panels.
+ *
+ * @returns The Activity page React element
+ */
 export default function ActivityPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -430,16 +437,3 @@ export default function ActivityPage() {
     </div>
   );
 }
-
-/**
- * Renders the Queue tab UI for activity, showing current download/import queue items.
- *
- * Polls the server for queue records at a configurable interval, applies the provided filter and sort,
- * reports the visible item count via `onCountChange`, and exposes per-item details and removal from the queue.
- *
- * @param sortBy - Key used to sort visible queue items (title, progress, timeleft, or size)
- * @param sortDirection - Direction applied to the selected queue sort
- * @param filterBy - Selected sources to limit items to (`'sonarr'`, `'radarr'`, `'lidarr'`); an empty array means all sources.
- * @param onCountChange - Callback invoked with the current number of visible items after filtering and sorting
- * @returns The rendered Queue tab content as a JSX element
- */

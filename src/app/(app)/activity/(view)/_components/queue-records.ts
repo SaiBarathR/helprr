@@ -73,7 +73,6 @@ export function getQueueMediaHref(item: QueueItem & { source?: string }): string
 }
 
 /** The manual import page for a queue item's download. */
-
 export function manualImportHref(item: QueueItem & { source?: string }): string {
   const params = new URLSearchParams({
     downloadId: item.downloadId,
@@ -91,15 +90,9 @@ export function needsManualImport(item: QueueItem): boolean {
 }
 
 /** Needs an import the import page can do: it handles Sonarr and Radarr only. */
-
 export function canManualImport(item: QueueItem & { source?: string }): boolean {
   return (item.source === 'sonarr' || item.source === 'radarr') && needsManualImport(item);
 }
-
-/**
- * The Failed tab's Import action, on a queue card that needs one: the reason
- * the *arr gave and a button, so the import starts from the queue itself.
- */
 
 // --- Season-pack grouping ---
 
@@ -119,7 +112,6 @@ interface QueueGroup {
  * Records without a downloadId, and single-item downloads, stay on their own.
  * Insertion order is preserved so the caller can sort groups by their rep.
  */
-
 export function groupQueueByDownload(items: QueueRecord[]): QueueGroup[] {
   const groups = new Map<string, QueueRecord[]>();
   const order: string[] = [];
@@ -142,7 +134,6 @@ export function groupQueueByDownload(items: QueueRecord[]): QueueGroup[] {
 }
 
 /** Short SxxExx label for a queue record, falling back to the bare episode number. */
-
 export function episodeLabel(item: QueueRecord): string {
   const season = item.episode?.seasonNumber ?? item.seasonNumber;
   const number = item.episode?.episodeNumber ?? item.episodeNumber;
@@ -154,7 +145,6 @@ export function episodeLabel(item: QueueRecord): string {
 }
 
 /** Noun for the items collapsed into a download group, by source (Lidarr ships tracks, not episodes). */
-
 export function packNoun(source?: string): string {
   if (source === 'lidarr') return 'tracks';
   if (source === 'sonarr') return 'episodes';
@@ -162,7 +152,6 @@ export function packNoun(source?: string): string {
 }
 
 /** Display name of the *arr app behind a queue record, for the remove dialog's hint copy. */
-
 export function appNameFor(source?: string): string {
   if (source === 'radarr') return 'Radarr';
   if (source === 'lidarr') return 'Lidarr';
@@ -177,7 +166,6 @@ export const QUEUE_PAGE_SIZE = 50;
 export type QueuePage = { records?: QueueRecord[]; totalRecords: number };
 
 /** Queue ids are only unique per *arr instance, so a record's identity includes its source and instance. */
-
 export function queueRecordKey(rec: { source?: string; instanceId?: string; id: number }): string {
   return `${rec.source ?? ''}|${rec.instanceId ?? ''}|${rec.id}`;
 }
@@ -193,13 +181,11 @@ export function uniqueQueueRecords(records: QueueRecord[]): QueueRecord[] {
 }
 
 /** What the remove dialog is acting on: a single queue record or a whole season-pack group. */
-
 export type RemoveTarget =
   | { kind: 'item'; item: QueueRecord }
   | { kind: 'pack'; group: QueueGroup };
 
 /** All queue records sharing `item`'s physical download (≥1, includes item). */
-
 export function downloadSiblings(queue: QueueRecord[], item: QueueRecord): QueueRecord[] {
   if (!item.downloadId) return [item];
   return queue.filter(
@@ -211,7 +197,6 @@ export function downloadSiblings(queue: QueueRecord[], item: QueueRecord): Queue
 }
 
 /** Badge delta for removing a whole download: total = record count, attention = flagged subset. */
-
 export function queueRemovalDelta(items: QueueRecord[]): { count: number; attention: number } {
   return {
     count: items.length,

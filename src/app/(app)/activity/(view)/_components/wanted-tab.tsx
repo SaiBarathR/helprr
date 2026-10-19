@@ -62,7 +62,6 @@ function wantedRecordKey(record: WantedRecord): string {
  * @param filterBy - Selected sources for results (`'sonarr'`, `'radarr'`, `'lidarr'`); an empty array means all sources, otherwise results are limited to the selected sources.
  * @returns The tab content element that lists records, shows loading and empty states, provides a per-record search action, and supports "Load more" pagination.
  */
-
 export function WantedTab({ type, filterBy, instanceFilter }: { type: 'missing' | 'cutoff'; filterBy: string[]; instanceFilter: string }) {
   const PAGE_SIZE = 20;
   const canManageActivity = useCan('activity.manage');
