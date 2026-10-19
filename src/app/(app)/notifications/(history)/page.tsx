@@ -77,6 +77,7 @@ interface NotificationMetadata {
   seriesId?: number;
   seasonNumber?: number;
   episodeId?: number;
+  instanceId?: string;
   redirect?: string;
   hash?: string;
   sessionId?: string;
@@ -417,6 +418,7 @@ export default function NotificationsPage() {
         seriesId: metadata?.seriesId,
         seasonNumber: metadata?.seasonNumber,
         episodeId: metadata?.episodeId,
+        instanceId: metadata?.instanceId,
       });
       if (directMediaHref) {
         return directMediaHref;
