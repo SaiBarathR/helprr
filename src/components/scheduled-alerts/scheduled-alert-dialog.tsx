@@ -234,10 +234,11 @@ export function ScheduledAlertDialog({
 
             <div className="flex flex-col gap-2">
               <Label>Alert type</Label>
-              <div className="grid grid-cols-2 gap-1 p-1 rounded-md bg-muted/40">
+              <div role="group" aria-label="Alert type" className="grid grid-cols-2 gap-1 p-1 rounded-md bg-muted/40">
                 <button
                   type="button"
                   disabled={saving}
+                  aria-pressed={scheduleMode === 'release_relative'}
                   onClick={() => setScheduleMode('release_relative')}
                   className={cn(
                     'py-2 rounded text-xs font-medium transition-colors',
@@ -251,6 +252,7 @@ export function ScheduledAlertDialog({
                 <button
                   type="button"
                   disabled={saving}
+                  aria-pressed={scheduleMode === 'absolute'}
                   onClick={() => setScheduleMode('absolute')}
                   className={cn(
                     'py-2 rounded text-xs font-medium transition-colors',
@@ -292,6 +294,7 @@ export function ScheduledAlertDialog({
 
             <button
               type="button"
+              aria-expanded={showAdvanced}
               onClick={() => setShowAdvanced((v) => !v)}
               className="flex items-center gap-1 text-xs text-primary"
             >
@@ -303,12 +306,13 @@ export function ScheduledAlertDialog({
               <div className="flex flex-col gap-3 rounded-md border border-border/60 bg-muted/20 p-3">
                 <div className="flex flex-col gap-2">
                   <Label>Release types</Label>
-                  <div className="flex flex-wrap gap-1.5">
+                  <div role="group" aria-label="Release types" className="flex flex-wrap gap-1.5">
                     {releaseOptions.map((kind) => (
                       <button
                         key={kind}
                         type="button"
                         disabled={saving}
+                        aria-pressed={releaseTypes.includes(kind)}
                         onClick={() => toggleReleaseType(kind)}
                         className={cn(
                           'px-2.5 py-1 rounded-full text-xs border transition-colors',
