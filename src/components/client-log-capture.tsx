@@ -58,6 +58,24 @@ type ClientCaptureState = {
 
 type ConsoleOriginals = Pick<Console, 'debug' | 'log' | 'info' | 'warn' | 'error'>;
 
+/**
+ * The browser rejects a page transition's promises when a navigation
+ * interrupts it (a quick Back, a swipe-back): the framework's own view
+ * transitions, not Helprr code. Noise, not a failure, so it is not sent to
+ * the server log.
+ */
+export function isSkippedViewTransition(reason: unknown): boolean {
+  const error = reason as { name?: unknown; message?: unknown } | null;
+  if (typeof reason !== 'object' || error === null || error.name !== 'AbortError' || typeof error.message !== 'string') return false;
+  // Chromium ("Transition was skipped", newer versions add ". <reason>"), then WebKit and Gecko,
+  // each for a transition replaced by another and for one skipped by skipTransition().
+  return /^Transition was skipped(\. .*)?$/.test(error.message)
+    || error.message === 'Old view transition aborted by new view transition.'
+    || error.message === 'Skipping view transition because skipTransition() was called.'
+    || error.message === 'Skipped ViewTransition due to another transition starting'
+    || error.message === 'Skipped ViewTransition due to skipTransition() call';
+}
+
 export interface ClientLogCaptureSettingsEvent {
   logEnabled?: boolean;
   logClientConsoleEnabled?: boolean;
@@ -183,6 +201,7 @@ export function ClientLogCapture() {
       enqueue('error', [event.error || event.message, { filename: event.filename, lineno: event.lineno, colno: event.colno }]);
     };
     const onUnhandledRejection = (event: PromiseRejectionEvent) => {
+      if (isSkippedViewTransition(event.reason)) return;
       enqueue('error', ['Unhandled promise rejection', event.reason]);
     };
     const onMessage = (event: MessageEvent) => {
