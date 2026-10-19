@@ -74,6 +74,7 @@ export async function cancelManualDownload(download: ManualDownload, options: Ca
     }
   }
   // Removing one record with the client removes the whole torrent; without it, each record is ignored.
+  // A blocklisted removal counts as a failed download in Arr: skipRedownload keeps Arr from searching for another release.
   const toRemove = options.removeFromClient ? items.slice(0, 1) : items;
   for (const item of toRemove) {
     await runWithOperationAudit({
@@ -87,7 +88,7 @@ export async function cancelManualDownload(download: ManualDownload, options: Ca
       itemCount: options.removeFromClient ? items.length : 1,
       filesDeleted: options.removeFromClient,
       details: { manualDownloadId: download.id, infoHash: download.infoHash, removeFromClient: options.removeFromClient, blocklist: options.blocklist },
-    }, () => client.deleteQueueItem(item.id, { removeFromClient: options.removeFromClient, blocklist: options.blocklist }));
+    }, () => client.deleteQueueItem(item.id, { removeFromClient: options.removeFromClient, blocklist: options.blocklist, skipRedownload: true }));
   }
   if (items.length > 0) {
     await bumpQueueCacheVersion();

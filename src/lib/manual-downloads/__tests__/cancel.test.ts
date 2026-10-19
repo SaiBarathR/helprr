@@ -47,7 +47,7 @@ describe('cancelling a manual download', () => {
   it("removes only this release from Arr's queue, keeping the torrent unless asked", async () => {
     const message = await cancelManualDownload(download(), none, actor);
 
-    expect(mocks.client.deleteQueueItem).toHaveBeenCalledExactlyOnceWith(101, { removeFromClient: false, blocklist: false });
+    expect(mocks.client.deleteQueueItem).toHaveBeenCalledExactlyOnceWith(101, { removeFromClient: false, blocklist: false, skipRedownload: true });
     expect(message).toContain('the torrent stays in the download client');
     expect(mocks.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: 'CANCELLED' }) }));
   });
@@ -55,7 +55,7 @@ describe('cancelling a manual download', () => {
   it('removes the torrent and data, and the film it added while it has no files', async () => {
     const message = await cancelManualDownload(download(), { removeFromClient: true, blocklist: true, removeTitle: true }, actor);
 
-    expect(mocks.client.deleteQueueItem).toHaveBeenCalledWith(101, { removeFromClient: true, blocklist: true });
+    expect(mocks.client.deleteQueueItem).toHaveBeenCalledWith(101, { removeFromClient: true, blocklist: true, skipRedownload: true });
     expect(mocks.client.deleteMovie).toHaveBeenCalledWith(15, false, false);
     expect(mocks.audits).toEqual([{ operation: 'REMOVE_QUEUE', filesDeleted: true }, { operation: 'DELETE_MEDIA', filesDeleted: false }]);
     expect(message).toContain('was removed');
@@ -84,7 +84,7 @@ describe('cancelling a manual download', () => {
       await vi.advanceTimersByTimeAsync(2_000);
       await cancelling;
       expect(mocks.client.refreshMonitoredDownloads).toHaveBeenCalledOnce();
-      expect(mocks.client.deleteQueueItem).toHaveBeenCalledWith(101, { removeFromClient: true, blocklist: false });
+      expect(mocks.client.deleteQueueItem).toHaveBeenCalledWith(101, { removeFromClient: true, blocklist: false, skipRedownload: true });
     } finally {
       vi.useRealTimers();
     }
