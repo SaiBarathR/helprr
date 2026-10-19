@@ -3,9 +3,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   client: {} as Record<string, ReturnType<typeof vi.fn>>,
   update: vi.fn(async () => ({})),
+  others: 0,
   audits: [] as Array<{ operation: string; filesDeleted: boolean | null }>,
 }));
-vi.mock('@/lib/db', () => ({ prisma: { manualDownload: { update: mocks.update } } }));
+vi.mock('@/lib/db', () => ({ prisma: { manualDownload: { update: mocks.update, count: async () => mocks.others } } }));
 vi.mock('@/lib/arr-instances', () => ({ resolveConnection: vi.fn(async () => ({ id: 'i1' })) }));
 vi.mock('@/lib/cache/tagged-library', () => ({ invalidateTaggedLibrary: vi.fn(async () => {}) }));
 vi.mock('@/lib/activity-queue', () => ({
@@ -26,7 +27,7 @@ import { cancelManualDownload, ManualDownloadCancelError } from '../cancel';
 const HASH = '382CC016FF22946008ECDDCB0DDA820F42B0CD5A';
 const download = (extra: Record<string, unknown> = {}) => ({
   id: 'md1', status: 'QUEUED', service: 'RADARR', instanceId: 'i1', instanceLabel: 'Radarr', infoHash: HASH,
-  arrItemId: 15, arrItemTitle: 'Night of the Living Dead', createdArrItem: true, ...extra,
+  arrItemId: 15, arrItemTitle: 'Night of the Living Dead', createdArrItem: true, updatedAt: new Date(Date.now() - 10 * 60_000), ...extra,
 }) as never;
 const actor = { id: 'u1', username: 'admin' };
 const none = { removeFromClient: false, blocklist: false, removeTitle: false };
@@ -34,6 +35,7 @@ const none = { removeFromClient: false, blocklist: false, removeTitle: false };
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.audits.length = 0;
+  mocks.others = 0;
   mocks.client = {
     getQueue: vi.fn(async () => ({ records: [{ id: 101, downloadId: HASH }, { id: 102, downloadId: 'OTHER' }] })),
     deleteQueueItem: vi.fn(async () => {}),
@@ -136,6 +138,24 @@ describe('cancelling a manual download', () => {
 
     expect(message).toContain('Night of the Living Dead is no longer in Radarr');
     expect(mocks.update).toHaveBeenCalled();
+  });
+
+  it('waits while a send whose answer was lost may still be taken by Radarr', async () => {
+    mocks.client.getQueue.mockResolvedValue({ records: [] });
+    mocks.client.getHistory.mockResolvedValue({ records: [] });
+    await expect(cancelManualDownload(download({ status: 'BLOCKED', updatedAt: new Date() }), { ...none, removeTitle: true }, actor))
+      .rejects.toThrow('may still be taking this release');
+    expect(mocks.client.deleteMovie).not.toHaveBeenCalled();
+
+    // Two minutes on, with still no grab: nothing of it is in Radarr, and the film it added goes.
+    expect(await cancelManualDownload(download({ status: 'BLOCKED' }), { ...none, removeTitle: true }, actor)).toContain('was removed');
+  });
+
+  it('keeps a film it added while another download is on its way for it', async () => {
+    mocks.others = 1;
+    const message = await cancelManualDownload(download(), { ...none, removeTitle: true }, actor);
+    expect(message).toContain('another download is on its way for Night of the Living Dead');
+    expect(mocks.client.deleteMovie).not.toHaveBeenCalled();
   });
 
   it('refuses a download still being sent', async () => {

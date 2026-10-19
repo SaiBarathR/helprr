@@ -9,6 +9,8 @@ import type { SonarrClient } from '@/lib/sonarr-client';
 import type { ArrReleasePushInput, HistoryItem } from '@/types';
 import { arrClientFor, preflightManualDownload, resolveArrCallbackOrigin, TERMINAL_STATUSES, type PreflightInput, type PreflightResult } from './preflight';
 import { offerTorrentToArr, withdrawTorrentLink } from './torrent-link';
+import { titleInUse } from './title-use';
+import { redactUpstreamText } from './redact';
 
 /**
  * Sending a manual download to Sonarr/Radarr (the default, Arr-managed mode):
@@ -38,8 +40,9 @@ const GRAB_CHECK_ATTEMPTS = 6;
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+/** An error's text as kept on the workflow: upstream text can quote credentials. */
 function errorText(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+  return redactUpstreamText(error instanceof Error ? error.message : String(error));
 }
 
 async function withEvents(id: string): Promise<ManualDownloadWithEvents> {
@@ -86,7 +89,15 @@ export async function sendManualDownload(
   if (repeat) return withEvents(repeat.id);
 
   const preflight = await preflightManualDownload(input);
-  if (!preflight.ok || !preflight.plan.target || !preflight.plan.instance) throw new ManualDownloadRefusedError(preflight);
+  if (!preflight.ok || !preflight.plan.target || !preflight.plan.instance) {
+    // The same submission, sent twice at once: the first may have recorded it meanwhile.
+    const started = await prisma.manualDownload.findUnique({
+      where: { createdByUserId_clientRequestId: { createdByUserId: actor.id, clientRequestId } },
+      select: { id: true },
+    });
+    if (started) return withEvents(started.id);
+    throw new ManualDownloadRefusedError(preflight);
+  }
   const { plan } = preflight;
   const target = plan.target!;
   const instance = plan.instance!;
@@ -150,8 +161,13 @@ export async function sendManualDownload(
     throw error;
   }
 
-  const connection = await resolveConnection(input.service, instance.id);
-  const client = arrClientFor(input.service, connection);
+  let client: RadarrClient | SonarrClient;
+  try {
+    client = arrClientFor(input.service, await resolveConnection(input.service, instance.id));
+  } catch (error) {
+    await moveTo(id, 'FAILED', `${instance.label} could not be reached: ${errorText(error)}`);
+    return withEvents(id);
+  }
   const run = new SendRun(id, input, plan, client, actor, instance.id);
   await run.execute();
   return withEvents(id);
@@ -163,6 +179,8 @@ class SendRun {
   /** The release went to Arr: from here a failure may follow a grab, so the title stays. */
   private sent = false;
   private episodeIds: number[];
+  /** Sonarr, episodes not known before the push: every episode's file id, taken before it. */
+  private seriesFiles: Record<string, number> = {};
 
   constructor(
     private readonly id: string,
@@ -244,8 +262,31 @@ class SendRun {
     if (unmonitored.length > 0) await this.sonarr.setEpisodesMonitored(unmonitored, true);
   }
 
+  /** The title in the instance now, by its TMDB/TVDB id, or null. */
+  private async findTitle(): Promise<number | null> {
+    const target = this.plan.target!;
+    const term = this.input.service === 'RADARR' ? `tmdb:${target.externalId}` : `tvdb:${target.externalId}`;
+    const results = this.input.service === 'RADARR' ? await this.radarr.lookupMovie(term) : await this.sonarr.lookupSeries(term);
+    const found = (results as Array<{ id?: number | null; tmdbId?: number; tvdbId?: number }>)
+      .find((result) => (this.input.service === 'RADARR' ? result.tmdbId : result.tvdbId) === target.externalId);
+    return found?.id && found.id > 0 ? found.id : null;
+  }
+
   /** Add the title with every automatic search off, from an allowlist of fields. */
   private async addTitle(): Promise<void> {
+    try {
+      await this.addTitleOnce();
+    } catch (error) {
+      // The answer may be lost after Arr added it: the title it was not there before is this workflow's.
+      const added = await this.findTitle().catch(() => null);
+      if (!added) throw error;
+      this.arrItemId = added;
+      this.createdArrItem = true;
+      await prisma.manualDownload.update({ where: { id: this.id }, data: { arrItemId: added, createdArrItem: true } });
+    }
+  }
+
+  private async addTitleOnce(): Promise<void> {
     const add = this.input.add!;
     const target = this.plan.target!;
     if (this.input.service === 'RADARR') {
@@ -318,9 +359,10 @@ class SendRun {
       return files.map((file) => file.id);
     }
     const episodes = await this.sonarr.getEpisodes(this.arrItemId!);
-    return Object.fromEntries(
-      episodes.filter((episode) => this.episodeIds.includes(episode.id)).map((episode) => [String(episode.id), episode.episodeFileId ?? 0]),
-    );
+    const all = Object.fromEntries(episodes.map((episode) => [String(episode.id), episode.episodeFileId ?? 0]));
+    // Episodes known only from the grab: keep every episode's file now, before the push.
+    if (this.episodeIds.length === 0) this.seriesFiles = all;
+    return Object.fromEntries(this.episodeIds.map((episodeId) => [String(episodeId), all[String(episodeId)] ?? 0]));
   }
 
   private async push(): Promise<void> {
@@ -354,7 +396,7 @@ class SendRun {
     }
 
     if (!pushError && (!result || result.rejected || !result.approved)) {
-      const reasons = result?.rejections?.length ? result.rejections.join('; ') : 'no reason given';
+      const reasons = result?.rejections?.length ? redactUpstreamText(result.rejections.join('; ')) : 'no reason given';
       await this.failAndUndo(`${this.app} turned the release down: ${reasons}.`);
       return;
     }
@@ -378,7 +420,8 @@ class SendRun {
     // baseline for proving the import.
     if (this.input.service === 'SONARR' && this.episodeIds.length === 0 && grabs.every((grab) => grab.seriesId === this.arrItemId)) {
       this.episodeIds = grabs.flatMap((grab) => (grab.episodeId !== undefined ? [grab.episodeId] : []));
-      await prisma.manualDownload.update({ where: { id: this.id }, data: { targetEpisodeIds: this.episodeIds, baselineFileIds: await this.fileIds() } });
+      const baseline = Object.fromEntries(this.episodeIds.map((episodeId) => [String(episodeId), this.seriesFiles[String(episodeId)] ?? 0]));
+      await prisma.manualDownload.update({ where: { id: this.id }, data: { targetEpisodeIds: this.episodeIds, baselineFileIds: baseline } });
     }
 
     const wrongTitle = this.input.service === 'RADARR'
@@ -395,7 +438,8 @@ class SendRun {
   /** History "grabbed" records for this release; Arr writes them before the push returns. */
   private async grabRecords(): Promise<HistoryItem[]> {
     for (let attempt = 0; attempt < GRAB_CHECK_ATTEMPTS; attempt += 1) {
-      const history = await this.client.getHistory(1, 50, 'date', 'descending', { downloadId: this.input.source.infoHash });
+      // One release's records only, so a season pack's every episode fits one page.
+      const history = await this.client.getHistory(1, 1000, 'date', 'descending', { downloadId: this.input.source.infoHash });
       const grabs = history.records.filter((record) => record.eventType === 'grabbed');
       if (grabs.length > 0) return grabs;
       await sleep(500);
@@ -417,6 +461,8 @@ class SendRun {
           : (await this.sonarr.getEpisodeFiles(this.arrItemId)).length > 0;
         if (hasFiles) {
           note += ` ${this.plan.target!.title} was added and already has files, so it was left in ${this.plan.instance!.label}.`;
+        } else if (await titleInUse({ id: this.id, service: this.input.service, instanceId: this.instanceId, arrItemId: this.arrItemId, infoHash: this.input.source.infoHash }, this.client)) {
+          note += ` ${this.plan.target!.title} was added, but another download is on its way for it, so it was left in ${this.plan.instance!.label}.`;
         } else {
           await this.audit('DELETE_MEDIA', { reason: 'manual download failed before its grab' }, () => (
             this.input.service === 'RADARR' ? this.radarr.deleteMovie(this.arrItemId!, false, false) : this.sonarr.deleteSeries(this.arrItemId!, false)

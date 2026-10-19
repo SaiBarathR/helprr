@@ -355,7 +355,9 @@ test instances, with locally generated torrents of random bytes:
   the lookup is case-sensitive). The queue item follows about 5 s later.
 - **Mapping.** Arr maps a pushed release by parsing `title`; `movieId`,
   `seriesId` and `episodeIds` are ignored. Radarr's `tmdbId` matches only when
-  the parsed year equals the movie's. Sonarr's `tvdbId` is used only when the
+  the parsed year equals the movie's (or its secondary year), or when the name
+  has no year (Radarr reads it below 1800; per its `ParsingService` source, not
+  probed live). Sonarr's `tvdbId` is used only when the
   title parses to no library series, so a title naming another library series is
   grabbed for that series. An unparseable title is refused (400) and an
   `Unknown` quality is rejected by profiles. `GET /api/v3/parse?title=` shows the
@@ -363,6 +365,9 @@ test instances, with locally generated torrents of random bytes:
 - **Monitoring.** The movie, or the series and every episode the release covers,
   must be monitored. Adding a series with `addOptions.monitor: "none"` leaves the
   series unmonitored.
+- **Recent grabs.** Arr refuses a release it grabbed within the last 12 hours
+  (its history specification); an older grab of the same release may be pushed
+  again.
 - **Removal.** Removing the queue item with `removeFromClient=true` and no
   blocklist writes no history event, so pushes for that title are refused as a
   recent grab for 12 hours.
