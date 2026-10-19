@@ -479,10 +479,13 @@ Helprr authors no parsing and never trusts its own reading of a release.
   claims the workflow (a conditional update to `IMPORT_PENDING` from the status
   and `updatedAt` read) and writes only while still holding it, so none of them
   overlap (the status worker takes over a claim held for 10 minutes) and races
-  run once. The decisions, targets and baseline are saved
-  before Arr is asked: an import interrupted by a restart is proved from
-  history, adopted from Arr's command list, or left to the user, never sent
-  again on Helprr's own.
+  run once. The decisions, targets, baseline and send time (`importSentAt`) are
+  saved before Arr is asked: an import interrupted by a restart, or one Arr did
+  not answer, stays claimed until the status worker proves it from history,
+  adopts it from Arr's command list (queued since it was sent), or leaves it to
+  the user; it is never sent again on Helprr's own. Only a claim that sent an
+  import is recovered this way; an interrupted scan or cancel reads the files
+  again.
 - **Status authority.** The `pollManualDownloads` polling source reconciles
   every open workflow each cycle against its own instance: Arr's queue, then its
   history, or qBittorrent for the fallback. `IMPORTED` requires file ids the

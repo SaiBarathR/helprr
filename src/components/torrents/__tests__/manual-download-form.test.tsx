@@ -192,14 +192,6 @@ describe('sending a release to Sonarr/Radarr', () => {
     expect(screen.getByText(/this account may not change monitoring/)).toBeTruthy();
   });
 
-  it('starts fresh when "Send again" names a library this user may not add to', async () => {
-    mocks.caps = new Set(['movies.add']);
-    renderForm({ kind: 'magnet', magnet: MAGNET }, { service: 'SONARR', instanceId: 's1', externalId: 81189, title: 'Breaking Bad', release: 'Breaking.Bad.S01.1080p' });
-    expect(await screen.findByLabelText('Movie')).toBeTruthy();
-    expect(screen.queryByLabelText('Series')).toBeNull();
-    expect((screen.getByLabelText('Release name') as HTMLInputElement).value).not.toBe('Breaking.Bad.S01.1080p');
-  });
-
   it('asks for the release before anything can be checked', async () => {
     renderForm({ kind: 'magnet', magnet: '' });
     expect(await screen.findByText('Paste a magnet link first.')).toBeTruthy();

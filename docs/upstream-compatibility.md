@@ -365,12 +365,20 @@ test instances, with locally generated torrents of random bytes:
 - **Monitoring.** The movie, or the series and every episode the release covers,
   must be monitored. Adding a series with `addOptions.monitor: "none"` leaves the
   series unmonitored.
-- **Recent grabs.** Arr refuses a release it grabbed within the last 12 hours
-  (its history specification); an older grab of the same release may be pushed
-  again.
+- **Recent grabs.** Arr's history specification looks at the newest history
+  event of the movie (Sonarr: of each episode): while that is a grab under 12
+  hours old, Arr refuses any release that is not an upgrade of it, whichever
+  release was grabbed; an older grab is ignored only with Completed Download
+  Handling on. Helprr's preflight checks only for a recent grab of the same
+  hash (an older one is a warning); the other cases surface as Arr's push
+  rejection.
 - **Removal.** Removing the queue item with `removeFromClient=true` and no
   blocklist writes no history event, so pushes for that title are refused as a
   recent grab for 12 hours.
+- **Imports.** Each file Arr imports from a download writes a
+  `downloadFolderImported` history record with the release's `downloadId`
+  (Sonarr: one per episode, with its `episodeId`) and `data.fileId`, the id of
+  the file the import created.
 
 ### Sonarr and Radarr manual import (advanced fallback)
 
@@ -399,14 +407,23 @@ import.
   `importMode: copy` and the candidate's `path`, `movieId` or
   `seriesId`/`episodeIds`, `quality`, `languages` and `releaseGroup` hardlinks the
   file into the library (the source stays, so the torrent keeps seeding). History
-  records `downloadFolderImported` without a download id, with `droppedPath` (the
-  source) and `fileId`; that event, from the file's own path into a new file, is
-  the proof. An upgrade replaces (deletes or recycles) the file already there.
+  records `downloadFolderImported` without a download id, with `data.droppedPath`
+  (the file imported from) and `data.fileId` (the library file it created). That
+  pair, for a file id the title did not have before, in the title's own history
+  (see History filters; Sonarr's records carry the `episodeId`), is the proof. An
+  upgrade replaces (deletes or recycles) the file already there.
+- **Commands.** `GET /api/v3/command` lists recent commands, a `ManualImport` with
+  its `queued` time and `body.files[].path`, so an import whose answer was lost can
+  be found; Arr forgets its commands when it restarts.
+- **Remote path mappings** (`GET /api/v3/remotepathmapping`) carry the download
+  client's `host` as Arr knows it; only the mappings for the host Arr uses for
+  Helprr's qBittorrent apply.
 - **Extras.** With **Import Extra Files** on (`config/mediamanagement`
   `importExtraFiles`, `extraFileExtensions` such as `srt, .sub`), each import also
   takes files with those extensions from the video's folder. Without a
   `folderName` in the command, only that folder's top level is searched
-  (`ExtraService` in Sonarr `4.0.20.3014`).
+  (`ExtraService` in Sonarr `4.0.20.3014`; Helprr applies the same check to
+  Radarr).
 - **History filters.** Sonarr's paged `/api/v3/history` ignores `seriesId` (it
   takes `seriesIds`); `GET /api/v3/history/series?seriesId=&eventType=3` and
   Radarr's `/api/v3/history/movie?movieId=&eventType=3` return one title's imports.

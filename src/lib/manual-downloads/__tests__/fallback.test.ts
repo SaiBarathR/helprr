@@ -90,6 +90,7 @@ vi.mock('../send', () => ({
 }));
 vi.mock('../preflight', async (importOriginal) => ({ ...(await importOriginal<typeof import('../preflight')>()), arrClientFor: () => mocks.arr }));
 
+import { AxiosError, AxiosHeaders } from 'axios';
 import { checkFallback, fallbackImportProof, importFallback, settleDownloaded, startFallbackDownload } from '../fallback';
 
 const HASH = '382CC016FF22946008ECDDCB0DDA820F42B0CD5A';
@@ -255,6 +256,7 @@ const file = (id: string, index: number, path: string, size: number, selected: b
 const statuses = () => mocks.moves.map((move) => move.status);
 const series = { id: 15, title: 'Classroom of the Elite' };
 /** Every folder lists these files (and /data/ its Downloads folder). */
+const splitName = (path: string) => path.split('/').at(-1)!;
 const sonarrSees = (...names: string[]) => mocks.arr.listFolder.mockResolvedValue({ directories: [{ name: 'Downloads', path: '' }], files: names.map((name) => ({ name, path: '', size: 5 })) });
 
 describe('after the chosen files finish', () => {
@@ -484,7 +486,7 @@ describe('picking up an import Helprr was interrupted in', () => {
   const decided = () => downloaded('SONARR', [
     file('f0', 0, 'Show/a.mkv', 5, true, { arrPath: '/data/Downloads/Show/a.mkv', candidate: candidate('/data/Downloads/Show/a.mkv'), decision: 'IMPORT', episodeIds: [502] }),
     file('f1', 1, 'Show/b.mkv', 5, true, { arrPath: '/data/Downloads/Show/b.mkv', candidate: candidate('/data/Downloads/Show/b.mkv'), decision: 'IGNORE' }),
-  ], 'IMPORT_PENDING', { updatedAt: STALE, targetEpisodeIds: [502], baselineFileIds: { 502: 0 } });
+  ], 'IMPORT_PENDING', { updatedAt: STALE, importSentAt: STALE, targetEpisodeIds: [502], baselineFileIds: { 502: 0 } });
 
   it('keeps what was decided: no new reading, and nothing sent again', async () => {
     mocks.arr.getCommands.mockResolvedValue([
@@ -516,6 +518,42 @@ describe('picking up an import Helprr was interrupted in', () => {
     // Both read the same expired claim; the second must lose though the status is still IMPORT_PENDING.
     expect(await Promise.all([settleDownloaded(read, mocks.arr as never), settleDownloaded(read, mocks.arr as never)])).toEqual([true, false]);
     expect(mocks.arr.getCommands).toHaveBeenCalledTimes(1);
+  });
+
+  it("lists each folder once to find a pack's files where Arr reads them", async () => {
+    const pack = Array.from({ length: 6 }, (_, n) => file(`f${n}`, n, `Show/e${n}.mkv`, 5, true));
+    downloaded('SONARR', pack);
+    sonarrSees(...pack.map((entry) => splitName(entry.path as string)));
+    mocks.arr.listFolder.mockClear();
+    await settleDownloaded(mocks.rows.get('md1') as never, mocks.arr as never);
+    const folders = mocks.arr.listFolder.mock.calls.map(([folder]) => folder);
+    expect(folders.filter((folder) => folder === '/data/Downloads/Show/')).toHaveLength(1);
+  });
+
+  it('still looks from when the import was sent after a recovery that Arr did not answer', async () => {
+    decided();
+    mocks.arr.getSeriesHistory.mockRejectedValueOnce(new Error('timeout of 30000ms exceeded'));
+    await expect(settleDownloaded(mocks.rows.get('md1') as never, mocks.arr as never)).rejects.toThrow('timeout');
+    expect(mocks.rows.get('md1')).toEqual(expect.objectContaining({ status: 'IMPORT_PENDING', importSentAt: STALE }));
+
+    // The next recovery, once that claim expired too, still finds the command queued back then.
+    mocks.arr.getCommands.mockResolvedValue([
+      { id: 90, name: 'ManualImport', queued: new Date(STALE.getTime() + 500).toISOString(), body: { files: [{ path: '/data/Downloads/Show/a.mkv' }] } },
+    ]);
+    await settleDownloaded(mocks.rows.get('md1') as never, mocks.arr as never);
+    expect(mocks.moves.at(-1)).toEqual(expect.objectContaining({ status: 'IMPORTING', data: expect.objectContaining({ arrCommandId: 90, importSentAt: null }) }));
+    expect(mocks.arr.submitManualImport).not.toHaveBeenCalled();
+  });
+
+  it('reads the files again, rather than recovering an import, when the expired claim sent none', async () => {
+    // A cancel or a scan from BLOCKED, interrupted: the last attempt's decisions are still there.
+    downloaded('SONARR', [
+      file('f0', 0, 'Show/a.mkv', 5, true, { arrPath: '/data/Downloads/Show/a.mkv', candidate: candidate('/data/Downloads/Show/a.mkv'), decision: 'IMPORT', episodeIds: [502] }),
+    ], 'IMPORT_PENDING', { updatedAt: STALE, importSentAt: null, targetEpisodeIds: [502] });
+    await settleDownloaded(mocks.rows.get('md1') as never, mocks.arr as never);
+    expect(mocks.arr.getCommands).not.toHaveBeenCalled();
+    expect(mocks.arr.getSeriesHistory).not.toHaveBeenCalled();
+    expect(mocks.moves[0]).toEqual(expect.objectContaining({ status: 'IMPORT_PENDING', message: 'Asking Sonarr again what the files are.' }));
   });
 });
 
@@ -591,9 +629,26 @@ describe("importing the user's decisions", () => {
     expect(mocks.arr.submitManualImport).toHaveBeenCalledTimes(1);
 
     mocks.moves = [];
-    mocks.arr.submitManualImport.mockRejectedValue(new Error('Request failed with status code 500'));
+    const response = { status: 500, statusText: 'Internal Server Error', headers: {}, config: { headers: new AxiosHeaders() }, data: {} };
+    mocks.arr.submitManualImport.mockRejectedValue(new AxiosError('Request failed with status code 500', 'ERR_BAD_RESPONSE', undefined, undefined, response));
     await expect(importFallback(scanned('RADARR'), mocks.arr as never, [{ fileId: 'f0', decision: 'IMPORT' }], actor)).rejects.toThrow('did not take the import: Request failed with status code 500');
     expect(mocks.moves.at(-1)).toEqual(expect.objectContaining({ status: 'BLOCKED' }));
+  });
+
+  it('never offers to import again when Arr did not answer and its commands cannot be read', async () => {
+    mocks.arr.submitManualImport.mockRejectedValue(new AxiosError('timeout of 30000ms exceeded', 'ECONNABORTED'));
+    mocks.arr.getCommands.mockRejectedValue(new AxiosError('timeout of 30000ms exceeded', 'ECONNABORTED'));
+    await importFallback(scanned('RADARR'), mocks.arr as never, [{ fileId: 'f0', decision: 'IMPORT' }], actor);
+    expect(mocks.rows.get('md1')).toEqual(expect.objectContaining({ status: 'IMPORT_PENDING', importSentAt: expect.any(Date) }));
+    expect(mocks.moves.map((move) => move.status)).toEqual(['IMPORT_PENDING']);
+
+    // Once the claim expires, the status worker settles it from Arr's history.
+    const sent = mocks.rows.get('md1')!.importSentAt as Date;
+    mocks.arr.getMovieHistory.mockResolvedValue([{ eventType: 'downloadFolderImported', movieId: 15, data: { droppedPath: '/data/Downloads/Show/a.mkv', fileId: '77' } }]);
+    await settleDownloaded(mocks.rows.get('md1') as never, mocks.arr as never);
+    expect(mocks.moves.at(-1)).toEqual(expect.objectContaining({ status: 'IMPORTED', data: expect.objectContaining({ importedFileIds: [77], importSentAt: null }) }));
+    expect(mocks.arr.submitManualImport).toHaveBeenCalledTimes(1);
+    expect(sent).toBeInstanceOf(Date);
   });
 
   it('refuses while a scan or another import has it', async () => {

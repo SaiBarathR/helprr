@@ -26,6 +26,12 @@ const INTERRUPTED_AFTER_MS = 10 * 60_000;
 /** A grab missing from the queue right after the push is normal for a few seconds. */
 const QUEUE_GRACE_MS = 2 * 60_000;
 const SENDING: ManualDownloadStatus[] = ['PREFLIGHT', 'CREATING_MEDIA', 'SUBMITTING_RELEASE'];
+/**
+ * Arr refuses a release grabbed in the last 12 hours, so an earlier send of
+ * the same release is far older than this workflow; this only allows for
+ * Arr's clock differing from Helprr's.
+ */
+const CLOCK_SKEW_MS = 60 * 60_000;
 
 type Outcome = {
   status: ManualDownloadStatus;
@@ -83,9 +89,10 @@ const fileIdOf = (event: HistoryItem) => Number(event.data?.fileId) || 0;
  * Whether the import is proved. With this release's own import events (Arr
  * records the file each one imported): Radarr, an imported movie file that
  * the movie still has; Sonarr, every target episode holds the file this
- * release imported for it. Without them (Helprr's own fallback imports, which
- * have no download id): Radarr, a movie file id not in the baseline; Sonarr,
- * every target episode holds a file id it did not hold before.
+ * release imported for it. Without them (events that record no file):
+ * Radarr, a movie file id not in the baseline; Sonarr, every target episode
+ * holds a file id it did not hold before. Fallback imports have their own
+ * proof (fallbackImportProof).
  */
 export function importProof(
   download: Pick<ManualDownload, 'service' | 'baselineFileIds' | 'targetEpisodeIds'> & { arrItemId?: number | null },
@@ -128,10 +135,22 @@ export function importProof(
 
 const ENDINGS = ['downloadFolderImported', 'downloadFailed', 'downloadIgnored'];
 
+/** This workflow's records of its release in Arr's history, newest first: an earlier send of the release is older. */
+async function historyOf(download: ManualDownload, client: RadarrClient | SonarrClient, eventType?: number): Promise<HistoryItem[]> {
+  // One release's records only, so a season pack fits one page.
+  const history = await client.getHistory(1, 1000, 'date', 'descending', { downloadId: download.infoHash, ...(eventType ? { eventType } : {}) });
+  const since = download.createdAt.getTime() - CLOCK_SKEW_MS;
+  return history.records.filter((record) => Date.parse(record.date) >= since);
+}
+
+/** The episodes a Sonarr grab covers, with no baseline: the import is then proved by its own events. */
+function grabbedEpisodes(grabs: HistoryItem[]): { targetEpisodeIds: number[]; baselineFileIds: Record<string, number> } {
+  const targetEpisodeIds = [...new Set(grabs.flatMap((grab) => (grab.episodeId !== undefined ? [grab.episodeId] : [])))];
+  return { targetEpisodeIds, baselineFileIds: Object.fromEntries(targetEpisodeIds.map((episodeId) => [String(episodeId), 0])) };
+}
+
 async function fromHistory(download: ManualDownload, client: RadarrClient | SonarrClient, app: string): Promise<Outcome | null> {
-  // This release's records only, newest first, so a season pack fits one page.
-  const history = await client.getHistory(1, 1000, 'date', 'descending', { downloadId: download.infoHash });
-  const events = history.records;
+  const events = await historyOf(download, client);
   const has = (type: string) => events.some((record: HistoryItem) => record.eventType === type);
   // The newest event that ends a download says how it ended: a failure after a
   // partial import is a failure.
@@ -188,21 +207,15 @@ export async function apply(download: ManualDownload, outcome: Outcome): Promise
 
 /** A send interrupted before it finished (the app restarted mid-send): settle it from Arr's history. */
 async function settleInterrupted(download: ManualDownload, client: RadarrClient | SonarrClient, app: string): Promise<Outcome> {
-  const history = await client.getHistory(1, 1000, 'date', 'descending', { downloadId: download.infoHash, eventType: 1 });
-  const grabs = history.records;
+  // Only a send that reached SUBMITTING_RELEASE can have pushed the release.
+  const grabs = download.status === 'SUBMITTING_RELEASE' ? await historyOf(download, client, 1) : [];
   if (grabs.length > 0) {
     const named = (grab: HistoryItem) => (download.service === 'RADARR' ? grab.movieId : grab.seriesId);
     const wrong = grabs.some((grab) => named(grab) !== undefined && named(grab) !== download.arrItemId);
     if (wrong) return { status: 'BLOCKED', message: `${app} grabbed the release for a different title than ${download.arrItemTitle}. Cancel it from its queue.` };
     // Sonarr matched by TVDB id, and the send stopped before it took the episodes from the grab.
     if (download.service === 'SONARR' && download.targetEpisodeIds.length === 0) {
-      const targetEpisodeIds = [...new Set(grabs.flatMap((grab) => (grab.episodeId !== undefined ? [grab.episodeId] : [])))];
-      // No baseline from before the push survives the restart: the import is proved by its own events.
-      return {
-        status: 'QUEUED',
-        message: `${app} had grabbed the release before the send was interrupted.`,
-        data: { targetEpisodeIds, baselineFileIds: Object.fromEntries(targetEpisodeIds.map((episodeId) => [String(episodeId), 0])) },
-      };
+      return { status: 'QUEUED', message: `${app} had grabbed the release before the send was interrupted.`, data: grabbedEpisodes(grabs) };
     }
     return { status: 'QUEUED', message: `${app} had grabbed the release before the send was interrupted.` };
   }
@@ -254,6 +267,22 @@ async function fromFallback(download: ManualDownload, client: RadarrClient | Son
   return null;
 }
 
+/**
+ * Sonarr matched by TVDB id, and the send ended (BLOCKED, unsure of the grab)
+ * before it took the episodes from the grab: take them now. Null when the
+ * workflow changed meanwhile; the next run sees it.
+ */
+async function withGrabbedEpisodes(download: ManualDownload, client: RadarrClient | SonarrClient): Promise<ManualDownload | null> {
+  const targets = grabbedEpisodes((await historyOf(download, client, 1)).filter((grab) => grab.seriesId === download.arrItemId));
+  if (targets.targetEpisodeIds.length === 0) return download;
+  try {
+    return await prisma.manualDownload.update({ where: { id: download.id, status: download.status, updatedAt: download.updatedAt }, data: targets });
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') return null;
+    throw error;
+  }
+}
+
 /** Reconcile every open manual download against its own Arr instance. */
 export async function reconcileManualDownloads(): Promise<void> {
   const open = await prisma.manualDownload.findMany({
@@ -292,21 +321,23 @@ export async function reconcileManualDownloads(): Promise<void> {
     try {
       const client = arrClientFor(service, await resolveConnection(service, instanceId));
       const queue = downloads.some((download) => download.mode === 'ARR_MANAGED') ? (await fetchAllQueueRecords(client, true)).records : [];
-      for (const download of downloads) {
+      for (const found of downloads) {
         try {
-          if (SENDING.includes(download.status)) {
-            await apply(download, download.mode === 'ARR_MANAGED'
-              ? await settleInterrupted(download, client, app)
-              : { status: 'FAILED', message: `Starting the download was interrupted.${download.createdArrItem ? ` ${download.arrItemTitle} was added to ${download.instanceLabel} for it; remove it in ${app} if you do not want it.` : ''} Start it again from Add Torrent.` });
+          if (SENDING.includes(found.status)) {
+            await apply(found, found.mode === 'ARR_MANAGED'
+              ? await settleInterrupted(found, client, app)
+              : { status: 'FAILED', message: `Starting the download was interrupted.${found.createdArrItem ? ` ${found.arrItemTitle} was added to ${found.instanceLabel} for it; remove it in ${app} if you do not want it.` : ''} Start it again from Add Torrent.` });
             continue;
           }
-          if (download.mode === 'QBIT_REVIEWED') {
-            // Without an answer from qBittorrent the state is unknown: leave it.
-            if (!torrents) continue;
-            const outcome = await fromFallback(download, client, app, torrents.find((torrent) => torrent.hash.toUpperCase() === download.infoHash));
-            if (outcome) await apply(download, outcome);
+          if (found.mode === 'QBIT_REVIEWED') {
+            // Without an answer from qBittorrent the torrent's state is unknown; an import is Arr's alone.
+            if (!torrents && found.status !== 'IMPORTING' && found.status !== 'IMPORT_PENDING') continue;
+            const outcome = await fromFallback(found, client, app, torrents?.find((torrent) => torrent.hash.toUpperCase() === found.infoHash));
+            if (outcome) await apply(found, outcome);
             continue;
           }
+          const download = found.service === 'SONARR' && found.targetEpisodeIds.length === 0 ? await withGrabbedEpisodes(found, client) : found;
+          if (!download) continue;
           const items = queue.filter((record) => record.downloadId?.toUpperCase() === download.infoHash);
           const item = items[0];
           // Arr keeps an imported or ignored item listed for a while; its history settles it.

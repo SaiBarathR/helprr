@@ -232,6 +232,12 @@ export default function MapFilesPage() {
               </Button>
             )}
             {missingEpisodes && <p className="text-center text-xs text-muted-foreground">Choose the episodes for each file you import.</p>}
+            {/* The check's answer otherwise shows only as the button's new label. */}
+            <p role="status" className="sr-only">
+              {verdict && (objections.length > 0
+                ? `${app} objects to ${objections.length === 1 ? 'one file' : `${objections.length} files`}.`
+                : `${app} has no objection to this mapping.`)}
+            </p>
           </div>
         )}
       </div>
