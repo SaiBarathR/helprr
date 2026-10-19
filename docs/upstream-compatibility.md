@@ -365,9 +365,13 @@ test instances, with locally generated torrents of random bytes:
 - **Monitoring.** The movie, or the series and every episode the release covers,
   must be monitored. Adding a series with `addOptions.monitor: "none"` leaves the
   series unmonitored.
-- **Recent grabs.** Arr refuses a release it grabbed within the last 12 hours
-  (its history specification); an older grab of the same release may be pushed
-  again.
+- **Recent grabs.** Arr's history specification looks at the newest history
+  event of the movie (Sonarr: of each episode): while that is a grab under 12
+  hours old, Arr refuses any release that is not an upgrade of it, whichever
+  release was grabbed; an older grab is ignored only with Completed Download
+  Handling on. Helprr's preflight checks only for a recent grab of the same
+  hash (an older one is a warning); the other cases surface as Arr's push
+  rejection.
 - **Removal.** Removing the queue item with `removeFromClient=true` and no
   blocklist writes no history event, so pushes for that title are refused as a
   recent grab for 12 hours.
