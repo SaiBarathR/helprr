@@ -10,8 +10,8 @@ import { getQueryClient } from '@/lib/query-client';
  * another full wait, so the player says so after the first.
  */
 
-const hls = vi.hoisted(() => ({ networkError: null as string | null, recovers: false }));
-const media = vi.hoisted(() => ({ startFails: true }));
+const hls = vi.hoisted(() => ({ networkError: null as string | string[] | null, recovers: false }));
+const media = vi.hoisted(() => ({ startFails: true, playsTo: 0 }));
 vi.mock('@/lib/jellyfin-playback/browser', async (importOriginal) => ({
   ...await importOriginal<typeof import('@/lib/jellyfin-playback/browser')>(),
   canPlayHlsWithMse: () => true,
@@ -20,6 +20,7 @@ vi.mock('@/lib/jellyfin-playback/browser', async (importOriginal) => ({
 vi.mock('hls.js', () => ({
   default: class {
     private handlers: Record<string, (event: string, data: unknown) => void> = {};
+    private el: HTMLMediaElement | null = null;
     static isSupported() { return true; }
     static Events = { ERROR: 'error', MANIFEST_PARSED: 'manifest', FRAG_LOADED: 'frag' };
     static ErrorTypes = { NETWORK_ERROR: 'networkError', MEDIA_ERROR: 'mediaError' };
@@ -28,19 +29,31 @@ vi.mock('hls.js', () => ({
       void Promise.resolve().then(() => {
         ready();
         // After the manifest: a fragment request fails (hls.js reports no HTTP status) ...
-        if (hls.networkError) this.handlers.error?.('error', { type: 'networkError', details: hls.networkError, fatal: false, response: { code: 0 } });
+        for (const details of [hls.networkError ?? []].flat()) {
+          this.handlers.error?.('error', { type: 'networkError', details, fatal: false, response: { code: 0 } });
+        }
         // ... and perhaps a later one loads.
         if (hls.recovers) this.handlers.frag?.('frag', { frag: { stats: { loaded: 1000, loading: { start: 0, end: 10 } } } });
       });
     }
     loadSource() {}
-    attachMedia(el: HTMLMediaElement) { el.src = 'blob:test-hls'; }
-    destroy() {}
+    attachMedia(el: HTMLMediaElement) { el.src = 'blob:test-hls'; this.el = el; }
+    // As real hls.js does: the source goes and the element's clock with it.
+    destroy() {
+      if (!this.el) return;
+      this.el.currentTime = 0;
+      this.el.dispatchEvent(new Event('timeupdate'));
+    }
   },
 }));
 // The start bound running out, without waiting 30 s for it.
 vi.mock('@/lib/jellyfin-playback/play-media', () => ({
   playMedia: async (el: HTMLMediaElement) => {
+    if (media.playsTo) {
+      // It gets going, then stalls before startup completes.
+      el.currentTime = media.playsTo;
+      el.dispatchEvent(new Event('timeupdate'));
+    }
     if (media.startFails) throw new Error('Playback did not start. Try again or choose another quality.');
     await el.play();
     return true;
@@ -52,6 +65,7 @@ afterEach(() => {
   hls.networkError = null;
   hls.recovers = false;
   media.startFails = true;
+  media.playsTo = 0;
   h?.cleanup();
   vi.restoreAllMocks();
   getQueryClient().clear();
@@ -100,6 +114,13 @@ describe('a start that cannot get going', () => {
 
   it('still retries as a transcode after a timeout, which a slow but reachable stream gives', async () => {
     hls.networkError = 'fragLoadTimeOut';
+    await startThatFails({ readyState: 0 });
+
+    expect(h.requests).toHaveLength(2);
+  });
+
+  it('still retries as a transcode when a timeout came after the connection failure', async () => {
+    hls.networkError = ['fragLoadError', 'fragLoadTimeOut'];
     await startThatFails({ readyState: 0 });
 
     expect(h.requests).toHaveLength(2);
@@ -169,5 +190,19 @@ describe('Retry after a failed seek or a paused restart', () => {
     await h.act(async () => { h.playback().retry(); });
     await h.act(async () => { await vi.waitFor(() => expect(h.playback().status).toBe('paused')); });
     expect(h.media.paused()).toBe(true);
+  });
+
+  it('retries where the viewer was when the attempt played and then stalled, not at the clock its teardown reset', async () => {
+    media.playsTo = 650;
+    h = await mountPlayback({ hls: true });
+    Object.defineProperty(HTMLMediaElement.prototype, 'readyState', { configurable: true, get: () => 1 });
+    await h.act(async () => { await h.playback().playItems([ITEM], 0, { startTimeTicks: START, enableDirectPlay: false }); });
+    await h.act(async () => { await vi.waitFor(() => expect(h.playback().status).toBe('error')); });
+
+    const before = h.requests.length;
+    media.playsTo = 0;
+    await h.act(async () => { h.playback().retry(); });
+    await h.act(async () => { await vi.waitFor(() => expect(h.requests.length).toBeGreaterThan(before)); });
+    expect(h.requests.at(-1)).toEqual(expect.objectContaining({ startTimeTicks: 650 * 10_000_000 }));
   });
 });

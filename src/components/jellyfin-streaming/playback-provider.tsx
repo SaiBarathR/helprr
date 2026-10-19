@@ -808,8 +808,11 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
    * has loaded since. Reset by every start attempt.
    */
   const unreachableRef = useRef(false);
-  /** The latest start attempt's request, and whether its stream attached, so Retry can repeat it. */
-  const lastRequestRef = useRef<{ itemId: string; request: PlayOptions; attached: boolean } | null>(null);
+  /**
+   * The latest start attempt's request, whether its stream attached, and where
+   * Retry should start, taken when it failed (before teardown resets the clock).
+   */
+  const lastRequestRef = useRef<{ itemId: string; request: PlayOptions; attached: boolean; retryTicks?: number } | null>(null);
   const shuffledRef = useRef(false);
   const repeatRef = useRef<RepeatMode>('RepeatNone');
 
@@ -1024,7 +1027,19 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
    * revocation and the member should get the gate, not a dead end. Only runs on
    * an actual failure, so the extra request costs nothing in the normal case.
    */
+  // Where Retry should start: where the viewer was once the stream had played,
+  // otherwise where the attempt was asked to start. Taken before any teardown.
+  const noteRetryPosition = useCallback(() => {
+    const last = lastRequestRef.current;
+    if (!last) return;
+    const current = streamRef.current;
+    last.retryTicks = last.attached && reachedStartRef.current && current && current.item.Id === last.itemId
+      ? positionToReport(mediaRef.current, current, true) || secondsToTicks(positionRef.current)
+      : last.request.startTimeTicks;
+  }, []);
+
   const failPlayback = useCallback(async (fallbackMessage: string) => {
+    noteRetryPosition();
     setStatus('error');
     const connected = await fetch('/api/account/jellyfin/link')
       .then((res) => (res.ok ? res.json() : null))
@@ -1038,7 +1053,7 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
       return;
     }
     setError(fallbackMessage);
-  }, []);
+  }, [noteRetryPosition]);
 
   const attachMedia = useCallback(async (
     next: HelprrStreamInfo,
@@ -1100,9 +1115,10 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
         let mediaErrorRecoveries = 0;
         hls.on(Hls.Events.ERROR, (_event, data) => {
           if (!isCurrent()) return;
-          // A timeout can come from a reachable but slow stream, which a transcode may help.
-          if (data.type === Hls.ErrorTypes.NETWORK_ERROR && !data.response?.code && !String(data.details).endsWith('TimeOut')) {
-            unreachableRef.current = true;
+          // The latest network error decides. A timeout can come from a reachable
+          // but slow stream, which a transcode may help.
+          if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+            unreachableRef.current = !data.response?.code && !String(data.details).endsWith('TimeOut');
           }
           // Checked before the fatal guard and before the retry below. hls.js
           // retries NETWORK_ERROR indefinitely, so any upstream refusal — a 409
@@ -1305,6 +1321,7 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
       // A newer attempt owns the player now; this one's failure is not the
       // viewer's problem and must not replace what is actually on screen.
       if (superseded()) return;
+      noteRetryPosition();
       const message = cause instanceof Error ? cause.message : 'Playback failed';
       if (cause instanceof JellyfinConnectRequiredError) {
         setStatus('error');
@@ -1392,7 +1409,7 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
       setStatus('error');
       setError(unreachable ? "The stream couldn't be reached. Check the connection and try again." : message);
     }
-  }, [attachMedia, destroyPlayers, maxBitrate, muted, playbackRate, setPositionSeconds, volume]);
+  }, [attachMedia, destroyPlayers, maxBitrate, muted, noteRetryPosition, playbackRate, setPositionSeconds, volume]);
 
   const playItems = useCallback(async (items: JellyfinItem[], startIndex = 0, options?: PlayOptions) => {
     if (!items.length) return;
@@ -2104,16 +2121,11 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     if (!pending) return;
     const current = streamRef.current?.item.Id === pending.Id ? streamRef.current : null;
     const last = lastRequestRef.current?.itemId === pending.Id ? lastRequestRef.current : null;
-    // An attempt that failed before its stream attached (a seek or quality
-    // change mid-title) is retried at its own target; one that played and then
-    // failed, at where the viewer was. Never the item's stored resume point.
-    const startTimeTicks = last && !last.attached
-      ? last.request.startTimeTicks
-      : current && reachedStartRef.current
-        ? positionToReport(mediaRef.current, current, true) || secondsToTicks(positionRef.current)
-        : last?.request.startTimeTicks;
+    // Taken when the attempt failed: its own target if it never attached (a
+    // seek or quality change mid-title), where the viewer was if it had
+    // played. Never the item's stored resume point.
     void startItem(pending, {
-      startTimeTicks,
+      startTimeTicks: last?.retryTicks ?? last?.request.startTimeTicks,
       audioStreamIndex: audioIndexRef.current,
       subtitleStreamIndex: subtitleIndexRef.current,
       mediaSourceId: last?.request.mediaSourceId ?? current?.mediaSource.Id,
