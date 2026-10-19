@@ -45,12 +45,14 @@ function storedDeviceId(storage: Storage): string {
 
 export function getJellyfinPlaybackDeviceId(): string {
   if (typeof window === 'undefined') return 'helprr-pwa';
+  // Once this page has fallen back it keeps that id, even if local storage
+  // works again later: a playback session must report under one device.
+  if (tabDeviceId) return tabDeviceId;
   try {
     return storedDeviceId(window.localStorage);
   } catch {
     // Kept in the tab's session storage when it allows that, so a reload is
     // still the same device; otherwise in memory for this page.
-    if (tabDeviceId) return tabDeviceId;
     try {
       tabDeviceId = storedDeviceId(window.sessionStorage);
     } catch {
