@@ -814,7 +814,9 @@ history for 90 days:
   (`torrents.delete`), and remove the title it added (`movies.delete` /
   `series.delete`), only while that title has no files. Choosing files before
   download imports them by copying (hardlinks when possible), so the torrent
-  keeps seeding, and Helprr submits only the chosen files. It stops before an
+  keeps seeding, and Helprr submits only the chosen files. An import that
+  upgrades a file the title already has replaces that file: Sonarr/Radarr
+  delete it, or move it to their recycle bin. It stops before an
   import when Sonarr/Radarr's **Import Extra Files** would also pick up a file
   next to them that was not chosen. A Sonarr/Radarr download client with no
   category watches every torrent and may import this one on its own when it

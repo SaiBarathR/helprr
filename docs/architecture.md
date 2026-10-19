@@ -472,11 +472,14 @@ Helprr authors no parsing and never trusts its own reading of a release.
   goes to the user), otherwise `NEEDS_MAPPING` until the user decides per file
   on the Map files page, after Arr has checked that exact mapping. Imports use
   `ManualImport` with `importMode: copy` (hardlinks), so the torrent keeps
-  seeding; with Arr's Import Extra Files on, an import stops when a video's
+  seeding; an import that upgrades a file replaces it (Arr deletes or recycles
+  the old one, and the audit lists it in `replacesFileIds`); with Arr's Import
+  Extra Files on, an import stops when a video's
   folder holds an extra that was not chosen. A scan, an import or a cancel first
   claims the workflow (a conditional update to `IMPORT_PENDING` from the status
   and `updatedAt` read) and writes only while still holding it, so none of them
-  overlap and races run once. The decisions, targets and baseline are saved
+  overlap (the status worker takes over a claim held for 10 minutes) and races
+  run once. The decisions, targets and baseline are saved
   before Arr is asked: an import interrupted by a restart is proved from
   history, adopted from Arr's command list, or left to the user, never sent
   again on Helprr's own.
@@ -491,7 +494,8 @@ Helprr authors no parsing and never trusts its own reading of a release.
   grab history.
 - **Permissions and audit.** Sending needs `torrents.add` + `activity.manage` +
   the service's `movies.add` / `series.add` (the fallback also `torrents.manage`);
-  reading needs `torrents.view` + `activity.view`; cancel's removals need
+  reading needs `torrents.view` + `activity.view`; importing, scanning again,
+  cancelling and unlinking need `activity.manage`, and cancel's removals also
   `torrents.delete` and `movies.delete` / `series.delete`. Adding a title
   (`CREATE_MEDIA`), pushing a release (`PUSH_RELEASE`), imports, queue removals,
   torrent and title deletions are all operation-audited. Magnets and torrent
