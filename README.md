@@ -198,7 +198,7 @@ https://github.com/user-attachments/assets/7fa980fd-0dc6-48a8-91c1-cd35453571fd
 
 ## Quick start with Docker (recommended)
 
-Docker Compose starts Helprr, PostgreSQL 16, and password-protected Redis 7. It creates named volumes for database, Redis, and log data; waits for database/Redis health; runs pending Prisma migrations before Helprr starts; and exposes Helprr on port **3050**.
+Docker Compose starts Helprr, PostgreSQL 16, and password-protected Redis 8. It creates named volumes for database, Redis, and log data; waits for database/Redis health; runs pending Prisma migrations before Helprr starts; and exposes Helprr on port **3050**.
 
 **Requirements:** Docker Compose 2.18 or newer (`docker compose version`; older
 releases reject the Compose file's nested `DATABASE_URL` default) on a Docker Engine
@@ -583,6 +583,28 @@ seconds for in-flight polling and cleanup, so updating while downloads or
 cleanup are active is normally safe; a cleanup cycle still running after 30
 seconds is interrupted. The scoped `--no-deps helprr` command leaves PostgreSQL
 and Redis running during the update.
+
+When a release's notes say it moved the Redis image, pull and restart Redis once
+after the update. Redis holds only caches, rate limits and short-lived playback
+state, so the restart only drops those:
+
+```bash
+docker compose pull helprr-redis
+docker compose up -d --no-deps helprr-redis
+```
+
+Keep the newer Redis if you roll Helprr back; older releases work with it. An
+older Redis cannot read files a newer one has written, so to move Redis itself
+back, set the `helprr-redis` image in `docker-compose.yml` to the previous tag
+(for example `redis:7-alpine`), then stop Helprr and Redis, delete only the Redis
+volume (its caches rebuild), and start both again:
+
+```bash
+docker compose stop helprr helprr-redis
+docker compose rm -f helprr-redis
+docker volume rm "$(docker volume ls -q | grep 'helprr-redis-data$')"
+docker compose up -d
+```
 
 To stay on an exact version instead of a channel, set `HELPRR_VERSION` in
 `.env` (for example `HELPRR_VERSION=1.0.0`) and re-run `./scripts/update.sh` (or the

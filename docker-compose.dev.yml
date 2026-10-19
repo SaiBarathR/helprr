@@ -34,7 +34,7 @@ services:
       retries: 5
 
   helprr-dev-redis:
-    image: redis:7-alpine
+    image: redis:8-alpine
     container_name: helprr-dev-redis
     restart: unless-stopped
     environment:

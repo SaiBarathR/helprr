@@ -128,8 +128,11 @@ reports a fixable finding in the base image, merge the pending base-image PR or 
 the pin by hand. While the pin does not move, the builds reuse their cached
 `apk upgrade` layer, so a fix that reaches the Alpine mirror before a new Node image
 needs a build without that cache. The Compose files keep major-line `postgres:16-alpine` and
-`redis:7-alpine` tags; an installation picks up their patch releases only when it
-pulls those services, since the documented update pulls only `helprr`.
+`redis:8-alpine` tags; an installation picks up their patch releases only when it
+pulls those services, since the documented update pulls only `helprr`. When a release
+moves one of those tags (Redis 7 → 8 because the Redis 7 images stay on Alpine 3.21,
+end of life 2026-11-01), its release notes must tell users to pull that service once
+(README → Updating).
 
 A push to `main` runs CI but does **not** publish an image. A version tag is required
 to publish an exact release image.
