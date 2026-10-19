@@ -25,7 +25,7 @@ function plan(overrides: Partial<PreflightResult> = {}): PreflightResult {
   return {
     ok: true, errors: [], warnings: [],
     plan: {
-      service: 'RADARR', instance: { id: 'r1', label: 'radarr-anime' },
+      service: 'RADARR', instance: { id: 'r1', label: 'radarr-4k' },
       target: { externalId: 10331, title: 'Night of the Living Dead', year: 1968, existingId: null },
       release: { title: 'Night.of.the.Living.Dead.1968.1080p.BluRay.x264-GRP', name: 'x', infoHash: 'H', source: 'MAGNET' },
       parsed: { quality: 'Bluray-1080p', year: 1968 }, episodes: [], downloadClient: { id: 1, name: 'qBittorrent' }, downloadClientChoices: [],
@@ -46,7 +46,7 @@ beforeEach(() => {
       mocks.bodies.push({ url, request: JSON.parse(String(init.body.get('request'))), torrent: init.body.get('torrent') });
       return (url.endsWith('/preflight') ? mocks.preflight.shift()! : mocks.send.shift()!)();
     }
-    if (url.startsWith('/api/instances')) return json([{ id: 'r1', type: 'RADARR', label: 'radarr-anime', isDefault: true }, { id: 's1', type: 'SONARR', label: 'sonarr', isDefault: true }]);
+    if (url.startsWith('/api/instances')) return json([{ id: 'r1', type: 'RADARR', label: 'radarr-4k', isDefault: true }, { id: 's1', type: 'SONARR', label: 'sonarr', isDefault: true }]);
     if (url.startsWith('/api/radarr/qualityprofiles')) return json([{ id: 4, name: 'HD-1080p' }]);
     if (url.startsWith('/api/radarr/rootfolders')) return json([{ path: '/data/Movies' }]);
     if (url.startsWith('/api/radarr/lookup')) return json([{ title: 'Night of the Living Dead', year: 1968, tmdbId: 10331, library: { exists: false } }]);
@@ -120,14 +120,14 @@ describe('sending a release to Sonarr/Radarr', () => {
   it('shows a refusal from the send itself, and a retry of the same submission keeps its id', async () => {
     mocks.preflight.push(() => json(plan()));
     mocks.send.push(() => { throw new TypeError('Failed to fetch'); });
-    mocks.send.push(() => json({ error: 'This release is already being sent.', ...plan({ ok: false, errors: [{ code: 'ALREADY_ACTIVE', message: 'This release is already being sent to radarr-anime.' }] }) }, 409));
+    mocks.send.push(() => json({ error: 'This release is already being sent.', ...plan({ ok: false, errors: [{ code: 'ALREADY_ACTIVE', message: 'This release is already being sent to radarr-4k.' }] }) }, 409));
     renderForm();
     const user = await chooseFilm();
     await user.click(screen.getByRole('button', { name: 'Check' }));
     await user.click(await screen.findByRole('button', { name: 'Send to Radarr' }));
     await user.click(await screen.findByRole('button', { name: 'Send to Radarr' }));
 
-    expect(await screen.findByText('This release is already being sent to radarr-anime.')).toBeTruthy();
+    expect(await screen.findByText('This release is already being sent to radarr-4k.')).toBeTruthy();
     expect(mocks.push).not.toHaveBeenCalled();
     expect(mocks.bodies[1].request.clientRequestId).toBe(mocks.bodies[2].request.clientRequestId);
   });

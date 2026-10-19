@@ -215,7 +215,7 @@ describe('reconciling open manual downloads', () => {
 
 describe('following a fallback download', () => {
   const fallback = (extra: Record<string, unknown> = {}) => row({ mode: 'QBIT_REVIEWED', status: 'DOWNLOADING', ...extra });
-  const torrent = (extra: Record<string, unknown> = {}) => ({ hash: HASH.toLowerCase(), progress: 0.4, state: 'downloading', save_path: '/mnt/exos22/Downloads/', ...extra });
+  const torrent = (extra: Record<string, unknown> = {}) => ({ hash: HASH.toLowerCase(), progress: 0.4, state: 'downloading', save_path: '/mnt/media/Downloads/', ...extra });
 
   it("follows qBittorrent, not Arr's queue, until the chosen files finish", async () => {
     mocks.rows = [fallback()];

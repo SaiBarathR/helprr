@@ -399,8 +399,9 @@ import.
   names and sizes. A missing folder lists as empty rather than failing, and
   `filesystem/type` reports `folder` for a missing path, so Helprr checks a path by
   listing its parent and matching the name (and size for files). qBittorrent's
-  paths are translated through Arr's remote path mappings (longest remote path
-  first, then the path unchanged), and only a translation Arr can list is used.
+  paths are translated through Arr's remote path mappings (see Remote path
+  mappings), longest remote path first, then the path unchanged, and only a
+  translation Arr can list is used.
 - **Import.** `POST /api/v3/command` with `name: ManualImport`,
   `importMode: copy` and the candidate's `path`, `movieId` or
   `seriesId`/`episodeIds`, `quality`, `languages` and `releaseGroup` hardlinks the
@@ -408,18 +409,23 @@ import.
   records `downloadFolderImported` without a download id, with `data.droppedPath`
   (the file imported from) and `data.fileId` (the library file it created). That
   pair, for a file id the title did not have before, in the title's own history
-  (`GET /api/v3/history/movie?movieId=` or `/history/series?seriesId=`, with
-  `eventType=3`; Sonarr's records carry the `episodeId`), is the proof.
+  (see History filters; Sonarr's records carry the `episodeId`), is the proof. An
+  upgrade replaces (deletes or recycles) the file already there.
 - **Commands.** `GET /api/v3/command` lists recent commands, a `ManualImport` with
   its `queued` time and `body.files[].path`, so an import whose answer was lost can
   be found; Arr forgets its commands when it restarts.
 - **Remote path mappings** (`GET /api/v3/remotepathmapping`) carry the download
   client's `host` as Arr knows it; only the mappings for the host Arr uses for
   Helprr's qBittorrent apply.
-- **Extra files.** With Import Extra Files on, a manual import without
-  `folderName` also imports files with the configured extra extensions that sit
-  next to the video, in its folder only (no subfolders). Probed on Sonarr; Helprr
-  applies the same check to Radarr.
+- **Extras.** With **Import Extra Files** on (`config/mediamanagement`
+  `importExtraFiles`, `extraFileExtensions` such as `srt, .sub`), each import also
+  takes files with those extensions from the video's folder. Without a
+  `folderName` in the command, only that folder's top level is searched
+  (`ExtraService` in Sonarr `4.0.20.3014`; Helprr applies the same check to
+  Radarr).
+- **History filters.** Sonarr's paged `/api/v3/history` ignores `seriesId` (it
+  takes `seriesIds`); `GET /api/v3/history/series?seriesId=&eventType=3` and
+  Radarr's `/api/v3/history/movie?movieId=&eventType=3` return one title's imports.
 
 ## Before reporting an upstream compatibility problem
 

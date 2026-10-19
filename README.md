@@ -30,6 +30,7 @@ Helprr is not trying to clone every setting from Sonarr, Radarr, Lidarr, qBittor
 - Watchlists, scheduled reminders, calendar views, a random-watch picker, and library-gap views for when I do not know what to watch.
 - Watch a Jellyfin library without leaving Helprr: in-app playback with audio/subtitle track selection, scrubbing previews, chapters, and resume from whichever device stopped last. An optional cinematic layout turns the section into a streaming-service home. Titles the browser cannot play natively are transcoded by the Jellyfin server, so it needs the headroom for that. Each person signs in to Jellyfin once so what they watch is recorded on their own Jellyfin account — progress, resume points, and history — rather than showing up unattributed.
 - Seerr request visibility and workflow when Seerr is part of the setup.
+- Send a magnet link or `.torrent` file to Sonarr or Radarr for one title from **Add Torrent**: Helprr checks first what Sonarr/Radarr will read from it and do, adds the title (searches off) when it is new, and follows the download through Sonarr/Radarr's own queue to the imported file under **Torrents → Linked downloads**. An advanced option picks the torrent's files before anything downloads; Sonarr/Radarr then say what each file is, and you confirm any file they are unsure of.
 
 
 
@@ -427,6 +428,7 @@ stored password unless `HELPRR_ADMIN_PASSWORD_RESET=true`.
 | `TZ`                          | `UTC` when invalid or absent                | IANA timezone used for application date/time behavior, for example `Asia/Kolkata`.                                                                             |
 | `LOG_DIR`                     | app `logs` directory; `/app/logs` in Docker | Location for server logs. Compose persists its default through the `helprr-logs` volume.                                                                       |
 | `APP_ORIGIN`                  | none                                        | Required for AniList OAuth in production. Use the public HTTPS origin, such as `https://helprr.example.com`.                                                   |
+| `ARR_CALLBACK_ORIGIN`         | `APP_ORIGIN`                                | Where Sonarr and Radarr can reach Helprr when Add Torrent sends them a `.torrent` file: they fetch it once, from a link that works for two minutes. Plain `http` on your network is fine, such as `http://helprr.lan:3050`. Magnet links need neither. |
 | `TRUST_FORWARDED_PROTO`       | off                                         | Set to `true` only behind a trusted proxy that sanitizes `X-Forwarded-*`; enables secure cookies and forwarded client-IP rate limiting.                        |
 | `HELPRR_CUSTOM_HEADERS`       | off                                         | Set to `true` to expose per-connection custom HTTP headers for supported services behind an authenticating proxy (for example, Authelia or Cloudflare Access). A `Host` header is not accepted. |
 | `EXTRA_ALLOWED_IMAGE_HOSTS`   | none                                        | Comma-separated trusted external image hosts to permit through the image proxy. Do not add private/internal hosts.                                             |
@@ -807,6 +809,18 @@ history for 90 days:
   from the download client.
 - **Torrent deletion** — optionally deletes the torrent's data from disk.
 - **Manual import** — moves or copies files into your library folders.
+- **Linked downloads** (sent to Sonarr/Radarr from Add Torrent) — cancelling
+  one can remove it from Sonarr/Radarr's queue with the torrent and its data
+  (`torrents.delete`), and remove the title it added (`movies.delete` /
+  `series.delete`), only while that title has no files. Choosing files before
+  download imports them by copying (hardlinks when possible), so the torrent
+  keeps seeding, and Helprr submits only the chosen files. An import that
+  upgrades a file the title already has replaces that file: Sonarr/Radarr
+  delete it, or move it to their recycle bin. It stops before an
+  import when Sonarr/Radarr's **Import Extra Files** would also pick up a file
+  next to them that was not chosen. A Sonarr/Radarr download client with no
+  category watches every torrent and may import this one on its own when it
+  finishes; Helprr warns about that before starting.
 
 If Sonarr/Radarr has a recycle bin configured, *arr file deletions go there
 instead of being removed outright. For episode-file and movie-file deletions,
