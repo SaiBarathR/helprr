@@ -50,6 +50,7 @@ export function useSeriesAnime({
   // for the series it was loaded for: another series (Next keeps this mounted) starts without it.
   const drawerKey = `${seriesId}|${instance ?? ''}`;
   const [drawerState, setDrawerState] = useState<{ key: string; details: AniListDetailResponse[] } | null>(null);
+  if (drawerState && drawerState.key !== drawerKey) setDrawerState(null);
   const drawerDetails = drawerState?.key === drawerKey ? drawerState.details : null;
   const [animeOverviewExpanded, setAnimeOverviewExpanded] = useRouteViewState('SeriesDetailPage:animeOverviewExpanded', false);
   const [showAniListRemap, setShowAniListRemap] = useState(false);

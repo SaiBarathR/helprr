@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('next/navigation', () => ({ useSearchParams: () => new URLSearchParams(), usePathname: () => '/series/anime-hook' }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
+import { queryKeys } from '@/lib/query-keys';
 import { useSeriesAnime } from '../use-series-anime';
 
 const detail = (id: number) => ({ id, title: `Entry ${id}`, nextAiringEpisode: null });
@@ -40,5 +41,11 @@ describe('a series anime state', () => {
     rerender({ id: 2 });
     await waitFor(() => expect(result.current.animeEntries.map((entry) => entry.anilistMediaId)).toEqual([20, 21]));
     expect(result.current.animeDetails.map((entry) => entry.id)).toEqual([20]);
+
+    // Series 1's data is refetched meanwhile (primary only); back on it, its old hydrated set is gone too.
+    await act(() => client.refetchQueries({ queryKey: queryKeys.anime(1, undefined) }));
+    rerender({ id: 1 });
+    await waitFor(() => expect(result.current.animeEntries.map((entry) => entry.anilistMediaId)).toEqual([10, 11]));
+    expect(result.current.animeDetails.map((entry) => entry.id)).toEqual([10]);
   });
 });

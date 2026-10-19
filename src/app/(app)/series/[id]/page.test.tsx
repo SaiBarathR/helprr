@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 // Characterization tests for the series detail page: what it shows and what it
 // sends, pinned before the page is split into smaller modules (Workstream 15).
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -15,6 +15,9 @@ const mocks = vi.hoisted(() => ({
   routes: {} as Record<string, (init?: RequestInit, url?: URL) => Response>,
   sent: [] as Array<{ method: string; path: string; body: unknown }>,
   remapOpen: false,
+  remapResult: null as unknown,
+  // Render each quick context menu's actions next to its trigger.
+  contextMenus: false,
 }));
 vi.mock('next/navigation', () => ({
   useParams: () => ({ id: '7' }),
@@ -60,7 +63,21 @@ vi.mock('@/components/ui/drawer', () => ({
   DrawerFooter: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   DrawerClose: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
-vi.mock('@/components/ui/quick-context-menu', () => ({ QuickContextMenu: ({ children }: { children: React.ReactNode }) => <>{children}</> }));
+type MockContextAction = { id: string; label: string; href?: string; onSelect?: () => void; disabled?: boolean };
+vi.mock('@/components/ui/quick-context-menu', () => ({
+  QuickContextMenu: ({ children, label, actions, groups }: { children: React.ReactNode; label: string; actions?: MockContextAction[]; groups?: Array<{ actions: MockContextAction[] }> }) => (
+    <>
+      {children}
+      {mocks.contextMenus && (
+        <div role="group" aria-label={label}>
+          {[...(actions ?? []), ...(groups ?? []).flatMap((group) => group.actions)].map((action) => (action.href
+            ? <a key={action.id} href={action.href}>{action.label}</a>
+            : <button key={action.id} type="button" onClick={action.onSelect} disabled={action.disabled}>{action.label}</button>))}
+        </div>
+      )}
+    </>
+  ),
+}));
 vi.mock('@/components/media/virtualized-person-rail', () => ({
   VirtualizedPersonRail: ({ title, items, viewAllHref }: { title: string; items: Array<{ name: string; subtitle: string }>; viewAllHref: string }) => (
     <section aria-label={title}><a href={viewAllHref}>{title}</a>{items.map((item) => <span key={item.name}>{item.name} ({item.subtitle})</span>)}</section>
@@ -83,7 +100,15 @@ vi.mock('@/components/anime/anime-media-rail', () => ({ AnimeMediaRail: ({ title
 vi.mock('@/components/anime/anime-trailer-rail', () => ({ AnimeTrailerRail: () => <section aria-label="Trailer" /> }));
 vi.mock('@/components/anime/anilist-status-panel', () => ({ AnilistStatusPanel: ({ mediaTitle }: { mediaTitle: string }) => <section aria-label="AniList status">{mediaTitle}</section> }));
 vi.mock('@/components/anime/anilist-remap-drawer', () => ({
-  AniListRemapDrawer: ({ open }: { open: boolean }) => { mocks.remapOpen = open; return open ? <div role="dialog" aria-label="Remap AniList drawer" /> : null; },
+  AniListRemapDrawer: ({ open, details, onUpdated }: { open: boolean; details: Array<{ id: number }>; onUpdated: (next: unknown) => void }) => {
+    mocks.remapOpen = open;
+    return open ? (
+      <div role="dialog" aria-label="Remap AniList drawer">
+        <span>Drawer details: {details.map((detail) => detail.id).join(',')}</span>
+        <button type="button" onClick={() => onUpdated(mocks.remapResult)}>Apply mapping</button>
+      </div>
+    ) : null;
+  },
 }));
 vi.mock('@/components/media/media-download-progress', () => ({ MediaDownloadProgress: () => null }));
 vi.mock('@/components/jellyfin/play-in-helprr-button', () => ({ PlayInHelprrButton: () => <button>Play in Helprr</button> }));
@@ -164,6 +189,8 @@ beforeEach(() => {
   mocks.caps = new Set(['activity.manage', 'series.editMonitoring', 'series.editTags', 'series.changePath', 'series.add', 'series.delete', 'series.manageFiles', 'scheduledAlerts.edit', 'anime.view', 'discover.view']);
   mocks.role = 'admin';
   mocks.sent = [];
+  mocks.remapResult = null;
+  mocks.contextMenus = false;
   mocks.routes = {
     'GET /api/sonarr/7': () => Response.json(standardSeries()),
     'GET /api/sonarr/7/episodes': () => Response.json(episodes),
@@ -336,6 +363,38 @@ describe('series detail page (characterization)', () => {
     expect(screen.getByRole('dialog', { name: 'Add to watchlist dialog' })).toBeTruthy();
   });
 
+  it("opens the header menu's Edit and Manage Episodes on their own pages", async () => {
+    const user = renderPage();
+    await screen.findAllByRole('heading', { level: 1, name: 'Severance' });
+    await user.click(menu().getByRole('menuitem', { name: 'Edit' }));
+    expect(mocks.push).toHaveBeenLastCalledWith('/series/7/edit?instance=son-1');
+    await user.click(menu().getByRole('menuitem', { name: 'Manage Episodes' }));
+    expect(mocks.push).toHaveBeenLastCalledWith('/series/7/manage?title=Severance&instance=son-1');
+  });
+
+  it("offers the poster's and each season's quick actions, and searches a season interactively", async () => {
+    mocks.contextMenus = true;
+    const user = renderPage();
+    const poster = within((await screen.findAllByRole('group', { name: 'Severance actions' }))[0]);
+    expect(poster.getAllByRole('button').map((action) => action.textContent)).toEqual([
+      'Unmonitor', 'Monitoring options…', 'Refresh', 'Search Monitored', 'Preview Rename', 'Open in Jellyfin', 'Delete',
+    ]);
+    expect(poster.getAllByRole('link').map((action) => [action.textContent, action.getAttribute('href')])).toEqual([
+      ['Edit', '/series/7/edit?instance=son-1'],
+      ['Manage Episodes', '/series/7/manage?title=Severance&instance=son-1'],
+      ['Open in IMDb', 'https://www.imdb.com/title/tt11280740'],
+      ['Open in TVDB', 'https://www.thetvdb.com/?id=371980&tab=series'],
+      ['Open in Sonarr', 'https://sonarr.example/series/severance'],
+    ]);
+
+    const season1 = within(screen.getByRole('group', { name: 'Season 1 actions' }));
+    expect(season1.getByRole('link', { name: 'Open season' }).getAttribute('href')).toBe('/series/7/season/1?instance=son-1');
+    await user.click(season1.getByRole('button', { name: 'Interactive search…' }));
+    const dialog = screen.getByRole('dialog', { name: 'Interactive search' });
+    expect(dialog.textContent).toContain('Severance - Season 1');
+    expect(dialog.textContent).toContain('{"seriesId":7,"seasonNumber":1,"instanceId":"son-1"}');
+  });
+
   it('says when the series is not found, cannot be loaded, or its episodes cannot', async () => {
     mocks.routes['GET /api/sonarr/7'] = () => new Response('{}', { status: 404 });
     const first = render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><SeriesDetailPage /></QueryClientProvider>);
@@ -395,6 +454,101 @@ describe('series detail page (characterization)', () => {
 
       await user.click(screen.getByRole('button', { name: /AniList.*Auto matched/ }));
       expect(screen.getByRole('dialog', { name: 'Remap AniList drawer' })).toBeTruthy();
+    });
+
+    const ENTRIES = [{ anilistMediaId: 154587, titleSnapshot: 'Frieren' }, { anilistMediaId: 200, titleSnapshot: 'Frieren Season 2' }];
+    const seasonTwo = (extra: Record<string, unknown> = {}) => animeDetail(200, { title: 'Frieren Season 2', ...extra });
+
+    it('hands the remap drawer every entry, and applies what it saved', async () => {
+      mocks.routes['GET /api/sonarr/7'] = () => Response.json(anime());
+      mocks.routes['GET /api/sonarr/7/anime'] = (_init, url) => {
+        if (url!.searchParams.get('full') === '1') return Response.json({ mapping: animePayload(ENTRIES).mapping, details: [animeDetail(154587), seasonTwo()] });
+        if (url!.searchParams.get('detail') === '200') return Response.json({ mapping: animePayload(ENTRIES).mapping, detail: seasonTwo() });
+        return Response.json(animePayload(ENTRIES));
+      };
+      const user = renderPage();
+      await screen.findByRole('banner', { name: 'Anime hero' });
+      await user.click(screen.getByRole('button', { name: 'Season 2' }));
+      expect(await screen.findByText(/Frieren Season 2 · next in/)).toBeTruthy();
+
+      await user.click(screen.getByRole('button', { name: /AniList.*Auto matched/ }));
+      const drawer = () => within(screen.getByRole('dialog', { name: 'Remap AniList drawer' }));
+      expect(await drawer().findByText('Drawer details: 154587,200')).toBeTruthy();
+
+      // A new mapping starts over on its first season, with the drawer's set replaced.
+      mocks.remapResult = {
+        mapping: { state: 'MANUAL', entries: [{ anilistMediaId: 300, titleSnapshot: 'Frieren Season 3' }, { anilistMediaId: 154587, titleSnapshot: 'Frieren' }] },
+        details: [animeDetail(300, { title: 'Frieren Season 3' }), animeDetail(154587)],
+      };
+      await user.click(drawer().getByRole('button', { name: 'Apply mapping' }));
+      expect(mocks.toast.success).toHaveBeenCalledWith('AniList mapping updated');
+      expect(screen.getByRole('banner', { name: 'Anime hero' }).textContent).toContain('Frieren Season 3 · next in');
+      expect(drawer().getByText('Drawer details: 300,154587')).toBeTruthy();
+
+      // Cleared: the page falls back to TMDB.
+      mocks.routes['GET /api/discover/tv/209867'] = () => Response.json({ ...tmdb, seasons: [] });
+      mocks.remapResult = { mapping: { state: 'MANUAL_NONE', entries: [] }, details: [] };
+      await user.click(drawer().getByRole('button', { name: 'Apply mapping' }));
+      expect(mocks.toast.success).toHaveBeenLastCalledWith('AniList mapping cleared');
+    });
+
+    it('offers a retry when a season cannot load, and loads it on retry', async () => {
+      let failing = true;
+      mocks.routes['GET /api/sonarr/7'] = () => Response.json(anime());
+      mocks.routes['GET /api/sonarr/7/anime'] = (_init, url) => {
+        if (url!.searchParams.get('detail') === '200') return failing ? new Response('{}', { status: 502 }) : Response.json({ mapping: animePayload(ENTRIES).mapping, detail: seasonTwo() });
+        return Response.json(animePayload(ENTRIES));
+      };
+      const user = renderPage();
+      await screen.findByRole('banner', { name: 'Anime hero' });
+      await user.click(screen.getByRole('button', { name: 'Season 2' }));
+      const retry = await screen.findByRole('button', { name: "Couldn't load this season — tap to retry" });
+
+      failing = false;
+      await user.click(retry);
+      expect(await screen.findByText(/Frieren Season 2 · next in/)).toBeTruthy();
+    });
+
+    it('refreshes the season on screen when the app is back in focus, and starts over when AniList dropped it', async () => {
+      let detail: unknown = seasonTwo();
+      let entries = ENTRIES;
+      mocks.routes['GET /api/sonarr/7'] = () => Response.json(anime());
+      mocks.routes['GET /api/sonarr/7/anime'] = (_init, url) => {
+        if (url!.searchParams.get('detail') === '200') return Response.json({ mapping: animePayload(entries).mapping, detail });
+        return Response.json(animePayload(entries));
+      };
+      const user = renderPage();
+      await screen.findByRole('banner', { name: 'Anime hero' });
+      await user.click(screen.getByRole('button', { name: 'Season 2' }));
+      expect(await screen.findByText(/Frieren Season 2 · next in/)).toBeTruthy();
+
+      detail = seasonTwo({ title: 'Frieren Season 2 (refreshed)' });
+      act(() => { window.dispatchEvent(new Event('focus')); });
+      expect(await screen.findByText(/Frieren Season 2 \(refreshed\) · next in/)).toBeTruthy();
+
+      detail = null;
+      entries = ENTRIES.slice(0, 1);
+      act(() => { window.dispatchEvent(new Event('focus')); });
+      expect(await screen.findByText(/Frieren: Beyond Journey's End · next in/)).toBeTruthy();
+      expect(screen.queryByRole('button', { name: 'Season 2' })).toBeNull();
+    });
+
+    it('counts down to the next episode, minute by minute', async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      try {
+        const airingAt = Math.floor(Date.now() / 1000) + 2 * 3600 + 30 * 60 + 30;
+        mocks.routes['GET /api/sonarr/7'] = () => Response.json(anime());
+        mocks.routes['GET /api/sonarr/7/anime'] = () => Response.json({
+          mapping: animePayload(ENTRIES.slice(0, 1)).mapping,
+          details: [animeDetail(154587, { nextAiringEpisode: { airingAt, episode: 5, timeUntilAiring: 9030 } })],
+        });
+        renderPage();
+        expect(await screen.findByText(/· next in 2h 30m$/)).toBeTruthy();
+        await act(() => vi.advanceTimersByTimeAsync(60_000));
+        expect(screen.getByRole('banner', { name: 'Anime hero' }).textContent).toMatch(/· next in 2h 29m$/);
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     it('falls back to TMDB when no AniList entry is mapped, and asks an admin to map it', async () => {
