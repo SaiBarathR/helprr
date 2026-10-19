@@ -2,7 +2,7 @@
 // Characterization tests for the torrents page: what it lists and what it sends,
 // with real queries over a stubbed fetch. Written before the page is split into
 // smaller modules (Workstream 15).
-import { act, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -150,7 +150,12 @@ beforeEach(() => {
     return Response.json({});
   }));
 });
-afterEach(() => vi.unstubAllGlobals());
+// Unmount first: a poll that lands after the test would otherwise render the
+// page again once its globals (ResizeObserver, fetch) are gone.
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 function renderPage() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
