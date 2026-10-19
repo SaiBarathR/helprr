@@ -41,7 +41,8 @@ import { runRetentionSweep } from '@/lib/retention';
 import { rebuildTasteProfile, PROFILE_MAX_AGE_MS } from '@/lib/recommendations/profile-store';
 import { PROFILE_VERSION } from '@/lib/recommendations/profile-types';
 import { can } from '@/lib/permissions';
-import type { QueueItem, QueueResponse, SonarrSeries, Tag } from '@/types';
+import type { QueueItem, SonarrSeries, Tag } from '@/types';
+import { fetchAllQueueRecords } from '@/lib/activity-queue';
 import crypto from 'crypto';
 
 type AppSettingsSnapshot = Awaited<ReturnType<typeof getOrCreateAppSettings>>;
@@ -170,40 +171,6 @@ function readQueueSnapshots(raw: unknown): Map<number, QueueSnapshot | 'legacy'>
     }
   }
   return map;
-}
-
-// Fetch the entire queue across pages. The *arr queue endpoint paginates, and a
-// single page misses everything past it — failed items beyond page 1 would never
-// notify, and old items would look "new" when they finally scroll onto page 1.
-// We page until we've collected totalRecords, with a safety cap on runaway queues.
-//
-// `includeUnknown` (Sonarr/Radarr) adds downloads the *arr tracks but could not
-// match to a series or movie — a torrent added by hand into its category. They
-// wait on a manual import like any other blocked download, so they count in the
-// Activity badge and raise the same notifications, matching what the Activity
-// page lists. Without it they would be listed there but never counted or
-// announced.
-async function fetchAllQueueRecords(
-  client: { getQueue: (page: number, pageSize: number, includeUnknown?: boolean) => Promise<QueueResponse> },
-  includeUnknown: boolean = false,
-): Promise<QueueResponse> {
-  const pageSize = 200;
-  const maxPages = 50; // ~10k items; bounds a pathological queue
-  const first = await client.getQueue(1, pageSize, includeUnknown);
-  const records = [...first.records];
-  for (let page = 2; records.length < first.totalRecords && page <= maxPages; page++) {
-    const next = await client.getQueue(page, pageSize, includeUnknown);
-    if (next.records.length === 0) break;
-    records.push(...next.records);
-  }
-  if (records.length < first.totalRecords) {
-    logger.warn(
-      'Queue pagination capped',
-      { collected: records.length, totalRecords: first.totalRecords },
-      { scope: 'polling' },
-    );
-  }
-  return { ...first, records, totalRecords: first.totalRecords };
 }
 
 function errorMessage(error: unknown): string {
