@@ -22,7 +22,8 @@ vi.mock('@/lib/db', () => {
       return row ?? null;
     }),
     findUniqueOrThrow: vi.fn(async ({ where }: { where: { id: string } }) => mocks.rows.get(where.id)!),
-    findFirst: vi.fn(async () => null),
+    // The active workflow for the same instance and release, as the lock-protected check sees it.
+    findFirst: vi.fn(async () => [...mocks.rows.values()].find((r) => !['IMPORTED', 'FAILED', 'CANCELLED'].includes(r.status as string)) ?? null),
     create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
       const id = `md${mocks.rows.size + 1}`;
       const { events, ...rest } = data as { events: { create: { status: string; message: string } } };
@@ -39,7 +40,14 @@ vi.mock('@/lib/db', () => {
     }),
   };
   const tx = { $executeRaw: vi.fn(async () => 1), manualDownload };
-  return { prisma: { manualDownload, $transaction: async (fn: (t: typeof tx) => unknown) => fn(tx) } };
+  // One transaction at a time, as the advisory lock makes it.
+  let lock: Promise<unknown> = Promise.resolve();
+  const $transaction = (fn: (t: typeof tx) => unknown) => {
+    const run = lock.then(() => fn(tx));
+    lock = run.catch(() => {});
+    return run;
+  };
+  return { prisma: { manualDownload, $transaction } };
 });
 vi.mock('@/lib/arr-instances', () => ({ resolveConnection: vi.fn(async () => ({ id: 'i1', label: 'Arr' })) }));
 vi.mock('@/lib/cache/tagged-library', () => ({ invalidateTaggedLibrary: vi.fn(async () => {}) }));
@@ -57,6 +65,7 @@ vi.mock('../preflight', async (importOriginal) => ({
   resolveArrCallbackOrigin: () => 'http://helprr.lan',
 }));
 
+import { AxiosError, AxiosHeaders } from 'axios';
 import { ManualDownloadRefusedError, sendManualDownload } from '../send';
 import { parseMagnet } from '../release-source';
 
@@ -164,11 +173,38 @@ describe('sending a film to Radarr', () => {
   it('trusts the history when the push answer is lost after the grab', async () => {
     mocks.client.pushRelease.mockRejectedValue(new Error('socket hang up'));
     expect((await send()).status).toBe('QUEUED');
+  });
 
+  it('keeps the film it added when it cannot tell whether Radarr grabbed the release', async () => {
+    mocks.client.pushRelease.mockRejectedValue(new Error('socket hang up'));
     mocks.client.getHistory.mockResolvedValue({ records: [] });
-    const lost = await send({}, 'req-00002');
-    expect(lost.status).toBe('FAILED');
-    expect(lost.lastError).toContain('socket hang up');
+    const lost = await send();
+    expect(lost.status).toBe('BLOCKED');
+    expect(lost.lastError).toContain('could not confirm that Radarr grabbed it: socket hang up');
+
+    mocks.rows.clear();
+    mocks.client.pushRelease.mockResolvedValue({ approved: true, rejected: false, rejections: [] });
+    mocks.client.getHistory.mockRejectedValue(new Error('timeout of 15000ms exceeded'));
+    expect((await send({}, 'req-00002')).status).toBe('BLOCKED');
+    expect(mocks.client.deleteMovie).not.toHaveBeenCalled();
+  });
+
+  it('removes the film it added when Radarr answers the push with an error and grabs nothing', async () => {
+    const response = { status: 500, statusText: 'Internal Server Error', headers: {}, config: { headers: new AxiosHeaders() }, data: {} };
+    mocks.client.pushRelease.mockRejectedValue(new AxiosError('Request failed with status code 500', 'ERR_BAD_RESPONSE', undefined, undefined, response));
+    mocks.client.getHistory.mockResolvedValue({ records: [] });
+
+    const download = await send();
+
+    expect(download.status).toBe('FAILED');
+    expect(download.lastError).toContain('status code 500');
+    expect(mocks.client.deleteMovie).toHaveBeenCalledWith(15, false, false);
+  });
+
+  it('hands the same submission sent twice at once the one workflow', async () => {
+    const [first, second] = await Promise.all([send(), send()]);
+    expect(second.id).toBe(first.id);
+    expect(mocks.client.pushRelease).toHaveBeenCalledTimes(1);
   });
 
   it('leaves a film it added once it has files', async () => {

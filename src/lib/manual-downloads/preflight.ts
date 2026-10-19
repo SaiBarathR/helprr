@@ -166,7 +166,8 @@ export async function preflightManualDownload(input: PreflightInput): Promise<Pr
     const [results, clients, history, parsed] = await Promise.all([
       lookup,
       client.getDownloadClients(),
-      client.getHistory(1, 1, 'date', 'descending', { downloadId: input.source.infoHash }),
+      // Grab events only: a later import or failure must not hide an earlier grab.
+      client.getHistory(1, 1, 'date', 'descending', { downloadId: input.source.infoHash, eventType: 1 }),
       releaseTitle ? client.parseTitle(releaseTitle) : Promise.resolve(null),
     ]);
     found = (results as Array<LibraryFields & { title: string; year: number; tmdbId?: number; tvdbId?: number }>)
@@ -211,10 +212,12 @@ export async function preflightManualDownload(input: PreflightInput): Promise<Pr
       error('RELEASE_TITLE_UNPARSEABLE', 'Radarr cannot read this release name. Use a name with the title and year, such as Title.2020.1080p.WEB.');
     } else {
       if (plan.parsed?.quality === 'Unknown') error('RELEASE_QUALITY_UNKNOWN', 'Radarr cannot tell the quality from this name. Add the quality words (for example 1080p WEB) to the release name.');
-      if (radarr.movie && radarr.movie.id !== existingId) {
+      // Radarr maps a pushed release by its TMDB id first, which holds only when
+      // the years agree; otherwise it falls back to the title.
+      const yearMatches = info.year === found.year || (!!found.secondaryYear && info.year === found.secondaryYear);
+      if (!yearMatches && radarr.movie && radarr.movie.id !== existingId) {
         error('RELEASE_OTHER_TITLE', `Radarr reads this release as ${radarr.movie.title} (${radarr.movie.year}), which is already in ${connection.label}. Change the release name.`);
-      } else if (!radarr.movie && info.year !== found.year && info.year !== found.secondaryYear) {
-        // Without a title match Radarr maps by TMDB id, but only when the years agree.
+      } else if (!yearMatches && !(radarr.movie && radarr.movie.id === existingId)) {
         error('RELEASE_YEAR_MISMATCH', `Radarr reads the year as ${info.year || 'missing'}, but ${found.title} is from ${found.year}. Put the right year in the release name.`);
       }
     }
@@ -256,6 +259,10 @@ export async function preflightManualDownload(input: PreflightInput): Promise<Pr
       if (withFiles.length > 0) warn('TARGET_HAS_FILE', `${withFiles.map(episodeLabel).join(', ')} already ${withFiles.length === 1 ? 'has a file' : 'have files'}; Sonarr only takes the release if it is an upgrade.`);
     } else if (existingId) {
       warn('RELEASE_MAPPED_BY_ID', `Sonarr does not match this release name to ${found.title}; it will match it by its TVDB id, and the episodes are checked when it is sent.`);
+      if (found.monitored === false) {
+        if (input.monitorTarget) warn('TARGET_WILL_BE_MONITORED', `${found.title} will be monitored so Sonarr accepts the release.`);
+        else error('TARGET_UNMONITORED', `${found.title} is not monitored, and Sonarr only accepts releases for monitored series.`);
+      }
     } else {
       warn('EPISODES_CHECKED_AFTER_ADD', `The episodes are checked once ${found.title} is added to ${connection.label}.`);
     }

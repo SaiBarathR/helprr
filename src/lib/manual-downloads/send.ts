@@ -1,4 +1,5 @@
 import { Prisma, type ManualDownload, type ManualDownloadStatus } from '@prisma/client';
+import axios from 'axios';
 import { prisma } from '@/lib/db';
 import { resolveConnection } from '@/lib/arr-instances';
 import { runWithOperationAudit, type AuditActor } from '@/lib/file-audit';
@@ -17,8 +18,9 @@ import { offerTorrentToArr, withdrawTorrentLink } from './torrent-link';
  *   push the release → prove the grab from Arr's history → QUEUED.
  *
  * Every Arr change is audited. When a step fails after this workflow added the
- * title, the title is removed again, but only while it has no files. Arr owns
- * everything after the grab; the status worker follows it from there.
+ * title, the title is removed again, but only while it has no files and only
+ * when Arr cannot have grabbed the release. Arr owns everything after the grab;
+ * the status worker follows it from there.
  */
 
 export type ManualDownloadWithEvents = ManualDownload & { events: Array<{ at: Date; status: ManualDownloadStatus; message: string | null }> };
@@ -92,12 +94,14 @@ export async function sendManualDownload(
   // One active workflow per instance and release: checked and created under a lock.
   let id: string;
   try {
-    id = await prisma.$transaction(async (tx) => {
+    const recorded = await prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`manual-download:${instance.id}:${input.source.infoHash}`}))`;
       const active = await tx.manualDownload.findFirst({
         where: { instanceId: instance.id, infoHash: input.source.infoHash, status: { notIn: [...TERMINAL_STATUSES] } },
-        select: { id: true },
+        select: { id: true, createdByUserId: true, clientRequestId: true },
       });
+      // The same submission sent twice at once: the second waited for the lock.
+      if (active && active.createdByUserId === actor.id && active.clientRequestId === clientRequestId) return { id: active.id, repeat: true };
       if (active) {
         throw new ManualDownloadRefusedError({
           ...preflight,
@@ -130,8 +134,10 @@ export async function sendManualDownload(
         },
         select: { id: true },
       });
-      return created.id;
+      return { id: created.id, repeat: false };
     });
+    if (recorded.repeat) return withEvents(recorded.id);
+    id = recorded.id;
   } catch (error) {
     // The same submission raced itself: hand back the one that won.
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
@@ -154,6 +160,8 @@ export async function sendManualDownload(
 class SendRun {
   private arrItemId: number | null;
   private createdArrItem = false;
+  /** The release went to Arr: from here a failure may follow a grab, so the title stays. */
+  private sent = false;
   private episodeIds: number[];
 
   constructor(
@@ -213,6 +221,11 @@ class SendRun {
       });
       await this.push();
     } catch (error) {
+      if (this.sent) {
+        // Not FAILED: the status worker keeps checking Arr's queue for it.
+        await moveTo(this.id, 'BLOCKED', `Sent to ${this.plan.instance!.label}, but Helprr could not confirm that ${this.app} grabbed it: ${errorText(error)}. ${this.plan.target!.title} stays in ${this.plan.instance!.label}; Helprr keeps checking its queue, and you can cancel this download here.`);
+        return;
+      }
       await this.failAndUndo(`${this.app} did not answer as expected: ${errorText(error)}`);
     }
   }
@@ -329,6 +342,7 @@ class SendRun {
     await prisma.manualDownload.update({ where: { id: this.id }, data: { attempts: { increment: 1 } } });
     let result;
     let pushError: unknown = null;
+    this.sent = true;
     try {
       // The audit keeps the hash and name, never the magnet or link.
       result = await this.audit('PUSH_RELEASE', { infoHash: source.infoHash, releaseTitle: release.title, source: source.kind, downloadClientId: release.downloadClientId ?? null }, () => this.client.pushRelease(release));
@@ -346,7 +360,14 @@ class SendRun {
     }
 
     const grabs = await this.grabRecords();
-    if (grabs.length === 0 && pushError) throw pushError;
+    if (grabs.length === 0 && pushError) {
+      // Arr answered with an error and wrote no grab: it did not take the release.
+      if (axios.isAxiosError(pushError) && pushError.response) {
+        await this.failAndUndo(`${this.app} did not answer as expected: ${errorText(pushError)}`);
+        return;
+      }
+      throw pushError;
+    }
     if (grabs.length === 0) {
       await this.failAndUndo(`${this.app} accepted the release but did not grab it. The download client may already have this torrent${source.kind === 'TORRENT_FILE' ? `, or ${this.app} could not fetch the .torrent from Helprr` : ''}.`);
       return;

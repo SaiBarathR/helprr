@@ -29,6 +29,13 @@ describe('parseMagnet', () => {
     expect(parseMagnet(`magnet:?xt=urn:btih:${HEX}`).name).toBe('');
   });
 
+  it('refuses a magnet that names two torrents, and accepts a v1/v2 hybrid', () => {
+    const other = 'a'.repeat(40);
+    expect(() => parseMagnet(`magnet:?xt=urn:btih:${HEX}&xt=urn:btih:${other}`)).toThrow('more than one torrent');
+    expect(parseMagnet(`magnet:?xt=urn:btih:${HEX}&xt=urn:btih:${B32}`).infoHash).toBe(HEX.toUpperCase());
+    expect(parseMagnet(`magnet:?xt=urn:btih:${HEX}&xt=urn:btmh:1220abcd`).infoHash).toBe(HEX.toUpperCase());
+  });
+
   it('refuses what Arr cannot follow', () => {
     expect(() => parseMagnet('https://example.com/file.torrent')).toThrow(ReleaseSourceError);
     expect(() => parseMagnet('magnet:?dn=no-hash')).toThrow('no BitTorrent info hash');
@@ -58,5 +65,22 @@ describe('parseTorrentFile', () => {
     expect(() => parseTorrentFile(Buffer.from('d4:info'))).toThrow(ReleaseSourceError);
     expect(() => parseTorrentFile(Buffer.from('not bencode'))).toThrow(ReleaseSourceError);
     expect(() => parseTorrentFile(Buffer.concat([bencode({ info }), Buffer.from('trailing')]))).toThrow(ReleaseSourceError);
+  });
+
+  it('accepts only canonical bencode numbers', () => {
+    const good = bencode({ info });
+    expect(() => parseTorrentFile(Buffer.from(good.toString('latin1').replace('4:info', '4e0:info'), 'latin1'))).toThrow(ReleaseSourceError);
+    expect(() => parseTorrentFile(Buffer.from(good.toString('latin1').replace('4:info', '04:info'), 'latin1'))).toThrow(ReleaseSourceError);
+    expect(() => parseTorrentFile(Buffer.from(good.toString('latin1').replace('i1e', 'i01e'), 'latin1'))).toThrow(ReleaseSourceError);
+    expect(() => parseTorrentFile(Buffer.from(good.toString('latin1').replace('i1e', 'i-0e'), 'latin1'))).toThrow(ReleaseSourceError);
+  });
+
+  it('walks a huge list it does not need without building it', () => {
+    const filler = Buffer.concat([Buffer.from('l'), Buffer.alloc(2_000_000, '0:'), Buffer.from('e')]);
+    const file = Buffer.concat([Buffer.from('d7:comment'), filler, Buffer.from('4:info'), bencode(info), Buffer.from('e')]);
+    const before = process.memoryUsage().heapUsed;
+    const torrent = parseTorrentFile(file);
+    expect(torrent.infoHash).toBe(createHash('sha1').update(bencode(info)).digest('hex').toUpperCase());
+    expect(process.memoryUsage().heapUsed - before).toBeLessThan(32 * 1024 * 1024);
   });
 });

@@ -65,15 +65,19 @@ describe('Radarr preflight', () => {
       parsed: { quality: 'Bluray-1080p', year: 1968 },
       downloadClient: { id: 1, name: 'qBit 1' },
     }));
-    expect(mocks.radarr.getHistory).toHaveBeenCalledWith(1, 1, 'date', 'descending', { downloadId: HASH.toUpperCase() });
+    expect(mocks.radarr.getHistory).toHaveBeenCalledWith(1, 1, 'date', 'descending', { downloadId: HASH.toUpperCase(), eventType: 1 });
   });
 
   it('says what Radarr reads when the release would not map to the film', async () => {
     mocks.radarr = arrMock([movie], { parsedMovieInfo: { year: 1990, quality: quality('Bluray-1080p') } });
     expect(codes((await preflightManualDownload(radarrInput())).errors)).toEqual(['RELEASE_YEAR_MISMATCH']);
 
-    mocks.radarr = arrMock([movie], { parsedMovieInfo: { year: 1968, quality: quality('Bluray-1080p') }, movie: { id: 9, title: 'Other Film', year: 1968 } });
+    mocks.radarr = arrMock([movie], { parsedMovieInfo: { year: 1990, quality: quality('Bluray-1080p') }, movie: { id: 9, title: 'Other Film', year: 1990 } });
     expect(codes((await preflightManualDownload(radarrInput())).errors)).toEqual(['RELEASE_OTHER_TITLE']);
+
+    // The year agrees, so Radarr maps it by TMDB id before it looks at the title.
+    mocks.radarr = arrMock([movie], { parsedMovieInfo: { year: 1968, quality: quality('Bluray-1080p') }, movie: { id: 9, title: 'Other Film', year: 1968 } });
+    expect((await preflightManualDownload(radarrInput())).ok).toBe(true);
 
     mocks.radarr = arrMock([movie], { parsedMovieInfo: { year: 1968, quality: quality('Unknown') } });
     expect(codes((await preflightManualDownload(radarrInput())).errors)).toEqual(['RELEASE_QUALITY_UNKNOWN']);
@@ -184,6 +188,17 @@ describe('Sonarr preflight', () => {
 
     expect(result.ok).toBe(true);
     expect(codes(result.warnings)).toEqual(['EPISODES_CHECKED_AFTER_ADD']);
+  });
+});
+
+describe('Sonarr matching an existing series by its TVDB id', () => {
+  it('still checks that the series is monitored', async () => {
+    mocks.connection.mockResolvedValue({ id: 's1', label: 'Sonarr', url: 'http://sonarr', apiKey: 'k', customHeaders: null });
+    mocks.sonarr = arrMock([{ title: 'Classroom of the Elite', year: 2017, tvdbId: 329822, id: 3, monitored: false }], { parsedEpisodeInfo: { seasonNumber: 1, episodeNumbers: [2], quality: quality('WEBDL-1080p') }, series: null });
+    const input = { service: 'SONARR' as const, instanceId: 's1', externalId: 329822, source: magnet('Youkoso.S01E02.1080p.WEB'), releaseTitle: 'Youkoso.S01E02.1080p.WEB' };
+
+    expect(codes((await preflightManualDownload(input)).errors)).toEqual(['TARGET_UNMONITORED']);
+    expect(codes((await preflightManualDownload({ ...input, monitorTarget: true })).warnings)).toEqual(['RELEASE_MAPPED_BY_ID', 'TARGET_WILL_BE_MONITORED']);
   });
 });
 
