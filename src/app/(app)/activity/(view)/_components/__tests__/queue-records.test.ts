@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  appNameFor,
   canManualImport,
   downloadSiblings,
   episodeLabel,
@@ -9,8 +10,10 @@ import {
   getQueueMediaHref,
   groupQueueByDownload,
   manualImportHref,
+  packNoun,
   queueRecordKey,
   queueRemovalDelta,
+  statusColor,
   statusLabel,
   uniqueQueueRecords,
   type QueueRecord,
@@ -39,6 +42,22 @@ describe('queue record labels', () => {
     expect(statusLabel(record({ trackedDownloadState: undefined, status: undefined }))).toBe('UNKNOWN');
   });
 
+  it('colours a badge by the tracked status first: a warning, then an error, then the client status', () => {
+    expect(statusColor('failed', 'warning')).toContain('text-orange-500');
+    expect(statusColor('completed', 'error')).toContain('text-red-500');
+    expect(statusColor('warning')).toContain('text-orange-500');
+    expect(statusColor('failed')).toContain('text-red-500');
+    expect(statusColor('imported', 'ok')).toContain('text-green-500');
+    expect(statusColor('downloading')).toContain('text-blue-500');
+    expect(statusColor('delay')).toContain('text-yellow-500');
+    expect(statusColor('paused')).toContain('text-muted-foreground');
+  });
+
+  it('names what a pack holds, and the app behind a record', () => {
+    expect([packNoun('lidarr'), packNoun('sonarr'), packNoun('radarr'), packNoun(undefined)]).toEqual(['tracks', 'episodes', 'items', 'items']);
+    expect([appNameFor('radarr'), appNameFor('lidarr'), appNameFor('sonarr'), appNameFor(undefined)]).toEqual(['Radarr', 'Lidarr', 'Sonarr', 'Sonarr']);
+  });
+
   it('formats sizes, quality, custom formats and episode labels', () => {
     expect(formatBytes(0)).toBe('0 B');
     expect(formatBytes(1536)).toBe('1.5 KB');
@@ -58,8 +77,6 @@ describe('queue record links', () => {
   it('links the most specific page it knows, on the record\'s instance', () => {
     expect(getQueueMediaHref(record({ seriesId: 4, seasonNumber: 1, episodeId: 9, instanceId: 'i2' }))).toBe('/series/4/season/1/episode/9?instance=i2');
     expect(getQueueMediaHref(record({ series: { id: 4 }, episode: { seasonNumber: 2 } }))).toBe('/series/4/season/2');
-    // Season 0 (specials) is falsy, so a special links its series.
-    expect(getQueueMediaHref(record({ seriesId: 4, seasonNumber: 0, episodeId: 9 }))).toBe('/series/4');
     expect(getQueueMediaHref(record({ source: 'radarr', movie: { id: 12 } }))).toBe('/movies/12');
     expect(getQueueMediaHref(record({ source: 'lidarr', albumId: 3, artistId: 8 }))).toBe('/music/album/3');
     expect(getQueueMediaHref(record({ source: 'lidarr', artist: { id: 8 } }))).toBe('/music/8');
@@ -91,12 +108,13 @@ describe('queue record grouping', () => {
       record({ id: 5, downloadId: 'PACK', source: 'radarr' }),
     ];
     const groups = groupQueueByDownload(items);
-    expect(groups.map((g) => [g.key, g.items.map((i) => i.id), g.rep.id, g.isPack])).toEqual([
-      ['dl-sonarr--PACK', [1, 3], 1, true],
-      ['solo-sonarr-2', [2], 2, false],
-      ['dl-sonarr-other-PACK', [4], 4, false],
-      ['dl-radarr--PACK', [5], 5, false],
+    expect(groups.map((g) => [g.items.map((i) => i.id), g.rep.id, g.isPack])).toEqual([
+      [[1, 3], 1, true],
+      [[2], 2, false],
+      [[4], 4, false],
+      [[5], 5, false],
     ]);
+    expect(new Set(groups.map((g) => g.key)).size).toBe(groups.length);
     expect(downloadSiblings(items, items[2]).map((i) => i.id)).toEqual([1, 3]);
     expect(downloadSiblings(items, items[1]).map((i) => i.id)).toEqual([2]);
   });

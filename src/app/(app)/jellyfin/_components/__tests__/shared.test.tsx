@@ -12,7 +12,7 @@ afterEach(() => {
 });
 
 const historyItem = (extra: Partial<CustomHistoryItem> = {}): CustomHistoryItem => ({
-  RowId: 1, DateCreated: '2026-02-20 19:11:07.0338097', UserId: 'u1', ItemId: 'i1', ItemType: 'Movie',
+  RowId: 1, DateCreated: '2026-02-20 12:00:00.0000000', UserId: 'u1', ItemId: 'i1', ItemType: 'Movie',
   ItemName: 'Film A', PlaybackMethod: 'DirectPlay', ClientName: 'Infuse', DeviceName: 'iPhone', PlayDuration: 3720,
   ...extra,
 });

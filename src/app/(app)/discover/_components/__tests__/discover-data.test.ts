@@ -73,7 +73,7 @@ describe('discover filters', () => {
     expect(normalizeFilterValues(filters({ region: '' })).region).toBe('US');
   });
 
-  it('tells default filters apart, ignoring the order of list values', () => {
+  it('tells default filters apart', () => {
     expect(isDefaultFilters(filters())).toBe(true);
     expect(isDefaultFilters(filters({ region: '' }))).toBe(true);
     expect(isDefaultFilters(filters({ region: 'GB' }))).toBe(false);
