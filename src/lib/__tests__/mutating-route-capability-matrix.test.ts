@@ -3,6 +3,7 @@ import path from 'node:path';
 import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 import { CAPABILITIES, type Capability } from '@/lib/capabilities';
+import { SERVICE_ADD_CAPABILITY } from '@/lib/manual-downloads/request';
 
 const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 const AUTH_CALLS = new Set([
@@ -13,6 +14,7 @@ const AUTH_CALLS = new Set([
   'requireSession',
   'requireUser',
   'requireUserCapability',
+  'requireUserAllCapabilities',
 ]);
 
 const POLICY_GROUPS: Record<string, readonly string[]> = {
@@ -231,7 +233,7 @@ const POLICY_GROUPS: Record<string, readonly string[]> = {
 };
 
 interface SpecialPolicy {
-  readonly kind: 'dynamic-capability' | 'field-capability' | 'owned-or-capability';
+  readonly kind: 'dynamic-capability' | 'field-capability' | 'owned-or-capability' | 'service-capabilities';
   readonly marker: string;
   readonly capabilities: readonly Capability[];
 }
@@ -276,6 +278,12 @@ const SPECIAL_POLICIES: Record<string, SpecialPolicy> = {
     kind: 'owned-or-capability',
     marker: 'isOwner',
     capabilities: ['requests.approve'],
+  },
+  // Every listed capability, plus the chosen service's add capability.
+  'POST /api/manual-downloads/preflight': {
+    kind: 'service-capabilities',
+    marker: 'SERVICE_ADD_CAPABILITY',
+    capabilities: ['torrents.add', 'activity.manage'],
   },
 };
 
@@ -424,7 +432,7 @@ describe('mutating API route capability matrix', () => {
   const assignments = policyAssignments();
 
   it('explicitly assigns every mutating handler exactly once', () => {
-    expect(handlers.size).toBe(161);
+    expect(handlers.size).toBe(162);
     expect([...assignments.keys()].sort()).toEqual([...handlers.keys()].sort());
   });
 
@@ -486,6 +494,12 @@ describe('mutating API route capability matrix', () => {
             || hasCall(evidence, 'requireUserCapability'),
           `${route} must authenticate before applying its field guard`,
         ).toBe(true);
+      } else if (policy.kind === 'service-capabilities') {
+        for (const capability of policy.capabilities) {
+          expect(hasCall(evidence, 'requireUserAllCapabilities', capability), `${route} must require ${capability}`).toBe(true);
+        }
+        expect(evidence.handlerText).toContain('can(auth.user, SERVICE_ADD_CAPABILITY[');
+        expect(SERVICE_ADD_CAPABILITY).toEqual({ RADARR: 'movies.add', SONARR: 'series.add' });
       } else {
         expect(hasCall(evidence, 'requireUser')).toBe(true);
         expect(evidence.fileText).toContain("can(auth.user, 'requests.approve')");

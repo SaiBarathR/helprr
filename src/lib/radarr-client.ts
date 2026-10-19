@@ -23,6 +23,9 @@ import type {
   RadarrLookupResult,
   Release,
   DownloadClient,
+  RadarrParseResult,
+  ArrReleasePushInput,
+  ArrReleasePushResult,
 } from '@/types';
 
 interface SystemStatus {
@@ -160,6 +163,21 @@ export class RadarrClient {
     const body: Record<string, unknown> = { guid, indexerId };
     if (downloadClientId !== undefined) body.downloadClientId = downloadClientId;
     await this.post('/api/v3/release', body, { timeout: ARR_RELEASE_TIMEOUT_MS });
+  }
+
+  /** Arr's own reading of a release title: what it would map the release to. Read-only. */
+  async parseTitle(title: string): Promise<RadarrParseResult> {
+    return this.get<RadarrParseResult>('/api/v3/parse', { title });
+  }
+
+  /**
+   * Hand Arr a release (magnet or .torrent URL) as if an indexer had found it.
+   * Arr maps it by parsing the title and grabs it when approved; an approved
+   * answer does not prove the grab (check history for its downloadId).
+   */
+  async pushRelease(release: ArrReleasePushInput): Promise<ArrReleasePushResult> {
+    const results = await this.post<ArrReleasePushResult[]>('/api/v3/release/push', release, { timeout: ARR_RELEASE_TIMEOUT_MS });
+    return results[0];
   }
 
   async getDownloadClients(): Promise<DownloadClient[]> {

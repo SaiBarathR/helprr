@@ -78,6 +78,7 @@ model ServiceConnection {
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
   pollingState   PollingState?
+  manualDownloads ManualDownload[]
 
   @@unique([type, label])
   @@index([type])
@@ -677,6 +678,8 @@ enum FileOperation {
   DELETE_MEDIA // remove a series / movie / artist / album, optionally with files
   DELETE_TORRENT // remove one or more torrents, optionally with downloaded data
   REMOVE_QUEUE // remove an Arr queue item, optionally from the download client
+  CREATE_MEDIA // add a series / movie to an Arr library (manual downloads)
+  PUSH_RELEASE // hand a magnet / .torrent to an Arr instance as a manual release
 }
 
 // Unified accountability log for file operations and destructive media/download
@@ -706,4 +709,83 @@ model FileOperationAudit {
   @@index([createdAt])
   @@index([service, mediaId])
   @@index([userId, createdAt])
+}
+
+// Manual downloads: a hand-supplied magnet or .torrent linked to a Sonarr/Radarr
+// title. In the default (ARR_MANAGED) mode Arr owns the download: Helprr adds
+// the title with searches off, pushes the release, and follows Arr's queue,
+// history and file records. QBIT_REVIEWED is the advanced fallback (files are
+// chosen in qBittorrent first). See docs/upstream-compatibility.md.
+enum ManualDownloadMode {
+  ARR_MANAGED
+  QBIT_REVIEWED
+}
+
+enum ManualDownloadStatus {
+  PREFLIGHT
+  CREATING_MEDIA
+  SUBMITTING_RELEASE
+  QUEUED
+  DOWNLOADING
+  IMPORT_PENDING
+  IMPORTING
+  IMPORTED
+  NEEDS_MAPPING
+  BLOCKED
+  FAILED
+  CANCELLED
+}
+
+enum ManualDownloadSource {
+  MAGNET
+  TORRENT_FILE
+}
+
+model ManualDownload {
+  id                 String                @id @default(cuid())
+  mode               ManualDownloadMode
+  status             ManualDownloadStatus
+  service            ServiceType // SONARR | RADARR
+  instanceId         String? // the Arr instance; null once that connection is deleted
+  instance           ServiceConnection?    @relation(fields: [instanceId], references: [id], onDelete: SetNull)
+  instanceLabel      String // denormalized, kept after the connection is gone
+  externalId         Int // tmdbId (Radarr) or tvdbId (Sonarr)
+  arrItemId          Int? // movie / series id in that instance, once known
+  arrItemTitle       String
+  createdArrItem     Boolean               @default(false) // this workflow added the item (compensation may remove it)
+  targetEpisodeIds   Int[] // Sonarr: the episodes the release covers, as Arr parsed them
+  releaseTitle       String // the title pushed to Arr, which Arr parses to map the release
+  source             ManualDownloadSource
+  infoHash           String // v1 info hash, uppercase hex (Arr's downloadId)
+  torrentName        String
+  downloadClientId   Int?
+  downloadClientName String?
+  arrQueueId         Int?
+  baselineFileIds    Json // the target's file ids before the download, to prove an import
+  importedFileIds    Json?
+  lastError          String?
+  attempts           Int                   @default(0)
+  clientRequestId    String // idempotency key from the submitting client
+  createdByUserId    String? // acting user (not a FK; see FileOperationAudit)
+  createdByUsername  String
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+  completedAt        DateTime?
+  events             ManualDownloadEvent[]
+
+  @@unique([createdByUserId, clientRequestId])
+  @@index([status, updatedAt])
+  @@index([instanceId, infoHash])
+}
+
+model ManualDownloadEvent {
+  id         String               @id @default(cuid())
+  downloadId String
+  download   ManualDownload       @relation(fields: [downloadId], references: [id], onDelete: Cascade)
+  at         DateTime             @default(now())
+  status     ManualDownloadStatus
+  message    String?
+  details    Json?
+
+  @@index([downloadId, at])
 }

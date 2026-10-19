@@ -264,6 +264,22 @@ export async function requireUserAnyCapability(
 }
 
 /**
+ * requireUser + an all-of capability check, for an action that does several
+ * things at once (a manual download adds a title, pushes a release and queues a
+ * download). Same 401/403 shape as requireUserCapability.
+ */
+export async function requireUserAllCapabilities(
+  caps: readonly [Capability, ...Capability[]]
+): Promise<RequireUserResult> {
+  const result = await requireUser();
+  if (!result.ok) return result;
+  if (!caps.every((cap) => can(result.user, cap))) {
+    return { ok: false, response: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) };
+  }
+  return result;
+}
+
+/**
  * Capability gate for route handlers. Returns null when the current user holds
  * `cap`, a 401 when unauthenticated, or a 403 otherwise — same null-or-response
  * shape as requireAuth(), so it drops in right after it:
