@@ -593,6 +593,18 @@ docker compose pull helprr-redis
 docker compose up -d --no-deps helprr-redis
 ```
 
+Keep the newer Redis if you roll Helprr back; older releases work with it. An
+older Redis cannot read files a newer one has written, so to move Redis itself
+back, stop Helprr and Redis, delete only the Redis volume (its caches rebuild),
+and start both again:
+
+```bash
+docker compose stop helprr helprr-redis
+docker compose rm -f helprr-redis
+docker volume rm "$(docker volume ls -q | grep 'helprr-redis-data$')"
+docker compose up -d
+```
+
 To stay on an exact version instead of a channel, set `HELPRR_VERSION` in
 `.env` (for example `HELPRR_VERSION=1.0.0`) and re-run `./scripts/update.sh` (or the
 two Docker commands) to move between versions. Downgrading across releases is not supported once a
