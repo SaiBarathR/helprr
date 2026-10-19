@@ -134,6 +134,9 @@ describe('checking the fallback before the torrent starts', () => {
     mocks.qbit.getTorrents.mockResolvedValue([{ hash: HASH.toLowerCase(), name: FILM, state: 'downloading', category: 'radarr', save_path: '/mnt/exos22/Downloads/', progress: 0.1 }]);
     const result = await checkFallback(input({ selectedFileIndexes: [0, 9] }));
     expect(result.errors.map((issue) => issue.code)).toEqual(['FILE_INDEX_INVALID', 'TORRENT_RUNNING', 'TORRENT_IN_ARR_CATEGORY']);
+
+    mocks.qbit.getTorrents.mockResolvedValue([{ hash: HASH.toLowerCase(), name: FILM, state: 'checkingResumeData', category: '', save_path: '/mnt/exos22/Downloads/', progress: 0 }]);
+    expect((await checkFallback(input())).errors.map((issue) => issue.code)).toEqual(['TORRENT_CHECKING']);
   });
 
   it('warns when a Radarr download client has no category, since Radarr then watches every torrent', async () => {
@@ -231,6 +234,22 @@ describe('after the chosen files finish', () => {
     ]);
     await settleDownloaded(download, mocks.arr as never, '/mnt/exos22/Downloads/');
     expect(mocks.moves[0].message).toContain('b.mkv: another file holds the same episode');
+  });
+
+  it('asks the user about a chosen file Arr reads as a whole season, though it also says "Sample"', async () => {
+    mocks.arr.listFolder.mockResolvedValue({ directories: [], files: [{ name: 'a.mkv', path: '', size: 5 }, { name: 'random.mkv', path: '', size: 5 }] });
+    const download = downloaded('SONARR', [file('f0', 0, 'Show.S01/a.mkv', 5, true), file('f1', 1, 'Show.S01/random.mkv', 5, true)]);
+    const series = { id: 15, title: 'Classroom of the Elite' };
+    mocks.arr.scanImportPath.mockResolvedValue([
+      candidate('/data/Downloads/Show.S01/a.mkv', { movie: null, series, episodes: [{ id: 505, seasonNumber: 1, episodeNumber: 5 }] }),
+      candidate('/data/Downloads/Show.S01/random.mkv', {
+        movie: null, series, episodes: [{ id: 501, seasonNumber: 1, episodeNumber: 1 }, { id: 502, seasonNumber: 1, episodeNumber: 2 }],
+        rejections: [{ reason: 'Single episode file contains all episodes in seasons. Review file name or manually import' }, { reason: 'Sample' }],
+      }),
+    ]);
+    await settleDownloaded(download, mocks.arr as never, '/mnt/exos22/Downloads/');
+    expect(mocks.moves[0]).toEqual(expect.objectContaining({ status: 'NEEDS_MAPPING', message: expect.stringContaining('random.mkv: Single episode file contains all episodes') }));
+    expect(mocks.arr.submitManualImport).not.toHaveBeenCalled();
   });
 
   it('scans once when two scans race', async () => {

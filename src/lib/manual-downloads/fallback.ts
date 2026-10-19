@@ -65,6 +65,7 @@ export class FallbackRefusedError extends Error {
 }
 
 const STOPPED = new Set(['pausedDL', 'stoppedDL', 'pausedUP', 'stoppedUP']);
+const CHECKING = new Set(['checkingDL', 'checkingUP', 'checkingResumeData', 'moving']);
 const appOf = (service: ManualDownloadService) => (service === 'RADARR' ? 'Radarr' : 'Sonarr');
 
 /** Whether Arr sees a folder, or a file of this size. A missing folder lists as empty, so look from its parent. */
@@ -118,7 +119,8 @@ export async function checkFallback(input: FallbackInput): Promise<FallbackCheck
   if (files.length === 0) error('TORRENT_NO_METADATA', "qBittorrent does not have this torrent's file list yet. Wait a moment and try again.");
   else if (selected.size === 0) error('NO_FILES_SELECTED', 'Choose at least one file to download.');
   else if ([...selected].some((index) => !files.some((file) => file.index === index))) error('FILE_INDEX_INVALID', 'A chosen file is not in this torrent.');
-  if (!STOPPED.has(torrent.state)) error('TORRENT_RUNNING', 'The torrent has already started. Files can only be chosen before it downloads.');
+  if (CHECKING.has(torrent.state)) error('TORRENT_CHECKING', 'qBittorrent is still checking the torrent. Try again in a moment.');
+  else if (!STOPPED.has(torrent.state)) error('TORRENT_RUNNING', 'The torrent has already started. Files can only be chosen before it downloads.');
 
   const active = await prisma.manualDownload.findFirst({
     where: { instanceId: connection.id, infoHash: input.infoHash, status: { notIn: [...TERMINAL_STATUSES] } },
@@ -319,7 +321,13 @@ function keep(item: ManualImportItem): Candidate {
 }
 
 const sameFile = (a: string, b: string) => a.replace(/\\/g, '/').toLowerCase() === b.replace(/\\/g, '/').toLowerCase();
-const isSample = (candidate: Candidate) => candidate.rejections.some((rejection) => /sample/i.test(rejection.reason));
+/**
+ * A sample: Arr's only objection is that it is one, and it is named one. Arr
+ * also calls a whole-season file "Sample" by its runtime, so a chosen file
+ * Arr objects to for any other reason goes to the user instead.
+ */
+const isSample = (candidate: Candidate, path: string) =>
+  candidate.rejections.length > 0 && candidate.rejections.every((rejection) => /sample/i.test(rejection.reason)) && /sample/i.test(path);
 
 export interface ScanOutcome {
   /** Files that could not be found where Arr should see them. */
@@ -371,7 +379,7 @@ export async function scanFallback(
       data: { arrPath, candidate: candidate ? (candidate as unknown as Prisma.InputJsonValue) : Prisma.DbNull },
     });
     if (!candidate) continue; // not a video file: Arr imports subtitles and extras along with the video
-    if (isSample(candidate)) continue;
+    if (isSample(candidate, file.path)) continue;
     const name = splitPath(file.path).name;
     if (candidate.rejections.length > 0) {
       reasons.push(`${name}: ${candidate.rejections.map((rejection) => rejection.reason).join('; ')}`);
@@ -430,7 +438,7 @@ export async function settleDownloaded(download: ManualDownload, client: RadarrC
   const scanned = await prisma.manualDownload.findUniqueOrThrow({ where: { id: download.id }, include: { files: true } });
   const decisions: FileDecision[] = scanned.files.filter((file) => file.selected && file.candidate).map((file) => {
     const candidate = file.candidate as unknown as Candidate;
-    return isSample(candidate)
+    return isSample(candidate, file.path)
       ? { fileId: file.id, decision: 'IGNORE' }
       : { fileId: file.id, decision: 'IMPORT', episodeIds: candidate.episodes?.map((episode) => episode.id) };
   });
