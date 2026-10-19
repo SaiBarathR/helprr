@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { passiveTorrentRefreshIntervalMs } from '@/lib/qbittorrent-summary';
 import { applyTorrentDelta, type TorrentDeltaResponse } from '@/lib/qbittorrent-delta';
@@ -73,9 +73,10 @@ export function useTorrentsSummary(filter: FilterType[], hasHydrated: boolean) {
 
   // Mirror of `torrents` so the merge effect and torrentAction can read the
   // committed list without adding it to deps (which would churn row callbacks).
-  // Updated on commit, before the merge effect below runs.
+  // Updated during the commit (a layout effect), so neither a click nor the
+  // merge effect below can read the list from before it.
   const torrentsRef = useRef(torrents);
-  useEffect(() => {
+  useLayoutEffect(() => {
     torrentsRef.current = torrents;
   }, [torrents]);
 

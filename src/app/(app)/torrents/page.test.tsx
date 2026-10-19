@@ -98,6 +98,7 @@ vi.mock('@/lib/store', async () => {
 import { useUIStore } from '@/lib/store';
 import { resetRouteViewStateForTests } from '@/lib/hooks/use-route-view-state';
 import TorrentsPage from './page';
+import { getSpeedLimitTargets } from './_components/speed-limit-targets';
 
 const torrent = (hash: string, name: string, extra: Record<string, unknown> = {}) => ({
   hash, name, size: 1024 ** 3, progress: 1, dlspeed: 0, upspeed: 0, num_seeds: 3, num_leechs: 1, state: 'stalledUP', eta: 8640000,
@@ -344,6 +345,63 @@ describe('torrents page (characterization)', () => {
     await waitFor(() => expect(names()).toEqual(['Bravo.Show', 'Alpha.Movie', 'Charlie']));
     await user.click(actionsFor('Charlie').getByRole('button', { name: 'Stop' }));
     expect(posted()).toEqual([{ hash: 'ccc', action: 'stop' }]);
+  });
+
+  it('takes in what a later poll changes: a new state, a new torrent, one gone (and its selection)', async () => {
+    let rows = [ALPHA, BRAVO, CHARLIE];
+    mocks.summary = () => full(rows);
+    const { user, client } = renderPage();
+    await waitFor(() => expect(names()).toHaveLength(3));
+    await user.click(screen.getByRole('checkbox', { name: 'Select Charlie' }));
+    expect(screen.getByRole('button', { name: 'Clear' })).toBeTruthy();
+
+    rows = [{ ...ALPHA, state: 'stalledDL', dlspeed: 0 }, BRAVO, torrent('ddd', 'Delta')];
+    await act(() => client.refetchQueries({ queryKey: ['torrents'] }));
+    await waitFor(() => expect(screen.getByText('3 torrents')).toBeTruthy());
+    expect(screen.getByRole('button', { name: 'Delta' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Charlie' })).toBeNull();
+    expect(within(screen.getByRole('button', { name: 'Alpha.Movie' }).closest('.px-3')! as HTMLElement).getByText('Stalled')).toBeTruthy();
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Clear' })).toBeNull());
+  });
+
+  it('keeps a deleted torrent hidden from a poll that still reports it, and brings it back when the delete fails', async () => {
+    const { user, client } = renderPage();
+    await waitFor(() => expect(names()).toHaveLength(3));
+    await user.click(actionsFor('Alpha.Movie').getByRole('button', { name: 'Delete (keep files)' }));
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Delete' }));
+    await waitFor(() => expect(names()).toEqual(['Bravo.Show', 'Charlie']));
+    await act(() => client.refetchQueries({ queryKey: ['torrents'] }));
+    expect(names()).toEqual(['Bravo.Show', 'Charlie']);
+
+    mocks.action = () => Response.json({ error: 'qBittorrent did not confirm the delete. Check the torrent list.' }, { status: 502 });
+    await user.click(actionsFor('Charlie').getByRole('button', { name: 'Delete (keep files)' }));
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Delete' }));
+    await waitFor(() => expect(mocks.toast.error).toHaveBeenCalledWith('qBittorrent did not confirm the delete. Check the torrent list.'));
+    expect(names()).toEqual(['Bravo.Show', 'Charlie']);
+    expect(screen.getByRole('dialog')).toBeTruthy();
+  });
+
+  it('holds the alternative speed mode it turned on against a poll that still reports it off', async () => {
+    const { user, client } = renderPage();
+    await waitFor(() => expect(names()).toHaveLength(3));
+    const toggle = () => screen.getByRole('button', { name: 'Alternative Speed Limits' });
+    expect(toggle().className).not.toContain('bg-yellow-500/20');
+    await user.click(toggle());
+    expect(toggle().className).toContain('bg-yellow-500/20');
+    await act(() => client.refetchQueries({ queryKey: ['torrents'] }));
+    expect(toggle().className).toContain('bg-yellow-500/20');
+  });
+
+  it('hands the selected torrents and their limits to the speed limits page', async () => {
+    const { user } = renderPage();
+    await waitFor(() => expect(names()).toHaveLength(3));
+    await user.click(screen.getByRole('checkbox', { name: 'Select Alpha.Movie' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Select Charlie' }));
+    await user.click(screen.getByRole('button', { name: 'Speed Limits' }));
+    expect(getSpeedLimitTargets()).toEqual([
+      { hash: 'aaa', name: 'Alpha.Movie', dl_limit: 0, up_limit: 0 },
+      { hash: 'ccc', name: 'Charlie', dl_limit: 0, up_limit: 0 },
+    ]);
   });
 
   it('keeps the list on a failed poll with a banner, and explains a list it could not load', async () => {
