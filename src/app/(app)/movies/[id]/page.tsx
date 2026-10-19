@@ -3,7 +3,7 @@
 import { useMemo, useRef, useState } from 'react';
 import { arrMutationFetch, jsonFetcher } from '@/lib/query-fetch';
 import { handleAuthError } from '@/lib/query-client';
-import Image from 'next/image';
+import { HeroImage } from '@/components/media/hero-image';
 import { FadeInImage } from '@/components/media/fade-in-image';
 import { useParams, useSearchParams } from 'next/navigation';
 import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
@@ -583,7 +583,7 @@ export default function MovieDetailPage() {
           <div className='-mx-2 md:-mx-6'>
             {/* Backdrop image */}
             <div className="relative w-full h-[220px] overflow-hidden bg-muted/40">
-              <Image
+              <HeroImage
                 src={toCachedImageSrc(tmdbData.backdropPath, 'tmdb', { width: 1280 }) || tmdbData.backdropPath}
                 alt=""
                 fill
@@ -932,7 +932,7 @@ export default function MovieDetailPage() {
                       >
                         {tmdbData.collection.posterPath && (
                           <div className="relative w-12 h-[72px] rounded-lg overflow-hidden shrink-0">
-                            <Image
+                            <FadeInImage
                               src={toCachedImageSrc(tmdbData.collection.posterPath, 'tmdb') || tmdbData.collection.posterPath}
                               alt=""
                               fill

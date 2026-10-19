@@ -1,6 +1,6 @@
 'use client';
 
-import Image from 'next/image';
+import { HeroImage } from '@/components/media/hero-image';
 import { FadeInImage } from '@/components/media/fade-in-image';
 import { Star } from 'lucide-react';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
@@ -54,7 +54,7 @@ export function DiscoverHero({
       <div className="relative h-[260px] sm:h-[340px] md:h-[420px] lg:h-[480px] w-full overflow-hidden bg-background">
         {backdropSrc ? (
           <>
-            <Image
+            <HeroImage
               src={backdropSrc}
               alt=""
               fill

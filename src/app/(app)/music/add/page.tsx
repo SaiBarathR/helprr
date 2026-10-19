@@ -6,7 +6,6 @@ import { ApiError, jsonFetcher } from '@/lib/query-fetch';
 import { queryKeys } from '@/lib/query-keys';
 import { invalidateMusic } from '@/lib/query-invalidation';
 import { FadeInImage } from '@/components/media/fade-in-image';
-import Image from 'next/image';
 import { useSearchParams } from 'next/navigation';
 import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
 import { PageHeader } from '@/components/layout/page-header';
@@ -264,14 +263,16 @@ function AddArtistPageContent() {
           <div className="space-y-5">
             <div className="flex gap-4">
               {selectedPoster ? (
-                <Image
-                  src={selectedPoster}
-                  alt=""
-                  width={96}
-                  height={144}
-                  className="w-24 h-auto aspect-[2/3] object-cover rounded-lg shrink-0"
-                  unoptimized={isProtectedApiImageSrc(selectedPoster)}
-                />
+                <div className="relative w-24 aspect-[2/3] shrink-0 overflow-hidden rounded-lg bg-muted">
+                  <FadeInImage
+                    src={selectedPoster}
+                    alt=""
+                    width={96}
+                    height={144}
+                    className="w-24 h-auto aspect-[2/3] object-cover rounded-lg shrink-0"
+                    unoptimized={isProtectedApiImageSrc(selectedPoster)}
+                  />
+                </div>
               ) : (
                 <div className="w-24 aspect-[2/3] bg-muted rounded-lg flex items-center justify-center shrink-0">
                   <Disc3 className="h-8 w-8 text-muted-foreground" />

@@ -1,6 +1,6 @@
 'use client';
 
-import Image from 'next/image';
+import { FadeInImage } from '@/components/media/fade-in-image';
 import Link from '@/components/ui/app-link';
 import { Button } from '@/components/ui/button';
 import { ErrorState } from '@/components/ui/error-state';
@@ -114,7 +114,7 @@ export function SeriesSeasons({
                 {/* TMDB season poster */}
                 {tmdbSeason?.posterPath && (
                   <div className="relative w-[45px] h-[67px] rounded overflow-hidden shrink-0">
-                    <Image
+                    <FadeInImage
                       src={toCachedImageSrc(tmdbSeason.posterPath, 'tmdb') || tmdbSeason.posterPath}
                       alt=""
                       fill

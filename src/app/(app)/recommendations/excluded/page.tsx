@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import Image from 'next/image';
+import { FadeInImage } from '@/components/media/fade-in-image';
 import Link from '@/components/ui/app-link';
 import { Ban, Film, Loader2, Sparkles, Tv } from 'lucide-react';
 import { toast } from 'sonner';
@@ -39,7 +39,7 @@ function ExcludedRow({ item, restoring, onRestore }: { item: ExcludedTitle; rest
     <div className="flex items-center gap-3 px-3 py-2.5">
       <div className="relative aspect-[2/3] w-10 shrink-0 overflow-hidden rounded-md bg-muted">
         {poster ? (
-          <Image src={poster} alt="" fill sizes="40px" className="object-cover" unoptimized={isProtectedApiImageSrc(poster)} />
+          <FadeInImage src={poster} alt="" fill sizes="40px" className="object-cover" unoptimized={isProtectedApiImageSrc(poster)} />
         ) : (
           <FallbackIcon className="absolute inset-0 m-auto h-4 w-4 text-muted-foreground" aria-hidden />
         )}

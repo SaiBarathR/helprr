@@ -1,6 +1,6 @@
 'use client';
 
-import Image from 'next/image';
+import { HeroImage } from '@/components/media/hero-image';
 import { FadeInImage } from '@/components/media/fade-in-image';
 import Link from '@/components/ui/app-link';
 import { AnimeHero } from '@/components/anime/anime-hero';
@@ -138,7 +138,7 @@ export function SeriesHero({
       ) : tmdbData?.backdropPath ? (
         <div className='-mx-2 md:-mx-6'>
           <div className="relative w-full h-[220px] overflow-hidden bg-muted/40 ">
-            <Image
+            <HeroImage
               src={toCachedImageSrc(tmdbData.backdropPath, 'tmdb', { width: 1280 }) || tmdbData.backdropPath}
               alt=""
               fill

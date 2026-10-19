@@ -2,7 +2,7 @@
 
 import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
 import { useCallback, useMemo, useRef, useState } from 'react';
-import Image from 'next/image';
+import { HeroImage } from '@/components/media/hero-image';
 import { FadeInImage } from '@/components/media/fade-in-image';
 import Link from '@/components/ui/app-link';
 import { useParams, useSearchParams } from 'next/navigation';
@@ -461,7 +461,7 @@ export default function ArtistDetailPage() {
         {fanart ? (
           <div className="-mx-2 md:-mx-6">
             <div className="relative w-full h-[220px] overflow-hidden bg-muted/40">
-              <Image
+              <HeroImage
                 src={fanart}
                 alt=""
                 fill

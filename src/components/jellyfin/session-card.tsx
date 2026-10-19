@@ -1,6 +1,6 @@
 'use client';
 
-import Image from 'next/image';
+import { HeroImage } from '@/components/media/hero-image';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { ExternalLink, MonitorPlay, Play, Pause, Zap, Info } from 'lucide-react';
@@ -50,9 +50,9 @@ export function SessionCard({ session, variant, onInfoClick, jellyfinUrl }: Sess
       {/* Backdrop area */}
       <div className={`relative ${backdropHeight} bg-muted overflow-hidden`}>
         {item?.BackdropImageTags?.[0] && item.Id ? (
-          <Image src={backdropSrc} alt="" fill sizes={imgSizes} className="object-cover" unoptimized={isProtectedApiImageSrc(backdropSrc)} />
+          <HeroImage src={backdropSrc} alt="" fill sizes={imgSizes} className="object-cover" unoptimized={isProtectedApiImageSrc(backdropSrc)} />
         ) : imageId && item?.ImageTags?.Primary ? (
-          <Image src={primarySrc} alt="" fill sizes={imgSizes} className="object-cover blur-sm scale-110" unoptimized={isProtectedApiImageSrc(primarySrc)} />
+          <HeroImage src={primarySrc} alt="" fill sizes={imgSizes} className="object-cover blur-sm scale-110" unoptimized={isProtectedApiImageSrc(primarySrc)} />
         ) : (
           <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-muted to-muted/50">
             <MonitorPlay className="h-6 w-6 text-muted-foreground/20" />

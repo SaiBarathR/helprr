@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { jsonFetcher } from '@/lib/query-fetch';
-import Image from 'next/image';
+import { HeroImage } from '@/components/media/hero-image';
 import { FadeInImage } from '@/components/media/fade-in-image';
 import Link from '@/components/ui/app-link';
 import { Clock, Dices, Film, Loader2, RefreshCw, Sparkles, Star, Tv } from 'lucide-react';
@@ -153,7 +153,7 @@ export function RandomWatchView() {
             <div className="relative h-[200px] w-full bg-muted sm:h-[260px] md:h-[320px]">
               {backdrop ? (
                 <>
-                  <Image
+                  <HeroImage
                     src={backdrop}
                     alt=""
                     fill
