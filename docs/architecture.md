@@ -485,7 +485,7 @@ Helprr authors no parsing and never trusts its own reading of a release.
   adopts it from Arr's command list (queued since it was sent), or leaves it to
   the user; it is never sent again on Helprr's own. Only a claim that sent an
   import is recovered this way; an interrupted scan or cancel reads the files
-  again.
+  again and leaves any import to the user (`NEEDS_MAPPING`).
 - **Status authority.** The `pollManualDownloads` polling source reconciles
   every open workflow each cycle against its own instance: Arr's queue, then its
   history, or qBittorrent for the fallback. `IMPORTED` requires file ids the

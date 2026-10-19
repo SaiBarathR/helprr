@@ -399,9 +399,8 @@ import.
   names and sizes. A missing folder lists as empty rather than failing, and
   `filesystem/type` reports `folder` for a missing path, so Helprr checks a path by
   listing its parent and matching the name (and size for files). qBittorrent's
-  paths are translated through Arr's remote path mappings for the host Arr's
-  qBittorrent download client names (Arr applies a mapping only to its own
-  host), longest remote path first, then the path unchanged, and only a
+  paths are translated through Arr's remote path mappings (see Remote path
+  mappings), longest remote path first, then the path unchanged, and only a
   translation Arr can list is used.
 - **Import.** `POST /api/v3/command` with `name: ManualImport`,
   `importMode: copy` and the candidate's `path`, `movieId` or
