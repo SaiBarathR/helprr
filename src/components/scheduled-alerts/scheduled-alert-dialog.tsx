@@ -299,7 +299,7 @@ export function ScheduledAlertDialog({
               onClick={() => setShowAdvanced((v) => !v)}
               className="flex items-center gap-1 text-xs text-primary"
             >
-              {showAdvanced ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+              {showAdvanced && scheduleMode === 'release_relative' ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
               More options
             </button>
 
