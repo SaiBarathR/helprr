@@ -66,7 +66,7 @@ function renderForm(release: ReleaseInput = { kind: 'magnet', magnet: MAGNET }) 
 async function chooseFilm() {
   const user = userEvent.setup();
   await user.type(screen.getByLabelText('Movie'), 'night of the living dead');
-  await user.click(screen.getByRole('button', { name: 'Search' }));
+  await user.click(screen.getByRole('button', { name: 'Search Radarr' }));
   await user.click(await screen.findByRole('button', { name: /Night of the Living Dead \(1968\)/ }));
   // The instance's first profile and folder are chosen once they load.
   await waitFor(() => expect(screen.getByRole('button', { name: 'Check' }).hasAttribute('disabled')).toBe(false));

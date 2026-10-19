@@ -269,7 +269,7 @@ export function ManualDownloadForm({ release, suggestedName, prefill }: ManualDo
           }}
         >
           <Input id="link-search" value={term} onChange={(event) => setTerm(event.target.value)} placeholder={`Search ${app}`} disabled={busy} />
-          <Button type="submit" className="w-10 shrink-0 p-0" disabled={busy || !term.trim()} aria-label="Search">
+          <Button type="submit" className="w-10 shrink-0 p-0" disabled={busy || !term.trim()} aria-label={`Search ${app}`}>
             {lookup.isFetching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
           </Button>
         </form>
