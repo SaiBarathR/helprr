@@ -595,8 +595,9 @@ docker compose up -d --no-deps helprr-redis
 
 Keep the newer Redis if you roll Helprr back; older releases work with it. An
 older Redis cannot read files a newer one has written, so to move Redis itself
-back, stop Helprr and Redis, delete only the Redis volume (its caches rebuild),
-and start both again:
+back, set the `helprr-redis` image in `docker-compose.yml` to the previous tag
+(for example `redis:7-alpine`), then stop Helprr and Redis, delete only the Redis
+volume (its caches rebuild), and start both again:
 
 ```bash
 docker compose stop helprr helprr-redis
