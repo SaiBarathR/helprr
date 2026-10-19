@@ -3,6 +3,7 @@ import { prisma } from '@/lib/db';
 import { requireUserAllCapabilities } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { serializeManualDownload } from '@/lib/manual-downloads/serialize';
+import { SENDING_STATUSES } from '@/lib/manual-downloads/preflight';
 
 type Context = { params: Promise<{ id: string }> };
 
@@ -24,8 +25,14 @@ async function deleteHandler(_request: Request, { params }: Context) {
   const auth = await requireUserAllCapabilities(['activity.manage']);
   if (!auth.ok) return auth.response;
   const { id } = await params;
-  const removed = await prisma.manualDownload.deleteMany({ where: { id } });
-  if (removed.count === 0) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  // Not while it is being sent: the sender still owns the record and its request key.
+  const removed = await prisma.manualDownload.deleteMany({ where: { id, status: { notIn: [...SENDING_STATUSES] } } });
+  if (removed.count === 0) {
+    const exists = await prisma.manualDownload.findUnique({ where: { id }, select: { id: true } });
+    return exists
+      ? NextResponse.json({ error: 'This download is still being sent. Try again once it has been.' }, { status: 409 })
+      : NextResponse.json({ error: 'Not found' }, { status: 404 });
+  }
   return NextResponse.json({ ok: true });
 }
 

@@ -19,6 +19,8 @@ import type { ReleaseSource } from './release-source';
 export type ManualDownloadService = 'RADARR' | 'SONARR';
 
 export const TERMINAL_STATUSES = ['IMPORTED', 'FAILED', 'CANCELLED'] as const;
+/** A send under way: the sender owns the record. */
+export const SENDING_STATUSES = ['PREFLIGHT', 'CREATING_MEDIA', 'SUBMITTING_RELEASE'] as const;
 /** Arr refuses a release it grabbed within this long (its own "recently grabbed" rule). */
 const RECENT_GRAB_MS = 12 * 60 * 60_000;
 

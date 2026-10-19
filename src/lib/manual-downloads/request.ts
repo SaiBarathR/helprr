@@ -21,6 +21,12 @@ export const SERVICE_ADD_CAPABILITY: Record<ManualDownloadService, Capability> =
   SONARR: 'series.add',
 };
 
+/** Monitoring an existing title (and its episodes) so Arr accepts the release. */
+export const SERVICE_MONITOR_CAPABILITY: Record<ManualDownloadService, Capability> = {
+  RADARR: 'movies.editMonitoring',
+  SONARR: 'series.editMonitoring',
+};
+
 const positiveInt = (value: unknown): value is number => Number.isSafeInteger(value) && (value as number) > 0;
 
 function readAdd(service: ManualDownloadService, value: unknown): AddOptions | undefined {
