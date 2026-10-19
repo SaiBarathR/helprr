@@ -46,6 +46,18 @@ interface ManualDownloadFormProps {
   prefill: LinkPrefill | null;
 }
 
+// Each picked .torrent file gets its own identity: two files with the same
+// name, size and date are still different submissions.
+const fileIdentities = new WeakMap<File, string>();
+function fileIdentity(file: File): string {
+  let identity = fileIdentities.get(file);
+  if (!identity) {
+    identity = newRequestId();
+    fileIdentities.set(file, identity);
+  }
+  return identity;
+}
+
 // The idempotency key of one submission; works on plain-http installs too.
 function newRequestId(): string {
   return Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) => byte.toString(16).padStart(2, '0')).join('');
@@ -60,10 +72,14 @@ const APP = { RADARR: 'Radarr', SONARR: 'Sonarr' } as const;
  * everything first (the preflight) and shows what Arr will do; sending is
  * only offered for the exact choices that were checked.
  */
-export function ManualDownloadForm({ release, suggestedName, prefill }: ManualDownloadFormProps) {
+export function ManualDownloadForm({ release, suggestedName, prefill: requested }: ManualDownloadFormProps) {
   const router = useRouter();
   const canMovies = useCan('movies.add');
   const canSeries = useCan('series.add');
+  const canMonitorMovies = useCan('movies.editMonitoring');
+  const canMonitorSeries = useCan('series.editMonitoring');
+  // "Send again" for a service this user may not add to starts a fresh form instead.
+  const prefill = requested && (requested.service === 'RADARR' ? canMovies : canSeries) ? requested : null;
 
   const [service, setService] = useState<Service>(prefill?.service ?? (canMovies ? 'RADARR' : 'SONARR'));
   const [instanceId, setInstanceId] = useState<string | undefined>(undefined);
@@ -173,18 +189,22 @@ export function ManualDownloadForm({ release, suggestedName, prefill }: ManualDo
         ...(downloadClientId ? { downloadClientId } : {}),
       }
     : null;
-  const fileKey = release.kind === 'file' && release.file ? `${release.file.name}:${release.file.size}:${release.file.lastModified}` : '';
+  const fileKey = release.kind === 'file' && release.file ? fileIdentity(release.file) : '';
   const key = body ? JSON.stringify(body) + fileKey : '';
   const result = checked && checked.key === key ? checked.result : null;
 
-  function form(extra: Record<string, unknown> = {}): FormData {
+  /** One request, fixed when it is made: an answer belongs to what was asked, not to what is on screen when it arrives. */
+  function request(extra: Record<string, unknown> = {}) {
     const data = new FormData();
     data.append('request', JSON.stringify({ ...body, ...extra }));
     if (release.kind === 'file' && release.file) data.append('torrent', release.file);
-    return data;
+    return { key, data };
   }
-  function remember(result: PreflightResult) {
-    setChecked({ key, result });
+  function remember(result: PreflightResult, askedKey: string) {
+    setChecked({ key: askedKey, result });
+    // What the check offers belongs to the choices it checked. The mutation calls the
+    // latest render's callbacks, so `key` here is what is on screen now.
+    if (askedKey !== key) return;
     if (result.errors.some((issue) => issue.code === 'TARGET_UNMONITORED') || result.warnings.some((issue) => issue.code === 'TARGET_WILL_BE_MONITORED')) {
       setMonitorOffered(true);
     }
@@ -196,29 +216,27 @@ export function ManualDownloadForm({ release, suggestedName, prefill }: ManualDo
   };
 
   const check = useMutation({
-    mutationFn: async () => {
-      const res = await fetch('/api/manual-downloads/preflight', { method: 'POST', body: form() });
+    mutationFn: async (asked: { key: string; data: FormData }) => {
+      const res = await fetch('/api/manual-downloads/preflight', { method: 'POST', body: asked.data });
       const data = await res.json().catch(() => null);
       if (!res.ok) throw new ApiError(res.status, data?.error || 'The check could not run');
       return data as PreflightResult;
     },
-    onSuccess: remember,
+    onSuccess: (result, asked) => remember(result, asked.key),
     onError,
   });
 
   const send = useMutation({
-    mutationFn: async () => {
-      // The same submission keeps its id, so a retry after a lost answer returns the same download.
-      if (requestIdRef.current?.key !== key) requestIdRef.current = { key, id: newRequestId() };
-      const res = await fetch('/api/manual-downloads', { method: 'POST', body: form({ clientRequestId: requestIdRef.current.id }) });
+    mutationFn: async (asked: { key: string; data: FormData }) => {
+      const res = await fetch('/api/manual-downloads', { method: 'POST', body: asked.data });
       const data = await res.json().catch(() => null);
       if (res.status === 409 && data?.plan) return { refused: data as PreflightResult };
       if (!res.ok) throw new ApiError(res.status, data?.error || 'The download could not be sent');
       return { download: data.download as { id: string; status: string } };
     },
-    onSuccess: (outcome) => {
+    onSuccess: (outcome, asked) => {
       if ('refused' in outcome && outcome.refused) {
-        remember(outcome.refused);
+        remember(outcome.refused, asked.key);
         return;
       }
       const download = outcome.download!;
@@ -365,7 +383,12 @@ export function ManualDownloadForm({ release, suggestedName, prefill }: ManualDo
         />
       </Field>
 
-      {monitorOffered && target && (
+      {monitorOffered && target && !(service === 'RADARR' ? canMonitorMovies : canMonitorSeries) && (
+        <p className="text-xs text-muted-foreground">
+          {app} only takes a release for a monitored title, and this account may not change monitoring: ask someone who may to monitor {target.title} first.
+        </p>
+      )}
+      {monitorOffered && target && (service === 'RADARR' ? canMonitorMovies : canMonitorSeries) && (
         <label className="flex min-h-[44px] items-start gap-3 py-1">
           <input type="checkbox" checked={monitorTarget} onChange={(event) => setMonitorTarget(event.target.checked)} disabled={busy} className="mt-0.5 h-4 w-4 shrink-0 rounded border-border" />
           <span className="text-sm">
@@ -388,12 +411,20 @@ export function ManualDownloadForm({ release, suggestedName, prefill }: ManualDo
 
       <div className="space-y-2 pt-1">
         {result?.ok ? (
-          <Button className="w-full" onClick={() => send.mutate()} disabled={busy}>
+          <Button
+            className="w-full"
+            onClick={() => {
+              // The same submission keeps its id, so a retry after a lost answer returns the same download.
+              if (requestIdRef.current?.key !== key) requestIdRef.current = { key, id: newRequestId() };
+              send.mutate(request({ clientRequestId: requestIdRef.current.id }));
+            }}
+            disabled={busy}
+          >
             {send.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Send to {app}
           </Button>
         ) : (
-          <Button className="w-full" onClick={() => check.mutate()} disabled={busy || !body}>
+          <Button className="w-full" onClick={() => check.mutate(request())} disabled={busy || !body}>
             {check.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             {checked ? 'Check again' : 'Check'}
           </Button>

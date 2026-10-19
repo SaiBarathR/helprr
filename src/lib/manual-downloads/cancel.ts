@@ -8,7 +8,8 @@ import { bumpQueueCacheVersion, fetchAllQueueRecords } from '@/lib/activity-queu
 import { invalidateTaggedLibrary } from '@/lib/cache/tagged-library';
 import type { RadarrClient } from '@/lib/radarr-client';
 import type { SonarrClient } from '@/lib/sonarr-client';
-import { arrClientFor, TERMINAL_STATUSES } from './preflight';
+import { arrClientFor, SENDING_STATUSES, TERMINAL_STATUSES } from './preflight';
+import { titleInUse } from './title-use';
 
 /**
  * Cancelling a manual download. Arr owns the download, so cancelling removes
@@ -33,7 +34,6 @@ const QUEUE_WAIT_MS = 15_000;
 /** An older grab missing from the queue was removed outside Helprr (the status worker's grace too). */
 const FRESH_GRAB_MS = 2 * 60_000;
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-const SENDING = ['PREFLIGHT', 'CREATING_MEDIA', 'SUBMITTING_RELEASE'];
 /** History events after which a download is no longer in Arr's queue. */
 const SETTLED_EVENTS = ['downloadFolderImported', 'downloadFailed', 'downloadIgnored'];
 
@@ -48,7 +48,7 @@ export async function cancelManualDownload(download: ManualDownload, options: Ca
   if ((TERMINAL_STATUSES as readonly string[]).includes(download.status)) {
     throw new ManualDownloadCancelError('This download has already finished.');
   }
-  if (SENDING.includes(download.status)) {
+  if ((SENDING_STATUSES as readonly string[]).includes(download.status)) {
     throw new ManualDownloadCancelError('This download is still being sent. Try again once it has been.');
   }
   if (!download.instanceId) throw new ManualDownloadCancelError(`${download.instanceLabel} no longer exists in Helprr.`);
@@ -90,7 +90,7 @@ export async function cancelManualDownload(download: ManualDownload, options: Ca
     let items = await listed();
     if (items.length === 0) {
       // A fresh grab not yet settled belongs in the queue: ask Arr to look, and wait.
-      const history = await client.getHistory(1, 50, 'date', 'descending', { downloadId: download.infoHash });
+      const history = await client.getHistory(1, 1000, 'date', 'descending', { downloadId: download.infoHash });
       const grab = history.records.find((record) => record.eventType === 'grabbed');
       const settled = history.records.some((record) => SETTLED_EVENTS.includes(record.eventType));
       // An unknown grab time counts as fresh.
@@ -104,6 +104,10 @@ export async function cancelManualDownload(download: ManualDownload, options: Ca
         if (items.length === 0) {
           throw new ManualDownloadCancelError(`${app} has not listed this download in its queue yet, so nothing was changed. Try again in a moment.`);
         }
+      }
+      // A send whose answer was lost: Arr may still be taking the release.
+      if (!grab && Date.now() - download.updatedAt.getTime() < FRESH_GRAB_MS) {
+        throw new ManualDownloadCancelError(`${app} may still be taking this release, so nothing was changed. Try again in a couple of minutes.`);
       }
     }
     // Removing one record with the client removes the whole torrent; without it, each record is ignored.
@@ -143,6 +147,8 @@ export async function cancelManualDownload(download: ManualDownload, options: Ca
           : (await (client as SonarrClient).getEpisodeFiles(download.arrItemId)).length > 0;
         if (hasFiles) {
           done.push(`${download.arrItemTitle} has files now, so it stays`);
+        } else if (await titleInUse(download, client)) {
+          done.push(`another download is on its way for ${download.arrItemTitle}, so it stays`);
         } else {
           await runWithOperationAudit({
             user: actor,

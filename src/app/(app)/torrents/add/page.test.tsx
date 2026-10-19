@@ -9,9 +9,20 @@ vi.mock('next/navigation', () => ({ useSearchParams: () => mocks.params }));
 vi.mock('@/components/permission-provider', () => ({ useCan: (cap: string) => mocks.caps.has(cap) }));
 vi.mock('@/components/layout/navigation-provider', () => ({ useAppRouter: () => ({ push: vi.fn(), replace: vi.fn() }) }));
 vi.mock('@/components/layout/page-header', () => ({ PageHeader: ({ title }: { title: string }) => <h1>{title}</h1> }));
-vi.mock('@/components/torrents/manual-download-form', () => ({
-  ManualDownloadForm: ({ prefill }: { prefill: { title: string } | null }) => <div>Arr form{prefill ? ` for ${prefill.title}` : ''}</div>,
-}));
+vi.mock('@/components/torrents/manual-download-form', async () => {
+  const { useState } = await import('react');
+  return {
+    ManualDownloadForm: function Form({ prefill }: { prefill: { title: string } | null }) {
+      const [title, setTitle] = useState('');
+      return (
+        <div>
+          Arr form{prefill ? ` for ${prefill.title}` : ''}
+          <input aria-label="Arr title" value={title} onChange={(event) => setTitle(event.target.value)} />
+        </div>
+      );
+    },
+  };
+});
 
 import AddTorrentPage from './page';
 
@@ -36,9 +47,15 @@ describe('Add Torrent: where it goes', () => {
     expect(screen.getByText('Arr form')).toBeTruthy();
     expect(screen.queryByLabelText('Save at')).toBeNull();
 
+    await userEvent.type(screen.getByLabelText('Arr title'), 'Night');
     await userEvent.click(screen.getByRole('radio', { name: /Add to qBittorrent only/ }));
     expect(screen.getByLabelText('Save at')).toBeTruthy();
-    expect(screen.queryByText('Arr form')).toBeNull();
+    expect(screen.queryByRole('textbox', { name: 'Arr title' })).toBeNull();
+
+    // A look at the other option loses nothing already chosen for Sonarr/Radarr.
+    await userEvent.click(screen.getByRole('radio', { name: /Send to Sonarr or Radarr/ }));
+    expect((screen.getByRole('textbox', { name: 'Arr title' }) as HTMLInputElement).value).toBe('Night');
+    expect(screen.queryByLabelText('Save at')).toBeNull();
   });
 
   it('is the plain qBittorrent add for a user who may not send to Sonarr/Radarr', async () => {

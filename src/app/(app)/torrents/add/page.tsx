@@ -298,13 +298,17 @@ function AddTorrentPageContent() {
           </div>
         )}
 
-        {destination === 'arr' ? (
-          <ManualDownloadForm
-            release={addMode === 'magnet' ? { kind: 'magnet', magnet: magnetLink } : { kind: 'file', file: torrentFile }}
-            suggestedName={addMode === 'magnet' ? magnetDisplayName(magnetLink.trim()) ?? '' : ''}
-            prefill={prefill}
-          />
-        ) : (
+        {/* Kept mounted while hidden: a look at the other option keeps the title, the check and a sent request's id. */}
+        {canLink && (
+          <div hidden={destination !== 'arr'}>
+            <ManualDownloadForm
+              release={addMode === 'magnet' ? { kind: 'magnet', magnet: magnetLink } : { kind: 'file', file: torrentFile }}
+              suggestedName={addMode === 'magnet' ? magnetDisplayName(magnetLink.trim()) ?? '' : ''}
+              prefill={prefill}
+            />
+          </div>
+        )}
+        {destination === 'client' && (
         <>
         <div className="space-y-3 pt-1">
           <div className="space-y-1.5">

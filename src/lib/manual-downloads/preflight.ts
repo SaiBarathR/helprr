@@ -19,6 +19,10 @@ import type { ReleaseSource } from './release-source';
 export type ManualDownloadService = 'RADARR' | 'SONARR';
 
 export const TERMINAL_STATUSES = ['IMPORTED', 'FAILED', 'CANCELLED'] as const;
+/** A send under way: the sender owns the record. */
+export const SENDING_STATUSES = ['PREFLIGHT', 'CREATING_MEDIA', 'SUBMITTING_RELEASE'] as const;
+/** Arr refuses a release it grabbed within this long (its own "recently grabbed" rule). */
+const RECENT_GRAB_MS = 12 * 60 * 60_000;
 
 export interface AddOptions {
   qualityProfileId: number;
@@ -196,7 +200,7 @@ export async function preflightManualDownload(input: PreflightInput): Promise<Pr
   const term = input.service === 'RADARR' ? `tmdb:${input.externalId}` : `tvdb:${input.externalId}`;
   let found: (LibraryFields & { title: string; year: number; tmdbId?: number; tvdbId?: number }) | undefined;
   let downloadClients: DownloadClient[];
-  let grabbed: boolean;
+  let lastGrab: Date | null;
   let parse: Awaited<ReturnType<RadarrClient['parseTitle']>> | Awaited<ReturnType<SonarrClient['parseTitle']>> | null;
   let options: { profiles: QualityProfile[]; folders: RootFolder[]; tags: Tag[] } | null = null;
   try {
@@ -213,7 +217,8 @@ export async function preflightManualDownload(input: PreflightInput): Promise<Pr
     found = (results as Array<LibraryFields & { title: string; year: number; tmdbId?: number; tvdbId?: number }>)
       .find((result) => (input.service === 'RADARR' ? result.tmdbId : result.tvdbId) === input.externalId);
     downloadClients = clients.filter((dc) => dc.enable && dc.protocol === 'torrent');
-    grabbed = history.records.some((record) => record.eventType === 'grabbed');
+    const grab = history.records.find((record) => record.eventType === 'grabbed');
+    lastGrab = grab ? new Date(grab.date) : null;
     parse = parsed;
     if (found && !(found.id && found.id > 0) && input.add) {
       const [profiles, folders, tags] = await Promise.all([client.getQualityProfiles(), client.getRootFolders(), client.getTags()]);
@@ -230,7 +235,13 @@ export async function preflightManualDownload(input: PreflightInput): Promise<Pr
   }
   const existingId = found.id && found.id > 0 ? found.id : null;
   plan.target = { externalId: input.externalId, title: found.title, year: found.year, existingId };
-  if (grabbed) error('ALREADY_GRABBED', `${connection.label} has already grabbed this release.`);
+  // Arr itself refuses a release grabbed within the last 12 hours; an older grab
+  // (later failed, removed or imported) may be sent again.
+  if (lastGrab) {
+    const age = Date.now() - lastGrab.getTime();
+    if (!(age >= RECENT_GRAB_MS)) error('ALREADY_GRABBED', `${connection.label} grabbed this release less than 12 hours ago, and ${app} refuses it again until then.`);
+    else warn('GRABBED_BEFORE', `${connection.label} grabbed this release before, on ${lastGrab.toISOString().slice(0, 10)}.`);
+  }
 
   // A new title: the add options must belong to this instance.
   if (!existingId) {
@@ -250,9 +261,10 @@ export async function preflightManualDownload(input: PreflightInput): Promise<Pr
       error('RELEASE_TITLE_UNPARSEABLE', 'Radarr cannot read this release name. Use a name with the title and year, such as Title.2020.1080p.WEB.');
     } else {
       if (plan.parsed?.quality === 'Unknown') error('RELEASE_QUALITY_UNKNOWN', 'Radarr cannot tell the quality from this name. Add the quality words (for example 1080p WEB) to the release name.');
-      // Radarr maps a pushed release by its TMDB id first, which holds only when
-      // the years agree; otherwise it falls back to the title.
-      const yearMatches = info.year === found.year || (!!found.secondaryYear && info.year === found.secondaryYear);
+      // Radarr maps a pushed release by its TMDB id first, which holds when the
+      // years agree or the name has no year (Radarr reads it below 1800);
+      // otherwise it falls back to the title.
+      const yearMatches = (info.year ?? 0) < 1800 || info.year === found.year || (!!found.secondaryYear && info.year === found.secondaryYear);
       if (!yearMatches && radarr.movie && radarr.movie.id !== existingId) {
         error('RELEASE_OTHER_TITLE', `Radarr reads this release as ${radarr.movie.title} (${radarr.movie.year}), which is already in ${connection.label}. Change the release name.`);
       } else if (!yearMatches && !(radarr.movie && radarr.movie.id === existingId)) {
