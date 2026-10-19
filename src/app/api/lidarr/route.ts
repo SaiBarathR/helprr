@@ -76,20 +76,26 @@ async function getHandler(request: NextRequest) {
       cacheKeySeed,
       projectionKey: full ? 'full' : 'list',
       buildPayload: async () => {
+        // Labels load alongside the library, so a slow instance costs one timeout, not two.
+        const labelMapsPromise = full ? null : resolveInstances().then((instances) => getInstanceLabelMaps('lidarr', instances));
+        // Awaited below; if the library read throws first, this must not reject unhandled.
+        labelMapsPromise?.catch(() => {});
         // Shared tagged-library cache: one Redis entry per (scope, instance), reused by
         // ?full=true and the slim list. A partial (some-instance-failed) poll is left
         // uncached, so a blip can't half-blank the library for the whole TTL.
-        const { items: tagged, complete } = await getCachedTaggedLibrary({
+        const { items: tagged, complete, available } = await getCachedTaggedLibrary({
           scope: 'lidarr',
           cacheKeySeed,
           getInstances: resolveInstances,
           fetchOne: (client) => client.getArtists(),
         });
+        // Every configured instance failed: an error, not an empty library.
+        if (!available && (await resolveInstances()).length > 0) throw new Error('No Lidarr instance answered');
         if (full) return { payload: tagged, itemCount: tagged.length, cacheable: complete };
 
         // Resolve quality-profile / metadata-profile / tag IDs to names against each item's OWN
         // instance, so an artist from a non-default Lidarr isn't mislabelled by the default lookup.
-        const labelMaps = await getInstanceLabelMaps('lidarr', await resolveInstances());
+        const labelMaps = await labelMapsPromise!;
         return {
           itemCount: tagged.length,
           cacheable: complete && [...labelMaps.values()].every((map) => map.complete !== false),
