@@ -117,7 +117,7 @@ function AddTorrentPageContent() {
     const link = canLink ? linkPrefill(searchParams) : null;
     return link && (link.service === 'RADARR' ? canAddMovies : canAddSeries) ? link : null;
   });
-  // A Sonarr/Radarr check or send on its way ends on its own page: no switching meanwhile.
+  // A Sonarr/Radarr check or send, or a qBittorrent add, on its way ends on its own page: no switching meanwhile.
   const arrBusy = useIsMutating({ mutationKey: MANUAL_DOWNLOAD_MUTATION_KEY }) > 0;
   const [destination, setDestination] = useState<'arr' | 'client'>(canLink ? 'arr' : 'client');
 
@@ -290,7 +290,7 @@ function AddTorrentPageContent() {
           <div className="space-y-2" role="radiogroup" aria-label="Where it goes">
             <DestinationOption
               selected={destination === 'arr'}
-              disabled={arrBusy}
+              disabled={arrBusy || adding}
               onSelect={() => setDestination('arr')}
               title="Send to Sonarr or Radarr"
               badge="Recommended"
@@ -298,7 +298,7 @@ function AddTorrentPageContent() {
             />
             <DestinationOption
               selected={destination === 'client'}
-              disabled={arrBusy}
+              disabled={arrBusy || adding}
               onSelect={() => setDestination('client')}
               title="Add to qBittorrent only"
               description="It downloads where you choose, and you can pick which files. Nothing is imported."
