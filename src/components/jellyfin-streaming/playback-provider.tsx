@@ -802,8 +802,14 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
    * away where they had got to.
    */
   const reachedStartRef = useRef(false);
-  /** hls.js could not reach the current attempt's stream (a network error with no HTTP status). */
+  /**
+   * hls.js could not reach the current attempt's stream: its latest network
+   * event was a connection failure (no HTTP status, not a timeout) and nothing
+   * has loaded since. Reset by every start attempt.
+   */
   const unreachableRef = useRef(false);
+  /** The latest start attempt's request, so Retry can repeat it. */
+  const lastRequestRef = useRef<{ itemId: string; request: PlayOptions } | null>(null);
   const shuffledRef = useRef(false);
   const repeatRef = useRef<RepeatMode>('RepeatNone');
 
@@ -1092,10 +1098,12 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
         // (htmlMediaHelper.js `handleHlsJsMediaError`); recovering forever
         // leaves a genuinely broken stream spinning with no error on screen.
         let mediaErrorRecoveries = 0;
-        unreachableRef.current = false;
         hls.on(Hls.Events.ERROR, (_event, data) => {
           if (!isCurrent()) return;
-          if (data.type === Hls.ErrorTypes.NETWORK_ERROR && !data.response?.code) unreachableRef.current = true;
+          // A timeout can come from a reachable but slow stream, which a transcode may help.
+          if (data.type === Hls.ErrorTypes.NETWORK_ERROR && !data.response?.code && !String(data.details).endsWith('TimeOut')) {
+            unreachableRef.current = true;
+          }
           // Checked before the fatal guard and before the retry below. hls.js
           // retries NETWORK_ERROR indefinitely, so any upstream refusal — a 409
           // for a revoked token, a 404 for an item the member lost access to, a
@@ -1130,6 +1138,7 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
         hls.attachMedia(el);
         hls.on(Hls.Events.FRAG_LOADED, (_event, data) => {
           if (!isCurrent()) return;
+          unreachableRef.current = false;
           bandwidthRef.current.observe(data.frag.stats.loaded, data.frag.stats.loading.end - data.frag.stats.loading.start);
         });
         hlsRef.current = hls;
@@ -1141,6 +1150,7 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
         await new Promise<void>((resolve) => {
           const done = window.setTimeout(resolve, 10_000);
           hls.once(Hls.Events.MANIFEST_PARSED, () => {
+            if (isCurrent()) unreachableRef.current = false;
             window.clearTimeout(done);
             resolve();
           });
@@ -1191,6 +1201,7 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     // reads the viewer's intent and not the element `attachMedia` has just
     // played. Absent for a fresh start — picking a title means playing it.
     pausedIntentRef.current = Boolean(options.startPaused);
+    unreachableRef.current = false;
     setStatus('loading');
     setError(null);
     setNeedsJellyfinConnect(false);
@@ -1215,6 +1226,7 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
       // a later episode must not retry a renderer already known to be broken.
       enableSsaRender: !assRenderBrokenRef.current,
     };
+    lastRequestRef.current = { itemId: nextItem.Id, request };
     try {
       const nextStream = await fetchStream(nextItem.Id, request);
       if (superseded()) {
@@ -2088,14 +2100,19 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
   const retry = useCallback(() => {
     const pending = queueRef.current[indexRef.current];
     if (!pending) return;
-    // The failed attempt's own start (a seek or quality change mid-title), not
-    // the item's resume point, when the stored stream is this item's.
-    const failed = streamRef.current?.item.Id === pending.Id ? streamRef.current : null;
+    const current = streamRef.current?.item.Id === pending.Id ? streamRef.current : null;
+    const failed = lastRequestRef.current?.itemId === pending.Id ? lastRequestRef.current.request : null;
+    // Where the viewer was: the stream's position once it had played, otherwise
+    // where the failed attempt was asked to start (a seek or quality change
+    // mid-title), not the item's resume point.
+    const startTimeTicks = current && reachedStartRef.current
+      ? positionToReport(mediaRef.current, current, true) || secondsToTicks(positionRef.current)
+      : failed?.startTimeTicks;
     void startItem(pending, {
-      startTimeTicks: failed?.startTimeTicks,
+      startTimeTicks,
       audioStreamIndex: audioIndexRef.current,
       subtitleStreamIndex: subtitleIndexRef.current,
-      mediaSourceId: failed?.mediaSource.Id,
+      mediaSourceId: failed?.mediaSourceId ?? current?.mediaSource.Id,
       maxStreamingBitrate: maxBitrate,
     });
   }, [maxBitrate, startItem]);
