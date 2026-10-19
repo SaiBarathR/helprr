@@ -1,5 +1,5 @@
 import { isAxiosError } from 'axios';
-import Image from 'next/image';
+import { FadeInImage } from '@/components/media/fade-in-image';
 import { HeroImage } from '@/components/media/hero-image';
 import Link from '@/components/ui/app-link';
 import { PageHeader } from '@/components/layout/page-header';
@@ -115,7 +115,7 @@ export default async function DiscoverCollectionPage({ params }: DiscoverCollect
               >
                 <div className="relative w-[55px] h-[82px] rounded-lg overflow-hidden bg-muted shrink-0">
                   {posterSrc ? (
-                    <Image
+                    <FadeInImage
                       src={posterSrc}
                       alt={movie.title}
                       fill

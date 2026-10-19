@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import Image from 'next/image';
+import { FadeInImage } from '@/components/media/fade-in-image';
 import { Search, Loader2, CheckCircle2, XCircle, Tv } from 'lucide-react';
 import {
   Drawer,
@@ -237,7 +237,7 @@ export function SonarrMapDrawer({
                     >
                       <div className="relative h-[84px] w-[56px] shrink-0 overflow-hidden rounded-md bg-muted">
                         {posterSrc ? (
-                          <Image
+                          <FadeInImage
                             src={posterSrc}
                             alt={item.title}
                             fill

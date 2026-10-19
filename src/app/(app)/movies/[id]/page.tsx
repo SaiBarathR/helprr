@@ -4,6 +4,7 @@ import { useMemo, useRef, useState } from 'react';
 import { arrMutationFetch, jsonFetcher } from '@/lib/query-fetch';
 import { handleAuthError } from '@/lib/query-client';
 import Image from 'next/image';
+import { FadeInImage } from '@/components/media/fade-in-image';
 import { useParams, useSearchParams } from 'next/navigation';
 import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
 import { Button } from '@/components/ui/button';
@@ -620,7 +621,7 @@ export default function MovieDetailPage() {
                 <QuickContextMenu label={`${movie.title} actions`} groups={contextActionGroups}>
                 <div className="relative aspect-[2/3] rounded-lg overflow-hidden bg-muted shadow-lg ring-1 ring-border/20">
                   {poster ? (
-                    <Image
+                    <FadeInImage
                       src={poster}
                       alt={movie.title}
                       fill
@@ -684,7 +685,7 @@ export default function MovieDetailPage() {
               <QuickContextMenu label={`${movie.title} actions`} groups={contextActionGroups}>
               <div className="relative aspect-[2/3] rounded-lg overflow-hidden bg-muted">
                 {poster ? (
-                  <Image
+                  <FadeInImage
                     src={poster}
                     alt={movie.title}
                     fill
@@ -905,7 +906,7 @@ export default function MovieDetailPage() {
                             >
                               {logoSrc && (
                                 <div className="relative h-5 w-8 overflow-hidden rounded-[3px] bg-white">
-                                  <Image
+                                  <FadeInImage
                                     src={logoSrc}
                                     alt={company.name}
                                     fill

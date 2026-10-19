@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import Link from '@/components/ui/app-link';
-import Image from 'next/image';
 import { HeroImage } from '@/components/media/hero-image';
 import { FadeInImage } from '@/components/media/fade-in-image';
 import { Badge } from '@/components/ui/badge';
@@ -343,7 +342,7 @@ export function SectionRow({
               >
                 <div className="relative h-8 w-8 rounded bg-background/70 overflow-hidden shrink-0">
                   {providerLogoSrc ? (
-                    <Image
+                    <FadeInImage
                       src={providerLogoSrc}
                       alt={provider.name}
                       fill

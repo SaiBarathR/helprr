@@ -1,6 +1,6 @@
 'use client';
 
-import Image from 'next/image';
+import { FadeInImage } from '@/components/media/fade-in-image';
 import Link from '@/components/ui/app-link';
 import { ChevronRight, User } from 'lucide-react';
 import {
@@ -45,7 +45,7 @@ export function PersonRow({
     >
       <div className="relative w-12 h-12 rounded-full overflow-hidden bg-muted shrink-0">
         {imageSrc ? (
-          <Image
+          <FadeInImage
             src={imageSrc}
             alt={name}
             fill

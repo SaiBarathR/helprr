@@ -1,6 +1,6 @@
 'use client';
 
-import Image from 'next/image';
+import { FadeInImage } from '@/components/media/fade-in-image';
 import Link from '@/components/ui/app-link';
 import { User } from 'lucide-react';
 import {
@@ -35,7 +35,7 @@ export function PersonCard({
     >
       <div className="relative w-10 h-10 rounded-full overflow-hidden bg-muted shrink-0">
         {imageSrc ? (
-          <Image
+          <FadeInImage
             src={imageSrc}
             alt={name}
             fill

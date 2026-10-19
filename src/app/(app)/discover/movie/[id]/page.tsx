@@ -6,7 +6,7 @@ import { useMemo } from 'react';
 import { useParams } from 'next/navigation';
 import Link from '@/components/ui/app-link';
 import { DiscoverFilterChip } from '@/components/discover/discover-filter-chip';
-import Image from 'next/image';
+import { FadeInImage } from '@/components/media/fade-in-image';
 import { useQuery } from '@tanstack/react-query';
 import { PageHeader } from '@/components/layout/page-header';
 import { PageSpinner } from '@/components/ui/page-spinner';
@@ -168,7 +168,7 @@ export default function DiscoverMovieDetailPage() {
             >
               {movie.collection.posterPath && (
                 <div className="relative w-[60px] h-[90px] rounded-lg overflow-hidden bg-muted shrink-0">
-                  <Image
+                  <FadeInImage
                     src={toCachedImageSrc(movie.collection.posterPath, 'tmdb') || movie.collection.posterPath}
                     alt={movie.collection.name}
                     fill
@@ -201,7 +201,7 @@ export default function DiscoverMovieDetailPage() {
                   <DiscoverFilterChip key={company.id} href={`/discover?companies=${company.id}&companyName=${encodeURIComponent(company.name)}&contentType=movie`} className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-border/50 bg-accent/30">
                     {logoSrc && (
                       <div className="relative h-5 w-8 overflow-hidden rounded-[3px] bg-white">
-                        <Image
+                        <FadeInImage
                           src={logoSrc}
                           alt={company.name}
                           fill

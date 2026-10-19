@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Link from '@/components/ui/app-link';
-import Image from 'next/image';
+import { FadeInImage } from '@/components/media/fade-in-image';
 import { Bookmark, Send, Search, Loader2, ExternalLink, ChevronLeft } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -173,7 +173,7 @@ function SingleHit({ hit, canOpenTitle }: { hit: ResolvedTmdbHit; canOpenTitle: 
       <div className="flex gap-3">
         {hit.posterPath ? (
           <div className="relative w-20 h-30 shrink-0 rounded-md overflow-hidden bg-muted">
-            <Image
+            <FadeInImage
               src={hit.posterPath}
               alt={hit.title}
               fill

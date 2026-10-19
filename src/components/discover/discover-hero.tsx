@@ -1,6 +1,7 @@
 'use client';
 
 import Image from 'next/image';
+import { FadeInImage } from '@/components/media/fade-in-image';
 import { Star } from 'lucide-react';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import { DiscoverDetail } from '@/types';
@@ -98,7 +99,7 @@ export function DiscoverHero({
         <div className="relative w-[110px] h-[165px] md:w-[140px] md:h-[210px] shrink-0">
           <div className="absolute inset-0 rounded-md overflow-hidden bg-card ring-1 ring-border shadow-[0_20px_50px_-15px_rgba(0,0,0,0.7)]">
             {posterSrc ? (
-              <Image
+              <FadeInImage
                 src={posterSrc}
                 alt={title}
                 fill

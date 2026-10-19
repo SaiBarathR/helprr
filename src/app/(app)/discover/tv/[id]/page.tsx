@@ -6,7 +6,7 @@ import { useCallback, useMemo } from 'react';
 import { useParams } from 'next/navigation';
 import Link from '@/components/ui/app-link';
 import { DiscoverFilterChip } from '@/components/discover/discover-filter-chip';
-import Image from 'next/image';
+import { FadeInImage } from '@/components/media/fade-in-image';
 import { useQuery } from '@tanstack/react-query';
 import { PageHeader } from '@/components/layout/page-header';
 import { PageSpinner } from '@/components/ui/page-spinner';
@@ -169,7 +169,7 @@ export default function DiscoverTvDetailPage() {
                   <DiscoverFilterChip key={network.id} href={`/discover?networks=${network.id}&networkName=${encodeURIComponent(network.name)}&contentType=show`} className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-border/50 bg-accent/30">
                     {logoSrc && (
                       <div className="relative h-5 w-8 overflow-hidden rounded-[3px] bg-white">
-                        <Image
+                        <FadeInImage
                           src={logoSrc}
                           alt={network.name}
                           fill
@@ -200,7 +200,7 @@ export default function DiscoverTvDetailPage() {
                   <DiscoverFilterChip key={company.id} href={`/discover?companies=${company.id}&companyName=${encodeURIComponent(company.name)}&contentType=show`} className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-border/50 bg-accent/30">
                     {logoSrc && (
                       <div className="relative h-5 w-8 overflow-hidden rounded-[3px] bg-white">
-                        <Image
+                        <FadeInImage
                           src={logoSrc}
                           alt={company.name}
                           fill
@@ -323,7 +323,7 @@ function SeasonCard({
       >
         {posterSrc && (
           <div className="relative w-[45px] h-[67px] rounded-md overflow-hidden bg-muted shrink-0">
-            <Image
+            <FadeInImage
               src={posterSrc}
               alt={season.name}
               fill
@@ -368,7 +368,7 @@ function SeasonCard({
               >
                 {stillSrc ? (
                   <div className="relative w-[90px] h-[50px] rounded-md overflow-hidden bg-muted shrink-0">
-                    <Image
+                    <FadeInImage
                       src={stillSrc}
                       alt={ep.name}
                       fill

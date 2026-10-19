@@ -3,6 +3,7 @@
 import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
+import { FadeInImage } from '@/components/media/fade-in-image';
 import Link from '@/components/ui/app-link';
 import { useParams, useSearchParams } from 'next/navigation';
 import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
@@ -476,7 +477,7 @@ export default function ArtistDetailPage() {
                 <QuickContextMenu label={`${artist.artistName} actions`} groups={artistContextGroups}>
                 <div className="relative aspect-[2/3] rounded-lg overflow-hidden bg-muted shadow-lg ring-1 ring-border/20">
                   {poster ? (
-                    <Image src={poster} alt={artist.artistName} fill sizes="100px" className="object-cover" unoptimized={isProtectedApiImageSrc(poster)} />
+                    <FadeInImage src={poster} alt={artist.artistName} fill sizes="100px" className="object-cover" unoptimized={isProtectedApiImageSrc(poster)} />
                   ) : (
                     <div className="absolute inset-0 flex items-center justify-center text-muted-foreground"><Disc3 className="h-8 w-8" /></div>
                   )}
@@ -512,7 +513,7 @@ export default function ArtistDetailPage() {
               <QuickContextMenu label={`${artist.artistName} actions`} groups={artistContextGroups}>
               <div className="relative aspect-[2/3] rounded-lg overflow-hidden bg-muted">
                 {poster ? (
-                  <Image src={poster} alt={artist.artistName} fill sizes="120px" className="object-cover" unoptimized={isProtectedApiImageSrc(poster)} />
+                  <FadeInImage src={poster} alt={artist.artistName} fill sizes="120px" className="object-cover" unoptimized={isProtectedApiImageSrc(poster)} />
                 ) : (
                   <div className="absolute inset-0 flex items-center justify-center text-muted-foreground"><Disc3 className="h-10 w-10" /></div>
                 )}
@@ -654,7 +655,7 @@ export default function ArtistDetailPage() {
                       <div key={album.id} className="flex gap-3 rounded-xl bg-card p-2.5 hover:bg-muted/30 transition-colors">
                         <Link href={`/music/album/${album.id}${instance ? `?instance=${instance}` : ''}`} aria-label={album.title} className="relative shrink-0 h-14 w-14 rounded-md overflow-hidden bg-muted">
                           {cover ? (
-                            <Image src={cover} alt={album.title} fill sizes="56px" className="object-cover" unoptimized={isProtectedApiImageSrc(cover)} />
+                            <FadeInImage src={cover} alt={album.title} fill sizes="56px" className="object-cover" unoptimized={isProtectedApiImageSrc(cover)} />
                           ) : (
                             <div className="absolute inset-0 flex items-center justify-center text-muted-foreground"><Disc3 className="h-5 w-5" /></div>
                           )}

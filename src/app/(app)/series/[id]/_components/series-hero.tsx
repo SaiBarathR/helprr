@@ -1,6 +1,7 @@
 'use client';
 
 import Image from 'next/image';
+import { FadeInImage } from '@/components/media/fade-in-image';
 import Link from '@/components/ui/app-link';
 import { AnimeHero } from '@/components/anime/anime-hero';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -174,7 +175,7 @@ export function SeriesHero({
               <QuickContextMenu label={`${series.title} actions`} groups={contextGroups}>
               <div className="relative aspect-[2/3] rounded-lg overflow-hidden bg-muted shadow-lg ring-1 ring-border/20">
                 {poster ? (
-                  <Image
+                  <FadeInImage
                     src={poster}
                     alt={series.title}
                     fill
@@ -218,7 +219,7 @@ export function SeriesHero({
             <QuickContextMenu label={`${series.title} actions`} groups={contextGroups}>
             <div className="relative aspect-[2/3] rounded-lg overflow-hidden bg-muted">
               {poster ? (
-                <Image
+                <FadeInImage
                   src={poster}
                   alt={series.title}
                   width={112}

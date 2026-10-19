@@ -3,7 +3,7 @@
 import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import Image from 'next/image';
+import { FadeInImage } from '@/components/media/fade-in-image';
 import Link from '@/components/ui/app-link';
 import { useParams } from 'next/navigation';
 import { sanitizeHtml } from '@/lib/sanitize-html';
@@ -152,7 +152,7 @@ export default function CharacterDetailPage() {
         {/* Image */}
         <div className="relative w-28 h-36 sm:w-32 sm:h-44 rounded-xl overflow-hidden bg-muted shrink-0 shadow-lg">
           {imgSrc ? (
-            <Image
+            <FadeInImage
               src={imgSrc}
               alt={detail.name}
               fill
@@ -274,7 +274,7 @@ export default function CharacterDetailPage() {
                   <Link href={href}>
                     <div className="relative aspect-[2/3] rounded-lg overflow-hidden bg-muted shadow-sm group-hover:shadow-md transition-shadow border border-border/30 group-hover:border-primary/40">
                       {coverSrc ? (
-                        <Image
+                        <FadeInImage
                           src={coverSrc}
                           alt={edge.node.title}
                           fill

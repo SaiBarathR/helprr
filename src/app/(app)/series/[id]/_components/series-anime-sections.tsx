@@ -1,7 +1,7 @@
 'use client';
 
 import type { ReactNode } from 'react';
-import Image from 'next/image';
+import { FadeInImage } from '@/components/media/fade-in-image';
 import Link from '@/components/ui/app-link';
 import { Badge } from '@/components/ui/badge';
 import { AnimeCharacterRail } from '@/components/anime/anime-character-rail';
@@ -193,7 +193,7 @@ export function SeriesAnimeSections({
                 >
                   <div className="relative w-10 h-10 rounded-full overflow-hidden bg-muted shrink-0">
                     {staffImgSrc ? (
-                      <Image
+                      <FadeInImage
                         src={staffImgSrc}
                         alt={person.name}
                         fill

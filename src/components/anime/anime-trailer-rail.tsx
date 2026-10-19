@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import Image from 'next/image';
+import { FadeInImage } from '@/components/media/fade-in-image';
 import { Play } from 'lucide-react';
 import { VideoPlayerDialog, type PlayableVideo } from '@/components/media/video-player-dialog';
 import { extractYouTubeVideosFromExternalLinks } from '@/lib/anilist-helpers';
@@ -62,7 +62,7 @@ export function AnimeTrailerRail({ trailer, externalLinks, title }: AnimeTrailer
             >
               <div className="relative aspect-video rounded-lg overflow-hidden bg-muted border border-border/40">
                 {thumbnail && (
-                  <Image
+                  <FadeInImage
                     src={thumbnail}
                     alt={video.title || 'Video'}
                     fill

@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { jsonFetcher } from '@/lib/query-fetch';
 import Image from 'next/image';
+import { FadeInImage } from '@/components/media/fade-in-image';
 import Link from '@/components/ui/app-link';
 import { Clock, Dices, Film, Loader2, RefreshCw, Sparkles, Star, Tv } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -181,7 +182,7 @@ export function RandomWatchView() {
               <QuickContextMenu label={`Actions for ${pick.title}`} actions={resultActions}>
                 <div className="relative mx-auto aspect-[2/3] w-[120px] shrink-0 overflow-hidden rounded-xl bg-muted shadow-[0_20px_50px_-15px_rgba(0,0,0,0.7)] ring-1 ring-border md:mx-0 md:w-[180px]">
                   {poster ? (
-                    <Image
+                    <FadeInImage
                       src={poster}
                       alt={pick.title}
                       width={360}

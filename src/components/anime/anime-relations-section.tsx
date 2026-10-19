@@ -1,6 +1,6 @@
 'use client';
 
-import Image from 'next/image';
+import { FadeInImage } from '@/components/media/fade-in-image';
 import Link from '@/components/ui/app-link';
 import { Badge } from '@/components/ui/badge';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
@@ -79,7 +79,7 @@ export function AnimeRelationsSection({ relations }: AnimeRelationsSectionProps)
             >
               <div className="relative aspect-[2/3] rounded-lg overflow-hidden bg-muted border border-border/30 group-hover:border-primary/40 transition-colors">
                 {imgSrc ? (
-                  <Image
+                  <FadeInImage
                     src={imgSrc}
                     alt={rel.title}
                     fill

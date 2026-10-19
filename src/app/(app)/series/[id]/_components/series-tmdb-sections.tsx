@@ -1,6 +1,6 @@
 'use client';
 
-import Image from 'next/image';
+import { FadeInImage } from '@/components/media/fade-in-image';
 import { DiscoverFilterChip } from '@/components/discover/discover-filter-chip';
 import { VirtualizedPersonRail } from '@/components/media/virtualized-person-rail';
 import { DiscoverVideoRail } from '@/components/discover/discover-video-rail';
@@ -108,7 +108,7 @@ export function SeriesTmdbSections({
                     >
                       {logoSrc && (
                         <div className="relative h-5 w-8 overflow-hidden rounded-[3px] bg-white">
-                          <Image
+                          <FadeInImage
                             src={logoSrc}
                             alt={network.name}
                             fill
@@ -145,7 +145,7 @@ export function SeriesTmdbSections({
                     >
                       {logoSrc && (
                         <div className="relative h-5 w-8 overflow-hidden rounded-[3px] bg-white">
-                          <Image
+                          <FadeInImage
                             src={logoSrc}
                             alt={company.name}
                             fill

@@ -1,6 +1,6 @@
 'use client';
 
-import Image from 'next/image';
+import { FadeInImage } from '@/components/media/fade-in-image';
 import Link from '@/components/ui/app-link';
 import { Badge } from '@/components/ui/badge';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
@@ -46,7 +46,7 @@ export function AnimeCharacterRail({ characters }: AnimeCharacterRailProps) {
                 {/* Character image — clickable */}
                 <Link href={`/anime/character/${char.id}`} className="relative w-1/2 h-full hover:opacity-80 transition-opacity">
                   {charImgSrc ? (
-                    <Image
+                    <FadeInImage
                       src={charImgSrc}
                       alt={char.name}
                       fill
@@ -65,7 +65,7 @@ export function AnimeCharacterRail({ characters }: AnimeCharacterRailProps) {
                   {char.voiceActor ? (
                     <Link href={`/anime/staff/${char.voiceActor.id}`} className="block relative w-full h-full hover:opacity-80 transition-opacity">
                       {vaImgSrc ? (
-                        <Image
+                        <FadeInImage
                           src={vaImgSrc}
                           alt={char.voiceActor.name}
                           fill
