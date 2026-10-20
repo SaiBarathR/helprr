@@ -10,7 +10,8 @@ import {
 import { toast } from 'sonner';
 import { SeerrRequestModal } from '@/components/seerr/seerr-request-modal';
 import { PendingApprovalSection } from '@/components/seerr/pending-approval-section';
-import { useCan } from '@/components/permission-provider';
+import { hasCapability, useCan, useMe } from '@/components/permission-provider';
+import { TMDB_TITLE_PAGE_CAPABILITIES } from '@/lib/capabilities';
 import { useBadgeActions } from '@/components/layout/badge-provider';
 import { useExternalUrls } from '@/lib/hooks/use-external-urls';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
@@ -344,6 +345,11 @@ export function RequestsListWidget({
   const [deleteTarget, setDeleteTarget] = useState<EnrichedSeerrRequest | null>(null);
   // Only approvers see request-management actions (approve/decline/edit/retry/delete).
   const canManageRequests = useCan('requests.approve');
+  // A title not in the library yet, or in a library section this user can't
+  // open, opens on its Discover page instead (which needs a TMDB connection).
+  const me = useMe();
+  const canOpenTitlePage = me?.tmdbConfigured === true
+    && TMDB_TITLE_PAGE_CAPABILITIES.some((cap) => hasCapability(me, cap));
   const { adjustBadge } = useBadgeActions();
 
   const runAction = useCallback(
@@ -528,9 +534,12 @@ export function RequestsListWidget({
           const canDecline = canManageRequests && Number(req.status) === SEERR_REQUEST_STATUS.PENDING_APPROVAL;
           const canRetry = canManageRequests && Number(req.status) === SEERR_REQUEST_STATUS.FAILED;
 
-          const helprrHref = req.enriched.helprr
-            ? `/${req.enriched.helprr.type === 'series' ? 'series' : 'movies'}/${req.enriched.helprr.id}?instance=${req.enriched.helprr.instanceId}`
-            : null;
+          const library = req.enriched.helprr;
+          const helprrHref = library && hasCapability(me, library.type === 'series' ? 'series.view' : 'movies.view')
+            ? `/${library.type === 'series' ? 'series' : 'movies'}/${library.id}?instance=${library.instanceId}`
+            : canOpenTitlePage && req.media?.tmdbId
+              ? `/discover/${req.type === 'tv' ? 'tv' : 'movie'}/${req.media.tmdbId}`
+              : null;
           const jellyfinHref =
             jellyfinExternal && req.media?.jellyfinMediaId
               ? `${jellyfinExternal}/web/index.html#!/details?id=${req.media.jellyfinMediaId}`
@@ -543,7 +552,7 @@ export function RequestsListWidget({
             ...(helprrHref ? [{
               id: 'open-helprr',
               label: 'Open in Helprr',
-              icon: req.enriched.helprr?.type === 'series' ? <Tv size={14} /> : <Film size={14} />,
+              icon: <Icon size={14} />,
               href: helprrHref,
             }] : []),
             ...(jellyfinHref ? [{
