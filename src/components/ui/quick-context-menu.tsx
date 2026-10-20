@@ -407,7 +407,9 @@ export function QuickContextMenu({
         onContextMenu={(event) => {
           // A right-click or Android long-press inside a portal opened from
           // here: handled, so Radix does not open this surface's menu for it.
-          if (isFromPortal(event.target, event.currentTarget)) event.preventDefault();
+          // After a pointerdown in the portal the trigger is already disabled,
+          // so the browser keeps its own menu (paste in a dialog's input).
+          if (!nestedControlActive && isFromPortal(event.target, event.currentTarget)) event.preventDefault();
         }}
         onContextMenuCapture={(event) => {
           // Keyboard-triggered context menus may not have a preceding pointer
