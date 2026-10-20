@@ -9,7 +9,6 @@ const mocks = vi.hoisted(() => ({
   caps: new Set<string>(),
   push: vi.fn(),
   toast: { success: vi.fn(), error: vi.fn() },
-  interactiveTitles: [] as string[],
 }));
 vi.mock('next/navigation', () => ({
   useParams: () => ({ id: '7', seasonNumber: '4' }),
@@ -22,12 +21,6 @@ vi.mock('@/components/permission-provider', () => ({ useCan: (cap: string) => mo
 vi.mock('sonner', () => ({ toast: mocks.toast }));
 vi.mock('@/components/jellyfin/use-series-episode-watch', () => ({ useSeriesEpisodeWatch: () => ({ episodes: {} }) }));
 vi.mock('@/components/scheduled-alerts/scheduled-alert-dialog', () => ({ ScheduledAlertDialog: () => null }));
-vi.mock('@/components/media/interactive-search-dialog', () => ({
-  InteractiveSearchDialog: ({ open, title }: { open: boolean; title: string }) => {
-    if (open) mocks.interactiveTitles.push(title);
-    return null;
-  },
-}));
 import SeasonDetailPage from './page';
 
 const SERIES = {
@@ -48,7 +41,6 @@ beforeEach(() => {
   (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   vi.clearAllMocks();
   mocks.caps = new Set(['activity.manage', 'series.editMonitoring']);
-  mocks.interactiveTitles = [];
   commands = [];
   commandResponse = () => Response.json({ id: 1 });
   vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
@@ -166,11 +158,18 @@ describe('season page episode search buttons', () => {
     expect(mocks.toast.success).not.toHaveBeenCalled();
   });
 
-  it('opens interactive search for that episode', async () => {
+  it('opens the interactive search page for that episode', async () => {
     await renderPage();
     await act(async () => button('Interactive search: Home')!.click());
-    await waitFor(() => expect(mocks.interactiveTitles).toContain('Ted Lasso - Season 4 - Home'));
-    expect(mocks.push).not.toHaveBeenCalled();
+    expect(mocks.push).toHaveBeenCalledWith('/series/7/season/4/episode/101/search?title=Ted+Lasso+-+Season+4+-+Home&instance=son-1');
+  });
+
+  it('opens the interactive search page for the whole season', async () => {
+    await renderPage();
+    const seasonInteractive = [...document.querySelectorAll('button')]
+      .find((b) => !b.hasAttribute('aria-label') && b.textContent === 'Interactive')!;
+    await act(async () => seasonInteractive.click());
+    expect(mocks.push).toHaveBeenCalledWith('/series/7/season/4/search?title=Ted+Lasso+-+Season+4&instance=son-1');
   });
 
   it('reports a rejected season search instead of claiming it started', async () => {

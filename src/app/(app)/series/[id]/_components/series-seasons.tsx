@@ -9,6 +9,7 @@ import { Bookmark, Search, ChevronDown, ChevronUp, ChevronRight, Star, Check } f
 import type { DiscoverTvFullDetail, SonarrEpisode, SonarrSeries } from '@/types';
 import type { EpisodeWatchStatus } from '@/types/watch-status';
 import { toCachedImageSrc } from '@/lib/image';
+import { arrInteractiveSearchHref } from '@/lib/arr-edit-href';
 import { ExpandedSeasonEpisodes } from './expanded-season-episodes';
 
 /**
@@ -32,7 +33,6 @@ export function SeriesSeasons({
   canEditMonitoring,
   canManageActivity,
   onToggleSeasonMonitor,
-  onInteractiveSearch,
 }: {
   series: SonarrSeries;
   routeId: string;
@@ -49,7 +49,6 @@ export function SeriesSeasons({
   canEditMonitoring: boolean;
   canManageActivity: boolean;
   onToggleSeasonMonitor: (seasonNumber: number, monitored: boolean) => void;
-  onInteractiveSearch: (target: { seasonNumber: number; label: string }) => void;
 }) {
   const seasonNumbers = [...new Set(episodes.map((e) => e.seasonNumber))].sort((a, b) => b - a);
   return (
@@ -98,12 +97,11 @@ export function SeriesSeasons({
               id: 'interactive',
               label: 'Interactive search…',
               icon: <Search className="h-4 w-4" />,
-              onSelect: () => {
-                onInteractiveSearch({
-                  seasonNumber: sn,
-                  label: sn === 0 ? 'Specials' : `Season ${sn}`,
-                });
-              },
+              href: arrInteractiveSearchHref(
+                { kind: 'season', seriesId: series.id, seasonNumber: sn },
+                `${series.title} - ${sn === 0 ? 'Specials' : `Season ${sn}`}`,
+                instance,
+              ),
             }] : []),
             ...(tmdbData && !isAnime ? [{ id: 'expand', label: isExpanded ? 'Collapse episodes' : 'Show episodes', icon: isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />, onSelect: () => onToggleExpand(sn) }] : []),
           ];

@@ -13,7 +13,6 @@ import { PageSpinner } from '@/components/ui/page-spinner';
 import { ErrorState } from '@/components/ui/error-state';
 import { PageHeader } from '@/components/layout/page-header';
 import { RenamePreviewDialog } from '@/components/media/rename-preview-dialog';
-import { InteractiveSearchDialog } from '@/components/media/interactive-search-dialog';
 import {
   Drawer,
   DrawerContent,
@@ -61,6 +60,7 @@ import { useQualityProfiles, useMetadataProfiles, useTags } from '@/lib/hooks/us
 import { pollCommand } from '@/lib/arr-command';
 import { useExternalUrlResolver } from '@/lib/hooks/use-external-urls';
 import { formatBytes } from '@/lib/format';
+import { arrInteractiveSearchHref } from '@/lib/arr-edit-href';
 import { useCan } from '@/components/permission-provider';
 import { QuickContextMenu, type ContextActionGroup } from '@/components/ui/quick-context-menu';
 
@@ -140,10 +140,6 @@ export default function ArtistDetailPage() {
   const [actionLoading, setActionLoading] = useState('');
   const [overviewExpanded, setOverviewExpanded] = useRouteViewState('overview-expanded', false);
   const [showRenamePreview, setShowRenamePreview] = useState(false);
-  const [albumInteractiveTarget, setAlbumInteractiveTarget] = useState<{
-    albumId: number;
-    title: string;
-  } | null>(null);
   const [albumMonitorPending, setAlbumMonitorPending] = useState<number | null>(null);
   const lidarrExternalUrl = useExternalUrlResolver()('LIDARR', instance);
 
@@ -646,9 +642,7 @@ export default function ArtistDetailPage() {
                         id: 'interactive',
                         label: 'Interactive search…',
                         icon: <Search className="h-4 w-4" />,
-                        onSelect: () => {
-                          setAlbumInteractiveTarget({ albumId: album.id, title: album.title });
-                        },
+                        href: arrInteractiveSearchHref({ kind: 'album', albumId: album.id }, album.title, instance),
                       }] : []),
                     ];
                     return (
@@ -712,17 +706,6 @@ export default function ArtistDetailPage() {
         mediaId={artist.id}
         mediaTitle={artist.artistName}
         instanceId={instance}
-      />
-
-      <InteractiveSearchDialog
-        open={albumInteractiveTarget !== null}
-        onOpenChange={(open) => { if (!open) setAlbumInteractiveTarget(null); }}
-        title={albumInteractiveTarget?.title ?? ''}
-        service="lidarr"
-        searchParams={{
-          albumId: albumInteractiveTarget?.albumId ?? 0,
-          ...(instance ? { instanceId: instance } : {}),
-        }}
       />
 
       <Drawer

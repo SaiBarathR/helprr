@@ -1,15 +1,13 @@
 // @vitest-environment jsdom
 import { render, screen, within } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-type MockContextAction = { id: string; label: string; onSelect?: () => void };
+type MockContextAction = { id: string; label: string; href?: string; onSelect?: () => void };
 
 const mocks = vi.hoisted(() => ({
   search: 'instance=lid-2',
   canManageActivity: true,
-  dialog: null as null | { open: boolean; title: string; service: string; searchParams: Record<string, unknown> },
 }));
 
 vi.mock('next/navigation', () => ({
@@ -25,16 +23,12 @@ vi.mock('@/components/ui/quick-context-menu', () => ({
     <>
       {children}
       <div role="group" aria-label={label}>
-        {actions.map((action) => <button key={action.id} type="button" onClick={action.onSelect}>{action.label}</button>)}
+        {actions.map((action) => (action.href
+          ? <a key={action.id} href={action.href}>{action.label}</a>
+          : <button key={action.id} type="button" onClick={action.onSelect}>{action.label}</button>))}
       </div>
     </>
   ),
-}));
-vi.mock('@/components/media/interactive-search-dialog', () => ({
-  InteractiveSearchDialog: (props: NonNullable<typeof mocks.dialog>) => {
-    mocks.dialog = props;
-    return props.open ? <div role="dialog" aria-label={props.title} /> : null;
-  },
 }));
 
 import ArtistFilesPage from './page';
@@ -50,7 +44,6 @@ const routes: Record<string, unknown> = {
 };
 
 beforeEach(() => {
-  mocks.dialog = null;
   mocks.canManageActivity = true;
   vi.stubGlobal('fetch', vi.fn(async (input: string) => {
     const url = new URL(input, 'http://localhost');
@@ -68,22 +61,19 @@ function renderPage() {
 
 describe('artist files page', () => {
   it("searches a file row's own album, on the page's instance", async () => {
-    const user = userEvent.setup();
     renderPage();
-    await user.click(within(await screen.findByRole('group', { name: 'Actions for 01 - Two.flac' })).getByRole('button', { name: 'Interactive search…' }));
-    expect(screen.getByRole('dialog', { name: 'Second Album' })).toBeTruthy();
-    expect(mocks.dialog).toEqual(expect.objectContaining({ service: 'lidarr', searchParams: { albumId: 32, instanceId: 'lid-2' } }));
-
-    await user.click(within(screen.getByRole('group', { name: 'Actions for 01 - One.flac' })).getByRole('button', { name: 'Interactive search…' }));
-    expect(screen.getByRole('dialog', { name: 'First Album' })).toBeTruthy();
-    expect(mocks.dialog?.searchParams).toEqual({ albumId: 31, instanceId: 'lid-2' });
+    const searchLink = (file: string) =>
+      within(screen.getByRole('group', { name: `Actions for ${file}` })).getByRole('link', { name: 'Interactive search…' }).getAttribute('href');
+    await screen.findByRole('group', { name: 'Actions for 01 - Two.flac' });
+    expect(searchLink('01 - Two.flac')).toBe('/music/album/32/search?title=Second+Album&instance=lid-2');
+    expect(searchLink('01 - One.flac')).toBe('/music/album/31/search?title=First+Album&instance=lid-2');
   });
 
   it('offers no Interactive search to a user who cannot manage activity', async () => {
     mocks.canManageActivity = false;
     renderPage();
     const actions = await screen.findByRole('group', { name: 'Actions for 01 - Two.flac' });
-    expect(within(actions).queryByRole('button', { name: 'Interactive search…' })).toBeNull();
+    expect(within(actions).queryByRole('link', { name: 'Interactive search…' })).toBeNull();
     expect(within(actions).getByRole('button', { name: 'View information' })).toBeTruthy();
   });
 });

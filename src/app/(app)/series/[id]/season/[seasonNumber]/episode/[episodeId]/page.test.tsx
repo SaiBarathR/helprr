@@ -7,13 +7,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   toast: { success: vi.fn(), error: vi.fn() },
+  push: vi.fn(),
 }));
 vi.mock('next/navigation', () => ({
   useParams: () => ({ id: '7', seasonNumber: '4', episodeId: '101' }),
   useSearchParams: () => new URLSearchParams('instance=son-1'),
 }));
 vi.mock('@/components/layout/navigation-provider', () => ({
-  useAppRouter: () => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn() }),
+  useAppRouter: () => ({ push: mocks.push, replace: vi.fn(), back: vi.fn() }),
 }));
 vi.mock('@/components/permission-provider', () => ({ useCan: () => true }));
 vi.mock('sonner', () => ({ toast: mocks.toast }));
@@ -21,7 +22,6 @@ vi.mock('@/components/jellyfin/use-series-episode-watch', () => ({
   useSeriesEpisodeWatch: () => ({ episodes: {}, jellyfinSeriesId: null }),
 }));
 vi.mock('@/components/scheduled-alerts/scheduled-alert-dialog', () => ({ ScheduledAlertDialog: () => null }));
-vi.mock('@/components/media/interactive-search-dialog', () => ({ InteractiveSearchDialog: () => null }));
 import EpisodeDetailPage from './page';
 
 const SERIES = {
@@ -73,12 +73,13 @@ async function waitFor(check: () => void, timeout = 3000) {
     }
   }
 }
-async function clickAutomatic() {
+async function clickButton(text: string) {
   await act(async () => root.render(<QueryClientProvider client={queryClient}><EpisodeDetailPage /></QueryClientProvider>));
-  await waitFor(() => expect([...document.querySelectorAll('button')].some((b) => b.textContent === 'Automatic')).toBe(true));
-  const automatic = [...document.querySelectorAll('button')].find((b) => b.textContent === 'Automatic')!;
-  await act(async () => automatic.click());
+  await waitFor(() => expect([...document.querySelectorAll('button')].some((b) => b.textContent === text)).toBe(true));
+  const target = [...document.querySelectorAll('button')].find((b) => b.textContent === text)!;
+  await act(async () => target.click());
 }
+const clickAutomatic = () => clickButton('Automatic');
 
 describe('episode page automatic search', () => {
   it('confirms a search Sonarr accepted', async () => {
@@ -92,5 +93,12 @@ describe('episode page automatic search', () => {
     await clickAutomatic();
     await waitFor(() => expect(mocks.toast.error).toHaveBeenCalledWith('Search failed'));
     expect(mocks.toast.success).not.toHaveBeenCalled();
+  });
+});
+
+describe('episode page interactive search', () => {
+  it('opens the interactive search page for the episode', async () => {
+    await clickButton('Interactive');
+    expect(mocks.push).toHaveBeenCalledWith('/series/7/season/4/episode/101/search?title=Ted+Lasso+-+S04E01+-+Home&instance=son-1');
   });
 });

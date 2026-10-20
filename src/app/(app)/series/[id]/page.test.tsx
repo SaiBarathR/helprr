@@ -120,10 +120,6 @@ vi.mock('@/components/scheduled-alerts/scheduled-alert-dialog', () => ({
     (open ? <div role="dialog" aria-label="Schedule alert dialog">{draft.href} {draft.releaseDate}</div> : null),
 }));
 vi.mock('@/components/media/rename-preview-dialog', () => ({ RenamePreviewDialog: ({ open }: { open: boolean }) => (open ? <div role="dialog" aria-label="Rename preview" /> : null) }));
-vi.mock('@/components/media/interactive-search-dialog', () => ({
-  InteractiveSearchDialog: ({ open, title, searchParams }: { open: boolean; title: string; searchParams: Record<string, unknown> }) =>
-    (open ? <div role="dialog" aria-label="Interactive search">{title} {JSON.stringify(searchParams)}</div> : null),
-}));
 
 import SeriesDetailPage from './page';
 
@@ -352,7 +348,7 @@ describe('series detail page (characterization)', () => {
     expect(screen.getByRole('button', { name: 'Season 1 episodes' }).getAttribute('aria-expanded')).toBe('true');
   });
 
-  it('opens season interactive search, rename preview, watchlist and alert dialogs', async () => {
+  it('opens rename preview, watchlist and alert dialogs', async () => {
     const user = renderPage();
     await screen.findAllByRole('heading', { level: 1, name: 'Severance' });
     await user.click(menu().getByRole('menuitem', { name: 'Preview Rename' }));
@@ -372,9 +368,9 @@ describe('series detail page (characterization)', () => {
     expect(mocks.push).toHaveBeenLastCalledWith('/series/7/manage?title=Severance&instance=son-1');
   });
 
-  it("offers the poster's and each season's quick actions, and searches a season interactively", async () => {
+  it("offers the poster's and each season's quick actions, and links a season to its interactive search page", async () => {
     mocks.contextMenus = true;
-    const user = renderPage();
+    renderPage();
     const poster = within((await screen.findAllByRole('group', { name: 'Severance actions' }))[0]);
     expect(poster.getAllByRole('button').map((action) => action.textContent)).toEqual([
       'Unmonitor', 'Monitoring options…', 'Refresh', 'Search Monitored', 'Preview Rename', 'Open in Jellyfin', 'Delete',
@@ -389,10 +385,8 @@ describe('series detail page (characterization)', () => {
 
     const season1 = within(screen.getByRole('group', { name: 'Season 1 actions' }));
     expect(season1.getByRole('link', { name: 'Open season' }).getAttribute('href')).toBe('/series/7/season/1?instance=son-1');
-    await user.click(season1.getByRole('button', { name: 'Interactive search…' }));
-    const dialog = screen.getByRole('dialog', { name: 'Interactive search' });
-    expect(dialog.textContent).toContain('Severance - Season 1');
-    expect(dialog.textContent).toContain('{"seriesId":7,"seasonNumber":1,"instanceId":"son-1"}');
+    expect(season1.getByRole('link', { name: 'Interactive search…' }).getAttribute('href'))
+      .toBe('/series/7/season/1/search?title=Severance+-+Season+1&instance=son-1');
   });
 
   it('says when the series is not found, cannot be loaded, or its episodes cannot', async () => {

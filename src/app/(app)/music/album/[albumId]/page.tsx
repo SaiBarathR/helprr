@@ -13,7 +13,6 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { PageHeader } from '@/components/layout/page-header';
-import { InteractiveSearchDialog } from '@/components/media/interactive-search-dialog';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -43,6 +42,7 @@ import { isProtectedApiImageSrc } from '@/lib/image';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useExternalUrlResolver } from '@/lib/hooks/use-external-urls';
 import { formatBytes } from '@/lib/format';
+import { arrInteractiveSearchHref } from '@/lib/arr-edit-href';
 import { useCan } from '@/components/permission-provider';
 import {
   AlertDialog,
@@ -102,7 +102,6 @@ export default function AlbumDetailPage() {
   const loading = albumQuery.isLoading;
   const [actionLoading, setActionLoading] = useState('');
   const [overviewExpanded, setOverviewExpanded] = useState(false);
-  const [interactiveSearch, setInteractiveSearch] = useState(false);
   const [expandedTrack, setExpandedTrack] = useRouteViewState<number | null>('AlbumDetailPage:expandedTrack', null);
   const [showReleases, setShowReleases] = useState(false);
   const [selectingRelease, setSelectingRelease] = useState<number | null>(null);
@@ -283,6 +282,8 @@ export default function AlbumDetailPage() {
     ...(stats && stats.sizeOnDisk > 0 ? [{ label: 'Size on Disk', value: formatBytes(stats.sizeOnDisk) }] : []),
   ];
 
+  const searchHref = arrInteractiveSearchHref({ kind: 'album', albumId: album.id }, album.title, instance);
+
   const albumContextGroups: ContextActionGroup[] = [
     {
       id: 'activity',
@@ -296,7 +297,7 @@ export default function AlbumDetailPage() {
         }] : []),
         ...(canManageActivity ? [
           { id: 'search', label: 'Automatic Search', icon: <Search className="h-4 w-4" />, onSelect: () => { void handleSearch(); }, disabled: !!actionLoading },
-          { id: 'interactive', label: 'Interactive Search', icon: <Search className="h-4 w-4" />, onSelect: () => setInteractiveSearch(true) },
+          { id: 'interactive', label: 'Interactive Search', icon: <Search className="h-4 w-4" />, href: searchHref },
         ] : []),
       ],
     },
@@ -360,7 +361,7 @@ export default function AlbumDetailPage() {
                   </DropdownMenuItem>
                 )}
                 {canManageActivity && (
-                  <DropdownMenuItem onClick={() => setInteractiveSearch(true)}>
+                  <DropdownMenuItem onClick={() => router.push(searchHref)}>
                     <Search className="h-4 w-4" />
                     Interactive Search
                   </DropdownMenuItem>
@@ -466,7 +467,7 @@ export default function AlbumDetailPage() {
               {actionLoading === 'search' ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Search className="h-4 w-4 mr-2" />}
               Automatic
             </Button>
-            <Button onClick={() => setInteractiveSearch(true)} className="flex-1 rounded-full h-10" variant="secondary">
+            <Button onClick={() => router.push(searchHref)} className="flex-1 rounded-full h-10" variant="secondary">
               <Search className="h-4 w-4 mr-2" />
               Interactive
             </Button>
@@ -553,7 +554,7 @@ export default function AlbumDetailPage() {
                         id: 'interactive',
                         label: 'Interactive search…',
                         icon: <Search className="h-4 w-4" />,
-                        onSelect: () => setInteractiveSearch(true),
+                        href: searchHref,
                       }] : []),
                       ...(file ? [
                       {
@@ -630,13 +631,6 @@ export default function AlbumDetailPage() {
         </div>
       </div>
 
-      <InteractiveSearchDialog
-        open={interactiveSearch}
-        onOpenChange={setInteractiveSearch}
-        title={album.title}
-        service="lidarr"
-        searchParams={{ albumId: album.id, ...(instance ? { instanceId: instance } : {}) }}
-      />
       <AlertDialog open={deleteAlbumOpen} onOpenChange={setDeleteAlbumOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>

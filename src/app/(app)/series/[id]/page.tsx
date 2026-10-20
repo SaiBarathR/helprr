@@ -22,7 +22,6 @@ import { ensureArray, jsonFetcher, nullOn404 } from '@/lib/query-fetch';
 import { useQualityProfiles, useRootFolders, useTags } from '@/lib/hooks/use-reference-data';
 import { useExternalUrls, useExternalUrlResolver } from '@/lib/hooks/use-external-urls';
 import { RenamePreviewDialog } from '@/components/media/rename-preview-dialog';
-import { InteractiveSearchDialog } from '@/components/media/interactive-search-dialog';
 import { formatBytes } from '@/lib/format';
 import { AnilistStatusPanel } from '@/components/anime/anilist-status-panel';
 import { WatchlistAddDialog } from '@/components/watchlist/watchlist-add-dialog';
@@ -89,10 +88,6 @@ export default function SeriesDetailPage() {
   const [showAddWatchlist, setShowAddWatchlist] = useState(false);
   const [showScheduleAlert, setShowScheduleAlert] = useState(false);
   const [expandedSeasons, setExpandedSeasons] = useRouteViewState<Set<number>>('expandedSeasons', new Set());
-  const [seasonInteractiveTarget, setSeasonInteractiveTarget] = useState<{
-    seasonNumber: number;
-    label: string;
-  } | null>(null);
 
   const canManageActivity = useCan('activity.manage');
   const canEditMonitoring = useCan('series.editMonitoring');
@@ -482,7 +477,6 @@ export default function SeriesDetailPage() {
               canEditMonitoring={canEditMonitoring}
               canManageActivity={canManageActivity}
               onToggleSeasonMonitor={actions.toggleSeasonMonitor}
-              onInteractiveSearch={setSeasonInteractiveTarget}
             />
 
             {/* Information section */}
@@ -570,19 +564,6 @@ export default function SeriesDetailPage() {
         mediaId={series.id}
         mediaTitle={series.title}
         instanceId={instance}
-      />
-
-      <InteractiveSearchDialog
-        open={seasonInteractiveTarget !== null}
-        onOpenChange={(open) => { if (!open) setSeasonInteractiveTarget(null); }}
-        title={seasonInteractiveTarget ? `${series.title} - ${seasonInteractiveTarget.label}` : ''}
-        service="sonarr"
-        searchParams={{
-          seriesId: series.id,
-          seasonNumber: seasonInteractiveTarget?.seasonNumber ?? 0,
-          ...(instance ? { instanceId: instance } : {}),
-        }}
-        showSeasonPackFilter
       />
     </div>
   );
