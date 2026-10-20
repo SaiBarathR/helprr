@@ -16,7 +16,7 @@ beforeEach(() => {
 describe('after a link change', () => {
   it("marks the user's profile stale, for a rebuild on next use, and drops the composed rails", async () => {
     await refreshRecommendationsAfterLink('u1');
-    expect(mocks.updateMany).toHaveBeenCalledWith({ where: { userId: 'u1' }, data: { builtAt: new Date(0) } });
+    expect(mocks.updateMany).toHaveBeenCalledWith({ where: { userId: 'u1' }, data: { builtAt: new Date(0), markedAt: expect.any(Date) } });
     expect(mocks.redisSet).toHaveBeenCalledTimes(1);
     expect(mocks.redisSet.mock.calls[0][0]).toContain('u1');
   });
@@ -24,7 +24,7 @@ describe('after a link change', () => {
   it("marks several users at once, in a caller's transaction", async () => {
     const tx = { userTasteProfile: { updateMany: vi.fn(async () => ({ count: 2 })) } };
     await markTasteProfileStale(['u1', 'u2'], tx as never);
-    expect(tx.userTasteProfile.updateMany).toHaveBeenCalledWith({ where: { userId: { in: ['u1', 'u2'] } }, data: { builtAt: new Date(0) } });
+    expect(tx.userTasteProfile.updateMany).toHaveBeenCalledWith({ where: { userId: { in: ['u1', 'u2'] } }, data: { builtAt: new Date(0), markedAt: expect.any(Date) } });
     expect(mocks.updateMany).not.toHaveBeenCalled();
   });
 });

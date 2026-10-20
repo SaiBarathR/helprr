@@ -23,7 +23,8 @@ import type {
 const RECENT_PLAYS_LIMIT = 300;
 const PLAYBACK_REPORTING_DAYS = 90;
 const PLAYBACK_REPORTING_ROW_LIMIT = 5000;
-const EVENT_LOOKBACK_DAYS = 90;
+/** How far back the profile reads positive events. */
+export const EVENT_LOOKBACK_DAYS = 90;
 const NEGATIVE_EVENT_LOOKBACK_DAYS = 180;
 
 const ticksToMinutes = (ticks: number | undefined): number | null =>

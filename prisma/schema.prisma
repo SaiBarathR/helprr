@@ -460,6 +460,8 @@ model UserTasteProfile {
   profile   Json
   version   Int      @default(1)
   builtAt   DateTime @default(now())
+  /// When a link change last asked for a rebuild (markTasteProfileStale); a rebuild that started earlier stays stale.
+  markedAt  DateTime?
   updatedAt DateTime @updatedAt
 }
 

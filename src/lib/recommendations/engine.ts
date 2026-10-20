@@ -330,13 +330,14 @@ export async function refreshRecommendationsAfterLink(userId: string): Promise<v
 
 /** Move the user to a new generation so the next read recomposes — instant
  * feedback after an explicit like/dislike/not_interested. A build already
- * running for the old generation can only save under the old one. */
-export async function invalidateRecommendations(userId: string): Promise<void> {
+ * running for the old generation can only save under the old one. False when
+ * Redis could not be reached. */
+export async function invalidateRecommendations(userId: string): Promise<boolean> {
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const redis = await getRedisClient();
       await redis.set(generationKey(userId), crypto.randomUUID());
-      return;
+      return true;
     } catch {
       // Retry once.
     }
@@ -344,4 +345,5 @@ export async function invalidateRecommendations(userId: string): Promise<void> {
   // Redis is unreachable, so no snapshot can be read or saved now; one saved
   // by a build that outlasts the outage may still predate this feedback.
   logger.warn('Recommendations not invalidated: Redis unavailable', {}, { scope: 'recommendations' });
+  return false;
 }

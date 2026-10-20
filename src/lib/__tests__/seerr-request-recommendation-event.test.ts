@@ -6,6 +6,8 @@ const mocks = vi.hoisted(() => ({
   createRequest: vi.fn(),
   pendingCreate: vi.fn(),
   recordRequestEvent: vi.fn(),
+  // What each recorded request's genre lookup returned (the helper asks only when it needs them).
+  looked: [] as unknown[],
   warn: vi.fn(),
   tmdb: { movieDetails: vi.fn(), tvDetails: vi.fn() },
 }));
@@ -41,7 +43,11 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.createRequest.mockResolvedValue({ id: 50 });
   mocks.pendingCreate.mockResolvedValue({ id: 'pending-1' });
-  mocks.recordRequestEvent.mockResolvedValue({ ok: true, stored: 1 });
+  mocks.looked = [];
+  mocks.recordRequestEvent.mockImplementation(async (_user: string, _type: string, _id: number, lookup: () => Promise<unknown>) => {
+    mocks.looked.push(await lookup());
+    return { ok: true, stored: 1 };
+  });
   mocks.tmdb.movieDetails.mockResolvedValue({ genres: [{ id: 878, name: 'Science Fiction' }, { id: 28, name: 'Action' }] });
   mocks.tmdb.tvDetails.mockResolvedValue({ genres: [{ id: 18, name: 'Drama' }] });
 });
@@ -51,13 +57,15 @@ describe('a Seerr request as a recommendations signal', () => {
     mocks.user = admin;
     expect((await request({ mediaType: 'tv', tmdbId: 1399 })).status).toBe(200);
     expect(mocks.createRequest).toHaveBeenCalled();
-    expect(mocks.recordRequestEvent).toHaveBeenCalledWith('admin-1', 'tv', 1399, ['Drama']);
+    expect(mocks.recordRequestEvent).toHaveBeenCalledWith('admin-1', 'tv', 1399, expect.any(Function));
+    expect(mocks.looked).toEqual([['Drama']]);
   });
 
   it("records a member's request parked for approval", async () => {
     mocks.user = member;
     expect(await (await request({})).json()).toEqual({ pending: true, id: 'pending-1' });
-    expect(mocks.recordRequestEvent).toHaveBeenCalledWith('member-1', 'movie', 603, ['Science Fiction', 'Action']);
+    expect(mocks.recordRequestEvent).toHaveBeenCalledWith('member-1', 'movie', 603, expect.any(Function));
+    expect(mocks.looked).toEqual([['Science Fiction', 'Action']]);
   });
 
   it('records a request an admin makes as themselves, linked or not, and a member whose Seerr id is stored loosely', async () => {
@@ -70,11 +78,19 @@ describe('a Seerr request as a recommendations signal', () => {
     expect(mocks.recordRequestEvent.mock.calls.map((call) => call[0])).toEqual(['admin-1', 'admin-1', 'member-1']);
   });
 
+  it('leaves TMDB alone when the title is already recorded with genres', async () => {
+    mocks.user = admin;
+    mocks.recordRequestEvent.mockResolvedValue({ ok: true, stored: 0 });
+    expect((await request({})).status).toBe(200);
+    expect(mocks.recordRequestEvent).toHaveBeenCalledOnce();
+    expect(mocks.tmdb.movieDetails).not.toHaveBeenCalled();
+  });
+
   it('still records the request when TMDB cannot give its genres', async () => {
     mocks.user = admin;
     mocks.tmdb.movieDetails.mockRejectedValue(new Error('TMDB not configured'));
     expect((await request({})).status).toBe(200);
-    expect(mocks.recordRequestEvent).toHaveBeenCalledWith('admin-1', 'movie', 603, undefined);
+    expect(mocks.looked).toEqual([undefined]);
   });
 
   it('records nothing for a request an admin makes as someone else', async () => {
@@ -101,10 +117,10 @@ describe('a Seerr request as a recommendations signal', () => {
       mocks.tmdb.movieDetails.mockImplementation(() => new Promise(() => {}));
       const responding = request({});
       await vi.advanceTimersByTimeAsync(1_999);
-      expect(mocks.recordRequestEvent).not.toHaveBeenCalled();
+      expect(mocks.looked).toEqual([]);
       await vi.advanceTimersByTimeAsync(1);
       expect((await responding).status).toBe(200);
-      expect(mocks.recordRequestEvent).toHaveBeenCalledWith('admin-1', 'movie', 603, undefined);
+      expect(mocks.looked).toEqual([undefined]);
     } finally {
       vi.useRealTimers();
     }

@@ -3,6 +3,7 @@ import type { Prisma } from '@prisma/client';
 import { isItemKey, tmdbItemKey } from './item-keys';
 import { invalidateRecommendations } from './engine';
 import { forgetInProfile, RATING_OF, replaceRating, type ProfileForget } from './ratings';
+import { EVENT_LOOKBACK_DAYS } from './signals';
 import { getRedisClient } from '@/lib/redis';
 
 // Event ingestion: validated, batched, own-user only (the route passes the
@@ -173,23 +174,31 @@ export async function takeEventQuota(userId: string, count: number): Promise<boo
 /**
  * A title the user requested through Seerr, from any surface: a positive
  * taste signal through its genres (the profile learns events' genres, not
- * their titles). Recorded once per title, so requesting it again adds no weight.
+ * their titles). Recorded once per title within the window the profile reads,
+ * so requesting it again adds no weight; genres are looked up only when an
+ * event needs them.
  */
 export async function recordRequestEvent(
   userId: string,
   mediaType: 'movie' | 'tv',
   tmdbId: number,
-  genres?: string[],
+  lookupGenres: () => Promise<string[] | undefined>,
 ): Promise<IngestResult> {
   const itemKey = tmdbItemKey(mediaType, tmdbId);
-  const known = genres?.filter((genre) => genre.length > 0 && genre.length <= MAX_GENRE_LENGTH).slice(0, MAX_GENRES);
-  const seen = await prisma.recommendationEvent.findFirst({ where: { userId, itemKey, eventType: 'request' }, select: { id: true, context: true } });
+  const since = new Date(Date.now() - EVENT_LOOKBACK_DAYS * 86_400_000);
+  const seen = await prisma.recommendationEvent.findFirst({
+    where: { userId, itemKey, eventType: 'request', createdAt: { gte: since } },
+    select: { id: true, context: true },
+  });
+  const seenGenres = (seen?.context as { genres?: unknown } | null | undefined)?.genres;
+  if (seen && Array.isArray(seenGenres) && seenGenres.length > 0) return { ok: true, stored: 0 };
+
+  const known = (await lookupGenres())
+    ?.filter((genre) => genre.length > 0 && genre.length <= MAX_GENRE_LENGTH)
+    .slice(0, MAX_GENRES);
   if (seen) {
     // Recorded before without genres (TMDB could not say then): add them now.
-    const seenGenres = (seen.context as { genres?: unknown } | null)?.genres;
-    if (known?.length && !(Array.isArray(seenGenres) && seenGenres.length > 0)) {
-      await prisma.recommendationEvent.update({ where: { id: seen.id }, data: { context: { genres: known } } });
-    }
+    if (known?.length) await prisma.recommendationEvent.update({ where: { id: seen.id }, data: { context: { genres: known } } });
     return { ok: true, stored: 0 };
   }
   return ingestEvents(userId, [{ itemKey, eventType: 'request', ...(known?.length ? { context: { genres: known } } : {}) }]);
