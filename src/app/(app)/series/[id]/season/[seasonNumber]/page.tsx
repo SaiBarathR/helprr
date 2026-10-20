@@ -15,7 +15,6 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { PageSpinner } from '@/components/ui/page-spinner';
-import { InteractiveSearchDialog } from '@/components/media/interactive-search-dialog';
 import { ScheduledAlertDialog } from '@/components/scheduled-alerts/scheduled-alert-dialog';
 import {
   Bell, Bookmark, BookmarkCheck, MoreHorizontal, Search, RefreshCw, Trash2, Loader2, Star,
@@ -31,6 +30,7 @@ import { arrMutationFetch, ensureArray, jsonFetcher } from '@/lib/query-fetch';
 import { handleAuthError } from '@/lib/query-client';
 import { patchEpisodesInCache, tvSeasonKey } from '@/lib/series-query-cache';
 import { pollCommand } from '@/lib/arr-command';
+import { arrInteractiveSearchHref } from '@/lib/arr-edit-href';
 import { useCan } from '@/components/permission-provider';
 import { QuickContextMenu, type ContextActionGroup } from '@/components/ui/quick-context-menu';
 import { useSeriesEpisodeWatch } from '@/components/jellyfin/use-series-episode-watch';
@@ -57,11 +57,6 @@ export default function SeasonDetailPage() {
   const [actionLoading, setActionLoading] = useState('');
   const [showDeleteDrawer, setShowDeleteDrawer] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [interactiveSearch, setInteractiveSearch] = useState(false);
-  const [episodeInteractiveTarget, setEpisodeInteractiveTarget] = useState<{
-    episodeId: number;
-    title: string;
-  } | null>(null);
   const [searchingEpisodeIds, setSearchingEpisodeIds] = useState<ReadonlySet<number>>(new Set());
   const [showScheduleAlert, setShowScheduleAlert] = useState(false);
 
@@ -300,6 +295,16 @@ export default function SeasonDetailPage() {
   }
 
   const seasonTitle = seasonNumber === 0 ? 'Specials' : `Season ${seasonNumber}`;
+  const seasonSearchHref = arrInteractiveSearchHref(
+    { kind: 'season', seriesId: series.id, seasonNumber },
+    `${series.title} - ${seasonTitle}`,
+    instance,
+  );
+  const episodeSearchHref = (ep: SonarrEpisode) => arrInteractiveSearchHref(
+    { kind: 'episode', seriesId: series.id, seasonNumber, episodeId: ep.id },
+    `${series.title} - ${seasonTitle} - ${ep.title || `Episode ${ep.episodeNumber}`}`,
+    instance,
+  );
   const fileCount = episodes.filter((e) => e.hasFile).length;
   const seasonContextGroups: ContextActionGroup[] = [
     {
@@ -309,7 +314,7 @@ export default function SeasonDetailPage() {
         ...(canManageActivity ? [
           { id: 'refresh', label: 'Refresh', icon: <RefreshCw className="h-4 w-4" />, onSelect: () => { void handleRefresh(); }, disabled: !!actionLoading },
           { id: 'search', label: 'Automatic Search', icon: <Search className="h-4 w-4" />, onSelect: () => { void handleAutomaticSearch(); }, disabled: !!actionLoading },
-          { id: 'interactive', label: 'Interactive Search', icon: <Search className="h-4 w-4" />, onSelect: () => setInteractiveSearch(true) },
+          { id: 'interactive', label: 'Interactive Search', icon: <Search className="h-4 w-4" />, onSelect: () => router.push(seasonSearchHref) },
         ] : []),
       ],
     },
@@ -428,7 +433,7 @@ export default function SeasonDetailPage() {
           <Button
             variant="secondary"
             className="rounded-full flex-1"
-            onClick={() => setInteractiveSearch(true)}
+            onClick={() => router.push(seasonSearchHref)}
           >
             <Search className="mr-2 h-4 w-4" />
             Interactive
@@ -451,12 +456,7 @@ export default function SeasonDetailPage() {
               id: 'interactive',
               label: 'Interactive search…',
               icon: <Search className="h-4 w-4" />,
-              onSelect: () => {
-                setEpisodeInteractiveTarget({
-                  episodeId: ep.id,
-                  title: ep.title || `Episode ${ep.episodeNumber}`,
-                });
-              },
+              onSelect: () => router.push(episodeSearchHref(ep)),
             }] : []),
           ];
 
@@ -589,10 +589,7 @@ export default function SeasonDetailPage() {
                     size="xs"
                     className="relative rounded-full has-[>svg]:px-2.5"
                     aria-label={`Interactive search: ${ep.title || `Episode ${ep.episodeNumber}`}`}
-                    onClick={() => setEpisodeInteractiveTarget({
-                      episodeId: ep.id,
-                      title: ep.title || `Episode ${ep.episodeNumber}`,
-                    })}
+                    onClick={() => router.push(episodeSearchHref(ep))}
                   >
                     <Search />
                     Interactive
@@ -609,27 +606,6 @@ export default function SeasonDetailPage() {
           </div>
         )}
       </div>
-
-      {/* Interactive Search Dialog */}
-      <InteractiveSearchDialog
-        open={interactiveSearch}
-        onOpenChange={setInteractiveSearch}
-        title={`${series.title} - ${seasonTitle}`}
-        service="sonarr"
-        searchParams={{ seriesId: series.id, seasonNumber, ...(instance ? { instanceId: instance } : {}) }}
-        showSeasonPackFilter
-      />
-
-      <InteractiveSearchDialog
-        open={episodeInteractiveTarget !== null}
-        onOpenChange={(open) => { if (!open) setEpisodeInteractiveTarget(null); }}
-        title={episodeInteractiveTarget ? `${series.title} - ${seasonTitle} - ${episodeInteractiveTarget.title}` : ''}
-        service="sonarr"
-        searchParams={{
-          episodeId: episodeInteractiveTarget?.episodeId ?? 0,
-          ...(instance ? { instanceId: instance } : {}),
-        }}
-      />
 
       {canScheduleAlert && (
         <ScheduledAlertDialog

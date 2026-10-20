@@ -13,7 +13,6 @@ import { PageSpinner } from '@/components/ui/page-spinner';
 import { ErrorState } from '@/components/ui/error-state';
 import { PageHeader } from '@/components/layout/page-header';
 import { VirtualizedPersonRail } from '@/components/media/virtualized-person-rail';
-import { InteractiveSearchDialog } from '@/components/media/interactive-search-dialog';
 import {
   Drawer,
   DrawerContent,
@@ -79,7 +78,7 @@ import { MarkWatchedMenuItem } from '@/components/jellyfin/mark-watched-button';
 import { PlayInHelprrButton } from '@/components/jellyfin/play-in-helprr-button';
 import { formatRatingVotes, movieRatingItems, type RatingItem } from '@/lib/arr-ratings';
 import { buildMarkWatchedContextAction } from '@/lib/mark-watched-context-action';
-import { arrEditHref, arrManageHref } from '@/lib/arr-edit-href';
+import { arrEditHref, arrInteractiveSearchHref, arrManageHref } from '@/lib/arr-edit-href';
 import { WatchStatusInline } from '@/components/jellyfin/watch-status-indicator';
 import { QuickContextMenu, type ContextActionGroup } from '@/components/ui/quick-context-menu';
 import { MediaDownloadProgress } from '@/components/media/media-download-progress';
@@ -120,7 +119,6 @@ export default function MovieDetailPage() {
   const [deleteFiles, setDeleteFiles] = useState(false);
   const [actionLoading, setActionLoading] = useState('');
   const [overviewExpanded, setOverviewExpanded] = useState(false);
-  const [interactiveSearch, setInteractiveSearch] = useState(false);
   const [showRenamePreview, setShowRenamePreview] = useState(false);
   const [showAddWatchlist, setShowAddWatchlist] = useState(false);
   const [showScheduleAlert, setShowScheduleAlert] = useState(false);
@@ -412,7 +410,7 @@ export default function MovieDetailPage() {
         ...(canManageActivity ? [
           { id: 'refresh', label: 'Refresh', icon: <RefreshCw className="h-4 w-4" />, onSelect: () => { void handleRefresh(); }, disabled: !!actionLoading },
           { id: 'search', label: 'Automatic Search', icon: <Search className="h-4 w-4" />, onSelect: () => { void handleSearch(); }, disabled: !!actionLoading },
-          { id: 'interactive', label: 'Interactive Search', icon: <Search className="h-4 w-4" />, onSelect: () => setInteractiveSearch(true), disabled: !!actionLoading },
+          { id: 'interactive', label: 'Interactive Search', icon: <Search className="h-4 w-4" />, onSelect: () => router.push(arrInteractiveSearchHref({ kind: 'movie', movieId: movie.id }, movie.title, instance)), disabled: !!actionLoading },
         ] : []),
       ],
     },
@@ -830,7 +828,7 @@ export default function MovieDetailPage() {
                 )}
                 {canManageActivity && (
                   <Button
-                    onClick={() => setInteractiveSearch(true)}
+                    onClick={() => router.push(arrInteractiveSearchHref({ kind: 'movie', movieId: movie.id }, movie.title, instance))}
                     className="flex-1 rounded-full h-10"
                     variant="secondary"
                   >
@@ -956,15 +954,6 @@ export default function MovieDetailPage() {
         </div>
 
       </div>
-
-      {/* Interactive Search */}
-      <InteractiveSearchDialog
-        open={interactiveSearch}
-        onOpenChange={setInteractiveSearch}
-        title={movie.title}
-        service="radarr"
-        searchParams={{ movieId: movie.id, ...(instance ? { instanceId: instance } : {}) }}
-      />
 
       <RenamePreviewDialog
         open={showRenamePreview}

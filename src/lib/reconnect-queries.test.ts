@@ -23,4 +23,24 @@ describe('reconnect scheduling', () => {
     unsubscribers.forEach((unsubscribe) => unsubscribe());
     client.clear();
   });
+
+  it('skips a query that asks not to be re-run on reconnect', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const started: string[] = [];
+    const unsubscribers = [['release-search', false], ['radarr', undefined]].map(([name, refetchOnReconnect]) => {
+      client.setQueryData([name], []);
+      const observer = new QueryObserver(client, {
+        queryKey: [name],
+        queryFn: async () => { started.push(String(name)); return []; },
+        staleTime: Infinity,
+        meta: refetchOnReconnect === false ? { refetchOnReconnect: false } : undefined,
+      });
+      return observer.subscribe(() => {});
+    });
+    await client.invalidateQueries({ refetchType: 'none' });
+    await refreshAfterReconnect(client, '/movies', new AbortController().signal);
+    expect(started).toEqual(['radarr']);
+    unsubscribers.forEach((unsubscribe) => unsubscribe());
+    client.clear();
+  });
 });

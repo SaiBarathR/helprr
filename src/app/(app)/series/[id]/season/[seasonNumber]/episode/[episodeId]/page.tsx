@@ -15,7 +15,6 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { PageSpinner } from '@/components/ui/page-spinner';
-import { InteractiveSearchDialog } from '@/components/media/interactive-search-dialog';
 import { ScheduledAlertDialog } from '@/components/scheduled-alerts/scheduled-alert-dialog';
 import {
   Bell, Bookmark, BookmarkCheck, MoreHorizontal, Search, RefreshCw, Trash2, Loader2, Info,
@@ -30,6 +29,7 @@ import { queryKeys } from '@/lib/query-keys';
 import { arrMutationFetch, ensureArray, jsonFetcher } from '@/lib/query-fetch';
 import { handleAuthError } from '@/lib/query-client';
 import { episodesWithFileKey, patchEpisodesInCache, tvSeasonKey } from '@/lib/series-query-cache';
+import { arrInteractiveSearchHref } from '@/lib/arr-edit-href';
 import { useCan } from '@/components/permission-provider';
 import { useWatchStatus } from '@/components/jellyfin/watch-status-provider';
 import { useSeriesEpisodeWatch } from '@/components/jellyfin/use-series-episode-watch';
@@ -172,7 +172,6 @@ export default function EpisodeDetailPage() {
   const [actionLoading, setActionLoading] = useState('');
   const [showDeleteDrawer, setShowDeleteDrawer] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [interactiveSearch, setInteractiveSearch] = useState(false);
   const [showScheduleAlert, setShowScheduleAlert] = useState(false);
   const [selectedHistoryItem, setSelectedHistoryItem] = useState<HistoryItem | null>(null);
   const [fileDrawerOpen, setFileDrawerOpen] = useState(false);
@@ -334,6 +333,11 @@ export default function EpisodeDetailPage() {
   const episodeFile = episode.episodeFile;
   const mediaInfo = episodeFile?.mediaInfo;
   const epCode = `S${String(episode.seasonNumber).padStart(2, '0')}E${String(episode.episodeNumber).padStart(2, '0')}`;
+  const searchHref = arrInteractiveSearchHref(
+    { kind: 'episode', seriesId: series.id, seasonNumber: episode.seasonNumber, episodeId },
+    `${series.title} - ${epCode} - ${episode.title || 'TBA'}`,
+    instance,
+  );
   const episodeContextGroups: ContextActionGroup[] = [
     {
       id: 'state',
@@ -342,7 +346,7 @@ export default function EpisodeDetailPage() {
         ...(canSetWatched && epWatch ? [{ id: 'watched', label: epWatch.played ? 'Mark as unwatched' : 'Mark as watched', icon: epWatch.played ? <RotateCcw className="h-4 w-4" /> : <Check className="h-4 w-4" />, onSelect: () => { void setWatched({ jellyfinItemId: epWatch.jellyfinItemId, played: !epWatch.played, seriesId: jellyfinSeriesId ?? undefined }); }, disabled: isWriting }] : []),
         ...(canManageActivity ? [
           { id: 'search', label: 'Automatic Search', icon: <Search className="h-4 w-4" />, onSelect: () => { void handleAutomaticSearch(); }, disabled: !!actionLoading },
-          { id: 'interactive', label: 'Interactive Search', icon: <Search className="h-4 w-4" />, onSelect: () => setInteractiveSearch(true) },
+          { id: 'interactive', label: 'Interactive Search', icon: <Search className="h-4 w-4" />, onSelect: () => router.push(searchHref) },
         ] : []),
       ],
     },
@@ -614,7 +618,7 @@ export default function EpisodeDetailPage() {
           <Button
             variant="secondary"
             className="rounded-full flex-1"
-            onClick={() => setInteractiveSearch(true)}
+            onClick={() => router.push(searchHref)}
           >
             <Search className="mr-2 h-4 w-4" />
             Interactive
@@ -709,15 +713,6 @@ export default function EpisodeDetailPage() {
           </div>
         )}
       </div>
-
-      {/* Interactive Search Dialog */}
-      <InteractiveSearchDialog
-        open={interactiveSearch}
-        onOpenChange={setInteractiveSearch}
-        title={`${series.title} - ${epCode} - ${episode.title || 'TBA'}`}
-        service="sonarr"
-        searchParams={{ episodeId, ...(instance ? { instanceId: instance } : {}) }}
-      />
 
       {canScheduleAlert && (
         <ScheduledAlertDialog

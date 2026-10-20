@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError, ensureArray, jsonFetcher, withInstanceQuery } from '@/lib/query-fetch';
 import { queryKeys } from '@/lib/query-keys';
 import { useParams, useSearchParams } from 'next/navigation';
+import { useAppRouter } from '@/components/layout/navigation-provider';
 import { format, formatDistanceToNow } from 'date-fns';
 import { Copy, Info, Loader2, Search, Trash2 } from 'lucide-react';
 import { PageHeader } from '@/components/layout/page-header';
@@ -22,9 +23,9 @@ import { PageSpinner } from '@/components/ui/page-spinner';
 import { toast } from 'sonner';
 import type { LidarrArtist, LidarrAlbum, LidarrTrackFile, HistoryItem } from '@/types';
 import { formatBytes } from '@/lib/format';
+import { arrInteractiveSearchHref } from '@/lib/arr-edit-href';
 import { useCan } from '@/components/permission-provider';
 import { QuickContextMenu, type ContextAction } from '@/components/ui/quick-context-menu';
-import { InteractiveSearchDialog } from '@/components/media/interactive-search-dialog';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { lastPathSegment } from '@/lib/paths';
 
@@ -77,12 +78,10 @@ export default function ArtistFilesPage() {
   const { id } = useParams<{ id: string }>();
   const artistId = Number(id);
   const instance = useSearchParams().get('instance') ?? undefined;
+  const router = useAppRouter();
   const queryClient = useQueryClient();
   const [selectedFile, setSelectedFile] = useState<LidarrTrackFile | null>(null);
   const [pendingDeleteFile, setPendingDeleteFile] = useState<LidarrTrackFile | null>(null);
-  const [interactiveSearchOpen, setInteractiveSearchOpen] = useState(false);
-  // The album whose files the row belongs to: Interactive search looks for that album's releases.
-  const [searchAlbum, setSearchAlbum] = useState<{ id: number; title: string } | null>(null);
 
   const canDelete = useCan('music.delete');
   const canManageActivity = useCan('activity.manage');
@@ -240,10 +239,7 @@ export default function ArtistFilesPage() {
                           id: 'interactive',
                           label: 'Interactive search…',
                           icon: <Search className="h-4 w-4" />,
-                          onSelect: () => {
-                            setSearchAlbum({ id: group.albumId, title: group.title });
-                            setInteractiveSearchOpen(true);
-                          },
+                          onSelect: () => router.push(arrInteractiveSearchHref({ kind: 'album', albumId: group.albumId }, group.title, instance)),
                         }] : []),
                         {
                           id: 'information',
@@ -353,18 +349,6 @@ export default function ArtistFilesPage() {
           )}
         </DrawerContent>
       </Drawer>
-      {searchAlbum && (
-        <InteractiveSearchDialog
-          open={interactiveSearchOpen}
-          onOpenChange={setInteractiveSearchOpen}
-          title={searchAlbum.title}
-          service="lidarr"
-          searchParams={{
-            albumId: searchAlbum.id,
-            ...(instance ? { instanceId: instance } : {}),
-          }}
-        />
-      )}
       <ConfirmDialog
         open={pendingDeleteFile !== null}
         onOpenChange={(open) => {

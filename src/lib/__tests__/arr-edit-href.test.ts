@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { arrEditHref, arrFilesHref, arrManageHref } from '@/lib/arr-edit-href';
+import { arrEditHref, arrFilesHref, arrInteractiveSearchHref, arrManageHref } from '@/lib/arr-edit-href';
 
 describe('arrEditHref', () => {
   it('builds movie edit href without instance', () => {
@@ -26,5 +26,23 @@ describe('arrManageHref', () => {
 describe('arrFilesHref', () => {
   it('builds music files href', () => {
     expect(arrFilesHref('music', 7, 'inst')).toBe('/music/7/files?instance=inst');
+  });
+});
+
+describe('arrInteractiveSearchHref', () => {
+  it('builds each kind of search page, with the title and instance', () => {
+    expect(arrInteractiveSearchHref({ kind: 'movie', movieId: 11 }, 'Inception', 'rad-1'))
+      .toBe('/movies/11/search?title=Inception&instance=rad-1');
+    expect(arrInteractiveSearchHref({ kind: 'season', seriesId: 5, seasonNumber: 0 }, 'Severance - Specials'))
+      .toBe('/series/5/season/0/search?title=Severance+-+Specials');
+    expect(arrInteractiveSearchHref({ kind: 'episode', seriesId: 5, seasonNumber: 2, episodeId: 301 }, 'Severance - S02E01', 'son-1'))
+      .toBe('/series/5/season/2/episode/301/search?title=Severance+-+S02E01&instance=son-1');
+    expect(arrInteractiveSearchHref({ kind: 'album', albumId: 31 }, 'First Album', null))
+      .toBe('/music/album/31/search?title=First+Album');
+  });
+
+  it('encodes a title that would otherwise break the query', () => {
+    expect(arrInteractiveSearchHref({ kind: 'movie', movieId: 1 }, 'Tom & Jerry #2?', 'a b'))
+      .toBe('/movies/1/search?title=Tom+%26+Jerry+%232%3F&instance=a+b');
   });
 });

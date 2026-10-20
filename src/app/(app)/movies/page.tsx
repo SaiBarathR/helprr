@@ -2,6 +2,7 @@
 
 import { useDeferredValue, useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import Link from '@/components/ui/app-link';
+import { useAppRouter } from '@/components/layout/navigation-provider';
 import { MediaGridSkeleton } from '@/components/ui/media-grid-skeleton';
 import { useWindowVirtualizer } from '@tanstack/react-virtual';
 import {
@@ -46,9 +47,8 @@ import { bulkFanOut, reportBulk } from '@/lib/bulk-fan-out';
 import { useUnionTags } from '@/lib/hooks/use-reference-data';
 import { type ContextActionGroup } from '@/components/ui/quick-context-menu';
 import { MediaDeleteConfirmDialog } from '@/components/media/media-delete-confirm-dialog';
-import { InteractiveSearchDialog } from '@/components/media/interactive-search-dialog';
 import { RenamePreviewDialog } from '@/components/media/rename-preview-dialog';
-import { arrEditHref, arrManageHref } from '@/lib/arr-edit-href';
+import { arrEditHref, arrInteractiveSearchHref, arrManageHref } from '@/lib/arr-edit-href';
 import { buildMarkWatchedContextAction } from '@/lib/mark-watched-context-action';
 import {
   deriveMovieBaseRows,
@@ -213,11 +213,6 @@ export default function MoviesPage() {
   const [containerWidth, setContainerWidth] = useState(0);
   const [contentOffsetTop, setContentOffsetTop] = useState(0);
   const [deleteTarget, setDeleteTarget] = useState<RadarrMovieListItem | null>(null);
-  const [interactiveSearchTarget, setInteractiveSearchTarget] = useState<{
-    title: string;
-    movieId: number;
-    instanceId?: string;
-  } | null>(null);
   const [renameTarget, setRenameTarget] = useState<{
     title: string;
     movieId: number;
@@ -299,6 +294,7 @@ export default function MoviesPage() {
   }, [search, persistViewState]);
 
   const handleSearch = useCallback((v: string) => setSearch(v), [setSearch]);
+  const router = useAppRouter();
   const handleNavigateToDetail = useCallback(() => {
     persistViewState(search);
   }, [persistViewState, search]);
@@ -513,12 +509,10 @@ export default function MoviesPage() {
                   id: 'interactive',
                   label: 'Interactive search…',
                   icon: <Search className="h-4 w-4" />,
+                  // An action, not a link: Open in new tab must not start a search.
                   onSelect: () => {
-                    setInteractiveSearchTarget({
-                      title: movie.title,
-                      movieId: movie.id,
-                      instanceId: movie.instanceId,
-                    });
+                    handleNavigateToDetail();
+                    router.push(arrInteractiveSearchHref({ kind: 'movie', movieId: movie.id }, movie.title, movie.instanceId));
                   },
                 }]
               : []),
@@ -587,6 +581,7 @@ export default function MoviesPage() {
     runSearch,
     enter,
     toggle,
+    router,
   ]);
 
   const contextActionsForMovie = useCallback(
@@ -1078,19 +1073,6 @@ export default function MoviesPage() {
         mediaId={renameTarget?.movieId ?? 0}
         mediaTitle={renameTarget?.title ?? ''}
         instanceId={renameTarget?.instanceId}
-      />
-
-      <InteractiveSearchDialog
-        open={interactiveSearchTarget !== null}
-        onOpenChange={(open) => { if (!open) setInteractiveSearchTarget(null); }}
-        title={interactiveSearchTarget?.title ?? ''}
-        service="radarr"
-        searchParams={{
-          movieId: interactiveSearchTarget?.movieId ?? 0,
-          ...(interactiveSearchTarget?.instanceId
-            ? { instanceId: interactiveSearchTarget.instanceId }
-            : {}),
-        }}
       />
 
       <MediaDeleteConfirmDialog

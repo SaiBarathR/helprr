@@ -32,3 +32,25 @@ export function arrFilesHref(kind: 'music', id: number, instanceId?: string | nu
   if (!instanceId) return base;
   return `${base}?instance=${encodeURIComponent(instanceId)}`;
 }
+
+export type InteractiveSearchTarget =
+  | { kind: 'movie'; movieId: number }
+  | { kind: 'season'; seriesId: number; seasonNumber: number }
+  | { kind: 'episode'; seriesId: number; seasonNumber: number; episodeId: number }
+  | { kind: 'album'; albumId: number };
+
+/** Interactive search page href for one movie, season, episode or album; `title` is shown on the page. */
+export function arrInteractiveSearchHref(
+  target: InteractiveSearchTarget,
+  title: string,
+  instanceId?: string | null,
+): string {
+  const base =
+    target.kind === 'movie' ? `/movies/${target.movieId}/search`
+      : target.kind === 'season' ? `/series/${target.seriesId}/season/${target.seasonNumber}/search`
+        : target.kind === 'episode' ? `/series/${target.seriesId}/season/${target.seasonNumber}/episode/${target.episodeId}/search`
+          : `/music/album/${target.albumId}/search`;
+  const params = new URLSearchParams({ title });
+  if (instanceId) params.set('instance', instanceId);
+  return `${base}?${params.toString()}`;
+}
