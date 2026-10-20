@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError, ensureArray, jsonFetcher, withInstanceQuery } from '@/lib/query-fetch';
 import { queryKeys } from '@/lib/query-keys';
 import { useParams, useSearchParams } from 'next/navigation';
+import { useAppRouter } from '@/components/layout/navigation-provider';
 import { format, formatDistanceToNow } from 'date-fns';
 import { Copy, Info, Loader2, Search, Trash2 } from 'lucide-react';
 import { PageHeader } from '@/components/layout/page-header';
@@ -77,6 +78,7 @@ export default function ArtistFilesPage() {
   const { id } = useParams<{ id: string }>();
   const artistId = Number(id);
   const instance = useSearchParams().get('instance') ?? undefined;
+  const router = useAppRouter();
   const queryClient = useQueryClient();
   const [selectedFile, setSelectedFile] = useState<LidarrTrackFile | null>(null);
   const [pendingDeleteFile, setPendingDeleteFile] = useState<LidarrTrackFile | null>(null);
@@ -237,7 +239,7 @@ export default function ArtistFilesPage() {
                           id: 'interactive',
                           label: 'Interactive search…',
                           icon: <Search className="h-4 w-4" />,
-                          href: arrInteractiveSearchHref({ kind: 'album', albumId: group.albumId }, group.title, instance),
+                          onSelect: () => router.push(arrInteractiveSearchHref({ kind: 'album', albumId: group.albumId }, group.title, instance)),
                         }] : []),
                         {
                           id: 'information',

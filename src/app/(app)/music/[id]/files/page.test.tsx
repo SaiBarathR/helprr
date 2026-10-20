@@ -8,12 +8,14 @@ type MockContextAction = { id: string; label: string; href?: string; onSelect?: 
 const mocks = vi.hoisted(() => ({
   search: 'instance=lid-2',
   canManageActivity: true,
+  push: vi.fn(),
 }));
 
 vi.mock('next/navigation', () => ({
   useParams: () => ({ id: '9' }),
   useSearchParams: () => new URLSearchParams(mocks.search),
 }));
+vi.mock('@/components/layout/navigation-provider', () => ({ useAppRouter: () => ({ push: mocks.push, back: vi.fn() }) }));
 vi.mock('@/components/permission-provider', () => ({ useCan: (cap: string) => cap !== 'activity.manage' || mocks.canManageActivity }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 vi.mock('@/components/layout/page-header', () => ({ PageHeader: ({ title }: { title: string }) => <h1>{title}</h1> }));
@@ -62,18 +64,20 @@ function renderPage() {
 describe('artist files page', () => {
   it("searches a file row's own album, on the page's instance", async () => {
     renderPage();
-    const searchLink = (file: string) =>
-      within(screen.getByRole('group', { name: `Actions for ${file}` })).getByRole('link', { name: 'Interactive search…' }).getAttribute('href');
+    const search = (file: string) =>
+      within(screen.getByRole('group', { name: `Actions for ${file}` })).getByRole('button', { name: 'Interactive search…' }).click();
     await screen.findByRole('group', { name: 'Actions for 01 - Two.flac' });
-    expect(searchLink('01 - Two.flac')).toBe('/music/album/32/search?title=Second+Album&instance=lid-2');
-    expect(searchLink('01 - One.flac')).toBe('/music/album/31/search?title=First+Album&instance=lid-2');
+    search('01 - Two.flac');
+    expect(mocks.push).toHaveBeenLastCalledWith('/music/album/32/search?title=Second+Album&instance=lid-2');
+    search('01 - One.flac');
+    expect(mocks.push).toHaveBeenLastCalledWith('/music/album/31/search?title=First+Album&instance=lid-2');
   });
 
   it('offers no Interactive search to a user who cannot manage activity', async () => {
     mocks.canManageActivity = false;
     renderPage();
     const actions = await screen.findByRole('group', { name: 'Actions for 01 - Two.flac' });
-    expect(within(actions).queryByRole('link', { name: 'Interactive search…' })).toBeNull();
+    expect(within(actions).queryByRole('button', { name: 'Interactive search…' })).toBeNull();
     expect(within(actions).getByRole('button', { name: 'View information' })).toBeTruthy();
   });
 });

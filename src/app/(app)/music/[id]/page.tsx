@@ -642,7 +642,7 @@ export default function ArtistDetailPage() {
                         id: 'interactive',
                         label: 'Interactive search…',
                         icon: <Search className="h-4 w-4" />,
-                        href: arrInteractiveSearchHref({ kind: 'album', albumId: album.id }, album.title, instance),
+                        onSelect: () => router.push(arrInteractiveSearchHref({ kind: 'album', albumId: album.id }, album.title, instance)),
                       }] : []),
                     ];
                     return (

@@ -410,7 +410,7 @@ export default function MovieDetailPage() {
         ...(canManageActivity ? [
           { id: 'refresh', label: 'Refresh', icon: <RefreshCw className="h-4 w-4" />, onSelect: () => { void handleRefresh(); }, disabled: !!actionLoading },
           { id: 'search', label: 'Automatic Search', icon: <Search className="h-4 w-4" />, onSelect: () => { void handleSearch(); }, disabled: !!actionLoading },
-          { id: 'interactive', label: 'Interactive Search', icon: <Search className="h-4 w-4" />, href: arrInteractiveSearchHref({ kind: 'movie', movieId: movie.id }, movie.title, instance), disabled: !!actionLoading },
+          { id: 'interactive', label: 'Interactive Search', icon: <Search className="h-4 w-4" />, onSelect: () => router.push(arrInteractiveSearchHref({ kind: 'movie', movieId: movie.id }, movie.title, instance)), disabled: !!actionLoading },
         ] : []),
       ],
     },

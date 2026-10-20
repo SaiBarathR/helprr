@@ -297,7 +297,7 @@ export default function AlbumDetailPage() {
         }] : []),
         ...(canManageActivity ? [
           { id: 'search', label: 'Automatic Search', icon: <Search className="h-4 w-4" />, onSelect: () => { void handleSearch(); }, disabled: !!actionLoading },
-          { id: 'interactive', label: 'Interactive Search', icon: <Search className="h-4 w-4" />, href: searchHref },
+          { id: 'interactive', label: 'Interactive Search', icon: <Search className="h-4 w-4" />, onSelect: () => router.push(searchHref) },
         ] : []),
       ],
     },
@@ -554,7 +554,7 @@ export default function AlbumDetailPage() {
                         id: 'interactive',
                         label: 'Interactive search…',
                         icon: <Search className="h-4 w-4" />,
-                        href: searchHref,
+                        onSelect: () => router.push(searchHref),
                       }] : []),
                       ...(file ? [
                       {

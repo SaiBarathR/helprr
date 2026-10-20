@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect } from 'react';
 import { notFound } from 'next/navigation';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError, jsonFetcher } from '@/lib/query-fetch';
 import { PageHeader } from '@/components/layout/page-header';
 import {
@@ -137,12 +137,20 @@ export function InteractiveSearch({
   const releaseUrl = `/api/${service}/release?${searchQueryString}`;
 
   // jsonFetcher throws on !ok so a 401 (revoked session) redirects via the
-  // global handler; other failures show on the page with Try again.
+  // global handler; other failures show on the page with Try again. A search
+  // runs only when asked: no automatic retry, and no re-run on reconnect
+  // behind the user reading the results.
   const releasesQuery = useQuery({
     queryKey: ['release-search', service, searchQueryString],
     queryFn: jsonFetcher<Release[]>(releaseUrl),
     staleTime: RESULTS_FRESH_MS,
+    retry: false,
+    meta: { refetchOnReconnect: false },
   });
+  // After a grab, the next visit searches afresh (the list on screen stays):
+  // cached results would no longer show the release as already queued.
+  const queryClient = useQueryClient();
+  const expireSearches = () => queryClient.invalidateQueries({ queryKey: ['release-search', service], refetchType: 'none' });
   const releases = useMemo(() => releasesQuery.data ?? [], [releasesQuery.data]);
   const loading = releasesQuery.isFetching;
 
@@ -174,7 +182,10 @@ export function InteractiveSearch({
         throw new ApiError(res.status, data?.error || 'Grab failed');
       }
     },
-    onSuccess: () => toast.success('Added to download queue'),
+    onSuccess: () => {
+      toast.success('Added to download queue');
+      void expireSearches();
+    },
     onError: (err) => {
       if (err instanceof ApiError && err.status === 401) return;
       toast.error(err instanceof Error ? err.message : 'Grab failed');
@@ -200,6 +211,7 @@ export function InteractiveSearch({
     onSuccess: () => {
       toast.success('Added to download queue');
       setOverrideRelease(null);
+      void expireSearches();
     },
     onError: (err) => {
       if (err instanceof ApiError && err.status === 401) return;
@@ -378,7 +390,8 @@ export function InteractiveSearch({
             {/* Filters stay pinned under the header while the list scrolls. */}
             <div
               className="page-toolbar space-y-2 border-b app-chrome-bar bg-background/95 py-2 mb-2 backdrop-blur-sm"
-              style={{ top: 'calc(var(--header-height, 0px) + 2.75rem)' }}
+              // Below the header's whole pinned box: its top padding plus the 2.75rem row.
+              style={{ top: 'calc(var(--header-height, 0px) + var(--main-pad-top) + 2.75rem)' }}
             >
               <div className="flex items-center gap-2">
                 <div className="relative flex-1">

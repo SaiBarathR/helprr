@@ -2,6 +2,7 @@
 
 import { useDeferredValue, useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import Link from '@/components/ui/app-link';
+import { useAppRouter } from '@/components/layout/navigation-provider';
 import { MediaGridSkeleton } from '@/components/ui/media-grid-skeleton';
 import { useWindowVirtualizer } from '@tanstack/react-virtual';
 import {
@@ -293,6 +294,7 @@ export default function MoviesPage() {
   }, [search, persistViewState]);
 
   const handleSearch = useCallback((v: string) => setSearch(v), [setSearch]);
+  const router = useAppRouter();
   const handleNavigateToDetail = useCallback(() => {
     persistViewState(search);
   }, [persistViewState, search]);
@@ -507,7 +509,11 @@ export default function MoviesPage() {
                   id: 'interactive',
                   label: 'Interactive search…',
                   icon: <Search className="h-4 w-4" />,
-                  href: arrInteractiveSearchHref({ kind: 'movie', movieId: movie.id }, movie.title, movie.instanceId),
+                  // An action, not a link: Open in new tab must not start a search.
+                  onSelect: () => {
+                    handleNavigateToDetail();
+                    router.push(arrInteractiveSearchHref({ kind: 'movie', movieId: movie.id }, movie.title, movie.instanceId));
+                  },
                 }]
               : []),
             ...(canManageFiles
@@ -575,6 +581,7 @@ export default function MoviesPage() {
     runSearch,
     enter,
     toggle,
+    router,
   ]);
 
   const contextActionsForMovie = useCallback(

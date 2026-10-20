@@ -346,7 +346,7 @@ export default function EpisodeDetailPage() {
         ...(canSetWatched && epWatch ? [{ id: 'watched', label: epWatch.played ? 'Mark as unwatched' : 'Mark as watched', icon: epWatch.played ? <RotateCcw className="h-4 w-4" /> : <Check className="h-4 w-4" />, onSelect: () => { void setWatched({ jellyfinItemId: epWatch.jellyfinItemId, played: !epWatch.played, seriesId: jellyfinSeriesId ?? undefined }); }, disabled: isWriting }] : []),
         ...(canManageActivity ? [
           { id: 'search', label: 'Automatic Search', icon: <Search className="h-4 w-4" />, onSelect: () => { void handleAutomaticSearch(); }, disabled: !!actionLoading },
-          { id: 'interactive', label: 'Interactive Search', icon: <Search className="h-4 w-4" />, href: searchHref },
+          { id: 'interactive', label: 'Interactive Search', icon: <Search className="h-4 w-4" />, onSelect: () => router.push(searchHref) },
         ] : []),
       ],
     },

@@ -368,9 +368,9 @@ describe('series detail page (characterization)', () => {
     expect(mocks.push).toHaveBeenLastCalledWith('/series/7/manage?title=Severance&instance=son-1');
   });
 
-  it("offers the poster's and each season's quick actions, and links a season to its interactive search page", async () => {
+  it("offers the poster's and each season's quick actions, and opens a season's interactive search page", async () => {
     mocks.contextMenus = true;
-    renderPage();
+    const user = renderPage();
     const poster = within((await screen.findAllByRole('group', { name: 'Severance actions' }))[0]);
     expect(poster.getAllByRole('button').map((action) => action.textContent)).toEqual([
       'Unmonitor', 'Monitoring options…', 'Refresh', 'Search Monitored', 'Preview Rename', 'Open in Jellyfin', 'Delete',
@@ -385,8 +385,9 @@ describe('series detail page (characterization)', () => {
 
     const season1 = within(screen.getByRole('group', { name: 'Season 1 actions' }));
     expect(season1.getByRole('link', { name: 'Open season' }).getAttribute('href')).toBe('/series/7/season/1?instance=son-1');
-    expect(season1.getByRole('link', { name: 'Interactive search…' }).getAttribute('href'))
-      .toBe('/series/7/season/1/search?title=Severance+-+Season+1&instance=son-1');
+    // An action rather than a link, so the menu's Open in new tab never starts a search.
+    await user.click(season1.getByRole('button', { name: 'Interactive search…' }));
+    expect(mocks.push).toHaveBeenLastCalledWith('/series/7/season/1/search?title=Severance+-+Season+1&instance=son-1');
   });
 
   it('says when the series is not found, cannot be loaded, or its episodes cannot', async () => {

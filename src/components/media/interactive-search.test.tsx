@@ -15,6 +15,7 @@ vi.mock('@/components/layout/navigation-provider', () => ({ useAppRouter: () => 
 vi.mock('sonner', () => ({ toast: mocks.toast }));
 
 import { InteractiveSearch } from './interactive-search';
+import { refreshAfterReconnect } from '@/lib/reconnect-queries';
 
 const URL_ = '/api/radarr/release?movieId=5&instanceId=rad-1';
 
@@ -59,10 +60,10 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function renderSearch(searchParams: Record<string, string | number> = { movieId: '5', instanceId: 'rad-1' }) {
+function renderSearch(searchParams: Record<string, string | number> = { movieId: '5', instanceId: 'rad-1' }, seasonPacks = false) {
   return render(
     <QueryClientProvider client={client}>
-      <InteractiveSearch service="radarr" subtitle="Movie (2026)" searchParams={searchParams} />
+      <InteractiveSearch service="radarr" subtitle="Movie (2026)" searchParams={searchParams} showSeasonPackFilter={seasonPacks} />
     </QueryClientProvider>,
   );
 }
@@ -157,5 +158,59 @@ describe('InteractiveSearch page', () => {
   it('is a 404 for an id that is not a whole number, without searching', () => {
     expect(() => renderSearch({ movieId: '5abc' })).toThrow('NEXT_NOT_FOUND');
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('searches afresh on the next visit after a grab, keeping the list on screen', async () => {
+    const user = userEvent.setup();
+    const first = renderSearch();
+    const row = (await screen.findByText('Movie.2026.1080p.Small')).closest('.rounded-lg') as HTMLElement;
+    await user.click(within(row).getByRole('button', { name: 'Add to download queue' }));
+    await waitFor(() => expect(mocks.toast.success).toHaveBeenCalled());
+    expect(screen.getByText('Movie.2026.1080p.Small')).toBeTruthy();
+    expect(searches()).toBe(1);
+    first.unmount();
+    renderSearch();
+    await waitFor(() => expect(searches()).toBe(2));
+  });
+
+  it('is not searched again behind the user when the connection comes back', async () => {
+    renderSearch();
+    await screen.findByText('Movie.2026.2160p.Big');
+    // Five minutes later the results are stale; a reconnect refreshes stale reads.
+    await client.invalidateQueries({ refetchType: 'none' });
+    await refreshAfterReconnect(client, '/movies/5/search', new AbortController().signal);
+    expect(searches()).toBe(1);
+    expect(screen.getByText('Movie.2026.2160p.Big')).toBeTruthy();
+  });
+
+  it('does not retry a failed search on its own, even where queries retry by default', async () => {
+    client = new QueryClient({ defaultOptions: { queries: { retry: 3, retryDelay: 0 } } });
+    searchResponse = () => new Response('{}', { status: 500 });
+    renderSearch();
+    await screen.findByText('Search failed');
+    expect(searches()).toBe(1);
+  });
+
+  it('offers the Season Pack filter only on a season search', async () => {
+    const user = userEvent.setup();
+    const filterButton = () => document.querySelector('button:has(svg.lucide-arrow-up-down)') as HTMLElement;
+    const first = renderSearch(undefined, true);
+    await screen.findByText('Movie.2026.2160p.Big');
+    await user.click(filterButton());
+    expect(await screen.findByRole('menuitemradio', { name: 'Season Pack' })).toBeTruthy();
+    await user.keyboard('{Escape}');
+    first.unmount();
+    client.clear();
+    renderSearch();
+    await screen.findByText('Movie.2026.2160p.Big');
+    await user.click(filterButton());
+    await screen.findByRole('menuitemcheckbox', { name: 'All Indexers' });
+    expect(screen.queryByRole('menuitemradio', { name: 'Season Pack' })).toBeNull();
+  });
+
+  it('pins the filters below the whole header, padding included', async () => {
+    renderSearch();
+    const filters = (await screen.findByPlaceholderText('Filter releases...')).closest('.page-toolbar') as HTMLElement;
+    expect(filters.style.top).toBe('calc(var(--header-height, 0px) + var(--main-pad-top) + 2.75rem)');
   });
 });

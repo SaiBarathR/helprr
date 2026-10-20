@@ -314,7 +314,7 @@ export default function SeasonDetailPage() {
         ...(canManageActivity ? [
           { id: 'refresh', label: 'Refresh', icon: <RefreshCw className="h-4 w-4" />, onSelect: () => { void handleRefresh(); }, disabled: !!actionLoading },
           { id: 'search', label: 'Automatic Search', icon: <Search className="h-4 w-4" />, onSelect: () => { void handleAutomaticSearch(); }, disabled: !!actionLoading },
-          { id: 'interactive', label: 'Interactive Search', icon: <Search className="h-4 w-4" />, href: seasonSearchHref },
+          { id: 'interactive', label: 'Interactive Search', icon: <Search className="h-4 w-4" />, onSelect: () => router.push(seasonSearchHref) },
         ] : []),
       ],
     },
@@ -456,7 +456,7 @@ export default function SeasonDetailPage() {
               id: 'interactive',
               label: 'Interactive search…',
               icon: <Search className="h-4 w-4" />,
-              href: episodeSearchHref(ep),
+              onSelect: () => router.push(episodeSearchHref(ep)),
             }] : []),
           ];
 

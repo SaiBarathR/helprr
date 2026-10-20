@@ -3,7 +3,13 @@ import type { QueryClient } from '@tanstack/react-query';
 export async function refreshAfterReconnect(client: QueryClient, pathname: string, signal: AbortSignal): Promise<void> {
   const route = pathname.split('/')[1];
   const foreground = ({ movies: 'radarr', series: 'sonarr', music: 'lidarr', torrents: 'torrents', jellyfin: 'jellyfin', anime: 'anime' } as Record<string, string>)[route] ?? route;
-  const queries = client.getQueryCache().findAll({ type: 'active', stale: true });
+  // A query marked meta.refetchOnReconnect: false (an interactive search,
+  // which asks every indexer) is never re-run behind the user.
+  const queries = client.getQueryCache().findAll({
+    type: 'active',
+    stale: true,
+    predicate: (query) => query.meta?.refetchOnReconnect !== false,
+  });
   queries.sort((a, b) => Number(b.queryKey[0] === foreground || b.queryKey[0] === 'me') - Number(a.queryKey[0] === foreground || a.queryKey[0] === 'me'));
   let cursor = 0;
   await Promise.all(Array.from({ length: Math.min(4, queries.length) }, async () => {

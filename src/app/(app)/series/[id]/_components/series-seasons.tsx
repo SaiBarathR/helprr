@@ -2,6 +2,7 @@
 
 import { FadeInImage } from '@/components/media/fade-in-image';
 import Link from '@/components/ui/app-link';
+import { useAppRouter } from '@/components/layout/navigation-provider';
 import { Button } from '@/components/ui/button';
 import { ErrorState } from '@/components/ui/error-state';
 import { QuickContextMenu } from '@/components/ui/quick-context-menu';
@@ -50,6 +51,7 @@ export function SeriesSeasons({
   canManageActivity: boolean;
   onToggleSeasonMonitor: (seasonNumber: number, monitored: boolean) => void;
 }) {
+  const router = useAppRouter();
   const seasonNumbers = [...new Set(episodes.map((e) => e.seasonNumber))].sort((a, b) => b - a);
   return (
     <div className="mt-4 [grid-area:seasons]">
@@ -97,11 +99,12 @@ export function SeriesSeasons({
               id: 'interactive',
               label: 'Interactive search…',
               icon: <Search className="h-4 w-4" />,
-              href: arrInteractiveSearchHref(
+              // An action, not a link: Open in new tab must not start a search.
+              onSelect: () => router.push(arrInteractiveSearchHref(
                 { kind: 'season', seriesId: series.id, seasonNumber: sn },
                 `${series.title} - ${sn === 0 ? 'Specials' : `Season ${sn}`}`,
                 instance,
-              ),
+              )),
             }] : []),
             ...(tmdbData && !isAnime ? [{ id: 'expand', label: isExpanded ? 'Collapse episodes' : 'Show episodes', icon: isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />, onSelect: () => onToggleExpand(sn) }] : []),
           ];
