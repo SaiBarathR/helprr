@@ -212,7 +212,7 @@ export default function PreferencesPage() {
             <SelectTrigger className="w-auto h-auto border-0 bg-transparent px-2 py-1 gap-1 text-sm text-muted-foreground shadow-none focus:ring-0 [&>svg]:h-3.5 [&>svg]:w-3.5">
               <SelectValue />
             </SelectTrigger>
-            <SelectContent className="max-h-80">
+            <SelectContent className="max-h-[min(20rem,var(--radix-select-content-available-height))]">
               {regionOptions.map((r) => (
                 <SelectItem key={r.code} value={r.code}>
                   {r.name} · {r.code}

@@ -133,11 +133,9 @@ export function BottomNav() {
               align="end"
               sideOffset={8}
               collisionPadding={8}
-              // Stop short of the system edge the menu grows toward. Opening
-              // down (nav on top), iOS takes taps by the home indicator for its
-              // gesture, so the last row went dead. Opening up (nav at the
-              // bottom), the status-bar scrim covered the first row.
-              className="flex w-56 flex-col p-2 max-h-[var(--radix-popover-content-available-height)] data-[side=bottom]:max-h-[calc(var(--radix-popover-content-available-height)_-_env(safe-area-inset-bottom,0px))] data-[side=top]:max-h-[calc(var(--radix-popover-content-available-height)_-_env(safe-area-inset-top,0px))]"
+              // PopoverContent keeps clear of the status bar and home
+              // indicator and caps its height to the room left.
+              className="flex w-56 flex-col p-2"
             >
               <div
                 ref={setMoreList}

@@ -113,7 +113,7 @@ function TimeColumn({ label, options, value, onChange }: TimeColumnProps) {
         <SelectTrigger size="sm" className="w-16 font-mono tabular-nums">
           <SelectValue />
         </SelectTrigger>
-        <SelectContent className="max-h-[240px]">
+        <SelectContent className="max-h-[min(240px,var(--radix-select-content-available-height))]">
           {options.map((option) => (
             <SelectItem key={option} value={option} className="font-mono tabular-nums">
               {option}
