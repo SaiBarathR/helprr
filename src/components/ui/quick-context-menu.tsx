@@ -173,6 +173,15 @@ export function resolveOpenInNewTabUrl(href: string): string {
   }
 }
 
+/**
+ * A dialog, sheet or list rendered in a portal from inside this surface gets its
+ * events passed up the React tree to this trigger, though it is not inside it on
+ * the page. Such a press must never arm this surface's long-press menu.
+ */
+function isFromPortal(target: EventTarget | null, currentTarget: EventTarget | null): boolean {
+  return target instanceof Node && currentTarget instanceof Node && !currentTarget.contains(target);
+}
+
 function isNestedInteractiveTarget(target: EventTarget | null, currentTarget: EventTarget | null): boolean {
   if (!(target instanceof Element) || !(currentTarget instanceof Element) || target === currentTarget) return false;
   const interactive = target.closest(INTERACTIVE_SELECTOR);
@@ -207,6 +216,7 @@ export function QuickContextMenu({
   const suppressNextClickRef = useRef(false);
   const selectGuardCleanupRef = useRef<(() => void) | null>(null);
   const dragGuardCleanupRef = useRef<(() => void) | null>(null);
+  const portalPressCleanupRef = useRef<(() => void) | null>(null);
   const menuOpenRef = useRef(false);
   const [nestedControlActive, setNestedControlActive] = useState(false);
   const [historyNav, setHistoryNav] = useState<HistoryNavState>({
@@ -253,9 +263,28 @@ export function QuickContextMenu({
     };
   };
 
+  // A press from a portal disables the trigger until that press ends. Its
+  // pointerup may never reach this trigger (it can end in another portal), so
+  // listen for the end of the press on the whole document.
+  const endPortalPressOnRelease = () => {
+    portalPressCleanupRef.current?.();
+    const release = () => {
+      portalPressCleanupRef.current?.();
+      portalPressCleanupRef.current = null;
+      setNestedControlActive(false);
+    };
+    document.addEventListener('pointerup', release, true);
+    document.addEventListener('pointercancel', release, true);
+    portalPressCleanupRef.current = () => {
+      document.removeEventListener('pointerup', release, true);
+      document.removeEventListener('pointercancel', release, true);
+    };
+  };
+
   useEffect(() => () => {
     disarmSelectGuard();
     disarmDragGuard();
+    portalPressCleanupRef.current?.();
   }, []);
 
   if (disabled || enabledActionCount < 2) return children;
@@ -289,6 +318,15 @@ export function QuickContextMenu({
     suppressNextClickRef.current = false;
     disarmSelectGuard();
     disarmDragGuard();
+    if (isFromPortal(event.target, event.currentTarget)) {
+      // Disabling the trigger also clears the long-press Radix may arm for
+      // this very event before the re-render lands.
+      setNestedControlActive(true);
+      endPortalPressOnRelease();
+      pointerTypeRef.current = null;
+      pointerOriginRef.current = null;
+      return;
+    }
     if (isNestedInteractiveTarget(event.target, event.currentTarget)) {
       setNestedControlActive(true);
       pointerTypeRef.current = null;
@@ -365,6 +403,11 @@ export function QuickContextMenu({
           if (pointerTypeRef.current === 'touch' || pointerTypeRef.current === 'pen') {
             event.preventDefault();
           }
+        }}
+        onContextMenu={(event) => {
+          // A right-click or Android long-press inside a portal opened from
+          // here: handled, so Radix does not open this surface's menu for it.
+          if (isFromPortal(event.target, event.currentTarget)) event.preventDefault();
         }}
         onContextMenuCapture={(event) => {
           // Keyboard-triggered context menus may not have a preceding pointer
