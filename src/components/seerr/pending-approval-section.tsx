@@ -9,10 +9,11 @@ import { FadeInImage } from '@/components/media/fade-in-image';
 import { Check, X, Loader2, Film, Tv, Clock } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
-import { useCan } from '@/components/permission-provider';
+import { hasCapability, useCan, useMe } from '@/components/permission-provider';
+import { TMDB_TITLE_PAGE_CAPABILITIES } from '@/lib/capabilities';
 import { SeerrRequestModal } from '@/components/seerr/seerr-request-modal';
 import { useInfiniteScroll } from '@/lib/hooks/use-infinite-scroll';
-import { QuickContextMenu, type ContextAction } from '@/components/ui/quick-context-menu';
+import { QuickContextMenu, type ContextActionGroup } from '@/components/ui/quick-context-menu';
 
 interface PendingRow {
   id: string;
@@ -48,6 +49,9 @@ export function PendingApprovalSection({
   contextMenuDisabled?: boolean;
 }) {
   const canApprove = useCan('requests.approve');
+  // Pending titles are not in the library yet, so they open on their Discover page.
+  const me = useMe();
+  const canOpenTitlePage = TMDB_TITLE_PAGE_CAPABILITIES.some((cap) => hasCapability(me, cap));
   const [modalRow, setModalRow] = useState<PendingRow | null>(null);
   // Keyed by focus id (not a boolean) so a second notification tap with a
   // different ?focus= on the already-mounted page is still handled.
@@ -122,30 +126,50 @@ export function PendingApprovalSection({
       {rows.map((r) => {
         const Icon = r.mediaType === 'tv' ? Tv : Film;
         const isBusy = removeMutation.isPending && removeMutation.variables === r.id;
-        const actions: ContextAction[] = canApprove
-          ? [
-              {
-                id: 'approve',
-                label: 'Approve…',
-                icon: <Check className="h-4 w-4" />,
-                onSelect: () => setModalRow(r),
-              },
-              {
-                id: 'decline',
-                label: 'Decline',
-                icon: <X className="h-4 w-4" />,
-                destructive: true,
-                onSelect: () => remove(r.id),
-              },
-            ]
-          // A member's only action is Cancel, which is already a visible button;
-          // the menu needs at least two actions, so it offers none.
-          : [];
+        const groups: ContextActionGroup[] = [
+          ...(canOpenTitlePage ? [{
+            id: 'open',
+            actions: [{
+              id: 'open-helprr',
+              label: 'Open in Helprr',
+              icon: <Icon className="h-4 w-4" />,
+              href: `/discover/${r.mediaType === 'tv' ? 'tv' : 'movie'}/${r.tmdbId}`,
+            }],
+          }] : []),
+          {
+            id: 'manage',
+            actions: canApprove
+              ? [
+                  {
+                    id: 'approve',
+                    label: 'Approve…',
+                    icon: <Check className="h-4 w-4" />,
+                    onSelect: () => setModalRow(r),
+                  },
+                  {
+                    id: 'decline',
+                    label: 'Decline',
+                    icon: <X className="h-4 w-4" />,
+                    destructive: true,
+                    onSelect: () => remove(r.id),
+                  },
+                ]
+              // Cancel is also a visible button; the menu needs at least two
+              // actions, so a member without Open in Helprr gets no menu.
+              : [{
+                  id: 'cancel',
+                  label: 'Cancel',
+                  icon: <X className="h-4 w-4" />,
+                  destructive: true,
+                  onSelect: () => remove(r.id),
+                }],
+          },
+        ];
         return (
           <QuickContextMenu
             key={r.id}
             label={`Actions for ${r.title ?? `TMDB ${r.tmdbId}`}`}
-            actions={actions}
+            groups={groups}
             disabled={contextMenuDisabled || isBusy}
           >
             <div
