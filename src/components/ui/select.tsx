@@ -5,6 +5,7 @@ import { CheckIcon, ChevronDownIcon, ChevronUpIcon } from "lucide-react"
 import { Select as SelectPrimitive } from "radix-ui"
 
 import { cn } from "@/lib/utils"
+import { useSafeAreaPadding } from "@/lib/hooks/use-safe-area-padding"
 
 function Select({
   ...props
@@ -50,13 +51,18 @@ function SelectTrigger({
   )
 }
 
+// Popper, not item-aligned: item-aligned lays the whole list over the trigger
+// and lets it run past the screen edge, where a phone can neither see nor
+// scroll to the options.
 function SelectContent({
   className,
   children,
-  position = "item-aligned",
+  position = "popper",
   align = "center",
+  collisionPadding = 8,
   ...props
 }: React.ComponentProps<typeof SelectPrimitive.Content>) {
+  const padding = useSafeAreaPadding(collisionPadding)
   return (
     <SelectPrimitive.Portal>
       <SelectPrimitive.Content
@@ -69,6 +75,7 @@ function SelectContent({
         )}
         position={position}
         align={align}
+        collisionPadding={padding}
         {...props}
       >
         <SelectScrollUpButton />

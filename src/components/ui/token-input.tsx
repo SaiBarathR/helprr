@@ -274,7 +274,7 @@ export function TokenInput({
           role="listbox"
           align="start"
           sideOffset={4}
-          className="w-(--radix-popover-trigger-width) min-w-40 p-1 max-h-56 overflow-y-auto"
+          className="w-(--radix-popover-trigger-width) min-w-40 p-1 max-h-[min(14rem,var(--radix-popover-content-available-height))] overflow-y-auto"
           onOpenAutoFocus={(e) => e.preventDefault()}
           onCloseAutoFocus={(e) => e.preventDefault()}
           // Keep focus (and the keyboard on mobile) in the input while tapping options.
