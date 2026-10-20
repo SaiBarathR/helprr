@@ -49,9 +49,11 @@ export function PendingApprovalSection({
   contextMenuDisabled?: boolean;
 }) {
   const canApprove = useCan('requests.approve');
-  // Pending titles are not in the library yet, so they open on their Discover page.
+  // A pending row carries no library match, so it opens on the title's
+  // Discover page (which needs a TMDB connection).
   const me = useMe();
-  const canOpenTitlePage = TMDB_TITLE_PAGE_CAPABILITIES.some((cap) => hasCapability(me, cap));
+  const canOpenTitlePage = me?.tmdbConfigured === true
+    && TMDB_TITLE_PAGE_CAPABILITIES.some((cap) => hasCapability(me, cap));
   const [modalRow, setModalRow] = useState<PendingRow | null>(null);
   // Keyed by focus id (not a boolean) so a second notification tap with a
   // different ?focus= on the already-mounted page is still handled.

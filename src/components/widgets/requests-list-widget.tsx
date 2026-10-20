@@ -345,9 +345,11 @@ export function RequestsListWidget({
   const [deleteTarget, setDeleteTarget] = useState<EnrichedSeerrRequest | null>(null);
   // Only approvers see request-management actions (approve/decline/edit/retry/delete).
   const canManageRequests = useCan('requests.approve');
-  // A title not in the library yet opens on its Discover page instead.
+  // A title not in the library yet, or in a library section this user can't
+  // open, opens on its Discover page instead (which needs a TMDB connection).
   const me = useMe();
-  const canOpenTitlePage = TMDB_TITLE_PAGE_CAPABILITIES.some((cap) => hasCapability(me, cap));
+  const canOpenTitlePage = me?.tmdbConfigured === true
+    && TMDB_TITLE_PAGE_CAPABILITIES.some((cap) => hasCapability(me, cap));
   const { adjustBadge } = useBadgeActions();
 
   const runAction = useCallback(
@@ -532,8 +534,9 @@ export function RequestsListWidget({
           const canDecline = canManageRequests && Number(req.status) === SEERR_REQUEST_STATUS.PENDING_APPROVAL;
           const canRetry = canManageRequests && Number(req.status) === SEERR_REQUEST_STATUS.FAILED;
 
-          const helprrHref = req.enriched.helprr
-            ? `/${req.enriched.helprr.type === 'series' ? 'series' : 'movies'}/${req.enriched.helprr.id}?instance=${req.enriched.helprr.instanceId}`
+          const library = req.enriched.helprr;
+          const helprrHref = library && hasCapability(me, library.type === 'series' ? 'series.view' : 'movies.view')
+            ? `/${library.type === 'series' ? 'series' : 'movies'}/${library.id}?instance=${library.instanceId}`
             : canOpenTitlePage && req.media?.tmdbId
               ? `/discover/${req.type === 'tv' ? 'tv' : 'movie'}/${req.media.tmdbId}`
               : null;

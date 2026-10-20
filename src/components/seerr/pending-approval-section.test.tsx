@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ContextActionGroup } from '@/components/ui/quick-context-menu';
 
 const mocks = vi.hoisted(() => ({
-  me: null as { role: string; capabilities: Record<string, boolean> } | null,
+  me: null as { role: string; tmdbConfigured: boolean; capabilities: Record<string, boolean> } | null,
 }));
 
 vi.mock('@/components/permission-provider', async (importOriginal) => ({
@@ -69,7 +69,7 @@ afterEach(() => {
 
 describe('PendingApprovalSection Open in Helprr', () => {
   it('lets an approver open a pending title on its Discover page', async () => {
-    mocks.me = { role: 'admin', capabilities: {} };
+    mocks.me = { role: 'admin', tmdbConfigured: true, capabilities: {} };
     renderSection();
     expect(await menuItems('Whalefall')).toEqual([
       ['Open in Helprr', '/discover/movie/1001'],
@@ -80,7 +80,7 @@ describe('PendingApprovalSection Open in Helprr', () => {
   });
 
   it('gives a member who may open title pages Open in Helprr and Cancel', async () => {
-    mocks.me = { role: 'member', capabilities: { 'requests.view': true, 'discover.view': true } };
+    mocks.me = { role: 'member', tmdbConfigured: true, capabilities: { 'requests.view': true, 'discover.view': true } };
     renderSection();
     expect(await menuItems('Whalefall')).toEqual([
       ['Open in Helprr', '/discover/movie/1001'],
@@ -89,9 +89,18 @@ describe('PendingApprovalSection Open in Helprr', () => {
   });
 
   it('gives a member who may not open title pages no menu, as before', async () => {
-    mocks.me = { role: 'member', capabilities: { 'requests.view': true } };
+    mocks.me = { role: 'member', tmdbConfigured: true, capabilities: { 'requests.view': true } };
     renderSection();
     await screen.findByText('Whalefall (2026)');
     expect(screen.queryByRole('list', { name: 'Actions for Whalefall' })).toBeNull();
+  });
+
+  it('offers no Discover page without a TMDB connection', async () => {
+    mocks.me = { role: 'admin', tmdbConfigured: false, capabilities: {} };
+    renderSection();
+    expect(await menuItems('Whalefall')).toEqual([
+      ['Approve…', null],
+      ['Decline', null],
+    ]);
   });
 });

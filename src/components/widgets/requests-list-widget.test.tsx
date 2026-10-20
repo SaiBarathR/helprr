@@ -1,13 +1,13 @@
 // @vitest-environment jsdom
 
 import type { ReactNode } from 'react';
-import { cleanup, render, screen } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ContextActionGroup } from '@/components/ui/quick-context-menu';
+import { cleanup, render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { EnrichedSeerrRequest } from '@/types/seerr';
 
 const mocks = vi.hoisted(() => ({
-  me: null as { role: string; capabilities: Record<string, boolean> } | null,
+  me: null as { role: string; tmdbConfigured: boolean; capabilities: Record<string, boolean> } | null,
   results: [] as unknown[],
 }));
 
@@ -30,21 +30,8 @@ vi.mock('@/lib/hooks/use-external-urls', () => ({ useExternalUrls: () => ({}) })
 vi.mock('@/components/layout/badge-provider', () => ({ useBadgeActions: () => ({ adjustBadge: vi.fn() }) }));
 vi.mock('@/components/seerr/pending-approval-section', () => ({ PendingApprovalSection: () => null }));
 vi.mock('@/components/seerr/seerr-request-modal', () => ({ SeerrRequestModal: () => null }));
-vi.mock('@/components/ui/app-link', () => ({ default: ({ href, children }: { href: string; children: ReactNode }) => <a href={href}>{children}</a> }));
+vi.mock('@/components/ui/app-link', () => ({ default: ({ children, ...props }: { children: ReactNode }) => <a {...props}>{children}</a> }));
 vi.mock('@/components/media/fade-in-image', () => ({ FadeInImage: () => null }));
-// The long-press menu renders its actions inline, keyed by the row's label.
-vi.mock('@/components/ui/quick-context-menu', () => ({
-  QuickContextMenu: ({ label, groups, children }: { label: string; groups: ContextActionGroup[]; children: ReactNode }) => (
-    <div>
-      {children}
-      <ul aria-label={label}>
-        {groups.flatMap((group) => group.actions).map((action) => (
-          <li key={action.id}>{action.href ? <a href={action.href}>{action.label}</a> : action.label}</li>
-        ))}
-      </ul>
-    </div>
-  ),
-}));
 
 import { RequestsListWidget } from './requests-list-widget';
 
@@ -59,15 +46,23 @@ function request(overrides: Partial<EnrichedSeerrRequest> & Pick<EnrichedSeerrRe
   } as EnrichedSeerrRequest;
 }
 
-function openHrefs(title: string) {
-  const menu = screen.getByRole('list', { name: `Actions for ${title}` });
-  return [...menu.querySelectorAll('a')]
-    .filter((link) => link.textContent === 'Open in Helprr')
-    .map((link) => link.getAttribute('href'));
+// Opens the row's ⋯ menu (always on screen, unlike the long-press menu, which
+// needs two actions) and reads where its Open in Helprr goes.
+async function openHrefs(title: string) {
+  const user = userEvent.setup();
+  const row = screen.getByText(title).closest('div.border') as HTMLElement;
+  await user.click(within(row).getByRole('button', { name: 'Request actions' }));
+  const menu = await screen.findByRole('menu');
+  const hrefs = within(menu).queryAllByRole('menuitem', { name: 'Open in Helprr' }).map((item) => item.getAttribute('href'));
+  await user.keyboard('{Escape}');
+  return hrefs;
 }
 
+beforeAll(() => {
+  globalThis.ResizeObserver ??= class { observe() {} unobserve() {} disconnect() {} } as unknown as typeof ResizeObserver;
+});
 beforeEach(() => {
-  mocks.me = { role: 'admin', capabilities: {} };
+  mocks.me = { role: 'admin', tmdbConfigured: true, capabilities: {} };
   mocks.results = [
     request({ id: 1, type: 'movie' }, 'Whalefall'),
     request({ id: 2, type: 'tv' }, 'Pending Show'),
@@ -79,32 +74,42 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('RequestsListWidget Open in Helprr', () => {
-  it('opens a title that is not in the library on its Discover page', () => {
+  it('opens a title that is not in the library on its Discover page', async () => {
     render(<RequestsListWidget refreshInterval={0} unbounded />);
-    expect(openHrefs('Whalefall')).toEqual(['/discover/movie/1001']);
-    expect(openHrefs('Pending Show')).toEqual(['/discover/tv/1002']);
+    expect(await openHrefs('Whalefall')).toEqual(['/discover/movie/1001']);
+    expect(await openHrefs('Pending Show')).toEqual(['/discover/tv/1002']);
   });
 
-  it('still opens a library title on its library page', () => {
+  it('still opens a library title on its library page', async () => {
     render(<RequestsListWidget refreshInterval={0} unbounded />);
-    expect(openHrefs('Tenzing')).toEqual(['/movies/42?instance=radarr-1']);
-    expect(openHrefs('Library Show')).toEqual(['/series/7?instance=sonarr-1']);
+    expect(await openHrefs('Tenzing')).toEqual(['/movies/42?instance=radarr-1']);
+    expect(await openHrefs('Library Show')).toEqual(['/series/7?instance=sonarr-1']);
   });
 
-  it('offers nothing when the request has no TMDB id', () => {
+  it('offers nothing when the request has no TMDB id', async () => {
     render(<RequestsListWidget refreshInterval={0} unbounded />);
-    expect(openHrefs('No Media')).toEqual([]);
+    expect(await openHrefs('No Media')).toEqual([]);
   });
 
-  it('offers the Discover page to a member who may open title pages, and not to one who may not', () => {
-    mocks.me = { role: 'member', capabilities: { 'requests.view': true, 'watchlist.view': true } };
-    const { unmount } = render(<RequestsListWidget refreshInterval={0} unbounded />);
-    expect(openHrefs('Whalefall')).toEqual(['/discover/movie/1001']);
-    unmount();
-
-    mocks.me = { role: 'member', capabilities: { 'requests.view': true } };
+  it('offers no Discover page without a TMDB connection, but still the library page', async () => {
+    mocks.me = { role: 'admin', tmdbConfigured: false, capabilities: {} };
     render(<RequestsListWidget refreshInterval={0} unbounded />);
-    expect(openHrefs('Whalefall')).toEqual([]);
-    expect(openHrefs('Tenzing')).toEqual(['/movies/42?instance=radarr-1']);
+    expect(await openHrefs('Whalefall')).toEqual([]);
+    expect(await openHrefs('Tenzing')).toEqual(['/movies/42?instance=radarr-1']);
+  });
+
+  it('sends a member to the pages they may open: library, else Discover, else nothing', async () => {
+    mocks.me = { role: 'member', tmdbConfigured: true, capabilities: { 'requests.view': true, 'movies.view': true, 'watchlist.view': true } };
+    const first = render(<RequestsListWidget refreshInterval={0} unbounded />);
+    expect(await openHrefs('Whalefall')).toEqual(['/discover/movie/1001']);
+    expect(await openHrefs('Tenzing')).toEqual(['/movies/42?instance=radarr-1']);
+    // No series.view: the library series opens on Discover instead.
+    expect(await openHrefs('Library Show')).toEqual(['/discover/tv/1004']);
+    first.unmount();
+
+    mocks.me = { role: 'member', tmdbConfigured: true, capabilities: { 'requests.view': true } };
+    render(<RequestsListWidget refreshInterval={0} unbounded />);
+    expect(await openHrefs('Whalefall')).toEqual([]);
+    expect(await openHrefs('Tenzing')).toEqual([]);
   });
 });
