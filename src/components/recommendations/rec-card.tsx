@@ -130,8 +130,10 @@ export function RecCard({ item, railId, position, mode, tracker, onNotInterested
   ];
 
   return (
-    <QuickContextMenu label={`Actions for ${item.title}`} actions={actions}>
-      <div ref={ref} className="group w-[116px] shrink-0 md:w-[150px]">
+    <div ref={ref} className="group w-[116px] shrink-0 md:w-[150px]">
+      {/* The link itself is the menu's trigger: a menu around a wrapper sees the
+          press as one on a nested link and stays shut. */}
+      <QuickContextMenu label={`Actions for ${item.title}`} actions={actions}>
         <Link
           href={item.href}
           onClick={() => tracker.event('click', item, railId, mode)}
@@ -189,15 +191,15 @@ export function RecCard({ item, railId, position, mode, tracker, onNotInterested
             </p>
           </div>
         </Link>
-        {watchlistDraft && (
-          <WatchlistAddDialog
-            open={watchlistOpen}
-            onOpenChange={setWatchlistOpen}
-            draft={watchlistDraft}
-            onSaved={() => tracker.event('watchlist_add', item, railId, mode)}
-          />
-        )}
-      </div>
-    </QuickContextMenu>
+      </QuickContextMenu>
+      {watchlistDraft && (
+        <WatchlistAddDialog
+          open={watchlistOpen}
+          onOpenChange={setWatchlistOpen}
+          draft={watchlistDraft}
+          onSaved={() => tracker.event('watchlist_add', item, railId, mode)}
+        />
+      )}
+    </div>
   );
 }
