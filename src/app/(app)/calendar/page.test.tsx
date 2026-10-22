@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
 
-import type { ComponentProps, ReactNode } from 'react';
+import { useInsertionEffect, type ComponentProps, type ReactNode } from 'react';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 
-const route = vi.hoisted(() => ({ pathname: '/calendar' }));
+const route = vi.hoisted(() => ({ pathname: '/calendar', loading: false }));
+const calendar = vi.hoisted(() => ({ loading: false }));
 vi.mock('next/navigation', () => ({
   usePathname: () => route.pathname,
   useSearchParams: () => new URLSearchParams(),
@@ -15,7 +16,7 @@ vi.mock('@/hooks/use-calendar', () => ({
       id: 'movie-1', type: 'movie', title: 'Selected day movie', movieId: 1,
       date: '2026-10-15T12:00:00', monitored: true, hasFile: false,
     }],
-    loading: false,
+    loading: calendar.loading,
     error: null,
   }),
 }));
@@ -39,9 +40,14 @@ let scrollY = 0;
 const scrollIntoView = vi.fn();
 
 function Page() {
+  // The router puts the new URL in place during the commit, as Next's
+  // HistoryUpdater does, so a page rendering it still sees the previous one.
+  useInsertionEffect(() => {
+    if (window.location.pathname !== route.pathname) window.history.replaceState({}, '', route.pathname);
+  });
   return (
     <RouteScrollRestoration pending={false}>
-      {route.pathname === '/calendar' ? <CalendarPage /> : <p>Movie details</p>}
+      {route.loading ? <p>Loading</p> : route.pathname === '/calendar' ? <CalendarPage /> : <p>Movie details</p>}
     </RouteScrollRestoration>
   );
 }
@@ -57,6 +63,8 @@ beforeEach(() => {
   resetRouteViewStateForTests();
   clearRouteScrollStateForTests();
   route.pathname = '/calendar';
+  route.loading = false;
+  calendar.loading = false;
   window.history.replaceState({}, '', '/calendar');
   scrollY = 0;
   scrollIntoView.mockClear();
@@ -147,4 +155,112 @@ it('resets the picked day when using Today or changing the month', () => {
   vi.setSystemTime(new Date('2026-10-22T12:02:00'));
   fireEvent.click(screen.getByRole('button', { name: 'Today' }));
   expect(screen.getByRole('heading', { level: 2 }).textContent).toBe('Thursday, October 22');
+});
+
+async function visit(kind: 'push' | 'traverse', pathname: string, page: ReturnType<typeof render>) {
+  window.dispatchEvent(new CustomEvent(NAVIGATION_START_EVENT, { detail: kind === 'push' ? { kind, href: pathname } : { kind } }));
+  route.pathname = pathname;
+  if (kind === 'traverse') {
+    window.history.replaceState({}, '', pathname);
+    window.dispatchEvent(new PopStateEvent('popstate'));
+  }
+  page.rerender(<Page />);
+  await settleScroll();
+}
+
+it('keeps a picked day for Back only: a fresh visit the same day opens on today', async () => {
+  const page = render(<Page />);
+  await settleScroll();
+  fireEvent.click(screen.getByRole('button', { name: /October 15, 1 release/ }));
+  await visit('push', '/movies/1', page);
+  await visit('push', '/calendar', page);
+  expect(screen.getByRole('heading', { level: 2 }).textContent).toBe('Thursday, October 22');
+
+  // A pick made on this visit still comes back on Back.
+  fireEvent.click(screen.getByRole('button', { name: /October 15, 1 release/ }));
+  await visit('push', '/movies/1', page);
+  await visit('traverse', '/calendar', page);
+  expect(screen.getByRole('heading', { level: 2 }).textContent).toBe('Thursday, October 15');
+});
+
+it('jumps to today on a fresh visit even with an earlier position saved', async () => {
+  // The jump waits for the toolbar's measurement, so let the observer report.
+  vi.stubGlobal('ResizeObserver', class {
+    constructor(private callback: () => void) {}
+    observe() { this.callback(); }
+    disconnect() {}
+    unobserve() {}
+  });
+  useUIStore.setState({ calendarView: 'week' });
+  const page = render(<Page />);
+  await settleScroll();
+  scrollY = 200;
+  window.dispatchEvent(new Event('scroll'));
+  await settleScroll();
+  await visit('push', '/movies/1', page);
+  expect(readRouteScrollState('/calendar')).not.toBeNull();
+  scrollIntoView.mockClear();
+  calendar.loading = true;
+  await visit('push', '/calendar', page);
+  calendar.loading = false;
+  page.rerender(<Page />);
+  await settleScroll();
+  expect(scrollIntoView.mock.contexts.some((el) => (el as HTMLElement).dataset?.weekDate === '2026-10-22')).toBe(true);
+});
+
+it('restores the pick on a Back that commits before its popstate, as the installed iOS app does', async () => {
+  const page = render(<Page />);
+  await settleScroll();
+  fireEvent.click(screen.getByRole('button', { name: /October 15, 1 release/ }));
+  await visit('push', '/movies/1', page);
+  // No start event: the route commits first, the popstate follows.
+  route.pathname = '/calendar';
+  window.history.replaceState({}, '', '/calendar');
+  page.rerender(<Page />);
+  window.dispatchEvent(new PopStateEvent('popstate'));
+  await settleScroll();
+  expect(screen.getByRole('heading', { level: 2 }).textContent).toBe('Thursday, October 15');
+});
+
+it('opens the current month on a fresh visit after paging to another one', async () => {
+  const page = render(<Page />);
+  await settleScroll();
+  fireEvent.click(screen.getByRole('button', { name: 'Next period' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Next period' }));
+  expect(screen.getByText('December 2026')).toBeTruthy();
+  await visit('push', '/movies/1', page);
+  await visit('push', '/calendar', page);
+  expect(screen.getByText('October 2026')).toBeTruthy();
+  expect(screen.getByRole('heading', { level: 2 }).textContent).toBe('Thursday, October 22');
+});
+
+it('still treats the visit as fresh when the route commits its loading view first', async () => {
+  const page = render(<Page />);
+  await settleScroll();
+  fireEvent.click(screen.getByRole('button', { name: /October 15, 1 release/ }));
+  fireEvent.click(screen.getByRole('button', { name: 'Next period' }));
+  await visit('push', '/movies/1', page);
+  route.loading = true;
+  await visit('push', '/calendar', page);
+  route.loading = false;
+  page.rerender(<Page />);
+  await settleScroll();
+  expect(screen.getByText('October 2026')).toBeTruthy();
+  expect(screen.getByRole('heading', { level: 2 }).textContent).toBe('Thursday, October 22');
+});
+
+it('keeps the pick on a Forward back to a freshly visited Calendar (iOS order)', async () => {
+  const page = render(<Page />);
+  await settleScroll();
+  await visit('push', '/movies/1', page);
+  await visit('push', '/calendar', page);
+  fireEvent.click(screen.getByRole('button', { name: /October 15, 1 release/ }));
+  for (const pathname of ['/movies/1', '/calendar']) {
+    // Commit first, popstate after, with no start event.
+    route.pathname = pathname;
+    page.rerender(<Page />);
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    await settleScroll();
+  }
+  expect(screen.getByRole('heading', { level: 2 }).textContent).toBe('Thursday, October 15');
 });

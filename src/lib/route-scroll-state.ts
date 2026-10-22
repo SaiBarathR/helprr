@@ -199,8 +199,27 @@ export function isScrollIntent(event: Event): boolean {
   return false;
 }
 
+// The destination of the fresh navigation in progress (a push, or a replace
+// that is not a scroll:false sync of a view the user was already in), or null.
+// Set when the navigation starts and kept until the next one, a cancel, a
+// popstate that starts a traversal, or a page taking it, so a page that mounts
+// after the route's loading view can still read it. Keyed to the URL, so a Back
+// to another page never reads it as fresh. Read it after commit (an effect):
+// during render the URL can still be the previous page's.
+let freshArrival: string | null = null;
+
+/** Whether the current URL was reached by a fresh navigation rather than Back/Forward or a reload. */
+export function isFreshArrival(): boolean {
+  return freshArrival !== null && freshArrival === routeScrollKey(window.location);
+}
+
+export function setFreshArrival(destination: string | null) {
+  freshArrival = destination;
+}
+
 export function clearRouteScrollStateForTests() {
   for (const timer of writeTimers.values()) if (typeof window !== 'undefined') window.clearTimeout(timer);
   writeTimers.clear();
   memory.clear();
+  freshArrival = null;
 }

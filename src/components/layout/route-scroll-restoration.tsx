@@ -5,11 +5,11 @@ import { usePathname, useSearchParams } from 'next/navigation';
 import {
   NAVIGATION_CANCEL_EVENT, NAVIGATION_START_EVENT,
   applyRouteScroll, captureRouteScroll, flushRouteScrollState, isScrollIntent,
-  readRouteScrollState, routeScrollKey, writeRouteScrollState,
+  readRouteScrollState, routeScrollKey, setFreshArrival, writeRouteScrollState,
   type NavigationStartDetail,
 } from '@/lib/route-scroll-state';
 
-type PendingNavigation = NavigationStartDetail & { destination?: string; source: string; id: number };
+type PendingNavigation = NavigationStartDetail & { destination?: string; source: string; id: number; fresh?: boolean };
 
 export function RouteScrollRestoration({ children, pending }: { children: React.ReactNode; pending: boolean }) {
   const pathname = usePathname();
@@ -66,10 +66,18 @@ export function RouteScrollRestoration({ children, pending }: { children: React.
         frozenRef.current = false;
         return;
       }
+      // A push, or a replace that is not a scroll:false sync, starts a new view.
+      // So does a sync straight after a fresh, unscrolled arrival (the anime
+      // library putting its saved tab into the URL). Decided here, not at the
+      // commit, so the arriving page can read it while it mounts.
+      const fresh = detail.kind === 'push'
+        || (detail.kind === 'replace' && (!detail.preserveScroll || freshArrivalRef.current));
+      setFreshArrival(fresh && destination ? destination : null);
       capture(true);
       frozenRef.current = true;
       pendingNavigationRef.current = {
         ...detail,
+        fresh,
         destination,
         source: routeRef.current,
         id: ++navigationIdRef.current,
@@ -95,6 +103,7 @@ export function RouteScrollRestoration({ children, pending }: { children: React.
         if (!frozenRef.current) scheduleCapture();
         return;
       }
+      setFreshArrival(null);
       if (!frozenRef.current) { capture(true); frozenRef.current = true; }
       pendingNavigationRef.current = {
         kind: 'traverse', destination, source: routeRef.current, id: ++navigationIdRef.current,
@@ -102,6 +111,7 @@ export function RouteScrollRestoration({ children, pending }: { children: React.
     };
     const onNavigationCancel = () => {
       if (pendingNavigationRef.current?.source !== routeRef.current) return;
+      setFreshArrival(null);
       pendingNavigationRef.current = null;
       frozenRef.current = restoringRef.current;
       if (!frozenRef.current) scheduleCapture();
@@ -152,10 +162,8 @@ export function RouteScrollRestoration({ children, pending }: { children: React.
     // viewport must not jump. Once that view has its own saved offset, though,
     // the user is returning to it rather than switching within it, and keeping
     // the arrival position would overwrite the offset they left behind, unless
-    // the sync comes straight after a fresh arrival (the anime library putting
-    // its saved tab into the URL), which is still that fresh visit.
-    const fresh = navigation?.kind === 'push'
-      || (navigation?.kind === 'replace' && (!navigation.preserveScroll || freshArrivalRef.current));
+    // it is still a fresh visit (see onNavigationStart).
+    const fresh = navigation?.fresh === true;
     freshArrivalRef.current = fresh;
     const saved = fresh ? null : readRouteScrollState(nextRoute);
     if (routeChanged && navigation?.preserveScroll && navigation.destination === nextRoute && !saved) {

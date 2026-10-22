@@ -1,6 +1,6 @@
 'use client';
 
-import { readRouteScrollState, routeScrollKey } from '@/lib/route-scroll-state';
+import { isFreshArrival, readRouteScrollState, routeScrollKey, setFreshArrival } from '@/lib/route-scroll-state';
 import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
 
 import {
@@ -880,6 +880,10 @@ function DayPanel({
   );
 }
 
+/** A day picked in the month view, and the currentDate it was picked under. */
+type ManualSelection = { anchor: Date; key: string };
+const MANUAL_SELECTION = 'manualSelection';
+
 function MonthView({
   currentDate,
   events,
@@ -911,10 +915,7 @@ function MonthView({
   // so any navigation (prev/next/Today swaps the Date object) invalidates it
   // and the selection falls back to the derived default: today when the month
   // contains it, otherwise the month's first day with events.
-  const [manualSelection, setManualSelection] = useRouteViewState<{
-    anchor: Date;
-    key: string;
-  } | null>('manualSelection', null);
+  const [manualSelection, setManualSelection] = useRouteViewState<ManualSelection | null>(MANUAL_SELECTION, null);
   const panelRef = useRef<HTMLDivElement>(null);
 
   const defaultKey = useMemo(() => {
@@ -1263,6 +1264,20 @@ export default function CalendarPage() {
   // anchored to this value, and a remount the same day (Back from a title) must
   // see the same one or the selection is dropped. Prev/next/Today store theirs.
   const [currentDate, setCurrentDate] = useRouteViewState('currentDate', () => startOfDay(new Date()));
+  // The period shown and the month view's picked day are kept for Back only.
+  // A fresh visit opens on today; reset before paint, so the old view never shows.
+  // Read at mount, after the router has put the new URL in place (not during
+  // render, when it may still be the previous page's), and taken, so a later
+  // Forward to this URL is not mistaken for another fresh visit.
+  const freshVisitRef = useRef(false);
+  const [, setManualSelection] = useRouteViewState<ManualSelection | null>(MANUAL_SELECTION, null);
+  useLayoutEffect(() => {
+    freshVisitRef.current = isFreshArrival();
+    if (!freshVisitRef.current) return;
+    setFreshArrival(null);
+    setCurrentDate(startOfDay(new Date()));
+    setManualSelection(null);
+  }, [setCurrentDate, setManualSelection]);
   const autoFocusPendingRef = useRef(true);
   const autoFocusWaitForLoadRef = useRef(true);
   const autoFocusSawLoadingRef = useRef(false);
@@ -1291,7 +1306,9 @@ export default function CalendarPage() {
   }, []);
 
   useEffect(() => {
-    if (lastViewRef.current === null && readRouteScrollState(routeScrollKey(window.location))) {
+    // Back restores where the list was left; a fresh visit opens on today, even
+    // though an earlier visit's position is still saved for this URL.
+    if (lastViewRef.current === null && !freshVisitRef.current && readRouteScrollState(routeScrollKey(window.location))) {
       autoFocusPendingRef.current = false;
       lastViewRef.current = calendarView;
       return;
