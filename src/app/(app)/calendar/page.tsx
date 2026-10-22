@@ -28,6 +28,7 @@ import {
   eachDayOfInterval,
   isToday,
   isSameMonth,
+  startOfDay,
 } from 'date-fns';
 import {
   ChevronLeft,
@@ -1258,7 +1259,10 @@ export default function CalendarPage() {
   const showImages = useUIStore((s) => s.calendarShowImages);
   const setShowImages = useUIStore((s) => s.setCalendarShowImages);
 
-  const [currentDate, setCurrentDate] = useRouteViewState('currentDate', new Date());
+  // Midnight, not the moment of mounting: a tapped day in the month view is
+  // anchored to this value, and a remount the same day (Back from a title) must
+  // see the same one or the selection is dropped. Prev/next/Today store theirs.
+  const [currentDate, setCurrentDate] = useRouteViewState('currentDate', () => startOfDay(new Date()));
   const autoFocusPendingRef = useRef(true);
   const autoFocusWaitForLoadRef = useRef(true);
   const autoFocusSawLoadingRef = useRef(false);
