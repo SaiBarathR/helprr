@@ -3,8 +3,8 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import type { Strategy } from 'serwist';
 
 const recorded = vi.hoisted(() => ({
+  disableNavigationPreload: vi.fn(),
   options: null as null | {
-    navigationPreload: boolean;
     runtimeCaching: Array<{ handler: Strategy }>;
     fallbacks: { entries: Array<{ url: string; matcher: (param: { request: Request }) => boolean }> };
   },
@@ -23,6 +23,7 @@ vi.mock('serwist', async (importOriginal) => ({
   },
   // Expiration's IndexedDB bookkeeping is unrelated to shell validation.
   ExpirationPlugin: class {},
+  disableNavigationPreload: recorded.disableNavigationPreload,
 }));
 
 class NavigationEvent {
@@ -239,7 +240,8 @@ describe('navigation shell nonce guard', () => {
 });
 
 describe('worker updates', () => {
-  it('does not use navigation preload, whose cancelled wait holds the old worker on WebKit', () => {
-    expect(recorded.options!.navigationPreload).toBe(false);
+  it('turns off navigation preload that earlier workers left on, whose cancelled wait holds the old worker on WebKit', () => {
+    expect(recorded.disableNavigationPreload).toHaveBeenCalledTimes(1);
+    expect(recorded.options).not.toHaveProperty('navigationPreload', true);
   });
 });
