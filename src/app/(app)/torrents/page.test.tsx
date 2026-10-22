@@ -154,6 +154,7 @@ beforeEach(() => {
 // page again once its globals (ResizeObserver, fetch) are gone.
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
 
@@ -168,6 +169,31 @@ const actionsFor = (name: string) => within(screen.getAllByRole('group', { name:
 const posted = () => mocks.sent.filter((sent) => sent.path === '/api/qbittorrent').map((sent) => sent.body);
 
 describe('torrents page (characterization)', () => {
+  it.each([1280, 820])('publishes the actual toolbar height for table view at width %i', async (width) => {
+    mocks.mobile = width < 1024;
+    useUIStore.setState({ torrentsView: 'table' });
+    let height = 144;
+    let notifyResize = () => {};
+    vi.stubGlobal('ResizeObserver', class {
+      constructor(private callback: () => void) {}
+      observe(element: Element) {
+        if (element.classList.contains('page-toolbar')) notifyResize = this.callback;
+      }
+      disconnect() {}
+      unobserve() {}
+    });
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      return { top: 0, width, height: this.classList.contains('page-toolbar') ? height : 0 } as DOMRect;
+    });
+    renderPage();
+    await screen.findByRole('table');
+    const toolbar = document.querySelector<HTMLElement>('.page-toolbar')!;
+    expect(toolbar.parentElement?.style.getPropertyValue('--page-toolbar-height')).toBe('144px');
+    height = 184;
+    act(() => notifyResize());
+    expect(toolbar.parentElement?.style.getPropertyValue('--page-toolbar-height')).toBe('184px');
+  });
+
   it('lists the torrents with their state, size, progress, speeds and the totals', async () => {
     renderPage();
     await waitFor(() => expect(names()).toEqual(['Alpha.Movie', 'Bravo.Show', 'Charlie']));

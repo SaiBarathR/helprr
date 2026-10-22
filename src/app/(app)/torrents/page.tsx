@@ -3,6 +3,7 @@
 import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useToolbarHeight } from '@/lib/hooks/use-toolbar-height';
 import { useWindowVirtualizer } from '@tanstack/react-virtual';
 import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
 import { toast } from 'sonner';
@@ -43,6 +44,7 @@ import { TorrentCategoryDrawer } from './_components/torrent-category-drawer';
 // --- Main page ---
 
 export default function TorrentsPage() {
+  const { toolbarRef, toolbarStyle } = useToolbarHeight();
   const router = useRouter();
   const { adjustBadge } = useBadgeActions();
   const canManageTorrents = useCan('torrents.manage');
@@ -468,10 +470,11 @@ export default function TorrentsPage() {
   });
 
   return (
-    <div className="space-y-3 animate-content-in">
+    <div className="space-y-3 animate-content-in" style={toolbarStyle}>
       <PullToRefresh onRefresh={() => refetchSummary()} />
       <h1 className="sr-only">Torrents</h1>
       <TorrentsToolbar
+        ref={toolbarRef}
         menuFilters={menuFilters}
         filter={filter}
         setFilter={setFilter}

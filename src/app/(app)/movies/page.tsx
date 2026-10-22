@@ -30,6 +30,7 @@ import {
 import { withAppName } from '@/components/instance-filter';
 import { PullToRefresh } from '@/components/ui/pull-to-refresh';
 import { useRefreshAction } from '@/lib/hooks/use-refresh-action';
+import { useToolbarHeight } from '@/lib/hooks/use-toolbar-height';
 import { MoviesSubNav } from '@/components/media/movies-subnav';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { Filter, ArrowUpDown, Plus, RefreshCw, ListChecks, Eye, EyeOff, Search, Trash2, Pencil, FileStack, FileEdit } from 'lucide-react';
@@ -168,6 +169,7 @@ function getPosterColumns(width: number, posterSize: 'small' | 'medium' | 'large
  * @returns The Movies page JSX element.
  */
 export default function MoviesPage() {
+  const { toolbarRef, toolbarStyle } = useToolbarHeight();
   const me = useMe();
   const canFilterByWatchStatus = me?.jellyfinLinked === true && hasCapability(me, 'jellyfin.view');
   const watchLookup = useWatchLookup(canFilterByWatchStatus);
@@ -706,10 +708,10 @@ export default function MoviesPage() {
   const activeSortLabel = sortOptions.find((o) => o.value === sort)?.label ?? 'Title';
 
   return (
-    <div className="space-y-3 animate-content-in">
+    <div className="space-y-3 animate-content-in" style={toolbarStyle}>
       <PullToRefresh onRefresh={() => refetchMovies()} disabled={selectionMode} />
       <h1 className="sr-only">Movies</h1>
-      <div className="page-toolbar page-toolbar-flush pb-2 app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 space-y-2">
+      <div ref={toolbarRef} className="page-toolbar page-toolbar-flush pb-2 app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 space-y-2">
         <div className="flex items-center md:gap-2 w-full overflow-x-auto scrollbar-hide">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>

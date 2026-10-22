@@ -1,5 +1,6 @@
 'use client';
 
+import type { Ref } from 'react';
 import { SearchInput } from '@/components/media/search-input';
 import { FilterDot, filterButtonLabel, type ActiveFilter } from '@/components/ui/active-filter-bar';
 import {
@@ -18,6 +19,7 @@ import { SORT_OPTIONS, filterOptions, formatSpeed } from './torrent-list';
 
 /** The torrents toolbar: filter and sort menus, refresh, alt speed, the page links, the transfer totals and search. */
 export function TorrentsToolbar({
+  ref,
   menuFilters,
   filter,
   setFilter,
@@ -36,6 +38,7 @@ export function TorrentsToolbar({
   search,
   setSearch,
 }: {
+  ref?: Ref<HTMLDivElement>;
   menuFilters: ActiveFilter[];
   filter: FilterType[];
   setFilter: (filter: FilterType[]) => void;
@@ -55,7 +58,7 @@ export function TorrentsToolbar({
   setSearch: (search: string) => void;
 }) {
   return (
-    <div className="page-toolbar page-toolbar-flush pb-2 app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 space-y-2">
+    <div ref={ref} className="page-toolbar page-toolbar-flush pb-2 app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 space-y-2">
       <div className="flex items-center gap-2">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
