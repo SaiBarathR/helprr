@@ -16,7 +16,7 @@ import {
   StaleWhileRevalidate,
 } from 'serwist';
 import { cacheBrowseSnapshot, READONLY_API_NETWORK_FIRST, staleBrowseSnapshot } from '@/lib/offline-snapshot';
-import { cacheShellResponse, matchingShellResponse } from '@/lib/shell-cache';
+import { cacheShellResponse, matchingShellResponse, shellNoncesMatch } from '@/lib/shell-cache';
 import { isImageResponseCacheable } from '@/lib/image-response-cache-policy';
 import { NOTIFICATION_SUBSCRIPTIONS_CHANGED } from '@/lib/notification-subscriptions';
 import { createUserCacheFence } from '@/lib/sw-user-cache-fence';
@@ -54,9 +54,26 @@ const browseSnapshots: SerwistPlugin = {
 };
 
 const shellVersion = process.env.NEXT_PUBLIC_SHELL_CACHE_VERSION ?? '';
+
+async function hasMatchingShellNonce(response: Response): Promise<boolean> {
+  const csp = response.headers.get('content-security-policy');
+  if (!csp?.includes("'nonce-")) return true;
+  return shellNoncesMatch(csp, await response.clone().text());
+}
+
 const matchingBuildShell: SerwistPlugin = {
-  cacheWillUpdate: ({ response }) => cacheShellResponse(response, shellVersion),
-  cachedResponseWillBeUsed: async ({ cachedResponse }) => matchingShellResponse(cachedResponse, shellVersion),
+  cacheWillUpdate: async ({ response }) => {
+    const shell = cacheShellResponse(response, shellVersion);
+    return shell && await hasMatchingShellNonce(shell) ? shell : null;
+  },
+  cachedResponseWillBeUsed: async ({ cachedResponse, cacheName, request }) => {
+    const shell = matchingShellResponse(cachedResponse, shellVersion);
+    if (!shell || await hasMatchingShellNonce(shell)) return shell;
+    // A mismatched CSP blocks hydration; evict the shell and let SWR use the network.
+    const cache = await caches.open(cacheName);
+    await cache.delete(request);
+    return null;
+  },
 };
 
 const runtimeCaching: RuntimeCaching[] =

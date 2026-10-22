@@ -1,5 +1,11 @@
 const SHELL_VERSION_HEADER = 'x-helprr-shell-version';
 
+export function shellNoncesMatch(csp: string | null, html: string): boolean {
+  const headerNonce = csp?.match(/'nonce-([^']+)'/)?.[1];
+  const bodyNonce = html.match(/\snonce\s*=\s*(["'])(.*?)\1/i)?.[2];
+  return headerNonce === undefined || bodyNonce === undefined || headerNonce === bodyNonce;
+}
+
 /** HTML from an older build can name lazy chunks that no longer exist. */
 export function cacheShellResponse(response: Response, version: string): Response | null {
   if (!version || response.status !== 200 || !response.headers.get('content-type')?.includes('text/html')) return null;
