@@ -378,7 +378,7 @@ export default function EpisodeDetailPage() {
           </span>
         }
         title={episode.title || 'TBA'}
-        onBack={() => router.push(`/series/${seriesId}/season/${seasonNumber}${instance ? `?instance=${instance}` : ''}`)}
+        backHref={`/series/${seriesId}/season/${seasonNumber}${instance ? `?instance=${instance}` : ''}`}
         rightContent={
           <div className="flex items-center gap-1">
             {refreshing && !loading && (

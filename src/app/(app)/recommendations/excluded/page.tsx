@@ -10,7 +10,6 @@ import { PageHeader } from '@/components/layout/page-header';
 import { Button } from '@/components/ui/button';
 import { ErrorState } from '@/components/ui/error-state';
 import { ExcludedListSkeleton } from '@/components/recommendations/excluded-list-skeleton';
-import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
 import { jsonFetcher } from '@/lib/query-fetch';
 import { formatDistanceToNowSafe } from '@/lib/format';
 import { isProtectedApiImageSrc, toCachedImageSrc, type ImageServiceHint } from '@/lib/image';
@@ -71,7 +70,6 @@ function ExcludedRow({ item, restoring, onRestore }: { item: ExcludedTitle; rest
 }
 
 export default function ExcludedTitlesPage() {
-  const router = useRouter();
   const queryClient = useQueryClient();
   const [restoring, setRestoring] = useState<ReadonlySet<string>>(new Set());
   // Titles shown again during this visit. Filtering them out at render (not
@@ -130,7 +128,7 @@ export default function ExcludedTitlesPage() {
 
   return (
     <div className="space-y-3 animate-content-in">
-      <PageHeader title="Excluded titles" subtitle="Recommendations" onBack={() => router.push('/recommendations')} />
+      <PageHeader title="Excluded titles" subtitle="Recommendations" backHref="/recommendations" />
 
       <div className="mx-auto max-w-2xl space-y-3">
         {query.isLoading ? (

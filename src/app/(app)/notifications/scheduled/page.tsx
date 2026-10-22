@@ -4,7 +4,6 @@ import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from '@/components/ui/app-link';
-import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
 import { format, formatDistanceToNow } from 'date-fns';
 import { useRestorableInfiniteQuery as useInfiniteQuery } from '@/lib/hooks/use-restorable-infinite-query';
 import { useQueryClient } from '@tanstack/react-query';
@@ -99,7 +98,6 @@ function statusBadge(status: string) {
 }
 
 export default function ScheduledAlertsPage() {
-  const router = useRouter();
   const canEdit = useCan('scheduledAlerts.edit');
   const queryClient = useQueryClient();
   const [searchInput, setSearchInput] = useRouteViewState('ScheduledAlertsPage:searchInput', '');
@@ -240,7 +238,7 @@ export default function ScheduledAlertsPage() {
       <PullToRefresh onRefresh={refresh} />
       <PageHeader
         showBack
-        onBack={() => router.push('/notifications')}
+        backHref="/notifications"
         title="Scheduled Alerts"
         rightContent={
           <div className="flex items-center gap-1">

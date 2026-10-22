@@ -1,6 +1,6 @@
 'use client';
 
-import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
+import { canGoBackInApp, useAppRouter as useRouter } from '@/components/layout/navigation-provider';
 import { ChevronLeft } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -9,12 +9,18 @@ interface PageHeaderProps {
   subtitle?: React.ReactNode;
   showBack?: boolean;
   onBack?: () => void;
+  /** Where Back goes when there is no earlier page in this tab or app window (e.g. a deep link). */
+  backHref?: string;
   rightContent?: React.ReactNode;
   className?: string;
 }
 
-export function PageHeader({ title, subtitle, showBack = true, onBack, rightContent, className }: PageHeaderProps) {
+export function PageHeader({ title, subtitle, showBack = true, onBack, backHref, rightContent, className }: PageHeaderProps) {
   const router = useRouter();
+  const goBack = () => {
+    if (backHref && !canGoBackInApp()) router.push(backHref);
+    else router.back();
+  };
 
   return (
     <header
@@ -27,7 +33,7 @@ export function PageHeader({ title, subtitle, showBack = true, onBack, rightCont
         {/* Left: back button */}
         {showBack && (
           <button
-            onClick={onBack || (() => router.back())}
+            onClick={onBack || goBack}
             aria-label="Go back"
             className="flex items-center gap-0 text-primary min-w-[44px] min-h-[44px] justify-center -ml-1"
           >

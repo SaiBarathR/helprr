@@ -285,7 +285,7 @@ export default function SeriesDetailPage() {
       {/* Page Header */}
       <PageHeader
         title={series.title}
-        onBack={() => router.push('/series')}
+        backHref="/series"
         rightContent={
           <SeriesHeaderActions
             series={series}
