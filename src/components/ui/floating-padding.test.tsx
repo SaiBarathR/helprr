@@ -56,6 +56,11 @@ describe('floating menus keep clear of the safe area', () => {
     expect(captured.props.popover.collisionPadding).toEqual({ top: 1004, right: 4, bottom: 2004, left: 4 });
   });
 
+  it('lets a long-press menu slide fully clear of the bottom edge, not stop at the pressed point', () => {
+    render(<ContextMenuContent />);
+    expect(captured.props.context.sticky).toBe('always');
+  });
+
   it('opens selects as a popper', () => {
     render(<SelectContent />);
     expect(captured.props.select.position).toBe('popper');

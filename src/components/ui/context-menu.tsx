@@ -19,13 +19,17 @@ function ContextMenuPortal(props: React.ComponentProps<typeof ContextMenuPrimiti
   return <ContextMenuPrimitive.Portal data-slot="context-menu-portal" {...props} />
 }
 
-function ContextMenuContent({ className, collisionPadding = 8, ...props }: React.ComponentProps<typeof ContextMenuPrimitive.Content>) {
+// sticky="always": the menu opens at the pressed point, so with Radix's default
+// "partial" it cannot slide up past that point and a press near the bottom edge
+// leaves its last rows under the home indicator.
+function ContextMenuContent({ className, collisionPadding = 8, sticky = "always", ...props }: React.ComponentProps<typeof ContextMenuPrimitive.Content>) {
   const padding = useSafeAreaPadding(collisionPadding)
   return (
     <ContextMenuPrimitive.Portal>
       <ContextMenuPrimitive.Content
         data-slot="context-menu-content"
         collisionPadding={padding}
+        sticky={sticky}
         className={cn(
           "bg-popover text-popover-foreground data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 z-50 max-h-(--radix-context-menu-content-available-height) w-max min-w-44 max-w-[min(20rem,calc(100vw-1.5rem))] origin-(--radix-context-menu-content-transform-origin) overflow-x-hidden overflow-y-auto rounded-md border p-1 shadow-md",
           className
