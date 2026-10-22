@@ -72,7 +72,7 @@ export function RouteScrollRestoration({ children, pending }: { children: React.
       // commit, so the arriving page can read it while it mounts.
       const fresh = detail.kind === 'push'
         || (detail.kind === 'replace' && (!detail.preserveScroll || freshArrivalRef.current));
-      setFreshArrival(fresh);
+      setFreshArrival(fresh && destination ? destination : null);
       capture(true);
       frozenRef.current = true;
       pendingNavigationRef.current = {
@@ -103,7 +103,7 @@ export function RouteScrollRestoration({ children, pending }: { children: React.
         if (!frozenRef.current) scheduleCapture();
         return;
       }
-      setFreshArrival(false);
+      setFreshArrival(null);
       if (!frozenRef.current) { capture(true); frozenRef.current = true; }
       pendingNavigationRef.current = {
         kind: 'traverse', destination, source: routeRef.current, id: ++navigationIdRef.current,
@@ -111,6 +111,7 @@ export function RouteScrollRestoration({ children, pending }: { children: React.
     };
     const onNavigationCancel = () => {
       if (pendingNavigationRef.current?.source !== routeRef.current) return;
+      setFreshArrival(null);
       pendingNavigationRef.current = null;
       frozenRef.current = restoringRef.current;
       if (!frozenRef.current) scheduleCapture();
@@ -164,10 +165,6 @@ export function RouteScrollRestoration({ children, pending }: { children: React.
     // it is still a fresh visit (see onNavigationStart).
     const fresh = navigation?.fresh === true;
     freshArrivalRef.current = fresh;
-    // The arriving page has read it by now (its effects run first). Anything
-    // that commits without a start event, such as a Back whose popstate comes
-    // after the commit, is not a fresh visit.
-    setFreshArrival(false);
     const saved = fresh ? null : readRouteScrollState(nextRoute);
     if (routeChanged && navigation?.preserveScroll && navigation.destination === nextRoute && !saved) {
       frozenRef.current = false;

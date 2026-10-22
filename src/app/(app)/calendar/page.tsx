@@ -1266,12 +1266,13 @@ export default function CalendarPage() {
   const [currentDate, setCurrentDate] = useRouteViewState('currentDate', () => startOfDay(new Date()));
   // The period shown and the month view's picked day are kept for Back only.
   // A fresh visit opens on today; reset before paint, so the old view never shows.
+  const [freshVisit] = useState(isFreshArrival);
   const [, setManualSelection] = useRouteViewState<ManualSelection | null>(MANUAL_SELECTION, null);
   useLayoutEffect(() => {
-    if (!isFreshArrival()) return;
+    if (!freshVisit) return;
     setCurrentDate(startOfDay(new Date()));
     setManualSelection(null);
-  }, [setCurrentDate, setManualSelection]);
+  }, [freshVisit, setCurrentDate, setManualSelection]);
   const autoFocusPendingRef = useRef(true);
   const autoFocusWaitForLoadRef = useRef(true);
   const autoFocusSawLoadingRef = useRef(false);
@@ -1302,7 +1303,7 @@ export default function CalendarPage() {
   useEffect(() => {
     // Back restores where the list was left; a fresh visit opens on today, even
     // though an earlier visit's position is still saved for this URL.
-    if (lastViewRef.current === null && !isFreshArrival() && readRouteScrollState(routeScrollKey(window.location))) {
+    if (lastViewRef.current === null && !freshVisit && readRouteScrollState(routeScrollKey(window.location))) {
       autoFocusPendingRef.current = false;
       lastViewRef.current = calendarView;
       return;
@@ -1315,7 +1316,7 @@ export default function CalendarPage() {
       }
       lastViewRef.current = calendarView;
     }
-  }, [calendarView]);
+  }, [calendarView, freshVisit]);
 
   // Calculate date range based on view
   const { start, end } = useMemo(() => {

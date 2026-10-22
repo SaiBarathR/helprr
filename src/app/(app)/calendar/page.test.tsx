@@ -4,7 +4,7 @@ import type { ComponentProps, ReactNode } from 'react';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 
-const route = vi.hoisted(() => ({ pathname: '/calendar' }));
+const route = vi.hoisted(() => ({ pathname: '/calendar', loading: false }));
 const calendar = vi.hoisted(() => ({ loading: false }));
 vi.mock('next/navigation', () => ({
   usePathname: () => route.pathname,
@@ -42,7 +42,7 @@ const scrollIntoView = vi.fn();
 function Page() {
   return (
     <RouteScrollRestoration pending={false}>
-      {route.pathname === '/calendar' ? <CalendarPage /> : <p>Movie details</p>}
+      {route.loading ? <p>Loading</p> : route.pathname === '/calendar' ? <CalendarPage /> : <p>Movie details</p>}
     </RouteScrollRestoration>
   );
 }
@@ -58,6 +58,7 @@ beforeEach(() => {
   resetRouteViewStateForTests();
   clearRouteScrollStateForTests();
   route.pathname = '/calendar';
+  route.loading = false;
   calendar.loading = false;
   window.history.replaceState({}, '', '/calendar');
   scrollY = 0;
@@ -222,6 +223,21 @@ it('opens the current month on a fresh visit after paging to another one', async
   expect(screen.getByText('December 2026')).toBeTruthy();
   await visit('push', '/movies/1', page);
   await visit('push', '/calendar', page);
+  expect(screen.getByText('October 2026')).toBeTruthy();
+  expect(screen.getByRole('heading', { level: 2 }).textContent).toBe('Thursday, October 22');
+});
+
+it('still treats the visit as fresh when the route commits its loading view first', async () => {
+  const page = render(<Page />);
+  await settleScroll();
+  fireEvent.click(screen.getByRole('button', { name: /October 15, 1 release/ }));
+  fireEvent.click(screen.getByRole('button', { name: 'Next period' }));
+  await visit('push', '/movies/1', page);
+  route.loading = true;
+  await visit('push', '/calendar', page);
+  route.loading = false;
+  page.rerender(<Page />);
+  await settleScroll();
   expect(screen.getByText('October 2026')).toBeTruthy();
   expect(screen.getByRole('heading', { level: 2 }).textContent).toBe('Thursday, October 22');
 });
