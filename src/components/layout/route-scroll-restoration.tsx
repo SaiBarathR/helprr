@@ -5,7 +5,7 @@ import { usePathname, useSearchParams } from 'next/navigation';
 import {
   NAVIGATION_CANCEL_EVENT, NAVIGATION_START_EVENT,
   applyRouteScroll, captureRouteScroll, flushRouteScrollState, isScrollIntent,
-  readRouteScrollState, routeScrollKey, writeRouteScrollState,
+  readRouteScrollState, routeScrollKey, setFreshArrival, writeRouteScrollState,
   type NavigationStartDetail,
 } from '@/lib/route-scroll-state';
 
@@ -66,6 +66,8 @@ export function RouteScrollRestoration({ children, pending }: { children: React.
         frozenRef.current = false;
         return;
       }
+      setFreshArrival(detail.kind === 'push'
+        || (detail.kind === 'replace' && (!detail.preserveScroll || freshArrivalRef.current)));
       capture(true);
       frozenRef.current = true;
       pendingNavigationRef.current = {
@@ -95,6 +97,7 @@ export function RouteScrollRestoration({ children, pending }: { children: React.
         if (!frozenRef.current) scheduleCapture();
         return;
       }
+      setFreshArrival(false);
       if (!frozenRef.current) { capture(true); frozenRef.current = true; }
       pendingNavigationRef.current = {
         kind: 'traverse', destination, source: routeRef.current, id: ++navigationIdRef.current,

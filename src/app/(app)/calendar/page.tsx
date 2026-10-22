@@ -1,6 +1,6 @@
 'use client';
 
-import { readRouteScrollState, routeScrollKey } from '@/lib/route-scroll-state';
+import { isFreshArrival, readRouteScrollState, routeScrollKey } from '@/lib/route-scroll-state';
 import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
 
 import {
@@ -1263,6 +1263,12 @@ export default function CalendarPage() {
   // anchored to this value, and a remount the same day (Back from a title) must
   // see the same one or the selection is dropped. Prev/next/Today store theirs.
   const [currentDate, setCurrentDate] = useRouteViewState('currentDate', () => startOfDay(new Date()));
+  // The month view's picked day is kept for Back only. A fresh visit opens on
+  // the default day; cleared before paint, so the old pick never shows.
+  const [, setManualSelection] = useRouteViewState<unknown>('manualSelection', null);
+  useLayoutEffect(() => {
+    if (isFreshArrival()) setManualSelection(null);
+  }, [setManualSelection]);
   const autoFocusPendingRef = useRef(true);
   const autoFocusWaitForLoadRef = useRef(true);
   const autoFocusSawLoadingRef = useRef(false);
@@ -1291,7 +1297,9 @@ export default function CalendarPage() {
   }, []);
 
   useEffect(() => {
-    if (lastViewRef.current === null && readRouteScrollState(routeScrollKey(window.location))) {
+    // Back restores where the list was left; a fresh visit opens on today, even
+    // though an earlier visit's position is still saved for this URL.
+    if (lastViewRef.current === null && !isFreshArrival() && readRouteScrollState(routeScrollKey(window.location))) {
       autoFocusPendingRef.current = false;
       lastViewRef.current = calendarView;
       return;

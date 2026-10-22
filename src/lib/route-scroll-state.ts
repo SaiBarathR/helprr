@@ -199,8 +199,23 @@ export function isScrollIntent(event: Event): boolean {
   return false;
 }
 
+// Whether the view now arriving comes from a fresh navigation (a push, or a
+// replace that is not a scroll:false sync of a view the user was already in)
+// rather than Back/Forward or a reload. Set when the navigation starts, so a
+// page can read it while it mounts, before the route's restoration runs.
+let freshArrival = false;
+
+export function isFreshArrival(): boolean {
+  return freshArrival;
+}
+
+export function setFreshArrival(value: boolean) {
+  freshArrival = value;
+}
+
 export function clearRouteScrollStateForTests() {
   for (const timer of writeTimers.values()) if (typeof window !== 'undefined') window.clearTimeout(timer);
   writeTimers.clear();
   memory.clear();
+  freshArrival = false;
 }
