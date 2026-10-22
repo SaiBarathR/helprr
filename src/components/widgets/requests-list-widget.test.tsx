@@ -9,6 +9,7 @@ import type { EnrichedSeerrRequest } from '@/types/seerr';
 const mocks = vi.hoisted(() => ({
   me: null as { role: string; tmdbConfigured: boolean; capabilities: Record<string, boolean> } | null,
   results: [] as unknown[],
+  pendingApproval: false,
 }));
 
 vi.mock('@/components/permission-provider', async (importOriginal) => ({
@@ -28,7 +29,9 @@ vi.mock('@/lib/widgets/use-element-size', () => ({ useElementSize: () => ({ ref:
 vi.mock('@/lib/widgets/use-list-fetch-size', () => ({ useListFetchSize: () => ({ visibleCount: 10 }) }));
 vi.mock('@/lib/hooks/use-external-urls', () => ({ useExternalUrls: () => ({}) }));
 vi.mock('@/components/layout/badge-provider', () => ({ useBadgeActions: () => ({ adjustBadge: vi.fn() }) }));
-vi.mock('@/components/seerr/pending-approval-section', () => ({ PendingApprovalSection: () => null }));
+vi.mock('@/components/seerr/pending-approval-section', () => ({
+  PendingApprovalSection: () => mocks.pendingApproval ? <section>Pending approval: Family movie</section> : null,
+}));
 vi.mock('@/components/seerr/seerr-request-modal', () => ({ SeerrRequestModal: () => null }));
 vi.mock('@/components/ui/app-link', () => ({ default: ({ children, ...props }: { children: ReactNode }) => <a {...props}>{children}</a> }));
 vi.mock('@/components/media/fade-in-image', () => ({ FadeInImage: () => null }));
@@ -63,6 +66,7 @@ beforeAll(() => {
 });
 beforeEach(() => {
   mocks.me = { role: 'admin', tmdbConfigured: true, capabilities: {} };
+  mocks.pendingApproval = false;
   mocks.results = [
     request({ id: 1, type: 'movie' }, 'Whalefall'),
     request({ id: 2, type: 'tv' }, 'Pending Show'),
@@ -72,6 +76,23 @@ beforeEach(() => {
   ];
 });
 afterEach(cleanup);
+
+describe('RequestsListWidget empty Seerr results', () => {
+  it.each([false, true])('qualifies pending results beside Helprr approvals (unbounded=%s)', (unbounded) => {
+    mocks.results = [];
+    mocks.pendingApproval = true;
+    render(<RequestsListWidget refreshInterval={0} filter="pending" unbounded={unbounded} />);
+    expect(screen.getByText('Pending approval: Family movie')).toBeTruthy();
+    expect(screen.getByText('No pending requests in Seerr')).toBeTruthy();
+    expect(screen.queryByText('No pending requests', { exact: true })).toBeNull();
+  });
+
+  it('qualifies the unfiltered empty state too', () => {
+    mocks.results = [];
+    render(<RequestsListWidget refreshInterval={0} filter="all" unbounded />);
+    expect(screen.getByText('No requests in Seerr')).toBeTruthy();
+  });
+});
 
 describe('RequestsListWidget Open in Helprr', () => {
   it('opens a title that is not in the library on its Discover page', async () => {

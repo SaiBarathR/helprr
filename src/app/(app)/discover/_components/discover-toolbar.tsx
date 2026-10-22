@@ -1,5 +1,7 @@
 'use client';
 
+import { useEffect, useRef } from 'react';
+import { isFreshArrival, readRouteScrollState, routeScrollKey } from '@/lib/route-scroll-state';
 import { SearchBar } from '@/components/media/search-bar';
 import {
   DropdownMenu,
@@ -37,6 +39,21 @@ export function DiscoverToolbar({
   rateLimitInfo: RateLimitInfo | null;
   rateLimitCountdown: number | null;
 }) {
+  const sortRowRef = useRef<HTMLDivElement>(null);
+  const selectedSortRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    // Back/Forward and reload own a saved row offset; fresh links reveal the selection.
+    if (!isFreshArrival() && readRouteScrollState(routeScrollKey(window.location))?.elements['named:discover-sort']) return;
+    const row = sortRowRef.current;
+    const selected = selectedSortRef.current;
+    if (!row || !selected) return;
+    const bounds = row.getBoundingClientRect();
+    const chip = selected.getBoundingClientRect();
+    if (chip.right > bounds.right) row.scrollLeft += chip.right - bounds.right;
+    else if (chip.left < bounds.left) row.scrollLeft += chip.left - bounds.left;
+  }, [searchParamsKey, discoverSort]);
+
   return (
     <div className="page-toolbar page-toolbar-flush pb-2 app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
       <div className="flex items-center gap-2">
@@ -102,13 +119,14 @@ export function DiscoverToolbar({
 
       <div className="mt-3 space-y-2">
         {/* <p className="text-[11px] font-medium text-muted-foreground">Sort</p> */}
-        <div data-scroll-restoration-key="discover-sort" className="rail-bleed flex items-center gap-2 overflow-x-auto scrollbar-hide">
+        <div ref={sortRowRef} data-scroll-restoration-key="discover-sort" className="rail-bleed flex items-center gap-2 overflow-x-auto scrollbar-hide">
           {SORT_OPTIONS.map((option) => {
             const active = discoverSort === option.value;
             const Icon = option.icon;
             return (
               <button
                 key={option.value}
+                ref={active ? selectedSortRef : undefined}
                 onClick={() => handleSelectSort(option.value)}
                 className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap inline-flex items-center gap-1.5 ${
                   active ? 'bg-primary/20 text-primary border border-primary/40' : 'bg-accent/40 text-muted-foreground'
