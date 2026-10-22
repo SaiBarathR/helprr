@@ -88,6 +88,8 @@ export function Sidebar() {
   const searchButton = (
     <button
       onClick={() => openSearch(true)}
+      // Collapsed, the icon is all there is; the tooltip gives no name.
+      aria-label={sidebarCollapsed ? 'Search' : undefined}
       className={cn(
         'w-full relative flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground',
         sidebarCollapsed && 'justify-center px-2'
@@ -136,6 +138,7 @@ export function Sidebar() {
               key={href}
               href={href}
               prefetch={null}
+              aria-label={sidebarCollapsed ? label : undefined}
               className={cn(
                 'relative flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',
                 isActive
@@ -170,6 +173,7 @@ export function Sidebar() {
           variant="ghost"
           size="sm"
           onClick={handleToggle}
+          aria-label={sidebarCollapsed ? 'Expand sidebar' : undefined}
           className={cn('w-full', sidebarCollapsed ? 'justify-center' : 'justify-start')}
         >
           {sidebarCollapsed ? <PanelLeft className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
