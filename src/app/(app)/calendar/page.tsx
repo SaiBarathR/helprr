@@ -1,6 +1,6 @@
 'use client';
 
-import { isFreshArrival, readRouteScrollState, routeScrollKey } from '@/lib/route-scroll-state';
+import { isFreshArrival, readRouteScrollState, routeScrollKey, setFreshArrival } from '@/lib/route-scroll-state';
 import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
 
 import {
@@ -1266,13 +1266,18 @@ export default function CalendarPage() {
   const [currentDate, setCurrentDate] = useRouteViewState('currentDate', () => startOfDay(new Date()));
   // The period shown and the month view's picked day are kept for Back only.
   // A fresh visit opens on today; reset before paint, so the old view never shows.
-  const [freshVisit] = useState(isFreshArrival);
+  // Read at mount, after the router has put the new URL in place (not during
+  // render, when it may still be the previous page's), and taken, so a later
+  // Forward to this URL is not mistaken for another fresh visit.
+  const freshVisitRef = useRef(false);
   const [, setManualSelection] = useRouteViewState<ManualSelection | null>(MANUAL_SELECTION, null);
   useLayoutEffect(() => {
-    if (!freshVisit) return;
+    freshVisitRef.current = isFreshArrival();
+    if (!freshVisitRef.current) return;
+    setFreshArrival(null);
     setCurrentDate(startOfDay(new Date()));
     setManualSelection(null);
-  }, [freshVisit, setCurrentDate, setManualSelection]);
+  }, [setCurrentDate, setManualSelection]);
   const autoFocusPendingRef = useRef(true);
   const autoFocusWaitForLoadRef = useRef(true);
   const autoFocusSawLoadingRef = useRef(false);
@@ -1303,7 +1308,7 @@ export default function CalendarPage() {
   useEffect(() => {
     // Back restores where the list was left; a fresh visit opens on today, even
     // though an earlier visit's position is still saved for this URL.
-    if (lastViewRef.current === null && !freshVisit && readRouteScrollState(routeScrollKey(window.location))) {
+    if (lastViewRef.current === null && !freshVisitRef.current && readRouteScrollState(routeScrollKey(window.location))) {
       autoFocusPendingRef.current = false;
       lastViewRef.current = calendarView;
       return;
@@ -1316,7 +1321,7 @@ export default function CalendarPage() {
       }
       lastViewRef.current = calendarView;
     }
-  }, [calendarView, freshVisit]);
+  }, [calendarView]);
 
   // Calculate date range based on view
   const { start, end } = useMemo(() => {

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import type { ComponentProps, ReactNode } from 'react';
+import { useInsertionEffect, type ComponentProps, type ReactNode } from 'react';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 
@@ -40,6 +40,11 @@ let scrollY = 0;
 const scrollIntoView = vi.fn();
 
 function Page() {
+  // The router puts the new URL in place during the commit, as Next's
+  // HistoryUpdater does, so a page rendering it still sees the previous one.
+  useInsertionEffect(() => {
+    if (window.location.pathname !== route.pathname) window.history.replaceState({}, '', route.pathname);
+  });
   return (
     <RouteScrollRestoration pending={false}>
       {route.loading ? <p>Loading</p> : route.pathname === '/calendar' ? <CalendarPage /> : <p>Movie details</p>}
@@ -155,8 +160,10 @@ it('resets the picked day when using Today or changing the month', () => {
 async function visit(kind: 'push' | 'traverse', pathname: string, page: ReturnType<typeof render>) {
   window.dispatchEvent(new CustomEvent(NAVIGATION_START_EVENT, { detail: kind === 'push' ? { kind, href: pathname } : { kind } }));
   route.pathname = pathname;
-  window.history.replaceState({}, '', pathname);
-  if (kind === 'traverse') window.dispatchEvent(new PopStateEvent('popstate'));
+  if (kind === 'traverse') {
+    window.history.replaceState({}, '', pathname);
+    window.dispatchEvent(new PopStateEvent('popstate'));
+  }
   page.rerender(<Page />);
   await settleScroll();
 }
