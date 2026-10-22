@@ -9,7 +9,7 @@ import {
   type NavigationStartDetail,
 } from '@/lib/route-scroll-state';
 
-type PendingNavigation = NavigationStartDetail & { destination?: string; source: string; id: number };
+type PendingNavigation = NavigationStartDetail & { destination?: string; source: string; id: number; fresh?: boolean };
 
 export function RouteScrollRestoration({ children, pending }: { children: React.ReactNode; pending: boolean }) {
   const pathname = usePathname();
@@ -66,12 +66,18 @@ export function RouteScrollRestoration({ children, pending }: { children: React.
         frozenRef.current = false;
         return;
       }
-      setFreshArrival(detail.kind === 'push'
-        || (detail.kind === 'replace' && (!detail.preserveScroll || freshArrivalRef.current)));
+      // A push, or a replace that is not a scroll:false sync, starts a new view.
+      // So does a sync straight after a fresh, unscrolled arrival (the anime
+      // library putting its saved tab into the URL). Decided here, not at the
+      // commit, so the arriving page can read it while it mounts.
+      const fresh = detail.kind === 'push'
+        || (detail.kind === 'replace' && (!detail.preserveScroll || freshArrivalRef.current));
+      setFreshArrival(fresh);
       capture(true);
       frozenRef.current = true;
       pendingNavigationRef.current = {
         ...detail,
+        fresh,
         destination,
         source: routeRef.current,
         id: ++navigationIdRef.current,
@@ -155,11 +161,13 @@ export function RouteScrollRestoration({ children, pending }: { children: React.
     // viewport must not jump. Once that view has its own saved offset, though,
     // the user is returning to it rather than switching within it, and keeping
     // the arrival position would overwrite the offset they left behind, unless
-    // the sync comes straight after a fresh arrival (the anime library putting
-    // its saved tab into the URL), which is still that fresh visit.
-    const fresh = navigation?.kind === 'push'
-      || (navigation?.kind === 'replace' && (!navigation.preserveScroll || freshArrivalRef.current));
+    // it is still a fresh visit (see onNavigationStart).
+    const fresh = navigation?.fresh === true;
     freshArrivalRef.current = fresh;
+    // The arriving page has read it by now (its effects run first). Anything
+    // that commits without a start event, such as a Back whose popstate comes
+    // after the commit, is not a fresh visit.
+    setFreshArrival(false);
     const saved = fresh ? null : readRouteScrollState(nextRoute);
     if (routeChanged && navigation?.preserveScroll && navigation.destination === nextRoute && !saved) {
       frozenRef.current = false;

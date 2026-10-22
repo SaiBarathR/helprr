@@ -880,6 +880,10 @@ function DayPanel({
   );
 }
 
+/** A day picked in the month view, and the currentDate it was picked under. */
+type ManualSelection = { anchor: Date; key: string };
+const MANUAL_SELECTION = 'manualSelection';
+
 function MonthView({
   currentDate,
   events,
@@ -911,10 +915,7 @@ function MonthView({
   // so any navigation (prev/next/Today swaps the Date object) invalidates it
   // and the selection falls back to the derived default: today when the month
   // contains it, otherwise the month's first day with events.
-  const [manualSelection, setManualSelection] = useRouteViewState<{
-    anchor: Date;
-    key: string;
-  } | null>('manualSelection', null);
+  const [manualSelection, setManualSelection] = useRouteViewState<ManualSelection | null>(MANUAL_SELECTION, null);
   const panelRef = useRef<HTMLDivElement>(null);
 
   const defaultKey = useMemo(() => {
@@ -1263,12 +1264,14 @@ export default function CalendarPage() {
   // anchored to this value, and a remount the same day (Back from a title) must
   // see the same one or the selection is dropped. Prev/next/Today store theirs.
   const [currentDate, setCurrentDate] = useRouteViewState('currentDate', () => startOfDay(new Date()));
-  // The month view's picked day is kept for Back only. A fresh visit opens on
-  // the default day; cleared before paint, so the old pick never shows.
-  const [, setManualSelection] = useRouteViewState<unknown>('manualSelection', null);
+  // The period shown and the month view's picked day are kept for Back only.
+  // A fresh visit opens on today; reset before paint, so the old view never shows.
+  const [, setManualSelection] = useRouteViewState<ManualSelection | null>(MANUAL_SELECTION, null);
   useLayoutEffect(() => {
-    if (isFreshArrival()) setManualSelection(null);
-  }, [setManualSelection]);
+    if (!isFreshArrival()) return;
+    setCurrentDate(startOfDay(new Date()));
+    setManualSelection(null);
+  }, [setCurrentDate, setManualSelection]);
   const autoFocusPendingRef = useRef(true);
   const autoFocusWaitForLoadRef = useRef(true);
   const autoFocusSawLoadingRef = useRef(false);

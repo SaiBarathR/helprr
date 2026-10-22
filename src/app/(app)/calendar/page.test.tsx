@@ -199,3 +199,29 @@ it('jumps to today on a fresh visit even with an earlier position saved', async 
   await settleScroll();
   expect(scrollIntoView.mock.contexts.some((el) => (el as HTMLElement).dataset?.weekDate === '2026-10-22')).toBe(true);
 });
+
+it('restores the pick on a Back that commits before its popstate, as the installed iOS app does', async () => {
+  const page = render(<Page />);
+  await settleScroll();
+  fireEvent.click(screen.getByRole('button', { name: /October 15, 1 release/ }));
+  await visit('push', '/movies/1', page);
+  // No start event: the route commits first, the popstate follows.
+  route.pathname = '/calendar';
+  window.history.replaceState({}, '', '/calendar');
+  page.rerender(<Page />);
+  window.dispatchEvent(new PopStateEvent('popstate'));
+  await settleScroll();
+  expect(screen.getByRole('heading', { level: 2 }).textContent).toBe('Thursday, October 15');
+});
+
+it('opens the current month on a fresh visit after paging to another one', async () => {
+  const page = render(<Page />);
+  await settleScroll();
+  fireEvent.click(screen.getByRole('button', { name: 'Next period' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Next period' }));
+  expect(screen.getByText('December 2026')).toBeTruthy();
+  await visit('push', '/movies/1', page);
+  await visit('push', '/calendar', page);
+  expect(screen.getByText('October 2026')).toBeTruthy();
+  expect(screen.getByRole('heading', { level: 2 }).textContent).toBe('Thursday, October 22');
+});
