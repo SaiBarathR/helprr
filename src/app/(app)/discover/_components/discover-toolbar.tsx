@@ -41,17 +41,25 @@ export function DiscoverToolbar({
 }) {
   const sortRowRef = useRef<HTMLDivElement>(null);
   const selectedSortRef = useRef<HTMLButtonElement>(null);
+  const arrivedKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
-    // Back/Forward and reload own a saved row offset; fresh links reveal the selection.
-    if (!isFreshArrival() && readRouteScrollState(routeScrollKey(window.location))?.elements['named:discover-sort']) return;
+    // On arriving at a URL by Back/Forward or reload, the row's saved offset
+    // wins; a fresh link, and any later sort change, reveal the selection.
+    const arriving = arrivedKeyRef.current !== searchParamsKey;
+    arrivedKeyRef.current = searchParamsKey;
+    if (arriving && !isFreshArrival() && readRouteScrollState(routeScrollKey(window.location))?.elements['named:discover-sort']) return;
     const row = sortRowRef.current;
     const selected = selectedSortRef.current;
     if (!row || !selected) return;
+    // The row bleeds to the screen edge; keep the page's padding around the chip.
+    const style = getComputedStyle(row);
     const bounds = row.getBoundingClientRect();
+    const left = bounds.left + (parseFloat(style.scrollPaddingLeft) || 0);
+    const right = bounds.right - (parseFloat(style.scrollPaddingRight) || 0);
     const chip = selected.getBoundingClientRect();
-    if (chip.right > bounds.right) row.scrollLeft += chip.right - bounds.right;
-    else if (chip.left < bounds.left) row.scrollLeft += chip.left - bounds.left;
+    if (chip.right > right) row.scrollLeft += chip.right - right;
+    else if (chip.left < left) row.scrollLeft += chip.left - left;
   }, [searchParamsKey, discoverSort]);
 
   return (

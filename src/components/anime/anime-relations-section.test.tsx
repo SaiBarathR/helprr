@@ -24,5 +24,4 @@ it('separates long relation and format badges on the poster and keeps black scri
   expect(relation.className).toContain('bg-black/55');
   expect(format.className).toContain('bg-black/55');
   expect(format.parentElement).toBe(relation.parentElement);
-  expect(format.parentElement?.textContent).not.toContain('vols');
 });

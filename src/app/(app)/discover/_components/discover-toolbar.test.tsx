@@ -75,13 +75,23 @@ describe('Discover selected sort visibility', () => {
     expect(row().scrollLeft).toBe(210);
   });
 
-  it.each([0, 150])('leaves a saved Back/Forward or reload offset of %s to restoration', (left) => {
+  it.each([0, 150])('leaves a saved Back/Forward or reload offset of %s to restoration, then reveals a later sort change', (left) => {
     saveOffset(left);
     const view = render(<DiscoverToolbar {...props} discoverSort="trending" />);
     expect(row().scrollLeft).toBe(0);
     row().scrollLeft = left;
+    // Picking another sort on the same visit (the filter sheet, Discover home)
+    // brings the new chip into view.
     view.rerender(<DiscoverToolbar {...props} />);
-    expect(row().scrollLeft).toBe(left);
+    expect(row().scrollLeft).toBe(left + 210);
+  });
+
+  it('keeps the page padding between a revealed chip and the screen edge', () => {
+    const view = render(<DiscoverToolbar {...props} discoverSort="trending" />);
+    row().style.scrollPaddingRight = '16px';
+    row().scrollLeft = 0;
+    view.rerender(<DiscoverToolbar {...props} />);
+    expect(row().scrollLeft).toBe(226);
   });
 
   it('reveals the selection on a fresh link even when an older visit has a saved offset', () => {

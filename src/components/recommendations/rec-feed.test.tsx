@@ -31,7 +31,7 @@ afterEach(() => vi.unstubAllGlobals());
 
 it('pads the action overlay by only the safe area left uncovered by footer chrome', () => {
   render(<RecFeed tracker={tracker} />);
-  const overlay = screen.getByRole('button', { name: 'Not interested' }).parentElement!.parentElement!;
+  const overlay = screen.getByRole('button', { name: 'Not interested' }).closest<HTMLElement>('.pointer-events-none')!;
   // Top nav/no player: adds the inset. Bottom nav or a player: footer-cover
   // already includes it, so max clamps the extra padding to zero.
   expect(overlay.className).toContain('pb-[calc(1.25rem+max(0px,env(safe-area-inset-bottom,0px)-var(--footer-cover,0px)))]');
