@@ -29,6 +29,7 @@ import {
 import { withAppName } from '@/components/instance-filter';
 import { PullToRefresh } from '@/components/ui/pull-to-refresh';
 import { useRefreshAction } from '@/lib/hooks/use-refresh-action';
+import { useToolbarHeight } from '@/lib/hooks/use-toolbar-height';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { Filter, ArrowUpDown, Plus, RefreshCw, ListChecks, Eye, EyeOff, Search, Trash2, Pencil, FileText, FileEdit } from 'lucide-react';
 import { useCan } from '@/components/permission-provider';
@@ -147,6 +148,7 @@ function trackProgressLabel(artist: LidarrArtistListItem): string {
  * bar and debounced search.
  */
 export default function MusicPage() {
+  const { toolbarRef, toolbarStyle } = useToolbarHeight();
   const canAddMusic = useCan('music.add');
   const canMonitor = useCan('music.editMonitoring');
   const canTag = useCan('music.editTags');
@@ -652,10 +654,10 @@ export default function MusicPage() {
   }
 
   return (
-    <div className="space-y-3 animate-content-in">
+    <div className="space-y-3 animate-content-in" style={toolbarStyle}>
       <PullToRefresh onRefresh={() => refetchArtists()} disabled={selectionMode} />
       <h1 className="sr-only">Music</h1>
-      <div className="page-toolbar page-toolbar-flush pb-2 app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 space-y-2">
+      <div ref={toolbarRef} className="page-toolbar page-toolbar-flush pb-2 app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 space-y-2">
         <div className="flex items-center md:gap-2 w-full overflow-x-auto scrollbar-hide">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>

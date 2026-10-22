@@ -29,6 +29,7 @@ import {
 import { withAppName } from '@/components/instance-filter';
 import { PullToRefresh } from '@/components/ui/pull-to-refresh';
 import { useRefreshAction } from '@/lib/hooks/use-refresh-action';
+import { useToolbarHeight } from '@/lib/hooks/use-toolbar-height';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { Filter, ArrowUpDown, Plus, RefreshCw, ListChecks, Eye, EyeOff, Search, Trash2, Pencil, FileStack, FileEdit } from 'lucide-react';
 import { useCan, useMe, hasCapability } from '@/components/permission-provider';
@@ -158,6 +159,7 @@ function getPosterColumns(width: number, posterSize: 'small' | 'medium' | 'large
  * @returns The page's JSX element that displays and manages Sonarr series.
  */
 export default function SeriesPage() {
+  const { toolbarRef, toolbarStyle } = useToolbarHeight();
   const me = useMe();
   const canFilterByWatchStatus = me?.jellyfinLinked === true && hasCapability(me, 'jellyfin.view');
   const watchLookup = useWatchLookup(canFilterByWatchStatus);
@@ -681,10 +683,10 @@ export default function SeriesPage() {
   const activeSortLabel = sortOptions.find((o) => o.value === sort)?.label ?? 'Title';
 
   return (
-    <div className="space-y-3 animate-content-in">
+    <div className="space-y-3 animate-content-in" style={toolbarStyle}>
       <PullToRefresh onRefresh={() => refetchSeries()} disabled={selectionMode} />
       <h1 className="sr-only">Series</h1>
-      <div className="page-toolbar page-toolbar-flush pb-2 app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 space-y-2">
+      <div ref={toolbarRef} className="page-toolbar page-toolbar-flush pb-2 app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 space-y-2">
         <div className="flex items-center md:gap-2 w-full overflow-x-auto scrollbar-hide">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>

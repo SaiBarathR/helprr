@@ -125,7 +125,7 @@ export function DataTable<T>({
   resetPageKey,
   emptyMessage,
   stickyHeader = false,
-  stickyHeaderTop = 'calc(var(--header-height, 0px) + 2.75rem)',
+  stickyHeaderTop = 'calc(var(--header-height, 0px) + var(--page-toolbar-height, 2.75rem))',
 }: DataTableProps<T>) {
   // Lazy initializers read the persisted prefs; the SSR guard keeps them inert
   // on the server (in practice the table only mounts client-side, after the
@@ -231,15 +231,19 @@ export function DataTable<T>({
   // measure horizontal overflow and fall back to scrolling when columns don't
   // fit (narrow viewports, wide manual column widths).
   const scrollWrapRef = useRef<HTMLDivElement>(null);
+  const tableRef = useRef<HTMLTableElement>(null);
   const [overflowsX, setOverflowsX] = useState(false);
   useEffect(() => {
     if (!stickyHeader) return;
     const el = scrollWrapRef.current;
-    if (!el) return;
-    const check = () => setOverflowsX(el.scrollWidth > el.clientWidth + 1);
+    const table = tableRef.current;
+    if (!el || !table) return;
+    // The last resize grip overhangs the table; only column width counts.
+    const check = () => setOverflowsX(table.getBoundingClientRect().width > el.clientWidth + 1);
     check();
     const ro = new ResizeObserver(check);
     ro.observe(el);
+    ro.observe(table);
     return () => ro.disconnect();
   }, [stickyHeader, totalWidth]);
   const stickyActive = stickyHeader && !overflowsX;
@@ -264,7 +268,7 @@ export function DataTable<T>({
         data-scroll-restoration-key={`table:${tableId}`}
         className={stickyActive ? 'overflow-x-clip' : 'overflow-x-auto overscroll-x-contain'}
       >
-        <table className="w-full text-sm table-fixed" style={{ minWidth: totalWidth }}>
+        <table ref={tableRef} className="w-full text-sm table-fixed" style={{ minWidth: totalWidth }}>
           <colgroup>
             {columns.map((col) => (
               <col key={col.id} style={col.grow && !(col.id in widthOverrides) ? { minWidth: widthOf(col) } : { width: widthOf(col) }} />
