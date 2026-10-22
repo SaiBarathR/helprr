@@ -60,6 +60,9 @@ export function NavigationProvider({ children }: { children: React.ReactNode }) 
 
   const navigate = useCallback((method: 'push' | 'replace', href: string, options?: Parameters<Router['push']>[1]) => {
     if (transitionTimer.current) clearTimeout(transitionTimer.current);
+    if (method === 'push') {
+      try { window.sessionStorage.setItem(IN_APP_HISTORY_KEY, '1'); } catch { /* storage unavailable */ }
+    }
     const url = new URL(href, window.location.href);
     const detail: NavigationStartDetail = { kind: method, href, preserveScroll: options?.scroll === false };
     window.dispatchEvent(new CustomEvent(NAVIGATION_START_EVENT, { detail }));
@@ -110,6 +113,19 @@ export function NavigationProvider({ children }: { children: React.ReactNode }) 
   return <RouterContext.Provider value={router}>
     <PendingHrefContext.Provider value={pendingHref}>{children}</PendingHrefContext.Provider>
   </RouterContext.Provider>;
+}
+
+const IN_APP_HISTORY_KEY = 'helprr:in-app-history';
+
+/**
+ * Whether Back stays inside Helprr. The Navigation API knows; without it
+ * (Firefox, older Safari) history.length also counts other sites' pages, so
+ * fall back to whether this tab has made an in-app push.
+ */
+export function canGoBackInApp(): boolean {
+  const navigation = (window as Window & { navigation?: { canGoBack?: boolean } }).navigation;
+  if (typeof navigation?.canGoBack === 'boolean') return navigation.canGoBack;
+  try { return window.sessionStorage.getItem(IN_APP_HISTORY_KEY) === '1'; } catch { return false; }
 }
 
 export function useAppRouter(): Router {

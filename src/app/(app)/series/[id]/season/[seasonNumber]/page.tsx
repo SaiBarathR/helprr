@@ -332,7 +332,7 @@ export default function SeasonDetailPage() {
       <PageHeader
         subtitle={<Link href={`/series/${seriesId}${instance ? `?instance=${instance}` : ''}`} className="hover:underline">{series.title}</Link>}
         title={seasonTitle}
-        onBack={() => router.push(`/series/${seriesId}${instance ? `?instance=${instance}` : ''}`)}
+        backHref={`/series/${seriesId}${instance ? `?instance=${instance}` : ''}`}
         rightContent={
           <div className="flex items-center gap-1">
             {refreshing && !loading && (

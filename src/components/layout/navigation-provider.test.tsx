@@ -16,7 +16,7 @@ vi.mock('next/navigation', () => ({
 vi.mock('@/components/layout/bottom-nav', () => ({ BottomNav: () => <nav>Tabs stay available</nav> }));
 vi.mock('@/components/notifications/push-reenable-banner', () => ({ PushReenableBanner: () => null }));
 
-import { NavigationProvider, useAppRouter } from './navigation-provider';
+import { NavigationProvider, canGoBackInApp, useAppRouter } from './navigation-provider';
 import { AppShell } from './app-shell';
 import { NAVIGATION_CANCEL_EVENT } from '@/lib/route-scroll-state';
 
@@ -138,5 +138,31 @@ describe('app navigation feedback', () => {
     await act(async () => vi.advanceTimersByTime(1000));
     expect(document.querySelector('[data-navigation-loading]')).toBeNull();
     expect(document.querySelector('input')?.closest('[hidden]')).toBeNull();
+  });
+});
+
+describe('canGoBackInApp', () => {
+  afterEach(() => {
+    window.sessionStorage.clear();
+    Reflect.deleteProperty(window, 'navigation');
+  });
+
+  it('without the Navigation API, counts only in-app pushes, not other sites in history', async () => {
+    window.sessionStorage.clear();
+    window.history.pushState({}, '', '/series/12');
+    expect(window.history.length).toBeGreaterThan(1);
+    expect(canGoBackInApp()).toBe(false);
+    await click('Filter');
+    expect(canGoBackInApp()).toBe(false);
+    await click('Movies');
+    expect(canGoBackInApp()).toBe(true);
+  });
+
+  it('trusts the Navigation API when there is one', () => {
+    window.sessionStorage.setItem('helprr:in-app-history', '1');
+    Object.defineProperty(window, 'navigation', { value: { canGoBack: false }, configurable: true });
+    expect(canGoBackInApp()).toBe(false);
+    Object.defineProperty(window, 'navigation', { value: { canGoBack: true }, configurable: true });
+    expect(canGoBackInApp()).toBe(true);
   });
 });
