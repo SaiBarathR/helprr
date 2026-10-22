@@ -80,6 +80,58 @@ afterEach(async () => {
 });
 
 describe('route scroll restoration lifecycle', () => {
+  it.each(['push', 'replace'] as const)('starts a fresh %s at the top despite a saved destination', async (kind) => {
+    writeRouteScrollState('/calendar', {
+      document: { top: 900, left: 0 }, elements: { 'named:rail': { top: 0, left: 420 } },
+    });
+    scrollY = 380;
+    navigate({ kind, href: '/calendar' });
+    route = { pathname: '/calendar', search: '' };
+    window.history.replaceState({}, '', '/calendar');
+    await render(<Page rail />);
+    await act(async () => { await new Promise((resolve) => requestAnimationFrame(resolve)); });
+    expect(scrollY).toBe(0);
+    expect(document.querySelector<HTMLElement>('[data-scroll-restoration-key="rail"]')!.scrollLeft).toBe(0);
+    expect(readRouteScrollState('/calendar')?.document.top).toBe(0);
+
+    // The page can take ownership after arrival, without a stale restore retry.
+    scrollY = 250;
+    window.dispatchEvent(new Event('scroll'));
+    await act(async () => resizeCallback([], {} as ResizeObserver));
+    await act(async () => { await new Promise((resolve) => requestAnimationFrame(resolve)); });
+    expect(scrollY).toBe(250);
+    expect(readRouteScrollState('/calendar')?.document.top).toBe(250);
+  });
+
+  it('restores saved destinations on browser back and forward', async () => {
+    scrollY = 380;
+    navigate({ kind: 'push', href: '/calendar' });
+    route = { pathname: '/calendar', search: '' };
+    window.history.pushState({}, '', '/calendar');
+    await render();
+    await act(async () => { await new Promise((resolve) => requestAnimationFrame(resolve)); });
+    scrollY = 600;
+    window.dispatchEvent(new Event('scroll'));
+    await act(async () => { await new Promise((resolve) => requestAnimationFrame(resolve)); });
+
+    const popstate = () => new Promise<void>((resolve) => window.addEventListener('popstate', () => resolve(), { once: true }));
+    let popped = popstate();
+    window.history.back();
+    await popped;
+    route = { pathname: '/movies', search: '' };
+    await render();
+    await act(async () => { await new Promise((resolve) => requestAnimationFrame(resolve)); });
+    expect(scrollY).toBe(380);
+
+    popped = popstate();
+    window.history.forward();
+    await popped;
+    route = { pathname: '/calendar', search: '' };
+    await render();
+    await act(async () => { await new Promise((resolve) => requestAnimationFrame(resolve)); });
+    expect(scrollY).toBe(600);
+  });
+
   it('does not pin a fresh dashboard behind lazy skeletons', async () => {
     navigate({ kind: 'push', href: '/' });
     route = { pathname: '/', search: '' };
@@ -96,7 +148,7 @@ describe('route scroll restoration lifecycle', () => {
     vi.useFakeTimers();
     try {
       writeRouteScrollState('/series', { document: { top: 5000, left: 0 }, elements: {} });
-      navigate({ kind: 'push', href: '/series' });
+      navigate({ kind: 'traverse' });
       route = { pathname: '/series', search: '' };
       window.history.replaceState({}, '', '/series');
       await render(<Page />);
@@ -126,7 +178,7 @@ describe('route scroll restoration lifecycle', () => {
     vi.useFakeTimers();
     try {
       writeRouteScrollState('/calendar', { document: { top: 900, left: 0 }, elements: {} });
-      navigate({ kind: 'push', href: '/calendar' });
+      navigate({ kind: 'traverse' });
       route = { pathname: '/calendar', search: '' };
       window.history.replaceState({}, '', '/calendar');
       await render(<Page />);
@@ -168,7 +220,7 @@ describe('route scroll restoration lifecycle', () => {
 
   it('does not accept tall placeholder geometry as a completed restore', async () => {
     writeRouteScrollState('/series/9', { document: { top: 600, left: 0 }, elements: {} });
-    navigate({ kind: 'push', href: '/series/9' });
+    navigate({ kind: 'traverse' });
     route = { pathname: '/series/9', search: '' };
     window.history.replaceState({}, '', '/series/9');
     await render(<div data-slot="skeleton" />);
@@ -184,7 +236,7 @@ describe('route scroll restoration lifecycle', () => {
     scrollY = 500;
     const rail = document.querySelector<HTMLElement>('[data-scroll-restoration-key="rail"]')!;
     rail.scrollLeft = 260;
-    navigate({ kind: 'push', href: '/series/7?instance=two' });
+    navigate({ kind: 'traverse' });
     writeRouteScrollState('/series/7?instance=two', {
       document: { top: 700, left: 0 }, elements: { 'named:rail': { top: 0, left: 420 } },
     });
@@ -276,9 +328,28 @@ describe('route scroll restoration lifecycle', () => {
     expect(readRouteScrollState('/movies?filter=missing')?.document.top).toBe(600);
   });
 
+  it('keeps a fresh visit at the top when the page then syncs its saved view into the URL', async () => {
+    writeRouteScrollState('/anime/library?type=MANGA', { document: { top: 1500, left: 0 }, elements: {} });
+    scrollY = 380;
+    navigate({ kind: 'push', href: '/anime/library' });
+    route = { pathname: '/anime/library', search: '' };
+    window.history.replaceState({}, '', '/anime/library');
+    await render();
+    await act(async () => { await new Promise((resolve) => requestAnimationFrame(resolve)); });
+    expect(scrollY).toBe(0);
+
+    navigate({ kind: 'replace', href: '/anime/library?type=MANGA', preserveScroll: true });
+    route = { pathname: '/anime/library', search: '?type=MANGA' };
+    window.history.replaceState({}, '', '/anime/library?type=MANGA');
+    await render();
+    await act(async () => { await new Promise((resolve) => requestAnimationFrame(resolve)); });
+    expect(scrollY).toBe(0);
+    expect(readRouteScrollState('/anime/library?type=MANGA')?.document.top).toBe(0);
+  });
+
   it('preserves new navigation options when an unfinished restoration is disposed', async () => {
     writeRouteScrollState('/series/9', { document: { top: 900, left: 0 }, elements: {} });
-    navigate({ kind: 'push', href: '/series/9' });
+    navigate({ kind: 'traverse' });
     metric(document.documentElement, 'scrollHeight', 900);
     route = { pathname: '/series/9', search: '' };
     window.history.replaceState({}, '', '/series/9');
@@ -300,7 +371,7 @@ describe('route scroll restoration lifecycle', () => {
 
   it('cancels an unreachable restore on wheel, but not an ordinary click', async () => {
     writeRouteScrollState('/series/9', { document: { top: 900, left: 0 }, elements: {} });
-    navigate({ kind: 'push', href: '/series/9' });
+    navigate({ kind: 'traverse' });
     metric(document.documentElement, 'scrollHeight', 900);
     route = { pathname: '/series/9', search: '' };
     window.history.replaceState({}, '', '/series/9');

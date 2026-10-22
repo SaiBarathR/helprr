@@ -26,6 +26,8 @@ export function RouteScrollRestoration({ children, pending }: { children: React.
   const cancelRestoreRef = useRef<(() => void) | null>(null);
   const captureFrame = useRef(0);
   const userScrollRef = useRef(false);
+  /** The view on screen came from a fresh navigation and has not been scrolled since. */
+  const freshArrivalRef = useRef(false);
 
   const capture = useCallback((flush = false) => {
     const root = rootRef.current;
@@ -109,7 +111,11 @@ export function RouteScrollRestoration({ children, pending }: { children: React.
     const onVisibilityChange = () => { if (document.visibilityState === 'hidden') capture(true); };
     document.addEventListener('visibilitychange', onVisibilityChange);
 
-    const onIntent = (event: Event) => { if (isScrollIntent(event)) userScrollRef.current = true; };
+    const onIntent = (event: Event) => {
+      if (!isScrollIntent(event)) return;
+      userScrollRef.current = true;
+      freshArrivalRef.current = false;
+    };
     for (const event of ['wheel', 'touchmove', 'keydown', 'pointerdown']) window.addEventListener(event, onIntent, true);
     window.addEventListener('scroll', scheduleCapture, true);
     window.addEventListener(NAVIGATION_START_EVENT, onNavigationStart);
@@ -140,11 +146,18 @@ export function RouteScrollRestoration({ children, pending }: { children: React.
     routeRef.current = nextRoute;
     userScrollRef.current = false;
 
+    // A fresh navigation starts a new view, so an offset saved by an earlier
+    // visit to the same URL must not come back; Back/Forward and reload restore.
     // A scroll:false replace syncs the current view into the URL, so the
     // viewport must not jump. Once that view has its own saved offset, though,
     // the user is returning to it rather than switching within it, and keeping
-    // the arrival position would overwrite the offset they left behind.
-    const saved = readRouteScrollState(nextRoute);
+    // the arrival position would overwrite the offset they left behind, unless
+    // the sync comes straight after a fresh arrival (the anime library putting
+    // its saved tab into the URL), which is still that fresh visit.
+    const fresh = navigation?.kind === 'push'
+      || (navigation?.kind === 'replace' && (!navigation.preserveScroll || freshArrivalRef.current));
+    freshArrivalRef.current = fresh;
+    const saved = fresh ? null : readRouteScrollState(nextRoute);
     if (routeChanged && navigation?.preserveScroll && navigation.destination === nextRoute && !saved) {
       frozenRef.current = false;
       restoringRef.current = false;
@@ -203,7 +216,11 @@ export function RouteScrollRestoration({ children, pending }: { children: React.
       // geometry. Waiting for every skeleton would lock the dashboard forever.
       const placeholder = [...root.querySelectorAll<HTMLElement>('[data-slot="skeleton"], [data-scroll-restoration-pending], [aria-busy="true"]')]
         .some((element) => element.getBoundingClientRect().top < window.innerHeight);
-      if (!snapshot) { finish(); return; }
+      if (!snapshot) {
+        if (readRouteScrollState(nextRoute)) writeRouteScrollState(nextRoute, captureRouteScroll(root));
+        finish();
+        return;
+      }
       window.clearTimeout(settleTimer);
       if (complete && !placeholder) settleTimer = window.setTimeout(finish, 400);
     };
