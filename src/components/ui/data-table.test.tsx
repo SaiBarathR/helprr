@@ -65,7 +65,7 @@ describe('DataTable sticky header', () => {
     expect(header.classList.contains('sticky')).toBe(false);
   });
 
-  it('uses the measured page toolbar height in addition to the app header inset', () => {
+  it('defaults to the header inset plus --page-toolbar-height, with a 2.75rem fallback', () => {
     vi.spyOn(HTMLElement.prototype, 'scrollWidth', 'get').mockReturnValue(containerWidth);
     render(table());
     expect(screen.getByRole('columnheader').style.top).toBe('calc(var(--header-height, 0px) + var(--page-toolbar-height, 2.75rem))');

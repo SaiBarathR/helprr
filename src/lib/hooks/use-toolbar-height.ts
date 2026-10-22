@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
 
 /**
  * Measures a page's sticky toolbar and exposes its height as
@@ -11,7 +11,8 @@ export function useToolbarHeight() {
   const toolbarRef = useRef<HTMLDivElement>(null);
   const [toolbarHeight, setToolbarHeight] = useState(0);
 
-  useEffect(() => {
+  // Before paint, so a restored mid-list view never shows the header under the toolbar.
+  useLayoutEffect(() => {
     const toolbar = toolbarRef.current;
     if (!toolbar) return;
     const measure = () => setToolbarHeight(toolbar.getBoundingClientRect().height);
