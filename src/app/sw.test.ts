@@ -4,6 +4,7 @@ import type { Strategy } from 'serwist';
 
 const recorded = vi.hoisted(() => ({
   options: null as null | {
+    navigationPreload: boolean;
     runtimeCaching: Array<{ handler: Strategy }>;
     fallbacks: { entries: Array<{ url: string; matcher: (param: { request: Request }) => boolean }> };
   },
@@ -234,5 +235,11 @@ describe('navigation shell nonce guard', () => {
     await pages().handle({ request: event.request, event: event as never });
     await Promise.all(event.pending);
     expect(read).not.toHaveBeenCalled();
+  });
+});
+
+describe('worker updates', () => {
+  it('does not use navigation preload, whose cancelled wait holds the old worker on WebKit', () => {
+    expect(recorded.options!.navigationPreload).toBe(false);
   });
 });

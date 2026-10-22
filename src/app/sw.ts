@@ -257,7 +257,11 @@ const serwist = new Serwist({
   precacheEntries: self.__SW_MANIFEST ?? [],
   skipWaiting: true,
   clientsClaim: true,
-  navigationPreload: true,
+  // Off: after a cached page is served, WebKit cancels the preload request and
+  // Serwist's wait on event.preloadResponse never settles, so the old worker
+  // keeps an unfinished fetch event and a new one stays "waiting" (skipWaiting
+  // included) until the app is force-quit. Cached pages are instant without it.
+  navigationPreload: false,
   runtimeCaching,
   // Offline fallback for document navigations with no cached entry (e.g. a route
   // never visited before going offline). Only navigations match, so API/asset

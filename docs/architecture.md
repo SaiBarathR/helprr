@@ -554,6 +554,9 @@ preserving streaming and fast cached starts. A mismatched navigation response,
 including navigation preload, is retried once with a plain fetch; if that fails
 or still mismatches, the worker returns the precached `/offline.html`. The retry
 is served directly; subsequent background revalidation can refill the cache.
+Navigation preload is off: after a cache hit WebKit cancels the preload, and the
+worker's wait on `preloadResponse` never settles, which kept the previous worker
+busy and an update "waiting" until the installed app was force-quit.
 
 Development disables the Serwist build and registers `public/sw-push.js`, a
 lightweight push-only worker that avoids production precache URLs and Fast
