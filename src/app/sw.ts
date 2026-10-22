@@ -7,9 +7,9 @@ import type {
   SerwistPlugin,
 } from 'serwist';
 import {
-  disableNavigationPreload,
   CacheableResponsePlugin,
   CacheFirst,
+  disableNavigationPreload,
   ExpirationPlugin,
   NetworkFirst,
   NetworkOnly,
