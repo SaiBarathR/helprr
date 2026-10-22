@@ -121,6 +121,89 @@ const filterBar = () => document.querySelector('[aria-label="Active filters"]');
 const button = (name: string) =>
   [...document.querySelectorAll('button')].find((b) => (b.getAttribute('aria-label') ?? b.textContent?.trim()) === name);
 
+describe('Activity tab view', () => {
+  const activeTab = () => document.querySelector('[role="tab"][aria-selected="true"]')?.textContent;
+  const selectTab = async (name: string) => {
+    const tab = [...document.querySelectorAll('[role="tab"]')].find((t) => t.textContent?.includes(name))!;
+    await act(async () => tab.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 })));
+  };
+  const visit = async (query: string) => {
+    mocks.search = new URLSearchParams(query);
+    window.history.replaceState(null, '', query ? `/activity?${query}` : '/activity');
+    await renderPage();
+  };
+
+  it('restores the saved tab and filters when a link returns to plain Activity', async () => {
+    useUIStore.setState({ activityTab: 'queue', activityFilterBy: ['radarr'] });
+    await visit('tab=failed&source=sonarr');
+    expect(activeTab()).toBe('Failed');
+    expect(filterBar()?.textContent).toContain('Sonarr');
+
+    await visit('');
+    expect(activeTab()).toBe('Queue');
+    expect(filterBar()?.textContent).toContain('Radarr');
+    expect(useUIStore.getState().activityTab).toBe('queue');
+  });
+
+  it('applies an explicit tab on client navigation without changing the saved tab', async () => {
+    await visit('');
+    expect(activeTab()).toBe('Queue');
+    await visit('tab=failed&source=sonarr');
+    expect(activeTab()).toBe('Failed');
+    expect(useUIStore.getState().activityTab).toBe('queue');
+  });
+
+  it.each(['source=sonarr', 'source=all'])('keeps a tab change temporary in a link view (%s)', async (source) => {
+    await visit(`tab=queue&${source}`);
+    await selectTab('Failed');
+    expect(activeTab()).toBe('Failed');
+    expect(new URLSearchParams(window.location.search).get('tab')).toBe('failed');
+    expect(useUIStore.getState().activityTab).toBe('queue');
+
+    await visit('');
+    expect(activeTab()).toBe('Queue');
+  });
+
+  it('saves a tab change on a plain visit and resumes it on return', async () => {
+    await visit('');
+    await selectTab('Failed');
+    expect(activeTab()).toBe('Failed');
+    expect(useUIStore.getState().activityTab).toBe('failed');
+
+    await visit('tab=queue&source=sonarr');
+    expect(activeTab()).toBe('Queue');
+    await visit('');
+    expect(activeTab()).toBe('Failed');
+  });
+
+  it('uses the saved tab when the URL tab is invalid', async () => {
+    useUIStore.setState({ activityTab: 'failed' });
+    await visit('tab=invalid');
+    expect(activeTab()).toBe('Failed');
+    await visit('tab=queue');
+    expect(activeTab()).toBe('Queue');
+    await visit('tab=invalid');
+    expect(activeTab()).toBe('Failed');
+  });
+
+  it('waits for hydration before resuming the saved tab', async () => {
+    useUIStore.setState({ hasHydrated: false, activityTab: 'failed' });
+    await visit('');
+    expect(activeTab()).toBe('Queue');
+    await act(async () => useUIStore.setState({ hasHydrated: true }));
+    expect(activeTab()).toBe('Failed');
+  });
+
+  it('keeps an in-page tab change through late hydration', async () => {
+    useUIStore.setState({ hasHydrated: false, activityTab: 'queue' });
+    await visit('source=sonarr');
+    await selectTab('Failed');
+    await act(async () => useUIStore.setState({ hasHydrated: true }));
+    expect(activeTab()).toBe('Failed');
+    expect(useUIStore.getState().activityTab).toBe('queue');
+  });
+});
+
 describe('Activity source filter', () => {
   it('shows every source with no filter bar when nothing is filtered', async () => {
     await renderPage();
