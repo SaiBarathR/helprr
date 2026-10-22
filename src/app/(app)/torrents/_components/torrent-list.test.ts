@@ -11,5 +11,7 @@ describe('formatBytes', () => {
     expect(formatBytes(0)).toBe('0 B');
     expect(formatBytes(1536)).toBe('1.5 KB');
     expect(formatSpeed(1048576)).toBe('1 MB/s');
+    expect(formatBytes(0.5)).toBe('0.5 B');
+    expect(formatBytes(1024 ** 5)).toBe('1024 TB');
   });
 });
