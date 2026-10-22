@@ -181,7 +181,9 @@ export const ALL_WIDGET_DEFINITIONS: WidgetDefinition[] = [
     icon: 'Activity',
     category: 'monitoring',
     defaultDesktopSpan: span(4, 3),
-    defaultMobileSpan: span(1, 1),
+    // Full width and three rows, as in the built-in mobile layout: at 1×1 a
+    // phone showed one service at a time with its name cut off.
+    defaultMobileSpan: span(4, 3),
     defaultRefreshIntervalSecs: 30,
     supportsNarrow: true,
     desktopLayout: 'default',
