@@ -516,7 +516,11 @@ Helprr authors no parsing and never trusts its own reading of a release.
 Authenticated routes share scroll restoration in `AppShell`. Navigation captures
 the outgoing route before displaying its loading feedback, which preserves the
 outgoing page's layout height. Positions are tab-scoped and keyed by pathname and
-canonical query string, including service instance. The shared controller restores
+canonical query string, including service instance. Only Back/Forward and reload
+restore a saved position; a push (or a plain replace) starts the new view at the
+top, and a `scroll:false` URL sync keeps the viewport, restoring the synced URL's
+own offset only when the view was not itself a fresh, unscrolled arrival. Because
+positions are per URL, two history entries for the same URL share one. The shared controller restores
 the document and nested scrollers as content becomes available, and yields to user
 scroll gestures and explicit controls. Saved destinations settle after 400 ms of
 quiet layout, with an eight-second upper bound for unreachable positions. Lazy
