@@ -119,7 +119,7 @@ export function JellyfinServerWidget({ refreshInterval, editMode = false }: Widg
             </div>
             <div className="flex gap-1.5 flex-wrap justify-end">
               {system.HasPendingRestart && (
-                <Badge variant="outline" className="text-[9px] px-1.5 py-0 text-amber-500 border-amber-500/30">
+                <Badge variant="outline" className="text-[9px] px-1.5 py-0 text-amber-500 light:text-amber-700 border-amber-500/30">
                   Restart needed
                 </Badge>
               )}

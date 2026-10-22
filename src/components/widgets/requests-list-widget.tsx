@@ -469,7 +469,7 @@ export function RequestsListWidget({
   }
 
   if (items.length === 0) {
-    const emptyLabel = filter !== 'all' ? `No ${filter} requests` : 'No requests';
+    const emptyLabel = filter !== 'all' ? `No ${filter} requests in Seerr` : 'No requests in Seerr';
     return (
       <div ref={ref} className={shellClass}>
         {header}

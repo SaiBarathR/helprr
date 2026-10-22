@@ -135,7 +135,7 @@ function FeedCard({ item, position, tracker, onHide }: {
             className="h-full w-full"
           />
         </div>
-        <div className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-3 px-3 py-3">
+        <div className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-3 px-3 py-3 pb-[calc(0.75rem+max(0px,env(safe-area-inset-bottom,0px)-var(--footer-cover,0px)))]">
           <Link
             href={item.href}
             onClick={() => tracker.event('click', item, 'feed', 'feed')}
@@ -177,7 +177,7 @@ function FeedCard({ item, position, tracker, onHide }: {
       </Link>
 
       {/* Info overlay — bottom-left, clear of the action rail. */}
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end justify-between gap-2 p-3 pb-5">
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end justify-between gap-2 p-3 pb-[calc(1.25rem+max(0px,env(safe-area-inset-bottom,0px)-var(--footer-cover,0px)))]">
         <div className="min-w-0 flex-1 pr-1">
           {item.reason && (
             // The chip must be its own block box: as a plain inline inside a

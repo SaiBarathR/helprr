@@ -260,7 +260,7 @@ export function OverviewTab() {
               <p className="text-xs text-muted-foreground">v{system.Version}</p>
             </div>
             <div className="flex gap-1.5">
-              {system.HasPendingRestart && <Badge variant="outline" className="text-[9px] px-1.5 py-0 text-amber-500 border-amber-500/30">Restart needed</Badge>}
+              {system.HasPendingRestart && <Badge variant="outline" className="text-[9px] px-1.5 py-0 text-amber-500 light:text-amber-700 border-amber-500/30">Restart needed</Badge>}
               {system.HasUpdateAvailable && <Badge variant="outline" className="text-[9px] px-1.5 py-0 text-blue-500 border-blue-500/30">Update available</Badge>}
               {!system.HasPendingRestart && !system.HasUpdateAvailable && (
                 <Badge variant="outline" className="text-[9px] px-1.5 py-0 text-green-500 border-green-500/30"><CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />Healthy</Badge>

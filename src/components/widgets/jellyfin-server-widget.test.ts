@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   tasks: null as unknown[] | null,
+  pendingRestart: false,
 }));
 
 vi.mock('@/lib/widgets/use-element-size', () => ({
@@ -17,7 +18,7 @@ vi.mock('@/lib/widgets/use-widget-data', () => ({
       ? {
           ServerName: 'Jellyfin',
           Version: '10.10.7',
-          HasPendingRestart: false,
+          HasPendingRestart: mocks.pendingRestart,
           HasUpdateAvailable: false,
         }
       : mocks.tasks,
@@ -39,6 +40,7 @@ beforeEach(() => {
     IS_REACT_ACT_ENVIRONMENT: boolean;
   }).IS_REACT_ACT_ENVIRONMENT = true;
   mocks.tasks = null;
+  mocks.pendingRestart = false;
   document.body.innerHTML = '<div id="root"></div>';
   root = createRoot(document.getElementById('root')!);
 });
@@ -48,6 +50,18 @@ afterEach(async () => {
 });
 
 describe('JellyfinServerWidget', () => {
+  it('gives the restart badge a readable light-theme foreground', async () => {
+    mocks.pendingRestart = true;
+    await act(async () => {
+      root.render(createElement(JellyfinServerWidget, { refreshInterval: 30_000 }));
+    });
+
+    const badge = [...document.querySelectorAll('[data-slot="badge"]')]
+      .find((element) => element.textContent?.includes('Restart needed'));
+    expect(badge?.className).toContain('text-amber-500');
+    expect(badge?.className).toContain('light:text-amber-700');
+  });
+
   it('keeps library scanning disabled until the current task state is known', async () => {
     await act(async () => {
       root.render(createElement(JellyfinServerWidget, { refreshInterval: 30_000 }));
