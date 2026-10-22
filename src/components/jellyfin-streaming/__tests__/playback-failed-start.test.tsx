@@ -80,6 +80,91 @@ describe('a start that fails after another item was playing', () => {
     expect(h.playback().stream?.item.Id).toBe(ITEM.Id);
     expect(h.playback().positionSeconds).toBe(1200);
   });
+
+  it('reports and detaches the outgoing item when Next requires a Jellyfin connection', async () => {
+    await watching(1200);
+    const originalFetch = globalThis.fetch;
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) =>
+      String(input) === '/api/jellyfin/stream/info'
+        ? Promise.resolve(new Response(JSON.stringify({ error: 'jellyfin_connect_required' }), { status: 409 }))
+        : originalFetch(input, init)));
+    const load = vi.spyOn(h.element(), 'load');
+
+    await h.act(async () => { await h.playback().next(); });
+
+    expect(h.playback().needsJellyfinConnect).toBe(true);
+    expect(h.playback().videoExpanded).toBe(true);
+    expect(h.playback().status).toBe('error');
+    expect(h.playback().stream).toBeNull();
+    expect(h.playback().positionSeconds).toBe(0);
+    expect(h.media.paused()).toBe(true);
+    expect(h.element().hasAttribute('src')).toBe(false);
+    expect(load).toHaveBeenCalled();
+    await h.act(async () => {
+      await vi.waitFor(() => expect(h.encodingStops).toEqual(['session-1']));
+    });
+    expect(h.reports.filter((report) => report.event === 'stopped')).toEqual([
+      expect.objectContaining({ playSessionId: 'session-1', positionTicks: 1200 * 10_000_000 }),
+    ]);
+  });
+});
+
+describe('queue preparation that cannot start an item', () => {
+  it.each([
+    { type: 'Folder', result: 'reject', shuffle: false },
+    { type: 'Series', result: 'http', shuffle: true },
+  ])('stops the outgoing item after $type expansion returns $result (shuffle: $shuffle)', async ({ type, result, shuffle }) => {
+    await watching(1200, 600 * 10_000_000);
+    const originalFetch = globalThis.fetch;
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      if (!String(input).startsWith('/api/jellyfin/catalog/items?')) return originalFetch(input, init);
+      if (result === 'reject') return Promise.reject(new Error('Network unavailable'));
+      return Promise.resolve(new Response(JSON.stringify({ items: [] }), { status: result === 'http' ? 503 : 200 }));
+    }));
+    const load = vi.spyOn(h.element(), 'load');
+    const container = { ...ITEM, Id: 'container', Type: type, IsFolder: true };
+
+    await h.act(async () => { await h.playback().playItems([container], 0, { shuffle }); });
+
+    expect(h.media.paused()).toBe(true);
+    expect(h.element().hasAttribute('src')).toBe(false);
+    expect(load).toHaveBeenCalled();
+    expect(h.playback().status).toBe('error');
+    expect(h.playback().error).toBe(result === 'reject' ? 'Network unavailable' : 'Unable to load the playback queue');
+    expect(h.playback().item?.Id).toBe(container.Id);
+    expect(h.playback().stream).toBeNull();
+    expect(h.playback().positionSeconds).toBe(0);
+    expect(h.playback().durationSeconds).toBe(0);
+    expect(h.requests).toHaveLength(1);
+    await h.act(async () => {
+      await vi.waitFor(() => expect(h.encodingStops).toEqual(['session-1']));
+    });
+    expect(h.reports.filter((report) => report.event === 'stopped')).toEqual([
+      expect.objectContaining({ playSessionId: 'session-1', positionTicks: 1200 * 10_000_000 }),
+    ]);
+    await h.act(() => { h.playback().togglePause(); });
+    expect(h.media.paused()).toBe(true);
+    expect(h.playback().status).toBe('error');
+    await h.act(async () => { await h.playback().stop(); });
+    expect(h.reports.filter((report) => report.event === 'stopped')).toHaveLength(1);
+  });
+
+  it('keeps playing a concrete item when only its optional show expansion fails', async () => {
+    h = await mountPlayback();
+    const originalFetch = globalThis.fetch;
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) =>
+      String(input).startsWith('/api/jellyfin/catalog/items?')
+        ? Promise.reject(new Error('Network unavailable'))
+        : originalFetch(input, init)));
+
+    await h.act(async () => { await h.playback().playItem({ ...ITEM, SeriesId: 'series' }); });
+
+    expect(h.playback().status).toBe('playing');
+    expect(h.media.paused()).toBe(false);
+    expect(h.encodingStops).toEqual([]);
+    await h.act(() => { h.playback().togglePause(); });
+    expect(h.playback().status).toBe('paused');
+  });
 });
 
 describe('Previous while the next item is still being negotiated', () => {

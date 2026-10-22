@@ -1049,7 +1049,6 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     mediaRef.current?.load();
     void stopEncodings(streamRef.current?.playSessionId ?? '');
     setStatus('error');
-    setError(fallbackMessage);
     const connected = await fetch('/api/account/jellyfin/link')
       .then((res) => (res.ok ? res.json() : null))
       .then((body) => (typeof body?.connected === 'boolean' ? body.connected : null))
@@ -1062,6 +1061,7 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
       setError('Connect your Jellyfin account to watch.');
       return;
     }
+    setError(fallbackMessage);
   }, [destroyPlayers, noteRetryPosition]);
 
   const attachMedia = useCallback(async (
@@ -1507,10 +1507,46 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
       if (!stillCurrent()) return;
       // Optional queue expansion cannot fail media that already started.
       if (started) { await started; return; }
+      // No startItem owns this failure. Retire the outgoing stream here too,
+      // taking its final position before detaching the element.
+      const outgoing = streamRef.current;
+      const stoppedReport: Parameters<typeof report>[2] | null = outgoing ? {
+        positionTicks: positionToReport(mediaRef.current, outgoing, reachedStartRef.current)
+          || secondsToTicks(positionRef.current),
+        isPaused: true,
+        volumeLevel: Math.round(volume * 100),
+        isMuted: muted,
+        playbackRate,
+        audioStreamIndex: audioIndexRef.current,
+        subtitleStreamIndex: subtitleIndexRef.current,
+        repeatMode: repeatRef.current,
+        shuffleMode: shuffledRef.current ? 'Shuffle' : 'Sorted',
+        playbackStartTimeTicks: playbackStartRef.current,
+        maxStreamingBitrate: maxBitrate || undefined,
+      } : null;
+      startTokenRef.current += 1;
+      controller.abort();
+      clearTimers();
+      mediaRef.current?.pause();
+      destroyPlayers();
+      mediaRef.current?.removeAttribute('src');
+      mediaRef.current?.load();
+      streamRef.current = null;
+      setStream(null);
+      setSegments([]);
+      setPositionSeconds(0);
+      setDurationSeconds(0);
+      void (async () => {
+        if (outgoing && stoppedReport) {
+          await report('stopped', outgoing, stoppedReport, AbortSignal.timeout(10_000));
+          void getQueryClient().invalidateQueries({ queryKey: ['jellyfin', 'catalog'] });
+          await stopEncodings(outgoing.playSessionId, AbortSignal.timeout(10_000));
+        }
+      })();
       setStatus('error');
       setError(cause instanceof Error ? cause.message : 'Unable to prepare playback');
     }
-  }, [shuffled, startItem]);
+  }, [destroyPlayers, maxBitrate, muted, playbackRate, setPositionSeconds, shuffled, startItem, volume]);
 
   const playItem = useCallback(async (next: JellyfinItem, options?: PlayOptions) => {
     await playItems([next], 0, options);

@@ -142,6 +142,27 @@ it('detaches and releases a terminal media error, and ignores its account check 
   expect(h.playback().needsJellyfinConnect).toBe(false);
 });
 
+it.each([true, false])('waits for the account check before showing the terminal error (connected: %s)', async (connected) => {
+  h = await mountPlayback({ progressive: true });
+  await h.act(async () => { await h.playback().playItem(ITEM); });
+  const originalFetch = globalThis.fetch;
+  let completeCheck!: (response: Response) => void;
+  vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) =>
+    String(input) === '/api/account/jellyfin/link'
+      ? new Promise<Response>((resolve) => { completeCheck = resolve; })
+      : originalFetch(input, init)));
+
+  await h.act(() => { h.element().dispatchEvent(new Event('error')); });
+
+  expect(h.media.paused()).toBe(true);
+  expect(h.element().hasAttribute('src')).toBe(false);
+  expect(h.playback().error).toBeNull();
+  await h.act(() => { completeCheck(new Response(JSON.stringify({ connected }))); });
+  expect(h.playback().status).toBe('error');
+  expect(h.playback().needsJellyfinConnect).toBe(!connected);
+  expect(h.playback().error).toBe(connected ? 'This title could not be played.' : 'Connect your Jellyfin account to watch.');
+});
+
 it('does not report progress or accept events while a timed-out attempt is being released for fallback', async () => {
   vi.useFakeTimers();
   h = await mountPlayback();
