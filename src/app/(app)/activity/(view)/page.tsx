@@ -75,7 +75,7 @@ export default function ActivityPage() {
   const sources = useMemo(() => (linkView ? linkView.sources : savedSources), [linkView, savedSources]);
   // Tab priority: an explicit ?tab (a widget or push-notification deep-link) wins
   // and is applied here on the first paint; otherwise we resume the last-used tab
-  // from the persisted store in the effect below (the nav item / a generic "view
+  // from the persisted store after hydration (the nav item / a generic "view
   // all"). The initializer can't read the persisted store — it hydrates after the
   // first render, and reading it during render would break SSR hydration — so the
   // default here is 'queue' and the resume happens post-hydration. Local state
@@ -117,21 +117,21 @@ export default function ActivityPage() {
     }
   }, [instanceOptions, savedInstance, setInstanceFilter]);
   const initRef = useRef(false);
-  // Set when the user taps a tab in-page, so a late hydration resume can't override it.
-  const userSwitchedTabRef = useRef(false);
   const availableSortOptions = SORT_OPTIONS_BY_TAB[tab];
 
-  // Resume the last-used tab when arriving without an explicit ?tab deep-link
-  // (the nav item / a generic "view all"). A ?tab from a widget or push wins and
-  // was already applied by the useState initializer above. Guarded one-shot
-  // during render — hasHydrated is false on the hydration render itself, so
-  // SSR markup is unaffected.
+  // Reconcile each URL view: a valid ?tab wins, otherwise resume the saved tab
+  // after hydration. Guarded during render so URL changes don't paint a stale tab.
   const [tabResumed, setTabResumed] = useState(false);
-  if (hasHydrated && !tabResumed) {
-    setTabResumed(true);
+  const [tabViewKey, setTabViewKey] = useState(searchParamsKey);
+  if (tabViewKey !== searchParamsKey || (hasHydrated && !tabResumed)) {
+    setTabViewKey(searchParamsKey);
+    setTabResumed(hasHydrated);
     const params = new URLSearchParams(searchParamsKey);
+    const requestedTab = params.get('tab');
     const persistedTab = useUIStore.getState().activityTab;
-    if (!params.get('tab') && !userSwitchedTabRef.current && isTabKey(persistedTab)) {
+    if (requestedTab && isTabKey(requestedTab)) {
+      setTab(requestedTab);
+    } else if (hasHydrated && isTabKey(persistedTab)) {
       setTab(persistedTab);
     }
   }
@@ -204,8 +204,8 @@ export default function ActivityPage() {
   function handleTabChange(nextTab: TabKey) {
     if (!isTabKey(nextTab)) return;
     setTab(nextTab); // local state is the render source → the tab switches instantly
-    userSwitchedTabRef.current = true; // don't let a late hydration resume override this
-    setActivityTab(nextTab); // persist as the last-used tab (resumed on a no-?tab entry)
+    setTabResumed(true); // don't let a late hydration resume override this
+    if (!linkView) setActivityTab(nextTab); // only plain visits update the saved tab
 
     // Mirror the tab into the URL for deep-linking, but via history.replaceState so
     // there's no router navigation / RSC round-trip to delay the switch.
