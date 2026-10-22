@@ -208,6 +208,7 @@ function DashboardInner({ initialLayout, initialDevice }: DashboardClientProps) 
           : '100%',
       }}
     >
+      <h1 className="sr-only">Dashboard</h1>
       {editMode && (
         <BentoTopBar
           mobile={isMobile}
