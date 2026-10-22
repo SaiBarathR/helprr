@@ -1209,6 +1209,22 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     const stillCurrent = owner ?? reserveStart(startTokenRef);
     const superseded = () => !stillCurrent();
     clearTimers();
+    // The Stopped report for an item this start replaces, taken while the
+    // element still holds that item's position.
+    const stoppedReportFor = (outgoing: HelprrStreamInfo): Parameters<typeof report>[2] => ({
+      positionTicks: positionToReport(mediaRef.current, outgoing, reachedStartRef.current)
+        || secondsToTicks(positionRef.current),
+      isPaused: true,
+      volumeLevel: Math.round(volume * 100),
+      isMuted: muted,
+      playbackRate,
+      audioStreamIndex: audioIndexRef.current,
+      subtitleStreamIndex: subtitleIndexRef.current,
+      repeatMode: repeatRef.current,
+      shuffleMode: shuffledRef.current ? 'Shuffle' : 'Sorted',
+      playbackStartTimeTicks: playbackStartRef.current,
+      maxStreamingBitrate: maxBitrate || undefined,
+    });
     /**
      * The encoder the outgoing item is holding.
      *
@@ -1264,11 +1280,22 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
         void stopEncodings(nextStream.playSessionId);
         return;
       }
-      if (outgoingSession && outgoingSession !== releasedSession && outgoingSession !== nextStream.playSessionId) {
-        // Fire and forget: the viewer is waiting on the new stream, not on the
-        // old one being tidied up.
-        void stopEncodings(outgoingSession);
-      }
+      // Another item replaces the one playing (Next, Previous, a queue pick).
+      // Jellyfin still lists it as playing on this device and only records its
+      // final position, and marks it played, from a Stopped report, which Stop
+      // sends and a switch did not. jellyfin-web reports it the same way.
+      const outgoing = streamRef.current && streamRef.current.item.Id !== nextItem.Id ? streamRef.current : null;
+      const outgoingReport = outgoing ? stoppedReportFor(outgoing) : null;
+      const releaseOutgoing = Boolean(outgoingSession && outgoingSession !== releasedSession && outgoingSession !== nextStream.playSessionId);
+      // Fire and forget: the viewer is waiting on the new stream, not on the
+      // old one being tidied up. Report first, as Stop does.
+      void (async () => {
+        if (outgoing && outgoingReport) {
+          await report('stopped', outgoing, outgoingReport, AbortSignal.timeout(10_000));
+          void getQueryClient().invalidateQueries({ queryKey: ['jellyfin', 'catalog'] });
+        }
+        if (releaseOutgoing && outgoingSession) await stopEncodings(outgoingSession);
+      })();
       streamRef.current = nextStream;
       attempt.attached = true;
       // The replacement element starts at zero until it seeks itself into place.
@@ -1375,20 +1402,7 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
       // gets the Stopped report Stop would have sent, from a snapshot taken
       // before the element is torn down.
       const replaced = streamRef.current && streamRef.current.item.Id !== nextItem.Id ? streamRef.current : null;
-      const replacedReport: Parameters<typeof report>[2] | null = replaced ? {
-        positionTicks: positionToReport(mediaRef.current, replaced, reachedStartRef.current)
-          || secondsToTicks(positionRef.current),
-        isPaused: true,
-        volumeLevel: Math.round(volume * 100),
-        isMuted: muted,
-        playbackRate,
-        audioStreamIndex: audioIndexRef.current,
-        subtitleStreamIndex: subtitleIndexRef.current,
-        repeatMode: repeatRef.current,
-        shuffleMode: shuffledRef.current ? 'Shuffle' : 'Sorted',
-        playbackStartTimeTicks: playbackStartRef.current,
-        maxStreamingBitrate: maxBitrate || undefined,
-      } : null;
+      const replacedReport = replaced ? stoppedReportFor(replaced) : null;
       // A visible terminal error must also end media work. Leaving hls.js
       // attached lets its network recovery keep requesting segments forever.
       // Retire callbacks before destruction so late loader events cannot retry.
