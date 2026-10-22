@@ -9,6 +9,7 @@ import type {
 import {
   CacheableResponsePlugin,
   CacheFirst,
+  disableNavigationPreload,
   ExpirationPlugin,
   NetworkFirst,
   NetworkOnly,
@@ -70,7 +71,8 @@ const matchingBuildShell: SerwistPlugin = {
   },
   handlerWillRespond: async ({ request, response }) => {
     if (await hasMatchingShellNonce(response)) return response;
-    // Serwist returns preload responses before fetchDidSucceed; retry without preload.
+    // Retry once with a plain fetch (a preload response, while a registration
+    // still has preload on from an earlier worker, skips fetchDidSucceed).
     try {
       const fresh = await fetch(request);
       if (await hasMatchingShellNonce(fresh)) return fresh;
@@ -257,7 +259,6 @@ const serwist = new Serwist({
   precacheEntries: self.__SW_MANIFEST ?? [],
   skipWaiting: true,
   clientsClaim: true,
-  navigationPreload: true,
   runtimeCaching,
   // Offline fallback for document navigations with no cached entry (e.g. a route
   // never visited before going offline). Only navigations match, so API/asset
@@ -570,5 +571,13 @@ self.addEventListener('message', (event) => {
     );
   }
 });
+
+// Navigation preload stays off. After a cached page is served, WebKit cancels the
+// preload request and Serwist's wait on event.preloadResponse never settles, so
+// the worker keeps an unfinished fetch event and the next one stays "waiting"
+// (skipWaiting included) until the app is force-quit. The flag lives on the
+// registration, so turn off what earlier workers left on rather than just not
+// enabling it. Cached pages are instant without it.
+disableNavigationPreload();
 
 serwist.addEventListeners();
