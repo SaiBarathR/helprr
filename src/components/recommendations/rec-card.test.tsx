@@ -49,8 +49,9 @@ describe('RecCard actions', () => {
 
   it('opens its menu on a right-click and reaches Not interested', async () => {
     const onNotInterested = vi.fn();
-    const link = renderCard(onNotInterested);
-    fireEvent.contextMenu(link, { clientX: 10, clientY: 10 });
+    renderCard(onNotInterested);
+    // A real press lands inside the link, on its poster or title.
+    fireEvent.contextMenu(screen.getByText('Severance'), { clientX: 10, clientY: 10 });
     const item = screen.getByRole('menuitem', { name: /Not interested/ });
     fireEvent.click(item);
     // The menu runs the action once it has closed.
