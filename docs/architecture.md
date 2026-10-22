@@ -542,6 +542,15 @@ session (`src/lib/client-cache.ts`). Login clears them when it opens and
 another device; a signed-in or offline visitor keeps them. Sign-in clears them
 again before it completes and refuses to sign in if it cannot.
 
+The `pages` cache stores HTML shells stamped with the current build version;
+older or unstamped shells are cache misses because they can reference removed
+chunks. Shells whose CSP nonce differs from the first body nonce are never
+stored and are evicted on read. Validation reads only through that first nonce,
+preserving streaming and fast cached starts. A mismatched navigation response,
+including navigation preload, is retried once with a plain fetch; if that fails
+or still mismatches, the worker returns the precached `/offline.html`. The retry
+is served directly; subsequent background revalidation can refill the cache.
+
 Development disables the Serwist build and registers `public/sw-push.js`, a
 lightweight push-only worker that avoids production precache URLs and Fast
 Refresh loops. `src/components/sw-register.tsx` selects the worker by
