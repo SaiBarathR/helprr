@@ -248,3 +248,19 @@ it('still treats the visit as fresh when the route commits its loading view firs
   expect(screen.getByText('October 2026')).toBeTruthy();
   expect(screen.getByRole('heading', { level: 2 }).textContent).toBe('Thursday, October 22');
 });
+
+it('keeps the pick on a Forward back to a freshly visited Calendar (iOS order)', async () => {
+  const page = render(<Page />);
+  await settleScroll();
+  await visit('push', '/movies/1', page);
+  await visit('push', '/calendar', page);
+  fireEvent.click(screen.getByRole('button', { name: /October 15, 1 release/ }));
+  for (const pathname of ['/movies/1', '/calendar']) {
+    // Commit first, popstate after, with no start event.
+    route.pathname = pathname;
+    page.rerender(<Page />);
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    await settleScroll();
+  }
+  expect(screen.getByRole('heading', { level: 2 }).textContent).toBe('Thursday, October 15');
+});
