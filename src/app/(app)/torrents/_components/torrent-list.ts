@@ -20,6 +20,8 @@ export function torrentActionMessage(action: string, mode: 'single' | 'bulk'): s
 }
 
 export function formatBytes(bytes: number): string {
+  // qBittorrent reports -1 while a torrent is still fetching its metadata.
+  if (!Number.isFinite(bytes) || bytes < 0) return '—';
   if (bytes === 0) return '0 B';
   const k = 1024;
   const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
