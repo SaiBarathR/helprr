@@ -134,3 +134,31 @@ describe('Stop responsiveness', () => {
     expect(h.encodingStops).toEqual(['session-1']);
   });
 });
+
+describe('switching items', () => {
+  const SECOND = { ...ITEM, Id: 'item-2', Name: 'Next Episode' };
+
+  it('reports the outgoing item as stopped at its position, before releasing its encoder', async () => {
+    const h = await mountPlayback();
+    harness = h;
+    await h.act(async () => { await h.playback().playItems([ITEM, SECOND]); });
+    h.element().currentTime = 1380;
+    h.holdStopRequests();
+    await h.act(async () => { await h.playback().next(); });
+
+    // The new item plays without waiting on the old one's cleanup.
+    expect(h.playback().item?.Id).toBe('item-2');
+    expect(h.playback().status).toBe('playing');
+    const stopped = h.reports.filter(({ event }) => event === 'stopped');
+    expect(stopped).toEqual([{ event: 'stopped', isPaused: true, positionTicks: 13_800_000_000, playSessionId: 'session-1' }]);
+    expect(h.encodingStops).toEqual([]);
+    await h.act(async () => { h.releaseStopReport(); });
+    expect(h.encodingStops).toEqual(['session-1']);
+  });
+
+  it('sends no Stopped report when the same item restarts', async () => {
+    const h = await playing();
+    await h.act(async () => { await h.playback().setAudioStream(2); });
+    expect(h.reports.filter(({ event }) => event === 'stopped')).toEqual([]);
+  });
+});
