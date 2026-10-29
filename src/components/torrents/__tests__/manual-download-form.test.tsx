@@ -79,6 +79,30 @@ async function chooseFilm() {
 }
 
 describe('sending a release to Sonarr/Radarr', () => {
+  it.each(['RADARR', 'SONARR'] as const)('sends a title that is not in %s with its add options', async (service) => {
+    const app = service === 'RADARR' ? 'Radarr' : 'Sonarr';
+    const instanceId = service === 'RADARR' ? 'r1' : 's1';
+    const checked = plan();
+    checked.plan.service = service;
+    checked.plan.instance = { id: instanceId, label: app };
+    mocks.preflight.push(() => json(checked));
+    mocks.send.push(() => json({ download: { id: 'md2', status: 'QUEUED' } }, 201));
+    renderForm({ kind: 'magnet', magnet: MAGNET }, {
+      service, instanceId, externalId: 10331, title: 'Night of the Living Dead', release: checked.plan.release.title,
+    });
+    const user = userEvent.setup();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Check' }).hasAttribute('disabled')).toBe(false));
+    await user.click(screen.getByRole('button', { name: 'Check' }));
+    expect(await screen.findByText(`Night of the Living Dead (1968), will be added to ${app}`)).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: `Send to ${app}` }));
+    await waitFor(() => expect(mocks.push).toHaveBeenCalledWith('/torrents/linked/md2'));
+    expect(mocks.bodies.map(({ request }) => request)).toEqual([
+      expect.objectContaining({ service, instanceId, externalId: 10331, add: expect.objectContaining({ qualityProfileId: 4, rootFolderPath: '/data/Movies' }) }),
+      expect.objectContaining({ service, instanceId, externalId: 10331, add: expect.objectContaining({ qualityProfileId: 4, rootFolderPath: '/data/Movies' }), clientRequestId: expect.any(String) }),
+    ]);
+    expect(mocks.bodies.every(({ request }) => !('arrItemId' in request))).toBe(true);
+  });
+
   it.each(['Radarr', 'Sonarr'])('omits zero and missing years in %s results and the chosen title', async (app) => {
     mocks.year = app === 'Radarr' ? 0 : undefined;
     renderForm();

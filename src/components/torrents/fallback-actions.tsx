@@ -126,7 +126,7 @@ function FallbackSummary({ result, app }: { result: FallbackCheck; app: string }
       </p>
       <dl className="space-y-1.5 text-xs">
         {plan.target && (
-          <div><dt className="inline text-muted-foreground">For: </dt><dd className="inline">{plan.target.title}{plan.target.year ? ` (${plan.target.year})` : ''}{plan.target.existingId ? '' : `, added to ${plan.instance?.label ?? app} with searches off`}</dd></div>
+          <div><dt className="inline text-muted-foreground">For: </dt><dd className="inline">{plan.target.title}{plan.target.year ? ` (${plan.target.year})` : ''}{plan.target.existingId ? '' : `, will be added to ${plan.instance?.label ?? app} with searches off`}</dd></div>
         )}
         {plan.torrent && <div><dt className="inline text-muted-foreground">Files: </dt><dd className="inline">{chosen} of {plan.torrent.files.length} chosen</dd></div>}
         {plan.arrSavePath && <div><dt className="inline text-muted-foreground">{app} sees the download folder at: </dt><dd className="inline [overflow-wrap:anywhere] font-mono">{plan.arrSavePath}</dd></div>}

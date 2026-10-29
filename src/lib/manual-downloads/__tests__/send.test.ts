@@ -158,6 +158,8 @@ describe('sending a film to Radarr', () => {
     expect(download.lastError).toContain('was removed again');
     expect(mocks.client.deleteMovie).toHaveBeenCalledWith(15, false, false);
     expect(mocks.audits.map((audit) => audit.operation)).toEqual(['CREATE_MEDIA', 'PUSH_RELEASE', 'DELETE_MEDIA']);
+    // Its page no longer links to a film that is gone.
+    expect(download.arrItemId).toBeNull();
   });
 
   it('fails an approved release that was never grabbed', async () => {

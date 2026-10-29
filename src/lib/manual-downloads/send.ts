@@ -462,6 +462,7 @@ class SendRun {
    */
   private async failAndUndo(message: string): Promise<void> {
     let note = message;
+    let titleRemoved = false;
     if (this.createdArrItem && this.arrItemId) {
       try {
         const hasFiles = this.input.service === 'RADARR'
@@ -476,12 +477,14 @@ class SendRun {
             this.input.service === 'RADARR' ? this.radarr.deleteMovie(this.arrItemId!, false, false) : this.sonarr.deleteSeries(this.arrItemId!, false)
           ));
           note += ` ${this.plan.target!.title}, which this download had added, was removed again.`;
+          titleRemoved = true;
           void invalidateTaggedLibrary(this.input.service === 'RADARR' ? 'radarr' : 'sonarr', this.instanceId).catch(() => {});
         }
       } catch (error) {
         note += ` ${this.plan.target!.title} could not be removed again (${errorText(error)}); remove it in ${this.app} if you do not want it.`;
       }
     }
-    await moveTo(this.id, 'FAILED', note);
+    // A removed title has no page to open (as after a cancel that removed it).
+    await moveTo(this.id, 'FAILED', note, titleRemoved ? { arrItemId: null } : {});
   }
 }
