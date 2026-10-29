@@ -19,10 +19,11 @@ export async function withDownloadProgress(downloads: SerializedManualDownload[]
     try {
       const hashes = [...new Set(active.map((download) => download.infoHash.toLowerCase()))].join('|');
       // Progress is a nicety: a slow qBittorrent must not hold up the workflow list.
+      let timer: ReturnType<typeof setTimeout> | undefined;
       const torrents = await Promise.race([
         getQBittorrentClient().then((client) => client.getTorrents(undefined, undefined, undefined, undefined, hashes)),
-        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('progress timeout')), PROGRESS_TIMEOUT_MS)),
-      ]);
+        new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('progress timeout')), PROGRESS_TIMEOUT_MS); }),
+      ]).finally(() => clearTimeout(timer));
       for (const torrent of torrents) {
         if (!Number.isFinite(torrent.progress)) continue;
         progress.set(torrent.hash.toUpperCase(), {
