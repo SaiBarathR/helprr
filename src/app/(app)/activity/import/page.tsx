@@ -9,6 +9,7 @@ import { queryKeys } from '@/lib/query-keys';
 import { PageHeader } from '@/components/layout/page-header';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { FloatingActionBar } from '@/components/ui/floating-action-bar';
 import {
@@ -81,6 +82,7 @@ function ManualImportContent() {
 
   // State
   const [submitting, setSubmitting] = useState(false);
+  const [excludedPaths, setExcludedPaths] = useState<Set<string>>(new Set());
 
   // Episode refresh (Sonarr only)
   const [refreshingEpisodes, setRefreshingEpisodes] = useState(false);
@@ -93,9 +95,10 @@ function ManualImportContent() {
   const [pickerFileIndex, setPickerFileIndex] = useState<number>(0);
   const [episodeSearch, setEpisodeSearch] = useState('');
 
-  // Files the user gave a series or movie to, as the *arr re-evaluated them
-  // for that choice: path → file. They stand in for the scanned files.
+  // Files the user gave a series or movie to: path → file. They stand in for
+  // the scanned files, with refreshed fields when the *arr could check them.
   const [assigned, setAssigned] = useState<Map<string, ManualImportItem>>(new Map());
+  const [uncheckedPaths, setUncheckedPaths] = useState<Set<string>>(new Set());
   const [mediaSearch, setMediaSearch] = useState('');
   const [assigning, setAssigning] = useState(false);
   // Bumped per choice and on backing out, so a late answer is recognised and dropped.
@@ -137,7 +140,10 @@ function ManualImportContent() {
   );
   const chosenMedia = unplacedFiles.map((f) => assigned.get(f.path)).find(Boolean);
   const chosenTitle = isSonarr ? chosenMedia?.series?.title : chosenMedia?.movie?.title;
-  const missingMedia = files.some((f) => (isSonarr ? !seriesIdOf(f) : !movieIdOf(f)));
+  const selectedFiles = files.map((file, index) => ({ file, index })).filter(({ file }) => !excludedPaths.has(file.path));
+  const missingAssignment = selectedFiles.some(({ file, index }) => isSonarr
+    ? !seriesIdOf(file) || (fileOverrides.get(index) ?? file.episodes ?? []).length === 0
+    : !movieIdOf(file));
   const mediaNoun = isSonarr ? 'series' : 'movie';
 
   const { data: mediaOptions = [], isLoading: mediaLoading, isError: mediaError } = useQuery({
@@ -274,32 +280,41 @@ function ManualImportContent() {
     const request = ++assignRequest.current;
     setAssigning(true);
     try {
-      const res = await fetch('/api/activity/manualimport/reprocess', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          source,
-          instanceId: instanceId || undefined,
-          items: unplacedFiles.map((f) => ({
-            id: f.id,
-            path: f.path,
-            downloadId,
-            ...(isSonarr ? { seriesId: option.id, episodeIds: [], releaseType: f.releaseType } : { movieId: option.id }),
-            quality: f.quality,
-            languages: f.languages,
-            releaseGroup: f.releaseGroup,
-            indexerFlags: f.indexerFlags,
-          })),
-        }),
-      });
-      if (!res.ok) throw new Error('reprocess failed');
-      const evaluated = new Map(ensureArray((await res.json()) as ManualImportItem[]).map((r) => [r.path, r]));
+      let evaluated = new Map<string, ManualImportItem>();
+      try {
+        const res = await fetch('/api/activity/manualimport/reprocess', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            source,
+            instanceId: instanceId || undefined,
+            items: unplacedFiles.map((f) => ({
+              id: f.id,
+              path: f.path,
+              downloadId,
+              ...(isSonarr ? { seriesId: option.id, episodeIds: [], releaseType: f.releaseType } : { movieId: option.id }),
+              quality: f.quality,
+              languages: f.languages,
+              releaseGroup: f.releaseGroup,
+              indexerFlags: f.indexerFlags,
+            })),
+          }),
+        });
+        if (!res.ok) throw new Error('reprocess failed');
+        evaluated = new Map(ensureArray((await res.json()) as ManualImportItem[]).map((r) => [r.path, r]));
+      } catch {
+        // A failed check does not undo the user's choice; keep the scanned fields.
+      }
       // The user backed out or chose again while the *arr was answering.
       if (request !== assignRequest.current) return;
-      // Every file must come back: one without an answer would look placed with nothing behind it.
-      if (unplacedFiles.some((f) => !evaluated.has(f.path))) throw new Error('reprocess incomplete');
+      setUncheckedPaths(new Set(unplacedFiles.filter((f) => !evaluated.has(f.path)).map((f) => f.path)));
       setAssigned(new Map(unplacedFiles.map((f) => {
-        const r = evaluated.get(f.path)!;
+        const r = evaluated.get(f.path);
+        if (!r) {
+          return [f.path, isSonarr
+            ? { ...f, series: option as SonarrSeries, seasonNumber: undefined, episodes: [] }
+            : { ...f, movie: option as RadarrMovie }];
+        }
         // What the *arr worked out for this choice; fields it left out keep the scanned value.
         const refreshed = Object.fromEntries(
           (['quality', 'languages', 'releaseGroup', 'releaseType', 'indexerFlags', 'customFormatScore'] as const)
@@ -317,8 +332,6 @@ function ManualImportContent() {
       setFileOverrides((prev) => new Map([...prev].filter(([index]) => !replaced.has(scannedFiles[index]?.path))));
       setMediaSearch('');
       setView('files');
-    } catch {
-      if (request === assignRequest.current) toast.error(`Failed to match the files to that ${mediaNoun}`);
     } finally {
       if (request === assignRequest.current) setAssigning(false);
     }
@@ -331,9 +344,10 @@ function ManualImportContent() {
    */
 
   async function submitImport() {
+    if (submitting || selectedFiles.length === 0 || missingAssignment) return;
     setSubmitting(true);
     try {
-      const payload = files.map((f, i) => {
+      const payload = selectedFiles.map(({ file: f, index: i }) => {
         const override = fileOverrides.get(i);
         const episodes = override && override.length > 0 ? override : (f.episodes || []);
 
@@ -641,9 +655,22 @@ function ManualImportContent() {
                   {/* File info */}
                   <div className="p-3.5 space-y-2">
                     {/* Filename */}
-                    <p className="text-sm font-medium leading-snug break-words">
-                      {f.name || f.relativePath}
-                    </p>
+                    <label className="flex items-center gap-3 min-h-11 cursor-pointer">
+                      <Checkbox
+                        aria-label={`Import ${f.name || f.relativePath || f.path}`}
+                        checked={!excludedPaths.has(f.path)}
+                        disabled={submitting}
+                        onCheckedChange={(checked) => setExcludedPaths((prev) => {
+                          const next = new Set(prev);
+                          if (checked === true) next.delete(f.path);
+                          else next.add(f.path);
+                          return next;
+                        })}
+                      />
+                      <span className="min-w-0 text-sm font-medium leading-snug break-words">
+                        {f.name || f.relativePath}
+                      </span>
+                    </label>
 
                     {/* Metadata badges */}
                     <div className="flex flex-wrap items-center gap-1.5">
@@ -668,6 +695,14 @@ function ManualImportContent() {
                         </Badge>
                       )}
                     </div>
+
+                    {uncheckedPaths.has(f.path) && (
+                      <p className="text-xs text-amber-400 light:text-amber-700" role="status">
+                        {isSonarr
+                          ? `Sonarr couldn't check this file against ${f.series?.title}; it will be imported as it is.${hasEpisode ? '' : ' Choose an episode before importing.'}`
+                          : `Radarr couldn't check this file against ${f.movie?.title}; it will be imported as it is.`}
+                      </p>
+                    )}
 
                     {/* Rejections */}
                     {f.rejections?.length > 0 && (
@@ -718,11 +753,11 @@ function ManualImportContent() {
         <FloatingActionBar className="p-2">
           <Button
             onClick={submitImport}
-            disabled={submitting || missingMedia}
+            disabled={submitting || selectedFiles.length === 0 || missingAssignment}
             className="w-full h-11"
           >
             {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Import {files.length === 1 ? 'File' : `${files.length} Files`}
+            Import {selectedFiles.length} {selectedFiles.length === 1 ? 'File' : 'Files'}
           </Button>
         </FloatingActionBar>
       )}
