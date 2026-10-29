@@ -92,7 +92,7 @@ describe('a linked download', () => {
       events: [{ at: now, status: 'CANCELLED', message }],
     });
     const { unmount } = renderPage();
-    expect(await screen.findByText('Removed from the library when this download was cancelled')).toBeTruthy();
+    expect(await screen.findByText('Added by this download, no longer in the library')).toBeTruthy();
     expect(screen.queryByText('Added to the library by this download')).toBeNull();
     expect(screen.getByText(message)).toBeTruthy();
     expect(screen.queryByRole('button', { name: /Open movie|Open series/ })).toBeNull();
@@ -109,7 +109,7 @@ describe('a linked download', () => {
     mocks.download = { ...mocks.download, arrItemId: 15 };
     renderPage();
     expect(await screen.findByText('Added to the library by this download')).toBeTruthy();
-    expect(screen.queryByText('Removed from the library when this download was cancelled')).toBeNull();
+    expect(screen.queryByText('Added by this download, no longer in the library')).toBeNull();
   });
 
   it('cancels with the choices made, enumerating what each one changes', async () => {

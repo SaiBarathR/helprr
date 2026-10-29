@@ -93,7 +93,7 @@ describe('sending a release to Sonarr/Radarr', () => {
     const user = userEvent.setup();
     await waitFor(() => expect(screen.getByRole('button', { name: 'Check' }).hasAttribute('disabled')).toBe(false));
     await user.click(screen.getByRole('button', { name: 'Check' }));
-    expect(await screen.findByText(`Night of the Living Dead (1968), will be added again to ${app}`)).toBeTruthy();
+    expect(await screen.findByText(`Night of the Living Dead (1968), will be added to ${app}`)).toBeTruthy();
     await user.click(screen.getByRole('button', { name: `Send to ${app}` }));
     await waitFor(() => expect(mocks.push).toHaveBeenCalledWith('/torrents/linked/md2'));
     expect(mocks.bodies.map(({ request }) => request)).toEqual([
