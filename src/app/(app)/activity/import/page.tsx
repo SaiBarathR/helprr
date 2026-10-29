@@ -645,6 +645,10 @@ function ManualImportContent() {
               </Button>
             )}
 
+            {selectedFiles.length < files.length && (
+              <p className="text-xs text-muted-foreground">Unticked files stay in the download folder; Helprr can&apos;t import them later.</p>
+            )}
+
             {/* File cards */}
             {files.map((f, i) => {
               const override = fileOverrides.get(i);
@@ -697,7 +701,7 @@ function ManualImportContent() {
                       )}
                     </div>
 
-                    {uncheckedPaths.has(f.path) && (
+                    {uncheckedPaths.has(f.path) && !excludedPaths.has(f.path) && (
                       <p className="text-xs text-amber-400 light:text-amber-700" role="status">
                         {isSonarr
                           ? `Sonarr couldn't check this file against ${f.series?.title}; it will be imported as it is.${hasEpisode ? '' : ' Choose an episode before importing.'}`
