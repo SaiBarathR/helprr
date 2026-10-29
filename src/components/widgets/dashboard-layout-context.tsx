@@ -97,12 +97,14 @@ export function DashboardLayoutProvider({ initialWidgets, activeLayoutId, childr
   // without re-binding on every state change. Without this, the toggle would
   // bake in whatever editMode was when the override was created.
   const editModeRef = useRef(dashboardEditMode);
+  // eslint-disable-next-line react-hooks/refs -- auto-save callbacks need the latest edit mode without rebinding layout handlers
   editModeRef.current = dashboardEditMode;
   // Mirror the latest widgets so setWidgetLayoutOverride can compute the next
   // array deterministically OUTSIDE of setWidgetsState — reading state from a
   // side-effect inside the updater is unreliable under React 18 (the updater
   // may double-invoke or run later than expected).
   const widgetsRef = useRef<WidgetInstance[]>(initialWidgets);
+  // eslint-disable-next-line react-hooks/refs -- layout override handlers compute their next widgets outside the state updater
   widgetsRef.current = widgets;
   const overrideSaveRef = useRef<AbortController | null>(null);
 

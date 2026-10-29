@@ -835,6 +835,7 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
   useEffect(() => {
     try {
       const choice = normalizeBitrateChoice(Number(localStorage.getItem(PLAYBACK_POLICY_KEY) ?? 0));
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- restore the saved bitrate policy from localStorage after hydration
       setMaxBitrateState(choice);
       setEffectiveMaxBitrate(effectiveBitrate(choice));
     } catch { /* Storage can be disabled. The default remains usable. */ }

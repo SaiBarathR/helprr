@@ -150,8 +150,10 @@ export default function ArtistDetailPage() {
   const canDeleteArtist = useCan('music.delete');
   const canEditArtist = canEditMonitoring || canEditTags || canChangePath;
 
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization -- keep the cache-write callback stable for the current artist and Lidarr instance
   const persistArtist = useCallback((next: LidarrArtist) => {
     queryClient.setQueryData(queryKeys.detail('lidarr', artistId, instance), next);
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization -- the URL instance string scopes artist cache writes and must remain a dependency
   }, [queryClient, artistId, instance]);
 
   async function handleSearch() {

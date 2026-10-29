@@ -237,6 +237,7 @@ export function RequestsListWidget({
 
   // Reset accumulated pages whenever the underlying query identity changes.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- discard accumulated pages and reset the cursor when request query filters change
     setExtraPages([]);
     setExhausted(false);
     skipRef.current = 0;
@@ -264,6 +265,7 @@ export function RequestsListWidget({
   const hasMore = unbounded && !exhausted && items.length < totalResults;
 
   const itemsLengthRef = useRef(items.length);
+  // eslint-disable-next-line react-hooks/refs -- the stable load-more callback needs the latest rendered count to advance its cursor
   itemsLengthRef.current = items.length;
 
   const loadMore = useCallback(async () => {

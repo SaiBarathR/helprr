@@ -73,9 +73,11 @@ export function QueueCleanerTab({ onDirtyChange }: Props) {
   ], [scope.categories, scope.tags, scope.trackerDomains]);
 
   const isDirty = useMemo(() => {
+    // eslint-disable-next-line react-hooks/refs -- dirty detection compares the editable config with the last loaded or saved snapshot
     if (!serverSnapshot.current || !cfg) return false;
     const snap = serverSnapshot.current;
     return JSON.stringify({ config: cfg, stallRules, slowRules }) !==
+      // eslint-disable-next-line react-hooks/refs -- compare stall and slow rules against the same saved snapshot as the config
       JSON.stringify({ config: snap.config, stallRules: snap.stallRules, slowRules: snap.slowRules });
   }, [cfg, stallRules, slowRules]);
 
@@ -107,6 +109,7 @@ export function QueueCleanerTab({ onDirtyChange }: Props) {
   // Seed the editable form (and dirty-detection baseline) from server state.
   useEffect(() => {
     if (configQuery.data) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- seed the editable config and dirty baseline together when server data arrives
       setCfg(configQuery.data.config);
       setStallRules(configQuery.data.stallRules);
       setSlowRules(configQuery.data.slowRules);

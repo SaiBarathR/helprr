@@ -138,6 +138,7 @@ export default function AnimeDetailPage() {
       ? detail.library.instanceId ?? null
       : null;
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- clear mappings before fetching for the current anime and Sonarr instance
     setSonarrMappings(null);
     if (!isAdmin || !detailFormat || isMovieFormat(detailFormat)) return;
 
@@ -161,6 +162,7 @@ export default function AnimeDetailPage() {
   }, [id, isAdmin, detailFormat, librarySeriesId, libraryInstanceId]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- re-anchor the airing countdown when episode data changes
     setNowMs(Date.now());
 
     if (!detail?.nextAiringEpisode) return;

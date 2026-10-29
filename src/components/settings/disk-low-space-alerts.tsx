@@ -149,6 +149,7 @@ export function DiskLowSpaceAlerts() {
   }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch disk thresholds after mount to seed the editable rows
     void load();
   }, [load]);
 

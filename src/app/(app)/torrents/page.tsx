@@ -143,6 +143,7 @@ export default function TorrentsPage() {
   }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- prune selected hashes when refreshed torrent data no longer contains them
     setSelectedTorrents((prev) => {
       if (prev.size === 0) return prev;
       const availableHashes = new Set(torrents.map((torrent) => torrent.hash));

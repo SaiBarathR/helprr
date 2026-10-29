@@ -65,6 +65,7 @@ export function SonarrMapDrawer({
     if (!open) return;
 
     const controller = new AbortController();
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset the search draft and loading state before fetching mappings on open
     setQuery('');
     setError(null);
     setLoading(true);

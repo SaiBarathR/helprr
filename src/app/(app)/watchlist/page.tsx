@@ -268,6 +268,7 @@ export default function WatchlistPage() {
   const contentRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- read the saved localStorage view after hydration before enabling persistence
     setView(loadView());
     setViewLoaded(true);
   }, []);
@@ -1437,6 +1438,7 @@ function ManageTagsDialog({
 
   useEffect(() => {
     if (!open) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- discard closed tag edits and seed fresh editable names and colors on opening
       setEdits({});
       return;
     }

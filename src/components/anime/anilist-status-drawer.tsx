@@ -121,6 +121,7 @@ export function AnilistStatusDrawer({
 
   useEffect(() => {
     if (!open) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- seed the editable status form from the current entry whenever the drawer opens
     setForm({
       status: entry?.status || 'PLANNING',
       score: entry && entry.score > 0 ? String(entry.score) : '',

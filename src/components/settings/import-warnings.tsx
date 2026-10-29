@@ -80,7 +80,6 @@ export function useImportWarnings(): [ImportWarning[], Dispatch<SetStateAction<I
   useEffect(() => {
     if (taken.current) return;
     taken.current = true;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- session storage cannot be read during server rendering
     setWarnings(takeRememberedImportWarnings());
   }, []);
 

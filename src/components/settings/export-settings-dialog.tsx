@@ -64,6 +64,7 @@ export function ExportSettingsDialog({ open, onOpenChange }: ExportSettingsDialo
 
   useEffect(() => {
     if (!open || !isAdmin) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- show service loading before fetching the admin export choices on open
     setLoadingServices(true);
     fetch('/api/services')
       .then((r) => (r.ok ? r.json() : []))

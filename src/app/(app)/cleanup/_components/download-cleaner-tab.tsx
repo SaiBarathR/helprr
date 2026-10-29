@@ -71,9 +71,11 @@ export function DownloadCleanerTab({ onDirtyChange }: Props) {
   ], [scope.categories, scope.tags, scope.trackerDomains]);
 
   const isDirty = useMemo(() => {
+    // eslint-disable-next-line react-hooks/refs -- dirty detection compares the editable config with the last loaded or saved snapshot
     if (!serverSnapshot.current || !cfg) return false;
     const snap = serverSnapshot.current;
     return JSON.stringify({ config: cfg, seedingRules: rules }) !==
+      // eslint-disable-next-line react-hooks/refs -- compare seeding rules against the same saved snapshot as the config
       JSON.stringify({ config: snap.config, seedingRules: snap.seedingRules });
   }, [cfg, rules]);
 
@@ -105,6 +107,7 @@ export function DownloadCleanerTab({ onDirtyChange }: Props) {
   // whenever it arrives — mirrors the old refresh-on-mount.
   useEffect(() => {
     if (configQuery.data) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- seed the editable config and dirty baseline together when server data arrives
       setCfg(configQuery.data.config);
       setRules(configQuery.data.seedingRules);
       serverSnapshot.current = configQuery.data;

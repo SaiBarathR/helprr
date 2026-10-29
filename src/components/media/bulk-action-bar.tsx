@@ -133,6 +133,7 @@ export function BulkActionBar({
   // Clear staged labels when the popover closes so reopening starts fresh.
   useEffect(() => {
     if (!tagOpen) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- discard staged labels and reset tag mode when the popover closes
       setPicked(new Set());
       setNewLabel('');
       setTagStrategy('merge');
@@ -141,6 +142,7 @@ export function BulkActionBar({
   }, [tagOpen]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- clear staged labels when switching between merge and replace strategies
     setPicked(new Set());
     setNewLabel('');
   }, [tagStrategy]);

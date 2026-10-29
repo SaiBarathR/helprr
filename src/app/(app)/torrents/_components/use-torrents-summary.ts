@@ -118,7 +118,6 @@ export function useTorrentsSummary(filter: FilterType[], hasHydrated: boolean) {
       }
     }
 
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- each poll's answer is merged into local state with the pending overrides (see above)
     setTorrents(merged);
     setTransferInfo(data.transferInfo);
 
