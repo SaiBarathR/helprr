@@ -66,6 +66,7 @@ export function useInfiniteScroll<T>({
   // fetch is discarded instead of populating the new query's list.
   const generationRef = useRef(0);
   const itemsLengthRef = useRef(0);
+  // eslint-disable-next-line react-hooks/refs -- load-more reads the latest rendered count without rebinding the page loader
   itemsLengthRef.current = items.length;
 
   const sentinelRef = useRef<HTMLDivElement | null>(null);
@@ -124,6 +125,7 @@ export function useInfiniteScroll<T>({
   useEffect(() => {
     if (!enabled) return;
     skipRef.current = 0;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset exhaustion before loading page zero for a new query identity
     setExhausted(false);
     void loadPage(0, true);
   }, [resetKey, enabled, loadPage]);

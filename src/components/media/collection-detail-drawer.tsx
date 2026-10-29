@@ -111,6 +111,7 @@ export function CollectionDetailDrawer({ collection, multiInstance, onClose }: P
   // Reset local state whenever a different collection opens.
   useEffect(() => {
     if (!collection) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- seed optimistic local monitoring and movies when the selected collection changes
     setMonitored(collection.monitored);
     setMovies(collection.movies);
     setAddingTmdb(new Set());

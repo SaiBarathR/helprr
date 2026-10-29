@@ -62,6 +62,7 @@ export function DeleteFilesConfirmDialog({
   // carry over into the next delete.
   React.useEffect(() => {
     if (open) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- reset deletion acknowledgement and typed confirmation on every opening
       setAcknowledged(false);
       setTyped('');
     }

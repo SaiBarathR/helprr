@@ -132,6 +132,7 @@ export function TokenInput({
 
   // Keep the highlight in range as the filtered list changes.
   React.useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- clamp the keyboard highlight when filtering shrinks the suggestion list
     setHighlight((h) => (h >= flatOptions.length ? flatOptions.length - 1 : h));
   }, [flatOptions.length]);
 

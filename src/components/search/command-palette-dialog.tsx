@@ -84,6 +84,7 @@ export function CommandPaletteDialog() {
   // Reset transient state whenever the palette closes.
   useEffect(() => {
     if (!open) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- discard transient query, results, and scope when the palette closes
       setQuery('');
       setLocalResults([]);
       setProviderResults([]);
@@ -98,6 +99,7 @@ export function CommandPaletteDialog() {
     const q = query.trim();
 
     if (activeScope) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- clear local results before a scoped search and preserve its debounce lifecycle
       setLocalResults([]);
       if (!providerAvailable(me, activeScope) || q.length < activeScope.minQuery) {
         setProviderResults([]);

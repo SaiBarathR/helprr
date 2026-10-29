@@ -68,6 +68,7 @@ export function useCalendar({ start, end, type, includeScheduled }: UseCalendarP
   }, [startISO, endISO, type, includeScheduled]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- start the abortable calendar load whenever the requested range or type changes
     void fetchEvents();
     return () => abortRef.current?.abort();
   }, [fetchEvents]);

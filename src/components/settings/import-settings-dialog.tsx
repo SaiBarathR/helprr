@@ -155,6 +155,7 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
 
   useEffect(() => {
     if (!open) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- clear the previous import selections and confirmations when the dialog closes
       setParsed(null);
       setFileError(null);
       setSelectedUi(new Set());

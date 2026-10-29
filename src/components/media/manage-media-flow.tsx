@@ -157,6 +157,7 @@ export function ManageMediaFlow({ service, mediaId, mediaTitle, instanceId }: Ma
   // re-render churn.)
   React.useEffect(() => {
     const paths = new Set(files.map((f) => f.path));
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- prune selection and overrides for paths removed by a rescan
     setSelected((prev) => {
       const next = new Set([...prev].filter((p) => paths.has(p)));
       return next.size === prev.size ? prev : next;
@@ -696,6 +697,7 @@ function QualityPicker({ open, defs, loading, onClose, onSelect }: {
   const [id, setId] = React.useState('');
   const [proper, setProper] = React.useState(false);
   const [real, setReal] = React.useState(false);
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- reset quality and revision choices each time the quality picker opens
   React.useEffect(() => { if (open) { setId(''); setProper(false); setReal(false); } }, [open]);
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
@@ -725,6 +727,7 @@ function QualityPicker({ open, defs, loading, onClose, onSelect }: {
 
 function ReleaseGroupPicker({ open, onClose, onSelect }: { open: boolean; onClose: () => void; onSelect: (rg: string) => void; }) {
   const [val, setVal] = React.useState('');
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- clear the release-group draft each time its picker opens
   React.useEffect(() => { if (open) setVal(''); }, [open]);
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
@@ -747,6 +750,7 @@ function LanguagePicker({ open, languages, loading, onClose, onSelect }: {
 }) {
   const [picked, setPicked] = React.useState<Set<number>>(new Set());
   const [filter, setFilter] = React.useState('');
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- reset selected languages and search text each time the language picker opens
   React.useEffect(() => { if (open) { setPicked(new Set()); setFilter(''); } }, [open]);
   const q = filter.trim().toLowerCase();
   const list = q ? languages.filter((l) => l.name.toLowerCase().includes(q)) : languages;
@@ -783,6 +787,7 @@ function IndexerFlagsPicker({ open, options, onClose, onSelect }: {
   open: boolean; options: { label: string; value: number }[]; onClose: () => void; onSelect: (flags: number) => void;
 }) {
   const [bits, setBits] = React.useState(0);
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- reset indexer flags each time the flags picker opens
   React.useEffect(() => { if (open) setBits(0); }, [open]);
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
@@ -812,6 +817,7 @@ function IndexerFlagsPicker({ open, options, onClose, onSelect }: {
 
 function ReleaseTypePicker({ open, onClose, onSelect }: { open: boolean; onClose: () => void; onSelect: (rt: ReleaseType) => void; }) {
   const [val, setVal] = React.useState<ReleaseType>('unknown');
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- reset the release type each time its picker opens
   React.useEffect(() => { if (open) setVal('unknown'); }, [open]);
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>

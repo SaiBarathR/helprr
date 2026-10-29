@@ -196,6 +196,7 @@ export function usePushNotifications() {
   }, [reconcileSubscription]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reconcile the browser subscription with the server when push support is available
     if (isSupported) checkSubscription();
     return () => {
       if (retryTimerRef.current) clearTimeout(retryTimerRef.current);

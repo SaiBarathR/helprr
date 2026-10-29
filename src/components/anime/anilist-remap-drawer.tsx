@@ -79,6 +79,7 @@ export function AniListRemapDrawer({
 
   useEffect(() => {
     if (!open) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- clear candidate search results when the remap drawer closes
       setResults([]);
       setLoading(false);
       return;
@@ -106,6 +107,7 @@ export function AniListRemapDrawer({
   const primaryTitle = details[0]?.title ?? null;
   useEffect(() => {
     if (!open || primaryId == null) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- clear season candidates when the drawer closes or has no primary anime
       setSeasonCandidates([]);
       return;
     }
@@ -206,6 +208,7 @@ export function AniListRemapDrawer({
     if (!open) return;
 
     const controller = new AbortController();
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- clear stale results before the debounced candidate search begins
     setResults([]);
     const handle = window.setTimeout(async () => {
       setLoading(true);

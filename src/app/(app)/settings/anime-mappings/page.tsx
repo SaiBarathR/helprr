@@ -176,6 +176,7 @@ export default function AnimeMappingsPage() {
 
   useEffect(() => {
     if (!settings || ttlDraft !== null) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- seed the editable TTL draft once when settings arrive without overwriting edits
     setTtlDraft({
       anilistSectionsTtlMin: String(settings.anilistSectionsTtlMin),
       anilistBrowseTtlMin: String(settings.anilistBrowseTtlMin),

@@ -186,6 +186,7 @@ export default function NotificationsPage() {
   // Sync local search input with persisted store on hydration
   useEffect(() => {
     if (hasHydrated) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- restore the search draft and debounced query from the hydrated filter store
       setSearchInput(filters.search);
       setDebouncedSearch(filters.search);
     }

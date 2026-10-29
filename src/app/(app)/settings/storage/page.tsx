@@ -433,7 +433,10 @@ export default function StorageSettingsPage() {
         open={confirmOlder}
         onOpenChange={setConfirmOlder}
         title={`Delete cleanup history older than ${olderThanDays} day${olderThanDays === '1' ? '' : 's'}?`}
-        description={`Rows created before ${new Date(Date.now() - Math.max(1, Number(olderThanDays) || 0) * 86_400_000).toLocaleString()} will be permanently deleted. This cannot be undone.`}
+        description={
+          // eslint-disable-next-line react-hooks/purity -- show the rolling cleanup-history cutoff for the current retention input
+          `Rows created before ${new Date(Date.now() - Math.max(1, Number(olderThanDays) || 0) * 86_400_000).toLocaleString()} will be permanently deleted. This cannot be undone.`
+        }
         confirmLabel="Yes, delete"
         cancelLabel="Cancel"
         destructive

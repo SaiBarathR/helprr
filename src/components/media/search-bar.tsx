@@ -33,6 +33,7 @@ export function SearchBar({ value, onChange, placeholder = 'Search...', historyK
   useEffect(() => {
     // The parent already has this text; there is nothing to tell it.
     if (internal === parent().value) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- settle the debounce spinner when the parent already has the current draft
       setDebouncing(false);
       return;
     }
@@ -51,6 +52,7 @@ export function SearchBar({ value, onChange, placeholder = 'Search...', historyK
   }, [internal, debounceMs]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- sync the editable search draft when the parent restores or replaces its value
     setInternal(value);
   }, [value]);
 

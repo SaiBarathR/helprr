@@ -93,6 +93,7 @@ export function AnilistStatusPanel({
 
   useEffect(() => {
     if (!isAdmin) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- end the loading state when the admin-only AniList fetch is skipped
       setLoading(false);
       return;
     }

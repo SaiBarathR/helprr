@@ -121,7 +121,6 @@ export function RenamePreviewDialog({
     }
     if (isSuccess && !loading && !seededRef.current) {
       seededRef.current = true;
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- seed the selection once per open, from fresh query data
       setSelected(new Set(rows.map((r) => r.fileId)));
     }
   }, [open, isSuccess, loading, rows]);

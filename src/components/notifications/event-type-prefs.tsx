@@ -81,7 +81,6 @@ export function EventTypePrefs({ subscriptionEndpoint }: EventTypePrefsProps) {
   useEffect(() => {
     if (!loadedPrefs || seededEndpointRef.current === subscriptionEndpoint) return;
     seededEndpointRef.current = subscriptionEndpoint;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- seed editable prefs from the query
     setPreferences(loadedPrefs);
     savedFiltersRef.current = new Map(
       loadedPrefs.map((p) => [

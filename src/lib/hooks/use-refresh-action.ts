@@ -19,6 +19,7 @@ interface UseRefreshActionResult {
 export function useRefreshAction(action: () => unknown | Promise<unknown>): UseRefreshActionResult {
   const [refreshing, setRefreshing] = useState(false);
   const actionRef = useRef(action);
+  // eslint-disable-next-line react-hooks/refs -- the stable refresh handler invokes the latest action without changing its identity
   actionRef.current = action;
   const refreshingRef = useRef(false);
 

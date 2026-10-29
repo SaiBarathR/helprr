@@ -152,6 +152,7 @@ export function SeerrRequestModal({
     if (!open) return;
     const svc = serviceQuery.data;
     if (!svc) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- seed unresolved service defaults while preserving the current user selections
     if (svc.defaultProfileId != null) setProfileId((prev) => (prev == null ? svc.defaultProfileId! : prev));
     if (svc.defaultRootFolder != null) setRootFolder((prev) => (prev == null ? svc.defaultRootFolder! : prev));
     // Only auto-fill default tags for a NEW request (initialTags nullish). An
@@ -166,6 +167,7 @@ export function SeerrRequestModal({
   const ownSeerrUserId = me?.seerrUserId;
   useEffect(() => {
     if (!open || !serviceQuery.data) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- default request-as to the linked Seerr user only while no user is selected
     setRequestAs((prev) => {
       if (prev != null) return prev;
       const own = ownSeerrUserId ? Number.parseInt(ownSeerrUserId, 10) : NaN;

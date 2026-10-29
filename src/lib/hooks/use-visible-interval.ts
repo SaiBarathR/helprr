@@ -39,6 +39,7 @@ export function useVisibleInterval(
   const { enabled = true, runOnMountWhenHidden = true } = options;
 
   const callbackRef = useRef(callback);
+  // eslint-disable-next-line react-hooks/refs -- poll the latest callback without restarting the visibility and backoff loop
   callbackRef.current = callback;
 
   useEffect(() => {
