@@ -8,7 +8,7 @@ import { Copy, FolderOpen, Loader2, SlidersHorizontal } from 'lucide-react';
 import type { QBittorrentTorrent } from '@/types';
 import type { TorrentFile, TorrentTracker } from '@/lib/qbittorrent-client';
 import { formatSpeedLimit } from './speed-limit-input';
-import { formatBytes, formatEta, formatSeedingTime, formatSpeed } from './torrent-list';
+import { formatBytes, formatEta, formatSeedingTime, formatSpeed, torrentSizeUnknown } from './torrent-list';
 
 export interface TorrentDetailData {
   properties: Record<string, unknown>;
@@ -71,7 +71,7 @@ export function TorrentDetailDrawer({
                   <DetailRow label="Downloaded" value={formatBytes(Number(detailData.properties.total_downloaded) || 0)} />
                   <DetailRow label="Uploaded" value={formatBytes(Number(detailData.properties.total_uploaded) || 0)} />
                   {detailTorrent && detailTorrent.progress < 1 && (
-                    <DetailRow label="Remaining" value={formatBytes(detailTorrent.amount_left || 0)} />
+                    <DetailRow label="Remaining" value={torrentSizeUnknown({ total_size: detailTorrent.total_size ?? Number(detailData.properties.total_size) }) ? '—' : formatBytes(detailTorrent.amount_left || 0)} />
                   )}
                   <DetailRow label="Ratio" value={Number(detailData.properties.share_ratio || 0).toFixed(2)} />
                   {/* qBittorrent reports -1 when availability doesn't apply (e.g. seeding). */}

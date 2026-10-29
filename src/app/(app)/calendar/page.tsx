@@ -452,14 +452,29 @@ function AgendaView({ events, showImages, stickyOffset }, ref) {
   useLayoutEffect(() => {
     const node = listRef.current;
     if (!node) return;
-    const measure = () => setScrollMargin(node.getBoundingClientRect().top + window.scrollY);
+    let frameId: number | null = null;
+    let lastMargin: number | undefined;
+    const measure = () => {
+      const margin = node.getBoundingClientRect().top + window.scrollY;
+      if (margin === lastMargin) return;
+      lastMargin = margin;
+      setScrollMargin(margin);
+    };
+    const scheduleMeasure = () => {
+      if (frameId !== null) return;
+      frameId = requestAnimationFrame(() => {
+        frameId = null;
+        measure();
+      });
+    };
     measure();
-    const observer = new ResizeObserver(measure);
+    const observer = new ResizeObserver(scheduleMeasure);
     observer.observe(node);
-    window.addEventListener('resize', measure);
+    window.addEventListener('resize', scheduleMeasure);
     return () => {
       observer.disconnect();
-      window.removeEventListener('resize', measure);
+      window.removeEventListener('resize', scheduleMeasure);
+      if (frameId !== null) cancelAnimationFrame(frameId);
     };
   }, [rows.length, showImages]);
 
@@ -1292,16 +1307,31 @@ export default function CalendarPage() {
   useEffect(() => {
     const toolbar = toolbarRef.current;
     if (!toolbar) return;
+    let frameId: number | null = null;
+    let lastOffset = 0;
     const measure = () => {
       const stuckTop = parseFloat(getComputedStyle(toolbar).top) || 0;
-      setStickyOffset(Math.round(stuckTop + toolbar.offsetHeight) + 8);
+      const offset = Math.round(stuckTop + toolbar.offsetHeight) + 8;
+      if (offset === lastOffset) return;
+      lastOffset = offset;
+      setStickyOffset(offset);
     };
-    const observer = new ResizeObserver(measure);
+    const scheduleMeasure = () => {
+      if (frameId !== null) return;
+      frameId = requestAnimationFrame(() => {
+        frameId = null;
+        measure();
+      });
+    };
+    // Measure once now: the jump to today waits for this offset.
+    measure();
+    const observer = new ResizeObserver(scheduleMeasure);
     observer.observe(toolbar);
-    window.addEventListener('resize', measure);
+    window.addEventListener('resize', scheduleMeasure);
     return () => {
       observer.disconnect();
-      window.removeEventListener('resize', measure);
+      window.removeEventListener('resize', scheduleMeasure);
+      if (frameId !== null) cancelAnimationFrame(frameId);
     };
   }, []);
 

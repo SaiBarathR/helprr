@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   caps: new Set<string>(),
   mobile: true,
+  detailTotalSize: 2 * 1024 ** 3,
   push: vi.fn(),
   adjustBadge: vi.fn(),
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
@@ -122,6 +123,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.caps = new Set(['torrents.manage', 'torrents.delete', 'torrents.bandwidth', 'torrents.add', 'activity.view']);
   mocks.mobile = true;
+  mocks.detailTotalSize = 2 * 1024 ** 3;
   mocks.sent = [];
   mocks.asked = [];
   mocks.summary = () => full([ALPHA, BRAVO, CHARLIE]);
@@ -129,6 +131,7 @@ beforeEach(() => {
   window.sessionStorage.clear();
   resetRouteViewStateForTests();
   useUIStore.setState({ torrentsFilter: [], torrentsSortKey: 'name', torrentsSortDir: 'asc', torrentsView: 'auto' });
+  vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
   vi.stubGlobal('ResizeObserver', ResizeObserverStub);
   vi.stubGlobal('fetch', vi.fn(async (input: string, init?: RequestInit) => {
     const url = new URL(String(input), 'http://helprr.test');
@@ -141,7 +144,7 @@ beforeEach(() => {
     if (url.pathname === '/api/qbittorrent/transfer/limits') return Response.json({ success: true });
     if (url.pathname === '/api/qbittorrent/aaa/details') {
       return Response.json({
-        properties: { total_size: 2 * 1024 ** 3, total_downloaded: 1024 ** 3, total_uploaded: 0, share_ratio: 0.25, dl_speed: 1024 * 1024, up_speed: 0, dl_limit: 0, up_limit: 0,
+        properties: { total_size: mocks.detailTotalSize, total_downloaded: 1024 ** 3, total_uploaded: 0, share_ratio: 0.25, dl_speed: 1024 * 1024, up_speed: 0, dl_limit: 0, up_limit: 0,
           addition_date: 0, completion_date: 0, seeding_time: 0, time_elapsed: 3700, seeds: 4, seeds_total: 9, peers: 2, peers_total: 5, nb_connections: 6, total_wasted: 0, save_path: '/data/movies' },
         files: Array.from({ length: 6 }, (_, index) => ({ index, name: `Alpha.Movie/part${index + 1}.mkv`, size: 1024 ** 2, progress: 0.5 })),
         trackers: [{ url: 'http://tracker.example/announce', num_seeds: 4, num_leeches: 2, msg: '' }, { url: '** [DHT] **', num_seeds: 0, num_leeches: 0, msg: '' }],
@@ -169,6 +172,61 @@ const actionsFor = (name: string) => within(screen.getAllByRole('group', { name:
 const posted = () => mocks.sent.filter((sent) => sent.path === '/api/qbittorrent').map((sent) => sent.body);
 
 describe('torrents page (characterization)', () => {
+  it.each(['metaDL', 'forcedMetaDL', 'stoppedDL'].flatMap((state) => [true, false].map((mobile) => ({ state, mobile }))))(
+    'shows unknown size for $state (mobile: $mobile)', async ({ state, mobile }) => {
+      mocks.mobile = mobile;
+      mocks.summary = () => full([torrent('aaa', 'Alpha.Movie', { state, size: 0, total_size: -1, amount_left: 0, progress: 0 })]);
+      renderPage();
+      const name = await screen.findByRole('button', { name: 'Alpha.Movie' });
+      if (mobile) {
+        const row = within(name.closest('.px-3')! as HTMLElement);
+        expect(row.getByText('—')).toBeTruthy();
+        expect(row.getByText('Rem: —')).toBeTruthy();
+        expect(row.queryByText('0 B')).toBeNull();
+      } else {
+        expect(within(name.closest('tr')!).getAllByRole('cell')[4].textContent).toBe('—');
+      }
+    },
+  );
+
+  it.each([true, false])('preserves known zero and selected-file sizes (mobile: %s)', async (mobile) => {
+    mocks.mobile = mobile;
+    mocks.summary = () => full([
+      torrent('aaa', 'Alpha.Movie', { size: 0, total_size: 0 }),
+      torrent('bbb', 'Bravo.Show', { size: 1024, total_size: 2048 }),
+    ]);
+    renderPage();
+    const alpha = await screen.findByRole('button', { name: 'Alpha.Movie' });
+    const bravo = screen.getByRole('button', { name: 'Bravo.Show' });
+    if (mobile) {
+      expect(within(alpha.closest('.px-3')! as HTMLElement).getByText('0 B')).toBeTruthy();
+      expect(within(bravo.closest('.px-3')! as HTMLElement).getByText('1 KB')).toBeTruthy();
+    } else {
+      expect(within(alpha.closest('tr')!).getAllByRole('cell')[4].textContent).toBe('0 B');
+      expect(within(bravo.closest('tr')!).getAllByRole('cell')[4].textContent).toBe('1 KB');
+    }
+  });
+
+  it.each(['metaDL', 'forcedMetaDL', 'stoppedDL'])('shows unknown Remaining in the drawer for %s', async (state) => {
+    mocks.detailTotalSize = -1;
+    mocks.summary = () => full([torrent('aaa', 'Alpha.Movie', { state, size: 0, total_size: -1, amount_left: 0, progress: 0 })]);
+    const { user } = renderPage();
+    await user.click(await screen.findByRole('button', { name: 'Alpha.Movie' }));
+    const drawer = within(screen.getByRole('dialog'));
+    await waitFor(() => expect(drawer.getByText('Total Size').nextElementSibling?.textContent).toBe('—'));
+    expect(drawer.getByText('Remaining').nextElementSibling?.textContent).toBe('—');
+    expect(drawer.getByText('Downloaded').nextElementSibling?.textContent).toBe('1 GB');
+  });
+
+  it('uses detail metadata availability when total_size is absent from the list', async () => {
+    mocks.detailTotalSize = -1;
+    mocks.summary = () => full([torrent('aaa', 'Alpha.Movie', { size: 0, amount_left: 0, progress: 0 })]);
+    const { user } = renderPage();
+    await user.click(await screen.findByRole('button', { name: 'Alpha.Movie' }));
+    const drawer = within(screen.getByRole('dialog'));
+    await waitFor(() => expect(drawer.getByText('Remaining').nextElementSibling?.textContent).toBe('—'));
+  });
+
   it.each([1280, 820])('publishes the actual toolbar height for table view at width %i', async (width) => {
     mocks.mobile = width < 1024;
     useUIStore.setState({ torrentsView: 'table' });

@@ -29,6 +29,15 @@ export function formatBytes(bytes: number): string {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
 }
 
+/** qBittorrent reports total_size -1 until a torrent has its metadata; its size is unknown, not 0. */
+export function torrentSizeUnknown(torrent: Pick<QBittorrentTorrent, 'total_size'>): boolean {
+  return (torrent.total_size ?? 0) < 0;
+}
+
+export function formatTorrentSize(torrent: Pick<QBittorrentTorrent, 'size' | 'total_size'>): string {
+  return torrentSizeUnknown(torrent) ? '—' : formatBytes(torrent.size);
+}
+
 export function formatSpeed(bytesPerSec: number): string {
   return formatBytes(bytesPerSec) + '/s';
 }
@@ -139,6 +148,7 @@ function sameTorrent(a: QBittorrentTorrent, b: QBittorrentTorrent): boolean {
     a.hash === b.hash
     && a.name === b.name
     && a.size === b.size
+    && a.total_size === b.total_size
     && a.progress === b.progress
     && a.dlspeed === b.dlspeed
     && a.upspeed === b.upspeed

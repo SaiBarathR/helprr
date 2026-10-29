@@ -7,6 +7,7 @@ export function projectTorrentForSummary(torrent: QBittorrentTorrent): Projected
     hash: torrent.hash,
     name: torrent.name,
     size: torrent.size,
+    total_size: torrent.total_size,
     progress: torrent.progress,
     dlspeed: torrent.dlspeed,
     upspeed: torrent.upspeed,

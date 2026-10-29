@@ -2,6 +2,7 @@ export interface QBittorrentTorrent {
   hash: string;
   name: string;
   size: number;
+  total_size?: number;
   progress: number;
   dlspeed: number;
   upspeed: number;
