@@ -347,6 +347,87 @@ describe('VAPID key rotation recovery', () => {
     expect(mocks.syncRegistered).toHaveBeenCalledWith(mocks.queryClient, savedDevice);
   });
 
+  it.each(['subscribe', 'server', 'network'] as const)('keeps the old endpoint for a later Enable after %s fails', async (step) => {
+    const old = oldSubscription();
+    const fetchDefault = vi.mocked(fetch).getMockImplementation()!;
+    if (step === 'subscribe') {
+      subscribeBrowser.mockRejectedValueOnce(new DOMException('User gesture required', 'NotAllowedError'));
+    } else {
+      vi.mocked(fetch).mockImplementation(async (input, init) => {
+        if (String(input) === '/api/push/subscribe') {
+          if (step === 'network') throw new TypeError('Failed to fetch');
+          return jsonResponse({}, 500);
+        }
+        return fetchDefault(input, init);
+      });
+    }
+
+    await remount();
+
+    expect(old.unsubscribe).toHaveBeenCalledOnce();
+    expect(latest.isSubscribed).toBe(false);
+    vi.mocked(fetch).mockImplementation(fetchDefault);
+    vi.mocked(fetch).mockClear();
+    // A new hook instance must recover using storage, not the failed task's locals.
+    await remount();
+    await act(async () => { await latest.subscribe(); });
+
+    const post = vi.mocked(fetch).mock.calls.find(([url]) => String(url) === '/api/push/subscribe');
+    expect(JSON.parse(String(post?.[1]?.body))).toMatchObject({ oldEndpoint: old.endpoint });
+    expect(latest.isSubscribed).toBe(true);
+    expect(localStorage.getItem('helprr-push-old-endpoint')).toBeNull();
+
+    vi.mocked(fetch).mockClear();
+    await act(async () => { await latest.subscribe(); });
+    const nextPost = vi.mocked(fetch).mock.calls.find(([url]) => String(url) === '/api/push/subscribe');
+    expect(JSON.parse(String(nextPost?.[1]?.body))).not.toHaveProperty('oldEndpoint');
+  });
+
+  it('takes over the old row on app reopen after saving the new subscription failed', async () => {
+    const old = oldSubscription();
+    const fetchDefault = vi.mocked(fetch).getMockImplementation()!;
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      if (String(input) === '/api/push/subscribe') return jsonResponse({}, 500);
+      return fetchDefault(input, init);
+    });
+    await remount();
+    expect(latest.isSubscribed).toBe(false);
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      if (String(input) === '/api/notifications/subscription/check') return jsonResponse({ exists: false });
+      return fetchDefault(input, init);
+    });
+    vi.mocked(fetch).mockClear();
+
+    await remount();
+
+    const post = vi.mocked(fetch).mock.calls.find(([url]) => String(url) === '/api/push/subscribe');
+    expect(JSON.parse(String(post?.[1]?.body))).toMatchObject({ oldEndpoint: old.endpoint });
+    expect(latest.isSubscribed).toBe(true);
+    expect(localStorage.getItem('helprr-push-old-endpoint')).toBeNull();
+  });
+
+  it('keeps the toggle enabled and the banner hidden during an event-triggered replacement', async () => {
+    getSubscription.mockResolvedValue(newSubscription);
+    await remount(true);
+    expect(latest.isSubscribed).toBe(true);
+    oldSubscription();
+    let finishReplacement!: (sub: PushSubscription) => void;
+    subscribeBrowser.mockImplementation(() => new Promise<PushSubscription>((resolve) => { finishReplacement = resolve; }));
+
+    await act(async () => window.dispatchEvent(new Event(NOTIFICATION_SUBSCRIPTIONS_CHANGED)));
+
+    expect(subscribeBrowser).toHaveBeenCalledOnce();
+    expect(latest.loading).toBe(false);
+    expect(latest.isSubscribed).toBe(true);
+    expect(latest.subscriptionEndpoint).toBe(newSubscription.endpoint);
+    expect(latest.needsReenable).toBe(false);
+    expect(screen.queryByText('Notifications stopped on this device')).toBeNull();
+    getSubscription.mockResolvedValue(newSubscription);
+    await act(async () => finishReplacement(newSubscription));
+    expect(latest.isSubscribed).toBe(true);
+    expect(latest.error).toBeNull();
+  });
+
   it('leaves a failed replacement disabled and never registers the stale endpoint', async () => {
     const old = oldSubscription();
     vi.mocked(old.unsubscribe).mockRejectedValue(new Error('Could not unsubscribe'));
@@ -483,11 +564,33 @@ describe('VAPID key rotation recovery', () => {
     expect(latest.isSubscribed).toBe(true);
     expect(latest.subscriptionEndpoint).toBe(newSubscription.endpoint);
     expect(latest.needsReenable).toBe(false);
+    expect(latest.error).toBeNull();
     expect(screen.queryByText('Notifications stopped on this device')).toBeNull();
     expect(subscribeBrowser).not.toHaveBeenCalled();
     vi.mocked(fetch).mockImplementation(fetchDefault);
     await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
     expect(latest.isSubscribed).toBe(true);
+    expect(latest.error).toBeNull();
+  });
+
+  it.each([false, true])('keeps a public-key failure on the reconciliation retry quiet (network rejection: %s)', async (rejects) => {
+    getSubscription.mockResolvedValue(newSubscription);
+    const fetchDefault = vi.mocked(fetch).getMockImplementation()!;
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({}, 503));
+    vi.useFakeTimers();
+    await remount();
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      if (String(input) === '/api/push/public-key') {
+        if (rejects) throw new TypeError('Failed to fetch');
+        return jsonResponse({}, 503);
+      }
+      return fetchDefault(input, init);
+    });
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+
+    expect(latest.isSubscribed).toBe(true);
+    expect(latest.needsReenable).toBe(false);
     expect(latest.error).toBeNull();
   });
 

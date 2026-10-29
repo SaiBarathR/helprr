@@ -13,6 +13,7 @@ import {
 } from '@/lib/notification-subscriptions';
 
 const PUSH_ENABLED_FLAG = 'helprr-push-enabled';
+const PUSH_OLD_ENDPOINT = 'helprr-push-old-endpoint';
 const PUSH_STATE_CHANGED = 'helprr-push-state-changed';
 const pendingRegistrations = new WeakMap<ServiceWorkerRegistration, Promise<PushSubscription>>();
 
@@ -22,6 +23,23 @@ function setPushEnabledFlag(on: boolean): void {
   try {
     if (on) localStorage.setItem(PUSH_ENABLED_FLAG, '1');
     else localStorage.removeItem(PUSH_ENABLED_FLAG);
+  } catch {
+    /* localStorage unavailable — ignore */
+  }
+}
+
+function getOldEndpoint(): string | undefined {
+  try {
+    return localStorage.getItem(PUSH_OLD_ENDPOINT) ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function setOldEndpoint(endpoint: string | null): void {
+  try {
+    if (endpoint) localStorage.setItem(PUSH_OLD_ENDPOINT, endpoint);
+    else localStorage.removeItem(PUSH_OLD_ENDPOINT);
   } catch {
     /* localStorage unavailable — ignore */
   }
@@ -78,7 +96,7 @@ async function getAppServerKey(): Promise<Uint8Array> {
 
 async function registerWithServer(
   sub: PushSubscription,
-  oldEndpoint?: string,
+  oldEndpoint = getOldEndpoint(),
 ): Promise<NotificationDeviceSummary | null> {
   const json = sub.toJSON();
   const res = await fetch('/api/push/subscribe', {
@@ -94,7 +112,9 @@ async function registerWithServer(
     }),
   });
   if (!res.ok) return null;
-  return (await res.json()) as NotificationDeviceSummary;
+  const device = (await res.json()) as NotificationDeviceSummary;
+  setOldEndpoint(null);
+  return device;
 }
 
 // Environment facts that never change within a session — read them as external
@@ -141,9 +161,11 @@ export function usePushNotifications() {
     // simultaneous checks cannot unsubscribe each other's new subscription.
     const task = (async () => {
       const existing = await getSubscription(registration);
-      let oldEndpoint: string | undefined;
+      let oldEndpoint = getOldEndpoint();
       if (existing && !appServerKeyMatches(existing.options.applicationServerKey, appServerKey)) {
-        oldEndpoint = existing.endpoint;
+        oldEndpoint ??= existing.endpoint;
+        // Keep the original device row through a failed replacement or app reopen.
+        setOldEndpoint(oldEndpoint);
         if (!await existing.unsubscribe()) throw new Error('Could not remove the old push subscription.');
       }
       const sub = await registration.pushManager.subscribe({
@@ -180,8 +202,6 @@ export function usePushNotifications() {
     }
     const appServerKey = await getAppServerKey();
     if (!appServerKeyMatches(sub.options.applicationServerKey, appServerKey)) {
-      setIsSubscribed(false);
-      setSubscriptionEndpoint(null);
       setWasReregistered(false);
       setPreviouslyEnabled(true);
       setPushEnabledFlag(true);
@@ -226,22 +246,25 @@ export function usePushNotifications() {
         retryTimerRef.current = setTimeout(() => {
           void reconcileSubscription(registration, sub)
             .then((result) => {
+              setError(null);
               // Apply the retry's outcome: if the server says the subscription
               // was revoked, reflect it in the UI (reconcileSubscription already
               // unsubscribed the browser) instead of keeping "enabled" shown.
               if (result.done && result.revoked) {
                 setIsSubscribed(false);
                 setSubscriptionEndpoint(null);
-                setError(null);
               } else if (result.subscription) {
                 setIsSubscribed(true);
                 setSubscriptionEndpoint(result.subscription.endpoint);
-                setError(null);
               }
             })
             .catch((err) => {
               console.warn('[Push] subscription check retry failed:', err);
-              setError(err instanceof Error ? err.message : 'Turn notifications on again on this device.');
+              if (err instanceof SubscriptionReplacementError) {
+                setIsSubscribed(false);
+                setSubscriptionEndpoint(null);
+                setError(err.message);
+              } else setError(null);
             });
         }, 5000);
       };
@@ -249,17 +272,21 @@ export function usePushNotifications() {
       let current: PushSubscription | undefined = sub;
       try {
         const result = await reconcileSubscription(registration, sub);
+        setError(null);
         if (result.subscription) current = result.subscription;
         if (!result.done) scheduleRetry();
         else if (result.revoked) {
           revoked = true;
-          setError(null);
         }
       } catch (err) {
         console.warn('[Push] subscription check failed:', err);
-        setError(err instanceof Error ? err.message : 'Turn notifications on again on this device.');
-        if (err instanceof SubscriptionReplacementError) current = undefined;
-        else scheduleRetry();
+        if (err instanceof SubscriptionReplacementError) {
+          current = undefined;
+          setError(err.message);
+        } else {
+          setError(null);
+          scheduleRetry();
+        }
       }
 
       if (revoked || !current) {
