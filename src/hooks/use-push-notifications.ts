@@ -215,8 +215,6 @@ export function usePushNotifications() {
         throw new SubscriptionReplacementError(err instanceof Error ? err.message : 'Turn notifications on again on this device.');
       }
     }
-    // A current row with a matching key: nothing is left for a saved old endpoint to take over.
-    if (data.exists === true) setOldEndpoint(null);
     if (data.exists === false) {
       const reregistered = await registerWithServer(sub);
       if (reregistered) {
