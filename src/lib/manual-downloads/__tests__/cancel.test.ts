@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   client: {} as Record<string, ReturnType<typeof vi.fn>>,
-  update: vi.fn(async () => ({})),
+  update: vi.fn<(input: { data: Record<string, unknown> }) => Promise<object>>(async () => ({})),
   others: 0,
   audits: [] as Array<{ operation: string; filesDeleted: boolean | null }>,
   qbit: { getTorrents: vi.fn(async () => [{ hash: 'x' }]), deleteTorrent: vi.fn(async () => {}) },
@@ -68,6 +68,21 @@ describe('cancelling a manual download', () => {
     expect(mocks.client.deleteMovie).toHaveBeenCalledWith(15, false, false);
     expect(mocks.audits).toEqual([{ operation: 'REMOVE_QUEUE', filesDeleted: true }, { operation: 'DELETE_MEDIA', filesDeleted: false }]);
     expect(message).toContain('was removed');
+    expect(mocks.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ arrItemId: null }) }));
+  });
+
+  it('clears the series link too, including a title Arr says is already gone', async () => {
+    mocks.client.getEpisodeFiles = vi.fn(async () => []);
+    mocks.client.deleteSeries = vi.fn(async () => {});
+    await cancelManualDownload(download({ service: 'SONARR' }), { ...none, removeTitle: true }, actor);
+    expect(mocks.client.deleteSeries).toHaveBeenCalledWith(15, false);
+    expect(mocks.update).toHaveBeenLastCalledWith(expect.objectContaining({ data: expect.objectContaining({ arrItemId: null }) }));
+
+    mocks.client.getMovieFiles.mockRejectedValueOnce(new AxiosError('gone', '404', undefined, undefined, {
+      status: 404, statusText: 'Not Found', data: {}, headers: {}, config: { headers: new AxiosHeaders() },
+    }));
+    await cancelManualDownload(download(), { ...none, removeTitle: true }, actor);
+    expect(mocks.update).toHaveBeenLastCalledWith(expect.objectContaining({ data: expect.objectContaining({ arrItemId: null }) }));
   });
 
   it('never removes a film that was already there, or that has files', async () => {
@@ -77,6 +92,7 @@ describe('cancelling a manual download', () => {
 
     expect(mocks.client.deleteMovie).not.toHaveBeenCalled();
     expect(message).toContain('has files now, so it stays');
+    expect(mocks.update.mock.calls.every(([input]) => !('arrItemId' in input.data))).toBe(true);
   });
 
   it('refuses a download that has finished', async () => {
@@ -175,7 +191,7 @@ describe('cancelling a manual download', () => {
       const message = await cancelManualDownload(fallback(), { ...none, removeFromClient: true, removeTitle: true }, actor);
       // Taken first, like a scan or an import, and cancelled only while still held.
       expect(mocks.claim).toHaveBeenCalledWith(expect.objectContaining({ id: 'md1', status: 'NEEDS_MAPPING' }), 'Cancelling.');
-      expect(mocks.release).toHaveBeenCalledExactlyOnceWith({ id: 'md1', at: expect.any(Date) }, 'CANCELLED', message);
+      expect(mocks.release).toHaveBeenCalledExactlyOnceWith({ id: 'md1', at: expect.any(Date) }, 'CANCELLED', message, { arrItemId: null });
       expect(mocks.update).not.toHaveBeenCalled();
       expect(mocks.qbit.deleteTorrent).toHaveBeenCalledWith(HASH.toLowerCase(), true);
       expect(mocks.audits.map((audit) => audit.operation)).toEqual(['DELETE_TORRENT', 'DELETE_MEDIA']);

@@ -3,6 +3,7 @@ import { prisma } from '@/lib/db';
 import { requireUserAllCapabilities } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { serializeManualDownload } from '@/lib/manual-downloads/serialize';
+import { withDownloadProgress } from '@/lib/manual-downloads/progress';
 import { SENDING_STATUSES } from '@/lib/manual-downloads/preflight';
 
 type Context = { params: Promise<{ id: string }> };
@@ -20,7 +21,8 @@ async function getHandler(_request: Request, { params }: Context) {
     },
   });
   if (!download) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-  return NextResponse.json({ download: serializeManualDownload(download) });
+  const [view] = await withDownloadProgress([serializeManualDownload(download)]);
+  return NextResponse.json({ download: view });
 }
 
 /** Unlink: forget Helprr's record. Arr, the download client and the library are not touched. */

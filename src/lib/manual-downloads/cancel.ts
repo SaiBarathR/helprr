@@ -78,6 +78,7 @@ async function cancelSteps(download: ManualDownload, options: CancelOptions, act
   const connection = await resolveConnection(service, download.instanceId!);
   const client = arrClientFor(service, connection);
   const done: string[] = [];
+  let titleRemoved = false;
 
   if (download.mode === 'QBIT_REVIEWED') {
     // The torrent is Helprr's own in qBittorrent; Arr's queue never had it.
@@ -185,24 +186,27 @@ async function cancelSteps(download: ManualDownload, options: CancelOptions, act
             ? (client as RadarrClient).deleteMovie(download.arrItemId!, false, false)
             : (client as SonarrClient).deleteSeries(download.arrItemId!, false)));
           void invalidateTaggedLibrary(service === 'RADARR' ? 'radarr' : 'sonarr', connection.id).catch(() => {});
+          titleRemoved = true;
           done.push(`${download.arrItemTitle}, which this download had added, was removed`);
         }
       } catch (error) {
         // Removed in Arr already.
         if (!(axios.isAxiosError(error) && error.response?.status === 404)) throw error;
+        titleRemoved = true;
         done.push(`${download.arrItemTitle} is no longer in ${download.instanceLabel}`);
       }
     }
   }
 
   const message = `Cancelled: ${done.join('; ')}.`;
+  const removedTitle = titleRemoved ? { arrItemId: null } : {};
   if (claim) {
-    if (!(await releaseClaim(claim, 'CANCELLED', message))) throw new ManualDownloadCancelError('This download changed meanwhile. Look at it again.');
+    if (!(await releaseClaim(claim, 'CANCELLED', message, removedTitle))) throw new ManualDownloadCancelError('This download changed meanwhile. Look at it again.');
     return message;
   }
   await prisma.manualDownload.update({
     where: { id: download.id },
-    data: { status: 'CANCELLED', completedAt: new Date(), events: { create: { status: 'CANCELLED', message } } },
+    data: { status: 'CANCELLED', ...removedTitle, completedAt: new Date(), events: { create: { status: 'CANCELLED', message } } },
   });
   return message;
 }
