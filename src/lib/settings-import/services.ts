@@ -1,7 +1,7 @@
 // Service connections section of a settings import.
 
 import type { Prisma, ServiceType } from '@prisma/client';
-import { parseCustomHeaders, isServiceType } from '@/lib/service-connection-secrets';
+import { parseCustomHeaders, isServiceType, isNonEmptyString, normalizeServiceUrl } from '@/lib/service-connection-secrets';
 import { isArrType } from '@/lib/arr-instances';
 import { findServiceByType } from '@/lib/settings/service-config';
 import type { ExportedServiceConnection } from '@/lib/settings-export';
@@ -19,7 +19,7 @@ export async function applyServiceConnectionInTxn(
     skipped.push(`Skipped ${conn.type}: missing URL`);
     return null;
   }
-  const url = conn.url.trim().replace(/\/+$/, '');
+  const url = normalizeServiceUrl(conn.url);
   const externalUrl = typeof conn.externalUrl === 'string' && conn.externalUrl.trim().length > 0
     ? conn.externalUrl.trim().replace(/\/+$/, '')
     : null;
@@ -43,6 +43,11 @@ export async function applyServiceConnectionInTxn(
   const existing = isArr
     ? await tx.serviceConnection.findFirst({ where: { type: conn.type, label } })
     : await tx.serviceConnection.findFirst({ where: { type: conn.type } });
+  const urlChanged = existing !== null && normalizeServiceUrl(existing.url) !== url;
+  if (urlChanged && !isNonEmptyString(conn.apiKey)) {
+    skipped.push(`Skipped ${conn.type} "${label}": URL changed — enter the API key and any custom header values again to use a different URL`);
+    return null;
+  }
   const apiKey = typeof conn.apiKey === 'string' && conn.apiKey.length > 0
     ? conn.apiKey
     : existing?.apiKey ?? null;
@@ -54,13 +59,14 @@ export async function applyServiceConnectionInTxn(
 
   const accessToken = typeof conn.accessToken === 'string' && conn.accessToken.length > 0
     ? conn.accessToken
-    : existing?.accessToken ?? null;
+    : urlChanged ? null : existing?.accessToken ?? null;
   const refreshToken = typeof conn.refreshToken === 'string' && conn.refreshToken.length > 0
     ? conn.refreshToken
-    : existing?.refreshToken ?? null;
+    : urlChanged ? null : existing?.refreshToken ?? null;
   // Present with at least one valid header → restore; absent, empty, or
   // all-invalid → leave any existing headers untouched (a hand-edited or empty
-  // map must not silently wipe stored proxy headers). A normal export writes
+  // map must not silently wipe stored proxy headers), unless the URL changed.
+  // Stored secrets and token state belong to the old address. A normal export writes
   // null when there are none, so legit round-trips are unaffected. Not gated by
   // HELPRR_CUSTOM_HEADERS: restoring data is independent of whether sending is on.
   const parsedHeaders = conn.customHeaders != null ? parseCustomHeaders(conn.customHeaders) : null;
@@ -71,9 +77,10 @@ export async function applyServiceConnectionInTxn(
       where: { id: existing.id },
       data: {
         url, apiKey, username, label, externalUrl,
-        ...(accessToken !== null && { accessToken }),
-        ...(refreshToken !== null && { refreshToken }),
-        ...(customHeaders !== null && { customHeaders }),
+        ...((urlChanged || accessToken !== null) && { accessToken }),
+        ...((urlChanged || refreshToken !== null) && { refreshToken }),
+        ...(urlChanged && { tokenExpiresAt: null }),
+        ...((urlChanged || customHeaders !== null) && { customHeaders: customHeaders ?? {} }),
       },
     });
   } else {

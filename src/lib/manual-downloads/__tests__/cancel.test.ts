@@ -3,31 +3,29 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   client: {} as Record<string, ReturnType<typeof vi.fn>>,
   update: vi.fn<(input: { data: Record<string, unknown> }) => Promise<object>>(async () => ({})),
+  auditCreate: vi.fn(),
   others: 0,
   audits: [] as Array<{ operation: string; filesDeleted: boolean | null }>,
-  qbit: { getTorrents: vi.fn(async () => [{ hash: 'x' }]), deleteTorrent: vi.fn(async () => {}) },
+  qbit: { getTorrents: vi.fn(async () => [{ hash: 'x', name: 'Night.of.the.Living.Dead', size: 100, progress: 0.5 }]), deleteTorrent: vi.fn(async () => {}) },
   claim: vi.fn(async (): Promise<{ id: string; at: Date } | null> => ({ id: 'md1', at: new Date() })),
   release: vi.fn(async (...args: unknown[]) => args.length > 0),
 }));
 vi.mock('../fallback', () => ({ claimFallback: mocks.claim, releaseClaim: mocks.release }));
 vi.mock('@/lib/service-helpers', () => ({ getQBittorrentClient: async () => mocks.qbit }));
-vi.mock('@/lib/db', () => ({ prisma: { manualDownload: { update: mocks.update, count: async () => mocks.others } } }));
+vi.mock('@/lib/db', () => ({ prisma: {
+  manualDownload: { update: mocks.update, count: async () => mocks.others },
+  fileOperationAudit: { create: mocks.auditCreate },
+} }));
 vi.mock('@/lib/arr-instances', () => ({ resolveConnection: vi.fn(async () => ({ id: 'i1' })) }));
 vi.mock('@/lib/cache/tagged-library', () => ({ invalidateTaggedLibrary: vi.fn(async () => {}) }));
 vi.mock('@/lib/activity-queue', () => ({
   bumpQueueCacheVersion: vi.fn(async () => {}),
   fetchAllQueueRecords: (client: { getQueue: () => Promise<unknown> }) => client.getQueue(),
 }));
-vi.mock('@/lib/file-audit', () => ({
-  snapshotTorrentDeleteTargets: async () => ({ targetTitle: 'Night.of.the.Living.Dead', itemCount: 1, details: {} }),
-  runWithOperationAudit: async (input: { operation: string; filesDeleted: boolean | null }, call: () => Promise<unknown>) => {
-    mocks.audits.push({ operation: input.operation, filesDeleted: input.filesDeleted });
-    return call();
-  },
-}));
 vi.mock('../preflight', async (importOriginal) => ({ ...(await importOriginal<typeof import('../preflight')>()), arrClientFor: () => mocks.client }));
 
 import { AxiosError, AxiosHeaders } from 'axios';
+import { TorrentDeleteUnconfirmedError } from '@/lib/file-audit';
 import { cancelManualDownload, ManualDownloadCancelError } from '../cancel';
 
 const HASH = '382CC016FF22946008ECDDCB0DDA820F42B0CD5A';
@@ -42,6 +40,14 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.audits.length = 0;
   mocks.others = 0;
+  mocks.auditCreate.mockImplementation(async ({ data }: { data: { operation: string; filesDeleted: boolean | null } }) => {
+    mocks.audits.push({ operation: data.operation, filesDeleted: data.filesDeleted });
+    return {};
+  });
+  mocks.qbit.getTorrents.mockReset().mockResolvedValue([{ hash: HASH.toLowerCase(), name: 'Night.of.the.Living.Dead', size: 100, progress: 0.5 }]);
+  mocks.qbit.deleteTorrent.mockReset().mockImplementation(async () => {
+    mocks.qbit.getTorrents.mockResolvedValue([]);
+  });
   mocks.client = {
     getQueue: vi.fn(async () => ({ records: [{ id: 101, downloadId: HASH }, { id: 102, downloadId: 'OTHER' }] })),
     deleteQueueItem: vi.fn(async () => {}),
@@ -204,6 +210,27 @@ describe('cancelling a manual download', () => {
       expect(await cancelManualDownload(fallback(), none, actor)).toContain('the torrent stays in qBittorrent');
       expect(mocks.qbit.deleteTorrent).not.toHaveBeenCalled();
       await expect(cancelManualDownload(fallback({ status: 'IMPORTING' }), none, actor)).rejects.toBeInstanceOf(ManualDownloadCancelError);
+    });
+
+    it('records an unconfirmed delete and restores the claim when qBittorrent acknowledges it but still lists the torrent', async () => {
+      mocks.qbit.deleteTorrent.mockResolvedValue(undefined);
+
+      await expect(cancelManualDownload(fallback(), { ...none, removeFromClient: true, removeTitle: true }, actor))
+        .rejects.toBeInstanceOf(TorrentDeleteUnconfirmedError);
+
+      expect(mocks.qbit.deleteTorrent).toHaveBeenCalledExactlyOnceWith(HASH.toLowerCase(), true);
+      expect(mocks.auditCreate).toHaveBeenCalledExactlyOnceWith({ data: expect.objectContaining({
+        userId: actor.id, username: actor.username, service: 'QBITTORRENT', operation: 'DELETE_TORRENT',
+        mediaTitle: 'Night.of.the.Living.Dead', fileCount: 1,
+        filesDeleted: true, success: false, errorMessage: 'qBittorrent still lists the torrent after the delete',
+        details: expect.objectContaining({ hashes: [HASH.toLowerCase()], deleteFiles: true, manualDownloadId: 'md1' }),
+      }) });
+      expect(mocks.release).toHaveBeenCalledExactlyOnceWith(
+        { id: 'md1', at: expect.any(Date) }, 'NEEDS_MAPPING',
+        'Cancelling did not finish: qBittorrent still lists the torrent after the delete', { lastError: undefined },
+      );
+      expect(mocks.client.deleteMovie).not.toHaveBeenCalled();
+      expect(mocks.update).not.toHaveBeenCalled();
     });
 
     it('never runs alongside a scan or an import of the files', async () => {
