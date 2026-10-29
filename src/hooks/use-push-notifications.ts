@@ -13,6 +13,8 @@ import {
 } from '@/lib/notification-subscriptions';
 
 const PUSH_ENABLED_FLAG = 'helprr-push-enabled';
+const PUSH_STATE_CHANGED = 'helprr-push-state-changed';
+const pendingRegistrations = new WeakMap<ServiceWorkerRegistration, Promise<PushSubscription>>();
 
 function setPushEnabledFlag(on: boolean): void {
   try {
@@ -52,6 +54,24 @@ function waitForServiceWorker(timeoutMs = 10000): Promise<ServiceWorkerRegistrat
       resolve(reg);
     });
   });
+}
+
+function getSubscription(registration: ServiceWorkerRegistration): Promise<PushSubscription | null> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error('Push is not responding in this browser. Try refreshing the page.'));
+    }, 5000);
+    registration.pushManager.getSubscription().then(resolve, reject).finally(() => clearTimeout(timer));
+  });
+}
+
+async function getAppServerKey(): Promise<Uint8Array> {
+  const res = await fetch('/api/push/public-key');
+  const publicKey = res.ok ? (await res.json()).publicKey : null;
+  if (!publicKey) {
+    throw new Error('VAPID public key not configured on the server. Set VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY / VAPID_SUBJECT.');
+  }
+  return urlBase64ToUint8Array(publicKey);
 }
 
 async function registerWithServer(
@@ -107,8 +127,44 @@ export function usePushNotifications() {
   });
   const permission = useSyncExternalStore(emptySubscribe, getPermission, () => null);
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const clearRetry = useCallback(() => {
+    if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+    retryTimerRef.current = null;
+  }, []);
 
-  const reconcileSubscription = useCallback(async (sub: PushSubscription): Promise<{ done: boolean; revoked?: boolean }> => {
+  const registerSubscription = useCallback((registration: ServiceWorkerRegistration, appServerKey: Uint8Array) => {
+    const pending = pendingRegistrations.get(registration);
+    if (pending) return pending;
+    // The app banner and settings each use this hook. Share the replacement so
+    // simultaneous checks cannot unsubscribe each other's new subscription.
+    const task = (async () => {
+      const existing = await getSubscription(registration);
+      let oldEndpoint: string | undefined;
+      if (existing && !appServerKeyMatches(existing.options.applicationServerKey, appServerKey)) {
+        oldEndpoint = existing.endpoint;
+        if (!await existing.unsubscribe()) throw new Error('Could not remove the old push subscription.');
+        const res = await fetch('/api/push/subscribe', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ endpoint: oldEndpoint }),
+        });
+        if (!res.ok) throw new Error('Failed to remove subscription from server.');
+        await syncRemovedNotificationDevices(queryClient, (device) => device.endpoint === oldEndpoint);
+      }
+      const sub = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: appServerKey.buffer as ArrayBuffer,
+      });
+      const device = await registerWithServer(sub, oldEndpoint);
+      if (!device) throw new Error('Failed to save subscription on server.');
+      await syncRegisteredNotificationDevice(queryClient, device);
+      return sub;
+    })().finally(() => pendingRegistrations.delete(registration));
+    pendingRegistrations.set(registration, task);
+    return task;
+  }, [queryClient]);
+
+  const reconcileSubscription = useCallback(async (registration: ServiceWorkerRegistration, sub: PushSubscription): Promise<{ done: boolean; revoked?: boolean; subscription?: PushSubscription }> => {
     const res = await fetch('/api/notifications/subscription/check', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -124,6 +180,17 @@ export function usePushNotifications() {
       }
       return { done: true, revoked: true };
     }
+    const appServerKey = await getAppServerKey();
+    if (!appServerKeyMatches(sub.options.applicationServerKey, appServerKey)) {
+      setIsSubscribed(false);
+      setSubscriptionEndpoint(null);
+      setWasReregistered(false);
+      if (Notification.permission !== 'granted') {
+        throw new Error('Turn notifications on again to update this device’s push subscription.');
+      }
+      const subscription = await registerSubscription(registration, appServerKey);
+      return { done: true, subscription };
+    }
     if (data.exists === false) {
       const reregistered = await registerWithServer(sub);
       if (reregistered) {
@@ -131,19 +198,22 @@ export function usePushNotifications() {
         setWasReregistered(true);
       }
     }
-    return { done: true };
-  }, [queryClient]);
+    return { done: true, subscription: sub };
+  }, [queryClient, registerSubscription]);
 
   const checkSubscription = useCallback(async () => {
+    clearRetry();
     try {
       const registration = await waitForServiceWorker();
-      const sub = await registration.pushManager.getSubscription();
+      const sub = await getSubscription(registration);
       if (!sub) {
         setIsSubscribed(false);
         setSubscriptionEndpoint(null);
         setLoading(false);
         return;
       }
+      setPreviouslyEnabled(true);
+      setPushEnabledFlag(true);
 
       // The browser still holds the subscription, but the server may have
       // pruned it (consecutiveFailures cleanup, manual wipe, or a 410). Ask
@@ -153,7 +223,7 @@ export function usePushNotifications() {
       // network hiccup doesn't leave the toggle "enabled" but pushes silent.
       const scheduleRetry = () => {
         retryTimerRef.current = setTimeout(() => {
-          void reconcileSubscription(sub)
+          void reconcileSubscription(registration, sub)
             .then((result) => {
               // Apply the retry's outcome: if the server says the subscription
               // was revoked, reflect it in the UI (reconcileSubscription already
@@ -161,29 +231,37 @@ export function usePushNotifications() {
               if (result.done && result.revoked) {
                 setIsSubscribed(false);
                 setSubscriptionEndpoint(null);
+              } else if (result.subscription) {
+                setIsSubscribed(true);
+                setSubscriptionEndpoint(result.subscription.endpoint);
+                setError(null);
               }
             })
             .catch((err) => {
               console.warn('[Push] subscription check retry failed:', err);
+              setError(err instanceof Error ? err.message : 'Turn notifications on again on this device.');
             });
         }, 5000);
       };
       let revoked = false;
+      let current: PushSubscription | undefined;
       try {
-        const result = await reconcileSubscription(sub);
+        const result = await reconcileSubscription(registration, sub);
+        current = result.subscription;
         if (!result.done) scheduleRetry();
         else if (result.revoked) revoked = true;
       } catch (err) {
         console.warn('[Push] subscription check failed:', err);
+        setError(err instanceof Error ? err.message : 'Turn notifications on again on this device.');
         scheduleRetry();
       }
 
-      if (revoked) {
+      if (revoked || !current) {
         setIsSubscribed(false);
         setSubscriptionEndpoint(null);
       } else {
         setIsSubscribed(true);
-        setSubscriptionEndpoint(sub.endpoint);
+        setSubscriptionEndpoint(current.endpoint);
         // An active subscription means this device is opted in — remember it so a
         // later silent drop (iOS revoking permission) surfaces the re-enable nudge.
         setPreviouslyEnabled(true);
@@ -191,60 +269,53 @@ export function usePushNotifications() {
       }
     } catch (err) {
       console.warn('[Push] Could not check subscription:', err);
+      setError(err instanceof Error ? err.message : 'Could not check push notifications.');
     }
     setLoading(false);
-  }, [reconcileSubscription]);
+  }, [clearRetry, reconcileSubscription]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- reconcile the browser subscription with the server when push support is available
     if (isSupported) checkSubscription();
-    return () => {
-      if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
-    };
-  }, [isSupported, checkSubscription]);
+    return clearRetry;
+  }, [isSupported, checkSubscription, clearRetry]);
   useEffect(() => {
     if (!isSupported) return;
     const refreshEndpoint = () => {
-      void navigator.serviceWorker.ready
-        .then((registration) => registration.pushManager.getSubscription())
-        .then((subscription) => {
-          setIsSubscribed(Boolean(subscription));
-          setSubscriptionEndpoint(subscription?.endpoint ?? null);
-        })
-        .catch((err) => {
-          console.warn('[Push] could not refresh the rotated subscription:', err);
-        });
+      void checkSubscription();
+    };
+    const refreshState = (event: Event) => {
+      clearRetry();
+      const endpoint = (event as CustomEvent<string | null>).detail;
+      setWasReregistered(false);
+      setIsSubscribed(Boolean(endpoint));
+      setSubscriptionEndpoint(endpoint);
+      setPreviouslyEnabled(Boolean(endpoint));
+      setError(null);
     };
     window.addEventListener(NOTIFICATION_SUBSCRIPTIONS_CHANGED, refreshEndpoint);
-    return () => window.removeEventListener(
-      NOTIFICATION_SUBSCRIPTIONS_CHANGED,
-      refreshEndpoint,
-    );
-  }, [isSupported]);
+    window.addEventListener(PUSH_STATE_CHANGED, refreshState);
+    return () => {
+      window.removeEventListener(NOTIFICATION_SUBSCRIPTIONS_CHANGED, refreshEndpoint);
+      window.removeEventListener(PUSH_STATE_CHANGED, refreshState);
+    };
+  }, [isSupported, checkSubscription, clearRetry]);
 
   const subscribe = useCallback(async (): Promise<{ success: boolean; error?: string }> => {
+    clearRetry();
     setLoading(true);
     setError(null);
+    setWasReregistered(false);
 
     try {
       // 1. Fetch the VAPID key (runtime config — not baked into the bundle, so
       // one prebuilt image serves every install's own key)
-      let vapidKey: string | null = null;
-      try {
-        const res = await fetch('/api/push/public-key');
-        if (res.ok) vapidKey = (await res.json()).publicKey ?? null;
-      } catch {
-        // fall through to the not-configured error
-      }
-      if (!vapidKey) {
-        const msg = 'VAPID public key not configured on the server. Set VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY / VAPID_SUBJECT.';
-        setError(msg);
-        setLoading(false);
-        return { success: false, error: msg };
-      }
+      const appServerKey = await getAppServerKey();
 
       // 2. Request notification permission
-      const permission = await Notification.requestPermission();
+      const permission = Notification.permission === 'granted'
+        ? 'granted'
+        : await Notification.requestPermission();
       if (permission !== 'granted') {
         const msg = permission === 'denied'
           ? 'Notification permission denied. Please enable it in your browser settings.'
@@ -268,33 +339,14 @@ export function usePushNotifications() {
       // 4. Subscribe to push. If the browser still holds a subscription made
       // under a different applicationServerKey (server VAPID keys rotated),
       // subscribe() throws InvalidStateError forever — drop the stale one first.
-      const appServerKey = urlBase64ToUint8Array(vapidKey);
-      const existing = await registration.pushManager.getSubscription();
-      let oldEndpoint: string | undefined;
-      if (existing && !appServerKeyMatches(existing.options.applicationServerKey, appServerKey)) {
-        oldEndpoint = existing.endpoint;
-        await existing.unsubscribe();
-      }
-      const sub = await registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: appServerKey.buffer as ArrayBuffer,
-      });
-
-      // 5. Send subscription to server
-      const registeredDevice = await registerWithServer(sub, oldEndpoint);
-      if (!registeredDevice) {
-        const msg = 'Failed to save subscription on server.';
-        setError(msg);
-        setLoading(false);
-        return { success: false, error: msg };
-      }
-      await syncRegisteredNotificationDevice(queryClient, registeredDevice);
+      const sub = await registerSubscription(registration, appServerKey);
 
       setIsSubscribed(true);
       setSubscriptionEndpoint(sub.endpoint);
       setWasReregistered(false);
       setPreviouslyEnabled(true);
       setPushEnabledFlag(true);
+      window.dispatchEvent(new CustomEvent(PUSH_STATE_CHANGED, { detail: sub.endpoint }));
       setLoading(false);
       return { success: true };
     } catch (err) {
@@ -303,14 +355,16 @@ export function usePushNotifications() {
       setLoading(false);
       return { success: false, error: msg };
     }
-  }, [queryClient]);
+  }, [registerSubscription, clearRetry]);
 
   const unsubscribe = useCallback(async (): Promise<{ success: boolean; error?: string }> => {
+    clearRetry();
     setLoading(true);
     setError(null);
+    setWasReregistered(false);
     try {
       const registration = await waitForServiceWorker();
-      const sub = await registration.pushManager.getSubscription();
+      const sub = await getSubscription(registration);
       if (sub) {
         await sub.unsubscribe();
       }
@@ -320,6 +374,7 @@ export function usePushNotifications() {
       // Explicit opt-out: clear the flag so we don't nag them to re-enable.
       setPreviouslyEnabled(false);
       setPushEnabledFlag(false);
+      window.dispatchEvent(new CustomEvent(PUSH_STATE_CHANGED, { detail: null }));
       if (sub) {
         const res = await fetch('/api/push/subscribe', {
           method: 'DELETE',
@@ -340,7 +395,7 @@ export function usePushNotifications() {
       setLoading(false);
       return { success: false, error: msg };
     }
-  }, [queryClient]);
+  }, [queryClient, clearRetry]);
 
   const dismissReregisteredNotice = useCallback(() => setWasReregistered(false), []);
 
