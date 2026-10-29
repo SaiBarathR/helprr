@@ -4,6 +4,7 @@ import { requireUserAllCapabilities } from '@/lib/auth';
 import { can } from '@/lib/permissions';
 import { withApiLogging } from '@/lib/api-logger';
 import { cancelManualDownload, ManualDownloadCancelError } from '@/lib/manual-downloads/cancel';
+import { TORRENT_DELETE_REFUSALS, TorrentDeleteUnconfirmedError } from '@/lib/file-audit';
 
 /**
  * Cancel a manual download: remove it from its Arr instance's queue and, when
@@ -34,6 +35,10 @@ async function postHandler(request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json({ ok: true, message });
   } catch (error) {
     if (error instanceof ManualDownloadCancelError) return NextResponse.json({ error: error.message }, { status: 409 });
+    // qBittorrent acknowledged the delete but still lists the torrent: say so, as the torrent page does.
+    if (error instanceof TorrentDeleteUnconfirmedError) {
+      return NextResponse.json({ error: TORRENT_DELETE_REFUSALS.unconfirmed.error }, { status: TORRENT_DELETE_REFUSALS.unconfirmed.status });
+    }
     console.error('[manual-downloads] cancel failed:', error instanceof Error ? error.message : error);
     return NextResponse.json({ error: 'The download could not be cancelled.' }, { status: 502 });
   }

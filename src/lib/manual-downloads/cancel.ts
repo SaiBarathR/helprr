@@ -2,7 +2,7 @@ import type { ManualDownload } from '@prisma/client';
 import axios from 'axios';
 import { prisma } from '@/lib/db';
 import { resolveConnection } from '@/lib/arr-instances';
-import { runWithOperationAudit, snapshotTorrentDeleteTargets, type AuditActor } from '@/lib/file-audit';
+import { deleteTorrentsConfirmed, runWithOperationAudit, snapshotTorrentDeleteTargets, type AuditActor } from '@/lib/file-audit';
 import { getQBittorrentClient } from '@/lib/service-helpers';
 import { bumpQueueCacheVersion, fetchAllQueueRecords } from '@/lib/activity-queue';
 import { invalidateTaggedLibrary } from '@/lib/cache/tagged-library';
@@ -97,7 +97,7 @@ async function cancelSteps(download: ManualDownload, options: CancelOptions, act
           itemCount: snapshot.itemCount,
           filesDeleted: true,
           details: { ...snapshot.details, deleteFiles: true, manualDownloadId: download.id },
-        }, () => qbit.deleteTorrent(hash, true));
+        }, () => deleteTorrentsConfirmed(qbit, hash, true));
         done.push('removed the torrent and its data from qBittorrent');
       } else {
         done.push('the torrent is not in qBittorrent any more');
