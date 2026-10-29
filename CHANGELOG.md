@@ -5,6 +5,321 @@ All notable changes to Helprr are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.0] - 2026-10-30
+
+### Security
+
+- **Settings import no longer moves stored secrets to a new address.**
+  Importing a settings file that named an existing connection with a different
+  URL kept that connection's API key, custom headers and tokens, so an admin
+  importing a tampered file would have sent them to the new address (editing a
+  connection already refused this). A URL change now needs a fresh API key or
+  password in the file; otherwise that connection is skipped with a warning
+  naming it. Same-URL imports keep omitted secrets as before.
+- Cancelling a manual download that Helprr had added to qBittorrent reported,
+  and audited, its torrent as removed on qBittorrent's acknowledgement alone.
+  It now checks the torrent is gone, as the torrent page does, and says so
+  when it is not.
+- A Jellyfin account with Live TV switched off, linked to a Helprr member,
+  could still list Live TV channels in Helprr and play them: Jellyfin enforces
+  that policy only on its own Live TV routes called with the user's own token,
+  and Helprr listed channels with the admin API key. Helprr now reads each
+  member's Jellyfin policy (administrator, or Live TV access allowed) and
+  treats a failed read as no access. Without access, the Live TV page says Live
+  TV is not enabled for the account, Jellyfin search leaves channels out, and
+  the media and image proxies and playback refuse channels, programmes and
+  recordings.
+- A response fetched for a session that had just ended (a poster, a read-only
+  API answer or a page refresh) could finish after sign-in had cleared the
+  browser's per-user caches and write the old session's data back into them.
+  The service worker now drops any such write, and the page waits briefly for
+  the worker before it clears the caches itself.
+- API responses that set no caching policy are now sent with
+  `Cache-Control: private, no-store`, errors included. Nothing was cacheable in
+  practice; this is a safe default.
+- Every list route bounds its page, page size, offset and limit: a value that
+  is not a number falls back to the route's default, and one out of range is
+  clamped. Before, some values answered with a server error or were passed
+  unbounded to Sonarr, Radarr, Lidarr, Prowlarr, Seerr, AniList or TMDB.
+- `next` was updated to 16.4.2 for three advisories (an image-optimizer RCE
+  through `sharp` on glibc Linux, a Server Actions denial of service, and an
+  RCE in `use cache` functions). Helprr was not exposed: it already pins the
+  fixed `sharp`, runs on Alpine (musl), and uses neither Server Actions nor
+  `use cache`.
+- `dompurify` was updated to 3.4.17 and `zod` pinned to 4.6.7 for new
+  advisories. Helprr was not exposed: it calls DOMPurify with its default
+  options only, and `zod` only validates the service worker's build settings.
+- `follow-redirects` (used through `axios`) was updated to 1.16.1 for two
+  advisories about credential headers kept across cross-origin redirects.
+
+### Added
+
+- **Send a torrent to Sonarr or Radarr.** Add Torrent can hand a magnet link or
+  `.torrent` file to Sonarr or Radarr for one movie or series, instead of
+  adding it to qBittorrent only:
+  - Pick the movie or series (and the instance when there are several). A
+    title that is not in the library yet is added with its searches off, using
+    the quality profile, root folder and tags you choose.
+  - **Check** shows how Sonarr/Radarr read the release (quality, year,
+    episodes), what they will do, the download client, and any problem in
+    their own words. **Send** is offered only for exactly what was checked.
+    When the title is unmonitored, or several download clients could take the
+    download, the form asks you to choose.
+  - Sonarr/Radarr then own the download, the import and the rename. A
+    `.torrent` file is fetched once by Sonarr/Radarr from a two-minute link,
+    so Helprr needs an address they can reach (`ARR_CALLBACK_ORIGIN`, or
+    `APP_ORIGIN`); magnet links need neither.
+  - **Torrents → Linked downloads** follows each one through Sonarr/Radarr's
+    queue until the import, with In progress, Needs attention and History
+    tabs and a progress figure while it downloads. A download counts as
+    imported only once the title has a file it did not have before. Each
+    download's page shows where it stopped, what went wrong in
+    Sonarr/Radarr's words, who sent it, and its history, with **Cancel
+    download**, **Unlink**, **Send again** and **Open movie/series**.
+  - Cancel removes the download from Sonarr/Radarr's queue and never starts a
+    search for another release. It can also delete the torrent and its data,
+    blocklist the release, and remove a title the download added while that
+    title still has no files, each only with the matching permission.
+  - **Choose files before download (advanced)** adds the torrent stopped so you
+    can pick its files first. When they finish, Sonarr/Radarr say what each
+    chosen file is; Helprr imports them on its own only when every chosen
+    video maps cleanly, and otherwise **Map files** lets you decide per file
+    (Import or Leave it, and which episodes), check the result with
+    Sonarr/Radarr, and import. Only the chosen files are ever scanned or
+    imported, and they are copied (hardlinked where possible) so the torrent
+    keeps seeding.
+  - Sending needs the add-torrent, manage-activity and add-movie or add-series
+    permissions; choosing files also needs the manage and delete torrent
+    permissions. Every title added, release sent and removal is recorded in
+    the operation audit.
+- A download whose added title is gone (removed by a cancel, by a failed
+  send, or in Sonarr/Radarr) says so instead of "Added to the library by this
+  download", and no longer links to it. On the manual import page, unticking a
+  file explains that it stays in the download folder and can't be imported
+  from Helprr later.
+- **Rate titles.** The Watch overlay, its tiles' popover and a title's detail
+  page have a Rate control: thumbs down, thumbs up, or "Love this!". The latest
+  rating wins, choosing it again clears it, and nothing is written to
+  Jellyfin. Ratings feed the recommendations: a like or love raises the
+  title's genres (a love counts twice), and clearing a thumbs-down lets the
+  title back in unless Not interested still hides it.
+- **Recommendations learn from requests**, and from a newly linked account
+  straight away. A Seerr request made through Helprr counts as interest in
+  that title's genres, once per title. Linking a Jellyfin account, an admin
+  changing a user's Jellyfin user, or a settings import that changes AniList
+  links rebuilds that user's recommendations the next time they are read (or
+  within 30 minutes) instead of up to six hours later.
+- **Activity's Queue tab loads more.** It showed only the first 50 downloads
+  of each instance. The list now says how many are loaded ("50 of 1,500 queue
+  items loaded") with a **Load more** button, and the Failed tab checks every
+  instance's whole queue for downloads waiting on an import.
+- **Activity import** can import files whose names Sonarr/Radarr could not
+  re-check against the chosen movie or series (Import used to stay disabled);
+  each such file says it will be imported as scanned. Each file has a checkbox,
+  so a sample, an extra or a file you want to keep seeding can be left in the
+  download; the button counts the files it will import.
+- **Subtitle appearance in Settings → Preferences.** Size, font, edge,
+  background, colour and position can be set without a title open, with a
+  preview that matches the player. They apply to text subtitles (SRT, WebVTT)
+  on this device; ASS/SSA subtitles keep their own styling.
+- When a stream cannot be reached, the player stops after the first attempt
+  (about 40 seconds instead of about 80) with "The stream couldn't be reached"
+  and a **Retry** button, which starts again from the same position with the
+  same tracks and version. Other playback errors also offer Retry.
+- Play all and Shuffle all say when they stop at their 500-title limit
+  ("Queued 500 of 507 titles").
+- Discover offers **Add to <instance>** (or **Add to another** with several)
+  when another Radarr or Sonarr instance does not have the title yet.
+- On the Requests page, "Open in Helprr" opens a title that is not in the
+  library yet on its Discover page; Helprr's own pending-approval rows offer it
+  in their long-press menu too.
+- **Settings → Service status** shows administrators whether background polling
+  is running, when its last cycle finished, and any job that is failing or has
+  been running for more than five minutes.
+- Cleanup History names who ran each cleanup: the signed-in user, or
+  `system:cleanup-scheduler` for an automatic run. Every torrent deletion and
+  queue removal a cleaner attempts is now recorded in the operation audit,
+  marked successful only once the item is confirmed gone, and audit entries
+  show the request id.
+- Saving cleaner settings that turn on automatic deletion asks for confirmation
+  first, says what the cleaner will delete and how often, and recommends a dry
+  run when none is on record. A settings import that would turn on automatic
+  deletion asks the same, once for each cleaner.
+- When part of a settings import could not be put into effect (for example
+  restarting polling or clearing the image cache), the Backup page now lists
+  what failed with **Retry** and **Dismiss**, instead of only logging it.
+- `scripts/update.sh` takes a validated backup, then pulls and restarts only the
+  Helprr container, waits for it to become healthy and checks `/api/ready`. It
+  stops before pulling anything if the backup fails. It ships as a release
+  asset.
+- `scripts/backup.sh --keep N` keeps the newest N of its own backups (default
+  10; `0` keeps every backup). The README explains how to keep a copy off the
+  host.
+- The README has a Privacy section listing every outbound request Helprr makes
+  (it has no telemetry), and a Requirements note: Docker Compose 2.18 or newer
+  on a supported Docker Engine, and the latest two major iOS versions for the
+  iPhone app.
+
+### Changed
+
+- **Interactive search opens its own page** instead of a bottom drawer, for
+  movies, series seasons, episodes and music albums, so a swipe or a stray tap
+  can no longer dismiss it. It searches as soon as it opens, has **Search
+  again**, keeps its filters and sort pinned while the results scroll, and
+  shows a failure on the page with **Try again**. Going back to the title and
+  returning within five minutes shows the same results without asking every
+  indexer again; a grab starts a fresh search next time.
+- **Back returns to the page you came from** on series, season and episode
+  pages, torrent files, Excluded titles and Scheduled alerts, instead of always
+  opening the parent list. A page opened from a link with nothing before it
+  still goes to its parent.
+- **A fresh visit starts at the top.** Opening a page from the navigation no
+  longer jumps to where an earlier visit was left; Back, Forward and reload
+  still restore the position. Calendar opens on today on a fresh visit, and
+  Back restores the picked day, period and scroll position.
+- The bundled Redis moves from `redis:7-alpine` to `redis:8-alpine`, because
+  the Redis 7 image is built on an Alpine release that reaches end of life on
+  2026-11-01. Existing installs move it once by hand (see the README's
+  Updating section).
+- The Docker image is built on an exact Node 24 version pinned by digest, and
+  the Prisma CLI no longer reports usage when the container starts.
+- `/api/ready` answers `stopping` (HTTP 503) as soon as a graceful shutdown
+  begins, instead of reporting ready while the app drains.
+- `backup.sh` now deletes all but its newest 10 backups after each successful
+  run unless given `--keep`.
+- Jellyfin's own playback reports are now the only thing that saves a resume
+  position, so Jellyfin's resume and played thresholds apply. Helprr used to
+  save the position a second time with the admin key every 10 seconds.
+- Select lists open below or above their field, fit the room there and scroll
+  inside, instead of covering the screen. Menus, select lists and popovers in
+  the installed iPhone app stay clear of the status bar and home indicator,
+  and a long-press menu opened near the bottom edge moves up above it.
+- The installed version on Settings → Status reads `1.7.0` rather than the
+  Docker tag `v1.7.0`.
+
+### Fixed
+
+- **Push after a VAPID key rotation.** A device whose subscription used the
+  old key kept showing as subscribed (and healthy on the Devices page) while
+  nothing arrived. Opening Helprr on that device now replaces the subscription
+  itself when notification permission is granted, keeping the device's
+  per-event preferences and name, or asks you to turn notifications on again
+  in one tap. The Devices page shows a device whose pushes fail, with what to
+  do. An old-key subscription is no longer registered again, and a browser
+  whose push support never answers no longer leaves the Enable button
+  spinning.
+- **Player:**
+  - Keys pressed inside a dialog, or in a dialog's menu or select list, no
+    longer also control playback.
+  - A seek in a progressive (non-HLS) audio transcode no longer skips to the
+    next track, the clock shows the real position after it, and a seek while
+    paused stays paused.
+  - After "Playback did not start", a late error or pause no longer replaces
+    the message, and progress stops being reported for the released session.
+  - Next and Previous tell Jellyfin the outgoing title stopped, at its
+    position, so it no longer stays listed as playing and its played state is
+    recorded. A Play whose queue cannot load stops the title it replaces.
+  - Play all and Shuffle all queue at most 500 titles (a large set queued
+    600), and on a library without a collection type queue each title once
+    rather than folders and their contents.
+  - A browser that refuses local storage (some private modes) gets its own
+    Jellyfin playback device id instead of one shared by every such browser.
+- **Installed app and offline:**
+  - Coming back online, for example when Wi-Fi hands over to mobile data, no
+    longer reloads the app, which closed the player and dropped unsaved forms.
+  - After a deploy, a new version waited until the iPhone app (or a Safari tab)
+    was force-quit, and every navigation became a full reload meanwhile. The
+    service worker no longer uses navigation preload, so updates take over by
+    themselves.
+  - A cached page whose security nonce does not match its scripts, which left
+    Safari stuck on "Loading...", is never served or cached.
+- **Navigation and scroll:**
+  - Discover: Back returns to a results grid opened by a pill (such as
+    Trending) instead of the home carousels.
+  - Calendar month view keeps the tapped day and its panel's position after
+    opening a title and going Back.
+  - Changing a filter in an Activity link view keeps the list where it is, and
+    a link's tab (for example from a notification) no longer replaces the saved
+    tab on a later plain visit.
+  - After "View all" from the dashboard, Discover scrolls the selected sort
+    chip into view.
+- **Menus:** pressing inside a dialog no longer opens the long-press menu of
+  the item behind it, and For You recommendation cards open their action menu
+  again (Not interested was unreachable there).
+- **Accessibility:**
+  - Repeat buttons say their mode ("Repeat: off/all/one"), and the audio
+    player's controls are named.
+  - The scheduled-alert dialog announces which alert type and release types
+    are chosen.
+  - The dashboard has a page heading, the collapsed sidebar's links and
+    buttons have names, and unknown addresses show Helprr's own 404 page.
+  - Red warning and error text, the destructive badge and delete buttons in
+    light glass reach AA contrast in every theme, and so does Jellyfin's
+    "Restart needed" badge in the light theme.
+  - The Random view has a single page heading.
+- **Images:** Calendar and search-palette artwork goes through Helprr's image
+  proxy, so it loads where the browser cannot reach Sonarr, Radarr or Lidarr.
+  An image that fails to load shows a neutral tile or is hidden, never the
+  browser's broken-image icon.
+- **Cleanup:**
+  - A torrent re-added with the same hash no longer inherits the old copy's
+    strikes. Strikes counted before this update start again once.
+  - A failed strike clear or prune after a removal no longer reports the
+    removal as failed or skips its Cleanup History entry.
+  - **Next** on the Cleanup dashboard pages through more than 30 active strikes
+    instead of jumping back to page 1.
+  - A torrent deleted from the list is audited as done only once qBittorrent
+    no longer lists it; deleting one that is already gone answers "That
+    torrent is no longer in qBittorrent." A failed delete in the operation
+    audit reads "files/data were to be deleted".
+- **Settings import:**
+  - A large but valid backup could fail with a server error because the import
+    ran past the database's five-second transaction limit. It now imports in
+    batches within one transaction.
+  - An import of UI preferences alone no longer sends notification device
+    rules from a browser without a push subscription.
+- **Library and instances:**
+  - A newly added instance shows in the combined library at once.
+  - One slow instance costs one timeout instead of two, and when every
+    instance fails the list reports an error instead of an empty library.
+  - Series, movie and music pages read Windows media paths (`C:\Media\…`)
+    correctly, and saving without changing the root folder sends the stored
+    path unchanged.
+  - Specials (season 0) link to their episode from the Activity queue and
+    from notifications, and an older notification opens its own instance.
+  - On an artist's Files page, a file row's Interactive search looks for that
+    row's album.
+  - An AniList id AniList does not know answers "not found" rather than an
+    error, and a missing rate-limit header no longer starts a false cooldown.
+  - Anime Explore: a year range with Seasonal sort lists the current season's
+    anime from those years, and a range given high to low means the same
+    years.
+- **Recommendations:** a title just hidden with Not interested or a dislike
+  could come back for up to 15 minutes.
+- **Pages a member cannot use:** Activity, Calendar, Insights and the
+  operation audit show the not-found page instead of failing requests; the
+  dashboard's Overview tiles link only to pages the user may open; the
+  Jellyfin overview no longer polls sessions for members who cannot see them;
+  and Requests shows its counts and Users tab only to approvers. The API
+  already refused these requests.
+- **Torrents:** a torrent still fetching its metadata shows its size as "—"
+  instead of "NaN undefined" or "0 B".
+- **Dashboard:** the Service Health widget added on a phone fills the width and
+  shows every service.
+- Sticky table headers on Movies, Series, Music and Torrents stick, below the
+  real toolbar height.
+- When refreshing a series' episodes fails, the last loaded list stays with a
+  notice and Retry.
+- The Seerr request dialog fills **Request As** when your Seerr account loads
+  after the service data, and the Logs date picker opens on the applied range.
+- Anime Relations cards no longer overlap their relation and format labels;
+  the Recommendations feed's Not interested button clears the iPhone's home
+  indicator; "No pending requests" says "in Seerr" under Helprr's own pending
+  approvals.
+- An interrupted page transition (a quick Back) is no longer logged as a
+  server error, and Calendar no longer logs a ResizeObserver warning on every
+  visit.
+
 ## [1.6.3] - 2026-10-17
 
 ### Security
