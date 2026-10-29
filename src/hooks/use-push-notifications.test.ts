@@ -208,6 +208,8 @@ describe('usePushNotifications cache synchronization', () => {
       endpoint: savedDevice.endpoint,
       oldEndpoint: 'https://push.example/old',
     });
+    expect(vi.mocked(fetch).mock.calls.some(([, init]) => init?.method === 'DELETE')).toBe(false);
+    expect(mocks.syncRemoved).not.toHaveBeenCalled();
   });
 
   it('removes a confirmed unsubscribe by endpoint', async () => {
@@ -314,9 +316,12 @@ describe('VAPID key rotation recovery', () => {
       applicationServerKey: new Uint8Array([1, 2, 3]).buffer,
     });
     const mutations = vi.mocked(fetch).mock.calls.filter(([url]) => String(url) === '/api/push/subscribe');
-    expect(mutations.map(([, init]) => init?.method)).toEqual(['DELETE', 'POST']);
-    expect(JSON.parse(String(mutations[0][1]?.body))).toEqual({ endpoint: old.endpoint });
-    expect(JSON.parse(String(mutations[1][1]?.body)).endpoint).toBe(newSubscription.endpoint);
+    expect(mutations.map(([, init]) => init?.method)).toEqual(['POST']);
+    expect(JSON.parse(String(mutations[0][1]?.body))).toMatchObject({
+      endpoint: newSubscription.endpoint,
+      oldEndpoint: old.endpoint,
+    });
+    expect(mocks.syncRemoved).not.toHaveBeenCalled();
     expect(Notification.requestPermission).not.toHaveBeenCalled();
     expect(latest.isSubscribed).toBe(true);
     expect(latest.subscriptionEndpoint).toBe(newSubscription.endpoint);
@@ -365,6 +370,42 @@ describe('VAPID key rotation recovery', () => {
     expect(Notification.requestPermission).not.toHaveBeenCalled();
     expect(subscribeBrowser).not.toHaveBeenCalled();
     expect(mocks.syncRegistered).not.toHaveBeenCalled();
+  });
+
+  it('migrates the old device row without a DELETE that could strand the replacement', async () => {
+    const old = oldSubscription();
+    const fetchDefault = vi.mocked(fetch).getMockImplementation()!;
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      if (init?.method === 'DELETE') return jsonResponse({}, 503);
+      return fetchDefault(input, init);
+    });
+
+    let result: Awaited<ReturnType<typeof latest.subscribe>> | undefined;
+    await act(async () => { result = await latest.subscribe(); });
+
+    expect(result).toEqual({ success: true });
+    expect(old.unsubscribe).toHaveBeenCalledOnce();
+    const mutations = vi.mocked(fetch).mock.calls.filter(([url]) => String(url) === '/api/push/subscribe');
+    expect(mutations.map(([, init]) => init?.method)).toEqual(['POST']);
+    expect(JSON.parse(String(mutations[0][1]?.body))).toMatchObject({
+      endpoint: newSubscription.endpoint,
+      oldEndpoint: old.endpoint,
+    });
+  });
+
+  it.each(['unsubscribe', 'subscribe'] as const)('does not retry a replacement after browser %s fails', async (step) => {
+    const old = oldSubscription();
+    if (step === 'unsubscribe') vi.mocked(old.unsubscribe).mockRejectedValue(new Error('Could not unsubscribe'));
+    else subscribeBrowser.mockRejectedValue(new DOMException('User gesture required', 'NotAllowedError'));
+    vi.useFakeTimers();
+
+    await remount();
+    await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+
+    expect(vi.mocked(fetch).mock.calls.filter(([url]) => String(url) === '/api/notifications/subscription/check')).toHaveLength(1);
+    expect(subscribeBrowser).toHaveBeenCalledTimes(step === 'subscribe' ? 1 : 0);
+    expect(latest.isSubscribed).toBe(false);
+    expect(latest.needsReenable).toBe(true);
   });
 
   it.each(['subscribe', 'unsubscribe'] as const)('clears another hook’s re-registration banner after %s', async (action) => {
@@ -416,6 +457,74 @@ describe('VAPID key rotation recovery', () => {
     expect(vi.mocked(fetch).mock.calls.filter(([url]) => String(url) === '/api/notifications/subscription/check')).toHaveLength(1);
     expect(latest.isSubscribed).toBe(false);
     expect(latest.needsReenable).toBe(false);
+  });
+
+  it.each([
+    ['/api/notifications/subscription/check', false],
+    ['/api/notifications/subscription/check', true],
+    ['/api/push/public-key', false],
+    ['/api/push/public-key', true],
+  ])('keeps a browser subscription enabled when %s fails (network rejection: %s)', async (url, rejects) => {
+    getSubscription.mockResolvedValue(newSubscription);
+    localStorage.setItem('helprr-push-enabled', '1');
+    const fetchDefault = vi.mocked(fetch).getMockImplementation()!;
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      if (String(input) === url) {
+        if (rejects) throw new TypeError('Failed to fetch');
+        return jsonResponse({}, 503);
+      }
+      return fetchDefault(input, init);
+    });
+    vi.useFakeTimers();
+
+    await remount(true);
+
+    expect(latest.loading).toBe(false);
+    expect(latest.isSubscribed).toBe(true);
+    expect(latest.subscriptionEndpoint).toBe(newSubscription.endpoint);
+    expect(latest.needsReenable).toBe(false);
+    expect(screen.queryByText('Notifications stopped on this device')).toBeNull();
+    expect(subscribeBrowser).not.toHaveBeenCalled();
+    vi.mocked(fetch).mockImplementation(fetchDefault);
+    await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+    expect(latest.isSubscribed).toBe(true);
+    expect(latest.error).toBeNull();
+  });
+
+  it.each([true, false])('clears the re-enable nudge for a revoked subscription (remembered opt-in: %s)', async (remembered) => {
+    const old = oldSubscription();
+    if (remembered) localStorage.setItem('helprr-push-enabled', '1');
+    vi.mocked(fetch).mockResolvedValue(jsonResponse({ revoked: true }));
+
+    await remount(true);
+
+    expect(old.unsubscribe).toHaveBeenCalled();
+    expect(latest.isSubscribed).toBe(false);
+    expect(latest.subscriptionEndpoint).toBeNull();
+    expect(latest.needsReenable).toBe(false);
+    expect(localStorage.getItem('helprr-push-enabled')).toBeNull();
+    expect(screen.queryByText('Notifications stopped on this device')).toBeNull();
+    expect(subscribeBrowser).not.toHaveBeenCalled();
+    expect(vi.mocked(fetch).mock.calls.every(([url]) => String(url) === '/api/notifications/subscription/check')).toBe(true);
+  });
+
+  it('clears the re-enable nudge when the retry discovers revocation', async () => {
+    getSubscription.mockResolvedValue(newSubscription);
+    localStorage.setItem('helprr-push-enabled', '1');
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({}, 503));
+    vi.useFakeTimers();
+    await remount();
+    vi.mocked(fetch).mockResolvedValue(jsonResponse({ revoked: true }));
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+
+    expect(newSubscription.unsubscribe).toHaveBeenCalledOnce();
+    expect(latest.isSubscribed).toBe(false);
+    expect(latest.subscriptionEndpoint).toBeNull();
+    expect(latest.needsReenable).toBe(false);
+    expect(localStorage.getItem('helprr-push-enabled')).toBeNull();
+    expect(subscribeBrowser).not.toHaveBeenCalled();
+    expect(vi.mocked(fetch).mock.calls.every(([url]) => String(url) === '/api/notifications/subscription/check')).toBe(true);
   });
 
   it('settles Enable after five seconds when getSubscription never resolves', async () => {

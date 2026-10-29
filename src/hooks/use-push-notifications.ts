@@ -16,6 +16,8 @@ const PUSH_ENABLED_FLAG = 'helprr-push-enabled';
 const PUSH_STATE_CHANGED = 'helprr-push-state-changed';
 const pendingRegistrations = new WeakMap<ServiceWorkerRegistration, Promise<PushSubscription>>();
 
+class SubscriptionReplacementError extends Error {}
+
 function setPushEnabledFlag(on: boolean): void {
   try {
     if (on) localStorage.setItem(PUSH_ENABLED_FLAG, '1');
@@ -143,13 +145,6 @@ export function usePushNotifications() {
       if (existing && !appServerKeyMatches(existing.options.applicationServerKey, appServerKey)) {
         oldEndpoint = existing.endpoint;
         if (!await existing.unsubscribe()) throw new Error('Could not remove the old push subscription.');
-        const res = await fetch('/api/push/subscribe', {
-          method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ endpoint: oldEndpoint }),
-        });
-        if (!res.ok) throw new Error('Failed to remove subscription from server.');
-        await syncRemovedNotificationDevices(queryClient, (device) => device.endpoint === oldEndpoint);
       }
       const sub = await registration.pushManager.subscribe({
         userVisibleOnly: true,
@@ -173,6 +168,9 @@ export function usePushNotifications() {
     if (!res.ok) return { done: false };
     const data = (await res.json()) as { exists?: boolean; revoked?: boolean };
     if (data.revoked) {
+      setPreviouslyEnabled(false);
+      setPushEnabledFlag(false);
+      setWasReregistered(false);
       try {
         await sub.unsubscribe();
       } catch (err) {
@@ -185,11 +183,17 @@ export function usePushNotifications() {
       setIsSubscribed(false);
       setSubscriptionEndpoint(null);
       setWasReregistered(false);
-      if (Notification.permission !== 'granted') {
-        throw new Error('Turn notifications on again to update this device’s push subscription.');
+      setPreviouslyEnabled(true);
+      setPushEnabledFlag(true);
+      try {
+        if (Notification.permission !== 'granted') {
+          throw new Error('Turn notifications on again to update this device\'s push subscription.');
+        }
+        const subscription = await registerSubscription(registration, appServerKey);
+        return { done: true, subscription };
+      } catch (err) {
+        throw new SubscriptionReplacementError(err instanceof Error ? err.message : 'Turn notifications on again on this device.');
       }
-      const subscription = await registerSubscription(registration, appServerKey);
-      return { done: true, subscription };
     }
     if (data.exists === false) {
       const reregistered = await registerWithServer(sub);
@@ -212,9 +216,6 @@ export function usePushNotifications() {
         setLoading(false);
         return;
       }
-      setPreviouslyEnabled(true);
-      setPushEnabledFlag(true);
-
       // The browser still holds the subscription, but the server may have
       // pruned it (consecutiveFailures cleanup, manual wipe, or a 410). Ask
       // the server whether the row still exists and silently re-register if
@@ -231,6 +232,7 @@ export function usePushNotifications() {
               if (result.done && result.revoked) {
                 setIsSubscribed(false);
                 setSubscriptionEndpoint(null);
+                setError(null);
               } else if (result.subscription) {
                 setIsSubscribed(true);
                 setSubscriptionEndpoint(result.subscription.endpoint);
@@ -244,16 +246,20 @@ export function usePushNotifications() {
         }, 5000);
       };
       let revoked = false;
-      let current: PushSubscription | undefined;
+      let current: PushSubscription | undefined = sub;
       try {
         const result = await reconcileSubscription(registration, sub);
-        current = result.subscription;
+        if (result.subscription) current = result.subscription;
         if (!result.done) scheduleRetry();
-        else if (result.revoked) revoked = true;
+        else if (result.revoked) {
+          revoked = true;
+          setError(null);
+        }
       } catch (err) {
         console.warn('[Push] subscription check failed:', err);
         setError(err instanceof Error ? err.message : 'Turn notifications on again on this device.');
-        scheduleRetry();
+        if (err instanceof SubscriptionReplacementError) current = undefined;
+        else scheduleRetry();
       }
 
       if (revoked || !current) {

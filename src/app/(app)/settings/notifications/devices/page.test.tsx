@@ -36,7 +36,7 @@ describe('notification device delivery health', () => {
     const { rerender } = render(<NotificationDevicesPage />);
 
     expect(screen.getByRole('status').textContent).toContain('Delivery is failing.');
-    expect(screen.getByRole('status').textContent).toContain('Turn notifications off and on again on that device');
+    expect(screen.getByRole('status').textContent).toContain('Open Helprr on that device; if it persists, turn notifications off and on again.');
     expect(screen.getByText('Last failure')).toBeDefined();
     expect(screen.getByText('Last delivery')).toBeDefined();
 

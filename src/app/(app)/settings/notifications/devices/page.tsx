@@ -231,7 +231,7 @@ export default function NotificationDevicesPage() {
                     <span className="text-sm text-amber-400">{d.consecutiveFailures}</span>
                   </div>
                   <div role="status" className="px-4 py-3 text-sm text-amber-400">
-                    Delivery is failing. Turn notifications off and on again on that device to reconnect it.
+                    Delivery is failing. Open Helprr on that device; if it persists, turn notifications off and on again.
                   </div>
                 </>
               )}
