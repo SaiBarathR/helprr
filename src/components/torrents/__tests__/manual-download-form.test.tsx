@@ -79,7 +79,7 @@ async function chooseFilm() {
 }
 
 describe('sending a release to Sonarr/Radarr', () => {
-  it.each(['RADARR', 'SONARR'] as const)('confirms that sending a removed %s title again will re-add it', async (service) => {
+  it.each(['RADARR', 'SONARR'] as const)('sends a title that is not in %s with its add options', async (service) => {
     const app = service === 'RADARR' ? 'Radarr' : 'Sonarr';
     const instanceId = service === 'RADARR' ? 'r1' : 's1';
     const checked = plan();
