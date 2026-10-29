@@ -1323,6 +1323,8 @@ export default function CalendarPage() {
         measure();
       });
     };
+    // Measure once now: the jump to today waits for this offset.
+    measure();
     const observer = new ResizeObserver(scheduleMeasure);
     observer.observe(toolbar);
     window.addEventListener('resize', scheduleMeasure);

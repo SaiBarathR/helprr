@@ -42,7 +42,6 @@ function flushFrame() {
 function mount() {
   const page = render(<Profiler id="calendar" onRender={onRender}><CalendarPage /></Profiler>);
   const toolbar = page.container.querySelector<HTMLElement>('.page-toolbar')!;
-  toolbar.style.top = '48px';
   const list = page.container.querySelector<HTMLElement>('.relative.w-full')!;
   return { ...page, toolbar, list };
 }
@@ -78,6 +77,14 @@ beforeEach(() => {
   vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
   vi.spyOn(window, 'scrollY', 'get').mockReturnValue(64);
   vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(() => ({ top: listTop }) as DOMRect);
+  // The toolbar's stuck top comes from CSS, so it is there when the page first measures.
+  const computed = window.getComputedStyle.bind(window);
+  vi.spyOn(window, 'getComputedStyle').mockImplementation((element, pseudo) => {
+    const style = computed(element, pseudo);
+    return (element as HTMLElement).classList?.contains('page-toolbar')
+      ? ({ ...style, top: '48px', getPropertyValue: style.getPropertyValue.bind(style) } as CSSStyleDeclaration)
+      : style;
+  });
   vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockImplementation(function (this: HTMLElement) {
     return this.classList.contains('page-toolbar') ? toolbarHeight : 0;
   });
@@ -96,7 +103,7 @@ afterEach(() => {
 it('defers both observer updates and coalesces notifications while preserving the measurements', () => {
   const { toolbar, list } = mount();
   expect(options().scrollMargin).toBe(304);
-  expect(offset(toolbar)).toBe('96px');
+  expect(offset(toolbar)).toBe('136px');
   listTop = 260;
   toolbarHeight = 100;
   act(() => {
@@ -106,7 +113,7 @@ it('defers both observer updates and coalesces notifications while preserving th
     }
   });
   expect(options().scrollMargin).toBe(304);
-  expect(offset(toolbar)).toBe('96px');
+  expect(offset(toolbar)).toBe('136px');
   expect(frames.size).toBe(2);
   flushFrame();
   expect(options().scrollMargin).toBe(324);
@@ -139,7 +146,7 @@ it('defers window resize updates and cancels pending measurements and listeners 
   toolbarHeight += 20;
   act(() => window.dispatchEvent(new Event('resize')));
   expect(options().scrollMargin).toBe(304);
-  expect(offset(toolbar)).toBe('96px');
+  expect(offset(toolbar)).toBe('136px');
   expect(frames.size).toBe(2);
   const pendingIds = [...frames.keys()];
   unmount();
