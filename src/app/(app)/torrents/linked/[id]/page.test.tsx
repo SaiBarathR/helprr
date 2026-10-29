@@ -81,6 +81,35 @@ describe('a linked download', () => {
     const steps = within(screen.getByRole('list', { name: 'Progress' })).getAllByRole('listitem');
     expect(steps.map((step) => step.textContent)).toEqual(['Sent', 'Downloading', 'Importing', 'Imported']);
     expect(screen.getByRole('button', { name: /Open movie/ })).toBeTruthy();
+    expect(screen.getByText('Added to the library by this download')).toBeTruthy();
+  });
+
+  it.each(['RADARR', 'SONARR'])('shows a title removed by cancel and offers a fresh send by external id for %s', async (service) => {
+    const message = 'Cancelled: Night of the Living Dead, which this download had added, was removed.';
+    mocks.caps.add('series.add');
+    mocks.download = blocked({
+      service, status: 'CANCELLED', arrItemId: null, completedAt: now, lastError: null,
+      events: [{ at: now, status: 'CANCELLED', message }],
+    });
+    const { unmount } = renderPage();
+    expect(await screen.findByText('Removed from the library when this download was cancelled')).toBeTruthy();
+    expect(screen.queryByText('Added to the library by this download')).toBeNull();
+    expect(screen.getByText(message)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /Open movie|Open series/ })).toBeNull();
+
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Send again' }));
+    const href = new URL(mocks.push.mock.calls[0][0], 'http://x');
+    expect(Object.fromEntries(href.searchParams)).toEqual({
+      linkService: service, linkInstance: 'r1', linkExternalId: '10331', linkTitle: 'Night of the Living Dead',
+      linkRelease: 'Night.of.the.Living.Dead.1968.1080p.BluRay.x264-GRP',
+    });
+    expect(mocks.calls).toEqual([]);
+
+    unmount();
+    mocks.download = { ...mocks.download, arrItemId: 15 };
+    renderPage();
+    expect(await screen.findByText('Added to the library by this download')).toBeTruthy();
+    expect(screen.queryByText('Removed from the library when this download was cancelled')).toBeNull();
   });
 
   it('cancels with the choices made, enumerating what each one changes', async () => {
