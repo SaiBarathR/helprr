@@ -572,6 +572,20 @@ VAPID is runtime configuration. `VAPID_PUBLIC_KEY` is served by
 fallback. Subscriptions and preferences are per user/device, and notification
 capabilities are an outer gate around per-device event preferences.
 
+On app open and notification settings visits, the push hook compares the browser
+subscription's application server key with the runtime public key before
+re-registering a missing server row. After a key rotation, granted permission
+allows it to unsubscribe the stale browser subscription and register a new
+subscription that takes over the old server row (preferences and name are kept).
+A revoked device stays revoked. If automatic recovery fails, the device is shown
+as disabled and the re-enable banner offers
+the same replacement with one tap. Explicit enable/disable actions clear the
+re-registration notice across the banner and settings. Browser subscription
+lookups time out after five seconds so an unresponsive PushManager cannot keep
+the controls loading indefinitely. The Devices page flags consecutive delivery
+failures with recovery guidance alongside the recorded failure and delivery times;
+the subscription stores those counts/times, not the push service's error text.
+
 A subscription's endpoint is a URL the server posts to, and it arrives in a
 request. `src/lib/push-endpoint.ts` therefore accepts only the push services
 browsers use (FCM, Mozilla autopush, Apple, Windows Notification Services): the

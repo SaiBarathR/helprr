@@ -222,13 +222,18 @@ export default function NotificationDevicesPage() {
                 <span className="text-sm text-muted-foreground">{relativeTime(d.lastFailedAt)}</span>
               </div>
               {d.consecutiveFailures > 0 && (
-                <div className="grouped-row">
-                  <span className="text-sm flex items-center gap-1.5">
-                    <AlertTriangle className="h-3.5 w-3.5 text-amber-400" />
-                    Consecutive failures
-                  </span>
-                  <span className="text-sm text-amber-400">{d.consecutiveFailures}</span>
-                </div>
+                <>
+                  <div className="grouped-row">
+                    <span className="text-sm flex items-center gap-1.5">
+                      <AlertTriangle className="h-3.5 w-3.5 text-amber-400" />
+                      Consecutive failures
+                    </span>
+                    <span className="text-sm text-amber-400">{d.consecutiveFailures}</span>
+                  </div>
+                  <div role="status" className="px-4 py-3 text-sm text-amber-400">
+                    Delivery is failing. Open Helprr on that device; if it persists, turn notifications off and on again.
+                  </div>
+                </>
               )}
               <div className="px-4 py-3">
                 <Button

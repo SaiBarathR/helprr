@@ -57,7 +57,7 @@ export function PushReenableBanner() {
             </div>
           ) : (
             <div className="mt-0.5 text-xs text-muted-foreground">
-              Tap to start receiving downloads, imports, and alerts again.
+              Turn notifications on again on this device to start receiving downloads, imports, and alerts.
             </div>
           )}
         </div>
