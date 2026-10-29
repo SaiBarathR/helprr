@@ -1,7 +1,7 @@
 // Service connections section of a settings import.
 
 import type { Prisma, ServiceType } from '@prisma/client';
-import { parseCustomHeaders, isServiceType, isNonEmptyString, normalizeServiceUrl } from '@/lib/service-connection-secrets';
+import { parseCustomHeaders, isServiceType, isNonEmptyString, normalizeServiceUrl, REENTER_SECRET_MESSAGE } from '@/lib/service-connection-secrets';
 import { isArrType } from '@/lib/arr-instances';
 import { findServiceByType } from '@/lib/settings/service-config';
 import type { ExportedServiceConnection } from '@/lib/settings-export';
@@ -43,9 +43,12 @@ export async function applyServiceConnectionInTxn(
   const existing = isArr
     ? await tx.serviceConnection.findFirst({ where: { type: conn.type, label } })
     : await tx.serviceConnection.findFirst({ where: { type: conn.type } });
+  // Stored secrets and token state belong to the address they were saved for:
+  // a file that moves a connection must bring its own key, as an edit must.
+  // (metadata is non-secret configuration and is kept, as the edit route does.)
   const urlChanged = existing !== null && normalizeServiceUrl(existing.url) !== url;
   if (urlChanged && !isNonEmptyString(conn.apiKey)) {
-    skipped.push(`Skipped ${conn.type} "${label}": URL changed — enter the API key and any custom header values again to use a different URL`);
+    skipped.push(`Skipped ${conn.type} "${label}": URL changed. ${REENTER_SECRET_MESSAGE}.`);
     return null;
   }
   const apiKey = typeof conn.apiKey === 'string' && conn.apiKey.length > 0
@@ -66,7 +69,7 @@ export async function applyServiceConnectionInTxn(
   // Present with at least one valid header → restore; absent, empty, or
   // all-invalid → leave any existing headers untouched (a hand-edited or empty
   // map must not silently wipe stored proxy headers), unless the URL changed.
-  // Stored secrets and token state belong to the old address. A normal export writes
+  // A normal export writes
   // null when there are none, so legit round-trips are unaffected. Not gated by
   // HELPRR_CUSTOM_HEADERS: restoring data is independent of whether sending is on.
   const parsedHeaders = conn.customHeaders != null ? parseCustomHeaders(conn.customHeaders) : null;

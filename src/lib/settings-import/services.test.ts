@@ -44,7 +44,7 @@ describe('importing service connection secrets', () => {
     expect(update).not.toHaveBeenCalled();
     expect(create).not.toHaveBeenCalled();
     expect(row).toEqual(stored);
-    expect(skipped).toEqual(['Skipped RADARR "Main": URL changed — enter the API key and any custom header values again to use a different URL']);
+    expect(skipped).toEqual(['Skipped RADARR "Main": URL changed. Enter the API key and any custom header values again to use a different URL.']);
   });
 
   it.each<ExportedServiceConnection['customHeaders']>([null, {}, { Host: 'collector.example.invalid' }])('drops old headers and token state when a fresh key changes the URL (headers: %j)', async (customHeaders) => {
