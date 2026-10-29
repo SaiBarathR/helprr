@@ -35,6 +35,22 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('starting the advanced fallback', () => {
+  it('lets the download path wrap naturally with emergency breaks for long segments', async () => {
+    const path = '/mnt/exos22/Downloads/averylongdirectorysegmentwithoutspaces';
+    vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({ ...check, plan: { ...check.plan, arrSavePath: path } })));
+    const client = new QueryClient();
+    render(
+      <QueryClientProvider client={client}>
+        <FallbackActions hash={HASH} draft={{ service: 'RADARR', instanceId: 'r1', externalId: 10331, title: 'Film' }} source="MAGNET" selectedIndexes={[0]} disabled={false} beforeStart={async () => {}} cancelling={false} onCancel={vi.fn()} />
+      </QueryClientProvider>,
+    );
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Check' }));
+    const folder = await screen.findByText(path);
+    expect(folder.classList.contains('break-all')).toBe(false);
+    expect(folder.classList.contains('[overflow-wrap:anywhere]')).toBe(true);
+    client.clear();
+  });
+
   it('checks exactly the chosen files, shows where Radarr sees them, and starts only after any late stop settles', async () => {
     const beforeStart = vi.fn(async () => { mocks.order.push('stop settled'); });
     const client = new QueryClient();

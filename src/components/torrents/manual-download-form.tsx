@@ -320,7 +320,7 @@ export function ManualDownloadForm({ release, suggestedName, prefill, onChooseFi
                       className="press-feedback flex w-full min-h-[44px] items-center justify-between gap-2 px-3 py-2 text-left text-sm"
                       onClick={() => { setTarget(item); resetChecks(); }}
                     >
-                      <span className="min-w-0 truncate">{item.title} <span className="text-muted-foreground">({item.year})</span></span>
+                      <span className="min-w-0 truncate">{item.title}{item.year ? <> <span className="text-muted-foreground">({item.year})</span></> : null}</span>
                       {item.inLibrary && <span className="shrink-0 text-[11px] text-muted-foreground">In library</span>}
                     </button>
                   </li>
@@ -331,7 +331,7 @@ export function ManualDownloadForm({ release, suggestedName, prefill, onChooseFi
         {target && (
           <div className="flex items-center justify-between gap-2 rounded-lg border bg-muted/40 px-3 py-2">
             <div className="min-w-0 text-sm">
-              <p className="truncate font-medium">{target.title} ({target.year})</p>
+              <p className="truncate font-medium">{target.title}{target.year ? ` (${target.year})` : ''}</p>
               <p className="text-xs text-muted-foreground">
                 {target.inLibrary ? 'In the library' : `Not in the library yet: Helprr adds it, with ${app}'s searches off`}
               </p>
@@ -510,7 +510,7 @@ export function PreflightSummary({ result, app }: { result: PreflightResult; app
       </p>
       <dl className="space-y-1.5 text-xs">
         {plan.target && (
-          <div><dt className="inline text-muted-foreground">For: </dt><dd className="inline">{plan.target.title} ({plan.target.year}){plan.target.existingId ? '' : `, added to ${plan.instance?.label ?? app}`}</dd></div>
+          <div><dt className="inline text-muted-foreground">For: </dt><dd className="inline">{plan.target.title}{plan.target.year ? ` (${plan.target.year})` : ''}{plan.target.existingId ? '' : `, added to ${plan.instance?.label ?? app}`}</dd></div>
         )}
         {read && <div><dt className="inline text-muted-foreground">{app} reads: </dt><dd className="inline">{read}</dd></div>}
         {plan.episodes.length > 0 && (

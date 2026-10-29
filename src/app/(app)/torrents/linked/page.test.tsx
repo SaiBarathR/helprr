@@ -32,6 +32,15 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('linked downloads', () => {
+  it('shows progress and size from the existing workflow request', async () => {
+    vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({ downloads: [row('a', 'DOWNLOADING', { progress: { fraction: 0.5, size: 1024 * 1024 } })] })));
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<QueryClientProvider client={client}><LinkedDownloadsPage /></QueryClientProvider>);
+    expect(await screen.findByText('50% · 512 KB of 1 MB')).toBeTruthy();
+    expect(fetch).toHaveBeenCalledTimes(1);
+    client.clear();
+  });
+
   it('lists each filter from the server, with the problem in view, and opens one', async () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(<QueryClientProvider client={client}><LinkedDownloadsPage /></QueryClientProvider>);

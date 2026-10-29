@@ -57,6 +57,22 @@ function renderPage() {
 }
 
 describe('a linked download', () => {
+  it('shows progress and size from the existing workflow request', async () => {
+    mocks.download = blocked({ status: 'DOWNLOADING', progress: { fraction: 0.5, size: 1024 * 1024 } });
+    renderPage();
+    expect(await screen.findByText('50% · 512 KB of 1 MB')).toBeTruthy();
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('wraps the step labels and checkmarks within their mobile grid columns', async () => {
+    renderPage();
+    const pipeline = await screen.findByRole('list', { name: 'Progress' });
+    const label = within(pipeline).getByText('Downloading');
+    expect(label.parentElement?.classList.contains('flex-wrap')).toBe(true);
+    expect(label.classList.contains('truncate')).toBe(false);
+    expect(label.closest('li')?.classList.contains('min-w-0')).toBe(true);
+  });
+
   it('says what went wrong, how far it got, and what to do', async () => {
     renderPage();
     expect((await screen.findAllByText('Needs attention')).length).toBe(2);

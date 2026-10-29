@@ -15,6 +15,7 @@ import { queryKeys } from '@/lib/query-keys';
 import { formatBytes, formatDistanceToNowShort } from '@/lib/format';
 import {
   appName,
+  DownloadProgressText,
   isOpen,
   nextStep,
   PIPELINE,
@@ -138,6 +139,7 @@ export default function LinkedDownloadPage() {
             <span className="text-xs text-muted-foreground">{formatDistanceToNowShort(download.updatedAt)}</span>
           </div>
           <p className="text-sm">{nextStep(download)}</p>
+          <DownloadProgressText download={download} />
           {download.lastError && (
             <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3">
               <p className="tracked-caps text-[10px] text-destructive">{download.status === 'NEEDS_MAPPING' ? 'What to confirm' : 'What went wrong'}</p>
@@ -150,12 +152,12 @@ export default function LinkedDownloadPage() {
               const done = index <= reached;
               const stuck = troubled && index === reached + 1;
               return (
-                <li key={step} className="space-y-1.5">
+                <li key={step} className="min-w-0 space-y-1.5">
                   <div className={`h-1 rounded-full ${done ? 'bg-primary' : stuck ? 'bg-destructive' : 'bg-muted'}`} />
-                  <div className={`flex items-center gap-1 text-[11px] ${done ? 'text-foreground' : 'text-muted-foreground'}`}>
+                  <div className={`flex flex-wrap items-center gap-x-1 gap-y-0.5 text-[11px] ${done ? 'text-foreground' : 'text-muted-foreground'}`}>
                     {done && <Check className="h-3 w-3 shrink-0" />}
                     {stuck && <X className="h-3 w-3 shrink-0 text-destructive" />}
-                    <span className="truncate">{step}</span>
+                    <span className="min-w-0 break-words">{step}</span>
                   </div>
                 </li>
               );

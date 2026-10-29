@@ -10,7 +10,7 @@ import { useCan } from '@/components/permission-provider';
 import { jsonFetcher } from '@/lib/query-fetch';
 import { queryKeys } from '@/lib/query-keys';
 import { formatDistanceToNowShort } from '@/lib/format';
-import { StatusBadge, type ManualDownloadView } from '@/components/torrents/manual-download-status';
+import { DownloadProgressText, StatusBadge, type ManualDownloadView } from '@/components/torrents/manual-download-status';
 
 const FILTERS = [
   { key: 'open', label: 'In progress', empty: 'Nothing is on its way.' },
@@ -29,7 +29,7 @@ export default function LinkedDownloadsPage() {
     queryKey: queryKeys.manualDownloads(filter),
     queryFn: jsonFetcher<{ downloads: ManualDownloadView[] }>(`/api/manual-downloads?filter=${filter}`),
     // Arr moves these along on its own; history only changes when one finishes.
-    refetchInterval: filter === 'history' ? false : 15_000,
+    refetchInterval: filter === 'history' ? false : 10_000,
   });
   const downloads = query.data?.downloads ?? [];
   const current = FILTERS.find((item) => item.key === filter)!;
@@ -83,6 +83,7 @@ export default function LinkedDownloadsPage() {
                       <StatusBadge status={download.status} />
                     </div>
                     <p className="truncate text-xs text-muted-foreground">{download.releaseTitle}</p>
+                    <DownloadProgressText download={download} />
                     <p className="text-xs text-muted-foreground">
                       {download.instanceLabel} · {formatDistanceToNowShort(download.updatedAt)}
                     </p>

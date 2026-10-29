@@ -53,6 +53,7 @@ export function serializeManualDownload(download: ManualDownload & {
     arrItemTitle: download.arrItemTitle,
     createdArrItem: download.createdArrItem,
     targetEpisodeIds: download.targetEpisodeIds,
+    importedFileCount: Array.isArray(download.importedFileIds) ? download.importedFileIds.length : null,
     releaseTitle: download.releaseTitle,
     source: download.source,
     infoHash: download.infoHash,

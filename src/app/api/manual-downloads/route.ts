@@ -7,6 +7,7 @@ import { withApiLogging } from '@/lib/api-logger';
 import { ManualDownloadRequestError, readManualDownloadRequest, SERVICE_ADD_CAPABILITY, SERVICE_MONITOR_CAPABILITY } from '@/lib/manual-downloads/request';
 import { ManualDownloadRefusedError, sendManualDownload } from '@/lib/manual-downloads/send';
 import { serializeManualDownload } from '@/lib/manual-downloads/serialize';
+import { withDownloadProgress } from '@/lib/manual-downloads/progress';
 
 const FILTERS: Record<string, Prisma.ManualDownloadWhereInput> = {
   open: { status: { notIn: ['IMPORTED', 'FAILED', 'CANCELLED', 'BLOCKED', 'NEEDS_MAPPING'] } },
@@ -21,7 +22,7 @@ async function getHandler(request: NextRequest) {
   const filter = request.nextUrl.searchParams.get('filter') ?? 'all';
   const where = FILTERS[filter] ?? {};
   const downloads = await prisma.manualDownload.findMany({ where, orderBy: { updatedAt: 'desc' }, take: 100 });
-  return NextResponse.json({ downloads: downloads.map((download) => serializeManualDownload(download)) });
+  return NextResponse.json({ downloads: await withDownloadProgress(downloads.map((download) => serializeManualDownload(download))) });
 }
 
 /**

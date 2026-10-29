@@ -1,5 +1,7 @@
 import type { ManualDownloadStatus } from '@prisma/client';
 import type { SerializedManualDownload } from '@/lib/manual-downloads/serialize';
+import type { DownloadProgress } from '@/lib/manual-downloads/progress';
+import { formatBytes } from '@/lib/format';
 
 /**
  * How a manual download's state reads in the UI: one label, a tone, where it
@@ -7,7 +9,18 @@ import type { SerializedManualDownload } from '@/lib/manual-downloads/serialize'
  * next step for the user. Shared by the list and the detail page.
  */
 
-export type ManualDownloadView = SerializedManualDownload;
+export type ManualDownloadView = SerializedManualDownload & { progress?: DownloadProgress | null };
+
+export function DownloadProgressText({ download }: { download: ManualDownloadView }) {
+  if (!['QUEUED', 'DOWNLOADING'].includes(download.status) || !download.progress) return null;
+  const { fraction, size } = download.progress;
+  const percent = fraction < 1 ? Math.min(99, Math.floor(fraction * 100)) : 100;
+  return (
+    <p className="text-xs text-muted-foreground tabular-nums">
+      {percent}%{size !== null ? ` · ${formatBytes(size * fraction)} of ${formatBytes(size)}` : ''}
+    </p>
+  );
+}
 
 export const STATUS_LABEL: Record<ManualDownloadStatus, string> = {
   PREFLIGHT: 'Checking',
@@ -97,7 +110,7 @@ export function nextStep(download: ManualDownloadView): string {
     case 'IMPORTING':
       return `${app} is importing it.`;
     case 'IMPORTED':
-      return `${download.arrItemTitle} has the new file in ${download.instanceLabel}.`;
+      return `${download.arrItemTitle} has ${download.importedFileCount === 1 ? 'the new file' : download.importedFileCount ? `${download.importedFileCount} new files` : 'the new files'} in ${app}.`;
     case 'BLOCKED':
       return `Fix it in ${app} (Activity → Queue, or its manual import), or cancel it here. Helprr keeps checking.`;
     case 'NEEDS_MAPPING':

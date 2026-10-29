@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   preflight: [] as Array<() => Response>,
   send: [] as Array<() => Response | Promise<Response>>,
   bodies: [] as Array<{ url: string; request: Record<string, unknown>; torrent: unknown }>,
+  year: 1968 as number | undefined,
 }));
 vi.mock('@/components/permission-provider', () => ({ useCan: (cap: string) => mocks.caps.has(cap) }));
 vi.mock('@/components/layout/navigation-provider', () => ({ useAppRouter: () => ({ push: mocks.push, replace: mocks.push }) }));
@@ -40,6 +41,7 @@ beforeEach(() => {
   mocks.preflight = [];
   mocks.send = [];
   mocks.bodies = [];
+  mocks.year = 1968;
   vi.stubGlobal('fetch', vi.fn(async (input: string, init?: RequestInit) => {
     const url = String(input);
     if (init?.body instanceof FormData) {
@@ -47,9 +49,9 @@ beforeEach(() => {
       return (url.endsWith('/preflight') ? mocks.preflight.shift()! : mocks.send.shift()!)();
     }
     if (url.startsWith('/api/instances')) return json([{ id: 'r1', type: 'RADARR', label: 'radarr-4k', isDefault: true }, { id: 's1', type: 'SONARR', label: 'sonarr', isDefault: true }]);
-    if (url.startsWith('/api/radarr/qualityprofiles')) return json([{ id: 4, name: 'HD-1080p' }]);
-    if (url.startsWith('/api/radarr/rootfolders')) return json([{ path: '/data/Movies' }]);
-    if (url.startsWith('/api/radarr/lookup')) return json([{ title: 'Night of the Living Dead', year: 1968, tmdbId: 10331, library: { exists: false } }]);
+    if (/\/api\/(radarr|sonarr)\/qualityprofiles/.test(url)) return json([{ id: 4, name: 'HD-1080p' }]);
+    if (/\/api\/(radarr|sonarr)\/rootfolders/.test(url)) return json([{ path: '/data/Movies' }]);
+    if (/\/api\/(radarr|sonarr)\/lookup/.test(url)) return json([{ title: 'Night of the Living Dead', year: mocks.year, tmdbId: 10331, tvdbId: 10331, library: { exists: false } }]);
     throw new Error(`unexpected ${url}`);
   }));
 });
@@ -77,6 +79,18 @@ async function chooseFilm() {
 }
 
 describe('sending a release to Sonarr/Radarr', () => {
+  it.each(['Radarr', 'Sonarr'])('omits zero and missing years in %s results and the chosen title', async (app) => {
+    mocks.year = app === 'Radarr' ? 0 : undefined;
+    renderForm();
+    const user = userEvent.setup();
+    if (app === 'Sonarr') await user.click(screen.getByRole('button', { name: 'Series (Sonarr)' }));
+    await user.type(screen.getByLabelText(app === 'Radarr' ? 'Movie' : 'Series'), 'night');
+    await user.click(screen.getByRole('button', { name: `Search ${app}` }));
+    await user.click(await screen.findByRole('button', { name: 'Night of the Living Dead' }));
+    expect(screen.getByText('Night of the Living Dead').textContent).toBe('Night of the Living Dead');
+    expect(screen.queryByText(/\(0\)|\(\)/)).toBeNull();
+  });
+
   it('checks first, then sends exactly what was checked and opens the linked download', async () => {
     mocks.preflight.push(() => json(plan()));
     mocks.send.push(() => json({ download: { id: 'md1', status: 'QUEUED' } }, 201));
