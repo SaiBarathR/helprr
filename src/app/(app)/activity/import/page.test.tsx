@@ -224,6 +224,8 @@ describe('manual import page', () => {
     await act(async () => buttonContaining('2026')!.click());
     await waitFor(() => expect(text()).toContain('Movie: Movie'));
     expect(document.querySelector('[role="status"]')?.textContent).toBe("Radarr couldn't check this file against Movie; it will be imported as it is.");
+    // The scan's "Unknown Movie" no longer applies once a movie is chosen.
+    expect(text()).not.toContain('Unknown Movie');
     expect(button('Import 1 File')!.disabled).toBe(false);
 
     await act(async () => button('Import 1 File')!.click());

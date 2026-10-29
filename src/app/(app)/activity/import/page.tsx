@@ -311,9 +311,10 @@ function ManualImportContent() {
       setAssigned(new Map(unplacedFiles.map((f) => {
         const r = evaluated.get(f.path);
         if (!r) {
+          // The scan's "unknown movie/series" rejections no longer apply to the user's choice.
           return [f.path, isSonarr
-            ? { ...f, series: option as SonarrSeries, seasonNumber: undefined, episodes: [] }
-            : { ...f, movie: option as RadarrMovie }];
+            ? { ...f, series: option as SonarrSeries, seasonNumber: undefined, episodes: [], rejections: [] }
+            : { ...f, movie: option as RadarrMovie, rejections: [] }];
         }
         // What the *arr worked out for this choice; fields it left out keep the scanned value.
         const refreshed = Object.fromEntries(
@@ -340,7 +341,7 @@ function ManualImportContent() {
   /**
    * Submits the current manual-import selection to the server.
    *
-   * Builds a payload from the detected files (respecting any per-file episode overrides), posts it to the manual-import API, and on success shows a success toast and navigates back; on failure shows an error toast. Sets the submitting state while the request is in progress.
+   * Builds a payload from the selected files (respecting any per-file episode overrides), posts it to the manual-import API, and on success shows a success toast and navigates back; on failure shows an error toast. Sets the submitting state while the request is in progress.
    */
 
   async function submitImport() {
