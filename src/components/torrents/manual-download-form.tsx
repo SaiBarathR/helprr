@@ -510,7 +510,7 @@ export function PreflightSummary({ result, app }: { result: PreflightResult; app
       </p>
       <dl className="space-y-1.5 text-xs">
         {plan.target && (
-          <div><dt className="inline text-muted-foreground">For: </dt><dd className="inline">{plan.target.title}{plan.target.year ? ` (${plan.target.year})` : ''}{plan.target.existingId ? '' : `, added to ${plan.instance?.label ?? app}`}</dd></div>
+          <div><dt className="inline text-muted-foreground">For: </dt><dd className="inline">{plan.target.title}{plan.target.year ? ` (${plan.target.year})` : ''}{plan.target.existingId ? '' : `, will be added to ${plan.instance?.label ?? app}`}</dd></div>
         )}
         {read && <div><dt className="inline text-muted-foreground">{app} reads: </dt><dd className="inline">{read}</dd></div>}
         {plan.episodes.length > 0 && (

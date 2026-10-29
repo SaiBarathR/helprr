@@ -91,6 +91,47 @@ const button = (name: string) => [...document.querySelectorAll('button')].find((
 const checkbox = (name: string) => [...document.querySelectorAll<HTMLButtonElement>('[role="checkbox"]')].find((b) => b.getAttribute('aria-label') === `Import ${name}`)!;
 
 describe('manual import page', () => {
+  it.each(['radarr', 'sonarr'])('warns about later imports only while %s files are unticked', async (source) => {
+    files = source === 'radarr' ? radarrFiles : sonarrFiles;
+    const name = source === 'radarr' ? 'Movie.2026.mkv' : 'Show - 01.mkv';
+    const warning = "Unticked files stay in the download folder; Helprr can't import them later.";
+    await renderPage(`downloadId=D&source=${source}&title=Pack`);
+    await waitFor(() => expect(checkbox(name)).toBeDefined());
+    expect(text()).not.toContain(warning);
+
+    await act(async () => checkbox(name).click());
+    expect(text()).toContain(warning);
+    await act(async () => checkbox(name).click());
+    expect(text()).not.toContain(warning);
+  });
+
+  it.each(['radarr', 'sonarr'])('shows the failed %s check notice only on ticked files', async (source) => {
+    files = source === 'radarr'
+      ? [1, 2].map((n) => ({ ...radarrFiles[0], id: n, path: `/downloads/part-${n}.mkv`, name: `part-${n}.mkv`, movie: undefined }))
+      : unmatchedSonarrFiles(2);
+    reprocessReply = () => Response.json({ error: 'upstream' }, { status: 500 });
+    await renderPage(`downloadId=D&source=${source}&title=Pack`);
+    await waitFor(() => expect(button(source === 'radarr' ? 'Choose movie' : 'Choose series')).toBeDefined());
+    if (source === 'radarr') {
+      await act(async () => button('Choose movie')!.click());
+      await waitFor(() => expect(buttonContaining('2026')).toBeDefined());
+      await act(async () => buttonContaining('2026')!.click());
+    } else {
+      await chooseSeries('Some Show');
+    }
+    await waitFor(() => expect(document.querySelectorAll('[role="status"]')).toHaveLength(2));
+    const name = source === 'radarr' ? 'part-2.mkv' : '[grp] Showw - 02';
+    const card = checkbox(name).closest('label')!.parentElement!;
+    await act(async () => checkbox(name).click());
+    expect(card.querySelector('[role="status"]')).toBeNull();
+    expect(document.querySelectorAll('[role="status"]')).toHaveLength(1);
+    expect(text()).toContain("couldn't check this file");
+
+    await act(async () => checkbox(name).click());
+    expect(card.querySelector('[role="status"]')).not.toBeNull();
+    expect(document.querySelectorAll('[role="status"]')).toHaveLength(2);
+  });
+
   it('imports a download the arr could not match using each file\'s own series match', async () => {
     // No seriesId in the link: the queue record of an unmatched download has none.
     await renderPage('downloadId=D&source=sonarr&instanceId=son-1&title=Pack');

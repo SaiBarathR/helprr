@@ -213,7 +213,9 @@ export default function LinkedDownloadPage() {
             <Row label={download.service === 'RADARR' ? 'Movie' : 'Series'}>
               {download.arrItemTitle}
               <span className="block text-xs text-muted-foreground">
-                {download.createdArrItem ? 'Added to the library by this download' : 'Already in the library'}
+                {download.createdArrItem && download.arrItemId === null
+                  ? 'Added by this download, no longer in the library'
+                  : download.createdArrItem ? 'Added to the library by this download' : 'Already in the library'}
                 {download.service === 'SONARR' && download.targetEpisodeIds.length > 0 && ` · ${download.targetEpisodeIds.length} episode${download.targetEpisodeIds.length === 1 ? '' : 's'}`}
               </span>
             </Row>
