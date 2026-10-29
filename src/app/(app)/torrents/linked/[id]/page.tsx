@@ -94,7 +94,7 @@ export default function LinkedDownloadPage() {
   if (query.isPending) {
     return (
       <div className="animate-content-in">
-        <PageHeader title="" />
+        <PageHeader title="Linked download" />
         <div className="flex justify-center py-12"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
       </div>
     );
@@ -102,7 +102,7 @@ export default function LinkedDownloadPage() {
   if (!download) {
     return (
       <div className="animate-content-in">
-        <PageHeader title="" />
+        <PageHeader title="Linked download" />
         <p className="py-12 text-center text-sm text-muted-foreground">
           {query.error instanceof ApiError && query.error.status === 404 ? 'This linked download no longer exists.' : 'It could not be loaded.'}
         </p>
@@ -130,7 +130,7 @@ export default function LinkedDownloadPage() {
 
   return (
     <div className="animate-content-in">
-      <PageHeader title="" subtitle={`${app} · ${download.instanceLabel}`} />
+      <PageHeader title={download.arrItemTitle} subtitle={`${app} · ${download.instanceLabel}`} />
 
       <div className="mt-1 space-y-4 pb-8">
         <section className="rounded-xl border bg-card p-4 space-y-3">

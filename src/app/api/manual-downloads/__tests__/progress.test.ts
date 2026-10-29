@@ -51,4 +51,18 @@ describe('progress on the existing manual download reads', () => {
     expect(body.downloads[0].importedFileCount).toBe(3);
     expect(body.downloads[1].importedFileCount).toBeNull();
   });
+
+  it('does not wait on a qBittorrent that never answers', async () => {
+    vi.useFakeTimers();
+    try {
+      mocks.findMany.mockResolvedValue([row()]);
+      mocks.torrents.mockReturnValue(new Promise(() => {}));
+      const pending = list(request());
+      await vi.advanceTimersByTimeAsync(2_000);
+      const body = await (await pending).json();
+      expect(body.downloads[0].progress).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

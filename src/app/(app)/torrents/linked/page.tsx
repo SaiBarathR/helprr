@@ -37,7 +37,7 @@ export default function LinkedDownloadsPage() {
   return (
     <div className="animate-content-in">
       <PageHeader
-        title=""
+        title="Linked downloads"
         subtitle="Sent to Sonarr and Radarr"
         rightContent={canAdd ? (
           <button
