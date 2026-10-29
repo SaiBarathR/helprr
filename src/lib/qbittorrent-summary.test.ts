@@ -2,6 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { projectTorrentsForSummary, torrentCounters, passiveTorrentRefreshIntervalMs } from './qbittorrent-summary';
 import type { QBittorrentTorrent } from '@/types';
 describe('torrent transfer projections', () => {
+  it.each([-1, 0, 2048])('preserves total_size %i so metadata availability reaches the list', (totalSize) => {
+    const source = { hash: 'metadata', size: 0, total_size: totalSize } as QBittorrentTorrent;
+    expect(projectTorrentsForSummary([source])[0].total_size).toBe(totalSize);
+  });
   it.each([100, 1000, 5000])('preserves list state and makes counters independent of %i rows', (count) => {
     const source = Array.from({ length: count }, (_, index) => ({ hash: String(index), name: `Torrent ${index}`, state: index % 2 ? 'downloading' : 'stoppedUP', progress: index / count, unusedUpstreamMetadata: 'x'.repeat(2000) } as unknown as QBittorrentTorrent));
     const list = projectTorrentsForSummary(source);

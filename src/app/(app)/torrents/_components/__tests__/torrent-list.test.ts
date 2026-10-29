@@ -69,6 +69,12 @@ describe('torrent list filters and sorting', () => {
 });
 
 describe('torrent list merging', () => {
+  it.each([[-1, 0], [0, -1]])('updates a row when only metadata size changes from %i to %i', (before, after) => {
+    const prev = [torrent({ total_size: before })];
+    const next = [torrent({ total_size: after })];
+    expect(mergeTorrents(prev, next)[0]).toBe(next[0]);
+  });
+
   it('keeps the previous list, and each unchanged row, when a poll changes nothing', () => {
     const prev = [torrent({ hash: 'a' }), torrent({ hash: 'b' })];
     expect(mergeTorrents(prev, [torrent({ hash: 'a' }), torrent({ hash: 'b' })])).toBe(prev);

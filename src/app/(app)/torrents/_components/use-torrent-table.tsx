@@ -7,7 +7,7 @@ import type { DataTableColumn } from '@/components/ui/data-table';
 import { QuickContextMenu } from '@/components/ui/quick-context-menu';
 import { Gauge } from 'lucide-react';
 import type { QBittorrentTorrent } from '@/types';
-import { formatBytes, formatEta, formatSpeed } from './torrent-list';
+import { formatEta, formatSpeed, formatTorrentSize } from './torrent-list';
 import { TorrentRowActions, getStateBadge, torrentContextActionGroups } from './torrent-row';
 
 /** The wide-screen table's columns, and each row wrapped in its context menu. */
@@ -120,7 +120,7 @@ export function useTorrentTable({
       width: 80,
       align: 'right',
       sortKey: 'size',
-      cell: (t) => <span className="text-xs text-muted-foreground">{formatBytes(t.size)}</span>,
+      cell: (t) => <span className="text-xs text-muted-foreground">{formatTorrentSize(t)}</span>,
     },
     {
       id: 'dlspeed',

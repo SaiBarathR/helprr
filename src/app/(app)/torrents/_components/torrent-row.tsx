@@ -30,7 +30,7 @@ import {
 } from 'lucide-react';
 import type { QBittorrentTorrent } from '@/types';
 import { useCan } from '@/components/permission-provider';
-import { PAUSED_STATES, formatBytes, formatEta, formatSpeed } from './torrent-list';
+import { PAUSED_STATES, formatBytes, formatEta, formatSpeed, formatTorrentSize, torrentSizeUnknown } from './torrent-list';
 
 export function getStateBadge(state: string) {
   const stateMap: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' }> = {
@@ -332,7 +332,7 @@ export const TorrentRow = memo(function TorrentRow({
 
           <div className="flex flex-wrap items-center gap-1.5 mt-1">
             {getStateBadge(torrent.state)}
-            <span className="text-[11px] text-muted-foreground">{formatBytes(torrent.size)}</span>
+            <span className="text-[11px] text-muted-foreground">{formatTorrentSize(torrent)}</span>
             {torrent.category && (
               <Badge variant="outline" className="text-[10px] px-1.5 py-0 truncate max-w-[120px]">
                 {torrent.category}
@@ -373,8 +373,8 @@ export const TorrentRow = memo(function TorrentRow({
           <div className="flex items-center flex-wrap gap-x-3 gap-y-0.5 mt-0.5 text-[11px] text-muted-foreground">
             <span>DL: {formatBytes(torrent.downloaded ?? 0)}</span>
             <span>UL: {formatBytes(torrent.uploaded ?? 0)}</span>
-            {torrent.progress < 1 && torrent.amount_left > 0 && (
-              <span>Rem: {formatBytes(torrent.amount_left)}</span>
+            {torrent.progress < 1 && (torrent.amount_left > 0 || torrentSizeUnknown(torrent)) && (
+              <span>Rem: {torrentSizeUnknown(torrent) ? '—' : formatBytes(torrent.amount_left)}</span>
             )}
           </div>
         </div>
