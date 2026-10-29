@@ -215,6 +215,8 @@ export function usePushNotifications() {
         throw new SubscriptionReplacementError(err instanceof Error ? err.message : 'Turn notifications on again on this device.');
       }
     }
+    // A current row with a matching key: nothing is left for a saved old endpoint to take over.
+    if (data.exists === true) setOldEndpoint(null);
     if (data.exists === false) {
       const reregistered = await registerWithServer(sub);
       if (reregistered) {
@@ -404,9 +406,11 @@ export function usePushNotifications() {
       setIsSubscribed(false);
       setSubscriptionEndpoint(null);
       setWasReregistered(false);
-      // Explicit opt-out: clear the flag so we don't nag them to re-enable.
+      // Explicit opt-out: clear the flag so we don't nag them to re-enable,
+      // and let a later Enable start fresh rather than take over an old row.
       setPreviouslyEnabled(false);
       setPushEnabledFlag(false);
+      setOldEndpoint(null);
       window.dispatchEvent(new CustomEvent(PUSH_STATE_CHANGED, { detail: null }));
       if (sub) {
         const res = await fetch('/api/push/subscribe', {
