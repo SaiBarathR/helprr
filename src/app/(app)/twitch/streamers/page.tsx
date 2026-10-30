@@ -9,6 +9,9 @@ import { PageHeader } from '@/components/layout/page-header';
 import { FadeInImage } from '@/components/media/fade-in-image';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { PullToRefresh } from '@/components/ui/pull-to-refresh';
+import { QuickContextMenu } from '@/components/ui/quick-context-menu';
+import { SwipeRow } from '@/components/ui/swipe-row';
 import { ImportFollows } from '@/components/twitch/import-follows';
 import { TwitchSubNav } from '@/components/twitch/twitch-subnav';
 import { toCachedImageSrc } from '@/lib/image';
@@ -85,6 +88,7 @@ export default function TwitchStreamersPage() {
 
   return (
     <div className="animate-content-in pb-8">
+      <PullToRefresh onRefresh={() => queryClient.invalidateQueries({ queryKey: ['twitch'] })} />
       <PageHeader title="Streamers" showBack={false} rightContent={<TwitchSubNav active="streamers" />} />
       <div className="space-y-4 px-4 pt-2">
         <form
@@ -120,42 +124,53 @@ export default function TwitchStreamersPage() {
             {subscriptions.map(({ id, notifyNewVods, streamer }) => {
               const avatar = toCachedImageSrc(streamer.profileImageUrl, undefined, { width: 80 });
               return (
-                <div key={id} className="grouped-row">
-                  <Link href={`/twitch/streamers/${streamer.id}`} className="flex min-w-0 flex-1 items-center gap-3">
-                    <span className="relative block h-9 w-9 shrink-0 overflow-hidden rounded-full bg-muted">
-                      {avatar && <FadeInImage src={avatar} alt="" fill sizes="36px" className="object-cover" unoptimized />}
-                    </span>
-                    <span className="min-w-0">
-                      <span className="block truncate text-sm font-medium">{streamer.displayName}</span>
-                      {streamer.isLive && (
-                        <span className="flex items-center gap-1 truncate text-xs text-red-400">
-                          <Radio className="h-3 w-3 shrink-0" />
-                          <span className="truncate">{streamer.liveTitle || 'Live'}</span>
+                <SwipeRow
+                  key={id}
+                  rightAction={{
+                    label: 'Unsubscribe',
+                    icon: <Trash2 className="h-4 w-4" />,
+                    className: 'bg-destructive text-white',
+                    onAction: () => unsubscribe.mutate(id),
+                  }}
+                >
+                  <QuickContextMenu
+                    label={`${streamer.displayName} actions`}
+                    actions={[{
+                      id: 'unsubscribe',
+                      label: 'Unsubscribe',
+                      icon: <Trash2 />,
+                      destructive: true,
+                      pending: unsubscribe.isPending,
+                      onSelect: () => unsubscribe.mutate(id),
+                    }]}
+                  >
+                    <div className="grouped-row bg-card">
+                      <Link href={`/twitch/streamers/${streamer.id}`} className="flex min-w-0 flex-1 items-center gap-3">
+                        <span className="relative block h-9 w-9 shrink-0 overflow-hidden rounded-full bg-muted">
+                          {avatar && <FadeInImage src={avatar} alt="" fill sizes="36px" className="object-cover" unoptimized />}
                         </span>
-                      )}
-                    </span>
-                  </Link>
-                  <div className="flex shrink-0 items-center">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-11 w-11"
-                      aria-label={notifyNewVods ? `Turn off notifications for ${streamer.displayName}` : `Turn on notifications for ${streamer.displayName}`}
-                      onClick={() => toggleNotify.mutate({ id, notifyNewVods: !notifyNewVods })}
-                    >
-                      {notifyNewVods ? <Bell className="h-4 w-4" /> : <BellOff className="h-4 w-4 text-muted-foreground" />}
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-11 w-11"
-                      aria-label={`Unsubscribe from ${streamer.displayName}`}
-                      onClick={() => unsubscribe.mutate(id)}
-                    >
-                      <Trash2 className="h-4 w-4 text-muted-foreground" />
-                    </Button>
-                  </div>
-                </div>
+                        <span className="min-w-0">
+                          <span className="block truncate text-sm font-medium">{streamer.displayName}</span>
+                          {streamer.isLive && (
+                            <span className="flex items-center gap-1 truncate text-xs text-red-400">
+                              <Radio className="h-3 w-3 shrink-0" />
+                              <span className="truncate">{streamer.liveTitle || 'Live'}</span>
+                            </span>
+                          )}
+                        </span>
+                      </Link>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-11 w-11 shrink-0"
+                        aria-label={notifyNewVods ? `Turn off notifications for ${streamer.displayName}` : `Turn on notifications for ${streamer.displayName}`}
+                        onClick={() => toggleNotify.mutate({ id, notifyNewVods: !notifyNewVods })}
+                      >
+                        {notifyNewVods ? <Bell className="h-4 w-4" /> : <BellOff className="h-4 w-4 text-muted-foreground" />}
+                      </Button>
+                    </div>
+                  </QuickContextMenu>
+                </SwipeRow>
               );
             })}
           </div>

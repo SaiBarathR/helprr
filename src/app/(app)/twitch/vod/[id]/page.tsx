@@ -108,8 +108,26 @@ export default function TwitchVodPage({ params }: { params: Promise<{ id: string
         {muted > 0 && (
           <p className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-sm text-amber-300">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-            <span>Twitch muted {formatDuration(muted)} of this video&apos;s audio. It cannot be recovered.</span>
+            <span>
+              Twitch muted {formatDuration(muted)} of this video&apos;s audio. It cannot be recovered.
+              <span className="mt-1 block font-mono text-xs">
+                {(video.mutedSegments ?? []).map((segment) => `${formatDuration(segment.offset)}–${formatDuration(segment.offset + segment.duration)}`).join(', ')}
+              </span>
+            </span>
           </p>
+        )}
+        {(video.chapters?.length ?? 0) > 0 && (
+          <section aria-label="Chapters">
+            <h2 className="mb-1 font-mono text-[11px] uppercase tracking-widest text-muted-foreground">Chapters</h2>
+            <ul className="space-y-0.5 text-sm">
+              {video.chapters!.map((chapter) => (
+                <li key={`${chapter.start}-${chapter.title}`} className="flex gap-3">
+                  <span className="font-mono text-xs leading-5 text-muted-foreground">{formatDuration(chapter.start)}</span>
+                  <span className="min-w-0 truncate">{chapter.title}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
         )}
         <p className="text-xs text-muted-foreground">
           {video.autoDownload.enabled ? 'Auto-download would save this' : 'Auto-download would skip this'}: {

@@ -35,6 +35,7 @@ let stopping = false;
 let gpuAvailable = false;
 let cpuBusy = false;
 let downloadsRunning = 0;
+let appliedPins = '';
 
 function log(level: 'info' | 'warn' | 'error', message: string, extra: Record<string, unknown> = {}) {
   console[level](JSON.stringify({ at: new Date().toISOString(), level, message, ...extra }));
@@ -305,6 +306,13 @@ async function cleanStaging(): Promise<void> {
 async function checkTools(): Promise<void> {
   const settings = await prisma.twitchSettings.findUnique({ where: { id: 'singleton' } });
   if (!settings) return;
+
+  // A new pin is tried once, so a mistyped version is not fetched every few seconds.
+  const pinned = JSON.stringify(settings.pinnedTools ?? {});
+  if (pinned !== appliedPins && downloadsRunning === 0) {
+    appliedPins = pinned;
+    await ensureTools((settings.pinnedTools ?? {}) as Partial<Record<ToolName, string>>);
+  }
   const requested = settings.toolUpdateRequestedAt !== null;
   const due = !settings.toolCheckedAt || Date.now() - settings.toolCheckedAt.getTime() > TOOL_CHECK_MS;
   if (!requested && !due) return;
@@ -369,6 +377,7 @@ async function main(): Promise<void> {
   await cleanStaging();
 
   const settings = await prisma.twitchSettings.findUnique({ where: { id: 'singleton' } });
+  appliedPins = JSON.stringify(settings?.pinnedTools ?? {});
   await ensureTools((settings?.pinnedTools ?? {}) as Record<string, string>);
 
   gpuAvailable = await probeGpu();

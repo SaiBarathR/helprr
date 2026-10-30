@@ -22,6 +22,18 @@ describe('pickFormat', () => {
   it('takes the lowest when nothing is low enough', () => expect(pickFormat(formats, '144p')).toBe('160p'));
   it('never picks a storyboard', () => expect(pickFormat(formats.slice(0, 2), '1080p60')).toBeNull());
   it('handles audio only', () => expect(pickFormat(formats, 'audio_only')).toBe('audio_only'));
+  it('reads the list a real Twitch video returns', () => {
+    const real: YtDlpFormat[] = [
+      { format_id: 'sb1', height: 62, vcodec: 'none', fps: 0.2 },
+      { format_id: 'Audio_Only', height: null, vcodec: 'none' },
+      { format_id: '160p', height: 160, fps: 30 },
+      { format_id: '720p', height: 720, fps: 30 },
+      { format_id: '1080p', height: 1080, fps: 30 },
+    ];
+    expect(pickFormat(real, 'audio_only')).toBe('Audio_Only');
+    expect(pickFormat(real, '1080p60')).toBe('1080p');
+    expect(pickFormat(real, '720p60')).toBe('720p');
+  });
 });
 
 describe('estimateSizeBytes', () => {

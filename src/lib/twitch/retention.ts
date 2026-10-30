@@ -53,7 +53,7 @@ export async function findRetentionCandidates(
       jellyfinItemId: true,
       video: {
         select: {
-          title: true, type: true, streamerId: true, durationSeconds: true, twitchCreatedAt: true,
+          title: true, type: true, category: true, streamerId: true, durationSeconds: true, twitchCreatedAt: true,
           streamer: { select: { displayName: true } },
         },
       },

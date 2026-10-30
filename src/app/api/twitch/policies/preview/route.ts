@@ -20,7 +20,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     where: { streamerId: body.streamerId },
     orderBy: { twitchCreatedAt: 'desc' },
     take: PREVIEW_VIDEOS,
-    select: { id: true, title: true, type: true, streamerId: true, durationSeconds: true },
+    select: { id: true, title: true, type: true, category: true, streamerId: true, durationSeconds: true },
   });
   const draft = { streamer: sanitizeLayer(body.policy), streamerTypes: layerMap(body.typePolicies) };
   const results = await Promise.all(videos.map(async (video) => {

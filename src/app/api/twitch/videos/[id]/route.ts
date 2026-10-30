@@ -4,6 +4,7 @@ import { withApiLogging } from '@/lib/api-logger';
 import { prisma } from '@/lib/db';
 import { decideForVideo } from '@/lib/twitch/policy-store';
 import { serializeVideo, VIDEO_SELECT } from '@/lib/twitch/serialize';
+import { getTwitchSettings } from '@/lib/twitch/settings';
 
 async function getHandler(
   _request: NextRequest,
@@ -23,11 +24,16 @@ async function getHandler(
   if (!video) return NextResponse.json({ error: 'Video not found' }, { status: 404 });
 
   const { userStates, ...rest } = video;
-  const decision = await decideForVideo({ ...rest, streamerId: rest.streamer.id });
+  const [decision, settings] = await Promise.all([
+    decideForVideo({ ...rest, streamerId: rest.streamer.id }),
+    getTwitchSettings(),
+  ]);
   return NextResponse.json({
     ...serializeVideo(rest, userStates[0]?.seenAt),
     hidden: userStates[0]?.hidden ?? false,
     autoDownload: { enabled: decision.policy.autoDownload, reason: decision.autoDownloadReason },
+    // 1440p shows as login-required, so it is only offered with a working token.
+    canUse1440p: Boolean(settings.browserAuthToken) && settings.browserAuthTokenValid !== false,
     defaults: {
       quality: decision.policy.quality,
       chat: decision.policy.chat,

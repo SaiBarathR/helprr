@@ -2,13 +2,16 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CheckCheck, LayoutGrid, List, Radio } from 'lucide-react';
+import { CheckCheck, LayoutGrid, List, Radio, SlidersHorizontal } from 'lucide-react';
 import { toast } from 'sonner';
 import Link from '@/components/ui/app-link';
 import { PageHeader } from '@/components/layout/page-header';
+import { SearchInput } from '@/components/media/search-input';
 import { useMe, hasCapability } from '@/components/permission-provider';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { ActiveFilterBar, FilterDot, filterButtonLabel, searchFilter, type ActiveFilter } from '@/components/ui/active-filter-bar';
+import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
+import { PullToRefresh } from '@/components/ui/pull-to-refresh';
 import { Skeleton } from '@/components/ui/skeleton';
 import { TwitchSubNav } from '@/components/twitch/twitch-subnav';
 import { TwitchVideoCard } from '@/components/twitch/twitch-video-card';
@@ -64,6 +67,7 @@ export default function TwitchFeedPage() {
   const [length, setLength] = useState('');
   const [since, setSince] = useState('');
   const [category, setCategory] = useState('');
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [streamer, setStreamer] = useState('');
   const [search, setSearch] = useState('');
 
@@ -111,6 +115,21 @@ export default function TwitchFeedPage() {
   const categories = feed.data?.pages[0]?.categories ?? [];
   const actions = useVideoActions();
 
+  const activeFilters: ActiveFilter[] = [
+    ...searchFilter(search, () => setSearch('')),
+    ...(streamer ? [{ id: 'streamer', label: subscriptions.find((item) => item.streamer.id === streamer)?.streamer.displayName ?? 'Streamer', onRemove: () => setStreamer('') }] : []),
+    ...(category ? [{ id: 'category', label: category, onRemove: () => setCategory('') }] : []),
+    ...(length ? [{ id: 'length', label: LENGTHS.find((item) => item.id === length)?.label ?? length, onRemove: () => setLength('') }] : []),
+    ...(since ? [{ id: 'since', label: SINCE.find((item) => item.id === since)?.label ?? since, onRemove: () => setSince('') }] : []),
+  ];
+  const clearFilters = () => {
+    setSearch('');
+    setStreamer('');
+    setCategory('');
+    setLength('');
+    setSince('');
+  };
+
   // The list is virtual, so a sentinel under it asks for the next page.
   const loadMoreRef = useRef<HTMLDivElement>(null);
   const { hasNextPage, isFetchingNextPage, fetchNextPage } = feed;
@@ -135,17 +154,27 @@ export default function TwitchFeedPage() {
 
   return (
     <div className="animate-content-in pb-8">
+      <PullToRefresh onRefresh={() => queryClient.invalidateQueries({ queryKey: ['twitch'] })} />
       <PageHeader title="Twitch" showBack={false} rightContent={<TwitchSubNav active="feed" />} />
 
       <div className="space-y-3 px-4 pt-2">
-        <Input
-          type="search"
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
-          placeholder="Search videos and streamers"
-          aria-label="Search videos and streamers"
-          className="h-10 rounded-full"
-        />
+        <div className="flex items-center gap-2">
+          <SearchInput
+            value={search}
+            onChange={setSearch}
+            historyKey="twitch-feed"
+            clearable
+            placeholder="Search videos and streamers"
+            aria-label="Search videos and streamers"
+            wrapperClassName="min-w-0 flex-1"
+            className="h-10 rounded-full"
+          />
+          <Button variant="outline" size="icon" className="relative h-10 w-10 shrink-0 rounded-full" aria-label={filterButtonLabel('Filters', activeFilters.length > 0)} onClick={() => setFiltersOpen(true)}>
+            <SlidersHorizontal className="h-4 w-4" />
+            <FilterDot active={activeFilters.length > 0} />
+          </Button>
+        </div>
+        <ActiveFilterBar filters={activeFilters} onClearAll={clearFilters} />
 
         <div className="flex items-center gap-2">
           <div role="tablist" aria-label="Feed segment" className="grid grid-cols-2 gap-1 rounded-md bg-muted/40 p-1">
@@ -196,45 +225,6 @@ export default function TwitchFeedPage() {
               {item.label}
             </button>
           ))}
-        </div>
-
-        <div className="grid grid-cols-2 gap-2">
-          <select
-            aria-label="Streamer"
-            value={streamer}
-            onChange={(event) => setStreamer(event.target.value)}
-            className="h-10 min-w-0 rounded-md border border-border bg-card px-2 text-sm"
-          >
-            <option value="">All streamers</option>
-            {subscriptions.map(({ streamer: item }) => (
-              <option key={item.id} value={item.id}>{item.displayName}</option>
-            ))}
-          </select>
-          <select
-            aria-label="Length"
-            value={length}
-            onChange={(event) => setLength(event.target.value)}
-            className="h-10 min-w-0 rounded-md border border-border bg-card px-2 text-sm"
-          >
-            {LENGTHS.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
-          </select>
-          <select
-            aria-label="Date"
-            value={since}
-            onChange={(event) => setSince(event.target.value)}
-            className="h-10 min-w-0 rounded-md border border-border bg-card px-2 text-sm"
-          >
-            {SINCE.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
-          </select>
-          <select
-            aria-label="Category"
-            value={category}
-            onChange={(event) => setCategory(event.target.value)}
-            className="h-10 min-w-0 rounded-md border border-border bg-card px-2 text-sm"
-          >
-            <option value="">All categories</option>
-            {categories.map((item) => <option key={item} value={item}>{item}</option>)}
-          </select>
         </div>
 
         {canManage && autoSettings.data?.autoDownloadEnabled === false && (
@@ -291,6 +281,51 @@ export default function TwitchFeedPage() {
         {feed.isFetchingNextPage && <p className="py-2 text-center text-sm text-muted-foreground">Loading…</p>}
       </div>
       {actions.sheet}
+      <Drawer open={filtersOpen} onOpenChange={setFiltersOpen}>
+        <DrawerContent>
+          <DrawerHeader><DrawerTitle>Filters</DrawerTitle></DrawerHeader>
+          <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
+        <div className="grid grid-cols-1 gap-2">
+          <select
+            aria-label="Streamer"
+            value={streamer}
+            onChange={(event) => setStreamer(event.target.value)}
+            className="h-10 min-w-0 rounded-md border border-border bg-card px-2 text-sm"
+          >
+            <option value="">All streamers</option>
+            {subscriptions.map(({ streamer: item }) => (
+              <option key={item.id} value={item.id}>{item.displayName}</option>
+            ))}
+          </select>
+          <select
+            aria-label="Length"
+            value={length}
+            onChange={(event) => setLength(event.target.value)}
+            className="h-10 min-w-0 rounded-md border border-border bg-card px-2 text-sm"
+          >
+            {LENGTHS.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
+          </select>
+          <select
+            aria-label="Date"
+            value={since}
+            onChange={(event) => setSince(event.target.value)}
+            className="h-10 min-w-0 rounded-md border border-border bg-card px-2 text-sm"
+          >
+            {SINCE.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
+          </select>
+          <select
+            aria-label="Category"
+            value={category}
+            onChange={(event) => setCategory(event.target.value)}
+            className="h-10 min-w-0 rounded-md border border-border bg-card px-2 text-sm"
+          >
+            <option value="">All categories</option>
+            {categories.map((item) => <option key={item} value={item}>{item}</option>)}
+          </select>
+        </div>
+          </div>
+        </DrawerContent>
+      </Drawer>
     </div>
   );
 }

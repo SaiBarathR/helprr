@@ -321,7 +321,8 @@ ADD COLUMN     "toolLatest" JSONB NOT NULL DEFAULT '{}',
 ADD COLUMN     "toolsPausedAt" TIMESTAMP(3);
 
 -- AlterTable
-ALTER TABLE "TwitchVideo" ADD COLUMN     "category" TEXT;
+ALTER TABLE "TwitchVideo" ADD COLUMN     "category" TEXT,
+ADD COLUMN     "chapters" JSONB;
 
 -- AlterTable
 ALTER TABLE "TwitchJob" ADD COLUMN     "etaSeconds" INTEGER,

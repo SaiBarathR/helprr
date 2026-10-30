@@ -7,6 +7,9 @@ import { toast } from 'sonner';
 import { PageHeader } from '@/components/layout/page-header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { PullToRefresh } from '@/components/ui/pull-to-refresh';
+import { QuickContextMenu } from '@/components/ui/quick-context-menu';
+import { SwipeRow } from '@/components/ui/swipe-row';
 import { useMe, hasCapability } from '@/components/permission-provider';
 import { TwitchSubNav } from '@/components/twitch/twitch-subnav';
 import { formatDuration } from '@/components/twitch/types';
@@ -79,8 +82,8 @@ function JobRow({ job, action, onAction, busy }: {
     : job.state === 'FAILED'
       ? ERROR_LABELS[job.errorClass ?? ''] ?? 'Failed'
       : STATE_LABELS[job.state] ?? job.state.toLowerCase();
-  return (
-    <div className="grouped-row">
+  const row = (
+    <div className="grouped-row bg-card">
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium">{job.video?.title ?? 'Video'}</p>
         <p className="truncate text-xs text-muted-foreground">{job.video?.streamer.displayName} · {detail}</p>
@@ -103,6 +106,14 @@ function JobRow({ job, action, onAction, busy }: {
         </Button>
       )}
     </div>
+  );
+  if (action !== 'cancel' || !onAction) return row;
+  return (
+    <SwipeRow rightAction={{ label: 'Cancel', icon: <X className="h-4 w-4" />, className: 'bg-destructive text-white', onAction }}>
+      <QuickContextMenu label="Download actions" actions={[{ id: 'cancel', label: 'Cancel download', icon: <X />, destructive: true, onSelect: onAction }]}>
+        {row}
+      </QuickContextMenu>
+    </SwipeRow>
   );
 }
 
@@ -195,6 +206,7 @@ export default function TwitchQueuePage() {
 
   return (
     <div className="animate-content-in pb-8">
+      <PullToRefresh onRefresh={() => queryClient.invalidateQueries({ queryKey: ['twitch'] })} />
       <PageHeader title="Queue" showBack={false} rightContent={<TwitchSubNav active="queue" />} />
       <div className="space-y-4 px-4 pt-2">
         <Section title="Worker">

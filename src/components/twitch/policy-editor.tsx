@@ -15,7 +15,7 @@ const SWITCHES = [
   ['keepForever', 'Keep forever'],
 ] as const;
 
-const QUALITIES = ['1080p60', '720p60', '480p', 'audio_only'];
+const QUALITIES = ['1440p60', '1080p60', '720p60', '480p', 'audio_only'];
 
 const splitWords = (text: string) => text.split(',').map((word) => word.trim()).filter(Boolean);
 
@@ -76,6 +76,10 @@ export function PolicyEditor({ value, inherited = BUILT_IN_POLICY, onChange }: {
         </select>
       </div>
       <div className="grid grid-cols-2 gap-2">
+        <NumberField label="Min length (minutes)" value={conditions.minDurationMinutes} onChange={(minDurationMinutes) => setCondition({ minDurationMinutes })} />
+        <NumberField label="Max length (minutes)" value={conditions.maxDurationMinutes} onChange={(maxDurationMinutes) => setCondition({ maxDurationMinutes })} />
+        <WordsField label="Category is one of" value={conditions.categoryInclude} onChange={(categoryInclude) => setCondition({ categoryInclude })} />
+        <WordsField label="Category is not" value={conditions.categoryExclude} onChange={(categoryExclude) => setCondition({ categoryExclude })} />
         <div className="space-y-1.5">
           <Label className="text-xs text-muted-foreground">Title has any of</Label>
           <Input
@@ -93,6 +97,47 @@ export function PolicyEditor({ value, inherited = BUILT_IN_POLICY, onChange }: {
           />
         </div>
       </div>
+      <div className="grid grid-cols-2 gap-2">
+        <NumberField label="Keep the latest" placeholder={String(inherited.keepLatest ?? 'No limit')} value={value.keepLatest ?? undefined} onChange={(keepLatest) => setField('keepLatest', keepLatest)} />
+        <NumberField label="Delete after days" placeholder={String(inherited.deleteAfterDays ?? 'Never')} value={value.deleteAfterDays ?? undefined} onChange={(deleteAfterDays) => setField('deleteAfterDays', deleteAfterDays)} />
+        <NumberField label="Delete days after watched" placeholder={String(inherited.deleteAfterWatchedDays ?? 'Never')} value={value.deleteAfterWatchedDays ?? undefined} onChange={(deleteAfterWatchedDays) => setField('deleteAfterWatchedDays', deleteAfterWatchedDays)} />
+      </div>
+    </div>
+  );
+}
+
+// Empty means inherit, so a stored 0 stays distinct from no value.
+function NumberField({ label, value, placeholder, onChange }: {
+  label: string;
+  value: number | undefined;
+  placeholder?: string;
+  onChange: (next: number | undefined) => void;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <Label className="text-xs text-muted-foreground">
+        {label}
+        <Input
+          type="number"
+          min={0}
+          inputMode="numeric"
+          className="mt-1.5"
+          placeholder={placeholder}
+          defaultValue={value}
+          onBlur={(event) => onChange(event.target.value === '' ? undefined : Number(event.target.value))}
+        />
+      </Label>
+    </div>
+  );
+}
+
+function WordsField({ label, value, onChange }: { label: string; value: string[] | undefined; onChange: (next: string[]) => void }) {
+  return (
+    <div className="space-y-1.5">
+      <Label className="text-xs text-muted-foreground">
+        {label}
+        <Input className="mt-1.5" placeholder="comma separated" defaultValue={value?.join(', ')} onBlur={(event) => onChange(splitWords(event.target.value))} />
+      </Label>
     </div>
   );
 }

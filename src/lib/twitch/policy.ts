@@ -3,6 +3,8 @@ import type { DownloadOptions } from '@/lib/twitch/jobs';
 export interface PolicyConditions {
   titleInclude?: string[];
   titleExclude?: string[];
+  categoryInclude?: string[];
+  categoryExclude?: string[];
   minDurationMinutes?: number;
   maxDurationMinutes?: number;
 }
@@ -42,6 +44,7 @@ export interface PolicyLayers {
 export interface VideoForPolicy {
   title: string;
   durationSeconds: number;
+  category?: string | null;
 }
 
 export type PolicyTrace = Partial<Record<keyof TwitchPolicy, keyof PolicyLayers | 'builtIn'>>;
@@ -62,6 +65,12 @@ function conditionFailure(video: VideoForPolicy, conditions: PolicyConditions): 
   if (excluded) return `title contains "${excluded}"`;
   if (conditions.titleInclude?.length && !conditions.titleInclude.some((word) => title.includes(word.toLowerCase()))) {
     return 'title has none of the wanted words';
+  }
+  const category = video.category?.toLowerCase();
+  const blocked = category ? conditions.categoryExclude?.find((word) => word.toLowerCase() === category) : undefined;
+  if (blocked) return `category is ${blocked}`;
+  if (conditions.categoryInclude?.length && !conditions.categoryInclude.some((word) => word.toLowerCase() === category)) {
+    return category ? 'category is not a wanted one' : 'category is not known';
   }
   if (conditions.minDurationMinutes !== undefined && minutes < conditions.minDurationMinutes) return 'shorter than the minimum';
   if (conditions.maxDurationMinutes !== undefined && minutes > conditions.maxDurationMinutes) return 'longer than the maximum';
@@ -117,6 +126,8 @@ export function sanitizeLayer(value: unknown): PolicyLayer {
     layer.conditions = {
       titleInclude: words(raw.titleInclude),
       titleExclude: words(raw.titleExclude),
+      categoryInclude: words(raw.categoryInclude),
+      categoryExclude: words(raw.categoryExclude),
       minDurationMinutes: minutes(raw.minDurationMinutes),
       maxDurationMinutes: minutes(raw.maxDurationMinutes),
     };

@@ -248,9 +248,15 @@ async function publish(ctx: JobContext, staging: string, mkv: string, info: Vide
   });
   await prisma.twitchJob.update({ where: { id: job.id }, data: { needsJellyfinRefresh: true } });
   const firstGame = chapterGenres(info.chapters ?? [])[0];
-  if (firstGame && !video.category) {
-    await prisma.twitchVideo.update({ where: { id: video.id }, data: { category: firstGame } });
-  }
+  await prisma.twitchVideo.update({
+    where: { id: video.id },
+    data: {
+      ...(firstGame && !video.category ? { category: firstGame } : {}),
+      ...(info.chapters?.length
+        ? { chapters: info.chapters.map(({ start_time, title }) => ({ start: Math.round(start_time), title: title ?? 'Stream' })) }
+        : {}),
+    },
+  });
 
   if (options.reencode && ctx.reencodeEnabled && probed.videoCodec === 'h264') {
     const { id: mediaFileId } = await prisma.twitchMediaFile.findUniqueOrThrow({ where: { relativePath }, select: { id: true } });
@@ -325,6 +331,7 @@ export async function runDownload(ctx: JobContext): Promise<void> {
 
   const format = pickFormat(info.formats ?? [], options.quality);
   if (!format) throw new Error('validation failed: no video formats');
+  const audioOnly = format.toLowerCase().startsWith('audio');
   const duration = info.duration ?? video.durationSeconds;
   await checkDisk(ctx, duration);
 
@@ -340,13 +347,12 @@ export async function runDownload(ctx: JobContext): Promise<void> {
     '-y', '-v', 'error', '-i', source,
     ...(chapters ? ['-i', metaFile, '-map_chapters', '1'] : []),
     // Explicit maps: the fallback tool's bin_data stream breaks a plain -map 0.
-    '-map', '0:v:0', '-map', '0:a:0?', '-map_metadata', '0', '-c', 'copy', mkv,
+    ...(audioOnly ? ['-map', '0:a:0'] : ['-map', '0:v:0', '-map', '0:a:0?']), '-map_metadata', '0', '-c', 'copy', mkv,
   ], { signal });
 
   await ctx.setStage('validating');
   const probed = await probe(mkv);
-  if (probed.video !== 1 || probed.audio > 1) throw new Error('validation failed: unexpected streams');
-  if (format !== 'audio_only' && probed.audio !== 1) throw new Error('validation failed: no audio stream');
+  if (probed.video !== (audioOnly ? 0 : 1) || probed.audio !== 1) throw new Error('validation failed: unexpected streams');
   if (!validateDuration(probed.duration, duration)) throw new Error(`validation failed: duration mismatch ${probed.duration} vs ${duration}`);
 
   let chat: ChatFiles | null = null;

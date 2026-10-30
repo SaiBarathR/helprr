@@ -82,7 +82,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
 
   const video = await prisma.twitchVideo.findUniqueOrThrow({
     where: { id: videoId },
-    select: { title: true, type: true, streamerId: true, durationSeconds: true },
+    select: { title: true, type: true, category: true, streamerId: true, durationSeconds: true },
   });
   const { policy } = await decideForVideo(video);
   const result = await enqueueDownload({

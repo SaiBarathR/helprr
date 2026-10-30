@@ -14,6 +14,7 @@ import { cn } from '@/lib/utils';
 import { formatDuration, type TwitchVideo } from './types';
 
 const QUALITIES = [
+  { id: '1440p60', label: '1440p', gbPerHour: 4.07 },
   { id: '1080p60', label: '1080p60', gbPerHour: 3.46 },
   { id: '720p60', label: '720p60', gbPerHour: 1.46 },
   { id: '480p', label: '480p', gbPerHour: 0.6 },
@@ -26,6 +27,11 @@ const OPTIONS = [
   { id: 'reencode', label: 'Re-encode tonight' },
   { id: 'keepForever', label: 'Keep forever' },
 ] as const;
+
+interface VideoDetails {
+  defaults: Defaults;
+  canUse1440p: boolean;
+}
 
 interface Defaults {
   quality: string;
@@ -56,7 +62,12 @@ async function rememberForStreamer(streamerId: string, choice: Defaults): Promis
   if (!saved.ok) toast.error('Queued, but the choice could not be remembered');
 }
 
-function SheetBody({ video, defaults, onDone }: { video: TwitchVideo; defaults: Defaults; onDone: () => void }) {
+function SheetBody({ video, defaults, canUse1440p, onDone }: {
+  video: TwitchVideo;
+  defaults: Defaults;
+  canUse1440p: boolean;
+  onDone: () => void;
+}) {
   const queryClient = useQueryClient();
   const canManage = hasCapability(useMe(), 'twitch.manage');
   const [quality, setQuality] = useState(defaults.quality);
@@ -97,8 +108,8 @@ function SheetBody({ video, defaults, onDone }: { video: TwitchVideo; defaults: 
           Twitch muted {formatDuration(mutedSeconds)} of this audio. It cannot be recovered.
         </p>
       )}
-      <div role="radiogroup" aria-label="Quality" className="grid grid-cols-4 gap-1 rounded-md bg-muted/40 p-1">
-        {QUALITIES.map((item) => (
+      <div role="radiogroup" aria-label="Quality" className="grid auto-cols-fr grid-flow-col gap-1 rounded-md bg-muted/40 p-1">
+        {QUALITIES.filter((item) => canUse1440p || item.id !== '1440p60').map((item) => (
           <button
             key={item.id}
             role="radio"
@@ -127,11 +138,13 @@ function SheetBody({ video, defaults, onDone }: { video: TwitchVideo; defaults: 
           <Switch checked={remember} onCheckedChange={setRemember} />
         </label>
       )}
-      <dl className="grid grid-cols-3 gap-2 text-center">
+      {quality === '1440p60' && <p className="text-xs text-muted-foreground">Twitch removes the 1440p copy after 7 days, so this falls back to 1080p60 on older VODs.</p>}
+      <dl className="grid grid-cols-2 gap-2 text-center">
         {[
           ['Length', formatDuration(video.durationSeconds)],
           ['Download', `≈ ${sizeGb < 1 ? `${Math.round(sizeGb * 1024)} MB` : `${sizeGb.toFixed(1)} GB`}`],
           ['After re-encode', options.reencode ? `≈ ${(sizeGb * 0.18).toFixed(1)}–${(sizeGb * 0.37).toFixed(1)} GB` : '—'],
+          ['Time at 7–15 MB/s', `≈ ${Math.ceil((sizeGb * 1024) / 15 / 60)}–${Math.ceil((sizeGb * 1024) / 7 / 60)} min`],
         ].map(([label, value]) => (
           <div key={label} className="rounded-lg bg-card p-2">
             <dt className="text-[11px] text-muted-foreground">{label}</dt>
@@ -160,12 +173,12 @@ export function DownloadSheet({ video, open, onOpenChange }: {
     queryFn: async ({ signal }) => {
       const res = await fetch(`/api/twitch/videos/${video.id}`, { signal });
       if (!res.ok) throw new Error('Could not load the video');
-      return (await res.json()) as { defaults: Defaults };
+      return (await res.json()) as VideoDetails;
     },
     enabled: open,
   });
   const body = defaults.data
-    ? <SheetBody video={video} defaults={defaults.data.defaults} onDone={() => onOpenChange(false)} />
+    ? <SheetBody video={video} defaults={defaults.data.defaults} canUse1440p={defaults.data.canUse1440p} onDone={() => onOpenChange(false)} />
     : <div className="flex h-40 items-center justify-center"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>;
   if (isMobile) {
     return (

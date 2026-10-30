@@ -2,7 +2,7 @@
 
 import { use, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CheckSquare, Radio } from 'lucide-react';
+import { Bell, BellOff, CheckSquare, Radio } from 'lucide-react';
 import { toast } from 'sonner';
 import { PageHeader } from '@/components/layout/page-header';
 import { FadeInImage } from '@/components/media/fade-in-image';
@@ -28,6 +28,8 @@ const TABS = [
 
 interface Streamer {
   id: string;
+  login: string;
+  subscription: { id: string; notifyNewVods: boolean } | null;
   displayName: string;
   description: string | null;
   profileImageUrl: string | null;
@@ -91,6 +93,33 @@ export default function TwitchStreamerPage({ params }: { params: Promise<{ id: s
   });
   const rows = useMemo(() => videos.data?.pages.flatMap((page) => page.videos) ?? [], [videos.data]);
 
+  const follow = useMutation({
+    mutationFn: async () => {
+      const res = streamer?.subscription
+        ? await fetch(`/api/twitch/subscriptions/${streamer.subscription.id}`, { method: 'DELETE' })
+        : await fetch('/api/twitch/streamers', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ login: streamer?.login }),
+          });
+      if (!res.ok) throw new Error('Could not change the subscription');
+    },
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['twitch'] }),
+    onError: (error) => toast.error(error.message),
+  });
+  const toggleNotify = useMutation({
+    mutationFn: async (notifyNewVods: boolean) => {
+      const res = await fetch(`/api/twitch/subscriptions/${streamer?.subscription?.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notifyNewVods }),
+      });
+      if (!res.ok) throw new Error('Could not change notifications');
+    },
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['twitch'] }),
+    onError: (error) => toast.error(error.message),
+  });
+
   const banner = toCachedImageSrc(streamer?.offlineImageUrl, undefined, { width: 1200 });
   const avatar = toCachedImageSrc(streamer?.profileImageUrl, undefined, { width: 144 });
 
@@ -113,6 +142,25 @@ export default function TwitchStreamerPage({ params }: { params: Promise<{ id: s
             </span>
           )}
         </div>
+        {streamer && (
+          <div className="flex gap-2">
+            <Button variant={streamer.subscription ? 'outline' : 'default'} className="h-11 flex-1" disabled={follow.isPending} onClick={() => follow.mutate()}>
+              {streamer.subscription ? 'Unsubscribe' : 'Subscribe'}
+            </Button>
+            {streamer.subscription && (
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-11 w-11"
+                aria-label={streamer.subscription.notifyNewVods ? 'Turn off notifications' : 'Turn on notifications'}
+                aria-pressed={streamer.subscription.notifyNewVods}
+                onClick={() => toggleNotify.mutate(!streamer.subscription!.notifyNewVods)}
+              >
+                {streamer.subscription.notifyNewVods ? <Bell className="h-4 w-4" /> : <BellOff className="h-4 w-4 text-muted-foreground" />}
+              </Button>
+            )}
+          </div>
+        )}
         {streamer?.description && <p className="text-sm text-muted-foreground">{streamer.description}</p>}
 
         <div role="tablist" aria-label="Video types" className="grid grid-flow-col auto-cols-fr gap-1 rounded-md bg-muted/40 p-1">

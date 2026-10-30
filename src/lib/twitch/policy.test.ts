@@ -57,6 +57,18 @@ describe('evaluatePolicy', () => {
     expect(decision.autoDownloadReason).toBe(reason);
   });
 
+  it.each([
+    [{ categoryExclude: ['elden ring'] }, 'Elden Ring', false, 'category is elden ring'],
+    [{ categoryInclude: ['Minecraft'] }, 'Elden Ring', false, 'category is not a wanted one'],
+    [{ categoryInclude: ['Minecraft'] }, null, false, 'category is not known'],
+    [{ categoryInclude: ['elden ring'] }, 'Elden Ring', true, 'on in global'],
+    [{ categoryExclude: ['Minecraft'] }, null, true, 'on in global'],
+  ])('applies category conditions %j to %s', (conditions, category, expected, reason) => {
+    const decision = evaluatePolicy({ ...video, category }, { global: { autoDownload: true, conditions } }, true);
+    expect(decision.policy.autoDownload).toBe(expected);
+    expect(decision.autoDownloadReason).toBe(reason);
+  });
+
   it('conditions never touch the other fields', () => {
     const decision = evaluatePolicy(video, { global: { autoDownload: true, quality: '480p', conditions: { titleExclude: ['elden'] } } }, true);
     expect(decision.policy.quality).toBe('480p');
@@ -79,7 +91,7 @@ describe('sanitizeLayer', () => {
 
   it('cleans conditions', () => {
     expect(sanitizeLayer({ conditions: { titleInclude: ['  a ', '', 5], minDurationMinutes: -1 } }).conditions)
-      .toEqual({ titleInclude: ['a'], titleExclude: undefined, minDurationMinutes: undefined, maxDurationMinutes: undefined });
+      .toEqual({ titleInclude: ['a'], titleExclude: undefined, categoryInclude: undefined, categoryExclude: undefined, minDurationMinutes: undefined, maxDurationMinutes: undefined });
   });
 });
 

@@ -161,7 +161,7 @@ async function autoEnqueue(videoIds: string[]): Promise<void> {
   if (videoIds.length === 0) return;
   const videos = await prisma.twitchVideo.findMany({
     where: { id: { in: videoIds } },
-    select: { id: true, title: true, type: true, streamerId: true, durationSeconds: true },
+    select: { id: true, title: true, type: true, category: true, streamerId: true, durationSeconds: true },
   });
   for (const video of videos) {
     const { policy, trace, autoDownloadReason } = await decideForVideo(video);

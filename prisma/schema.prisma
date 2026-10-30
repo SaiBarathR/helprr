@@ -960,6 +960,7 @@ model TwitchVideo {
   language           String?
   streamId           String? // equals the live stream id while the archive is still recording
   mutedSegments      Json? // Helix muted_segments: audio Twitch removed and that cannot be recovered
+  chapters           Json? // from the download: Helix has none
   availability       TwitchVideoAvailability @default(PUBLISHED)
   estimatedExpiresAt DateTime? // archives only; an estimate, because Prime/Turbo status is not visible
   firstSeenAt        DateTime                @default(now())

@@ -43,7 +43,7 @@ function isVideoFormat(format: YtDlpFormat): boolean {
 /** The wanted quality, or the best one below it, or failing that the lowest there is. */
 export function pickFormat(formats: readonly YtDlpFormat[], wanted: string): string | null {
   if (wanted === AUDIO_ONLY) {
-    return formats.find((format) => format.format_id.startsWith('audio'))?.format_id ?? null;
+    return formats.find((format) => format.format_id.toLowerCase().startsWith('audio'))?.format_id ?? null;
   }
   const videos = formats.filter(isVideoFormat)
     .map((format) => ({ id: format.format_id, rank: rank(format.height!, Math.round(format.fps ?? 30)) }))

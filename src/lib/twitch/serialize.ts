@@ -13,6 +13,7 @@ export const VIDEO_SELECT = {
   category: true,
   viewCount: true,
   mutedSegments: true,
+  chapters: true,
   availability: true,
   estimatedExpiresAt: true,
   streamer: { select: { id: true, login: true, displayName: true, profileImageUrl: true, isLive: true } },

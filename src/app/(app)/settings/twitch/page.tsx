@@ -21,6 +21,10 @@ interface Settings {
   reencodeWindowEnd: string;
   keepOriginalDays: number;
   reencodeWaiting: number;
+  reencodeWaitingBytes: number;
+  maxConcurrentDownloads: number;
+  minFreeGb: number;
+  pinnedTools: { ytdlp?: string; td?: string };
   hasBrowserAuthToken: boolean;
   browserAuthTokenValid: boolean | null;
 }
@@ -41,6 +45,14 @@ interface LibraryStatus {
   fetchersOff?: boolean;
   conflicts?: string[];
   error?: string;
+}
+
+// Measured on real clips: re-encoded files came out 63–82% smaller.
+function reencodeFooter(settings: Settings | undefined): string {
+  const waiting = settings?.reencodeWaiting ?? 0;
+  if (waiting === 0 || !settings) return 'Nothing waiting';
+  const gib = settings.reencodeWaitingBytes / 1024 ** 3;
+  return `${waiting} waiting. Should save about ${(gib * 0.63).toFixed(1)}–${(gib * 0.82).toFixed(1)} GB`;
 }
 
 async function send(url: string, method: string, body: unknown) {
@@ -96,6 +108,13 @@ export default function TwitchSettingsPage() {
     onSuccess: refresh,
     onError: fail,
   });
+  const savePin = (tool: 'ytdlp' | 'td', value: string) => {
+    const pins = { ...settings.data?.pinnedTools };
+    if ((pins[tool] ?? '') === value.trim()) return;
+    if (value.trim()) pins[tool] = value.trim();
+    else delete pins[tool];
+    saveSettings.mutate({ pinnedTools: pins });
+  };
   const saveToken = useMutation({
     mutationFn: () => send('/api/twitch/browser-token', 'PUT', { token: browserToken.trim() }),
     onSuccess: () => {
@@ -166,7 +185,7 @@ export default function TwitchSettingsPage() {
 
         <GroupedSection
           title="Night re-encode"
-          footer={worker.data?.seen && !worker.data.gpuAvailable ? 'No Intel GPU found: re-encoding stays idle' : `${settings.data?.reencodeWaiting ?? 0} waiting. Saves about 63–82% of the space`}
+          footer={worker.data?.seen && !worker.data.gpuAvailable ? 'No Intel GPU found: re-encoding stays idle' : reencodeFooter(settings.data)}
         >
           <div className="grouped-row min-h-11">
             <span className="text-sm">Re-encode to HEVC</span>
@@ -194,6 +213,36 @@ export default function TwitchSettingsPage() {
               <label className="grouped-row min-h-11">
                 <span className="text-sm">Keep originals (days)</span>
                 <input type="number" min={0} max={365} aria-label="Keep originals in days" defaultValue={settings.data.keepOriginalDays} className="w-14 bg-transparent text-right text-sm" onBlur={(event) => saveSettings.mutate({ keepOriginalDays: Number(event.target.value) })} />
+              </label>
+            </>
+          )}
+        </GroupedSection>
+
+        <GroupedSection title="Downloads">
+          {settings.data && (
+            <>
+              <label className="grouped-row min-h-11">
+                <span className="text-sm">At the same time</span>
+                <input type="number" min={1} max={6} aria-label="Downloads at the same time" defaultValue={settings.data.maxConcurrentDownloads} className="w-14 bg-transparent text-right text-sm" onBlur={(event) => saveSettings.mutate({ maxConcurrentDownloads: Number(event.target.value) })} />
+              </label>
+              <label className="grouped-row min-h-11">
+                <span className="text-sm">Keep free on disk (GB)</span>
+                <input type="number" min={1} aria-label="Free disk to keep in GB" defaultValue={settings.data.minFreeGb} className="w-20 bg-transparent text-right text-sm" onBlur={(event) => saveSettings.mutate({ minFreeGb: Number(event.target.value) })} />
+              </label>
+            </>
+          )}
+        </GroupedSection>
+
+        <GroupedSection title="Tool versions" footer="Empty follows the tested version and updates. A pin stays until you clear it">
+          {settings.data && (
+            <>
+              <label className="grouped-row min-h-11">
+                <span className="text-sm">yt-dlp</span>
+                <input aria-label="yt-dlp version" placeholder="Not pinned" defaultValue={settings.data.pinnedTools.ytdlp} className="w-32 bg-transparent text-right font-mono text-sm" onBlur={(event) => savePin('ytdlp', event.target.value)} />
+              </label>
+              <label className="grouped-row min-h-11">
+                <span className="text-sm">TwitchDownloader</span>
+                <input aria-label="TwitchDownloader version" placeholder="Not pinned" defaultValue={settings.data.pinnedTools.td} className="w-32 bg-transparent text-right font-mono text-sm" onBlur={(event) => savePin('td', event.target.value)} />
               </label>
             </>
           )}

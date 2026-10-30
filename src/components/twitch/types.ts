@@ -10,6 +10,7 @@ export interface TwitchVideo {
   category: string | null;
   viewCount: number;
   mutedSegments: Array<{ duration: number; offset: number }> | null;
+  chapters: Array<{ start: number; title: string }> | null;
   availability: 'RECORDING' | 'PUBLISHED' | 'UNAVAILABLE';
   estimatedExpiresAt: string | null;
   streamer: { id: string; login: string; displayName: string; profileImageUrl: string | null; isLive: boolean };

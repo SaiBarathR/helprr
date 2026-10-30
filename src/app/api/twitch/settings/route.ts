@@ -5,12 +5,21 @@ import { prisma } from '@/lib/db';
 import { getTwitchSettings } from '@/lib/twitch/settings';
 
 const HH_MM = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
+const TOOL_VERSION = /^[A-Za-z0-9.-]{1,32}$/;
 
 // Whatever this returns is safe for the browser: the browser token is never in it.
 async function publicSettings() {
   const { browserAuthToken, ...rest } = await getTwitchSettings();
-  const reencodeWaiting = await prisma.twitchJob.count({ where: { kind: 'REENCODE', state: { in: ['QUEUED', 'RETRY_WAIT'] } } });
-  return { ...rest, hasBrowserAuthToken: Boolean(browserAuthToken), reencodeWaiting };
+  const waiting = await prisma.twitchJob.findMany({
+    where: { kind: 'REENCODE', state: { in: ['QUEUED', 'RETRY_WAIT'] } },
+    select: { mediaFile: { select: { sizeBytes: true } } },
+  });
+  return {
+    ...rest,
+    hasBrowserAuthToken: Boolean(browserAuthToken),
+    reencodeWaiting: waiting.length,
+    reencodeWaitingBytes: waiting.reduce((total, job) => total + Number(job.mediaFile?.sizeBytes ?? 0), 0),
+  };
 }
 
 async function getHandler(): Promise<NextResponse> {
@@ -53,6 +62,15 @@ async function putHandler(request: NextRequest): Promise<NextResponse> {
     if (body[field] === undefined) continue;
     if (typeof body[field] !== 'string' || !HH_MM.test(body[field])) return bad(field);
     data[field] = body[field];
+  }
+
+  if (body.pinnedTools !== undefined) {
+    const pins = body.pinnedTools as Record<string, unknown> | null;
+    if (!pins || typeof pins !== 'object' || Object.entries(pins).some(([tool, version]) =>
+      !['ytdlp', 'td'].includes(tool) || typeof version !== 'string' || !TOOL_VERSION.test(version))) {
+      return bad('pinnedTools');
+    }
+    data.pinnedTools = pins;
   }
 
   await getTwitchSettings();
