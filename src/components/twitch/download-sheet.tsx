@@ -38,14 +38,19 @@ interface Defaults {
 // Merges into the streamer's rules, so its other settings and type rules survive.
 async function rememberForStreamer(streamerId: string, choice: Defaults): Promise<void> {
   const res = await fetch(`/api/twitch/policies?streamerId=${streamerId}`);
-  const stored = res.ok ? await res.json() as { streamer: { policy: object; typePolicies: object } | null } : null;
+  // Without the current rules, a save would replace them with just this choice.
+  if (!res.ok) {
+    toast.error('Queued, but the choice could not be remembered');
+    return;
+  }
+  const stored = await res.json() as { streamer: { policy: object; typePolicies: object } | null };
   const saved = await fetch('/api/twitch/policies', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       streamerId,
-      policy: { ...stored?.streamer?.policy, ...choice },
-      typePolicies: stored?.streamer?.typePolicies ?? {},
+      policy: { ...stored.streamer?.policy, ...choice },
+      typePolicies: stored.streamer?.typePolicies ?? {},
     }),
   });
   if (!saved.ok) toast.error('Queued, but the choice could not be remembered');

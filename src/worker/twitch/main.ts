@@ -310,10 +310,17 @@ async function checkTools(): Promise<void> {
   if (!requested && !due) return;
 
   const pins = (settings.pinnedTools ?? {}) as Partial<Record<ToolName, string>>;
-  const toolLatest = { ytdlp: await latestVersion('ytdlp'), td: await latestVersion('td') };
+  if (requested && downloadsRunning > 0) return;
+  let toolLatest;
   let updated = false;
-  if ((requested || settings.toolsPausedAt) && downloadsRunning === 0) updated = await updateTools(pins);
-  else if (requested) return;
+  try {
+    toolLatest = { ytdlp: await latestVersion('ytdlp'), td: await latestVersion('td') };
+    if ((requested || settings.toolsPausedAt) && downloadsRunning === 0) updated = await updateTools(pins);
+  } catch (error) {
+    // The installed tools still stand, so a failed update must not keep holding downloads.
+    await prisma.twitchSettings.update({ where: { id: 'singleton' }, data: { toolUpdateRequestedAt: null, toolCheckedAt: new Date() } });
+    throw error;
+  }
 
   await prisma.twitchSettings.update({
     where: { id: 'singleton' },
