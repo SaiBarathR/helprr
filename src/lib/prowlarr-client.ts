@@ -88,6 +88,17 @@ export interface ProwlarrRelease {
   protocol?: string;
 }
 
+/** Server-side only: `fields` holds the arr's API key. */
+export interface ProwlarrApplication {
+  id: number;
+  name: string;
+  implementation: string;
+  implementationName: string;
+  syncLevel: string;
+  enable: boolean;
+  fields?: { name: string; value?: unknown }[];
+}
+
 export interface ProwlarrAppProfile {
   id: number;
   name: string;
@@ -312,9 +323,17 @@ export class ProwlarrClient {
   }
 
   async testAllIndexers(): Promise<ProwlarrTestAllResponse> {
-    const response = await this.client.post<unknown>('/api/v1/indexer/testall', undefined, {
+    return this.testAll('/api/v1/indexer/testall');
+  }
+
+  async testAllApplications(): Promise<ProwlarrTestAllResponse> {
+    return this.testAll('/api/v1/applications/testall');
+  }
+
+  private async testAll(endpoint: string): Promise<ProwlarrTestAllResponse> {
+    const response = await this.client.post<unknown>(endpoint, undefined, {
       validateStatus: (status) => (status >= 200 && status < 300) || status === 400,
-      timeout: 120_000, // tests every indexer; slow/unreachable trackers push this well past the default
+      timeout: 120_000, // tests everything; slow/unreachable targets push this well past the default
     });
 
     if (Array.isArray(response.data) && response.data.every(isProwlarrIndexerTestResult)) {
@@ -350,6 +369,15 @@ export class ProwlarrClient {
   /** Prowlarr finds the release by indexer and guid in its own search cache. */
   async grabRelease({ guid, indexerId }: { guid: string; indexerId: number }): Promise<void> {
     await this.post('/api/v1/search', { guid, indexerId }, { timeout: 60_000 });
+  }
+
+  async getApplications(): Promise<ProwlarrApplication[]> {
+    return this.get<ProwlarrApplication[]>('/api/v1/applications');
+  }
+
+  async testApplication(id: number): Promise<void> {
+    const application = await this.get<ProwlarrApplication>(`/api/v1/applications/${id}`);
+    await this.post('/api/v1/applications/test', application, { timeout: 60_000 });
   }
 
   async getTags(): Promise<Tag[]> {
