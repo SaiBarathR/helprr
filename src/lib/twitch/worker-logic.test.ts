@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { chapterGenres, chaptersToFfmetadata } from '@/lib/twitch/chapters';
+import { chapterGenres, chaptersToFfmetadata, sanitizeInfoJson } from '@/lib/twitch/chapters';
 import { classifyJobError, nextStepAfterFailure } from '@/lib/twitch/job-errors';
 import { archiveEpisode, episodeBaseName, safeFilenameTitle, seasonFolder } from '@/lib/twitch/naming';
 import { episodeNfo, seasonNfo, tvshowNfo } from '@/lib/twitch/nfo';
@@ -65,6 +65,21 @@ describe('chaptersToFfmetadata', () => {
 
   it('lists each game once for the genres', () => {
     expect(chapterGenres([{ start_time: 0, title: 'A' }, { start_time: 1, title: 'B' }, { start_time: 2, title: 'A' }])).toEqual(['A', 'B']);
+  });
+});
+
+describe('sanitizeInfoJson', () => {
+  it('keeps what describes the video and drops every signed URL', () => {
+    const text = sanitizeInfoJson(JSON.stringify({
+      id: 'v1', title: 'T', duration: 5, chapters: [{ title: 'Game' }],
+      url: 'https://x/?sig=secret',
+      manifest_url: 'https://x/?sig=secret',
+      formats: [{ url: 'https://x/?sig=secret' }],
+      requested_formats: [{ url: 'https://x/?sig=secret' }],
+      http_headers: { Cookie: 'auth-token=secret' },
+    }));
+    expect(text).not.toContain('secret');
+    expect(JSON.parse(text)).toEqual({ id: 'v1', title: 'T', duration: 5, chapters: [{ title: 'Game' }] });
   });
 });
 

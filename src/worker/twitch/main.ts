@@ -325,6 +325,8 @@ async function checkTools(): Promise<void> {
     try {
       await prepareSmokeVideo();
       await ensureTools((settings.pinnedTools ?? {}) as Partial<Record<ToolName, string>>);
+      // A pin can be the cure for a pause, so the tools get another go.
+      await prisma.twitchSettings.update({ where: { id: 'singleton' }, data: { toolsPausedAt: null, extractorFailures: 0 } });
     } finally {
       toolsBusy = false;
     }

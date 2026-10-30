@@ -28,3 +28,14 @@ export function chaptersToFfmetadata(chapters: readonly YtDlpChapter[], duration
 export function chapterGenres(chapters: readonly YtDlpChapter[]): string[] {
   return [...new Set(chapters.map((chapter) => chapter.title?.trim()).filter((title): title is string => Boolean(title)))];
 }
+
+const INFO_FIELDS = [
+  'id', 'title', 'description', 'uploader', 'uploader_id', 'timestamp', 'upload_date', 'duration',
+  'view_count', 'chapters', 'was_live', 'live_status', 'webpage_url', 'extractor',
+] as const;
+
+/** An allowlist: yt-dlp's full JSON holds signed media URLs, which must not reach the library. */
+export function sanitizeInfoJson(raw: string): string {
+  const info = JSON.parse(raw) as Record<string, unknown>;
+  return `${JSON.stringify(Object.fromEntries(INFO_FIELDS.filter((field) => field in info).map((field) => [field, info[field]])), null, 2)}\n`;
+}

@@ -4,7 +4,7 @@ import path from 'node:path';
 import { pipeline as pipeStreams } from 'node:stream/promises';
 import { createGzip } from 'node:zlib';
 import type { PrismaClient, TwitchJob, TwitchStreamer, TwitchVideo } from '@prisma/client';
-import { chapterGenres, chaptersToFfmetadata, type YtDlpChapter } from '@/lib/twitch/chapters';
+import { chapterGenres, chaptersToFfmetadata, sanitizeInfoJson, type YtDlpChapter } from '@/lib/twitch/chapters';
 import { chatToAss, type ChatComment } from '@/lib/twitch/chat-ass';
 import { archiveEpisode, episodeBaseName, seasonFolder, type SeasonKind } from '@/lib/twitch/naming';
 import { episodeNfo, seasonNfo, tvshowNfo } from '@/lib/twitch/nfo';
@@ -218,7 +218,7 @@ async function publish(ctx: JobContext, staging: string, mkv: string, info: Vide
   const infoJson = path.join(staging, 'video.info.json');
   if (await stat(infoJson).catch(() => null)) {
     const infoName = `${base}.info.json`;
-    await rename(infoJson, path.join(staging, infoName));
+    await writeFile(path.join(staging, infoName), sanitizeInfoJson(await readFile(infoJson, 'utf8')));
     sidecars.push(infoName);
   }
   const thumbName = `${base}-thumb.jpg`;

@@ -101,9 +101,9 @@ export function PolicyEditor({ value, inherited = BUILT_IN_POLICY, onChange }: {
         </div>
       </div>
       <div className="grid grid-cols-2 gap-2">
-        <NumberField label="Keep the latest" placeholder={String(inherited.keepLatest ?? 'No limit')} value={value.keepLatest ?? undefined} onChange={(keepLatest) => setField('keepLatest', keepLatest)} />
-        <NumberField label="Delete after days" placeholder={String(inherited.deleteAfterDays ?? 'Never')} value={value.deleteAfterDays ?? undefined} onChange={(deleteAfterDays) => setField('deleteAfterDays', deleteAfterDays)} />
-        <NumberField label="Delete days after watched" placeholder={String(inherited.deleteAfterWatchedDays ?? 'Never')} value={value.deleteAfterWatchedDays ?? undefined} onChange={(deleteAfterWatchedDays) => setField('deleteAfterWatchedDays', deleteAfterWatchedDays)} />
+        <NumberField label="Keep the latest" placeholder={String(inherited.keepLatest ?? 'No limit')} value={value.keepLatest} onChange={(keepLatest) => setField('keepLatest', keepLatest)} />
+        <NumberField label="Delete after days" placeholder={String(inherited.deleteAfterDays ?? 'Never')} value={value.deleteAfterDays} onChange={(deleteAfterDays) => setField('deleteAfterDays', deleteAfterDays)} />
+        <NumberField label="Delete days after watched" placeholder={String(inherited.deleteAfterWatchedDays ?? 'Never')} value={value.deleteAfterWatchedDays} onChange={(deleteAfterWatchedDays) => setField('deleteAfterWatchedDays', deleteAfterWatchedDays)} />
       </div>
     </div>
   );
@@ -112,7 +112,7 @@ export function PolicyEditor({ value, inherited = BUILT_IN_POLICY, onChange }: {
 // Empty means inherit, so a stored 0 stays distinct from no value.
 function NumberField({ label, value, placeholder, onChange }: {
   label: string;
-  value: number | undefined;
+  value: number | null | undefined;
   placeholder?: string;
   onChange: (next: number | undefined) => void;
 }) {
@@ -126,8 +126,12 @@ function NumberField({ label, value, placeholder, onChange }: {
           inputMode="numeric"
           className="mt-1.5"
           placeholder={placeholder}
-          defaultValue={value}
-          onBlur={(event) => onChange(event.target.value === '' ? undefined : Number(event.target.value))}
+          defaultValue={value ?? undefined}
+          onBlur={(event) => {
+            // A stored "no limit" also reads as empty, and only passing through must not clear it.
+            if (event.target.value === '' && value === null) return;
+            onChange(event.target.value === '' ? undefined : Number(event.target.value));
+          }}
         />
       </Label>
     </div>
