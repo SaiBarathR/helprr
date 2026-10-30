@@ -139,7 +139,7 @@ does not make liveness depend on optional cache storage; validated bounded
 images continue through the no-store bypass path.
 
 `src/lib/polling-service.ts` coordinates bounded, isolated poll sources for
-Sonarr, Radarr, Lidarr, qBittorrent, Jellyfin, Seerr, and service reachability.
+Sonarr, Radarr, Lidarr, Prowlarr health, qBittorrent, Jellyfin, Seerr, and service reachability.
 It also drives release and scheduled alerts, activity digests, disk snapshots,
 retention, anime auto-mapping, cache warming, and qBittorrent bandwidth rules.
 One upstream failure must not cancel every other source.
