@@ -29,9 +29,9 @@ export async function runDeleteFiles(prisma: PrismaClient, job: TwitchJob): Prom
     include: { video: { select: { title: true, twitchVideoId: true } } },
   });
   if (!file) return;
-  if (file.keepForever) throw new Error('validation failed: this file is marked keep forever');
-
+  // Keep forever stops the rules. A person confirming this one file overrides it.
   const fromRetention = (job.options as { retention?: boolean } | null)?.retention === true;
+  if (fromRetention && file.keepForever) throw new Error('validation failed: this file is marked keep forever');
   if (fromRetention && Date.now() - job.createdAt.getTime() > RETENTION_DELETE_VALID_MS) {
     throw new Error('validation failed: this retention delete waited too long, so preview again');
   }
@@ -71,28 +71,31 @@ export async function runDeleteFiles(prisma: PrismaClient, job: TwitchJob): Prom
   await prisma.twitchJob.update({ where: { id: job.id }, data: { needsJellyfinRefresh: true } });
 }
 
-/** Files from before group write was on. Walks once at start, and touches only what differs. */
-export async function repairLibraryModes(dir: string): Promise<number> {
-  let fixed = 0;
-  for (const entry of await readdir(dir, { withFileTypes: true })) {
-    if (entry.isSymbolicLink()) continue;
-    const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) fixed += await repairLibraryModes(full);
-    fixed += await addGroupWrite(full);
-  }
-  return fixed;
-}
-
-// Through a handle opened with no-follow: other users of this group can write here, so a
-// path could turn into a symlink between looking at it and changing it.
-async function addGroupWrite(file: string): Promise<number> {
-  const handle = await open(file, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK).catch(() => null);
+/**
+ * Files from before group write was on. Walks once at start, and touches only what differs.
+ * Everything goes through handles opened with no-follow, and folders are listed through
+ * their handle: other users of this group can write here, so a path could turn into a
+ * symlink between looking at it and using it.
+ */
+export async function repairLibraryModes(target: string): Promise<number> {
+  const handle = await open(target, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK).catch(() => null);
   if (!handle) return 0;
   try {
-    const { mode } = await handle.stat();
-    if ((mode & 0o020) !== 0) return 0;
-    await handle.chmod((mode & 0o777) | 0o020);
-    return 1;
+    const info = await handle.stat();
+    if (!info.isFile() && !info.isDirectory()) return 0;
+    let fixed = 0;
+    if ((info.mode & 0o020) === 0) {
+      // Keeps setgid: without it, a folder made here would stop sharing the group.
+      await handle.chmod((info.mode & 0o7777) | 0o020);
+      fixed += 1;
+    }
+    if (info.isDirectory()) {
+      const self = `/proc/self/fd/${handle.fd}`;
+      for (const entry of await readdir(self, { withFileTypes: true })) {
+        if (!entry.isSymbolicLink()) fixed += await repairLibraryModes(path.join(self, entry.name));
+      }
+    }
+    return fixed;
   } finally {
     await handle.close();
   }
@@ -112,8 +115,14 @@ async function exists(file: string): Promise<boolean> {
 /** The stored path stays inside the library by its text; a linked folder could still lead out. */
 async function removeInsideLibrary(relative: string): Promise<void> {
   const target = insideLibrary(relative);
-  const parent = await realpath(path.dirname(target)).catch(() => null);
-  if (!parent) return;
+  let parent: string;
+  try {
+    parent = await realpath(path.dirname(target));
+  } catch (error) {
+    // Its folder is already gone, so it is too. Anything else leaves the file in doubt.
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
+    throw error;
+  }
   const root = await realpath(LIBRARY_DIR);
   if (parent !== root && !parent.startsWith(`${root}${path.sep}`)) {
     throw new Error(`validation failed: ${relative} leads outside the library`);

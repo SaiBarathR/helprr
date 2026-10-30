@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   helixGet: vi.fn(),
   enqueueDownload: vi.fn(),
+  reconcile: vi.fn(),
   getJellyfinClient: vi.fn(),
   decideForVideo: vi.fn(),
   job: { updateMany: vi.fn(), count: vi.fn() },
@@ -32,7 +33,7 @@ vi.mock('@/lib/twitch/jobs', () => ({ enqueueDownload: mocks.enqueueDownload }))
 vi.mock('@/lib/twitch/policy-store', () => ({ decideForVideo: mocks.decideForVideo }));
 vi.mock('@/lib/service-helpers', () => ({ getJellyfinClient: mocks.getJellyfinClient }));
 vi.mock('@/lib/twitch/browser-token', () => ({ checkStoredBrowserToken: vi.fn().mockResolvedValue(undefined) }));
-vi.mock('@/lib/twitch/reconcile', () => ({ reconcileTwitchJobs: vi.fn().mockResolvedValue(undefined) }));
+vi.mock('@/lib/twitch/reconcile', () => ({ reconcileTwitchJobs: mocks.reconcile }));
 vi.mock('@/lib/polling-job-report', () => ({ noteJobFailure: mocks.noteJobFailure }));
 vi.mock('@/lib/logger', () => ({ logger: { warn: vi.fn(), info: vi.fn() } }));
 vi.mock('./shared', () => ({
@@ -72,10 +73,12 @@ describe('pollTwitch', () => {
     expect(mocks.helixGet).not.toHaveBeenCalled();
   });
 
-  it('does nothing without streamers', async () => {
+  it('calls Twitch for nothing with nobody followed, and still finishes jobs', async () => {
     mocks.streamer.findMany.mockResolvedValue([]);
     await pollTwitch(now);
     expect(mocks.helixGet).not.toHaveBeenCalled();
+    expect(mocks.reconcile).toHaveBeenCalledTimes(1);
+    expect(mocks.job.updateMany).toHaveBeenCalledTimes(1);
   });
 
   it('spends nothing on a streamer nobody follows', async () => {

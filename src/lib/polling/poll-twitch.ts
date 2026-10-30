@@ -41,7 +41,6 @@ export async function pollTwitch(now = new Date()): Promise<void> {
   // Nobody following a streamer means nothing to tell anyone, so no API budget goes on them.
   const followed = { subscriptions: { some: {} } };
   const streamers = await prisma.twitchStreamer.findMany({ where: followed, orderBy: { id: 'asc' } });
-  if (streamers.length === 0) return;
 
   const settings = await getTwitchSettings();
   try {
@@ -49,6 +48,10 @@ export async function pollTwitch(now = new Date()): Promise<void> {
     await isolated('reconcile', () => reconcileTwitchJobs(now));
     await isolated('Jellyfin busy check', () => markJellyfinBusy(settings, now));
     await isolated('browser token check', () => checkStoredBrowserToken(settings, now));
+    await isolated('urgent jobs', () => raiseUrgentJobs(now));
+
+    // Finished jobs above still need their pushes with nobody followed; Twitch itself does not.
+    if (streamers.length === 0) return;
 
     const liveDue = !settings.lastLivePollAt
       || now.getTime() - settings.lastLivePollAt.getTime() >= settings.pollLiveSecs * 1000;
@@ -80,7 +83,6 @@ export async function pollTwitch(now = new Date()): Promise<void> {
       }
     }
 
-    await raiseUrgentJobs(now);
     if (now.getHours() >= EXPIRY_NOTIFY_HOUR && liveDue) await notifyExpiring(now);
   } catch (error) {
     noteJobFailure(error);

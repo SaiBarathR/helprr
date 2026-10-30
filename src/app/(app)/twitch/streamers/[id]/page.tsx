@@ -185,7 +185,7 @@ export default function TwitchStreamerPage({ params }: { params: Promise<{ id: s
         {tab !== 'RULES' && videos.isSuccess && rows.length === 0 && (
           <p className="py-8 text-center text-sm text-muted-foreground">No videos here.</p>
         )}
-        {tab !== 'RULES' && rows.length > 0 && canDownload && (
+        {tab !== 'RULES' && rows.length > 0 && (canDownload || canManage) && (
           <div className="flex justify-end">
             <Button variant="ghost" size="sm" onClick={() => (selection.selectionMode ? selection.exit() : selection.enter())}>
               <CheckSquare className="mr-1.5 h-4 w-4" />
@@ -203,7 +203,7 @@ export default function TwitchStreamerPage({ params }: { params: Promise<{ id: s
                 layout="grid"
                 showStreamer={false}
                 actions={actions}
-                selection={selection.selectionMode && !video.activeJob && (!video.downloaded || canManage)
+                selection={selection.selectionMode && !video.activeJob && (video.downloaded ? canManage : canDownload)
                   ? { selected: selection.selectedKeys.has(video.id), onToggle: () => selection.toggle(video.id) }
                   : undefined}
               />
