@@ -12,7 +12,7 @@ vi.mock('./env', () => ({
   FFPROBE: '',
 }));
 
-import { forgetFilesDeletedElsewhere, insideLibrary, repairLibraryModes } from './delete-files';
+import { forgetFilesDeletedElsewhere, insideLibrary, repairLibraryModes, runDeleteFiles } from './delete-files';
 
 describe('insideLibrary', () => {
   it('resolves a normal path', () => {
@@ -25,6 +25,39 @@ describe('insideLibrary', () => {
 
   it('refuses a sibling folder sharing the prefix', () => {
     expect(() => insideLibrary('../twitch-other/x.mkv', '/media/twitch')).toThrow(/outside/);
+  });
+});
+
+describe('runDeleteFiles', () => {
+  afterEach(() => rm(library.dir, { recursive: true, force: true }));
+
+  async function setup(options: unknown) {
+    library.dir = await mkdtemp(path.join(os.tmpdir(), 'twitch-del-'));
+    await writeFile(path.join(library.dir, 'a.mkv'), '');
+    const prisma = {
+      twitchMediaFile: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: 'f', videoId: 'v', keepForever: true, relativePath: 'a.mkv', sidecars: [], originalRelativePath: null,
+          video: { title: 'A', twitchVideoId: '1' },
+        }),
+        delete: vi.fn().mockResolvedValue({}),
+      },
+      twitchJob: { count: vi.fn().mockResolvedValue(0), update: vi.fn().mockResolvedValue({}) },
+      fileOperationAudit: { create: vi.fn().mockResolvedValue({}) },
+    };
+    return { prisma, job: { id: 'j', mediaFileId: 'f', options, createdAt: new Date(), requestedByUserId: 'u', requestedByUsername: 'u' } };
+  }
+
+  it('lets a person delete a keep-forever file they confirmed', async () => {
+    const { prisma, job } = await setup({});
+    await runDeleteFiles(prisma as never, job as never);
+    await expect(stat(path.join(library.dir, 'a.mkv'))).rejects.toThrow();
+  });
+
+  it('never lets retention delete one', async () => {
+    const { prisma, job } = await setup({ retention: true });
+    await expect(runDeleteFiles(prisma as never, job as never)).rejects.toThrow(/keep forever/);
+    expect(await stat(path.join(library.dir, 'a.mkv'))).toBeTruthy();
   });
 });
 
@@ -44,8 +77,12 @@ describe('repairLibraryModes', () => {
     await chmod(outside, 0o644);
     await symlink(outside, path.join(library.dir, 'a/link'));
 
+    await mkdir(path.join(library.dir, 'shared'));
+    await chmod(path.join(library.dir, 'shared'), 0o2755);
+
     await repairLibraryModes(library.dir);
 
+    expect((await stat(path.join(library.dir, 'shared'))).mode & 0o7777).toBe(0o2775);
     expect((await stat(outside)).mode & 0o777).toBe(0o644);
     await rm(outside);
 
@@ -112,6 +149,21 @@ describe('forgetFilesDeletedElsewhere', () => {
 
     expect(prisma.twitchMediaFile.delete).not.toHaveBeenCalled();
     expect(await stat(path.join(library.dir, 'bad.nfo'))).toBeTruthy();
+  });
+
+  it('keeps the record when a folder cannot be read: the file may still be there', async () => {
+    library.dir = await mkdtemp(path.join(os.tmpdir(), 'twitch-locked-'));
+    await writeFile(path.join(library.dir, '.helprr-library'), '');
+    await writeFile(path.join(library.dir, 'kept.mkv'), '');
+    await mkdir(path.join(library.dir, 'locked'));
+    await writeFile(path.join(library.dir, 'locked/sidecar.nfo'), '');
+    await chmod(path.join(library.dir, 'locked'), 0o000);
+    const prisma = fakePrisma([row('kept'), { ...row('gone'), relativePath: 'gone.mkv', sidecars: ['locked/sidecar.nfo'] }]);
+
+    await expect(run(prisma)).rejects.toThrow(/EACCES/);
+
+    expect(prisma.twitchMediaFile.delete).not.toHaveBeenCalled();
+    await chmod(path.join(library.dir, 'locked'), 0o755);
   });
 
   it('refuses a sidecar reached through a folder linked out of the library', async () => {

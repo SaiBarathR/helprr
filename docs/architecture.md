@@ -772,8 +772,8 @@ Invariants:
 - Three extractor failures in a row, across jobs, pause downloads and send a push: that
   pattern points at the tools rather than a video. The worker installs newer tools then,
   or when the owner asks, and never while a download is running.
-- Library files are group-writable (664 and 775), so a Jellyfin sharing the worker's group
-  can delete them. The worker then forgets a file that vanished, every two minutes, and
+- The worker creates library files group-writable and adds group write to older ones, so a
+  Jellyfin sharing the worker's group can delete them. The worker then forgets a file that vanished, every two minutes, and
   sweeps its sidecars with an audit row. It acts only on a clear not-found, and only with
   the `.helprr-library` marker present, so an unmounted disk cannot look like a deletion.
 - `pollTwitch` spends nothing on a streamer with no subscribers. Subscribing again takes

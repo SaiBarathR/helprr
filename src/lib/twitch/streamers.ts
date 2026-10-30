@@ -59,6 +59,13 @@ export async function subscribeToStreamer(userId: string, login: string) {
   if (!streamer.baselinedAt) {
     try {
       await syncStreamerVideos(streamer);
+      // A recording that published during the gap is already stored, so the sweep skips it.
+      if (unwatched) {
+        await prisma.twitchVideo.updateMany({
+          where: { streamerId: streamer.id, notifiedAt: null, availability: 'PUBLISHED' },
+          data: { notifiedAt: new Date() },
+        });
+      }
     } catch (error) {
       // nextVideosCheckAt is still null, so the next poll takes the baseline instead.
       logger.warn('Twitch baseline failed', { streamerId: streamer.id, error: String(error) }, { scope: 'twitch' });
