@@ -1,9 +1,10 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useMe, hasCapability } from '@/components/permission-provider';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
@@ -26,15 +27,43 @@ const OPTIONS = [
   { id: 'keepForever', label: 'Keep forever' },
 ] as const;
 
-function SheetBody({ video, onDone }: { video: TwitchVideo; onDone: () => void }) {
+interface Defaults {
+  quality: string;
+  chat: boolean;
+  chapters: boolean;
+  reencode: boolean;
+  keepForever: boolean;
+}
+
+// Merges into the streamer's rules, so its other settings and type rules survive.
+async function rememberForStreamer(streamerId: string, choice: Defaults): Promise<void> {
+  const res = await fetch(`/api/twitch/policies?streamerId=${streamerId}`);
+  const stored = res.ok ? await res.json() as { streamer: { policy: object; typePolicies: object } | null } : null;
+  const saved = await fetch('/api/twitch/policies', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      streamerId,
+      policy: { ...stored?.streamer?.policy, ...choice },
+      typePolicies: stored?.streamer?.typePolicies ?? {},
+    }),
+  });
+  if (!saved.ok) toast.error('Queued, but the choice could not be remembered');
+}
+
+function SheetBody({ video, defaults, onDone }: { video: TwitchVideo; defaults: Defaults; onDone: () => void }) {
   const queryClient = useQueryClient();
-  const [quality, setQuality] = useState<(typeof QUALITIES)[number]['id']>('1080p60');
-  const [options, setOptions] = useState({ chat: true, chapters: true, reencode: true, keepForever: false });
+  const canManage = hasCapability(useMe(), 'twitch.manage');
+  const [quality, setQuality] = useState(defaults.quality);
+  const [options, setOptions] = useState({
+    chat: defaults.chat, chapters: defaults.chapters, reencode: defaults.reencode, keepForever: defaults.keepForever,
+  });
+  const [remember, setRemember] = useState(false);
   // One id per sheet, so a double tap or a retry cannot queue the video twice.
   const clientRequestId = useMemo(() => crypto.randomUUID(), []);
 
   const mutedSeconds = (video.mutedSegments ?? []).reduce((total, segment) => total + segment.duration, 0);
-  const sizeGb = (QUALITIES.find((item) => item.id === quality)!.gbPerHour * video.durationSeconds) / 3600;
+  const sizeGb = ((QUALITIES.find((item) => item.id === quality)?.gbPerHour ?? 3.46) * video.durationSeconds) / 3600;
 
   const queue = useMutation({
     mutationFn: async () => {
@@ -45,6 +74,7 @@ function SheetBody({ video, onDone }: { video: TwitchVideo; onDone: () => void }
       });
       const data = await res.json().catch(() => null);
       if (!res.ok) throw new Error(data?.error || 'Could not queue the download');
+      if (remember) await rememberForStreamer(video.streamer.id, { quality, ...options });
     },
     onSuccess: () => {
       toast.success('Download queued');
@@ -86,6 +116,12 @@ function SheetBody({ video, onDone }: { video: TwitchVideo; onDone: () => void }
           </label>
         ))}
       </div>
+      {canManage && (
+        <label className="grouped-row min-h-11 w-full cursor-pointer rounded-lg bg-card">
+          <span className="text-sm">Remember for {video.streamer.displayName}</span>
+          <Switch checked={remember} onCheckedChange={setRemember} />
+        </label>
+      )}
       <dl className="grid grid-cols-3 gap-2 text-center">
         {[
           ['Length', formatDuration(video.durationSeconds)],
@@ -113,7 +149,19 @@ export function DownloadSheet({ video, open, onOpenChange }: {
 }) {
   const isMobile = useIsMobile();
   const title = 'Download VOD';
-  const body = <SheetBody video={video} onDone={() => onOpenChange(false)} />;
+  // The sheet starts from what the rules say for this video.
+  const defaults = useQuery({
+    queryKey: ['twitch', 'video', video.id],
+    queryFn: async ({ signal }) => {
+      const res = await fetch(`/api/twitch/videos/${video.id}`, { signal });
+      if (!res.ok) throw new Error('Could not load the video');
+      return (await res.json()) as { defaults: Defaults };
+    },
+    enabled: open,
+  });
+  const body = defaults.data
+    ? <SheetBody video={video} defaults={defaults.data.defaults} onDone={() => onOpenChange(false)} />
+    : <div className="flex h-40 items-center justify-center"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>;
   if (isMobile) {
     return (
       <Drawer open={open} onOpenChange={onOpenChange}>

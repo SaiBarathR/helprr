@@ -60,6 +60,7 @@ const streamer = {
   broadcasterType: 'partner',
   isLive: false,
   liveStreamId: null,
+  liveCategory: null,
   baselinedAt: new Date('2026-10-01T00:00:00Z'),
 };
 
@@ -86,6 +87,12 @@ describe('syncStreamerVideos', () => {
     await syncStreamerVideos({ ...streamer, baselinedAt: null, isLive: true, liveStreamId: 'live' }, now);
 
     expect(video.createMany.mock.calls[0][0].data[0]).toMatchObject({ availability: 'RECORDING', notifiedAt: null });
+  });
+
+  it('keeps the category of a stream seen live', async () => {
+    helixGet.mockResolvedValue(page([helixVideo('1', { stream_id: 'live' })]));
+    await syncStreamerVideos({ ...streamer, isLive: true, liveStreamId: 'live', liveCategory: 'Elden Ring' }, now);
+    expect(video.createMany.mock.calls[0][0].data[0].category).toBe('Elden Ring');
   });
 
   it('holds a recording back and reports it once it publishes', async () => {

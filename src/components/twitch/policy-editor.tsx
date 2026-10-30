@@ -1,9 +1,11 @@
 'use client';
 
+import { useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
-import { BUILT_IN_POLICY, type PolicyLayer, type TwitchPolicy } from '@/lib/twitch/policy';
+import { BUILT_IN_POLICY, type PolicyLayer, type TwitchPolicy, type VideoTypeKey } from '@/lib/twitch/policy';
+import { cn } from '@/lib/utils';
 
 const SWITCHES = [
   ['autoDownload', 'Download automatically'],
@@ -91,6 +93,55 @@ export function PolicyEditor({ value, inherited = BUILT_IN_POLICY, onChange }: {
           />
         </div>
       </div>
+    </div>
+  );
+}
+
+const LAYER_TABS = [
+  { id: 'base', label: 'All' },
+  { id: 'ARCHIVE', label: 'Broadcasts' },
+  { id: 'HIGHLIGHT', label: 'Highlights' },
+  { id: 'UPLOAD', label: 'Uploads' },
+] as const;
+
+export interface RuleLayerValue {
+  base: PolicyLayer;
+  types: Partial<Record<VideoTypeKey, PolicyLayer>>;
+}
+
+/** A layer, and the per-video-type layers that override it. */
+export function RuleLayers({ value, inherited, onChange }: {
+  value: RuleLayerValue;
+  inherited?: Partial<TwitchPolicy>;
+  onChange: (next: RuleLayerValue) => void;
+}) {
+  const [tab, setTab] = useState<(typeof LAYER_TABS)[number]['id']>('base');
+  return (
+    <div className="space-y-3">
+      <div role="tablist" aria-label="Video type" className="grid grid-cols-4 gap-1 rounded-md bg-muted/40 p-1">
+        {LAYER_TABS.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            role="tab"
+            aria-selected={tab === item.id}
+            onClick={() => setTab(item.id)}
+            className={cn('min-h-9 rounded text-xs font-medium', tab === item.id ? 'bg-background shadow-sm' : 'text-muted-foreground')}
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
+      {tab === 'base' ? (
+        <PolicyEditor key="base" value={value.base} inherited={inherited} onChange={(base) => onChange({ ...value, base })} />
+      ) : (
+        <PolicyEditor
+          key={tab}
+          value={value.types[tab] ?? {}}
+          inherited={{ ...inherited, ...value.base }}
+          onChange={(layer) => onChange({ ...value, types: { ...value.types, [tab]: layer } })}
+        />
+      )}
     </div>
   );
 }

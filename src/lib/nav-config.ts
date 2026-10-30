@@ -89,7 +89,7 @@ export const NAV_ITEMS: NavItemDef[] = [
   { id: 'prowlarr', href: '/prowlarr', icon: Search, label: 'Prowlarr', shortLabel: 'Prowlarr', requiredCapability: 'prowlarr.view' },
   { id: 'jellyfin-library', href: '/jellyfin/library', icon: Clapperboard, label: 'Watch', shortLabel: 'Watch', requiredCapability: 'jellyfin.view' },
   { id: 'jellyfin', href: '/jellyfin', icon: MonitorPlay, label: 'Jellyfin', shortLabel: 'Jellyfin', requiredCapability: 'jellyfin.view' },
-  { id: 'twitch', href: '/twitch', icon: Twitch, label: 'Twitch', shortLabel: 'Twitch', requiredCapability: 'twitch.view', requiresConfigured: 'twitchConfigured' },
+  { id: 'twitch', href: '/twitch', icon: Twitch, label: 'Twitch', shortLabel: 'Twitch', requiredCapability: 'twitch.view', requiresConfigured: 'twitchConfigured', badgeArea: 'twitch' },
   { id: 'insights', href: '/insights', icon: ChartLine, label: 'Insights', shortLabel: 'Insights', requiredCapability: 'insights.view' },
   { id: 'activity', href: '/activity', icon: Activity, label: 'Activity', shortLabel: 'Activity', requiredCapability: 'activity.view', badgeArea: 'activity' },
   { id: 'notifications', href: '/notifications', icon: Bell, label: 'Notifications', shortLabel: 'Alerts', requiredCapability: 'notifications.view', badgeArea: 'notifications' },

@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CheckCheck, LayoutGrid, List, Radio } from 'lucide-react';
 import { toast } from 'sonner';
@@ -12,6 +12,8 @@ import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { TwitchSubNav } from '@/components/twitch/twitch-subnav';
 import { TwitchVideoCard } from '@/components/twitch/twitch-video-card';
+import { TwitchVideoList } from '@/components/twitch/twitch-video-list';
+import { useVideoActions } from '@/components/twitch/use-video-actions';
 import type { TwitchVideoPage } from '@/components/twitch/types';
 import { useRestorableInfiniteQuery } from '@/lib/hooks/use-restorable-infinite-query';
 import { useUIStore } from '@/lib/store';
@@ -31,6 +33,13 @@ const LENGTHS = [
   { id: 'short', label: 'Under 1 h' },
   { id: 'medium', label: '1–3 h' },
   { id: 'long', label: 'Over 3 h' },
+] as const;
+
+const SINCE = [
+  { id: '', label: 'Any date' },
+  { id: 'week', label: 'Past week' },
+  { id: 'month', label: 'Past month' },
+  { id: 'quarter', label: 'Past 3 months' },
 ] as const;
 
 interface StreamerList {
@@ -53,6 +62,8 @@ export default function TwitchFeedPage() {
   const [segment, setSegment] = useState<'new' | 'all'>('all');
   const [chip, setChip] = useState<(typeof CHIPS)[number]['id']>('all');
   const [length, setLength] = useState('');
+  const [since, setSince] = useState('');
+  const [category, setCategory] = useState('');
   const [streamer, setStreamer] = useState('');
   const [search, setSearch] = useState('');
 
@@ -62,10 +73,12 @@ export default function TwitchFeedPage() {
       params.set(key, value as string);
     }
     if (length) params.set('length', length);
+    if (since) params.set('since', since);
+    if (category) params.set('category', category);
     if (streamer) params.set('streamer', streamer);
     if (search.trim()) params.set('q', search.trim());
     return params.toString();
-  }, [segment, chip, length, streamer, search]);
+  }, [segment, chip, length, since, category, streamer, search]);
 
   const me = useMe();
   const canManage = hasCapability(me, 'twitch.manage');
@@ -89,6 +102,27 @@ export default function TwitchFeedPage() {
     getNextPageParam: (last: TwitchVideoPage) => (last.page * last.pageSize < last.total ? last.page + 1 : undefined),
   });
   const videos = useMemo(() => feed.data?.pages.flatMap((page) => page.videos) ?? [], [feed.data]);
+
+  const expiringQuery = useQuery({
+    queryKey: ['twitch', 'feed', 'expiring-shelf'],
+    queryFn: ({ signal }) => getJson<TwitchVideoPage>('/api/twitch/feed?expiring=1&notDownloaded=1&pageSize=12', signal),
+  });
+  const expiring = expiringQuery.data?.videos ?? [];
+  const categories = feed.data?.pages[0]?.categories ?? [];
+  const actions = useVideoActions();
+
+  // The list is virtual, so a sentinel under it asks for the next page.
+  const loadMoreRef = useRef<HTMLDivElement>(null);
+  const { hasNextPage, isFetchingNextPage, fetchNextPage } = feed;
+  useEffect(() => {
+    const sentinel = loadMoreRef.current;
+    if (!sentinel || !hasNextPage) return;
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting && !isFetchingNextPage) void fetchNextPage();
+    }, { rootMargin: '800px' });
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   const markSeen = useMutation({
     mutationFn: async () => {
@@ -184,6 +218,23 @@ export default function TwitchFeedPage() {
           >
             {LENGTHS.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
           </select>
+          <select
+            aria-label="Date"
+            value={since}
+            onChange={(event) => setSince(event.target.value)}
+            className="h-10 min-w-0 rounded-md border border-border bg-card px-2 text-sm"
+          >
+            {SINCE.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
+          </select>
+          <select
+            aria-label="Category"
+            value={category}
+            onChange={(event) => setCategory(event.target.value)}
+            className="h-10 min-w-0 rounded-md border border-border bg-card px-2 text-sm"
+          >
+            <option value="">All categories</option>
+            {categories.map((item) => <option key={item} value={item}>{item}</option>)}
+          </select>
         </div>
 
         {canManage && autoSettings.data?.autoDownloadEnabled === false && (
@@ -207,6 +258,17 @@ export default function TwitchFeedPage() {
           </section>
         )}
 
+        {expiring.length > 0 && segment === 'all' && (
+          <section aria-label="Expiring soon">
+            <h2 className="mb-1.5 font-mono text-[11px] uppercase tracking-widest text-muted-foreground">Expiring soon</h2>
+            <div className="-mx-4 flex gap-3 overflow-x-auto px-4 pb-1 no-scrollbar">
+              {expiring.map((video) => (
+                <div key={video.id} className="w-60 shrink-0"><TwitchVideoCard video={video} layout="grid" actions={actions} /></div>
+              ))}
+            </div>
+          </section>
+        )}
+
         {feed.isLoading ? (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {Array.from({ length: 6 }, (_, index) => <Skeleton key={index} className="aspect-video rounded-xl" />)}
@@ -218,17 +280,17 @@ export default function TwitchFeedPage() {
             {subscriptions.length === 0 ? 'Subscribe to a streamer to fill your feed.' : 'Nothing here yet.'}
           </p>
         ) : (
-          <div className={cn(view === 'grid' ? 'grid grid-cols-1 gap-x-4 gap-y-5 sm:grid-cols-2 xl:grid-cols-3' : 'space-y-3')}>
-            {videos.map((video) => <TwitchVideoCard key={video.id} video={video} layout={view} />)}
-          </div>
+          <TwitchVideoList
+            videos={videos}
+            layout={view}
+            renderVideo={(video) => <TwitchVideoCard video={video} layout={view} actions={actions} />}
+          />
         )}
 
-        {feed.hasNextPage && (
-          <Button variant="outline" className="w-full" disabled={feed.isFetchingNextPage} onClick={() => void feed.fetchNextPage()}>
-            {feed.isFetchingNextPage ? 'Loading…' : 'Load more'}
-          </Button>
-        )}
+        <div ref={loadMoreRef} aria-hidden className="h-1" />
+        {feed.isFetchingNextPage && <p className="py-2 text-center text-sm text-muted-foreground">Loading…</p>}
       </div>
+      {actions.sheet}
     </div>
   );
 }

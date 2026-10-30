@@ -7,7 +7,9 @@ import { toast } from 'sonner';
 import { PageHeader } from '@/components/layout/page-header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { useMe, hasCapability } from '@/components/permission-provider';
 import { TwitchSubNav } from '@/components/twitch/twitch-subnav';
+import { formatDuration } from '@/components/twitch/types';
 import { backoffRefetchInterval } from '@/lib/query-fetch';
 
 interface Job {
@@ -15,6 +17,8 @@ interface Job {
   state: string;
   stage: string | null;
   progress: number | null;
+  speedBps: number | null;
+  etaSeconds: number | null;
   bytesDone: number | null;
   bytesTotal: number | null;
   errorClass: string | null;
@@ -26,6 +30,9 @@ interface WorkerStatus {
   online: boolean;
   seen: boolean;
   tools?: { ytdlp?: string | null; td?: string | null };
+  toolLatest?: { ytdlp?: string; td?: string };
+  toolsPaused?: boolean;
+  toolUpdatePending?: boolean;
   gpuAvailable?: boolean;
   diskFreeBytes?: number | null;
 }
@@ -62,7 +69,13 @@ function JobRow({ job, action, onAction, busy }: {
 }) {
   const progress = job.progress === null ? null : Math.round(job.progress * 100);
   const detail = job.state === 'RUNNING'
-    ? [job.stage ?? 'Starting', progress === null ? null : `${progress}%`, job.bytesTotal ? gb(job.bytesTotal) : null].filter(Boolean).join(' · ')
+    ? [
+        job.stage ?? 'Starting',
+        progress === null ? null : `${progress}%`,
+        job.bytesTotal ? gb(job.bytesTotal) : null,
+        job.speedBps ? `${(job.speedBps / 1024 ** 2).toFixed(1)} MB/s` : null,
+        job.etaSeconds ? `${formatDuration(job.etaSeconds)} left` : null,
+      ].filter(Boolean).join(' · ')
     : job.state === 'FAILED'
       ? ERROR_LABELS[job.errorClass ?? ''] ?? 'Failed'
       : STATE_LABELS[job.state] ?? job.state.toLowerCase();
@@ -133,6 +146,20 @@ export default function TwitchQueuePage() {
   });
   const worker = workerQuery.data;
 
+  const canManage = hasCapability(useMe(), 'twitch.manage');
+  const updateAvailable = Boolean(worker?.tools && worker.toolLatest && (
+    (worker.toolLatest.ytdlp && worker.toolLatest.ytdlp !== worker.tools.ytdlp)
+    || (worker.toolLatest.td && worker.toolLatest.td !== worker.tools.td)
+  ));
+  const updateTools = useMutation({
+    mutationFn: async () => {
+      const res = await fetch('/api/twitch/worker/tools', { method: 'POST' });
+      if (!res.ok) throw new Error('Could not ask for an update');
+    },
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['twitch', 'worker'] }),
+    onError: (error) => toast.error(error.message),
+  });
+
   const act = useMutation({
     mutationFn: async ({ id, action }: { id: string; action: 'cancel' | 'retry' }) => {
       const res = await fetch(`/api/twitch/jobs/${id}/${action}`, { method: 'POST' });
@@ -184,6 +211,24 @@ export default function TwitchQueuePage() {
             <div className="grouped-row">
               <span className="text-sm text-muted-foreground">Tools</span>
               <span className="truncate font-mono text-xs text-muted-foreground">yt-dlp {worker.tools.ytdlp} · TD {worker.tools.td}</span>
+            </div>
+          )}
+          {worker?.toolsPaused && (
+            <div className="grouped-row">
+              <span className="text-sm text-amber-400">Downloads are paused: several failed the same way</span>
+            </div>
+          )}
+          {canManage && (worker?.toolsPaused || updateAvailable) && (
+            <div className="grouped-row">
+              <span className="text-sm text-muted-foreground">{updateAvailable ? 'A tool update is available' : 'No newer tools yet'}</span>
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={worker?.toolUpdatePending || updateTools.isPending}
+                onClick={() => updateTools.mutate()}
+              >
+                {worker?.toolUpdatePending ? 'Updating…' : updateAvailable ? 'Update' : 'Try again'}
+              </Button>
             </div>
           )}
         </Section>

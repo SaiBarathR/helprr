@@ -6,7 +6,7 @@ import { getTwitchSettings } from '@/lib/twitch/settings';
 /** The saved layers for one streamer's video type, with an optional unsaved draft on top of the streamer. */
 export async function decideForVideo(
   video: VideoForPolicy & { type: TwitchVideoType; streamerId: string },
-  draft?: { global?: PolicyLayer; streamer?: PolicyLayer },
+  draft?: { global?: PolicyLayer; streamer?: PolicyLayer; streamerTypes?: Partial<Record<VideoTypeKey, PolicyLayer>> },
 ): Promise<PolicyDecision> {
   const [settings, stored] = await Promise.all([
     getTwitchSettings(),
@@ -17,6 +17,6 @@ export async function decideForVideo(
     global: draft?.global ?? sanitizeLayer(settings.defaultPolicy),
     type: layerMap(settings.typePolicies)[type],
     streamer: draft?.streamer ?? sanitizeLayer(stored?.policy),
-    streamerType: layerMap(stored?.typePolicies)[type],
+    streamerType: (draft?.streamerTypes ?? layerMap(stored?.typePolicies))[type],
   }, settings.autoDownloadEnabled);
 }

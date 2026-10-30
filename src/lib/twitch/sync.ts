@@ -30,7 +30,7 @@ const VIDEO_TYPES: Record<string, TwitchVideoType> = {
 const MISSED_SWEEPS_BEFORE_CHECK = 2;
 const VIDEOS_PAGE_SIZE = 100;
 
-type StreamerForSync = Pick<TwitchStreamer, 'id' | 'twitchUserId' | 'broadcasterType' | 'isLive' | 'liveStreamId' | 'baselinedAt'>;
+type StreamerForSync = Pick<TwitchStreamer, 'id' | 'twitchUserId' | 'broadcasterType' | 'isLive' | 'liveStreamId' | 'liveCategory' | 'baselinedAt'>;
 
 function toRow(video: HelixVideo, streamer: StreamerForSync) {
   const type = VIDEO_TYPES[video.type];
@@ -50,6 +50,8 @@ function toRow(video: HelixVideo, streamer: StreamerForSync) {
     publishedAt: new Date(video.published_at),
     durationSeconds: parseHelixDuration(video.duration),
     thumbnailUrl: video.thumbnail_url || null,
+    // Only a stream seen live has one; undefined leaves what is stored alone.
+    category: availability === 'RECORDING' ? streamer.liveCategory ?? undefined : undefined,
     viewCount: video.view_count,
     language: video.language || null,
     streamId: video.stream_id,

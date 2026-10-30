@@ -9,7 +9,13 @@ async function getHandler(): Promise<NextResponse> {
   const auth = await requireUserCapability('twitch.view');
   if (!auth.ok) return auth.response;
 
-  const heartbeat = await prisma.twitchWorkerHeartbeat.findFirst({ orderBy: { lastSeenAt: 'desc' } });
+  const [heartbeat, settings] = await Promise.all([
+    prisma.twitchWorkerHeartbeat.findFirst({ orderBy: { lastSeenAt: 'desc' } }),
+    prisma.twitchSettings.findUnique({
+      where: { id: 'singleton' },
+      select: { toolLatest: true, toolsPausedAt: true, toolUpdateRequestedAt: true },
+    }),
+  ]);
   if (!heartbeat) return NextResponse.json({ online: false, seen: false });
   return NextResponse.json({
     online: Date.now() - heartbeat.lastSeenAt.getTime() < ONLINE_WITHIN_MS,
@@ -17,6 +23,9 @@ async function getHandler(): Promise<NextResponse> {
     lastSeenAt: heartbeat.lastSeenAt,
     version: heartbeat.version,
     tools: heartbeat.tools,
+    toolLatest: settings?.toolLatest ?? {},
+    toolsPaused: Boolean(settings?.toolsPausedAt),
+    toolUpdatePending: Boolean(settings?.toolUpdateRequestedAt),
     gpuAvailable: heartbeat.gpuAvailable,
     diskFreeBytes: heartbeat.diskFreeBytes === null ? null : Number(heartbeat.diskFreeBytes),
     diskTotalBytes: heartbeat.diskTotalBytes === null ? null : Number(heartbeat.diskTotalBytes),

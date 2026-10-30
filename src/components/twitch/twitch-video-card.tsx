@@ -1,12 +1,15 @@
 'use client';
 
 import Link from '@/components/ui/app-link';
-import { Check, Tv, VolumeX } from 'lucide-react';
+import { Check, Download, ExternalLink, Eye, EyeOff, MoreVertical, Tv, VolumeX, Zap } from 'lucide-react';
 import { formatDistanceToNowStrict } from 'date-fns';
 import { FadeInImage } from '@/components/media/fade-in-image';
+import { SelectionCheck } from '@/components/media/selection-check';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { toCachedImageSrc } from '@/lib/image';
 import { cn } from '@/lib/utils';
 import { daysUntil, formatDuration, VIDEO_TYPE_LABELS, type TwitchVideo } from './types';
+import type { VideoActions } from './use-video-actions';
 
 function ExpiryPill({ iso }: { iso: string | null }) {
   const days = daysUntil(iso);
@@ -55,32 +58,71 @@ function Thumbnail({ video }: { video: TwitchVideo }) {
   );
 }
 
-export function TwitchVideoCard({ video, layout, showStreamer = true }: {
+function CardMenu({ video, actions }: { video: TwitchVideo; actions: VideoActions }) {
+  const canDownload = !video.downloaded && !video.activeJob && video.availability === 'PUBLISHED';
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        aria-label={`Actions for ${video.title}`}
+        className="-mr-2 flex h-11 w-9 shrink-0 items-center justify-center text-muted-foreground"
+      >
+        <MoreVertical className="h-4 w-4" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        {canDownload && <DropdownMenuItem onSelect={() => actions.openSheet(video)}><Download />Download…</DropdownMenuItem>}
+        {canDownload && <DropdownMenuItem onSelect={() => actions.quickDownload(video)}><Zap />Quick download</DropdownMenuItem>}
+        {!video.seen && <DropdownMenuItem onSelect={() => actions.markSeen(video)}><Eye />Mark seen</DropdownMenuItem>}
+        <DropdownMenuItem onSelect={() => actions.hide(video)}><EyeOff />Hide</DropdownMenuItem>
+        <DropdownMenuItem asChild>
+          <a href={`https://www.twitch.tv/videos/${video.twitchVideoId}`} target="_blank" rel="noopener noreferrer"><ExternalLink />Open on Twitch</a>
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+export function TwitchVideoCard({ video, layout, showStreamer = true, actions, selection }: {
   video: TwitchVideo;
   layout: 'grid' | 'list';
   showStreamer?: boolean;
+  actions?: VideoActions;
+  selection?: { selected: boolean; onToggle: () => void };
 }) {
   const avatar = toCachedImageSrc(video.streamer.profileImageUrl, undefined, { width: 72 });
   const age = formatDistanceToNowStrict(new Date(video.twitchCreatedAt), { addSuffix: true });
-  return (
-    <Link
-      href={`/twitch/vod/${video.id}`}
-      className={cn('group press-feedback block min-w-0', layout === 'list' && 'grid grid-cols-[9rem_1fr] gap-3 sm:grid-cols-[14rem_1fr]')}
-    >
-      <Thumbnail video={video} />
+  const meta = [showStreamer ? video.streamer.displayName : null, age, video.category].filter(Boolean).join(' · ');
+  const wrapper = cn('group press-feedback block min-w-0', layout === 'list' && 'grid grid-cols-[9rem_1fr] gap-3 sm:grid-cols-[14rem_1fr]');
+  const body = (
+    <>
+      <div className="relative">
+        <Thumbnail video={video} />
+        {selection && <SelectionCheck selected={selection.selected} className="absolute left-1.5 top-8" />}
+      </div>
       <div className={cn('flex min-w-0 gap-2.5', layout === 'grid' && 'mt-2')}>
         {showStreamer && layout === 'grid' && (
           <span className="relative mt-0.5 block h-8 w-8 shrink-0 overflow-hidden rounded-full bg-muted">
             {avatar && <FadeInImage src={avatar} alt="" fill sizes="32px" className="object-cover" unoptimized />}
           </span>
         )}
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <p className="line-clamp-2 text-sm font-medium leading-snug">{video.title}</p>
-          <p className="mt-0.5 truncate text-xs text-muted-foreground">
-            {showStreamer ? `${video.streamer.displayName} · ` : ''}{age}
-          </p>
+          <p className="mt-0.5 truncate text-xs text-muted-foreground">{meta}</p>
         </div>
       </div>
-    </Link>
+    </>
+  );
+
+  if (selection) {
+    return (
+      <button type="button" aria-pressed={selection.selected} onClick={selection.onToggle} className={cn(wrapper, 'w-full text-left')}>
+        {body}
+      </button>
+    );
+  }
+  return (
+    <div className="relative">
+      <Link href={`/twitch/vod/${video.id}`} className={cn(wrapper, actions && 'pr-7')}>{body}</Link>
+      {actions && <div className="absolute bottom-0 right-0"><CardMenu video={video} actions={actions} /></div>}
+    </div>
   );
 }

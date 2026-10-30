@@ -132,6 +132,19 @@ export async function latestVersion(tool: ToolName): Promise<string> {
 }
 
 /** First start, or a pin that changed. */
+/** Whether any tool moved. Pins are the owner's word, so a pinned tool stays put. */
+export async function updateTools(pins: Partial<Record<ToolName, string>>): Promise<boolean> {
+  let updated = false;
+  for (const tool of Object.keys(KNOWN_GOOD) as ToolName[]) {
+    if (pins[tool]) continue;
+    const version = await latestVersion(tool);
+    if (version === (await activeVersion(tool))) continue;
+    await installTool(tool, version);
+    updated = true;
+  }
+  return updated;
+}
+
 export async function ensureTools(pins: Partial<Record<ToolName, string>>): Promise<void> {
   for (const tool of Object.keys(KNOWN_GOOD) as ToolName[]) {
     const wanted = pins[tool] ?? KNOWN_GOOD[tool];

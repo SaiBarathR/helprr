@@ -6,11 +6,11 @@ import { Check, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import type { PolicyLayer, TwitchPolicy } from '@/lib/twitch/policy';
-import { PolicyEditor } from './policy-editor';
+import { RuleLayers, type RuleLayerValue } from './policy-editor';
 
 interface PoliciesResponse {
   defaultPolicy: PolicyLayer;
-  streamer: { policy: PolicyLayer } | null;
+  streamer: { policy: PolicyLayer; typePolicies: RuleLayerValue['types'] } | null;
 }
 
 interface PreviewRow {
@@ -22,7 +22,7 @@ interface PreviewRow {
 
 export function StreamerRules({ streamerId }: { streamerId: string }) {
   const queryClient = useQueryClient();
-  const [draft, setDraft] = useState<PolicyLayer | null>(null);
+  const [draft, setDraft] = useState<RuleLayerValue | null>(null);
 
   const stored = useQuery({
     queryKey: ['twitch', 'policies', streamerId],
@@ -32,7 +32,7 @@ export function StreamerRules({ streamerId }: { streamerId: string }) {
       return (await res.json()) as PoliciesResponse;
     },
   });
-  const layer = draft ?? stored.data?.streamer?.policy ?? {};
+  const value: RuleLayerValue = draft ?? { base: stored.data?.streamer?.policy ?? {}, types: stored.data?.streamer?.typePolicies ?? {} };
 
   const post = async (url: string, method: string, body: unknown) => {
     const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -42,11 +42,11 @@ export function StreamerRules({ streamerId }: { streamerId: string }) {
   };
 
   const preview = useMutation({
-    mutationFn: () => post('/api/twitch/policies/preview', 'POST', { streamerId, policy: layer }) as Promise<{ results: PreviewRow[] }>,
+    mutationFn: () => post('/api/twitch/policies/preview', 'POST', { streamerId, policy: value.base, typePolicies: value.types }) as Promise<{ results: PreviewRow[] }>,
     onError: (error) => toast.error(error.message),
   });
   const save = useMutation({
-    mutationFn: () => post('/api/twitch/policies', 'PUT', { streamerId, policy: layer, typePolicies: {} }),
+    mutationFn: () => post('/api/twitch/policies', 'PUT', { streamerId, policy: value.base, typePolicies: value.types }),
     onSuccess: () => {
       toast.success('Rules saved');
       setDraft(null);
@@ -63,7 +63,7 @@ export function StreamerRules({ streamerId }: { streamerId: string }) {
 
   return (
     <div className="space-y-3">
-      <PolicyEditor value={layer} inherited={stored.data.defaultPolicy as Partial<TwitchPolicy>} onChange={setDraft} />
+      <RuleLayers value={value} inherited={stored.data.defaultPolicy as Partial<TwitchPolicy>} onChange={setDraft} />
       <div className="grid grid-cols-2 gap-2">
         <Button variant="outline" className="h-10" disabled={preview.isPending} onClick={() => preview.mutate()}>Preview</Button>
         <Button className="h-10" disabled={save.isPending || draft === null} onClick={() => save.mutate()}>Save</Button>

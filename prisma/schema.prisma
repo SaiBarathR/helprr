@@ -58,6 +58,7 @@ model User {
   recommendationEvents RecommendationEvent[]
   twitchSubscriptions TwitchSubscription[]
   twitchVideoStates TwitchUserVideoState[]
+  twitchLink TwitchUserLink?
   tasteProfile   UserTasteProfile?
 
   @@index([jellyfinUserId])
@@ -882,6 +883,10 @@ model TwitchSettings {
   browserAuthTokenCheckedAt DateTime?
   browserAuthTokenValid     Boolean? // null until the first daily check
   pinnedTools               Json      @default("{}") // tool name -> pinned version
+  toolLatest                Json      @default("{}") // tool name -> newest release, from the daily check
+  toolCheckedAt             DateTime?
+  extractorFailures         Int       @default(0) // in a row, across jobs
+  toolsPausedAt             DateTime? // downloads wait: Twitch probably changed something the tools rely on
   toolUpdateRequestedAt     DateTime? // set by the app, cleared by the worker
   createdAt                 DateTime  @default(now())
   updatedAt                 DateTime  @updatedAt
@@ -950,6 +955,7 @@ model TwitchVideo {
   publishedAt        DateTime?
   durationSeconds    Int
   thumbnailUrl       String?
+  category           String? // from the live stream or the chapters; Helix has none for a video
   viewCount          Int                     @default(0)
   language           String?
   streamId           String? // equals the live stream id while the archive is still recording
@@ -1010,6 +1016,8 @@ model TwitchJob {
   cancelRequested      Boolean          @default(false)
   stage                String?
   progress             Float?
+  speedBps             Float?
+  etaSeconds           Int?
   bytesDone            BigInt?
   bytesTotal           BigInt?
   errorClass           String?
@@ -1075,4 +1083,20 @@ model TwitchWorkerHeartbeat {
   lastSeenAt     DateTime @default(now())
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
+}
+
+// A user's own Twitch sign-in, only to read who they follow. Every token is enc:v1.
+model TwitchUserLink {
+  id             String    @id @default(cuid())
+  userId         String    @unique
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  twitchUserId   String?
+  login          String?
+  accessToken    String?
+  refreshToken   String?
+  tokenExpiresAt DateTime?
+  deviceCode     String? // while waiting for the code to be entered at twitch.tv/activate
+  deviceExpires  DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 }

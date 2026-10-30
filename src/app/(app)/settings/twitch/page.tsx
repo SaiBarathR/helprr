@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { PageHeader } from '@/components/layout/page-header';
 import { GroupedSection } from '@/components/settings/grouped-section';
-import { PolicyEditor } from '@/components/twitch/policy-editor';
+import { RuleLayers, type RuleLayerValue } from '@/components/twitch/policy-editor';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Input } from '@/components/ui/input';
@@ -61,9 +61,9 @@ export default function TwitchSettingsPage() {
   const queryClient = useQueryClient();
   const settings = useQuery({ queryKey: ['twitch', 'settings'], queryFn: ({ signal }) => load<Settings>('/api/twitch/settings', signal) });
   const library = useQuery({ queryKey: ['twitch', 'library'], queryFn: ({ signal }) => load<LibraryStatus>('/api/twitch/library', signal), retry: false });
-  const policies = useQuery({ queryKey: ['twitch', 'policies'], queryFn: ({ signal }) => load<{ defaultPolicy: PolicyLayer }>('/api/twitch/policies', signal) });
+  const policies = useQuery({ queryKey: ['twitch', 'policies'], queryFn: ({ signal }) => load<{ defaultPolicy: PolicyLayer; typePolicies: RuleLayerValue['types'] }>('/api/twitch/policies', signal) });
 
-  const [rules, setRules] = useState<PolicyLayer | null>(null);
+  const [rules, setRules] = useState<RuleLayerValue | null>(null);
   const [libraryName, setLibraryName] = useState('Twitch');
   const [browserToken, setBrowserToken] = useState('');
   const [confirmRetention, setConfirmRetention] = useState(false);
@@ -84,7 +84,7 @@ export default function TwitchSettingsPage() {
     onError: fail,
   });
   const saveRules = useMutation({
-    mutationFn: () => send('/api/twitch/policies', 'PUT', { defaultPolicy: rules ?? policies.data?.defaultPolicy ?? {} }),
+    mutationFn: () => send('/api/twitch/policies', 'PUT', { defaultPolicy: rules?.base ?? {}, typePolicies: rules?.types ?? {} }),
     onSuccess: () => {
       toast.success('Rules saved');
       refresh();
@@ -157,7 +157,7 @@ export default function TwitchSettingsPage() {
         <div className="grouped-section mb-6">
           <div className="grouped-section-title">Global rules</div>
           {policies.data && (
-            <PolicyEditor key="global" value={rules ?? policies.data.defaultPolicy} onChange={setRules} />
+            <RuleLayers value={rules ?? { base: policies.data.defaultPolicy, types: policies.data.typePolicies }} onChange={setRules} />
           )}
           <Button className="mt-3 h-10 w-full" disabled={saveRules.isPending || rules === null} onClick={() => saveRules.mutate()}>
             Save rules

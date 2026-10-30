@@ -28,7 +28,17 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
     prisma.twitchVideo.count({ where }),
   ]);
 
+  // Only what is known: Helix has no category for a video, so older ones have none.
+  const categories = await prisma.twitchVideo.findMany({
+    where: { streamer: { subscriptions: { some: { userId: auth.user.id } } }, category: { not: null } },
+    distinct: ['category'],
+    orderBy: { category: 'asc' },
+    select: { category: true },
+    take: 100,
+  });
+
   return NextResponse.json({
+    categories: categories.map((row) => row.category),
     videos: videos.map(({ userStates, ...video }) => serializeVideo(video, userStates[0]?.seenAt)),
     total,
     page,

@@ -314,3 +314,38 @@ ALTER TABLE "TwitchJobEvent" ADD CONSTRAINT "TwitchJobEvent_jobId_fkey" FOREIGN 
 -- AddForeignKey
 ALTER TABLE "TwitchMediaFile" ADD CONSTRAINT "TwitchMediaFile_videoId_fkey" FOREIGN KEY ("videoId") REFERENCES "TwitchVideo"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
+-- AlterTable
+ALTER TABLE "TwitchSettings" ADD COLUMN     "extractorFailures" INTEGER NOT NULL DEFAULT 0,
+ADD COLUMN     "toolCheckedAt" TIMESTAMP(3),
+ADD COLUMN     "toolLatest" JSONB NOT NULL DEFAULT '{}',
+ADD COLUMN     "toolsPausedAt" TIMESTAMP(3);
+
+-- AlterTable
+ALTER TABLE "TwitchVideo" ADD COLUMN     "category" TEXT;
+
+-- AlterTable
+ALTER TABLE "TwitchJob" ADD COLUMN     "etaSeconds" INTEGER,
+ADD COLUMN     "speedBps" DOUBLE PRECISION;
+
+-- CreateTable
+CREATE TABLE "TwitchUserLink" (
+    "id" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
+    "twitchUserId" TEXT,
+    "login" TEXT,
+    "accessToken" TEXT,
+    "refreshToken" TEXT,
+    "tokenExpiresAt" TIMESTAMP(3),
+    "deviceCode" TEXT,
+    "deviceExpires" TIMESTAMP(3),
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "TwitchUserLink_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateIndex
+CREATE UNIQUE INDEX "TwitchUserLink_userId_key" ON "TwitchUserLink"("userId");
+
+-- AddForeignKey
+ALTER TABLE "TwitchUserLink" ADD CONSTRAINT "TwitchUserLink_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;

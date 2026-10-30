@@ -10,6 +10,7 @@ export const VIDEO_SELECT = {
   twitchCreatedAt: true,
   durationSeconds: true,
   thumbnailUrl: true,
+  category: true,
   viewCount: true,
   mutedSegments: true,
   availability: true,

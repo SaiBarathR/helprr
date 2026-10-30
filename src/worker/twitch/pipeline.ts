@@ -11,12 +11,13 @@ import { episodeNfo, seasonNfo, tvshowNfo } from '@/lib/twitch/nfo';
 import { parseProgressLine, YT_DLP_PROGRESS_TEMPLATE } from '@/lib/twitch/progress';
 import { estimateSizeBytes, pickFormat, type YtDlpFormat } from '@/lib/twitch/quality';
 import type { DownloadOptions } from '@/lib/twitch/jobs';
+import { sizeThumbnail } from '@/lib/twitch/serialize';
 import { FFMPEG, FFPROBE, LIBRARY_DIR, STAGING_DIR } from './env';
 import { ProcessFailedError, run } from './process';
 import { toolPath } from './tools';
 
 const RECORDING_RECHECK_MS = 15 * 60_000;
-const DB_PROGRESS_INTERVAL_MS = 15_000;
+const DB_PROGRESS_INTERVAL_MS = 5_000;
 const GIB = 1024 ** 3;
 
 export class WaitForRecordingError extends Error {
@@ -46,6 +47,7 @@ interface JobContext {
   minFreeGb: number;
   reencodeEnabled: boolean;
   cookiesFile: string | null;
+  browserToken: string | null;
   setStage: (stage: string) => Promise<void>;
   assertLease: () => Promise<void>;
   stagingName: string;
@@ -103,9 +105,11 @@ async function downloadVideo(ctx: JobContext, staging: string, format: string): 
         void prisma.twitchJob.update({
           where: { id: job.id },
           data: {
-            progress: progress.totalBytes ? (progress.downloadedBytes ?? 0) / progress.totalBytes : null,
+            progress: progress.totalBytes ? Math.min(1, (progress.downloadedBytes ?? 0) / progress.totalBytes) : null,
             bytesDone: progress.downloadedBytes === null ? null : BigInt(Math.round(progress.downloadedBytes)),
             bytesTotal: progress.totalBytes === null ? null : BigInt(Math.round(progress.totalBytes)),
+            speedBps: progress.speed,
+            etaSeconds: progress.etaSeconds === null ? null : Math.round(progress.etaSeconds),
           },
         }).catch(() => undefined);
       },
@@ -119,6 +123,8 @@ async function downloadVideo(ctx: JobContext, staging: string, format: string): 
       'videodownload', '-u', video.twitchVideoId, '-q', format, '--threads', '6', '--ffmpeg-path', FFMPEG,
       '--temp-path', path.join(staging, 'cache'), '--collision', 'Exit', '--banner', 'false',
       '-o', path.join(staging, 'video.mp4'),
+      // Its only way in. This stays inside the container, and arguments are never logged.
+      ...(ctx.browserToken ? ['--oauth', ctx.browserToken] : []),
     ], { signal, env: { ...process.env, DOTNET_SYSTEM_GLOBALIZATION_INVARIANT: '1' } });
   }
   const file = (await readdir(staging)).find((name) => name.startsWith('video.'));
@@ -207,6 +213,8 @@ async function publish(ctx: JobContext, staging: string, mkv: string, info: Vide
     twitchVideoId: video.twitchVideoId,
   }));
   sidecars.push(nfoFile);
+  const thumbName = `${base}-thumb.jpg`;
+  if (await fetchThumbnail(video.thumbnailUrl, path.join(staging, thumbName), ctx.signal)) sidecars.push(thumbName);
   if (chat) {
     const assName = `${base}.en.chat.ass`;
     const jsonName = `${base}.chat.json.gz`;
@@ -239,6 +247,10 @@ async function publish(ctx: JobContext, staging: string, mkv: string, info: Vide
     },
   });
   await prisma.twitchJob.update({ where: { id: job.id }, data: { needsJellyfinRefresh: true } });
+  const firstGame = chapterGenres(info.chapters ?? [])[0];
+  if (firstGame && !video.category) {
+    await prisma.twitchVideo.update({ where: { id: video.id }, data: { category: firstGame } });
+  }
 
   if (options.reencode && ctx.reencodeEnabled && probed.videoCodec === 'h264') {
     const { id: mediaFileId } = await prisma.twitchMediaFile.findUniqueOrThrow({ where: { relativePath }, select: { id: true } });
@@ -253,13 +265,33 @@ async function writeArt(streamer: TwitchStreamer, seriesDir: string, signal: Abo
   const targets: Array<[string, string | null]> = [
     ['poster.jpg', streamer.profileImageUrl],
     ['fanart.jpg', streamer.offlineImageUrl],
+    ['landscape.jpg', streamer.offlineImageUrl],
   ];
   for (const [name, url] of targets) {
     const file = path.join(seriesDir, name);
     if (!url || (await stat(file).catch(() => null))) continue;
     const res = await fetch(url, { signal });
-    if (res.ok) await writeFile(file, Buffer.from(await res.arrayBuffer()));
+    if (!res.ok) continue;
+    if (name !== 'poster.jpg') {
+      await writeFile(file, Buffer.from(await res.arrayBuffer()));
+      continue;
+    }
+    // Profile images are square and a poster is 2:3, so it is padded rather than cropped.
+    const square = `${file}.source`;
+    await writeFile(square, Buffer.from(await res.arrayBuffer()));
+    await run(FFMPEG, ['-y', '-v', 'error', '-f', 'image2pipe', '-i', square, '-vf', 'pad=iw:iw*3/2:0:(oh-ih)/2:black', '-frames:v', '1', '-update', '1', file], { signal });
+    await rm(square);
   }
+}
+
+// Missing art is cosmetic, so it never costs the video.
+async function fetchThumbnail(url: string | null, file: string, signal: AbortSignal): Promise<boolean> {
+  const sized = sizeThumbnail(url, 1280, 720);
+  if (!sized) return false;
+  const res = await fetch(sized, { signal }).catch(() => null);
+  if (!res?.ok) return false;
+  await writeFile(file, Buffer.from(await res.arrayBuffer()));
+  return true;
 }
 
 async function assignSequentialEpisode(prisma: PrismaClient, video: TwitchVideo, kind: SeasonKind) {

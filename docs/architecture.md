@@ -769,6 +769,13 @@ Invariants:
 - Retention revalidates each candidate at run time, and never deletes a keep-forever
   file or one with a job in progress. An unreachable Jellyfin means nothing is known
   to be watched, so the watched rule then deletes nothing.
+- Three extractor failures in a row, across jobs, pause downloads and send a push: that
+  pattern points at the tools rather than a video. The worker installs newer tools then,
+  or when the owner asks, and never while a download is running.
+- A user's own Twitch sign-in (`TwitchUserLink`, device code flow) has one scope,
+  `user:read:follows`, and importing follows only ever adds subscriptions.
+- A video's category comes from the live stream or its chapters, because Helix has none,
+  so older videos have no category.
 - Twitch settings live in `TwitchSettings`, not `AppSettings`, because `GET /api/settings`
   returns that row to any signed-in user. The browser token is `enc:v1` and no API
   returns it.

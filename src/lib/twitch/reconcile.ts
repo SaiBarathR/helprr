@@ -13,6 +13,20 @@ export async function reconcileTwitchJobs(now: Date): Promise<void> {
   await finishPublishedJobs(now);
   await notifyFailedJobs(now);
   await checkWorker(now);
+  await checkToolsPaused();
+}
+
+async function checkToolsPaused(): Promise<void> {
+  const { toolsPausedAt } = await getTwitchSettings();
+  if (!toolsPausedAt) return;
+  await notifyAndLog({
+    eventType: 'twitchWorkerIssue',
+    title: 'Twitch downloads are paused',
+    body: 'Several downloads failed the same way, so the tools may need an update.',
+    url: '/twitch/queue',
+    dedupeKey: `twitch-tools-paused-${toolsPausedAt.toISOString().slice(0, 10)}`,
+    metadata: { source: 'twitch', id: 'tools', redirect: '/twitch/queue' },
+  }, { service: 'twitch', instanceId: 'tools', reason: 'tools-paused' });
 }
 
 async function subscribersOf(streamerId: string, requestedByUserId: string | null): Promise<string[]> {

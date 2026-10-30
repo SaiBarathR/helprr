@@ -1,17 +1,22 @@
 'use client';
 
 import { use, useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { Radio } from 'lucide-react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { CheckSquare, Radio } from 'lucide-react';
+import { toast } from 'sonner';
 import { PageHeader } from '@/components/layout/page-header';
 import { FadeInImage } from '@/components/media/fade-in-image';
 import { Button } from '@/components/ui/button';
+import { FloatingActionBar } from '@/components/ui/floating-action-bar';
 import { useMe, hasCapability } from '@/components/permission-provider';
 import { StreamerRules } from '@/components/twitch/streamer-rules';
 import { TwitchVideoCard } from '@/components/twitch/twitch-video-card';
+import { TwitchVideoList } from '@/components/twitch/twitch-video-list';
+import { useVideoActions } from '@/components/twitch/use-video-actions';
 import type { TwitchVideoPage } from '@/components/twitch/types';
 import { useRestorableInfiniteQuery } from '@/lib/hooks/use-restorable-infinite-query';
 import { toCachedImageSrc } from '@/lib/image';
+import { useBulkSelection } from '@/lib/use-bulk-selection';
 import { cn } from '@/lib/utils';
 
 const TABS = [
@@ -37,6 +42,31 @@ export default function TwitchStreamerPage({ params }: { params: Promise<{ id: s
   const me = useMe();
   const tabs = TABS.filter((item) => item.id !== 'RULES' || hasCapability(me, 'twitch.manage'));
   const [tab, setTab] = useState<(typeof TABS)[number]['id']>('ARCHIVE');
+
+  const canDownload = hasCapability(me, 'twitch.download');
+  const selection = useBulkSelection();
+  const actions = useVideoActions();
+  const queryClient = useQueryClient();
+  const downloadSelected = useMutation({
+    mutationFn: async () => {
+      const results = await Promise.allSettled([...selection.selectedKeys].map(async (videoId) => {
+        const res = await fetch('/api/twitch/jobs', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ videoId, clientRequestId: crypto.randomUUID() }),
+        });
+        if (!res.ok) throw new Error('refused');
+      }));
+      return results.filter((result) => result.status === 'rejected').length;
+    },
+    onSuccess: (failed) => {
+      const queued = selection.count - failed;
+      if (failed > 0) toast.error(`${queued} queued, ${failed} could not be queued`);
+      else toast.success(`${queued} queued`);
+      selection.exit();
+      void queryClient.invalidateQueries({ queryKey: ['twitch'] });
+    },
+  });
 
   const streamerQuery = useQuery({
     queryKey: ['twitch', 'streamer', id],
@@ -103,15 +133,46 @@ export default function TwitchStreamerPage({ params }: { params: Promise<{ id: s
         {tab !== 'RULES' && videos.isSuccess && rows.length === 0 && (
           <p className="py-8 text-center text-sm text-muted-foreground">No videos here.</p>
         )}
-        <div className="grid grid-cols-1 gap-x-4 gap-y-5 sm:grid-cols-2 xl:grid-cols-3">
-          {rows.map((video) => <TwitchVideoCard key={video.id} video={video} layout="grid" showStreamer={false} />)}
-        </div>
+        {tab !== 'RULES' && rows.length > 0 && canDownload && (
+          <div className="flex justify-end">
+            <Button variant="ghost" size="sm" onClick={() => (selection.selectionMode ? selection.exit() : selection.enter())}>
+              <CheckSquare className="mr-1.5 h-4 w-4" />
+              {selection.selectionMode ? 'Cancel' : 'Select'}
+            </Button>
+          </div>
+        )}
+        {tab !== 'RULES' && (
+          <TwitchVideoList
+            videos={rows}
+            layout="grid"
+            renderVideo={(video) => (
+              <TwitchVideoCard
+                video={video}
+                layout="grid"
+                showStreamer={false}
+                actions={actions}
+                selection={selection.selectionMode && !video.downloaded && !video.activeJob
+                  ? { selected: selection.selectedKeys.has(video.id), onToggle: () => selection.toggle(video.id) }
+                  : undefined}
+              />
+            )}
+          />
+        )}
         {videos.hasNextPage && (
           <Button variant="outline" className="w-full" disabled={videos.isFetchingNextPage} onClick={() => void videos.fetchNextPage()}>
             {videos.isFetchingNextPage ? 'Loading…' : 'Load more'}
           </Button>
         )}
       </div>
+      {actions.sheet}
+      {selection.selectionMode && selection.count > 0 && (
+        <FloatingActionBar>
+          <span className="text-sm">{selection.count} selected</span>
+          <Button className="ml-auto" disabled={downloadSelected.isPending} onClick={() => downloadSelected.mutate()}>
+            {downloadSelected.isPending ? 'Queuing…' : 'Download selected'}
+          </Button>
+        </FloatingActionBar>
+      )}
     </div>
   );
 }

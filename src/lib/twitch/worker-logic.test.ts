@@ -90,6 +90,19 @@ describe('parseProgressLine', () => {
     });
   });
   it('tolerates yt-dlp nulls', () => expect(parseProgressLine('{"s":"finished","d":1,"t":null,"e":null,"v":null}')?.totalBytes).toBeNull());
+  it('reads a real line from a VOD, with its bare NA fields', () => {
+    expect(parseProgressLine('{"s":"downloading","d":7168,"t":NA,"te":883608.0,"e":NA,"v":441.5}')).toEqual({
+      status: 'downloading', downloadedBytes: 7168, totalBytes: 883608, etaSeconds: (883608 - 7168) / 441.5, speed: 441.5,
+    });
+  });
+  it('reads the last line of a real download', () => {
+    expect(parseProgressLine('{"s":"finished","d":1643120,"t":1643120,"te":NA,"e":NA,"v":1037330.4}')).toMatchObject({
+      totalBytes: 1643120, etaSeconds: null,
+    });
+  });
+  it('does not touch NA inside a value', () => {
+    expect(parseProgressLine('{"s":"NA:NA","d":1,"t":2,"te":NA,"e":1,"v":1}')?.status).toBe('NA:NA');
+  });
   it('ignores everything else', () => {
     expect(parseProgressLine('[info] Downloading')).toBeNull();
     expect(parseProgressLine('{"s":broken')).toBeNull();

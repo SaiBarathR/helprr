@@ -13,7 +13,7 @@ import { runDeleteFiles } from './delete-files';
 import { DiskGuardError, runDownload, WaitForRecordingError } from './pipeline';
 import { deleteExpiredOriginals, probeGpu, runReencode } from './reencode';
 import { DeferJobError, JobCancelledError, LeaseLostError } from './process';
-import { activeVersion, ensureTools, installTool, KNOWN_GOOD, latestVersion, type ToolName } from './tools';
+import { activeVersion, ensureTools, latestVersion, updateTools, type ToolName } from './tools';
 
 const RENEW_MS = 20_000;
 const POLL_MS = 5_000;
@@ -22,6 +22,8 @@ const HEARTBEAT_MS = 15_000;
 const MIGRATION_POLL_MS = 5_000;
 const REQUIRED_MIGRATION = '20261030120100_twitch_tables';
 const CPU_POLL_MS = 30_000;
+const TOOL_CHECK_MS = 24 * 3_600_000;
+const EXTRACTOR_FAILURE_LIMIT = 3;
 const DISK_RECHECK_MS = 15 * 60_000;
 const HOUSEKEEPING_MS = 60 * 60_000;
 const NETWORK_KINDS: TwitchJobKind[] = ['DOWNLOAD', 'DELETE_FILES'];
@@ -32,6 +34,7 @@ const running = new Map<string, AbortController>();
 let stopping = false;
 let gpuAvailable = false;
 let cpuBusy = false;
+let downloadsRunning = 0;
 
 function log(level: 'info' | 'warn' | 'error', message: string, extra: Record<string, unknown> = {}) {
   console[level](JSON.stringify({ at: new Date().toISOString(), level, message, ...extra }));
@@ -71,9 +74,7 @@ async function probeLibrary(): Promise<void> {
 }
 
 // Tokens go in a mode-600 file per job, never argv, and it is removed with the job.
-async function writeCookies(): Promise<{ file: string; dir: string } | null> {
-  const settings = await prisma.twitchSettings.findUnique({ where: { id: 'singleton' } });
-  const token = decryptTwitchToken(settings?.browserAuthToken);
+async function writeCookies(token: string | null): Promise<{ file: string; dir: string } | null> {
   if (!token) return null;
   const dir = await mkdtemp(path.join(os.tmpdir(), 'twitch-cookies-'));
   const file = path.join(dir, 'cookies.txt');
@@ -127,6 +128,7 @@ async function runJob(job: TwitchJob): Promise<void> {
   }, CANCEL_POLL_MS);
 
   let cookies: { file: string; dir: string } | null = null;
+  let countedDownload = false;
   try {
     const settings = await prisma.twitchSettings.findUnique({ where: { id: 'singleton' } });
     const setStage = async (stage: string) => {
@@ -158,7 +160,10 @@ async function runJob(job: TwitchJob): Promise<void> {
     }
     if (job.kind !== 'DOWNLOAD' || !job.videoId) throw new Error(`validation failed: ${job.kind} is not supported yet`);
     const video = await prisma.twitchVideo.findUniqueOrThrow({ where: { id: job.videoId }, include: { streamer: true } });
-    cookies = await writeCookies();
+    const browserToken = decryptTwitchToken(settings?.browserAuthToken);
+    cookies = await writeCookies(browserToken);
+    downloadsRunning += 1;
+    countedDownload = true;
     await runDownload({
       prisma,
       job,
@@ -168,12 +173,14 @@ async function runJob(job: TwitchJob): Promise<void> {
       minFreeGb: settings?.minFreeGb ?? 50,
       reencodeEnabled: settings?.reencodeEnabled ?? true,
       cookiesFile: cookies?.file ?? null,
+      browserToken,
       setStage,
       note,
       assertLease,
       stagingName,
     });
-    await finishJob(job, { state: 'DONE', stage: 'done', progress: 1, finishedAt: new Date(), lastError: null, errorClass: null });
+    await finishJob(job, { state: 'DONE', stage: 'done', progress: 1, speedBps: null, etaSeconds: null, finishedAt: new Date(), lastError: null, errorClass: null });
+    await noteExtractorResult(false);
     log('info', 'Job finished', { jobId: job.id });
   } catch (error) {
     await rm(path.join(STAGING_DIR, stagingName), { recursive: true, force: true }).catch(() => undefined);
@@ -200,6 +207,7 @@ async function runJob(job: TwitchJob): Promise<void> {
       const message = error instanceof Error ? error.message : String(error);
       const errorClass = classifyJobError(message);
       const next = nextStepAfterFailure(errorClass, job.attempts);
+      if (job.kind === 'DOWNLOAD') await noteExtractorResult(errorClass === 'extractor');
       await finishJob(job, {
         state: next.state,
         errorClass,
@@ -214,6 +222,7 @@ async function runJob(job: TwitchJob): Promise<void> {
     clearInterval(renew);
     clearInterval(cancelWatch);
     running.delete(job.id);
+    if (countedDownload) downloadsRunning -= 1;
     if (cookies) await rm(cookies.dir, { recursive: true, force: true }).catch(() => undefined);
   }
 }
@@ -237,7 +246,9 @@ async function networkLane(): Promise<void> {
   while (!stopping) {
     const settings = await prisma.twitchSettings.findUnique({ where: { id: 'singleton' } }).catch(() => null);
     if (running.size - (cpuBusy ? 1 : 0) < (settings?.maxConcurrentDownloads ?? 2)) {
-      const job = await claimJob(prisma, workerId, NETWORK_KINDS).catch((error) => {
+      // Nothing new uses the tools while they are broken or about to be swapped.
+      const held = settings?.toolsPausedAt || settings?.toolUpdateRequestedAt;
+      const job = await claimJob(prisma, workerId, held ? ['DELETE_FILES'] : NETWORK_KINDS).catch((error) => {
         log('error', 'Claim failed', { error: String(error) });
         return null;
       });
@@ -289,18 +300,48 @@ async function cleanStaging(): Promise<void> {
   }
 }
 
-// A running job keeps the tool it started with: the lane must be empty first.
-async function checkToolUpdate(): Promise<void> {
+// Daily: learn what is newest, and install it only if the current tools have stopped working.
+// A request from the owner installs at once. Either way, a running download keeps its tool.
+async function checkTools(): Promise<void> {
   const settings = await prisma.twitchSettings.findUnique({ where: { id: 'singleton' } });
-  if (!settings?.toolUpdateRequestedAt || running.size > 0) return;
+  if (!settings) return;
+  const requested = settings.toolUpdateRequestedAt !== null;
+  const due = !settings.toolCheckedAt || Date.now() - settings.toolCheckedAt.getTime() > TOOL_CHECK_MS;
+  if (!requested && !due) return;
+
   const pins = (settings.pinnedTools ?? {}) as Partial<Record<ToolName, string>>;
-  for (const tool of Object.keys(KNOWN_GOOD) as ToolName[]) {
-    if (pins[tool]) continue;
-    const version = await latestVersion(tool);
-    if (version !== (await activeVersion(tool))) await installTool(tool, version);
+  const toolLatest = { ytdlp: await latestVersion('ytdlp'), td: await latestVersion('td') };
+  let updated = false;
+  if ((requested || settings.toolsPausedAt) && downloadsRunning === 0) updated = await updateTools(pins);
+  else if (requested) return;
+
+  await prisma.twitchSettings.update({
+    where: { id: 'singleton' },
+    data: {
+      toolLatest,
+      toolCheckedAt: new Date(),
+      toolUpdateRequestedAt: null,
+      // A pause ends on new tools, or when the owner says to try again.
+      ...(updated || requested ? { toolsPausedAt: null, extractorFailures: 0 } : {}),
+    },
+  });
+  log('info', 'Tools checked', { updated, requested });
+}
+
+// Several videos failing the same way points at the tools, not the videos.
+async function noteExtractorResult(failed: boolean): Promise<void> {
+  if (!failed) {
+    await prisma.twitchSettings.updateMany({ where: { extractorFailures: { gt: 0 } }, data: { extractorFailures: 0 } });
+    return;
   }
-  await prisma.twitchSettings.update({ where: { id: 'singleton' }, data: { toolUpdateRequestedAt: null } });
-  log('info', 'Tools checked');
+  const { extractorFailures } = await prisma.twitchSettings.update({
+    where: { id: 'singleton' },
+    data: { extractorFailures: { increment: 1 } },
+  });
+  if (extractorFailures >= EXTRACTOR_FAILURE_LIMIT) {
+    await prisma.twitchSettings.updateMany({ where: { toolsPausedAt: null }, data: { toolsPausedAt: new Date(), toolCheckedAt: null } });
+    log('warn', 'Downloads paused: the tools keep failing', { extractorFailures });
+  }
 }
 
 async function shutdown(signal: string): Promise<void> {
@@ -329,7 +370,7 @@ async function main(): Promise<void> {
   await heartbeat();
   void housekeeping().catch((error) => log('warn', 'Housekeeping failed', { error: String(error) }));
   setInterval(() => void housekeeping().catch((error) => log('warn', 'Housekeeping failed', { error: String(error) })), HOUSEKEEPING_MS);
-  setInterval(() => void checkToolUpdate().catch((error) => log('warn', 'Tool update failed', { error: String(error).slice(0, 300) })), HEARTBEAT_MS);
+  setInterval(() => void checkTools().catch((error) => log('warn', 'Tool check failed', { error: String(error).slice(0, 300) })), HEARTBEAT_MS);
   setInterval(() => void heartbeat().catch((error) => log('warn', 'Heartbeat failed', { error: String(error) })), HEARTBEAT_MS);
   log('info', 'Worker ready', { workerId, version: WORKER_VERSION });
   await Promise.all([networkLane(), cpuLane()]);

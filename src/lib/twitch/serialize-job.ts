@@ -8,6 +8,8 @@ export const JOB_SELECT = {
   priority: true,
   stage: true,
   progress: true,
+  speedBps: true,
+  etaSeconds: true,
   bytesDone: true,
   bytesTotal: true,
   errorClass: true,

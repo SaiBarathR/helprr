@@ -3,7 +3,8 @@ import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { prisma } from '@/lib/db';
 import { helixGet, TwitchHelixError, TwitchNotConfiguredError } from '@/lib/twitch/helix';
-import { DEFAULT_DOWNLOAD_OPTIONS, enqueueDownload, isClientRequestId, type DownloadOptions } from '@/lib/twitch/jobs';
+import { DOWNLOAD_OPTION_KEYS, enqueueDownload, isClientRequestId, type DownloadOptions } from '@/lib/twitch/jobs';
+import { decideForVideo } from '@/lib/twitch/policy-store';
 import { serializeJob, JOB_SELECT } from '@/lib/twitch/serialize-job';
 import { parseTwitchLogin, subscribeToStreamer } from '@/lib/twitch/streamers';
 import { upsertVideoFromHelix, type HelixVideoWithUser } from '@/lib/twitch/sync';
@@ -23,17 +24,16 @@ async function getHandler(): Promise<NextResponse> {
   return NextResponse.json({ jobs: jobs.map(serializeJob) });
 }
 
-function readOptions(value: unknown): DownloadOptions {
+// What the sheet chose, over what the rules say for this video.
+function readOptions(value: unknown, defaults: DownloadOptions): DownloadOptions {
   const body = (value && typeof value === 'object' ? value : {}) as Record<string, unknown>;
-  const flag = (key: 'chat' | 'chapters' | 'reencode' | 'keepForever') =>
-    typeof body[key] === 'boolean' ? body[key] : DEFAULT_DOWNLOAD_OPTIONS[key];
-  return {
-    quality: typeof body.quality === 'string' && /^[a-z0-9_]{1,16}$/i.test(body.quality) ? body.quality : DEFAULT_DOWNLOAD_OPTIONS.quality,
-    chat: flag('chat'),
-    chapters: flag('chapters'),
-    reencode: flag('reencode'),
-    keepForever: flag('keepForever'),
-  };
+  const options = { ...defaults };
+  for (const key of DOWNLOAD_OPTION_KEYS) {
+    const chosen = body[key];
+    if (typeof chosen === 'boolean') options[key] = chosen;
+  }
+  if (typeof body.quality === 'string' && /^[a-z0-9_]{1,16}$/i.test(body.quality)) options.quality = body.quality;
+  return options;
 }
 
 // A pasted link may name a video Helprr has not seen; Twitch is asked, never the link itself.
@@ -80,10 +80,15 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   }
   if (!videoId) return NextResponse.json({ error: 'Video not found' }, { status: 404 });
 
+  const video = await prisma.twitchVideo.findUniqueOrThrow({
+    where: { id: videoId },
+    select: { title: true, type: true, streamerId: true, durationSeconds: true },
+  });
+  const { policy } = await decideForVideo(video);
   const result = await enqueueDownload({
     videoId,
     source: pasted ? 'URL' : 'MANUAL',
-    options: readOptions(body.options),
+    options: readOptions(body.options, policy),
     actor: { id: auth.user.id, username: auth.user.username },
     clientRequestId: body.clientRequestId as string | undefined,
   });

@@ -40,7 +40,7 @@ function pending(rows: unknown[], failed: unknown[] = []) {
 beforeEach(() => {
   vi.resetAllMocks();
   mocks.job.count.mockResolvedValue(0);
-  mocks.getTwitchSettings.mockResolvedValue({ jellyfinLibraryItemId: 'lib' });
+  mocks.getTwitchSettings.mockResolvedValue({ jellyfinLibraryItemId: 'lib', toolsPausedAt: null });
   mocks.getJellyfinClient.mockResolvedValue({ refreshItem: mocks.refreshItem, queryItems: mocks.queryItems });
   mocks.refreshItem.mockResolvedValue(undefined);
   mocks.subscription.findMany.mockResolvedValue([{ userId: 'u1' }, { userId: 'u2' }]);
@@ -152,6 +152,13 @@ describe('reconcileTwitchJobs', () => {
     await reconcileTwitchJobs(now);
 
     expect(mocks.notifyAndLog.mock.calls[0][0]).toMatchObject({ eventType: 'twitchWorkerIssue', dedupeKey: 'twitch-worker-offline-2026-10-30' });
+  });
+
+  it('warns when the tools have paused downloads', async () => {
+    pending([]);
+    mocks.getTwitchSettings.mockResolvedValue({ toolsPausedAt: now });
+    await reconcileTwitchJobs(now);
+    expect(mocks.notifyAndLog.mock.calls[0][0]).toMatchObject({ eventType: 'twitchWorkerIssue', dedupeKey: 'twitch-tools-paused-2026-10-30' });
   });
 
   it('says nothing while the worker is seen', async () => {

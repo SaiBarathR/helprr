@@ -276,6 +276,7 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
   ],
   'cap:twitch.view': [
     'GET /api/twitch/feed',
+    'GET /api/twitch/follows',
     'GET /api/twitch/jobs',
     'GET /api/twitch/jobs/[id]',
     'GET /api/twitch/worker',
@@ -480,7 +481,7 @@ describe('GET API route capability matrix', () => {
   const assignments = policyAssignments();
 
   it('explicitly assigns every GET handler exactly once', () => {
-    expect(handlers.size).toBe(225);
+    expect(handlers.size).toBe(226);
     expect([...assignments.keys()].sort()).toEqual([...handlers.keys()].sort());
   });
 

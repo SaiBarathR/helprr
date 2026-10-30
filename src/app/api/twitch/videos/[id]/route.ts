@@ -28,6 +28,13 @@ async function getHandler(
     ...serializeVideo(rest, userStates[0]?.seenAt),
     hidden: userStates[0]?.hidden ?? false,
     autoDownload: { enabled: decision.policy.autoDownload, reason: decision.autoDownloadReason },
+    defaults: {
+      quality: decision.policy.quality,
+      chat: decision.policy.chat,
+      chapters: decision.policy.chapters,
+      reencode: decision.policy.reencode,
+      keepForever: decision.policy.keepForever,
+    },
   });
 }
 

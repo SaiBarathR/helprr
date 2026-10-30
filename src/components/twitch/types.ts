@@ -7,6 +7,7 @@ export interface TwitchVideo {
   twitchCreatedAt: string;
   durationSeconds: number;
   thumbnailUrl: string | null;
+  category: string | null;
   viewCount: number;
   mutedSegments: Array<{ duration: number; offset: number }> | null;
   availability: 'RECORDING' | 'PUBLISHED' | 'UNAVAILABLE';
@@ -21,6 +22,7 @@ export interface TwitchVideo {
 
 export interface TwitchVideoPage {
   videos: TwitchVideo[];
+  categories?: string[];
   total: number;
   page: number;
   pageSize: number;

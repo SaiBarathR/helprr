@@ -87,6 +87,11 @@ async function loadConnection() {
   return connection;
 }
 
+export async function getTwitchClientCredentials(): Promise<{ clientId: string; clientSecret: string }> {
+  const connection = await loadConnection();
+  return { clientId: connection.externalUrl!, clientSecret: connection.apiKey };
+}
+
 let refreshPromise: Promise<string> | null = null;
 
 async function refreshAppToken(): Promise<string> {

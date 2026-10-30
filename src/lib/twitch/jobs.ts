@@ -12,6 +12,8 @@ export interface DownloadOptions {
   keepForever: boolean;
 }
 
+export const DOWNLOAD_OPTION_KEYS = ['chat', 'chapters', 'reencode', 'keepForever'] as const;
+
 export const DEFAULT_DOWNLOAD_OPTIONS: DownloadOptions = {
   quality: '1080p60',
   chat: true,

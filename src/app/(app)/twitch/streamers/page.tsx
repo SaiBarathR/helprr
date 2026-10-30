@@ -9,6 +9,7 @@ import { PageHeader } from '@/components/layout/page-header';
 import { FadeInImage } from '@/components/media/fade-in-image';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { ImportFollows } from '@/components/twitch/import-follows';
 import { TwitchSubNav } from '@/components/twitch/twitch-subnav';
 import { toCachedImageSrc } from '@/lib/image';
 
@@ -106,6 +107,8 @@ export default function TwitchStreamersPage() {
             {subscribe.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Subscribe'}
           </Button>
         </form>
+
+        <ImportFollows />
 
         {list.isError && <p className="py-8 text-center text-sm text-muted-foreground">Could not load your streamers.</p>}
         {list.isSuccess && subscriptions.length === 0 && (
