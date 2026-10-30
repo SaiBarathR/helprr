@@ -24,7 +24,6 @@ const REQUIRED_MIGRATION = '20261030120100_twitch_tables';
 const CPU_POLL_MS = 30_000;
 const DISK_RECHECK_MS = 15 * 60_000;
 const HOUSEKEEPING_MS = 60 * 60_000;
-const STAGING_MAX_AGE_MS = 24 * 3_600_000;
 const NETWORK_KINDS: TwitchJobKind[] = ['DOWNLOAD', 'DELETE_FILES'];
 
 const prisma = new PrismaClient();
@@ -119,7 +118,8 @@ async function runJob(job: TwitchJob): Promise<void> {
       throw new LeaseLostError();
     }
   };
-  const stagingName = `${job.id}-${job.attempts}`;
+  // Unique per claim: attempts reset on retry, so they could name a directory still in use.
+  const stagingName = `${job.id}-${randomUUID().slice(0, 8)}`;
   const cancelWatch = setInterval(() => {
     void prisma.twitchJob.findUnique({ where: { id: job.id }, select: { cancelRequested: true } })
       .then((row) => { if (row?.cancelRequested) abort.abort(); })
@@ -274,11 +274,18 @@ async function cpuLane(): Promise<void> {
 async function housekeeping(): Promise<void> {
   const deleted = await deleteExpiredOriginals(prisma);
   if (deleted > 0) log('info', 'Deleted originals', { deleted });
+  await cleanStaging();
+}
+
+// Only what no live lease covers, so it cannot pull files from under another worker.
+async function cleanStaging(): Promise<void> {
+  const leased = await prisma.twitchJob.findMany({
+    where: { state: 'RUNNING', leaseUntil: { gt: new Date() } },
+    select: { id: true },
+  });
+  const live = new Set([...running.keys(), ...leased.map((job) => job.id)]);
   for (const entry of await readdir(STAGING_DIR)) {
-    if ([...running.keys()].some((jobId) => entry.startsWith(`${jobId}-`))) continue;
-    const dir = path.join(STAGING_DIR, entry);
-    const info = await stat(dir);
-    if (Date.now() - info.mtimeMs > STAGING_MAX_AGE_MS) await rm(dir, { recursive: true, force: true });
+    if (!live.has(entry.split('-')[0])) await rm(path.join(STAGING_DIR, entry), { recursive: true, force: true });
   }
 }
 
@@ -311,7 +318,7 @@ async function main(): Promise<void> {
 
   await waitForMigrations();
   await probeLibrary();
-  for (const entry of await readdir(STAGING_DIR)) await rm(path.join(STAGING_DIR, entry), { recursive: true, force: true });
+  await cleanStaging();
 
   const settings = await prisma.twitchSettings.findUnique({ where: { id: 'singleton' } });
   await ensureTools((settings?.pinnedTools ?? {}) as Record<string, string>);

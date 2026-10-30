@@ -186,7 +186,7 @@ async function publish(ctx: JobContext, staging: string, mkv: string, info: Vide
     broadcasterType: streamer.broadcasterType,
     twitchUserId: streamer.twitchUserId,
   }));
-  await writeArt(streamer, seriesDir);
+  await writeArt(streamer, seriesDir, ctx.signal);
 
   const seasonTitle = kind === 'ARCHIVE' ? String(numbering.season) : kind === 'HIGHLIGHT' ? 'Highlights' : 'Uploads';
   await writeFile(path.join(seasonDir, 'season.nfo'), seasonNfo(seasonTitle, numbering.season));
@@ -215,6 +215,8 @@ async function publish(ctx: JobContext, staging: string, mkv: string, info: Vide
     sidecars.push(assName, jsonName);
   }
 
+  // Artwork can take a while, so the lease is checked again right before the library changes.
+  await ctx.assertLease();
   // Sidecars first and the video last, so Jellyfin never indexes a half-written set.
   for (const name of sidecars) await rename(path.join(staging, name), path.join(seasonDir, name));
   const videoName = `${base}.mkv`;
@@ -247,7 +249,7 @@ async function publish(ctx: JobContext, staging: string, mkv: string, info: Vide
 }
 
 // Jellyfin's art comes from the same files every time, so they are only ever fetched once.
-async function writeArt(streamer: TwitchStreamer, seriesDir: string): Promise<void> {
+async function writeArt(streamer: TwitchStreamer, seriesDir: string, signal: AbortSignal): Promise<void> {
   const targets: Array<[string, string | null]> = [
     ['poster.jpg', streamer.profileImageUrl],
     ['fanart.jpg', streamer.offlineImageUrl],
@@ -255,7 +257,7 @@ async function writeArt(streamer: TwitchStreamer, seriesDir: string): Promise<vo
   for (const [name, url] of targets) {
     const file = path.join(seriesDir, name);
     if (!url || (await stat(file).catch(() => null))) continue;
-    const res = await fetch(url);
+    const res = await fetch(url, { signal });
     if (res.ok) await writeFile(file, Buffer.from(await res.arrayBuffer()));
   }
 }
