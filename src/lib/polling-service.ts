@@ -28,6 +28,7 @@ import { pollQBittorrent as pollQBittorrentPoller } from '@/lib/polling/poll-qbi
 import { pollJellyfin as pollJellyfinPoller } from '@/lib/polling/poll-jellyfin';
 import { pollSeerr as pollSeerrPoller } from '@/lib/polling/poll-seerr';
 import { pollServiceReachability as pollServiceReachabilityPoller } from '@/lib/polling/service-reachability';
+import { pollTwitch } from '@/lib/polling/poll-twitch';
 import { checkDiskSpace as checkDiskSpacePoller } from '@/lib/polling/disk-space-alerts';
 import { checkUpcoming as checkUpcomingPoller } from '@/lib/polling/upcoming';
 import { checkActivityDigest as checkActivityDigestPoller } from '@/lib/polling/activity-digest';
@@ -95,6 +96,7 @@ const POLL_SOURCE_TIMEOUT_MS: Record<string, number> = {
   pollJellyfin: 15_000,
   pollSeerr: 45_000,
   pollManualDownloads: 60_000,
+  pollTwitch: 25_000,
   pollServiceReachability: 15_000,
   checkDiskSpace: 30_000,
   snapshotDiskUsage: 30_000,
@@ -280,6 +282,7 @@ export class PollingService {
         sourceTask('pollJellyfin', () => this.pollJellyfin()),
         sourceTask('pollSeerr', () => this.pollSeerr()),
         sourceTask('pollManualDownloads', () => this.pollManualDownloads()),
+        sourceTask('pollTwitch', () => pollTwitch()),
         sourceTask('pollServiceReachability', () => this.pollServiceReachability()),
         sourceTask('checkDiskSpace', () => this.checkDiskSpace(context)),
         sourceTask('snapshotDiskUsage', async () => {

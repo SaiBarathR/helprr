@@ -1,0 +1,31 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { requireUserCapability } from '@/lib/auth';
+import { withApiLogging } from '@/lib/api-logger';
+import { prisma } from '@/lib/db';
+import { serializeVideo, VIDEO_SELECT } from '@/lib/twitch/serialize';
+
+async function getHandler(
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+): Promise<NextResponse> {
+  const auth = await requireUserCapability('twitch.view');
+  if (!auth.ok) return auth.response;
+
+  const { id } = await params;
+  const video = await prisma.twitchVideo.findUnique({
+    where: { id },
+    select: {
+      ...VIDEO_SELECT,
+      userStates: { where: { userId: auth.user.id }, select: { seenAt: true, hidden: true } },
+    },
+  });
+  if (!video) return NextResponse.json({ error: 'Video not found' }, { status: 404 });
+
+  const { userStates, ...rest } = video;
+  return NextResponse.json({
+    ...serializeVideo(rest, userStates[0]?.seenAt),
+    hidden: userStates[0]?.hidden ?? false,
+  });
+}
+
+export const GET = withApiLogging(getHandler, 'api/twitch/videos/[id]');

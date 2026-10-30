@@ -60,7 +60,7 @@ export function Sidebar() {
   const navItems = useMemo(
     () =>
       getEnabledNavItems(navOrder, disabledNavItems).filter(
-        (item) => navItemAllowed(item, (cap) => hasCapability(me, cap))
+        (item) => navItemAllowed(item, (cap) => hasCapability(me, cap), me)
       ),
     [navOrder, disabledNavItems, me]
   );

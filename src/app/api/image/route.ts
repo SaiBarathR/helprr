@@ -100,6 +100,8 @@ const DEFAULT_EXTERNAL_IMAGE_HOSTS = new Set<string>([
   's2.anilist.co',
   's3.anilist.co',
   'images.lidarr.audio',
+  'static-cdn.jtvnw.net',
+  'vod-secure.twitch.tv',
 ]);
 
 function getAllowedExternalImageHosts(): Set<string> {

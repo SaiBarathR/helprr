@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils';
 import type { PollingHealth, PollingSourceHealth } from '@/lib/polling-service';
 
 const JOB_LABELS: Record<string, string> = {
+  pollTwitch: 'Twitch',
   pollSonarr: 'Sonarr',
   pollRadarr: 'Radarr',
   pollLidarr: 'Lidarr',

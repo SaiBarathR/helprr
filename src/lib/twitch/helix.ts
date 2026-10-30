@@ -23,6 +23,17 @@ export class TwitchCredentialsRejectedError extends Error {
   }
 }
 
+/** A failed Helix call. Carries no request config: that holds the bearer token. */
+export class TwitchHelixError extends Error {
+  readonly status: number | null;
+
+  constructor(status: number | null, code?: string) {
+    super(`Twitch API request failed (${status ?? code ?? 'network'})`);
+    this.name = 'TwitchHelixError';
+    this.status = status;
+  }
+}
+
 export interface HelixRateLimit {
   remaining: number | null;
   resetAt: Date | null;
@@ -151,8 +162,7 @@ export async function helixGet<T>(
     };
   } catch (error) {
     if (axios.isAxiosError(error)) {
-      // Rethrown without the axios error: its config holds the bearer token.
-      throw new Error(`Twitch API request failed (${error.response?.status ?? error.code ?? 'network'})`);
+      throw new TwitchHelixError(error.response?.status ?? null, error.code);
     }
     throw error;
   }

@@ -237,4 +237,9 @@ export const EVENT_TYPE_TO_CAPABILITY: Record<NotificationEventType, Capability>
   requestDeclined: 'notify.requests',
   requestFailed: 'notify.requests',
   activityDigest: 'notify.digests',
+  twitchVodNew: 'notify.twitch',
+  twitchVodExpiring: 'notify.twitch',
+  twitchDownloadComplete: 'notify.twitch',
+  twitchDownloadFailed: 'notify.twitch',
+  twitchWorkerIssue: 'notify.twitch',
 };

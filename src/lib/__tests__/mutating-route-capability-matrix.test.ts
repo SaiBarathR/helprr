@@ -199,6 +199,13 @@ const POLICY_GROUPS: Record<string, readonly string[]> = {
     'POST /api/settings/import',
     'POST /api/settings/import/follow-up',
   ],
+  'cap:twitch.view': [
+    'POST /api/twitch/feed/seen',
+    'POST /api/twitch/streamers',
+    'PATCH /api/twitch/subscriptions/[id]',
+    'DELETE /api/twitch/subscriptions/[id]',
+    'POST /api/twitch/videos/[id]/state',
+  ],
   'cap:settings.instances': [
     'DELETE /api/services/[id]',
     'PATCH /api/services/[id]',
@@ -455,7 +462,7 @@ describe('mutating API route capability matrix', () => {
   const assignments = policyAssignments();
 
   it('explicitly assigns every mutating handler exactly once', () => {
-    expect(handlers.size).toBe(171);
+    expect(handlers.size).toBe(176);
     expect([...assignments.keys()].sort()).toEqual([...handlers.keys()].sort());
   });
 

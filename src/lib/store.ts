@@ -512,6 +512,8 @@ interface UIState {
   setCalendarView: (view: 'month' | 'week' | 'agenda') => void;
   // Movies preferences
   moviesView: MediaViewMode;
+  twitchFeedView: 'grid' | 'list';
+  setTwitchFeedView: (view: 'grid' | 'list') => void;
   setMoviesView: (view: MediaViewMode) => void;
   moviesPosterSize: PosterSize;
   setMoviesPosterSize: (size: PosterSize) => void;
@@ -720,6 +722,7 @@ const PERSISTED_KEYS = [
   'mediaView',
   'calendarView',
   'moviesView',
+  'twitchFeedView',
   'moviesPosterSize',
   'moviesSort',
   'moviesSearch',
@@ -856,6 +859,8 @@ export const useUIStore = create<UIState>()(
       calendarView: 'agenda',
       setCalendarView: (view) => set({ calendarView: view }),
       // Movies
+      twitchFeedView: 'grid',
+      setTwitchFeedView: (view) => set({ twitchFeedView: view }),
       moviesView: 'posters',
       setMoviesView: (view) => set({ moviesView: view }),
       moviesPosterSize: 'medium',

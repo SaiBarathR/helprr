@@ -32,6 +32,7 @@ const me: MePayload = {
   seerrUserId: 'seerr-1',
   jellyfinLinked: true,
   jellyfinConfigured: true,
+  twitchConfigured: false,
   jellyfinConnected: true,
   customHeadersEnabled: false,
 };
