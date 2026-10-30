@@ -12,7 +12,7 @@ import { parseProgressLine, YT_DLP_PROGRESS_TEMPLATE } from '@/lib/twitch/progre
 import { estimateSizeBytes, pickFormat, type YtDlpFormat } from '@/lib/twitch/quality';
 import { classifyJobError } from '@/lib/twitch/job-errors';
 import type { DownloadOptions } from '@/lib/twitch/jobs';
-import { sizeThumbnail } from '@/lib/twitch/serialize';
+import { isTwitchArtworkUrl, sizeThumbnail } from '@/lib/twitch/serialize';
 import { FFMPEG, FFPROBE, LIBRARY_DIR, STAGING_DIR } from './env';
 import { ProcessFailedError, run } from './process';
 import { toolPath } from './tools';
@@ -284,15 +284,15 @@ async function writeArt(streamer: TwitchStreamer, seriesDir: string, signal: Abo
   for (const [name, url] of targets) {
     const file = path.join(seriesDir, name);
     if (!url || (await stat(file).catch(() => null))) continue;
-    const res = await fetch(url, { signal });
-    if (!res.ok) continue;
+    const image = await fetchArtwork(url, signal);
+    if (!image) continue;
     if (name !== 'poster.jpg') {
-      await writeFile(file, Buffer.from(await res.arrayBuffer()));
+      await writeFile(file, image);
       continue;
     }
     // Profile images are square and a poster is 2:3, so it is padded rather than cropped.
     const square = `${file}.source`;
-    await writeFile(square, Buffer.from(await res.arrayBuffer()));
+    await writeFile(square, image);
     await run(FFMPEG, ['-y', '-v', 'error', '-f', 'image2pipe', '-i', square, '-vf', 'pad=iw:iw*3/2:0:(oh-ih)/2:black', '-frames:v', '1', '-update', '1', file], { signal });
     await rm(square);
   }
@@ -302,10 +302,24 @@ async function writeArt(streamer: TwitchStreamer, seriesDir: string, signal: Abo
 async function fetchThumbnail(url: string | null, file: string, signal: AbortSignal): Promise<boolean> {
   const sized = sizeThumbnail(url, 1280, 720);
   if (!sized) return false;
-  const res = await fetch(sized, { signal }).catch(() => null);
-  if (!res?.ok) return false;
-  await writeFile(file, Buffer.from(await res.arrayBuffer()));
+  const image = await fetchArtwork(sized, signal);
+  if (!image) return false;
+  await writeFile(file, image);
   return true;
+}
+
+// Stored URLs come from an outside service, so the host is checked and a redirect, which
+// could lead anywhere, is refused. A cancelled job still throws, to stop the publish.
+async function fetchArtwork(url: string, signal: AbortSignal): Promise<Buffer | null> {
+  if (!isTwitchArtworkUrl(url)) return null;
+  try {
+    const res = await fetch(url, { signal, redirect: 'error' });
+    if (!res.ok || !res.headers.get('content-type')?.startsWith('image/')) return null;
+    return Buffer.from(await res.arrayBuffer());
+  } catch (error) {
+    if (signal.aborted) throw error;
+    return null;
+  }
 }
 
 async function assignSequentialEpisode(prisma: PrismaClient, video: TwitchVideo, kind: SeasonKind) {

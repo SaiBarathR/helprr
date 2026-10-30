@@ -4,6 +4,7 @@ import { classifyJobError, nextStepAfterFailure } from '@/lib/twitch/job-errors'
 import { archiveEpisode, episodeBaseName, safeFilenameTitle, seasonFolder } from '@/lib/twitch/naming';
 import { episodeNfo, seasonNfo, tvshowNfo } from '@/lib/twitch/nfo';
 import { parseProgressLine } from '@/lib/twitch/progress';
+import { isTwitchArtworkUrl } from '@/lib/twitch/serialize';
 import { estimateSizeBytes, pickFormat, type YtDlpFormat } from '@/lib/twitch/quality';
 
 const formats: YtDlpFormat[] = [
@@ -66,6 +67,26 @@ describe('chaptersToFfmetadata', () => {
   it('lists each game once for the genres', () => {
     expect(chapterGenres([{ start_time: 0, title: 'A' }, { start_time: 1, title: 'B' }, { start_time: 2, title: 'A' }])).toEqual(['A', 'B']);
   });
+});
+
+describe('isTwitchArtworkUrl', () => {
+  it.each([
+    'https://static-cdn.jtvnw.net/jtv_user_pictures/a-profile_image-300x300.png',
+    'https://vod-secure.twitch.tv/_404/404_processing_320x180.png',
+  ])('allows %s', (url) => expect(isTwitchArtworkUrl(url)).toBe(true));
+
+  it.each([
+    'http://static-cdn.jtvnw.net/a.png',
+    'https://static-cdn.jtvnw.net.evil.example/a.png',
+    'https://evil.example/static-cdn.jtvnw.net/a.png',
+    'https://static-cdn.jtvnw.net@10.0.0.1/a.png',
+    'https://user:pw@static-cdn.jtvnw.net/a.png',
+    'https://static-cdn.jtvnw.net:8443/a.png',
+    'http://localhost:3050/api/health',
+    'http://169.254.169.254/latest/meta-data',
+    'file:///etc/passwd',
+    'not a url',
+  ])('refuses %s', (url) => expect(isTwitchArtworkUrl(url)).toBe(false));
 });
 
 describe('sanitizeInfoJson', () => {
