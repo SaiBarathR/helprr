@@ -39,7 +39,7 @@ Helprr is not trying to clone every setting from Sonarr, Radarr, Lidarr, qBittor
 - Activity queue/history, wanted/missing/cutoff views, manual import, and queue actions.
 - qBittorrent details/files, add/start/stop/delete actions, speed limits, alternative limits, and time-windowed bandwidth schedules.
 - Rule-based queue, download, and seeding cleanup with dry runs, automation, strikes, and history.
-- Prowlarr indexer status, testing, syncing, statistics, and history.
+- Prowlarr indexer status, on/off switches, health warnings, testing, syncing, statistics, and history.
 - Jellyfin library and playback views, active sessions/devices, watch-state actions, server tasks/control, and playback analytics.
 - Insights pages for checking library growth, downloads, storage, media analysis, and viewing habits without digging through several separate apps.
 

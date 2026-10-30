@@ -5,6 +5,44 @@ All notable changes to Helprr are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.0] - 2026-10-30
+
+### Security
+
+- **Prowlarr credentials no longer reach the browser.** Anyone with Prowlarr
+  view access (not only admins) could read indexer credentials in two
+  responses. The indexer list included each indexer's settings, and Prowlarr
+  masks only the fields it marks as secret, so a definition keeping its API key
+  in an ordinary field came back in clear. History records quoted the URLs
+  Prowlarr called, with API keys and passkeys in them. The indexer list now
+  sends only what the pages use. History, Test All results, health messages and
+  logged Prowlarr errors keep only each URL's host and drop magnet links, so the
+  URL in the History drawer now opens the indexer's site. Log lines written
+  before this release are not changed.
+- Removed the add-indexer API routes left over from an abandoned screen
+  (`GET /api/prowlarr/schema`, `POST /api/prowlarr/indexers`). Nothing used them.
+
+### Added
+
+- **Turn an indexer on or off from Helprr**: a switch on each row of the
+  Prowlarr page, and Enable/Disable in its long-press menu. Needs Prowlarr
+  manage access. The row changes at once and goes back with a message if
+  Prowlarr refuses.
+- **Prowlarr health warnings** on the Prowlarr page: failing indexers, apps that
+  fail to sync, a proxy that is down, errors first, with a Learn more link.
+  Nothing is shown when all is well.
+- **Host charts** on the Prowlarr Stats tab: queries and grabs per calling host.
+
+### Fixed
+
+- Every row in the Prowlarr Stats charts and the Insights top-indexers card now
+  has its label; a chart with few rows could drop one.
+
+### Changed
+
+- The Docker image is built on Node 24.22.1, and the release workflows use the
+  current versions of their GitHub Actions.
+
 ## [1.7.0] - 2026-10-30
 
 ### Security
