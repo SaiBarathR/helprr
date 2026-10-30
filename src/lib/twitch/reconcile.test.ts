@@ -138,10 +138,25 @@ describe('reconcileTwitchJobs', () => {
     expect(mocks.job.update).toHaveBeenCalledWith({ where: { id: 'j1' }, data: { failureNotifiedAt: now } });
   });
 
-  it('stays quiet about an offline worker with nothing waiting', async () => {
+  it('stays quiet about a worker never started, with nothing waiting', async () => {
     pending([]);
+    mocks.heartbeat.findFirst.mockResolvedValue(null);
     await reconcileTwitchJobs(now);
-    expect(mocks.heartbeat.findFirst).not.toHaveBeenCalled();
+    expect(mocks.notifyAndLog).not.toHaveBeenCalled();
+  });
+
+  it('warns about a worker that went away, even with nothing waiting', async () => {
+    pending([]);
+    mocks.heartbeat.findFirst.mockResolvedValue({ lastSeenAt: new Date(now.getTime() - 11 * 60_000) });
+    await reconcileTwitchJobs(now);
+    expect(mocks.notifyAndLog.mock.calls[0][0].eventType).toBe('twitchWorkerIssue');
+  });
+
+  it('keeps a refresh request while Jellyfin is away', async () => {
+    pending([doneJob({ kind: 'REENCODE', mediaFile: { jellyfinItemId: 'item' } })]);
+    mocks.refreshItem.mockRejectedValue(new Error('down'));
+    await reconcileTwitchJobs(now);
+    expect(mocks.job.update).not.toHaveBeenCalled();
   });
 
   it('warns once a day when work waits on an absent worker', async () => {

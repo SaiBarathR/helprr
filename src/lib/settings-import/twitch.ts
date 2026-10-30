@@ -6,6 +6,7 @@ import type { ExportedTwitch } from '@/lib/settings-export';
 import { layerMap, sanitizeLayer } from '@/lib/twitch/policy';
 import { parseTwitchLogin } from '@/lib/twitch/streamers';
 
+const REENCODE_PRESETS = new Set(['veryfast', 'faster', 'fast', 'medium', 'slow']);
 const json = (value: unknown) => value as Prisma.InputJsonValue;
 const clamp = (value: unknown, min: number, max: number, fallback: number) => {
   const number = Number(value);
@@ -33,6 +34,11 @@ export async function applyTwitchInTxn(
     reencodeWindowStart: time(s.reencodeWindowStart, '01:00'),
     reencodeWindowEnd: time(s.reencodeWindowEnd, '08:00'),
     keepOriginalDays: clamp(s.keepOriginalDays, 0, 365, 3),
+    pollLiveSecs: clamp(s.pollLiveSecs, 30, 3600, 60),
+    pollVideosSecs: clamp(s.pollVideosSecs, 60, 86_400, 300),
+    reencodePreset: REENCODE_PRESETS.has(String(s.reencodePreset)) ? String(s.reencodePreset) : 'faster',
+    pinnedTools: json(Object.fromEntries(Object.entries((s.pinnedTools ?? {}) as Record<string, unknown>)
+      .filter(([tool, version]) => ['ytdlp', 'td'].includes(tool) && typeof version === 'string' && /^[A-Za-z0-9.-]{1,32}$/.test(version)))),
     // Only the encrypted form: it is unreadable under another JWT_SECRET, and that just reads as no token.
     ...(typeof data.browserAuthToken === 'string' && data.browserAuthToken.startsWith('enc:v1:')
       ? { browserAuthToken: data.browserAuthToken }

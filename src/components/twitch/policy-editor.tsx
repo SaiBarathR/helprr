@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils';
 
 const SWITCHES = [
   ['autoDownload', 'Download automatically'],
+  ['notify', 'Notify about new videos'],
   ['chat', 'Archive chat'],
   ['chapters', 'Chapters from games'],
   ['reencode', 'Re-encode at night'],
@@ -32,6 +33,8 @@ export function PolicyEditor({ value, inherited = BUILT_IN_POLICY, onChange }: {
     onChange(copy);
   };
   const conditions = value.conditions ?? {};
+  // A layer's conditions replace the ones below as a whole, so those show as a hint.
+  const inheritedConditions = inherited.conditions ?? {};
   const setCondition = (patch: Partial<TwitchPolicy['conditions']>) => setField('conditions', { ...conditions, ...patch });
 
   return (
@@ -76,14 +79,14 @@ export function PolicyEditor({ value, inherited = BUILT_IN_POLICY, onChange }: {
         </select>
       </div>
       <div className="grid grid-cols-2 gap-2">
-        <NumberField label="Min length (minutes)" value={conditions.minDurationMinutes} onChange={(minDurationMinutes) => setCondition({ minDurationMinutes })} />
-        <NumberField label="Max length (minutes)" value={conditions.maxDurationMinutes} onChange={(maxDurationMinutes) => setCondition({ maxDurationMinutes })} />
-        <WordsField label="Category is one of" value={conditions.categoryInclude} onChange={(categoryInclude) => setCondition({ categoryInclude })} />
-        <WordsField label="Category is not" value={conditions.categoryExclude} onChange={(categoryExclude) => setCondition({ categoryExclude })} />
+        <NumberField label="Min length (minutes)" placeholder={inheritedConditions.minDurationMinutes?.toString()} value={conditions.minDurationMinutes} onChange={(minDurationMinutes) => setCondition({ minDurationMinutes })} />
+        <NumberField label="Max length (minutes)" placeholder={inheritedConditions.maxDurationMinutes?.toString()} value={conditions.maxDurationMinutes} onChange={(maxDurationMinutes) => setCondition({ maxDurationMinutes })} />
+        <WordsField label="Category is one of" inherited={inheritedConditions.categoryInclude} value={conditions.categoryInclude} onChange={(categoryInclude) => setCondition({ categoryInclude })} />
+        <WordsField label="Category is not" inherited={inheritedConditions.categoryExclude} value={conditions.categoryExclude} onChange={(categoryExclude) => setCondition({ categoryExclude })} />
         <div className="space-y-1.5">
           <Label className="text-xs text-muted-foreground">Title has any of</Label>
           <Input
-            placeholder="comma separated"
+            placeholder={inheritedConditions.titleInclude?.join(', ') || 'comma separated'}
             defaultValue={conditions.titleInclude?.join(', ')}
             onBlur={(event) => setCondition({ titleInclude: splitWords(event.target.value) })}
           />
@@ -91,7 +94,7 @@ export function PolicyEditor({ value, inherited = BUILT_IN_POLICY, onChange }: {
         <div className="space-y-1.5">
           <Label className="text-xs text-muted-foreground">Title has none of</Label>
           <Input
-            placeholder="comma separated"
+            placeholder={inheritedConditions.titleExclude?.join(', ') || 'comma separated'}
             defaultValue={conditions.titleExclude?.join(', ')}
             onBlur={(event) => setCondition({ titleExclude: splitWords(event.target.value) })}
           />
@@ -131,12 +134,17 @@ function NumberField({ label, value, placeholder, onChange }: {
   );
 }
 
-function WordsField({ label, value, onChange }: { label: string; value: string[] | undefined; onChange: (next: string[]) => void }) {
+function WordsField({ label, value, inherited, onChange }: {
+  label: string;
+  value: string[] | undefined;
+  inherited?: string[];
+  onChange: (next: string[]) => void;
+}) {
   return (
     <div className="space-y-1.5">
       <Label className="text-xs text-muted-foreground">
         {label}
-        <Input className="mt-1.5" placeholder="comma separated" defaultValue={value?.join(', ')} onBlur={(event) => onChange(splitWords(event.target.value))} />
+        <Input className="mt-1.5" placeholder={inherited?.join(', ') || 'comma separated'} defaultValue={value?.join(', ')} onBlur={(event) => onChange(splitWords(event.target.value))} />
       </Label>
     </div>
   );
@@ -155,9 +163,11 @@ export interface RuleLayerValue {
 }
 
 /** A layer, and the per-video-type layers that override it. */
-export function RuleLayers({ value, inherited, onChange }: {
+export function RuleLayers({ value, inherited, inheritedTypes, onChange }: {
   value: RuleLayerValue;
   inherited?: Partial<TwitchPolicy>;
+  /** The global per-type rules, which a streamer's layers sit on top of. */
+  inheritedTypes?: RuleLayerValue['types'];
   onChange: (next: RuleLayerValue) => void;
 }) {
   const [tab, setTab] = useState<(typeof LAYER_TABS)[number]['id']>('base');
@@ -183,7 +193,7 @@ export function RuleLayers({ value, inherited, onChange }: {
         <PolicyEditor
           key={tab}
           value={value.types[tab] ?? {}}
-          inherited={{ ...inherited, ...value.base }}
+          inherited={{ ...inherited, ...inheritedTypes?.[tab], ...value.base }}
           onChange={(layer) => onChange({ ...value, types: { ...value.types, [tab]: layer } })}
         />
       )}

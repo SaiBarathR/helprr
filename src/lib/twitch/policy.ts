@@ -11,6 +11,7 @@ export interface PolicyConditions {
 
 export interface TwitchPolicy extends DownloadOptions {
   autoDownload: boolean;
+  notify: boolean;
   conditions: PolicyConditions;
   keepLatest: number | null;
   deleteAfterDays: number | null;
@@ -22,6 +23,7 @@ export type VideoTypeKey = 'ARCHIVE' | 'HIGHLIGHT' | 'UPLOAD';
 
 export const BUILT_IN_POLICY: TwitchPolicy = {
   autoDownload: false,
+  notify: true,
   quality: '1080p60',
   chat: true,
   chapters: true,
@@ -80,7 +82,7 @@ function conditionFailure(video: VideoForPolicy, conditions: PolicyConditions): 
 /** Keywords only, never a regex: a rule cannot be made to hang the poller. */
 export function evaluatePolicy(video: VideoForPolicy, layers: PolicyLayers, masterSwitch: boolean): PolicyDecision {
   const policy = { ...BUILT_IN_POLICY } as TwitchPolicy & Record<string, unknown>;
-  const trace: PolicyTrace = {};
+  const trace = Object.fromEntries(Object.keys(BUILT_IN_POLICY).map((field) => [field, 'builtIn'])) as PolicyTrace;
   for (const name of LAYER_ORDER) {
     for (const [field, value] of Object.entries(layers[name] ?? {})) {
       if (value === undefined || !(field in BUILT_IN_POLICY)) continue;
@@ -94,7 +96,7 @@ export function evaluatePolicy(video: VideoForPolicy, layers: PolicyLayers, mast
     return { policy: { ...policy, autoDownload: false }, trace, autoDownloadReason: 'master-switch' };
   }
   if (!policy.autoDownload) {
-    return { policy, trace, autoDownloadReason: trace.autoDownload ? `off in ${trace.autoDownload}` : 'off by default' };
+    return { policy, trace, autoDownloadReason: trace.autoDownload === 'builtIn' ? 'off by default' : `off in ${trace.autoDownload}` };
   }
   const failure = conditionFailure(video, policy.conditions);
   if (failure) return { policy: { ...policy, autoDownload: false }, trace, autoDownloadReason: failure };
@@ -106,7 +108,7 @@ export function sanitizeLayer(value: unknown): PolicyLayer {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
   const input = value as Record<string, unknown>;
   const layer: PolicyLayer = {};
-  for (const field of ['autoDownload', 'chat', 'chapters', 'reencode', 'keepForever'] as const) {
+  for (const field of ['autoDownload', 'notify', 'chat', 'chapters', 'reencode', 'keepForever'] as const) {
     if (typeof input[field] === 'boolean') layer[field] = input[field];
   }
   if (typeof input.quality === 'string' && /^[a-z0-9_]{1,16}$/i.test(input.quality)) layer.quality = input.quality;

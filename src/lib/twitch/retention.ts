@@ -1,3 +1,4 @@
+import { createHmac, timingSafeEqual } from 'crypto';
 import { prisma } from '@/lib/db';
 import { logger } from '@/lib/logger';
 import { getJellyfinClientForUser } from '@/lib/service-helpers';
@@ -89,6 +90,30 @@ export async function findRetentionCandidates(
     }
   }
   return candidates;
+}
+
+const PREVIEW_VALID_MS = 10 * 60_000;
+
+function previewSignature(userId: string, fileIds: string[], expires: number): string {
+  const secret = process.env.JWT_SECRET || process.env.APP_PASSWORD;
+  if (!secret) throw new Error('JWT_SECRET or APP_PASSWORD is required');
+  return createHmac('sha256', secret).update(`retention:${userId}:${expires}:${[...fileIds].sort().join(',')}`).digest('base64url');
+}
+
+/** Proves a run deletes what this user was shown, recently. */
+export function signRetentionPreview(userId: string, fileIds: string[], now = Date.now()): string {
+  const expires = now + PREVIEW_VALID_MS;
+  return `${expires}.${previewSignature(userId, fileIds, expires)}`;
+}
+
+export function verifyRetentionPreview(token: unknown, userId: string, fileIds: string[], now = Date.now()): boolean {
+  if (typeof token !== 'string') return false;
+  const [expiresText, signature] = token.split('.');
+  const expires = Number(expiresText);
+  if (!Number.isFinite(expires) || expires < now || !signature) return false;
+  const expected = Buffer.from(previewSignature(userId, fileIds, expires));
+  const actual = Buffer.from(signature);
+  return expected.length === actual.length && timingSafeEqual(expected, actual);
 }
 
 /** Helprr has no file access: the worker deletes, and audits under this actor. */

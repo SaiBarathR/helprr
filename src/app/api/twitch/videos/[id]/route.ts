@@ -31,7 +31,7 @@ async function getHandler(
   return NextResponse.json({
     ...serializeVideo(rest, userStates[0]?.seenAt),
     hidden: userStates[0]?.hidden ?? false,
-    autoDownload: { enabled: decision.policy.autoDownload, reason: decision.autoDownloadReason },
+    autoDownload: { enabled: decision.policy.autoDownload, reason: decision.autoDownloadReason, trace: decision.trace },
     // 1440p shows as login-required, so it is only offered with a working token.
     canUse1440p: Boolean(settings.browserAuthToken) && settings.browserAuthTokenValid !== false,
     defaults: {

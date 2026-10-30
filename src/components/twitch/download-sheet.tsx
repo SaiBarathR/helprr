@@ -106,6 +106,9 @@ function SheetBody({ video, defaults, canUse1440p, onDone }: {
       {mutedSeconds > 0 && (
         <p className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-sm text-amber-300">
           Twitch muted {formatDuration(mutedSeconds)} of this audio. It cannot be recovered.
+          <span className="mt-1 block font-mono text-xs">
+            {(video.mutedSegments ?? []).map((segment) => `${formatDuration(segment.offset)}–${formatDuration(segment.offset + segment.duration)}`).join(', ')}
+          </span>
         </p>
       )}
       <div role="radiogroup" aria-label="Quality" className="grid auto-cols-fr grid-flow-col gap-1 rounded-md bg-muted/40 p-1">

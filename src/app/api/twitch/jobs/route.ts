@@ -6,22 +6,34 @@ import { helixGet, TwitchHelixError, TwitchNotConfiguredError } from '@/lib/twit
 import { DOWNLOAD_OPTION_KEYS, enqueueDownload, isClientRequestId, type DownloadOptions } from '@/lib/twitch/jobs';
 import { decideForVideo } from '@/lib/twitch/policy-store';
 import { serializeJob, JOB_SELECT } from '@/lib/twitch/serialize-job';
+import { getTwitchSettings } from '@/lib/twitch/settings';
 import { parseTwitchLogin, subscribeToStreamer } from '@/lib/twitch/streamers';
 import { upsertVideoFromHelix, type HelixVideoWithUser } from '@/lib/twitch/sync';
 
 const MAX_LISTED = 200;
+const DONE_LISTED = 20;
 const VIDEO_URL = /^(?:https?:\/\/)?(?:www\.|m\.)?twitch\.tv\/videos\/(\d{5,20})(?:[/?#].*)?$/;
 
 async function getHandler(): Promise<NextResponse> {
   const auth = await requireUserCapability('twitch.view');
   if (!auth.ok) return auth.response;
 
-  const jobs = await prisma.twitchJob.findMany({
-    orderBy: [{ priority: 'desc' }, { createdAt: 'desc' }],
-    take: MAX_LISTED,
-    select: JOB_SELECT,
-  });
-  return NextResponse.json({ jobs: jobs.map(serializeJob) });
+  // Apart, so a long queue cannot push the finished ones off the page.
+  const [open, finished] = await Promise.all([
+    prisma.twitchJob.findMany({
+      where: { state: { notIn: ['DONE', 'CANCELLED'] } },
+      orderBy: [{ priority: 'desc' }, { createdAt: 'desc' }],
+      take: MAX_LISTED,
+      select: JOB_SELECT,
+    }),
+    prisma.twitchJob.findMany({
+      where: { state: 'DONE', kind: 'DOWNLOAD' },
+      orderBy: { finishedAt: 'desc' },
+      take: DONE_LISTED,
+      select: JOB_SELECT,
+    }),
+  ]);
+  return NextResponse.json({ jobs: [...open, ...finished].map(serializeJob) });
 }
 
 // What the sheet chose, over what the rules say for this video.
@@ -84,11 +96,17 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     where: { id: videoId },
     select: { title: true, type: true, category: true, streamerId: true, durationSeconds: true },
   });
-  const { policy } = await decideForVideo(video);
+  const [{ policy, trace }, settings] = await Promise.all([decideForVideo(video), getTwitchSettings()]);
+  const options = readOptions(body.options, policy);
+  // A rule or an old sheet can ask for it; only a working token can get it.
+  if (options.quality === '1440p60' && (!settings.browserAuthToken || settings.browserAuthTokenValid === false)) {
+    options.quality = '1080p60';
+  }
   const result = await enqueueDownload({
     videoId,
     source: pasted ? 'URL' : 'MANUAL',
-    options: readOptions(body.options, policy),
+    options,
+    trace: { ...trace, reason: 'manual' },
     actor: { id: auth.user.id, username: auth.user.username },
     clientRequestId: body.clientRequestId as string | undefined,
   });

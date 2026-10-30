@@ -130,11 +130,12 @@ export default function TwitchSettingsPage() {
     onError: fail,
   });
   const preview = useMutation({
-    mutationFn: async () => (await load<{ candidates: RetentionCandidate[] }>('/api/twitch/retention/preview', new AbortController().signal)).candidates,
+    mutationFn: () => load<{ candidates: RetentionCandidate[]; previewToken: string }>('/api/twitch/retention/preview', new AbortController().signal),
     onError: fail,
   });
+  const candidates = preview.data?.candidates ?? [];
   const runRetention = useMutation({
-    mutationFn: () => send('/api/twitch/retention/run', 'POST', { fileIds: (preview.data ?? []).map((candidate) => candidate.fileId) }),
+    mutationFn: () => send('/api/twitch/retention/run', 'POST', { fileIds: candidates.map((candidate) => candidate.fileId), previewToken: preview.data?.previewToken }),
     onSuccess: (data: { queued: number; skipped: number }) => {
       toast.success(`${data.queued} queued for deletion${data.skipped ? `, ${data.skipped} no longer apply` : ''}`);
       setConfirmRetention(false);
@@ -283,11 +284,11 @@ export default function TwitchSettingsPage() {
             <Button variant="outline" className="h-10 w-full" disabled={preview.isPending} onClick={() => preview.mutate()}>
               Preview what would be deleted
             </Button>
-            {preview.data && preview.data.length === 0 && <p className="text-sm text-muted-foreground">Nothing to delete.</p>}
-            {preview.data && preview.data.length > 0 && (
+            {preview.data && candidates.length === 0 && <p className="text-sm text-muted-foreground">Nothing to delete.</p>}
+            {candidates.length > 0 && (
               <>
                 <ul className="max-h-64 space-y-1 overflow-y-auto">
-                  {preview.data.map((candidate) => (
+                  {candidates.map((candidate) => (
                     <li key={candidate.fileId} className="text-sm">
                       <span className="block truncate">{candidate.title}</span>
                       <span className="block truncate text-xs text-muted-foreground">{candidate.streamer} · {(candidate.sizeBytes / 1024 ** 3).toFixed(1)} GB · {candidate.reason}</span>
@@ -295,7 +296,7 @@ export default function TwitchSettingsPage() {
                   ))}
                 </ul>
                 <Button variant="destructive" className="h-10 w-full" onClick={() => setConfirmRetention(true)}>
-                  Delete {preview.data.length} {preview.data.length === 1 ? 'file' : 'files'}
+                  Delete {candidates.length} {candidates.length === 1 ? 'file' : 'files'}
                 </Button>
               </>
             )}

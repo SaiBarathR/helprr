@@ -7,7 +7,7 @@ describe('evaluatePolicy', () => {
   it('starts from the built-in defaults with no layers', () => {
     const { policy, trace } = evaluatePolicy(video, {}, true);
     expect(policy).toEqual(BUILT_IN_POLICY);
-    expect(trace).toEqual({});
+    expect(new Set(Object.values(trace))).toEqual(new Set(['builtIn']));
   });
 
   it('lets each more specific layer win, field by field, and records which one set it', () => {
@@ -19,7 +19,7 @@ describe('evaluatePolicy', () => {
       manual: { keepForever: true },
     }, true);
     expect(policy).toMatchObject({ quality: '360p', chat: true, keepForever: true, chapters: true });
-    expect(trace).toEqual({ quality: 'streamerType', chat: 'streamer', keepForever: 'manual' });
+    expect(trace).toMatchObject({ quality: 'streamerType', chat: 'streamer', keepForever: 'manual', chapters: 'builtIn' });
   });
 
   it('ignores undefined values, so a partial layer inherits', () => {

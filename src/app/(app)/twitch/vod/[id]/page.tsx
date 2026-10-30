@@ -31,7 +31,7 @@ export default function TwitchVodPage({ params }: { params: Promise<{ id: string
     queryFn: async ({ signal }) => {
       const res = await fetch(`/api/twitch/videos/${id}`, { signal });
       if (!res.ok) throw new Error('Failed to load video');
-      return (await res.json()) as TwitchVideo & { autoDownload: { enabled: boolean; reason: string } };
+      return (await res.json()) as TwitchVideo & { autoDownload: { enabled: boolean; reason: string; trace: Record<string, string> } };
     },
   });
   const video = query.data;
@@ -129,11 +129,18 @@ export default function TwitchVodPage({ params }: { params: Promise<{ id: string
             </ul>
           </section>
         )}
-        <p className="text-xs text-muted-foreground">
-          {video.autoDownload.enabled ? 'Auto-download would save this' : 'Auto-download would skip this'}: {
-            video.autoDownload.reason === 'master-switch' ? 'auto-download is off' : video.autoDownload.reason
-          }.
-        </p>
+        <details className="text-xs text-muted-foreground">
+          <summary className="min-h-9 cursor-pointer py-2">
+            {video.autoDownload.enabled ? 'Auto-download would save this' : 'Auto-download would skip this'}: {
+              video.autoDownload.reason === 'master-switch' ? 'auto-download is off' : video.autoDownload.reason
+            }.
+          </summary>
+          <dl className="grid grid-cols-2 gap-x-3 gap-y-0.5">
+            {Object.entries(video.autoDownload.trace).map(([field, layer]) => (
+              <div key={field} className="flex justify-between gap-2"><dt>{field}</dt><dd className="font-mono">{layer}</dd></div>
+            ))}
+          </dl>
+        </details>
         {canManage && video.fileId && !video.activeJob && (
           <Button variant="outline" className="h-11 w-full" onClick={() => setConfirmDelete(true)}>
             <Trash2 className="mr-2 h-4 w-4" />Delete the file

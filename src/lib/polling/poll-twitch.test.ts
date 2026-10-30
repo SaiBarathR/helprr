@@ -132,6 +132,7 @@ describe('pollTwitch', () => {
     mocks.video.findMany.mockResolvedValue([{
       id: 'v1', twitchVideoId: '555', title: 'A stream', type: 'ARCHIVE', streamer: { displayName: 'Name' },
     }]);
+    mocks.decideForVideo.mockResolvedValue({ policy: { notify: true, autoDownload: false }, trace: {}, autoDownloadReason: '' });
 
     await pollTwitch(now);
 
@@ -149,11 +150,14 @@ describe('pollTwitch', () => {
     mocks.video.findMany.mockResolvedValue([row('v1'), row('v2')]);
     const policy = { autoDownload: true, quality: '720p60', chat: true, chapters: true, reencode: true, keepForever: false };
     mocks.decideForVideo
+      .mockResolvedValueOnce({ policy: { notify: false } })
+      .mockResolvedValueOnce({ policy: { notify: false } })
       .mockResolvedValueOnce({ policy, trace: { autoDownload: 'streamer' }, autoDownloadReason: 'on in streamer' })
       .mockResolvedValueOnce({ policy: { ...policy, autoDownload: false }, trace: {}, autoDownloadReason: 'master-switch' });
 
     await pollTwitch(now);
 
+    expect(mocks.notifyAndLog).not.toHaveBeenCalled();
     expect(mocks.enqueueDownload).toHaveBeenCalledTimes(1);
     expect(mocks.enqueueDownload.mock.calls[0][0]).toMatchObject({
       videoId: 'v1',

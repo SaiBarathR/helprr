@@ -16,6 +16,15 @@ import { ImportFollows } from '@/components/twitch/import-follows';
 import { TwitchSubNav } from '@/components/twitch/twitch-subnav';
 import { toCachedImageSrc } from '@/lib/image';
 
+interface ChannelResult {
+  twitchUserId: string;
+  login: string;
+  displayName: string;
+  profileImageUrl: string | null;
+  isLive: boolean;
+  category: string | null;
+}
+
 interface Subscription {
   id: string;
   notifyNewVods: boolean;
@@ -44,12 +53,29 @@ export default function TwitchStreamersPage() {
     },
   });
 
+  const term = login.trim();
+  const isLink = term.includes('/');
+  const search = useQuery({
+    queryKey: ['twitch', 'search', term],
+    queryFn: async ({ signal }) => {
+      // A short pause: this is a Helix call per keystroke otherwise.
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      signal.throwIfAborted();
+      const res = await fetch(`/api/twitch/search?q=${encodeURIComponent(term)}`, { signal });
+      if (!res.ok) throw new Error('Search failed');
+      return (await res.json()) as { results: ChannelResult[] };
+    },
+    enabled: term.length >= 2 && !isLink,
+    staleTime: 60_000,
+  });
+  const searchResults = term.length >= 2 && !isLink ? search.data?.results ?? [] : [];
+
   const subscribe = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (target: string) => {
       const res = await fetch('/api/twitch/streamers', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ login }),
+        body: JSON.stringify({ login: target }),
       });
       const data = await res.json().catch(() => null);
       if (!res.ok) throw new Error(data?.error || 'Could not subscribe');
@@ -95,7 +121,7 @@ export default function TwitchStreamersPage() {
           className="flex gap-2"
           onSubmit={(event) => {
             event.preventDefault();
-            if (login.trim()) subscribe.mutate();
+            if (login.trim()) subscribe.mutate(login);
           }}
         >
           <Input
@@ -111,6 +137,33 @@ export default function TwitchStreamersPage() {
             {subscribe.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Subscribe'}
           </Button>
         </form>
+
+        {searchResults.length > 0 && (
+          <section aria-label="Search results" className="grouped-section-content">
+            {searchResults.map((channel) => {
+              const picture = toCachedImageSrc(channel.profileImageUrl, undefined, { width: 80 });
+              return (
+                <button
+                  key={channel.twitchUserId}
+                  type="button"
+                  className="grouped-row w-full text-left active:bg-foreground/5"
+                  disabled={subscribe.isPending}
+                  onClick={() => subscribe.mutate(channel.login)}
+                >
+                  <span className="flex min-w-0 items-center gap-3">
+                    <span className="relative block h-9 w-9 shrink-0 overflow-hidden rounded-full bg-muted">
+                      {picture && <FadeInImage src={picture} alt="" fill sizes="36px" className="object-cover" unoptimized />}
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-medium">{channel.displayName}</span>
+                      <span className="block truncate text-xs text-muted-foreground">{channel.isLive ? `Live${channel.category ? ` · ${channel.category}` : ''}` : channel.category ?? channel.login}</span>
+                    </span>
+                  </span>
+                </button>
+              );
+            })}
+          </section>
+        )}
 
         <ImportFollows />
 

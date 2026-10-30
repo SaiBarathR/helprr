@@ -46,13 +46,15 @@ export async function readLibraryStatus(client: JellyfinClient, path: string): P
   const options = library?.LibraryOptions as {
     TypeOptions?: Array<{ Type: string; MetadataFetchers?: string[]; ImageFetchers?: string[] }>;
   } | undefined;
-  const series = options?.TypeOptions?.find((type) => type.Type === 'Series');
+  // Episodes keep the local Screen Grabber; anything else would reach the internet.
+  const fetchersOff = (options?.TypeOptions ?? []).every((type) =>
+    !type.MetadataFetchers?.length && !(type.ImageFetchers ?? []).some((fetcher) => fetcher !== 'Screen Grabber'));
   return {
     exists: Boolean(library),
     itemId: library?.ItemId ?? null,
     name: library?.Name ?? null,
     pathMatches: Boolean(library),
-    fetchersOff: Boolean(library) && !series?.MetadataFetchers?.length && !series?.ImageFetchers?.length,
+    fetchersOff: Boolean(library) && fetchersOff,
     conflicts: folders
       .filter((folder) => folder !== library && (folder.Locations ?? []).some((location) => coversPath(location, path)))
       .map((folder) => folder.Name ?? 'Unnamed library'),

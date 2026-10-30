@@ -67,6 +67,13 @@ jobs:
         env:
           MIGRATION_TEST_DATABASE_URL: postgresql://postgres:ci-migration-password@localhost:5432/helprr_migration_test
 
+      # The claim and takeover SQL can only be proven against PostgreSQL.
+      - name: Test the Twitch queue
+        run: npx prisma migrate deploy && npx vitest run src/worker/twitch/queue.integration.test.ts
+        env:
+          DATABASE_URL: postgresql://postgres:ci-migration-password@localhost:5432/helprr_migration_test
+          TWITCH_QUEUE_TEST_DATABASE_URL: postgresql://postgres:ci-migration-password@localhost:5432/helprr_migration_test
+
       - name: Build
         run: npm run build
         env:

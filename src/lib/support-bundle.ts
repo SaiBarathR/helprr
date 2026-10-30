@@ -286,6 +286,9 @@ async function loadDatabaseSnapshot(): Promise<SupportDatabaseSnapshot> {
     twitchVideos,
     twitchJobs,
     twitchMediaFiles,
+    twitchSubscriptions,
+    twitchJobEvents,
+    twitchUserLinks,
   ] = await Promise.all([
     prisma.serviceConnection.findMany({
       orderBy: [{ type: 'asc' }, { label: 'asc' }],
@@ -339,6 +342,9 @@ async function loadDatabaseSnapshot(): Promise<SupportDatabaseSnapshot> {
     prisma.twitchVideo.count(),
     prisma.twitchJob.count(),
     prisma.twitchMediaFile.count(),
+    prisma.twitchSubscription.count(),
+    prisma.twitchJobEvent.count(),
+    prisma.twitchUserLink.count(),
   ]);
 
   return {
@@ -361,6 +367,9 @@ async function loadDatabaseSnapshot(): Promise<SupportDatabaseSnapshot> {
       twitchVideos,
       twitchJobs,
       twitchMediaFiles,
+      twitchSubscriptions,
+      twitchJobEvents,
+      twitchUserLinks,
     },
     appliedMigrations: migrations.map((migration) => migration.migration_name),
   };

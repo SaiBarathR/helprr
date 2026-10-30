@@ -10,6 +10,7 @@ import { RuleLayers, type RuleLayerValue } from './policy-editor';
 
 interface PoliciesResponse {
   defaultPolicy: PolicyLayer;
+  typePolicies: RuleLayerValue['types'];
   streamer: { policy: PolicyLayer; typePolicies: RuleLayerValue['types'] } | null;
 }
 
@@ -63,7 +64,7 @@ export function StreamerRules({ streamerId }: { streamerId: string }) {
 
   return (
     <div className="space-y-3">
-      <RuleLayers value={value} inherited={stored.data.defaultPolicy as Partial<TwitchPolicy>} onChange={setDraft} />
+      <RuleLayers value={value} inherited={stored.data.defaultPolicy as Partial<TwitchPolicy>} inheritedTypes={stored.data.typePolicies} onChange={setDraft} />
       <div className="grid grid-cols-2 gap-2">
         <Button variant="outline" className="h-10" disabled={preview.isPending} onClick={() => preview.mutate()}>Preview</Button>
         <Button className="h-10" disabled={save.isPending || draft === null} onClick={() => save.mutate()}>Save</Button>

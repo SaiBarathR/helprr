@@ -10,6 +10,7 @@ import { archiveEpisode, episodeBaseName, seasonFolder, type SeasonKind } from '
 import { episodeNfo, seasonNfo, tvshowNfo } from '@/lib/twitch/nfo';
 import { parseProgressLine, YT_DLP_PROGRESS_TEMPLATE } from '@/lib/twitch/progress';
 import { estimateSizeBytes, pickFormat, type YtDlpFormat } from '@/lib/twitch/quality';
+import { classifyJobError } from '@/lib/twitch/job-errors';
 import type { DownloadOptions } from '@/lib/twitch/jobs';
 import { sizeThumbnail } from '@/lib/twitch/serialize';
 import { FFMPEG, FFPROBE, LIBRARY_DIR, STAGING_DIR } from './env';
@@ -91,6 +92,7 @@ async function downloadVideo(ctx: JobContext, staging: string, format: string): 
   const args = [
     '--no-playlist', '--ffmpeg-location', FFMPEG, '-N', '6', '-f', format, '--newline', '--no-color',
     '--progress-template', YT_DLP_PROGRESS_TEMPLATE,
+    '--write-info-json',
     '-o', path.join(staging, 'video.%(ext)s'),
     ...(cookiesFile ? ['--cookies', cookiesFile] : []),
     videoUrl(video.twitchVideoId),
@@ -127,7 +129,7 @@ async function downloadVideo(ctx: JobContext, staging: string, format: string): 
       ...(ctx.browserToken ? ['--oauth', ctx.browserToken] : []),
     ], { signal, env: { ...process.env, DOTNET_SYSTEM_GLOBALIZATION_INVARIANT: '1' } });
   }
-  const file = (await readdir(staging)).find((name) => name.startsWith('video.'));
+  const file = (await readdir(staging)).find((name) => name.startsWith('video.') && !name.endsWith('.info.json'));
   if (!file) throw new Error('validation failed: the download left no video');
   return path.join(staging, file);
 }
@@ -213,6 +215,12 @@ async function publish(ctx: JobContext, staging: string, mkv: string, info: Vide
     twitchVideoId: video.twitchVideoId,
   }));
   sidecars.push(nfoFile);
+  const infoJson = path.join(staging, 'video.info.json');
+  if (await stat(infoJson).catch(() => null)) {
+    const infoName = `${base}.info.json`;
+    await rename(infoJson, path.join(staging, infoName));
+    sidecars.push(infoName);
+  }
   const thumbName = `${base}-thumb.jpg`;
   if (await fetchThumbnail(video.thumbnailUrl, path.join(staging, thumbName), ctx.signal)) sidecars.push(thumbName);
   if (chat) {
@@ -323,13 +331,20 @@ export async function runDownload(ctx: JobContext): Promise<void> {
   await mkdir(staging, { recursive: true });
 
   await ctx.setStage('reading metadata');
-  const json = await run(toolPath('ytdlp'), [
-    '-J', '--no-playlist', ...(cookiesFile ? ['--cookies', cookiesFile] : []), videoUrl(video.twitchVideoId),
-  ], { signal, captureStdout: true });
-  const info = JSON.parse(json) as VideoInfo;
+  let info: VideoInfo = {};
+  try {
+    const json = await run(toolPath('ytdlp'), [
+      '-J', '--no-playlist', ...(cookiesFile ? ['--cookies', cookiesFile] : []), videoUrl(video.twitchVideoId),
+    ], { signal, captureStdout: true });
+    info = JSON.parse(json) as VideoInfo;
+  } catch (error) {
+    // Only a broken extractor: the fallback tool can still fetch by id, without chapters.
+    if (!(error instanceof ProcessFailedError) || classifyJobError(error.message) !== 'extractor') throw error;
+    await ctx.note('yt-dlp could not read the video, so trying the fallback tool');
+  }
   if (info.live_status === 'is_live') throw new WaitForRecordingError();
 
-  const format = pickFormat(info.formats ?? [], options.quality);
+  const format = info.formats ? pickFormat(info.formats, options.quality) : options.quality;
   if (!format) throw new Error('validation failed: no video formats');
   const audioOnly = format.toLowerCase().startsWith('audio');
   const duration = info.duration ?? video.durationSeconds;

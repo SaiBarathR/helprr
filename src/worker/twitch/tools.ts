@@ -13,7 +13,11 @@ import { run } from './process';
 export const KNOWN_GOOD = { ytdlp: '2026.10.26', td: '1.56.5' } as const;
 export type ToolName = keyof typeof KNOWN_GOOD;
 
-const SMOKE_VIDEO_URL = process.env.TWITCH_SMOKE_VIDEO_URL;
+// A known public VOD, set from the library's newest video: a fixed one would expire.
+let smokeVideoUrl: string | null = null;
+export function setSmokeVideo(url: string | null): void {
+  smokeVideoUrl = url;
+}
 const REPOS: Record<ToolName, string> = { ytdlp: 'yt-dlp/yt-dlp', td: 'lay295/TwitchDownloader' };
 
 interface ReleaseAsset {
@@ -77,7 +81,7 @@ async function smokeTest(tool: ToolName, binary: string): Promise<void> {
   const output = await run(binary, ['--version'], { env: { ...process.env, DOTNET_SYSTEM_GLOBALIZATION_INVARIANT: '1' } })
     .catch((error: Error) => error.message);
   if (!/\d+\.\d+/.test(output)) throw new Error(`${tool} did not report a version`);
-  if (tool === 'ytdlp' && SMOKE_VIDEO_URL) await run(binary, ['-J', '--no-playlist', SMOKE_VIDEO_URL]);
+  if (tool === 'ytdlp' && smokeVideoUrl) await run(binary, ['-J', '--no-playlist', smokeVideoUrl], { captureStdout: true });
 }
 
 /** Verified, smoke-tested, and only then made active. A failure leaves the old version in place. */

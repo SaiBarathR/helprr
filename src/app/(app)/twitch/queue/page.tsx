@@ -37,6 +37,7 @@ interface WorkerStatus {
   toolsPaused?: boolean;
   toolUpdatePending?: boolean;
   gpuAvailable?: boolean;
+  reencodeWindow?: { open: boolean; start: string } | null;
   diskFreeBytes?: number | null;
 }
 
@@ -223,6 +224,15 @@ export default function TwitchQueuePage() {
             <div className="grouped-row">
               <span className="text-sm text-muted-foreground">Tools</span>
               <span className="truncate font-mono text-xs text-muted-foreground">yt-dlp {worker.tools.ytdlp} · TD {worker.tools.td}</span>
+            </div>
+          )}
+          {worker?.seen && (
+            <div className="grouped-row">
+              <span className="text-sm text-muted-foreground">Re-encode</span>
+              <span className="text-xs text-muted-foreground">
+                {worker.gpuAvailable ? 'Intel GPU ready' : 'No GPU'}
+                {worker.reencodeWindow ? ` · ${worker.reencodeWindow.open ? 'window open' : `from ${worker.reencodeWindow.start}`}` : ''}
+              </span>
             </div>
           )}
           {worker?.toolsPaused && (

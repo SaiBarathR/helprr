@@ -61,4 +61,21 @@ describe('no-clone release packaging', () => {
       'docker compose -f docker-compose.yml -f docker-compose.dev.yml',
     );
   });
+
+  it('keeps the Twitch worker behind a profile, off by default, in both stacks', () => {
+    const stable = read('docker-compose.yml');
+    const dev = read('docker-compose.dev.yml');
+    expect(stable).toMatch(/helprr-twitch-worker:\n[\s\S]*?profiles: \["twitch"\]/);
+    expect(dev).toMatch(/helprr-dev-twitch-worker:\n[\s\S]*?profiles: \["twitch"\]/);
+    expect(dev).toContain('HELPRR_DEV_TWITCH_LIBRARY_HOST_PATH');
+    expect(read('.env.example')).toContain('# COMPOSE_PROFILES=twitch');
+  });
+
+  it('publishes and promotes the Twitch worker with the app', () => {
+    const publish = read('.github/workflows/docker-publish.yml');
+    const promote = read('.github/workflows/docker-promote.yml');
+    expect(publish).toContain('ghcr.io/saibarathr/helprr-twitch-worker');
+    expect(publish).toContain('docker/twitch-worker.Dockerfile');
+    expect(promote).toContain('worker_digest');
+  });
 });

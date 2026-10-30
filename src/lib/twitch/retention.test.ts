@@ -13,7 +13,7 @@ vi.mock('@/lib/service-helpers', () => ({ getJellyfinClientForUser: mocks.getJel
 vi.mock('@/lib/twitch/policy-store', () => ({ decideForVideo: mocks.decideForVideo }));
 
 import { BUILT_IN_POLICY } from '@/lib/twitch/policy';
-import { findRetentionCandidates } from '@/lib/twitch/retention';
+import { findRetentionCandidates, signRetentionPreview, verifyRetentionPreview } from '@/lib/twitch/retention';
 
 const now = new Date('2026-10-30T12:00:00Z');
 const user = { role: 'admin', jellyfinUserId: 'jf' };
@@ -105,5 +105,29 @@ describe('findRetentionCandidates', () => {
 
     expect(await findRetentionCandidates(null, now)).toEqual([]);
     expect(mocks.getJellyfinClientForUser).not.toHaveBeenCalled();
+  });
+});
+
+describe('retention preview token', () => {
+  beforeEach(() => {
+    process.env.JWT_SECRET = 'preview-test';
+  });
+  const at = 1_000_000;
+
+  it('accepts what was shown, in any order', () => {
+    const token = signRetentionPreview('u1', ['a', 'b'], at);
+    expect(verifyRetentionPreview(token, 'u1', ['b', 'a'], at + 1000)).toBe(true);
+  });
+
+  it.each([
+    ['another user', 'u2', ['a', 'b'], at],
+    ['a file nobody was shown', 'u1', ['a', 'b', 'c'], at],
+    ['an expired preview', 'u1', ['a', 'b'], at + 11 * 60_000],
+  ])('refuses %s', (_name, user, ids, when) => {
+    expect(verifyRetentionPreview(signRetentionPreview('u1', ['a', 'b'], at), user, ids, when)).toBe(false);
+  });
+
+  it('refuses junk', () => {
+    for (const token of [undefined, '', 'x', '123.', 5]) expect(verifyRetentionPreview(token, 'u1', ['a'], at)).toBe(false);
   });
 });

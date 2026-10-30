@@ -196,11 +196,15 @@ async function notifyNewVideos(streamerId: string, videoIds: string[], now: Date
   const [videos, subscriptions] = await Promise.all([
     prisma.twitchVideo.findMany({
       where: { id: { in: videoIds } },
-      select: { id: true, twitchVideoId: true, title: true, type: true, streamer: { select: { displayName: true } } },
+      select: {
+        id: true, twitchVideoId: true, title: true, type: true, category: true, streamerId: true, durationSeconds: true,
+        streamer: { select: { displayName: true } },
+      },
     }),
     prisma.twitchSubscription.findMany({ where: { streamerId, notifyNewVods: true }, select: { userId: true } }),
   ]);
   for (const video of videos) {
+    if (!(await decideForVideo(video)).policy.notify) continue;
     for (const { userId } of subscriptions) {
       await notifyAndLog({
         eventType: 'twitchVodNew',

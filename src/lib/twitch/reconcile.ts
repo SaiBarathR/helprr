@@ -35,6 +35,25 @@ async function subscribersOf(streamerId: string, requestedByUserId: string | nul
   return subscriptions.map((subscription) => subscription.userId);
 }
 
+// Kept for the next poll if Jellyfin is away, within limits: nothing to refresh ends it, and so does time.
+async function refreshed(
+  job: { id: string; finishedAt: Date | null },
+  refresh: (() => Promise<void>) | null,
+  client: unknown,
+  now: Date,
+): Promise<boolean> {
+  if (!refresh) return true;
+  if (client) {
+    try {
+      await refresh();
+      return true;
+    } catch (error) {
+      logger.warn('Twitch Jellyfin refresh failed', { jobId: job.id, error: errorMessage(error) }, { scope: 'polling' });
+    }
+  }
+  return now.getTime() - (job.finishedAt ?? now).getTime() > REFRESH_GIVE_UP_MS;
+}
+
 async function finishPublishedJobs(now: Date): Promise<void> {
   const jobs = await prisma.twitchJob.findMany({
     where: { needsJellyfinRefresh: true, state: 'DONE' },
@@ -54,12 +73,10 @@ async function finishPublishedJobs(now: Date): Promise<void> {
 
   for (const job of jobs) {
     if (job.kind === 'DELETE_FILES') {
-      if (client && settings.jellyfinLibraryItemId) {
-        await client.refreshItem(settings.jellyfinLibraryItemId, { recursive: true }).catch((error) => {
-          logger.warn('Twitch Jellyfin refresh failed', { jobId: job.id, error: errorMessage(error) }, { scope: 'polling' });
-        });
+      const library = settings.jellyfinLibraryItemId;
+      if (await refreshed(job, library ? () => client!.refreshItem(library, { recursive: true }) : null, client, now)) {
+        await prisma.twitchJob.update({ where: { id: job.id }, data: { needsJellyfinRefresh: false } });
       }
-      await prisma.twitchJob.update({ where: { id: job.id }, data: { needsJellyfinRefresh: false } });
       continue;
     }
 
@@ -71,12 +88,9 @@ async function finishPublishedJobs(now: Date): Promise<void> {
     // A swapped file keeps its name, so the item only needs to re-read it. No push: nothing new landed.
     if (job.kind === 'REENCODE') {
       const known = job.mediaFile?.jellyfinItemId;
-      if (client && known) {
-        await client.refreshItem(known, { recursive: false }).catch((error) => {
-          logger.warn('Twitch Jellyfin refresh failed', { jobId: job.id, error: errorMessage(error) }, { scope: 'polling' });
-        });
+      if (await refreshed(job, known ? () => client!.refreshItem(known, { recursive: false }) : null, client, now)) {
+        await prisma.twitchJob.update({ where: { id: job.id }, data: { needsJellyfinRefresh: false } });
       }
-      await prisma.twitchJob.update({ where: { id: job.id }, data: { needsJellyfinRefresh: false } });
       continue;
     }
 
@@ -152,10 +166,10 @@ async function notifyFailedJobs(now: Date): Promise<void> {
 }
 
 async function checkWorker(now: Date): Promise<void> {
-  const active = await prisma.twitchJob.count({ where: { state: { in: ['QUEUED', 'RUNNING'] } } });
-  if (active === 0) return;
   const heartbeat = await prisma.twitchWorkerHeartbeat.findFirst({ orderBy: { lastSeenAt: 'desc' }, select: { lastSeenAt: true } });
   if (heartbeat && now.getTime() - heartbeat.lastSeenAt.getTime() < WORKER_OFFLINE_MS) return;
+  // A worker never started is only worth a word once something is waiting for it.
+  if (!heartbeat && (await prisma.twitchJob.count({ where: { state: { in: ['QUEUED', 'RUNNING'] } } })) === 0) return;
 
   const dayKey = now.toISOString().slice(0, 10);
   await notifyAndLog({

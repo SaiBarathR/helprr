@@ -162,9 +162,9 @@ async function markMissingVideos(
   rows: Array<{ twitchVideoId: string; twitchCreatedAt: Date }>,
   now: Date,
 ): Promise<void> {
-  if (rows.length === 0) return;
   const inPage = new Set(rows.map((row) => row.twitchVideoId));
-  const oldest = Math.min(...rows.map((row) => row.twitchCreatedAt.getTime()));
+  // An empty page proves nothing by itself: each video is still looked up by id before it is marked.
+  const oldest = rows.length > 0 ? Math.min(...rows.map((row) => row.twitchCreatedAt.getTime())) : 0;
   const missing = existing.filter((video) =>
     !inPage.has(video.twitchVideoId)
     && video.availability !== 'UNAVAILABLE'

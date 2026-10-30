@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { prisma } from '@/lib/db';
+import { inReencodeWindow } from '@/lib/twitch/reencode-window';
 
 const ONLINE_WITHIN_MS = 45_000;
 
@@ -13,7 +14,7 @@ async function getHandler(): Promise<NextResponse> {
     prisma.twitchWorkerHeartbeat.findFirst({ orderBy: { lastSeenAt: 'desc' } }),
     prisma.twitchSettings.findUnique({
       where: { id: 'singleton' },
-      select: { toolLatest: true, toolsPausedAt: true, toolUpdateRequestedAt: true },
+      select: { toolLatest: true, toolsPausedAt: true, toolUpdateRequestedAt: true, reencodeEnabled: true, reencodeWindowStart: true, reencodeWindowEnd: true },
     }),
   ]);
   if (!heartbeat) return NextResponse.json({ online: false, seen: false });
@@ -27,6 +28,9 @@ async function getHandler(): Promise<NextResponse> {
     toolsPaused: Boolean(settings?.toolsPausedAt),
     toolUpdatePending: Boolean(settings?.toolUpdateRequestedAt),
     gpuAvailable: heartbeat.gpuAvailable,
+    reencodeWindow: settings?.reencodeEnabled
+      ? { open: inReencodeWindow(new Date(), settings.reencodeWindowStart, settings.reencodeWindowEnd), start: settings.reencodeWindowStart }
+      : null,
     diskFreeBytes: heartbeat.diskFreeBytes === null ? null : Number(heartbeat.diskFreeBytes),
     diskTotalBytes: heartbeat.diskTotalBytes === null ? null : Number(heartbeat.diskTotalBytes),
     lanes: heartbeat.lanes,

@@ -320,6 +320,10 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
               reencodeWindowStart: settings.reencodeWindowStart,
               reencodeWindowEnd: settings.reencodeWindowEnd,
               keepOriginalDays: settings.keepOriginalDays,
+              pollLiveSecs: settings.pollLiveSecs,
+              pollVideosSecs: settings.pollVideosSecs,
+              reencodePreset: settings.reencodePreset,
+              pinnedTools: settings.pinnedTools,
             }
           : {},
         browserAuthToken: includeSecrets ? settings?.browserAuthToken ?? null : null,

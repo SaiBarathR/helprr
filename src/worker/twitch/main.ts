@@ -13,7 +13,7 @@ import { runDeleteFiles } from './delete-files';
 import { DiskGuardError, runDownload, WaitForRecordingError } from './pipeline';
 import { deleteExpiredOriginals, probeGpu, runReencode } from './reencode';
 import { DeferJobError, JobCancelledError, LeaseLostError } from './process';
-import { activeVersion, ensureTools, latestVersion, updateTools, type ToolName } from './tools';
+import { activeVersion, ensureTools, latestVersion, setSmokeVideo, updateTools, type ToolName } from './tools';
 
 const RENEW_MS = 20_000;
 const POLL_MS = 5_000;
@@ -36,6 +36,7 @@ let gpuAvailable = false;
 let cpuBusy = false;
 let downloadsRunning = 0;
 let appliedPins = '';
+let toolsBusy = false;
 
 function log(level: 'info' | 'warn' | 'error', message: string, extra: Record<string, unknown> = {}) {
   console[level](JSON.stringify({ at: new Date().toISOString(), level, message, ...extra }));
@@ -248,7 +249,7 @@ async function networkLane(): Promise<void> {
     const settings = await prisma.twitchSettings.findUnique({ where: { id: 'singleton' } }).catch(() => null);
     if (running.size - (cpuBusy ? 1 : 0) < (settings?.maxConcurrentDownloads ?? 2)) {
       // Nothing new uses the tools while they are broken or about to be swapped.
-      const held = settings?.toolsPausedAt || settings?.toolUpdateRequestedAt;
+      const held = toolsBusy || settings?.toolsPausedAt || settings?.toolUpdateRequestedAt;
       const job = await claimJob(prisma, workerId, held ? ['DELETE_FILES'] : NETWORK_KINDS).catch((error) => {
         log('error', 'Claim failed', { error: String(error) });
         return null;
@@ -301,6 +302,15 @@ async function cleanStaging(): Promise<void> {
   }
 }
 
+async function prepareSmokeVideo(): Promise<void> {
+  const video = await prisma.twitchVideo.findFirst({
+    where: { availability: 'PUBLISHED' },
+    orderBy: { twitchCreatedAt: 'desc' },
+    select: { twitchVideoId: true },
+  });
+  setSmokeVideo(video ? `https://www.twitch.tv/videos/${video.twitchVideoId}` : null);
+}
+
 // Daily: learn what is newest, and install it only if the current tools have stopped working.
 // A request from the owner installs at once. Either way, a running download keeps its tool.
 async function checkTools(): Promise<void> {
@@ -311,7 +321,13 @@ async function checkTools(): Promise<void> {
   const pinned = JSON.stringify(settings.pinnedTools ?? {});
   if (pinned !== appliedPins && downloadsRunning === 0) {
     appliedPins = pinned;
-    await ensureTools((settings.pinnedTools ?? {}) as Partial<Record<ToolName, string>>);
+    toolsBusy = true;
+    try {
+      await prepareSmokeVideo();
+      await ensureTools((settings.pinnedTools ?? {}) as Partial<Record<ToolName, string>>);
+    } finally {
+      toolsBusy = false;
+    }
   }
   const requested = settings.toolUpdateRequestedAt !== null;
   const due = !settings.toolCheckedAt || Date.now() - settings.toolCheckedAt.getTime() > TOOL_CHECK_MS;
@@ -322,6 +338,7 @@ async function checkTools(): Promise<void> {
   let toolLatest;
   let updated = false;
   try {
+    await prepareSmokeVideo();
     toolLatest = { ytdlp: await latestVersion('ytdlp'), td: await latestVersion('td') };
     if ((requested || settings.toolsPausedAt) && downloadsRunning === 0) updated = await updateTools(pins);
   } catch (error) {
