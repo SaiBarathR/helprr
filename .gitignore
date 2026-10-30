@@ -72,3 +72,6 @@ postman/
 
 # Local UI reference captures (not distributed).
 /netflix mobile ui screenshots/
+
+# Twitch worker bundle
+/dist

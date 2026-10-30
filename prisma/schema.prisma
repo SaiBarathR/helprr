@@ -1014,6 +1014,7 @@ model TwitchJob {
   errorClass           String?
   lastError            String? // redacted
   needsJellyfinRefresh Boolean          @default(false)
+  failureNotifiedAt    DateTime? // set by the app, which alone holds the push keys
   startedAt            DateTime?
   finishedAt           DateTime?
   createdAt            DateTime         @default(now())

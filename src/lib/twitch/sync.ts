@@ -18,6 +18,10 @@ export interface HelixVideo {
   muted_segments: Array<{ duration: number; offset: number }> | null;
 }
 
+export interface HelixVideoWithUser extends HelixVideo {
+  user_login: string;
+}
+
 const VIDEO_TYPES: Record<string, TwitchVideoType> = {
   archive: 'ARCHIVE',
   highlight: 'HIGHLIGHT',
@@ -53,6 +57,19 @@ function toRow(video: HelixVideo, streamer: StreamerForSync) {
     availability,
     estimatedExpiresAt: estimateExpiry(type, twitchCreatedAt, streamer.broadcasterType),
   };
+}
+
+/** One video by hand, such as a pasted link. Clips are refused here: they are not in the schedule of this feature. */
+export async function upsertVideoFromHelix(video: HelixVideo, streamer: StreamerForSync): Promise<string | null> {
+  const row = toRow(video, streamer);
+  if (!row) return null;
+  const { id } = await prisma.twitchVideo.upsert({
+    where: { twitchVideoId: row.twitchVideoId },
+    update: row,
+    create: { ...row, notifiedAt: new Date() },
+    select: { id: true },
+  });
+  return id;
 }
 
 /**

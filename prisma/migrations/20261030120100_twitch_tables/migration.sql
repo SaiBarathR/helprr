@@ -162,6 +162,7 @@ CREATE TABLE "TwitchJob" (
     "errorClass" TEXT,
     "lastError" TEXT,
     "needsJellyfinRefresh" BOOLEAN NOT NULL DEFAULT false,
+    "failureNotifiedAt" TIMESTAMP(3),
     "startedAt" TIMESTAMP(3),
     "finishedAt" TIMESTAMP(3),
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
