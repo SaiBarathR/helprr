@@ -53,7 +53,7 @@ export function TopIndexersCard({ range }: { range: InsightsRange }) {
                 axisLine={false}
                 tickLine={false}
               />
-              <YAxis type="category" dataKey="name" width={Y_WIDTH} tick={<YTick />} axisLine={false} tickLine={false} />
+              <YAxis type="category" dataKey="name" width={Y_WIDTH} interval={0} tick={<YTick />} axisLine={false} tickLine={false} />
               <RechartsTooltip content={<ChartTooltip />} cursor={{ fill: 'color-mix(in oklab, var(--foreground) 4%, transparent)' }} />
               <Bar dataKey="Grabs" fill={HPR.amber} radius={[0, 4, 4, 0]} />
             </BarChart>
