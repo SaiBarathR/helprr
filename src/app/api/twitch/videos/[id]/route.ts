@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { prisma } from '@/lib/db';
+import { decideForVideo } from '@/lib/twitch/policy-store';
 import { serializeVideo, VIDEO_SELECT } from '@/lib/twitch/serialize';
 
 async function getHandler(
@@ -22,9 +23,11 @@ async function getHandler(
   if (!video) return NextResponse.json({ error: 'Video not found' }, { status: 404 });
 
   const { userStates, ...rest } = video;
+  const decision = await decideForVideo({ ...rest, streamerId: rest.streamer.id });
   return NextResponse.json({
     ...serializeVideo(rest, userStates[0]?.seenAt),
     hidden: userStates[0]?.hidden ?? false,
+    autoDownload: { enabled: decision.policy.autoDownload, reason: decision.autoDownloadReason },
   });
 }
 

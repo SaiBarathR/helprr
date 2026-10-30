@@ -6,6 +6,7 @@ import { CheckCheck, LayoutGrid, List, Radio } from 'lucide-react';
 import { toast } from 'sonner';
 import Link from '@/components/ui/app-link';
 import { PageHeader } from '@/components/layout/page-header';
+import { useMe, hasCapability } from '@/components/permission-provider';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -65,6 +66,14 @@ export default function TwitchFeedPage() {
     if (search.trim()) params.set('q', search.trim());
     return params.toString();
   }, [segment, chip, length, streamer, search]);
+
+  const me = useMe();
+  const canManage = hasCapability(me, 'twitch.manage');
+  const autoSettings = useQuery({
+    queryKey: ['twitch', 'settings'],
+    queryFn: ({ signal }) => getJson<{ autoDownloadEnabled: boolean }>('/api/twitch/settings', signal),
+    enabled: canManage,
+  });
 
   const streamersQuery = useQuery({
     queryKey: ['twitch', 'streamers'],
@@ -176,6 +185,13 @@ export default function TwitchFeedPage() {
             {LENGTHS.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
           </select>
         </div>
+
+        {canManage && autoSettings.data?.autoDownloadEnabled === false && (
+          <Link href="/settings/twitch" className="press-feedback block rounded-xl bg-card p-3 text-sm">
+            <span className="font-medium">Auto-download is off.</span>{' '}
+            <span className="text-muted-foreground">Nothing downloads by itself. Pick what to save, or set rules.</span>
+          </Link>
+        )}
 
         {live.length > 0 && segment === 'all' && (
           <section aria-label="Live now">

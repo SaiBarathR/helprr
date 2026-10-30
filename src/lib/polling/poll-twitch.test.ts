@@ -2,6 +2,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   helixGet: vi.fn(),
+  enqueueDownload: vi.fn(),
+  decideForVideo: vi.fn(),
+  job: { updateMany: vi.fn() },
   syncStreamerVideos: vi.fn(),
   notifyAndLog: vi.fn(),
   noteJobFailure: vi.fn(),
@@ -19,10 +22,13 @@ vi.mock('@/lib/db', () => ({
     twitchSettings: mocks.settings,
     twitchVideo: mocks.video,
     twitchSubscription: mocks.subscription,
+    twitchJob: mocks.job,
   },
 }));
 vi.mock('@/lib/twitch/helix', () => ({ helixGet: mocks.helixGet }));
 vi.mock('@/lib/twitch/sync', () => ({ syncStreamerVideos: mocks.syncStreamerVideos }));
+vi.mock('@/lib/twitch/jobs', () => ({ enqueueDownload: mocks.enqueueDownload }));
+vi.mock('@/lib/twitch/policy-store', () => ({ decideForVideo: mocks.decideForVideo }));
 vi.mock('@/lib/twitch/reconcile', () => ({ reconcileTwitchJobs: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('@/lib/polling-job-report', () => ({ noteJobFailure: mocks.noteJobFailure }));
 vi.mock('@/lib/logger', () => ({ logger: { warn: vi.fn(), info: vi.fn() } }));
@@ -129,6 +135,34 @@ describe('pollTwitch', () => {
     expect(events[0]).toMatchObject({ eventType: 'twitchVodNew', userIds: ['u1'], ownerUserId: 'u1' });
     expect(events[0].metadata.redirect).toBe('/twitch/vod/v1?download=1');
     expect(mocks.video.updateMany).toHaveBeenCalledWith({ where: { id: { in: ['v1'] } }, data: { notifiedAt: now } });
+  });
+
+  it('queues a new video only when the rules say so, with its trace', async () => {
+    dueStreamers([{ id: 's1' }]);
+    mocks.syncStreamerVideos.mockResolvedValue({ rateLimit, newVideoIds: ['v1', 'v2'] });
+    const row = (id: string) => ({ id, twitchVideoId: id, title: 'T', type: 'ARCHIVE', streamer: { displayName: 'N' }, streamerId: 's1', durationSeconds: 60 });
+    mocks.video.findMany.mockResolvedValue([row('v1'), row('v2')]);
+    const policy = { autoDownload: true, quality: '720p60', chat: true, chapters: true, reencode: true, keepForever: false };
+    mocks.decideForVideo
+      .mockResolvedValueOnce({ policy, trace: { autoDownload: 'streamer' }, autoDownloadReason: 'on in streamer' })
+      .mockResolvedValueOnce({ policy: { ...policy, autoDownload: false }, trace: {}, autoDownloadReason: 'master-switch' });
+
+    await pollTwitch(now);
+
+    expect(mocks.enqueueDownload).toHaveBeenCalledTimes(1);
+    expect(mocks.enqueueDownload.mock.calls[0][0]).toMatchObject({
+      videoId: 'v1',
+      source: 'RULE',
+      options: { quality: '720p60' },
+      trace: { autoDownload: 'streamer', reason: 'on in streamer' },
+    });
+  });
+
+  it('raises the priority of queued jobs close to expiry, and queues nothing itself', async () => {
+    dueStreamers([]);
+    await pollTwitch(now);
+    expect(mocks.job.updateMany.mock.calls[0][0].data).toEqual({ priority: 100 });
+    expect(mocks.enqueueDownload).not.toHaveBeenCalled();
   });
 
   it('keeps sweeping when one streamer fails, and has already moved it along', async () => {

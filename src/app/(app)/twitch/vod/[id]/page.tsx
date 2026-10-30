@@ -28,7 +28,7 @@ export default function TwitchVodPage({ params }: { params: Promise<{ id: string
     queryFn: async ({ signal }) => {
       const res = await fetch(`/api/twitch/videos/${id}`, { signal });
       if (!res.ok) throw new Error('Failed to load video');
-      return (await res.json()) as TwitchVideo;
+      return (await res.json()) as TwitchVideo & { autoDownload: { enabled: boolean; reason: string } };
     },
   });
   const video = query.data;
@@ -93,6 +93,11 @@ export default function TwitchVodPage({ params }: { params: Promise<{ id: string
             <span>Twitch muted {formatDuration(muted)} of this video&apos;s audio. It cannot be recovered.</span>
           </p>
         )}
+        <p className="text-xs text-muted-foreground">
+          {video.autoDownload.enabled ? 'Auto-download would save this' : 'Auto-download would skip this'}: {
+            video.autoDownload.reason === 'master-switch' ? 'auto-download is off' : video.autoDownload.reason
+          }.
+        </p>
         {video.description && <p className="whitespace-pre-wrap text-sm text-muted-foreground">{video.description}</p>}
       </div>
       {!video.downloaded && !video.activeJob && <DownloadSheet video={video} open={sheetOpen} onOpenChange={setSheetOpen} />}

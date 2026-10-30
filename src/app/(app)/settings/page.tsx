@@ -16,6 +16,7 @@ import {
   Activity,
   FileStack,
   Terminal,
+  Twitch,
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/query-keys';
@@ -100,6 +101,19 @@ export default function SettingsIndexPage() {
             iconColor="text-violet-400"
             label="Users"
             subtitle="Members, roles, and permissions"
+          />
+        </GroupedSection>
+      )}
+
+      {me?.twitchConfigured && hasCapability(me, 'twitch.manage') && (
+        <GroupedSection>
+          <CategoryRow
+            href="/settings/twitch"
+            icon={Twitch}
+            iconBg="bg-violet-500/10"
+            iconColor="text-violet-400"
+            label="Twitch"
+            subtitle="Auto-download, rules, library"
           />
         </GroupedSection>
       )}

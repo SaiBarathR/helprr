@@ -5,6 +5,8 @@ import { logger } from '@/lib/logger';
 import { noteJobFailure } from '@/lib/polling-job-report';
 import { helixGet, type HelixRateLimit } from '@/lib/twitch/helix';
 import { reconcileTwitchJobs } from '@/lib/twitch/reconcile';
+import { enqueueDownload } from '@/lib/twitch/jobs';
+import { decideForVideo } from '@/lib/twitch/policy-store';
 import { getTwitchSettings } from '@/lib/twitch/settings';
 import { syncStreamerVideos } from '@/lib/twitch/sync';
 import { errorMessage, notifyAndLog } from './shared';
@@ -16,6 +18,7 @@ const OFFLINE_AFTER_MISSES = 2;
 const AFTER_STREAM_CHECK_MS = 2 * 60_000;
 const EXPIRY_WARNING_MS = 48 * 3_600_000;
 const EXPIRY_NOTIFY_HOUR = 10;
+const URGENT_PRIORITY = 100;
 
 interface HelixStream {
   id: string;
@@ -60,6 +63,7 @@ export async function pollTwitch(now = new Date()): Promise<void> {
       try {
         const { rateLimit, newVideoIds } = await syncStreamerVideos(streamer, now);
         await notifyNewVideos(streamer.id, newVideoIds, now);
+        await autoEnqueue(newVideoIds);
         if (rateLimited(rateLimit)) return;
       } catch (error) {
         noteJobFailure(error);
@@ -67,6 +71,7 @@ export async function pollTwitch(now = new Date()): Promise<void> {
       }
     }
 
+    await raiseUrgentJobs(now);
     if (now.getHours() >= EXPIRY_NOTIFY_HOUR && liveDue) await notifyExpiring(now);
   } catch (error) {
     noteJobFailure(error);
@@ -116,6 +121,38 @@ async function pollLive(
     }
   }
   return limited;
+}
+
+async function autoEnqueue(videoIds: string[]): Promise<void> {
+  if (videoIds.length === 0) return;
+  const videos = await prisma.twitchVideo.findMany({
+    where: { id: { in: videoIds } },
+    select: { id: true, title: true, type: true, streamerId: true, durationSeconds: true },
+  });
+  for (const video of videos) {
+    const { policy, trace, autoDownloadReason } = await decideForVideo(video);
+    if (!policy.autoDownload) continue;
+    const { quality, chat, chapters, reencode, keepForever } = policy;
+    await enqueueDownload({
+      videoId: video.id,
+      source: 'RULE',
+      options: { quality, chat, chapters, reencode, keepForever },
+      trace: { ...trace, reason: autoDownloadReason },
+    });
+  }
+}
+
+// Moves what is already queued up the queue. It never queues anything itself.
+async function raiseUrgentJobs(now: Date): Promise<void> {
+  await prisma.twitchJob.updateMany({
+    where: {
+      kind: 'DOWNLOAD',
+      state: { in: ['QUEUED', 'RETRY_WAIT'] },
+      priority: { lt: URGENT_PRIORITY },
+      video: { estimatedExpiresAt: { gt: now, lte: new Date(now.getTime() + EXPIRY_WARNING_MS) } },
+    },
+    data: { priority: URGENT_PRIORITY },
+  });
 }
 
 const TYPE_LABELS = { ARCHIVE: 'past broadcast', HIGHLIGHT: 'highlight', UPLOAD: 'upload', CLIP: 'clip' } as const;

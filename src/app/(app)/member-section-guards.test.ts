@@ -15,6 +15,7 @@ describe('section page guards', () => {
     ['insights', 'insights.view'],
     ['torrents/linked', 'activity.view'],
     ['twitch', 'twitch.view'],
+    ['settings/twitch', 'twitch.manage'],
   ])('/%s requires %s', async (section, capability) => {
     const { default: Layout } = await import(`./${section}/layout`);
     await Layout({ children: null });

@@ -1,0 +1,96 @@
+'use client';
+
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
+import { BUILT_IN_POLICY, type PolicyLayer, type TwitchPolicy } from '@/lib/twitch/policy';
+
+const SWITCHES = [
+  ['autoDownload', 'Download automatically'],
+  ['chat', 'Archive chat'],
+  ['chapters', 'Chapters from games'],
+  ['reencode', 'Re-encode at night'],
+  ['keepForever', 'Keep forever'],
+] as const;
+
+const QUALITIES = ['1080p60', '720p60', '480p', 'audio_only'];
+
+const splitWords = (text: string) => text.split(',').map((word) => word.trim()).filter(Boolean);
+
+/** Each field either inherits, shown greyed out, or is overridden in this layer. */
+export function PolicyEditor({ value, inherited = BUILT_IN_POLICY, onChange }: {
+  value: PolicyLayer;
+  inherited?: Partial<TwitchPolicy>;
+  onChange: (next: PolicyLayer) => void;
+}) {
+  const setField = <K extends keyof TwitchPolicy>(field: K, next: TwitchPolicy[K] | undefined) => {
+    const copy = { ...value };
+    if (next === undefined) delete copy[field];
+    else copy[field] = next;
+    onChange(copy);
+  };
+  const conditions = value.conditions ?? {};
+  const setCondition = (patch: Partial<TwitchPolicy['conditions']>) => setField('conditions', { ...conditions, ...patch });
+
+  return (
+    <div className="space-y-3">
+      <div className="grouped-section-content">
+        {SWITCHES.map(([field, label]) => {
+          const overridden = value[field] !== undefined;
+          const current = (overridden ? value[field] : inherited[field] ?? BUILT_IN_POLICY[field]) as boolean;
+          return (
+            <div key={field} className="grouped-row min-h-11">
+              <span className="text-sm">{label}</span>
+              <span className="flex items-center gap-3">
+                <button
+                  type="button"
+                  className="min-h-9 px-1 text-xs text-primary disabled:text-muted-foreground"
+                  disabled={!overridden}
+                  onClick={() => setField(field, undefined)}
+                >
+                  {overridden ? 'Reset' : 'Inherited'}
+                </button>
+                <Switch
+                  aria-label={label}
+                  className={overridden ? undefined : 'opacity-50'}
+                  checked={current}
+                  onCheckedChange={(checked) => setField(field, checked)}
+                />
+              </span>
+            </div>
+          );
+        })}
+      </div>
+      <div className="space-y-1.5">
+        <Label className="text-xs text-muted-foreground">Quality</Label>
+        <select
+          aria-label="Quality"
+          value={value.quality ?? ''}
+          onChange={(event) => setField('quality', event.target.value || undefined)}
+          className="h-10 w-full rounded-md border border-border bg-card px-2 text-sm"
+        >
+          <option value="">Inherited ({inherited.quality ?? BUILT_IN_POLICY.quality})</option>
+          {QUALITIES.map((quality) => <option key={quality} value={quality}>{quality}</option>)}
+        </select>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <div className="space-y-1.5">
+          <Label className="text-xs text-muted-foreground">Title has any of</Label>
+          <Input
+            placeholder="comma separated"
+            defaultValue={conditions.titleInclude?.join(', ')}
+            onBlur={(event) => setCondition({ titleInclude: splitWords(event.target.value) })}
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-xs text-muted-foreground">Title has none of</Label>
+          <Input
+            placeholder="comma separated"
+            defaultValue={conditions.titleExclude?.join(', ')}
+            onBlur={(event) => setCondition({ titleExclude: splitWords(event.target.value) })}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}

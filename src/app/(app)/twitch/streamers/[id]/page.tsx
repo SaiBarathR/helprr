@@ -6,6 +6,8 @@ import { Radio } from 'lucide-react';
 import { PageHeader } from '@/components/layout/page-header';
 import { FadeInImage } from '@/components/media/fade-in-image';
 import { Button } from '@/components/ui/button';
+import { useMe, hasCapability } from '@/components/permission-provider';
+import { StreamerRules } from '@/components/twitch/streamer-rules';
 import { TwitchVideoCard } from '@/components/twitch/twitch-video-card';
 import type { TwitchVideoPage } from '@/components/twitch/types';
 import { useRestorableInfiniteQuery } from '@/lib/hooks/use-restorable-infinite-query';
@@ -16,6 +18,7 @@ const TABS = [
   { id: 'ARCHIVE', label: 'Videos' },
   { id: 'HIGHLIGHT', label: 'Highlights' },
   { id: 'UPLOAD', label: 'Uploads' },
+  { id: 'RULES', label: 'Rules' },
 ] as const;
 
 interface Streamer {
@@ -31,6 +34,8 @@ interface Streamer {
 
 export default function TwitchStreamerPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
+  const me = useMe();
+  const tabs = TABS.filter((item) => item.id !== 'RULES' || hasCapability(me, 'twitch.manage'));
   const [tab, setTab] = useState<(typeof TABS)[number]['id']>('ARCHIVE');
 
   const streamerQuery = useQuery({
@@ -45,6 +50,7 @@ export default function TwitchStreamerPage({ params }: { params: Promise<{ id: s
 
   const videos = useRestorableInfiniteQuery({
     queryKey: ['twitch', 'streamer-videos', id, tab],
+    enabled: tab !== 'RULES',
     queryFn: async ({ pageParam, signal }) => {
       const res = await fetch(`/api/twitch/streamers/${id}/videos?type=${tab}&page=${pageParam}`, { signal });
       if (!res.ok) throw new Error('Failed to load videos');
@@ -79,8 +85,8 @@ export default function TwitchStreamerPage({ params }: { params: Promise<{ id: s
         </div>
         {streamer?.description && <p className="text-sm text-muted-foreground">{streamer.description}</p>}
 
-        <div role="tablist" aria-label="Video types" className="grid grid-cols-3 gap-1 rounded-md bg-muted/40 p-1">
-          {TABS.map((item) => (
+        <div role="tablist" aria-label="Video types" className="grid grid-flow-col auto-cols-fr gap-1 rounded-md bg-muted/40 p-1">
+          {tabs.map((item) => (
             <button
               key={item.id}
               role="tab"
@@ -93,7 +99,8 @@ export default function TwitchStreamerPage({ params }: { params: Promise<{ id: s
           ))}
         </div>
 
-        {videos.isSuccess && rows.length === 0 && (
+        {tab === 'RULES' && <StreamerRules streamerId={id} />}
+        {tab !== 'RULES' && videos.isSuccess && rows.length === 0 && (
           <p className="py-8 text-center text-sm text-muted-foreground">No videos here.</p>
         )}
         <div className="grid grid-cols-1 gap-x-4 gap-y-5 sm:grid-cols-2 xl:grid-cols-3">
