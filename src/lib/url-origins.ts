@@ -1,15 +1,21 @@
 // Any scheme with an authority (http, https, udp, wss...), also when written
 // JSON-escaped inside a string (https:\/\/host\/path).
-const URL_WITH_AUTHORITY = /\b[a-z][a-z0-9+.-]*:(?:\/\/|\\\/\\\/)[^\s"'<>]+/gi;
+// The scheme length is capped so a long run of word characters cannot make
+// the match retry quadratically.
+const URL_WITH_AUTHORITY = /\b[a-z][a-z0-9+.-]{0,31}:(?:\/\/|\\\/\\\/)[^\s"'<>]+/gi;
 const MAGNET = /magnet:\?[^\s"'<>]+/gi;
 const TRAILING_PUNCTUATION = /[\])}>.,;:!?]$/;
 
 function splitTrailingPunctuation(match: string): [string, string] {
   let end = match.length;
+  const opens = match.split('[').length - 1;
+  let closes = match.split(']').length - 1;
   while (end > 0 && TRAILING_PUNCTUATION.test(match[end - 1])) {
-    const head = match.slice(0, end - 1);
-    // Keep the "]" that closes an IPv6 host: https://[2001:db8::1]
-    if (match[end - 1] === ']' && head.split('[').length > head.split(']').length) break;
+    if (match[end - 1] === ']') {
+      // Keep the "]" that closes an IPv6 host: https://[2001:db8::1]
+      if (opens > closes - 1) break;
+      closes -= 1;
+    }
     end -= 1;
   }
   return [match.slice(0, end), match.slice(end)];

@@ -33,6 +33,13 @@ describe('urlsToOrigins', () => {
     );
   });
 
+  it('stays linear on long hostile input', () => {
+    const started = performance.now();
+    urlsToOrigins('a-'.repeat(100_000));
+    urlsToOrigins(`https://tracker.example/${']'.repeat(100_000)}`);
+    expect(performance.now() - started).toBeLessThan(500);
+  });
+
   it('leaves text without URLs alone', () => {
     expect(urlsToOrigins('Indexer is disabled till tomorrow')).toBe('Indexer is disabled till tomorrow');
   });
