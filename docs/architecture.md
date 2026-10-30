@@ -774,8 +774,8 @@ Invariants:
   or when the owner asks, and never while a download is running.
 - Library files are group-writable (664 and 775), so a Jellyfin sharing the worker's group
   can delete them. The worker then forgets a file that vanished, every two minutes, and
-  sweeps its sidecars with an audit row. If every file is missing it does nothing: that
-  looks like an unmounted disk.
+  sweeps its sidecars with an audit row. It acts only on a clear not-found, and only with
+  the `.helprr-library` marker present, so an unmounted disk cannot look like a deletion.
 - `pollTwitch` spends nothing on a streamer with no subscribers. Subscribing again takes
   a new silent baseline, so a gap cannot arrive as a flood of pushes.
 - A user's own Twitch sign-in (`TwitchUserLink`, device code flow) has one scope,
