@@ -45,3 +45,15 @@ export function serializeVideo(video: VideoRow, seenAt?: Date | null) {
     activeJob: jobs[0] ?? null,
   };
 }
+
+const ARTWORK_HOSTS = new Set(['static-cdn.jtvnw.net', 'vod-secure.twitch.tv']);
+
+/** The worker fetches these URLs, so only Twitch's own image hosts are ever asked. */
+export function isTwitchArtworkUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'https:' && ARTWORK_HOSTS.has(parsed.hostname) && !parsed.username && !parsed.password && !parsed.port;
+  } catch {
+    return false;
+  }
+}
