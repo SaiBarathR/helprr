@@ -44,6 +44,7 @@ interface JobContext {
   options: DownloadOptions;
   signal: AbortSignal;
   minFreeGb: number;
+  reencodeEnabled: boolean;
   cookiesFile: string | null;
   setStage: (stage: string) => Promise<void>;
   note: (message: string) => Promise<void>;
@@ -234,6 +235,13 @@ async function publish(ctx: JobContext, staging: string, mkv: string, info: Vide
     },
   });
   await prisma.twitchJob.update({ where: { id: job.id }, data: { needsJellyfinRefresh: true } });
+
+  if (options.reencode && ctx.reencodeEnabled && probed.videoCodec === 'h264') {
+    const { id: mediaFileId } = await prisma.twitchMediaFile.findUniqueOrThrow({ where: { relativePath }, select: { id: true } });
+    await prisma.twitchJob.create({
+      data: { kind: 'REENCODE', videoId: video.id, mediaFileId, source: job.source, requestedByUserId: job.requestedByUserId, requestedByUsername: job.requestedByUsername },
+    });
+  }
 }
 
 // Jellyfin's art comes from the same files every time, so they are only ever fetched once.

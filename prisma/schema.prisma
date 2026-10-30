@@ -877,6 +877,7 @@ model TwitchSettings {
   reencodeWindowStart       String    @default("01:00") // HH:mm in the server TZ
   reencodeWindowEnd         String    @default("08:00") // HH:mm in the server TZ
   keepOriginalDays          Int       @default(3)
+  jellyfinBusyUntil         DateTime? // set by the app while Jellyfin transcodes; the worker starts no re-encode
   browserAuthToken          String? // enc:v1 twitch.tv auth-token cookie; never returned by any API
   browserAuthTokenCheckedAt DateTime?
   browserAuthTokenValid     Boolean? // null until the first daily check

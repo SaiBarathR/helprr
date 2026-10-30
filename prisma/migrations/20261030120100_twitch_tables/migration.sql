@@ -33,6 +33,7 @@ CREATE TABLE "TwitchSettings" (
     "reencodeWindowStart" TEXT NOT NULL DEFAULT '01:00',
     "reencodeWindowEnd" TEXT NOT NULL DEFAULT '08:00',
     "keepOriginalDays" INTEGER NOT NULL DEFAULT 3,
+    "jellyfinBusyUntil" TIMESTAMP(3),
     "browserAuthToken" TEXT,
     "browserAuthTokenCheckedAt" TIMESTAMP(3),
     "browserAuthTokenValid" BOOLEAN,

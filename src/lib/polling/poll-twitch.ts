@@ -3,8 +3,10 @@
 import { prisma } from '@/lib/db';
 import { logger } from '@/lib/logger';
 import { noteJobFailure } from '@/lib/polling-job-report';
+import { getJellyfinClient } from '@/lib/service-helpers';
 import { helixGet, type HelixRateLimit } from '@/lib/twitch/helix';
 import { reconcileTwitchJobs } from '@/lib/twitch/reconcile';
+import { inReencodeWindow } from '@/lib/twitch/reencode-window';
 import { enqueueDownload } from '@/lib/twitch/jobs';
 import { decideForVideo } from '@/lib/twitch/policy-store';
 import { getTwitchSettings } from '@/lib/twitch/settings';
@@ -19,6 +21,7 @@ const AFTER_STREAM_CHECK_MS = 2 * 60_000;
 const EXPIRY_WARNING_MS = 48 * 3_600_000;
 const EXPIRY_NOTIFY_HOUR = 10;
 const URGENT_PRIORITY = 100;
+const JELLYFIN_BUSY_MS = 90_000;
 
 interface HelixStream {
   id: string;
@@ -40,6 +43,7 @@ export async function pollTwitch(now = new Date()): Promise<void> {
   const settings = await getTwitchSettings();
   try {
     await reconcileTwitchJobs(now);
+    await markJellyfinBusy(settings, now);
 
     const liveDue = !settings.lastLivePollAt
       || now.getTime() - settings.lastLivePollAt.getTime() >= settings.pollLiveSecs * 1000;
@@ -121,6 +125,24 @@ async function pollLive(
     }
   }
   return limited;
+}
+
+// The worker has no Jellyfin access, so it is told. It starts no encode while this is in the future.
+async function markJellyfinBusy(
+  settings: { reencodeEnabled: boolean; reencodeWindowStart: string; reencodeWindowEnd: string },
+  now: Date,
+): Promise<void> {
+  if (!settings.reencodeEnabled || !inReencodeWindow(now, settings.reencodeWindowStart, settings.reencodeWindowEnd)) return;
+  const pending = await prisma.twitchJob.count({ where: { kind: 'REENCODE', state: { in: ['QUEUED', 'RETRY_WAIT'] } } });
+  if (pending === 0) return;
+  const client = await getJellyfinClient();
+  const sessions = await client.getActiveSessions();
+  if (sessions.some((session) => session.TranscodingInfo && session.TranscodingInfo.IsVideoDirect === false)) {
+    await prisma.twitchSettings.update({
+      where: { id: 'singleton' },
+      data: { jellyfinBusyUntil: new Date(now.getTime() + JELLYFIN_BUSY_MS) },
+    });
+  }
 }
 
 async function autoEnqueue(videoIds: string[]): Promise<void> {

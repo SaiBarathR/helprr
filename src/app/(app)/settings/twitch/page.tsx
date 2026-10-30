@@ -14,6 +14,12 @@ import type { PolicyLayer } from '@/lib/twitch/policy';
 interface Settings {
   autoDownloadEnabled: boolean;
   jellyfinLibraryPath: string | null;
+  reencodeEnabled: boolean;
+  reencodeGlobalQuality: number;
+  reencodeWindowStart: string;
+  reencodeWindowEnd: string;
+  keepOriginalDays: number;
+  reencodeWaiting: number;
 }
 
 interface LibraryStatus {
@@ -51,6 +57,11 @@ export default function TwitchSettingsPage() {
   const [typedPath, setLibraryPath] = useState<string | null>(null);
   const libraryPath = typedPath ?? library.data?.path ?? '';
 
+  const worker = useQuery({
+    queryKey: ['twitch', 'worker'],
+    queryFn: ({ signal }) => load<{ seen: boolean; gpuAvailable?: boolean }>('/api/twitch/worker', signal),
+  });
+
   const refresh = () => void queryClient.invalidateQueries({ queryKey: ['twitch'] });
   const fail = (error: Error) => toast.error(error.message);
 
@@ -65,6 +76,11 @@ export default function TwitchSettingsPage() {
       toast.success('Rules saved');
       refresh();
     },
+    onError: fail,
+  });
+  const saveSettings = useMutation({
+    mutationFn: (patch: Partial<Settings>) => send('/api/twitch/settings', 'PUT', patch),
+    onSuccess: refresh,
     onError: fail,
   });
   const createLibrary = useMutation({
@@ -106,6 +122,41 @@ export default function TwitchSettingsPage() {
             Save rules
           </Button>
         </div>
+
+        <GroupedSection
+          title="Night re-encode"
+          footer={worker.data?.seen && !worker.data.gpuAvailable ? 'No Intel GPU found: re-encoding stays idle' : `${settings.data?.reencodeWaiting ?? 0} waiting. Saves about 63–82% of the space`}
+        >
+          <div className="grouped-row min-h-11">
+            <span className="text-sm">Re-encode to HEVC</span>
+            <Switch
+              aria-label="Re-encode to HEVC"
+              checked={settings.data?.reencodeEnabled ?? false}
+              disabled={!settings.data || saveSettings.isPending}
+              onCheckedChange={(reencodeEnabled) => saveSettings.mutate({ reencodeEnabled })}
+            />
+          </div>
+          {settings.data && (
+            <>
+              <label className="grouped-row min-h-11">
+                <span className="text-sm">Starts</span>
+                <input type="time" aria-label="Window start" defaultValue={settings.data.reencodeWindowStart} className="bg-transparent text-sm" onBlur={(event) => saveSettings.mutate({ reencodeWindowStart: event.target.value })} />
+              </label>
+              <label className="grouped-row min-h-11">
+                <span className="text-sm">Ends</span>
+                <input type="time" aria-label="Window end" defaultValue={settings.data.reencodeWindowEnd} className="bg-transparent text-sm" onBlur={(event) => saveSettings.mutate({ reencodeWindowEnd: event.target.value })} />
+              </label>
+              <label className="grouped-row min-h-11">
+                <span className="text-sm">Quality (lower is better)</span>
+                <input type="number" min={1} max={51} aria-label="Quality" defaultValue={settings.data.reencodeGlobalQuality} className="w-14 bg-transparent text-right text-sm" onBlur={(event) => saveSettings.mutate({ reencodeGlobalQuality: Number(event.target.value) })} />
+              </label>
+              <label className="grouped-row min-h-11">
+                <span className="text-sm">Keep originals (days)</span>
+                <input type="number" min={0} max={365} aria-label="Keep originals in days" defaultValue={settings.data.keepOriginalDays} className="w-14 bg-transparent text-right text-sm" onBlur={(event) => saveSettings.mutate({ keepOriginalDays: Number(event.target.value) })} />
+              </label>
+            </>
+          )}
+        </GroupedSection>
 
         <GroupedSection title="Jellyfin library" footer="Creating a library changes your real Jellyfin">
           {status?.exists ? (

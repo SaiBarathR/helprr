@@ -3,8 +3,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   helixGet: vi.fn(),
   enqueueDownload: vi.fn(),
+  getJellyfinClient: vi.fn(),
   decideForVideo: vi.fn(),
-  job: { updateMany: vi.fn() },
+  job: { updateMany: vi.fn(), count: vi.fn() },
   syncStreamerVideos: vi.fn(),
   notifyAndLog: vi.fn(),
   noteJobFailure: vi.fn(),
@@ -29,6 +30,7 @@ vi.mock('@/lib/twitch/helix', () => ({ helixGet: mocks.helixGet }));
 vi.mock('@/lib/twitch/sync', () => ({ syncStreamerVideos: mocks.syncStreamerVideos }));
 vi.mock('@/lib/twitch/jobs', () => ({ enqueueDownload: mocks.enqueueDownload }));
 vi.mock('@/lib/twitch/policy-store', () => ({ decideForVideo: mocks.decideForVideo }));
+vi.mock('@/lib/service-helpers', () => ({ getJellyfinClient: mocks.getJellyfinClient }));
 vi.mock('@/lib/twitch/reconcile', () => ({ reconcileTwitchJobs: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('@/lib/polling-job-report', () => ({ noteJobFailure: mocks.noteJobFailure }));
 vi.mock('@/lib/logger', () => ({ logger: { warn: vi.fn(), info: vi.fn() } }));
@@ -42,7 +44,9 @@ import { pollTwitch } from './poll-twitch';
 const now = new Date('2026-10-30T08:00:00');
 const liveStreamer = { id: 's1', twitchUserId: '100', isLive: true, liveMissedChecks: 0 };
 const rateLimit = { remaining: 700, resetAt: null };
-const settings = (overrides = {}) => ({ pollLiveSecs: 60, pollVideosSecs: 300, lastLivePollAt: null, ...overrides });
+const settings = (overrides = {}) => ({
+  pollLiveSecs: 60, pollVideosSecs: 300, lastLivePollAt: null, reencodeEnabled: false, reencodeWindowStart: '01:00', reencodeWindowEnd: '08:00', ...overrides,
+});
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -163,6 +167,29 @@ describe('pollTwitch', () => {
     await pollTwitch(now);
     expect(mocks.job.updateMany.mock.calls[0][0].data).toEqual({ priority: 100 });
     expect(mocks.enqueueDownload).not.toHaveBeenCalled();
+  });
+
+  it('marks Jellyfin busy inside the window only while a video transcode runs', async () => {
+    mocks.settings.upsert.mockResolvedValue(settings({ reencodeEnabled: true, reencodeWindowStart: '07:00', reencodeWindowEnd: '09:00' }));
+    mocks.job.count.mockResolvedValue(1);
+    dueStreamers([]);
+    mocks.getJellyfinClient.mockResolvedValue({
+      getActiveSessions: async () => [{ TranscodingInfo: { IsVideoDirect: true } }, { TranscodingInfo: { IsVideoDirect: false } }],
+    });
+
+    await pollTwitch(now);
+
+    expect(mocks.settings.update).toHaveBeenCalledWith({
+      where: { id: 'singleton' },
+      data: { jellyfinBusyUntil: new Date(now.getTime() + 90_000) },
+    });
+  });
+
+  it('asks Jellyfin nothing outside the window', async () => {
+    mocks.settings.upsert.mockResolvedValue(settings({ reencodeEnabled: true, reencodeWindowStart: '01:00', reencodeWindowEnd: '02:00' }));
+    dueStreamers([]);
+    await pollTwitch(now);
+    expect(mocks.getJellyfinClient).not.toHaveBeenCalled();
   });
 
   it('keeps sweeping when one streamer fails, and has already moved it along', async () => {

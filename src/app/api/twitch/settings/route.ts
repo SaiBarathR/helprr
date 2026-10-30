@@ -9,7 +9,8 @@ const HH_MM = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
 // Whatever this returns is safe for the browser: the browser token is never in it.
 async function publicSettings() {
   const { browserAuthToken, ...rest } = await getTwitchSettings();
-  return { ...rest, hasBrowserAuthToken: Boolean(browserAuthToken) };
+  const reencodeWaiting = await prisma.twitchJob.count({ where: { kind: 'REENCODE', state: { in: ['QUEUED', 'RETRY_WAIT'] } } });
+  return { ...rest, hasBrowserAuthToken: Boolean(browserAuthToken), reencodeWaiting };
 }
 
 async function getHandler(): Promise<NextResponse> {

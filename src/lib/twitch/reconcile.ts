@@ -26,7 +26,7 @@ async function finishPublishedJobs(now: Date): Promise<void> {
     where: { needsJellyfinRefresh: true, state: 'DONE' },
     orderBy: { finishedAt: 'asc' },
     take: BATCH,
-    include: { video: { include: { streamer: true, mediaFiles: { select: { id: true } } } } },
+    include: { video: { include: { streamer: true } }, mediaFile: { select: { jellyfinItemId: true } } },
   });
   if (jobs.length === 0) return;
 
@@ -44,6 +44,18 @@ async function finishPublishedJobs(now: Date): Promise<void> {
       await prisma.twitchJob.update({ where: { id: job.id }, data: { needsJellyfinRefresh: false } });
       continue;
     }
+    // A swapped file keeps its name, so the item only needs to re-read it. No push: nothing new landed.
+    if (job.kind === 'REENCODE') {
+      const known = job.mediaFile?.jellyfinItemId;
+      if (client && known) {
+        await client.refreshItem(known, { recursive: false }).catch((error) => {
+          logger.warn('Twitch Jellyfin refresh failed', { jobId: job.id, error: errorMessage(error) }, { scope: 'polling' });
+        });
+      }
+      await prisma.twitchJob.update({ where: { id: job.id }, data: { needsJellyfinRefresh: false } });
+      continue;
+    }
+
     let itemId: string | null = null;
     if (client && settings.jellyfinLibraryItemId) {
       try {

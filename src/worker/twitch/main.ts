@@ -5,10 +5,12 @@ import path from 'node:path';
 import { Prisma, PrismaClient, type TwitchJob, type TwitchJobKind } from '@prisma/client';
 import { claimJob, LEASE_MS } from './claim';
 import { classifyJobError, nextStepAfterFailure } from '@/lib/twitch/job-errors';
+import { inReencodeWindow } from '@/lib/twitch/reencode-window';
 import type { DownloadOptions } from '@/lib/twitch/jobs';
 import { decryptTwitchToken } from '@/lib/twitch/token-cipher';
 import { LIBRARY_DIR, STAGING_DIR, WORKER_VERSION } from './env';
 import { DiskGuardError, runDownload, WaitForRecordingError } from './pipeline';
+import { deleteExpiredOriginals, probeGpu, runReencode } from './reencode';
 import { JobCancelledError } from './process';
 import { activeVersion, ensureTools } from './tools';
 
@@ -18,12 +20,17 @@ const CANCEL_POLL_MS = 2_000;
 const HEARTBEAT_MS = 15_000;
 const MIGRATION_POLL_MS = 5_000;
 const REQUIRED_MIGRATION = '20261030120100_twitch_tables';
+const CPU_POLL_MS = 30_000;
+const HOUSEKEEPING_MS = 60 * 60_000;
+const STAGING_MAX_AGE_MS = 24 * 3_600_000;
 const NETWORK_KINDS: TwitchJobKind[] = ['DOWNLOAD', 'DELETE_FILES'];
 
 const prisma = new PrismaClient();
 const workerId = `${os.hostname()}-${randomUUID().slice(0, 8)}`;
 const running = new Map<string, AbortController>();
 let stopping = false;
+let gpuAvailable = false;
+let cpuBusy = false;
 
 function log(level: 'info' | 'warn' | 'error', message: string, extra: Record<string, unknown> = {}) {
   console[level](JSON.stringify({ at: new Date().toISOString(), level, message, ...extra }));
@@ -99,9 +106,29 @@ async function runJob(job: TwitchJob): Promise<void> {
 
   let cookies: { file: string; dir: string } | null = null;
   try {
+    const settings = await prisma.twitchSettings.findUnique({ where: { id: 'singleton' } });
+    const setStage = async (stage: string) => {
+      await prisma.twitchJob.update({ where: { id: job.id }, data: { stage } });
+      await event(job.id, 'info', stage);
+    };
+    const note = (message: string) => event(job.id, 'warn', message);
+
+    if (job.kind === 'REENCODE') {
+      await runReencode({
+        prisma,
+        job,
+        signal: abort.signal,
+        quality: settings?.reencodeGlobalQuality ?? 20,
+        preset: settings?.reencodePreset ?? 'faster',
+        keepOriginalDays: settings?.keepOriginalDays ?? 3,
+        setStage,
+        note,
+      });
+      await finishJob(job, { state: 'DONE', stage: 'done', progress: 1, finishedAt: new Date(), lastError: null, errorClass: null });
+      return;
+    }
     if (job.kind !== 'DOWNLOAD' || !job.videoId) throw new Error(`validation failed: ${job.kind} is not supported yet`);
     const video = await prisma.twitchVideo.findUniqueOrThrow({ where: { id: job.videoId }, include: { streamer: true } });
-    const settings = await prisma.twitchSettings.findUnique({ where: { id: 'singleton' } });
     cookies = await writeCookies();
     await runDownload({
       prisma,
@@ -110,12 +137,10 @@ async function runJob(job: TwitchJob): Promise<void> {
       options: job.options as unknown as DownloadOptions,
       signal: abort.signal,
       minFreeGb: settings?.minFreeGb ?? 50,
+      reencodeEnabled: settings?.reencodeEnabled ?? true,
       cookiesFile: cookies?.file ?? null,
-      setStage: async (stage) => {
-        await prisma.twitchJob.update({ where: { id: job.id }, data: { stage } });
-        await event(job.id, 'info', stage);
-      },
-      note: (message) => event(job.id, 'warn', message),
+      setStage,
+      note,
     });
     await finishJob(job, { state: 'DONE', stage: 'done', progress: 1, finishedAt: new Date(), lastError: null, errorClass: null });
     log('info', 'Job finished', { jobId: job.id });
@@ -157,6 +182,7 @@ async function heartbeat(): Promise<void> {
   const data = {
     version: WORKER_VERSION,
     tools: { ytdlp, td },
+    gpuAvailable,
     diskFreeBytes: stats ? BigInt(stats.bavail) * BigInt(stats.bsize) : null,
     diskTotalBytes: stats ? BigInt(stats.blocks) * BigInt(stats.bsize) : null,
     lanes: { running: running.size },
@@ -168,7 +194,7 @@ async function heartbeat(): Promise<void> {
 async function networkLane(): Promise<void> {
   while (!stopping) {
     const settings = await prisma.twitchSettings.findUnique({ where: { id: 'singleton' } }).catch(() => null);
-    if (running.size < (settings?.maxConcurrentDownloads ?? 2)) {
+    if (running.size - (cpuBusy ? 1 : 0) < (settings?.maxConcurrentDownloads ?? 2)) {
       const job = await claimJob(prisma, workerId, NETWORK_KINDS).catch((error) => {
         log('error', 'Claim failed', { error: String(error) });
         return null;
@@ -179,6 +205,38 @@ async function networkLane(): Promise<void> {
       }
     }
     await sleep(POLL_MS);
+  }
+}
+
+// One encode at a time, only at night, never while Jellyfin needs the same iGPU.
+// An encode already running finishes past the end of the window.
+async function cpuLane(): Promise<void> {
+  while (!stopping) {
+    await sleep(CPU_POLL_MS);
+    if (!gpuAvailable || cpuBusy) continue;
+    const settings = await prisma.twitchSettings.findUnique({ where: { id: 'singleton' } }).catch(() => null);
+    if (!settings?.reencodeEnabled) continue;
+    const now = new Date();
+    if (!inReencodeWindow(now, settings.reencodeWindowStart, settings.reencodeWindowEnd)) continue;
+    if (settings.jellyfinBusyUntil && settings.jellyfinBusyUntil > now) continue;
+
+    const job = await claimJob(prisma, workerId, ['REENCODE']).catch(() => null);
+    if (!job) continue;
+    cpuBusy = true;
+    void runJob(job).finally(() => {
+      cpuBusy = false;
+    });
+  }
+}
+
+async function housekeeping(): Promise<void> {
+  const deleted = await deleteExpiredOriginals(prisma);
+  if (deleted > 0) log('info', 'Deleted originals', { deleted });
+  for (const entry of await readdir(STAGING_DIR)) {
+    if (running.has(entry)) continue;
+    const dir = path.join(STAGING_DIR, entry);
+    const info = await stat(dir);
+    if (Date.now() - info.mtimeMs > STAGING_MAX_AGE_MS) await rm(dir, { recursive: true, force: true });
   }
 }
 
@@ -202,10 +260,15 @@ async function main(): Promise<void> {
   const settings = await prisma.twitchSettings.findUnique({ where: { id: 'singleton' } });
   await ensureTools((settings?.pinnedTools ?? {}) as Record<string, string>);
 
+  gpuAvailable = await probeGpu();
+  log('info', 'GPU probe finished', { gpuAvailable });
+
   await heartbeat();
+  void housekeeping().catch((error) => log('warn', 'Housekeeping failed', { error: String(error) }));
+  setInterval(() => void housekeeping().catch((error) => log('warn', 'Housekeeping failed', { error: String(error) })), HOUSEKEEPING_MS);
   setInterval(() => void heartbeat().catch((error) => log('warn', 'Heartbeat failed', { error: String(error) })), HEARTBEAT_MS);
   log('info', 'Worker ready', { workerId, version: WORKER_VERSION });
-  await networkLane();
+  await Promise.all([networkLane(), cpuLane()]);
 }
 
 main().catch((error) => {
