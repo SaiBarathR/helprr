@@ -39,9 +39,15 @@ describe('repairLibraryModes', () => {
     await chmod(path.join(library.dir, 'a/Season 1/old.mkv'), 0o644);
     await writeFile(path.join(library.dir, 'a/new.nfo'), '');
     await chmod(path.join(library.dir, 'a/new.nfo'), 0o664);
-    await symlink('/etc/hostname', path.join(library.dir, 'a/link'));
+    const outside = path.join(library.dir, '..', `outside-${path.basename(library.dir)}`);
+    await writeFile(outside, '');
+    await chmod(outside, 0o644);
+    await symlink(outside, path.join(library.dir, 'a/link'));
 
     await repairLibraryModes(library.dir);
+
+    expect((await stat(outside)).mode & 0o777).toBe(0o644);
+    await rm(outside);
 
     expect((await stat(path.join(library.dir, 'a'))).mode & 0o777).toBe(0o775);
     expect((await stat(path.join(library.dir, 'a/Season 1/old.mkv'))).mode & 0o777).toBe(0o664);
@@ -78,12 +84,49 @@ describe('forgetFilesDeletedElsewhere', () => {
     expect(prisma.fileOperationAudit.create.mock.calls[0][0].data).toMatchObject({ username: 'system:twitch-worker', service: 'TWITCH' });
   });
 
-  it('forgets nothing when every file is missing: that looks like an unmounted disk', async () => {
+  it.each([[['a', 'b']], [['a']]])('forgets nothing on a folder with no marker, as on an unmounted disk: %j', async (ids) => {
     library.dir = await mkdtemp(path.join(os.tmpdir(), 'twitch-unmounted-'));
-    const prisma = fakePrisma([row('a'), row('b')]);
+    const prisma = fakePrisma(ids.map(row));
 
     expect(await run(prisma)).toBe(0);
     expect(prisma.twitchMediaFile.delete).not.toHaveBeenCalled();
+  });
+
+  it('forgets the last file once the marker proves this is the real library', async () => {
+    library.dir = await mkdtemp(path.join(os.tmpdir(), 'twitch-last-'));
+    await writeFile(path.join(library.dir, '.helprr-library'), '');
+    const prisma = fakePrisma([row('last')]);
+
+    expect(await run(prisma)).toBe(1);
+  });
+
+  it('treats a read error as unknown, and removes nothing', async () => {
+    library.dir = await mkdtemp(path.join(os.tmpdir(), 'twitch-eio-'));
+    await writeFile(path.join(library.dir, 'kept.mkv'), '');
+    await writeFile(path.join(library.dir, '.helprr-library'), '');
+    await writeFile(path.join(library.dir, 'loop'), '');
+    await writeFile(path.join(library.dir, 'bad.nfo'), '');
+    const prisma = fakePrisma([row('kept'), { ...row('bad'), relativePath: 'loop/not-a-folder.mkv' }]);
+
+    await expect(run(prisma)).rejects.toThrow(/ENOTDIR/);
+
+    expect(prisma.twitchMediaFile.delete).not.toHaveBeenCalled();
+    expect(await stat(path.join(library.dir, 'bad.nfo'))).toBeTruthy();
+  });
+
+  it('refuses a sidecar reached through a folder linked out of the library', async () => {
+    library.dir = await mkdtemp(path.join(os.tmpdir(), 'twitch-link-'));
+    const outside = await mkdtemp(path.join(os.tmpdir(), 'twitch-outside-'));
+    await writeFile(path.join(outside, 'victim.nfo'), 'keep');
+    await symlink(outside, path.join(library.dir, 'linked'));
+    await writeFile(path.join(library.dir, 'kept.mkv'), '');
+    const prisma = fakePrisma([row('kept'), { ...row('gone'), relativePath: 'linked/gone.mkv', sidecars: ['linked/victim.nfo'] }]);
+
+    await expect(run(prisma)).rejects.toThrow(/outside the library/);
+
+    expect(await stat(path.join(outside, 'victim.nfo'))).toBeTruthy();
+    expect(prisma.twitchMediaFile.delete).not.toHaveBeenCalled();
+    await rm(outside, { recursive: true, force: true });
   });
 
   it('skips a file with a job in progress', async () => {

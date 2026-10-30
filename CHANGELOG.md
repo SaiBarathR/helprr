@@ -5,6 +5,24 @@ All notable changes to Helprr are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.10.1] - 2026-10-30
+
+### Added
+
+- **Delete Twitch files from more places**: the ⋯ menu on a video, a Downloaded
+  filter, and multi-select on a streamer's page.
+
+### Fixed
+
+- **Deleting a Twitch video from Jellyfin no longer fails.** Library files are now
+  writable by their group, and older ones are fixed when the worker starts.
+  Jellyfin's user needs to be in the worker's group (`TWITCH_PGID`).
+- **Files you delete in Jellyfin now leave Helprr too**, within a few minutes, with
+  their chat and subtitle files.
+- Twitch polling skips streamers nobody follows. Following one again does not push
+  everything you missed.
+- Free space in the queue reads in TB and says it is the library disk.
+
 ## [1.10.0] - 2026-10-30
 
 ### Added
