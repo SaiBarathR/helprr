@@ -52,6 +52,8 @@ export function ApplicationsTab() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !isProwlarrTestAllResponse(data)) {
         toast.error('Test All failed');
+      } else if (data.results.length === 0) {
+        toast.info('No enabled apps to test');
       } else if (data.hasFailures) {
         const names = new Map(query.data?.applications.map((application) => [application.id, application.name]));
         const failed = data.results.filter((result) => !result.isValid).map((result) => names.get(result.id) ?? `App ${result.id}`);
@@ -88,7 +90,7 @@ export function ApplicationsTab() {
             <div key={`${connection.type}-${connection.label}`} className="flex items-start gap-2 text-xs">
               <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5 text-amber-400" aria-label="Warning" />
               <p className="min-w-0 [overflow-wrap:anywhere]">
-                {connection.label} is connected to Helprr, but no Prowlarr app points at it.
+                {connection.label} may not be synced: no Prowlarr app seems to point at it. If Prowlarr reaches it by another address, ignore this.
               </p>
             </div>
           ))}

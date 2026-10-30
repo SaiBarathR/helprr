@@ -13,25 +13,52 @@ const app = (implementation: string, baseUrl: string): ProwlarrApplication => ({
 });
 
 describe('findUnsyncedConnections', () => {
-  it('matches an arr reached by another name on the same port', () => {
-    const missing = findUnsyncedConnections(
+  it('pairs an arr reached by another name on the same port', () => {
+    expect(findUnsyncedConnections(
       [{ type: 'SONARR', url: 'http://100.1.1.1:8989', label: 'Sonarr' }],
       [app('Sonarr', 'http://sonarr:8989')],
-    );
-
-    expect(missing).toEqual([]);
+    )).toEqual([]);
   });
 
-  it('flags a second instance Prowlarr does not sync, by its label', () => {
-    const missing = findUnsyncedConnections(
+  it('accepts one arr behind a proxy name when an app is left to explain it', () => {
+    expect(findUnsyncedConnections(
+      [{ type: 'SONARR', url: 'https://sonarr.example', label: 'Sonarr' }],
+      [app('Sonarr', 'http://sonarr:8989')],
+    )).toEqual([]);
+  });
+
+  it('flags a second instance on another port, by its label', () => {
+    expect(findUnsyncedConnections(
       [
         { type: 'SONARR', url: 'http://host:8989', label: 'Sonarr' },
         { type: 'SONARR', url: 'http://host:8990', label: 'sonarr-anime' },
       ],
       [app('Sonarr', 'http://sonarr:8989')],
+    )).toEqual([{ type: 'SONARR', label: 'sonarr-anime' }]);
+  });
+
+  it('does not let one app cover two hosts on the same port', () => {
+    const missing = findUnsyncedConnections(
+      [
+        { type: 'SONARR', url: 'http://host-a:8989', label: 'A' },
+        { type: 'SONARR', url: 'http://host-b:8989', label: 'B' },
+      ],
+      [app('Sonarr', 'http://host-a:8989')],
     );
 
-    expect(missing).toEqual([{ type: 'SONARR', label: 'sonarr-anime' }]);
+    expect(missing).toEqual([{ type: 'SONARR', label: 'B' }]);
+  });
+
+  it('tells proxied paths apart', () => {
+    const missing = findUnsyncedConnections(
+      [
+        { type: 'SONARR', url: 'https://proxy/sonarr-a', label: 'A' },
+        { type: 'SONARR', url: 'https://proxy/sonarr-b', label: 'B' },
+      ],
+      [app('Sonarr', 'https://proxy/sonarr-a/')],
+    );
+
+    expect(missing).toEqual([{ type: 'SONARR', label: 'B' }]);
   });
 
   it('does not match another app type on the same port', () => {
@@ -45,8 +72,8 @@ describe('findUnsyncedConnections', () => {
     expect(findUnsyncedConnections([{ type: 'JELLYFIN', url: 'http://host:8096' }], [])).toEqual([]);
   });
 
-  it('treats an unreadable address as not synced', () => {
-    expect(findUnsyncedConnections([{ type: 'LIDARR', url: 'not a url' }], [app('Lidarr', 'also bad')])).toHaveLength(1);
+  it('flags a connection with no app, even with an unreadable address', () => {
+    expect(findUnsyncedConnections([{ type: 'LIDARR', url: 'not a url' }], [])).toHaveLength(1);
   });
 });
 

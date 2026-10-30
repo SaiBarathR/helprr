@@ -21,10 +21,21 @@ interface ArrConnection {
 
 const IMPLEMENTATION_BY_TYPE: Record<string, string> = { SONARR: 'Sonarr', RADARR: 'Radarr', LIDARR: 'Lidarr' };
 
-function portOf(url: string): string | null {
+interface Endpoint {
+  full: string;
+  /** Null when the port says nothing about the instance: a default port, or a path behind a proxy. */
+  distinctivePort: string | null;
+}
+
+function endpointOf(url: string | null): Endpoint | null {
+  if (!url) return null;
   try {
     const parsed = new URL(url);
-    return parsed.port || (parsed.protocol === 'https:' ? '443' : '80');
+    const path = parsed.pathname.replace(/\/+$/, '');
+    return {
+      full: `${parsed.hostname}:${parsed.port}${path}`,
+      distinctivePort: parsed.port && !path ? parsed.port : null,
+    };
   } catch {
     return null;
   }
@@ -36,31 +47,41 @@ function applicationBaseUrl(application: ProwlarrApplication): string | null {
 }
 
 /**
- * Helprr's arr connections that no Prowlarr app points at, which Prowlarr itself
- * cannot notice. Matched by app type and port, not host: Helprr and Prowlarr
- * often reach the same arr by different names (a LAN address, a Docker name).
- * Only the result leaves the server; app fields hold each arr's API key.
+ * Helprr's arr connections that may have no Prowlarr app, which Prowlarr itself
+ * cannot notice. Helprr and Prowlarr often reach one arr by different names (a
+ * LAN address, a Docker name), so an address alone proves nothing. Apps and
+ * connections are paired by exact address, then by a distinctive port; a warning
+ * needs more connections left over than apps left to explain them. Leftover
+ * connections can't be told apart, so all of them are named. Only this result
+ * leaves the server; app fields hold each arr's API key.
  */
 export function findUnsyncedConnections(
   connections: ArrConnection[],
   applications: ProwlarrApplication[],
 ): UnsyncedConnection[] {
-  return connections
-    .filter((connection) => connection.type in IMPLEMENTATION_BY_TYPE)
-    .filter((connection) => {
-      const port = portOf(connection.url);
-      if (port === null) return true;
-      return !applications.some((application) => {
-        const baseUrl = applicationBaseUrl(application);
-        return application.implementation === IMPLEMENTATION_BY_TYPE[connection.type]
-          && baseUrl !== null
-          && portOf(baseUrl) === port;
+  return Object.entries(IMPLEMENTATION_BY_TYPE).flatMap(([type, implementation]) => {
+    let leftConnections = connections.filter((connection) => connection.type === type);
+    const leftApps = applications
+      .filter((application) => application.implementation === implementation)
+      .map((application) => endpointOf(applicationBaseUrl(application)));
+
+    const pairBy = (key: (endpoint: Endpoint) => string | null) => {
+      leftConnections = leftConnections.filter((connection) => {
+        const endpoint = endpointOf(connection.url);
+        const value = endpoint && key(endpoint);
+        if (!value) return true;
+        const match = leftApps.findIndex((app) => app && key(app) === value);
+        if (match === -1) return true;
+        leftApps.splice(match, 1);
+        return false;
       });
-    })
-    .map((connection) => ({
-      type: connection.type,
-      label: connection.label || IMPLEMENTATION_BY_TYPE[connection.type],
-    }));
+    };
+    pairBy((endpoint) => endpoint.full);
+    pairBy((endpoint) => endpoint.distinctivePort);
+
+    if (leftConnections.length <= leftApps.length) return [];
+    return leftConnections.map((connection) => ({ type, label: connection.label || implementation }));
+  });
 }
 
 /** App fields hold the arr's API key, so only these properties are passed on. */
