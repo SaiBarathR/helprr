@@ -5,6 +5,40 @@ All notable changes to Helprr are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.10.0] - 2026-10-30
+
+### Added
+
+- **Twitch archiver (optional)**: follow streamers, get a push when one publishes
+  a new VOD, and save videos into a Jellyfin library with chapters, metadata and
+  the chat as a scrolling subtitle track. It stays off until you add a Twitch
+  connection, and it needs a separate worker container. See the README.
+- **A feed for your streamers**: New and All views, filters, search, Live now and
+  Expiring soon shelves, and a badge for unseen videos. Twitch deletes VODs after
+  7 to 60 days, so videos about to expire are called out, and a push warns you.
+- **Download from anywhere**: the feed, a push, a streamer page, multi-select, or
+  a pasted link. A queue page shows live speed and time left, with cancel and retry.
+- **Rules, off by default**: per streamer and per video type, with a preview
+  before saving. Nothing downloads by itself until you turn on Auto-download.
+- **Nightly re-encode**: on an Intel GPU, saved videos shrink by about 63–82%,
+  never while Jellyfin is transcoding, and Jellyfin keeps your watched state.
+- **Retention**: keep the latest few, delete after a number of days, or after
+  watching. You see the list first, and keep-forever files are never deleted.
+- **Import who you follow on Twitch**, using a one-time code. It reads only your
+  follows, and only ever adds subscriptions.
+
+### Changed
+
+- The first start applies two new database migrations. Back up first, as usual.
+- `client_secret` values and `auth-token` cookies are now redacted from logs.
+- Settings export and import can carry Twitch settings, rules and subscriptions.
+
+### Upgrading
+
+Nothing changes unless you turn this on: without `COMPOSE_PROFILES=twitch` the
+default services stay `helprr`, `helprr-db` and `helprr-redis`. Saving Twitch's
+data needs the new `helprr-twitch-worker` image, and re-encoding needs `/dev/dri`.
+
 ## [1.9.0] - 2026-10-30
 
 ### Added

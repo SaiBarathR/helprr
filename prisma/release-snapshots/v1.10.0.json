@@ -1,0 +1,73 @@
+{
+  "release": "1.10.0",
+  "migrations": [
+    {
+      "name": "0001_init",
+      "sha256": "d914ed8c4209a78ab8e909eb7efa456c3517e453bc42469b66a6cec3dec19a30"
+    },
+    {
+      "name": "20260706224508_polling_state_queue_baseline_nullable",
+      "sha256": "3a06d48adba32b513a7d5a13809f8ea81ce4bcdf3c296172c138418dc7040135"
+    },
+    {
+      "name": "20260707010000_notification_history_dedupe_unique",
+      "sha256": "1a0b2f4ffdc3474cd48dbb4b0106b776749b17a488541de9ac94aa3ba6dac8aa"
+    },
+    {
+      "name": "20260708155457_add_custom_headers",
+      "sha256": "23065070b1883e0a05653a19d1d4b9f3c1ef2c5c09811551595e1e6b8b2511a4"
+    },
+    {
+      "name": "20260714110000_cleanup_preview_outcomes",
+      "sha256": "96282fcaddfb96717b7c1d657ca957d86d1939eae20a0c6fb31947fb7b50acda"
+    },
+    {
+      "name": "20260714140000_unified_operation_audit",
+      "sha256": "31a109e465832ee3623c882957371cc0e0fedf3408dee9c280a4b860bc70bc1d"
+    },
+    {
+      "name": "20260714170000_retention_session_index",
+      "sha256": "0299c2aaa90fc0c25c45dc47c74781390cef434252c8b45d064cb0b062b9349e"
+    },
+    {
+      "name": "20260716100157_recommendation_events_taste_profile",
+      "sha256": "d931772cc7cb9fbd1b08c1a2873c84b8f90028b22812ee24534792159c3bfc25"
+    },
+    {
+      "name": "20260730050000_notification_unread_partial_indexes",
+      "sha256": "87428832eaf84a7755911e9cc39afd6795bc48f39457148b0181f0124e6a665c"
+    },
+    {
+      "name": "20261017120000_cleanup_actor_audit_request_fields",
+      "sha256": "fffd8f7f6fba56bfbde894006d81f80456ca03ffcdf8e469cc2e2d09d5e06e87"
+    },
+    {
+      "name": "20261018010000_cleanup_strike_torrent_added_at",
+      "sha256": "2399731fb2b229e9f810cd9a4d531b3c0946026fc0e952fe147ae34c278c1baf"
+    },
+    {
+      "name": "20261019120000_manual_downloads",
+      "sha256": "7f98be997b7a646fb3a5a33f7d638caacb91b6755257254a26dc56bbcbb6906f"
+    },
+    {
+      "name": "20261019140000_manual_download_files",
+      "sha256": "89fba363f98c6beab9c97d0e5c52379ca6ee31676bfef95e1331d26e6b321650"
+    },
+    {
+      "name": "20261019160000_manual_download_import_sent_at",
+      "sha256": "27bcda7b22bc5704bca35bc3853cf969dd7a3c4a83e72ffea3eb7877e083145b"
+    },
+    {
+      "name": "20261020120000_taste_profile_marked_at",
+      "sha256": "fbd459a2360b7ec2bb3783257096a0ea933ebad094dce11f52732a048f288e45"
+    },
+    {
+      "name": "20261030120000_twitch_service_type",
+      "sha256": "f8ae7497d438d833f15d018ce4163ab3064a22af4656e30afb0cec70cafbaa1a"
+    },
+    {
+      "name": "20261030120100_twitch_tables",
+      "sha256": "e206e2e0b0e97ea874d0c4ca63c1a9d6be3aa26d63f10b83f2a57d1f8e7c79a0"
+    }
+  ]
+}

@@ -771,6 +771,15 @@ test -n "$DIGEST"
 test "$(git rev-parse "$TAG^{}")" = "$(git rev-parse origin/main)"
 ```
 
+Get the worker's digest the same way, because promotion moves both images:
+
+```bash
+WORKER_DIGEST=$(docker buildx imagetools inspect \
+  "$IMAGE-twitch-worker:$VERSION" \
+  | awk '/^Digest:/ {print $2; exit}')
+test -n "$WORKER_DIGEST"
+```
+
 Record this digest in the release notes or release checklist. Inspect the manifest and
 draft release before touching production:
 
@@ -983,14 +992,15 @@ on a scratch stack beside the real installation.
 ## Part 8: promote the tested digest to stable
 
 Once the exact image has passed production verification, run the manual promotion
-workflow from the **workstation**. Re-set and print `VERSION`, `IMAGE`, and `DIGEST`
-before dispatching if this is a new shell:
+workflow from the **workstation**. Re-set and print `VERSION`, `IMAGE`, `DIGEST`, and
+`WORKER_DIGEST` before dispatching if this is a new shell:
 
 ```bash
 PROMOTION_URL=$(gh workflow run docker-promote.yml \
   --ref main \
   -f version="$VERSION" \
-  -f source_digest="$DIGEST")
+  -f source_digest="$DIGEST" \
+  -f worker_digest="$WORKER_DIGEST")
 printf '%s\n' "$PROMOTION_URL"
 PROMOTION_RUN_ID=${PROMOTION_URL##*/}
 gh run watch "$PROMOTION_RUN_ID" --exit-status --compact
