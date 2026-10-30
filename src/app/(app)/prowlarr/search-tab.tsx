@@ -212,7 +212,7 @@ export function SearchTab() {
                       </Badge>
                       <span>{release.indexer}</span>
                       <span>{formatBytes(release.size)}</span>
-                      {release.seeders !== null && <span>{release.seeders} seeders</span>}
+                      {release.seeders !== null && <span>{release.seeders} seeder{release.seeders === 1 ? '' : 's'}</span>}
                       {age && <span>{age}</span>}
                     </div>
                   </div>
