@@ -287,15 +287,20 @@ function ProwlarrHealthBanner() {
  * @returns A JSX element representing the Indexers tab UI.
  */
 
-function IndexersTab() {
+type PendingEnable = ReadonlyMap<number, boolean>;
+
+function IndexersTab({
+  pendingEnable,
+  setPendingEnable,
+}: {
+  pendingEnable: PendingEnable;
+  setPendingEnable: React.Dispatch<React.SetStateAction<PendingEnable>>;
+}) {
   const queryClient = useQueryClient();
   const canManage = useCan('prowlarr.manage');
   const [testingId, setTestingId] = useState<number | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<{ id: number; name: string } | null>(null);
-  // Enable values sent to Prowlarr and not yet confirmed. They are laid over
-  // the fetched list, so a refetch that lands mid-request cannot flip a row back.
-  const [pendingEnable, setPendingEnable] = useState<ReadonlyMap<number, boolean>>(() => new Map());
 
   const indexersQuery = useQuery({
     queryKey: ['prowlarr', 'indexers'],
@@ -1308,6 +1313,10 @@ export default function ProwlarrPage() {
   const [testingAll, setTestingAll] = useState(false);
   const [testAllResults, setTestAllResults] = useState<ProwlarrTestAllResponse | null>(null);
   const [testAllIndexerNames, setTestAllIndexerNames] = useState<Record<number, string>>({});
+  // Enable values sent to Prowlarr and not yet confirmed. They are laid over the
+  // fetched list, so a refetch that lands mid-request cannot flip a row back.
+  // Held here rather than in the tab, which unmounts when another tab opens.
+  const [pendingEnable, setPendingEnable] = useState<PendingEnable>(() => new Map());
 
   /**
    * Send a named Prowlarr command to the API and update a loading flag during the request.
@@ -1509,7 +1518,7 @@ export default function ProwlarrPage() {
 
         <TabsContent value="indexers" className="mt-4 space-y-4">
           {manageActions}
-          <IndexersTab />
+          <IndexersTab pendingEnable={pendingEnable} setPendingEnable={setPendingEnable} />
         </TabsContent>
 
         <TabsContent value="stats" className="mt-4">
