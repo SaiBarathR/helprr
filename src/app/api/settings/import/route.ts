@@ -76,6 +76,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
       body.serviceConnections,
       body.notificationDevice,
       body.cleanup,
+      body.twitch,
       body.discoverLayout,
       body.dashboardLayouts,
       body.animeMappings,

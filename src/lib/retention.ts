@@ -16,6 +16,9 @@ export const FILE_OPERATION_AUDIT_RETENTION_DAYS = 365;
 // this again" must not expire.
 export const RECOMMENDATION_IMPRESSION_RETENTION_DAYS = 90;
 export const RECOMMENDATION_ACTIVITY_RETENTION_DAYS = 365;
+export const TWITCH_JOB_EVENT_RETENTION_DAYS = 30;
+export const TWITCH_JOB_RETENTION_DAYS = 90;
+export const TWITCH_VIDEO_RETENTION_DAYS = 180;
 
 type RetentionDatabase = Pick<
   PrismaClient,
@@ -25,6 +28,9 @@ type RetentionDatabase = Pick<
   | 'session'
   | 'fileOperationAudit'
   | 'recommendationEvent'
+  | 'twitchJobEvent'
+  | 'twitchJob'
+  | 'twitchVideo'
 >;
 
 export interface RetentionCounts {
@@ -34,6 +40,9 @@ export interface RetentionCounts {
   expiredSessions: number;
   operationAudit: number;
   recommendationEvents: number;
+  twitchJobEvents: number;
+  twitchJobs: number;
+  twitchVideos: number;
 }
 
 export type RetentionImageResult = ImageCacheRetentionResult | {
@@ -97,6 +106,9 @@ export async function runRetentionSweep(
     expiredSessions,
     operationAudit,
     recommendationEvents,
+    twitchJobEvents,
+    twitchJobs,
+    twitchVideos,
   ] = await Promise.all([
     database.notificationHistory.deleteMany({
       where: { createdAt: { lt: notificationCutoff } },
@@ -130,6 +142,25 @@ export async function runRetentionSweep(
         ],
       },
     }),
+    database.twitchJobEvent.deleteMany({
+      where: { createdAt: { lt: new Date(nowMs - TWITCH_JOB_EVENT_RETENTION_DAYS * DAY_MS) } },
+    }),
+    database.twitchJob.deleteMany({
+      // Finished only: a job still in the queue is live work, however old.
+      where: {
+        state: { in: ['DONE', 'FAILED', 'CANCELLED'] },
+        needsJellyfinRefresh: false,
+        updatedAt: { lt: new Date(nowMs - TWITCH_JOB_RETENTION_DAYS * DAY_MS) },
+      },
+    }),
+    database.twitchVideo.deleteMany({
+      // A video with a file is a record of what is on disk, and one in use is not history.
+      where: {
+        mediaFiles: { none: {} },
+        jobs: { none: { state: { in: ['QUEUED', 'BLOCKED', 'RUNNING', 'RETRY_WAIT'] } } },
+        twitchCreatedAt: { lt: new Date(nowMs - TWITCH_VIDEO_RETENTION_DAYS * DAY_MS) },
+      },
+    }),
   ]);
 
   let imageCache: RetentionImageResult;
@@ -151,6 +182,9 @@ export async function runRetentionSweep(
       expiredSessions: expiredSessions.count,
       operationAudit: operationAudit.count,
       recommendationEvents: recommendationEvents.count,
+      twitchJobEvents: twitchJobEvents.count,
+      twitchJobs: twitchJobs.count,
+      twitchVideos: twitchVideos.count,
     },
     imageCache,
   };

@@ -1,13 +1,16 @@
 'use client';
 
 import { use, useEffect, useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'next/navigation';
-import { AlertTriangle, Download, Play, Tv } from 'lucide-react';
+import { AlertTriangle, Download, Play, Trash2, Tv } from 'lucide-react';
+import { toast } from 'sonner';
 import { format } from 'date-fns';
 import Link from '@/components/ui/app-link';
 import { PageHeader } from '@/components/layout/page-header';
 import { Button } from '@/components/ui/button';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { useMe, hasCapability } from '@/components/permission-provider';
 import { DownloadSheet } from '@/components/twitch/download-sheet';
 import { FadeInImage } from '@/components/media/fade-in-image';
 import { daysUntil, formatDuration, VIDEO_TYPE_LABELS, type TwitchVideo } from '@/components/twitch/types';
@@ -32,6 +35,21 @@ export default function TwitchVodPage({ params }: { params: Promise<{ id: string
     },
   });
   const video = query.data;
+
+  const canManage = hasCapability(useMe(), 'twitch.manage');
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const removeFile = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/twitch/files/${video?.fileId}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('Could not delete the file');
+    },
+    onSuccess: () => {
+      toast.success('Queued for deletion');
+      setConfirmDelete(false);
+      void queryClient.invalidateQueries({ queryKey: ['twitch'] });
+    },
+    onError: (error) => toast.error(error.message),
+  });
 
   const unseen = video && !video.seen;
   useEffect(() => {
@@ -98,8 +116,23 @@ export default function TwitchVodPage({ params }: { params: Promise<{ id: string
             video.autoDownload.reason === 'master-switch' ? 'auto-download is off' : video.autoDownload.reason
           }.
         </p>
+        {canManage && video.fileId && !video.activeJob && (
+          <Button variant="outline" className="h-11 w-full" onClick={() => setConfirmDelete(true)}>
+            <Trash2 className="mr-2 h-4 w-4" />Delete the file
+          </Button>
+        )}
         {video.description && <p className="whitespace-pre-wrap text-sm text-muted-foreground">{video.description}</p>}
       </div>
+      <ConfirmDialog
+        open={confirmDelete}
+        onOpenChange={setConfirmDelete}
+        title="Delete this file?"
+        description="It is removed from the disk and from Jellyfin, with its chat and subtitles. This cannot be undone."
+        confirmLabel="Delete"
+        destructive
+        busy={removeFile.isPending}
+        onConfirm={() => removeFile.mutate()}
+      />
       {!video.downloaded && !video.activeJob && <DownloadSheet video={video} open={sheetOpen} onOpenChange={setSheetOpen} />}
     </div>
   );

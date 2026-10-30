@@ -337,6 +337,20 @@ export interface ExportedUserAccount {
   dashboardLayouts?: ExportedDashboardLayout[] | null;
 }
 
+export interface ExportedTwitch {
+  settings?: Record<string, unknown>;
+  /** Encrypted, and only with includeSecrets. */
+  browserAuthToken?: string | null;
+  subscriptions?: Array<{
+    twitchUserId: string;
+    login: string;
+    displayName: string;
+    notifyNewVods: boolean;
+    policy?: unknown;
+    typePolicies?: unknown;
+  }>;
+}
+
 export interface ExportedUsers {
   accounts: ExportedUserAccount[];
 }
@@ -352,6 +366,7 @@ export interface SettingsExportPayload {
   serviceConnections?: ExportedServiceConnection[];
   notificationPrefs?: ExportedNotificationDevice[];
   cleanup?: ExportedCleanup;
+  twitch?: ExportedTwitch;
   discoverLayout?: Record<string, unknown>;
   dashboardLayouts?: ExportedDashboardLayouts;
   watchlist?: ExportedWatchlist;
@@ -420,6 +435,9 @@ export function validateImportFile(
   }
   if (obj.notificationPrefs !== undefined && !Array.isArray(obj.notificationPrefs)) {
     return { ok: false, error: 'Invalid notificationPrefs section.' };
+  }
+  if (obj.twitch !== undefined && (typeof obj.twitch !== 'object' || obj.twitch === null)) {
+    return { ok: false, error: 'Invalid Twitch section.' };
   }
   if (obj.cleanup !== undefined && (typeof obj.cleanup !== 'object' || obj.cleanup === null)) {
     return { ok: false, error: 'Invalid cleanup section.' };

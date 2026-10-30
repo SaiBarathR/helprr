@@ -31,6 +31,7 @@ vi.mock('@/lib/twitch/sync', () => ({ syncStreamerVideos: mocks.syncStreamerVide
 vi.mock('@/lib/twitch/jobs', () => ({ enqueueDownload: mocks.enqueueDownload }));
 vi.mock('@/lib/twitch/policy-store', () => ({ decideForVideo: mocks.decideForVideo }));
 vi.mock('@/lib/service-helpers', () => ({ getJellyfinClient: mocks.getJellyfinClient }));
+vi.mock('@/lib/twitch/browser-token', () => ({ checkStoredBrowserToken: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('@/lib/twitch/reconcile', () => ({ reconcileTwitchJobs: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('@/lib/polling-job-report', () => ({ noteJobFailure: mocks.noteJobFailure }));
 vi.mock('@/lib/logger', () => ({ logger: { warn: vi.fn(), info: vi.fn() } }));

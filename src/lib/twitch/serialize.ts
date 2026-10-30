@@ -15,7 +15,7 @@ export const VIDEO_SELECT = {
   availability: true,
   estimatedExpiresAt: true,
   streamer: { select: { id: true, login: true, displayName: true, profileImageUrl: true, isLive: true } },
-  mediaFiles: { select: { jellyfinItemId: true } },
+  mediaFiles: { select: { id: true, jellyfinItemId: true } },
   jobs: {
     where: { kind: 'DOWNLOAD', state: { in: ['QUEUED', 'BLOCKED', 'RUNNING', 'RETRY_WAIT'] } },
     select: { id: true, state: true, stage: true, progress: true },
@@ -38,6 +38,7 @@ export function serializeVideo(video: VideoRow, seenAt?: Date | null) {
     thumbnailUrl: sizeThumbnail(thumbnailUrl),
     seen: Boolean(seenAt),
     downloaded: mediaFiles.length > 0,
+    fileId: mediaFiles[0]?.id ?? null,
     jellyfinItemId: mediaFiles.find((file) => file.jellyfinItemId)?.jellyfinItemId ?? null,
     activeJob: jobs[0] ?? null,
   };

@@ -14,6 +14,7 @@ export interface TwitchVideo {
   streamer: { id: string; login: string; displayName: string; profileImageUrl: string | null; isLive: boolean };
   seen: boolean;
   downloaded: boolean;
+  fileId: string | null;
   jellyfinItemId: string | null;
   activeJob: { id: string; state: string; stage: string | null; progress: number | null } | null;
 }

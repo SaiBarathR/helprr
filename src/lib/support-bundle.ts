@@ -282,6 +282,10 @@ async function loadDatabaseSnapshot(): Promise<SupportDatabaseSnapshot> {
     diskSnapshots,
     migrations,
     twitchSettings,
+    twitchStreamers,
+    twitchVideos,
+    twitchJobs,
+    twitchMediaFiles,
   ] = await Promise.all([
     prisma.serviceConnection.findMany({
       orderBy: [{ type: 'asc' }, { label: 'asc' }],
@@ -331,6 +335,10 @@ async function loadDatabaseSnapshot(): Promise<SupportDatabaseSnapshot> {
       ORDER BY started_at ASC
     `,
     prisma.twitchSettings.findUnique({ where: { id: 'singleton' }, select: { browserAuthToken: true } }),
+    prisma.twitchStreamer.count(),
+    prisma.twitchVideo.count(),
+    prisma.twitchJob.count(),
+    prisma.twitchMediaFile.count(),
   ]);
 
   return {
@@ -349,6 +357,10 @@ async function loadDatabaseSnapshot(): Promise<SupportDatabaseSnapshot> {
       cleanupHistory,
       operationAudit,
       diskUsageSnapshots: diskSnapshots,
+      twitchStreamers,
+      twitchVideos,
+      twitchJobs,
+      twitchMediaFiles,
     },
     appliedMigrations: migrations.map((migration) => migration.migration_name),
   };

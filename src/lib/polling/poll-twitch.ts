@@ -9,6 +9,7 @@ import { reconcileTwitchJobs } from '@/lib/twitch/reconcile';
 import { inReencodeWindow } from '@/lib/twitch/reencode-window';
 import { enqueueDownload } from '@/lib/twitch/jobs';
 import { decideForVideo } from '@/lib/twitch/policy-store';
+import { checkStoredBrowserToken } from '@/lib/twitch/browser-token';
 import { getTwitchSettings } from '@/lib/twitch/settings';
 import { syncStreamerVideos } from '@/lib/twitch/sync';
 import { errorMessage, notifyAndLog } from './shared';
@@ -44,6 +45,7 @@ export async function pollTwitch(now = new Date()): Promise<void> {
   try {
     await reconcileTwitchJobs(now);
     await markJellyfinBusy(settings, now);
+    await checkStoredBrowserToken(settings, now);
 
     const liveDue = !settings.lastLivePollAt
       || now.getTime() - settings.lastLivePollAt.getTime() >= settings.pollLiveSecs * 1000;

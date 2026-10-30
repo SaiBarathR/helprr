@@ -129,6 +129,7 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
   const [selectedAppSettings, setSelectedAppSettings] = useState(false);
   const [selectedDiscoverLayout, setSelectedDiscoverLayout] = useState(false);
   const [selectedCleanup, setSelectedCleanup] = useState(false);
+  const [selectedTwitch, setSelectedTwitch] = useState(false);
   const [selectedDashboardLayouts, setSelectedDashboardLayouts] = useState(false);
   const [selectedWatchlist, setSelectedWatchlist] = useState(false);
   const [selectedScheduledAlerts, setSelectedScheduledAlerts] = useState(false);
@@ -162,6 +163,7 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
       setSelectedAppSettings(false);
       setSelectedDiscoverLayout(false);
       setSelectedCleanup(false);
+      setSelectedTwitch(false);
       setSelectedDashboardLayouts(false);
       setSelectedWatchlist(false);
       setSelectedScheduledAlerts(false);
@@ -240,6 +242,7 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
       setSelectedAppSettings(isAdmin && !!payload.appSettings);
       setSelectedDiscoverLayout(isAdmin && !!payload.discoverLayout);
       setSelectedCleanup(isAdmin && !!payload.cleanup);
+      setSelectedTwitch(isAdmin && !!payload.twitch);
       setSelectedDashboardLayouts(isAdmin && !!payload.dashboardLayouts);
       // Watchlist, anime mappings, and user accounts are content/sensitive —
       // leave off by default; the user can opt in. "Replace everything" still
@@ -314,6 +317,7 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
       || selectedAppSettings
       || selectedDiscoverLayout
       || selectedCleanup
+      || selectedTwitch
       || selectedDashboardLayouts
       || selectedWatchlist
       || selectedScheduledAlerts
@@ -322,7 +326,7 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
       || selectedServices.size > 0
       || (currentEndpoint !== null && !!selectedSourceDevice && selectedSourceDevice !== '__none__' && availableNotifDevices.length > 0)
     )
-  ), [parsed, selectedUi, selectedAppSettings, selectedDiscoverLayout, selectedCleanup, selectedDashboardLayouts, selectedWatchlist, selectedScheduledAlerts, selectedAnimeMappings, selectedUsers, selectedServices, selectedSourceDevice, availableNotifDevices, currentEndpoint]);
+  ), [parsed, selectedUi, selectedAppSettings, selectedDiscoverLayout, selectedCleanup, selectedTwitch, selectedDashboardLayouts, selectedWatchlist, selectedScheduledAlerts, selectedAnimeMappings, selectedUsers, selectedServices, selectedSourceDevice, availableNotifDevices, currentEndpoint]);
 
   function requestImport(replaceAll: boolean) {
     if (!parsed) return;
@@ -376,6 +380,7 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
     let useAppSettings = selectedAppSettings;
     let useDiscoverLayout = selectedDiscoverLayout;
     let useCleanup = selectedCleanup;
+    let useTwitch = selectedTwitch;
     let useDashboardLayouts = selectedDashboardLayouts;
     let useWatchlist = selectedWatchlist;
     let useScheduledAlerts = selectedScheduledAlerts;
@@ -390,6 +395,7 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
       useAppSettings = isAdmin && !!parsed.payload.appSettings;
       useDiscoverLayout = isAdmin && !!parsed.payload.discoverLayout;
       useCleanup = isAdmin && !!parsed.payload.cleanup;
+      useTwitch = isAdmin && !!parsed.payload.twitch;
       useDashboardLayouts = isAdmin && !!parsed.payload.dashboardLayouts;
       useWatchlist = !!parsed.payload.watchlist;
       useScheduledAlerts = !!parsed.payload.scheduledAlerts;
@@ -401,6 +407,7 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
       setSelectedAppSettings(useAppSettings);
       setSelectedDiscoverLayout(useDiscoverLayout);
       setSelectedCleanup(useCleanup);
+      setSelectedTwitch(useTwitch);
       setSelectedDashboardLayouts(useDashboardLayouts);
       setSelectedWatchlist(useWatchlist);
       setSelectedScheduledAlerts(useScheduledAlerts);
@@ -448,6 +455,10 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
         body.notificationDevice = sourceDevice;
         if (typeof endpoint === 'string') body.currentDeviceEndpoint = endpoint;
       }
+      if (useTwitch && parsed.payload.twitch) {
+        body.twitch = parsed.payload.twitch;
+      }
+
       if (useCleanup && parsed.payload.cleanup) {
         body.cleanup = parsed.payload.cleanup;
       }
@@ -470,7 +481,7 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
         body.users = parsed.payload.users;
       }
 
-      const needsServerCall = body.appSettings || body.serviceConnections || body.notificationDevice || body.cleanup || body.discoverLayout || body.dashboardLayouts || body.watchlist || body.scheduledAlerts || body.animeMappings || body.users;
+      const needsServerCall = body.appSettings || body.serviceConnections || body.notificationDevice || body.cleanup || body.twitch || body.discoverLayout || body.dashboardLayouts || body.watchlist || body.scheduledAlerts || body.animeMappings || body.users;
       if (needsServerCall) {
         const res = await fetch('/api/settings/import', {
           method: 'POST',
@@ -616,6 +627,23 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
                     <div className="text-sm font-medium">Discover Layout</div>
                     <div className="text-xs text-muted-foreground">
                       Section order, hidden builtin sections, and custom carousels (with their saved filters).
+                    </div>
+                  </div>
+                </label>
+              </section>
+            )}
+
+            {isAdmin && parsed.payload.twitch && (
+              <section>
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <Checkbox
+                    checked={selectedTwitch}
+                    onCheckedChange={(v) => setSelectedTwitch(v === true)}
+                  />
+                  <div>
+                    <div className="text-sm font-medium">Twitch</div>
+                    <div className="text-xs text-muted-foreground">
+                      Settings, rules and {parsed.payload.twitch.subscriptions?.length ?? 0} subscription(s).
                     </div>
                   </div>
                 </label>

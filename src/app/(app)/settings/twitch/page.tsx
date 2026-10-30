@@ -7,6 +7,7 @@ import { PageHeader } from '@/components/layout/page-header';
 import { GroupedSection } from '@/components/settings/grouped-section';
 import { PolicyEditor } from '@/components/twitch/policy-editor';
 import { Button } from '@/components/ui/button';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import type { PolicyLayer } from '@/lib/twitch/policy';
@@ -20,6 +21,16 @@ interface Settings {
   reencodeWindowEnd: string;
   keepOriginalDays: number;
   reencodeWaiting: number;
+  hasBrowserAuthToken: boolean;
+  browserAuthTokenValid: boolean | null;
+}
+
+interface RetentionCandidate {
+  fileId: string;
+  title: string;
+  streamer: string;
+  sizeBytes: number;
+  reason: string;
 }
 
 interface LibraryStatus {
@@ -54,6 +65,8 @@ export default function TwitchSettingsPage() {
 
   const [rules, setRules] = useState<PolicyLayer | null>(null);
   const [libraryName, setLibraryName] = useState('Twitch');
+  const [browserToken, setBrowserToken] = useState('');
+  const [confirmRetention, setConfirmRetention] = useState(false);
   const [typedPath, setLibraryPath] = useState<string | null>(null);
   const libraryPath = typedPath ?? library.data?.path ?? '';
 
@@ -81,6 +94,34 @@ export default function TwitchSettingsPage() {
   const saveSettings = useMutation({
     mutationFn: (patch: Partial<Settings>) => send('/api/twitch/settings', 'PUT', patch),
     onSuccess: refresh,
+    onError: fail,
+  });
+  const saveToken = useMutation({
+    mutationFn: () => send('/api/twitch/browser-token', 'PUT', { token: browserToken.trim() }),
+    onSuccess: () => {
+      setBrowserToken('');
+      toast.success('Token saved');
+      refresh();
+    },
+    onError: fail,
+  });
+  const removeToken = useMutation({
+    mutationFn: () => send('/api/twitch/browser-token', 'DELETE', {}),
+    onSuccess: refresh,
+    onError: fail,
+  });
+  const preview = useMutation({
+    mutationFn: async () => (await load<{ candidates: RetentionCandidate[] }>('/api/twitch/retention/preview', new AbortController().signal)).candidates,
+    onError: fail,
+  });
+  const runRetention = useMutation({
+    mutationFn: () => send('/api/twitch/retention/run', 'POST', { fileIds: (preview.data ?? []).map((candidate) => candidate.fileId) }),
+    onSuccess: (data: { queued: number; skipped: number }) => {
+      toast.success(`${data.queued} queued for deletion${data.skipped ? `, ${data.skipped} no longer apply` : ''}`);
+      setConfirmRetention(false);
+      preview.reset();
+      refresh();
+    },
     onError: fail,
   });
   const createLibrary = useMutation({
@@ -157,6 +198,70 @@ export default function TwitchSettingsPage() {
             </>
           )}
         </GroupedSection>
+
+        <GroupedSection title="Twitch browser token" footer="Only for sub-only VODs and 1440p. It grants full access to your Twitch account">
+          {settings.data?.hasBrowserAuthToken ? (
+            <div className="grouped-row min-h-11">
+              <span className={`text-sm ${settings.data.browserAuthTokenValid === false ? 'text-amber-400' : ''}`}>
+                {settings.data.browserAuthTokenValid === false ? 'Stopped working' : 'Saved'}
+              </span>
+              <Button variant="ghost" size="sm" disabled={removeToken.isPending} onClick={() => removeToken.mutate()}>Remove</Button>
+            </div>
+          ) : (
+            <form
+              className="flex gap-2 p-3"
+              onSubmit={(event) => {
+                event.preventDefault();
+                saveToken.mutate();
+              }}
+            >
+              <Input
+                type="password"
+                aria-label="Twitch auth-token cookie"
+                placeholder="auth-token cookie"
+                autoComplete="off"
+                value={browserToken}
+                onChange={(event) => setBrowserToken(event.target.value)}
+                className="h-10"
+              />
+              <Button type="submit" className="h-10 shrink-0" disabled={!browserToken.trim() || saveToken.isPending}>Save</Button>
+            </form>
+          )}
+        </GroupedSection>
+
+        <GroupedSection title="Retention" footer="Set limits in the rules. Keep-forever files are never deleted">
+          <div className="space-y-2 p-3">
+            <Button variant="outline" className="h-10 w-full" disabled={preview.isPending} onClick={() => preview.mutate()}>
+              Preview what would be deleted
+            </Button>
+            {preview.data && preview.data.length === 0 && <p className="text-sm text-muted-foreground">Nothing to delete.</p>}
+            {preview.data && preview.data.length > 0 && (
+              <>
+                <ul className="max-h-64 space-y-1 overflow-y-auto">
+                  {preview.data.map((candidate) => (
+                    <li key={candidate.fileId} className="text-sm">
+                      <span className="block truncate">{candidate.title}</span>
+                      <span className="block truncate text-xs text-muted-foreground">{candidate.streamer} · {(candidate.sizeBytes / 1024 ** 3).toFixed(1)} GB · {candidate.reason}</span>
+                    </li>
+                  ))}
+                </ul>
+                <Button variant="destructive" className="h-10 w-full" onClick={() => setConfirmRetention(true)}>
+                  Delete {preview.data.length} {preview.data.length === 1 ? 'file' : 'files'}
+                </Button>
+              </>
+            )}
+          </div>
+        </GroupedSection>
+        <ConfirmDialog
+          open={confirmRetention}
+          onOpenChange={setConfirmRetention}
+          title="Delete these files?"
+          description="They are removed from the disk and from Jellyfin. This cannot be undone."
+          confirmLabel="Delete"
+          destructive
+          busy={runRetention.isPending}
+          onConfirm={() => runRetention.mutate()}
+        />
 
         <GroupedSection title="Jellyfin library" footer="Creating a library changes your real Jellyfin">
           {status?.exists ? (

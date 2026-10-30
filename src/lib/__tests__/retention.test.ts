@@ -11,7 +11,7 @@ import { SESSION_DURATION_SECONDS } from '@/lib/session-policy';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-function databaseFixture(counts: number[] = [1, 2, 3, 4, 5, 6]) {
+function databaseFixture(counts: number[] = [1, 2, 3, 4, 5, 6, 7, 8, 9]) {
   const delegates = counts.map((count) => ({
     deleteMany: vi.fn(async () => ({ count })),
   }));
@@ -23,6 +23,9 @@ function databaseFixture(counts: number[] = [1, 2, 3, 4, 5, 6]) {
       session: delegates[3],
       fileOperationAudit: delegates[4],
       recommendationEvent: delegates[5],
+      twitchJobEvent: delegates[6],
+      twitchJob: delegates[7],
+      twitchVideo: delegates[8],
     } as unknown as NonNullable<RetentionSweepOptions['database']>,
     delegates,
   };
@@ -99,13 +102,39 @@ describe('runRetentionSweep', () => {
       expiredSessions: 4,
       operationAudit: 5,
       recommendationEvents: 6,
+      twitchJobEvents: 7,
+      twitchJobs: 8,
+      twitchVideos: 9,
     });
     expect(result.imageCache.status).toBe('completed');
   });
 
+  it('keeps live Twitch work, files on disk, and anything still to reconcile', async () => {
+    const nowMs = Date.UTC(2026, 6, 14, 12);
+    const { database, delegates } = databaseFixture();
+
+    await runRetentionSweep({ notificationRetentionDays: 90, nowMs, database, pruneImages: async () => ({ status: 'completed' } as never) });
+
+    expect(delegates[6].deleteMany).toHaveBeenCalledWith({ where: { createdAt: { lt: new Date(nowMs - 30 * DAY_MS) } } });
+    expect(delegates[7].deleteMany).toHaveBeenCalledWith({
+      where: {
+        state: { in: ['DONE', 'FAILED', 'CANCELLED'] },
+        needsJellyfinRefresh: false,
+        updatedAt: { lt: new Date(nowMs - 90 * DAY_MS) },
+      },
+    });
+    expect(delegates[8].deleteMany).toHaveBeenCalledWith({
+      where: {
+        mediaFiles: { none: {} },
+        jobs: { none: { state: { in: ['QUEUED', 'BLOCKED', 'RUNNING', 'RETRY_WAIT'] } } },
+        twitchCreatedAt: { lt: new Date(nowMs - 180 * DAY_MS) },
+      },
+    });
+  });
+
   it('falls back to 90 days for an invalid notification-retention setting', async () => {
     const nowMs = Date.UTC(2026, 6, 14, 12);
-    const { database, delegates } = databaseFixture([0, 0, 0, 0, 0, 0]);
+    const { database, delegates } = databaseFixture([0, 0, 0, 0, 0, 0, 0, 0, 0]);
 
     const result = await runRetentionSweep({
       notificationRetentionDays: Number.NaN,
@@ -133,7 +162,7 @@ describe('runRetentionSweep', () => {
   });
 
   it('reports image-cache failure without blocking successful database retention', async () => {
-    const { database } = databaseFixture([0, 0, 0, 0, 0, 0]);
+    const { database } = databaseFixture([0, 0, 0, 0, 0, 0, 0, 0, 0]);
     const result = await runRetentionSweep({
       notificationRetentionDays: 90,
       database,
@@ -146,7 +175,7 @@ describe('runRetentionSweep', () => {
   });
 
   it('rejects database failure and does not begin filesystem cleanup', async () => {
-    const { database, delegates } = databaseFixture([0, 0, 0, 0, 0, 0]);
+    const { database, delegates } = databaseFixture([0, 0, 0, 0, 0, 0, 0, 0, 0]);
     delegates[3].deleteMany.mockRejectedValueOnce(new Error('database unavailable'));
     const pruneImages = vi.fn();
 

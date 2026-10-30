@@ -9,10 +9,11 @@ import { inReencodeWindow } from '@/lib/twitch/reencode-window';
 import type { DownloadOptions } from '@/lib/twitch/jobs';
 import { decryptTwitchToken } from '@/lib/twitch/token-cipher';
 import { LIBRARY_DIR, STAGING_DIR, WORKER_VERSION } from './env';
+import { runDeleteFiles } from './delete-files';
 import { DiskGuardError, runDownload, WaitForRecordingError } from './pipeline';
 import { deleteExpiredOriginals, probeGpu, runReencode } from './reencode';
 import { JobCancelledError } from './process';
-import { activeVersion, ensureTools } from './tools';
+import { activeVersion, ensureTools, installTool, KNOWN_GOOD, latestVersion, type ToolName } from './tools';
 
 const RENEW_MS = 20_000;
 const POLL_MS = 5_000;
@@ -113,6 +114,11 @@ async function runJob(job: TwitchJob): Promise<void> {
     };
     const note = (message: string) => event(job.id, 'warn', message);
 
+    if (job.kind === 'DELETE_FILES') {
+      await runDeleteFiles(prisma, job);
+      await finishJob(job, { state: 'DONE', stage: 'done', progress: 1, finishedAt: new Date(), lastError: null, errorClass: null });
+      return;
+    }
     if (job.kind === 'REENCODE') {
       await runReencode({
         prisma,
@@ -240,6 +246,20 @@ async function housekeeping(): Promise<void> {
   }
 }
 
+// A running job keeps the tool it started with: the lane must be empty first.
+async function checkToolUpdate(): Promise<void> {
+  const settings = await prisma.twitchSettings.findUnique({ where: { id: 'singleton' } });
+  if (!settings?.toolUpdateRequestedAt || running.size > 0) return;
+  const pins = (settings.pinnedTools ?? {}) as Partial<Record<ToolName, string>>;
+  for (const tool of Object.keys(KNOWN_GOOD) as ToolName[]) {
+    if (pins[tool]) continue;
+    const version = await latestVersion(tool);
+    if (version !== (await activeVersion(tool))) await installTool(tool, version);
+  }
+  await prisma.twitchSettings.update({ where: { id: 'singleton' }, data: { toolUpdateRequestedAt: null } });
+  log('info', 'Tools checked');
+}
+
 async function shutdown(signal: string): Promise<void> {
   log('info', 'Shutting down', { signal, running: running.size });
   stopping = true;
@@ -266,6 +286,7 @@ async function main(): Promise<void> {
   await heartbeat();
   void housekeeping().catch((error) => log('warn', 'Housekeeping failed', { error: String(error) }));
   setInterval(() => void housekeeping().catch((error) => log('warn', 'Housekeeping failed', { error: String(error) })), HOUSEKEEPING_MS);
+  setInterval(() => void checkToolUpdate().catch((error) => log('warn', 'Tool update failed', { error: String(error).slice(0, 300) })), HEARTBEAT_MS);
   setInterval(() => void heartbeat().catch((error) => log('warn', 'Heartbeat failed', { error: String(error) })), HEARTBEAT_MS);
   log('info', 'Worker ready', { workerId, version: WORKER_VERSION });
   await Promise.all([networkLane(), cpuLane()]);

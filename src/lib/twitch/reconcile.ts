@@ -39,6 +39,16 @@ async function finishPublishedJobs(now: Date): Promise<void> {
   }
 
   for (const job of jobs) {
+    if (job.kind === 'DELETE_FILES') {
+      if (client && settings.jellyfinLibraryItemId) {
+        await client.refreshItem(settings.jellyfinLibraryItemId, { recursive: true }).catch((error) => {
+          logger.warn('Twitch Jellyfin refresh failed', { jobId: job.id, error: errorMessage(error) }, { scope: 'polling' });
+        });
+      }
+      await prisma.twitchJob.update({ where: { id: job.id }, data: { needsJellyfinRefresh: false } });
+      continue;
+    }
+
     const { video } = job;
     if (!video) {
       await prisma.twitchJob.update({ where: { id: job.id }, data: { needsJellyfinRefresh: false } });
