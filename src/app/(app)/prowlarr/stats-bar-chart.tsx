@@ -39,6 +39,9 @@ export default function StatsBarChart({ data, minHeight, xTickFormatter, bars }:
         <YAxis
           type="category"
           dataKey="name"
+          // Every row gets its label: by default Recharts drops labels it thinks
+          // would collide, which hid one of three hosts at the 120 px minimum.
+          interval={0}
           width={Y_WIDTH}
           tick={<YTick />}
           axisLine={false}
