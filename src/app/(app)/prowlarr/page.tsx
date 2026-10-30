@@ -2,7 +2,7 @@
 
 import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
 
-import { useEffect, useRef, useState, useMemo } from 'react';
+import { useRef, useState, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useRestorableInfiniteQuery as useInfiniteQuery } from '@/lib/hooks/use-restorable-infinite-query';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -331,6 +331,7 @@ function IndexersTab({ actions, onOpen }: { actions: IndexerActions; onOpen: (id
                     {/* Stretched over the row; the row's own controls sit above it. */}
                     <button
                       type="button"
+                      data-context-menu-row
                       onClick={() => onOpen(indexer.id)}
                       className="block max-w-full truncate text-left text-sm font-medium after:absolute after:inset-0 focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-ring focus-visible:after:ring-inset"
                     >
@@ -1133,22 +1134,22 @@ export default function ProwlarrPage() {
     setSeenUrlIndexerId(urlIndexerId);
     setSheetIndexerId(urlIndexerId);
   }
-  // True when this page pushed the entry, so closing can go back to the list
-  // instead of leaving Helprr after a direct link.
-  const pushedSheetEntry = useRef(false);
-  useEffect(() => {
-    if (urlIndexerId === null) pushedSheetEntry.current = false;
-  }, [urlIndexerId]);
+  // The indexer whose history entry this page pushed. Closing goes back only
+  // once the URL shows that entry has landed: otherwise (a direct link, or a
+  // close before the push commits) Back could leave the page, so it replaces.
+  const pushedSheetId = useRef<number | null>(null);
 
   function openIndexerSheet(id: number) {
     setSheetIndexerId(id);
-    pushedSheetEntry.current = true;
+    pushedSheetId.current = id;
     router.push(`/prowlarr?indexer=${id}`, { scroll: false });
   }
 
   function closeIndexerSheet() {
     setSheetIndexerId(null);
-    if (pushedSheetEntry.current) router.back();
+    const onOwnEntry = urlIndexerId !== null && pushedSheetId.current === urlIndexerId;
+    pushedSheetId.current = null;
+    if (onOwnEntry) router.back();
     else router.replace('/prowlarr', { scroll: false });
   }
 

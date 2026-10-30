@@ -46,6 +46,16 @@ describe('searchProwlarr', () => {
     }));
   });
 
+  it('removes credentials from the search text it returns', async () => {
+    mocks.getHistory.mockResolvedValue({
+      records: [{ id: 3, indexerId: 7, eventType: 'indexerQuery', date: '', data: { query: 'see https://t.example/rss/passkey123?apikey=secret-value' } }],
+    });
+
+    const { results } = await search('see');
+
+    expect(results[0].title).toBe('see https://t.example');
+  });
+
   it('links an indexer result to its sheet', async () => {
     mocks.getHistory.mockResolvedValue({ records: [] });
 

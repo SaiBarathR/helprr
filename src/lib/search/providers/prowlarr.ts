@@ -1,5 +1,6 @@
 import { getProwlarrClient } from '@/lib/service-helpers';
 import { matchLocalQuery } from '@/lib/search/providers/local-module';
+import { redactProwlarrText } from '@/lib/prowlarr-redact';
 import type { ProviderHandler } from '@/lib/search/providers/types';
 import type { SearchProviderResult } from '@/lib/search/types';
 
@@ -17,7 +18,7 @@ export const searchProwlarr: ProviderHandler = async ({ query, limit }) => {
 
   for (const record of history.records) {
     // Prowlarr keeps the search text in the record's data, and names the indexer only by id.
-    const searched = record.data?.query ?? '';
+    const searched = redactProwlarrText(record.data?.query ?? '');
     const indexerName = indexerNames.get(record.indexerId) ?? '';
     if (!matchLocalQuery(query, searched, indexerName, record.eventType)) continue;
     const id = `prowlarr:history:${record.id}`;

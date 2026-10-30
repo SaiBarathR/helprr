@@ -122,7 +122,7 @@ export function IndexerSheet({
   const pending = indexer ? actions.pendingEnable.has(indexer.id) : false;
 
   return (
-    <Drawer open={open} onOpenChange={(next) => { if (!next) onClose(); }}>
+    <Drawer open={open} autoFocus onOpenChange={(next) => { if (!next) onClose(); }}>
       <DrawerContent>
         <DrawerHeader>
           <DrawerTitle className="text-base leading-snug [overflow-wrap:anywhere]">
