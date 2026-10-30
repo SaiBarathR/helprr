@@ -29,10 +29,11 @@ describe('getAppShellServiceFlags', () => {
       seerrConfigured: true,
       tmdbConfigured: false,
       jellyfinConfigured: true,
+      twitchConfigured: false,
     });
     expect(mocks.findMany).toHaveBeenCalledOnce();
     expect(mocks.findMany).toHaveBeenCalledWith({
-      where: { type: { in: ['SEERR', 'TMDB', 'JELLYFIN'] } },
+      where: { type: { in: ['SEERR', 'TMDB', 'JELLYFIN', 'TWITCH'] } },
       distinct: ['type'],
       select: { type: true },
     });

@@ -10,6 +10,7 @@ import type {
   ExportedNotificationDevice,
   ExportedUsers,
   ExportedWatchlist,
+  ExportedTwitch,
 } from '@/lib/settings-export';
 
 export const LOG_LEVELS = new Set(['debug', 'info', 'warn', 'error']);
@@ -37,6 +38,7 @@ export interface ImportRequestBody {
   serviceConnections?: ExportedServiceConnection[];
   notificationDevice?: ExportedNotificationDevice;
   cleanup?: ExportedCleanup;
+  twitch?: ExportedTwitch;
   currentDeviceEndpoint?: string;
   discoverLayout?: Record<string, unknown>;
   dashboardLayouts?: ExportedDashboardLayouts;

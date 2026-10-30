@@ -1,6 +1,6 @@
 // App Types
 export interface ServiceConnectionConfig {
-  type: 'SONARR' | 'RADARR' | 'QBITTORRENT' | 'PROWLARR' | 'JELLYFIN' | 'TMDB' | 'SEERR' | 'LIDARR';
+  type: 'SONARR' | 'RADARR' | 'QBITTORRENT' | 'PROWLARR' | 'JELLYFIN' | 'TMDB' | 'SEERR' | 'LIDARR' | 'TWITCH';
   url: string;
   apiKey: string;
 }

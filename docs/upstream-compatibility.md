@@ -39,6 +39,7 @@ product release number.
 | `TMDB` | TMDB | Hosted API `v3` | No product version exposed | Authenticated `/configuration` request succeeded; Discover read re-run 2026-10-07 |
 | `ANILIST` | AniList | Hosted GraphQL API at `graphql.anilist.co` | No product version exposed | OAuth-authenticated Viewer query succeeded; Anime home read re-run 2026-10-07 |
 | `SEERR` | Seerr | REST `/api/v1` | `3.4.1`; `3.3.0` (earlier qualification) | Authenticated current-user and status probes on both; live request-list and user-list reads on `3.4.1` |
+| `TWITCH` | Twitch | Hosted Helix API at `api.twitch.tv/helix`; OAuth client-credentials at `id.twitch.tv/oauth2` | No product version exposed | On 2026-10-30: app-token request, `/oauth2/validate`, device code sign-in, and `/users`, `/streams`, `/videos`, `/search/channels` and `/channels/followed` reads against the live API |
 
 The live probes above used the isolated Helprr development database and application.
 They made read-only status, configuration, or viewer requests. The destructive-flow

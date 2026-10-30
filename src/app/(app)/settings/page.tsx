@@ -16,6 +16,7 @@ import {
   Activity,
   FileStack,
   Terminal,
+  Twitch,
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/query-keys';
@@ -30,7 +31,7 @@ interface ServiceCount {
   total: number;
 }
 
-const SERVICE_TYPES = ['SONARR', 'RADARR', 'LIDARR', 'QBITTORRENT', 'PROWLARR', 'JELLYFIN', 'TMDB', 'SEERR'] as const;
+const SERVICE_TYPES = ['SONARR', 'RADARR', 'LIDARR', 'QBITTORRENT', 'PROWLARR', 'JELLYFIN', 'TMDB', 'SEERR', 'TWITCH'] as const;
 
 export default function SettingsIndexPage() {
   const me = useMe();
@@ -100,6 +101,19 @@ export default function SettingsIndexPage() {
             iconColor="text-violet-400"
             label="Users"
             subtitle="Members, roles, and permissions"
+          />
+        </GroupedSection>
+      )}
+
+      {me?.twitchConfigured && hasCapability(me, 'twitch.manage') && (
+        <GroupedSection>
+          <CategoryRow
+            href="/settings/twitch"
+            icon={Twitch}
+            iconBg="bg-violet-500/10"
+            iconColor="text-violet-400"
+            label="Twitch"
+            subtitle="Auto-download, rules, library"
           />
         </GroupedSection>
       )}

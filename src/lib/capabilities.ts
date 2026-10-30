@@ -142,6 +142,15 @@ export const CAPABILITY_GROUPS = [
     ],
   },
   {
+    id: 'twitch',
+    title: 'Twitch',
+    items: [
+      { cap: 'twitch.view', label: 'View Twitch feed, streamers and queue' },
+      { cap: 'twitch.download', label: 'Queue, cancel and retry own Twitch downloads' },
+      { cap: 'twitch.manage', label: 'Manage Twitch settings, rules, library and files' },
+    ],
+  },
+  {
     id: 'notifications',
     title: 'Notifications',
     items: [
@@ -155,6 +164,7 @@ export const CAPABILITY_GROUPS = [
       { cap: 'notify.scheduled', label: 'Receive scheduled alert notifications' },
       { cap: 'notify.requests', label: 'Receive request notifications' },
       { cap: 'notify.digests', label: 'Receive activity digests' },
+      { cap: 'notify.twitch', label: 'Receive Twitch notifications' },
     ],
   },
 ] as const satisfies readonly CapabilityGroup[];
@@ -227,4 +237,9 @@ export const EVENT_TYPE_TO_CAPABILITY: Record<NotificationEventType, Capability>
   requestDeclined: 'notify.requests',
   requestFailed: 'notify.requests',
   activityDigest: 'notify.digests',
+  twitchVodNew: 'notify.twitch',
+  twitchVodExpiring: 'notify.twitch',
+  twitchDownloadComplete: 'notify.twitch',
+  twitchDownloadFailed: 'notify.twitch',
+  twitchWorkerIssue: 'notify.twitch',
 };

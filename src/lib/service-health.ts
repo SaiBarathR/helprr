@@ -9,6 +9,7 @@ import { JellyfinClient } from '@/lib/jellyfin-client';
 import { TmdbClient } from '@/lib/tmdb-client';
 import { SeerrClient } from '@/lib/seerr-client';
 import { getConnectionHeaders } from '@/lib/service-connection-secrets';
+import { verifyTwitchAppToken } from '@/lib/twitch/helix';
 
 export const SERVICE_LABELS: Record<ServiceType, string> = {
   SONARR: 'Sonarr',
@@ -20,6 +21,7 @@ export const SERVICE_LABELS: Record<ServiceType, string> = {
   TMDB: 'TMDB',
   ANILIST: 'AniList',
   SEERR: 'Seerr',
+  TWITCH: 'Twitch',
 };
 
 // Reachability probe for a single connection — the lightest call per service
@@ -89,6 +91,11 @@ async function checkConnection(connection: ServiceConnection): Promise<void> {
       if (!baseUrl) throw new ConfigurationError('Seerr URL is not configured');
       const client = new SeerrClient(baseUrl, connection.apiKey, getConnectionHeaders(connection));
       await client.verify();
+      return;
+    }
+    case 'TWITCH': {
+      // Only the token: the reachability poller probes every connection, so no Helix sweep here.
+      await verifyTwitchAppToken();
       return;
     }
     default: {

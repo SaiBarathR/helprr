@@ -19,6 +19,7 @@ import {
   LibraryBig,
   ChartLine,
   Clapperboard,
+  Twitch,
   type LucideIcon,
 } from 'lucide-react';
 import type { Capability } from '@/lib/capabilities';
@@ -41,6 +42,7 @@ export type NavItemId =
   | 'prowlarr'
   | 'jellyfin'
   | 'jellyfin-library'
+  | 'twitch'
   | 'insights'
   | 'activity'
   | 'notifications'
@@ -60,6 +62,8 @@ export interface NavItemDef {
   // Used by multi-mode pages (Recommendations hosts both the personalized
   // rails and the old Random Watch, gated independently server-side).
   requiredAnyCapability?: readonly Capability[];
+  // When set, the item stays hidden until this service is configured (UX only).
+  requiresConfigured?: 'twitchConfigured';
   // When set, the item renders a live count badge from /api/badges.
   badgeArea?: BadgeArea;
 }
@@ -85,6 +89,7 @@ export const NAV_ITEMS: NavItemDef[] = [
   { id: 'prowlarr', href: '/prowlarr', icon: Search, label: 'Prowlarr', shortLabel: 'Prowlarr', requiredCapability: 'prowlarr.view' },
   { id: 'jellyfin-library', href: '/jellyfin/library', icon: Clapperboard, label: 'Watch', shortLabel: 'Watch', requiredCapability: 'jellyfin.view' },
   { id: 'jellyfin', href: '/jellyfin', icon: MonitorPlay, label: 'Jellyfin', shortLabel: 'Jellyfin', requiredCapability: 'jellyfin.view' },
+  { id: 'twitch', href: '/twitch', icon: Twitch, label: 'Twitch', shortLabel: 'Twitch', requiredCapability: 'twitch.view', requiresConfigured: 'twitchConfigured', badgeArea: 'twitch' },
   { id: 'insights', href: '/insights', icon: ChartLine, label: 'Insights', shortLabel: 'Insights', requiredCapability: 'insights.view' },
   { id: 'activity', href: '/activity', icon: Activity, label: 'Activity', shortLabel: 'Activity', requiredCapability: 'activity.view', badgeArea: 'activity' },
   { id: 'notifications', href: '/notifications', icon: Bell, label: 'Notifications', shortLabel: 'Alerts', requiredCapability: 'notifications.view', badgeArea: 'notifications' },
@@ -93,7 +98,12 @@ export const NAV_ITEMS: NavItemDef[] = [
 
 /** Capability gate shared by every nav surface (sidebar, bottom nav, dashboard
  * fallback). `has` abstracts over client (hasCapability) and server (can). */
-export function navItemAllowed(item: NavItemDef, has: (cap: Capability) => boolean): boolean {
+export function navItemAllowed(
+  item: NavItemDef,
+  has: (cap: Capability) => boolean,
+  configured?: { twitchConfigured?: boolean } | null,
+): boolean {
+  if (item.requiresConfigured && !configured?.[item.requiresConfigured]) return false;
   if (item.requiredAnyCapability) return item.requiredAnyCapability.some(has);
   return !item.requiredCapability || has(item.requiredCapability);
 }

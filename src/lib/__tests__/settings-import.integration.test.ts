@@ -130,6 +130,41 @@ describe.skipIf(!url)('settings import against PostgreSQL', () => {
     expect(await prisma.aniListSeriesMappingEntry.count()).toBe(2);
   });
 
+  it('restores Twitch settings, rules and subscriptions, and refuses a bad channel or a plain token', async () => {
+    const doc = {
+      twitch: {
+        settings: {
+          autoDownloadEnabled: true,
+          defaultPolicy: { quality: '720p60', evil: true },
+          keepOriginalDays: 9,
+          reencodeWindowStart: '25:99',
+          pinnedTools: { ytdlp: '2026.10.21', bad: '1', td: '../x' },
+        },
+        browserAuthToken: 'plain-token',
+        subscriptions: [
+          { twitchUserId: '123', login: 'somebody', displayName: 'Somebody', notifyNewVods: false, policy: { keepLatest: 5 } },
+          { twitchUserId: '456', login: '../../etc', displayName: 'Bad', notifyNewVods: true },
+        ],
+      },
+    };
+    const first = await runImport.applySettingsImport(doc as never, IMPORTER_ID);
+
+    expect(first.applied.twitchSubscriptions).toBe(1);
+    expect(first.skipped).toContain('Twitch: subscription with an invalid channel');
+    const settings = await prisma.twitchSettings.findUniqueOrThrow({ where: { id: 'singleton' } });
+    expect(settings).toMatchObject({
+      autoDownloadEnabled: true, defaultPolicy: { quality: '720p60' }, keepOriginalDays: 9,
+      reencodeWindowStart: '01:00', pinnedTools: { ytdlp: '2026.10.21' }, browserAuthToken: null,
+    });
+    const streamer = await prisma.twitchStreamer.findUniqueOrThrow({ where: { twitchUserId: '123' }, include: { policy: true, subscriptions: true } });
+    expect(streamer.folderName).toBe('somebody');
+    expect(streamer.subscriptions).toMatchObject([{ userId: IMPORTER_ID, notifyNewVods: false }]);
+    expect(streamer.policy?.policy).toEqual({ keepLatest: 5 });
+
+    await runImport.applySettingsImport(doc as never, IMPORTER_ID);
+    expect(await prisma.twitchSubscription.count()).toBe(1);
+  });
+
   it('keeps what one upsert per row did: merged tags, kept values, first alert, replaced entries', async () => {
     const tagLinks = async () => Number((await prisma.$queryRaw<{ n: bigint }[]>`SELECT count(*) AS n FROM "_WatchlistItemTags"`)[0].n);
     const doc = {

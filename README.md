@@ -918,3 +918,34 @@ them.
 
 Helprr is free software, licensed under the [GNU General Public License v3.0](LICENSE).
 Release history lives in [CHANGELOG.md](CHANGELOG.md).
+
+## Twitch archiver (optional)
+
+Follow streamers, get a push for new VODs, and save them into a Jellyfin library
+with chapters, chat and metadata. Saved files are re-encoded to HEVC overnight on
+an Intel GPU. It is off until you configure it, and needs a separate worker container.
+
+1. Turn on two-factor authentication on your Twitch account, then register an
+   application at [dev.twitch.tv/console](https://dev.twitch.tv/console/apps):
+   redirect URL `http://localhost`, client type **Confidential**. Copy the client ID
+   and create a new secret.
+2. Enter both in **Settings → Instances → Twitch**.
+3. In `.env`, set the worker's profile and library folder, then run `./update.sh`:
+
+   ```sh
+   COMPOSE_PROFILES=twitch
+   TWITCH_LIBRARY_HOST_PATH=/path/to/twitch
+   # The host's render group, for the re-encode: getent group render
+   TWITCH_RENDER_GID=992
+   ```
+
+4. In **Settings → Twitch**, create the library. The path is the folder as Jellyfin
+   sees it. All internet metadata is off for it; exclude it from Intro Skipper.
+
+Auto-download is **off** by default: nothing downloads until you pick a video or
+turn on the switch and write rules. Sub-only VODs and 1440p need your browser's
+`auth-token` cookie, which grants full access to your Twitch account; changing your
+password or signing out everywhere revokes it, and logging out does not.
+
+Downloading from Twitch is outside its terms unless through its own features. Keep
+this for personal use.

@@ -203,11 +203,39 @@ const POLICY_GROUPS: Record<string, readonly string[]> = {
     'POST /api/settings/import',
     'POST /api/settings/import/follow-up',
   ],
+  'cap:twitch.download': [
+    'POST /api/twitch/jobs',
+  ],
+  'cap:twitch.manage': [
+    'PATCH /api/twitch/jobs/[id]',
+    'PUT /api/twitch/browser-token',
+    'DELETE /api/twitch/browser-token',
+    'DELETE /api/twitch/files/[id]',
+    'POST /api/twitch/library',
+    'POST /api/twitch/retention/run',
+    'POST /api/twitch/worker/tools',
+    'PUT /api/twitch/policies',
+    'POST /api/twitch/policies/preview',
+    'PUT /api/twitch/settings',
+  ],
+  'cap:twitch.view': [
+    'POST /api/twitch/feed/seen',
+    'DELETE /api/twitch/follows',
+    'POST /api/twitch/follows/device',
+    'POST /api/twitch/follows/poll',
+    'POST /api/twitch/streamers',
+    'PATCH /api/twitch/subscriptions/[id]',
+    'DELETE /api/twitch/subscriptions/[id]',
+    'POST /api/twitch/videos/[id]/state',
+  ],
   'cap:settings.instances': [
     'DELETE /api/services/[id]',
     'PATCH /api/services/[id]',
     'POST /api/services/anilist/authorize',
     'POST /api/services/anilist/disconnect',
+    'POST /api/services/twitch',
+    'DELETE /api/services/twitch',
+    'POST /api/services/twitch/test',
     'PUT /api/services/external-url',
     'POST /api/services',
     'POST /api/services/test',
@@ -246,6 +274,16 @@ interface SpecialPolicy {
 }
 
 const SPECIAL_POLICIES: Record<string, SpecialPolicy> = {
+  'POST /api/twitch/jobs/[id]/retry': {
+    kind: 'owned-or-capability',
+    marker: 'job.requestedByUserId === auth.user.id',
+    capabilities: ['twitch.download', 'twitch.manage'],
+  },
+  'POST /api/twitch/jobs/[id]/cancel': {
+    kind: 'owned-or-capability',
+    marker: 'job.requestedByUserId === auth.user.id',
+    capabilities: ['twitch.download', 'twitch.manage'],
+  },
   'POST /api/qbittorrent/[hash]': {
     kind: 'dynamic-capability',
     marker: 'actionCapability',
@@ -456,7 +494,7 @@ describe('mutating API route capability matrix', () => {
   const assignments = policyAssignments();
 
   it('explicitly assigns every mutating handler exactly once', () => {
-    expect(handlers.size).toBe(172);
+    expect(handlers.size).toBe(196);
     expect([...assignments.keys()].sort()).toEqual([...handlers.keys()].sort());
   });
 
@@ -526,7 +564,7 @@ describe('mutating API route capability matrix', () => {
         expect(SERVICE_ADD_CAPABILITY).toEqual({ RADARR: 'movies.add', SONARR: 'series.add' });
       } else {
         expect(hasCall(evidence, 'requireUser')).toBe(true);
-        expect(evidence.fileText).toContain("can(auth.user, 'requests.approve')");
+        expect(evidence.fileText).toContain(`can(auth.user, '${policy.capabilities.at(-1)}')`);
       }
     }
   });

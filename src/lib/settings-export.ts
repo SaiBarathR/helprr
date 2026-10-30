@@ -74,6 +74,7 @@ export const UI_PREF_CATEGORY_FIELDS: Record<UiPrefCategoryId, readonly string[]
   navigation: ['navPosition', 'navOrder', 'disabledNavItems', 'defaultPage', 'sidebarCollapsed'],
   mediaViews: [
     'mediaView',
+    'twitchFeedView',
     'moviesView', 'moviesPosterSize', 'moviesSort', 'moviesSearch',
     'moviesSortDirection', 'moviesFilter', 'moviesInstanceFilter', 'moviesWatchFilter', 'moviesVisibleFields',
     'seriesView', 'seriesPosterSize', 'seriesSort', 'seriesSearch',
@@ -110,7 +111,7 @@ export const UI_PREF_CATEGORY_IDS: readonly UiPrefCategoryId[] = Object.keys(
 ) as UiPrefCategoryId[];
 
 export const SERVICE_TYPES_EXPORTABLE: readonly ServiceType[] = [
-  'RADARR', 'SONARR', 'LIDARR', 'QBITTORRENT', 'PROWLARR', 'JELLYFIN', 'TMDB', 'ANILIST', 'SEERR',
+  'RADARR', 'SONARR', 'LIDARR', 'QBITTORRENT', 'PROWLARR', 'JELLYFIN', 'TMDB', 'ANILIST', 'SEERR', 'TWITCH',
 ] as const;
 
 export const SERVICE_TYPE_LABELS: Record<ServiceType, string> = {
@@ -123,6 +124,7 @@ export const SERVICE_TYPE_LABELS: Record<ServiceType, string> = {
   TMDB: 'TMDB',
   ANILIST: 'AniList',
   SEERR: 'Seerr',
+  TWITCH: 'Twitch',
 };
 
 export interface ExportedServiceConnection {
@@ -335,6 +337,20 @@ export interface ExportedUserAccount {
   dashboardLayouts?: ExportedDashboardLayout[] | null;
 }
 
+export interface ExportedTwitch {
+  settings?: Record<string, unknown>;
+  /** Encrypted, and only with includeSecrets. */
+  browserAuthToken?: string | null;
+  subscriptions?: Array<{
+    twitchUserId: string;
+    login: string;
+    displayName: string;
+    notifyNewVods: boolean;
+    policy?: unknown;
+    typePolicies?: unknown;
+  }>;
+}
+
 export interface ExportedUsers {
   accounts: ExportedUserAccount[];
 }
@@ -350,6 +366,7 @@ export interface SettingsExportPayload {
   serviceConnections?: ExportedServiceConnection[];
   notificationPrefs?: ExportedNotificationDevice[];
   cleanup?: ExportedCleanup;
+  twitch?: ExportedTwitch;
   discoverLayout?: Record<string, unknown>;
   dashboardLayouts?: ExportedDashboardLayouts;
   watchlist?: ExportedWatchlist;
@@ -418,6 +435,9 @@ export function validateImportFile(
   }
   if (obj.notificationPrefs !== undefined && !Array.isArray(obj.notificationPrefs)) {
     return { ok: false, error: 'Invalid notificationPrefs section.' };
+  }
+  if (obj.twitch !== undefined && (typeof obj.twitch !== 'object' || obj.twitch === null)) {
+    return { ok: false, error: 'Invalid Twitch section.' };
   }
   if (obj.cleanup !== undefined && (typeof obj.cleanup !== 'object' || obj.cleanup === null)) {
     return { ok: false, error: 'Invalid cleanup section.' };

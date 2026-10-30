@@ -21,6 +21,7 @@ const mocks = vi.hoisted(() => ({
   probe: vi.fn(),
 }));
 
+vi.mock('@/lib/polling/poll-twitch', () => ({ pollTwitch: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('@/lib/db', () => ({
   prisma: {
     serviceConnection: { findMany: mocks.findConnections, findFirst: mocks.findConnection },

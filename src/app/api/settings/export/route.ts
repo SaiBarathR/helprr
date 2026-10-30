@@ -10,6 +10,7 @@ import {
   type ExportedAnimeMapping,
   type ExportedAppSettings,
   type ExportedCleanup,
+  type ExportedTwitch,
   type ExportedDashboardLayout,
   type ExportedDashboardLayouts,
   type ExportedNotificationDevice,
@@ -36,6 +37,7 @@ interface ExportRequestBody {
   services?: string[] | false;
   notificationPrefs?: boolean;
   cleanup?: boolean;
+  twitch?: boolean;
   dashboardLayouts?: boolean;
   watchlist?: boolean;
   scheduledAlerts?: boolean;
@@ -134,6 +136,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   const wantDiscoverLayout = body.discoverLayout === true;
   const wantNotificationPrefs = body.notificationPrefs === true;
   const wantCleanup = body.cleanup === true;
+  const wantTwitch = body.twitch === true;
   const wantDashboardLayouts = body.dashboardLayouts === true;
   const wantWatchlist = body.watchlist === true;
   const wantScheduledAlerts = body.scheduledAlerts === true;
@@ -155,6 +158,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     wantDiscoverLayout ||
     wantNotificationPrefs ||
     wantCleanup ||
+    wantTwitch ||
     wantDashboardLayouts ||
     wantAnimeMappings ||
     wantUsers ||
@@ -292,6 +296,47 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
         seedingRules: seedingRules.filter((r) => !r.isSystem),
       };
       payload.cleanup = cleanup;
+    }
+
+    if (wantTwitch) {
+      const [settings, subscriptions] = await Promise.all([
+        prisma.twitchSettings.findUnique({ where: { id: 'singleton' } }),
+        prisma.twitchSubscription.findMany({
+          where: { userId: exporter.id },
+          select: { notifyNewVods: true, streamer: { include: { policy: true } } },
+        }),
+      ]);
+      const twitch: ExportedTwitch = {
+        settings: settings
+          ? {
+              autoDownloadEnabled: settings.autoDownloadEnabled,
+              defaultPolicy: settings.defaultPolicy,
+              typePolicies: settings.typePolicies,
+              jellyfinLibraryPath: settings.jellyfinLibraryPath,
+              maxConcurrentDownloads: settings.maxConcurrentDownloads,
+              minFreeGb: settings.minFreeGb,
+              reencodeEnabled: settings.reencodeEnabled,
+              reencodeGlobalQuality: settings.reencodeGlobalQuality,
+              reencodeWindowStart: settings.reencodeWindowStart,
+              reencodeWindowEnd: settings.reencodeWindowEnd,
+              keepOriginalDays: settings.keepOriginalDays,
+              pollLiveSecs: settings.pollLiveSecs,
+              pollVideosSecs: settings.pollVideosSecs,
+              reencodePreset: settings.reencodePreset,
+              pinnedTools: settings.pinnedTools,
+            }
+          : {},
+        browserAuthToken: includeSecrets ? settings?.browserAuthToken ?? null : null,
+        subscriptions: subscriptions.map(({ notifyNewVods, streamer }) => ({
+          twitchUserId: streamer.twitchUserId,
+          login: streamer.login,
+          displayName: streamer.displayName,
+          notifyNewVods,
+          policy: streamer.policy?.policy,
+          typePolicies: streamer.policy?.typePolicies,
+        })),
+      };
+      payload.twitch = twitch;
     }
 
     if (wantDashboardLayouts) {

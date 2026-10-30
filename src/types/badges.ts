@@ -2,7 +2,7 @@
 // and server (polling, /api/badges) can import the types without pulling in
 // Redis/Prisma.
 
-export type BadgeArea = 'activity' | 'downloads' | 'requests' | 'notifications';
+export type BadgeArea = 'activity' | 'downloads' | 'requests' | 'notifications' | 'twitch';
 
 // `total` is the headline number (shown muted); `attention` is the subset that
 // needs the user — when > 0 the badge turns red. For requests/notifications the
@@ -21,4 +21,5 @@ export const EMPTY_BADGE_COUNTS: BadgeCounts = {
   downloads: { ...EMPTY_BADGE_SLICE },
   requests: { ...EMPTY_BADGE_SLICE },
   notifications: { ...EMPTY_BADGE_SLICE },
+  twitch: { ...EMPTY_BADGE_SLICE },
 };

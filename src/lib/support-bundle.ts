@@ -1,6 +1,7 @@
 import { assessReadiness, readExpectedMigrationNames, type ReadinessReport } from '@/lib/readiness';
 import { redact, searchLogs, type LogEntry } from '@/lib/logger';
 import type { SafeImageCacheDiagnostics } from '@/lib/cache/image-cache-support';
+import { decryptTwitchToken } from '@/lib/twitch/token-cipher';
 
 const MAX_SUPPORT_LOG_ENTRIES = 250;
 const REDACTED = '[REDACTED]';
@@ -46,6 +47,7 @@ interface SafeAppSettings {
 export interface SupportDatabaseSnapshot {
   services: RawServiceConnection[];
   settings: SafeAppSettings | null;
+  twitchBrowserAuthToken?: string | null;
   counts: Record<string, number>;
   appliedMigrations: string[];
 }
@@ -172,6 +174,7 @@ function addStringLeaves(target: Set<string>, value: unknown, depth = 0): void {
 function collectKnownSecrets(
   environment: Readonly<Record<string, string | undefined>>,
   services: RawServiceConnection[],
+  twitchBrowserAuthToken?: string | null,
 ): string[] {
   const secrets = new Set<string>();
   for (const name of ENV_SECRET_NAMES) {
@@ -188,7 +191,11 @@ function collectKnownSecrets(
     addSecret(secrets, service.accessToken);
     addSecret(secrets, service.refreshToken);
     addStringLeaves(secrets, service.customHeaders);
+    // Stored as enc:v1, so its plaintext is not in the fields above, and a 30-character
+    // Twitch token misses the aggressive hex and 40-character shapes.
+    if (service.type === 'TWITCH') addSecret(secrets, decryptTwitchToken(service.accessToken));
   }
+  addSecret(secrets, decryptTwitchToken(twitchBrowserAuthToken));
 
   return [...secrets].sort((a, b) => b.length - a.length);
 }
@@ -274,6 +281,14 @@ async function loadDatabaseSnapshot(): Promise<SupportDatabaseSnapshot> {
     operationAudit,
     diskSnapshots,
     migrations,
+    twitchSettings,
+    twitchStreamers,
+    twitchVideos,
+    twitchJobs,
+    twitchMediaFiles,
+    twitchSubscriptions,
+    twitchJobEvents,
+    twitchUserLinks,
   ] = await Promise.all([
     prisma.serviceConnection.findMany({
       orderBy: [{ type: 'asc' }, { label: 'asc' }],
@@ -322,11 +337,20 @@ async function loadDatabaseSnapshot(): Promise<SupportDatabaseSnapshot> {
       WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL
       ORDER BY started_at ASC
     `,
+    prisma.twitchSettings.findUnique({ where: { id: 'singleton' }, select: { browserAuthToken: true } }),
+    prisma.twitchStreamer.count(),
+    prisma.twitchVideo.count(),
+    prisma.twitchJob.count(),
+    prisma.twitchMediaFile.count(),
+    prisma.twitchSubscription.count(),
+    prisma.twitchJobEvent.count(),
+    prisma.twitchUserLink.count(),
   ]);
 
   return {
     services,
     settings,
+    twitchBrowserAuthToken: twitchSettings?.browserAuthToken,
     counts: {
       users,
       serviceConnections: services.length,
@@ -339,6 +363,13 @@ async function loadDatabaseSnapshot(): Promise<SupportDatabaseSnapshot> {
       cleanupHistory,
       operationAudit,
       diskUsageSnapshots: diskSnapshots,
+      twitchStreamers,
+      twitchVideos,
+      twitchJobs,
+      twitchMediaFiles,
+      twitchSubscriptions,
+      twitchJobEvents,
+      twitchUserLinks,
     },
     appliedMigrations: migrations.map((migration) => migration.migration_name),
   };
@@ -388,7 +419,11 @@ export async function buildSupportBundle(
   ]);
 
   const services = databaseResult.ok ? databaseResult.value.services : [];
-  const secrets = collectKnownSecrets(environment, services);
+  const secrets = collectKnownSecrets(
+    environment,
+    services,
+    databaseResult.ok ? databaseResult.value.twitchBrowserAuthToken : null,
+  );
 
   let logs: SupportBundle['logs'];
   if (!databaseResult.ok) {

@@ -6,6 +6,7 @@ import {
   type SupportDatabaseSnapshot,
 } from '@/lib/support-bundle';
 import type { LogEntry } from '@/lib/logger';
+import { encryptTwitchToken } from '@/lib/twitch/token-cipher';
 import type { SafeImageCacheDiagnostics } from '@/lib/cache/image-cache-support';
 
 const readiness = {
@@ -216,5 +217,41 @@ describe('support bundle', () => {
     expect(bundle.logs.status).toBe('included');
     expect(bundle.logs.entries).toHaveLength(250);
     expect(JSON.stringify(bundle.logs)).not.toContain('Bearer credential-');
+  });
+});
+
+describe('Twitch secrets in the support bundle', () => {
+  it('removes the decrypted app and browser tokens from logs', async () => {
+    process.env.JWT_SECRET = 'bundle-test-secret';
+    const appToken = ['app', 'token', 'test', 'value', 'xx'].join('').padEnd(30, 'a');
+    const browserToken = ['browser', 'token', 'test', 'value'].join('').padEnd(30, 'b');
+    const bundle = await buildSupportBundle({
+      environment: {},
+      readReadiness: async () => readiness,
+      loadImageCacheDiagnostics: async () => imageCacheDiagnostics,
+      loadDatabase: async () => ({
+        services: [{
+          type: 'TWITCH',
+          label: 'Twitch',
+          isDefault: false,
+          url: 'https://api.twitch.tv/helix',
+          externalUrl: 'client-id',
+          username: null,
+          apiKey: 'client-secret-value',
+          accessToken: encryptTwitchToken(appToken),
+          refreshToken: null,
+          customHeaders: null,
+        }],
+        settings: null,
+        twitchBrowserAuthToken: encryptTwitchToken(browserToken),
+        counts: {},
+        appliedMigrations: [],
+      }),
+      readLogs: async () => [{ message: `used ${appToken} and ${browserToken}` } as LogEntry],
+    });
+
+    const text = serializeSupportBundle(bundle);
+    expect(text).not.toContain(appToken);
+    expect(text).not.toContain(browserToken);
   });
 });

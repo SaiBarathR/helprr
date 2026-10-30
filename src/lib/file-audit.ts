@@ -63,10 +63,10 @@ export interface FileAuditInput {
 
 export interface OperationAuditInput {
   user: AuditActor | null;
-  service: Extract<ServiceType, 'SONARR' | 'RADARR' | 'LIDARR' | 'QBITTORRENT'>;
+  service: Extract<ServiceType, 'SONARR' | 'RADARR' | 'LIDARR' | 'QBITTORRENT' | 'TWITCH'>;
   instanceId?: string | null;
   operation: FileOperation;
-  targetType: 'series' | 'movie' | 'artist' | 'album' | 'torrent' | 'queue';
+  targetType: 'series' | 'movie' | 'artist' | 'album' | 'torrent' | 'queue' | 'twitch-video';
   /** Numeric upstream target id. Torrent hashes are recorded in details instead. */
   targetId?: number | null;
   targetTitle: string;

@@ -11,9 +11,14 @@ on:
         description: Qualified multi-arch manifest digest (sha256:...)
         required: true
         type: string
+      worker_digest:
+        description: Qualified helprr-twitch-worker manifest digest (sha256:...)
+        required: true
+        type: string
 
 env:
   IMAGE: ghcr.io/saibarathr/helprr
+  WORKER_IMAGE: ghcr.io/saibarathr/helprr-twitch-worker
 
 jobs:
   promote:
@@ -36,13 +41,18 @@ jobs:
         env:
           VERSION: ${{ inputs.version }}
           SOURCE_DIGEST: ${{ inputs.source_digest }}
+          WORKER_DIGEST: ${{ inputs.worker_digest }}
         run: |
           [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
           [[ "$SOURCE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
+          [[ "$WORKER_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
 
           exact_digest=$(docker buildx imagetools inspect "$IMAGE:$VERSION" \
             | awk '/^Digest:/ { print $2; exit }')
           test "$exact_digest" = "$SOURCE_DIGEST"
+          worker_exact=$(docker buildx imagetools inspect "$WORKER_IMAGE:$VERSION" \
+            | awk '/^Digest:/ { print $2; exit }')
+          test "$worker_exact" = "$WORKER_DIGEST"
 
       - name: Promote qualified digest
         env:
@@ -56,10 +66,23 @@ jobs:
             -t "$IMAGE:stable" \
             "$IMAGE@$SOURCE_DIGEST"
 
+      - name: Promote the Twitch worker to the same aliases
+        env:
+          VERSION: ${{ inputs.version }}
+          WORKER_DIGEST: ${{ inputs.worker_digest }}
+        run: |
+          IFS=. read -r major minor patch <<< "$VERSION"
+          docker buildx imagetools create \
+            -t "$WORKER_IMAGE:$major.$minor" \
+            -t "$WORKER_IMAGE:$major" \
+            -t "$WORKER_IMAGE:stable" \
+            "$WORKER_IMAGE@$WORKER_DIGEST"
+
       - name: Verify aliases
         env:
           VERSION: ${{ inputs.version }}
           SOURCE_DIGEST: ${{ inputs.source_digest }}
+          WORKER_DIGEST: ${{ inputs.worker_digest }}
         run: |
           IFS=. read -r major minor patch <<< "$VERSION"
           for tag in "$VERSION" "$major.$minor" "$major" stable; do
@@ -67,4 +90,8 @@ jobs:
               | awk '/^Digest:/ { print $2; exit }')
             echo "$tag -> $digest"
             test "$digest" = "$SOURCE_DIGEST"
+            worker=$(docker buildx imagetools inspect "$WORKER_IMAGE:$tag" \
+              | awk '/^Digest:/ { print $2; exit }')
+            echo "worker $tag -> $worker"
+            test "$worker" = "$WORKER_DIGEST"
           done

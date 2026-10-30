@@ -818,6 +818,7 @@ awk -F= '$1 == "HELPRR_VERSION" {print "HELPRR_VERSION=" $2}' .env
 
 Do not run full `docker compose config` in copied logs because it renders environment
 values. The stable result must contain only `helprr`, `helprr-db`, and `helprr-redis`,
+plus `helprr-twitch-worker` if and only if `.env` sets `COMPOSE_PROFILES=twitch`,
 with stable volumes/network. If any `helprr-dev-*` name appears, stop. Record the
 PostgreSQL and Redis start times so they can be compared after the app update.
 
@@ -1275,3 +1276,24 @@ a new release.
 - [ ] Isolated `edge` refreshed app-only; development liveness/readiness pass.
 - [ ] Public release page, image aliases, workflows, branch/tag alignment, and local
       release plan verified.
+
+## Twitch worker image
+
+`ghcr.io/saibarathr/helprr-twitch-worker` is built, scanned and tagged with the app
+image, from the same commit, by the same workflow. A release therefore has two
+digests to qualify, and `docker-promote.yml` takes both: `source_digest` for the app
+and `worker_digest` for the worker. Record both, and confirm each with
+`docker buildx imagetools inspect` before promoting.
+
+The worker is Debian-based, so expect occasional rebuilds for Debian and .NET
+patches when the Trivy gate blocks. Never weaken the gate.
+
+Development worker, with the dev stack only:
+
+```sh
+docker compose --env-file .env.dev -f docker-compose.dev.yml --profile twitch up -d --build
+```
+
+Going live on stable is a separate decision: back up, set `COMPOSE_PROFILES=twitch`
+and `TWITCH_LIBRARY_HOST_PATH` in `.env`, run `./update.sh`, then save the Twitch
+credentials and create the library in Settings.

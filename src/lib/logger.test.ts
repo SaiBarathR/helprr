@@ -240,3 +240,18 @@ describe('isClientAbort', () => {
     expect(isClientAbort(undefined)).toBe(false);
   });
 });
+
+describe('Twitch secret redaction', () => {
+  it('redacts client secrets and the browser token by key and in strings', () => {
+    expect(redact({ client_secret: 'a', clientSecret: 'b', browserAuthToken: 'c', 'auth-token': 'd' })).toEqual({
+      client_secret: '[REDACTED]',
+      clientSecret: '[REDACTED]',
+      browserAuthToken: '[REDACTED]',
+      'auth-token': '[REDACTED]',
+    });
+    expect(redact('client_id=x&client_secret=abc123&grant_type=client_credentials'))
+      .toBe('client_id=x&client_secret=[REDACTED]&grant_type=client_credentials');
+    expect(redact('clientSecret=abc123')).toBe('clientSecret=[REDACTED]');
+    expect(redact('Cookie: auth-token=abc123; login=x')).toBe('Cookie: auth-token=[REDACTED]; login=x');
+  });
+});

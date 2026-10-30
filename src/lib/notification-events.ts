@@ -12,11 +12,13 @@ export const EVENT_TYPES = [
   'requestCreated', 'requestApproved', 'requestAvailable',
   'requestDeclined', 'requestFailed',
   'activityDigest',
+  'twitchVodNew', 'twitchVodExpiring', 'twitchDownloadComplete',
+  'twitchDownloadFailed', 'twitchWorkerIssue',
 ] as const;
 
 export type NotificationEventType = (typeof EVENT_TYPES)[number];
 
-export type NotificationEventGroupId = 'sonarrRadarr' | 'services' | 'qbittorrent' | 'jellyfin' | 'cleanup' | 'watchlist' | 'scheduled' | 'requests' | 'digests';
+export type NotificationEventGroupId = 'sonarrRadarr' | 'services' | 'qbittorrent' | 'jellyfin' | 'cleanup' | 'watchlist' | 'scheduled' | 'requests' | 'digests' | 'twitch';
 
 export interface NotificationEventMeta {
   type: NotificationEventType;
@@ -172,6 +174,36 @@ export const EVENT_META: Record<NotificationEventType, NotificationEventMeta> = 
     description: 'A daily or weekly summary of activity (imports, failures, releases)',
     iconName: 'Newspaper', colorClass: 'bg-amber-500/10 text-amber-400',
   },
+  twitchVodNew: {
+    type: 'twitchVodNew', group: 'twitch',
+    label: 'New Twitch VOD',
+    description: 'When a subscribed streamer publishes a new video',
+    iconName: 'Play', colorClass: 'bg-violet-500/10 text-violet-400',
+  },
+  twitchVodExpiring: {
+    type: 'twitchVodExpiring', group: 'twitch',
+    label: 'Twitch VOD Expiring',
+    description: 'When a VOD you have not saved is about to expire',
+    iconName: 'Clock', colorClass: 'bg-amber-500/10 text-amber-400',
+  },
+  twitchDownloadComplete: {
+    type: 'twitchDownloadComplete', group: 'twitch',
+    label: 'Twitch Download Complete',
+    description: 'When a VOD has landed in the Jellyfin library',
+    iconName: 'Check', colorClass: 'bg-green-500/10 text-green-500',
+  },
+  twitchDownloadFailed: {
+    type: 'twitchDownloadFailed', group: 'twitch',
+    label: 'Twitch Download Failed',
+    description: 'When a VOD download fails for good',
+    iconName: 'X', colorClass: 'bg-red-500/10 text-red-500',
+  },
+  twitchWorkerIssue: {
+    type: 'twitchWorkerIssue', group: 'twitch',
+    label: 'Twitch Worker Issue',
+    description: 'When the Twitch worker is offline or its tools stop working',
+    iconName: 'AlertTriangle', colorClass: 'bg-amber-500/10 text-amber-400',
+  },
 };
 
 export const EVENT_GROUPS: { id: NotificationEventGroupId; title: string; types: NotificationEventType[] }[] = [
@@ -225,6 +257,11 @@ export const EVENT_GROUPS: { id: NotificationEventGroupId; title: string; types:
     id: 'digests',
     title: 'Digests',
     types: ['activityDigest'],
+  },
+  {
+    id: 'twitch',
+    title: 'Twitch',
+    types: ['twitchVodNew', 'twitchVodExpiring', 'twitchDownloadComplete', 'twitchDownloadFailed', 'twitchWorkerIssue'],
   },
 ];
 

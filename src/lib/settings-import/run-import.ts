@@ -12,6 +12,7 @@ import { applyAppSettingsInTxn, type AppSettingsTxnResult } from './app-settings
 import { applyServiceConnectionInTxn } from './services';
 import { applyNotificationDeviceInTxn } from './notifications';
 import { applyCleanupInTxn } from './cleanup';
+import { applyTwitchInTxn } from './twitch';
 import { applyDashboardLayoutsInTxn } from './layouts';
 import { applyPreparedScheduledAlerts, prepareScheduledAlerts } from './alerts';
 import { applyPreparedWatchlist, prepareWatchlist } from './watchlist';
@@ -38,6 +39,7 @@ function sectionCounts(body: ImportRequestBody): Record<string, number> {
     watchlistItems: length(body.watchlist?.items) + accounts.reduce((n, a) => n + length(a?.watchlist?.items), 0),
     scheduledAlerts: length(body.scheduledAlerts?.alerts) + accounts.reduce((n, a) => n + length(a?.scheduledAlerts), 0),
     animeMappings: length(body.animeMappings?.mappings),
+    twitchSubscriptions: length(body.twitch?.subscriptions),
     users: accounts.length,
   };
 }
@@ -47,6 +49,7 @@ export interface ImportApplied {
   services: ServiceType[];
   notificationRules: number;
   cleanup: boolean;
+  twitchSubscriptions: number;
   dashboardLayouts: number;
   watchlistItems: number;
   watchlistTags: number;
@@ -69,6 +72,7 @@ export async function applySettingsImport(body: ImportRequestBody, importerId: s
   let appliedAppSettings = false;
   let appliedNotificationRules = 0;
   let appliedCleanup = false;
+  let appliedTwitchSubscriptions = 0;
   let discoverLayoutApplied = false;
   let appliedDashboardLayouts = 0;
   let appliedWatchlistItems = 0;
@@ -130,6 +134,10 @@ export async function applySettingsImport(body: ImportRequestBody, importerId: s
       if (body.cleanup && typeof body.cleanup === 'object') {
         await applyCleanupInTxn(tx, body.cleanup, skipped);
         appliedCleanup = true;
+      }
+
+      if (body.twitch && typeof body.twitch === 'object') {
+        appliedTwitchSubscriptions = await applyTwitchInTxn(tx, body.twitch, importerId, skipped);
       }
 
       // Import discover layout
@@ -211,6 +219,7 @@ export async function applySettingsImport(body: ImportRequestBody, importerId: s
       services: appliedServices,
       notificationRules: appliedNotificationRules,
       cleanup: appliedCleanup,
+      twitchSubscriptions: appliedTwitchSubscriptions,
       dashboardLayouts: appliedDashboardLayouts,
       watchlistItems: appliedWatchlistItems,
       watchlistTags: appliedWatchlistTags,

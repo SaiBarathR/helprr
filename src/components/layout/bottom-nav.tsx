@@ -31,7 +31,7 @@ export function BottomNav() {
 
   const { tabs, moreItems } = useMemo(() => {
     const enabled = getEnabledNavItems(navOrder, disabledNavItems).filter(
-      (item) => navItemAllowed(item, (cap) => hasCapability(me, cap))
+      (item) => navItemAllowed(item, (cap) => hasCapability(me, cap), me)
     );
     return getBottomNavLayout(enabled);
   }, [navOrder, disabledNavItems, me]);

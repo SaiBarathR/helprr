@@ -123,12 +123,47 @@ services:
       retries: 3
       start_period: 60s
 
+  helprr-dev-twitch-worker:
+    image: ${HELPRR_DEV_TWITCH_WORKER_IMAGE:-helprr-dev-twitch-worker:local}
+    build:
+      context: .
+      dockerfile: docker/twitch-worker.Dockerfile
+      args:
+        APP_VERSION: ${HELPRR_DEV_APP_VERSION:-development}
+    container_name: helprr-dev-twitch-worker
+    profiles: ["twitch"]
+    restart: unless-stopped
+    stop_grace_period: 60s
+    user: "${TWITCH_PUID:-1000}:${TWITCH_PGID:-1000}"
+    group_add:
+      - "${TWITCH_RENDER_GID:-992}"
+    devices:
+      - /dev/dri:/dev/dri
+    depends_on:
+      helprr-dev-db:
+        condition: service_healthy
+    environment:
+      TZ: ${HELPRR_DEV_TZ:-UTC}
+      DATABASE_URL: postgresql://postgres:${HELPRR_DEV_POSTGRES_PASSWORD}@helprr-dev-db:5432/helprr_dev
+      JWT_SECRET: ${HELPRR_DEV_JWT_SECRET:?HELPRR_DEV_JWT_SECRET is required}
+      APP_PASSWORD: ${HELPRR_DEV_APP_PASSWORD:?HELPRR_DEV_APP_PASSWORD is required}
+      TWITCH_LIBRARY_DIR: /media/twitch
+      TWITCH_TOOLS_DIR: /data/tools
+    volumes:
+      # Never point this at the stable library.
+      - ${HELPRR_DEV_TWITCH_LIBRARY_HOST_PATH:-./twitch-library-dev}:/media/twitch
+      - helprr-dev-twitch-tools:/data/tools
+    networks:
+      - helprr-dev-net
+
 networks:
   helprr-dev-net:
     name: helprr-dev-net
     driver: bridge
 
 volumes:
+  helprr-dev-twitch-tools:
+    name: helprr-dev-twitch-tools
   helprr-dev-db-data:
     name: helprr-dev-db-data
   helprr-dev-image-cache:
