@@ -38,7 +38,9 @@ function rateLimited(rateLimit: HelixRateLimit): boolean {
 export async function pollTwitch(now = new Date()): Promise<void> {
   const connection = await prisma.serviceConnection.findFirst({ where: { type: 'TWITCH' }, select: { id: true } });
   if (!connection) return;
-  const streamers = await prisma.twitchStreamer.findMany({ orderBy: { id: 'asc' } });
+  // Nobody following a streamer means nothing to tell anyone, so no API budget goes on them.
+  const followed = { subscriptions: { some: {} } };
+  const streamers = await prisma.twitchStreamer.findMany({ where: followed, orderBy: { id: 'asc' } });
   if (streamers.length === 0) return;
 
   const settings = await getTwitchSettings();
@@ -57,7 +59,7 @@ export async function pollTwitch(now = new Date()): Promise<void> {
     }
 
     const due = await prisma.twitchStreamer.findMany({
-      where: { OR: [{ nextVideosCheckAt: null }, { nextVideosCheckAt: { lte: now } }] },
+      where: { ...followed, OR: [{ nextVideosCheckAt: null }, { nextVideosCheckAt: { lte: now } }] },
       orderBy: { nextVideosCheckAt: { sort: 'asc', nulls: 'first' } },
       take: MAX_VIDEO_CHECKS_PER_CYCLE,
     });

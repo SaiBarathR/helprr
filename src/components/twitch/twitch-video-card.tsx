@@ -1,8 +1,9 @@
 'use client';
 
 import Link from '@/components/ui/app-link';
-import { Check, Download, ExternalLink, Eye, EyeOff, MoreVertical, Tv, VolumeX, Zap } from 'lucide-react';
+import { Check, Download, ExternalLink, Eye, EyeOff, MoreVertical, Trash2, Tv, VolumeX, Zap } from 'lucide-react';
 import { formatDistanceToNowStrict } from 'date-fns';
+import { useMe, hasCapability } from '@/components/permission-provider';
 import { FadeInImage } from '@/components/media/fade-in-image';
 import { SelectionCheck } from '@/components/media/selection-check';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
@@ -60,6 +61,7 @@ function Thumbnail({ video }: { video: TwitchVideo }) {
 
 function CardMenu({ video, actions }: { video: TwitchVideo; actions: VideoActions }) {
   const canDownload = !video.downloaded && !video.activeJob && video.availability === 'PUBLISHED';
+  const canManage = hasCapability(useMe(), 'twitch.manage');
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
@@ -73,6 +75,9 @@ function CardMenu({ video, actions }: { video: TwitchVideo; actions: VideoAction
         {canDownload && <DropdownMenuItem onSelect={() => actions.quickDownload(video)}><Zap />Quick download</DropdownMenuItem>}
         {!video.seen && <DropdownMenuItem onSelect={() => actions.markSeen(video)}><Eye />Mark seen</DropdownMenuItem>}
         <DropdownMenuItem onSelect={() => actions.hide(video)}><EyeOff />Hide</DropdownMenuItem>
+        {canManage && video.fileId && !video.activeJob && (
+          <DropdownMenuItem variant="destructive" onSelect={() => actions.deleteFiles([video])}><Trash2 />Delete the file</DropdownMenuItem>
+        )}
         <DropdownMenuItem asChild>
           <a href={`https://www.twitch.tv/videos/${video.twitchVideoId}`} target="_blank" rel="noopener noreferrer"><ExternalLink />Open on Twitch</a>
         </DropdownMenuItem>

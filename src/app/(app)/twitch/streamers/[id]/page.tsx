@@ -46,12 +46,13 @@ export default function TwitchStreamerPage({ params }: { params: Promise<{ id: s
   const [tab, setTab] = useState<(typeof TABS)[number]['id']>('ARCHIVE');
 
   const canDownload = hasCapability(me, 'twitch.download');
+  const canManage = hasCapability(me, 'twitch.manage');
   const selection = useBulkSelection();
   const actions = useVideoActions();
   const queryClient = useQueryClient();
   const downloadSelected = useMutation({
     mutationFn: async () => {
-      const results = await Promise.allSettled([...selection.selectedKeys].map(async (videoId) => {
+      const results = await Promise.allSettled(toDownload.map(async ({ id: videoId }) => {
         const res = await fetch('/api/twitch/jobs', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -62,7 +63,7 @@ export default function TwitchStreamerPage({ params }: { params: Promise<{ id: s
       return results.filter((result) => result.status === 'rejected').length;
     },
     onSuccess: (failed) => {
-      const queued = selection.count - failed;
+      const queued = toDownload.length - failed;
       if (failed > 0) toast.error(`${queued} queued, ${failed} could not be queued`);
       else toast.success(`${queued} queued`);
       selection.exit();
@@ -92,6 +93,9 @@ export default function TwitchStreamerPage({ params }: { params: Promise<{ id: s
     getNextPageParam: (last: TwitchVideoPage) => (last.page * last.pageSize < last.total ? last.page + 1 : undefined),
   });
   const rows = useMemo(() => videos.data?.pages.flatMap((page) => page.videos) ?? [], [videos.data]);
+  const selected = rows.filter((video) => selection.selectedKeys.has(video.id));
+  const toDelete = selected.filter((video) => video.fileId);
+  const toDownload = selected.filter((video) => !video.fileId);
 
   const follow = useMutation({
     mutationFn: async () => {
@@ -199,7 +203,7 @@ export default function TwitchStreamerPage({ params }: { params: Promise<{ id: s
                 layout="grid"
                 showStreamer={false}
                 actions={actions}
-                selection={selection.selectionMode && !video.downloaded && !video.activeJob
+                selection={selection.selectionMode && !video.activeJob && (!video.downloaded || canManage)
                   ? { selected: selection.selectedKeys.has(video.id), onToggle: () => selection.toggle(video.id) }
                   : undefined}
               />
@@ -216,9 +220,23 @@ export default function TwitchStreamerPage({ params }: { params: Promise<{ id: s
       {selection.selectionMode && selection.count > 0 && (
         <FloatingActionBar>
           <span className="text-sm">{selection.count} selected</span>
-          <Button className="ml-auto" disabled={downloadSelected.isPending} onClick={() => downloadSelected.mutate()}>
-            {downloadSelected.isPending ? 'Queuing…' : 'Download selected'}
-          </Button>
+          {toDelete.length > 0 && (
+            <Button
+              variant="outline"
+              className="ml-auto"
+              onClick={() => {
+                actions.deleteFiles(toDelete);
+                selection.exit();
+              }}
+            >
+              Delete {toDelete.length}
+            </Button>
+          )}
+          {toDownload.length > 0 && (
+            <Button className={toDelete.length > 0 ? undefined : 'ml-auto'} disabled={downloadSelected.isPending} onClick={() => downloadSelected.mutate()}>
+              {downloadSelected.isPending ? 'Queuing…' : `Download ${toDownload.length}`}
+            </Button>
+          )}
         </FloatingActionBar>
       )}
     </div>

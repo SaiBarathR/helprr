@@ -939,6 +939,10 @@ an Intel GPU. It is off until you configure it, and needs a separate worker cont
    TWITCH_RENDER_GID=992
    ```
 
+   The worker writes files that its group can change, so add Jellyfin's user to the
+   group in `TWITCH_PGID` if you want to delete from Jellyfin. Files you delete there
+   drop out of Helprr within a few minutes.
+
 4. In **Settings → Twitch**, create the library. The path is the folder as Jellyfin
    sees it. All internet metadata is off for it; exclude it from Intro Skipper.
 

@@ -65,6 +65,11 @@ function gb(bytes: number): string {
   return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
 }
 
+function diskSize(bytes: number): string {
+  const tb = bytes / 1024 ** 4;
+  return tb >= 1 ? `${tb.toFixed(1)} TB` : gb(bytes);
+}
+
 function JobRow({ job, action, onAction, busy }: {
   job: Job;
   action: 'cancel' | 'retry' | null;
@@ -217,7 +222,7 @@ export default function TwitchQueuePage() {
               {worker?.online ? 'Online' : worker?.seen ? 'Offline' : 'Not started'}
             </span>
             {worker?.diskFreeBytes != null && (
-              <span className="text-xs text-muted-foreground">{gb(worker.diskFreeBytes)} free</span>
+              <span className="text-xs text-muted-foreground">{diskSize(worker.diskFreeBytes)} free on the library disk</span>
             )}
           </div>
           {worker?.tools?.ytdlp && (

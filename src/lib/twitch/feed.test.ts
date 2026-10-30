@@ -35,6 +35,10 @@ describe('buildFeedWhere', () => {
     expect(await conditions('segment=new')).toContainEqual({ OR: [{ streamerId: 's1', notifiedAt: { gt: later } }] });
   });
 
+  it('filters to what is saved', async () => {
+    expect(await conditions('downloaded=1')).toContainEqual({ mediaFiles: { some: {} } });
+  });
+
   it('applies the category and date filters, and ignores an unknown date', async () => {
     const and = await conditions('category=Elden%20Ring&since=week');
     expect(and).toContainEqual({ category: 'Elden Ring' });

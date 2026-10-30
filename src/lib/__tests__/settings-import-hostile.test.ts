@@ -26,6 +26,8 @@ vi.mock('@/lib/api-logger', () => ({
   configureApiLogging: vi.fn(),
 }));
 
+// Unmocked, a call waits for ever on a Redis the machine running the tests may not reach.
+vi.mock('@/lib/redis', () => ({ getRedisClient: vi.fn(async () => ({ del: vi.fn(), get: vi.fn(), set: vi.fn() })) }));
 vi.mock('@/lib/polling-service', () => ({ pollingService: { restart: vi.fn() } }));
 vi.mock('@/lib/cache/state', () => ({
   setCachedCacheImagesEnabled: vi.fn(),

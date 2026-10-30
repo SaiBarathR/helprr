@@ -1,4 +1,4 @@
-import { rm } from 'node:fs/promises';
+import { chmod, lstat, readdir, rm, stat } from 'node:fs/promises';
 import path from 'node:path';
 import type { PrismaClient, TwitchJob } from '@prisma/client';
 import { LIBRARY_DIR } from './env';
@@ -67,4 +67,55 @@ export async function runDeleteFiles(prisma: PrismaClient, job: TwitchJob): Prom
   });
   if (errorMessage) throw new Error(errorMessage);
   await prisma.twitchJob.update({ where: { id: job.id }, data: { needsJellyfinRefresh: true } });
+}
+
+/** Files from before group write was on. Walks once at start, and touches only what differs. */
+export async function repairLibraryModes(dir: string): Promise<number> {
+  let fixed = 0;
+  for (const entry of await readdir(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) fixed += await repairLibraryModes(full);
+    if (entry.isSymbolicLink()) continue;
+    const { mode } = await lstat(full);
+    if ((mode & 0o020) === 0) {
+      await chmod(full, (mode & 0o777) | 0o020);
+      fixed += 1;
+    }
+  }
+  return fixed;
+}
+
+const exists = (file: string) => stat(file).then(() => true, () => false);
+
+/**
+ * A video removed in Jellyfin is gone from the disk, but Helprr still lists it as saved.
+ * When every file is missing, the likelier story is an unmounted disk, so nothing is
+ * forgotten until at least one file can still be found.
+ */
+export async function forgetFilesDeletedElsewhere(prisma: PrismaClient): Promise<number> {
+  const files = await prisma.twitchMediaFile.findMany({
+    where: { jobs: { none: { state: { in: [...IN_PROGRESS] } } } },
+    include: { video: { select: { title: true, twitchVideoId: true } } },
+  });
+  const missing = [];
+  for (const file of files) {
+    if (!(await exists(insideLibrary(file.relativePath)))) missing.push(file);
+  }
+  if (missing.length === 0 || (missing.length === files.length && files.length > 1)) return 0;
+
+  for (const file of missing) {
+    const sidecars = Array.isArray(file.sidecars) ? file.sidecars.filter((entry): entry is string => typeof entry === 'string') : [];
+    const leftovers = [...sidecars, ...(file.originalRelativePath ? [file.originalRelativePath] : [])];
+    const startedAt = new Date();
+    for (const relative of leftovers) await rm(insideLibrary(relative), { force: true });
+    await prisma.twitchMediaFile.delete({ where: { id: file.id } });
+    await writeDeleteAudit(prisma, {
+      title: file.video.title,
+      fileCount: leftovers.length,
+      details: { kind: 'deleted-outside-helprr', twitchVideoId: file.video.twitchVideoId, paths: leftovers },
+      startedAt,
+      errorMessage: null,
+    });
+  }
+  return missing.length;
 }
