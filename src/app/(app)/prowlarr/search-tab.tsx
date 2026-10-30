@@ -36,7 +36,7 @@ type SortId = (typeof SORTS)[number]['id'];
 
 function compareResults(a: ProwlarrSearchResult, b: ProwlarrSearchResult, sort: SortId): number {
   if (sort === 'size') return b.size - a.size;
-  if (sort === 'age') return Date.parse(b.publishDate ?? '') - Date.parse(a.publishDate ?? '') || 0;
+  if (sort === 'age') return (Date.parse(b.publishDate ?? '') || 0) - (Date.parse(a.publishDate ?? '') || 0);
   return (b.seeders ?? 0) - (a.seeders ?? 0);
 }
 
@@ -56,24 +56,27 @@ function formatAge(publishDate: string | null): string | null {
 export function SearchTab() {
   const queryClient = useQueryClient();
   const [draft, setDraft] = useRouteViewState('searchDraft', '');
-  const [submitted, setSubmitted] = useRouteViewState('searchSubmitted', '');
   const [categories, setCategories] = useRouteViewState<number[]>('searchCategories', []);
+  const [submitted, setSubmitted] = useRouteViewState<{ query: string; categories: string } | null>('searchSubmitted', null);
+  // A search hits every indexer and private trackers count them, so only the
+  // Search button starts one: not a category chip, and not coming back to the tab.
+  const [armed, setArmed] = useState(false);
   const [sort, setSort] = useRouteViewState<SortId>('searchSort', 'seeders');
   const [confirm, setConfirm] = useState<ProwlarrSearchResult | null>(null);
   const [grabbing, setGrabbing] = useState(false);
   const [grabbed, setGrabbed] = useState<ReadonlySet<string>>(() => new Set());
 
-  const categoryParam = [...categories].sort().join(',');
-  const queryKey = ['prowlarr', 'search', submitted, categoryParam];
+  const queryKey = ['prowlarr', 'search', submitted?.query, submitted?.categories];
   const searchQuery = useQuery({
     queryKey,
     queryFn: ({ signal }) => {
-      const params = new URLSearchParams({ q: submitted });
-      if (categoryParam) params.set('categories', categoryParam);
+      const params = new URLSearchParams({ q: submitted?.query ?? '' });
+      if (submitted?.categories) params.set('categories', submitted.categories);
       return jsonFetcher<{ results: ProwlarrSearchResult[] }>(`/api/prowlarr/search?${params}`)({ signal });
     },
-    enabled: submitted.length >= 2,
-    staleTime: 5 * 60_000,
+    enabled: armed && !!submitted,
+    staleTime: Infinity,
+    gcTime: 30 * 60_000,
     retry: false,
   });
 
@@ -84,7 +87,13 @@ export function SearchTab() {
 
   function submit(event: FormEvent) {
     event.preventDefault();
-    setSubmitted(draft.trim());
+    const next = { query: draft.trim(), categories: [...categories].sort().join(',') };
+    setArmed(true);
+    if (next.query === submitted?.query && next.categories === submitted.categories) {
+      void searchQuery.refetch();
+    } else {
+      setSubmitted(next);
+    }
   }
 
   function toggleCategory(id: number) {
@@ -93,7 +102,8 @@ export function SearchTab() {
 
   function cancel() {
     void queryClient.cancelQueries({ queryKey });
-    setSubmitted('');
+    setArmed(false);
+    setSubmitted(null);
   }
 
   async function grab(release: ProwlarrSearchResult) {
@@ -162,8 +172,10 @@ export function SearchTab() {
         <div className="rounded-xl bg-card p-8 text-center text-sm text-muted-foreground">
           Search failed. Try again in a moment.
         </div>
-      ) : submitted.length >= 2 && results.length === 0 ? (
-        <div className="rounded-xl bg-card p-8 text-center text-sm text-muted-foreground">Nothing found.</div>
+      ) : searchQuery.isFetched && results.length === 0 ? (
+        <div className="rounded-xl bg-card p-8 text-center text-sm text-muted-foreground">
+          No results came back. If that looks wrong, an indexer may have failed: check the warnings above.
+        </div>
       ) : results.length > 0 ? (
         <>
           <div className="flex items-center gap-2">

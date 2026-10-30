@@ -61,7 +61,7 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
       seeders: release.seeders ?? null,
       leechers: release.leechers ?? null,
       publishDate: release.publishDate ?? null,
-      indexer: release.indexer ?? '',
+      indexer: redactProwlarrText(release.indexer ?? ''),
       protocol: release.protocol ?? '',
     }));
     return NextResponse.json({ results });
@@ -71,4 +71,5 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
   }
 }
 
-export const GET = withApiLogging(getHandler, 'api/prowlarr/search');
+// A search can be for a pasted URL with a key in it.
+export const GET = withApiLogging(getHandler, 'api/prowlarr/search', { redactQueryParams: ['q'] });

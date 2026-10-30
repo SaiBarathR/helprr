@@ -21,7 +21,10 @@ const mocks = vi.hoisted(() => {
 });
 
 vi.mock('@/lib/auth', () => ({ requireUserCapability: mocks.requireUserCapability }));
-vi.mock('@/lib/api-logger', () => ({ withApiLogging: (handler: unknown) => handler }));
+const logging = vi.hoisted(() => ({ options: [] as unknown[] }));
+vi.mock('@/lib/api-logger', () => ({
+  withApiLogging: (handler: unknown, _name: string, options?: unknown) => { logging.options.push(options); return handler; },
+}));
 vi.mock('@/lib/service-helpers', () => ({ getProwlarrClient: vi.fn(async () => mocks.prowlarr) }));
 vi.mock('@/lib/redis', () => ({ getRedisClient: vi.fn(async () => mocks.redis) }));
 
@@ -86,6 +89,18 @@ describe('GET /api/prowlarr/search', () => {
     expect(mocks.prowlarr.searchReleases).toHaveBeenCalledWith(
       { query: 'bunny', categories: [2000, 5000] }, expect.anything(),
     );
+  });
+
+  it('keeps the search text out of the request log', () => {
+    expect(logging.options).toContainEqual({ redactQueryParams: ['q'] });
+  });
+
+  it('redacts the indexer name as well as the title', async () => {
+    mocks.prowlarr.searchReleases.mockResolvedValue([{ ...release, indexer: `https://t.example/${SECRET}`, title: `https://t.example/${SECRET}` }]);
+
+    const text = await (await search('q=bunny')).text();
+
+    expect(text).not.toContain(SECRET);
   });
 
   it('keeps the 100 best-seeded results', async () => {
