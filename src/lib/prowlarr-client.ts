@@ -76,6 +76,18 @@ export interface ProwlarrBulkEdit {
   applyTags?: 'add' | 'remove' | 'replace';
 }
 
+export interface ProwlarrRelease {
+  guid: string;
+  indexerId: number;
+  indexer?: string;
+  title: string;
+  size?: number;
+  seeders?: number;
+  leechers?: number;
+  publishDate?: string;
+  protocol?: string;
+}
+
 export interface ProwlarrAppProfile {
   id: number;
   name: string;
@@ -319,6 +331,25 @@ export class ProwlarrClient {
    */
   async bulkEditIndexers(body: ProwlarrBulkEdit): Promise<void> {
     await this.put('/api/v1/indexer/bulk', body);
+  }
+
+  /** A search can take as long as the slowest indexer. */
+  async searchReleases(
+    { query, categories }: { query: string; categories: number[] },
+    signal?: AbortSignal,
+  ): Promise<ProwlarrRelease[]> {
+    const params = new URLSearchParams({ query, type: 'search' });
+    categories.forEach((category) => params.append('categories', String(category)));
+    const response = await this.client.get<ProwlarrRelease[]>(`/api/v1/search?${params}`, {
+      timeout: 120_000,
+      signal,
+    });
+    return response.data;
+  }
+
+  /** Prowlarr finds the release by indexer and guid in its own search cache. */
+  async grabRelease({ guid, indexerId }: { guid: string; indexerId: number }): Promise<void> {
+    await this.post('/api/v1/search', { guid, indexerId }, { timeout: 60_000 });
   }
 
   async getTags(): Promise<Tag[]> {

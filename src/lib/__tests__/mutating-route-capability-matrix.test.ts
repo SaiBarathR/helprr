@@ -154,6 +154,7 @@ const POLICY_GROUPS: Record<string, readonly string[]> = {
     'POST /api/prowlarr/command',
     'DELETE /api/prowlarr/indexers/[id]',
     'PUT /api/prowlarr/indexers/bulk',
+    'POST /api/prowlarr/search/grab',
     'POST /api/prowlarr/indexers/[id]/test',
     'POST /api/prowlarr/indexers/testall',
   ],
@@ -453,7 +454,7 @@ describe('mutating API route capability matrix', () => {
   const assignments = policyAssignments();
 
   it('explicitly assigns every mutating handler exactly once', () => {
-    expect(handlers.size).toBe(169);
+    expect(handlers.size).toBe(170);
     expect([...assignments.keys()].sort()).toEqual([...handlers.keys()].sort());
   });
 

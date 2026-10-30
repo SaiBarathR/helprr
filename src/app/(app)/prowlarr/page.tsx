@@ -59,6 +59,7 @@ import { useCan } from '@/components/permission-provider';
 import { useAppRouter } from '@/components/layout/navigation-provider';
 import { IndexerSheet, BlockedStatusDetails, formatDate, getActiveBlockedStatus } from './indexer-sheet';
 import { prowlarrStatsQuery, type DateRange } from './prowlarr-stats-query';
+import { SearchTab } from './search-tab';
 import { refreshProwlarrHealth, useIndexerActions, useIndexersWithPending, type IndexerActions } from './use-indexer-actions';
 
 // Recharts is heavy and only the Stats tab renders charts, so load the chart
@@ -1397,6 +1398,7 @@ export default function ProwlarrPage() {
             <TabsTrigger value="indexers" className="flex-1">Indexers</TabsTrigger>
             <TabsTrigger value="stats" className="flex-1">Stats</TabsTrigger>
             <TabsTrigger value="history" className="flex-1">History</TabsTrigger>
+            {canManage && <TabsTrigger value="search" className="flex-1">Search</TabsTrigger>}
           </TabsList>
         </div>
 
@@ -1414,6 +1416,12 @@ export default function ProwlarrPage() {
         <TabsContent value="history" className="mt-4">
           <HistoryTab />
         </TabsContent>
+
+        {canManage && (
+          <TabsContent value="search" className="mt-4">
+            <SearchTab />
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   );
