@@ -36,6 +36,32 @@ export interface ProwlarrIndexer {
   appProfileId?: number;
 }
 
+/**
+ * The part of an indexer the browser gets. Prowlarr's `fields` hold the
+ * indexer's settings and are masked only where Prowlarr marks a field as a
+ * password or API key; a definition can keep a key in a field marked normal,
+ * which Prowlarr returns in clear. So `fields`, and everything else the pages
+ * do not use, stay on the server.
+ */
+export type ProwlarrIndexerSummary = Pick<
+  ProwlarrIndexer,
+  'id' | 'name' | 'enable' | 'protocol' | 'privacy' | 'priority' | 'implementationName' | 'tags' | 'appProfileId'
+>;
+
+export function toProwlarrIndexerSummary(indexer: ProwlarrIndexer): ProwlarrIndexerSummary {
+  return {
+    id: indexer.id,
+    name: indexer.name,
+    enable: indexer.enable,
+    protocol: indexer.protocol,
+    privacy: indexer.privacy,
+    priority: indexer.priority,
+    implementationName: indexer.implementationName,
+    tags: indexer.tags,
+    appProfileId: indexer.appProfileId,
+  };
+}
+
 export interface ProwlarrAppProfile {
   id: number;
   name: string;
@@ -280,15 +306,7 @@ export class ProwlarrClient {
     return this.post<CommandResponse>('/api/v1/command', { name });
   }
 
-  async getIndexerSchemas(): Promise<ProwlarrIndexer[]> {
-    return this.get<ProwlarrIndexer[]>('/api/v1/indexer/schema');
-  }
-
   async getAppProfiles(): Promise<ProwlarrAppProfile[]> {
     return this.get<ProwlarrAppProfile[]>('/api/v1/appprofile');
-  }
-
-  async addIndexer(body: Partial<ProwlarrIndexer>): Promise<ProwlarrIndexer> {
-    return this.post<ProwlarrIndexer>('/api/v1/indexer', body);
   }
 }

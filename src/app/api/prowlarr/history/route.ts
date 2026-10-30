@@ -4,6 +4,8 @@ import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { upstreamErrorResponse } from '@/lib/api-error';
 import { parsePageParams } from '@/lib/pagination';
+import { redactUpstreamText } from '@/lib/manual-downloads/redact';
+import type { ProwlarrHistoryRecord } from '@/lib/prowlarr-client';
 
 /**
  * Handle GET requests to retrieve Prowlarr history.
@@ -21,6 +23,18 @@ function optionalWholeNumber(value: string | null, min: number): number | undefi
   return n >= min && n <= 2_147_483_647 ? n : undefined;
 }
 
+// A record's data quotes the URLs Prowlarr called: an indexer URL can carry the
+// indexer's API key or passkey, and a grab's download link carries Prowlarr's
+// own key. Credentials are removed before the record leaves the server.
+function redactHistoryRecord(record: ProwlarrHistoryRecord): ProwlarrHistoryRecord {
+  if (!record.data || typeof record.data !== 'object') return record;
+  const data: Record<string, string> = {};
+  for (const [key, value] of Object.entries(record.data)) {
+    data[key] = typeof value === 'string' ? redactUpstreamText(value) : value;
+  }
+  return { ...record, data };
+}
+
 async function getHandler(request: NextRequest) {
   const auth = await requireUserCapability('prowlarr.view');
   if (!auth.ok) return auth.response;
@@ -35,7 +49,7 @@ async function getHandler(request: NextRequest) {
 
     const client = await getProwlarrClient();
     const history = await client.getHistory({ page, pageSize, indexerId, eventType, successful });
-    return NextResponse.json(history);
+    return NextResponse.json({ ...history, records: (history.records ?? []).map(redactHistoryRecord) });
   } catch (error) {
     return upstreamErrorResponse(error, 'Failed to fetch history');
   }

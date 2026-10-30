@@ -1,13 +1,15 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { getProwlarrClient } from '@/lib/service-helpers';
 import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { upstreamErrorResponse } from '@/lib/api-error';
+import { toProwlarrIndexerSummary } from '@/lib/prowlarr-client';
 
 /**
- * Retrieve the list of indexers from the Prowlarr client and return them as JSON.
+ * Retrieve the list of indexers from the Prowlarr client and return them as JSON,
+ * trimmed to the summary the pages use (no settings fields).
  *
- * @returns The fetched indexers as a JSON response; on failure returns a JSON object with an `error` message and HTTP status 500.
+ * @returns The indexer summaries as a JSON response; on failure returns a JSON object with an `error` message and HTTP status 500.
  */
 async function getHandler(): Promise<NextResponse> {
   const auth = await requireUserCapability('prowlarr.view');
@@ -16,54 +18,10 @@ async function getHandler(): Promise<NextResponse> {
   try {
     const client = await getProwlarrClient();
     const indexers = await client.getIndexers();
-    return NextResponse.json(indexers);
+    return NextResponse.json(indexers.map(toProwlarrIndexerSummary));
   } catch (error) {
     return upstreamErrorResponse(error, 'Failed to fetch indexers');
   }
 }
 
-/**
- * Handle POST requests to either test all Prowlarr indexers or add a new indexer.
- *
- * @param request - Incoming HTTP request whose JSON body should be either `{ action: "testall" }` to run tests for all indexers, or an indexer configuration object to be added.
- * @returns A JSON HTTP response containing normalized test results or the added indexer on success; on error, a JSON object with an `error` message and HTTP status 500.
- */
-async function postHandler(request: NextRequest): Promise<NextResponse> {
-  const auth = await requireUserCapability('prowlarr.manage');
-  if (!auth.ok) return auth.response;
-
-  try {
-    let body: unknown;
-    try {
-      body = await request.json();
-    } catch {
-      return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
-    }
-    if (body === null || typeof body !== 'object' || Array.isArray(body)) {
-      return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
-    }
-    const record = body as Record<string, unknown>;
-    const client = await getProwlarrClient();
-
-    if ('action' in record) {
-      const action = record.action;
-      if (typeof action !== 'string') {
-        return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
-      }
-      if (action !== 'testall') {
-        return NextResponse.json({ error: `Unknown action: ${action}` }, { status: 400 });
-      }
-      const result = await client.testAllIndexers();
-      return NextResponse.json(result);
-    }
-
-    // Otherwise treat as add indexer
-    const indexer = await client.addIndexer(body);
-    return NextResponse.json(indexer);
-  } catch (error) {
-    return upstreamErrorResponse(error, 'Failed to perform action');
-  }
-}
-
 export const GET = withApiLogging(getHandler, 'api/prowlarr/indexers');
-export const POST = withApiLogging(postHandler, 'api/prowlarr/indexers');
