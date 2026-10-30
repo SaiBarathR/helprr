@@ -43,6 +43,9 @@ case " $* " in
     printf 'PGDMP'
     ;;
   *" pg_restore --list "*) cat >/dev/null ;;
+  *" config --services "*) printf 'helprr\\nhelprr-db\\n%s\\n' "\${FAKE_SERVICES:-}" ;;
+  *" pull helprr-twitch-worker "*) [ "\${FAKE_WORKER_FAILURE:-}" != 1 ] || exit 45 ;;
+  *" up -d --no-build --no-deps helprr-twitch-worker "*) ;;
   *" pull helprr "*)
     realpath . > "$DOCKER_LOG.cwd"
     [ "\${FAKE_PULL_FAILURE:-}" != 1 ] || exit 44
@@ -107,13 +110,40 @@ describe('update.sh', () => {
       if (line.startsWith('inspect ')) return 'inspect';
       if (line.startsWith('sleep ')) return 'sleep';
       if (line.includes('/api/ready')) return 'ready';
+      if (line.includes('config --services')) return 'services';
       return line;
     });
-    expect(steps).toEqual(['dump', 'validate', 'pull', 'up', 'ps', 'inspect', 'inspect', 'sleep', 'inspect', 'sleep', 'inspect', 'ready']);
+    expect(steps).toEqual(['dump', 'validate', 'pull', 'up', 'ps', 'inspect', 'inspect', 'sleep', 'inspect', 'sleep', 'inspect', 'ready', 'services']);
     // Plain `docker compose` in the install directory, so overrides apply as they do by hand.
     expect(result.log).toMatch(/^compose pull helprr$/m);
     expect(result.log).toMatch(/^compose up -d --no-build --no-deps helprr$/m);
     expect(readFileSync(path.join(root, 'docker.log.cwd'), 'utf8').trim()).toBe(realpathSync(root));
+  });
+
+  it('leaves the Twitch worker alone without its profile', () => {
+    const result = runUpdate(createFixture());
+
+    expect(result.status).toBe(0);
+    expect(result.log).not.toContain('helprr-twitch-worker');
+  });
+
+  it('updates the Twitch worker after the app is ready, with its profile on', () => {
+    const result = runUpdate(createFixture(), [], { FAKE_SERVICES: 'helprr-twitch-worker' });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('Twitch worker updated.');
+    const lines = result.log.split('\n');
+    const ready = lines.findIndex((line) => line.includes('/api/ready'));
+    expect(lines.indexOf('compose pull helprr-twitch-worker')).toBeGreaterThan(ready);
+    expect(lines).toContain('compose up -d --no-build --no-deps helprr-twitch-worker');
+  });
+
+  it('says the app is fine when only the worker fails to update', () => {
+    const result = runUpdate(createFixture(), [], { FAKE_SERVICES: 'helprr-twitch-worker', FAKE_WORKER_FAILURE: '1' });
+
+    expect(result.status).toBe(1);
+    expect(result.stdout).toContain('Helprr is healthy and ready');
+    expect(result.stderr).toContain('the app is updated and the old worker is still running');
   });
 
   it('pulls and restarts nothing when the backup fails', () => {

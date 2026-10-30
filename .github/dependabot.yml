@@ -21,3 +21,11 @@ updates:
     ignore:
       - dependency-name: node
         update-types: [version-update:semver-major]
+  - package-ecosystem: docker
+    directory: /docker
+    target-branch: development
+    schedule:
+      interval: weekly
+    ignore:
+      - dependency-name: node
+        update-types: [version-update:semver-major]

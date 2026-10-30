@@ -732,3 +732,43 @@ deployed, and smoke-tested through the manual promotion workflow. See
 - Prefer Sonner over deprecated toast components.
 - Strict TypeScript service-worker code requires Web Worker-specific typing;
   `src/app/sw.ts` is intentionally outside the main DOM-oriented type path.
+
+## Twitch archiver
+
+Optional, and off until a Twitch connection is saved. Admin-only by default: the
+`twitch.*` capabilities are not in `MEMBER_ALLOWED`.
+
+- **App** (the normal image): UI, API, authorization, per-user state, Helix
+  discovery in `pollTwitch`, the rules engine, enqueueing, notifications, and
+  every Jellyfin call. It never reads or writes media files or runs an external
+  program.
+- **Worker** (`helprr-twitch-worker`, Compose profile `twitch`): the only process
+  that runs yt-dlp, TwitchDownloaderCLI and ffmpeg, touches the library, or uses
+  `/dev/dri`. It holds no Helix credentials, no Jellyfin access and no push keys.
+- They talk only through PostgreSQL. There is no new HTTP surface and `src/proxy.ts`
+  is unchanged. The app owns migrations; the worker waits for them and never runs one.
+
+Invariants:
+
+- Enqueueing goes through `enqueueDownload`: at most one active download per video,
+  checked under an advisory lock, and `clientRequestId` makes a repeat harmless.
+- The worker claims with `FOR UPDATE SKIP LOCKED` and a 60 s lease renewed every 20 s.
+  A write back is conditional on still owning the lease, so a takeover wins. A
+  shutdown requeues what was running.
+- Child processes lead their own process group and are killed as a group, or
+  ffmpeg outlives yt-dlp. Arguments are arrays with no shell; tokens are mode-600
+  files, never argv; yt-dlp's JSON holds signed URLs and stays out of errors.
+- A file is published with its sidecars first and the video last, from staging on
+  the same disk. Jellyfin finds items by the tag `twitch-v<id>`, never by path, and
+  paths are never sent to the browser.
+- `autoDownloadEnabled` is off by default and is checked before the rule layers, so
+  no rule, urgency or backfill can queue anything while it is off.
+- A re-encode swaps under the same name, so Jellyfin keeps the item and its watched
+  state, only after validation and only if at least 10% smaller. The original is
+  kept for `keepOriginalDays`, and its deletion is audited.
+- Retention revalidates each candidate at run time, and never deletes a keep-forever
+  file or one with a job in progress. An unreachable Jellyfin means nothing is known
+  to be watched, so the watched rule then deletes nothing.
+- Twitch settings live in `TwitchSettings`, not `AppSettings`, because `GET /api/settings`
+  returns that row to any signed-in user. The browser token is `enc:v1` and no API
+  returns it.

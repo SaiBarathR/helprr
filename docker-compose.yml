@@ -111,11 +111,41 @@ services:
       # Entrypoint runs `prisma migrate deploy` before the server starts.
       start_period: 60s
 
+  # Optional, and off unless COMPOSE_PROFILES=twitch: the only process that runs
+  # yt-dlp, TwitchDownloaderCLI and ffmpeg, or writes the Twitch library.
+  helprr-twitch-worker:
+    image: ghcr.io/saibarathr/helprr-twitch-worker:${HELPRR_VERSION:-stable}
+    container_name: helprr-twitch-worker
+    profiles: ["twitch"]
+    restart: unless-stopped
+    stop_grace_period: 60s
+    user: "${TWITCH_PUID:-1000}:${TWITCH_PGID:-1000}"
+    group_add:
+      - "${TWITCH_RENDER_GID:-992}"
+    devices:
+      - /dev/dri:/dev/dri
+    depends_on:
+      helprr-db:
+        condition: service_healthy
+    environment:
+      - TZ=${TZ:-UTC}
+      - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD}@helprr-db:5432/helprr
+      - JWT_SECRET=${JWT_SECRET}
+      - APP_PASSWORD=${APP_PASSWORD}
+      - TWITCH_LIBRARY_DIR=/media/twitch
+      - TWITCH_TOOLS_DIR=/data/tools
+    volumes:
+      - ${TWITCH_LIBRARY_HOST_PATH:-./twitch-library}:/media/twitch
+      - helprr-twitch-tools:/data/tools
+    networks:
+      - helprr-net
+
 networks:
   helprr-net:
     driver: bridge
 
 volumes:
+  helprr-twitch-tools:
   helprr-db-data:
   helprr-image-cache:
     name: helprr-image-cache

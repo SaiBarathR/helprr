@@ -153,3 +153,28 @@ jobs:
           format: table
           exit-code: '1'
           timeout: 10m0s
+
+      - name: Build the Twitch worker image (amd64, not pushed)
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: docker/twitch-worker.Dockerfile
+          platforms: linux/amd64
+          load: true
+          tags: helprr-twitch-worker-pr-scan:local
+          cache-from: type=gha,scope=twitch-worker-linux-amd64
+
+      - name: Scan the Twitch worker image for fixable high/critical vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        env:
+          TRIVY_EXIT_ON_EOL: '1'
+        with:
+          version: v0.70.0
+          image-ref: helprr-twitch-worker-pr-scan:local
+          scanners: vuln
+          vuln-type: os,library
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          format: table
+          exit-code: '1'
+          timeout: 10m0s
