@@ -55,6 +55,21 @@ function parseBulkEdit(body: unknown): ProwlarrBulkEdit | string {
 }
 
 /**
+ * Prowlarr refuses a whole batch when one id is gone (deleted while a page was
+ * open), and its error does not say so. Asked only after a failure; if this
+ * lookup fails too, the original failure is the one to report.
+ */
+async function hasDeletedIndexer(ids: number[]): Promise<boolean> {
+  try {
+    const client = await getProwlarrClient();
+    const known = new Set((await client.getIndexers()).map((indexer) => indexer.id));
+    return ids.some((id) => !known.has(id));
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Change indexers through Prowlarr's bulk editor, which changes only the
  * properties sent. It saves what it is given without checking it, so the range,
  * the app profile and the tags are checked here. Responds with `{ ok: true }`:
@@ -87,7 +102,13 @@ async function putHandler(request: NextRequest): Promise<NextResponse> {
         return NextResponse.json({ error: 'That tag no longer exists' }, { status: 400 });
       }
     }
-    await client.bulkEditIndexers(edit);
+    try {
+      await client.bulkEditIndexers(edit);
+    } catch (error) {
+      if (!(await hasDeletedIndexer(edit.ids))) throw error;
+      console.error('[api] Indexer edit refused:', error instanceof Error ? error.message : error);
+      return NextResponse.json({ error: 'That indexer no longer exists' }, { status: 404 });
+    }
     return NextResponse.json({ ok: true });
   } catch (error) {
     const onlyEnable = Object.keys(edit).length === 2 && edit.enable !== undefined;

@@ -3,6 +3,7 @@ import os from 'os';
 import path from 'path';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  redact,
   __resetLoggerForTests,
   configureLogger,
   flushPendingWrites,
@@ -208,6 +209,14 @@ describe('batched logger persistence', () => {
     const entries = await searchLogs({ q: 'searchable pending', limit: 10 });
 
     expect(entries.map((entry) => entry.message)).toContain('searchable pending entry');
+  });
+});
+
+describe('redact', () => {
+  it.each(['passkey', 'authkey', 'torrent_pass', 'rsskey', 'apikey'])('hides a %s value in a URL', (name) => {
+    expect(redact(`failed at https://t.example/rss?id=1&${name}=abc123&x=2`)).toBe(
+      `failed at https://t.example/rss?id=1&${name}=[REDACTED]&x=2`,
+    );
   });
 });
 
