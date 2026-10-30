@@ -2,7 +2,7 @@ import axios, { AxiosInstance } from 'axios';
 import { keepAliveHttpAgent, keepAliveHttpsAgent } from '@/lib/http-agents';
 import { refuseRedirectToAnotherHost } from '@/lib/redirect-guard';
 import { urlsToOrigins } from '@/lib/url-origins';
-import type { HealthCheck } from '@/types/arr';
+import type { HealthCheck, Tag } from '@/types/arr';
 
 interface SystemStatus {
   version: string;
@@ -65,6 +65,15 @@ export function toProwlarrIndexerSummary(indexer: ProwlarrIndexer): ProwlarrInde
       .map((category) => category.name)
       .filter((name) => typeof name === 'string'),
   };
+}
+
+export interface ProwlarrBulkEdit {
+  ids: number[];
+  enable?: boolean;
+  priority?: number;
+  appProfileId?: number;
+  tags?: number[];
+  applyTags?: 'add' | 'remove' | 'replace';
 }
 
 export interface ProwlarrAppProfile {
@@ -308,8 +317,12 @@ export class ProwlarrClient {
    * settings round trip. Its response holds whole indexers, settings included,
    * so it is not returned.
    */
-  async bulkEditIndexers(body: { ids: number[]; enable?: boolean }): Promise<void> {
+  async bulkEditIndexers(body: ProwlarrBulkEdit): Promise<void> {
     await this.put('/api/v1/indexer/bulk', body);
+  }
+
+  async getTags(): Promise<Tag[]> {
+    return this.get<Tag[]>('/api/v1/tag');
   }
 
   async getHealth(): Promise<HealthCheck[]> {
