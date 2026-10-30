@@ -78,6 +78,13 @@ describe('pollTwitch', () => {
     expect(mocks.helixGet).not.toHaveBeenCalled();
   });
 
+  it('spends nothing on a streamer nobody follows', async () => {
+    dueStreamers([]);
+    await pollTwitch(now);
+    expect(mocks.streamer.findMany.mock.calls[0][0].where).toEqual({ subscriptions: { some: {} } });
+    expect(mocks.streamer.findMany.mock.calls[1][0].where.subscriptions).toEqual({ some: {} });
+  });
+
   it('throttles live checks from the stored timestamp, so a restart does not reset it', async () => {
     mocks.settings.upsert.mockResolvedValue(settings({ lastLivePollAt: new Date(now.getTime() - 30_000) }));
     dueStreamers([]);

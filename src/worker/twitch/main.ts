@@ -9,7 +9,7 @@ import { inReencodeWindow } from '@/lib/twitch/reencode-window';
 import type { DownloadOptions } from '@/lib/twitch/jobs';
 import { decryptTwitchToken } from '@/lib/twitch/token-cipher';
 import { LIBRARY_DIR, STAGING_DIR, WORKER_VERSION } from './env';
-import { runDeleteFiles } from './delete-files';
+import { forgetFilesDeletedElsewhere, repairLibraryModes, runDeleteFiles } from './delete-files';
 import { DiskGuardError, runDownload, WaitForRecordingError } from './pipeline';
 import { deleteExpiredOriginals, probeGpu, runReencode } from './reencode';
 import { DeferJobError, JobCancelledError, LeaseLostError } from './process';
@@ -22,6 +22,7 @@ const HEARTBEAT_MS = 15_000;
 const MIGRATION_POLL_MS = 5_000;
 const REQUIRED_MIGRATION = '20261030120100_twitch_tables';
 const CPU_POLL_MS = 30_000;
+const DELETED_CHECK_MS = 2 * 60_000;
 const TOOL_CHECK_MS = 24 * 3_600_000;
 const EXTRACTOR_FAILURE_LIMIT = 3;
 const DISK_RECHECK_MS = 15 * 60_000;
@@ -64,15 +65,18 @@ async function waitForMigrations(): Promise<void> {
   }
 }
 
-// Jellyfin runs natively and reads the files as "other", so the mode must allow it.
+// Group-writable, because Jellyfin deletes through a group it shares with the worker's
+// user. Others can still read, for a Jellyfin that shares no group and only plays.
 async function probeLibrary(): Promise<void> {
-  process.umask(0o022);
+  process.umask(0o002);
   await mkdir(STAGING_DIR, { recursive: true });
   const probe = path.join(STAGING_DIR, `.probe-${workerId}`);
   await writeFile(probe, '');
   const { mode } = await stat(probe);
   await rm(probe);
   log('info', 'Library is writable', { dir: LIBRARY_DIR, mode: (mode & 0o777).toString(8) });
+  const fixed = await repairLibraryModes(LIBRARY_DIR);
+  if (fixed > 0) log('info', 'Made older library files group-writable', { fixed });
 }
 
 // Tokens go in a mode-600 file per job, never argv, and it is removed with the job.
@@ -290,6 +294,11 @@ async function housekeeping(): Promise<void> {
   await cleanStaging();
 }
 
+async function checkDeletedFiles(): Promise<void> {
+  const forgotten = await forgetFilesDeletedElsewhere(prisma);
+  if (forgotten > 0) log('info', 'Forgot files deleted outside Helprr', { forgotten });
+}
+
 // Only what no live lease covers, so it cannot pull files from under another worker.
 async function cleanStaging(): Promise<void> {
   const leased = await prisma.twitchJob.findMany({
@@ -405,6 +414,7 @@ async function main(): Promise<void> {
   await heartbeat();
   void housekeeping().catch((error) => log('warn', 'Housekeeping failed', { error: String(error) }));
   setInterval(() => void housekeeping().catch((error) => log('warn', 'Housekeeping failed', { error: String(error) })), HOUSEKEEPING_MS);
+  setInterval(() => void checkDeletedFiles().catch((error) => log('warn', 'Deleted-file check failed', { error: String(error) })), DELETED_CHECK_MS);
   setInterval(() => void checkTools().catch((error) => log('warn', 'Tool check failed', { error: String(error).slice(0, 300) })), HEARTBEAT_MS);
   setInterval(() => void heartbeat().catch((error) => log('warn', 'Heartbeat failed', { error: String(error) })), HEARTBEAT_MS);
   log('info', 'Worker ready', { workerId, version: WORKER_VERSION });

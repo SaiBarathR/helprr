@@ -30,6 +30,7 @@ const CHIPS = [
   { id: 'uploads', label: 'Uploads', params: { type: 'UPLOAD' } },
   { id: 'expiring', label: 'Expiring', params: { expiring: '1' } },
   { id: 'not-downloaded', label: 'Not downloaded', params: { notDownloaded: '1' } },
+  { id: 'downloaded', label: 'Downloaded', params: { downloaded: '1' } },
 ] as const;
 const LENGTHS = [
   { id: '', label: 'Any length' },

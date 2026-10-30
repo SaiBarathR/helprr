@@ -39,9 +39,15 @@ export async function subscribeToStreamer(userId: string, login: string) {
     offlineImageUrl: user.offline_image_url || null,
     broadcasterType: user.broadcaster_type,
   };
+  const existing = await prisma.twitchStreamer.findUnique({
+    where: { twitchUserId: user.id },
+    select: { _count: { select: { subscriptions: true } } },
+  });
+  // Unwatched for a while: what was published meanwhile is history, not news.
+  const unwatched = existing?._count.subscriptions === 0;
   const streamer = await prisma.twitchStreamer.upsert({
     where: { twitchUserId: user.id },
-    update: profile,
+    update: { ...profile, ...(unwatched ? { baselinedAt: null, nextVideosCheckAt: null } : {}) },
     create: { twitchUserId: user.id, folderName: user.login, ...profile },
   });
   const subscription = await prisma.twitchSubscription.upsert({

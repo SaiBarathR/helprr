@@ -772,6 +772,12 @@ Invariants:
 - Three extractor failures in a row, across jobs, pause downloads and send a push: that
   pattern points at the tools rather than a video. The worker installs newer tools then,
   or when the owner asks, and never while a download is running.
+- Library files are group-writable (664 and 775), so a Jellyfin sharing the worker's group
+  can delete them. The worker then forgets a file that vanished, every two minutes, and
+  sweeps its sidecars with an audit row. If every file is missing it does nothing: that
+  looks like an unmounted disk.
+- `pollTwitch` spends nothing on a streamer with no subscribers. Subscribing again takes
+  a new silent baseline, so a gap cannot arrive as a flood of pushes.
 - A user's own Twitch sign-in (`TwitchUserLink`, device code flow) has one scope,
   `user:read:follows`, and importing follows only ever adds subscriptions.
 - A video's category comes from the live stream or its chapters, because Helix has none,

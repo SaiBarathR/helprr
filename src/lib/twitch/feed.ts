@@ -51,6 +51,7 @@ export async function buildFeedWhere(
   const since = SINCE_DAYS[params.get('since') ?? ''];
   if (since) and.push({ twitchCreatedAt: { gte: new Date(now.getTime() - since * DAY_MS) } });
   if (params.get('notDownloaded') === '1') and.push({ mediaFiles: { none: {} } });
+  if (params.get('downloaded') === '1') and.push({ mediaFiles: { some: {} } });
   if (params.get('expiring') === '1') {
     and.push({ estimatedExpiresAt: { gt: now, lte: new Date(now.getTime() + EXPIRING_WINDOW_MS) } });
   }
