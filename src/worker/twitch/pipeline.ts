@@ -381,4 +381,3 @@ export async function runDownload(ctx: JobContext): Promise<void> {
   await publish(ctx, staging, mkv, info, probed.duration, probed, chat);
   await rm(staging, { recursive: true, force: true });
 }
-

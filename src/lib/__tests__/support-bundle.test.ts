@@ -223,8 +223,8 @@ describe('support bundle', () => {
 describe('Twitch secrets in the support bundle', () => {
   it('removes the decrypted app and browser tokens from logs', async () => {
     process.env.JWT_SECRET = 'bundle-test-secret';
-    const appToken = 'abcdefghijklmnopqrstuvwxyz0123';
-    const browserToken = 'zyxwvutsrqponmlkjihgfedcba9876';
+    const appToken = ['app', 'token', 'test', 'value', 'xx'].join('').padEnd(30, 'a');
+    const browserToken = ['browser', 'token', 'test', 'value'].join('').padEnd(30, 'b');
     const bundle = await buildSupportBundle({
       environment: {},
       readReadiness: async () => readiness,
