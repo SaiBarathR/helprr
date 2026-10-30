@@ -212,6 +212,19 @@ function BlockedStatusTrigger({ status }: { status: ProwlarrIndexerStatus }) {
 }
 
 const HEALTH_ORDER: Record<string, number> = { error: 0, warning: 1, notice: 2 };
+const HEALTH_LABEL: Record<string, string> = { error: 'Error', warning: 'Warning', notice: 'Notice' };
+
+/**
+ * Re-reads Prowlarr's health now and again a few seconds later: Prowlarr
+ * reruns its checks about 5 s after an indexer change or test, so the first
+ * read can still hold the previous result.
+ */
+function refreshProwlarrHealth(queryClient: ReturnType<typeof useQueryClient>) {
+  void queryClient.invalidateQueries({ queryKey: ['prowlarr', 'health'] });
+  setTimeout(() => {
+    void queryClient.invalidateQueries({ queryKey: ['prowlarr', 'health'] });
+  }, 7_000);
+}
 
 /**
  * Prowlarr's own health warnings (failing indexers, apps that fail to sync, a
@@ -224,6 +237,9 @@ function ProwlarrHealthBanner() {
     queryFn: jsonFetcher<HealthCheck[]>('/api/prowlarr/health'),
     select: ensureArray,
     staleTime: 60_000,
+    // Health changes on its own (an indexer starts failing), so poll while the
+    // page is open; TanStack pauses this while the tab is hidden.
+    refetchInterval: 60_000,
   });
   const checks = (healthQuery.data ?? [])
     .filter((check) => check.type in HEALTH_ORDER && check.message)
@@ -236,7 +252,7 @@ function ProwlarrHealthBanner() {
         <div key={`${check.source}-${index}`} className="flex items-start gap-2 text-xs">
           <AlertTriangle
             className={`h-3.5 w-3.5 shrink-0 mt-0.5 ${check.type === 'error' ? 'text-rose-400' : 'text-amber-400'}`}
-            aria-label={check.type === 'error' ? 'Error' : 'Warning'}
+            aria-label={HEALTH_LABEL[check.type]}
           />
           <p className="min-w-0 [overflow-wrap:anywhere]">
             {check.message}
@@ -277,7 +293,9 @@ function IndexersTab() {
   const [testingId, setTestingId] = useState<number | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<{ id: number; name: string } | null>(null);
-  const [togglingIds, setTogglingIds] = useState<ReadonlySet<number>>(() => new Set());
+  // Enable values sent to Prowlarr and not yet confirmed. They are laid over
+  // the fetched list, so a refetch that lands mid-request cannot flip a row back.
+  const [pendingEnable, setPendingEnable] = useState<ReadonlyMap<number, boolean>>(() => new Map());
 
   const indexersQuery = useQuery({
     queryKey: ['prowlarr', 'indexers'],
@@ -292,7 +310,13 @@ function IndexersTab() {
     select: ensureArray,
   });
 
-  const indexers = indexersQuery.data ?? [];
+  const fetchedIndexers = indexersQuery.data;
+  const indexers = useMemo(
+    () => (fetchedIndexers ?? []).map((indexer) => (
+      pendingEnable.has(indexer.id) ? { ...indexer, enable: pendingEnable.get(indexer.id)! } : indexer
+    )),
+    [fetchedIndexers, pendingEnable],
+  );
   const statuses = statusQuery.data ?? [];
 
   /**
@@ -317,20 +341,12 @@ function IndexersTab() {
     }
   }
 
-  function setIndexerEnabled(id: number, enable: boolean) {
-    queryClient.setQueryData<ProwlarrIndexerSummary[]>(['prowlarr', 'indexers'], (prev) =>
-      Array.isArray(prev) ? prev.map((i) => (i.id === id ? { ...i, enable } : i)) : prev,
-    );
-  }
-
   /**
    * Turns an indexer on or off. The row changes straight away and goes back,
    * with a toast, if Prowlarr refuses or cannot be reached.
    */
   async function handleToggle(indexer: ProwlarrIndexerSummary, enable: boolean) {
-    setTogglingIds((prev) => new Set(prev).add(indexer.id));
-    await queryClient.cancelQueries({ queryKey: ['prowlarr', 'indexers'] });
-    setIndexerEnabled(indexer.id, enable);
+    setPendingEnable((prev) => new Map(prev).set(indexer.id, enable));
     try {
       const res = await fetch('/api/prowlarr/indexers/bulk', {
         method: 'PUT',
@@ -341,20 +357,22 @@ function IndexersTab() {
         const data = await res.json().catch(() => ({}));
         throw new Error(typeof data.error === 'string' ? data.error : '');
       }
+      queryClient.setQueryData<ProwlarrIndexerSummary[]>(['prowlarr', 'indexers'], (prev) =>
+        Array.isArray(prev) ? prev.map((i) => (i.id === indexer.id ? { ...i, enable } : i)) : prev,
+      );
     } catch (error) {
-      setIndexerEnabled(indexer.id, !enable);
       toast.error(`Could not ${enable ? 'enable' : 'disable'} ${indexer.name}`, {
         description: error instanceof Error && error.message ? error.message : undefined,
       });
     } finally {
-      setTogglingIds((prev) => {
-        const next = new Set(prev);
+      setPendingEnable((prev) => {
+        const next = new Map(prev);
         next.delete(indexer.id);
         return next;
       });
       void queryClient.invalidateQueries({ queryKey: ['prowlarr', 'indexers'] });
       void queryClient.invalidateQueries({ queryKey: ['prowlarr', 'status'] });
-      void queryClient.invalidateQueries({ queryKey: ['prowlarr', 'health'] });
+      refreshProwlarrHealth(queryClient);
     }
   }
 
@@ -438,7 +456,7 @@ function IndexersTab() {
                             id: 'toggle-indexer',
                             label: indexer.enable ? 'Disable indexer' : 'Enable indexer',
                             icon: <Power className="h-4 w-4" />,
-                            pending: togglingIds.has(indexer.id),
+                            pending: pendingEnable.has(indexer.id),
                             onSelect: () => void handleToggle(indexer, !indexer.enable),
                           },
                           {
@@ -458,7 +476,7 @@ function IndexersTab() {
                   <IndexerStatusDot indexer={indexer} statuses={statuses} />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium truncate">{indexer.name}</p>
-                    <div className="flex items-center gap-1.5 mt-0.5">
+                    <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 mt-0.5">
                     <Badge
                       variant="outline"
                       className={`text-[10px] px-1.5 py-0 ${indexer.protocol === 'torrent' ? 'border-green-500/50 text-green-400' : 'border-blue-500/50 text-blue-400'}`}
@@ -489,7 +507,7 @@ function IndexersTab() {
                       <Switch
                         checked={indexer.enable}
                         onCheckedChange={(enable) => void handleToggle(indexer, enable)}
-                        disabled={togglingIds.has(indexer.id)}
+                        disabled={pendingEnable.has(indexer.id)}
                         aria-label={`${indexer.name} enabled`}
                         className="mr-1"
                       />
@@ -1311,7 +1329,7 @@ export default function ProwlarrPage() {
       });
       if (res.ok) {
         toast.success(`${label} command sent`);
-        void queryClient.invalidateQueries({ queryKey: ['prowlarr', 'health'] });
+        refreshProwlarrHealth(queryClient);
       } else {
         const data = await res.json();
         toast.error(data.error || `${label} failed`);
@@ -1388,7 +1406,7 @@ export default function ProwlarrPage() {
       setTestingAll(false);
       // A test run can change blocked status and health; refresh both.
       void queryClient.invalidateQueries({ queryKey: ['prowlarr', 'status'] });
-      void queryClient.invalidateQueries({ queryKey: ['prowlarr', 'health'] });
+      refreshProwlarrHealth(queryClient);
     }
   }
 
