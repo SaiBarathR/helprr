@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest, NextResponse } from 'next/server';
 
 const mocks = vi.hoisted(() => ({
-  prowlarr: { bulkEditIndexers: vi.fn(), getHealth: vi.fn(), getAppProfiles: vi.fn(), getTags: vi.fn() },
+  prowlarr: { bulkEditIndexers: vi.fn(), getHealth: vi.fn(), getAppProfiles: vi.fn(), getTags: vi.fn(), getIndexers: vi.fn() },
   requireUserCapability: vi.fn(),
 }));
 
@@ -113,7 +113,28 @@ describe('PUT /api/prowlarr/indexers/bulk', () => {
     expect(mocks.prowlarr.bulkEditIndexers).not.toHaveBeenCalled();
   });
 
+  it('says so when an indexer no longer exists', async () => {
+    mocks.prowlarr.bulkEditIndexers.mockRejectedValue(new Error('not found'));
+    mocks.prowlarr.getIndexers.mockResolvedValue([{ id: 2 }]);
+
+    const res = await bulkPut(put({ ids: [2, 9], enable: true }));
+
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: 'That indexer no longer exists' });
+  });
+
+  it('reports the original failure when the indexer list cannot be read either', async () => {
+    mocks.prowlarr.bulkEditIndexers.mockRejectedValue(new Error('down'));
+    mocks.prowlarr.getIndexers.mockRejectedValue(new Error('down'));
+
+    const res = await bulkPut(put({ ids: [1], enable: false }));
+
+    expect(res.status).toBe(500);
+    expect(await res.json()).toEqual({ error: 'Failed to disable indexer' });
+  });
+
   it('reports a Prowlarr failure without its detail', async () => {
+    mocks.prowlarr.getIndexers.mockResolvedValue([{ id: 1 }]);
     mocks.prowlarr.bulkEditIndexers.mockRejectedValue(new Error('upstream detail http://prowlarr:9696/x?apikey=k'));
 
     const res = await bulkPut(put({ ids: [1], enable: true }));
