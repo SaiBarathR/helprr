@@ -39,11 +39,8 @@ describe('searchProwlarr', () => {
   it('matches history on the indexer name when a record has no search text', async () => {
     const { results } = await search('eztv');
 
-    expect(results[0]).toEqual(expect.objectContaining({
-      id: 'prowlarr:history:2',
-      title: 'EZTV',
-      subtitle: 'EZTV · indexerRss · Failed',
-    }));
+    expect(results.map((result) => result.id)).toEqual(['prowlarr:indexer:8', 'prowlarr:history:2']);
+    expect(results[1]).toEqual(expect.objectContaining({ title: 'EZTV', subtitle: 'EZTV · indexerRss · Failed' }));
   });
 
   it('removes credentials from the search text it returns', async () => {
@@ -54,6 +51,17 @@ describe('searchProwlarr', () => {
     const { results } = await search('see');
 
     expect(results[0].title).toBe('see https://t.example');
+  });
+
+  it('keeps the indexer when its history alone would fill the limit', async () => {
+    mocks.getHistory.mockResolvedValue({
+      records: Array.from({ length: 30 }, (_, i) => ({ id: i, indexerId: 7, eventType: 'indexerRss', date: '', data: {} })),
+    });
+
+    const { results } = await searchProwlarr({ query: 'yts', limit: 3 } as Parameters<typeof searchProwlarr>[0]);
+
+    expect(results).toHaveLength(3);
+    expect(results[0].id).toBe('prowlarr:indexer:7');
   });
 
   it('links an indexer result to its sheet', async () => {

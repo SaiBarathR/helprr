@@ -240,7 +240,7 @@ function ProwlarrHealthBanner() {
 
 function IndexersTab({ actions, onOpen }: { actions: IndexerActions; onOpen: (id: number) => void }) {
   const canManage = useCan('prowlarr.manage');
-  const { testingId, deletingId, pendingEnable, setConfirmDelete, handleTest, handleToggle } = actions;
+  const { testingId, deletingId, pendingEdits, setConfirmDelete, handleTest, handleToggle } = actions;
 
   const indexersQuery = useQuery({
     queryKey: ['prowlarr', 'indexers'],
@@ -255,7 +255,7 @@ function IndexersTab({ actions, onOpen }: { actions: IndexerActions; onOpen: (id
     select: ensureArray,
   });
 
-  const indexers = useIndexersWithPending(indexersQuery.data, pendingEnable);
+  const indexers = useIndexersWithPending(indexersQuery.data, pendingEdits);
   const statuses = statusQuery.data ?? [];
 
   if (indexersQuery.isLoading) {
@@ -309,7 +309,7 @@ function IndexersTab({ actions, onOpen }: { actions: IndexerActions; onOpen: (id
                             id: 'toggle-indexer',
                             label: indexer.enable ? 'Disable indexer' : 'Enable indexer',
                             icon: <Power className="h-4 w-4" />,
-                            pending: pendingEnable.has(indexer.id),
+                            pending: pendingEdits.has(indexer.id),
                             onSelect: () => void handleToggle(indexer, !indexer.enable),
                           },
                           {
@@ -370,7 +370,7 @@ function IndexersTab({ actions, onOpen }: { actions: IndexerActions; onOpen: (id
                       <Switch
                         checked={indexer.enable}
                         onCheckedChange={(enable) => void handleToggle(indexer, enable)}
-                        disabled={pendingEnable.has(indexer.id)}
+                        disabled={pendingEdits.has(indexer.id)}
                         aria-label={`${indexer.name} enabled`}
                         className="mr-1"
                       />
@@ -1165,7 +1165,7 @@ export default function ProwlarrPage() {
     select: ensureArray,
     enabled: sheetIndexerId !== null,
   });
-  const sheetIndexers = useIndexersWithPending(sheetIndexersQuery.data, actions.pendingEnable);
+  const sheetIndexers = useIndexersWithPending(sheetIndexersQuery.data, actions.pendingEdits);
   const sheetIndexer = sheetIndexers.find((indexer) => indexer.id === sheetIndexerId) ?? null;
 
   /**

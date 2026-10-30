@@ -4,7 +4,9 @@ import { useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { CheckCircle, XCircle } from 'lucide-react';
-import type { ProwlarrIndexerSummary } from '@/lib/prowlarr-client';
+import type { ProwlarrBulkEdit, ProwlarrIndexerSummary } from '@/lib/prowlarr-client';
+
+export type IndexerEdit = Partial<Pick<ProwlarrIndexerSummary, 'enable' | 'priority' | 'appProfileId' | 'tags'>>;
 
 /**
  * Re-reads Prowlarr's health now and again a few seconds later: Prowlarr
@@ -21,7 +23,7 @@ export function refreshProwlarrHealth(queryClient: ReturnType<typeof useQueryCli
 /**
  * Test, enable/disable and delete for one indexer, shared by the rows and the
  * sheet. Held on the page rather than in a tab, which unmounts when another
- * tab opens: `pendingEnable` holds values sent to Prowlarr and not yet
+ * tab opens: `pendingEdits` holds values sent to Prowlarr and not yet
  * confirmed, laid over the fetched list so a refetch cannot flip a row back.
  */
 export function useIndexerActions() {
@@ -29,7 +31,7 @@ export function useIndexerActions() {
   const [testingId, setTestingId] = useState<number | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<{ id: number; name: string } | null>(null);
-  const [pendingEnable, setPendingEnable] = useState<ReadonlyMap<number, boolean>>(() => new Map());
+  const [pendingEdits, setPendingEdits] = useState<ReadonlyMap<number, IndexerEdit>>(() => new Map());
 
   /**
    * Initiates a test for the indexer with the given id, displays a success or error toast, and manages the testing state while the request is in progress.
@@ -54,30 +56,40 @@ export function useIndexerActions() {
   }
 
   /**
-   * Turns an indexer on or off. The row changes straight away and goes back,
-   * with a toast, if Prowlarr refuses or cannot be reached.
+   * Saves one edit. The row changes straight away and goes back, with a toast,
+   * if Prowlarr refuses or cannot be reached.
+   *
+   * @param indexer - The indexer being edited
+   * @param change - What the indexer looks like after the edit
+   * @param body - What to send, when it differs from `change` (tags add or remove one)
+   * @param failure - The toast title on failure
    */
-  async function handleToggle(indexer: ProwlarrIndexerSummary, enable: boolean) {
-    setPendingEnable((prev) => new Map(prev).set(indexer.id, enable));
+  async function handleEdit(
+    indexer: ProwlarrIndexerSummary,
+    change: IndexerEdit,
+    failure: string,
+    body: Omit<ProwlarrBulkEdit, 'ids'> = change,
+  ) {
+    setPendingEdits((prev) => new Map(prev).set(indexer.id, change));
     try {
       const res = await fetch('/api/prowlarr/indexers/bulk', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids: [indexer.id], enable }),
+        body: JSON.stringify({ ids: [indexer.id], ...body }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(typeof data.error === 'string' ? data.error : '');
       }
       queryClient.setQueryData<ProwlarrIndexerSummary[]>(['prowlarr', 'indexers'], (prev) =>
-        Array.isArray(prev) ? prev.map((i) => (i.id === indexer.id ? { ...i, enable } : i)) : prev,
+        Array.isArray(prev) ? prev.map((i) => (i.id === indexer.id ? { ...i, ...change } : i)) : prev,
       );
     } catch (error) {
-      toast.error(`Could not ${enable ? 'enable' : 'disable'} ${indexer.name}`, {
+      toast.error(failure, {
         description: error instanceof Error && error.message ? error.message : undefined,
       });
     } finally {
-      setPendingEnable((prev) => {
+      setPendingEdits((prev) => {
         const next = new Map(prev);
         next.delete(indexer.id);
         return next;
@@ -86,6 +98,10 @@ export function useIndexerActions() {
       void queryClient.invalidateQueries({ queryKey: ['prowlarr', 'status'] });
       refreshProwlarrHealth(queryClient);
     }
+  }
+
+  function handleToggle(indexer: ProwlarrIndexerSummary, enable: boolean) {
+    return handleEdit(indexer, { enable }, `Could not ${enable ? 'enable' : 'disable'} ${indexer.name}`);
   }
 
   /**
@@ -124,8 +140,9 @@ export function useIndexerActions() {
     deletingId,
     confirmDelete,
     setConfirmDelete,
-    pendingEnable,
+    pendingEdits,
     handleTest,
+    handleEdit,
     handleToggle,
     handleDelete,
   };
@@ -133,15 +150,13 @@ export function useIndexerActions() {
 
 export type IndexerActions = ReturnType<typeof useIndexerActions>;
 
-/** The fetched list with unconfirmed enable values laid over it. */
+/** The fetched list with unconfirmed edits laid over it. */
 export function useIndexersWithPending(
   fetched: ProwlarrIndexerSummary[] | undefined,
-  pendingEnable: IndexerActions['pendingEnable'],
+  pendingEdits: IndexerActions['pendingEdits'],
 ) {
   return useMemo(
-    () => (fetched ?? []).map((indexer) => (
-      pendingEnable.has(indexer.id) ? { ...indexer, enable: pendingEnable.get(indexer.id)! } : indexer
-    )),
-    [fetched, pendingEnable],
+    () => (fetched ?? []).map((indexer) => ({ ...indexer, ...pendingEdits.get(indexer.id) })),
+    [fetched, pendingEdits],
   );
 }
