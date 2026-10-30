@@ -102,12 +102,15 @@ async function putHandler(request: NextRequest): Promise<NextResponse> {
         return NextResponse.json({ error: 'That tag no longer exists' }, { status: 400 });
       }
     }
-    await client.bulkEditIndexers(edit);
-    return NextResponse.json({ ok: true });
-  } catch (error) {
-    if (await hasDeletedIndexer(edit.ids)) {
+    try {
+      await client.bulkEditIndexers(edit);
+    } catch (error) {
+      if (!(await hasDeletedIndexer(edit.ids))) throw error;
+      console.error('[api] Indexer edit refused:', error instanceof Error ? error.message : error);
       return NextResponse.json({ error: 'That indexer no longer exists' }, { status: 404 });
     }
+    return NextResponse.json({ ok: true });
+  } catch (error) {
     const onlyEnable = Object.keys(edit).length === 2 && edit.enable !== undefined;
     return upstreamErrorResponse(
       error,

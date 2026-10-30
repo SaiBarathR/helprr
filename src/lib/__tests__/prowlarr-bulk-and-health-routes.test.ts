@@ -123,6 +123,16 @@ describe('PUT /api/prowlarr/indexers/bulk', () => {
     expect(await res.json()).toEqual({ error: 'That indexer no longer exists' });
   });
 
+  it('does not call an unrelated failure a deleted indexer', async () => {
+    mocks.prowlarr.getAppProfiles.mockRejectedValue(new Error('down'));
+    mocks.prowlarr.getIndexers.mockResolvedValue([]);
+
+    const res = await bulkPut(put({ ids: [2], appProfileId: 1 }));
+
+    expect(res.status).toBe(500);
+    expect(await res.json()).toEqual({ error: 'Failed to update indexer' });
+  });
+
   it('reports the original failure when the indexer list cannot be read either', async () => {
     mocks.prowlarr.bulkEditIndexers.mockRejectedValue(new Error('down'));
     mocks.prowlarr.getIndexers.mockRejectedValue(new Error('down'));
