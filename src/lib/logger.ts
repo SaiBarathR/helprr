@@ -78,7 +78,7 @@ const EXACT_SENSITIVE_KEYS = new Set([
   'client_secret', 'clientsecret', 'auth-token', 'auth_token', 'authtoken', 'browserauthtoken',
 ]);
 const SUBSTRING_SENSITIVE_PATTERN = /api[-_ ]?key|access[-_ ]?token|refresh[-_ ]?token/i;
-const SENSITIVE_VALUE_PATTERN = /(Bearer\s+)[^\s,;]+|(api[_-]?key=)[^&\s]+|(apikey=)[^&\s]+|(password=)[^&\s]+|(token=)[^&\s]+|(sid=)[^;&\s]+|(code=)[^&\s]+|(state=)[^&\s]+|(client_secret=)[^&\s]+|(clientSecret=)[^&\s]+|(auth-token=)[^;&\s]+/gi;
+const SENSITIVE_VALUE_PATTERN = /(Bearer\s+)[^\s,;]+|(api[_-]?key=)[^&\s]+|(apikey=)[^&\s]+|(password=)[^&\s]+|(token=)[^&\s]+|(sid=)[^;&\s]+|(code=)[^&\s]+|(state=)[^&\s]+|((?:passkey|authkey|torrent_pass|rsskey)=)[^&\s]+|(client_secret=)[^&\s]+|(clientSecret=)[^&\s]+|(auth-token=)[^;&\s]+/gi;
 
 const originalConsole = {
   debug: console.debug.bind(console),
@@ -193,8 +193,8 @@ export function configureLogger(next: Partial<LoggerConfig>): void {
 }
 
 function redactString(value: string): string {
-  return value.replace(SENSITIVE_VALUE_PATTERN, (_match, bearer, apiKey, apikey, password, token, sid, code, state, clientSecretSnake, clientSecretCamel, authToken) => {
-    const prefix = bearer || apiKey || apikey || password || token || sid || code || state
+  return value.replace(SENSITIVE_VALUE_PATTERN, (_match, bearer, apiKey, apikey, password, token, sid, code, state, trackerKey, clientSecretSnake, clientSecretCamel, authToken) => {
+    const prefix = bearer || apiKey || apikey || password || token || sid || code || state || trackerKey
       || clientSecretSnake || clientSecretCamel || authToken || '';
     return `${prefix}[REDACTED]`;
   });

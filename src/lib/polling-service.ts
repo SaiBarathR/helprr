@@ -27,6 +27,7 @@ import { pollLidarr as pollLidarrPoller } from '@/lib/polling/poll-lidarr';
 import { pollQBittorrent as pollQBittorrentPoller } from '@/lib/polling/poll-qbittorrent';
 import { pollJellyfin as pollJellyfinPoller } from '@/lib/polling/poll-jellyfin';
 import { pollSeerr as pollSeerrPoller } from '@/lib/polling/poll-seerr';
+import { pollProwlarr as pollProwlarrPoller } from '@/lib/polling/poll-prowlarr';
 import { pollServiceReachability as pollServiceReachabilityPoller } from '@/lib/polling/service-reachability';
 import { pollTwitch } from '@/lib/polling/poll-twitch';
 import { checkDiskSpace as checkDiskSpacePoller } from '@/lib/polling/disk-space-alerts';
@@ -95,6 +96,7 @@ const POLL_SOURCE_TIMEOUT_MS: Record<string, number> = {
   pollQBittorrent: 45_000,
   pollJellyfin: 15_000,
   pollSeerr: 45_000,
+  pollProwlarr: 45_000,
   pollManualDownloads: 60_000,
   pollTwitch: 25_000,
   pollServiceReachability: 15_000,
@@ -281,6 +283,7 @@ export class PollingService {
         sourceTask('pollQBittorrent', () => this.pollQBittorrent(context)),
         sourceTask('pollJellyfin', () => this.pollJellyfin()),
         sourceTask('pollSeerr', () => this.pollSeerr()),
+        sourceTask('pollProwlarr', () => this.pollProwlarr()),
         sourceTask('pollManualDownloads', () => this.pollManualDownloads()),
         sourceTask('pollTwitch', () => pollTwitch()),
         sourceTask('pollServiceReachability', () => this.pollServiceReachability()),
@@ -834,6 +837,10 @@ export class PollingService {
 
   private pollSeerr() {
     return pollSeerrPoller();
+  }
+
+  private pollProwlarr() {
+    return pollProwlarrPoller();
   }
 
   private checkUpcoming(context: CycleContext) {

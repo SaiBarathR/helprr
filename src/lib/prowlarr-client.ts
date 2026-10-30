@@ -2,6 +2,7 @@ import axios, { AxiosInstance } from 'axios';
 import { keepAliveHttpAgent, keepAliveHttpsAgent } from '@/lib/http-agents';
 import { refuseRedirectToAnotherHost } from '@/lib/redirect-guard';
 import { urlsToOrigins } from '@/lib/url-origins';
+import type { HealthCheck, Tag } from '@/types/arr';
 
 interface SystemStatus {
   version: string;
@@ -33,7 +34,7 @@ export interface ProwlarrIndexer {
   supportsSearch: boolean;
   language?: string;
   description?: string;
-  categories?: { id: number; name: string; subCategories?: { id: number; name: string }[] }[];
+  capabilities?: { categories?: { id: number; name: string }[] };
   appProfileId?: number;
 }
 
@@ -47,7 +48,7 @@ export interface ProwlarrIndexer {
 export type ProwlarrIndexerSummary = Pick<
   ProwlarrIndexer,
   'id' | 'name' | 'enable' | 'protocol' | 'privacy' | 'priority' | 'implementationName' | 'tags' | 'appProfileId'
->;
+> & { categories: string[] };
 
 export function toProwlarrIndexerSummary(indexer: ProwlarrIndexer): ProwlarrIndexerSummary {
   return {
@@ -60,7 +61,42 @@ export function toProwlarrIndexerSummary(indexer: ProwlarrIndexer): ProwlarrInde
     implementationName: indexer.implementationName,
     tags: indexer.tags,
     appProfileId: indexer.appProfileId,
+    categories: (indexer.capabilities?.categories ?? [])
+      .map((category) => category.name)
+      .filter((name) => typeof name === 'string'),
   };
+}
+
+export interface ProwlarrBulkEdit {
+  ids: number[];
+  enable?: boolean;
+  priority?: number;
+  appProfileId?: number;
+  tags?: number[];
+  applyTags?: 'add' | 'remove' | 'replace';
+}
+
+export interface ProwlarrRelease {
+  guid: string;
+  indexerId: number;
+  indexer?: string;
+  title: string;
+  size?: number;
+  seeders?: number;
+  leechers?: number;
+  publishDate?: string;
+  protocol?: string;
+}
+
+/** Server-side only: `fields` holds the arr's API key. */
+export interface ProwlarrApplication {
+  id: number;
+  name: string;
+  implementation: string;
+  implementationName: string;
+  syncLevel: string;
+  enable: boolean;
+  fields?: { name: string; value?: unknown }[];
 }
 
 export interface ProwlarrAppProfile {
@@ -211,6 +247,23 @@ interface CommandResponse {
   queued: string;
 }
 
+// Prowlarr reports validation failures in the response body; surface those as
+// the error message instead of axios's generic status text.
+function throwUpstreamMessage(error: unknown): never {
+  if (axios.isAxiosError(error) && error.response?.data) {
+    const data = error.response.data;
+    // Prowlarr's messages can quote an indexer URL with its key in it, and
+    // the message is logged, so URLs are cut to their origin.
+    if (Array.isArray(data) && data[0]?.errorMessage) {
+      throw new Error(urlsToOrigins(data.map((e: { errorMessage: string }) => e.errorMessage).join(', ')));
+    }
+    if (typeof data === 'object' && data !== null && 'message' in data) {
+      throw new Error(urlsToOrigins(String(data.message)));
+    }
+  }
+  throw error;
+}
+
 export class ProwlarrClient {
   private client: AxiosInstance;
 
@@ -239,18 +292,16 @@ export class ProwlarrClient {
       const response = await this.client.post<T>(endpoint, body, config);
       return response.data;
     } catch (error) {
-      if (axios.isAxiosError(error) && error.response?.data) {
-        const data = error.response.data;
-        // Prowlarr's messages can quote an indexer URL with its key in it, and
-        // the message is logged, so URLs are cut to their origin.
-        if (Array.isArray(data) && data[0]?.errorMessage) {
-          throw new Error(urlsToOrigins(data.map((e: { errorMessage: string }) => e.errorMessage).join(', ')));
-        }
-        if (typeof data === 'object' && data !== null && 'message' in data) {
-          throw new Error(urlsToOrigins(String(data.message)));
-        }
-      }
-      throw error;
+      throwUpstreamMessage(error);
+    }
+  }
+
+  private async put<T>(endpoint: string, body?: unknown): Promise<T> {
+    try {
+      const response = await this.client.put<T>(endpoint, body);
+      return response.data;
+    } catch (error) {
+      throwUpstreamMessage(error);
     }
   }
 
@@ -272,9 +323,17 @@ export class ProwlarrClient {
   }
 
   async testAllIndexers(): Promise<ProwlarrTestAllResponse> {
-    const response = await this.client.post<unknown>('/api/v1/indexer/testall', undefined, {
+    return this.testAll('/api/v1/indexer/testall');
+  }
+
+  async testAllApplications(): Promise<ProwlarrTestAllResponse> {
+    return this.testAll('/api/v1/applications/testall');
+  }
+
+  private async testAll(endpoint: string): Promise<ProwlarrTestAllResponse> {
+    const response = await this.client.post<unknown>(endpoint, undefined, {
       validateStatus: (status) => (status >= 200 && status < 300) || status === 400,
-      timeout: 120_000, // tests every indexer; slow/unreachable trackers push this well past the default
+      timeout: 120_000, // tests everything; slow/unreachable targets push this well past the default
     });
 
     if (Array.isArray(response.data) && response.data.every(isProwlarrIndexerTestResult)) {
@@ -282,6 +341,51 @@ export class ProwlarrClient {
     }
 
     throw new Error(`Unexpected test-all response (${response.status})`);
+  }
+
+  /**
+   * Prowlarr's bulk editor changes only the properties sent, with no full
+   * settings round trip. Its response holds whole indexers, settings included,
+   * so it is not returned.
+   */
+  async bulkEditIndexers(body: ProwlarrBulkEdit): Promise<void> {
+    await this.put('/api/v1/indexer/bulk', body);
+  }
+
+  /** A search can take as long as the slowest indexer. */
+  async searchReleases(
+    { query, categories }: { query: string; categories: number[] },
+    signal?: AbortSignal,
+  ): Promise<ProwlarrRelease[]> {
+    const params = new URLSearchParams({ query, type: 'search' });
+    categories.forEach((category) => params.append('categories', String(category)));
+    const response = await this.client.get<ProwlarrRelease[]>(`/api/v1/search?${params}`, {
+      timeout: 120_000,
+      signal,
+    });
+    return response.data;
+  }
+
+  /** Prowlarr finds the release by indexer and guid in its own search cache. */
+  async grabRelease({ guid, indexerId }: { guid: string; indexerId: number }): Promise<void> {
+    await this.post('/api/v1/search', { guid, indexerId }, { timeout: 60_000 });
+  }
+
+  async getApplications(): Promise<ProwlarrApplication[]> {
+    return this.get<ProwlarrApplication[]>('/api/v1/applications');
+  }
+
+  async testApplication(id: number): Promise<void> {
+    const application = await this.get<ProwlarrApplication>(`/api/v1/applications/${id}`);
+    await this.post('/api/v1/applications/test', application, { timeout: 60_000 });
+  }
+
+  async getTags(): Promise<Tag[]> {
+    return this.get<Tag[]>('/api/v1/tag');
+  }
+
+  async getHealth(): Promise<HealthCheck[]> {
+    return this.get<HealthCheck[]>('/api/v1/health');
   }
 
   async getIndexer(id: number): Promise<ProwlarrIndexer> {

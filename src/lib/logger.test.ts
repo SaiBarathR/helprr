@@ -212,6 +212,14 @@ describe('batched logger persistence', () => {
   });
 });
 
+describe('redact', () => {
+  it.each(['passkey', 'authkey', 'torrent_pass', 'rsskey', 'apikey'])('hides a %s value in a URL', (name) => {
+    expect(redact(`failed at https://t.example/rss?id=1&${name}=abc123&x=2`)).toBe(
+      `failed at https://t.example/rss?id=1&${name}=[REDACTED]&x=2`,
+    );
+  });
+});
+
 describe('isClientAbort', () => {
   function errorWithCode(message: string, code?: string): Error {
     return Object.assign(new Error(message), code ? { code } : {});

@@ -39,7 +39,7 @@ Helprr is not trying to clone every setting from Sonarr, Radarr, Lidarr, qBittor
 - Activity queue/history, wanted/missing/cutoff views, manual import, and queue actions.
 - qBittorrent details/files, add/start/stop/delete actions, speed limits, alternative limits, and time-windowed bandwidth schedules.
 - Rule-based queue, download, and seeding cleanup with dry runs, automation, strikes, and history.
-- Prowlarr indexer status, testing, syncing, statistics, and history.
+- Prowlarr indexer status and detail, on/off switches, quick edit of priority, app profile and tags, health warnings with push notifications, search across all indexers with grab, app sync status, testing, statistics, and history.
 - Jellyfin library and playback views, active sessions/devices, watch-state actions, server tasks/control, and playback analytics.
 - Insights pages for checking library growth, downloads, storage, media analysis, and viewing habits without digging through several separate apps.
 
@@ -65,7 +65,7 @@ All integrations are optional and configured in **Settings → Instances**. Feat
 | Radarr      | Movie library, monitoring, queue/activity, discovery additions, file actions          |
 | Lidarr      | Music library, artist/album actions, monitoring, files                                |
 | qBittorrent | Torrents, transfer state, file priorities, limits, cleanup, bandwidth schedules       |
-| Prowlarr    | Indexers, history, tests, sync, and reliability stats                                 |
+| Prowlarr    | Indexers, search and grab, app sync, history, tests, and reliability stats            |
 | Jellyfin    | Library/watch status, in-app playback, sessions/devices, analytics, server control    |
 | TMDb        | Movie/TV discovery, metadata, collections, people, and artwork                        |
 | AniList     | Anime/manga discovery, schedules, library tracking, and mappings                      |
