@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
 const mocks = vi.hoisted(() => ({
-  prowlarr: { getIndexers: vi.fn(), getHistory: vi.fn() },
+  prowlarr: { getIndexers: vi.fn(), getHistory: vi.fn(), testAllIndexers: vi.fn() },
 }));
 
 vi.mock('@/lib/auth', () => ({
@@ -17,6 +17,7 @@ vi.mock('@/lib/service-helpers', () => ({
 
 import * as indexersRoute from '@/app/api/prowlarr/indexers/route';
 import { GET as historyGet } from '@/app/api/prowlarr/history/route';
+import { POST as testAllPost } from '@/app/api/prowlarr/indexers/testall/route';
 
 const SECRET = 'S3cretIndexerKey0123456789abcdef';
 
@@ -74,7 +75,7 @@ describe('GET /api/prowlarr/history', () => {
     mocks.prowlarr.getHistory.mockResolvedValue({
       page: 1,
       pageSize: 50,
-      totalRecords: 3,
+      totalRecords: 4,
       records: [
         {
           id: 1,
@@ -99,6 +100,18 @@ describe('GET /api/prowlarr/history', () => {
           },
         },
         { id: 3, indexerId: 4, eventType: 'indexerQuery', successful: false, date: '2026-10-30T00:00:00Z' },
+        {
+          id: 4,
+          indexerId: 5,
+          eventType: 'indexerQuery',
+          successful: true,
+          date: '2026-10-30T00:00:00Z',
+          data: {
+            url: `https://beyond-hd.example/api/torrents/${SECRET}`,
+            infoUrl: `https://tracker.example/rss.php?rsskey=${SECRET}`,
+            query: 'big buck bunny',
+          },
+        },
       ],
     });
 
@@ -108,10 +121,53 @@ describe('GET /api/prowlarr/history', () => {
 
     expect(res.status).toBe(200);
     expect(text).not.toContain(SECRET);
-    expect(body.totalRecords).toBe(3);
-    expect(body.records[0].data.url).toBe('https://nekobt.example/api?t=search&apikey=[REDACTED]&limit=100');
+    expect(body.totalRecords).toBe(4);
+    expect(body.records[0].data.url).toBe('https://nekobt.example');
+    expect(body.records[1].data.url).toBe('http://prowlarr:9696');
+    expect(body.records[1].data.magnetUrl).toBe('magnet:[REDACTED]');
+    expect(body.records[3].data).toEqual({
+      url: 'https://beyond-hd.example',
+      infoUrl: 'https://tracker.example',
+      query: 'big buck bunny',
+    });
     expect(body.records[0].data.host).toBe('sonarr');
     expect(body.records[1].data.title).toBe('Big Buck Bunny 1080p');
     expect(body.records[2]).not.toHaveProperty('data');
+  });
+});
+
+describe('POST /api/prowlarr/indexers/testall', () => {
+  it('passes on only the known result fields, with URLs in failure messages cut to their origin', async () => {
+    mocks.prowlarr.testAllIndexers.mockResolvedValue({
+      passed: 0,
+      failed: 1,
+      hasFailures: true,
+      results: [{
+        id: 5,
+        isValid: false,
+        settings: { apiKey: SECRET },
+        validationFailures: [{
+          propertyName: '',
+          errorMessage: `Unable to connect to indexer: HTTP request failed: [503:ServiceUnavailable] [GET] at [https://beyond-hd.example/api/torrents/${SECRET}]`,
+          severity: 'error',
+          attemptedValue: SECRET,
+        }],
+      }],
+    });
+
+    const res = await testAllPost();
+    const text = await res.text();
+
+    expect(res.status).toBe(200);
+    expect(text).not.toContain(SECRET);
+    expect(JSON.parse(text).results).toEqual([{
+      id: 5,
+      isValid: false,
+      validationFailures: [{
+        propertyName: '',
+        errorMessage: 'Unable to connect to indexer: HTTP request failed: [503:ServiceUnavailable] [GET] at [https://beyond-hd.example]',
+        severity: 'error',
+      }],
+    }]);
   });
 });

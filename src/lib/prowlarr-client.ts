@@ -1,6 +1,7 @@
 import axios, { AxiosInstance } from 'axios';
 import { keepAliveHttpAgent, keepAliveHttpsAgent } from '@/lib/http-agents';
 import { refuseRedirectToAnotherHost } from '@/lib/redirect-guard';
+import { urlsToOrigins } from '@/lib/url-origins';
 
 interface SystemStatus {
   version: string;
@@ -240,11 +241,13 @@ export class ProwlarrClient {
     } catch (error) {
       if (axios.isAxiosError(error) && error.response?.data) {
         const data = error.response.data;
+        // Prowlarr's messages can quote an indexer URL with its key in it, and
+        // the message is logged, so URLs are cut to their origin.
         if (Array.isArray(data) && data[0]?.errorMessage) {
-          throw new Error(data.map((e: { errorMessage: string }) => e.errorMessage).join(', '));
+          throw new Error(urlsToOrigins(data.map((e: { errorMessage: string }) => e.errorMessage).join(', ')));
         }
         if (typeof data === 'object' && data !== null && 'message' in data) {
-          throw new Error(String(data.message));
+          throw new Error(urlsToOrigins(String(data.message)));
         }
       }
       throw error;
