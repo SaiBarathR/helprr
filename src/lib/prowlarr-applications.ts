@@ -49,6 +49,7 @@ export function findUnsyncedConnections(
     .filter((connection) => connection.type in IMPLEMENTATION_BY_TYPE)
     .filter((connection) => {
       const port = portOf(connection.url);
+      if (port === null) return true;
       return !applications.some((application) => {
         const baseUrl = applicationBaseUrl(application);
         return application.implementation === IMPLEMENTATION_BY_TYPE[connection.type]
