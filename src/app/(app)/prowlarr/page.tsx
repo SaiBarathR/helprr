@@ -10,6 +10,7 @@ import { jsonFetcher, ensureArray, ApiError } from '@/lib/query-fetch';
 import { Button } from '@/components/ui/button';
 import { PullToRefresh } from '@/components/ui/pull-to-refresh';
 import { Badge } from '@/components/ui/badge';
+import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Tooltip as UITooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -40,6 +41,8 @@ import {
   Info,
   Copy,
   MoreVertical,
+  Power,
+  AlertTriangle,
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -70,7 +73,9 @@ import {
   type ProwlarrHistoryResponse,
   type ProwlarrStats,
   type ProwlarrUserAgentStat,
+  type ProwlarrHostStat,
 } from '@/lib/prowlarr-client';
+import type { HealthCheck } from '@/types/arr';
 
 /**
  * Format an ISO date-time string into a locale-aware date and time representation.
@@ -206,6 +211,71 @@ function BlockedStatusTrigger({ status }: { status: ProwlarrIndexerStatus }) {
   );
 }
 
+const HEALTH_ORDER: Record<string, number> = { error: 0, warning: 1, notice: 2 };
+const HEALTH_LABEL: Record<string, string> = { error: 'Error', warning: 'Warning', notice: 'Notice' };
+
+/**
+ * Re-reads Prowlarr's health now and again a few seconds later: Prowlarr
+ * reruns its checks about 5 s after an indexer change or test, so the first
+ * read can still hold the previous result.
+ */
+function refreshProwlarrHealth(queryClient: ReturnType<typeof useQueryClient>) {
+  void queryClient.invalidateQueries({ queryKey: ['prowlarr', 'health'] });
+  setTimeout(() => {
+    void queryClient.invalidateQueries({ queryKey: ['prowlarr', 'health'] });
+  }, 7_000);
+}
+
+/**
+ * Prowlarr's own health warnings (failing indexers, apps that fail to sync, a
+ * proxy that is down), errors first. Renders nothing when all is well or the
+ * check cannot be read.
+ */
+function ProwlarrHealthBanner() {
+  const healthQuery = useQuery({
+    queryKey: ['prowlarr', 'health'],
+    queryFn: jsonFetcher<HealthCheck[]>('/api/prowlarr/health'),
+    select: ensureArray,
+    staleTime: 60_000,
+    // Health changes on its own (an indexer starts failing), so poll while the
+    // page is open; TanStack pauses this while the tab is hidden.
+    refetchInterval: 60_000,
+  });
+  const checks = (healthQuery.data ?? [])
+    .filter((check) => check.type in HEALTH_ORDER && check.message)
+    .sort((a, b) => HEALTH_ORDER[a.type] - HEALTH_ORDER[b.type]);
+  if (checks.length === 0) return null;
+
+  return (
+    <div role="status" aria-label="Prowlarr health" className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 space-y-2">
+      {checks.map((check, index) => (
+        <div key={`${check.source}-${index}`} className="flex items-start gap-2 text-xs">
+          <AlertTriangle
+            className={`h-3.5 w-3.5 shrink-0 mt-0.5 ${check.type === 'error' ? 'text-rose-400' : 'text-amber-400'}`}
+            aria-label={HEALTH_LABEL[check.type]}
+          />
+          <p className="min-w-0 [overflow-wrap:anywhere]">
+            {check.message}
+            {check.wikiUrl && (
+              <>
+                {' '}
+                <a
+                  href={check.wikiUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-primary hover:underline whitespace-nowrap"
+                >
+                  Learn more
+                </a>
+              </>
+            )}
+          </p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /**
  * Render the Indexers tab UI for viewing, testing, and deleting Prowlarr indexers.
  *
@@ -217,7 +287,15 @@ function BlockedStatusTrigger({ status }: { status: ProwlarrIndexerStatus }) {
  * @returns A JSX element representing the Indexers tab UI.
  */
 
-function IndexersTab() {
+type PendingEnable = ReadonlyMap<number, boolean>;
+
+function IndexersTab({
+  pendingEnable,
+  setPendingEnable,
+}: {
+  pendingEnable: PendingEnable;
+  setPendingEnable: React.Dispatch<React.SetStateAction<PendingEnable>>;
+}) {
   const queryClient = useQueryClient();
   const canManage = useCan('prowlarr.manage');
   const [testingId, setTestingId] = useState<number | null>(null);
@@ -237,7 +315,13 @@ function IndexersTab() {
     select: ensureArray,
   });
 
-  const indexers = indexersQuery.data ?? [];
+  const fetchedIndexers = indexersQuery.data;
+  const indexers = useMemo(
+    () => (fetchedIndexers ?? []).map((indexer) => (
+      pendingEnable.has(indexer.id) ? { ...indexer, enable: pendingEnable.get(indexer.id)! } : indexer
+    )),
+    [fetchedIndexers, pendingEnable],
+  );
   const statuses = statusQuery.data ?? [];
 
   /**
@@ -259,6 +343,41 @@ function IndexersTab() {
       toast.error('Test failed');
     } finally {
       setTestingId(null);
+    }
+  }
+
+  /**
+   * Turns an indexer on or off. The row changes straight away and goes back,
+   * with a toast, if Prowlarr refuses or cannot be reached.
+   */
+  async function handleToggle(indexer: ProwlarrIndexerSummary, enable: boolean) {
+    setPendingEnable((prev) => new Map(prev).set(indexer.id, enable));
+    try {
+      const res = await fetch('/api/prowlarr/indexers/bulk', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: [indexer.id], enable }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(typeof data.error === 'string' ? data.error : '');
+      }
+      queryClient.setQueryData<ProwlarrIndexerSummary[]>(['prowlarr', 'indexers'], (prev) =>
+        Array.isArray(prev) ? prev.map((i) => (i.id === indexer.id ? { ...i, enable } : i)) : prev,
+      );
+    } catch (error) {
+      toast.error(`Could not ${enable ? 'enable' : 'disable'} ${indexer.name}`, {
+        description: error instanceof Error && error.message ? error.message : undefined,
+      });
+    } finally {
+      setPendingEnable((prev) => {
+        const next = new Map(prev);
+        next.delete(indexer.id);
+        return next;
+      });
+      void queryClient.invalidateQueries({ queryKey: ['prowlarr', 'indexers'] });
+      void queryClient.invalidateQueries({ queryKey: ['prowlarr', 'status'] });
+      refreshProwlarrHealth(queryClient);
     }
   }
 
@@ -339,6 +458,13 @@ function IndexersTab() {
                             onSelect: () => void handleTest(indexer.id),
                           },
                           {
+                            id: 'toggle-indexer',
+                            label: indexer.enable ? 'Disable indexer' : 'Enable indexer',
+                            icon: <Power className="h-4 w-4" />,
+                            pending: pendingEnable.has(indexer.id),
+                            onSelect: () => void handleToggle(indexer, !indexer.enable),
+                          },
+                          {
                             id: 'delete-indexer',
                             label: 'Delete indexer',
                             icon: <Trash2 className="h-4 w-4" />,
@@ -355,7 +481,7 @@ function IndexersTab() {
                   <IndexerStatusDot indexer={indexer} statuses={statuses} />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium truncate">{indexer.name}</p>
-                    <div className="flex items-center gap-1.5 mt-0.5">
+                    <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 mt-0.5">
                     <Badge
                       variant="outline"
                       className={`text-[10px] px-1.5 py-0 ${indexer.protocol === 'torrent' ? 'border-green-500/50 text-green-400' : 'border-blue-500/50 text-blue-400'}`}
@@ -383,6 +509,13 @@ function IndexersTab() {
                   </div>
                   {canManage && (
                     <div className="flex items-center gap-1 shrink-0">
+                      <Switch
+                        checked={indexer.enable}
+                        onCheckedChange={(enable) => void handleToggle(indexer, enable)}
+                        disabled={pendingEnable.has(indexer.id)}
+                        aria-label={`${indexer.name} enabled`}
+                        className="mr-1"
+                      />
                       <Button
                         variant="ghost"
                         size="sm"
@@ -553,6 +686,7 @@ function StatsTab() {
 
   const indexers = stats?.indexers ?? [];
   const userAgents: ProwlarrUserAgentStat[] = stats?.userAgents ?? [];
+  const hosts: ProwlarrHostStat[] = stats?.hosts ?? [];
 
   const totalQueries = indexers.reduce((a, i) => a + i.numberOfQueries + i.numberOfRssQueries + i.numberOfAuthQueries, 0);
   const totalGrabs = indexers.reduce((a, i) => a + i.numberOfGrabs, 0);
@@ -594,6 +728,18 @@ function StatsTab() {
   const uaGrabData = userAgents
     .filter((u) => u.numberOfGrabs > 0)
     .map((u) => ({ name: u.userAgent || 'Unknown', Grabs: u.numberOfGrabs }))
+    .sort((a, b) => b.Grabs - a.Grabs)
+    .slice(0, 10);
+
+  const hostQueryData = hosts
+    .filter((h) => h.numberOfQueries > 0)
+    .map((h) => ({ name: h.host || 'Unknown', Queries: h.numberOfQueries }))
+    .sort((a, b) => b.Queries - a.Queries)
+    .slice(0, 10);
+
+  const hostGrabData = hosts
+    .filter((h) => h.numberOfGrabs > 0)
+    .map((h) => ({ name: h.host || 'Unknown', Grabs: h.numberOfGrabs }))
     .sort((a, b) => b.Grabs - a.Grabs)
     .slice(0, 10);
 
@@ -758,6 +904,40 @@ function StatsTab() {
                 <StatsBarChart
                   data={uaGrabData}
                   minHeight={160}
+                  xTickFormatter={fmtNum}
+                  bars={[{ dataKey: 'Grabs', fill: 'var(--hpr-green)', radius: [0, 4, 4, 0] }]}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Host — Queries */}
+          {hostQueryData.length > 0 && (
+            <div className="rounded-xl bg-card border border-border overflow-hidden">
+              <div className="px-4 pt-4 pb-2">
+                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest">Host — Queries</p>
+              </div>
+              <div className="px-2 pb-3">
+                <StatsBarChart
+                  data={hostQueryData}
+                  minHeight={120}
+                  xTickFormatter={fmtNum}
+                  bars={[{ dataKey: 'Queries', fill: 'var(--hpr-violet)', radius: [0, 4, 4, 0] }]}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Host — Grabs */}
+          {hostGrabData.length > 0 && (
+            <div className="rounded-xl bg-card border border-border overflow-hidden">
+              <div className="px-4 pt-4 pb-2">
+                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest">Host — Grabs</p>
+              </div>
+              <div className="px-2 pb-3">
+                <StatsBarChart
+                  data={hostGrabData}
+                  minHeight={120}
                   xTickFormatter={fmtNum}
                   bars={[{ dataKey: 'Grabs', fill: 'var(--hpr-green)', radius: [0, 4, 4, 0] }]}
                 />
@@ -1133,6 +1313,10 @@ export default function ProwlarrPage() {
   const [testingAll, setTestingAll] = useState(false);
   const [testAllResults, setTestAllResults] = useState<ProwlarrTestAllResponse | null>(null);
   const [testAllIndexerNames, setTestAllIndexerNames] = useState<Record<number, string>>({});
+  // Enable values sent to Prowlarr and not yet confirmed. They are laid over the
+  // fetched list, so a refetch that lands mid-request cannot flip a row back.
+  // Held here rather than in the tab, which unmounts when another tab opens.
+  const [pendingEnable, setPendingEnable] = useState<PendingEnable>(() => new Map());
 
   /**
    * Send a named Prowlarr command to the API and update a loading flag during the request.
@@ -1154,6 +1338,7 @@ export default function ProwlarrPage() {
       });
       if (res.ok) {
         toast.success(`${label} command sent`);
+        refreshProwlarrHealth(queryClient);
       } else {
         const data = await res.json();
         toast.error(data.error || `${label} failed`);
@@ -1228,8 +1413,9 @@ export default function ProwlarrPage() {
       toast.error('Test All failed');
     } finally {
       setTestingAll(false);
-      // A test run can change blocked status; refresh it so IndexersTab dots reflect.
+      // A test run can change blocked status and health; refresh both.
       void queryClient.invalidateQueries({ queryKey: ['prowlarr', 'status'] });
+      refreshProwlarrHealth(queryClient);
     }
   }
 
@@ -1328,9 +1514,11 @@ export default function ProwlarrPage() {
           </TabsList>
         </div>
 
+        <ProwlarrHealthBanner />
+
         <TabsContent value="indexers" className="mt-4 space-y-4">
           {manageActions}
-          <IndexersTab />
+          <IndexersTab pendingEnable={pendingEnable} setPendingEnable={setPendingEnable} />
         </TabsContent>
 
         <TabsContent value="stats" className="mt-4">

@@ -2,6 +2,7 @@ import axios, { AxiosInstance } from 'axios';
 import { keepAliveHttpAgent, keepAliveHttpsAgent } from '@/lib/http-agents';
 import { refuseRedirectToAnotherHost } from '@/lib/redirect-guard';
 import { urlsToOrigins } from '@/lib/url-origins';
+import type { HealthCheck } from '@/types/arr';
 
 interface SystemStatus {
   version: string;
@@ -211,6 +212,23 @@ interface CommandResponse {
   queued: string;
 }
 
+// Prowlarr reports validation failures in the response body; surface those as
+// the error message instead of axios's generic status text.
+function throwUpstreamMessage(error: unknown): never {
+  if (axios.isAxiosError(error) && error.response?.data) {
+    const data = error.response.data;
+    // Prowlarr's messages can quote an indexer URL with its key in it, and
+    // the message is logged, so URLs are cut to their origin.
+    if (Array.isArray(data) && data[0]?.errorMessage) {
+      throw new Error(urlsToOrigins(data.map((e: { errorMessage: string }) => e.errorMessage).join(', ')));
+    }
+    if (typeof data === 'object' && data !== null && 'message' in data) {
+      throw new Error(urlsToOrigins(String(data.message)));
+    }
+  }
+  throw error;
+}
+
 export class ProwlarrClient {
   private client: AxiosInstance;
 
@@ -239,18 +257,16 @@ export class ProwlarrClient {
       const response = await this.client.post<T>(endpoint, body, config);
       return response.data;
     } catch (error) {
-      if (axios.isAxiosError(error) && error.response?.data) {
-        const data = error.response.data;
-        // Prowlarr's messages can quote an indexer URL with its key in it, and
-        // the message is logged, so URLs are cut to their origin.
-        if (Array.isArray(data) && data[0]?.errorMessage) {
-          throw new Error(urlsToOrigins(data.map((e: { errorMessage: string }) => e.errorMessage).join(', ')));
-        }
-        if (typeof data === 'object' && data !== null && 'message' in data) {
-          throw new Error(urlsToOrigins(String(data.message)));
-        }
-      }
-      throw error;
+      throwUpstreamMessage(error);
+    }
+  }
+
+  private async put<T>(endpoint: string, body?: unknown): Promise<T> {
+    try {
+      const response = await this.client.put<T>(endpoint, body);
+      return response.data;
+    } catch (error) {
+      throwUpstreamMessage(error);
     }
   }
 
@@ -282,6 +298,19 @@ export class ProwlarrClient {
     }
 
     throw new Error(`Unexpected test-all response (${response.status})`);
+  }
+
+  /**
+   * Prowlarr's bulk editor changes only the properties sent, with no full
+   * settings round trip. Its response holds whole indexers, settings included,
+   * so it is not returned.
+   */
+  async bulkEditIndexers(body: { ids: number[]; enable?: boolean }): Promise<void> {
+    await this.put('/api/v1/indexer/bulk', body);
+  }
+
+  async getHealth(): Promise<HealthCheck[]> {
+    return this.get<HealthCheck[]>('/api/v1/health');
   }
 
   async getIndexer(id: number): Promise<ProwlarrIndexer> {
