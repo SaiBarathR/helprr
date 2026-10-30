@@ -30,7 +30,7 @@ interface ServiceCount {
   total: number;
 }
 
-const SERVICE_TYPES = ['SONARR', 'RADARR', 'LIDARR', 'QBITTORRENT', 'PROWLARR', 'JELLYFIN', 'TMDB', 'SEERR'] as const;
+const SERVICE_TYPES = ['SONARR', 'RADARR', 'LIDARR', 'QBITTORRENT', 'PROWLARR', 'JELLYFIN', 'TMDB', 'SEERR', 'TWITCH'] as const;
 
 export default function SettingsIndexPage() {
   const me = useMe();

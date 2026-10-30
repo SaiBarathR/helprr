@@ -26,7 +26,8 @@ export type WidgetService =
   | 'JELLYFIN'
   | 'TMDB'
   | 'ANILIST'
-  | 'SEERR';
+  | 'SEERR'
+  | 'TWITCH';
 
 export type WidgetLayoutVariant =
   | 'carousel'

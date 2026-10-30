@@ -110,7 +110,7 @@ export const UI_PREF_CATEGORY_IDS: readonly UiPrefCategoryId[] = Object.keys(
 ) as UiPrefCategoryId[];
 
 export const SERVICE_TYPES_EXPORTABLE: readonly ServiceType[] = [
-  'RADARR', 'SONARR', 'LIDARR', 'QBITTORRENT', 'PROWLARR', 'JELLYFIN', 'TMDB', 'ANILIST', 'SEERR',
+  'RADARR', 'SONARR', 'LIDARR', 'QBITTORRENT', 'PROWLARR', 'JELLYFIN', 'TMDB', 'ANILIST', 'SEERR', 'TWITCH',
 ] as const;
 
 export const SERVICE_TYPE_LABELS: Record<ServiceType, string> = {
@@ -123,6 +123,7 @@ export const SERVICE_TYPE_LABELS: Record<ServiceType, string> = {
   TMDB: 'TMDB',
   ANILIST: 'AniList',
   SEERR: 'Seerr',
+  TWITCH: 'Twitch',
 };
 
 export interface ExportedServiceConnection {

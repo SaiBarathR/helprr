@@ -96,7 +96,7 @@ export function getConnectionHeaders(conn: Pick<ServiceConnection, 'customHeader
 }
 
 export function isServiceType(value: string): value is ServiceType {
-  return ['SONARR', 'RADARR', 'QBITTORRENT', 'PROWLARR', 'JELLYFIN', 'TMDB', 'ANILIST', 'SEERR', 'LIDARR'].includes(
+  return ['SONARR', 'RADARR', 'QBITTORRENT', 'PROWLARR', 'JELLYFIN', 'TMDB', 'ANILIST', 'SEERR', 'LIDARR', 'TWITCH'].includes(
     value
   );
 }

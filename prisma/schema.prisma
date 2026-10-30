@@ -17,6 +17,7 @@ enum ServiceType {
   ANILIST
   SEERR
   LIDARR
+  TWITCH
 }
 
 enum UserRole {
@@ -55,6 +56,8 @@ model User {
   settings       UserSettings?
   scheduledAlerts ScheduledAlert[]
   recommendationEvents RecommendationEvent[]
+  twitchSubscriptions TwitchSubscription[]
+  twitchVideoStates TwitchUserVideoState[]
   tasteProfile   UserTasteProfile?
 
   @@index([jellyfinUserId])
@@ -817,4 +820,257 @@ model ManualDownloadEvent {
   details    Json?
 
   @@index([downloadId, at])
+}
+
+enum TwitchVideoType {
+  ARCHIVE
+  HIGHLIGHT
+  UPLOAD
+  CLIP
+}
+
+enum TwitchVideoAvailability {
+  RECORDING
+  PUBLISHED
+  UNAVAILABLE
+}
+
+enum TwitchJobKind {
+  DOWNLOAD
+  REENCODE
+  DELETE_FILES
+}
+
+enum TwitchJobState {
+  QUEUED
+  BLOCKED
+  RUNNING
+  RETRY_WAIT
+  DONE
+  FAILED
+  CANCELLED
+}
+
+enum TwitchJobSource {
+  MANUAL
+  RULE
+  URGENCY
+  URL
+}
+
+// Singleton. Kept apart from AppSettings because GET /api/settings returns that row to any signed-in user.
+model TwitchSettings {
+  id                        String    @id @default("singleton")
+  autoDownloadEnabled       Boolean   @default(false) // hard override: while false, nothing downloads by itself
+  defaultPolicy             Json      @default("{}") // global policy layer
+  typePolicies              Json      @default("{}") // per-video-type policy layers
+  jellyfinLibraryPath       String? // the library root as Jellyfin sees it, not the worker's mount
+  jellyfinLibraryItemId     String?
+  pollLiveSecs              Int       @default(60)
+  pollVideosSecs            Int       @default(300)
+  lastLivePollAt            DateTime? // DB-backed throttle, so a restart does not reset it
+  maxConcurrentDownloads    Int       @default(2)
+  minFreeGb                 Int       @default(50) // a download that would leave less than this is BLOCKED
+  reencodeEnabled           Boolean   @default(true)
+  reencodeGlobalQuality     Int       @default(20)
+  reencodePreset            String    @default("faster")
+  reencodeWindowStart       String    @default("01:00") // HH:mm in the server TZ
+  reencodeWindowEnd         String    @default("08:00") // HH:mm in the server TZ
+  keepOriginalDays          Int       @default(3)
+  browserAuthToken          String? // enc:v1 twitch.tv auth-token cookie; never returned by any API
+  browserAuthTokenCheckedAt DateTime?
+  browserAuthTokenValid     Boolean? // null until the first daily check
+  pinnedTools               Json      @default("{}") // tool name -> pinned version
+  toolUpdateRequestedAt     DateTime? // set by the app, cleared by the worker
+  createdAt                 DateTime  @default(now())
+  updatedAt                 DateTime  @updatedAt
+}
+
+model TwitchStreamer {
+  id                String                @id @default(cuid())
+  twitchUserId      String                @unique
+  login             String
+  folderName        String                @unique // library folder; set once at first add, never renamed
+  displayName       String
+  description       String?
+  profileImageUrl   String?
+  offlineImageUrl   String?
+  broadcasterType   String                @default("") // partner, affiliate or empty, as Helix reports it
+  isLive            Boolean               @default(false)
+  liveStreamId      String?
+  liveTitle         String?
+  liveCategory      String?
+  liveMissedChecks  Int                   @default(0) // offline only after it is absent twice
+  lastLiveAt        DateTime?
+  baselinedAt       DateTime? // null until the first sweep recorded existing videos without notifying
+  nextVideosCheckAt DateTime?
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+  subscriptions     TwitchSubscription[]
+  policy            TwitchStreamerPolicy?
+  videos            TwitchVideo[]
+
+  @@index([nextVideosCheckAt])
+}
+
+model TwitchSubscription {
+  id            String         @id @default(cuid())
+  userId        String
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  streamerId    String
+  streamer      TwitchStreamer @relation(fields: [streamerId], references: [id], onDelete: Cascade)
+  notifyNewVods Boolean        @default(true)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@unique([userId, streamerId])
+  @@index([streamerId])
+}
+
+model TwitchStreamerPolicy {
+  id           String         @id @default(cuid())
+  streamerId   String         @unique
+  streamer     TwitchStreamer @relation(fields: [streamerId], references: [id], onDelete: Cascade)
+  policy       Json           @default("{}") // streamer layer
+  typePolicies Json           @default("{}") // streamer x video type layers
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+}
+
+model TwitchVideo {
+  id                 String                  @id @default(cuid())
+  twitchVideoId      String                  @unique
+  streamerId         String
+  streamer           TwitchStreamer          @relation(fields: [streamerId], references: [id], onDelete: Cascade)
+  type               TwitchVideoType
+  title              String
+  description        String?
+  twitchCreatedAt    DateTime
+  publishedAt        DateTime?
+  durationSeconds    Int
+  thumbnailUrl       String?
+  viewCount          Int                     @default(0)
+  language           String?
+  streamId           String? // equals the live stream id while the archive is still recording
+  mutedSegments      Json? // Helix muted_segments: audio Twitch removed and that cannot be recovered
+  availability       TwitchVideoAvailability @default(PUBLISHED)
+  estimatedExpiresAt DateTime? // archives only; an estimate, because Prime/Turbo status is not visible
+  firstSeenAt        DateTime                @default(now())
+  lastSeenAt         DateTime                @default(now())
+  missingSweeps      Int                     @default(0)
+  notifiedAt         DateTime?
+  expiryNotifiedAt   DateTime?
+  seasonEpisode      Int? // highlights and uploads: assigned at publish, never renumbered
+  createdAt          DateTime                @default(now())
+  updatedAt          DateTime                @updatedAt
+  userStates         TwitchUserVideoState[]
+  jobs               TwitchJob[]
+  mediaFiles         TwitchMediaFile[]
+
+  @@index([streamerId, twitchCreatedAt])
+  @@index([availability, estimatedExpiresAt])
+}
+
+model TwitchUserVideoState {
+  id        String      @id @default(cuid())
+  userId    String
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  videoId   String
+  video     TwitchVideo @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  seenAt    DateTime?
+  hidden    Boolean     @default(false)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  @@unique([userId, videoId])
+  @@index([videoId])
+}
+
+// The app enqueues, the worker claims with a lease. A restart of either side loses nothing.
+model TwitchJob {
+  id                   String           @id @default(cuid())
+  kind                 TwitchJobKind
+  videoId              String?
+  video                TwitchVideo?     @relation(fields: [videoId], references: [id], onDelete: SetNull)
+  mediaFileId          String?
+  mediaFile            TwitchMediaFile? @relation(fields: [mediaFileId], references: [id], onDelete: SetNull)
+  state                TwitchJobState   @default(QUEUED)
+  source               TwitchJobSource  @default(MANUAL)
+  priority             Int              @default(0) // higher runs first
+  options              Json             @default("{}") // resolved policy, frozen at enqueue
+  trace                Json? // which policy layer set each option
+  requestedByUserId    String?
+  requestedByUsername  String?
+  clientRequestId      String?
+  attempts             Int              @default(0)
+  runAfter             DateTime         @default(now())
+  leaseOwner           String?
+  leaseUntil           DateTime?
+  cancelRequested      Boolean          @default(false)
+  stage                String?
+  progress             Float?
+  bytesDone            BigInt?
+  bytesTotal           BigInt?
+  errorClass           String?
+  lastError            String? // redacted
+  needsJellyfinRefresh Boolean          @default(false)
+  startedAt            DateTime?
+  finishedAt           DateTime?
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+  events               TwitchJobEvent[]
+
+  @@unique([requestedByUserId, clientRequestId])
+  @@index([state, kind, priority, runAfter])
+  @@index([videoId])
+  @@index([needsJellyfinRefresh])
+}
+
+model TwitchJobEvent {
+  id        String    @id @default(cuid())
+  jobId     String
+  job       TwitchJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  level     String
+  message   String // redacted before it is written
+  createdAt DateTime  @default(now())
+
+  @@index([jobId, createdAt])
+  @@index([createdAt])
+}
+
+model TwitchMediaFile {
+  id                   String      @id @default(cuid())
+  videoId              String
+  video                TwitchVideo @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  relativePath         String      @unique // under the library root; never sent to the browser
+  sidecars             Json        @default("[]")
+  sizeBytes            BigInt
+  durationSeconds      Int
+  videoCodec           String
+  height               Int?
+  reencodedAt          DateTime?
+  originalRelativePath String?
+  originalDeleteAfter  DateTime?
+  keepForever          Boolean     @default(false)
+  jellyfinItemId       String?
+  createdAt            DateTime    @default(now())
+  updatedAt            DateTime    @updatedAt
+  jobs                 TwitchJob[]
+
+  @@index([videoId])
+  @@index([originalDeleteAfter])
+}
+
+model TwitchWorkerHeartbeat {
+  id             String   @id @default(cuid())
+  workerId       String   @unique
+  version        String
+  tools          Json     @default("{}")
+  gpuAvailable   Boolean  @default(false)
+  diskFreeBytes  BigInt?
+  diskTotalBytes BigInt?
+  lanes          Json     @default("{}")
+  lastSeenAt     DateTime @default(now())
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 }

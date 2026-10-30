@@ -12,6 +12,7 @@ const allServices = [
   'TMDB',
   'ANILIST',
   'SEERR',
+  'TWITCH',
 ] as const;
 
 describe('filterVisibleServiceTypes', () => {
