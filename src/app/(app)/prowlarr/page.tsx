@@ -63,7 +63,7 @@ import {
   getProwlarrIndexerStatusId,
   isProwlarrTestAllResponse,
   isProwlarrIndexerBlocked,
-  type ProwlarrIndexer,
+  type ProwlarrIndexerSummary,
   type ProwlarrIndexerStatus,
   type ProwlarrTestAllResponse,
   type ProwlarrHistoryRecord,
@@ -132,7 +132,7 @@ function categoryColor(id: number | string): string {
  * @param statuses - Array of indexer status objects; used to determine if the indexer is currently blocked.
  * @returns A JSX element: a small colored dot indicating the indexer state — amber for "Disabled", red for "Blocked" (disabledTill still active), or green for "Enabled".
  */
-function IndexerStatusDot({ indexer, statuses }: { indexer: ProwlarrIndexer; statuses: ProwlarrIndexerStatus[] }) {
+function IndexerStatusDot({ indexer, statuses }: { indexer: ProwlarrIndexerSummary; statuses: ProwlarrIndexerStatus[] }) {
   if (!indexer.enable) {
     return <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" title="Disabled" />;
   }
@@ -226,7 +226,7 @@ function IndexersTab() {
 
   const indexersQuery = useQuery({
     queryKey: ['prowlarr', 'indexers'],
-    queryFn: jsonFetcher<ProwlarrIndexer[]>('/api/prowlarr/indexers'),
+    queryFn: jsonFetcher<ProwlarrIndexerSummary[]>('/api/prowlarr/indexers'),
     select: ensureArray,
   });
   // Status is best-effort, like the old Promise.allSettled: a failure here just
@@ -275,7 +275,7 @@ function IndexersTab() {
         toast.success('Indexer deleted');
         // Drop it from the shared cache immediately (instant, as before), then
         // refresh status so any stale block for the gone indexer clears.
-        queryClient.setQueryData<ProwlarrIndexer[]>(['prowlarr', 'indexers'], (prev) =>
+        queryClient.setQueryData<ProwlarrIndexerSummary[]>(['prowlarr', 'indexers'], (prev) =>
           Array.isArray(prev) ? prev.filter((i) => i.id !== id) : prev,
         );
         void queryClient.invalidateQueries({ queryKey: ['prowlarr', 'status'] });
@@ -924,7 +924,7 @@ function HistoryTab() {
   // id→name map; failure is non-fatal — records just fall back to record.indexer.
   const indexersQuery = useQuery({
     queryKey: ['prowlarr', 'indexers'],
-    queryFn: jsonFetcher<ProwlarrIndexer[]>('/api/prowlarr/indexers'),
+    queryFn: jsonFetcher<ProwlarrIndexerSummary[]>('/api/prowlarr/indexers'),
     select: ensureArray,
   });
   const indexerMap = useMemo(() => {
@@ -1196,16 +1196,16 @@ export default function ProwlarrPage() {
             // a fresh fetch; returns cached when fresh, fetches otherwise.
             const indexerData = await queryClient.fetchQuery({
               queryKey: ['prowlarr', 'indexers'],
-              queryFn: jsonFetcher<ProwlarrIndexer[]>('/api/prowlarr/indexers'),
+              queryFn: jsonFetcher<ProwlarrIndexerSummary[]>('/api/prowlarr/indexers'),
             });
             if (Array.isArray(indexerData)) {
               setTestAllIndexerNames(Object.fromEntries(
                 indexerData
-                  .filter((indexer): indexer is ProwlarrIndexer => (
+                  .filter((indexer): indexer is ProwlarrIndexerSummary => (
                     !!indexer
                     && typeof indexer === 'object'
-                    && typeof (indexer as ProwlarrIndexer).id === 'number'
-                    && typeof (indexer as ProwlarrIndexer).name === 'string'
+                    && typeof (indexer as ProwlarrIndexerSummary).id === 'number'
+                    && typeof (indexer as ProwlarrIndexerSummary).name === 'string'
                   ))
                   .map((indexer) => [indexer.id, indexer.name])
               ));

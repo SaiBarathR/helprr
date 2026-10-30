@@ -1,6 +1,7 @@
 import axios, { AxiosInstance } from 'axios';
 import { keepAliveHttpAgent, keepAliveHttpsAgent } from '@/lib/http-agents';
 import { refuseRedirectToAnotherHost } from '@/lib/redirect-guard';
+import { urlsToOrigins } from '@/lib/url-origins';
 
 interface SystemStatus {
   version: string;
@@ -34,6 +35,32 @@ export interface ProwlarrIndexer {
   description?: string;
   categories?: { id: number; name: string; subCategories?: { id: number; name: string }[] }[];
   appProfileId?: number;
+}
+
+/**
+ * The part of an indexer the browser gets. Prowlarr's `fields` hold the
+ * indexer's settings and are masked only where Prowlarr marks a field as a
+ * password or API key; a definition can keep a key in a field marked normal,
+ * which Prowlarr returns in clear. So `fields`, and everything else the pages
+ * do not use, stay on the server.
+ */
+export type ProwlarrIndexerSummary = Pick<
+  ProwlarrIndexer,
+  'id' | 'name' | 'enable' | 'protocol' | 'privacy' | 'priority' | 'implementationName' | 'tags' | 'appProfileId'
+>;
+
+export function toProwlarrIndexerSummary(indexer: ProwlarrIndexer): ProwlarrIndexerSummary {
+  return {
+    id: indexer.id,
+    name: indexer.name,
+    enable: indexer.enable,
+    protocol: indexer.protocol,
+    privacy: indexer.privacy,
+    priority: indexer.priority,
+    implementationName: indexer.implementationName,
+    tags: indexer.tags,
+    appProfileId: indexer.appProfileId,
+  };
 }
 
 export interface ProwlarrAppProfile {
@@ -214,11 +241,13 @@ export class ProwlarrClient {
     } catch (error) {
       if (axios.isAxiosError(error) && error.response?.data) {
         const data = error.response.data;
+        // Prowlarr's messages can quote an indexer URL with its key in it, and
+        // the message is logged, so URLs are cut to their origin.
         if (Array.isArray(data) && data[0]?.errorMessage) {
-          throw new Error(data.map((e: { errorMessage: string }) => e.errorMessage).join(', '));
+          throw new Error(urlsToOrigins(data.map((e: { errorMessage: string }) => e.errorMessage).join(', ')));
         }
         if (typeof data === 'object' && data !== null && 'message' in data) {
-          throw new Error(String(data.message));
+          throw new Error(urlsToOrigins(String(data.message)));
         }
       }
       throw error;
@@ -280,15 +309,7 @@ export class ProwlarrClient {
     return this.post<CommandResponse>('/api/v1/command', { name });
   }
 
-  async getIndexerSchemas(): Promise<ProwlarrIndexer[]> {
-    return this.get<ProwlarrIndexer[]>('/api/v1/indexer/schema');
-  }
-
   async getAppProfiles(): Promise<ProwlarrAppProfile[]> {
     return this.get<ProwlarrAppProfile[]>('/api/v1/appprofile');
-  }
-
-  async addIndexer(body: Partial<ProwlarrIndexer>): Promise<ProwlarrIndexer> {
-    return this.post<ProwlarrIndexer>('/api/v1/indexer', body);
   }
 }

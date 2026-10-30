@@ -4,6 +4,7 @@ import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { upstreamErrorResponse } from '@/lib/api-error';
 import { parsePageParams } from '@/lib/pagination';
+import { redactProwlarrHistoryRecord } from '@/lib/prowlarr-redact';
 
 /**
  * Handle GET requests to retrieve Prowlarr history.
@@ -35,7 +36,7 @@ async function getHandler(request: NextRequest) {
 
     const client = await getProwlarrClient();
     const history = await client.getHistory({ page, pageSize, indexerId, eventType, successful });
-    return NextResponse.json(history);
+    return NextResponse.json({ ...history, records: (history.records ?? []).map(redactProwlarrHistoryRecord) });
   } catch (error) {
     return upstreamErrorResponse(error, 'Failed to fetch history');
   }
