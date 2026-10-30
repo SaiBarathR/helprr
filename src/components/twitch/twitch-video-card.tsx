@@ -1,7 +1,7 @@
 'use client';
 
 import Link from '@/components/ui/app-link';
-import { Check, Tv } from 'lucide-react';
+import { Check, Tv, VolumeX } from 'lucide-react';
 import { formatDistanceToNowStrict } from 'date-fns';
 import { FadeInImage } from '@/components/media/fade-in-image';
 import { toCachedImageSrc } from '@/lib/image';
@@ -32,7 +32,12 @@ function Thumbnail({ video }: { video: TwitchVideo }) {
       <span className="absolute left-1.5 top-1.5 rounded bg-black/55 px-1.5 py-0.5 text-[10px] font-medium text-white">
         {video.availability === 'RECORDING' ? 'Recording' : VIDEO_TYPE_LABELS[video.type]}
       </span>
-      <div className="absolute right-1.5 top-1.5"><ExpiryPill iso={video.estimatedExpiresAt} /></div>
+      <div className="absolute right-1.5 top-1.5 flex items-center gap-1">
+        {(video.mutedSegments?.length ?? 0) > 0 && (
+          <span aria-label="Some audio is muted" className="flex h-5 w-5 items-center justify-center rounded bg-black/55 text-white"><VolumeX className="h-3 w-3" /></span>
+        )}
+        <ExpiryPill iso={video.estimatedExpiresAt} />
+      </div>
       <span className="absolute bottom-1.5 right-1.5 rounded bg-black/55 px-1.5 py-0.5 font-mono text-[10px] text-white">
         {formatDuration(video.durationSeconds)}
       </span>

@@ -33,6 +33,7 @@ function SheetBody({ video, onDone }: { video: TwitchVideo; onDone: () => void }
   // One id per sheet, so a double tap or a retry cannot queue the video twice.
   const clientRequestId = useMemo(() => crypto.randomUUID(), []);
 
+  const mutedSeconds = (video.mutedSegments ?? []).reduce((total, segment) => total + segment.duration, 0);
   const sizeGb = (QUALITIES.find((item) => item.id === quality)!.gbPerHour * video.durationSeconds) / 3600;
 
   const queue = useMutation({
@@ -56,6 +57,11 @@ function SheetBody({ video, onDone }: { video: TwitchVideo; onDone: () => void }
   return (
     <div className="space-y-4 px-4 pb-4">
       <p className="line-clamp-2 text-sm text-muted-foreground">{video.title}</p>
+      {mutedSeconds > 0 && (
+        <p className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-sm text-amber-300">
+          Twitch muted {formatDuration(mutedSeconds)} of this audio. It cannot be recovered.
+        </p>
+      )}
       <div role="radiogroup" aria-label="Quality" className="grid grid-cols-4 gap-1 rounded-md bg-muted/40 p-1">
         {QUALITIES.map((item) => (
           <button

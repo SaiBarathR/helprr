@@ -1,7 +1,11 @@
-import { mkdir, readdir, rename, rm, stat, statfs, writeFile } from 'node:fs/promises';
+import { createReadStream, createWriteStream } from 'node:fs';
+import { mkdir, readdir, readFile, rename, rm, stat, statfs, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { pipeline as pipeStreams } from 'node:stream/promises';
+import { createGzip } from 'node:zlib';
 import type { PrismaClient, TwitchJob, TwitchStreamer, TwitchVideo } from '@prisma/client';
 import { chapterGenres, chaptersToFfmetadata, type YtDlpChapter } from '@/lib/twitch/chapters';
+import { chatToAss, type ChatComment } from '@/lib/twitch/chat-ass';
 import { archiveEpisode, episodeBaseName, seasonFolder, type SeasonKind } from '@/lib/twitch/naming';
 import { episodeNfo, seasonNfo, tvshowNfo } from '@/lib/twitch/nfo';
 import { parseProgressLine, YT_DLP_PROGRESS_TEMPLATE } from '@/lib/twitch/progress';
@@ -42,6 +46,7 @@ interface JobContext {
   minFreeGb: number;
   cookiesFile: string | null;
   setStage: (stage: string) => Promise<void>;
+  note: (message: string) => Promise<void>;
 }
 
 function videoUrl(id: string): string {
@@ -118,7 +123,38 @@ async function downloadVideo(ctx: JobContext, staging: string, format: string): 
   return path.join(staging, file);
 }
 
-async function publish(ctx: JobContext, staging: string, mkv: string, info: VideoInfo, duration: number, probed: Awaited<ReturnType<typeof probe>>) {
+interface ChatFiles {
+  json: string;
+  ass: string;
+}
+
+// Chat is a bonus: a VOD is not lost because its chat could not be fetched.
+async function archiveChat(ctx: JobContext, staging: string): Promise<ChatFiles | null> {
+  const { video, signal } = ctx;
+  const json = path.join(staging, 'chat.json');
+  try {
+    await run(toolPath('td'), ['chatdownload', '--id', video.twitchVideoId, '-o', json, '--banner', 'false'], {
+      signal,
+      env: { ...process.env, DOTNET_SYSTEM_GLOBALIZATION_INVARIANT: '1' },
+    });
+    const { comments } = JSON.parse(await readFile(json, 'utf8')) as { comments: ChatComment[] };
+    const { ass, thinned } = chatToAss(comments);
+    if (thinned) await ctx.note(`Chat thinned to fit the subtitle size limit (${comments.length} messages)`);
+
+    const assFile = path.join(staging, 'chat.ass');
+    await writeFile(assFile, ass);
+    const gzipFile = `${json}.gz`;
+    await pipeStreams(createReadStream(json), createGzip(), createWriteStream(gzipFile));
+    await rm(json);
+    return { json: gzipFile, ass: assFile };
+  } catch (error) {
+    if (signal.aborted) throw error;
+    await ctx.note(`Chat archive skipped: ${error instanceof Error ? error.message.slice(0, 300) : String(error)}`);
+    return null;
+  }
+}
+
+async function publish(ctx: JobContext, staging: string, mkv: string, info: VideoInfo, duration: number, probed: Awaited<ReturnType<typeof probe>>, chat: ChatFiles | null) {
   const { prisma, video, job, options } = ctx;
   const { streamer } = video;
   const date = video.twitchCreatedAt;
@@ -168,6 +204,13 @@ async function publish(ctx: JobContext, staging: string, mkv: string, info: Vide
     twitchVideoId: video.twitchVideoId,
   }));
   sidecars.push(nfoFile);
+  if (chat) {
+    const assName = `${base}.en.chat.ass`;
+    const jsonName = `${base}.chat.json.gz`;
+    await rename(chat.ass, path.join(staging, assName));
+    await rename(chat.json, path.join(staging, jsonName));
+    sidecars.push(assName, jsonName);
+  }
 
   // Sidecars first and the video last, so Jellyfin never indexes a half-written set.
   for (const name of sidecars) await rename(path.join(staging, name), path.join(seasonDir, name));
@@ -262,8 +305,14 @@ export async function runDownload(ctx: JobContext): Promise<void> {
   if (format !== 'audio_only' && probed.audio !== 1) throw new Error('validation failed: no audio stream');
   if (!validateDuration(probed.duration, duration)) throw new Error(`validation failed: duration mismatch ${probed.duration} vs ${duration}`);
 
+  let chat: ChatFiles | null = null;
+  if (options.chat) {
+    await ctx.setStage('archiving chat');
+    chat = await archiveChat(ctx, staging);
+  }
+
   await ctx.setStage('publishing');
-  await publish(ctx, staging, mkv, info, probed.duration, probed);
+  await publish(ctx, staging, mkv, info, probed.duration, probed, chat);
   await rm(staging, { recursive: true, force: true });
 }
 

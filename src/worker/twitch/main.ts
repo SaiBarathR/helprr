@@ -115,6 +115,7 @@ async function runJob(job: TwitchJob): Promise<void> {
         await prisma.twitchJob.update({ where: { id: job.id }, data: { stage } });
         await event(job.id, 'info', stage);
       },
+      note: (message) => event(job.id, 'warn', message),
     });
     await finishJob(job, { state: 'DONE', stage: 'done', progress: 1, finishedAt: new Date(), lastError: null, errorClass: null });
     log('info', 'Job finished', { jobId: job.id });
