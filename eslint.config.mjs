@@ -9,6 +9,7 @@ const eslintConfig = defineConfig([
   globalIgnores([
     // Default ignores of eslint-config-next:
     ".next/**",
+    "dist/**",
     "out/**",
     // Local qualification artifacts include generated bundles and browser traces.
     "plans/**",

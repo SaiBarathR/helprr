@@ -4,6 +4,7 @@ import { prisma } from '@/lib/db';
 import { logger } from '@/lib/logger';
 import { noteJobFailure } from '@/lib/polling-job-report';
 import { helixGet, type HelixRateLimit } from '@/lib/twitch/helix';
+import { reconcileTwitchJobs } from '@/lib/twitch/reconcile';
 import { getTwitchSettings } from '@/lib/twitch/settings';
 import { syncStreamerVideos } from '@/lib/twitch/sync';
 import { errorMessage, notifyAndLog } from './shared';
@@ -35,6 +36,8 @@ export async function pollTwitch(now = new Date()): Promise<void> {
 
   const settings = await getTwitchSettings();
   try {
+    await reconcileTwitchJobs(now);
+
     const liveDue = !settings.lastLivePollAt
       || now.getTime() - settings.lastLivePollAt.getTime() >= settings.pollLiveSecs * 1000;
     if (liveDue) {

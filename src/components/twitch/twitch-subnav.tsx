@@ -1,12 +1,13 @@
 'use client';
 
 import Link from '@/components/ui/app-link';
-import { Rss, Users } from 'lucide-react';
+import { ListVideo, Rss, Users } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const ITEMS = [
   { id: 'feed', label: 'Feed', href: '/twitch', icon: Rss },
   { id: 'streamers', label: 'Streamers', href: '/twitch/streamers', icon: Users },
+  { id: 'queue', label: 'Queue', href: '/twitch/queue', icon: ListVideo },
 ] as const;
 
 /** Segmented switch shown at the top of every Twitch section. */

@@ -23,6 +23,7 @@ vi.mock('@/lib/db', () => ({
 }));
 vi.mock('@/lib/twitch/helix', () => ({ helixGet: mocks.helixGet }));
 vi.mock('@/lib/twitch/sync', () => ({ syncStreamerVideos: mocks.syncStreamerVideos }));
+vi.mock('@/lib/twitch/reconcile', () => ({ reconcileTwitchJobs: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('@/lib/polling-job-report', () => ({ noteJobFailure: mocks.noteJobFailure }));
 vi.mock('@/lib/logger', () => ({ logger: { warn: vi.fn(), info: vi.fn() } }));
 vi.mock('./shared', () => ({

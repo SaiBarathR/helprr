@@ -3,6 +3,7 @@ import { chmod, mkdir, mkdtemp, readdir, rm, stat, statfs, writeFile } from 'nod
 import os from 'node:os';
 import path from 'node:path';
 import { Prisma, PrismaClient, type TwitchJob, type TwitchJobKind } from '@prisma/client';
+import { claimJob, LEASE_MS } from './claim';
 import { classifyJobError, nextStepAfterFailure } from '@/lib/twitch/job-errors';
 import type { DownloadOptions } from '@/lib/twitch/jobs';
 import { decryptTwitchToken } from '@/lib/twitch/token-cipher';
@@ -11,7 +12,6 @@ import { DiskGuardError, runDownload, WaitForRecordingError } from './pipeline';
 import { JobCancelledError } from './process';
 import { activeVersion, ensureTools } from './tools';
 
-const LEASE_MS = 60_000;
 const RENEW_MS = 20_000;
 const POLL_MS = 5_000;
 const CANCEL_POLL_MS = 2_000;
@@ -60,33 +60,6 @@ async function probeLibrary(): Promise<void> {
   const { mode } = await stat(probe);
   await rm(probe);
   log('info', 'Library is writable', { dir: LIBRARY_DIR, mode: (mode & 0o777).toString(8) });
-}
-
-/** One atomic claim: SKIP LOCKED keeps two workers off one job, and an expired lease is taken over. */
-async function claim(kinds: TwitchJobKind[]): Promise<TwitchJob | null> {
-  const rows = await prisma.$queryRaw<TwitchJob[]>`
-    UPDATE "TwitchJob" SET
-      "state" = 'RUNNING',
-      "leaseOwner" = ${workerId},
-      "leaseUntil" = NOW() + (${LEASE_MS} * INTERVAL '1 millisecond'),
-      "attempts" = "attempts" + 1,
-      "startedAt" = COALESCE("startedAt", NOW()),
-      "updatedAt" = NOW()
-    WHERE "id" = (
-      SELECT "id" FROM "TwitchJob"
-      WHERE "kind"::text IN (${Prisma.join(kinds)})
-        AND "cancelRequested" = false
-        AND (
-          ("state" IN ('QUEUED', 'RETRY_WAIT') AND "runAfter" <= NOW())
-          OR ("state" = 'RUNNING' AND "leaseUntil" < NOW())
-        )
-      ORDER BY "priority" DESC, "runAfter" ASC, "createdAt" ASC
-      LIMIT 1
-      FOR UPDATE SKIP LOCKED
-    )
-    RETURNING *
-  `;
-  return rows[0] ?? null;
 }
 
 // Tokens go in a mode-600 file per job, never argv, and it is removed with the job.
@@ -195,7 +168,7 @@ async function networkLane(): Promise<void> {
   while (!stopping) {
     const settings = await prisma.twitchSettings.findUnique({ where: { id: 'singleton' } }).catch(() => null);
     if (running.size < (settings?.maxConcurrentDownloads ?? 2)) {
-      const job = await claim(NETWORK_KINDS).catch((error) => {
+      const job = await claimJob(prisma, workerId, NETWORK_KINDS).catch((error) => {
         log('error', 'Claim failed', { error: String(error) });
         return null;
       });

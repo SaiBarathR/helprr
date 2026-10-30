@@ -5,7 +5,6 @@ const HEADER = '<?xml version="1.0" encoding="utf-8" standalone="yes"?>\n';
 function xml(value: string): string {
   // Characters XML 1.0 cannot carry at all, then the five it must escape.
   return value
-    // eslint-disable-next-line no-control-regex
     .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F￾￿]/g, '')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')

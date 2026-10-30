@@ -1,11 +1,14 @@
 'use client';
 
-import { use, useEffect } from 'react';
+import { use, useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, Tv } from 'lucide-react';
+import { useSearchParams } from 'next/navigation';
+import { AlertTriangle, Download, Play, Tv } from 'lucide-react';
 import { format } from 'date-fns';
 import Link from '@/components/ui/app-link';
 import { PageHeader } from '@/components/layout/page-header';
+import { Button } from '@/components/ui/button';
+import { DownloadSheet } from '@/components/twitch/download-sheet';
 import { FadeInImage } from '@/components/media/fade-in-image';
 import { daysUntil, formatDuration, VIDEO_TYPE_LABELS, type TwitchVideo } from '@/components/twitch/types';
 import { toCachedImageSrc } from '@/lib/image';
@@ -17,6 +20,8 @@ function mutedTotal(video: TwitchVideo): number {
 export default function TwitchVodPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const queryClient = useQueryClient();
+  // A push lands here with ?download=1, so the sheet is already open.
+  const [sheetOpen, setSheetOpen] = useState(useSearchParams().get('download') === '1');
 
   const query = useQuery({
     queryKey: ['twitch', 'video', id],
@@ -66,6 +71,19 @@ export default function TwitchVodPage({ params }: { params: Promise<{ id: string
           <Link href={`/twitch/streamers/${video.streamer.id}`} className="underline-offset-2 hover:underline">{video.streamer.displayName}</Link>
           {' · '}{format(new Date(video.twitchCreatedAt), 'PP')}
         </p>
+        {video.jellyfinItemId ? (
+          <Button asChild className="h-11 w-full">
+            <Link href={`/jellyfin/library/item/${video.jellyfinItemId}`}><Play className="mr-2 h-4 w-4" />Play in Helprr</Link>
+          </Button>
+        ) : video.activeJob ? (
+          <Button asChild variant="outline" className="h-11 w-full">
+            <Link href="/twitch/queue">In the queue</Link>
+          </Button>
+        ) : !video.downloaded && video.availability === 'PUBLISHED' && (
+          <Button className="h-11 w-full" onClick={() => setSheetOpen(true)}>
+            <Download className="mr-2 h-4 w-4" />Download
+          </Button>
+        )}
         {expiresIn !== null && expiresIn >= 0 && (
           <p className="text-sm text-muted-foreground">Estimated to expire in {expiresIn} {expiresIn === 1 ? 'day' : 'days'}.</p>
         )}
@@ -77,6 +95,7 @@ export default function TwitchVodPage({ params }: { params: Promise<{ id: string
         )}
         {video.description && <p className="whitespace-pre-wrap text-sm text-muted-foreground">{video.description}</p>}
       </div>
+      {!video.downloaded && !video.activeJob && <DownloadSheet video={video} open={sheetOpen} onOpenChange={setSheetOpen} />}
     </div>
   );
 }

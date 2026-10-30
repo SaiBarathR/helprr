@@ -268,6 +268,10 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
   'cap:dashboard.view': [
     'GET /api/dashboard-layouts/active',
   ],
+  'cap:twitch.manage': [
+    'GET /api/twitch/library',
+    'GET /api/twitch/settings',
+  ],
   'cap:twitch.view': [
     'GET /api/twitch/feed',
     'GET /api/twitch/jobs',
@@ -474,7 +478,7 @@ describe('GET API route capability matrix', () => {
   const assignments = policyAssignments();
 
   it('explicitly assigns every GET handler exactly once', () => {
-    expect(handlers.size).toBe(221);
+    expect(handlers.size).toBe(223);
     expect([...assignments.keys()].sort()).toEqual([...handlers.keys()].sort());
   });
 

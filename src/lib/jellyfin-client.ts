@@ -502,6 +502,28 @@ export class JellyfinClient {
     await this.client.post('/Library/Refresh');
   }
 
+  async refreshItem(itemId: string, options: {
+    recursive?: boolean;
+    metadataRefreshMode?: 'Default' | 'FullRefresh';
+    imageRefreshMode?: 'Default' | 'FullRefresh';
+    replaceAllMetadata?: boolean;
+  } = {}): Promise<void> {
+    await this.client.post(`/Items/${encodeURIComponent(itemId)}/Refresh`, null, {
+      params: {
+        recursive: options.recursive ?? true,
+        metadataRefreshMode: options.metadataRefreshMode ?? 'Default',
+        imageRefreshMode: options.imageRefreshMode ?? 'Default',
+        replaceAllMetadata: options.replaceAllMetadata ?? false,
+      },
+    });
+  }
+
+  async addVirtualFolder(name: string, collectionType: string, libraryOptions: Record<string, unknown>): Promise<void> {
+    await this.client.post('/Library/VirtualFolders', { LibraryOptions: libraryOptions }, {
+      params: { name, collectionType, refreshLibrary: false },
+    });
+  }
+
   // --- Playback Reporting Plugin methods ---
   // All under /user_usage_stats/ — returns null if plugin not installed (404)
   // Param conventions from HAR:
