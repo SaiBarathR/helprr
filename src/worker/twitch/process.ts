@@ -21,6 +21,27 @@ export class ProcessFailedError extends Error {
   }
 }
 
+/** Not a failure: the job goes back to wait, at no cost to its attempts. */
+export class DeferJobError extends Error {
+  readonly runAfter: Date;
+  readonly stage: string;
+
+  constructor(stage: string, delayMs: number) {
+    super(stage);
+    this.name = 'DeferJobError';
+    this.stage = stage;
+    this.runAfter = new Date(Date.now() + delayMs);
+  }
+}
+
+/** Another worker holds this job now: stop, and leave everything to it. */
+export class LeaseLostError extends Error {
+  constructor() {
+    super('Lease lost');
+    this.name = 'LeaseLostError';
+  }
+}
+
 export class JobCancelledError extends Error {
   constructor() {
     super('Job cancelled');

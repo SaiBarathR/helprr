@@ -4,6 +4,12 @@ export const LEASE_MS = 60_000;
 
 /** One atomic claim: SKIP LOCKED keeps two workers off one job, and an expired lease is taken over. */
 export async function claimJob(prisma: PrismaClient, workerId: string, kinds: TwitchJobKind[]): Promise<TwitchJob | null> {
+  // Cancelled, then its worker died: nothing is left to acknowledge the cancel, so it ends here.
+  await prisma.twitchJob.updateMany({
+    where: { state: 'RUNNING', cancelRequested: true, leaseUntil: { lt: new Date() } },
+    data: { state: 'CANCELLED', stage: 'cancelled', finishedAt: new Date(), leaseOwner: null, leaseUntil: null },
+  });
+
   const rows = await prisma.$queryRaw<TwitchJob[]>`
     UPDATE "TwitchJob" SET
       "state" = 'RUNNING',
@@ -17,7 +23,7 @@ export async function claimJob(prisma: PrismaClient, workerId: string, kinds: Tw
       WHERE "kind"::text IN (${Prisma.join(kinds)})
         AND "cancelRequested" = false
         AND (
-          ("state" IN ('QUEUED', 'RETRY_WAIT') AND "runAfter" <= NOW())
+          ("state" IN ('QUEUED', 'RETRY_WAIT', 'BLOCKED') AND "runAfter" <= NOW())
           OR ("state" = 'RUNNING' AND "leaseUntil" < NOW())
         )
       ORDER BY "priority" DESC, "runAfter" ASC, "createdAt" ASC

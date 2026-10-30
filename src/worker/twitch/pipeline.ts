@@ -47,6 +47,8 @@ interface JobContext {
   reencodeEnabled: boolean;
   cookiesFile: string | null;
   setStage: (stage: string) => Promise<void>;
+  assertLease: () => Promise<void>;
+  stagingName: string;
   note: (message: string) => Promise<void>;
 }
 
@@ -276,7 +278,7 @@ async function assignSequentialEpisode(prisma: PrismaClient, video: TwitchVideo,
 
 export async function runDownload(ctx: JobContext): Promise<void> {
   const { video, options, signal, cookiesFile } = ctx;
-  const staging = path.join(STAGING_DIR, ctx.job.id);
+  const staging = path.join(STAGING_DIR, ctx.stagingName);
   await rm(staging, { recursive: true, force: true });
   await mkdir(staging, { recursive: true });
 
@@ -319,6 +321,7 @@ export async function runDownload(ctx: JobContext): Promise<void> {
     chat = await archiveChat(ctx, staging);
   }
 
+  await ctx.assertLease();
   await ctx.setStage('publishing');
   await publish(ctx, staging, mkv, info, probed.duration, probed, chat);
   await rm(staging, { recursive: true, force: true });

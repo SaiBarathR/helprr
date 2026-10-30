@@ -48,6 +48,8 @@ export async function runReencode(ctx: {
   keepOriginalDays: number;
   setStage: (stage: string) => Promise<void>;
   note: (message: string) => Promise<void>;
+  assertLease: () => Promise<void>;
+  stagingName: string;
 }): Promise<void> {
   const { prisma, job, signal } = ctx;
   if (!job.mediaFileId) throw new Error('validation failed: re-encode has no file');
@@ -62,11 +64,18 @@ export async function runReencode(ctx: {
 
   const before = await probe(target);
   if (before.codec === 'hevc') {
+    // A crash right after the swap: the file is in place, but the row never heard.
+    if (!file.originalRelativePath && (await exists(parked))) {
+      const { size } = await stat(target);
+      await recordSwap(ctx, file.id, parked, size);
+      await ctx.note('Finished a swap interrupted by a restart');
+      return;
+    }
     await ctx.note('Already HEVC');
     return;
   }
 
-  const staging = path.join(STAGING_DIR, job.id);
+  const staging = path.join(STAGING_DIR, ctx.stagingName);
   await rm(staging, { recursive: true, force: true });
   await mkdir(staging, { recursive: true });
   const encoded = path.join(staging, 'out.mkv');
@@ -92,6 +101,7 @@ export async function runReencode(ctx: {
   }
 
   // Same name, so Jellyfin keeps the item, its watched state and the resume point.
+  await ctx.assertLease();
   await ctx.setStage('swapping');
   await mkdir(path.dirname(parked), { recursive: true });
   await rename(target, parked);
@@ -102,18 +112,27 @@ export async function runReencode(ctx: {
     throw error;
   }
 
-  await prisma.twitchMediaFile.update({
-    where: { id: file.id },
+  await recordSwap(ctx, file.id, parked, encodedBytes);
+  await rm(staging, { recursive: true, force: true });
+}
+
+async function recordSwap(
+  ctx: { prisma: PrismaClient; job: TwitchJob; keepOriginalDays: number },
+  fileId: string,
+  parked: string,
+  sizeBytes: number,
+): Promise<void> {
+  await ctx.prisma.twitchMediaFile.update({
+    where: { id: fileId },
     data: {
-      sizeBytes: BigInt(encodedBytes),
+      sizeBytes: BigInt(sizeBytes),
       videoCodec: 'hevc',
       reencodedAt: new Date(),
       originalRelativePath: path.relative(LIBRARY_DIR, parked),
       originalDeleteAfter: new Date(Date.now() + ctx.keepOriginalDays * 86_400_000),
     },
   });
-  await prisma.twitchJob.update({ where: { id: job.id }, data: { needsJellyfinRefresh: true } });
-  await rm(staging, { recursive: true, force: true });
+  await ctx.prisma.twitchJob.update({ where: { id: ctx.job.id }, data: { needsJellyfinRefresh: true } });
 }
 
 /** Deletes originals past their date. Every removal is audited, by a system actor. */

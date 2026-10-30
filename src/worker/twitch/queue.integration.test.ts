@@ -6,7 +6,7 @@ const url = process.env.TWITCH_QUEUE_TEST_DATABASE_URL;
 const prisma = url ? new PrismaClient({ datasources: { db: { url } } }) : null;
 vi.mock('@/lib/db', () => ({ get prisma() { return prisma; } }));
 
-import { enqueueDownload, DEFAULT_DOWNLOAD_OPTIONS } from '@/lib/twitch/jobs';
+import { enqueueDownload, DEFAULT_DOWNLOAD_OPTIONS, retryJob } from '@/lib/twitch/jobs';
 import { claimJob } from './claim';
 
 // Needs a migrated, disposable PostgreSQL; skipped without one.
@@ -92,6 +92,58 @@ describe.skipIf(!url || !url.endsWith('/helprr_migration_test'))('Twitch queue a
     expect((await claimJob(db, 'w', ['DOWNLOAD']))?.id).toBe(low.jobId);
     await db.twitchJob.update({ where: { id: high.jobId }, data: { runAfter: new Date() } });
     expect((await claimJob(db, 'w', ['DOWNLOAD']))?.id).toBe(high.jobId);
+  });
+
+  it('ends a cancelled job whose worker died, and frees its video', async () => {
+    const { jobId } = await enqueueDownload(request());
+    await claimJob(db, 'dead', ['DOWNLOAD']);
+    await db.twitchJob.update({ where: { id: jobId }, data: { cancelRequested: true, leaseUntil: new Date(Date.now() - 1000) } });
+
+    expect(await claimJob(db, 'next', ['DOWNLOAD'])).toBeNull();
+
+    expect((await db.twitchJob.findUniqueOrThrow({ where: { id: jobId } })).state).toBe('CANCELLED');
+    expect((await enqueueDownload(request())).created).toBe(true);
+  });
+
+  it('resumes a disk-blocked job once its recheck is due, and not before', async () => {
+    const { jobId } = await enqueueDownload(request());
+    await db.twitchJob.update({ where: { id: jobId }, data: { state: 'BLOCKED', runAfter: new Date(Date.now() + 60_000) } });
+    expect(await claimJob(db, 'w', ['DOWNLOAD'])).toBeNull();
+
+    await db.twitchJob.update({ where: { id: jobId }, data: { runAfter: new Date(Date.now() - 1000) } });
+    expect((await claimJob(db, 'w', ['DOWNLOAD']))?.id).toBe(jobId);
+  });
+
+  it('refuses a retry that would make a second active download, even racing', async () => {
+    const user = await db.user.create({ data: { username: `r${Date.now()}`, displayName: 'R', passwordHash: 'x' } });
+    const actor = { id: user.id, username: user.username };
+    const failedA = await enqueueDownload(request());
+    await db.twitchJob.update({ where: { id: failedA.jobId }, data: { state: 'FAILED' } });
+    const replacement = await enqueueDownload(request());
+
+    expect(await retryJob(failedA.jobId, actor)).toBe('active');
+
+    await db.twitchJob.update({ where: { id: replacement.jobId }, data: { state: 'FAILED' } });
+    const results = await Promise.all([retryJob(failedA.jobId, actor), retryJob(replacement.jobId, actor)]);
+
+    expect(results.filter((result) => result === 'retried')).toHaveLength(1);
+    expect(await db.twitchJob.count({ where: { state: 'QUEUED' } })).toBe(1);
+    await db.twitchJob.deleteMany();
+    await db.user.delete({ where: { id: user.id } });
+  });
+
+  it('records who retried a job', async () => {
+    const user = await db.user.create({ data: { username: `s${Date.now()}`, displayName: 'S', passwordHash: 'x' } });
+    const { jobId } = await enqueueDownload(request());
+    await db.twitchJob.update({ where: { id: jobId }, data: { state: 'CANCELLED', cancelRequested: true } });
+
+    expect(await retryJob(jobId, { id: user.id, username: user.username })).toBe('retried');
+
+    expect(await db.twitchJob.findUniqueOrThrow({ where: { id: jobId } })).toMatchObject({
+      state: 'QUEUED', cancelRequested: false, requestedByUsername: user.username,
+    });
+    await db.twitchJob.deleteMany();
+    await db.user.delete({ where: { id: user.id } });
   });
 
   it('skips a job marked for cancellation and other job kinds', async () => {

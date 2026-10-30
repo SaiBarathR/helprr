@@ -201,7 +201,6 @@ const POLICY_GROUPS: Record<string, readonly string[]> = {
   ],
   'cap:twitch.download': [
     'POST /api/twitch/jobs',
-    'POST /api/twitch/jobs/[id]/retry',
   ],
   'cap:twitch.manage': [
     'PATCH /api/twitch/jobs/[id]',
@@ -268,6 +267,11 @@ interface SpecialPolicy {
 }
 
 const SPECIAL_POLICIES: Record<string, SpecialPolicy> = {
+  'POST /api/twitch/jobs/[id]/retry': {
+    kind: 'owned-or-capability',
+    marker: 'job.requestedByUserId === auth.user.id',
+    capabilities: ['twitch.download', 'twitch.manage'],
+  },
   'POST /api/twitch/jobs/[id]/cancel': {
     kind: 'owned-or-capability',
     marker: 'job.requestedByUserId === auth.user.id',

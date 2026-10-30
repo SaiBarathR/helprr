@@ -43,9 +43,10 @@ export async function pollTwitch(now = new Date()): Promise<void> {
 
   const settings = await getTwitchSettings();
   try {
-    await reconcileTwitchJobs(now);
-    await markJellyfinBusy(settings, now);
-    await checkStoredBrowserToken(settings, now);
+    // Each on its own: Jellyfin being down must not stop Twitch discovery.
+    await isolated('reconcile', () => reconcileTwitchJobs(now));
+    await isolated('Jellyfin busy check', () => markJellyfinBusy(settings, now));
+    await isolated('browser token check', () => checkStoredBrowserToken(settings, now));
 
     const liveDue = !settings.lastLivePollAt
       || now.getTime() - settings.lastLivePollAt.getTime() >= settings.pollLiveSecs * 1000;
@@ -82,6 +83,15 @@ export async function pollTwitch(now = new Date()): Promise<void> {
   } catch (error) {
     noteJobFailure(error);
     logger.warn('Twitch poll failed', { error: errorMessage(error) }, { scope: 'polling' });
+  }
+}
+
+async function isolated(step: string, run: () => Promise<void>): Promise<void> {
+  try {
+    await run();
+  } catch (error) {
+    noteJobFailure(error);
+    logger.warn(`Twitch ${step} failed`, { error: errorMessage(error) }, { scope: 'polling' });
   }
 }
 

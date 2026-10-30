@@ -186,6 +186,18 @@ describe('pollTwitch', () => {
     });
   });
 
+  it('keeps discovering when Jellyfin cannot be reached', async () => {
+    mocks.settings.upsert.mockResolvedValue(settings({ reencodeEnabled: true, reencodeWindowStart: '07:00', reencodeWindowEnd: '09:00' }));
+    mocks.job.count.mockResolvedValue(1);
+    mocks.getJellyfinClient.mockRejectedValue(new Error('Jellyfin is down'));
+    dueStreamers([{ id: 's1' }]);
+
+    await pollTwitch(now);
+
+    expect(mocks.syncStreamerVideos).toHaveBeenCalledTimes(1);
+    expect(mocks.noteJobFailure).toHaveBeenCalledTimes(1);
+  });
+
   it('asks Jellyfin nothing outside the window', async () => {
     mocks.settings.upsert.mockResolvedValue(settings({ reencodeEnabled: true, reencodeWindowStart: '01:00', reencodeWindowEnd: '02:00' }));
     dueStreamers([]);

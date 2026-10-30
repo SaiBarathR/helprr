@@ -12,7 +12,7 @@ import { LIBRARY_DIR, STAGING_DIR, WORKER_VERSION } from './env';
 import { runDeleteFiles } from './delete-files';
 import { DiskGuardError, runDownload, WaitForRecordingError } from './pipeline';
 import { deleteExpiredOriginals, probeGpu, runReencode } from './reencode';
-import { JobCancelledError } from './process';
+import { DeferJobError, JobCancelledError, LeaseLostError } from './process';
 import { activeVersion, ensureTools, installTool, KNOWN_GOOD, latestVersion, type ToolName } from './tools';
 
 const RENEW_MS = 20_000;
@@ -22,6 +22,7 @@ const HEARTBEAT_MS = 15_000;
 const MIGRATION_POLL_MS = 5_000;
 const REQUIRED_MIGRATION = '20261030120100_twitch_tables';
 const CPU_POLL_MS = 30_000;
+const DISK_RECHECK_MS = 15 * 60_000;
 const HOUSEKEEPING_MS = 60 * 60_000;
 const STAGING_MAX_AGE_MS = 24 * 3_600_000;
 const NETWORK_KINDS: TwitchJobKind[] = ['DOWNLOAD', 'DELETE_FILES'];
@@ -93,12 +94,32 @@ async function finishJob(job: TwitchJob, data: Prisma.TwitchJobUpdateInput) {
 async function runJob(job: TwitchJob): Promise<void> {
   const abort = new AbortController();
   running.set(job.id, abort);
+  let leaseLost = false;
+  let renewedAt = Date.now();
+  const loseLease = () => {
+    leaseLost = true;
+    abort.abort();
+  };
   const renew = setInterval(() => {
     void prisma.twitchJob.updateMany({
       where: { id: job.id, leaseOwner: workerId },
       data: { leaseUntil: new Date(Date.now() + LEASE_MS) },
-    }).catch(() => undefined);
+    }).then(({ count }) => {
+      if (count === 0) loseLease();
+      else renewedAt = Date.now();
+    }).catch(() => {
+      // Out of touch for a whole lease: another worker may already hold this job.
+      if (Date.now() - renewedAt > LEASE_MS) loseLease();
+    });
   }, RENEW_MS);
+  const assertLease = async () => {
+    const owned = await prisma.twitchJob.count({ where: { id: job.id, leaseOwner: workerId, state: 'RUNNING' } });
+    if (owned === 0) {
+      loseLease();
+      throw new LeaseLostError();
+    }
+  };
+  const stagingName = `${job.id}-${job.attempts}`;
   const cancelWatch = setInterval(() => {
     void prisma.twitchJob.findUnique({ where: { id: job.id }, select: { cancelRequested: true } })
       .then((row) => { if (row?.cancelRequested) abort.abort(); })
@@ -129,6 +150,8 @@ async function runJob(job: TwitchJob): Promise<void> {
         keepOriginalDays: settings?.keepOriginalDays ?? 3,
         setStage,
         note,
+        assertLease,
+        stagingName,
       });
       await finishJob(job, { state: 'DONE', stage: 'done', progress: 1, finishedAt: new Date(), lastError: null, errorClass: null });
       return;
@@ -147,19 +170,32 @@ async function runJob(job: TwitchJob): Promise<void> {
       cookiesFile: cookies?.file ?? null,
       setStage,
       note,
+      assertLease,
+      stagingName,
     });
     await finishJob(job, { state: 'DONE', stage: 'done', progress: 1, finishedAt: new Date(), lastError: null, errorClass: null });
     log('info', 'Job finished', { jobId: job.id });
   } catch (error) {
-    await rm(path.join(STAGING_DIR, job.id), { recursive: true, force: true }).catch(() => undefined);
-    if (stopping && error instanceof JobCancelledError) {
+    await rm(path.join(STAGING_DIR, stagingName), { recursive: true, force: true }).catch(() => undefined);
+    if (leaseLost || error instanceof LeaseLostError) {
+      log('warn', 'Lost the lease on a job', { jobId: job.id });
+    } else if (stopping && error instanceof JobCancelledError) {
       await finishJob(job, { state: 'QUEUED', stage: null, attempts: { decrement: 1 } });
     } else if (error instanceof JobCancelledError) {
       await finishJob(job, { state: 'CANCELLED', stage: 'cancelled', finishedAt: new Date() });
     } else if (error instanceof WaitForRecordingError) {
       await finishJob(job, { state: 'RETRY_WAIT', stage: 'waiting_recorded', runAfter: error.runAfter, attempts: { decrement: 1 } });
+    } else if (error instanceof DeferJobError) {
+      await finishJob(job, { state: 'RETRY_WAIT', stage: error.stage, runAfter: error.runAfter, attempts: { decrement: 1 } });
     } else if (error instanceof DiskGuardError) {
-      await finishJob(job, { state: 'BLOCKED', stage: 'waiting for disk', errorClass: 'disk', lastError: error.message });
+      await finishJob(job, {
+        state: 'BLOCKED',
+        stage: 'waiting for disk',
+        errorClass: 'disk',
+        lastError: error.message,
+        runAfter: new Date(Date.now() + DISK_RECHECK_MS),
+        attempts: { decrement: 1 },
+      });
     } else {
       const message = error instanceof Error ? error.message : String(error);
       const errorClass = classifyJobError(message);
@@ -239,7 +275,7 @@ async function housekeeping(): Promise<void> {
   const deleted = await deleteExpiredOriginals(prisma);
   if (deleted > 0) log('info', 'Deleted originals', { deleted });
   for (const entry of await readdir(STAGING_DIR)) {
-    if (running.has(entry)) continue;
+    if ([...running.keys()].some((jobId) => entry.startsWith(`${jobId}-`))) continue;
     const dir = path.join(STAGING_DIR, entry);
     const info = await stat(dir);
     if (Date.now() - info.mtimeMs > STAGING_MAX_AGE_MS) await rm(dir, { recursive: true, force: true });

@@ -92,7 +92,11 @@ export async function findRetentionCandidates(
 }
 
 /** Helprr has no file access: the worker deletes, and audits under this actor. */
-export async function enqueueFileDelete(fileId: string, actor: { id: string; username: string }): Promise<boolean> {
+export async function enqueueFileDelete(
+  fileId: string,
+  actor: { id: string; username: string },
+  origin: { retention?: boolean } = {},
+): Promise<boolean> {
   return prisma.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`twitch-delete:${fileId}`}))`;
     const file = await tx.twitchMediaFile.findUnique({ where: { id: fileId }, select: { videoId: true } });
@@ -105,6 +109,7 @@ export async function enqueueFileDelete(fileId: string, actor: { id: string; use
     await tx.twitchJob.create({
       data: {
         kind: 'DELETE_FILES',
+        options: origin,
         videoId: file.videoId,
         mediaFileId: fileId,
         requestedByUserId: actor.id,

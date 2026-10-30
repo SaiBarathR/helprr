@@ -125,9 +125,10 @@ describe('runRetentionSweep', () => {
     });
     expect(delegates[8].deleteMany).toHaveBeenCalledWith({
       where: {
+        availability: 'UNAVAILABLE',
         mediaFiles: { none: {} },
         jobs: { none: { state: { in: ['QUEUED', 'BLOCKED', 'RUNNING', 'RETRY_WAIT'] } } },
-        twitchCreatedAt: { lt: new Date(nowMs - 180 * DAY_MS) },
+        lastSeenAt: { lt: new Date(nowMs - 180 * DAY_MS) },
       },
     });
   });

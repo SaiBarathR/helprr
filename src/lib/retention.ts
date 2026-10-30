@@ -154,11 +154,13 @@ export async function runRetentionSweep(
       },
     }),
     database.twitchVideo.deleteMany({
-      // A video with a file is a record of what is on disk, and one in use is not history.
+      // Only what Twitch no longer has: a video it still lists would come back
+      // from the next sweep looking new, and notify and auto-download again.
       where: {
+        availability: 'UNAVAILABLE',
         mediaFiles: { none: {} },
         jobs: { none: { state: { in: ['QUEUED', 'BLOCKED', 'RUNNING', 'RETRY_WAIT'] } } },
-        twitchCreatedAt: { lt: new Date(nowMs - TWITCH_VIDEO_RETENTION_DAYS * DAY_MS) },
+        lastSeenAt: { lt: new Date(nowMs - TWITCH_VIDEO_RETENTION_DAYS * DAY_MS) },
       },
     }),
   ]);
