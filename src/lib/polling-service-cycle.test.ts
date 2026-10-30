@@ -96,6 +96,7 @@ const SETTINGS_SOURCES = [
 const UNRELATED_SOURCES = [
   'pollJellyfin',
   'pollSeerr',
+  'pollProwlarr',
   'pollManualDownloads',
   'pollServiceReachability',
   'sweepTasteProfiles',
