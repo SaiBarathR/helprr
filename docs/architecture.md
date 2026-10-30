@@ -21,7 +21,7 @@ The `ServiceType` enum currently covers:
 | Radarr | Movie library, activity, files, monitoring, and release actions |
 | Lidarr | Music library, albums/tracks, files, and monitoring |
 | qBittorrent | Torrents, files, transfer controls, cleanup, and schedules |
-| Prowlarr | Indexers, tests, history, sync, and statistics |
+| Prowlarr | Indexers, quick edit, search and grab, app sync, tests, history, and statistics |
 | Jellyfin | Library/watch state, in-app playback (direct play, remux, HLS transcode, subtitles), sessions, devices, and control |
 | TMDB | Movie/TV discovery, metadata, collections, people, and images |
 | AniList | Anime/manga discovery, schedules, tracking, and mappings |

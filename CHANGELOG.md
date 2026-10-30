@@ -5,6 +5,44 @@ All notable changes to Helprr are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.0] - 2026-10-30
+
+### Added
+
+- **Search every indexer from Helprr**: a Search tab on the Prowlarr page, with
+  category chips, sorting and cancel, and a Grab button that sends a release to
+  Prowlarr's own download client after a confirmation. Needs Prowlarr manage
+  access. Only the Search button searches, so tapping a category or coming back
+  to the tab does not spend tracker quota. Sonarr and Radarr don't track what is
+  grabbed here.
+- **Indexer detail sheet**: tap an indexer for why it is blocked and until when,
+  its numbers for the last 7 days, its recent activity and categories, and Test,
+  on/off and Delete. A link can open it directly, and the back gesture closes it.
+- **Quick edit in the sheet**: priority, app profile and tags, shown by name.
+  Each change saves on its own. Without manage access they are shown as text.
+- **Apps tab**: the apps Prowlarr syncs to, with Test and Test All, and a warning
+  when an arr connected to Helprr may have no Prowlarr app.
+- **Push notifications for Prowlarr's health**: subscribers to health warnings
+  get these with no new setting, and the notification opens the Prowlarr page.
+  In Settings the event is still listed under Sonarr/Radarr.
+
+### Security
+
+- The logger now hides `passkey`, `authkey`, `torrent_pass` and `rsskey` values,
+  as it already did API keys. Search text is left out of request logs, because
+  it can be a pasted link with a key in it.
+- Release links can carry tracker passkeys, so they never reach the browser: a
+  search returns a temporary token for each result, and the real reference stays
+  on the server, readable only by the user who searched.
+
+### Fixed
+
+- Global search over Prowlarr history matched only on event type, because it read
+  fields Prowlarr does not return. It now matches the search text and the indexer
+  name, and lists indexers first, linking to their sheet.
+- Changing an indexer that was deleted elsewhere now says so instead of showing a
+  generic error.
+
 ## [1.8.0] - 2026-10-30
 
 ### Security
