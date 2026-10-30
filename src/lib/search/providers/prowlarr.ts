@@ -13,16 +13,20 @@ export const searchProwlarr: ProviderHandler = async ({ query, limit }) => {
 
   const results: SearchProviderResult[] = [];
   const seen = new Set<string>();
+  const indexerNames = new Map(indexers.map((indexer) => [indexer.id, indexer.name]));
 
   for (const record of history.records) {
-    if (!matchLocalQuery(query, record.query, record.indexer, record.eventType)) continue;
+    // Prowlarr keeps the search text in the record's data, and names the indexer only by id.
+    const searched = record.data?.query ?? '';
+    const indexerName = indexerNames.get(record.indexerId) ?? '';
+    if (!matchLocalQuery(query, searched, indexerName, record.eventType)) continue;
     const id = `prowlarr:history:${record.id}`;
     if (seen.has(id)) continue;
     seen.add(id);
     results.push({
       id,
-      title: record.query || record.indexer,
-      subtitle: [record.indexer, record.eventType, record.successful === false ? 'Failed' : 'OK']
+      title: searched || indexerName || record.eventType,
+      subtitle: [indexerName, record.eventType, record.successful === false ? 'Failed' : 'OK']
         .filter(Boolean)
         .join(' · '),
       year: null,
@@ -45,7 +49,7 @@ export const searchProwlarr: ProviderHandler = async ({ query, limit }) => {
         subtitle: [indexer.implementationName, indexer.enable ? 'Enabled' : 'Disabled'].join(' · '),
         year: null,
         poster: null,
-        route: '/prowlarr',
+        route: `/prowlarr?indexer=${indexer.id}`,
         provider: 'prowlarr',
         badge: indexer.enable ? undefined : 'Disabled',
       });

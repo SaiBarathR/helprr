@@ -34,7 +34,7 @@ export interface ProwlarrIndexer {
   supportsSearch: boolean;
   language?: string;
   description?: string;
-  categories?: { id: number; name: string; subCategories?: { id: number; name: string }[] }[];
+  capabilities?: { categories?: { id: number; name: string }[] };
   appProfileId?: number;
 }
 
@@ -48,7 +48,7 @@ export interface ProwlarrIndexer {
 export type ProwlarrIndexerSummary = Pick<
   ProwlarrIndexer,
   'id' | 'name' | 'enable' | 'protocol' | 'privacy' | 'priority' | 'implementationName' | 'tags' | 'appProfileId'
->;
+> & { categories: string[] };
 
 export function toProwlarrIndexerSummary(indexer: ProwlarrIndexer): ProwlarrIndexerSummary {
   return {
@@ -61,6 +61,9 @@ export function toProwlarrIndexerSummary(indexer: ProwlarrIndexer): ProwlarrInde
     implementationName: indexer.implementationName,
     tags: indexer.tags,
     appProfileId: indexer.appProfileId,
+    categories: (indexer.capabilities?.categories ?? [])
+      .map((category) => category.name)
+      .filter((name) => typeof name === 'string'),
   };
 }
 
