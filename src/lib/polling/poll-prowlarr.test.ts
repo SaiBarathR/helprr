@@ -19,11 +19,12 @@ vi.mock('./shared', () => ({ notifyAndLog: mocks.notifyAndLog }));
 
 import { pollProwlarr } from './poll-prowlarr';
 
+let saves = 0;
 const warning = (message: string) => ({ source: 'IndexerStatusCheck', type: 'warning', message, wikiUrl: '' });
 
 /** Runs one cycle from a stored hash and returns the hash it saved. */
 async function cycle(lastHealthHash: string | null, health: unknown[]) {
-  mocks.upsert.mockResolvedValue({ lastHealthHash });
+  mocks.upsert.mockResolvedValue({ lastHealthHash, updatedAt: new Date(`2026-10-30T00:00:0${++saves % 10}Z`) });
   mocks.getHealth.mockResolvedValue(health);
   mocks.update.mockClear();
   await pollProwlarr();
@@ -54,6 +55,7 @@ describe('pollProwlarr', () => {
       body: 'A failing; B failing',
       url: '/prowlarr',
       metadata: { source: 'prowlarr', redirect: '/prowlarr' },
+      dedupeKey: expect.stringMatching(/^prowlarr-health:/),
     });
 
     await cycle(second, [warning('B failing'), warning('A failing')]);
@@ -67,6 +69,42 @@ describe('pollProwlarr', () => {
 
     await cycle(clear, [warning('A failing')]);
     expect(mocks.notifyAndLog).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the old hash when the notification could not be recorded, so it retries', async () => {
+    const first = await cycle(null, []);
+    mocks.notifyAndLog.mockResolvedValueOnce(null);
+
+    await cycle(first, [warning('A failing')]);
+
+    expect(mocks.notifyAndLog).toHaveBeenCalledTimes(1);
+    expect(mocks.update).not.toHaveBeenCalled();
+  });
+
+  it('saves the hash when the event was recorded but no device received it', async () => {
+    const first = await cycle(null, []);
+    mocks.notifyAndLog.mockResolvedValueOnce(0);
+
+    const saved = await cycle(first, [warning('A failing')]);
+
+    expect(saved).not.toBe(first);
+  });
+
+  it('repeats the dedupe key after a failed hash save, and uses a new one once saved', async () => {
+    const first = await cycle(null, []);
+    const row = { lastHealthHash: first, updatedAt: new Date('2026-10-30T01:00:00Z') };
+    mocks.upsert.mockResolvedValue(row);
+    mocks.getHealth.mockResolvedValue([warning('A failing')]);
+    mocks.update.mockRejectedValueOnce(new Error('write failed'));
+
+    await expect(pollProwlarr()).rejects.toThrow('write failed');
+    await pollProwlarr();
+    const [key1, key2] = mocks.notifyAndLog.mock.calls.map((call) => call[0].dedupeKey);
+    expect(key2).toBe(key1);
+
+    mocks.upsert.mockResolvedValue({ ...row, updatedAt: new Date('2026-10-30T02:00:00Z') });
+    await pollProwlarr();
+    expect(mocks.notifyAndLog.mock.calls[2][0].dedupeKey).not.toBe(key1);
   });
 
   it('removes credentials and caps the body at 200 characters', async () => {

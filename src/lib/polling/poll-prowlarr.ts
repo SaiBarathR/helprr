@@ -41,13 +41,19 @@ export async function pollProwlarr() {
   const messages = health.map((check) => redactProwlarrText(String(check.message ?? ''))).sort();
   const healthHash = crypto.createHash('md5').update(JSON.stringify(messages)).digest('hex');
   if (state.lastHealthHash && healthHash !== state.lastHealthHash && messages.length > 0) {
-    await notifyAndLog({
+    const sent = await notifyAndLog({
       eventType: 'healthWarning',
       title: 'Prowlarr Health Warning',
       body: messages.join('; ').slice(0, 200),
       url: '/prowlarr',
       metadata: { source: 'prowlarr', redirect: '/prowlarr' },
+      // updatedAt moves when the hash below is saved. If that save fails, the
+      // next cycle repeats this key and the history row stops a second push; a
+      // warning that clears and later returns still gets a new key.
+      dedupeKey: `prowlarr-health:${state.updatedAt.toISOString()}:${healthHash}`,
     }, { service: 'prowlarr', instanceId: connection.id, reason: 'health-changed', healthCount: messages.length });
+    // Not recorded (null): keep the old hash so the next cycle tries again.
+    if (sent === null) return;
   }
 
   await prisma.pollingState.update({
