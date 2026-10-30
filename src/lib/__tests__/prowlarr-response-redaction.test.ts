@@ -40,6 +40,7 @@ describe('GET /api/prowlarr/indexers', () => {
         configContract: 'CardigannSettings',
         tags: [2],
         appProfileId: 1,
+        capabilities: { categories: [{ id: 2000, name: 'Movies' }, { id: 5000, name: 'TV' }], limitsMax: 100 },
         indexerUrls: [`https://nekobt.example/?apikey=${SECRET}`],
         fields: [{ name: 'apikey', privacy: 'normal', value: SECRET }],
       },
@@ -61,6 +62,7 @@ describe('GET /api/prowlarr/indexers', () => {
         implementationName: 'Cardigann',
         tags: [2],
         appProfileId: 1,
+        categories: ['Movies', 'TV'],
       },
     ]);
   });

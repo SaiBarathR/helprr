@@ -185,6 +185,8 @@ function isFromPortal(target: EventTarget | null, currentTarget: EventTarget | n
 function isNestedInteractiveTarget(target: EventTarget | null, currentTarget: EventTarget | null): boolean {
   if (!(target instanceof Element) || !(currentTarget instanceof Element) || target === currentTarget) return false;
   const interactive = target.closest(INTERACTIVE_SELECTOR);
+  // A stretched control that stands for the whole row, not a control inside it.
+  if (interactive?.hasAttribute('data-context-menu-row')) return false;
   return interactive !== null && interactive !== currentTarget && currentTarget.contains(interactive);
 }
 
