@@ -198,6 +198,16 @@ export async function summarizeFiles() {
   };
 }
 
+/** What re-encoding has really saved here, as a percentage, or null before there is a result. */
+export async function typicalSavingPercent(): Promise<number | null> {
+  const { _sum } = await prisma.twitchMediaFile.aggregate({
+    where: { reencodedAt: { not: null }, originalSizeBytes: { not: null } },
+    _sum: { sizeBytes: true, originalSizeBytes: true },
+  });
+  const before = Number(_sum.originalSizeBytes ?? 0);
+  return before > 0 ? Math.round((1 - Number(_sum.sizeBytes ?? 0) / before) * 100) : null;
+}
+
 export type FileJobResult = 'queued' | 'missing' | 'busy' | 'nothing-to-do';
 
 interface Actor {

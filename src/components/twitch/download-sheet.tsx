@@ -148,7 +148,6 @@ function SheetBody({ video, defaults, canUse1440p, onDone }: {
         <div className="grouped-section-content overflow-hidden">
           <EstimateRow label="Length" value={formatDuration(video.durationSeconds)} />
           <EstimateRow label="Size" value={`≈ ${formatGb(sizeGb)}`} />
-          {options.reencode && <EstimateRow label="After re-encode" value={`≈ ${formatGb(sizeGb * 0.18)} to ${formatGb(sizeGb * 0.37)}`} />}
           <EstimateRow label="Time" value={fastestMinutes === slowestMinutes ? `≈ ${fastestMinutes} min` : `≈ ${fastestMinutes}–${slowestMinutes} min`} />
         </div>
       </div>

@@ -4,7 +4,7 @@ import type { Prisma, PrismaClient, TwitchDeletionCause, TwitchDeletionKind, Twi
 import { worthKeeping } from '@/lib/twitch/reencode-window';
 import { FFMPEG, FFPROBE, LIBRARY_DIR, ORIGINALS_DIR, STAGING_DIR } from './env';
 import { withFileLock } from './file-lock';
-import { run } from './process';
+import { JobCancelledError, run } from './process';
 
 const RENDER_DEVICE = '/dev/dri/renderD128';
 const NICE = 10;
@@ -83,11 +83,20 @@ export async function runReencode(ctx: {
   const encoded = path.join(staging, 'out.mkv');
 
   await ctx.setStage('encoding');
-  await run(FFMPEG, [
-    '-y', '-v', 'error', ...HW_ARGS, '-hwaccel', 'qsv', '-hwaccel_output_format', 'qsv', '-i', target,
-    '-map', '0:v:0', '-map', '0:a', '-map_metadata', '0', '-map_chapters', '0',
+  const encode = (decoding: string[], filtering: string[]) => run(FFMPEG, [
+    '-y', '-v', 'error', ...HW_ARGS, ...decoding, '-i', target,
+    '-map', '0:v:0', '-map', '0:a', '-map_metadata', '0', '-map_chapters', '0', ...filtering,
     '-c:v', 'hevc_qsv', '-preset', ctx.preset, '-global_quality', String(ctx.quality), '-c:a', 'copy', encoded,
   ], { signal, nice: NICE });
+  try {
+    await encode(['-hwaccel', 'qsv', '-hwaccel_output_format', 'qsv'], []);
+  } catch (error) {
+    if (error instanceof JobCancelledError) throw error;
+    // Some streams change a property part way, such as the aspect ratio flag. The hardware
+    // decoder restarts at that point and ffmpeg cannot follow it. The GPU still encodes.
+    await ctx.note('Hardware decoding failed, so this encode decodes in software');
+    await encode([], ['-vf', 'format=nv12,hwupload=extra_hw_frames=64']);
+  }
 
   await ctx.setStage('validating');
   const after = await probe(encoded);
