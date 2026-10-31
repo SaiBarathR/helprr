@@ -4,6 +4,7 @@ import type { Prisma, PrismaClient, TwitchDeletionCause, TwitchDeletionKind, Twi
 import { worthKeeping } from '@/lib/twitch/reencode-window';
 import { FFMPEG, FFPROBE, LIBRARY_DIR, ORIGINALS_DIR, STAGING_DIR } from './env';
 import { withFileLock } from './file-lock';
+import { removeInsideLibrary } from './library-paths';
 import { JobCancelledError, run } from './process';
 
 const RENDER_DEVICE = '/dev/dri/renderD128';
@@ -195,7 +196,7 @@ export async function deleteExpiredOriginals(prisma: PrismaClient, now = new Dat
           || current.originalDeleteAfter > now
           || current.jobs.length > 0
         ) return false;
-        await rm(original, { force: true });
+        await removeInsideLibrary(file.originalRelativePath!);
         await tx.twitchMediaFile.update({
           where: { id: file.id },
           data: { originalRelativePath: null, originalDeleteAfter: null, originalDeletedAt: now },

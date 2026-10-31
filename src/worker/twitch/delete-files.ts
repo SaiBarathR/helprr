@@ -1,20 +1,14 @@
 import { constants } from 'node:fs';
-import { open, readdir, realpath, rm, stat, writeFile } from 'node:fs/promises';
+import { open, readdir, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { PrismaClient, TwitchJob } from '@prisma/client';
 import { LIBRARY_DIR } from './env';
 import { withFileLock } from './file-lock';
+import { insideLibrary, removeInsideLibrary } from './library-paths';
 import { DeferJobError } from './process';
 import { recordDeletion, writeDeleteAudit } from './reencode';
 
-/** Stored paths are the worker's own, but a delete is the last place to take that on trust. */
-export function insideLibrary(relativePath: string, root = LIBRARY_DIR): string {
-  const resolved = path.resolve(root, relativePath);
-  if (!resolved.startsWith(`${path.resolve(root)}${path.sep}`)) {
-    throw new Error(`validation failed: ${relativePath} is outside the library`);
-  }
-  return resolved;
-}
+export { insideLibrary };
 
 const LIBRARY_MARKER = '.helprr-library';
 const CONFLICT_WAIT_MS = 5 * 60_000;
@@ -121,7 +115,7 @@ async function sizeOnDisk(paths: string[]): Promise<number> {
 }
 
 /** Only a clear "not there" counts: any other error says nothing about the file. */
-export async function exists(file: string): Promise<boolean> {
+async function exists(file: string): Promise<boolean> {
   try {
     await stat(file);
     return true;
@@ -129,26 +123,6 @@ export async function exists(file: string): Promise<boolean> {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
     throw error;
   }
-}
-
-/** The stored path stays inside the library by its text; a linked folder could still lead out. */
-export async function assertRealParentInside(relative: string): Promise<void> {
-  const parent = await realpath(path.dirname(insideLibrary(relative)));
-  const root = await realpath(LIBRARY_DIR);
-  if (parent !== root && !parent.startsWith(`${root}${path.sep}`)) {
-    throw new Error(`validation failed: ${relative} leads outside the library`);
-  }
-}
-
-export async function removeInsideLibrary(relative: string): Promise<void> {
-  try {
-    await assertRealParentInside(relative);
-  } catch (error) {
-    // Its folder is already gone, so it is too. Anything else leaves the file in doubt.
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
-    throw error;
-  }
-  await rm(insideLibrary(relative), { force: true });
 }
 
 /**
