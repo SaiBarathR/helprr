@@ -2,21 +2,21 @@
 
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Loader2 } from 'lucide-react';
+import { AlertTriangle, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useMe, hasCapability } from '@/components/permission-provider';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
-import { Switch } from '@/components/ui/switch';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Drawer, DrawerContent, DrawerDescription, DrawerFooter, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useIsMobile } from '@/hooks/use-is-mobile';
-import { cn } from '@/lib/utils';
+import { SwitchRow } from './setting-rows';
 import { formatDuration, type TwitchVideo } from './types';
 
 const QUALITIES = [
   { id: '1440p60', label: '1440p', gbPerHour: 4.07 },
-  { id: '1080p60', label: '1080p60', gbPerHour: 3.46 },
-  { id: '720p60', label: '720p60', gbPerHour: 1.46 },
+  { id: '1080p60', label: '1080p', gbPerHour: 3.46 },
+  { id: '720p60', label: '720p', gbPerHour: 1.46 },
   { id: '480p', label: '480p', gbPerHour: 0.6 },
   { id: 'audio_only', label: 'Audio', gbPerHour: 0.094 },
 ] as const;
@@ -62,6 +62,15 @@ async function rememberForStreamer(streamerId: string, choice: Defaults): Promis
   if (!saved.ok) toast.error('Queued, but the choice could not be remembered');
 }
 
+function EstimateRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="grouped-row gap-3">
+      <span className="text-sm">{label}</span>
+      <span className="text-sm tabular-nums text-muted-foreground">{value}</span>
+    </div>
+  );
+}
+
 function SheetBody({ video, defaults, canUse1440p, onDone }: {
   video: TwitchVideo;
   defaults: Defaults;
@@ -78,7 +87,8 @@ function SheetBody({ video, defaults, canUse1440p, onDone }: {
   // One id per sheet, so a double tap or a retry cannot queue the video twice.
   const clientRequestId = useMemo(() => crypto.randomUUID(), []);
 
-  const mutedSeconds = (video.mutedSegments ?? []).reduce((total, segment) => total + segment.duration, 0);
+  const mutedSegments = video.mutedSegments ?? [];
+  const mutedSeconds = mutedSegments.reduce((total, segment) => total + segment.duration, 0);
   const sizeGb = ((QUALITIES.find((item) => item.id === quality)?.gbPerHour ?? 3.46) * video.durationSeconds) / 3600;
 
   const queue = useMutation({
@@ -101,65 +111,52 @@ function SheetBody({ video, defaults, canUse1440p, onDone }: {
   });
 
   return (
-    <div className="space-y-4 px-4 pb-4">
-      <p className="line-clamp-2 text-sm text-muted-foreground">{video.title}</p>
-      {mutedSeconds > 0 && (
-        <p className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-sm text-amber-300">
-          Twitch muted {formatDuration(mutedSeconds)} of this audio. It cannot be recovered.
-          <span className="mt-1 block font-mono text-xs">
-            {(video.mutedSegments ?? []).map((segment) => `${formatDuration(segment.offset)}–${formatDuration(segment.offset + segment.duration)}`).join(', ')}
-          </span>
-        </p>
-      )}
-      <div role="radiogroup" aria-label="Quality" className="grid auto-cols-fr grid-flow-col gap-1 rounded-md bg-muted/40 p-1">
-        {QUALITIES.filter((item) => canUse1440p || item.id !== '1440p60').map((item) => (
-          <button
-            key={item.id}
-            role="radio"
-            aria-checked={quality === item.id}
-            onClick={() => setQuality(item.id)}
-            className={cn('min-h-11 rounded text-sm font-medium', quality === item.id ? 'bg-background shadow-sm' : 'text-muted-foreground')}
-          >
-            {item.label}
-          </button>
-        ))}
-      </div>
-      <div className="grouped-section-content">
-        {OPTIONS.map((item) => (
-          <label key={item.id} className="grouped-row min-h-11 w-full cursor-pointer">
-            <span className="text-sm">{item.label}</span>
-            <Switch
+    <>
+      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4">
+        {mutedSeconds > 0 && (
+          <div className="flex items-start gap-2.5 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 text-sm text-amber-300">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            <div className="min-w-0">
+              <p>Twitch muted {formatDuration(mutedSeconds)} of the audio. It cannot be recovered.</p>
+              <p className="mt-0.5 text-xs tabular-nums opacity-80">
+                {mutedSegments.map((segment) => `${formatDuration(segment.offset)}–${formatDuration(segment.offset + segment.duration)}`).join(', ')}
+              </p>
+            </div>
+          </div>
+        )}
+        <Tabs value={quality} onValueChange={setQuality}>
+          <TabsList className="w-full" aria-label="Quality">
+            {QUALITIES.filter((item) => canUse1440p || item.id !== '1440p60').map((item) => (
+              <TabsTrigger key={item.id} value={item.id} className="flex-1">{item.label}</TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
+        {quality === '1440p60' && <p className="px-1 text-xs text-muted-foreground">Twitch removes the 1440p copy after 7 days, so this falls back to 1080p on older videos.</p>}
+        <div className="grouped-section-content overflow-hidden">
+          {OPTIONS.map((item) => (
+            <SwitchRow
+              key={item.id}
+              label={item.label}
               checked={options[item.id]}
               onCheckedChange={(checked) => setOptions((prev) => ({ ...prev, [item.id]: checked }))}
             />
-          </label>
-        ))}
+          ))}
+          {canManage && <SwitchRow label={`Remember for ${video.streamer.displayName}`} checked={remember} onCheckedChange={setRemember} />}
+        </div>
+        <div className="grouped-section-content overflow-hidden">
+          <EstimateRow label="Length" value={formatDuration(video.durationSeconds)} />
+          <EstimateRow label="Size" value={`≈ ${sizeGb < 1 ? `${Math.round(sizeGb * 1024)} MB` : `${sizeGb.toFixed(1)} GB`}`} />
+          {options.reencode && <EstimateRow label="After re-encode" value={`≈ ${(sizeGb * 0.18).toFixed(1)}–${(sizeGb * 0.37).toFixed(1)} GB`} />}
+          <EstimateRow label="Time" value={`≈ ${Math.ceil((sizeGb * 1024) / 15 / 60)}–${Math.ceil((sizeGb * 1024) / 7 / 60)} min`} />
+        </div>
       </div>
-      {canManage && (
-        <label className="grouped-row min-h-11 w-full cursor-pointer rounded-lg bg-card">
-          <span className="text-sm">Remember for {video.streamer.displayName}</span>
-          <Switch checked={remember} onCheckedChange={setRemember} />
-        </label>
-      )}
-      {quality === '1440p60' && <p className="text-xs text-muted-foreground">Twitch removes the 1440p copy after 7 days, so this falls back to 1080p60 on older VODs.</p>}
-      <dl className="grid grid-cols-2 gap-2 text-center">
-        {[
-          ['Length', formatDuration(video.durationSeconds)],
-          ['Download', `≈ ${sizeGb < 1 ? `${Math.round(sizeGb * 1024)} MB` : `${sizeGb.toFixed(1)} GB`}`],
-          ['After re-encode', options.reencode ? `≈ ${(sizeGb * 0.18).toFixed(1)}–${(sizeGb * 0.37).toFixed(1)} GB` : '—'],
-          ['Time at 7–15 MB/s', `≈ ${Math.ceil((sizeGb * 1024) / 15 / 60)}–${Math.ceil((sizeGb * 1024) / 7 / 60)} min`],
-        ].map(([label, value]) => (
-          <div key={label} className="rounded-lg bg-card p-2">
-            <dt className="text-[11px] text-muted-foreground">{label}</dt>
-            <dd className="font-mono text-sm">{value}</dd>
-          </div>
-        ))}
-      </dl>
-      <Button className="h-11 w-full" disabled={queue.isPending} onClick={() => queue.mutate()}>
-        {queue.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-        Download
-      </Button>
-    </div>
+      <DrawerFooter>
+        <Button className="w-full" disabled={queue.isPending} onClick={() => queue.mutate()}>
+          {queue.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+          Download
+        </Button>
+      </DrawerFooter>
+    </>
   );
 }
 
@@ -169,7 +166,7 @@ export function DownloadSheet({ video, open, onOpenChange }: {
   onOpenChange: (open: boolean) => void;
 }) {
   const isMobile = useIsMobile();
-  const title = 'Download VOD';
+  const title = 'Download video';
   // The sheet starts from what the rules say for this video.
   const defaults = useQuery({
     queryKey: ['twitch', 'video', video.id],
@@ -187,7 +184,10 @@ export function DownloadSheet({ video, open, onOpenChange }: {
     return (
       <Drawer open={open} onOpenChange={onOpenChange}>
         <DrawerContent>
-          <DrawerHeader><DrawerTitle>{title}</DrawerTitle></DrawerHeader>
+          <DrawerHeader>
+            <DrawerTitle>{title}</DrawerTitle>
+            <DrawerDescription className="line-clamp-2">{video.title}</DrawerDescription>
+          </DrawerHeader>
           {body}
         </DrawerContent>
       </Drawer>
@@ -195,8 +195,11 @@ export function DownloadSheet({ video, open, onOpenChange }: {
   }
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md p-0 pt-4">
-        <DialogHeader className="px-4"><DialogTitle>{title}</DialogTitle></DialogHeader>
+      <DialogContent className="flex max-h-[85dvh] max-w-md flex-col gap-3 p-0 pt-4">
+        <DialogHeader className="px-4">
+          <DialogTitle>{title}</DialogTitle>
+          <DialogDescription className="line-clamp-2">{video.title}</DialogDescription>
+        </DialogHeader>
         {body}
       </DialogContent>
     </Dialog>

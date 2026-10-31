@@ -520,7 +520,9 @@ async function fetchUpstreamImage(
 
       const validated = await validateRasterImage(
         bounded.body,
-        response.headers.get('content-type'),
+        // This CDN labels uploaded JPEGs image/png, so its header says nothing.
+        // Treated as absent: the decoded format still decides the response type.
+        currentUrl.hostname === 'static-cdn.jtvnw.net' ? null : response.headers.get('content-type'),
         options.requireFullDecode,
       );
       if (!validated) {

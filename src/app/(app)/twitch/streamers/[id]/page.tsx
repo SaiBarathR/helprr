@@ -2,29 +2,38 @@
 
 import { use, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Bell, BellOff, CheckSquare, Radio } from 'lucide-react';
+import { Bell, BellOff, ExternalLink, ListChecks, Loader2, MoreHorizontal, Plus, Radio, SlidersHorizontal, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { PageHeader } from '@/components/layout/page-header';
-import { FadeInImage } from '@/components/media/fade-in-image';
-import { Button } from '@/components/ui/button';
-import { FloatingActionBar } from '@/components/ui/floating-action-bar';
 import { useMe, hasCapability } from '@/components/permission-provider';
-import { StreamerRules } from '@/components/twitch/streamer-rules';
+import { HeroImage } from '@/components/media/hero-image';
+import { Button } from '@/components/ui/button';
+import { ErrorState } from '@/components/ui/error-state';
+import { PullToRefresh } from '@/components/ui/pull-to-refresh';
+import type { ContextActionGroup } from '@/components/ui/quick-context-menu';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { ActionsMenu } from '@/components/twitch/actions-menu';
+import { ClampedText } from '@/components/twitch/clamped-text';
+import { StreamerAvatar } from '@/components/twitch/streamer-avatar';
 import { TwitchVideoCard } from '@/components/twitch/twitch-video-card';
-import { TwitchVideoList } from '@/components/twitch/twitch-video-list';
-import { useVideoActions } from '@/components/twitch/use-video-actions';
+import { TwitchVideoList, TwitchVideoSkeleton } from '@/components/twitch/twitch-video-list';
 import type { TwitchVideoPage } from '@/components/twitch/types';
+import { useVideoActions } from '@/components/twitch/use-video-actions';
+import { useVideoSelection } from '@/components/twitch/use-video-selection';
 import { useRestorableInfiniteQuery } from '@/lib/hooks/use-restorable-infinite-query';
+import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
 import { toCachedImageSrc } from '@/lib/image';
-import { useBulkSelection } from '@/lib/use-bulk-selection';
+import { useUIStore } from '@/lib/store';
 import { cn } from '@/lib/utils';
 
 const TABS = [
   { id: 'ARCHIVE', label: 'Videos' },
   { id: 'HIGHLIGHT', label: 'Highlights' },
   { id: 'UPLOAD', label: 'Uploads' },
-  { id: 'RULES', label: 'Rules' },
 ] as const;
+
+const HEADER_BUTTON = 'flex h-11 w-10 items-center justify-center text-primary';
 
 interface Streamer {
   id: string;
@@ -42,34 +51,13 @@ interface Streamer {
 export default function TwitchStreamerPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const me = useMe();
-  const tabs = TABS.filter((item) => item.id !== 'RULES' || hasCapability(me, 'twitch.manage'));
-  const [tab, setTab] = useState<(typeof TABS)[number]['id']>('ARCHIVE');
-
-  const canDownload = hasCapability(me, 'twitch.download');
   const canManage = hasCapability(me, 'twitch.manage');
-  const selection = useBulkSelection();
-  const actions = useVideoActions();
+  const view = useUIStore((state) => state.twitchFeedView);
+  const [tab, setTab] = useRouteViewState<string>('tab', 'ARCHIVE');
+  const [bannerFailed, setBannerFailed] = useState(false);
   const queryClient = useQueryClient();
-  const downloadSelected = useMutation({
-    mutationFn: async () => {
-      const results = await Promise.allSettled(toDownload.map(async ({ id: videoId }) => {
-        const res = await fetch('/api/twitch/jobs', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ videoId, clientRequestId: crypto.randomUUID() }),
-        });
-        if (!res.ok) throw new Error('refused');
-      }));
-      return results.filter((result) => result.status === 'rejected').length;
-    },
-    onSuccess: (failed) => {
-      const queued = toDownload.length - failed;
-      if (failed > 0) toast.error(`${queued} queued, ${failed} could not be queued`);
-      else toast.success(`${queued} queued`);
-      selection.exit();
-      void queryClient.invalidateQueries({ queryKey: ['twitch'] });
-    },
-  });
+  const actions = useVideoActions();
+  const refresh = () => queryClient.invalidateQueries({ queryKey: ['twitch'] });
 
   const streamerQuery = useQuery({
     queryKey: ['twitch', 'streamer', id],
@@ -83,7 +71,6 @@ export default function TwitchStreamerPage({ params }: { params: Promise<{ id: s
 
   const videos = useRestorableInfiniteQuery({
     queryKey: ['twitch', 'streamer-videos', id, tab],
-    enabled: tab !== 'RULES',
     queryFn: async ({ pageParam, signal }) => {
       const res = await fetch(`/api/twitch/streamers/${id}/videos?type=${tab}&page=${pageParam}`, { signal });
       if (!res.ok) throw new Error('Failed to load videos');
@@ -93,9 +80,7 @@ export default function TwitchStreamerPage({ params }: { params: Promise<{ id: s
     getNextPageParam: (last: TwitchVideoPage) => (last.page * last.pageSize < last.total ? last.page + 1 : undefined),
   });
   const rows = useMemo(() => videos.data?.pages.flatMap((page) => page.videos) ?? [], [videos.data]);
-  const selected = rows.filter((video) => selection.selectedKeys.has(video.id));
-  const toDelete = selected.filter((video) => video.fileId);
-  const toDownload = selected.filter((video) => !video.fileId);
+  const selection = useVideoSelection(rows, actions);
 
   const follow = useMutation({
     mutationFn: async () => {
@@ -108,7 +93,7 @@ export default function TwitchStreamerPage({ params }: { params: Promise<{ id: s
           });
       if (!res.ok) throw new Error('Could not change the subscription');
     },
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['twitch'] }),
+    onSuccess: () => void refresh(),
     onError: (error) => toast.error(error.message),
   });
   const toggleNotify = useMutation({
@@ -120,125 +105,156 @@ export default function TwitchStreamerPage({ params }: { params: Promise<{ id: s
       });
       if (!res.ok) throw new Error('Could not change notifications');
     },
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['twitch'] }),
+    onSuccess: () => void refresh(),
     onError: (error) => toast.error(error.message),
   });
 
-  const banner = toCachedImageSrc(streamer?.offlineImageUrl, undefined, { width: 1200 });
-  const avatar = toCachedImageSrc(streamer?.profileImageUrl, undefined, { width: 144 });
+  if (streamerQuery.isError) {
+    return (
+      <div className="animate-content-in">
+        <PageHeader title="Streamer" backHref="/twitch/streamers" />
+        <ErrorState message="Couldn't load this streamer" onRetry={() => void streamerQuery.refetch()} />
+      </div>
+    );
+  }
+
+  const banner = toCachedImageSrc(streamer?.offlineImageUrl, undefined, { width: 1280 });
+  const menu: ContextActionGroup[] = streamer ? [
+    {
+      id: 'open',
+      actions: [
+        ...(canManage
+          ? [{ id: 'rules', label: 'Download rules', icon: <SlidersHorizontal className="h-4 w-4" />, href: `/twitch/streamers/${id}/rules` }]
+          : []),
+        { id: 'twitch', label: 'Open on Twitch', icon: <ExternalLink className="h-4 w-4" />, href: `https://www.twitch.tv/${streamer.login}`, external: true },
+      ],
+    },
+    {
+      id: 'destructive',
+      actions: streamer.subscription
+        ? [{ id: 'unsubscribe', label: 'Unsubscribe', icon: <Trash2 className="h-4 w-4" />, destructive: true, onSelect: () => follow.mutate() }]
+        : [],
+    },
+  ] : [];
+
+  const identity = streamer && (
+    <>
+      <h1 className="truncate text-xl font-bold leading-tight">{streamer.displayName}</h1>
+      <p className="mt-0.5 truncate text-sm text-muted-foreground">@{streamer.login}</p>
+    </>
+  );
 
   return (
-    <div className="animate-content-in pb-8">
-      <PageHeader title={streamer?.displayName ?? 'Streamer'} backHref="/twitch/streamers" />
-      <div className="relative h-32 overflow-hidden bg-muted sm:h-44">
-        {banner && <FadeInImage src={banner} alt="" fill sizes="100vw" className="object-cover" unoptimized />}
-        <div className="absolute inset-0 bg-gradient-to-t from-background to-transparent" />
-      </div>
-      <div className="relative -mt-8 space-y-4 px-4">
-        <div className="flex items-end gap-3">
-          <span className="relative block h-16 w-16 shrink-0 overflow-hidden rounded-full bg-muted ring-2 ring-background">
-            {avatar && <FadeInImage src={avatar} alt="" fill sizes="64px" className="object-cover" unoptimized />}
-          </span>
-          {streamer?.isLive && (
-            <span className="flex min-w-0 items-center gap-1 pb-1 text-xs text-red-400">
-              <Radio className="h-3.5 w-3.5 shrink-0" />
-              <span className="truncate">{streamer.liveTitle || 'Live'}{streamer.liveCategory ? ` · ${streamer.liveCategory}` : ''}</span>
-            </span>
-          )}
-        </div>
-        {streamer && (
-          <div className="flex gap-2">
-            <Button variant={streamer.subscription ? 'outline' : 'default'} className="h-11 flex-1" disabled={follow.isPending} onClick={() => follow.mutate()}>
-              {streamer.subscription ? 'Unsubscribe' : 'Subscribe'}
-            </Button>
-            {streamer.subscription && (
-              <Button
-                variant="outline"
-                size="icon"
-                className="h-11 w-11"
+    <>
+      <PageHeader
+        title={streamer?.displayName ?? 'Streamer'}
+        backHref="/twitch/streamers"
+        rightContent={(
+          <>
+            {selection.canSelect && rows.length > 0 && (
+              <button
+                type="button"
+                aria-label={selection.active ? 'Exit selection' : 'Select videos'}
+                aria-pressed={selection.active}
+                onClick={selection.toggleMode}
+                className={cn(HEADER_BUTTON, selection.active && 'rounded-lg bg-primary text-primary-foreground')}
+              >
+                <ListChecks className="h-5 w-5" />
+              </button>
+            )}
+            {streamer?.subscription && (
+              <button
+                type="button"
                 aria-label={streamer.subscription.notifyNewVods ? 'Turn off notifications' : 'Turn on notifications'}
                 aria-pressed={streamer.subscription.notifyNewVods}
                 onClick={() => toggleNotify.mutate(!streamer.subscription!.notifyNewVods)}
+                className={HEADER_BUTTON}
               >
-                {streamer.subscription.notifyNewVods ? <Bell className="h-4 w-4" /> : <BellOff className="h-4 w-4 text-muted-foreground" />}
-              </Button>
+                {streamer.subscription.notifyNewVods ? <Bell className="h-5 w-5" /> : <BellOff className="h-5 w-5 text-muted-foreground" />}
+              </button>
             )}
+            <ActionsMenu label={`${streamer?.displayName ?? 'Streamer'} actions`} groups={menu} className={HEADER_BUTTON} icon={<MoreHorizontal className="h-5 w-5" />} />
+          </>
+        )}
+      />
+      <div className="space-y-4 animate-content-in">
+        <PullToRefresh onRefresh={refresh} disabled={selection.active} />
+        {!streamer ? (
+          <div className="flex items-center gap-3 pt-3">
+            <Skeleton className="h-20 w-20 rounded-full" />
+            <div className="flex-1 space-y-2"><Skeleton className="h-5 w-1/2" /><Skeleton className="h-3 w-1/3" /></div>
+          </div>
+        ) : banner && !bannerFailed ? (
+          <div className="-mx-2 md:-mx-6">
+            <div className="relative h-[180px] w-full overflow-hidden bg-muted/40 md:h-[220px]">
+              <HeroImage src={banner} alt="" fill sizes="100vw" className="object-cover" priority unoptimized onError={() => setBannerFailed(true)} />
+              <div className="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent light:via-background/25" />
+            </div>
+            <div className="relative -mt-[52px] flex items-end gap-3.5 px-2 md:px-6">
+              <StreamerAvatar url={streamer.profileImageUrl} size={80} className="shadow-lg ring-1 ring-border/20" />
+              <div className="min-w-0 flex-1 pb-1">{identity}</div>
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-center gap-3.5 pt-3">
+            <StreamerAvatar url={streamer.profileImageUrl} size={80} />
+            <div className="min-w-0 flex-1">{identity}</div>
           </div>
         )}
-        {streamer?.description && <p className="text-sm text-muted-foreground">{streamer.description}</p>}
 
-        <div role="tablist" aria-label="Video types" className="grid grid-flow-col auto-cols-fr gap-1 rounded-md bg-muted/40 p-1">
-          {tabs.map((item) => (
-            <button
-              key={item.id}
-              role="tab"
-              aria-selected={tab === item.id}
-              onClick={() => setTab(item.id)}
-              className={cn('min-h-9 rounded text-sm font-medium', tab === item.id ? 'bg-background shadow-sm' : 'text-muted-foreground')}
-            >
-              {item.label}
-            </button>
-          ))}
-        </div>
+        {streamer?.isLive && (
+          <p className="flex items-center gap-1.5 text-sm text-red-400">
+            <Radio className="h-4 w-4 shrink-0" />
+            <span className="min-w-0 truncate">{streamer.liveTitle || 'Live'}{streamer.liveCategory ? ` · ${streamer.liveCategory}` : ''}</span>
+          </p>
+        )}
 
-        {tab === 'RULES' && <StreamerRules streamerId={id} />}
-        {tab !== 'RULES' && videos.isSuccess && rows.length === 0 && (
-          <p className="py-8 text-center text-sm text-muted-foreground">No videos here.</p>
+        {streamer && !streamer.subscription && (
+          <Button className="h-10 w-full rounded-full" disabled={follow.isPending} onClick={() => follow.mutate()}>
+            {follow.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
+            Subscribe
+          </Button>
         )}
-        {tab !== 'RULES' && rows.length > 0 && (canDownload || canManage) && (
-          <div className="flex justify-end">
-            <Button variant="ghost" size="sm" onClick={() => (selection.selectionMode ? selection.exit() : selection.enter())}>
-              <CheckSquare className="mr-1.5 h-4 w-4" />
-              {selection.selectionMode ? 'Cancel' : 'Select'}
-            </Button>
-          </div>
-        )}
-        {tab !== 'RULES' && (
+
+        {streamer?.description && <ClampedText text={streamer.description} />}
+
+        <Tabs value={tab} onValueChange={setTab}>
+          <TabsList className="w-full">
+            {TABS.map((item) => <TabsTrigger key={item.id} value={item.id} className="flex-1">{item.label}</TabsTrigger>)}
+          </TabsList>
+        </Tabs>
+
+        {videos.isLoading ? (
+          <TwitchVideoSkeleton />
+        ) : videos.isError ? (
+          <ErrorState compact message="Couldn't load the videos" onRetry={() => void videos.refetch()} />
+        ) : rows.length === 0 ? (
+          <div className="rounded-xl bg-card p-8 text-center text-muted-foreground">No videos here.</div>
+        ) : (
           <TwitchVideoList
             videos={rows}
-            layout="grid"
+            layout={view}
             renderVideo={(video) => (
               <TwitchVideoCard
                 video={video}
-                layout="grid"
+                layout={view}
                 showStreamer={false}
                 actions={actions}
-                selection={selection.selectionMode && !video.activeJob && (video.downloaded ? canManage : canDownload)
-                  ? { selected: selection.selectedKeys.has(video.id), onToggle: () => selection.toggle(video.id) }
-                  : undefined}
+                selection={selection.selectionFor(video)}
+                onSelect={selection.startWith(video)}
               />
             )}
           />
         )}
         {videos.hasNextPage && (
-          <Button variant="outline" className="w-full" disabled={videos.isFetchingNextPage} onClick={() => void videos.fetchNextPage()}>
-            {videos.isFetchingNextPage ? 'Loading…' : 'Load more'}
+          <Button variant="ghost" className="w-full" disabled={videos.isFetchingNextPage} onClick={() => void videos.fetchNextPage()}>
+            {videos.isFetchingNextPage && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            Load more
           </Button>
         )}
       </div>
       {actions.sheet}
-      {selection.selectionMode && selection.count > 0 && (
-        <FloatingActionBar>
-          <span className="text-sm">{selection.count} selected</span>
-          {toDelete.length > 0 && (
-            <Button
-              variant="outline"
-              className="ml-auto"
-              onClick={() => {
-                actions.deleteFiles(toDelete);
-                selection.exit();
-              }}
-            >
-              Delete {toDelete.length}
-            </Button>
-          )}
-          {toDownload.length > 0 && (
-            <Button className={toDelete.length > 0 ? undefined : 'ml-auto'} disabled={downloadSelected.isPending} onClick={() => downloadSelected.mutate()}>
-              {downloadSelected.isPending ? 'Queuing…' : `Download ${toDownload.length}`}
-            </Button>
-          )}
-        </FloatingActionBar>
-      )}
-    </div>
+      {selection.bar}
+    </>
   );
 }
