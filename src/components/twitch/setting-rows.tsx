@@ -7,6 +7,12 @@ import { cn } from '@/lib/utils';
 /** 16px on phones: a smaller input makes iOS zoom the page when it is focused. */
 export const ROW_INPUT = 'min-w-0 bg-transparent text-right text-base md:text-sm outline-none placeholder:text-muted-foreground';
 
+/** A saved setting only changes for a real, different number: an empty field is not a 0. */
+export function changedNumber(text: string, stored: number | undefined): number | null {
+  const value = Number(text);
+  return text.trim() === '' || !Number.isFinite(value) || value === stored ? null : value;
+}
+
 export function SwitchRow({ label, checked, disabled, dimmed, onCheckedChange, children }: {
   label: string;
   checked: boolean;
