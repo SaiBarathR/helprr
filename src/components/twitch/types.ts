@@ -44,6 +44,11 @@ export function formatDuration(seconds: number): string {
   return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
 }
 
+/** Short clips round to nothing in GB, so anything under 1 GB reads in MB. */
+export function formatGb(gb: number): string {
+  return gb < 1 ? `${Math.ceil(gb * 1024)} MB` : `${gb.toFixed(1)} GB`;
+}
+
 /** The worker reports stages in lower case: "reading metadata". */
 export function stageLabel(stage: string): string {
   return stage.charAt(0).toUpperCase() + stage.slice(1);
