@@ -15,7 +15,7 @@ vi.mock('@/components/permission-provider', () => ({
 }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
-import { useFileActions } from './use-file-actions';
+import { CONFIRMATIONS, useFileActions } from './use-file-actions';
 
 const file = {
   id: 'f',
@@ -41,6 +41,18 @@ function setup() {
 
 const ids = (groups: ReturnType<ReturnType<typeof useFileActions>['groupsFor']>) =>
   groups.flatMap((group) => group.actions.map((action) => action.id));
+
+describe('the restore confirmation', () => {
+  it('says how much more space a restore uses', () => {
+    expect(CONFIRMATIONS.restore.description(reencoded as TwitchFile)).toContain('uses 700 B more space');
+  });
+
+  it('reads properly when the original size was never recorded', () => {
+    const text = CONFIRMATIONS.restore.description({ ...reencoded, originalSizeBytes: null } as TwitchFile);
+    expect(text).toContain('uses more space');
+    expect(text).not.toContain('more more');
+  });
+});
 
 describe('useFileActions', () => {
   beforeEach(() => {

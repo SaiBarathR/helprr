@@ -19,7 +19,8 @@ export function useVideoSelection(rows: TwitchVideo[], actions: VideoActions) {
   const queryClient = useQueryClient();
   const selection = useBulkSelection();
 
-  const eligible = (video: TwitchVideo) => !video.activeJob && (video.downloaded ? canManage : canDownload);
+  const eligible = (video: TwitchVideo) => !video.activeJob
+    && (video.downloaded ? canManage : canDownload && video.availability === 'PUBLISHED');
   // Checked again here: a selected video can start downloading before the bar is used.
   const selected = rows.filter((video) => selection.selectedKeys.has(video.id) && eligible(video));
   const toDelete = selected.filter((video) => video.fileId);

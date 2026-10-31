@@ -104,6 +104,11 @@ function reencodeStatus(file: TwitchFileDetail): string {
   return 'Not re-encoded';
 }
 
+function keptLabel(days: number | null): string {
+  if (days === null) return 'Kept';
+  return days > 0 ? `Kept for ${days} more ${days === 1 ? 'day' : 'days'}` : 'Goes today';
+}
+
 function cleanupStatus(file: TwitchFileDetail): { text: string; tone?: string } {
   const { cleanup } = file;
   if (file.keepForever) return { text: 'Never: kept forever' };
@@ -309,7 +314,7 @@ export default function TwitchFilePage({ params }: { params: Promise<{ id: strin
                 <Row
                   label="Status"
                   value={file.originalKept
-                    ? (originalDays !== null && originalDays > 0 ? `Kept for ${originalDays} more ${originalDays === 1 ? 'day' : 'days'}` : 'Deleted today')
+                    ? keptLabel(originalDays)
                     : file.originalDeletedAt ? `Deleted ${format(new Date(file.originalDeletedAt), DATE)}` : 'Deleted'}
                   tone={file.originalKept ? 'text-amber-400' : undefined}
                 />

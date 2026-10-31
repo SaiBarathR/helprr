@@ -6,7 +6,7 @@ import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import Link from '@/components/ui/app-link';
 import { GroupedSection } from '@/components/settings/grouped-section';
-import { NumberRow, ROW_INPUT, SwitchRow } from '@/components/twitch/setting-rows';
+import { changedNumber, NumberRow, ROW_INPUT, SwitchRow } from '@/components/twitch/setting-rows';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Input } from '@/components/ui/input';
@@ -28,6 +28,8 @@ interface Settings {
   hasBrowserAuthToken: boolean;
   browserAuthTokenValid: boolean | null;
 }
+
+type NumberSetting = 'reencodeGlobalQuality' | 'keepOriginalDays' | 'maxConcurrentDownloads' | 'minFreeGb';
 
 interface RetentionCandidate {
   fileId: string;
@@ -129,6 +131,16 @@ export default function TwitchSettingsPage() {
     onSuccess: refresh,
     onError: fail,
   });
+  // Left empty, the field goes back to what is saved rather than showing a value that is not.
+  const saveNumber = (field: NumberSetting, input: HTMLInputElement) => {
+    const stored = settings.data?.[field];
+    const value = changedNumber(input.value, stored);
+    if (value !== null) saveSettings.mutate({ [field]: value });
+    else if (input.value.trim() === '' && stored !== undefined) input.value = String(stored);
+  };
+  const saveTime = (field: 'reencodeWindowStart' | 'reencodeWindowEnd', value: string) => {
+    if (value && value !== settings.data?.[field]) saveSettings.mutate({ [field]: value });
+  };
   const savePin = (tool: 'ytdlp' | 'td', value: string) => {
     const pins = { ...settings.data?.pinnedTools };
     if ((pins[tool] ?? '') === value.trim()) return;
@@ -218,10 +230,10 @@ export default function TwitchSettingsPage() {
         />
         {data && (
           <>
-            <TimeRow label="Starts" defaultValue={data.reencodeWindowStart} onCommit={(reencodeWindowStart) => saveSettings.mutate({ reencodeWindowStart })} />
-            <TimeRow label="Ends" defaultValue={data.reencodeWindowEnd} onCommit={(reencodeWindowEnd) => saveSettings.mutate({ reencodeWindowEnd })} />
-            <NumberRow label="Quality (lower is better)" min={1} max={51} defaultValue={data.reencodeGlobalQuality} onBlur={(event) => saveSettings.mutate({ reencodeGlobalQuality: Number(event.target.value) })} />
-            <NumberRow label="Keep originals" unit="days" min={0} max={365} defaultValue={data.keepOriginalDays} onBlur={(event) => saveSettings.mutate({ keepOriginalDays: Number(event.target.value) })} />
+            <TimeRow label="Starts" defaultValue={data.reencodeWindowStart} onCommit={(value) => saveTime('reencodeWindowStart', value)} />
+            <TimeRow label="Ends" defaultValue={data.reencodeWindowEnd} onCommit={(value) => saveTime('reencodeWindowEnd', value)} />
+            <NumberRow label="Quality (lower is better)" min={1} max={51} defaultValue={data.reencodeGlobalQuality} onBlur={(event) => saveNumber('reencodeGlobalQuality', event.target)} />
+            <NumberRow label="Keep originals" unit="days" min={0} max={365} defaultValue={data.keepOriginalDays} onBlur={(event) => saveNumber('keepOriginalDays', event.target)} />
           </>
         )}
       </GroupedSection>
@@ -229,8 +241,8 @@ export default function TwitchSettingsPage() {
       <GroupedSection title="Downloads">
         {data && (
           <>
-            <NumberRow label="At the same time" min={1} max={6} defaultValue={data.maxConcurrentDownloads} onBlur={(event) => saveSettings.mutate({ maxConcurrentDownloads: Number(event.target.value) })} />
-            <NumberRow label="Keep free on disk" unit="GB" min={1} defaultValue={data.minFreeGb} onBlur={(event) => saveSettings.mutate({ minFreeGb: Number(event.target.value) })} />
+            <NumberRow label="At the same time" min={1} max={6} defaultValue={data.maxConcurrentDownloads} onBlur={(event) => saveNumber('maxConcurrentDownloads', event.target)} />
+            <NumberRow label="Keep free on disk" unit="GB" min={1} defaultValue={data.minFreeGb} onBlur={(event) => saveNumber('minFreeGb', event.target)} />
           </>
         )}
       </GroupedSection>

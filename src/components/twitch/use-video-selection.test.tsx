@@ -16,9 +16,9 @@ vi.mock('@/components/permission-provider', () => ({
 
 import { useVideoSelection } from './use-video-selection';
 
-const video = { id: 'new', downloaded: false, fileId: null, activeJob: null } as TwitchVideo;
+const video = { id: 'new', downloaded: false, fileId: null, activeJob: null, availability: 'PUBLISHED' } as TwitchVideo;
 const saved = { id: 'saved', downloaded: true, fileId: 'file-1', activeJob: null } as TwitchVideo;
-const running = { id: 'running', downloaded: false, fileId: null, activeJob: { id: 'job-1' } } as TwitchVideo;
+const running = { id: 'running', downloaded: false, fileId: null, activeJob: { id: 'job-1' }, availability: 'PUBLISHED' } as TwitchVideo;
 
 function setup() {
   const client = new QueryClient();
@@ -34,6 +34,11 @@ describe('useVideoSelection', () => {
   it('never starts a selection with a video that is being downloaded', () => {
     mocks.capabilities = { 'twitch.download': true, 'twitch.manage': true };
     expect(setup().result.current.startWith(running)).toBeUndefined();
+  });
+
+  it.each(['RECORDING', 'UNAVAILABLE'] as const)('never offers a %s video for download', (availability) => {
+    mocks.capabilities = { 'twitch.download': true, 'twitch.manage': true };
+    expect(setup().result.current.startWith({ ...video, availability })).toBeUndefined();
   });
 
   it('keeps a saved video out of reach of a user who cannot delete it', () => {

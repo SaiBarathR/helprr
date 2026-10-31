@@ -27,7 +27,7 @@ async function send(url: string, method: string, body?: unknown) {
   if (!res.ok) throw new Error(data?.error || 'Request failed');
 }
 
-const CONFIRMATIONS = {
+export const CONFIRMATIONS = {
   delete: {
     title: 'Delete this video?',
     description: () => 'It is removed from the disk and from Jellyfin, with its chat, subtitles and any kept original. This cannot be undone.',
@@ -40,7 +40,7 @@ const CONFIRMATIONS = {
   },
   restore: {
     title: 'Restore the original?',
-    description: (file: TwitchFile) => `The original goes back in place and the re-encoded copy is deleted, so this uses ${file.originalSizeBytes ? formatBytes(file.originalSizeBytes - file.sizeBytes) : 'more'} more space. Jellyfin keeps your watched state.`,
+    description: (file: TwitchFile) => `The original goes back in place and the re-encoded copy is deleted, so this uses ${file.originalSizeBytes ? `${formatBytes(file.originalSizeBytes - file.sizeBytes)} more` : 'more'} space. Jellyfin keeps your watched state.`,
     confirmLabel: 'Restore',
   },
 } as const;
