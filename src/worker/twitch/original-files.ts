@@ -1,9 +1,10 @@
-import { lstat, rename, stat } from 'node:fs/promises';
+import { lstat, stat } from 'node:fs/promises';
 import type { PrismaClient, TwitchJob } from '@prisma/client';
-import { assertRealParentInside, exists, insideLibrary, IN_PROGRESS, removeInsideLibrary } from './delete-files';
+import { IN_PROGRESS } from './delete-files';
 import { withFileLock } from './file-lock';
+import { existsInLibrary, insideLibrary, removeInsideLibrary, replaceInsideLibrary } from './library-paths';
 import { DeferJobError } from './process';
-import { probe, recordDeletion, writeDeleteAudit } from './reencode';
+import { deleteAuditRow, probe, recordDeletion, writeDeleteAudit } from './reencode';
 
 const CONFLICT_WAIT_MS = 5 * 60_000;
 
@@ -123,41 +124,59 @@ export async function runRestoreOriginal(prisma: PrismaClient, job: TwitchJob, a
   if (!relative) throw new Error('validation failed: there is no original to restore');
 
   const target = insideLibrary(file.relativePath);
-  const parked = insideLibrary(relative);
-  await assertRealParentInside(file.relativePath);
+  const startedAt = new Date();
+  const audit = {
+    title: file.video.title,
+    fileCount: 1,
+    details: { kind: 'original-restored-by-request', twitchVideoId: file.video.twitchVideoId, paths: [file.relativePath, relative] },
+    startedAt,
+    actor: actorOf(job),
+  };
+  // True from the rename on, whatever fails after it: the re-encoded copy is gone by then.
+  let replaced = false;
+  try {
+    const stillParked = await existsInLibrary(relative);
+    let codec: string;
+    if (stillParked) {
+      codec = await verifyOriginal(insideLibrary(relative), file);
+    } else {
+      // Anything but HEVC here means a restart after the rename: the original is in place, and the row never heard.
+      ({ codec } = await probe(target));
+      if (codec === 'hevc') throw new Error('validation failed: the original is gone');
+    }
 
-  const stillParked = await exists(parked);
-  let codec: string;
-  if (stillParked) {
-    await assertRealParentInside(relative);
-    codec = await verifyOriginal(parked, file);
-  } else {
-    // Anything but HEVC here means a restart after the rename: the original is in place, and the row never heard.
-    ({ codec } = await probe(target));
-    if (codec === 'hevc') throw new Error('validation failed: the original is gone');
-  }
-
-  await withFileLock(prisma, file.id, async (tx) => {
-    const current = await tx.twitchMediaFile.findUnique({ where: { id: file.id }, select: { reencodedAt: true, originalRelativePath: true } });
-    if (!current || !isCurrent(job, current) || current.originalRelativePath !== relative) return;
-    await assertLease();
-    if (stillParked) await rename(parked, target);
-    const { size } = await stat(target);
-    await tx.twitchMediaFile.update({
-      where: { id: file.id },
-      data: {
-        sizeBytes: BigInt(size),
-        videoCodec: codec,
-        reencodedAt: null,
-        reencodeQuality: null,
-        originalRelativePath: null,
-        originalDeleteAfter: null,
-        originalSizeBytes: null,
-        originalVideoCodec: null,
-      },
+    await withFileLock(prisma, file.id, async (tx) => {
+      const current = await tx.twitchMediaFile.findUnique({ where: { id: file.id }, select: { reencodedAt: true, originalRelativePath: true } });
+      if (!current || !isCurrent(job, current) || current.originalRelativePath !== relative) return;
+      await assertLease();
+      if (stillParked) {
+        await replaceInsideLibrary(relative, file.relativePath);
+        replaced = true;
+      }
+      const { size } = await stat(target);
+      await tx.twitchMediaFile.update({
+        where: { id: file.id },
+        data: {
+          sizeBytes: BigInt(size),
+          videoCodec: codec,
+          reencodedAt: null,
+          reencodeQuality: null,
+          originalRelativePath: null,
+          originalDeleteAfter: null,
+          originalSizeBytes: null,
+          originalVideoCodec: null,
+        },
+      });
+      await tx.twitchJob.update({ where: { id: job.id }, data: { needsJellyfinRefresh: true } });
+      // In the same commit, so a restart after it cannot leave the restore off the record.
+      // A failure here fails the step, and the retry finds the original already in place.
+      await tx.fileOperationAudit.create({ data: deleteAuditRow({ ...audit, errorMessage: null, filesDeleted: true }) });
     });
-    await tx.twitchJob.update({ where: { id: job.id }, data: { needsJellyfinRefresh: true } });
-  });
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    await writeDeleteAudit(prisma, { ...audit, errorMessage, filesDeleted: replaced });
+    throw new Error(errorMessage);
+  }
 }
 
 /** For files re-encoded before sizes were kept: the parked copy still has the answer. */

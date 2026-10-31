@@ -1,20 +1,14 @@
 import { constants } from 'node:fs';
-import { open, readdir, realpath, rm, stat, writeFile } from 'node:fs/promises';
+import { open, readdir, stat } from 'node:fs/promises';
 import path from 'node:path';
 import type { PrismaClient, TwitchJob } from '@prisma/client';
 import { LIBRARY_DIR } from './env';
 import { withFileLock } from './file-lock';
+import { existsInLibrary, insideLibrary, removeInsideLibrary } from './library-paths';
 import { DeferJobError } from './process';
 import { recordDeletion, writeDeleteAudit } from './reencode';
 
-/** Stored paths are the worker's own, but a delete is the last place to take that on trust. */
-export function insideLibrary(relativePath: string, root = LIBRARY_DIR): string {
-  const resolved = path.resolve(root, relativePath);
-  if (!resolved.startsWith(`${path.resolve(root)}${path.sep}`)) {
-    throw new Error(`validation failed: ${relativePath} is outside the library`);
-  }
-  return resolved;
-}
+export { insideLibrary };
 
 const LIBRARY_MARKER = '.helprr-library';
 const CONFLICT_WAIT_MS = 5 * 60_000;
@@ -121,7 +115,7 @@ async function sizeOnDisk(paths: string[]): Promise<number> {
 }
 
 /** Only a clear "not there" counts: any other error says nothing about the file. */
-export async function exists(file: string): Promise<boolean> {
+async function exists(file: string): Promise<boolean> {
   try {
     await stat(file);
     return true;
@@ -131,24 +125,10 @@ export async function exists(file: string): Promise<boolean> {
   }
 }
 
-/** The stored path stays inside the library by its text; a linked folder could still lead out. */
-export async function assertRealParentInside(relative: string): Promise<void> {
-  const parent = await realpath(path.dirname(insideLibrary(relative)));
-  const root = await realpath(LIBRARY_DIR);
-  if (parent !== root && !parent.startsWith(`${root}${path.sep}`)) {
-    throw new Error(`validation failed: ${relative} leads outside the library`);
-  }
-}
-
-export async function removeInsideLibrary(relative: string): Promise<void> {
-  try {
-    await assertRealParentInside(relative);
-  } catch (error) {
-    // Its folder is already gone, so it is too. Anything else leaves the file in doubt.
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
-    throw error;
-  }
-  await rm(insideLibrary(relative), { force: true });
+/** Never through a link: anything that can write here could point this at another file. */
+async function touchMarker(marker: string): Promise<void> {
+  const handle = await open(marker, constants.O_WRONLY | constants.O_CREAT | constants.O_NOFOLLOW, 0o664);
+  await handle.close();
 }
 
 /**
@@ -163,11 +143,11 @@ export async function forgetFilesDeletedElsewhere(prisma: PrismaClient): Promise
   });
   const missing = [];
   for (const file of files) {
-    if (!(await exists(insideLibrary(file.relativePath)))) missing.push(file);
+    if (!(await existsInLibrary(file.relativePath))) missing.push(file);
   }
 
   const marker = path.join(LIBRARY_DIR, LIBRARY_MARKER);
-  if (missing.length < files.length) await writeFile(marker, '');
+  if (missing.length < files.length) await touchMarker(marker);
   if (missing.length === 0 || !(await exists(marker))) return 0;
 
   let forgotten = 0;
@@ -179,7 +159,7 @@ export async function forgetFilesDeletedElsewhere(prisma: PrismaClient): Promise
     // A swap in progress leaves the name empty for a moment, so "missing" has to be true now.
     const stillMissing = await withFileLock(prisma, file.id, async (tx) => {
       const busy = await tx.twitchJob.count({ where: { mediaFileId: file.id, state: { in: [...IN_PROGRESS] } } });
-      if (busy > 0 || await exists(insideLibrary(file.relativePath))) return false;
+      if (busy > 0 || await existsInLibrary(file.relativePath)) return false;
       for (const relative of leftovers) await removeInsideLibrary(relative);
       await tx.twitchMediaFile.delete({ where: { id: file.id } });
       return true;

@@ -1,10 +1,16 @@
-import { mkdir, mkdtemp, readFile, rm, stat, symlink, truncate, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rename, rm, stat, symlink, truncate, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import type { PrismaClient, TwitchJob } from '@prisma/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const mocks = vi.hoisted(() => ({ library: { dir: '' }, codec: 'h264', duration: '60', probeFails: false }));
+const mocks = vi.hoisted(() => ({
+  library: { dir: '' },
+  codec: 'h264',
+  duration: '60',
+  probeFails: false,
+  onProbe: null as null | (() => Promise<void>),
+}));
 vi.mock('./env', () => ({
   get LIBRARY_DIR() { return mocks.library.dir; },
   ORIGINALS_DIR: '',
@@ -15,6 +21,7 @@ vi.mock('./env', () => ({
 vi.mock('./process', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./process')>()),
   run: vi.fn(async () => {
+    await mocks.onProbe?.();
     if (mocks.probeFails) throw new Error('Invalid data found when processing input');
     return JSON.stringify({ streams: [{ codec_name: mocks.codec }], format: { duration: mocks.duration } });
   }),
@@ -74,6 +81,7 @@ beforeEach(async () => {
   mocks.codec = 'h264';
   mocks.duration = '60';
   mocks.probeFails = false;
+  mocks.onProbe = null;
 });
 afterEach(() => rm(mocks.library.dir, { recursive: true, force: true }));
 
@@ -233,6 +241,96 @@ describe('runRestoreOriginal', () => {
     await rm(outside, { recursive: true, force: true });
   });
 
+  it('refuses when a checked folder is swapped for a link before the rename', async () => {
+    await writeLibrary({ 'a/x.mkv': 'small', '.originals/a/x.mkv': 'original' });
+    const outside = await mkdtemp(path.join(os.tmpdir(), 'twitch-outside-'));
+    await writeFile(path.join(outside, 'x.mkv'), 'not ours');
+    const { mock, client } = fakePrisma(file());
+    // The probe runs after the folders were checked, so this is the window to swap one.
+    mocks.onProbe = async () => {
+      await rename(inLibrary('a'), inLibrary('a-moved'));
+      await symlink(outside, inLibrary('a'));
+      mocks.onProbe = null;
+    };
+
+    await expect(runRestoreOriginal(client, job, lease)).rejects.toThrow(/leads outside the library/);
+
+    expect(await readFile(path.join(outside, 'x.mkv'), 'utf8')).toBe('not ours');
+    expect(await readFile(inLibrary('.originals/a/x.mkv'), 'utf8')).toBe('original');
+    expect(mock.twitchMediaFile.update).not.toHaveBeenCalled();
+    await rm(outside, { recursive: true, force: true });
+  });
+
+  it('records who restored, as the re-encoded copy is gone for good', async () => {
+    await writeLibrary({ 'a/x.mkv': 'small', '.originals/a/x.mkv': 'original' });
+    const { mock, client } = fakePrisma(file());
+
+    await runRestoreOriginal(client, job, lease);
+
+    expect(mock.fileOperationAudit.create).toHaveBeenCalledOnce();
+    expect(mock.fileOperationAudit.create.mock.calls[0][0].data).toMatchObject({
+      username: 'sai',
+      success: true,
+      details: expect.objectContaining({ kind: 'original-restored-by-request' }),
+    });
+  });
+
+  it('writes the audit row in the same commit as the restore', async () => {
+    await writeLibrary({ 'a/x.mkv': 'small', '.originals/a/x.mkv': 'original' });
+    const { mock, client } = fakePrisma(file());
+    const order: string[] = [];
+    mock.twitchMediaFile.update.mockImplementation(async () => { order.push('row'); });
+    mock.fileOperationAudit.create.mockImplementation(async () => { order.push('audit'); });
+    mock.$transaction.mockImplementation(async (work: (tx: unknown) => unknown) => {
+      await work(mock);
+      order.push('commit');
+    });
+
+    await runRestoreOriginal(client, job, lease);
+
+    expect(order).toEqual(['row', 'audit', 'commit']);
+  });
+
+  it('says the re-encoded copy is gone when a step after the rename fails', async () => {
+    await writeLibrary({ 'a/x.mkv': 'small', '.originals/a/x.mkv': 'original' });
+    const { mock, client } = fakePrisma(file());
+    mock.twitchMediaFile.update.mockRejectedValue(new Error('database hiccup'));
+
+    await expect(runRestoreOriginal(client, job, lease)).rejects.toThrow('database hiccup');
+
+    expect(await readFile(inLibrary('a/x.mkv'), 'utf8')).toBe('original');
+    expect(mock.fileOperationAudit.create.mock.calls[0][0].data).toMatchObject({ success: false, filesDeleted: true });
+  });
+
+  it('fails the step when the audit cannot be written, so the retry can repair it', async () => {
+    await writeLibrary({ 'a/x.mkv': 'small', '.originals/a/x.mkv': 'original' });
+    const { mock, client } = fakePrisma(file());
+    mock.fileOperationAudit.create.mockRejectedValueOnce(new Error('audit table unavailable'));
+
+    await expect(runRestoreOriginal(client, job, lease)).rejects.toThrow('audit table unavailable');
+
+    // The retry: the original is already in place, and the row still has to catch up.
+    mock.twitchMediaFile.update.mockClear();
+    await runRestoreOriginal(client, job, lease);
+    expect(mock.twitchMediaFile.update.mock.calls[0][0].data).toMatchObject({ reencodedAt: null, originalRelativePath: null });
+  });
+
+  it('records a failed restore too', async () => {
+    await writeLibrary({ 'a/x.mkv': 'small', '.originals/a/x.mkv': 'corrupt' });
+    mocks.probeFails = true;
+    const { mock, client } = fakePrisma(file());
+
+    await expect(runRestoreOriginal(client, job, lease)).rejects.toThrow('Invalid data');
+
+    expect(mock.fileOperationAudit.create.mock.calls[0][0].data).toMatchObject({ success: false, filesDeleted: false, username: 'sai' });
+  });
+
+  it('records nothing for a retry with nothing left to do', async () => {
+    const { mock, client } = fakePrisma(file({ reencodedAt: null, originalRelativePath: null }));
+    await runRestoreOriginal(client, job, lease);
+    expect(mock.fileOperationAudit.create).not.toHaveBeenCalled();
+  });
+
   it('waits for a running download or re-encode, and leaves the files alone', async () => {
     await writeLibrary({ 'a/x.mkv': 'small', '.originals/a/x.mkv': 'original' });
     const { mock, client } = fakePrisma(file(), 1);
@@ -312,6 +410,22 @@ describe('deleteExpiredOriginals', () => {
 
     expect(await readFile(inLibrary('.originals/a/x.mkv'), 'utf8')).toBe('original!');
     expect(mock.twitchDeletedFile.create).not.toHaveBeenCalled();
+  });
+
+  it('never deletes through a folder that has become a link', async () => {
+    await writeLibrary({ 'a/x.mkv': 'file' });
+    const outside = await mkdtemp(path.join(os.tmpdir(), 'twitch-outside-'));
+    await mkdir(path.join(outside, 'a'));
+    await writeFile(path.join(outside, 'a/x.mkv'), 'not ours');
+    await symlink(outside, inLibrary('.originals'));
+    const { mock, client } = fakePrisma(file());
+
+    await deleteExpiredOriginals(client);
+
+    expect(await readFile(path.join(outside, 'a/x.mkv'), 'utf8')).toBe('not ours');
+    expect(mock.twitchMediaFile.update).not.toHaveBeenCalled();
+    expect(mock.fileOperationAudit.create.mock.calls[0][0].data).toMatchObject({ success: false });
+    await rm(outside, { recursive: true, force: true });
   });
 
   it('records the space freed once the keep period ends', async () => {
