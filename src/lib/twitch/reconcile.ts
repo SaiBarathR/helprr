@@ -86,7 +86,7 @@ async function finishPublishedJobs(now: Date): Promise<void> {
       continue;
     }
     // A swapped file keeps its name, so the item only needs to re-read it. No push: nothing new landed.
-    if (job.kind === 'REENCODE') {
+    if (job.kind === 'REENCODE' || job.kind === 'RESTORE_ORIGINAL') {
       const known = job.mediaFile?.jellyfinItemId;
       if (await refreshed(job, known ? () => client!.refreshItem(known, { recursive: false }) : null, client, now)) {
         await prisma.twitchJob.update({ where: { id: job.id }, data: { needsJellyfinRefresh: false } });

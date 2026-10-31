@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowUpDown, ChevronRight, Filter, Loader2, RefreshCw } from 'lucide-react';
 import Link from '@/components/ui/app-link';
@@ -111,6 +111,14 @@ export default function TwitchLibraryPage() {
     refetchIntervalInBackground: false,
   });
   const rows = useMemo(() => files.data?.pages.flatMap((page) => page.files ?? []) ?? [], [files.data]);
+
+  // Only the rows poll, so the totals follow them through and catch the last job's result.
+  const working = rows.some((file) => file.activeJob);
+  const wasWorking = useRef(false);
+  useEffect(() => {
+    if (wasWorking.current || working) void queryClient.invalidateQueries({ queryKey: ['twitch', 'files-summary'] });
+    wasWorking.current = working;
+  }, [working, rows, queryClient]);
 
   const history = useRestorableInfiniteQuery({
     queryKey: ['twitch', 'file-history', params],

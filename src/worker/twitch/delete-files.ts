@@ -3,6 +3,7 @@ import { open, readdir, realpath, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { PrismaClient, TwitchJob } from '@prisma/client';
 import { LIBRARY_DIR } from './env';
+import { withFileLock } from './file-lock';
 import { DeferJobError } from './process';
 import { recordDeletion, writeDeleteAudit } from './reencode';
 
@@ -22,7 +23,7 @@ const RETENTION_DELETE_VALID_MS = 10 * 60_000;
 export const IN_PROGRESS = ['QUEUED', 'BLOCKED', 'RUNNING', 'RETRY_WAIT'] as const;
 
 /** The API's delete leaves sidecars behind, so the whole set goes here, and is audited either way. */
-export async function runDeleteFiles(prisma: PrismaClient, job: TwitchJob): Promise<void> {
+export async function runDeleteFiles(prisma: PrismaClient, job: TwitchJob, assertLease: () => Promise<void>): Promise<void> {
   if (!job.mediaFileId) return;
   const file = await prisma.twitchMediaFile.findUnique({
     where: { id: job.mediaFileId },
@@ -52,6 +53,7 @@ export async function runDeleteFiles(prisma: PrismaClient, job: TwitchJob): Prom
 
   const sidecars = Array.isArray(file.sidecars) ? file.sidecars.filter((entry): entry is string => typeof entry === 'string') : [];
   const paths = [file.relativePath, ...sidecars, ...(file.originalRelativePath ? [file.originalRelativePath] : [])];
+  await assertLease();
   const startedAt = new Date();
   let errorMessage: string | null = null;
   try {
@@ -168,13 +170,22 @@ export async function forgetFilesDeletedElsewhere(prisma: PrismaClient): Promise
   if (missing.length < files.length) await writeFile(marker, '');
   if (missing.length === 0 || !(await exists(marker))) return 0;
 
+  let forgotten = 0;
   for (const file of missing) {
     const sidecars = Array.isArray(file.sidecars) ? file.sidecars.filter((entry): entry is string => typeof entry === 'string') : [];
     const leftovers = [...sidecars, ...(file.originalRelativePath ? [file.originalRelativePath] : [])];
     const startedAt = new Date();
     const freedBytes = await sizeOnDisk(leftovers);
-    for (const relative of leftovers) await removeInsideLibrary(relative);
-    await prisma.twitchMediaFile.delete({ where: { id: file.id } });
+    // A swap in progress leaves the name empty for a moment, so "missing" has to be true now.
+    const stillMissing = await withFileLock(prisma, file.id, async (tx) => {
+      const busy = await tx.twitchJob.count({ where: { mediaFileId: file.id, state: { in: [...IN_PROGRESS] } } });
+      if (busy > 0 || await exists(insideLibrary(file.relativePath))) return false;
+      for (const relative of leftovers) await removeInsideLibrary(relative);
+      await tx.twitchMediaFile.delete({ where: { id: file.id } });
+      return true;
+    });
+    if (!stillMissing) continue;
+    forgotten += 1;
     await recordDeletion(prisma, {
       videoId: file.videoId,
       title: file.video.title,
@@ -191,5 +202,5 @@ export async function forgetFilesDeletedElsewhere(prisma: PrismaClient): Promise
       errorMessage: null,
     });
   }
-  return missing.length;
+  return forgotten;
 }

@@ -175,13 +175,14 @@ export default function TwitchFilePage({ params }: { params: Promise<{ id: strin
       return (await res.json()) as TwitchFileDetail;
     },
     retry: (count, error) => !(error instanceof ApiError && error.status === 404) && count < 2,
-    refetchInterval: (state) => (state.state.data?.activeJob ? 3_000 : false),
+    refetchInterval: (state) => (state.state.data?.activeJob && !state.state.error ? 3_000 : false),
     refetchIntervalInBackground: false,
   });
   const file = query.data;
+  // The last good copy stays cached after a 404, so a deleted file is told by the error.
+  const gone = query.error instanceof ApiError && query.error.status === 404;
 
-  if (query.isError && !file) {
-    const gone = query.error instanceof ApiError && query.error.status === 404;
+  if (gone || (query.isError && !file)) {
     return (
       <div className="animate-content-in">
         <PageHeader title="File details" backHref="/twitch/library" />

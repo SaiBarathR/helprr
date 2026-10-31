@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useMutation, useQueryClient, type InfiniteData } from '@tanstack/react-query';
+import { useMutation, useQueryClient, type InfiniteData, type QueryKey } from '@tanstack/react-query';
 import { ExternalLink, HardDrive, Info, Moon, Pin, PinOff, Play, RotateCcw, Trash2, Zap } from 'lucide-react';
 import { toast } from 'sonner';
 import { useMe, hasCapability } from '@/components/permission-provider';
@@ -55,8 +55,16 @@ export function useFileActions() {
 
   const keepForever = useMutation({
     mutationFn: ({ file, keep }: { file: TwitchFile; keep: boolean }) => send(`/api/twitch/files/${file.id}`, 'PATCH', { keepForever: keep }),
-    // The switch answers the tap; a failure puts it back.
-    onMutate: ({ file, keep }) => {
+    // The switch answers the tap; a failure puts it back, as a video that only looks protected is not.
+    onMutate: async ({ file, keep }) => {
+      await Promise.all([
+        queryClient.cancelQueries({ queryKey: ['twitch', 'files'] }),
+        queryClient.cancelQueries({ queryKey: ['twitch', 'file', file.id] }),
+      ]);
+      const before: Array<[QueryKey, unknown]> = [
+        ...queryClient.getQueriesData({ queryKey: ['twitch', 'files'] }),
+        ...queryClient.getQueriesData({ queryKey: ['twitch', 'file', file.id] }),
+      ];
       queryClient.setQueriesData<InfiniteData<FilePage>>({ queryKey: ['twitch', 'files'] }, (data) => data && {
         ...data,
         pages: data.pages.map((page) => ({
@@ -65,9 +73,13 @@ export function useFileActions() {
         })),
       });
       queryClient.setQueryData<TwitchFile>(['twitch', 'file', file.id], (data) => data && { ...data, keepForever: keep });
+      return before;
     },
     onSettled: refresh,
-    onError: fail,
+    onError: (error, _variables, before) => {
+      for (const [key, data] of before ?? []) queryClient.setQueryData(key, data);
+      fail(error);
+    },
   });
 
   const reencode = useMutation({

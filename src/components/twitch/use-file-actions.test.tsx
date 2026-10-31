@@ -107,6 +107,22 @@ describe('useFileActions', () => {
     expect(vi.mocked(fetch)).toHaveBeenCalledWith('/api/twitch/files/f', expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ keepForever: true }) }));
   });
 
+  it('puts Keep forever back when the server refuses, as a video that only looks protected is not', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{"error":"No"}', { status: 500 })));
+    const { client, result } = setup();
+    client.setQueryData(['twitch', 'files', 'list'], { pages: [{ files: [file] }], pageParams: [1] });
+    client.setQueryData(['twitch', 'file', 'f'], file);
+
+    act(() => result.current.setKeepForever(file, true));
+
+    await waitFor(() => expect(vi.mocked(fetch)).toHaveBeenCalled());
+    await waitFor(() => {
+      const list = client.getQueryData<{ pages: Array<{ files: TwitchFile[] }> }>(['twitch', 'files', 'list']);
+      expect(list?.pages[0].files[0].keepForever).toBe(false);
+      expect(client.getQueryData<TwitchFile>(['twitch', 'file', 'f'])?.keepForever).toBe(false);
+    });
+  });
+
   it('asks before it deletes', () => {
     const { result } = setup();
     act(() => result.current.swipeFor(file).rightAction?.onAction());

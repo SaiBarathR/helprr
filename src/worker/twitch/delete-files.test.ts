@@ -51,13 +51,13 @@ describe('runDeleteFiles', () => {
 
   it('lets a person delete a keep-forever file they confirmed', async () => {
     const { prisma, job } = await setup({});
-    await runDeleteFiles(prisma as never, job as never);
+    await runDeleteFiles(prisma as never, job as never, async () => undefined);
     await expect(stat(path.join(library.dir, 'a.mkv'))).rejects.toThrow();
   });
 
   it('never lets retention delete one', async () => {
     const { prisma, job } = await setup({ retention: true });
-    await expect(runDeleteFiles(prisma as never, job as never)).rejects.toThrow(/keep forever/);
+    await expect(runDeleteFiles(prisma as never, job as never, async () => undefined)).rejects.toThrow(/keep forever/);
     expect(await stat(path.join(library.dir, 'a.mkv'))).toBeTruthy();
   });
 });
@@ -100,12 +100,16 @@ describe('forgetFilesDeletedElsewhere', () => {
     id, videoId: `video-${id}`, relativePath: `${id}.mkv`, sidecars: [`${id}.nfo`], originalRelativePath: null, sizeBytes: BigInt(1000),
     video: { title: id, twitchVideoId: id, streamer: { displayName: 'N' } },
   });
-  function fakePrisma(files: unknown[]) {
-    return {
+  function fakePrisma(files: unknown[], busyJobs = 0) {
+    const prisma = {
       twitchMediaFile: { findMany: vi.fn().mockResolvedValue(files), delete: vi.fn().mockResolvedValue({}) },
+      twitchJob: { count: vi.fn().mockResolvedValue(busyJobs) },
       fileOperationAudit: { create: vi.fn().mockResolvedValue({}) },
       twitchDeletedFile: { create: vi.fn().mockResolvedValue({}) },
+      $executeRaw: vi.fn().mockResolvedValue(1),
+      $transaction: vi.fn((work: (tx: unknown) => unknown) => work(prisma)),
     };
+    return prisma;
   }
   const run = (prisma: ReturnType<typeof fakePrisma>) => forgetFilesDeletedElsewhere(prisma as never);
 
@@ -124,6 +128,17 @@ describe('forgetFilesDeletedElsewhere', () => {
       data: expect.objectContaining({ kind: 'FILE', cause: 'OUTSIDE', freedBytes: BigInt(1000), videoId: 'video-gone' }),
     });
     expect(prisma.fileOperationAudit.create.mock.calls[0][0].data).toMatchObject({ username: 'system:twitch-worker', service: 'TWITCH' });
+  });
+
+  it('leaves a file alone when a job started on it after the sweep looked', async () => {
+    library.dir = await mkdtemp(path.join(os.tmpdir(), 'twitch-gone-'));
+    await writeFile(path.join(library.dir, 'kept.mkv'), '');
+    const prisma = fakePrisma([row('kept'), row('gone')], 1);
+
+    expect(await run(prisma)).toBe(0);
+
+    expect(prisma.twitchMediaFile.delete).not.toHaveBeenCalled();
+    expect(prisma.twitchDeletedFile.create).not.toHaveBeenCalled();
   });
 
   it.each([[['a', 'b']], [['a']]])('forgets nothing on a folder with no marker, as on an unmounted disk: %j', async (ids) => {

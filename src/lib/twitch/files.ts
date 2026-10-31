@@ -136,7 +136,11 @@ export async function listFiles(
     where,
     select: { id: true, reencodedAt: true, sizeBytes: true, originalSizeBytes: true },
   });
-  const ids = sizes.sort((a, b) => savedBytes(b) - savedBytes(a)).slice(skip, skip + take).map((file) => file.id);
+  // Ties are common, as every file not re-encoded saved nothing, so pages need a fixed order.
+  const ids = sizes
+    .sort((a, b) => savedBytes(b) - savedBytes(a) || a.id.localeCompare(b.id))
+    .slice(skip, skip + take)
+    .map((file) => file.id);
   const rows = await prisma.twitchMediaFile.findMany({ where: { id: { in: ids } }, select: FILE_SELECT });
   return ids.flatMap((id) => rows.find((row) => row.id === id) ?? []);
 }
@@ -254,7 +258,7 @@ export function requestOriginalJob(
   actor: Actor,
 ): Promise<FileJobResult> {
   return withFileLock(fileId, async (tx) => {
-    const file = await tx.twitchMediaFile.findUnique({ where: { id: fileId }, select: { videoId: true, originalRelativePath: true } });
+    const file = await tx.twitchMediaFile.findUnique({ where: { id: fileId }, select: { videoId: true, reencodedAt: true, originalRelativePath: true } });
     if (!file) return 'missing';
     if (!file.originalRelativePath) return 'nothing-to-do';
     const active = await tx.twitchJob.findFirst({ where: { mediaFileId: fileId, state: { in: ACTIVE_JOB_STATES } }, select: { id: true } });
@@ -263,6 +267,8 @@ export function requestOriginalJob(
     await tx.twitchJob.create({
       data: {
         kind,
+        // The worker refuses to act once this re-encode is no longer the current one.
+        options: { generation: file.reencodedAt?.toISOString() ?? null },
         videoId: file.videoId,
         mediaFileId: fileId,
         requestedByUserId: actor.id,

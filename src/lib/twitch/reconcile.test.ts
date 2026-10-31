@@ -110,8 +110,8 @@ describe('reconcileTwitchJobs', () => {
     expect(mocks.notifyAndLog.mock.calls.map(([event]) => event.userIds)).toEqual([['u1'], ['u2']]);
   });
 
-  it('sends no push for a re-encode: nothing new landed', async () => {
-    pending([doneJob({ kind: 'REENCODE', mediaFile: { jellyfinItemId: 'item' } })]);
+  it.each(['REENCODE', 'RESTORE_ORIGINAL'])('sends no push for %s: nothing new landed', async (kind) => {
+    pending([doneJob({ kind, mediaFile: { jellyfinItemId: 'item' } })]);
 
     await reconcileTwitchJobs(now);
 

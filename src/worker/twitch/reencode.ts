@@ -3,6 +3,7 @@ import path from 'node:path';
 import type { Prisma, PrismaClient, TwitchDeletionCause, TwitchDeletionKind, TwitchJob } from '@prisma/client';
 import { worthKeeping } from '@/lib/twitch/reencode-window';
 import { FFMPEG, FFPROBE, LIBRARY_DIR, ORIGINALS_DIR, STAGING_DIR } from './env';
+import { withFileLock } from './file-lock';
 import { run } from './process';
 
 const RENDER_DEVICE = '/dev/dri/renderD128';
@@ -157,28 +158,54 @@ export async function deleteExpiredOriginals(prisma: PrismaClient, now = new Dat
     },
     include: { video: { select: { title: true, streamer: { select: { displayName: true } } } } },
   });
+  let deleted = 0;
   for (const file of due) {
     const startedAt = new Date();
     let errorMessage: string | null = null;
+    let done = false;
     try {
       const original = path.join(LIBRARY_DIR, file.originalRelativePath!);
       const freedBytes = (await stat(original).catch(() => null))?.size ?? 0;
-      await rm(original, { force: true });
-      await prisma.twitchMediaFile.update({
-        where: { id: file.id },
-        data: { originalRelativePath: null, originalDeleteAfter: null, originalDeletedAt: now },
+      // The list above can be old by now: a restore may have been accepted, or a new
+      // re-encode may have parked a newer original under this same name.
+      done = await withFileLock(prisma, file.id, async (tx) => {
+        const current = await tx.twitchMediaFile.findUnique({
+          where: { id: file.id },
+          select: {
+            originalRelativePath: true,
+            originalDeleteAfter: true,
+            jobs: { where: { state: { in: ['QUEUED', 'BLOCKED', 'RUNNING', 'RETRY_WAIT'] } }, select: { id: true }, take: 1 },
+          },
+        });
+        if (
+          !current
+          || current.originalRelativePath !== file.originalRelativePath
+          || !current.originalDeleteAfter
+          || current.originalDeleteAfter > now
+          || current.jobs.length > 0
+        ) return false;
+        await rm(original, { force: true });
+        await tx.twitchMediaFile.update({
+          where: { id: file.id },
+          data: { originalRelativePath: null, originalDeleteAfter: null, originalDeletedAt: now },
+        });
+        return true;
       });
-      await recordDeletion(prisma, {
-        videoId: file.videoId,
-        title: file.video.title,
-        streamer: file.video.streamer.displayName,
-        kind: 'ORIGINAL',
-        cause: 'KEEP_PERIOD',
-        freedBytes,
-      });
+      if (done) {
+        await recordDeletion(prisma, {
+          videoId: file.videoId,
+          title: file.video.title,
+          streamer: file.video.streamer.displayName,
+          kind: 'ORIGINAL',
+          cause: 'KEEP_PERIOD',
+          freedBytes,
+        });
+      }
     } catch (error) {
       errorMessage = error instanceof Error ? error.message : String(error);
     }
+    if (!done && !errorMessage) continue;
+    deleted += 1;
     await writeDeleteAudit(prisma, {
       title: file.video.title,
       fileCount: 1,
@@ -187,7 +214,7 @@ export async function deleteExpiredOriginals(prisma: PrismaClient, now = new Dat
       errorMessage,
     });
   }
-  return due.length;
+  return deleted;
 }
 
 /** The Library's own record. A failure here must not fail a delete that already happened. */

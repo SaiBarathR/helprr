@@ -147,9 +147,9 @@ async function runJob(job: TwitchJob): Promise<void> {
     const note = (message: string) => event(job.id, 'warn', message);
 
     if (FILE_KINDS.includes(job.kind)) {
-      if (job.kind === 'DELETE_FILES') await runDeleteFiles(prisma, job);
-      else if (job.kind === 'DELETE_ORIGINAL') await runDeleteOriginal(prisma, job);
-      else await runRestoreOriginal(prisma, job);
+      if (job.kind === 'DELETE_FILES') await runDeleteFiles(prisma, job, assertLease);
+      else if (job.kind === 'DELETE_ORIGINAL') await runDeleteOriginal(prisma, job, assertLease);
+      else await runRestoreOriginal(prisma, job, assertLease);
       await finishJob(job, { state: 'DONE', stage: 'done', progress: 1, finishedAt: new Date(), lastError: null, errorClass: null });
       return;
     }

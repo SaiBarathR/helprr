@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { serializeJob, type JobRow } from './serialize-job';
+import { JOB_SELECT, serializeJob, type JobRow } from './serialize-job';
 
 const job = {
   id: 'job-1',
@@ -22,6 +22,10 @@ describe('serializeJob', () => {
 
   it('turns byte counts into numbers, which survive JSON', () => {
     expect(serializeJob(job)).toMatchObject({ bytesDone: 10, bytesTotal: 20 });
+  });
+
+  it('never selects the worker error, which can hold a path', () => {
+    expect(JOB_SELECT).not.toHaveProperty('lastError');
   });
 
   it('keeps a job whose video is gone', () => {

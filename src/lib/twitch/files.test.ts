@@ -6,12 +6,12 @@ const mocks = vi.hoisted(() => {
     twitchMediaFile: { findUnique: vi.fn() },
     twitchJob: { findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
   };
-  return { tx, $transaction: vi.fn(async (work: (client: typeof tx) => unknown) => work(tx)) };
+  return { tx, findMany: vi.fn(), $transaction: vi.fn(async (work: (client: typeof tx) => unknown) => work(tx)) };
 });
 
-vi.mock('@/lib/db', () => ({ prisma: { $transaction: mocks.$transaction } }));
+vi.mock('@/lib/db', () => ({ prisma: { $transaction: mocks.$transaction, twitchMediaFile: { findMany: mocks.findMany } } }));
 
-import { buildFileWhere, requestOriginalJob, requestReencode, serializeFile, type FileRow } from './files';
+import { buildFileWhere, listFiles, requestOriginalJob, requestReencode, serializeFile, type FileRow } from './files';
 import { REENCODE_NOW_PRIORITY } from './reencode-window';
 
 const actor = { id: 'u', username: 'sai' };
@@ -65,6 +65,21 @@ describe('buildFileWhere', () => {
 
   it('finds kept originals', () => {
     expect(buildFileWhere(new URLSearchParams('filter=original-kept'))).toEqual({ AND: [{ originalRelativePath: { not: null } }] });
+  });
+});
+
+describe('listFiles sorted by most saved', () => {
+  const size = (id: string, saved: number) => ({ id, reencodedAt: saved ? new Date() : null, sizeBytes: BigInt(100), originalSizeBytes: BigInt(100 + saved) });
+
+  it('puts the biggest saving first and keeps ties in a fixed order across pages', async () => {
+    mocks.findMany.mockImplementation(async (query: { where: { id?: { in: string[] } } }) => (
+      query.where.id ? query.where.id.in.map((id) => ({ id })) : [size('c', 0), size('a', 0), size('z', 50), size('b', 0)]
+    ));
+
+    const first = await listFiles({}, 'saved', 0, 2);
+    const second = await listFiles({}, 'saved', 2, 2);
+
+    expect([...first, ...second].map((file) => file.id)).toEqual(['z', 'a', 'b', 'c']);
   });
 });
 
@@ -133,6 +148,13 @@ describe('requestOriginalJob', () => {
     vi.clearAllMocks();
     tx.twitchMediaFile.findUnique.mockResolvedValue({ videoId: 'v', originalRelativePath: '.originals/x.mkv' });
     tx.twitchJob.findFirst.mockResolvedValue(null);
+  });
+
+  it('ties the job to the re-encode it is about', async () => {
+    const reencodedAt = new Date('2026-10-30T02:00:00.000Z');
+    tx.twitchMediaFile.findUnique.mockResolvedValue({ videoId: 'v', reencodedAt, originalRelativePath: '.originals/x.mkv' });
+    await requestOriginalJob('f', 'RESTORE_ORIGINAL', actor);
+    expect(tx.twitchJob.create.mock.calls[0][0].data.options).toEqual({ generation: reencodedAt.toISOString() });
   });
 
   it('queues the job against the file, with the person who asked', async () => {
