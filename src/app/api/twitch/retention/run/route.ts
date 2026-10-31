@@ -18,7 +18,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   const confirmed = new Set(body.fileIds as string[]);
   const candidates = (await findRetentionCandidates(auth.user)).filter((candidate) => confirmed.has(candidate.fileId));
 
-  for (const candidate of candidates) await enqueueFileDelete(candidate.fileId, auth.user, { retention: true });
+  for (const candidate of candidates) await enqueueFileDelete(candidate.fileId, auth.user, { retention: true, reason: candidate.reason });
   return NextResponse.json({ queued: candidates.length, skipped: confirmed.size - candidates.length });
 }
 

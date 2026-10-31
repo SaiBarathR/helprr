@@ -1,13 +1,14 @@
 'use client';
 
 import Link from '@/components/ui/app-link';
-import { ListVideo, Rss, Users } from 'lucide-react';
+import { HardDrive, ListVideo, Rss, Users } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const ITEMS = [
   { id: 'feed', label: 'Feed', href: '/twitch', icon: Rss },
   { id: 'streamers', label: 'Streamers', href: '/twitch/streamers', icon: Users },
   { id: 'queue', label: 'Queue', href: '/twitch/queue', icon: ListVideo },
+  { id: 'library', label: 'Library', href: '/twitch/library', icon: HardDrive },
 ] as const;
 
 /** The Movies switch, keeping the active label on phones: these pages have no visible title. */

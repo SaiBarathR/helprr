@@ -13,7 +13,7 @@ vi.mock('@/lib/service-helpers', () => ({ getJellyfinClientForUser: mocks.getJel
 vi.mock('@/lib/twitch/policy-store', () => ({ decideForVideo: mocks.decideForVideo }));
 
 import { BUILT_IN_POLICY } from '@/lib/twitch/policy';
-import { findRetentionCandidates, signRetentionPreview, verifyRetentionPreview } from '@/lib/twitch/retention';
+import { findRetentionCandidates, retentionReason, signRetentionPreview, verifyRetentionPreview } from '@/lib/twitch/retention';
 
 const now = new Date('2026-10-30T12:00:00Z');
 const user = { role: 'admin', jellyfinUserId: 'jf' };
@@ -129,5 +129,24 @@ describe('retention preview token', () => {
 
   it('refuses junk', () => {
     for (const token of [undefined, '', 'x', '123.', 5]) expect(verifyRetentionPreview(token, 'u1', ['a'], at)).toBe(false);
+  });
+});
+
+describe('retentionReason', () => {
+  const none = { keepLatest: null, deleteAfterDays: null, deleteAfterWatchedDays: null };
+  const saved = { rank: 1, savedAt: daysAgo(10) };
+
+  it('finds nothing without a limit', () => {
+    expect(retentionReason(none, saved, now)).toBeNull();
+  });
+
+  it('goes by place, then age, then when it was watched', () => {
+    expect(retentionReason({ ...none, keepLatest: 2 }, { ...saved, rank: 3 }, now)).toBe('older than the latest 2');
+    expect(retentionReason({ ...none, deleteAfterDays: 5 }, saved, now)).toBe('saved more than 5 days ago');
+    expect(retentionReason({ ...none, deleteAfterWatchedDays: 1 }, { ...saved, watchedAt: daysAgo(2) }, now)).toBe('watched more than 1 days ago');
+  });
+
+  it('never counts a video nobody is known to have watched', () => {
+    expect(retentionReason({ ...none, deleteAfterWatchedDays: 1 }, saved, now)).toBeNull();
   });
 });

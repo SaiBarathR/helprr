@@ -47,7 +47,6 @@ interface Job {
   bytesDone: number | null;
   bytesTotal: number | null;
   errorClass: string | null;
-  lastError: string | null;
   video: {
     id: string;
     twitchVideoId: string;

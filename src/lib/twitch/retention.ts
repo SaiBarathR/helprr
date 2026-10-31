@@ -1,4 +1,5 @@
 import { createHmac, timingSafeEqual } from 'crypto';
+import type { TwitchVideoType } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { logger } from '@/lib/logger';
 import { getJellyfinClientForUser } from '@/lib/service-helpers';
@@ -17,7 +18,7 @@ export interface RetentionCandidate {
 
 // Only a real answer counts: an unreachable Jellyfin means nothing is known to be
 // watched, so the watched rule deletes nothing.
-async function loadPlayedDates(
+export async function loadPlayedDates(
   user: { role: string; jellyfinUserId: string | null } | null,
   itemIds: string[],
 ): Promise<Map<string, Date>> {
@@ -34,6 +35,63 @@ async function loadPlayedDates(
     logger.warn('Twitch retention could not read watched state', { error: String(error) }, { scope: 'twitch' });
   }
   return played;
+}
+
+interface RetentionLimits {
+  keepLatest: number | null;
+  deleteAfterDays: number | null;
+  deleteAfterWatchedDays: number | null;
+}
+
+/** Why the rules would delete a file, or null. `rank` is its place among its streamer's videos of that type, newest first. */
+export function retentionReason(
+  policy: RetentionLimits,
+  file: { rank: number; savedAt: Date; watchedAt?: Date },
+  now: Date,
+): string | null {
+  if (policy.keepLatest !== null && file.rank > policy.keepLatest) {
+    return `older than the latest ${policy.keepLatest}`;
+  }
+  if (policy.deleteAfterDays !== null && now.getTime() - file.savedAt.getTime() > policy.deleteAfterDays * DAY_MS) {
+    return `saved more than ${policy.deleteAfterDays} days ago`;
+  }
+  if (policy.deleteAfterWatchedDays !== null && file.watchedAt && now.getTime() - file.watchedAt.getTime() > policy.deleteAfterWatchedDays * DAY_MS) {
+    return `watched more than ${policy.deleteAfterWatchedDays} days ago`;
+  }
+  return null;
+}
+
+/** One file's standing with the rules, for the Library. Reads only. */
+export async function fileCleanupStatus(
+  file: {
+    createdAt: Date;
+    keepForever: boolean;
+    video: { title: string; type: TwitchVideoType; category: string | null; streamerId: string; durationSeconds: number; twitchCreatedAt: Date };
+  },
+  watchedAt: Date | undefined,
+  now = new Date(),
+) {
+  const { policy } = await decideForVideo(file.video);
+  const { keepLatest, deleteAfterDays, deleteAfterWatchedDays } = policy;
+  const rank = await prisma.twitchMediaFile.count({
+    where: {
+      keepForever: false,
+      jobs: { none: { state: { in: ACTIVE_JOB_STATES } } },
+      video: {
+        streamerId: file.video.streamerId,
+        type: file.video.type,
+        twitchCreatedAt: { gte: file.video.twitchCreatedAt },
+        jobs: { none: { state: { in: ACTIVE_JOB_STATES } } },
+      },
+    },
+  });
+  return {
+    keepLatest,
+    deleteAfterDays,
+    deleteAfterWatchedDays,
+    deleteAfter: deleteAfterDays === null ? null : new Date(file.createdAt.getTime() + deleteAfterDays * DAY_MS),
+    reason: file.keepForever ? null : retentionReason(policy, { rank, savedAt: file.createdAt, watchedAt }, now),
+  };
 }
 
 /** What the rules would delete right now. Reads only; also the check made again before any delete. */
@@ -70,15 +128,8 @@ export async function findRetentionCandidates(
     const rank = (seen.get(`${file.video.streamerId}:${file.video.type}`) ?? 0) + 1;
     seen.set(`${file.video.streamerId}:${file.video.type}`, rank);
 
-    let reason: string | null = null;
     const watchedAt = file.jellyfinItemId ? played.get(file.jellyfinItemId) : undefined;
-    if (policy.keepLatest !== null && rank > policy.keepLatest) {
-      reason = `older than the latest ${policy.keepLatest}`;
-    } else if (policy.deleteAfterDays !== null && now.getTime() - file.createdAt.getTime() > policy.deleteAfterDays * DAY_MS) {
-      reason = `saved more than ${policy.deleteAfterDays} days ago`;
-    } else if (policy.deleteAfterWatchedDays !== null && watchedAt && now.getTime() - watchedAt.getTime() > policy.deleteAfterWatchedDays * DAY_MS) {
-      reason = `watched more than ${policy.deleteAfterWatchedDays} days ago`;
-    }
+    const reason = retentionReason(policy, { rank, savedAt: file.createdAt, watchedAt }, now);
     if (reason) {
       candidates.push({
         fileId: file.id,
@@ -116,11 +167,14 @@ export function verifyRetentionPreview(token: unknown, userId: string, fileIds: 
   return expected.length === actual.length && timingSafeEqual(expected, actual);
 }
 
+/** The worker can hold a file's lock through deleting a large file, which takes more than Prisma's default 5 s. */
+export const FILE_LOCK_TRANSACTION = { maxWait: 10_000, timeout: 30_000 };
+
 /** Helprr has no file access: the worker deletes, and audits under this actor. */
 export async function enqueueFileDelete(
   fileId: string,
   actor: { id: string; username: string },
-  origin: { retention?: boolean } = {},
+  origin: { retention?: boolean; reason?: string } = {},
 ): Promise<boolean> {
   return prisma.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`twitch-delete:${fileId}`}))`;
@@ -142,5 +196,5 @@ export async function enqueueFileDelete(
       },
     });
     return true;
-  });
+  }, FILE_LOCK_TRANSACTION);
 }

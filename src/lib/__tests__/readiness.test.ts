@@ -106,6 +106,6 @@ describe('migration readiness', () => {
     expect(names).toContain('20261019160000_manual_download_import_sent_at');
     expect(names).toContain('20261020120000_taste_profile_marked_at');
     expect(names).not.toContain('migration_lock.toml');
-    expect(names).toHaveLength(17);
+    expect(names).toHaveLength(18);
   });
 });

@@ -3,8 +3,9 @@ import { open, readdir, realpath, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { PrismaClient, TwitchJob } from '@prisma/client';
 import { LIBRARY_DIR } from './env';
+import { withFileLock } from './file-lock';
 import { DeferJobError } from './process';
-import { writeDeleteAudit } from './reencode';
+import { recordDeletion, writeDeleteAudit } from './reencode';
 
 /** Stored paths are the worker's own, but a delete is the last place to take that on trust. */
 export function insideLibrary(relativePath: string, root = LIBRARY_DIR): string {
@@ -19,18 +20,19 @@ const LIBRARY_MARKER = '.helprr-library';
 const CONFLICT_WAIT_MS = 5 * 60_000;
 // Rules can change while a job waits, and only the app can re-read them: past this, ask again.
 const RETENTION_DELETE_VALID_MS = 10 * 60_000;
-const IN_PROGRESS = ['QUEUED', 'BLOCKED', 'RUNNING', 'RETRY_WAIT'] as const;
+export const IN_PROGRESS = ['QUEUED', 'BLOCKED', 'RUNNING', 'RETRY_WAIT'] as const;
 
 /** The API's delete leaves sidecars behind, so the whole set goes here, and is audited either way. */
-export async function runDeleteFiles(prisma: PrismaClient, job: TwitchJob): Promise<void> {
+export async function runDeleteFiles(prisma: PrismaClient, job: TwitchJob, assertLease: () => Promise<void>): Promise<void> {
   if (!job.mediaFileId) return;
   const file = await prisma.twitchMediaFile.findUnique({
     where: { id: job.mediaFileId },
-    include: { video: { select: { title: true, twitchVideoId: true } } },
+    include: { video: { select: { title: true, twitchVideoId: true, streamer: { select: { displayName: true } } } } },
   });
   if (!file) return;
   // Keep forever stops the rules. A person confirming this one file overrides it.
-  const fromRetention = (job.options as { retention?: boolean } | null)?.retention === true;
+  const origin = job.options as { retention?: boolean; reason?: string } | null;
+  const fromRetention = origin?.retention === true;
   if (fromRetention && file.keepForever) throw new Error('validation failed: this file is marked keep forever');
   if (fromRetention && Date.now() - job.createdAt.getTime() > RETENTION_DELETE_VALID_MS) {
     throw new Error('validation failed: this retention delete waited too long, so preview again');
@@ -51,11 +53,23 @@ export async function runDeleteFiles(prisma: PrismaClient, job: TwitchJob): Prom
 
   const sidecars = Array.isArray(file.sidecars) ? file.sidecars.filter((entry): entry is string => typeof entry === 'string') : [];
   const paths = [file.relativePath, ...sidecars, ...(file.originalRelativePath ? [file.originalRelativePath] : [])];
+  await assertLease();
   const startedAt = new Date();
   let errorMessage: string | null = null;
   try {
+    const freedBytes = await sizeOnDisk(paths);
     for (const relative of paths) await removeInsideLibrary(relative);
     await prisma.twitchMediaFile.delete({ where: { id: file.id } });
+    await recordDeletion(prisma, {
+      videoId: file.videoId,
+      title: file.video.title,
+      streamer: file.video.streamer.displayName,
+      kind: 'FILE',
+      cause: fromRetention ? 'RULE' : 'PERSON',
+      detail: origin?.reason,
+      freedBytes,
+      deletedBy: job.requestedByUsername,
+    });
   } catch (error) {
     errorMessage = error instanceof Error ? error.message : String(error);
   }
@@ -101,8 +115,13 @@ export async function repairLibraryModes(target: string): Promise<number> {
   }
 }
 
+async function sizeOnDisk(paths: string[]): Promise<number> {
+  const sizes = await Promise.all(paths.map((relative) => stat(insideLibrary(relative)).then(({ size }) => size, () => 0)));
+  return sizes.reduce((total, size) => total + size, 0);
+}
+
 /** Only a clear "not there" counts: any other error says nothing about the file. */
-async function exists(file: string): Promise<boolean> {
+export async function exists(file: string): Promise<boolean> {
   try {
     await stat(file);
     return true;
@@ -113,21 +132,23 @@ async function exists(file: string): Promise<boolean> {
 }
 
 /** The stored path stays inside the library by its text; a linked folder could still lead out. */
-async function removeInsideLibrary(relative: string): Promise<void> {
-  const target = insideLibrary(relative);
-  let parent: string;
+export async function assertRealParentInside(relative: string): Promise<void> {
+  const parent = await realpath(path.dirname(insideLibrary(relative)));
+  const root = await realpath(LIBRARY_DIR);
+  if (parent !== root && !parent.startsWith(`${root}${path.sep}`)) {
+    throw new Error(`validation failed: ${relative} leads outside the library`);
+  }
+}
+
+export async function removeInsideLibrary(relative: string): Promise<void> {
   try {
-    parent = await realpath(path.dirname(target));
+    await assertRealParentInside(relative);
   } catch (error) {
     // Its folder is already gone, so it is too. Anything else leaves the file in doubt.
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
     throw error;
   }
-  const root = await realpath(LIBRARY_DIR);
-  if (parent !== root && !parent.startsWith(`${root}${path.sep}`)) {
-    throw new Error(`validation failed: ${relative} leads outside the library`);
-  }
-  await rm(target, { force: true });
+  await rm(insideLibrary(relative), { force: true });
 }
 
 /**
@@ -138,7 +159,7 @@ async function removeInsideLibrary(relative: string): Promise<void> {
 export async function forgetFilesDeletedElsewhere(prisma: PrismaClient): Promise<number> {
   const files = await prisma.twitchMediaFile.findMany({
     where: { jobs: { none: { state: { in: [...IN_PROGRESS] } } } },
-    include: { video: { select: { title: true, twitchVideoId: true } } },
+    include: { video: { select: { title: true, twitchVideoId: true, streamer: { select: { displayName: true } } } } },
   });
   const missing = [];
   for (const file of files) {
@@ -149,12 +170,30 @@ export async function forgetFilesDeletedElsewhere(prisma: PrismaClient): Promise
   if (missing.length < files.length) await writeFile(marker, '');
   if (missing.length === 0 || !(await exists(marker))) return 0;
 
+  let forgotten = 0;
   for (const file of missing) {
     const sidecars = Array.isArray(file.sidecars) ? file.sidecars.filter((entry): entry is string => typeof entry === 'string') : [];
     const leftovers = [...sidecars, ...(file.originalRelativePath ? [file.originalRelativePath] : [])];
     const startedAt = new Date();
-    for (const relative of leftovers) await removeInsideLibrary(relative);
-    await prisma.twitchMediaFile.delete({ where: { id: file.id } });
+    const freedBytes = await sizeOnDisk(leftovers);
+    // A swap in progress leaves the name empty for a moment, so "missing" has to be true now.
+    const stillMissing = await withFileLock(prisma, file.id, async (tx) => {
+      const busy = await tx.twitchJob.count({ where: { mediaFileId: file.id, state: { in: [...IN_PROGRESS] } } });
+      if (busy > 0 || await exists(insideLibrary(file.relativePath))) return false;
+      for (const relative of leftovers) await removeInsideLibrary(relative);
+      await tx.twitchMediaFile.delete({ where: { id: file.id } });
+      return true;
+    });
+    if (!stillMissing) continue;
+    forgotten += 1;
+    await recordDeletion(prisma, {
+      videoId: file.videoId,
+      title: file.video.title,
+      streamer: file.video.streamer.displayName,
+      kind: 'FILE',
+      cause: 'OUTSIDE',
+      freedBytes: freedBytes + Number(file.sizeBytes),
+    });
     await writeDeleteAudit(prisma, {
       title: file.video.title,
       fileCount: leftovers.length,
@@ -163,5 +202,5 @@ export async function forgetFilesDeletedElsewhere(prisma: PrismaClient): Promise
       errorMessage: null,
     });
   }
-  return missing.length;
+  return forgotten;
 }

@@ -1,3 +1,6 @@
+/** Asked for by a person: claimed at once, whatever the night window says. */
+export const REENCODE_NOW_PRIORITY = 100;
+
 function minutes(value: string): number {
   const [hours, mins] = value.split(':').map(Number);
   return hours * 60 + mins;

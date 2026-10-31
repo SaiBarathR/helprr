@@ -14,7 +14,6 @@ export const JOB_SELECT = {
   bytesDone: true,
   bytesTotal: true,
   errorClass: true,
-  lastError: true,
   attempts: true,
   cancelRequested: true,
   requestedByUserId: true,

@@ -840,6 +840,8 @@ enum TwitchJobKind {
   DOWNLOAD
   REENCODE
   DELETE_FILES
+  DELETE_ORIGINAL
+  RESTORE_ORIGINAL
 }
 
 enum TwitchJobState {
@@ -974,6 +976,7 @@ model TwitchVideo {
   userStates         TwitchUserVideoState[]
   jobs               TwitchJob[]
   mediaFiles         TwitchMediaFile[]
+  deletedFiles      TwitchDeletedFile[]
 
   @@index([streamerId, twitchCreatedAt])
   @@index([availability, estimatedExpiresAt])
@@ -1037,6 +1040,37 @@ model TwitchJob {
   @@index([needsJellyfinRefresh])
 }
 
+// What the Library shows once a file is gone: the media file row is removed with
+// it, and audit rows are pruned on their own schedule.
+model TwitchDeletedFile {
+  id         String              @id @default(cuid())
+  videoId    String?
+  video      TwitchVideo?        @relation(fields: [videoId], references: [id], onDelete: SetNull)
+  title      String
+  streamer   String
+  kind       TwitchDeletionKind
+  cause      TwitchDeletionCause
+  detail     String? // the rule, in words, when a rule did it
+  freedBytes BigInt
+  deletedBy  String?
+  createdAt  DateTime            @default(now())
+
+  @@index([createdAt])
+  @@index([videoId])
+}
+
+enum TwitchDeletionKind {
+  FILE
+  ORIGINAL
+}
+
+enum TwitchDeletionCause {
+  PERSON
+  RULE
+  KEEP_PERIOD
+  OUTSIDE
+}
+
 model TwitchJobEvent {
   id        String    @id @default(cuid())
   jobId     String
@@ -1062,6 +1096,12 @@ model TwitchMediaFile {
   reencodedAt          DateTime?
   originalRelativePath String?
   originalDeleteAfter  DateTime?
+  originalSizeBytes    BigInt? // before the re-encode; sizeBytes is always the file as it is now
+  originalVideoCodec   String?
+  originalDeletedAt    DateTime?
+  reencodeQuality      Int?
+  reencodeSkippedAt    DateTime? // encoded, but it did not save enough to keep
+  reencodeSkippedBytes BigInt?
   keepForever          Boolean     @default(false)
   jellyfinItemId       String?
   createdAt            DateTime    @default(now())
