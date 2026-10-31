@@ -44,6 +44,11 @@ export function formatDuration(seconds: number): string {
   return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
 }
 
+/** The worker reports stages in lower case: "reading metadata". */
+export function stageLabel(stage: string): string {
+  return stage.charAt(0).toUpperCase() + stage.slice(1);
+}
+
 export function daysUntil(iso: string | null, now = Date.now()): number | null {
   if (!iso) return null;
   return Math.ceil((new Date(iso).getTime() - now) / 86_400_000);

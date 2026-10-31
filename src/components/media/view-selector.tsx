@@ -13,13 +13,16 @@ const views: { value: MediaViewMode; icon: typeof LayoutGrid; label: string; hid
 export function ViewSelector({
   value,
   onChange,
+  modes,
 }: {
   value: MediaViewMode;
   onChange: (view: MediaViewMode) => void;
+  /** Limits the choices, for lists that have no table view. */
+  modes?: MediaViewMode[];
 }) {
   return (
     <div className="flex bg-muted/50 rounded-lg p-0.5 gap-0.5">
-      {views.map(({ value: v, icon: Icon, label, hideOnMobile }) => (
+      {views.filter((view) => !modes || modes.includes(view.value)).map(({ value: v, icon: Icon, label, hideOnMobile }) => (
         <button
           key={v}
           onClick={() => onChange(v)}

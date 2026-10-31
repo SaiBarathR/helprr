@@ -2,9 +2,13 @@
 
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Check, X } from 'lucide-react';
+import { Check, Loader2, X } from 'lucide-react';
 import { toast } from 'sonner';
+import { GroupedSection } from '@/components/settings/grouped-section';
 import { Button } from '@/components/ui/button';
+import { ErrorState } from '@/components/ui/error-state';
+import { FloatingActionBar } from '@/components/ui/floating-action-bar';
+import { useUnsavedChangesGuard } from '@/lib/hooks/use-unsaved-changes-guard';
 import type { PolicyLayer, TwitchPolicy } from '@/lib/twitch/policy';
 import { RuleLayers, type RuleLayerValue } from './policy-editor';
 
@@ -21,9 +25,16 @@ interface PreviewRow {
   reason: string;
 }
 
-export function StreamerRules({ streamerId }: { streamerId: string }) {
+export function StreamerRules({ streamerId, onDirtyChange }: { streamerId: string; onDirtyChange: (dirty: boolean) => void }) {
   const queryClient = useQueryClient();
-  const [draft, setDraft] = useState<RuleLayerValue | null>(null);
+  const [draft, setDraftState] = useState<RuleLayerValue | null>(null);
+  // The fields keep their own text, so a discard has to rebuild them.
+  const [revision, setRevision] = useState(0);
+  useUnsavedChangesGuard(draft !== null);
+  const setDraft = (next: RuleLayerValue | null) => {
+    setDraftState(next);
+    onDirtyChange(next !== null);
+  };
 
   const stored = useQuery({
     queryKey: ['twitch', 'policies', streamerId],
@@ -56,35 +67,62 @@ export function StreamerRules({ streamerId }: { streamerId: string }) {
     onError: (error) => toast.error(error.message),
   });
 
-  if (stored.isError) return <p className="py-8 text-center text-sm text-muted-foreground">Could not load the rules.</p>;
-  if (!stored.data) return null;
+  if (stored.isError) return <ErrorState message="Couldn't load the rules" onRetry={() => void stored.refetch()} />;
+  if (!stored.data) return <div className="flex justify-center py-12"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>;
 
   const results = preview.data?.results ?? [];
   const matching = results.filter((row) => row.autoDownload).length;
 
   return (
-    <div className="space-y-3">
-      <RuleLayers value={value} inherited={stored.data.defaultPolicy as Partial<TwitchPolicy>} inheritedTypes={stored.data.typePolicies} onChange={setDraft} />
-      <div className="grid grid-cols-2 gap-2">
-        <Button variant="outline" className="h-10" disabled={preview.isPending} onClick={() => preview.mutate()}>Preview</Button>
-        <Button className="h-10" disabled={save.isPending || draft === null} onClick={() => save.mutate()}>Save</Button>
-      </div>
+    <>
+      <RuleLayers
+        key={revision}
+        value={value}
+        inherited={stored.data.defaultPolicy as Partial<TwitchPolicy>}
+        inheritedTypes={stored.data.typePolicies}
+        footer="Dimmed settings follow the global rules"
+        onChange={setDraft}
+      />
+
+      <Button variant="secondary" className="mb-6 h-10 w-full rounded-full" disabled={preview.isPending} onClick={() => preview.mutate()}>
+        {preview.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+        Try on recent videos
+      </Button>
       {preview.isSuccess && (
-        <section aria-label="Preview">
-          <p className="mb-1.5 text-sm text-muted-foreground">{matching} of the last {results.length} videos would download.</p>
-          <div className="grouped-section-content max-h-80 overflow-y-auto">
-            {results.map((row) => (
-              <div key={row.id} className="grouped-row gap-2">
-                <span className="min-w-0">
-                  <span className="block truncate text-sm">{row.title}</span>
-                  <span className="block truncate text-xs text-muted-foreground">{row.reason}</span>
-                </span>
-                {row.autoDownload ? <Check className="h-4 w-4 shrink-0 text-emerald-500" /> : <X className="h-4 w-4 shrink-0 text-muted-foreground" />}
-              </div>
-            ))}
-          </div>
-        </section>
+        <GroupedSection title={`${matching} of the last ${results.length} would download`}>
+          {results.map((row) => (
+            <div key={row.id} className="grouped-row gap-3">
+              <span className="min-w-0">
+                <span className="block truncate text-sm">{row.title}</span>
+                <span className="block truncate text-[11px] text-muted-foreground">{row.reason}</span>
+              </span>
+              {row.autoDownload
+                ? <Check aria-label="Would download" className="h-4 w-4 shrink-0 text-green-500" />
+                : <X aria-label="Would skip" className="h-4 w-4 shrink-0 text-muted-foreground" />}
+            </div>
+          ))}
+        </GroupedSection>
       )}
-    </div>
+
+      {draft !== null && (
+        <FloatingActionBar>
+          <span className="min-w-0 flex-1 text-sm text-muted-foreground">Unsaved changes</span>
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={save.isPending}
+            onClick={() => {
+              setDraft(null);
+              setRevision((current) => current + 1);
+            }}
+          >
+            Discard
+          </Button>
+          <Button size="sm" disabled={save.isPending} onClick={() => save.mutate()}>
+            {save.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save'}
+          </Button>
+        </FloatingActionBar>
+      )}
+    </>
   );
 }
