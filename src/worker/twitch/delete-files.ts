@@ -1,10 +1,10 @@
 import { constants } from 'node:fs';
-import { open, readdir, stat, writeFile } from 'node:fs/promises';
+import { open, readdir, stat } from 'node:fs/promises';
 import path from 'node:path';
 import type { PrismaClient, TwitchJob } from '@prisma/client';
 import { LIBRARY_DIR } from './env';
 import { withFileLock } from './file-lock';
-import { insideLibrary, removeInsideLibrary } from './library-paths';
+import { existsInLibrary, insideLibrary, removeInsideLibrary } from './library-paths';
 import { DeferJobError } from './process';
 import { recordDeletion, writeDeleteAudit } from './reencode';
 
@@ -125,6 +125,12 @@ async function exists(file: string): Promise<boolean> {
   }
 }
 
+/** Never through a link: anything that can write here could point this at another file. */
+async function touchMarker(marker: string): Promise<void> {
+  const handle = await open(marker, constants.O_WRONLY | constants.O_CREAT | constants.O_NOFOLLOW, 0o664);
+  await handle.close();
+}
+
 /**
  * A video removed in Jellyfin is gone from the disk, but Helprr still lists it as saved.
  * The marker proves this is the real library: on an unmounted disk the folder is empty,
@@ -137,11 +143,11 @@ export async function forgetFilesDeletedElsewhere(prisma: PrismaClient): Promise
   });
   const missing = [];
   for (const file of files) {
-    if (!(await exists(insideLibrary(file.relativePath)))) missing.push(file);
+    if (!(await existsInLibrary(file.relativePath))) missing.push(file);
   }
 
   const marker = path.join(LIBRARY_DIR, LIBRARY_MARKER);
-  if (missing.length < files.length) await writeFile(marker, '');
+  if (missing.length < files.length) await touchMarker(marker);
   if (missing.length === 0 || !(await exists(marker))) return 0;
 
   let forgotten = 0;
@@ -153,7 +159,7 @@ export async function forgetFilesDeletedElsewhere(prisma: PrismaClient): Promise
     // A swap in progress leaves the name empty for a moment, so "missing" has to be true now.
     const stillMissing = await withFileLock(prisma, file.id, async (tx) => {
       const busy = await tx.twitchJob.count({ where: { mediaFileId: file.id, state: { in: [...IN_PROGRESS] } } });
-      if (busy > 0 || await exists(insideLibrary(file.relativePath))) return false;
+      if (busy > 0 || await existsInLibrary(file.relativePath)) return false;
       for (const relative of leftovers) await removeInsideLibrary(relative);
       await tx.twitchMediaFile.delete({ where: { id: file.id } });
       return true;

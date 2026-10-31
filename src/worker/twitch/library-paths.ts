@@ -25,9 +25,9 @@ async function pinFolder(relative: string): Promise<FileHandle> {
   let folder = await open(LIBRARY_DIR, constants.O_RDONLY | constants.O_DIRECTORY);
   try {
     for (const step of steps) {
-      const next = await open(`/proc/self/fd/${folder.fd}/${step}`, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
-      await folder.close();
-      folder = next;
+      const parent = folder;
+      folder = await open(`/proc/self/fd/${parent.fd}/${step}`, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
+      await parent.close();
     }
     return folder;
   } catch (error) {
@@ -77,7 +77,7 @@ export async function removeInsideLibrary(relative: string): Promise<void> {
   }
 }
 
-/** One rename, so the target is never missing. Only ever moves a regular file. */
+/** One rename, so the target is never missing. Only ever moves a regular file, and refuses a target that is a link. */
 export async function replaceInsideLibrary(from: string, to: string): Promise<void> {
   const source = await pinFolder(from);
   try {

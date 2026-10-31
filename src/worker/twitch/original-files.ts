@@ -125,8 +125,15 @@ export async function runRestoreOriginal(prisma: PrismaClient, job: TwitchJob, a
 
   const target = insideLibrary(file.relativePath);
   const startedAt = new Date();
-  let errorMessage: string | null = null;
-  let done = false;
+  const audit = {
+    title: file.video.title,
+    fileCount: 1,
+    details: { kind: 'original-restored-by-request', twitchVideoId: file.video.twitchVideoId, paths: [file.relativePath, relative] },
+    startedAt,
+    actor: actorOf(job),
+  };
+  // True from the rename on, whatever fails after it: the re-encoded copy is gone by then.
+  let replaced = false;
   try {
     const stillParked = await existsInLibrary(relative);
     let codec: string;
@@ -138,11 +145,14 @@ export async function runRestoreOriginal(prisma: PrismaClient, job: TwitchJob, a
       if (codec === 'hevc') throw new Error('validation failed: the original is gone');
     }
 
-    done = await withFileLock(prisma, file.id, async (tx) => {
+    await withFileLock(prisma, file.id, async (tx) => {
       const current = await tx.twitchMediaFile.findUnique({ where: { id: file.id }, select: { reencodedAt: true, originalRelativePath: true } });
-      if (!current || !isCurrent(job, current) || current.originalRelativePath !== relative) return false;
+      if (!current || !isCurrent(job, current) || current.originalRelativePath !== relative) return;
       await assertLease();
-      if (stillParked) await replaceInsideLibrary(relative, file.relativePath);
+      if (stillParked) {
+        await replaceInsideLibrary(relative, file.relativePath);
+        replaced = true;
+      }
       const { size } = await stat(target);
       await tx.twitchMediaFile.update({
         where: { id: file.id },
@@ -158,23 +168,14 @@ export async function runRestoreOriginal(prisma: PrismaClient, job: TwitchJob, a
         },
       });
       await tx.twitchJob.update({ where: { id: job.id }, data: { needsJellyfinRefresh: true } });
-      return true;
+      // In the same commit, so a restart after it cannot leave the restore off the record.
+      await writeDeleteAudit(tx, { ...audit, errorMessage: null, filesDeleted: true });
     });
   } catch (error) {
-    errorMessage = error instanceof Error ? error.message : String(error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    await writeDeleteAudit(prisma, { ...audit, errorMessage, filesDeleted: replaced });
+    throw new Error(errorMessage);
   }
-  // The re-encoded copy is gone for good once this works, so it is on the record either way.
-  if (done || errorMessage) {
-    await writeDeleteAudit(prisma, {
-      title: file.video.title,
-      fileCount: 1,
-      details: { kind: 'original-restored-by-request', twitchVideoId: file.video.twitchVideoId, paths: [file.relativePath, relative] },
-      startedAt,
-      errorMessage,
-      actor: actorOf(job),
-    });
-  }
-  if (errorMessage) throw new Error(errorMessage);
 }
 
 /** For files re-encoded before sizes were kept: the parked copy still has the answer. */

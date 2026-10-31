@@ -1,10 +1,10 @@
-import { mkdir, rename, rm, stat } from 'node:fs/promises';
+import { mkdir, rm, stat } from 'node:fs/promises';
 import path from 'node:path';
 import type { Prisma, PrismaClient, TwitchDeletionCause, TwitchDeletionKind, TwitchJob } from '@prisma/client';
 import { worthKeeping } from '@/lib/twitch/reencode-window';
 import { FFMPEG, FFPROBE, LIBRARY_DIR, ORIGINALS_DIR, STAGING_DIR } from './env';
 import { withFileLock } from './file-lock';
-import { removeInsideLibrary } from './library-paths';
+import { removeInsideLibrary, replaceInsideLibrary } from './library-paths';
 import { JobCancelledError, run } from './process';
 
 const RENDER_DEVICE = '/dev/dri/renderD128';
@@ -60,8 +60,9 @@ export async function runReencode(ctx: {
   const target = path.join(LIBRARY_DIR, file.relativePath);
   const parked = path.join(ORIGINALS_DIR, file.relativePath);
 
+  const parkedRelative = path.relative(LIBRARY_DIR, parked);
   // A crash between the two renames below left the file parked with nothing in its place.
-  if (!(await exists(target)) && (await exists(parked))) await rename(parked, target);
+  if (!(await exists(target)) && (await exists(parked))) await replaceInsideLibrary(parkedRelative, file.relativePath);
   if (!(await exists(target))) throw new Error('validation failed: the file is gone');
 
   const before = await probe(target);
@@ -122,11 +123,11 @@ export async function runReencode(ctx: {
   await ctx.assertLease();
   await ctx.setStage('swapping');
   await mkdir(path.dirname(parked), { recursive: true });
-  await rename(target, parked);
+  await replaceInsideLibrary(file.relativePath, parkedRelative);
   try {
-    await rename(encoded, target);
+    await replaceInsideLibrary(path.relative(LIBRARY_DIR, encoded), file.relativePath);
   } catch (error) {
-    await rename(parked, target);
+    await replaceInsideLibrary(parkedRelative, file.relativePath);
     throw error;
   }
 
@@ -248,12 +249,14 @@ export async function recordDeletion(prisma: PrismaClient, input: {
 }
 
 // recordOperationAudit needs the app's request context, so the same row is written here.
-export async function writeDeleteAudit(prisma: PrismaClient, input: {
+export async function writeDeleteAudit(prisma: Pick<PrismaClient, 'fileOperationAudit'>, input: {
   title: string;
   fileCount: number;
   details: Record<string, unknown>;
   startedAt: Date;
   errorMessage: string | null;
+  /** When it differs from success: a file can be gone even though a later step failed. */
+  filesDeleted?: boolean;
   actor?: { id: string | null; username: string };
 }): Promise<void> {
   await prisma.fileOperationAudit.create({
@@ -265,7 +268,7 @@ export async function writeDeleteAudit(prisma: PrismaClient, input: {
       mediaType: 'twitch-video',
       mediaTitle: input.title,
       fileCount: input.fileCount,
-      filesDeleted: input.errorMessage === null,
+      filesDeleted: input.filesDeleted ?? input.errorMessage === null,
       details: input.details as Prisma.InputJsonValue,
       success: input.errorMessage === null,
       errorMessage: input.errorMessage,

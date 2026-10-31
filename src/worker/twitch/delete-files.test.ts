@@ -1,4 +1,4 @@
-import { chmod, mkdir, mkdtemp, rm, stat, symlink, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -141,6 +141,33 @@ describe('forgetFilesDeletedElsewhere', () => {
     expect(prisma.twitchDeletedFile.create).not.toHaveBeenCalled();
   });
 
+  it('stops at a file whose folder has become a link: that says nothing about the file', async () => {
+    library.dir = await mkdtemp(path.join(os.tmpdir(), 'twitch-gone-'));
+    const outside = await mkdtemp(path.join(os.tmpdir(), 'twitch-outside-'));
+    await writeFile(path.join(library.dir, 'kept.mkv'), '');
+    await writeFile(path.join(library.dir, '.helprr-library'), '');
+    await symlink(outside, path.join(library.dir, 'linked'));
+    const prisma = fakePrisma([row('kept'), { ...row('moved'), relativePath: 'linked/moved.mkv' }]);
+
+    await expect(run(prisma)).rejects.toThrow(/leads outside the library/);
+
+    expect(prisma.twitchMediaFile.delete).not.toHaveBeenCalled();
+    await rm(outside, { recursive: true, force: true });
+  });
+
+  it('never writes the marker through a link', async () => {
+    library.dir = await mkdtemp(path.join(os.tmpdir(), 'twitch-gone-'));
+    const outside = await mkdtemp(path.join(os.tmpdir(), 'twitch-outside-'));
+    await writeFile(path.join(outside, 'precious'), 'not ours');
+    await writeFile(path.join(library.dir, 'kept.mkv'), '');
+    await symlink(path.join(outside, 'precious'), path.join(library.dir, '.helprr-library'));
+
+    await run(fakePrisma([row('kept')])).catch(() => undefined);
+
+    expect(await readFile(path.join(outside, 'precious'), 'utf8')).toBe('not ours');
+    await rm(outside, { recursive: true, force: true });
+  });
+
   it.each([[['a', 'b']], [['a']]])('forgets nothing on a folder with no marker, as on an unmounted disk: %j', async (ids) => {
     library.dir = await mkdtemp(path.join(os.tmpdir(), 'twitch-unmounted-'));
     const prisma = fakePrisma(ids.map(row));
@@ -165,7 +192,7 @@ describe('forgetFilesDeletedElsewhere', () => {
     await writeFile(path.join(library.dir, 'bad.nfo'), '');
     const prisma = fakePrisma([row('kept'), { ...row('bad'), relativePath: 'loop/not-a-folder.mkv' }]);
 
-    await expect(run(prisma)).rejects.toThrow(/ENOTDIR/);
+    await expect(run(prisma)).rejects.toThrow(/leads outside the library/);
 
     expect(prisma.twitchMediaFile.delete).not.toHaveBeenCalled();
     expect(await stat(path.join(library.dir, 'bad.nfo'))).toBeTruthy();

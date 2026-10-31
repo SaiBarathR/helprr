@@ -275,6 +275,33 @@ describe('runRestoreOriginal', () => {
     });
   });
 
+  it('writes the audit row in the same commit as the restore', async () => {
+    await writeLibrary({ 'a/x.mkv': 'small', '.originals/a/x.mkv': 'original' });
+    const { mock, client } = fakePrisma(file());
+    const order: string[] = [];
+    mock.twitchMediaFile.update.mockImplementation(async () => { order.push('row'); });
+    mock.fileOperationAudit.create.mockImplementation(async () => { order.push('audit'); });
+    mock.$transaction.mockImplementation(async (work: (tx: unknown) => unknown) => {
+      await work(mock);
+      order.push('commit');
+    });
+
+    await runRestoreOriginal(client, job, lease);
+
+    expect(order).toEqual(['row', 'audit', 'commit']);
+  });
+
+  it('says the re-encoded copy is gone when a step after the rename fails', async () => {
+    await writeLibrary({ 'a/x.mkv': 'small', '.originals/a/x.mkv': 'original' });
+    const { mock, client } = fakePrisma(file());
+    mock.twitchMediaFile.update.mockRejectedValue(new Error('database hiccup'));
+
+    await expect(runRestoreOriginal(client, job, lease)).rejects.toThrow('database hiccup');
+
+    expect(await readFile(inLibrary('a/x.mkv'), 'utf8')).toBe('original');
+    expect(mock.fileOperationAudit.create.mock.calls[0][0].data).toMatchObject({ success: false, filesDeleted: true });
+  });
+
   it('records a failed restore too', async () => {
     await writeLibrary({ 'a/x.mkv': 'small', '.originals/a/x.mkv': 'corrupt' });
     mocks.probeFails = true;
@@ -282,7 +309,7 @@ describe('runRestoreOriginal', () => {
 
     await expect(runRestoreOriginal(client, job, lease)).rejects.toThrow('Invalid data');
 
-    expect(mock.fileOperationAudit.create.mock.calls[0][0].data).toMatchObject({ success: false, username: 'sai' });
+    expect(mock.fileOperationAudit.create.mock.calls[0][0].data).toMatchObject({ success: false, filesDeleted: false, username: 'sai' });
   });
 
   it('records nothing for a retry with nothing left to do', async () => {
