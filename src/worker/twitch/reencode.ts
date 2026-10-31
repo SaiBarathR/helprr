@@ -248,8 +248,7 @@ export async function recordDeletion(prisma: PrismaClient, input: {
   }
 }
 
-// recordOperationAudit needs the app's request context, so the same row is written here.
-export async function writeDeleteAudit(prisma: Pick<PrismaClient, 'fileOperationAudit'>, input: {
+interface DeleteAudit {
   title: string;
   fileCount: number;
   details: Record<string, unknown>;
@@ -258,21 +257,28 @@ export async function writeDeleteAudit(prisma: Pick<PrismaClient, 'fileOperation
   /** When it differs from success: a file can be gone even though a later step failed. */
   filesDeleted?: boolean;
   actor?: { id: string | null; username: string };
-}): Promise<void> {
-  await prisma.fileOperationAudit.create({
-    data: {
-      userId: input.actor?.id ?? null,
-      username: input.actor?.username ?? 'system:twitch-worker',
-      service: 'TWITCH',
-      operation: 'DELETE_MEDIA',
-      mediaType: 'twitch-video',
-      mediaTitle: input.title,
-      fileCount: input.fileCount,
-      filesDeleted: input.filesDeleted ?? input.errorMessage === null,
-      details: input.details as Prisma.InputJsonValue,
-      success: input.errorMessage === null,
-      errorMessage: input.errorMessage,
-      startedAt: input.startedAt,
-    },
-  }).catch((error) => console.error('[TwitchWorker] Failed to write audit row', error));
+}
+
+// recordOperationAudit needs the app's request context, so the same row is written here.
+export function deleteAuditRow(input: DeleteAudit): Prisma.FileOperationAuditCreateInput {
+  return {
+    userId: input.actor?.id ?? null,
+    username: input.actor?.username ?? 'system:twitch-worker',
+    service: 'TWITCH',
+    operation: 'DELETE_MEDIA',
+    mediaType: 'twitch-video',
+    mediaTitle: input.title,
+    fileCount: input.fileCount,
+    filesDeleted: input.filesDeleted ?? input.errorMessage === null,
+    details: input.details as Prisma.InputJsonValue,
+    success: input.errorMessage === null,
+    errorMessage: input.errorMessage,
+    startedAt: input.startedAt,
+  };
+}
+
+/** Fail-soft, so never inside a transaction: a swallowed error there aborts it without saying so. */
+export async function writeDeleteAudit(prisma: PrismaClient, input: DeleteAudit): Promise<void> {
+  await prisma.fileOperationAudit.create({ data: deleteAuditRow(input) })
+    .catch((error) => console.error('[TwitchWorker] Failed to write audit row', error));
 }

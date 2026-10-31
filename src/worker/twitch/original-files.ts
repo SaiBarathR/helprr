@@ -4,7 +4,7 @@ import { IN_PROGRESS } from './delete-files';
 import { withFileLock } from './file-lock';
 import { existsInLibrary, insideLibrary, removeInsideLibrary, replaceInsideLibrary } from './library-paths';
 import { DeferJobError } from './process';
-import { probe, recordDeletion, writeDeleteAudit } from './reencode';
+import { deleteAuditRow, probe, recordDeletion, writeDeleteAudit } from './reencode';
 
 const CONFLICT_WAIT_MS = 5 * 60_000;
 
@@ -169,7 +169,8 @@ export async function runRestoreOriginal(prisma: PrismaClient, job: TwitchJob, a
       });
       await tx.twitchJob.update({ where: { id: job.id }, data: { needsJellyfinRefresh: true } });
       // In the same commit, so a restart after it cannot leave the restore off the record.
-      await writeDeleteAudit(tx, { ...audit, errorMessage: null, filesDeleted: true });
+      // A failure here fails the step, and the retry finds the original already in place.
+      await tx.fileOperationAudit.create({ data: deleteAuditRow({ ...audit, errorMessage: null, filesDeleted: true }) });
     });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);

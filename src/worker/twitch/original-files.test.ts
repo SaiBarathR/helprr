@@ -302,6 +302,19 @@ describe('runRestoreOriginal', () => {
     expect(mock.fileOperationAudit.create.mock.calls[0][0].data).toMatchObject({ success: false, filesDeleted: true });
   });
 
+  it('fails the step when the audit cannot be written, so the retry can repair it', async () => {
+    await writeLibrary({ 'a/x.mkv': 'small', '.originals/a/x.mkv': 'original' });
+    const { mock, client } = fakePrisma(file());
+    mock.fileOperationAudit.create.mockRejectedValueOnce(new Error('audit table unavailable'));
+
+    await expect(runRestoreOriginal(client, job, lease)).rejects.toThrow('audit table unavailable');
+
+    // The retry: the original is already in place, and the row still has to catch up.
+    mock.twitchMediaFile.update.mockClear();
+    await runRestoreOriginal(client, job, lease);
+    expect(mock.twitchMediaFile.update.mock.calls[0][0].data).toMatchObject({ reencodedAt: null, originalRelativePath: null });
+  });
+
   it('records a failed restore too', async () => {
     await writeLibrary({ 'a/x.mkv': 'small', '.originals/a/x.mkv': 'corrupt' });
     mocks.probeFails = true;
