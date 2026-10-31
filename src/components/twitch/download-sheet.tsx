@@ -11,7 +11,7 @@ import { Drawer, DrawerContent, DrawerDescription, DrawerFooter, DrawerHeader, D
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useIsMobile } from '@/hooks/use-is-mobile';
 import { SwitchRow } from './setting-rows';
-import { formatDuration, type TwitchVideo } from './types';
+import { formatDuration, formatGb, type TwitchVideo } from './types';
 
 const QUALITIES = [
   { id: '1440p60', label: '1440p', gbPerHour: 4.07 },
@@ -90,6 +90,8 @@ function SheetBody({ video, defaults, canUse1440p, onDone }: {
   const mutedSegments = video.mutedSegments ?? [];
   const mutedSeconds = mutedSegments.reduce((total, segment) => total + segment.duration, 0);
   const sizeGb = ((QUALITIES.find((item) => item.id === quality)?.gbPerHour ?? 3.46) * video.durationSeconds) / 3600;
+  const fastestMinutes = Math.ceil((sizeGb * 1024) / 15 / 60);
+  const slowestMinutes = Math.ceil((sizeGb * 1024) / 7 / 60);
 
   const queue = useMutation({
     mutationFn: async () => {
@@ -145,9 +147,9 @@ function SheetBody({ video, defaults, canUse1440p, onDone }: {
         </div>
         <div className="grouped-section-content overflow-hidden">
           <EstimateRow label="Length" value={formatDuration(video.durationSeconds)} />
-          <EstimateRow label="Size" value={`≈ ${sizeGb < 1 ? `${Math.round(sizeGb * 1024)} MB` : `${sizeGb.toFixed(1)} GB`}`} />
-          {options.reencode && <EstimateRow label="After re-encode" value={`≈ ${(sizeGb * 0.18).toFixed(1)}–${(sizeGb * 0.37).toFixed(1)} GB`} />}
-          <EstimateRow label="Time" value={`≈ ${Math.ceil((sizeGb * 1024) / 15 / 60)}–${Math.ceil((sizeGb * 1024) / 7 / 60)} min`} />
+          <EstimateRow label="Size" value={`≈ ${formatGb(sizeGb)}`} />
+          {options.reencode && <EstimateRow label="After re-encode" value={`≈ ${formatGb(sizeGb * 0.18)} to ${formatGb(sizeGb * 0.37)}`} />}
+          <EstimateRow label="Time" value={fastestMinutes === slowestMinutes ? `≈ ${fastestMinutes} min` : `≈ ${fastestMinutes}–${slowestMinutes} min`} />
         </div>
       </div>
       <DrawerFooter>
