@@ -2,6 +2,7 @@ import type { Prisma, TwitchJobKind } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { ACTIVE_JOB_STATES } from './jobs';
 import { REENCODE_NOW_PRIORITY } from './reencode-window';
+import { FILE_LOCK_TRANSACTION } from './retention';
 import { sizeThumbnail } from './serialize';
 
 // The paths are read only to tell whether an original is there; serializeFile drops them.
@@ -209,7 +210,7 @@ async function withFileLock<T>(fileId: string, work: (tx: Prisma.TransactionClie
   return prisma.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`twitch-delete:${fileId}`}))`;
     return work(tx);
-  });
+  }, FILE_LOCK_TRANSACTION);
 }
 
 const activeDownload = (tx: Prisma.TransactionClient, videoId: string) => (

@@ -167,6 +167,9 @@ export function verifyRetentionPreview(token: unknown, userId: string, fileIds: 
   return expected.length === actual.length && timingSafeEqual(expected, actual);
 }
 
+/** The worker can hold a file's lock through deleting a large file, which takes more than Prisma's default 5 s. */
+export const FILE_LOCK_TRANSACTION = { maxWait: 10_000, timeout: 30_000 };
+
 /** Helprr has no file access: the worker deletes, and audits under this actor. */
 export async function enqueueFileDelete(
   fileId: string,
@@ -193,5 +196,5 @@ export async function enqueueFileDelete(
       },
     });
     return true;
-  });
+  }, FILE_LOCK_TRANSACTION);
 }
