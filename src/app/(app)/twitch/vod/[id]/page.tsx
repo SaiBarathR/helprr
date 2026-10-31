@@ -196,6 +196,15 @@ export default function TwitchVodPage({ params }: { params: Promise<{ id: string
               <FactRow label="Type" value={VIDEO_TYPE_LABELS[video.type]} />
               {video.category && <FactRow label="Category" value={video.category} />}
               <FactRow label="Views" value={video.viewCount.toLocaleString()} />
+              {video.fileId && (
+                <Link href={`/twitch/library/${video.fileId}`} className="flex items-center justify-between border-b border-border/40 py-2.5">
+                  <span className="shrink-0 text-xs font-medium uppercase tracking-wide text-muted-foreground">File</span>
+                  <span className="ml-4 flex min-w-0 items-center gap-1 text-sm">
+                    <span className="truncate">Size, re-encoding, cleanup</span>
+                    <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  </span>
+                </Link>
+              )}
               {expiresIn !== null && expiresIn >= 0 && !video.downloaded && (
                 <FactRow label="Expires" value={expiresIn === 0 ? 'Today, estimated' : `In ${expiresIn} ${expiresIn === 1 ? 'day' : 'days'}, estimated`} />
               )}

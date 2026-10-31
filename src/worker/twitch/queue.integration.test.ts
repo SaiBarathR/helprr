@@ -7,6 +7,7 @@ const prisma = url ? new PrismaClient({ datasources: { db: { url } } }) : null;
 vi.mock('@/lib/db', () => ({ get prisma() { return prisma; } }));
 
 import { enqueueDownload, DEFAULT_DOWNLOAD_OPTIONS, retryJob } from '@/lib/twitch/jobs';
+import { REENCODE_NOW_PRIORITY } from '@/lib/twitch/reencode-window';
 import { claimJob } from './claim';
 
 // Needs a migrated, disposable PostgreSQL; skipped without one.
@@ -92,6 +93,15 @@ describe.skipIf(!url || !url.endsWith('/helprr_migration_test'))('Twitch queue a
     expect((await claimJob(db, 'w', ['DOWNLOAD']))?.id).toBe(low.jobId);
     await db.twitchJob.update({ where: { id: high.jobId }, data: { runAfter: new Date() } });
     expect((await claimJob(db, 'w', ['DOWNLOAD']))?.id).toBe(high.jobId);
+  });
+
+  it('leaves a night re-encode waiting while claiming one asked for now', async () => {
+    const night = await db.twitchJob.create({ data: { kind: 'REENCODE', videoId } });
+    const urgent = await db.twitchJob.create({ data: { kind: 'REENCODE', videoId, priority: REENCODE_NOW_PRIORITY } });
+
+    expect((await claimJob(db, 'worker', ['REENCODE'], REENCODE_NOW_PRIORITY))?.id).toBe(urgent.id);
+    expect(await claimJob(db, 'worker', ['REENCODE'], REENCODE_NOW_PRIORITY)).toBeNull();
+    expect((await claimJob(db, 'worker', ['REENCODE']))?.id).toBe(night.id);
   });
 
   it('ends a cancelled job whose worker died, and frees its video', async () => {

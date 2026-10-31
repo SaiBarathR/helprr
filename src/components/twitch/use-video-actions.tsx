@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useMutation, useQueryClient, type InfiniteData } from '@tanstack/react-query';
-import { CheckCircle2, Download, ExternalLink, Eye, EyeOff, Info, Play, Trash2, User, Zap } from 'lucide-react';
+import { CheckCircle2, Download, ExternalLink, Eye, EyeOff, HardDrive, Info, Play, Trash2, User, Zap } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
 import { useMe, hasCapability } from '@/components/permission-provider';
@@ -98,6 +98,9 @@ export function useVideoActions() {
         { id: 'open', label: 'View video', icon: <Info className="h-4 w-4" />, href: `/twitch/vod/${video.id}` },
         ...(video.jellyfinItemId
           ? [{ id: 'play', label: 'Play in Helprr', icon: <Play className="h-4 w-4" />, href: `/jellyfin/library/item/${video.jellyfinItemId}` }]
+          : []),
+        ...(video.fileId
+          ? [{ id: 'file', label: 'File details', icon: <HardDrive className="h-4 w-4" />, href: `/twitch/library/${video.fileId}` }]
           : []),
         { id: 'streamer', label: video.streamer.displayName, icon: <User className="h-4 w-4" />, href: `/twitch/streamers/${video.streamer.id}` },
       ],

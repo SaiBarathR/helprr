@@ -49,7 +49,7 @@ export function ToolbarButton({ label, href, onClick, disabled, filled, pressed,
 
 /** The same sticky two-row toolbar as the Movies and Torrents pages. */
 export function TwitchToolbar({ active, actions, trailing, children }: {
-  active: 'feed' | 'streamers' | 'queue';
+  active: 'feed' | 'streamers' | 'queue' | 'library';
   actions?: ReactNode;
   trailing?: ReactNode;
   /** Beside the section switch: the page's search, or its status. */

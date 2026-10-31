@@ -5,11 +5,12 @@ import path from 'node:path';
 import { Prisma, PrismaClient, type TwitchJob, type TwitchJobKind } from '@prisma/client';
 import { claimJob, LEASE_MS } from './claim';
 import { classifyJobError, nextStepAfterFailure } from '@/lib/twitch/job-errors';
-import { inReencodeWindow } from '@/lib/twitch/reencode-window';
+import { inReencodeWindow, REENCODE_NOW_PRIORITY } from '@/lib/twitch/reencode-window';
 import type { DownloadOptions } from '@/lib/twitch/jobs';
 import { decryptTwitchToken } from '@/lib/twitch/token-cipher';
 import { LIBRARY_DIR, STAGING_DIR, WORKER_VERSION } from './env';
 import { forgetFilesDeletedElsewhere, repairLibraryModes, runDeleteFiles } from './delete-files';
+import { measureParkedOriginals, runDeleteOriginal, runRestoreOriginal } from './original-files';
 import { DiskGuardError, runDownload, WaitForRecordingError } from './pipeline';
 import { deleteExpiredOriginals, probeGpu, runReencode } from './reencode';
 import { DeferJobError, JobCancelledError, LeaseLostError } from './process';
@@ -20,14 +21,16 @@ const POLL_MS = 5_000;
 const CANCEL_POLL_MS = 2_000;
 const HEARTBEAT_MS = 15_000;
 const MIGRATION_POLL_MS = 5_000;
-const REQUIRED_MIGRATION = '20261030120100_twitch_tables';
+const REQUIRED_MIGRATION = '20261031120000_twitch_file_library';
 const CPU_POLL_MS = 30_000;
 const DELETED_CHECK_MS = 2 * 60_000;
 const TOOL_CHECK_MS = 24 * 3_600_000;
 const EXTRACTOR_FAILURE_LIMIT = 3;
 const DISK_RECHECK_MS = 15 * 60_000;
 const HOUSEKEEPING_MS = 60 * 60_000;
-const NETWORK_KINDS: TwitchJobKind[] = ['DOWNLOAD', 'DELETE_FILES'];
+// File housekeeping needs no tools, so it carries on while they are held.
+const FILE_KINDS: TwitchJobKind[] = ['DELETE_FILES', 'DELETE_ORIGINAL', 'RESTORE_ORIGINAL'];
+const NETWORK_KINDS: TwitchJobKind[] = ['DOWNLOAD', ...FILE_KINDS];
 
 const prisma = new PrismaClient();
 const workerId = `${os.hostname()}-${randomUUID().slice(0, 8)}`;
@@ -143,8 +146,10 @@ async function runJob(job: TwitchJob): Promise<void> {
     };
     const note = (message: string) => event(job.id, 'warn', message);
 
-    if (job.kind === 'DELETE_FILES') {
-      await runDeleteFiles(prisma, job);
+    if (FILE_KINDS.includes(job.kind)) {
+      if (job.kind === 'DELETE_FILES') await runDeleteFiles(prisma, job);
+      else if (job.kind === 'DELETE_ORIGINAL') await runDeleteOriginal(prisma, job);
+      else await runRestoreOriginal(prisma, job);
       await finishJob(job, { state: 'DONE', stage: 'done', progress: 1, finishedAt: new Date(), lastError: null, errorClass: null });
       return;
     }
@@ -254,7 +259,7 @@ async function networkLane(): Promise<void> {
     if (running.size - (cpuBusy ? 1 : 0) < (settings?.maxConcurrentDownloads ?? 2)) {
       // Nothing new uses the tools while they are broken or about to be swapped.
       const held = toolsBusy || settings?.toolsPausedAt || settings?.toolUpdateRequestedAt;
-      const job = await claimJob(prisma, workerId, held ? ['DELETE_FILES'] : NETWORK_KINDS).catch((error) => {
+      const job = await claimJob(prisma, workerId, held ? FILE_KINDS : NETWORK_KINDS).catch((error) => {
         log('error', 'Claim failed', { error: String(error) });
         return null;
       });
@@ -268,18 +273,19 @@ async function networkLane(): Promise<void> {
 }
 
 // One encode at a time, only at night, never while Jellyfin needs the same iGPU.
-// An encode already running finishes past the end of the window.
+// An encode already running finishes past the end of the window. A person asking for
+// one now is the exception: the window and the Jellyfin hold are theirs to overrule.
 async function cpuLane(): Promise<void> {
   while (!stopping) {
     await sleep(CPU_POLL_MS);
     if (!gpuAvailable || cpuBusy) continue;
     const settings = await prisma.twitchSettings.findUnique({ where: { id: 'singleton' } }).catch(() => null);
-    if (!settings?.reencodeEnabled) continue;
     const now = new Date();
-    if (!inReencodeWindow(now, settings.reencodeWindowStart, settings.reencodeWindowEnd)) continue;
-    if (settings.jellyfinBusyUntil && settings.jellyfinBusyUntil > now) continue;
+    const open = Boolean(settings?.reencodeEnabled)
+      && inReencodeWindow(now, settings?.reencodeWindowStart ?? '01:00', settings?.reencodeWindowEnd ?? '08:00')
+      && !(settings?.jellyfinBusyUntil && settings.jellyfinBusyUntil > now);
 
-    const job = await claimJob(prisma, workerId, ['REENCODE']).catch(() => null);
+    const job = await claimJob(prisma, workerId, ['REENCODE'], open ? undefined : REENCODE_NOW_PRIORITY).catch(() => null);
     if (!job) continue;
     cpuBusy = true;
     void runJob(job).finally(() => {
@@ -289,6 +295,8 @@ async function cpuLane(): Promise<void> {
 }
 
 async function housekeeping(): Promise<void> {
+  const measured = await measureParkedOriginals(prisma);
+  if (measured > 0) log('info', 'Measured parked originals', { measured });
   const deleted = await deleteExpiredOriginals(prisma);
   if (deleted > 0) log('info', 'Deleted originals', { deleted });
   await cleanStaging();

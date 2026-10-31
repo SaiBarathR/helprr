@@ -1,6 +1,6 @@
 import { mkdir, rename, rm, stat } from 'node:fs/promises';
 import path from 'node:path';
-import type { Prisma, PrismaClient, TwitchJob } from '@prisma/client';
+import type { Prisma, PrismaClient, TwitchDeletionCause, TwitchDeletionKind, TwitchJob } from '@prisma/client';
 import { worthKeeping } from '@/lib/twitch/reencode-window';
 import { FFMPEG, FFPROBE, LIBRARY_DIR, ORIGINALS_DIR, STAGING_DIR } from './env';
 import { run } from './process';
@@ -31,7 +31,7 @@ interface Probed {
   codec: string;
 }
 
-async function probe(file: string): Promise<Probed> {
+export async function probe(file: string): Promise<Probed> {
   const output = await run(FFPROBE, [
     '-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=codec_name:format=duration', '-of', 'json', file,
   ], { captureStdout: true });
@@ -67,7 +67,8 @@ export async function runReencode(ctx: {
     // A crash right after the swap: the file is in place, but the row never heard.
     if (!file.originalRelativePath && (await exists(parked))) {
       const { size } = await stat(target);
-      await recordSwap(ctx, file.id, parked, size);
+      const { size: originalBytes } = await stat(parked);
+      await recordSwap(ctx, file.id, parked, { sizeBytes: size, originalBytes, originalCodec: null });
       await ctx.note('Finished a swap interrupted by a restart');
       return;
     }
@@ -97,6 +98,10 @@ export async function runReencode(ctx: {
   if (!worthKeeping(originalBytes, encodedBytes)) {
     await rm(staging, { recursive: true, force: true });
     await ctx.note(`Kept the original: ${encodedBytes} bytes is not 10% under ${originalBytes}`);
+    await prisma.twitchMediaFile.update({
+      where: { id: file.id },
+      data: { reencodeSkippedAt: new Date(), reencodeSkippedBytes: BigInt(encodedBytes) },
+    });
     return;
   }
 
@@ -112,24 +117,30 @@ export async function runReencode(ctx: {
     throw error;
   }
 
-  await recordSwap(ctx, file.id, parked, encodedBytes);
+  await recordSwap(ctx, file.id, parked, { sizeBytes: encodedBytes, originalBytes, originalCodec: before.codec });
   await rm(staging, { recursive: true, force: true });
 }
 
 async function recordSwap(
-  ctx: { prisma: PrismaClient; job: TwitchJob; keepOriginalDays: number },
+  ctx: { prisma: PrismaClient; job: TwitchJob; keepOriginalDays: number; quality: number },
   fileId: string,
   parked: string,
-  sizeBytes: number,
+  sizes: { sizeBytes: number; originalBytes: number; originalCodec: string | null },
 ): Promise<void> {
   await ctx.prisma.twitchMediaFile.update({
     where: { id: fileId },
     data: {
-      sizeBytes: BigInt(sizeBytes),
+      sizeBytes: BigInt(sizes.sizeBytes),
       videoCodec: 'hevc',
       reencodedAt: new Date(),
+      reencodeQuality: ctx.quality,
+      reencodeSkippedAt: null,
+      reencodeSkippedBytes: null,
       originalRelativePath: path.relative(LIBRARY_DIR, parked),
       originalDeleteAfter: new Date(Date.now() + ctx.keepOriginalDays * 86_400_000),
+      originalSizeBytes: BigInt(sizes.originalBytes),
+      originalVideoCodec: sizes.originalCodec,
+      originalDeletedAt: null,
     },
   });
   await ctx.prisma.twitchJob.update({ where: { id: ctx.job.id }, data: { needsJellyfinRefresh: true } });
@@ -138,17 +149,32 @@ async function recordSwap(
 /** Deletes originals past their date. Every removal is audited, by a system actor. */
 export async function deleteExpiredOriginals(prisma: PrismaClient, now = new Date()): Promise<number> {
   const due = await prisma.twitchMediaFile.findMany({
-    where: { originalRelativePath: { not: null }, originalDeleteAfter: { lte: now } },
-    include: { video: { select: { title: true } } },
+    // A job on the file may be about to restore this very original.
+    where: {
+      originalRelativePath: { not: null },
+      originalDeleteAfter: { lte: now },
+      jobs: { none: { state: { in: ['QUEUED', 'BLOCKED', 'RUNNING', 'RETRY_WAIT'] } } },
+    },
+    include: { video: { select: { title: true, streamer: { select: { displayName: true } } } } },
   });
   for (const file of due) {
     const startedAt = new Date();
     let errorMessage: string | null = null;
     try {
-      await rm(path.join(LIBRARY_DIR, file.originalRelativePath!), { force: true });
+      const original = path.join(LIBRARY_DIR, file.originalRelativePath!);
+      const freedBytes = (await stat(original).catch(() => null))?.size ?? 0;
+      await rm(original, { force: true });
       await prisma.twitchMediaFile.update({
         where: { id: file.id },
-        data: { originalRelativePath: null, originalDeleteAfter: null },
+        data: { originalRelativePath: null, originalDeleteAfter: null, originalDeletedAt: now },
+      });
+      await recordDeletion(prisma, {
+        videoId: file.videoId,
+        title: file.video.title,
+        streamer: file.video.streamer.displayName,
+        kind: 'ORIGINAL',
+        cause: 'KEEP_PERIOD',
+        freedBytes,
       });
     } catch (error) {
       errorMessage = error instanceof Error ? error.message : String(error);
@@ -162,6 +188,24 @@ export async function deleteExpiredOriginals(prisma: PrismaClient, now = new Dat
     });
   }
   return due.length;
+}
+
+/** The Library's own record. A failure here must not fail a delete that already happened. */
+export async function recordDeletion(prisma: PrismaClient, input: {
+  videoId: string;
+  title: string;
+  streamer: string;
+  kind: TwitchDeletionKind;
+  cause: TwitchDeletionCause;
+  freedBytes: number;
+  detail?: string | null;
+  deletedBy?: string | null;
+}): Promise<void> {
+  try {
+    await prisma.twitchDeletedFile.create({ data: { ...input, freedBytes: BigInt(input.freedBytes) } });
+  } catch (error) {
+    console.error('[TwitchWorker] Failed to record a deletion', error);
+  }
 }
 
 // recordOperationAudit needs the app's request context, so the same row is written here.

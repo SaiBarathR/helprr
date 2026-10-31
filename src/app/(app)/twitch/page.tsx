@@ -11,16 +11,10 @@ import { SearchBar } from '@/components/media/search-bar';
 import { ViewSelector } from '@/components/media/view-selector';
 import { ActiveFilterBar, FilterDot, filterButtonLabel, searchFilter, type ActiveFilter } from '@/components/ui/active-filter-bar';
 import { Button } from '@/components/ui/button';
-import {
-  DropdownMenu,
-  DropdownMenuCheckboxItem,
-  DropdownMenuContent,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { ErrorState } from '@/components/ui/error-state';
 import { PullToRefresh } from '@/components/ui/pull-to-refresh';
+import { FilterGroup, type FilterOption } from '@/components/twitch/filter-group';
 import { ToolbarButton, toolbarButtonClass, TwitchToolbar } from '@/components/twitch/twitch-toolbar';
 import { TwitchVideoCard } from '@/components/twitch/twitch-video-card';
 import { TwitchVideoList, TwitchVideoSkeleton } from '@/components/twitch/twitch-video-list';
@@ -34,31 +28,26 @@ import { useUIStore } from '@/lib/store';
 
 const PAGE_SIZE = 30;
 
-interface Option {
-  id: string;
-  label: string;
-}
-
-const SHOW: Option[] = [{ id: 'all', label: 'All videos' }, { id: 'new', label: 'New' }];
-const TYPES: Option[] = [
+const SHOW: FilterOption[] = [{ id: 'all', label: 'All videos' }, { id: 'new', label: 'New' }];
+const TYPES: FilterOption[] = [
   { id: '', label: 'Any type' },
   { id: 'ARCHIVE', label: 'Past broadcasts' },
   { id: 'HIGHLIGHT', label: 'Highlights' },
   { id: 'UPLOAD', label: 'Uploads' },
 ];
-const STATUSES: Option[] = [
+const STATUSES: FilterOption[] = [
   { id: '', label: 'Any status' },
   { id: 'expiring', label: 'Expiring' },
   { id: 'notDownloaded', label: 'Not downloaded' },
   { id: 'downloaded', label: 'Downloaded' },
 ];
-const LENGTHS: Option[] = [
+const LENGTHS: FilterOption[] = [
   { id: '', label: 'Any length' },
   { id: 'short', label: 'Under 1 h' },
   { id: 'medium', label: '1–3 h' },
   { id: 'long', label: 'Over 3 h' },
 ];
-const SINCE: Option[] = [
+const SINCE: FilterOption[] = [
   { id: '', label: 'Any date' },
   { id: 'week', label: 'Past week' },
   { id: 'month', label: 'Past month' },
@@ -85,32 +74,7 @@ async function getJson<T>(url: string, signal?: AbortSignal): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-function FilterGroup({ label, options, value, onChange, separated = true }: {
-  label: string;
-  options: Option[];
-  value: string;
-  onChange: (next: string) => void;
-  separated?: boolean;
-}) {
-  return (
-    <>
-      {separated && <DropdownMenuSeparator />}
-      <DropdownMenuLabel>{label}</DropdownMenuLabel>
-      {options.map((option) => (
-        <DropdownMenuCheckboxItem
-          key={option.id}
-          checked={value === option.id}
-          onCheckedChange={() => onChange(option.id)}
-          onSelect={(event) => event.preventDefault()}
-        >
-          {option.label}
-        </DropdownMenuCheckboxItem>
-      ))}
-    </>
-  );
-}
-
-function picked(id: string, value: string, options: Option[], clear: () => void): ActiveFilter[] {
+function picked(id: string, value: string, options: FilterOption[], clear: () => void): ActiveFilter[] {
   const option = options.find((item) => item.id === value);
   return value && option ? [{ id, label: option.label, onRemove: clear }] : [];
 }

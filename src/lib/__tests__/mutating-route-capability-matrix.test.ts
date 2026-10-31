@@ -211,6 +211,10 @@ const POLICY_GROUPS: Record<string, readonly string[]> = {
     'PUT /api/twitch/browser-token',
     'DELETE /api/twitch/browser-token',
     'DELETE /api/twitch/files/[id]',
+    'PATCH /api/twitch/files/[id]',
+    'DELETE /api/twitch/files/[id]/original',
+    'POST /api/twitch/files/[id]/original/restore',
+    'POST /api/twitch/files/[id]/reencode',
     'POST /api/twitch/library',
     'POST /api/twitch/retention/run',
     'POST /api/twitch/worker/tools',
@@ -494,7 +498,7 @@ describe('mutating API route capability matrix', () => {
   const assignments = policyAssignments();
 
   it('explicitly assigns every mutating handler exactly once', () => {
-    expect(handlers.size).toBe(196);
+    expect(handlers.size).toBe(200);
     expect([...assignments.keys()].sort()).toEqual([...handlers.keys()].sort());
   });
 
