@@ -17,9 +17,10 @@ import { Progress } from '@/components/ui/progress';
 import { QuickContextMenu } from '@/components/ui/quick-context-menu';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ActionsMenu } from '@/components/twitch/actions-menu';
+import { ClampedText } from '@/components/twitch/clamped-text';
 import { DownloadSheet } from '@/components/twitch/download-sheet';
 import { StreamerAvatar } from '@/components/twitch/streamer-avatar';
-import { daysUntil, formatDuration, overflowsClamp, stageLabel, VIDEO_TYPE_LABELS, type TwitchVideo } from '@/components/twitch/types';
+import { daysUntil, formatDuration, stageLabel, VIDEO_TYPE_LABELS, type TwitchVideo } from '@/components/twitch/types';
 import { useVideoActions } from '@/components/twitch/use-video-actions';
 import { toCachedImageSrc } from '@/lib/image';
 import { cn } from '@/lib/utils';
@@ -82,7 +83,6 @@ export default function TwitchVodPage({ params }: { params: Promise<{ id: string
   // A push lands here with ?download=1, so the sheet is already open.
   const [sheetOpen, setSheetOpen] = useState(useSearchParams().get('download') === '1');
   const [whyOpen, setWhyOpen] = useState(false);
-  const [aboutOpen, setAboutOpen] = useState(false);
 
   const query = useQuery({
     queryKey: ['twitch', 'video', id],
@@ -210,12 +210,7 @@ export default function TwitchVodPage({ params }: { params: Promise<{ id: string
 
             {video.description && (
               <div className="[grid-area:overview]">
-                <p className={cn('whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground', !aboutOpen && 'line-clamp-3')}>{video.description}</p>
-                {overflowsClamp(video.description) && (
-                  <button type="button" onClick={() => setAboutOpen(!aboutOpen)} className="mt-1 text-sm font-medium text-primary">
-                    {aboutOpen ? 'Show less' : 'Read more'}
-                  </button>
-                )}
+                <ClampedText text={video.description} className="whitespace-pre-wrap" />
               </div>
             )}
 

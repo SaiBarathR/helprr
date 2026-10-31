@@ -14,10 +14,11 @@ import type { ContextActionGroup } from '@/components/ui/quick-context-menu';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ActionsMenu } from '@/components/twitch/actions-menu';
+import { ClampedText } from '@/components/twitch/clamped-text';
 import { StreamerAvatar } from '@/components/twitch/streamer-avatar';
 import { TwitchVideoCard } from '@/components/twitch/twitch-video-card';
 import { TwitchVideoList, TwitchVideoSkeleton } from '@/components/twitch/twitch-video-list';
-import { overflowsClamp, type TwitchVideoPage } from '@/components/twitch/types';
+import type { TwitchVideoPage } from '@/components/twitch/types';
 import { useVideoActions } from '@/components/twitch/use-video-actions';
 import { useVideoSelection } from '@/components/twitch/use-video-selection';
 import { useRestorableInfiniteQuery } from '@/lib/hooks/use-restorable-infinite-query';
@@ -53,7 +54,6 @@ export default function TwitchStreamerPage({ params }: { params: Promise<{ id: s
   const canManage = hasCapability(me, 'twitch.manage');
   const view = useUIStore((state) => state.twitchFeedView);
   const [tab, setTab] = useRouteViewState<string>('tab', 'ARCHIVE');
-  const [aboutOpen, setAboutOpen] = useState(false);
   const [bannerFailed, setBannerFailed] = useState(false);
   const queryClient = useQueryClient();
   const actions = useVideoActions();
@@ -216,16 +216,7 @@ export default function TwitchStreamerPage({ params }: { params: Promise<{ id: s
           </Button>
         )}
 
-        {streamer?.description && (
-          <div>
-            <p className={cn('text-sm leading-relaxed text-muted-foreground', !aboutOpen && 'line-clamp-3')}>{streamer.description}</p>
-            {overflowsClamp(streamer.description) && (
-              <button type="button" onClick={() => setAboutOpen(!aboutOpen)} className="mt-1 text-sm font-medium text-primary">
-                {aboutOpen ? 'Show less' : 'Read more'}
-              </button>
-            )}
-          </div>
-        )}
+        {streamer?.description && <ClampedText text={streamer.description} />}
 
         <Tabs value={tab} onValueChange={setTab}>
           <TabsList className="w-full">

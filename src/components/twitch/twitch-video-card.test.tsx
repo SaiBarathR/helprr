@@ -4,7 +4,6 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import type { TwitchVideo } from './types';
-import { overflowsClamp } from './types';
 import type { VideoActions } from './use-video-actions';
 
 vi.mock('@/components/media/fade-in-image', () => ({ FadeInImage: () => null }));
@@ -33,16 +32,5 @@ describe('TwitchVideoCard', () => {
     const check = screen.getByRole('button', { name: 'Select A stream' }).querySelector('[aria-hidden="true"]');
     await userEvent.click(check as Element);
     expect(onToggle).toHaveBeenCalledOnce();
-  });
-});
-
-describe('overflowsClamp', () => {
-  it('offers Read more for long text and for short text on many lines', () => {
-    expect(overflowsClamp('a'.repeat(141))).toBe(true);
-    expect(overflowsClamp('one\ntwo\nthree\nfour')).toBe(true);
-  });
-
-  it('leaves text that fits alone', () => {
-    expect(overflowsClamp('one\ntwo\nthree')).toBe(false);
   });
 });

@@ -19,10 +19,11 @@ export function useVideoSelection(rows: TwitchVideo[], actions: VideoActions) {
   const queryClient = useQueryClient();
   const selection = useBulkSelection();
 
-  const selected = rows.filter((video) => selection.selectedKeys.has(video.id));
-  const toDelete = canManage ? selected.filter((video) => video.fileId) : [];
-  const toDownload = canDownload ? selected.filter((video) => !video.fileId) : [];
   const eligible = (video: TwitchVideo) => !video.activeJob && (video.downloaded ? canManage : canDownload);
+  // Checked again here: a selected video can start downloading before the bar is used.
+  const selected = rows.filter((video) => selection.selectedKeys.has(video.id) && eligible(video));
+  const toDelete = selected.filter((video) => video.fileId);
+  const toDownload = selected.filter((video) => !video.fileId);
 
   const downloadSelected = useMutation({
     mutationFn: async () => {
@@ -61,9 +62,9 @@ export function useVideoSelection(rows: TwitchVideo[], actions: VideoActions) {
         ? { selected: selection.selectedKeys.has(video.id), onToggle: () => selection.toggle(video.id) }
         : undefined
     ),
-    bar: selection.selectionMode && selection.count > 0 && (
+    bar: selection.selectionMode && selected.length > 0 && (
       <FloatingActionBar>
-        <span className="min-w-0 flex-1 text-sm text-muted-foreground">{selection.count} selected</span>
+        <span className="min-w-0 flex-1 text-sm text-muted-foreground">{selected.length} selected</span>
         {toDelete.length > 0 && (
           <Button
             variant="ghost"

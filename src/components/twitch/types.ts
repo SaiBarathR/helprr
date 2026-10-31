@@ -49,11 +49,6 @@ export function stageLabel(stage: string): string {
   return stage.charAt(0).toUpperCase() + stage.slice(1);
 }
 
-/** Whether text clamped to three lines has anything left to reveal. */
-export function overflowsClamp(text: string): boolean {
-  return text.length > 140 || text.split('\n').length > 3;
-}
-
 export function daysUntil(iso: string | null, now = Date.now()): number | null {
   if (!iso) return null;
   return Math.ceil((new Date(iso).getTime() - now) / 86_400_000);

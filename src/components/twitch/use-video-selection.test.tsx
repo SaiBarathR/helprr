@@ -50,6 +50,21 @@ describe('useVideoSelection', () => {
     expect(result.current.startWith(saved)).toBeTypeOf('function');
   });
 
+  it('drops a selected video from the bar once its download starts', () => {
+    mocks.capabilities = { 'twitch.download': true };
+    const client = new QueryClient();
+    const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+    const { result, rerender } = renderHook(
+      ({ rows }) => useVideoSelection(rows, {} as VideoActions),
+      { wrapper, initialProps: { rows: [video] } },
+    );
+    act(() => result.current.startWith(video)?.());
+    expect(result.current.bar).toBeTruthy();
+
+    rerender({ rows: [{ ...video, activeJob: running.activeJob }] });
+    expect(result.current.bar).toBeFalsy();
+  });
+
   it('starts selecting with the pressed video', () => {
     mocks.capabilities = { 'twitch.download': true };
     const { result } = setup();
