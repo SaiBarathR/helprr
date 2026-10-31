@@ -91,6 +91,8 @@ describe('runReencode', () => {
     expect(fallback).not.toContain('-hwaccel');
     expect(fallback).toContain('hevc_qsv');
     expect(fallback).toContain('format=nv12,hwupload=extra_hw_frames=64');
+    expect(fallback[fallback.indexOf('-reinit_filter') + 1]).toBe('0');
+    expect(fallback.indexOf('-reinit_filter')).toBeLessThan(fallback.indexOf('-i'));
     expect(note).toHaveBeenCalledWith(expect.stringContaining('decodes in software'));
     expect(await readFile(library('a/x.mkv'), 'utf8')).toBe('small');
   });

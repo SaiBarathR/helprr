@@ -93,9 +93,11 @@ export async function runReencode(ctx: {
   } catch (error) {
     if (error instanceof JobCancelledError) throw error;
     // Some streams change a property part way, such as the aspect ratio flag. The hardware
-    // decoder restarts at that point and ffmpeg cannot follow it. The GPU still encodes.
+    // decoder restarts at that point and ffmpeg cannot follow it, and rebuilding the filters
+    // for the upload to the GPU fails the same way, so they stay as they are. The GPU still
+    // encodes, and a stream that really changed size fails here, with the original untouched.
     await ctx.note('Hardware decoding failed, so this encode decodes in software');
-    await encode([], ['-vf', 'format=nv12,hwupload=extra_hw_frames=64']);
+    await encode(['-reinit_filter', '0'], ['-vf', 'format=nv12,hwupload=extra_hw_frames=64']);
   }
 
   await ctx.setStage('validating');
