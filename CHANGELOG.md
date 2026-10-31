@@ -5,6 +5,55 @@ All notable changes to Helprr are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.11.0] - 2026-10-31
+
+### Added
+
+- **Twitch Library**: a new tab listing every saved video with its size, codec and
+  resolution, whether it was re-encoded, how much space that saved, and whether the
+  original is still kept and for how long. A summary shows space used, space saved
+  and space held by originals, with filters, and sorting by most saved.
+- **A detail page for each saved video**: original against current size, bitrate
+  before and after, what your cleanup rules would do to it, whether it was watched,
+  and a timeline of what happened to it.
+- **Control over your files**: re-encode now or tonight, restore a kept original,
+  delete a kept original early, and keep a video forever. Restoring puts the original
+  back under the same name, so Jellyfin keeps your watched state.
+- **A record of what was deleted**, when, by whom or which rule, and how much space
+  it freed. It starts with this release.
+- **Select several videos on the feed**, or start selecting with a long press.
+- **Undo** after hiding a video.
+
+### Changed
+
+- **The Twitch pages were rebuilt to match the rest of Helprr** on phone, tablet and
+  desktop: the same toolbars, lists, detail pages and grouped settings, with swipe
+  and long press. Filters moved into the Filter menu.
+- **Some Twitch controls moved.** Rules have their own pages, under ⋯ on a streamer
+  and Settings → Twitch → Global rules. Adding a streamer and pasting a video link use
+  the + button, and worker details open from Online in the queue.
+- **Helprr no longer promises a re-encode saving.** Real results vary: some videos
+  saved 27% or 46%, and others came out too large to keep. The Library shows what
+  yours actually saved. Raising the quality number in Settings saves more space.
+- The first start applies a new database migration. Back up first, as usual.
+
+### Fixed
+
+- **Some videos could never re-encode.** If a video's aspect ratio flag changed part
+  way through, ffmpeg stopped and the job retried. These videos now decode in software
+  and still encode on the GPU.
+- Long press now works on Twitch streamers and queue rows.
+- Streamer banners now load. Twitch labels its JPEGs as PNGs, so the image proxy
+  refused them.
+- Text fields in Twitch settings no longer make iOS zoom the page.
+- Queue thumbnails load, and Twitch worker errors no longer reach the browser.
+
+### Security
+
+- Updated `follow-redirects` for GHSA-mrwp-f3q8-3g9p.
+- The Twitch worker refuses links on the way to a file it changes, so something else
+  that can write to the library cannot point a delete or a restore outside it.
+
 ## [1.10.1] - 2026-10-30
 
 ### Added
