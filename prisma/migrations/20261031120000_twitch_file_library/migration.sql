@@ -47,4 +47,3 @@ CREATE INDEX "TwitchDeletedFile_videoId_idx" ON "TwitchDeletedFile"("videoId");
 
 -- AddForeignKey
 ALTER TABLE "TwitchDeletedFile" ADD CONSTRAINT "TwitchDeletedFile_videoId_fkey" FOREIGN KEY ("videoId") REFERENCES "TwitchVideo"("id") ON DELETE SET NULL ON UPDATE CASCADE;
-
