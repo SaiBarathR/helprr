@@ -288,7 +288,9 @@ export default function TwitchFilePage({ params }: { params: Promise<{ id: strin
 
             <GroupedSection
               title="Re-encoding"
-              footer={canReencode && !file.reencodeSkippedAt ? `Could save about ${formatBytes(file.sizeBytes * 0.63)} to ${formatBytes(file.sizeBytes * 0.82)}` : undefined}
+              footer={canReencode && !file.reencodeSkippedAt && file.typicalSaving !== null
+                ? `Your re-encoded videos saved ${file.typicalSaving}% overall. Results vary, and a video that saves too little stays as it is`
+                : undefined}
             >
               <Row label="Status" value={reencodeStatus(file)} />
               {running?.progress != null && <Row label="Progress" value={`${Math.round(running.progress * 100)}%`} />}

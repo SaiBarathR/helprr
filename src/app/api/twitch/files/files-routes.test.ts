@@ -25,6 +25,7 @@ vi.mock('@/lib/twitch/files', () => ({
   FILE_SELECT: { video: { select: {} } },
   fileTimeline: vi.fn(),
   serializeFile: vi.fn(),
+  typicalSavingPercent: vi.fn(),
 }));
 vi.mock('@/lib/twitch/retention', () => ({ enqueueFileDelete: vi.fn(), fileCleanupStatus: vi.fn(), loadPlayedDates: vi.fn() }));
 

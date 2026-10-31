@@ -47,12 +47,10 @@ interface LibraryStatus {
   error?: string;
 }
 
-// Measured on real clips: re-encoded files came out 63–82% smaller.
 function reencodeFooter(settings: Settings | undefined): string {
   const waiting = settings?.reencodeWaiting ?? 0;
   if (waiting === 0 || !settings) return 'Nothing waiting';
-  const gib = settings.reencodeWaitingBytes / 1024 ** 3;
-  return `${waiting} waiting. Should save about ${(gib * 0.63).toFixed(1)}–${(gib * 0.82).toFixed(1)} GB`;
+  return `${waiting} waiting, ${(settings.reencodeWaitingBytes / 1024 ** 3).toFixed(1)} GB in total`;
 }
 
 async function send(url: string, method: string, body: unknown) {

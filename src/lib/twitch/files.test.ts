@@ -6,12 +6,12 @@ const mocks = vi.hoisted(() => {
     twitchMediaFile: { findUnique: vi.fn() },
     twitchJob: { findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
   };
-  return { tx, findMany: vi.fn(), $transaction: vi.fn(async (work: (client: typeof tx) => unknown) => work(tx)) };
+  return { tx, findMany: vi.fn(), aggregate: vi.fn(), $transaction: vi.fn(async (work: (client: typeof tx) => unknown) => work(tx)) };
 });
 
-vi.mock('@/lib/db', () => ({ prisma: { $transaction: mocks.$transaction, twitchMediaFile: { findMany: mocks.findMany } } }));
+vi.mock('@/lib/db', () => ({ prisma: { $transaction: mocks.$transaction, twitchMediaFile: { findMany: mocks.findMany, aggregate: mocks.aggregate } } }));
 
-import { buildFileWhere, listFiles, requestOriginalJob, requestReencode, serializeFile, type FileRow } from './files';
+import { buildFileWhere, listFiles, requestOriginalJob, requestReencode, serializeFile, typicalSavingPercent, type FileRow } from './files';
 import { REENCODE_NOW_PRIORITY } from './reencode-window';
 
 const actor = { id: 'u', username: 'sai' };
@@ -80,6 +80,18 @@ describe('listFiles sorted by most saved', () => {
     const second = await listFiles({}, 'saved', 2, 2);
 
     expect([...first, ...second].map((file) => file.id)).toEqual(['z', 'a', 'b', 'c']);
+  });
+});
+
+describe('typicalSavingPercent', () => {
+  it('is what was really saved, across every re-encoded file', async () => {
+    mocks.aggregate.mockResolvedValue({ _sum: { sizeBytes: BigInt(73), originalSizeBytes: BigInt(100) } });
+    expect(await typicalSavingPercent()).toBe(27);
+  });
+
+  it('promises nothing before there is a result', async () => {
+    mocks.aggregate.mockResolvedValue({ _sum: { sizeBytes: null, originalSizeBytes: null } });
+    expect(await typicalSavingPercent()).toBeNull();
   });
 });
 

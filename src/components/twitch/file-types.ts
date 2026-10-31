@@ -65,6 +65,7 @@ export interface TwitchFileDetail extends TwitchFile {
     reason: string | null;
   };
   timeline: { jobs: TimelineJob[]; deletions: TimelineDeletion[] };
+  typicalSaving: number | null;
 }
 
 export interface LibrarySummary {
