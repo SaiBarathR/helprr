@@ -109,6 +109,15 @@ describe('useVideoActions', () => {
     expect(ids(result.current.groupsFor(video, () => undefined))).toContain('select');
   });
 
+  it('gives every hide its own Undo, even when two overlap', async () => {
+    const { result } = setup();
+    act(() => {
+      result.current.swipeFor(video).rightAction.onAction();
+      result.current.swipeFor({ ...video, id: 'video-2' }).rightAction.onAction();
+    });
+    await waitFor(() => expect(mocks.toast).toHaveBeenCalledTimes(2));
+  });
+
   it('hides from every cached feed list at once and can be undone', async () => {
     const { client, result } = setup();
     const page: TwitchVideoPage = { videos: [video, { ...video, id: 'video-2' }], total: 2, page: 1, pageSize: 30 };
@@ -117,6 +126,7 @@ describe('useVideoActions', () => {
 
     act(() => result.current.swipeFor(video).rightAction.onAction());
 
+    await waitFor(() => expect(vi.mocked(fetch)).toHaveBeenCalled());
     const list = client.getQueryData<{ pages: TwitchVideoPage[] }>(['twitch', 'feed', 'list']);
     expect(list?.pages[0].videos.map((item) => item.id)).toEqual(['video-2']);
     expect(client.getQueryData<TwitchVideoPage>(['twitch', 'feed', 'expiring-shelf'])?.videos.map((item) => item.id)).toEqual(['video-2']);

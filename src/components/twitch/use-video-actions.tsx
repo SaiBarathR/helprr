@@ -73,14 +73,19 @@ export function useVideoActions() {
   });
 
   // There is no list of hidden videos, so a stray swipe has to be recoverable here.
-  const hide = (video: TwitchVideo) => {
-    queryClient.setQueriesData({ queryKey: ['twitch', 'feed'] }, withoutVideo(video.id));
-    setState.mutate({ video, state: { hidden: true } }, {
-      onSuccess: () => toast('Hidden from your feed', {
-        action: { label: 'Undo', onClick: () => setState.mutate({ video, state: { hidden: false } }) },
-      }),
-    });
-  };
+  const hideVideo = useMutation({
+    mutationFn: (video: TwitchVideo) => post(`/api/twitch/videos/${video.id}/state`, { hidden: true }),
+    onMutate: async (video) => {
+      await queryClient.cancelQueries({ queryKey: ['twitch', 'feed'] });
+      queryClient.setQueriesData({ queryKey: ['twitch', 'feed'] }, withoutVideo(video.id));
+    },
+    onSuccess: (_data, video) => toast('Hidden from your feed', {
+      action: { label: 'Undo', onClick: () => setState.mutate({ video, state: { hidden: false } }) },
+    }),
+    onSettled: refresh,
+    onError: fail,
+  });
+  const hide = (video: TwitchVideo) => hideVideo.mutate(video);
 
   const isDownloadable = (video: TwitchVideo) =>
     canDownload && !video.downloaded && !video.activeJob && video.availability === 'PUBLISHED';

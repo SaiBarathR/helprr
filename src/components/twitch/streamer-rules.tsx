@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, type Dispatch, type SetStateAction } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, Loader2, X } from 'lucide-react';
 import { toast } from 'sonner';
@@ -25,16 +25,15 @@ interface PreviewRow {
   reason: string;
 }
 
-export function StreamerRules({ streamerId, onDirtyChange }: { streamerId: string; onDirtyChange: (dirty: boolean) => void }) {
+export function StreamerRules({ streamerId, draft, setDraft }: {
+  streamerId: string;
+  draft: RuleLayerValue | null;
+  setDraft: Dispatch<SetStateAction<RuleLayerValue | null>>;
+}) {
   const queryClient = useQueryClient();
-  const [draft, setDraftState] = useState<RuleLayerValue | null>(null);
   // The fields keep their own text, so a discard has to rebuild them.
   const [revision, setRevision] = useState(0);
   useUnsavedChangesGuard(draft !== null);
-  const setDraft = (next: RuleLayerValue | null) => {
-    setDraftState(next);
-    onDirtyChange(next !== null);
-  };
 
   const stored = useQuery({
     queryKey: ['twitch', 'policies', streamerId],
@@ -58,10 +57,15 @@ export function StreamerRules({ streamerId, onDirtyChange }: { streamerId: strin
     onError: (error) => toast.error(error.message),
   });
   const save = useMutation({
-    mutationFn: () => post('/api/twitch/policies', 'PUT', { streamerId, policy: value.base, typePolicies: value.types }),
-    onSuccess: () => {
+    mutationFn: (saved: RuleLayerValue) => post('/api/twitch/policies', 'PUT', { streamerId, policy: saved.base, typePolicies: saved.types }),
+    onSuccess: (_data, saved) => {
       toast.success('Rules saved');
-      setDraft(null);
+      queryClient.setQueryData<PoliciesResponse>(['twitch', 'policies', streamerId], (data) => data && {
+        ...data,
+        streamer: { policy: saved.base, typePolicies: saved.types },
+      });
+      // An edit made while this was saving is still unsaved.
+      setDraft((current) => (current === saved ? null : current));
       void queryClient.invalidateQueries({ queryKey: ['twitch', 'policies'] });
     },
     onError: (error) => toast.error(error.message),
@@ -118,7 +122,7 @@ export function StreamerRules({ streamerId, onDirtyChange }: { streamerId: strin
           >
             Discard
           </Button>
-          <Button size="sm" disabled={save.isPending} onClick={() => save.mutate()}>
+          <Button size="sm" disabled={save.isPending} onClick={() => save.mutate(draft)}>
             {save.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save'}
           </Button>
         </FloatingActionBar>

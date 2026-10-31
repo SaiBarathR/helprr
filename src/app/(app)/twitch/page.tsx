@@ -378,7 +378,7 @@ export default function TwitchFeedPage() {
                 layout={view}
                 actions={actions}
                 selection={selection.selectionFor(video)}
-                onSelect={selection.canSelect ? () => selection.startWith(video) : undefined}
+                onSelect={selection.startWith(video)}
               />
             )}
           />

@@ -5,12 +5,13 @@ import { useQuery } from '@tanstack/react-query';
 import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
 import { PageHeader } from '@/components/layout/page-header';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import type { RuleLayerValue } from '@/components/twitch/policy-editor';
 import { StreamerRules } from '@/components/twitch/streamer-rules';
 
 export default function TwitchStreamerRulesPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
-  const [dirty, setDirty] = useState(false);
+  const [draft, setDraft] = useState<RuleLayerValue | null>(null);
   const [confirmLeave, setConfirmLeave] = useState(false);
   const back = `/twitch/streamers/${id}`;
 
@@ -29,10 +30,10 @@ export default function TwitchStreamerRulesPage({ params }: { params: Promise<{ 
         title="Download rules"
         subtitle={streamer.data?.displayName}
         backHref={back}
-        onBack={dirty ? () => setConfirmLeave(true) : undefined}
+        onBack={draft ? () => setConfirmLeave(true) : undefined}
       />
       <div className="pt-3">
-        <StreamerRules streamerId={id} onDirtyChange={setDirty} />
+        <StreamerRules streamerId={id} draft={draft} setDraft={setDraft} />
       </div>
       <ConfirmDialog
         open={confirmLeave}

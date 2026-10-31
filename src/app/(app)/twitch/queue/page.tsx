@@ -37,6 +37,8 @@ import { cn } from '@/lib/utils';
 
 interface Job {
   id: string;
+  kind: string;
+  requestedByUserId: string | null;
   state: string;
   stage: string | null;
   progress: number | null;
@@ -203,6 +205,10 @@ export default function TwitchQueuePage() {
   const me = useMe();
   const canManage = hasCapability(me, 'twitch.manage');
   const canDownload = hasCapability(me, 'twitch.download');
+  // The same rule as the cancel and retry routes.
+  const owns = (job: Job) => canDownload && job.requestedByUserId === me?.id;
+  const canCancel = (job: Job) => canManage || owns(job);
+  const canRetry = (job: Job) => canManage || (job.kind === 'DOWNLOAD' && owns(job));
   const [section, setSection] = useRouteViewState('section', '');
   const [workerOpen, setWorkerOpen] = useState(false);
   const [cancelling, setCancelling] = useState<Job | null>(null);
@@ -350,8 +356,8 @@ export default function TwitchQueuePage() {
                 <JobRow
                   key={job.id}
                   job={job}
-                  onCancel={(item.id === 'active' || item.id === 'waiting') && canDownload ? () => setCancelling(job) : undefined}
-                  onRetry={item.id === 'failed' && canDownload ? () => act.mutate({ id: job.id, action: 'retry' }) : undefined}
+                  onCancel={(item.id === 'active' || item.id === 'waiting') && canCancel(job) ? () => setCancelling(job) : undefined}
+                  onRetry={item.id === 'failed' && canRetry(job) ? () => act.mutate({ id: job.id, action: 'retry' }) : undefined}
                 />
               ))}
             </div>

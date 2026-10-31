@@ -13,6 +13,11 @@ import { FloatingActionBar } from '@/components/ui/floating-action-bar';
 import { useUnsavedChangesGuard } from '@/lib/hooks/use-unsaved-changes-guard';
 import type { PolicyLayer } from '@/lib/twitch/policy';
 
+interface GlobalPolicies {
+  defaultPolicy: PolicyLayer;
+  typePolicies: RuleLayerValue['types'];
+}
+
 export default function TwitchGlobalRulesPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -27,23 +32,29 @@ export default function TwitchGlobalRulesPage() {
     queryFn: async ({ signal }) => {
       const res = await fetch('/api/twitch/policies', { signal });
       if (!res.ok) throw new Error('Could not load the rules');
-      return (await res.json()) as { defaultPolicy: PolicyLayer; typePolicies: RuleLayerValue['types'] };
+      return (await res.json()) as GlobalPolicies;
     },
   });
 
   const save = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (saved: RuleLayerValue) => {
       const res = await fetch('/api/twitch/policies', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ defaultPolicy: rules?.base ?? {}, typePolicies: rules?.types ?? {} }),
+        body: JSON.stringify({ defaultPolicy: saved.base, typePolicies: saved.types }),
       });
       const data = await res.json().catch(() => null);
       if (!res.ok) throw new Error(data?.error || 'Could not save');
     },
-    onSuccess: () => {
+    onSuccess: (_data, saved) => {
       toast.success('Rules saved');
-      setRules(null);
+      queryClient.setQueryData<GlobalPolicies>(['twitch', 'policies'], (data) => data && {
+        ...data,
+        defaultPolicy: saved.base,
+        typePolicies: saved.types,
+      });
+      // An edit made while this was saving is still unsaved.
+      setRules((current) => (current === saved ? null : current));
       void queryClient.invalidateQueries({ queryKey: ['twitch'] });
     },
     onError: (error) => toast.error(error.message),
@@ -95,7 +106,7 @@ export default function TwitchGlobalRulesPage() {
           >
             Discard
           </Button>
-          <Button size="sm" disabled={save.isPending} onClick={() => save.mutate()}>
+          <Button size="sm" disabled={save.isPending} onClick={() => save.mutate(rules)}>
             {save.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save'}
           </Button>
         </FloatingActionBar>

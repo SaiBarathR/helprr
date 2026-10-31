@@ -75,24 +75,22 @@ function VideoTile({ video, showStreamer, actions, selection, onSelect }: CardPr
 
   if (selection) {
     return (
-      <div className="group relative min-w-0">
-        <button
-          type="button"
-          aria-pressed={selection.selected}
-          aria-label={`${selection.selected ? 'Deselect' : 'Select'} ${video.title}`}
-          onClick={selection.onToggle}
-          className="block w-full rounded-xl text-left"
-        >
-          <Thumbnail
-            video={video}
-            sizes={sizes}
-            className={cn('rounded-xl shadow-sm', selection.selected && 'ring-2 ring-primary ring-offset-2 ring-offset-background')}
-          />
-          {title}
-          {meta}
-        </button>
-        <div className="absolute left-1.5 top-1.5 z-10"><SelectionCheck selected={selection.selected} /></div>
-      </div>
+      <button
+        type="button"
+        aria-pressed={selection.selected}
+        aria-label={`${selection.selected ? 'Deselect' : 'Select'} ${video.title}`}
+        onClick={selection.onToggle}
+        className="relative block w-full min-w-0 rounded-xl text-left"
+      >
+        <Thumbnail
+          video={video}
+          sizes={sizes}
+          className={cn('rounded-xl shadow-sm', selection.selected && 'ring-2 ring-primary ring-offset-2 ring-offset-background')}
+        />
+        <SelectionCheck selected={selection.selected} className="absolute left-1.5 top-1.5 z-10" />
+        {title}
+        {meta}
+      </button>
     );
   }
 

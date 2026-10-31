@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useWindowVirtualizer } from '@tanstack/react-virtual';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
@@ -76,7 +76,8 @@ export function TwitchVideoList({ videos, layout, renderVideo }: {
           style={{ transform: `translateY(${item.start - scrollMargin}px)` }}
         >
           {isList ? (
-            renderVideo(rows[item.index][0])
+            // Rows are keyed by position, so an open menu must not follow it to another video.
+            <Fragment key={rows[item.index][0].id}>{renderVideo(rows[item.index][0])}</Fragment>
           ) : (
             <div className="grid gap-x-3" style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>
               {rows[item.index].map((video) => <div key={video.id} className="min-w-0">{renderVideo(video)}</div>)}

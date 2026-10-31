@@ -17,7 +17,7 @@ import { ActionsMenu } from '@/components/twitch/actions-menu';
 import { StreamerAvatar } from '@/components/twitch/streamer-avatar';
 import { TwitchVideoCard } from '@/components/twitch/twitch-video-card';
 import { TwitchVideoList, TwitchVideoSkeleton } from '@/components/twitch/twitch-video-list';
-import type { TwitchVideoPage } from '@/components/twitch/types';
+import { overflowsClamp, type TwitchVideoPage } from '@/components/twitch/types';
 import { useVideoActions } from '@/components/twitch/use-video-actions';
 import { useVideoSelection } from '@/components/twitch/use-video-selection';
 import { useRestorableInfiniteQuery } from '@/lib/hooks/use-restorable-infinite-query';
@@ -32,8 +32,6 @@ const TABS = [
   { id: 'UPLOAD', label: 'Uploads' },
 ] as const;
 
-// Three lines on a phone: anything shorter has nothing to reveal.
-const READ_MORE_AT = 140;
 const HEADER_BUTTON = 'flex h-11 w-10 items-center justify-center text-primary';
 
 interface Streamer {
@@ -221,7 +219,7 @@ export default function TwitchStreamerPage({ params }: { params: Promise<{ id: s
         {streamer?.description && (
           <div>
             <p className={cn('text-sm leading-relaxed text-muted-foreground', !aboutOpen && 'line-clamp-3')}>{streamer.description}</p>
-            {streamer.description.length > READ_MORE_AT && (
+            {overflowsClamp(streamer.description) && (
               <button type="button" onClick={() => setAboutOpen(!aboutOpen)} className="mt-1 text-sm font-medium text-primary">
                 {aboutOpen ? 'Show less' : 'Read more'}
               </button>
@@ -252,7 +250,7 @@ export default function TwitchStreamerPage({ params }: { params: Promise<{ id: s
                 showStreamer={false}
                 actions={actions}
                 selection={selection.selectionFor(video)}
-                onSelect={selection.canSelect ? () => selection.startWith(video) : undefined}
+                onSelect={selection.startWith(video)}
               />
             )}
           />

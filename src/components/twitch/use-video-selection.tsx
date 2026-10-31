@@ -20,8 +20,9 @@ export function useVideoSelection(rows: TwitchVideo[], actions: VideoActions) {
   const selection = useBulkSelection();
 
   const selected = rows.filter((video) => selection.selectedKeys.has(video.id));
-  const toDelete = selected.filter((video) => video.fileId);
-  const toDownload = selected.filter((video) => !video.fileId);
+  const toDelete = canManage ? selected.filter((video) => video.fileId) : [];
+  const toDownload = canDownload ? selected.filter((video) => !video.fileId) : [];
+  const eligible = (video: TwitchVideo) => !video.activeJob && (video.downloaded ? canManage : canDownload);
 
   const downloadSelected = useMutation({
     mutationFn: async () => {
@@ -48,13 +49,15 @@ export function useVideoSelection(rows: TwitchVideo[], actions: VideoActions) {
     canSelect: canDownload || canManage,
     active: selection.selectionMode,
     toggleMode: () => (selection.selectionMode ? selection.exit() : selection.enter()),
-    /** Long press: start selecting with this video. */
-    startWith: (video: TwitchVideo) => {
-      selection.enter();
-      selection.selectMany([video.id]);
-    },
+    /** The long-press action that starts selecting with this video, if it can be selected. */
+    startWith: (video: TwitchVideo) => (eligible(video)
+      ? () => {
+          selection.enter();
+          selection.selectMany([video.id]);
+        }
+      : undefined),
     selectionFor: (video: TwitchVideo): VideoSelection | undefined => (
-      selection.selectionMode && !video.activeJob && (video.downloaded ? canManage : canDownload)
+      selection.selectionMode && eligible(video)
         ? { selected: selection.selectedKeys.has(video.id), onToggle: () => selection.toggle(video.id) }
         : undefined
     ),
