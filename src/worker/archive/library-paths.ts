@@ -1,5 +1,5 @@
 import { constants } from 'node:fs';
-import { lstat, open, readFile, realpath, rename, rm, type FileHandle } from 'node:fs/promises';
+import { lstat, open, readFile, realpath, rename, rm, stat, type FileHandle } from 'node:fs/promises';
 import path from 'node:path';
 
 /** Stored paths are the worker's own, but a delete is the last place to take that on trust. */
@@ -23,10 +23,14 @@ export async function assertSeparateRoots(roots: string[]): Promise<void> {
   }
 }
 
-/** A folder that merely exists is not a library: files written there stay in the container and vanish. */
-export async function isMounted(root: string): Promise<boolean> {
+/**
+ * A folder that merely exists is not a library: files written there stay in the container
+ * and vanish. Compose mounts /dev/null here when no folder was chosen, which is not a folder.
+ */
+export async function isMountedFolder(root: string): Promise<boolean> {
   const table = await readFile('/proc/self/mountinfo', 'utf8').catch(() => '');
-  return table.split('\n').some((line) => line.split(' ')[4] === root);
+  if (!table.split('\n').some((line) => line.split(' ')[4] === root)) return false;
+  return (await stat(root).catch(() => null))?.isDirectory() === true;
 }
 
 const codeOf = (error: unknown) => (error as NodeJS.ErrnoException).code;

@@ -206,6 +206,9 @@ const POLICY_GROUPS: Record<string, readonly string[]> = {
   'cap:twitch.download': [
     'POST /api/twitch/jobs',
   ],
+  'cap:youtube.manage': [
+    'POST /api/youtube/library',
+  ],
   'cap:twitch.manage': [
     'PATCH /api/twitch/jobs/[id]',
     'PUT /api/twitch/browser-token',
@@ -501,7 +504,7 @@ describe('mutating API route capability matrix', () => {
   const assignments = policyAssignments();
 
   it('explicitly assigns every mutating handler exactly once', () => {
-    expect(handlers.size).toBe(203);
+    expect(handlers.size).toBe(204);
     expect([...assignments.keys()].sort()).toEqual([...handlers.keys()].sort());
   });
 

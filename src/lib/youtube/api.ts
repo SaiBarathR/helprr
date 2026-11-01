@@ -72,10 +72,14 @@ export async function storedApiKey(): Promise<string | null> {
   return decryptTwitchToken(connection?.apiKey);
 }
 
-function reasonOf(error: unknown): string | undefined {
-  if (!isAxiosError(error)) return undefined;
-  const data = error.response?.data as { error?: { errors?: Array<{ reason?: string }>; details?: Array<{ reason?: string }> } } | undefined;
-  return data?.error?.errors?.[0]?.reason ?? data?.error?.details?.[0]?.reason;
+const QUOTA_REASONS = new Set(['quotaExceeded', 'dailyLimitExceeded', 'rateLimitExceeded']);
+const KEY_REASONS = new Set(['keyInvalid', 'API_KEY_INVALID', 'accessNotConfigured', 'API_KEY_SERVICE_BLOCKED']);
+
+// Google can put a vague reason first: a bad key is badRequest in errors, API_KEY_INVALID in details.
+function reasonsOf(error: unknown): string[] {
+  if (!isAxiosError(error)) return [];
+  const body = (error.response?.data as { error?: { errors?: Array<{ reason?: string }>; details?: Array<{ reason?: string }> } } | undefined)?.error;
+  return [...(body?.errors ?? []), ...(body?.details ?? [])].flatMap(({ reason }) => (reason ? [reason] : []));
 }
 
 // The key travels in a header, so it can never appear in a URL, a log or an error message.
@@ -88,13 +92,11 @@ async function request<T>(path: string, params: Record<string, string | number>,
     });
     return data;
   } catch (error) {
-    const reason = reasonOf(error);
-    if (reason === 'quotaExceeded' || reason === 'dailyLimitExceeded' || reason === 'rateLimitExceeded') throw new YoutubeQuotaError();
-    if (reason === 'keyInvalid' || reason === 'API_KEY_INVALID' || reason === 'accessNotConfigured' || reason === 'API_KEY_SERVICE_BLOCKED') {
-      throw new YoutubeKeyRejectedError();
-    }
+    const reasons = reasonsOf(error);
+    if (reasons.some((reason) => QUOTA_REASONS.has(reason))) throw new YoutubeQuotaError();
+    if (reasons.some((reason) => KEY_REASONS.has(reason))) throw new YoutubeKeyRejectedError();
     // A list a channel does not have answers 404, which is an answer.
-    if (reason === 'playlistNotFound' || (isAxiosError(error) && error.response?.status === 404)) return null;
+    if (reasons.includes('playlistNotFound') || (isAxiosError(error) && error.response?.status === 404)) return null;
     throw new Error(`YouTube request failed: ${isAxiosError(error) ? error.response?.status ?? error.code : 'unknown'}`);
   }
 }

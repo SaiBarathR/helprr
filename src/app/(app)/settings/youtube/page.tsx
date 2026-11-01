@@ -3,6 +3,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { Check, ChevronLeft, Circle } from 'lucide-react';
 import Link from '@/components/ui/app-link';
+import { JellyfinLibrarySection } from '@/components/creators/jellyfin-library-section';
 import { GroupedSection } from '@/components/settings/grouped-section';
 import { YoutubeConnectionCard } from '@/components/settings/youtube-connection-card';
 import { ErrorState } from '@/components/ui/error-state';
@@ -69,12 +70,13 @@ export default function YoutubeSettingsPage() {
             detail={data.worker.online ? 'Update the worker to a version that supports YouTube.' : 'Start the worker: add youtube to COMPOSE_PROFILES, then run update.sh.'}
           />
           <SetupRow label="Library folder" done={data.library.mounted} detail="Set YOUTUBE_LIBRARY_HOST_PATH to a folder for these videos, then restart the worker." />
-          <SetupRow label="Jellyfin library" done={data.library.jellyfinLibrary} detail="Create a Shows library for that folder, so Jellyfin and your players can see the videos." />
+          <SetupRow label="Jellyfin library" done={data.library.jellyfinLibrary} detail="Create it below, so Jellyfin and your players can see the videos." />
           <SetupRow label="Age-restricted videos" optional done={data.account} detail="Add a spare Google account to save these. Everything else works without one." />
           <SetupRow label="Automatic cleanup" optional done={data.cleanup} detail="Turn this on to clear videos a few days after you watch them." />
         </GroupedSection>
       )}
       <YoutubeConnectionCard defaultExpanded={data ? !data.apiKey : false} key={data ? String(data.apiKey) : 'loading'} />
+      <JellyfinLibrarySection platform="youtube" defaultName="YouTube" />
     </div>
   );
 }

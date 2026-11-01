@@ -742,7 +742,7 @@ Optional, and off until a Twitch connection is saved. Admin-only by default: the
   discovery in `pollTwitch`, the rules engine, enqueueing, notifications, and
   every Jellyfin call. It never reads or writes media files or runs an external
   program.
-- **Worker** (`helprr-twitch-worker`, Compose profile `twitch`): the only process
+- **Worker** (`helprr-twitch-worker`, Compose profile `twitch` or `youtube`): the only process
   that runs yt-dlp, TwitchDownloaderCLI and ffmpeg, touches the library, or uses
   `/dev/dri`. It holds no Helix credentials, no Jellyfin access and no push keys.
 - They talk only through PostgreSQL. There is no new HTTP surface and `src/proxy.ts`

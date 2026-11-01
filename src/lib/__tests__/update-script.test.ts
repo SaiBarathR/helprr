@@ -120,18 +120,18 @@ describe('update.sh', () => {
     expect(readFileSync(path.join(root, 'docker.log.cwd'), 'utf8').trim()).toBe(realpathSync(root));
   });
 
-  it('leaves the Twitch worker alone without its profile', () => {
+  it('leaves the worker alone without a profile for it', () => {
     const result = runUpdate(createFixture());
 
     expect(result.status).toBe(0);
     expect(result.log).not.toContain('helprr-twitch-worker');
   });
 
-  it('updates the Twitch worker after the app is ready, with its profile on', () => {
+  it('updates the worker after the app is ready, with a profile for it on', () => {
     const result = runUpdate(createFixture(), [], { FAKE_SERVICES: 'helprr-twitch-worker' });
 
     expect(result.status).toBe(0);
-    expect(result.stdout).toContain('Twitch worker updated.');
+    expect(result.stdout).toContain('Worker updated.');
     const lines = result.log.split('\n');
     const ready = lines.findIndex((line) => line.includes('/api/ready'));
     expect(lines.indexOf('compose pull helprr-twitch-worker')).toBeGreaterThan(ready);
