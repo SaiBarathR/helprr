@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { prisma } from '@/lib/db';
-import { fileSelect, fileTimeline, serializeFile, typicalSavingPercent } from '@/lib/archive/files';
+import { fileSelect, fileTimeline, serializeFile, setKeepForever, typicalSavingPercent } from '@/lib/archive/files';
 import { enqueueFileDelete, fileCleanupStatus, loadPlayedDates } from '@/lib/archive/retention';
 import { TWITCH } from '@/lib/twitch/platform';
 
@@ -50,8 +50,9 @@ async function patchHandler(request: NextRequest, { params }: RouteContext): Pro
   if (typeof body?.keepForever !== 'boolean') return NextResponse.json({ error: 'keepForever is required' }, { status: 400 });
 
   const { id } = await params;
-  const { count } = await prisma.archiveMediaFile.updateMany({ where: { id, platform: TWITCH }, data: { keepForever: body.keepForever } });
-  if (count === 0) return NextResponse.json({ error: 'File not found' }, { status: 404 });
+  const result = await setKeepForever(id, body.keepForever, TWITCH);
+  if (result === 'removing') return NextResponse.json({ error: 'This file is already being cleared' }, { status: 409 });
+  if (result === 'missing') return NextResponse.json({ error: 'File not found' }, { status: 404 });
   return NextResponse.json({ ok: true });
 }
 

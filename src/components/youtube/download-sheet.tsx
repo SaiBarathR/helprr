@@ -99,6 +99,7 @@ function SheetBody({ video, onDone }: { video: CreatorVideoItem; onDone: () => v
   const [codec, setCodec] = useState<(typeof CODECS)[number]['id']>('compatible');
   const [sponsorblock, setSponsorblock] = useState<(typeof SPONSORBLOCK)[number]['id']>('mark');
   const [keepForever, setKeepForever] = useState(false);
+  const [convert, setConvert] = useState(false);
   const [advanced, setAdvanced] = useState(false);
   // One id per sheet, so a double tap or a retry cannot queue the video twice.
   const clientRequestId = useMemo(() => crypto.randomUUID(), []);
@@ -118,7 +119,7 @@ function SheetBody({ video, onDone }: { video: CreatorVideoItem; onDone: () => v
       const res = await fetch('/api/youtube/jobs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ videoId: video.id, clientRequestId, options: { quality, codec, sponsorblock, keepForever } }),
+        body: JSON.stringify({ videoId: video.id, clientRequestId, options: { quality, codec, sponsorblock, keepForever, reencode: convert } }),
       });
       const data = await res.json().catch(() => null);
       if (!res.ok) throw new Error(data?.error || 'Could not queue the download');
@@ -162,8 +163,12 @@ function SheetBody({ video, onDone }: { video: CreatorVideoItem; onDone: () => v
           <div className="grouped-section-content overflow-hidden">
             <ChoiceRow label="Codec" value={codec} options={CODECS} onChange={setCodec} />
             <ChoiceRow label="SponsorBlock" value={sponsorblock} options={SPONSORBLOCK} onChange={setSponsorblock} />
+            <SwitchRow label="Convert to H.265 at night" checked={convert} onCheckedChange={setConvert} />
             <SwitchRow label="Keep forever" checked={keepForever} onCheckedChange={setKeepForever} />
           </div>
+        )}
+        {advanced && convert && (
+          <p className="px-1 text-xs text-muted-foreground">YouTube files usually get bigger when converted, because they are already small. Choose this only if a player needs H.265.</p>
         )}
       </div>
       <DrawerFooter>

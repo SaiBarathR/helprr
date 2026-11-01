@@ -1,6 +1,6 @@
 import type { ArchiveJobKind, ArchivePlatform, Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
-import { ACTIVE_JOB_STATES } from './jobs';
+import { ACTIVE_JOB_STATES, REMOVING_STAGE } from './jobs';
 import { REENCODE_NOW_PRIORITY } from './reencode-window';
 import { FILE_LOCK_TRANSACTION } from './retention';
 import { previousVideoNames, sizeThumbnail } from '@/lib/twitch/serialize';
@@ -25,6 +25,7 @@ export const fileSelect = (platform: ArchivePlatform) => ({
   originalSizeBytes: true,
   originalVideoCodec: true,
   keepForever: true,
+  clearsAt: true,
   jellyfinItemId: true,
   createdAt: true,
   video: {
@@ -70,6 +71,7 @@ export function serializeFile(file: FileRow, watchedAt?: Date) {
     height: file.height,
     downloadedAt: file.createdAt,
     keepForever: file.keepForever,
+    clearsAt: file.clearsAt,
     jellyfinItemId: file.jellyfinItemId,
     watchedAt: watchedAt ?? null,
     chatArchived: sidecars.some((name) => name.endsWith('.chat.json.gz')),
@@ -229,6 +231,22 @@ async function withFileLock<T>(fileId: string, work: (tx: Prisma.TransactionClie
 const activeDownload = (tx: Prisma.TransactionClient, videoId: string) => (
   tx.archiveJob.findFirst({ where: { videoId, kind: 'DOWNLOAD', state: { in: ACTIVE_JOB_STATES } }, select: { id: true } })
 );
+
+/** Under the delete lock, so a tap on keep and a delete can never pass each other. */
+export function setKeepForever(fileId: string, keepForever: boolean, platform: ArchivePlatform): Promise<'saved' | 'missing' | 'removing'> {
+  return withFileLock(fileId, async (tx) => {
+    const removing = keepForever && await tx.archiveJob.findFirst({
+      where: { mediaFileId: fileId, kind: 'DELETE_FILES', state: 'RUNNING', stage: REMOVING_STAGE },
+      select: { id: true },
+    });
+    if (removing) return 'removing';
+    const { count } = await tx.archiveMediaFile.updateMany({
+      where: { id: fileId, platform },
+      data: { keepForever, ...(keepForever ? { clearsAt: null } : {}) },
+    });
+    return count > 0 ? 'saved' : 'missing';
+  });
+}
 
 /** `now` beats the night window. Asking for a job already waiting moves it rather than doubling it. */
 export function requestReencode(fileId: string, when: 'now' | 'tonight', actor: Actor, platform: ArchivePlatform): Promise<FileJobResult> {

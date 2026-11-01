@@ -256,4 +256,5 @@ export const EVENT_TYPE_TO_CAPABILITY: Record<NotificationEventType, Capability>
   youtubeDownloadComplete: 'notify.youtube',
   youtubeDownloadFailed: 'notify.youtube',
   youtubeCookiesExpired: 'notify.youtube',
+  youtubeCleanupPaused: 'notify.youtube',
 };

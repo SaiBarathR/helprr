@@ -4,6 +4,7 @@ import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { layerMap, sanitizeLayer } from '@/lib/archive/policy';
 import { prisma } from '@/lib/db';
+import { invalidateQueuedCleanup } from '@/lib/youtube/cleanup';
 import { YOUTUBE } from '@/lib/youtube/platform';
 import { YOUTUBE_BUILT_IN_POLICY } from '@/lib/youtube/policy';
 import { getYoutubeSettings } from '@/lib/youtube/settings';
@@ -46,6 +47,7 @@ async function putHandler(request: NextRequest): Promise<NextResponse> {
       data: { defaultPolicy: json(sanitizeLayer(body.defaultPolicy)), typePolicies: json(layerMap(body.typePolicies)) },
     });
   }
+  await invalidateQueuedCleanup();
   return NextResponse.json({ ok: true });
 }
 

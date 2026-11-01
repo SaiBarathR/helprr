@@ -222,6 +222,7 @@ const POLICY_GROUPS: Record<string, readonly string[]> = {
     'POST /api/youtube/videos/[id]/formats',
   ],
   'cap:youtube.manage': [
+    'PUT /api/youtube/cleanup',
     'PUT /api/youtube/cookies',
     'PUT /api/youtube/policies',
     'POST /api/youtube/policies/preview',
@@ -541,7 +542,7 @@ describe('mutating API route capability matrix', () => {
   const assignments = policyAssignments();
 
   it('explicitly assigns every mutating handler exactly once', () => {
-    expect(handlers.size).toBe(229);
+    expect(handlers.size).toBe(230);
     expect([...assignments.keys()].sort()).toEqual([...handlers.keys()].sort());
   });
 

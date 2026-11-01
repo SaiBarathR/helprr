@@ -8,6 +8,7 @@ import { JellyfinLibrarySection } from '@/components/creators/jellyfin-library-s
 import { SwitchRow } from '@/components/creators/setting-rows';
 import { GroupedSection } from '@/components/settings/grouped-section';
 import { YoutubeConnectionCard } from '@/components/settings/youtube-connection-card';
+import { CleanupSection } from '@/components/youtube/cleanup-section';
 import { ErrorState } from '@/components/ui/error-state';
 import { cn } from '@/lib/utils';
 
@@ -103,6 +104,7 @@ export default function YoutubeSettingsPage() {
       )}
       <YoutubeConnectionCard defaultExpanded={data ? !data.apiKey : false} key={data ? String(data.apiKey) : 'loading'} />
       <JellyfinLibrarySection platform="youtube" defaultName="YouTube" />
+      <CleanupSection />
       {settings.data && (
         <GroupedSection
           title="Automatic downloads"

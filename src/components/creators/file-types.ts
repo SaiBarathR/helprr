@@ -22,6 +22,8 @@ export interface ArchiveFile {
   height: number | null;
   downloadedAt: string;
   keepForever: boolean;
+  /** When automatic cleanup will remove it. */
+  clearsAt?: string | null;
   jellyfinItemId: string | null;
   watchedAt: string | null;
   chatArchived: boolean;

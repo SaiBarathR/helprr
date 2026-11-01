@@ -19,7 +19,7 @@ import { getConnectionHeaders } from '@/lib/service-connection-secrets';
 let cachedQBittorrentClient: QBittorrentClient | null = null;
 let cachedQBittorrentConfigKey: string | null = null;
 
-function buildJellyfinConnectionFingerprint(connection: ServiceConnection): string {
+export function buildJellyfinConnectionFingerprint(connection: ServiceConnection): string {
   return sha256Hex(stableStringify({
     apiKey: connection.apiKey,
     url: connection.url,

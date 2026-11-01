@@ -50,6 +50,7 @@ function readOptions(value: unknown, defaults: DownloadOptions): DownloadOptions
     codec: oneOf(CODECS, body.codec, defaults.codec!),
     sponsorblock: oneOf(SPONSORBLOCK_MODES, body.sponsorblock, defaults.sponsorblock!),
     keepForever: typeof body.keepForever === 'boolean' ? body.keepForever : defaults.keepForever,
+    reencode: typeof body.reencode === 'boolean' ? body.reencode : defaults.reencode,
     chapters: typeof body.chapters === 'boolean' ? body.chapters : defaults.chapters,
   };
 }

@@ -33,6 +33,7 @@ vi.mock('@/lib/polling-job-report', () => ({ noteJobFailure: vi.fn() }));
 vi.mock('@/lib/youtube/settings', () => ({ getYoutubeSettings: vi.fn(async () => ({ pollVideosSecs: 600 })) }));
 vi.mock('@/lib/youtube/sync', () => ({ syncChannelVideos: mocks.sync }));
 vi.mock('@/lib/youtube/reconcile', () => ({ reconcileYoutubeJobs: vi.fn(async () => undefined) }));
+vi.mock('@/lib/youtube/cleanup', () => ({ sweepWatchedVideos: vi.fn(async () => undefined) }));
 vi.mock('@/lib/archive/jobs', () => ({ enqueueDownload: mocks.enqueue }));
 vi.mock('@/lib/youtube/policy', () => ({
   POLICY_VIDEO: { id: true },

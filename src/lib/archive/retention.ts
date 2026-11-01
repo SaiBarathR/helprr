@@ -5,6 +5,7 @@ import { logger } from '@/lib/logger';
 import { getJellyfinClientForUser } from '@/lib/service-helpers';
 import { ACTIVE_JOB_STATES } from '@/lib/archive/jobs';
 import { decideForVideo } from '@/lib/archive/policy-store';
+import { decideForYoutubeVideo } from '@/lib/youtube/policy';
 
 const DAY_MS = 86_400_000;
 
@@ -72,7 +73,7 @@ export async function fileCleanupStatus(
   platform: ArchivePlatform,
   now = new Date(),
 ) {
-  const { policy } = await decideForVideo(file.video);
+  const { policy } = await (platform === 'YOUTUBE' ? decideForYoutubeVideo : decideForVideo)(file.video);
   const { keepLatest, deleteAfterDays, deleteAfterWatchedDays } = policy;
   const rank = await prisma.archiveMediaFile.count({
     where: {
@@ -177,9 +178,9 @@ export const FILE_LOCK_TRANSACTION = { maxWait: 10_000, timeout: 30_000 };
 /** Helprr has no file access: the worker deletes, and audits under this actor. */
 export async function enqueueFileDelete(
   fileId: string,
-  actor: { id: string; username: string },
+  actor: { id: string | null; username: string },
   platform: ArchivePlatform,
-  origin: { retention?: boolean; reason?: string } = {},
+  origin: { retention?: boolean; reason?: string; automatic?: boolean; generation?: number } = {},
 ): Promise<boolean> {
   return prisma.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`twitch-delete:${fileId}`}))`;

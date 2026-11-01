@@ -111,7 +111,8 @@ export async function runReencode(ctx: {
   if (after.codec !== 'hevc' || Math.abs(after.duration - before.duration) > Math.max(10, before.duration * 0.01)) {
     throw new Error(`validation failed: re-encode came out ${after.codec}, ${after.duration}s of ${before.duration}s`);
   }
-  if (!worthKeeping(originalBytes, encodedBytes)) {
+  // Someone asked for this on YouTube for a player's sake, knowing it usually grows the file.
+  if (file.platform !== 'YOUTUBE' && !worthKeeping(originalBytes, encodedBytes)) {
     await rm(staging, { recursive: true, force: true });
     await ctx.note(`Kept the original: ${encodedBytes} bytes is not 10% under ${originalBytes}`);
     await prisma.archiveMediaFile.update({
