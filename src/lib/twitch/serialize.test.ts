@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { serializeVideo, type VideoRow } from './serialize';
+import type { VideoRow } from '@/lib/archive/serialize-video';
+import { serializeVideo } from './serialize';
 
 const createdAt = new Date('2026-10-30T10:00:00Z');
 const video = {

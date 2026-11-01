@@ -31,7 +31,7 @@ export default function AddStreamerPage() {
   const isLink = query.includes('/');
 
   const list = useQuery({
-    queryKey: ['twitch', 'streamers'],
+    queryKey: ['twitch', 'creators'],
     queryFn: async ({ signal }) => {
       const res = await fetch('/api/twitch/streamers', { signal });
       if (!res.ok) throw new Error('Failed to load streamers');

@@ -1,7 +1,7 @@
 export interface CreatorVideoItem {
   id: string;
   externalId: string;
-  type: 'ARCHIVE' | 'HIGHLIGHT' | 'UPLOAD' | 'CLIP';
+  type: 'ARCHIVE' | 'HIGHLIGHT' | 'UPLOAD' | 'CLIP' | 'SHORT';
   title: string;
   description: string | null;
   sourceCreatedAt: string;
@@ -34,6 +34,7 @@ export const VIDEO_TYPE_LABELS: Record<CreatorVideoItem['type'], string> = {
   HIGHLIGHT: 'Highlight',
   UPLOAD: 'Upload',
   CLIP: 'Clip',
+  SHORT: 'Short',
 };
 
 export function formatDuration(seconds: number): string {

@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server';
 import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { prisma } from '@/lib/db';
-import { buildFeedWhere } from '@/lib/twitch/feed';
+import { buildFeedWhere } from '@/lib/archive/feed';
+import { TWITCH } from '@/lib/twitch/platform';
 
 /** Marks everything currently under New as seen. */
 async function postHandler(): Promise<NextResponse> {
@@ -11,7 +12,7 @@ async function postHandler(): Promise<NextResponse> {
 
   const userId = auth.user.id;
   const now = new Date();
-  const where = await buildFeedWhere(userId, new URLSearchParams({ segment: 'new' }), now);
+  const where = await buildFeedWhere(TWITCH, userId, new URLSearchParams({ segment: 'new' }), now);
   const videos = await prisma.creatorVideo.findMany({ where, select: { id: true } });
 
   await prisma.$transaction([

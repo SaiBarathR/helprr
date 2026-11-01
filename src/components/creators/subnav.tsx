@@ -11,8 +11,10 @@ export function CreatorSubNav({ active }: { active: 'feed' | 'streamers' | 'queu
   const items = [
     { id: 'feed', label: 'Feed', href: platform.base, icon: Rss },
     { id: 'streamers', label: platform.creatorsLabel, href: platform.creatorsPath, icon: Users },
-    { id: 'queue', label: 'Queue', href: `${platform.base}/queue`, icon: ListVideo },
-    { id: 'library', label: 'Library', href: `${platform.base}/library`, icon: HardDrive },
+    ...(platform.downloads ? [
+      { id: 'queue', label: 'Queue', href: `${platform.base}/queue`, icon: ListVideo },
+      { id: 'library', label: 'Library', href: `${platform.base}/library`, icon: HardDrive },
+    ] : []),
   ];
   return (
     <nav

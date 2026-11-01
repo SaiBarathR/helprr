@@ -3,8 +3,9 @@ import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { prisma } from '@/lib/db';
 import { parsePageParams } from '@/lib/pagination';
-import { buildFeedWhere } from '@/lib/twitch/feed';
-import { serializeVideo, VIDEO_SELECT } from '@/lib/twitch/serialize';
+import { buildFeedWhere } from '@/lib/archive/feed';
+import { VIDEO_SELECT } from '@/lib/archive/serialize-video';
+import { serializeVideo } from '@/lib/twitch/serialize';
 import { TWITCH } from '@/lib/twitch/platform';
 
 async function getHandler(request: NextRequest): Promise<NextResponse> {
@@ -13,7 +14,7 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
 
   const { searchParams } = request.nextUrl;
   const { page, pageSize, skip, take } = parsePageParams(searchParams, { defaultSize: 30, maxSize: 60 });
-  const where = await buildFeedWhere(auth.user.id, searchParams);
+  const where = await buildFeedWhere(TWITCH, auth.user.id, searchParams);
 
   const [videos, total] = await Promise.all([
     prisma.creatorVideo.findMany({

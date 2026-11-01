@@ -63,6 +63,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     jellyfinLinked,
     jellyfinConfigured: serviceFlags.jellyfinConfigured,
     twitchConfigured: serviceFlags.twitchConfigured,
+    youtubeConfigured: serviceFlags.youtubeConfigured,
     jellyfinConnected: Boolean(readJellyfinToken(user)),
     customHeadersEnabled: process.env.HELPRR_CUSTOM_HEADERS === 'true',
   };
