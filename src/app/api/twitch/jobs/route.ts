@@ -9,6 +9,7 @@ import { serializeJob, JOB_SELECT } from '@/lib/twitch/serialize-job';
 import { getTwitchSettings } from '@/lib/twitch/settings';
 import { parseTwitchLogin, subscribeToStreamer } from '@/lib/twitch/streamers';
 import { upsertVideoFromHelix, type HelixVideoWithUser } from '@/lib/twitch/sync';
+import { TWITCH } from '@/lib/twitch/platform';
 
 const MAX_LISTED = 200;
 const DONE_LISTED = 20;
@@ -21,13 +22,13 @@ async function getHandler(): Promise<NextResponse> {
   // Apart, so a long queue cannot push the finished ones off the page.
   const [open, finished] = await Promise.all([
     prisma.archiveJob.findMany({
-      where: { state: { notIn: ['DONE', 'CANCELLED'] } },
+      where: { platform: TWITCH, state: { notIn: ['DONE', 'CANCELLED'] } },
       orderBy: [{ priority: 'desc' }, { createdAt: 'desc' }],
       take: MAX_LISTED,
       select: JOB_SELECT,
     }),
     prisma.archiveJob.findMany({
-      where: { state: 'DONE', kind: 'DOWNLOAD' },
+      where: { platform: TWITCH, state: 'DONE', kind: 'DOWNLOAD' },
       orderBy: { finishedAt: 'desc' },
       take: DONE_LISTED,
       select: JOB_SELECT,
@@ -52,7 +53,10 @@ function readOptions(value: unknown, defaults: DownloadOptions): DownloadOptions
 async function resolvePastedVideo(url: string, userId: string): Promise<string | null> {
   const twitchVideoId = VIDEO_URL.exec(url.trim())?.[1];
   if (!twitchVideoId) return null;
-  const known = await prisma.creatorVideo.findUnique({ where: { externalId: twitchVideoId }, select: { id: true } });
+  const known = await prisma.creatorVideo.findUnique({
+    where: { platform_externalId: { platform: TWITCH, externalId: twitchVideoId } },
+    select: { id: true },
+  });
   if (known) return known.id;
 
   const { data } = await helixGet<HelixVideoWithUser>('/videos', { id: twitchVideoId });
@@ -77,7 +81,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   const pasted = typeof body.url === 'string';
   try {
     if (typeof body.videoId === 'string') {
-      const video = await prisma.creatorVideo.findUnique({ where: { id: body.videoId }, select: { id: true } });
+      const video = await prisma.creatorVideo.findUnique({ where: { id: body.videoId, platform: TWITCH }, select: { id: true } });
       videoId = video?.id ?? null;
     } else if (pasted) {
       videoId = await resolvePastedVideo(body.url as string, auth.user.id);

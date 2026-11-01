@@ -2,6 +2,7 @@ import type { Prisma, Creator, CreatorVideoAvailability, CreatorVideoType } from
 import { prisma } from '@/lib/db';
 import { estimateExpiry } from '@/lib/twitch/expiry';
 import { helixGet, parseHelixDuration, TwitchHelixError, type HelixRateLimit } from '@/lib/twitch/helix';
+import { TWITCH } from '@/lib/twitch/platform';
 
 export interface HelixVideo {
   id: string;
@@ -41,6 +42,7 @@ function toRow(video: HelixVideo, streamer: StreamerForSync) {
       ? 'RECORDING'
       : 'PUBLISHED';
   return {
+    platform: TWITCH,
     externalId: video.id,
     creatorId: streamer.id,
     type,
@@ -66,7 +68,7 @@ export async function upsertVideoFromHelix(video: HelixVideo, streamer: Streamer
   const row = toRow(video, streamer);
   if (!row) return null;
   const { id } = await prisma.creatorVideo.upsert({
-    where: { externalId: row.externalId },
+    where: { platform_externalId: { platform: row.platform, externalId: row.externalId } },
     update: row,
     create: { ...row, notifiedAt: new Date() },
     select: { id: true },

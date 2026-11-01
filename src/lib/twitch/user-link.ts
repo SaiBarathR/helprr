@@ -3,6 +3,7 @@ import { prisma } from '@/lib/db';
 import { refuseRedirectToAnotherHost } from '@/lib/redirect-guard';
 import { getTwitchClientCredentials, TWITCH_HELIX_URL } from '@/lib/twitch/helix';
 import { decryptTwitchToken, encryptTwitchToken } from '@/lib/twitch/token-cipher';
+import { TWITCH } from '@/lib/twitch/platform';
 
 const DEVICE_URL = 'https://id.twitch.tv/oauth2/device';
 const TOKEN_URL = 'https://id.twitch.tv/oauth2/token';
@@ -141,7 +142,7 @@ export async function listFollows(userId: string): Promise<FollowedChannel[] | n
   }
 
   const subscribed = await prisma.creatorSubscription.findMany({
-    where: { userId, creator: { externalId: { in: follows.map((follow) => follow.broadcaster_id) } } },
+    where: { userId, creator: { platform: TWITCH, externalId: { in: follows.map((follow) => follow.broadcaster_id) } } },
     select: { creator: { select: { externalId: true } } },
   });
   const known = new Set(subscribed.map((row) => row.creator.externalId));

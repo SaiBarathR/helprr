@@ -4,6 +4,7 @@ import { withApiLogging } from '@/lib/api-logger';
 import { prisma } from '@/lib/db';
 import { layerMap, sanitizeLayer } from '@/lib/twitch/policy';
 import { decideForVideo } from '@/lib/twitch/policy-store';
+import { TWITCH } from '@/lib/twitch/platform';
 
 const PREVIEW_VIDEOS = 50;
 
@@ -17,7 +18,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'streamerId is required' }, { status: 400 });
   }
   const videos = await prisma.creatorVideo.findMany({
-    where: { creatorId: body.streamerId },
+    where: { creatorId: body.streamerId, platform: TWITCH },
     orderBy: { sourceCreatedAt: 'desc' },
     take: PREVIEW_VIDEOS,
     select: { id: true, title: true, type: true, category: true, creatorId: true, durationSeconds: true },

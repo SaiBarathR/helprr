@@ -84,7 +84,7 @@ describe('pollTwitch', () => {
   it('spends nothing on a streamer nobody follows', async () => {
     dueStreamers([]);
     await pollTwitch(now);
-    expect(mocks.streamer.findMany.mock.calls[0][0].where).toEqual({ subscriptions: { some: {} } });
+    expect(mocks.streamer.findMany.mock.calls[0][0].where).toEqual({ platform: 'TWITCH', subscriptions: { some: {} } });
     expect(mocks.streamer.findMany.mock.calls[1][0].where.subscriptions).toEqual({ some: {} });
   });
 

@@ -69,6 +69,7 @@ export async function runDeleteOriginal(prisma: PrismaClient, job: ArchiveJob, a
     });
     if (done) {
       await recordDeletion(prisma, {
+        platform: file.platform,
         videoId: file.videoId,
         title: file.video.title,
         streamer: file.video.creator.displayName,

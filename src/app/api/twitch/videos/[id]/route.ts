@@ -5,6 +5,7 @@ import { prisma } from '@/lib/db';
 import { decideForVideo } from '@/lib/twitch/policy-store';
 import { serializeVideo, VIDEO_SELECT } from '@/lib/twitch/serialize';
 import { getTwitchSettings } from '@/lib/twitch/settings';
+import { TWITCH } from '@/lib/twitch/platform';
 
 async function getHandler(
   _request: NextRequest,
@@ -15,7 +16,7 @@ async function getHandler(
 
   const { id } = await params;
   const video = await prisma.creatorVideo.findUnique({
-    where: { id },
+    where: { id, platform: TWITCH },
     select: {
       ...VIDEO_SELECT,
       userStates: { where: { userId: auth.user.id }, select: { seenAt: true, hidden: true } },

@@ -5,6 +5,7 @@ import { withApiLogging } from '@/lib/api-logger';
 import { prisma } from '@/lib/db';
 import { parsePageParams } from '@/lib/pagination';
 import { serializeVideo, VIDEO_SELECT } from '@/lib/twitch/serialize';
+import { TWITCH } from '@/lib/twitch/platform';
 
 const TYPES = new Set<string>(['ARCHIVE', 'HIGHLIGHT', 'UPLOAD']);
 
@@ -19,7 +20,7 @@ async function getHandler(
   const { searchParams } = request.nextUrl;
   const { page, pageSize, skip, take } = parsePageParams(searchParams, { defaultSize: 30, maxSize: 100 });
   const type = searchParams.get('type');
-  const where = { creatorId: id, ...(type && TYPES.has(type) ? { type: type as CreatorVideoType } : {}) };
+  const where = { creatorId: id, platform: TWITCH, ...(type && TYPES.has(type) ? { type: type as CreatorVideoType } : {}) };
 
   const [videos, total] = await Promise.all([
     prisma.creatorVideo.findMany({ where, orderBy: { sourceCreatedAt: 'desc' }, skip, take, select: VIDEO_SELECT }),

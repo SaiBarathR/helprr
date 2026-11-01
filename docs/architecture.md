@@ -794,6 +794,10 @@ Invariants:
   hold, because a person asked for it. Anything below still waits for both.
 - `ArchiveDeletedFile` is the Library's own record of what was deleted. It is separate from
   `FileOperationAudit`, which holds paths and is pruned on its own schedule.
+- Creators, videos, files, jobs and deletion history carry a `platform`. Ids, folder names,
+  paths and request ids are unique per platform, and every Twitch route names `TWITCH`, so an
+  id from another platform finds nothing. `platform-isolation.integration.test.ts` proves this
+  on PostgreSQL, because mocked queries cannot.
 - Twitch settings live in `ArchiveSettings`, not `AppSettings`, because `GET /api/settings`
   returns that row to any signed-in user. The browser token is `enc:v1` and no API
   returns it.

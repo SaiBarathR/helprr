@@ -4,13 +4,14 @@ import { withApiLogging } from '@/lib/api-logger';
 import { prisma } from '@/lib/db';
 import { TwitchNotConfiguredError } from '@/lib/twitch/helix';
 import { parseTwitchLogin, subscribeToStreamer } from '@/lib/twitch/streamers';
+import { TWITCH } from '@/lib/twitch/platform';
 
 async function getHandler(): Promise<NextResponse> {
   const auth = await requireUserCapability('twitch.view');
   if (!auth.ok) return auth.response;
 
   const subscriptions = await prisma.creatorSubscription.findMany({
-    where: { userId: auth.user.id },
+    where: { userId: auth.user.id, creator: { platform: TWITCH } },
     orderBy: { creator: { displayName: 'asc' } },
     select: {
       id: true,

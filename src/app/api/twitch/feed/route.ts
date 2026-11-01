@@ -5,6 +5,7 @@ import { prisma } from '@/lib/db';
 import { parsePageParams } from '@/lib/pagination';
 import { buildFeedWhere } from '@/lib/twitch/feed';
 import { serializeVideo, VIDEO_SELECT } from '@/lib/twitch/serialize';
+import { TWITCH } from '@/lib/twitch/platform';
 
 async function getHandler(request: NextRequest): Promise<NextResponse> {
   const auth = await requireUserCapability('twitch.view');
@@ -30,7 +31,7 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
 
   // Only what is known: Helix has no category for a video, so older ones have none.
   const categories = await prisma.creatorVideo.findMany({
-    where: { creator: { subscriptions: { some: { userId: auth.user.id } } }, category: { not: null } },
+    where: { platform: TWITCH, creator: { subscriptions: { some: { userId: auth.user.id } } }, category: { not: null } },
     distinct: ['category'],
     orderBy: { category: 'asc' },
     select: { category: true },

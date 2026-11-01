@@ -3,6 +3,7 @@ import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { prisma } from '@/lib/db';
 import { getTwitchSettings } from '@/lib/twitch/settings';
+import { TWITCH } from '@/lib/twitch/platform';
 
 const HH_MM = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
 const TOOL_VERSION = /^[A-Za-z0-9.-]{1,32}$/;
@@ -11,7 +12,7 @@ const TOOL_VERSION = /^[A-Za-z0-9.-]{1,32}$/;
 async function publicSettings() {
   const { browserAuthToken, ...rest } = await getTwitchSettings();
   const waiting = await prisma.archiveJob.findMany({
-    where: { kind: 'REENCODE', state: { in: ['QUEUED', 'RETRY_WAIT'] } },
+    where: { platform: TWITCH, kind: 'REENCODE', state: { in: ['QUEUED', 'RETRY_WAIT'] } },
     select: { mediaFile: { select: { sizeBytes: true } } },
   });
   return {

@@ -2,6 +2,7 @@ import { prisma } from '@/lib/db';
 import { helixGet } from '@/lib/twitch/helix';
 import { syncStreamerVideos } from '@/lib/twitch/sync';
 import { logger } from '@/lib/logger';
+import { TWITCH } from '@/lib/twitch/platform';
 
 interface HelixUser {
   id: string;
@@ -39,16 +40,17 @@ export async function subscribeToStreamer(userId: string, login: string) {
     offlineImageUrl: user.offline_image_url || null,
     broadcasterType: user.broadcaster_type,
   };
+  const key = { platform_externalId: { platform: TWITCH, externalId: user.id } };
   const existing = await prisma.creator.findUnique({
-    where: { externalId: user.id },
+    where: key,
     select: { _count: { select: { subscriptions: true } } },
   });
   // Unwatched for a while: what was published meanwhile is history, not news.
   const unwatched = existing?._count.subscriptions === 0;
   const streamer = await prisma.creator.upsert({
-    where: { externalId: user.id },
+    where: key,
     update: { ...profile, ...(unwatched ? { baselinedAt: null, nextVideosCheckAt: null } : {}) },
-    create: { externalId: user.id, folderName: user.login, ...profile },
+    create: { platform: TWITCH, externalId: user.id, folderName: user.login, ...profile },
   });
   const subscription = await prisma.creatorSubscription.upsert({
     where: { userId_creatorId: { userId, creatorId: streamer.id } },

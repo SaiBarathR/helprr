@@ -107,6 +107,6 @@ describe('PATCH keep forever', () => {
   it('saves it', async () => {
     mocks.update.mockResolvedValue({ count: 1 });
     expect((await PATCH(request({ keepForever: true }), context)).status).toBe(200);
-    expect(mocks.update).toHaveBeenCalledWith({ where: { id: 'f' }, data: { keepForever: true } });
+    expect(mocks.update).toHaveBeenCalledWith({ where: { id: 'f', platform: 'TWITCH' }, data: { keepForever: true } });
   });
 });

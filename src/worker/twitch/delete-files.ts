@@ -55,6 +55,7 @@ export async function runDeleteFiles(prisma: PrismaClient, job: ArchiveJob, asse
     for (const relative of paths) await removeInsideLibrary(relative);
     await prisma.archiveMediaFile.delete({ where: { id: file.id } });
     await recordDeletion(prisma, {
+      platform: file.platform,
       videoId: file.videoId,
       title: file.video.title,
       streamer: file.video.creator.displayName,
@@ -167,6 +168,7 @@ export async function forgetFilesDeletedElsewhere(prisma: PrismaClient): Promise
     if (!stillMissing) continue;
     forgotten += 1;
     await recordDeletion(prisma, {
+      platform: file.platform,
       videoId: file.videoId,
       title: file.video.title,
       streamer: file.video.creator.displayName,

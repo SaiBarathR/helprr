@@ -4,6 +4,7 @@ import { withApiLogging } from '@/lib/api-logger';
 import { prisma } from '@/lib/db';
 import { can } from '@/lib/permissions';
 import { retryJob } from '@/lib/twitch/jobs';
+import { TWITCH } from '@/lib/twitch/platform';
 
 /**
  * The requester may retry their own download; twitch.manage may retry anything.
@@ -17,7 +18,10 @@ async function postHandler(
   if (!auth.ok) return auth.response;
 
   const { id } = await params;
-  const job = await prisma.archiveJob.findUnique({ where: { id }, select: { kind: true, requestedByUserId: true } });
+  const job = await prisma.archiveJob.findUnique({
+    where: { id, platform: TWITCH },
+    select: { kind: true, requestedByUserId: true },
+  });
   if (!job) return NextResponse.json({ error: 'Job not found' }, { status: 404 });
 
   const manager = can(auth.user, 'twitch.manage');

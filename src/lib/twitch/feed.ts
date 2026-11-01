@@ -1,5 +1,6 @@
 import type { Prisma, CreatorVideoType } from '@prisma/client';
 import { prisma } from '@/lib/db';
+import { TWITCH } from '@/lib/twitch/platform';
 
 const DAY_MS = 86_400_000;
 const EXPIRING_WINDOW_MS = 7 * DAY_MS;
@@ -18,7 +19,7 @@ export async function buildFeedWhere(
   now = new Date(),
 ): Promise<Prisma.CreatorVideoWhereInput> {
   const subscriptions = await prisma.creatorSubscription.findMany({
-    where: { userId },
+    where: { userId, creator: { platform: TWITCH } },
     select: { creatorId: true, createdAt: true, creator: { select: { baselinedAt: true } } },
   });
 
@@ -27,6 +28,7 @@ export async function buildFeedWhere(
   const length = params.get('length');
   const q = params.get('q')?.trim().slice(0, 100);
   const and: Prisma.CreatorVideoWhereInput[] = [
+    { platform: TWITCH },
     { creatorId: { in: subscriptions.map((subscription) => subscription.creatorId) } },
     { userStates: { none: { userId, hidden: true } } },
     { availability: { not: 'UNAVAILABLE' } },

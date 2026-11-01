@@ -3,6 +3,7 @@ import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { prisma } from '@/lib/db';
 import { JOB_SELECT, serializeJob } from '@/lib/twitch/serialize-job';
+import { TWITCH } from '@/lib/twitch/platform';
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -11,7 +12,7 @@ async function getHandler(_request: NextRequest, { params }: RouteContext): Prom
   if (!auth.ok) return auth.response;
 
   const { id } = await params;
-  const job = await prisma.archiveJob.findUnique({ where: { id }, select: JOB_SELECT });
+  const job = await prisma.archiveJob.findUnique({ where: { id, platform: TWITCH }, select: JOB_SELECT });
   if (!job) return NextResponse.json({ error: 'Job not found' }, { status: 404 });
   return NextResponse.json(serializeJob(job));
 }
@@ -25,7 +26,7 @@ async function patchHandler(request: NextRequest, { params }: RouteContext): Pro
     return NextResponse.json({ error: 'priority must be a whole number' }, { status: 400 });
   }
   const { id } = await params;
-  const { count } = await prisma.archiveJob.updateMany({ where: { id }, data: { priority: body.priority } });
+  const { count } = await prisma.archiveJob.updateMany({ where: { id, platform: TWITCH }, data: { priority: body.priority } });
   if (count === 0) return NextResponse.json({ error: 'Job not found' }, { status: 404 });
   return NextResponse.json({ ok: true });
 }
