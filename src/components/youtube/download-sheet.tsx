@@ -12,8 +12,9 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useIsMobile } from '@/hooks/use-is-mobile';
 import { SwitchRow } from '@/components/creators/setting-rows';
-import { formatDuration, formatGb, type CreatorVideoItem } from '@/components/creators/types';
+import { formatDuration, type CreatorVideoItem } from '@/components/creators/types';
 import type { DownloadOptions } from '@/lib/archive/jobs';
+import { formatBytes } from '@/lib/format';
 import {
   codecLabelOf, downloadOf, pickDownload, qualityLabel, resolutionLabel,
   type OfferedFormat, type PickedDownload, type VideoFormats, type YoutubeCodec,
@@ -42,7 +43,8 @@ const SPONSORBLOCK = [
 // The worker usually answers in about 3 seconds. Past this it may be off, so the sheet stops waiting.
 const GIVE_UP_MS = 20_000;
 
-const sizeLabel = (bytes: number | null) => (bytes === null ? 'Not known' : formatGb(bytes / 1024 ** 3));
+// The Library's own format, so the two can be compared.
+const sizeLabel = (bytes: number | null) => (bytes === null ? 'Not known' : formatBytes(bytes));
 
 function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
   return (

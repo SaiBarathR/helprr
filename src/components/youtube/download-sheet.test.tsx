@@ -79,7 +79,7 @@ describe('YoutubeDownloadSheet', () => {
 
     await userEvent.click(screen.getByRole('tab', { name: '4K' }));
     expect(rowValue('Resolution')).toBe('4K (3840×1920)');
-    expect(rowValue('Size')).toBe('787 MB');
+    expect(rowValue('Size')).toBe('786.1 MB');
     expect(screen.getByRole('radio', { checked: true }).textContent).toContain('VP9');
     screen.getByText(/YouTube has no H\.264 copy at 4K, so this uses VP9/);
   });
@@ -88,9 +88,9 @@ describe('YoutubeDownloadSheet', () => {
     answers.formats = summarizeFormats(mkbhd);
     mountSheet();
     await screen.findByRole('tab', { name: '4K' });
-    expect(screen.getAllByRole('radio').map((row) => row.textContent)).toEqual(['H.264Plays everywhere114 MB', 'VP996 MB', 'AV174 MB']);
+    expect(screen.getAllByRole('radio').map((row) => row.textContent)).toEqual(['H.264Plays everywhere113.8 MB', 'VP995.6 MB', 'AV173.7 MB']);
     await userEvent.click(screen.getByRole('tab', { name: '4K' }));
-    expect(screen.getAllByRole('radio').map((row) => row.textContent)).toEqual(['VP9787 MB', 'AV1337 MB']);
+    expect(screen.getAllByRole('radio').map((row) => row.textContent)).toEqual(['VP9786.1 MB', 'AV1336.4 MB']);
   });
 
   it('shows only what a 1080p video has', async () => {

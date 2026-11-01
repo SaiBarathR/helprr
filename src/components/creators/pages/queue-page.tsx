@@ -32,6 +32,7 @@ import { ActionsMenu } from '@/components/creators/actions-menu';
 import { ToolbarButton, toolbarButtonClass, CreatorToolbar } from '@/components/creators/toolbar';
 import { formatDuration, stageLabel } from '@/components/creators/types';
 import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
+import { formatBytes } from '@/lib/format';
 import { toCachedImageSrc } from '@/lib/image';
 import { backoffRefetchInterval } from '@/lib/query-fetch';
 import { cn } from '@/lib/utils';
@@ -128,7 +129,7 @@ function JobRow({ job, onCancel, onRetry }: { job: Job; onCancel?: () => void; o
     : [video?.creator.displayName, job.chosenFormat].filter(Boolean).join(' · ');
   const speed = [
     job.speedBps ? `${(job.speedBps / 1024 ** 2).toFixed(1)} MB/s` : null,
-    job.bytesTotal ? gb(job.bytesTotal) : null,
+    job.bytesTotal ? formatBytes(job.bytesTotal) : null,
     job.etaSeconds ? `${formatDuration(job.etaSeconds)} left` : null,
   ].filter(Boolean).join(' · ');
 
