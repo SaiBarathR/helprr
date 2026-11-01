@@ -1,4 +1,4 @@
-import { checkWorker, reconcileJobs, type ReconcileProfile } from '@/lib/archive/reconcile';
+import { checkToolsPaused, checkWorker, reconcileJobs, type ReconcileProfile } from '@/lib/archive/reconcile';
 import { TWITCH } from '@/lib/twitch/platform';
 import { getTwitchSettings } from '@/lib/twitch/settings';
 
@@ -19,4 +19,5 @@ const PROFILE: ReconcileProfile = {
 export async function reconcileTwitchJobs(now: Date): Promise<void> {
   await reconcileJobs(now, PROFILE);
   await checkWorker(now);
+  await checkToolsPaused(PROFILE);
 }

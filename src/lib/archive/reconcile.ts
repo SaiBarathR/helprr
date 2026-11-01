@@ -31,10 +31,9 @@ export interface ReconcileProfile {
 export async function reconcileJobs(now: Date, profile: ReconcileProfile): Promise<void> {
   await finishPublishedJobs(now, profile);
   await notifyFailedJobs(now, profile);
-  await checkToolsPaused(profile);
 }
 
-async function checkToolsPaused(profile: ReconcileProfile): Promise<void> {
+export async function checkToolsPaused(profile: ReconcileProfile): Promise<void> {
   const toolsPausedAt = await profile.toolsPausedAt();
   if (!toolsPausedAt) return;
   await notifyAndLog({
