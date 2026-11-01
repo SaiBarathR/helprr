@@ -7,7 +7,7 @@ const mocks = vi.hoisted(() => ({
   getJellyfinClientForUser: vi.fn(),
 }));
 
-vi.mock('@/lib/db', () => ({ prisma: { twitchMediaFile: { findMany: mocks.findMany } } }));
+vi.mock('@/lib/db', () => ({ prisma: { archiveMediaFile: { findMany: mocks.findMany } } }));
 vi.mock('@/lib/logger', () => ({ logger: { warn: vi.fn() } }));
 vi.mock('@/lib/service-helpers', () => ({ getJellyfinClientForUser: mocks.getJellyfinClientForUser }));
 vi.mock('@/lib/twitch/policy-store', () => ({ decideForVideo: mocks.decideForVideo }));
@@ -26,8 +26,8 @@ function file(id: string, overrides: Record<string, unknown> = {}) {
     createdAt: daysAgo(1),
     jellyfinItemId: `item-${id}`,
     video: {
-      title: id, type: 'ARCHIVE', streamerId: 's1', durationSeconds: 60,
-      twitchCreatedAt: daysAgo(1), streamer: { displayName: 'N' },
+      title: id, type: 'ARCHIVE', creatorId: 's1', durationSeconds: 60,
+      sourceCreatedAt: daysAgo(1), creator: { displayName: 'N' },
     },
     ...overrides,
   };
@@ -61,7 +61,7 @@ describe('findRetentionCandidates', () => {
   });
 
   it('keeps the latest N per streamer and type', async () => {
-    const other = { ...file('c').video, streamerId: 's2' };
+    const other = { ...file('c').video, creatorId: 's2' };
     mocks.findMany.mockResolvedValue([file('a'), file('b'), file('c', { video: other })]);
     policy({ keepLatest: 1 });
 

@@ -15,9 +15,9 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
   const where = await buildFeedWhere(auth.user.id, searchParams);
 
   const [videos, total] = await Promise.all([
-    prisma.twitchVideo.findMany({
+    prisma.creatorVideo.findMany({
       where,
-      orderBy: [{ twitchCreatedAt: 'desc' }, { id: 'desc' }],
+      orderBy: [{ sourceCreatedAt: 'desc' }, { id: 'desc' }],
       skip,
       take,
       select: {
@@ -25,12 +25,12 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
         userStates: { where: { userId: auth.user.id }, select: { seenAt: true } },
       },
     }),
-    prisma.twitchVideo.count({ where }),
+    prisma.creatorVideo.count({ where }),
   ]);
 
   // Only what is known: Helix has no category for a video, so older ones have none.
-  const categories = await prisma.twitchVideo.findMany({
-    where: { streamer: { subscriptions: { some: { userId: auth.user.id } } }, category: { not: null } },
+  const categories = await prisma.creatorVideo.findMany({
+    where: { creator: { subscriptions: { some: { userId: auth.user.id } } }, category: { not: null } },
     distinct: ['category'],
     orderBy: { category: 'asc' },
     select: { category: true },

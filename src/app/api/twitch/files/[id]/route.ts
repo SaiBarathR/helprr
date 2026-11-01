@@ -14,7 +14,7 @@ async function getHandler(_request: NextRequest, { params }: RouteContext): Prom
   if (!auth.ok) return auth.response;
 
   const { id } = await params;
-  const file = await prisma.twitchMediaFile.findUnique({
+  const file = await prisma.archiveMediaFile.findUnique({
     where: { id },
     select: {
       ...FILE_SELECT,
@@ -22,7 +22,7 @@ async function getHandler(_request: NextRequest, { params }: RouteContext): Prom
         select: {
           ...FILE_SELECT.video.select,
           category: true,
-          streamerId: true,
+          creatorId: true,
           durationSeconds: true,
         },
       },
@@ -48,7 +48,7 @@ async function patchHandler(request: NextRequest, { params }: RouteContext): Pro
   if (typeof body?.keepForever !== 'boolean') return NextResponse.json({ error: 'keepForever is required' }, { status: 400 });
 
   const { id } = await params;
-  const { count } = await prisma.twitchMediaFile.updateMany({ where: { id }, data: { keepForever: body.keepForever } });
+  const { count } = await prisma.archiveMediaFile.updateMany({ where: { id }, data: { keepForever: body.keepForever } });
   if (count === 0) return NextResponse.json({ error: 'File not found' }, { status: 404 });
   return NextResponse.json({ ok: true });
 }

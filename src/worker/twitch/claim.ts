@@ -1,4 +1,4 @@
-import { Prisma, type PrismaClient, type TwitchJob, type TwitchJobKind } from '@prisma/client';
+import { Prisma, type PrismaClient, type ArchiveJob, type ArchiveJobKind } from '@prisma/client';
 
 export const LEASE_MS = 60_000;
 
@@ -6,16 +6,16 @@ export const LEASE_MS = 60_000;
 export async function claimJob(
   prisma: PrismaClient,
   workerId: string,
-  kinds: TwitchJobKind[],
+  kinds: ArchiveJobKind[],
   minPriority?: number,
-): Promise<TwitchJob | null> {
+): Promise<ArchiveJob | null> {
   // Cancelled, then its worker died: nothing is left to acknowledge the cancel, so it ends here.
-  await prisma.twitchJob.updateMany({
+  await prisma.archiveJob.updateMany({
     where: { state: 'RUNNING', cancelRequested: true, leaseUntil: { lt: new Date() } },
     data: { state: 'CANCELLED', stage: 'cancelled', finishedAt: new Date(), leaseOwner: null, leaseUntil: null },
   });
 
-  const rows = await prisma.$queryRaw<TwitchJob[]>`
+  const rows = await prisma.$queryRaw<ArchiveJob[]>`
     UPDATE "TwitchJob" SET
       "state" = 'RUNNING',
       "leaseOwner" = ${workerId},

@@ -32,7 +32,7 @@ async function getHandler(): Promise<NextResponse> {
         })
       : Promise.resolve(0),
     can(user, 'twitch.view')
-      ? buildFeedWhere(user.id, new URLSearchParams({ segment: 'new' })).then((where) => prisma.twitchVideo.count({ where }))
+      ? buildFeedWhere(user.id, new URLSearchParams({ segment: 'new' })).then((where) => prisma.creatorVideo.count({ where }))
       : Promise.resolve(0),
   ]);
 

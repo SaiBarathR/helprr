@@ -1,5 +1,5 @@
 import { createHmac, timingSafeEqual } from 'crypto';
-import type { TwitchVideoType } from '@prisma/client';
+import type { CreatorVideoType } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { logger } from '@/lib/logger';
 import { getJellyfinClientForUser } from '@/lib/service-helpers';
@@ -66,21 +66,21 @@ export async function fileCleanupStatus(
   file: {
     createdAt: Date;
     keepForever: boolean;
-    video: { title: string; type: TwitchVideoType; category: string | null; streamerId: string; durationSeconds: number; twitchCreatedAt: Date };
+    video: { title: string; type: CreatorVideoType; category: string | null; creatorId: string; durationSeconds: number; sourceCreatedAt: Date };
   },
   watchedAt: Date | undefined,
   now = new Date(),
 ) {
   const { policy } = await decideForVideo(file.video);
   const { keepLatest, deleteAfterDays, deleteAfterWatchedDays } = policy;
-  const rank = await prisma.twitchMediaFile.count({
+  const rank = await prisma.archiveMediaFile.count({
     where: {
       keepForever: false,
       jobs: { none: { state: { in: ACTIVE_JOB_STATES } } },
       video: {
-        streamerId: file.video.streamerId,
+        creatorId: file.video.creatorId,
         type: file.video.type,
-        twitchCreatedAt: { gte: file.video.twitchCreatedAt },
+        sourceCreatedAt: { gte: file.video.sourceCreatedAt },
         jobs: { none: { state: { in: ACTIVE_JOB_STATES } } },
       },
     },
@@ -99,7 +99,7 @@ export async function findRetentionCandidates(
   user: { role: string; jellyfinUserId: string | null } | null,
   now = new Date(),
 ): Promise<RetentionCandidate[]> {
-  const files = await prisma.twitchMediaFile.findMany({
+  const files = await prisma.archiveMediaFile.findMany({
     where: {
       keepForever: false,
       jobs: { none: { state: { in: ACTIVE_JOB_STATES } } },
@@ -112,12 +112,12 @@ export async function findRetentionCandidates(
       jellyfinItemId: true,
       video: {
         select: {
-          title: true, type: true, category: true, streamerId: true, durationSeconds: true, twitchCreatedAt: true,
-          streamer: { select: { displayName: true } },
+          title: true, type: true, category: true, creatorId: true, durationSeconds: true, sourceCreatedAt: true,
+          creator: { select: { displayName: true } },
         },
       },
     },
-    orderBy: { video: { twitchCreatedAt: 'desc' } },
+    orderBy: { video: { sourceCreatedAt: 'desc' } },
   });
   const played = await loadPlayedDates(user, files.flatMap((file) => file.jellyfinItemId ?? []));
 
@@ -125,8 +125,8 @@ export async function findRetentionCandidates(
   const candidates: RetentionCandidate[] = [];
   for (const file of files) {
     const { policy } = await decideForVideo(file.video);
-    const rank = (seen.get(`${file.video.streamerId}:${file.video.type}`) ?? 0) + 1;
-    seen.set(`${file.video.streamerId}:${file.video.type}`, rank);
+    const rank = (seen.get(`${file.video.creatorId}:${file.video.type}`) ?? 0) + 1;
+    seen.set(`${file.video.creatorId}:${file.video.type}`, rank);
 
     const watchedAt = file.jellyfinItemId ? played.get(file.jellyfinItemId) : undefined;
     const reason = retentionReason(policy, { rank, savedAt: file.createdAt, watchedAt }, now);
@@ -134,7 +134,7 @@ export async function findRetentionCandidates(
       candidates.push({
         fileId: file.id,
         title: file.video.title,
-        streamer: file.video.streamer.displayName,
+        streamer: file.video.creator.displayName,
         sizeBytes: Number(file.sizeBytes),
         reason,
       });
@@ -178,14 +178,14 @@ export async function enqueueFileDelete(
 ): Promise<boolean> {
   return prisma.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`twitch-delete:${fileId}`}))`;
-    const file = await tx.twitchMediaFile.findUnique({ where: { id: fileId }, select: { videoId: true } });
+    const file = await tx.archiveMediaFile.findUnique({ where: { id: fileId }, select: { videoId: true } });
     if (!file) return false;
-    const active = await tx.twitchJob.findFirst({
+    const active = await tx.archiveJob.findFirst({
       where: { mediaFileId: fileId, kind: 'DELETE_FILES', state: { in: ACTIVE_JOB_STATES } },
       select: { id: true },
     });
     if (active) return true;
-    await tx.twitchJob.create({
+    await tx.archiveJob.create({
       data: {
         kind: 'DELETE_FILES',
         options: origin,

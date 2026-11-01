@@ -31,7 +31,7 @@ async function checkToolsPaused(): Promise<void> {
 
 async function subscribersOf(streamerId: string, requestedByUserId: string | null): Promise<string[]> {
   if (requestedByUserId) return [requestedByUserId];
-  const subscriptions = await prisma.twitchSubscription.findMany({ where: { streamerId }, select: { userId: true } });
+  const subscriptions = await prisma.creatorSubscription.findMany({ where: { creatorId: streamerId }, select: { userId: true } });
   return subscriptions.map((subscription) => subscription.userId);
 }
 
@@ -55,11 +55,11 @@ async function refreshed(
 }
 
 async function finishPublishedJobs(now: Date): Promise<void> {
-  const jobs = await prisma.twitchJob.findMany({
+  const jobs = await prisma.archiveJob.findMany({
     where: { needsJellyfinRefresh: true, state: 'DONE' },
     orderBy: { finishedAt: 'asc' },
     take: BATCH,
-    include: { video: { include: { streamer: true } }, mediaFile: { select: { jellyfinItemId: true } } },
+    include: { video: { include: { creator: true } }, mediaFile: { select: { jellyfinItemId: true } } },
   });
   if (jobs.length === 0) return;
 
@@ -75,21 +75,21 @@ async function finishPublishedJobs(now: Date): Promise<void> {
     if (job.kind === 'DELETE_FILES') {
       const library = settings.jellyfinLibraryItemId;
       if (await refreshed(job, library ? () => client!.refreshItem(library, { recursive: true }) : null, client, now)) {
-        await prisma.twitchJob.update({ where: { id: job.id }, data: { needsJellyfinRefresh: false } });
+        await prisma.archiveJob.update({ where: { id: job.id }, data: { needsJellyfinRefresh: false } });
       }
       continue;
     }
 
     const { video } = job;
     if (!video) {
-      await prisma.twitchJob.update({ where: { id: job.id }, data: { needsJellyfinRefresh: false } });
+      await prisma.archiveJob.update({ where: { id: job.id }, data: { needsJellyfinRefresh: false } });
       continue;
     }
     // A swapped file keeps its name, so the item only needs to re-read it. No push: nothing new landed.
     if (job.kind === 'REENCODE' || job.kind === 'RESTORE_ORIGINAL') {
       const known = job.mediaFile?.jellyfinItemId;
       if (await refreshed(job, known ? () => client!.refreshItem(known, { recursive: false }) : null, client, now)) {
-        await prisma.twitchJob.update({ where: { id: job.id }, data: { needsJellyfinRefresh: false } });
+        await prisma.archiveJob.update({ where: { id: job.id }, data: { needsJellyfinRefresh: false } });
       }
       continue;
     }
@@ -101,14 +101,14 @@ async function finishPublishedJobs(now: Date): Promise<void> {
         const series = await client.queryItems({
           ParentId: settings.jellyfinLibraryItemId, IncludeItemTypes: 'Series', Recursive: true, Fields: 'Path',
         });
-        const seriesItem = series.Items?.find((item) => item.Path?.endsWith(`/${video.streamer.folderName}`));
+        const seriesItem = series.Items?.find((item) => item.Path?.endsWith(`/${video.creator.folderName}`));
         await client.refreshItem(seriesItem?.Id ?? settings.jellyfinLibraryItemId, { recursive: true });
 
         const found = await client.queryItems({
           ParentId: settings.jellyfinLibraryItemId,
           IncludeItemTypes: 'Episode',
           Recursive: true,
-          Tags: `twitch-v${video.twitchVideoId}`,
+          Tags: `twitch-v${video.externalId}`,
         });
         itemId = found.Items?.[0]?.Id ?? null;
       } catch (error) {
@@ -121,13 +121,13 @@ async function finishPublishedJobs(now: Date): Promise<void> {
     if (!itemId && !givenUp) continue;
 
     if (itemId) {
-      await prisma.twitchMediaFile.updateMany({ where: { videoId: video.id }, data: { jellyfinItemId: itemId } });
+      await prisma.archiveMediaFile.updateMany({ where: { videoId: video.id }, data: { jellyfinItemId: itemId } });
     }
     const redirect = itemId ? `/jellyfin/library/item/${itemId}` : `/twitch/vod/${video.id}`;
-    for (const userId of await subscribersOf(video.streamerId, job.requestedByUserId)) {
+    for (const userId of await subscribersOf(video.creatorId, job.requestedByUserId)) {
       await notifyAndLog({
         eventType: 'twitchDownloadComplete',
-        title: `${video.streamer.displayName}: download complete`,
+        title: `${video.creator.displayName}: download complete`,
         body: video.title.slice(0, 200),
         url: redirect,
         dedupeKey: `twitch-complete-${job.id}-${userId}`,
@@ -136,22 +136,22 @@ async function finishPublishedJobs(now: Date): Promise<void> {
         metadata: { source: 'twitch', id: video.id, redirect },
       }, { service: 'twitch', instanceId: job.id, reason: 'download-complete' });
     }
-    await prisma.twitchJob.update({ where: { id: job.id }, data: { needsJellyfinRefresh: false } });
+    await prisma.archiveJob.update({ where: { id: job.id }, data: { needsJellyfinRefresh: false } });
   }
 }
 
 async function notifyFailedJobs(now: Date): Promise<void> {
-  const jobs = await prisma.twitchJob.findMany({
+  const jobs = await prisma.archiveJob.findMany({
     where: { state: 'FAILED', kind: 'DOWNLOAD', failureNotifiedAt: null },
     take: BATCH,
-    include: { video: { include: { streamer: true } } },
+    include: { video: { include: { creator: true } } },
   });
   for (const job of jobs) {
     if (job.video) {
-      for (const userId of await subscribersOf(job.video.streamerId, job.requestedByUserId)) {
+      for (const userId of await subscribersOf(job.video.creatorId, job.requestedByUserId)) {
         await notifyAndLog({
           eventType: 'twitchDownloadFailed',
-          title: `${job.video.streamer.displayName}: download failed`,
+          title: `${job.video.creator.displayName}: download failed`,
           body: job.video.title.slice(0, 200),
           url: '/twitch/queue',
           dedupeKey: `twitch-failed-${job.id}-${job.attempts}-${userId}`,
@@ -161,15 +161,15 @@ async function notifyFailedJobs(now: Date): Promise<void> {
         }, { service: 'twitch', instanceId: job.id, reason: 'download-failed' });
       }
     }
-    await prisma.twitchJob.update({ where: { id: job.id }, data: { failureNotifiedAt: now } });
+    await prisma.archiveJob.update({ where: { id: job.id }, data: { failureNotifiedAt: now } });
   }
 }
 
 async function checkWorker(now: Date): Promise<void> {
-  const heartbeat = await prisma.twitchWorkerHeartbeat.findFirst({ orderBy: { lastSeenAt: 'desc' }, select: { lastSeenAt: true } });
+  const heartbeat = await prisma.archiveWorkerHeartbeat.findFirst({ orderBy: { lastSeenAt: 'desc' }, select: { lastSeenAt: true } });
   if (heartbeat && now.getTime() - heartbeat.lastSeenAt.getTime() < WORKER_OFFLINE_MS) return;
   // A worker never started is only worth a word once something is waiting for it.
-  if (!heartbeat && (await prisma.twitchJob.count({ where: { state: { in: ['QUEUED', 'RUNNING'] } } })) === 0) return;
+  if (!heartbeat && (await prisma.archiveJob.count({ where: { state: { in: ['QUEUED', 'RUNNING'] } } })) === 0) return;
 
   const dayKey = now.toISOString().slice(0, 10);
   await notifyAndLog({

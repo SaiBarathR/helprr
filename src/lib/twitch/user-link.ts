@@ -140,11 +140,11 @@ export async function listFollows(userId: string): Promise<FollowedChannel[] | n
     if (!cursor) break;
   }
 
-  const subscribed = await prisma.twitchSubscription.findMany({
-    where: { userId, streamer: { twitchUserId: { in: follows.map((follow) => follow.broadcaster_id) } } },
-    select: { streamer: { select: { twitchUserId: true } } },
+  const subscribed = await prisma.creatorSubscription.findMany({
+    where: { userId, creator: { externalId: { in: follows.map((follow) => follow.broadcaster_id) } } },
+    select: { creator: { select: { externalId: true } } },
   });
-  const known = new Set(subscribed.map((row) => row.streamer.twitchUserId));
+  const known = new Set(subscribed.map((row) => row.creator.externalId));
   return follows.map((follow) => ({
     twitchUserId: follow.broadcaster_id,
     login: follow.broadcaster_login,

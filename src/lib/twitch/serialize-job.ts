@@ -23,22 +23,29 @@ export const JOB_SELECT = {
   video: {
     select: {
       id: true,
-      twitchVideoId: true,
+      externalId: true,
       title: true,
       thumbnailUrl: true,
       durationSeconds: true,
-      streamer: { select: { id: true, displayName: true } },
+      creator: { select: { id: true, displayName: true } },
     },
   },
-} satisfies Prisma.TwitchJobSelect;
+} satisfies Prisma.ArchiveJobSelect;
 
-export type JobRow = Prisma.TwitchJobGetPayload<{ select: typeof JOB_SELECT }>;
+export type JobRow = Prisma.ArchiveJobGetPayload<{ select: typeof JOB_SELECT }>;
 
 /** BigInt does not survive JSON. */
-export function serializeJob(job: JobRow) {
+export function serializeJob({ video, ...job }: JobRow) {
   return {
     ...job,
-    video: job.video && { ...job.video, thumbnailUrl: sizeThumbnail(job.video.thumbnailUrl, 320, 180) },
+    video: video && {
+      id: video.id,
+      twitchVideoId: video.externalId,
+      title: video.title,
+      thumbnailUrl: sizeThumbnail(video.thumbnailUrl, 320, 180),
+      durationSeconds: video.durationSeconds,
+      streamer: video.creator,
+    },
     bytesDone: job.bytesDone === null ? null : Number(job.bytesDone),
     bytesTotal: job.bytesTotal === null ? null : Number(job.bytesTotal),
   };

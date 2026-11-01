@@ -782,7 +782,7 @@ Invariants:
   `user:read:follows`, and importing follows only ever adds subscriptions.
 - A video's category comes from the live stream or its chapters, because Helix has none,
   so older videos have no category.
-- The Library (`/twitch/library`) reads `TwitchMediaFile`, and `serializeFile` is the only
+- The Library (`/twitch/library`) reads `ArchiveMediaFile`, and `serializeFile` is the only
   shape that leaves the server, so a stored path never reaches the browser. `sizeBytes`
   is always the file as it is now; a re-encode keeps the size before it in
   `originalSizeBytes`. Deleting and restoring an original are worker jobs
@@ -792,8 +792,8 @@ Invariants:
   video is never missing and Jellyfin keeps the item.
 - A re-encode at `REENCODE_NOW_PRIORITY` or above skips the night window and the Jellyfin
   hold, because a person asked for it. Anything below still waits for both.
-- `TwitchDeletedFile` is the Library's own record of what was deleted. It is separate from
+- `ArchiveDeletedFile` is the Library's own record of what was deleted. It is separate from
   `FileOperationAudit`, which holds paths and is pruned on its own schedule.
-- Twitch settings live in `TwitchSettings`, not `AppSettings`, because `GET /api/settings`
+- Twitch settings live in `ArchiveSettings`, not `AppSettings`, because `GET /api/settings`
   returns that row to any signed-in user. The browser token is `enc:v1` and no API
   returns it.

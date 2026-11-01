@@ -10,7 +10,7 @@ const TOOL_VERSION = /^[A-Za-z0-9.-]{1,32}$/;
 // Whatever this returns is safe for the browser: the browser token is never in it.
 async function publicSettings() {
   const { browserAuthToken, ...rest } = await getTwitchSettings();
-  const waiting = await prisma.twitchJob.findMany({
+  const waiting = await prisma.archiveJob.findMany({
     where: { kind: 'REENCODE', state: { in: ['QUEUED', 'RETRY_WAIT'] } },
     select: { mediaFile: { select: { sizeBytes: true } } },
   });
@@ -74,7 +74,7 @@ async function putHandler(request: NextRequest): Promise<NextResponse> {
   }
 
   await getTwitchSettings();
-  await prisma.twitchSettings.update({ where: { id: 'singleton' }, data });
+  await prisma.archiveSettings.update({ where: { id: 'singleton' }, data });
   return NextResponse.json(await publicSettings());
 }
 

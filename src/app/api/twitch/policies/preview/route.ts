@@ -16,11 +16,11 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   if (typeof body?.streamerId !== 'string') {
     return NextResponse.json({ error: 'streamerId is required' }, { status: 400 });
   }
-  const videos = await prisma.twitchVideo.findMany({
-    where: { streamerId: body.streamerId },
-    orderBy: { twitchCreatedAt: 'desc' },
+  const videos = await prisma.creatorVideo.findMany({
+    where: { creatorId: body.streamerId },
+    orderBy: { sourceCreatedAt: 'desc' },
     take: PREVIEW_VIDEOS,
-    select: { id: true, title: true, type: true, category: true, streamerId: true, durationSeconds: true },
+    select: { id: true, title: true, type: true, category: true, creatorId: true, durationSeconds: true },
   });
   const draft = { streamer: sanitizeLayer(body.policy), streamerTypes: layerMap(body.typePolicies) };
   const results = await Promise.all(videos.map(async (video) => {

@@ -14,7 +14,7 @@ async function postHandler(
   if (!auth.ok) return auth.response;
 
   const { id } = await params;
-  const job = await prisma.twitchJob.findUnique({
+  const job = await prisma.archiveJob.findUnique({
     where: { id },
     select: { state: true, requestedByUserId: true },
   });
@@ -26,12 +26,12 @@ async function postHandler(
   }
 
   // A job the worker has not claimed ends here; a running one is the worker's to stop.
-  const { count } = await prisma.twitchJob.updateMany({
+  const { count } = await prisma.archiveJob.updateMany({
     where: { id, state: { in: ['QUEUED', 'BLOCKED', 'RETRY_WAIT'] } },
     data: { state: 'CANCELLED', finishedAt: new Date() },
   });
   if (count === 0) {
-    const { count: running } = await prisma.twitchJob.updateMany({
+    const { count: running } = await prisma.archiveJob.updateMany({
       where: { id, state: { in: ACTIVE_JOB_STATES } },
       data: { cancelRequested: true },
     });

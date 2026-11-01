@@ -15,7 +15,7 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
   const streamerId = request.nextUrl.searchParams.get('streamerId');
   const settings = await getTwitchSettings();
   const stored = streamerId
-    ? await prisma.twitchStreamerPolicy.findUnique({ where: { streamerId } })
+    ? await prisma.creatorPolicy.findUnique({ where: { creatorId: streamerId } })
     : null;
   return NextResponse.json({
     defaultPolicy: sanitizeLayer(settings.defaultPolicy),
@@ -32,13 +32,13 @@ async function putHandler(request: NextRequest): Promise<NextResponse> {
   if (!body) return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
 
   if (typeof body.streamerId === 'string') {
-    const streamer = await prisma.twitchStreamer.findUnique({ where: { id: body.streamerId }, select: { id: true } });
+    const streamer = await prisma.creator.findUnique({ where: { id: body.streamerId }, select: { id: true } });
     if (!streamer) return NextResponse.json({ error: 'Streamer not found' }, { status: 404 });
     const data = { policy: json(sanitizeLayer(body.policy)), typePolicies: json(layerMap(body.typePolicies)) };
-    await prisma.twitchStreamerPolicy.upsert({ where: { streamerId: streamer.id }, update: data, create: { streamerId: streamer.id, ...data } });
+    await prisma.creatorPolicy.upsert({ where: { creatorId: streamer.id }, update: data, create: { creatorId: streamer.id, ...data } });
   } else {
     await getTwitchSettings();
-    await prisma.twitchSettings.update({
+    await prisma.archiveSettings.update({
       where: { id: 'singleton' },
       data: { defaultPolicy: json(sanitizeLayer(body.defaultPolicy)), typePolicies: json(layerMap(body.typePolicies)) },
     });

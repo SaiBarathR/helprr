@@ -11,7 +11,7 @@ async function getHandler(
   if (!auth.ok) return auth.response;
 
   const { id } = await params;
-  const streamer = await prisma.twitchStreamer.findUnique({
+  const streamer = await prisma.creator.findUnique({
     where: { id },
     select: {
       id: true, login: true, displayName: true, description: true, profileImageUrl: true,

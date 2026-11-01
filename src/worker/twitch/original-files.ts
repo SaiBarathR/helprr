@@ -1,5 +1,5 @@
 import { lstat, stat } from 'node:fs/promises';
-import type { PrismaClient, TwitchJob } from '@prisma/client';
+import type { PrismaClient, ArchiveJob } from '@prisma/client';
 import { IN_PROGRESS } from './delete-files';
 import { withFileLock } from './file-lock';
 import { existsInLibrary, insideLibrary, removeInsideLibrary, replaceInsideLibrary } from './library-paths';
@@ -8,11 +8,11 @@ import { deleteAuditRow, probe, recordDeletion, writeDeleteAudit } from './reenc
 
 const CONFLICT_WAIT_MS = 5 * 60_000;
 
-async function loadFile(prisma: PrismaClient, job: TwitchJob) {
+async function loadFile(prisma: PrismaClient, job: ArchiveJob) {
   if (!job.mediaFileId) return null;
-  return prisma.twitchMediaFile.findUnique({
+  return prisma.archiveMediaFile.findUnique({
     where: { id: job.mediaFileId },
-    include: { video: { select: { title: true, twitchVideoId: true, streamer: { select: { displayName: true } } } } },
+    include: { video: { select: { title: true, externalId: true, creator: { select: { displayName: true } } } } },
   });
 }
 
@@ -21,14 +21,14 @@ async function loadFile(prisma: PrismaClient, job: TwitchJob) {
  * job has nothing to do: not a retry after it already finished, nor a stalled worker waking up
  * after a later re-encode has parked a new original under the same name.
  */
-function isCurrent(job: TwitchJob, file: { reencodedAt: Date | null }): boolean {
+function isCurrent(job: ArchiveJob, file: { reencodedAt: Date | null }): boolean {
   const { generation } = job.options as { generation?: string | null };
   return (file.reencodedAt?.toISOString() ?? null) === (generation ?? null);
 }
 
 // Not DELETE_FILES: that job waits for this one, so waiting back would never end.
-async function waitForOtherWork(prisma: PrismaClient, job: TwitchJob, file: { id: string; videoId: string }): Promise<void> {
-  const busy = await prisma.twitchJob.count({
+async function waitForOtherWork(prisma: PrismaClient, job: ArchiveJob, file: { id: string; videoId: string }): Promise<void> {
+  const busy = await prisma.archiveJob.count({
     where: {
       id: { not: job.id },
       state: { in: [...IN_PROGRESS] },
@@ -39,12 +39,12 @@ async function waitForOtherWork(prisma: PrismaClient, job: TwitchJob, file: { id
   if (busy > 0) throw new DeferJobError('waiting for other jobs', CONFLICT_WAIT_MS);
 }
 
-const actorOf = (job: TwitchJob) => (
+const actorOf = (job: ArchiveJob) => (
   job.requestedByUsername ? { id: job.requestedByUserId, username: job.requestedByUsername } : undefined
 );
 
 /** Frees the space early. The re-encoded file stays, and this cannot be undone. */
-export async function runDeleteOriginal(prisma: PrismaClient, job: TwitchJob, assertLease: () => Promise<void>): Promise<void> {
+export async function runDeleteOriginal(prisma: PrismaClient, job: ArchiveJob, assertLease: () => Promise<void>): Promise<void> {
   const file = await loadFile(prisma, job);
   if (!file || !isCurrent(job, file)) return;
   await waitForOtherWork(prisma, job, file);
@@ -57,11 +57,11 @@ export async function runDeleteOriginal(prisma: PrismaClient, job: TwitchJob, as
   try {
     const freedBytes = (await lstat(insideLibrary(relative)).catch(() => null))?.size ?? 0;
     done = await withFileLock(prisma, file.id, async (tx) => {
-      const current = await tx.twitchMediaFile.findUnique({ where: { id: file.id }, select: { reencodedAt: true, originalRelativePath: true } });
+      const current = await tx.archiveMediaFile.findUnique({ where: { id: file.id }, select: { reencodedAt: true, originalRelativePath: true } });
       if (!current || !isCurrent(job, current) || current.originalRelativePath !== relative) return false;
       await assertLease();
       await removeInsideLibrary(relative);
-      await tx.twitchMediaFile.update({
+      await tx.archiveMediaFile.update({
         where: { id: file.id },
         data: { originalRelativePath: null, originalDeleteAfter: null, originalDeletedAt: startedAt },
       });
@@ -71,7 +71,7 @@ export async function runDeleteOriginal(prisma: PrismaClient, job: TwitchJob, as
       await recordDeletion(prisma, {
         videoId: file.videoId,
         title: file.video.title,
-        streamer: file.video.streamer.displayName,
+        streamer: file.video.creator.displayName,
         kind: 'ORIGINAL',
         cause: 'PERSON',
         freedBytes,
@@ -85,7 +85,7 @@ export async function runDeleteOriginal(prisma: PrismaClient, job: TwitchJob, as
     await writeDeleteAudit(prisma, {
       title: file.video.title,
       fileCount: 1,
-      details: { kind: 'original-deleted-by-request', twitchVideoId: file.video.twitchVideoId, paths: [relative] },
+      details: { kind: 'original-deleted-by-request', twitchVideoId: file.video.externalId, paths: [relative] },
       startedAt,
       errorMessage,
       actor: actorOf(job),
@@ -116,7 +116,7 @@ async function verifyOriginal(
  * Jellyfin keeps the item, its watched state and the resume point. The row and the refresh
  * are written together, so a restart either finds the job undone or finds it finished.
  */
-export async function runRestoreOriginal(prisma: PrismaClient, job: TwitchJob, assertLease: () => Promise<void>): Promise<void> {
+export async function runRestoreOriginal(prisma: PrismaClient, job: ArchiveJob, assertLease: () => Promise<void>): Promise<void> {
   const file = await loadFile(prisma, job);
   if (!file || !isCurrent(job, file)) return;
   await waitForOtherWork(prisma, job, file);
@@ -128,7 +128,7 @@ export async function runRestoreOriginal(prisma: PrismaClient, job: TwitchJob, a
   const audit = {
     title: file.video.title,
     fileCount: 1,
-    details: { kind: 'original-restored-by-request', twitchVideoId: file.video.twitchVideoId, paths: [file.relativePath, relative] },
+    details: { kind: 'original-restored-by-request', twitchVideoId: file.video.externalId, paths: [file.relativePath, relative] },
     startedAt,
     actor: actorOf(job),
   };
@@ -146,7 +146,7 @@ export async function runRestoreOriginal(prisma: PrismaClient, job: TwitchJob, a
     }
 
     await withFileLock(prisma, file.id, async (tx) => {
-      const current = await tx.twitchMediaFile.findUnique({ where: { id: file.id }, select: { reencodedAt: true, originalRelativePath: true } });
+      const current = await tx.archiveMediaFile.findUnique({ where: { id: file.id }, select: { reencodedAt: true, originalRelativePath: true } });
       if (!current || !isCurrent(job, current) || current.originalRelativePath !== relative) return;
       await assertLease();
       if (stillParked) {
@@ -154,7 +154,7 @@ export async function runRestoreOriginal(prisma: PrismaClient, job: TwitchJob, a
         replaced = true;
       }
       const { size } = await stat(target);
-      await tx.twitchMediaFile.update({
+      await tx.archiveMediaFile.update({
         where: { id: file.id },
         data: {
           sizeBytes: BigInt(size),
@@ -167,7 +167,7 @@ export async function runRestoreOriginal(prisma: PrismaClient, job: TwitchJob, a
           originalVideoCodec: null,
         },
       });
-      await tx.twitchJob.update({ where: { id: job.id }, data: { needsJellyfinRefresh: true } });
+      await tx.archiveJob.update({ where: { id: job.id }, data: { needsJellyfinRefresh: true } });
       // In the same commit, so a restart after it cannot leave the restore off the record.
       // A failure here fails the step, and the retry finds the original already in place.
       await tx.fileOperationAudit.create({ data: deleteAuditRow({ ...audit, errorMessage: null, filesDeleted: true }) });
@@ -181,7 +181,7 @@ export async function runRestoreOriginal(prisma: PrismaClient, job: TwitchJob, a
 
 /** For files re-encoded before sizes were kept: the parked copy still has the answer. */
 export async function measureParkedOriginals(prisma: PrismaClient): Promise<number> {
-  const files = await prisma.twitchMediaFile.findMany({
+  const files = await prisma.archiveMediaFile.findMany({
     where: { originalRelativePath: { not: null }, originalSizeBytes: null },
     select: { id: true, originalRelativePath: true },
   });
@@ -189,7 +189,7 @@ export async function measureParkedOriginals(prisma: PrismaClient): Promise<numb
   for (const file of files) {
     const info = await stat(insideLibrary(file.originalRelativePath!)).catch(() => null);
     if (!info) continue;
-    await prisma.twitchMediaFile.update({ where: { id: file.id }, data: { originalSizeBytes: BigInt(info.size) } });
+    await prisma.archiveMediaFile.update({ where: { id: file.id }, data: { originalSizeBytes: BigInt(info.size) } });
     measured += 1;
   }
   return measured;

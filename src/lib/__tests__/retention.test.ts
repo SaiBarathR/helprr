@@ -23,9 +23,9 @@ function databaseFixture(counts: number[] = [1, 2, 3, 4, 5, 6, 7, 8, 9]) {
       session: delegates[3],
       fileOperationAudit: delegates[4],
       recommendationEvent: delegates[5],
-      twitchJobEvent: delegates[6],
-      twitchJob: delegates[7],
-      twitchVideo: delegates[8],
+      archiveJobEvent: delegates[6],
+      archiveJob: delegates[7],
+      creatorVideo: delegates[8],
     } as unknown as NonNullable<RetentionSweepOptions['database']>,
     delegates,
   };

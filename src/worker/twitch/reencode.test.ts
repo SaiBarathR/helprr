@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import type { PrismaClient, TwitchJob } from '@prisma/client';
+import type { PrismaClient, ArchiveJob } from '@prisma/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
@@ -35,16 +35,16 @@ const output = (args: string[]) => args[args.length - 1];
 function setup() {
   const update = vi.fn().mockResolvedValue({});
   const prisma = {
-    twitchMediaFile: {
+    archiveMediaFile: {
       findUniqueOrThrow: vi.fn().mockResolvedValue({ id: 'f', relativePath: 'a/x.mkv', originalRelativePath: null }),
       update,
     },
-    twitchJob: { update: vi.fn().mockResolvedValue({}) },
+    archiveJob: { update: vi.fn().mockResolvedValue({}) },
   };
   const note = vi.fn().mockResolvedValue(undefined);
   const start = () => runReencode({
     prisma: prisma as unknown as PrismaClient,
-    job: { id: 'j', mediaFileId: 'f' } as TwitchJob,
+    job: { id: 'j', mediaFileId: 'f' } as ArchiveJob,
     signal: new AbortController().signal,
     quality: 20,
     preset: 'faster',

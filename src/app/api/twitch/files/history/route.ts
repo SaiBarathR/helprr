@@ -15,8 +15,8 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
     ? { OR: [{ title: { contains: q, mode: 'insensitive' as const } }, { streamer: { contains: q, mode: 'insensitive' as const } }] }
     : {};
   const [rows, total] = await Promise.all([
-    prisma.twitchDeletedFile.findMany({ where, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], skip, take }),
-    prisma.twitchDeletedFile.count({ where }),
+    prisma.archiveDeletedFile.findMany({ where, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], skip, take }),
+    prisma.archiveDeletedFile.count({ where }),
   ]);
   return NextResponse.json({
     deletions: rows.map((row) => ({ ...row, freedBytes: Number(row.freedBytes) })),

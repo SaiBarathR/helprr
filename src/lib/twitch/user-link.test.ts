@@ -10,7 +10,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('axios', () => ({
   default: { get: mocks.get, post: mocks.post, isAxiosError: (e: { isAxiosError?: boolean }) => Boolean(e?.isAxiosError) },
 }));
-vi.mock('@/lib/db', () => ({ prisma: { twitchUserLink: mocks.link, twitchSubscription: mocks.subscription } }));
+vi.mock('@/lib/db', () => ({ prisma: { twitchUserLink: mocks.link, creatorSubscription: mocks.subscription } }));
 vi.mock('@/lib/twitch/helix', () => ({
   TWITCH_HELIX_URL: 'https://helix',
   getTwitchClientCredentials: async () => ({ clientId: 'id', clientSecret: 'secret' }),
@@ -96,7 +96,7 @@ describe('listFollows', () => {
     mocks.get
       .mockResolvedValueOnce({ data: { data: [{ broadcaster_id: '1', broadcaster_login: 'a', broadcaster_name: 'A' }], pagination: { cursor: 'next' } } })
       .mockResolvedValueOnce({ data: { data: [{ broadcaster_id: '2', broadcaster_login: 'b', broadcaster_name: 'B' }] } });
-    mocks.subscription.findMany.mockResolvedValue([{ streamer: { twitchUserId: '2' } }]);
+    mocks.subscription.findMany.mockResolvedValue([{ creator: { externalId: '2' } }]);
 
     const follows = await listFollows('u1');
 

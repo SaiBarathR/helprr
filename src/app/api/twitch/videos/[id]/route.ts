@@ -14,7 +14,7 @@ async function getHandler(
   if (!auth.ok) return auth.response;
 
   const { id } = await params;
-  const video = await prisma.twitchVideo.findUnique({
+  const video = await prisma.creatorVideo.findUnique({
     where: { id },
     select: {
       ...VIDEO_SELECT,
@@ -25,7 +25,7 @@ async function getHandler(
 
   const { userStates, ...rest } = video;
   const [decision, settings] = await Promise.all([
-    decideForVideo({ ...rest, streamerId: rest.streamer.id }),
+    decideForVideo({ ...rest, creatorId: rest.creator.id }),
     getTwitchSettings(),
   ]);
   return NextResponse.json({

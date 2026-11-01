@@ -3,7 +3,7 @@ import { mkdir, readdir, readFile, rename, rm, stat, statfs, writeFile } from 'n
 import path from 'node:path';
 import { pipeline as pipeStreams } from 'node:stream/promises';
 import { createGzip } from 'node:zlib';
-import type { PrismaClient, TwitchJob, TwitchStreamer, TwitchVideo } from '@prisma/client';
+import type { PrismaClient, ArchiveJob, Creator, CreatorVideo } from '@prisma/client';
 import { chapterGenres, chaptersToFfmetadata, sanitizeInfoJson, type YtDlpChapter } from '@/lib/twitch/chapters';
 import { chatToAss, type ChatComment } from '@/lib/twitch/chat-ass';
 import { archiveEpisode, episodeBaseName, seasonFolder, type SeasonKind } from '@/lib/twitch/naming';
@@ -41,8 +41,8 @@ interface VideoInfo {
 
 interface JobContext {
   prisma: PrismaClient;
-  job: TwitchJob;
-  video: TwitchVideo & { streamer: TwitchStreamer };
+  job: ArchiveJob;
+  video: CreatorVideo & { creator: Creator };
   options: DownloadOptions;
   signal: AbortSignal;
   minFreeGb: number;
@@ -95,7 +95,7 @@ async function downloadVideo(ctx: JobContext, staging: string, format: string): 
     '--write-info-json',
     '-o', path.join(staging, 'video.%(ext)s'),
     ...(cookiesFile ? ['--cookies', cookiesFile] : []),
-    videoUrl(video.twitchVideoId),
+    videoUrl(video.externalId),
   ];
   try {
     await run(toolPath('ytdlp'), args, {
@@ -104,7 +104,7 @@ async function downloadVideo(ctx: JobContext, staging: string, format: string): 
         const progress = parseProgressLine(line);
         if (!progress || Date.now() - lastWrite < DB_PROGRESS_INTERVAL_MS) return;
         lastWrite = Date.now();
-        void prisma.twitchJob.update({
+        void prisma.archiveJob.update({
           where: { id: job.id },
           data: {
             progress: progress.totalBytes ? Math.min(1, (progress.downloadedBytes ?? 0) / progress.totalBytes) : null,
@@ -122,7 +122,7 @@ async function downloadVideo(ctx: JobContext, staging: string, format: string): 
     await rm(staging, { recursive: true, force: true });
     await mkdir(staging, { recursive: true });
     await run(toolPath('td'), [
-      'videodownload', '-u', video.twitchVideoId, '-q', format, '--threads', '6', '--ffmpeg-path', FFMPEG,
+      'videodownload', '-u', video.externalId, '-q', format, '--threads', '6', '--ffmpeg-path', FFMPEG,
       '--temp-path', path.join(staging, 'cache'), '--collision', 'Exit', '--banner', 'false',
       '-o', path.join(staging, 'video.mp4'),
       // Its only way in. This stays inside the container, and arguments are never logged.
@@ -144,7 +144,7 @@ async function archiveChat(ctx: JobContext, staging: string): Promise<ChatFiles 
   const { video, signal } = ctx;
   const json = path.join(staging, 'chat.json');
   try {
-    await run(toolPath('td'), ['chatdownload', '--id', video.twitchVideoId, '-o', json, '--banner', 'false'], {
+    await run(toolPath('td'), ['chatdownload', '--id', video.externalId, '-o', json, '--banner', 'false'], {
       signal,
       env: { ...process.env, DOTNET_SYSTEM_GLOBALIZATION_INVARIANT: '1' },
     });
@@ -167,8 +167,8 @@ async function archiveChat(ctx: JobContext, staging: string): Promise<ChatFiles 
 
 async function publish(ctx: JobContext, staging: string, mkv: string, info: VideoInfo, duration: number, probed: Awaited<ReturnType<typeof probe>>, chat: ChatFiles | null) {
   const { prisma, video, job, options } = ctx;
-  const { streamer } = video;
-  const date = video.twitchCreatedAt;
+  const { creator: streamer } = video;
+  const date = video.sourceCreatedAt;
   const kind = video.type as SeasonKind;
   const numbering = kind === 'ARCHIVE'
     ? archiveEpisode(date)
@@ -184,7 +184,7 @@ async function publish(ctx: JobContext, staging: string, mkv: string, info: Vide
     episode: numbering.episode,
     date,
     title: video.title,
-    twitchVideoId: video.twitchVideoId,
+    twitchVideoId: video.externalId,
   });
 
   await writeFile(path.join(seriesDir, 'tvshow.nfo'), tvshowNfo({
@@ -192,7 +192,7 @@ async function publish(ctx: JobContext, staging: string, mkv: string, info: Vide
     login: streamer.login,
     description: streamer.description,
     broadcasterType: streamer.broadcasterType,
-    twitchUserId: streamer.twitchUserId,
+    twitchUserId: streamer.externalId,
   }));
   await writeArt(streamer, seriesDir, ctx.signal);
 
@@ -212,7 +212,7 @@ async function publish(ctx: JobContext, staging: string, mkv: string, info: Vide
     description: video.description,
     type: kind.toLowerCase() as 'archive' | 'highlight' | 'upload',
     genres: chapterGenres(info.chapters ?? []),
-    twitchVideoId: video.twitchVideoId,
+    twitchVideoId: video.externalId,
   }));
   sidecars.push(nfoFile);
   const infoJson = path.join(staging, 'video.info.json');
@@ -240,7 +240,7 @@ async function publish(ctx: JobContext, staging: string, mkv: string, info: Vide
 
   const relativePath = path.relative(LIBRARY_DIR, path.join(seasonDir, videoName));
   const { size } = await stat(path.join(seasonDir, videoName));
-  await prisma.twitchMediaFile.upsert({
+  await prisma.archiveMediaFile.upsert({
     where: { relativePath },
     update: { sizeBytes: BigInt(size), durationSeconds: Math.round(duration), videoCodec: probed.videoCodec, height: probed.height, keepForever: options.keepForever },
     create: {
@@ -254,9 +254,9 @@ async function publish(ctx: JobContext, staging: string, mkv: string, info: Vide
       keepForever: options.keepForever,
     },
   });
-  await prisma.twitchJob.update({ where: { id: job.id }, data: { needsJellyfinRefresh: true } });
+  await prisma.archiveJob.update({ where: { id: job.id }, data: { needsJellyfinRefresh: true } });
   const firstGame = chapterGenres(info.chapters ?? [])[0];
-  await prisma.twitchVideo.update({
+  await prisma.creatorVideo.update({
     where: { id: video.id },
     data: {
       ...(firstGame && !video.category ? { category: firstGame } : {}),
@@ -267,15 +267,15 @@ async function publish(ctx: JobContext, staging: string, mkv: string, info: Vide
   });
 
   if (options.reencode && ctx.reencodeEnabled && probed.videoCodec === 'h264') {
-    const { id: mediaFileId } = await prisma.twitchMediaFile.findUniqueOrThrow({ where: { relativePath }, select: { id: true } });
-    await prisma.twitchJob.create({
+    const { id: mediaFileId } = await prisma.archiveMediaFile.findUniqueOrThrow({ where: { relativePath }, select: { id: true } });
+    await prisma.archiveJob.create({
       data: { kind: 'REENCODE', videoId: video.id, mediaFileId, source: job.source, requestedByUserId: job.requestedByUserId, requestedByUsername: job.requestedByUsername },
     });
   }
 }
 
 // Jellyfin's art comes from the same files every time, so they are only ever fetched once.
-async function writeArt(streamer: TwitchStreamer, seriesDir: string, signal: AbortSignal): Promise<void> {
+async function writeArt(streamer: Creator, seriesDir: string, signal: AbortSignal): Promise<void> {
   const targets: Array<[string, string | null]> = [
     ['poster.jpg', streamer.profileImageUrl],
     ['fanart.jpg', streamer.offlineImageUrl],
@@ -322,17 +322,17 @@ async function fetchArtwork(url: string, signal: AbortSignal): Promise<Buffer | 
   }
 }
 
-async function assignSequentialEpisode(prisma: PrismaClient, video: TwitchVideo, kind: SeasonKind) {
+async function assignSequentialEpisode(prisma: PrismaClient, video: CreatorVideo, kind: SeasonKind) {
   const season = kind === 'HIGHLIGHT' ? 1 : 2;
   if (video.seasonEpisode !== null) return { season, episode: video.seasonEpisode };
   const episode = await prisma.$transaction(async (tx) => {
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`twitch-season:${video.streamerId}:${kind}`}))`;
-    const { _max } = await tx.twitchVideo.aggregate({
-      where: { streamerId: video.streamerId, type: video.type },
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`twitch-season:${video.creatorId}:${kind}`}))`;
+    const { _max } = await tx.creatorVideo.aggregate({
+      where: { creatorId: video.creatorId, type: video.type },
       _max: { seasonEpisode: true },
     });
     const next = (_max.seasonEpisode ?? 0) + 1;
-    await tx.twitchVideo.update({ where: { id: video.id }, data: { seasonEpisode: next } });
+    await tx.creatorVideo.update({ where: { id: video.id }, data: { seasonEpisode: next } });
     return next;
   });
   return { season, episode };
@@ -348,7 +348,7 @@ export async function runDownload(ctx: JobContext): Promise<void> {
   let info: VideoInfo = {};
   try {
     const json = await run(toolPath('ytdlp'), [
-      '-J', '--no-playlist', ...(cookiesFile ? ['--cookies', cookiesFile] : []), videoUrl(video.twitchVideoId),
+      '-J', '--no-playlist', ...(cookiesFile ? ['--cookies', cookiesFile] : []), videoUrl(video.externalId),
     ], { signal, captureStdout: true });
     info = JSON.parse(json) as VideoInfo;
   } catch (error) {

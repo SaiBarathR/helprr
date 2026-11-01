@@ -1,4 +1,4 @@
-import type { Prisma, TwitchJobKind } from '@prisma/client';
+import type { Prisma, ArchiveJobKind } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { ACTIVE_JOB_STATES } from './jobs';
 import { REENCODE_NOW_PRIORITY } from './reencode-window';
@@ -30,12 +30,12 @@ export const FILE_SELECT = {
   video: {
     select: {
       id: true,
-      twitchVideoId: true,
+      externalId: true,
       type: true,
       title: true,
       thumbnailUrl: true,
-      twitchCreatedAt: true,
-      streamer: { select: { id: true, displayName: true, profileImageUrl: true } },
+      sourceCreatedAt: true,
+      creator: { select: { id: true, displayName: true, profileImageUrl: true } },
     },
   },
   jobs: {
@@ -43,9 +43,9 @@ export const FILE_SELECT = {
     select: { id: true, kind: true, state: true, stage: true, progress: true, priority: true },
     take: 1,
   },
-} satisfies Prisma.TwitchMediaFileSelect;
+} satisfies Prisma.ArchiveMediaFileSelect;
 
-export type FileRow = Prisma.TwitchMediaFileGetPayload<{ select: typeof FILE_SELECT }>;
+export type FileRow = Prisma.ArchiveMediaFileGetPayload<{ select: typeof FILE_SELECT }>;
 
 const sidecarNames = (sidecars: Prisma.JsonValue): string[] => (
   Array.isArray(sidecars) ? sidecars.filter((entry): entry is string => typeof entry === 'string') : []
@@ -57,12 +57,12 @@ export function serializeFile(file: FileRow, watchedAt?: Date) {
   return {
     id: file.id,
     videoId: file.videoId,
-    twitchVideoId: file.video.twitchVideoId,
+    twitchVideoId: file.video.externalId,
     type: file.video.type,
     title: file.video.title,
     thumbnailUrl: sizeThumbnail(file.video.thumbnailUrl),
-    streamedAt: file.video.twitchCreatedAt,
-    streamer: file.video.streamer,
+    streamedAt: file.video.sourceCreatedAt,
+    streamer: file.video.creator,
     sizeBytes: Number(file.sizeBytes),
     durationSeconds: file.durationSeconds,
     videoCodec: file.videoCodec,
@@ -87,7 +87,7 @@ export function serializeFile(file: FileRow, watchedAt?: Date) {
 
 export type LibraryFilter = 'reencoded' | 'not-reencoded' | 'original-kept' | 'keep-forever' | 'not-in-jellyfin';
 
-const FILTERS: Record<LibraryFilter, Prisma.TwitchMediaFileWhereInput> = {
+const FILTERS: Record<LibraryFilter, Prisma.ArchiveMediaFileWhereInput> = {
   reencoded: { reencodedAt: { not: null } },
   'not-reencoded': { reencodedAt: null },
   'original-kept': { originalRelativePath: { not: null } },
@@ -95,25 +95,25 @@ const FILTERS: Record<LibraryFilter, Prisma.TwitchMediaFileWhereInput> = {
   'not-in-jellyfin': { jellyfinItemId: null },
 };
 
-export function buildFileWhere(params: URLSearchParams): Prisma.TwitchMediaFileWhereInput {
-  const and: Prisma.TwitchMediaFileWhereInput[] = [];
+export function buildFileWhere(params: URLSearchParams): Prisma.ArchiveMediaFileWhereInput {
+  const and: Prisma.ArchiveMediaFileWhereInput[] = [];
   const filter = FILTERS[params.get('filter') as LibraryFilter];
   if (filter) and.push(filter);
   const streamer = params.get('streamer');
-  if (streamer) and.push({ video: { streamerId: streamer } });
+  if (streamer) and.push({ video: { creatorId: streamer } });
   const q = params.get('q')?.trim().slice(0, 100);
   if (q) {
     and.push({
       OR: [
         { video: { title: { contains: q, mode: 'insensitive' } } },
-        { video: { streamer: { displayName: { contains: q, mode: 'insensitive' } } } },
+        { video: { creator: { displayName: { contains: q, mode: 'insensitive' } } } },
       ],
     });
   }
   return { AND: and };
 }
 
-const ORDERS: Record<string, Prisma.TwitchMediaFileOrderByWithRelationInput[]> = {
+const ORDERS: Record<string, Prisma.ArchiveMediaFileOrderByWithRelationInput[]> = {
   oldest: [{ createdAt: 'asc' }, { id: 'asc' }],
   largest: [{ sizeBytes: 'desc' }, { id: 'desc' }],
   newest: [{ createdAt: 'desc' }, { id: 'desc' }],
@@ -125,15 +125,15 @@ const savedBytes = (file: { reencodedAt: Date | null; sizeBytes: bigint; origina
 
 /** A saving is a difference of two columns, so that sort is done here. A library is small. */
 export async function listFiles(
-  where: Prisma.TwitchMediaFileWhereInput,
+  where: Prisma.ArchiveMediaFileWhereInput,
   sort: string | null,
   skip: number,
   take: number,
 ): Promise<FileRow[]> {
   if (sort !== 'saved') {
-    return prisma.twitchMediaFile.findMany({ where, orderBy: ORDERS[sort ?? ''] ?? ORDERS.newest, skip, take, select: FILE_SELECT });
+    return prisma.archiveMediaFile.findMany({ where, orderBy: ORDERS[sort ?? ''] ?? ORDERS.newest, skip, take, select: FILE_SELECT });
   }
-  const sizes = await prisma.twitchMediaFile.findMany({
+  const sizes = await prisma.archiveMediaFile.findMany({
     where,
     select: { id: true, reencodedAt: true, sizeBytes: true, originalSizeBytes: true },
   });
@@ -142,24 +142,24 @@ export async function listFiles(
     .sort((a, b) => savedBytes(b) - savedBytes(a) || a.id.localeCompare(b.id))
     .slice(skip, skip + take)
     .map((file) => file.id);
-  const rows = await prisma.twitchMediaFile.findMany({ where: { id: { in: ids } }, select: FILE_SELECT });
+  const rows = await prisma.archiveMediaFile.findMany({ where: { id: { in: ids } }, select: FILE_SELECT });
   return ids.flatMap((id) => rows.find((row) => row.id === id) ?? []);
 }
 
 export async function summarizeFiles() {
   const [files, heartbeat, waiting, freed] = await Promise.all([
-    prisma.twitchMediaFile.findMany({
+    prisma.archiveMediaFile.findMany({
       select: {
         reencodedAt: true,
         sizeBytes: true,
         originalSizeBytes: true,
         originalRelativePath: true,
-        video: { select: { streamer: { select: { id: true, displayName: true } } } },
+        video: { select: { creator: { select: { id: true, displayName: true } } } },
       },
     }),
-    prisma.twitchWorkerHeartbeat.findFirst({ orderBy: { lastSeenAt: 'desc' }, select: { diskFreeBytes: true } }),
-    prisma.twitchJob.count({ where: { kind: 'REENCODE', state: { in: ACTIVE_JOB_STATES } } }),
-    prisma.twitchDeletedFile.aggregate({ _sum: { freedBytes: true } }),
+    prisma.archiveWorkerHeartbeat.findFirst({ orderBy: { lastSeenAt: 'desc' }, select: { diskFreeBytes: true } }),
+    prisma.archiveJob.count({ where: { kind: 'REENCODE', state: { in: ACTIVE_JOB_STATES } } }),
+    prisma.archiveDeletedFile.aggregate({ _sum: { freedBytes: true } }),
   ]);
 
   const streamers = new Map<string, { id: string; displayName: string; count: number; bytes: number }>();
@@ -170,7 +170,7 @@ export async function summarizeFiles() {
   let originalsBytes = 0;
   for (const file of files) {
     const bytes = Number(file.sizeBytes);
-    const { id, displayName } = file.video.streamer;
+    const { id, displayName } = file.video.creator;
     const entry = streamers.get(id) ?? { id, displayName, count: 0, bytes: 0 };
     entry.count += 1;
     entry.bytes += bytes;
@@ -200,7 +200,7 @@ export async function summarizeFiles() {
 
 /** What re-encoding has really saved here, as a percentage, or null before there is a result. */
 export async function typicalSavingPercent(): Promise<number | null> {
-  const { _sum } = await prisma.twitchMediaFile.aggregate({
+  const { _sum } = await prisma.archiveMediaFile.aggregate({
     where: { reencodedAt: { not: null }, originalSizeBytes: { not: null } },
     _sum: { sizeBytes: true, originalSizeBytes: true },
   });
@@ -224,30 +224,30 @@ async function withFileLock<T>(fileId: string, work: (tx: Prisma.TransactionClie
 }
 
 const activeDownload = (tx: Prisma.TransactionClient, videoId: string) => (
-  tx.twitchJob.findFirst({ where: { videoId, kind: 'DOWNLOAD', state: { in: ACTIVE_JOB_STATES } }, select: { id: true } })
+  tx.archiveJob.findFirst({ where: { videoId, kind: 'DOWNLOAD', state: { in: ACTIVE_JOB_STATES } }, select: { id: true } })
 );
 
 /** `now` beats the night window. Asking for a job already waiting moves it rather than doubling it. */
 export function requestReencode(fileId: string, when: 'now' | 'tonight', actor: Actor): Promise<FileJobResult> {
   const priority = when === 'now' ? REENCODE_NOW_PRIORITY : 0;
   return withFileLock(fileId, async (tx) => {
-    const file = await tx.twitchMediaFile.findUnique({ where: { id: fileId }, select: { videoId: true, reencodedAt: true, videoCodec: true } });
+    const file = await tx.archiveMediaFile.findUnique({ where: { id: fileId }, select: { videoId: true, reencodedAt: true, videoCodec: true } });
     if (!file) return 'missing';
     if (file.reencodedAt || file.videoCodec === 'hevc') return 'nothing-to-do';
 
-    const active = await tx.twitchJob.findFirst({
+    const active = await tx.archiveJob.findFirst({
       where: { mediaFileId: fileId, state: { in: ACTIVE_JOB_STATES } },
       select: { id: true, kind: true, state: true },
     });
     if (active?.kind === 'REENCODE') {
       if (active.state !== 'RUNNING') {
-        await tx.twitchJob.update({ where: { id: active.id }, data: { priority, runAfter: new Date() } });
+        await tx.archiveJob.update({ where: { id: active.id }, data: { priority, runAfter: new Date() } });
       }
       return 'queued';
     }
     if (active || await activeDownload(tx, file.videoId)) return 'busy';
 
-    await tx.twitchJob.create({
+    await tx.archiveJob.create({
       data: {
         kind: 'REENCODE',
         videoId: file.videoId,
@@ -265,17 +265,17 @@ export function requestReencode(fileId: string, when: 'now' | 'tonight', actor: 
 /** Deleting or restoring an original. Refused while anything else is working on the file. */
 export function requestOriginalJob(
   fileId: string,
-  kind: Extract<TwitchJobKind, 'DELETE_ORIGINAL' | 'RESTORE_ORIGINAL'>,
+  kind: Extract<ArchiveJobKind, 'DELETE_ORIGINAL' | 'RESTORE_ORIGINAL'>,
   actor: Actor,
 ): Promise<FileJobResult> {
   return withFileLock(fileId, async (tx) => {
-    const file = await tx.twitchMediaFile.findUnique({ where: { id: fileId }, select: { videoId: true, reencodedAt: true, originalRelativePath: true } });
+    const file = await tx.archiveMediaFile.findUnique({ where: { id: fileId }, select: { videoId: true, reencodedAt: true, originalRelativePath: true } });
     if (!file) return 'missing';
     if (!file.originalRelativePath) return 'nothing-to-do';
-    const active = await tx.twitchJob.findFirst({ where: { mediaFileId: fileId, state: { in: ACTIVE_JOB_STATES } }, select: { id: true } });
+    const active = await tx.archiveJob.findFirst({ where: { mediaFileId: fileId, state: { in: ACTIVE_JOB_STATES } }, select: { id: true } });
     if (active || await activeDownload(tx, file.videoId)) return 'busy';
 
-    await tx.twitchJob.create({
+    await tx.archiveJob.create({
       data: {
         kind,
         // The worker refuses to act once this re-encode is no longer the current one.
@@ -293,13 +293,13 @@ export function requestOriginalJob(
 /** What happened to this video, oldest first. Job errors are left out: they can name paths. */
 export async function fileTimeline(fileId: string, videoId: string) {
   const [jobs, deletions] = await Promise.all([
-    prisma.twitchJob.findMany({
+    prisma.archiveJob.findMany({
       where: { OR: [{ mediaFileId: fileId }, { videoId, kind: 'DOWNLOAD' }] },
       orderBy: { createdAt: 'asc' },
       take: 50,
       select: { id: true, kind: true, state: true, source: true, requestedByUsername: true, createdAt: true, startedAt: true, finishedAt: true },
     }),
-    prisma.twitchDeletedFile.findMany({
+    prisma.archiveDeletedFile.findMany({
       where: { videoId, kind: 'ORIGINAL' },
       orderBy: { createdAt: 'asc' },
       take: 20,

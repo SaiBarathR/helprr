@@ -21,7 +21,7 @@ async function putHandler(request: NextRequest): Promise<NextResponse> {
   if (valid === false) return NextResponse.json({ error: 'Twitch rejected this token' }, { status: 400 });
 
   await getTwitchSettings();
-  await prisma.twitchSettings.update({
+  await prisma.archiveSettings.update({
     where: { id: 'singleton' },
     data: { browserAuthToken: encryptTwitchToken(token), browserAuthTokenValid: valid, browserAuthTokenCheckedAt: new Date() },
   });
@@ -33,7 +33,7 @@ async function deleteHandler(): Promise<NextResponse> {
   if (!auth.ok) return auth.response;
 
   await getTwitchSettings();
-  await prisma.twitchSettings.update({
+  await prisma.archiveSettings.update({
     where: { id: 'singleton' },
     data: { browserAuthToken: null, browserAuthTokenValid: null, browserAuthTokenCheckedAt: null },
   });
