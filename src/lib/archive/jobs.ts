@@ -14,6 +14,9 @@ export interface DownloadOptions {
   keepForever: boolean;
   /** YouTube only. */
   codec?: string;
+  hdr?: boolean;
+  /** The exact copy the sheet showed. Only ever matched against the worker's own list. */
+  formatId?: string;
   captions?: boolean;
   sponsorblock?: string;
 }

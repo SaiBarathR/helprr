@@ -25,7 +25,7 @@ import {
   type TwitchFileDetail,
 } from '@/components/creators/file-types';
 import { SwitchRow } from '@/components/creators/setting-rows';
-import { formatDuration } from '@/components/creators/types';
+import { fileQuality, formatDuration } from '@/components/creators/types';
 import { useFileActions } from '@/components/creators/use-file-actions';
 import { formatBytes } from '@/lib/format';
 import { toCachedImageSrc } from '@/lib/image';
@@ -284,12 +284,12 @@ export function CreatorFilePage({ params }: { params: Promise<{ id: string }> })
             <GroupedSection title="File">
               <Row label="Size" value={formatBytes(file.sizeBytes)} />
               <Row label="Codec" value={codec} />
-              {file.height && <Row label="Resolution" value={`${file.height}p`} />}
+              {file.height && <Row label="Resolution" value={file.width ? `${fileQuality(file)} (${file.width}×${file.height})` : fileQuality(file)} />}
               {bitrate && <Row label="Bitrate" value={originalBitrate && file.reencodedAt ? `${originalBitrate} → ${bitrate}` : bitrate} />}
               <Row label="Length" value={formatDuration(file.durationSeconds)} />
-              <Row label="Streamed" value={format(new Date(file.streamedAt), DATE)} />
+              <Row label={platform.id === 'youtube' ? 'Published' : 'Streamed'} value={format(new Date(file.streamedAt), DATE)} />
               <Row label="Downloaded" value={format(new Date(file.downloadedAt), DATE)} />
-              <Row label="Chat" value={file.chatArchived ? 'Archived' : 'Not archived'} />
+              {platform.id === 'twitch' && <Row label="Chat" value={file.chatArchived ? 'Archived' : 'Not archived'} />}
               <Row label="Jellyfin" value={file.jellyfinItemId ? 'In the library' : 'Not found yet'} tone={file.jellyfinItemId ? undefined : 'text-amber-400'} />
             </GroupedSection>
 

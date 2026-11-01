@@ -992,23 +992,35 @@ them. It shares the Twitch worker, and is off until you set it up.
 
 ### Downloading
 
-The download sheet offers only what a video really has, with exact sizes, and defaults
-to **1080p H.264**, which plays almost everywhere.
+The download sheet first asks YouTube what this video really offers, which usually takes a
+few seconds. It then lists only those qualities and codecs, each with the size YouTube
+reports, and the worker fetches exactly the copy you chose. It starts from your rules, so
+by default **1080p H.264**, which plays almost everywhere. If the check fails, the sheet
+says so and shows no size, and the Queue shows what was saved.
+
+**Quality comes first**: 4K always means 4K. YouTube has no H.264 above 1080p, so 4K
+uses VP9 or AV1 and the sheet tells you which. A video's shape does not matter: MKBHD's
+3840×1920 counts as 4K, and a Short's 1080×1920 as 1080p.
 
 | Codec | Pick it when |
 | --- | --- |
-| Most compatible (H.264) | You want it to just play. YouTube stops at 1080p here. |
-| AV1 | You want the smallest files, or 4K on a modern player. |
-| VP9 | Your player handles it, and AV1 is not available. |
-| Best available | You want whatever YouTube rates highest. |
+| H.264 | You want it to just play. YouTube stops at 1080p here. |
+| VP9 | You want 4K or 1440p on a player that handles it. |
+| AV1 | You want smaller files on a modern player. It is often, not always, the smallest. |
+| HDR | Listed only when a video has it. Keep it for HDR screens. |
+
+In rules, **Most compatible** means H.264 up to 1080p and VP9 above that, and **Best
+available** means AV1, with HDR when the video has it.
 
 4K is large: a real one-hour episode was 2 GB at 1080p H.264 and 9.3 GB in 4K AV1.
+While a video downloads, its page and the Queue show its progress and the copy being
+saved. The Library shows the real resolution of each file.
 
 **SponsorBlock** marks sponsors as chapters by default, so the video stays whole and
 you can skip them. **Remove** cuts them out instead. **Captions** are saved as English
 SRT when YouTube has them. A brand-new video may not have them yet.
 
-**Convert to H.265** is off by default. YouTube's files are already small, so converting
+**Re-encode to H.265** is off by default. YouTube's files are already small, so re-encoding
 usually makes them bigger. Choose it only if a player needs H.265.
 
 ### Rules

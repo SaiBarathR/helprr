@@ -19,7 +19,7 @@ import { CreatorAvatar } from '@/components/creators/creator-avatar';
 import { CreatorVideoCard } from '@/components/creators/video-card';
 import { CreatorVideoList, CreatorVideoSkeleton } from '@/components/creators/video-list';
 import { useCreatorPlatform } from '@/components/creators/platform';
-import type { CreatorVideoPage } from '@/components/creators/types';
+import { whileDownloading, type CreatorVideoPage } from '@/components/creators/types';
 import { useFeedView } from '@/components/creators/use-feed-view';
 import { useVideoActions } from '@/components/creators/use-video-actions';
 import { useVideoSelection } from '@/components/creators/use-video-selection';
@@ -79,6 +79,8 @@ export function CreatorPage({ params }: { params: Promise<{ id: string }> }) {
     },
     initialPageParam: 1,
     getNextPageParam: (last: CreatorVideoPage) => (last.page * last.pageSize < last.total ? last.page + 1 : undefined),
+    refetchInterval: whileDownloading,
+    refetchIntervalInBackground: false,
   });
   const rows = useMemo(() => videos.data?.pages.flatMap((page) => page.videos) ?? [], [videos.data]);
   const selection = useVideoSelection(rows, actions);
@@ -235,9 +237,12 @@ export function CreatorPage({ params }: { params: Promise<{ id: string }> }) {
         {streamer?.description && <ClampedText text={streamer.description} />}
 
         <Tabs value={tab} onValueChange={setTab}>
-          <TabsList className="w-full">
-            {tabs.map((item) => <TabsTrigger key={item.id} value={item.id} className="flex-1">{item.label}</TabsTrigger>)}
-          </TabsList>
+          {/* Waits for the counts, so that a tab with nothing in it never appears and then vanishes. */}
+          {streamer ? (
+            <TabsList className="w-full">
+              {tabs.map((item) => <TabsTrigger key={item.id} value={item.id} className="flex-1">{item.label}</TabsTrigger>)}
+            </TabsList>
+          ) : <Skeleton className="h-9 w-full rounded-lg" />}
         </Tabs>
 
         {videos.isLoading ? (

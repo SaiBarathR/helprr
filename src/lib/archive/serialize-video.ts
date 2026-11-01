@@ -20,7 +20,7 @@ export const VIDEO_SELECT = {
   mediaFiles: { select: { id: true, jellyfinItemId: true } },
   jobs: {
     where: { kind: 'DOWNLOAD', state: { in: ['QUEUED', 'BLOCKED', 'RUNNING', 'RETRY_WAIT'] } },
-    select: { id: true, state: true, stage: true, progress: true },
+    select: { id: true, state: true, stage: true, chosenFormat: true, progress: true },
     take: 1,
   },
 } satisfies Prisma.CreatorVideoSelect;

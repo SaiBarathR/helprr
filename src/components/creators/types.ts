@@ -1,3 +1,5 @@
+import { qualityLabel, qualityOf } from '@/lib/youtube/formats';
+
 export interface CreatorVideoItem {
   id: string;
   externalId: string;
@@ -18,7 +20,7 @@ export interface CreatorVideoItem {
   downloaded: boolean;
   fileId: string | null;
   jellyfinItemId: string | null;
-  activeJob: { id: string; state: string; stage: string | null; progress: number | null } | null;
+  activeJob: { id: string; state: string; stage: string | null; chosenFormat?: string | null; progress: number | null } | null;
 }
 
 export interface CreatorVideoPage {
@@ -54,6 +56,17 @@ export function formatGb(gb: number): string {
 export function stageLabel(stage: string): string {
   return stage.charAt(0).toUpperCase() + stage.slice(1);
 }
+
+/** The name of a file's picture: 1280×640 is a 720p video, whatever its height says. */
+export function fileQuality({ width, height }: { width: number | null; height: number | null }): string | null {
+  if (!height) return null;
+  return width ? qualityLabel(qualityOf(width, height)) : `${height}p`;
+}
+
+/** Keeps a list's progress bars moving while something downloads, then stops by itself. */
+export const whileDownloading = (query: { state: { data?: { pages: CreatorVideoPage[] } } }) => (
+  query.state.data?.pages.some((page) => page.videos.some((video) => video.activeJob)) ? 5_000 : false
+);
 
 export function daysUntil(iso: string | null, now = Date.now()): number | null {
   if (!iso) return null;

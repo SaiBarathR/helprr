@@ -21,15 +21,16 @@ export class DiskGuardError extends Error {
   }
 }
 
-async function probe(file: string): Promise<{ videoCodec: string; height: number | null; duration: number; video: number; audio: number }> {
+async function probe(file: string): Promise<{ videoCodec: string; width: number | null; height: number | null; duration: number; video: number; audio: number }> {
   const output = await run(FFPROBE, ['-v', 'error', '-show_streams', '-show_format', '-of', 'json', file], { captureStdout: true });
   const data = JSON.parse(output) as {
-    streams: Array<{ codec_type: string; codec_name: string; height?: number }>;
+    streams: Array<{ codec_type: string; codec_name: string; width?: number; height?: number }>;
     format: { duration?: string };
   };
   const videos = data.streams.filter((stream) => stream.codec_type === 'video');
   return {
     videoCodec: videos[0]?.codec_name ?? 'unknown',
+    width: videos[0]?.width ?? null,
     height: videos[0]?.height ?? null,
     duration: Number(data.format.duration ?? 0),
     video: videos.length,
@@ -149,6 +150,7 @@ async function publish(
       sizeBytes: BigInt(size),
       durationSeconds: Math.round(probed.duration),
       videoCodec: probed.videoCodec,
+      width: probed.width,
       height: probed.height,
       keepForever: options.keepForever,
     },

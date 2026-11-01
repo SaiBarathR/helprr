@@ -12,7 +12,7 @@ import { toCachedImageSrc } from '@/lib/image';
 import { cn } from '@/lib/utils';
 import { ActionsMenu } from './actions-menu';
 import { codecLabel, jobLabel, savedPercent, type DeletedFile, DELETION_CAUSES, type ArchiveFile } from './file-types';
-import { formatDuration } from './types';
+import { fileQuality, formatDuration } from './types';
 import type { FileActions } from './use-file-actions';
 import { useCreatorPlatform } from './platform';
 
@@ -54,7 +54,7 @@ export function FileRow({ file, actions, cleanupDue }: { file: ArchiveFile; acti
   const platform = useCreatorPlatform();
   const thumbnail = toCachedImageSrc(file.thumbnailUrl, undefined, { width: 320 });
   const groups = actions.groupsFor(file);
-  const meta = [file.creator.displayName, formatBytes(file.sizeBytes), file.height ? `${file.height}p` : null, codecLabel(file.videoCodec)]
+  const meta = [file.creator.displayName, formatBytes(file.sizeBytes), fileQuality(file), codecLabel(file.videoCodec)]
     .filter(Boolean).join(' · ');
   return (
     <SwipeRow contentClassName="bg-card" {...actions.swipeFor(file)}>
