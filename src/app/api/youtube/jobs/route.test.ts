@@ -13,7 +13,7 @@ vi.mock('@/lib/api-logger', () => ({ withApiLogging: <T,>(handler: T) => handler
 vi.mock('@/lib/db', () => ({
   prisma: {
     archiveWorkerHeartbeat: { findFirst: mocks.heartbeat },
-    creatorVideo: { findUnique: mocks.video },
+    creatorVideo: { findUnique: mocks.video, findUniqueOrThrow: vi.fn(async () => ({ id: 'v' })) },
   },
 }));
 vi.mock('@/lib/archive/jobs', async (original) => ({
@@ -21,6 +21,10 @@ vi.mock('@/lib/archive/jobs', async (original) => ({
   enqueueDownload: mocks.enqueue,
 }));
 vi.mock('@/lib/youtube/playlists', () => ({ storeVideoById: mocks.store }));
+vi.mock('@/lib/youtube/policy', async (original) => {
+  const actual = await original<typeof import('@/lib/youtube/policy')>();
+  return { ...actual, decideForYoutubeVideo: vi.fn(async () => ({ policy: actual.YOUTUBE_BUILT_IN_POLICY, trace: {}, autoDownloadReason: '' })) };
+});
 
 import { POST } from './route';
 

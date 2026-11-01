@@ -31,12 +31,12 @@ describe('useCreatorPlatform', () => {
     expect(result.current.followBody('wanshowyt')).toEqual({ input: '@wanshowyt' });
   });
 
-  it('offers no rules on YouTube until they exist', () => {
+  it('offers downloads and rules on YouTube', () => {
     const { result } = renderHook(useCreatorPlatform, {
       wrapper: ({ children }) => <CreatorPlatformProvider platform="youtube">{children}</CreatorPlatformProvider>,
     });
     expect(result.current.downloads).toBe(true);
-    expect(result.current.autoDownload).toBe(false);
+    expect(result.current.autoDownload).toBe(true);
   });
 
   it('fails outside a section rather than showing another platform', () => {

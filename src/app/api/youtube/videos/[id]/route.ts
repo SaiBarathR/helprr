@@ -4,6 +4,7 @@ import { withApiLogging } from '@/lib/api-logger';
 import { serializeVideoRow, VIDEO_SELECT } from '@/lib/archive/serialize-video';
 import { prisma } from '@/lib/db';
 import { YOUTUBE } from '@/lib/youtube/platform';
+import { decideForYoutubeVideo, optionsFromPolicy } from '@/lib/youtube/policy';
 
 async function getHandler(
   _request: NextRequest,
@@ -25,7 +26,13 @@ async function getHandler(
   if (!video) return NextResponse.json({ error: 'Video not found' }, { status: 404 });
 
   const { userStates, ...rest } = video;
-  return NextResponse.json({ ...serializeVideoRow(rest, userStates[0]?.seenAt), hidden: userStates[0]?.hidden ?? false });
+  const decision = await decideForYoutubeVideo({ ...rest, creatorId: rest.creator.id });
+  return NextResponse.json({
+    ...serializeVideoRow(rest, userStates[0]?.seenAt),
+    hidden: userStates[0]?.hidden ?? false,
+    autoDownload: { enabled: decision.policy.autoDownload, reason: decision.autoDownloadReason, trace: decision.trace },
+    defaults: optionsFromPolicy(decision.policy),
+  });
 }
 
 export const GET = withApiLogging(getHandler, 'api/youtube/videos/[id]');

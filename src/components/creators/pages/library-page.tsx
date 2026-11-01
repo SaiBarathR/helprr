@@ -120,7 +120,7 @@ export function CreatorLibraryPage() {
   useEffect(() => {
     if (wasWorking.current || working) void queryClient.invalidateQueries({ queryKey: [platform.id, 'files-summary'] });
     wasWorking.current = working;
-  }, [working, rows, queryClient]);
+  }, [working, rows, queryClient, platform.id]);
 
   const history = useRestorableInfiniteQuery({
     queryKey: [platform.id, 'file-history', params],
@@ -135,7 +135,7 @@ export function CreatorLibraryPage() {
   const cleanup = useQuery({
     queryKey: [platform.id, 'retention-preview'],
     queryFn: ({ signal }) => getJson<{ candidates: Array<{ fileId: string }> }>(`${platform.api}/retention/preview`, signal),
-    enabled: actions.canManage && platform.autoDownload,
+    enabled: actions.canManage && platform.id === 'twitch',
     staleTime: 5 * 60_000,
   });
   const cleanupDue = useMemo(() => new Set(cleanup.data?.candidates.map((item) => item.fileId)), [cleanup.data]);

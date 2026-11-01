@@ -1,9 +1,11 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
-import { Check, ChevronLeft, Circle } from 'lucide-react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Check, ChevronLeft, ChevronRight, Circle } from 'lucide-react';
+import { toast } from 'sonner';
 import Link from '@/components/ui/app-link';
 import { JellyfinLibrarySection } from '@/components/creators/jellyfin-library-section';
+import { SwitchRow } from '@/components/creators/setting-rows';
 import { GroupedSection } from '@/components/settings/grouped-section';
 import { YoutubeConnectionCard } from '@/components/settings/youtube-connection-card';
 import { ErrorState } from '@/components/ui/error-state';
@@ -36,6 +38,7 @@ function SetupRow({ label, done, detail, optional }: { label: string; done: bool
 }
 
 export default function YoutubeSettingsPage() {
+  const queryClient = useQueryClient();
   const setup = useQuery({
     queryKey: ['youtube', 'setup'],
     queryFn: async ({ signal }) => {
@@ -46,6 +49,27 @@ export default function YoutubeSettingsPage() {
     refetchInterval: 15_000,
   });
   const data = setup.data;
+
+  const settings = useQuery({
+    queryKey: ['youtube', 'settings'],
+    queryFn: async ({ signal }) => {
+      const res = await fetch('/api/youtube/settings', { signal });
+      if (!res.ok) throw new Error('Could not load the settings');
+      return (await res.json()) as { autoDownloadEnabled: boolean };
+    },
+  });
+  const toggle = useMutation({
+    mutationFn: async (autoDownloadEnabled: boolean) => {
+      const res = await fetch('/api/youtube/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ autoDownloadEnabled }),
+      });
+      if (!res.ok) throw new Error('Could not save');
+    },
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['youtube', 'settings'] }),
+    onError: (error) => toast.error(error.message),
+  });
 
   return (
     <div className="animate-content-in">
@@ -79,6 +103,23 @@ export default function YoutubeSettingsPage() {
       )}
       <YoutubeConnectionCard defaultExpanded={data ? !data.apiKey : false} key={data ? String(data.apiKey) : 'loading'} />
       <JellyfinLibrarySection platform="youtube" defaultName="YouTube" />
+      {settings.data && (
+        <GroupedSection
+          title="Automatic downloads"
+          footer={settings.data.autoDownloadEnabled ? 'On: channels download by their rules' : 'Off: nothing downloads by itself, whatever the rules say'}
+        >
+          <SwitchRow
+            label="Auto-download"
+            checked={settings.data.autoDownloadEnabled}
+            disabled={toggle.isPending}
+            onCheckedChange={(autoDownloadEnabled) => toggle.mutate(autoDownloadEnabled)}
+          />
+          <Link href="/settings/youtube/rules" className="grouped-row gap-3 active:bg-foreground/5">
+            <span className="text-sm">Global rules</span>
+            <ChevronRight className="h-4 w-4 text-muted-foreground" />
+          </Link>
+        </GroupedSection>
+      )}
     </div>
   );
 }
