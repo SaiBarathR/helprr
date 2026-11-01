@@ -78,7 +78,7 @@ describe('the YouTube adapter', () => {
     const file = await youtubeAdapter.download(context(), '/staging/x', prepared as never);
     const args = run.mock.calls[0][1] as string[];
     expect(file).toBe('/staging/x/video.mkv');
-    expect(args).toEqual(expect.arrayContaining(['--merge-output-format', 'mkv', '--embed-chapters', '--sponsorblock-mark', 'all', '-f', 'SEL']));
+    expect(args).toEqual(expect.arrayContaining(['--merge-output-format', 'mkv', '--remux-video', 'mkv', '--embed-chapters', '--sponsorblock-mark', 'all', '-f', 'SEL']));
     expect(args).not.toContain('--cookies');
     expect(args).toContain('/staging/x/video.%(ext)s');
   });
