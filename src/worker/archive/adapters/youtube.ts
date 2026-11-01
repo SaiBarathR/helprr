@@ -84,7 +84,9 @@ async function downloadVideo(ctx: DownloadContext, staging: string, selector: st
   const { prisma, job, video, signal, options } = ctx;
   let lastWrite = 0;
   await run(toolPath('ytdlpYoutube'), [
-    ...BASE_ARGS, '--ffmpeg-location', FFMPEG, '-N', '6', '-f', selector, '--merge-output-format', 'mkv',
+    // A video can land on one file that already has its audio, with nothing to merge,
+    // so the remux is what guarantees an MKV.
+    ...BASE_ARGS, '--ffmpeg-location', FFMPEG, '-N', '6', '-f', selector, '--merge-output-format', 'mkv', '--remux-video', 'mkv',
     ...(options.chapters ? ['--embed-chapters'] : []), ...sponsorblockArgs(options.sponsorblock), ...cookieArgs(ctx),
     '--write-info-json', '--newline', '--no-color', '--progress-template', YT_DLP_PROGRESS_TEMPLATE,
     '-o', path.join(staging, 'video.%(ext)s'),
