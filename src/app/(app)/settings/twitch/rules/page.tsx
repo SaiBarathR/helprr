@@ -11,7 +11,7 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { ErrorState } from '@/components/ui/error-state';
 import { FloatingActionBar } from '@/components/ui/floating-action-bar';
 import { useUnsavedChangesGuard } from '@/lib/hooks/use-unsaved-changes-guard';
-import type { PolicyLayer } from '@/lib/twitch/policy';
+import type { PolicyLayer } from '@/lib/archive/policy';
 
 interface GlobalPolicies {
   defaultPolicy: PolicyLayer;

@@ -6,9 +6,9 @@ import { noteJobFailure } from '@/lib/polling-job-report';
 import { getJellyfinClient } from '@/lib/service-helpers';
 import { helixGet, type HelixRateLimit } from '@/lib/twitch/helix';
 import { reconcileTwitchJobs } from '@/lib/twitch/reconcile';
-import { inReencodeWindow } from '@/lib/twitch/reencode-window';
-import { enqueueDownload } from '@/lib/twitch/jobs';
-import { decideForVideo } from '@/lib/twitch/policy-store';
+import { inReencodeWindow } from '@/lib/archive/reencode-window';
+import { enqueueDownload } from '@/lib/archive/jobs';
+import { decideForVideo } from '@/lib/archive/policy-store';
 import { checkStoredBrowserToken } from '@/lib/twitch/browser-token';
 import { getTwitchSettings } from '@/lib/twitch/settings';
 import { syncStreamerVideos } from '@/lib/twitch/sync';
@@ -173,6 +173,7 @@ async function autoEnqueue(videoIds: string[]): Promise<void> {
     if (!policy.autoDownload) continue;
     const { quality, chat, chapters, reencode, keepForever } = policy;
     await enqueueDownload({
+      platform: TWITCH,
       videoId: video.id,
       source: 'RULE',
       options: { quality, chat, chapters, reencode, keepForever },

@@ -3,7 +3,7 @@
 
 import type { Prisma } from '@prisma/client';
 import type { ExportedTwitch } from '@/lib/settings-export';
-import { layerMap, sanitizeLayer } from '@/lib/twitch/policy';
+import { layerMap, sanitizeLayer } from '@/lib/archive/policy';
 import { parseTwitchLogin } from '@/lib/twitch/streamers';
 import { TWITCH } from '@/lib/twitch/platform';
 

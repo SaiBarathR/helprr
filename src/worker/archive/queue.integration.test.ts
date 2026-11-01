@@ -6,8 +6,8 @@ const url = process.env.TWITCH_QUEUE_TEST_DATABASE_URL;
 const prisma = url ? new PrismaClient({ datasources: { db: { url } } }) : null;
 vi.mock('@/lib/db', () => ({ get prisma() { return prisma; } }));
 
-import { enqueueDownload, DEFAULT_DOWNLOAD_OPTIONS, retryJob } from '@/lib/twitch/jobs';
-import { REENCODE_NOW_PRIORITY } from '@/lib/twitch/reencode-window';
+import { enqueueDownload, DEFAULT_DOWNLOAD_OPTIONS, retryJob } from '@/lib/archive/jobs';
+import { REENCODE_NOW_PRIORITY } from '@/lib/archive/reencode-window';
 import { claimJob } from './claim';
 
 // Needs a migrated, disposable PostgreSQL; skipped without one.
@@ -33,7 +33,7 @@ describe.skipIf(!url || !url.endsWith('/helprr_migration_test'))('Twitch queue a
     videoId = video.id;
   });
 
-  const request = (overrides = {}) => ({ videoId, source: 'MANUAL' as const, options: DEFAULT_DOWNLOAD_OPTIONS, ...overrides });
+  const request = (overrides = {}) => ({ platform: 'TWITCH' as const, videoId, source: 'MANUAL' as const, options: DEFAULT_DOWNLOAD_OPTIONS, ...overrides });
 
   it('leaves a job from another platform alone', async () => {
     await db.archiveJob.create({ data: { platform: 'YOUTUBE', kind: 'DOWNLOAD', videoId } });
@@ -136,10 +136,10 @@ describe.skipIf(!url || !url.endsWith('/helprr_migration_test'))('Twitch queue a
     await db.archiveJob.update({ where: { id: failedA.jobId }, data: { state: 'FAILED' } });
     const replacement = await enqueueDownload(request());
 
-    expect(await retryJob(failedA.jobId, actor)).toBe('active');
+    expect(await retryJob(failedA.jobId, actor, 'TWITCH')).toBe('active');
 
     await db.archiveJob.update({ where: { id: replacement.jobId }, data: { state: 'FAILED' } });
-    const results = await Promise.all([retryJob(failedA.jobId, actor), retryJob(replacement.jobId, actor)]);
+    const results = await Promise.all([retryJob(failedA.jobId, actor, 'TWITCH'), retryJob(replacement.jobId, actor, 'TWITCH')]);
 
     expect(results.filter((result) => result === 'retried')).toHaveLength(1);
     expect(await db.archiveJob.count({ where: { state: 'QUEUED' } })).toBe(1);
@@ -152,7 +152,7 @@ describe.skipIf(!url || !url.endsWith('/helprr_migration_test'))('Twitch queue a
     const { jobId } = await enqueueDownload(request());
     await db.archiveJob.update({ where: { id: jobId }, data: { state: 'CANCELLED', cancelRequested: true } });
 
-    expect(await retryJob(jobId, { id: user.id, username: user.username })).toBe('retried');
+    expect(await retryJob(jobId, { id: user.id, username: user.username }, 'TWITCH')).toBe('retried');
 
     expect(await db.archiveJob.findUniqueOrThrow({ where: { id: jobId } })).toMatchObject({
       state: 'QUEUED', cancelRequested: false, requestedByUsername: user.username,

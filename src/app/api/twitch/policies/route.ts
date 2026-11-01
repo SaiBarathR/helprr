@@ -3,7 +3,7 @@ import type { Prisma } from '@prisma/client';
 import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { prisma } from '@/lib/db';
-import { layerMap, sanitizeLayer } from '@/lib/twitch/policy';
+import { layerMap, sanitizeLayer } from '@/lib/archive/policy';
 import { getTwitchSettings } from '@/lib/twitch/settings';
 import { TWITCH } from '@/lib/twitch/platform';
 

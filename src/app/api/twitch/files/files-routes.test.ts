@@ -19,7 +19,7 @@ vi.mock('@/lib/db', () => ({
     archiveMediaFile: { updateMany: mocks.update },
   },
 }));
-vi.mock('@/lib/twitch/files', () => ({
+vi.mock('@/lib/archive/files', () => ({
   requestReencode: mocks.requestReencode,
   requestOriginalJob: mocks.requestOriginalJob,
   FILE_SELECT: { video: { select: {} } },
@@ -27,7 +27,7 @@ vi.mock('@/lib/twitch/files', () => ({
   serializeFile: vi.fn(),
   typicalSavingPercent: vi.fn(),
 }));
-vi.mock('@/lib/twitch/retention', () => ({ enqueueFileDelete: vi.fn(), fileCleanupStatus: vi.fn(), loadPlayedDates: vi.fn() }));
+vi.mock('@/lib/archive/retention', () => ({ enqueueFileDelete: vi.fn(), fileCleanupStatus: vi.fn(), loadPlayedDates: vi.fn() }));
 
 import { PATCH } from './[id]/route';
 import { DELETE as deleteOriginal } from './[id]/original/route';

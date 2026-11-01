@@ -5,7 +5,7 @@ import { GroupedSection } from '@/components/settings/grouped-section';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { BUILT_IN_POLICY, type PolicyLayer, type TwitchPolicy, type VideoTypeKey } from '@/lib/twitch/policy';
+import { BUILT_IN_POLICY, type PolicyLayer, type TwitchPolicy, type VideoTypeKey } from '@/lib/archive/policy';
 import { NumberRow, SwitchRow, TextRow } from './setting-rows';
 
 const DOWNLOAD_SWITCHES = [

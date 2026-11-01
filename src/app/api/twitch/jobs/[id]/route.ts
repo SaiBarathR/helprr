@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { prisma } from '@/lib/db';
-import { JOB_SELECT, serializeJob } from '@/lib/twitch/serialize-job';
+import { JOB_SELECT, serializeJob } from '@/lib/archive/serialize-job';
 import { TWITCH } from '@/lib/twitch/platform';
 
 type RouteContext = { params: Promise<{ id: string }> };

@@ -3,9 +3,9 @@ import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { prisma } from '@/lib/db';
 import { helixGet, TwitchHelixError, TwitchNotConfiguredError } from '@/lib/twitch/helix';
-import { DOWNLOAD_OPTION_KEYS, enqueueDownload, isClientRequestId, type DownloadOptions } from '@/lib/twitch/jobs';
-import { decideForVideo } from '@/lib/twitch/policy-store';
-import { serializeJob, JOB_SELECT } from '@/lib/twitch/serialize-job';
+import { DOWNLOAD_OPTION_KEYS, enqueueDownload, isClientRequestId, type DownloadOptions } from '@/lib/archive/jobs';
+import { decideForVideo } from '@/lib/archive/policy-store';
+import { serializeJob, JOB_SELECT } from '@/lib/archive/serialize-job';
 import { getTwitchSettings } from '@/lib/twitch/settings';
 import { parseTwitchLogin, subscribeToStreamer } from '@/lib/twitch/streamers';
 import { upsertVideoFromHelix, type HelixVideoWithUser } from '@/lib/twitch/sync';
@@ -107,6 +107,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     options.quality = '1080p60';
   }
   const result = await enqueueDownload({
+    platform: TWITCH,
     videoId,
     source: pasted ? 'URL' : 'MANUAL',
     options,

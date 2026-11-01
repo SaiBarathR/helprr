@@ -32,7 +32,7 @@ import { GET as getVideo } from './videos/[id]/route';
 import { POST as setVideoState } from './videos/[id]/state/route';
 import { GET as getPolicies, PUT as putPolicies } from './policies/route';
 import { POST as previewPolicies } from './policies/preview/route';
-import { DEFAULT_DOWNLOAD_OPTIONS, enqueueDownload } from '@/lib/twitch/jobs';
+import { DEFAULT_DOWNLOAD_OPTIONS, enqueueDownload } from '@/lib/archive/jobs';
 
 const SAME = { externalId: 'same-id', folderName: 'same-folder', relativePath: 'same-folder/file.mkv', requestId: 'same-request-id' };
 
@@ -179,6 +179,7 @@ describe.skipIf(!url || !url.endsWith('/helprr_migration_test'))('platform isola
 
   it('keeps a repeated request id to its own platform', async () => {
     const { jobId, created } = await enqueueDownload({
+      platform: 'TWITCH',
       videoId: ids.twitch.video,
       source: 'MANUAL',
       options: DEFAULT_DOWNLOAD_OPTIONS,

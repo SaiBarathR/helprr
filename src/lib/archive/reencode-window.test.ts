@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { inReencodeWindow, worthKeeping } from '@/lib/twitch/reencode-window';
+import { inReencodeWindow, worthKeeping } from '@/lib/archive/reencode-window';
 
 const at = (hours: number, mins = 0) => new Date(2026, 9, 30, hours, mins);
 

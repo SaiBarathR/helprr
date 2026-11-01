@@ -1,11 +1,10 @@
 import { createHmac, timingSafeEqual } from 'crypto';
-import type { CreatorVideoType } from '@prisma/client';
+import type { ArchivePlatform, CreatorVideoType } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { logger } from '@/lib/logger';
 import { getJellyfinClientForUser } from '@/lib/service-helpers';
-import { ACTIVE_JOB_STATES } from '@/lib/twitch/jobs';
-import { decideForVideo } from '@/lib/twitch/policy-store';
-import { TWITCH } from '@/lib/twitch/platform';
+import { ACTIVE_JOB_STATES } from '@/lib/archive/jobs';
+import { decideForVideo } from '@/lib/archive/policy-store';
 
 const DAY_MS = 86_400_000;
 
@@ -70,13 +69,14 @@ export async function fileCleanupStatus(
     video: { title: string; type: CreatorVideoType; category: string | null; creatorId: string; durationSeconds: number; sourceCreatedAt: Date };
   },
   watchedAt: Date | undefined,
+  platform: ArchivePlatform,
   now = new Date(),
 ) {
   const { policy } = await decideForVideo(file.video);
   const { keepLatest, deleteAfterDays, deleteAfterWatchedDays } = policy;
   const rank = await prisma.archiveMediaFile.count({
     where: {
-      platform: TWITCH,
+      platform,
       keepForever: false,
       jobs: { none: { state: { in: ACTIVE_JOB_STATES } } },
       video: {
@@ -99,11 +99,12 @@ export async function fileCleanupStatus(
 /** What the rules would delete right now. Reads only; also the check made again before any delete. */
 export async function findRetentionCandidates(
   user: { role: string; jellyfinUserId: string | null } | null,
+  platform: ArchivePlatform,
   now = new Date(),
 ): Promise<RetentionCandidate[]> {
   const files = await prisma.archiveMediaFile.findMany({
     where: {
-      platform: TWITCH,
+      platform,
       keepForever: false,
       jobs: { none: { state: { in: ACTIVE_JOB_STATES } } },
       video: { jobs: { none: { state: { in: ACTIVE_JOB_STATES } } } },
@@ -177,11 +178,12 @@ export const FILE_LOCK_TRANSACTION = { maxWait: 10_000, timeout: 30_000 };
 export async function enqueueFileDelete(
   fileId: string,
   actor: { id: string; username: string },
+  platform: ArchivePlatform,
   origin: { retention?: boolean; reason?: string } = {},
 ): Promise<boolean> {
   return prisma.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`twitch-delete:${fileId}`}))`;
-    const file = await tx.archiveMediaFile.findUnique({ where: { id: fileId, platform: TWITCH }, select: { videoId: true } });
+    const file = await tx.archiveMediaFile.findUnique({ where: { id: fileId, platform }, select: { videoId: true } });
     if (!file) return false;
     const active = await tx.archiveJob.findFirst({
       where: { mediaFileId: fileId, kind: 'DELETE_FILES', state: { in: ACTIVE_JOB_STATES } },
@@ -190,7 +192,7 @@ export async function enqueueFileDelete(
     if (active) return true;
     await tx.archiveJob.create({
       data: {
-        platform: TWITCH,
+        platform,
         kind: 'DELETE_FILES',
         options: origin,
         videoId: file.videoId,

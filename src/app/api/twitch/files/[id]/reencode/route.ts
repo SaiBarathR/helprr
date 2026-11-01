@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { prisma } from '@/lib/db';
-import { requestReencode } from '@/lib/twitch/files';
+import { requestReencode } from '@/lib/archive/files';
+import { TWITCH } from '@/lib/twitch/platform';
 
 async function postHandler(
   request: NextRequest,
@@ -29,7 +30,7 @@ async function postHandler(
   }
 
   const { id } = await params;
-  const result = await requestReencode(id, body.when, auth.user);
+  const result = await requestReencode(id, body.when, auth.user, TWITCH);
   if (result === 'missing') return NextResponse.json({ error: 'File not found' }, { status: 404 });
   if (result === 'nothing-to-do') return NextResponse.json({ error: 'This file is already HEVC' }, { status: 409 });
   if (result === 'busy') return NextResponse.json({ error: 'Another job is working on this file' }, { status: 409 });

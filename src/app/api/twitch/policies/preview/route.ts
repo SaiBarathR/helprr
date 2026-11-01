@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { prisma } from '@/lib/db';
-import { layerMap, sanitizeLayer } from '@/lib/twitch/policy';
-import { decideForVideo } from '@/lib/twitch/policy-store';
+import { layerMap, sanitizeLayer } from '@/lib/archive/policy';
+import { decideForVideo } from '@/lib/archive/policy-store';
 import { TWITCH } from '@/lib/twitch/platform';
 
 const PREVIEW_VIDEOS = 50;

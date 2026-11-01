@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
-import { enqueueFileDelete, findRetentionCandidates, verifyRetentionPreview } from '@/lib/twitch/retention';
+import { enqueueFileDelete, findRetentionCandidates, verifyRetentionPreview } from '@/lib/archive/retention';
+import { TWITCH } from '@/lib/twitch/platform';
 
 /** Deletes only what was shown in the preview and is still a candidate now. */
 async function postHandler(request: NextRequest): Promise<NextResponse> {
@@ -16,9 +17,9 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'This preview has expired. Preview again.' }, { status: 409 });
   }
   const confirmed = new Set(body.fileIds as string[]);
-  const candidates = (await findRetentionCandidates(auth.user)).filter((candidate) => confirmed.has(candidate.fileId));
+  const candidates = (await findRetentionCandidates(auth.user, TWITCH)).filter((candidate) => confirmed.has(candidate.fileId));
 
-  for (const candidate of candidates) await enqueueFileDelete(candidate.fileId, auth.user, { retention: true, reason: candidate.reason });
+  for (const candidate of candidates) await enqueueFileDelete(candidate.fileId, auth.user, TWITCH, { retention: true, reason: candidate.reason });
   return NextResponse.json({ queued: candidates.length, skipped: confirmed.size - candidates.length });
 }
 

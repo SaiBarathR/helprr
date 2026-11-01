@@ -1,5 +1,5 @@
 import type { ArchiveJob, ArchiveSettings, Creator, CreatorVideo, Prisma, PrismaClient, ArchivePlatform } from '@prisma/client';
-import type { DownloadOptions } from '@/lib/twitch/jobs';
+import type { DownloadOptions } from '@/lib/archive/jobs';
 
 export interface DownloadContext {
   prisma: PrismaClient;

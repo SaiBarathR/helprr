@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { chapterGenres, chaptersToFfmetadata, sanitizeInfoJson } from '@/lib/twitch/chapters';
-import { classifyJobError, nextStepAfterFailure } from '@/lib/twitch/job-errors';
+import { classifyJobError, nextStepAfterFailure } from '@/lib/archive/job-errors';
 import { archiveEpisode, episodeBaseName, safeFilenameTitle, seasonFolder } from '@/lib/twitch/naming';
 import { episodeNfo, seasonNfo, tvshowNfo } from '@/lib/twitch/nfo';
-import { parseProgressLine } from '@/lib/twitch/progress';
+import { parseProgressLine } from '@/lib/archive/progress';
 import { isTwitchArtworkUrl } from '@/lib/twitch/serialize';
 import { estimateSizeBytes, pickFormat, type YtDlpFormat } from '@/lib/twitch/quality';
 

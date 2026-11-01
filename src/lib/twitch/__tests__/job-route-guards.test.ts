@@ -11,7 +11,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@/lib/auth', () => ({ requireUser: mocks.requireUser }));
 vi.mock('@/lib/api-logger', () => ({ withApiLogging: (handler: unknown) => handler }));
 vi.mock('@/lib/db', () => ({ prisma: { archiveJob: { findUnique: mocks.findUnique, updateMany: mocks.updateMany } } }));
-vi.mock('@/lib/twitch/jobs', () => ({ retryJob: mocks.retryJob, ACTIVE_JOB_STATES: ['RUNNING'] }));
+vi.mock('@/lib/archive/jobs', () => ({ retryJob: mocks.retryJob, ACTIVE_JOB_STATES: ['RUNNING'] }));
 
 import { POST as cancel } from '@/app/api/twitch/jobs/[id]/cancel/route';
 import { POST as retry } from '@/app/api/twitch/jobs/[id]/retry/route';
@@ -60,7 +60,7 @@ describe('retry', () => {
     mocks.requireUser.mockResolvedValue(member('twitch.manage'));
     mocks.findUnique.mockResolvedValue({ kind: 'DELETE_FILES', requestedByUserId: 'other' });
     expect((await call(retry)).status).toBe(200);
-    expect(mocks.retryJob).toHaveBeenCalledWith('j1', { id: 'me', username: 'me' });
+    expect(mocks.retryJob).toHaveBeenCalledWith('j1', { id: 'me', username: 'me' }, 'TWITCH');
   });
 
   it('reports a second active download as a conflict', async () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BUILT_IN_POLICY, evaluatePolicy, layerMap, sanitizeLayer } from '@/lib/twitch/policy';
+import { BUILT_IN_POLICY, evaluatePolicy, layerMap, sanitizeLayer } from '@/lib/archive/policy';
 
 const video = { title: 'Elden Ring blind run', durationSeconds: 3 * 3600 };
 

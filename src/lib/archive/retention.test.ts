@@ -10,10 +10,10 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@/lib/db', () => ({ prisma: { archiveMediaFile: { findMany: mocks.findMany } } }));
 vi.mock('@/lib/logger', () => ({ logger: { warn: vi.fn() } }));
 vi.mock('@/lib/service-helpers', () => ({ getJellyfinClientForUser: mocks.getJellyfinClientForUser }));
-vi.mock('@/lib/twitch/policy-store', () => ({ decideForVideo: mocks.decideForVideo }));
+vi.mock('@/lib/archive/policy-store', () => ({ decideForVideo: mocks.decideForVideo }));
 
-import { BUILT_IN_POLICY } from '@/lib/twitch/policy';
-import { findRetentionCandidates, retentionReason, signRetentionPreview, verifyRetentionPreview } from '@/lib/twitch/retention';
+import { BUILT_IN_POLICY } from '@/lib/archive/policy';
+import { findRetentionCandidates, retentionReason, signRetentionPreview, verifyRetentionPreview } from '@/lib/archive/retention';
 
 const now = new Date('2026-10-30T12:00:00Z');
 const user = { role: 'admin', jellyfinUserId: 'jf' };
@@ -46,7 +46,7 @@ beforeEach(() => {
 describe('findRetentionCandidates', () => {
   it('asks the database to leave out keep-forever files and anything with a job in progress', async () => {
     mocks.findMany.mockResolvedValue([]);
-    await findRetentionCandidates(user, now);
+    await findRetentionCandidates(user, 'TWITCH', now);
 
     const { where } = mocks.findMany.mock.calls[0][0];
     expect(where.keepForever).toBe(false);
@@ -57,7 +57,7 @@ describe('findRetentionCandidates', () => {
   it('deletes nothing under the default policy', async () => {
     mocks.findMany.mockResolvedValue([file('a'), file('b')]);
     policy({});
-    expect(await findRetentionCandidates(user, now)).toEqual([]);
+    expect(await findRetentionCandidates(user, 'TWITCH', now)).toEqual([]);
   });
 
   it('keeps the latest N per streamer and type', async () => {
@@ -65,7 +65,7 @@ describe('findRetentionCandidates', () => {
     mocks.findMany.mockResolvedValue([file('a'), file('b'), file('c', { video: other })]);
     policy({ keepLatest: 1 });
 
-    const candidates = await findRetentionCandidates(user, now);
+    const candidates = await findRetentionCandidates(user, 'TWITCH', now);
 
     expect(candidates.map((candidate) => candidate.fileId)).toEqual(['b']);
     expect(candidates[0].reason).toBe('older than the latest 1');
@@ -74,7 +74,7 @@ describe('findRetentionCandidates', () => {
   it('counts age from when the file was saved', async () => {
     mocks.findMany.mockResolvedValue([file('old', { createdAt: daysAgo(31) }), file('new', { createdAt: daysAgo(29) })]);
     policy({ deleteAfterDays: 30 });
-    expect((await findRetentionCandidates(user, now)).map((candidate) => candidate.fileId)).toEqual(['old']);
+    expect((await findRetentionCandidates(user, 'TWITCH', now)).map((candidate) => candidate.fileId)).toEqual(['old']);
   });
 
   it('deletes after watched only with a real, old enough watch date', async () => {
@@ -88,7 +88,7 @@ describe('findRetentionCandidates', () => {
     });
     policy({ deleteAfterWatchedDays: 30 });
 
-    expect((await findRetentionCandidates(user, now)).map((candidate) => candidate.fileId)).toEqual(['watched']);
+    expect((await findRetentionCandidates(user, 'TWITCH', now)).map((candidate) => candidate.fileId)).toEqual(['watched']);
   });
 
   it('deletes nothing by the watched rule when Jellyfin cannot be reached', async () => {
@@ -96,14 +96,14 @@ describe('findRetentionCandidates', () => {
     mocks.queryItems.mockRejectedValue(new Error('down'));
     policy({ deleteAfterWatchedDays: 0 });
 
-    expect(await findRetentionCandidates(user, now)).toEqual([]);
+    expect(await findRetentionCandidates(user, 'TWITCH', now)).toEqual([]);
   });
 
   it('deletes nothing by the watched rule without a user', async () => {
     mocks.findMany.mockResolvedValue([file('a')]);
     policy({ deleteAfterWatchedDays: 0 });
 
-    expect(await findRetentionCandidates(null, now)).toEqual([]);
+    expect(await findRetentionCandidates(null, 'TWITCH', now)).toEqual([]);
     expect(mocks.getJellyfinClientForUser).not.toHaveBeenCalled();
   });
 });

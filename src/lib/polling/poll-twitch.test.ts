@@ -29,8 +29,8 @@ vi.mock('@/lib/db', () => ({
 }));
 vi.mock('@/lib/twitch/helix', () => ({ helixGet: mocks.helixGet }));
 vi.mock('@/lib/twitch/sync', () => ({ syncStreamerVideos: mocks.syncStreamerVideos }));
-vi.mock('@/lib/twitch/jobs', () => ({ enqueueDownload: mocks.enqueueDownload }));
-vi.mock('@/lib/twitch/policy-store', () => ({ decideForVideo: mocks.decideForVideo }));
+vi.mock('@/lib/archive/jobs', () => ({ enqueueDownload: mocks.enqueueDownload }));
+vi.mock('@/lib/archive/policy-store', () => ({ decideForVideo: mocks.decideForVideo }));
 vi.mock('@/lib/service-helpers', () => ({ getJellyfinClient: mocks.getJellyfinClient }));
 vi.mock('@/lib/twitch/browser-token', () => ({ checkStoredBrowserToken: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('@/lib/twitch/reconcile', () => ({ reconcileTwitchJobs: mocks.reconcile }));

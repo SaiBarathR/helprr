@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import type { PolicyLayer } from '@/lib/twitch/policy';
+import type { PolicyLayer } from '@/lib/archive/policy';
 import { PolicyEditor } from './policy-editor';
 
 function Harness({ initial = {}, onChange }: { initial?: PolicyLayer; onChange: (next: PolicyLayer) => void }) {

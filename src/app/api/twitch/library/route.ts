@@ -3,7 +3,7 @@ import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { prisma } from '@/lib/db';
 import { getJellyfinClient } from '@/lib/service-helpers';
-import { readLibraryStatus, twitchLibraryOptions } from '@/lib/twitch/library';
+import { readLibraryStatus, twitchLibraryOptions } from '@/lib/archive/library';
 import { getTwitchSettings } from '@/lib/twitch/settings';
 
 async function getHandler(): Promise<NextResponse> {
