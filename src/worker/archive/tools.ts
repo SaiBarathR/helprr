@@ -10,15 +10,21 @@ import { TOOLS_DIR } from './env';
 import { run } from './process';
 
 // Tested on this project's host on 2026-10-29.
-export const KNOWN_GOOD = { ytdlp: '2026.10.26', td: '1.56.5' } as const;
+// YouTube has its own yt-dlp: it needs updating often, and that must not move Twitch's tested one.
+export const KNOWN_GOOD = { ytdlp: '2026.10.26', td: '1.56.5', ytdlpYoutube: '2026.10.26' } as const;
 export type ToolName = keyof typeof KNOWN_GOOD;
+export const TWITCH_TOOLS: ToolName[] = ['ytdlp', 'td'];
+export const YOUTUBE_TOOLS: ToolName[] = ['ytdlpYoutube'];
 
-// A known public VOD, set from the library's newest video: a fixed one would expire.
-let smokeVideoUrl: string | null = null;
-export function setSmokeVideo(url: string | null): void {
-  smokeVideoUrl = url;
+const isYtdlp = (tool: ToolName) => tool !== 'td';
+
+// A known public video, set from the library's newest one: a fixed one would expire.
+const smokeVideos: Partial<Record<ToolName, string[]>> = {};
+/** The arguments that read one video, or null to skip that part of the test and say so. */
+export function setSmokeVideo(tool: ToolName, args: string[] | null): void {
+  smokeVideos[tool] = args ?? undefined;
 }
-const REPOS: Record<ToolName, string> = { ytdlp: 'yt-dlp/yt-dlp', td: 'lay295/TwitchDownloader' };
+const REPOS: Record<ToolName, string> = { ytdlp: 'yt-dlp/yt-dlp', td: 'lay295/TwitchDownloader', ytdlpYoutube: 'yt-dlp/yt-dlp' };
 
 interface ReleaseAsset {
   name: string;
@@ -28,7 +34,7 @@ interface ReleaseAsset {
 
 function assetName(tool: ToolName, version: string): string {
   const arm = process.arch === 'arm64';
-  if (tool === 'ytdlp') return arm ? 'yt-dlp_linux_aarch64' : 'yt-dlp_linux';
+  if (isYtdlp(tool)) return arm ? 'yt-dlp_linux_aarch64' : 'yt-dlp_linux';
   return `TwitchDownloaderCLI-${version}-${arm ? 'LinuxArm64' : 'Linux-x64'}.zip`;
 }
 
@@ -41,7 +47,7 @@ function activeLink(tool: ToolName): string {
 }
 
 export function toolPath(tool: ToolName): string {
-  return path.join(activeLink(tool), tool === 'ytdlp' ? 'yt-dlp' : 'TwitchDownloaderCLI');
+  return path.join(activeLink(tool), isYtdlp(tool) ? 'yt-dlp' : 'TwitchDownloaderCLI');
 }
 
 async function fetchRelease(tool: ToolName, tag: string | 'latest') {
@@ -62,7 +68,7 @@ async function download(url: string, file: string): Promise<void> {
 }
 
 async function expectedHash(tool: ToolName, name: string, assets: ReleaseAsset[]): Promise<string> {
-  if (tool === 'ytdlp') {
+  if (isYtdlp(tool)) {
     const sums = assets.find((asset) => asset.name === 'SHA2-256SUMS');
     if (!sums) throw new Error('yt-dlp release has no SHA2-256SUMS');
     const res = await fetch(sums.browser_download_url);
@@ -81,7 +87,8 @@ async function smokeTest(tool: ToolName, binary: string): Promise<void> {
   const output = await run(binary, ['--version'], { env: { ...process.env, DOTNET_SYSTEM_GLOBALIZATION_INVARIANT: '1' } })
     .catch((error: Error) => error.message);
   if (!/\d+\.\d+/.test(output)) throw new Error(`${tool} did not report a version`);
-  if (tool === 'ytdlp' && smokeVideoUrl) await run(binary, ['-J', '--no-playlist', smokeVideoUrl], { captureStdout: true });
+  const smoke = smokeVideos[tool];
+  if (smoke) await run(binary, smoke, { captureStdout: true });
 }
 
 /** Verified, smoke-tested, and only then made active. A failure leaves the old version in place. */
@@ -101,8 +108,8 @@ export async function installTool(tool: ToolName, version: string): Promise<void
     const target = versionDir(tool, version);
     await rm(target, { recursive: true, force: true });
     await mkdir(target, { recursive: true });
-    const binary = path.join(target, tool === 'ytdlp' ? 'yt-dlp' : 'TwitchDownloaderCLI');
-    if (tool === 'ytdlp') {
+    const binary = path.join(target, isYtdlp(tool) ? 'yt-dlp' : 'TwitchDownloaderCLI');
+    if (isYtdlp(tool)) {
       await rename(fetched, binary).catch(async () => {
         await writeFile(binary, await readFile(fetched));
       });
@@ -137,9 +144,9 @@ export async function latestVersion(tool: ToolName): Promise<string> {
 
 /** First start, or a pin that changed. */
 /** Whether any tool moved. Pins are the owner's word, so a pinned tool stays put. */
-export async function updateTools(pins: Partial<Record<ToolName, string>>): Promise<boolean> {
+export async function updateTools(pins: Partial<Record<ToolName, string>>, tools: ToolName[]): Promise<boolean> {
   let updated = false;
-  for (const tool of Object.keys(KNOWN_GOOD) as ToolName[]) {
+  for (const tool of tools) {
     if (pins[tool]) continue;
     const version = await latestVersion(tool);
     if (version === (await activeVersion(tool))) continue;
@@ -149,8 +156,8 @@ export async function updateTools(pins: Partial<Record<ToolName, string>>): Prom
   return updated;
 }
 
-export async function ensureTools(pins: Partial<Record<ToolName, string>>): Promise<void> {
-  for (const tool of Object.keys(KNOWN_GOOD) as ToolName[]) {
+export async function ensureTools(pins: Partial<Record<ToolName, string>>, tools: ToolName[]): Promise<void> {
+  for (const tool of tools) {
     const wanted = pins[tool] ?? KNOWN_GOOD[tool];
     if ((await activeVersion(tool)) !== wanted) await installTool(tool, wanted);
   }

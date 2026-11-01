@@ -3,8 +3,9 @@ import { mkdir, readdir, rm, stat, statfs, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { Prisma, PrismaClient, type ArchiveJob, type ArchiveJobKind, type ArchivePlatform } from '@prisma/client';
-import type { DownloadSession } from './adapter';
+import type { DownloadSession, PlatformAdapter } from './adapter';
 import { twitchAdapter } from './adapters/twitch';
+import { youtubeAdapter, youtubeVideoArgs } from './adapters/youtube';
 import { claimJob, LEASE_MS } from './claim';
 import { classifyJobError, nextStepAfterFailure } from '@/lib/archive/job-errors';
 import { inReencodeWindow, REENCODE_NOW_PRIORITY } from '@/lib/archive/reencode-window';
@@ -16,7 +17,7 @@ import { DiskGuardError, runDownload, WaitForRecordingError } from './pipeline';
 import { deleteExpiredOriginals, probeGpu, runReencode } from './reencode';
 import { assertSeparateRoots, isMountedFolder } from './library-paths';
 import { DeferJobError, JobCancelledError, LeaseLostError } from './process';
-import { activeVersion, ensureTools, latestVersion, setSmokeVideo, updateTools, type ToolName } from './tools';
+import { activeVersion, ensureTools, latestVersion, setSmokeVideo, TWITCH_TOOLS, updateTools, YOUTUBE_TOOLS, type ToolName } from './tools';
 import { TWITCH } from '@/lib/twitch/platform';
 
 const RENEW_MS = 20_000;
@@ -34,9 +35,10 @@ const HOUSEKEEPING_MS = 60 * 60_000;
 // File housekeeping needs no tools, so it carries on while they are held.
 const FILE_KINDS: ArchiveJobKind[] = ['DELETE_FILES', 'DELETE_ORIGINAL', 'RESTORE_ORIGINAL'];
 const NETWORK_KINDS: ArchiveJobKind[] = ['DOWNLOAD', ...FILE_KINDS];
-// Every root the worker looks after. A platform is added here with its adapter.
-const PLATFORMS: ArchivePlatform[] = [TWITCH];
 const ALL_PLATFORMS: ArchivePlatform[] = ['TWITCH', 'YOUTUBE'];
+const ADAPTERS: Record<ArchivePlatform, PlatformAdapter> = { TWITCH: twitchAdapter, YOUTUBE: youtubeAdapter };
+// Every root the worker looks after. YouTube joins at start, only if its folder is mounted.
+const PLATFORMS: ArchivePlatform[] = [TWITCH];
 
 const prisma = new PrismaClient();
 const workerId = `${os.hostname()}-${randomUUID().slice(0, 8)}`;
@@ -47,6 +49,8 @@ let cpuBusy = false;
 let downloadsRunning = 0;
 let appliedPins = '';
 let toolsBusy = false;
+let youtubeRepairAt = 0;
+let youtubeMounted = false;
 
 function log(level: 'info' | 'warn' | 'error', message: string, extra: Record<string, unknown> = {}) {
   console[level](JSON.stringify({ at: new Date().toISOString(), level, message, ...extra }));
@@ -168,7 +172,8 @@ async function runJob(job: ArchiveJob): Promise<void> {
     }
     if (job.kind !== 'DOWNLOAD' || !job.videoId) throw new Error(`validation failed: ${job.kind} is not supported yet`);
     const video = await prisma.creatorVideo.findUniqueOrThrow({ where: { id: job.videoId }, include: { creator: true } });
-    session = await twitchAdapter.openSession(settings);
+    const adapter = ADAPTERS[job.platform];
+    session = await adapter.openSession(settings);
     downloadsRunning += 1;
     countedDownload = true;
     await runDownload({
@@ -185,9 +190,9 @@ async function runJob(job: ArchiveJob): Promise<void> {
       note,
       assertLease,
       stagingName,
-    }, twitchAdapter);
+    }, adapter);
     await finishJob(job, { state: 'DONE', stage: 'done', progress: 1, speedBps: null, etaSeconds: null, finishedAt: new Date(), lastError: null, errorClass: null });
-    await noteExtractorResult(false);
+    await noteExtractorResult(job.platform, false);
     log('info', 'Job finished', { jobId: job.id });
   } catch (error) {
     await rm(path.join(libraryFor(job.platform).staging, stagingName), { recursive: true, force: true }).catch(() => undefined);
@@ -214,7 +219,7 @@ async function runJob(job: ArchiveJob): Promise<void> {
       const message = error instanceof Error ? error.message : String(error);
       const errorClass = classifyJobError(message);
       const next = nextStepAfterFailure(errorClass, job.attempts);
-      if (job.kind === 'DOWNLOAD') await noteExtractorResult(errorClass === 'extractor');
+      if (job.kind === 'DOWNLOAD') await noteExtractorResult(job.platform, errorClass === 'extractor');
       await finishJob(job, {
         state: next.state,
         errorClass,
@@ -236,10 +241,10 @@ async function runJob(job: ArchiveJob): Promise<void> {
 
 async function heartbeat(): Promise<void> {
   const stats = await statfs(libraryFor(TWITCH).root).catch(() => null);
-  const [ytdlp, td] = await Promise.all([activeVersion('ytdlp'), activeVersion('td')]);
+  const [ytdlp, td, ytdlpYoutube] = await Promise.all([activeVersion('ytdlp'), activeVersion('td'), activeVersion('ytdlpYoutube')]);
   const data = {
     version: WORKER_VERSION,
-    tools: { ytdlp, td },
+    tools: { ytdlp, td, ytdlpYoutube },
     gpuAvailable,
     diskFreeBytes: stats ? BigInt(stats.bavail) * BigInt(stats.bsize) : null,
     diskTotalBytes: stats ? BigInt(stats.blocks) * BigInt(stats.bsize) : null,
@@ -248,20 +253,36 @@ async function heartbeat(): Promise<void> {
     roots: Object.fromEntries(await Promise.all(ALL_PLATFORMS.map(async (platform) => {
       const { root } = libraryFor(platform);
       const space = await isMountedFolder(root) ? await statfs(root).catch(() => null) : null;
-      return [platform, { available: space !== null, freeBytes: space ? Number(BigInt(space.bavail) * BigInt(space.bsize)) : null }];
+      return [platform, {
+        available: space !== null,
+        freeBytes: space ? Number(BigInt(space.bavail) * BigInt(space.bsize)) : null,
+        totalBytes: space ? Number(BigInt(space.blocks) * BigInt(space.bsize)) : null,
+      }];
     }))),
     lastSeenAt: new Date(),
   };
   await prisma.archiveWorkerHeartbeat.upsert({ where: { workerId }, update: data, create: { workerId, ...data } });
 }
 
+async function readyPlatforms(settings: { toolsPausedAt: Date | null } | null): Promise<ArchivePlatform[]> {
+  const youtube = await prisma.youtubeSettings.findUnique({ where: { id: 'singleton' }, select: { toolsPausedAt: true } });
+  const paused = { TWITCH: settings?.toolsPausedAt, YOUTUBE: youtube?.toolsPausedAt };
+  return PLATFORMS.filter((platform) => !paused[platform]);
+}
+
+async function claimNetworkJob(held: boolean, ready: ArchivePlatform[]): Promise<ArchiveJob | null> {
+  const job = held ? null : await claimJob(prisma, workerId, NETWORK_KINDS, ready);
+  return job ?? claimJob(prisma, workerId, FILE_KINDS, PLATFORMS);
+}
+
 async function networkLane(): Promise<void> {
   while (!stopping) {
     const settings = await prisma.archiveSettings.findUnique({ where: { id: 'singleton' } }).catch(() => null);
     if (running.size - (cpuBusy ? 1 : 0) < (settings?.maxConcurrentDownloads ?? 2)) {
-      // Nothing new uses the tools while they are broken or about to be swapped.
-      const held = toolsBusy || settings?.toolsPausedAt || settings?.toolUpdateRequestedAt;
-      const job = await claimJob(prisma, workerId, held ? FILE_KINDS : NETWORK_KINDS).catch((error) => {
+      // Nothing new uses the tools while they are about to be swapped, and a platform whose
+      // tools are broken stops alone. File housekeeping needs no tools.
+      const held = Boolean(toolsBusy || settings?.toolUpdateRequestedAt);
+      const job = await claimNetworkJob(held, await readyPlatforms(settings)).catch((error) => {
         log('error', 'Claim failed', { error: String(error) });
         return null;
       });
@@ -287,7 +308,7 @@ async function cpuLane(): Promise<void> {
       && inReencodeWindow(now, settings?.reencodeWindowStart ?? '01:00', settings?.reencodeWindowEnd ?? '08:00')
       && !(settings?.jellyfinBusyUntil && settings.jellyfinBusyUntil > now);
 
-    const job = await claimJob(prisma, workerId, ['REENCODE'], open ? undefined : REENCODE_NOW_PRIORITY).catch(() => null);
+    const job = await claimJob(prisma, workerId, ['REENCODE'], PLATFORMS, open ? undefined : REENCODE_NOW_PRIORITY).catch(() => null);
     if (!job) continue;
     cpuBusy = true;
     void runJob(job).finally(() => {
@@ -328,13 +349,51 @@ async function cleanStaging(): Promise<void> {
   }
 }
 
-async function prepareSmokeVideo(): Promise<void> {
+async function newestVideo(platform: ArchivePlatform): Promise<string | null> {
   const video = await prisma.creatorVideo.findFirst({
-    where: { platform: TWITCH, availability: 'PUBLISHED' },
+    where: { platform, availability: 'PUBLISHED' },
     orderBy: { sourceCreatedAt: 'desc' },
     select: { externalId: true },
   });
-  setSmokeVideo(video ? `https://www.twitch.tv/videos/${video.externalId}` : null);
+  return video?.externalId ?? null;
+}
+
+// A platform with nothing to test against still checks the tool runs, and says so.
+async function prepareSmokeVideos(): Promise<void> {
+  const twitch = await newestVideo('TWITCH');
+  setSmokeVideo('ytdlp', twitch ? ['-J', '--no-playlist', `https://www.twitch.tv/videos/${twitch}`] : null);
+  const youtube = await newestVideo('YOUTUBE');
+  setSmokeVideo('ytdlpYoutube', youtube ? youtubeVideoArgs(youtube) : null);
+  if (!twitch) log('info', 'No Twitch video to smoke test with');
+  if (!youtube && PLATFORMS.includes('YOUTUBE')) log('info', 'No YouTube video to smoke test with');
+}
+
+// Apart from Twitch's, because a bad YouTube release or a slow GitHub must never stop Twitch
+// from starting. Without its tool YouTube waits, and the next tool check tries again.
+async function ensureYoutubeTool(pins: Partial<Record<ToolName, string>>): Promise<void> {
+  if (!youtubeMounted) return;
+  try {
+    await ensureTools(pins, YOUTUBE_TOOLS);
+    if (!PLATFORMS.includes('YOUTUBE')) PLATFORMS.push('YOUTUBE');
+  } catch (error) {
+    PLATFORMS.splice(0, PLATFORMS.length, ...PLATFORMS.filter((platform) => platform !== 'YOUTUBE'));
+    log('error', 'YouTube is off: its yt-dlp could not be installed', { error: String(error).slice(0, 300) });
+  }
+}
+
+// Straight away, not at the next daily check: YouTube breaks often and is often fixed the same day.
+async function repairYoutubeTools(pins: Partial<Record<ToolName, string>>): Promise<void> {
+  if (!PLATFORMS.includes('YOUTUBE') || downloadsRunning > 0) return;
+  const youtube = await prisma.youtubeSettings.findUnique({ where: { id: 'singleton' }, select: { toolsPausedAt: true } });
+  if (!youtube?.toolsPausedAt || Date.now() - youtubeRepairAt < TOOL_CHECK_MS) return;
+  youtubeRepairAt = Date.now();
+  toolsBusy = true;
+  try {
+    await prepareSmokeVideos();
+    if (await updateTools(pins, YOUTUBE_TOOLS)) await pauseStores.YOUTUBE.clear();
+  } finally {
+    toolsBusy = false;
+  }
 }
 
 // Daily: learn what is newest, and install it only if the current tools have stopped working.
@@ -342,6 +401,12 @@ async function prepareSmokeVideo(): Promise<void> {
 async function checkTools(): Promise<void> {
   const settings = await prisma.archiveSettings.findUnique({ where: { id: 'singleton' } });
   if (!settings) return;
+  if (youtubeMounted && !PLATFORMS.includes('YOUTUBE') && downloadsRunning === 0) {
+    await prepareSmokeVideos();
+    await ensureYoutubeTool((settings.pinnedTools ?? {}) as Partial<Record<ToolName, string>>);
+  }
+  await repairYoutubeTools((settings.pinnedTools ?? {}) as Partial<Record<ToolName, string>>)
+    .catch((error) => log('warn', 'YouTube tool repair failed', { error: String(error).slice(0, 300) }));
 
   // A new pin is tried once, so a mistyped version is not fetched every few seconds.
   const pinned = JSON.stringify(settings.pinnedTools ?? {});
@@ -349,10 +414,13 @@ async function checkTools(): Promise<void> {
     appliedPins = pinned;
     toolsBusy = true;
     try {
-      await prepareSmokeVideo();
-      await ensureTools((settings.pinnedTools ?? {}) as Partial<Record<ToolName, string>>);
+      await prepareSmokeVideos();
+      const pins = (settings.pinnedTools ?? {}) as Partial<Record<ToolName, string>>;
+      await ensureTools(pins, TWITCH_TOOLS);
       // A pin can be the cure for a pause, so the tools get another go.
-      await prisma.archiveSettings.update({ where: { id: 'singleton' }, data: { toolsPausedAt: null, extractorFailures: 0 } });
+      await pauseStores.TWITCH.clear();
+      await ensureYoutubeTool(pins);
+      await pauseStores.YOUTUBE.clear();
     } finally {
       toolsBusy = false;
     }
@@ -366,9 +434,17 @@ async function checkTools(): Promise<void> {
   let toolLatest;
   let updated = false;
   try {
-    await prepareSmokeVideo();
+    await prepareSmokeVideos();
     toolLatest = { ytdlp: await latestVersion('ytdlp'), td: await latestVersion('td') };
-    if ((requested || settings.toolsPausedAt) && downloadsRunning === 0) updated = await updateTools(pins);
+    if ((requested || settings.toolsPausedAt) && downloadsRunning === 0) updated = await updateTools(pins, TWITCH_TOOLS);
+    // Last and on its own, so a failed YouTube smoke test cannot stop a Twitch repair.
+    if (requested && PLATFORMS.includes('YOUTUBE')) {
+      youtubeRepairAt = 0;
+      // As with Twitch, a pause ends when the owner says to try again, new tool or not.
+      await updateTools(pins, YOUTUBE_TOOLS).then(() => pauseStores.YOUTUBE.clear()).catch((error) => {
+        log('warn', 'YouTube tool update failed', { error: String(error).slice(0, 300) });
+      });
+    }
   } catch (error) {
     // The installed tools still stand, so a failed update must not keep holding downloads.
     await prisma.archiveSettings.update({ where: { id: 'singleton' }, data: { toolUpdateRequestedAt: null, toolCheckedAt: new Date() } });
@@ -388,19 +464,47 @@ async function checkTools(): Promise<void> {
   log('info', 'Tools checked', { updated, requested });
 }
 
+interface PauseStore {
+  clear(): Promise<unknown>;
+  countFailure(): Promise<number>;
+  reset(): Promise<unknown>;
+  pause(): Promise<unknown>;
+}
+
+// One count and one pause per platform, so YouTube breaking leaves Twitch downloading.
+const pauseStores: Record<ArchivePlatform, PauseStore> = {
+  TWITCH: {
+    clear: () => prisma.archiveSettings.updateMany({ data: { toolsPausedAt: null, extractorFailures: 0 } }),
+    countFailure: async () => (await prisma.archiveSettings.update({
+      where: { id: 'singleton' },
+      data: { extractorFailures: { increment: 1 } },
+    })).extractorFailures,
+    reset: () => prisma.archiveSettings.updateMany({ where: { extractorFailures: { gt: 0 } }, data: { extractorFailures: 0 } }),
+    pause: () => prisma.archiveSettings.updateMany({ where: { toolsPausedAt: null }, data: { toolsPausedAt: new Date(), toolCheckedAt: null } }),
+  },
+  YOUTUBE: {
+    clear: () => prisma.youtubeSettings.updateMany({ data: { toolsPausedAt: null, extractorFailures: 0 } }),
+    countFailure: async () => (await prisma.youtubeSettings.upsert({
+      where: { id: 'singleton' },
+      update: { extractorFailures: { increment: 1 } },
+      create: { id: 'singleton', extractorFailures: 1 },
+    })).extractorFailures,
+    reset: () => prisma.youtubeSettings.updateMany({ where: { extractorFailures: { gt: 0 } }, data: { extractorFailures: 0 } }),
+    pause: () => prisma.youtubeSettings.updateMany({ where: { toolsPausedAt: null }, data: { toolsPausedAt: new Date() } }),
+  },
+};
+
 // Several videos failing the same way points at the tools, not the videos.
-async function noteExtractorResult(failed: boolean): Promise<void> {
+async function noteExtractorResult(platform: ArchivePlatform, failed: boolean): Promise<void> {
+  const store = pauseStores[platform];
   if (!failed) {
-    await prisma.archiveSettings.updateMany({ where: { extractorFailures: { gt: 0 } }, data: { extractorFailures: 0 } });
+    await store.reset();
     return;
   }
-  const { extractorFailures } = await prisma.archiveSettings.update({
-    where: { id: 'singleton' },
-    data: { extractorFailures: { increment: 1 } },
-  });
-  if (extractorFailures >= EXTRACTOR_FAILURE_LIMIT) {
-    await prisma.archiveSettings.updateMany({ where: { toolsPausedAt: null }, data: { toolsPausedAt: new Date(), toolCheckedAt: null } });
-    log('warn', 'Downloads paused: the tools keep failing', { extractorFailures });
+  const failures = await store.countFailure();
+  if (failures >= EXTRACTOR_FAILURE_LIMIT) {
+    await store.pause();
+    log('warn', 'Downloads paused: the tools keep failing', { platform, failures });
   }
 }
 
@@ -418,13 +522,17 @@ async function main(): Promise<void> {
   process.on('SIGINT', () => void shutdown('SIGINT'));
 
   await waitForMigrations();
-  await assertSeparateRoots(PLATFORMS.map((platform) => libraryFor(platform).root));
-  for (const platform of PLATFORMS) await probeLibrary(platform);
+  youtubeMounted = await isMountedFolder(libraryFor('YOUTUBE').root);
+  const roots = youtubeMounted ? ['TWITCH', 'YOUTUBE'] as const : ['TWITCH'] as const;
+  await assertSeparateRoots(roots.map((platform) => libraryFor(platform).root));
+  for (const platform of roots) await probeLibrary(platform);
   await cleanStaging();
 
   const settings = await prisma.archiveSettings.findUnique({ where: { id: 'singleton' } });
   appliedPins = JSON.stringify(settings?.pinnedTools ?? {});
-  await ensureTools((settings?.pinnedTools ?? {}) as Record<string, string>);
+  const pins = (settings?.pinnedTools ?? {}) as Partial<Record<ToolName, string>>;
+  await ensureTools(pins, TWITCH_TOOLS);
+  await ensureYoutubeTool(pins);
 
   gpuAvailable = await probeGpu();
   log('info', 'GPU probe finished', { gpuAvailable });

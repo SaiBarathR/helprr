@@ -10,6 +10,10 @@ export interface DownloadOptions {
   chapters: boolean;
   reencode: boolean;
   keepForever: boolean;
+  /** YouTube only. */
+  codec?: string;
+  captions?: boolean;
+  sponsorblock?: string;
 }
 
 export const DOWNLOAD_OPTION_KEYS = ['chat', 'chapters', 'reencode', 'keepForever'] as const;
@@ -19,6 +23,18 @@ export const DEFAULT_DOWNLOAD_OPTIONS: DownloadOptions = {
   chat: true,
   chapters: true,
   reencode: true,
+  keepForever: false,
+};
+
+// A YouTube file is already well encoded: re-encoding made every test file larger.
+export const DEFAULT_YOUTUBE_OPTIONS: DownloadOptions = {
+  quality: '1080',
+  codec: 'compatible',
+  chat: false,
+  chapters: true,
+  captions: true,
+  sponsorblock: 'mark',
+  reencode: false,
   keepForever: false,
 };
 

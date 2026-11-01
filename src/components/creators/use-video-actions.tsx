@@ -10,6 +10,7 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import type { ContextActionGroup } from '@/components/ui/quick-context-menu';
 import type { SwipeAction } from '@/components/ui/swipe-row';
 import { DownloadSheet } from '@/components/twitch/download-sheet';
+import { YoutubeDownloadSheet } from '@/components/youtube/download-sheet';
 import type { CreatorVideoItem, CreatorVideoPage } from './types';
 import { useCreatorPlatform } from './platform';
 
@@ -37,6 +38,7 @@ export function useVideoActions() {
   const canDownload = platform.downloads && hasCapability(me, platform.canDownload);
   const canManage = hasCapability(me, platform.canManage);
   const [sheetVideo, setSheetVideo] = useState<CreatorVideoItem | null>(null);
+  const Sheet = platform.id === 'youtube' ? YoutubeDownloadSheet : DownloadSheet;
   const refresh = () => void queryClient.invalidateQueries({ queryKey: [platform.id] });
   const fail = (error: Error) => toast.error(error.message);
 
@@ -183,7 +185,7 @@ export function useVideoActions() {
     deleteFiles: (videos: CreatorVideoItem[]) => setDeleting(videos.filter((video) => video.fileId)),
     sheet: (
       <>
-        {sheetVideo && <DownloadSheet video={sheetVideo} open onOpenChange={(open) => { if (!open) setSheetVideo(null); }} />}
+        {sheetVideo && <Sheet video={sheetVideo} open onOpenChange={(open) => { if (!open) setSheetVideo(null); }} />}
         <ConfirmDialog
           open={deleting.length > 0}
           onOpenChange={(open) => { if (!open && !removeFiles.isPending) setDeleting([]); }}

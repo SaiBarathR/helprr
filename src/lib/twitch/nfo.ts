@@ -1,19 +1,5 @@
-import { localDate } from '@/lib/twitch/naming';
-
-const HEADER = '<?xml version="1.0" encoding="utf-8" standalone="yes"?>\n';
-
-function xml(value: string): string {
-  // Characters XML 1.0 cannot carry at all, then the five it must escape.
-  return value
-    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F￾￿]/g, '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&apos;');
-}
-
-const tag = (name: string, value: string | number) => `  <${name}>${xml(String(value))}</${name}>\n`;
+import { localDate } from '@/lib/archive/naming';
+import { HEADER, tag, xml } from '@/lib/archive/nfo';
 
 export function episodeNfo(input: {
   title: string;
@@ -70,8 +56,4 @@ export function tvshowNfo(input: {
     `  <uniqueid type="twitch" default="true">${xml(input.twitchUserId)}</uniqueid>\n`,
     tag('status', 'Continuing'),
   ].join('')}</tvshow>\n`;
-}
-
-export function seasonNfo(title: string, seasonNumber: number): string {
-  return `${HEADER}<season>\n${tag('title', title)}${tag('seasonnumber', seasonNumber)}</season>\n`;
 }

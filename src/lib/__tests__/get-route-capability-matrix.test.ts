@@ -276,6 +276,13 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
     'GET /api/youtube/channels/[id]',
     'GET /api/youtube/channels/[id]/videos',
     'GET /api/youtube/feed',
+    'GET /api/youtube/files',
+    'GET /api/youtube/files/[id]',
+    'GET /api/youtube/files/history',
+    'GET /api/youtube/files/summary',
+    'GET /api/youtube/jobs',
+    'GET /api/youtube/jobs/[id]',
+    'GET /api/youtube/worker',
     'GET /api/youtube/playlists',
     'GET /api/youtube/playlists/[id]',
     'GET /api/youtube/playlists/[id]/videos',
@@ -506,7 +513,7 @@ describe('GET API route capability matrix', () => {
   const assignments = policyAssignments();
 
   it('explicitly assigns every GET handler exactly once', () => {
-    expect(handlers.size).toBe(245);
+    expect(handlers.size).toBe(252);
     expect([...assignments.keys()].sort()).toEqual([...handlers.keys()].sort());
   });
 

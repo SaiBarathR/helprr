@@ -36,6 +36,7 @@ describe('runDeleteFiles', () => {
       archiveMediaFile: {
         findUnique: vi.fn().mockResolvedValue({
           id: 'f', videoId: 'v', keepForever: true, relativePath: 'a.mkv', sidecars: [], originalRelativePath: null,
+          platform: 'TWITCH',
           video: { title: 'A', externalId: '1', creator: { displayName: 'N' } },
         }),
         delete: vi.fn().mockResolvedValue({}),
@@ -96,6 +97,7 @@ describe('forgetFilesDeletedElsewhere', () => {
 
   const row = (id: string) => ({
     id, videoId: `video-${id}`, relativePath: `${id}.mkv`, sidecars: [`${id}.nfo`], originalRelativePath: null, sizeBytes: BigInt(1000),
+    platform: 'TWITCH',
     video: { title: id, externalId: id, creator: { displayName: 'N' } },
   });
   function fakePrisma(files: unknown[], busyJobs = 0) {

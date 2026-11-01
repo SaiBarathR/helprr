@@ -85,7 +85,7 @@ const PLATFORMS: Record<CreatorPlatform['id'], CreatorPlatform> = {
     canDownload: 'youtube.download',
     canManage: 'youtube.manage',
     expires: false,
-    downloads: false,
+    downloads: true,
     autoDownload: false,
     videoTypes: [
       { id: 'UPLOAD', label: 'Videos' },

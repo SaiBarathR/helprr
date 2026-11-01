@@ -70,6 +70,7 @@ export async function runDeleteFiles(prisma: PrismaClient, job: ArchiveJob, asse
     errorMessage = error instanceof Error ? error.message : String(error);
   }
   await writeDeleteAudit(prisma, {
+    platform: file.platform,
     title: file.video.title,
     fileCount: paths.length,
     details: { kind: 'twitch-file', twitchVideoId: file.video.externalId, paths },
@@ -179,6 +180,7 @@ export async function forgetFilesDeletedElsewhere(prisma: PrismaClient, platform
       freedBytes: freedBytes + Number(file.sizeBytes),
     });
     await writeDeleteAudit(prisma, {
+      platform: file.platform,
       title: file.video.title,
       fileCount: leftovers.length,
       details: { kind: 'deleted-outside-helprr', twitchVideoId: file.video.externalId, paths: leftovers },

@@ -4,18 +4,19 @@ import os from 'node:os';
 import path from 'node:path';
 import { pipeline as pipeStreams } from 'node:stream/promises';
 import { createGzip } from 'node:zlib';
-import type { PrismaClient, CreatorVideo } from '@prisma/client';
 import { chapterGenres, chaptersToFfmetadata, type YtDlpChapter } from '@/lib/twitch/chapters';
 import { chatToAss, type ChatComment } from '@/lib/twitch/chat-ass';
 import { classifyJobError } from '@/lib/archive/job-errors';
-import { archiveEpisode, episodeBaseName, seasonFolder, type SeasonKind } from '@/lib/twitch/naming';
-import { episodeNfo, seasonNfo, tvshowNfo } from '@/lib/twitch/nfo';
+import { archiveEpisode, episodeBaseName, seasonFolder, type SeasonKind } from '@/lib/archive/naming';
+import { seasonNfo } from '@/lib/archive/nfo';
+import { episodeNfo, tvshowNfo } from '@/lib/twitch/nfo';
 import { parseProgressLine, YT_DLP_PROGRESS_TEMPLATE } from '@/lib/archive/progress';
 import { estimateSizeBytes, pickFormat, type YtDlpFormat } from '@/lib/twitch/quality';
 import { isTwitchArtworkUrl, sizeThumbnail } from '@/lib/twitch/serialize';
 import { decryptTwitchToken } from '@/lib/twitch/token-cipher';
 import type { DownloadContext, EpisodeLayout, PlatformAdapter, PreparedDownload, Sidecar } from '../adapter';
 import { FFMPEG } from '../env';
+import { nextSequentialEpisode } from '../episodes';
 import { WaitForRecordingError } from '../pipeline';
 import { ProcessFailedError, run } from '../process';
 import { toolPath } from '../tools';
@@ -121,22 +122,6 @@ async function archiveChat(ctx: DownloadContext, staging: string): Promise<Sidec
   }
 }
 
-async function assignSequentialEpisode(prisma: PrismaClient, video: CreatorVideo, kind: SeasonKind) {
-  const season = kind === 'HIGHLIGHT' ? 1 : 2;
-  if (video.seasonEpisode !== null) return { season, episode: video.seasonEpisode };
-  const episode = await prisma.$transaction(async (tx) => {
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`twitch-season:${video.creatorId}:${kind}`}))`;
-    const { _max } = await tx.creatorVideo.aggregate({
-      where: { creatorId: video.creatorId, type: video.type },
-      _max: { seasonEpisode: true },
-    });
-    const next = (_max.seasonEpisode ?? 0) + 1;
-    await tx.creatorVideo.update({ where: { id: video.id }, data: { seasonEpisode: next } });
-    return next;
-  });
-  return { season, episode };
-}
-
 export const twitchAdapter: PlatformAdapter<TwitchInfo> = {
   platform: 'TWITCH',
   isArtworkUrl: isTwitchArtworkUrl,
@@ -213,7 +198,7 @@ export const twitchAdapter: PlatformAdapter<TwitchInfo> = {
     const kind = video.type as SeasonKind;
     const numbering = kind === 'ARCHIVE'
       ? archiveEpisode(date)
-      : await assignSequentialEpisode(prisma, video, kind);
+      : await nextSequentialEpisode(prisma, video, kind === 'HIGHLIGHT' ? 1 : 2, kind);
     const genres = chapterGenres(info.chapters ?? []);
     const seasonTitle = kind === 'ARCHIVE' ? String(numbering.season) : kind === 'HIGHLIGHT' ? 'Highlights' : 'Uploads';
     return {
