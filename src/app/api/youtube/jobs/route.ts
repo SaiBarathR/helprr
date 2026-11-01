@@ -2,12 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { prisma } from '@/lib/db';
-import { DEFAULT_YOUTUBE_OPTIONS, enqueueDownload, isClientRequestId, type DownloadOptions } from '@/lib/archive/jobs';
+import { enqueueDownload, isClientRequestId, type DownloadOptions } from '@/lib/archive/jobs';
 import { serializeJob, JOB_SELECT } from '@/lib/archive/serialize-job';
 import { CODECS, QUALITIES, SPONSORBLOCK_MODES } from '@/lib/youtube/formats';
 import { parseVideoLink } from '@/lib/youtube/ids';
 import { YOUTUBE } from '@/lib/youtube/platform';
 import { storeVideoById } from '@/lib/youtube/playlists';
+import { decideForYoutubeVideo, optionsFromPolicy, POLICY_VIDEO } from '@/lib/youtube/policy';
 import { youtubeErrorResponse } from '@/lib/youtube/route-errors';
 
 const MAX_LISTED = 200;
@@ -41,9 +42,8 @@ const oneOf = <T extends string>(allowed: readonly T[], value: unknown, fallback
 );
 
 // Only fixed choices reach the worker, which builds its yt-dlp arguments from them.
-function readOptions(value: unknown): DownloadOptions {
+function readOptions(value: unknown, defaults: DownloadOptions): DownloadOptions {
   const body = (value && typeof value === 'object' ? value : {}) as Record<string, unknown>;
-  const defaults = DEFAULT_YOUTUBE_OPTIONS;
   return {
     ...defaults,
     quality: oneOf(QUALITIES, body.quality, defaults.quality),
@@ -104,12 +104,15 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   }
   if (!videoId) return NextResponse.json({ error: 'Video not found' }, { status: 404 });
 
+  // A person asking skips the wait: it only exists for what a rule picks by itself.
+  const video = await prisma.creatorVideo.findUniqueOrThrow({ where: { id: videoId }, select: POLICY_VIDEO });
+  const { policy, trace } = await decideForYoutubeVideo(video);
   const result = await enqueueDownload({
     platform: YOUTUBE,
     videoId,
     source: pasted ? 'URL' : 'MANUAL',
-    options: readOptions(body.options),
-    trace: { reason: 'manual' },
+    options: readOptions(body.options, optionsFromPolicy(policy)),
+    trace: { ...trace, reason: 'manual' },
     actor: { id: auth.user.id, username: auth.user.username },
     clientRequestId: body.clientRequestId as string | undefined,
   });

@@ -1,4 +1,5 @@
 import type { DownloadOptions } from '@/lib/archive/jobs';
+import { CODECS, SPONSORBLOCK_MODES } from '@/lib/youtube/formats';
 
 export interface PolicyConditions {
   titleInclude?: string[];
@@ -16,10 +17,12 @@ export interface TwitchPolicy extends DownloadOptions {
   keepLatest: number | null;
   deleteAfterDays: number | null;
   deleteAfterWatchedDays: number | null;
+  /** YouTube only: how long after publishing, or the end of a stream, a rule waits. */
+  delayMinutes?: number;
 }
 
 export type PolicyLayer = Partial<TwitchPolicy>;
-export type VideoTypeKey = 'ARCHIVE' | 'HIGHLIGHT' | 'UPLOAD';
+export type VideoTypeKey = 'ARCHIVE' | 'HIGHLIGHT' | 'UPLOAD' | 'SHORT';
 
 export const BUILT_IN_POLICY: TwitchPolicy = {
   autoDownload: false,
@@ -40,6 +43,7 @@ export interface PolicyLayers {
   type?: PolicyLayer;
   streamer?: PolicyLayer;
   streamerType?: PolicyLayer;
+  playlist?: PolicyLayer;
   manual?: PolicyLayer;
 }
 
@@ -58,7 +62,7 @@ export interface PolicyDecision {
 }
 
 // Least to most specific; a later layer overrides an earlier one field by field.
-const LAYER_ORDER = ['global', 'type', 'streamer', 'streamerType', 'manual'] as const;
+const LAYER_ORDER = ['global', 'type', 'streamer', 'streamerType', 'playlist', 'manual'] as const;
 
 function conditionFailure(video: VideoForPolicy, conditions: PolicyConditions): string | null {
   const title = video.title.toLowerCase();
@@ -80,12 +84,17 @@ function conditionFailure(video: VideoForPolicy, conditions: PolicyConditions): 
 }
 
 /** Keywords only, never a regex: a rule cannot be made to hang the poller. */
-export function evaluatePolicy(video: VideoForPolicy, layers: PolicyLayers, masterSwitch: boolean): PolicyDecision {
-  const policy = { ...BUILT_IN_POLICY } as TwitchPolicy & Record<string, unknown>;
-  const trace = Object.fromEntries(Object.keys(BUILT_IN_POLICY).map((field) => [field, 'builtIn'])) as PolicyTrace;
+export function evaluatePolicy(
+  video: VideoForPolicy,
+  layers: PolicyLayers,
+  masterSwitch: boolean,
+  builtIn: TwitchPolicy = BUILT_IN_POLICY,
+): PolicyDecision {
+  const policy = { ...builtIn } as TwitchPolicy & Record<string, unknown>;
+  const trace = Object.fromEntries(Object.keys(builtIn).map((field) => [field, 'builtIn'])) as PolicyTrace;
   for (const name of LAYER_ORDER) {
     for (const [field, value] of Object.entries(layers[name] ?? {})) {
-      if (value === undefined || !(field in BUILT_IN_POLICY)) continue;
+      if (value === undefined || !(field in builtIn)) continue;
       policy[field] = value;
       trace[field as keyof TwitchPolicy] = name;
     }
@@ -108,10 +117,17 @@ export function sanitizeLayer(value: unknown): PolicyLayer {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
   const input = value as Record<string, unknown>;
   const layer: PolicyLayer = {};
-  for (const field of ['autoDownload', 'notify', 'chat', 'chapters', 'reencode', 'keepForever'] as const) {
+  for (const field of ['autoDownload', 'notify', 'chat', 'chapters', 'reencode', 'keepForever', 'captions'] as const) {
     if (typeof input[field] === 'boolean') layer[field] = input[field];
   }
   if (typeof input.quality === 'string' && /^[a-z0-9_]{1,16}$/i.test(input.quality)) layer.quality = input.quality;
+  if (typeof input.codec === 'string' && (CODECS as readonly string[]).includes(input.codec)) layer.codec = input.codec;
+  if (typeof input.sponsorblock === 'string' && (SPONSORBLOCK_MODES as readonly string[]).includes(input.sponsorblock)) {
+    layer.sponsorblock = input.sponsorblock;
+  }
+  if (typeof input.delayMinutes === 'number' && Number.isInteger(input.delayMinutes) && input.delayMinutes >= 0 && input.delayMinutes <= 10_080) {
+    layer.delayMinutes = input.delayMinutes;
+  }
   for (const field of ['keepLatest', 'deleteAfterDays', 'deleteAfterWatchedDays'] as const) {
     const number = input[field];
     if (number === null || (typeof number === 'number' && Number.isInteger(number) && number >= 0 && number <= 100_000)) {
@@ -140,7 +156,7 @@ export function sanitizeLayer(value: unknown): PolicyLayer {
 export function layerMap(value: unknown): Partial<Record<VideoTypeKey, PolicyLayer>> {
   const input = (value && typeof value === 'object' ? value : {}) as Record<string, unknown>;
   return Object.fromEntries(
-    (['ARCHIVE', 'HIGHLIGHT', 'UPLOAD'] as const)
+    (['ARCHIVE', 'HIGHLIGHT', 'UPLOAD', 'SHORT'] as const)
       .filter((type) => input[type])
       .map((type) => [type, sanitizeLayer(input[type])]),
   );

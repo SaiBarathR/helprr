@@ -3,7 +3,9 @@ import { prisma } from '@/lib/db';
 import { logger } from '@/lib/logger';
 import { noteJobFailure } from '@/lib/polling-job-report';
 import { quotaState, YoutubeKeyRejectedError, YoutubeQuotaError } from '@/lib/youtube/api';
+import { enqueueDownload } from '@/lib/archive/jobs';
 import { YOUTUBE } from '@/lib/youtube/platform';
+import { decideForYoutubeVideo, optionsFromPolicy, POLICY_VIDEO, settleTime } from '@/lib/youtube/policy';
 import { reconcileYoutubeJobs } from '@/lib/youtube/reconcile';
 import { syncPlaylist } from '@/lib/youtube/playlists';
 import { getYoutubeSettings } from '@/lib/youtube/settings';
@@ -46,6 +48,7 @@ export async function pollYoutube(now = new Date()): Promise<void> {
       try {
         const { newVideoIds } = await syncChannelVideos(channel, now);
         await notifyNewVideos(channel.id, newVideoIds, now);
+        await autoEnqueue(newVideoIds, now);
       } catch (error) {
         // Neither gets better on the next channel, and each try would cost another call.
         if (error instanceof YoutubeQuotaError || error instanceof YoutubeKeyRejectedError) throw error;
@@ -68,6 +71,7 @@ export async function pollYoutube(now = new Date()): Promise<void> {
       try {
         const { newVideoIds } = await syncPlaylist(list, now);
         await notifyListVideos(list.id, list.title, newVideoIds);
+        await autoEnqueue(newVideoIds, now, list.id);
       } catch (error) {
         if (error instanceof YoutubeQuotaError || error instanceof YoutubeKeyRejectedError) throw error;
         noteJobFailure(error);
@@ -81,6 +85,24 @@ export async function pollYoutube(now = new Date()): Promise<void> {
 }
 
 // The same key as a channel alert, so someone following both hears once.
+// Only what a sweep just found, so a deleted video never comes back by itself.
+async function autoEnqueue(videoIds: string[], now: Date, playlistId?: string): Promise<void> {
+  if (videoIds.length === 0) return;
+  const videos = await prisma.creatorVideo.findMany({ where: { id: { in: videoIds } }, select: POLICY_VIDEO });
+  for (const video of videos) {
+    const { policy, trace, autoDownloadReason } = await decideForYoutubeVideo(video, { playlistId });
+    if (!policy.autoDownload) continue;
+    await enqueueDownload({
+      platform: YOUTUBE,
+      videoId: video.id,
+      source: 'RULE',
+      options: optionsFromPolicy(policy),
+      trace: { ...trace, reason: autoDownloadReason },
+      runAfter: settleTime(video, policy, now),
+    });
+  }
+}
+
 async function notifyListVideos(playlistId: string, listTitle: string, videoIds: string[]): Promise<void> {
   if (videoIds.length === 0) return;
   const [videos, subscriptions] = await Promise.all([
@@ -108,11 +130,12 @@ async function notifyNewVideos(channelId: string, videoIds: string[], now: Date)
   const [videos, subscriptions] = await Promise.all([
     prisma.creatorVideo.findMany({
       where: { id: { in: videoIds } },
-      select: { id: true, externalId: true, title: true, type: true, creator: { select: { displayName: true } } },
+      select: { ...POLICY_VIDEO, externalId: true, creator: { select: { displayName: true } } },
     }),
     prisma.creatorSubscription.findMany({ where: { creatorId: channelId, notifyNewVods: true }, select: { userId: true } }),
   ]);
   for (const video of videos) {
+    if (!(await decideForYoutubeVideo(video)).policy.notify) continue;
     for (const { userId } of subscriptions) {
       await notifyAndLog({
         eventType: 'youtubeVideoNew',

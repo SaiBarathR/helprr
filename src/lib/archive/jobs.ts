@@ -49,6 +49,8 @@ export interface EnqueueInput {
   options: DownloadOptions;
   trace?: Prisma.InputJsonValue;
   priority?: number;
+  /** Not before this time. Rules use it to give a new video time to settle. */
+  runAfter?: Date;
   actor?: { id: string; username: string } | null;
   clientRequestId?: string;
 }
@@ -85,6 +87,7 @@ export async function enqueueDownload(input: EnqueueInput): Promise<{ jobId: str
         videoId: input.videoId,
         source: input.source,
         priority: input.priority ?? 0,
+        ...(input.runAfter ? { runAfter: input.runAfter } : {}),
         options: input.options as unknown as Prisma.InputJsonValue,
         trace: input.trace,
         requestedByUserId: input.actor?.id,

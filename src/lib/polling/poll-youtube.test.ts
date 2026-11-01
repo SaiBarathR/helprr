@@ -14,6 +14,8 @@ const mocks = vi.hoisted(() => ({
   quota: vi.fn(),
   sync: vi.fn(),
   notify: vi.fn(),
+  enqueue: vi.fn(),
+  decide: vi.fn(),
 }));
 
 vi.mock('@/lib/db', () => ({
@@ -31,6 +33,13 @@ vi.mock('@/lib/polling-job-report', () => ({ noteJobFailure: vi.fn() }));
 vi.mock('@/lib/youtube/settings', () => ({ getYoutubeSettings: vi.fn(async () => ({ pollVideosSecs: 600 })) }));
 vi.mock('@/lib/youtube/sync', () => ({ syncChannelVideos: mocks.sync }));
 vi.mock('@/lib/youtube/reconcile', () => ({ reconcileYoutubeJobs: vi.fn(async () => undefined) }));
+vi.mock('@/lib/archive/jobs', () => ({ enqueueDownload: mocks.enqueue }));
+vi.mock('@/lib/youtube/policy', () => ({
+  POLICY_VIDEO: { id: true },
+  decideForYoutubeVideo: mocks.decide,
+  optionsFromPolicy: () => ({ quality: '1080' }),
+  settleTime: () => new Date('2026-11-01T15:00:00Z'),
+}));
 vi.mock('@/lib/youtube/playlists', () => ({ syncPlaylist: mocks.syncList }));
 vi.mock('./shared', () => ({ errorMessage: String, notifyAndLog: mocks.notify }));
 vi.mock('@/lib/youtube/api', async (original) => ({
@@ -52,6 +61,7 @@ describe('polling YouTube', () => {
     mocks.due.mockResolvedValue([{ id: 'a' }, { id: 'b' }]);
     mocks.sync.mockResolvedValue({ newVideoIds: [] });
     mocks.lists.mockResolvedValue([]);
+    mocks.decide.mockResolvedValue({ policy: { notify: true, autoDownload: false }, trace: {}, autoDownloadReason: 'off' });
     mocks.syncList.mockResolvedValue({ newVideoIds: [] });
     mocks.subscribers.mockResolvedValue([{ userId: 'u1' }, { userId: 'u2' }]);
     mocks.videos.mockResolvedValue([{ id: 'v', externalId: 'ext', title: 'A video', type: 'ARCHIVE', creator: { displayName: 'WAN Show' } }]);
@@ -109,6 +119,38 @@ describe('polling YouTube', () => {
     expect(mocks.lists.mock.calls[0][0].where).toMatchObject({ platform: 'YOUTUBE', subscriptions: { some: {} } });
     expect(mocks.advanceList.mock.calls[0][0].data).toEqual({ nextCheckAt: after(600) });
     expect(mocks.notify.mock.calls[0][0]).toMatchObject({ title: 'Best of: new video', dedupeKey: 'youtube-video-ext-u1' });
+  });
+
+  it('queues what the rules pick, not before its wait', async () => {
+    mocks.due.mockResolvedValue([{ id: 'a' }]);
+    mocks.sync.mockResolvedValue({ newVideoIds: ['v'] });
+    mocks.decide.mockResolvedValue({ policy: { notify: true, autoDownload: true }, trace: {}, autoDownloadReason: 'on in streamer' });
+
+    await pollYoutube(NOW);
+
+    expect(mocks.enqueue.mock.calls[0][0]).toMatchObject({
+      platform: 'YOUTUBE', videoId: 'v', source: 'RULE', runAfter: new Date('2026-11-01T15:00:00Z'), trace: { reason: 'on in streamer' },
+    });
+  });
+
+  it('queues nothing the rules leave alone', async () => {
+    mocks.due.mockResolvedValue([{ id: 'a' }]);
+    mocks.sync.mockResolvedValue({ newVideoIds: ['v'] });
+
+    await pollYoutube(NOW);
+
+    expect(mocks.enqueue).not.toHaveBeenCalled();
+  });
+
+  it('stays quiet about a video when the rules say not to notify', async () => {
+    mocks.due.mockResolvedValue([{ id: 'a' }]);
+    mocks.sync.mockResolvedValue({ newVideoIds: ['v'] });
+    mocks.decide.mockResolvedValue({ policy: { notify: false, autoDownload: false }, trace: {}, autoDownloadReason: 'off' });
+
+    await pollYoutube(NOW);
+
+    expect(mocks.notify).not.toHaveBeenCalled();
+    expect(mocks.stamp).toHaveBeenCalled();
   });
 
   it('tells each follower once, with a link that can start the download', async () => {
