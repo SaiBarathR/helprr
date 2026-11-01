@@ -217,7 +217,17 @@ const POLICY_GROUPS: Record<string, readonly string[]> = {
     'PATCH /api/youtube/subscriptions/[id]',
     'DELETE /api/youtube/subscriptions/[id]',
   ],
+  'cap:youtube.download': [
+    'POST /api/youtube/jobs',
+  ],
   'cap:youtube.manage': [
+    'DELETE /api/youtube/files/[id]',
+    'PATCH /api/youtube/files/[id]',
+    'DELETE /api/youtube/files/[id]/original',
+    'POST /api/youtube/files/[id]/original/restore',
+    'POST /api/youtube/files/[id]/reencode',
+    'PATCH /api/youtube/jobs/[id]',
+    'POST /api/youtube/worker/tools',
     'POST /api/youtube/library',
   ],
   'cap:twitch.manage': [
@@ -304,6 +314,16 @@ const SPECIAL_POLICIES: Record<string, SpecialPolicy> = {
     kind: 'owned-or-capability',
     marker: 'job.requestedByUserId === auth.user.id',
     capabilities: ['twitch.download', 'twitch.manage'],
+  },
+  'POST /api/youtube/jobs/[id]/retry': {
+    kind: 'owned-or-capability',
+    marker: 'job.requestedByUserId === auth.user.id',
+    capabilities: ['youtube.download', 'youtube.manage'],
+  },
+  'POST /api/youtube/jobs/[id]/cancel': {
+    kind: 'owned-or-capability',
+    marker: 'job.requestedByUserId === auth.user.id',
+    capabilities: ['youtube.download', 'youtube.manage'],
   },
   'POST /api/qbittorrent/[hash]': {
     kind: 'dynamic-capability',
@@ -515,7 +535,7 @@ describe('mutating API route capability matrix', () => {
   const assignments = policyAssignments();
 
   it('explicitly assigns every mutating handler exactly once', () => {
-    expect(handlers.size).toBe(213);
+    expect(handlers.size).toBe(223);
     expect([...assignments.keys()].sort()).toEqual([...handlers.keys()].sort());
   });
 

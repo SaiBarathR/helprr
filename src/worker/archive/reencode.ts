@@ -225,6 +225,7 @@ export async function deleteExpiredOriginals(prisma: PrismaClient, platform: Arc
     if (!done && !errorMessage) continue;
     deleted += 1;
     await writeDeleteAudit(prisma, {
+      platform: file.platform,
       title: file.video.title,
       fileCount: 1,
       details: { kind: 'original-after-reencode', relativePath: file.originalRelativePath },
@@ -255,6 +256,7 @@ export async function recordDeletion(prisma: PrismaClient, input: {
 }
 
 interface DeleteAudit {
+  platform: ArchivePlatform;
   title: string;
   fileCount: number;
   details: Record<string, unknown>;
@@ -270,9 +272,9 @@ export function deleteAuditRow(input: DeleteAudit): Prisma.FileOperationAuditCre
   return {
     userId: input.actor?.id ?? null,
     username: input.actor?.username ?? 'system:twitch-worker',
-    service: 'TWITCH',
+    service: input.platform,
     operation: 'DELETE_MEDIA',
-    mediaType: 'twitch-video',
+    mediaType: `${input.platform.toLowerCase()}-video`,
     mediaTitle: input.title,
     fileCount: input.fileCount,
     filesDeleted: input.filesDeleted ?? input.errorMessage === null,

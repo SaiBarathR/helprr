@@ -86,6 +86,7 @@ export async function runDeleteOriginal(prisma: PrismaClient, job: ArchiveJob, a
   }
   if (done || errorMessage) {
     await writeDeleteAudit(prisma, {
+      platform: file.platform,
       title: file.video.title,
       fileCount: 1,
       details: { kind: 'original-deleted-by-request', twitchVideoId: file.video.externalId, paths: [relative] },
@@ -130,6 +131,7 @@ export async function runRestoreOriginal(prisma: PrismaClient, job: ArchiveJob, 
   const target = insideLibrary(file.relativePath, root);
   const startedAt = new Date();
   const audit = {
+    platform: file.platform,
     title: file.video.title,
     fileCount: 1,
     details: { kind: 'original-restored-by-request', twitchVideoId: file.video.externalId, paths: [file.relativePath, relative] },

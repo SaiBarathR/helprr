@@ -61,6 +61,7 @@ const file = (overrides: Record<string, unknown> = {}) => ({
   durationSeconds: 60,
   reencodedAt,
   jobs: [],
+  platform: 'TWITCH',
   video: { title: 'A stream', externalId: '100', creator: { displayName: 'Gigguk' } },
   ...overrides,
 });

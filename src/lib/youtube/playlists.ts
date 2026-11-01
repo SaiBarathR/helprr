@@ -58,6 +58,16 @@ async function storeVideos(videos: YoutubeVideo[], now: Date): Promise<void> {
   });
 }
 
+/** A pasted link for a video Helprr has not seen. */
+export async function storeVideoById(externalId: string, now = new Date()): Promise<string | null> {
+  await storeVideos(await videosById([externalId]), now);
+  const row = await prisma.creatorVideo.findUnique({
+    where: { platform_externalId: { platform: YOUTUBE, externalId } },
+    select: { id: true },
+  });
+  return row?.id ?? null;
+}
+
 /**
  * One unit to see whether anything changed, then the items only if the count moved, so a
  * long list costs the same as a short one on an idle day. Removing a video from a list

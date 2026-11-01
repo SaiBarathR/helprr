@@ -4,6 +4,7 @@ import { logger } from '@/lib/logger';
 import { noteJobFailure } from '@/lib/polling-job-report';
 import { quotaState, YoutubeKeyRejectedError, YoutubeQuotaError } from '@/lib/youtube/api';
 import { YOUTUBE } from '@/lib/youtube/platform';
+import { reconcileYoutubeJobs } from '@/lib/youtube/reconcile';
 import { syncPlaylist } from '@/lib/youtube/playlists';
 import { getYoutubeSettings } from '@/lib/youtube/settings';
 import { syncChannelVideos } from '@/lib/youtube/sync';
@@ -16,6 +17,12 @@ const TYPE_LABELS = { SHORT: 'Short', ARCHIVE: 'live replay', HIGHLIGHT: 'video'
 export async function pollYoutube(now = new Date()): Promise<void> {
   const connection = await prisma.serviceConnection.findFirst({ where: { type: 'YOUTUBE' }, select: { id: true } });
   if (!connection) return;
+
+  // Before the quota check: finished jobs need their alerts, and this spends no units.
+  await reconcileYoutubeJobs(now).catch((error) => {
+    noteJobFailure(error);
+    logger.warn('YouTube reconcile failed', { error: errorMessage(error) }, { scope: 'polling' });
+  });
 
   try {
     const quota = await quotaState(now);

@@ -30,6 +30,7 @@ vi.mock('@/lib/logger', () => ({ logger: { warn: vi.fn() } }));
 vi.mock('@/lib/polling-job-report', () => ({ noteJobFailure: vi.fn() }));
 vi.mock('@/lib/youtube/settings', () => ({ getYoutubeSettings: vi.fn(async () => ({ pollVideosSecs: 600 })) }));
 vi.mock('@/lib/youtube/sync', () => ({ syncChannelVideos: mocks.sync }));
+vi.mock('@/lib/youtube/reconcile', () => ({ reconcileYoutubeJobs: vi.fn(async () => undefined) }));
 vi.mock('@/lib/youtube/playlists', () => ({ syncPlaylist: mocks.syncList }));
 vi.mock('./shared', () => ({ errorMessage: String, notifyAndLog: mocks.notify }));
 vi.mock('@/lib/youtube/api', async (original) => ({

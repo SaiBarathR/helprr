@@ -1,11 +1,14 @@
 'use client';
 
-import { use, useEffect } from 'react';
+import { use, useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ChevronRight, ExternalLink, Lock, MoreHorizontal, Play } from 'lucide-react';
+import { useSearchParams } from 'next/navigation';
+import { ChevronRight, Download, ExternalLink, Lock, MoreHorizontal, Play } from 'lucide-react';
 import { format } from 'date-fns';
 import Link from '@/components/ui/app-link';
 import { PageHeader } from '@/components/layout/page-header';
+import { useMe, hasCapability } from '@/components/permission-provider';
+import { YoutubeDownloadSheet } from '@/components/youtube/download-sheet';
 import { HeroImage } from '@/components/media/hero-image';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -45,6 +48,9 @@ export default function YoutubeVideoPage({ params }: { params: Promise<{ id: str
   const { id } = use(params);
   const queryClient = useQueryClient();
   const actions = useVideoActions();
+  const me = useMe();
+  // A push lands here with ?download=1, so the sheet is already open.
+  const [sheetOpen, setSheetOpen] = useState(useSearchParams().get('download') === '1');
 
   const query = useQuery({
     queryKey: ['youtube', 'video', id],
@@ -53,6 +59,8 @@ export default function YoutubeVideoPage({ params }: { params: Promise<{ id: str
       if (!res.ok) throw new Error('Failed to load video');
       return (await res.json()) as VideoDetail;
     },
+    refetchInterval: (state) => (state.state.data?.activeJob ? 5_000 : false),
+    refetchIntervalInBackground: false,
   });
   const video = query.data;
 
@@ -91,6 +99,7 @@ export default function YoutubeVideoPage({ params }: { params: Promise<{ id: str
   const status = statusOf(video);
   const groups = actions.groupsFor(video);
   const channelHref = `/youtube/channels/${video.creator.id}`;
+  const canDownload = hasCapability(me, 'youtube.download') && !video.downloaded && !video.activeJob && video.availability === 'PUBLISHED';
 
   return (
     <>
@@ -161,9 +170,13 @@ export default function YoutubeVideoPage({ params }: { params: Promise<{ id: str
                   <p>Age-restricted. Saving it needs the spare Google account in Settings.</p>
                 </div>
               )}
-              {video.jellyfinItemId && (
+              {video.jellyfinItemId ? (
                 <Button asChild className="h-10 w-full rounded-full">
                   <Link href={`/jellyfin/library/item/${video.jellyfinItemId}`}><Play className="mr-2 h-4 w-4 fill-current" />Play</Link>
+                </Button>
+              ) : canDownload && (
+                <Button className="h-10 w-full rounded-full" onClick={() => setSheetOpen(true)}>
+                  <Download className="mr-2 h-4 w-4" />Download
                 </Button>
               )}
               <Button asChild variant="secondary" className="h-10 w-full rounded-full">
@@ -176,6 +189,7 @@ export default function YoutubeVideoPage({ params }: { params: Promise<{ id: str
         </div>
       </div>
       {actions.sheet}
+      {canDownload && <YoutubeDownloadSheet video={video} open={sheetOpen} onOpenChange={setSheetOpen} />}
     </>
   );
 }
