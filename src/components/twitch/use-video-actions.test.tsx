@@ -25,11 +25,11 @@ import { useVideoActions } from './use-video-actions';
 
 const video: TwitchVideo = {
   id: 'video-1',
-  twitchVideoId: '100',
+  externalId: '100',
   type: 'ARCHIVE',
   title: 'A stream',
   description: null,
-  twitchCreatedAt: '2026-10-20T00:00:00.000Z',
+  sourceCreatedAt: '2026-10-20T00:00:00.000Z',
   durationSeconds: 3600,
   thumbnailUrl: null,
   category: null,
@@ -38,7 +38,7 @@ const video: TwitchVideo = {
   chapters: null,
   availability: 'PUBLISHED',
   estimatedExpiresAt: null,
-  streamer: { id: 'streamer-1', login: 'gigguk', displayName: 'Gigguk', profileImageUrl: null, isLive: false },
+  creator: { id: 'streamer-1', login: 'gigguk', displayName: 'Gigguk', profileImageUrl: null, isLive: false },
   seen: true,
   downloaded: false,
   fileId: null,

@@ -258,7 +258,7 @@ export default function TwitchFilePage({ params }: { params: Promise<{ id: strin
           <div className="min-w-0 flex-1">
             <h1 className="line-clamp-3 text-base font-semibold leading-snug">{file.title}</h1>
             <p className="mt-0.5 truncate text-sm text-muted-foreground">
-              <Link href={`/twitch/streamers/${file.streamer.id}`}>{file.streamer.displayName}</Link>
+              <Link href={`/twitch/streamers/${file.creator.id}`}>{file.creator.displayName}</Link>
             </p>
             <div className="mt-1 flex flex-wrap gap-1"><FileBadges file={file} /></div>
           </div>
@@ -366,7 +366,7 @@ export default function TwitchFilePage({ params }: { params: Promise<{ id: strin
             </GroupedSection>
 
             <GroupedSection>
-              <a href={`https://www.twitch.tv/videos/${file.twitchVideoId}`} target="_blank" rel="noopener noreferrer" className="grouped-row gap-3 text-primary hover:bg-foreground/[0.03] active:bg-foreground/5">
+              <a href={`https://www.twitch.tv/videos/${file.externalId}`} target="_blank" rel="noopener noreferrer" className="grouped-row gap-3 text-primary hover:bg-foreground/[0.03] active:bg-foreground/5">
                 <span className="text-sm">Open on Twitch</span>
                 <ExternalLink className="h-4 w-4" />
               </a>

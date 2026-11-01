@@ -1,10 +1,10 @@
 export interface TwitchVideo {
   id: string;
-  twitchVideoId: string;
+  externalId: string;
   type: 'ARCHIVE' | 'HIGHLIGHT' | 'UPLOAD' | 'CLIP';
   title: string;
   description: string | null;
-  twitchCreatedAt: string;
+  sourceCreatedAt: string;
   durationSeconds: number;
   thumbnailUrl: string | null;
   category: string | null;
@@ -13,7 +13,7 @@ export interface TwitchVideo {
   chapters: Array<{ start: number; title: string }> | null;
   availability: 'RECORDING' | 'PUBLISHED' | 'UNAVAILABLE';
   estimatedExpiresAt: string | null;
-  streamer: { id: string; login: string; displayName: string; profileImageUrl: string | null; isLive: boolean };
+  creator: { id: string; login: string; displayName: string; profileImageUrl: string | null; isLive: boolean };
   seen: boolean;
   downloaded: boolean;
   fileId: string | null;

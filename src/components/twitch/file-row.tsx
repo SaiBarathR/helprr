@@ -50,7 +50,7 @@ export function FileBadges({ file, cleanupDue }: { file: TwitchFile; cleanupDue?
 export function FileRow({ file, actions, cleanupDue }: { file: TwitchFile; actions: FileActions; cleanupDue?: boolean }) {
   const thumbnail = toCachedImageSrc(file.thumbnailUrl, undefined, { width: 320 });
   const groups = actions.groupsFor(file);
-  const meta = [file.streamer.displayName, formatBytes(file.sizeBytes), file.height ? `${file.height}p` : null, codecLabel(file.videoCodec)]
+  const meta = [file.creator.displayName, formatBytes(file.sizeBytes), file.height ? `${file.height}p` : null, codecLabel(file.videoCodec)]
     .filter(Boolean).join(' · ');
   return (
     <SwipeRow contentClassName="bg-card" {...actions.swipeFor(file)}>

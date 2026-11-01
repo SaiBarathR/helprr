@@ -24,9 +24,7 @@ async function getHandler(): Promise<NextResponse> {
       },
     },
   });
-  return NextResponse.json({
-    subscriptions: subscriptions.map(({ creator, ...subscription }) => ({ ...subscription, streamer: creator })),
-  });
+  return NextResponse.json({ subscriptions });
 }
 
 async function postHandler(request: NextRequest): Promise<NextResponse> {

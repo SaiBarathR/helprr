@@ -49,10 +49,10 @@ interface Job {
   errorClass: string | null;
   video: {
     id: string;
-    twitchVideoId: string;
+    externalId: string;
     title: string;
     thumbnailUrl: string | null;
-    streamer: { id: string; displayName: string };
+    creator: { id: string; displayName: string };
   } | null;
 }
 
@@ -115,7 +115,7 @@ function JobRow({ job, onCancel, onRetry }: { job: Job; onCancel?: () => void; o
   const running = job.state === 'RUNNING';
   const subtitle = job.state === 'FAILED'
     ? ERROR_LABELS[job.errorClass ?? ''] ?? 'Failed'
-    : video?.streamer.displayName;
+    : video?.creator.displayName;
   const speed = [
     job.speedBps ? `${(job.speedBps / 1024 ** 2).toFixed(1)} MB/s` : null,
     job.bytesTotal ? gb(job.bytesTotal) : null,
@@ -127,8 +127,8 @@ function JobRow({ job, onCancel, onRetry }: { job: Job; onCancel?: () => void; o
       id: 'open',
       actions: video ? [
         { id: 'open', label: 'View video', icon: <Info className="h-4 w-4" />, href: `/twitch/vod/${video.id}` },
-        { id: 'streamer', label: video.streamer.displayName, icon: <User className="h-4 w-4" />, href: `/twitch/streamers/${video.streamer.id}` },
-        { id: 'twitch', label: 'Open on Twitch', icon: <ExternalLink className="h-4 w-4" />, href: `https://www.twitch.tv/videos/${video.twitchVideoId}`, external: true },
+        { id: 'streamer', label: video.creator.displayName, icon: <User className="h-4 w-4" />, href: `/twitch/streamers/${video.creator.id}` },
+        { id: 'twitch', label: 'Open on Twitch', icon: <ExternalLink className="h-4 w-4" />, href: `https://www.twitch.tv/videos/${video.externalId}`, external: true },
       ] : [],
     },
     {

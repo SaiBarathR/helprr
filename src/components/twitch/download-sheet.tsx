@@ -102,7 +102,7 @@ function SheetBody({ video, defaults, canUse1440p, onDone }: {
       });
       const data = await res.json().catch(() => null);
       if (!res.ok) throw new Error(data?.error || 'Could not queue the download');
-      if (remember) await rememberForStreamer(video.streamer.id, { quality, ...options });
+      if (remember) await rememberForStreamer(video.creator.id, { quality, ...options });
     },
     onSuccess: () => {
       toast.success('Download queued');
@@ -143,7 +143,7 @@ function SheetBody({ video, defaults, canUse1440p, onDone }: {
               onCheckedChange={(checked) => setOptions((prev) => ({ ...prev, [item.id]: checked }))}
             />
           ))}
-          {canManage && <SwitchRow label={`Remember for ${video.streamer.displayName}`} checked={remember} onCheckedChange={setRemember} />}
+          {canManage && <SwitchRow label={`Remember for ${video.creator.displayName}`} checked={remember} onCheckedChange={setRemember} />}
         </div>
         <div className="grouped-section-content overflow-hidden">
           <EstimateRow label="Length" value={formatDuration(video.durationSeconds)} />

@@ -57,7 +57,7 @@ const SINCE: FilterOption[] = [
 interface StreamerList {
   subscriptions: Array<{
     id: string;
-    streamer: {
+    creator: {
       id: string;
       displayName: string;
       profileImageUrl: string | null;
@@ -117,7 +117,7 @@ export default function TwitchFeedPage() {
     queryFn: ({ signal }) => getJson<StreamerList>('/api/twitch/streamers', signal),
   });
   const subscriptions = streamersQuery.data?.subscriptions ?? [];
-  const live = subscriptions.filter((subscription) => subscription.streamer.isLive);
+  const live = subscriptions.filter((subscription) => subscription.creator.isLive);
 
   const feed = useRestorableInfiniteQuery({
     queryKey: ['twitch', 'feed', filters],
@@ -142,7 +142,7 @@ export default function TwitchFeedPage() {
     ...(show === 'new' ? [{ id: 'show', label: 'New', onRemove: () => setShow('all') }] : []),
     ...picked('type', type, TYPES, () => setType('')),
     ...picked('status', status, STATUSES, () => setStatus('')),
-    ...(streamer ? [{ id: 'streamer', label: subscriptions.find((item) => item.streamer.id === streamer)?.streamer.displayName ?? 'Streamer', onRemove: () => setStreamer('') }] : []),
+    ...(streamer ? [{ id: 'streamer', label: subscriptions.find((item) => item.creator.id === streamer)?.creator.displayName ?? 'Streamer', onRemove: () => setStreamer('') }] : []),
     ...(category ? [{ id: 'category', label: category, onRemove: () => setCategory('') }] : []),
     ...picked('length', length, LENGTHS, () => setLength('')),
     ...picked('since', since, SINCE, () => setSince('')),
@@ -210,7 +210,7 @@ export default function TwitchFeedPage() {
                 {subscriptions.length > 1 && (
                   <FilterGroup
                     label="Streamer"
-                    options={[{ id: '', label: 'All streamers' }, ...subscriptions.map((item) => ({ id: item.streamer.id, label: item.streamer.displayName }))]}
+                    options={[{ id: '', label: 'All streamers' }, ...subscriptions.map((item) => ({ id: item.creator.id, label: item.creator.displayName }))]}
                     value={streamer}
                     onChange={setStreamer}
                   />
@@ -276,7 +276,7 @@ export default function TwitchFeedPage() {
         <section aria-label="Live now">
           <h2 className="mb-2 text-base font-semibold">Live now</h2>
           <div className="-mx-2 flex gap-2 overflow-x-auto px-2 pb-1 scrollbar-hide md:-mx-6 md:px-6">
-            {live.map(({ streamer: item }) => {
+            {live.map(({ creator: item }) => {
               const avatar = toCachedImageSrc(item.profileImageUrl, undefined, { width: 72 });
               return (
                 <Link key={item.id} href={`/twitch/streamers/${item.id}`} className="press-feedback flex max-w-[220px] shrink-0 items-center gap-2 rounded-full bg-card py-1 pl-1 pr-3">

@@ -20,7 +20,7 @@ import { CONFIRMATIONS, useFileActions } from './use-file-actions';
 const file = {
   id: 'f',
   videoId: 'v',
-  twitchVideoId: '100',
+  externalId: '100',
   title: 'A stream',
   sizeBytes: 300,
   videoCodec: 'h264',

@@ -13,9 +13,9 @@ const video = {
 } as unknown as VideoRow;
 
 describe('serializeVideo', () => {
-  it('keeps the names the pages read, whatever the database model calls them', () => {
+  it('sends the names the pages read', () => {
     const result = serializeVideo(video);
-    expect(result).toMatchObject({ twitchVideoId: '100', twitchCreatedAt: createdAt, streamer: video.creator });
-    for (const name of ['externalId', 'sourceCreatedAt', 'creator']) expect(result).not.toHaveProperty(name);
+    expect(result).toMatchObject({ externalId: '100', sourceCreatedAt: createdAt, creator: video.creator });
+    for (const name of ['twitchVideoId', 'twitchCreatedAt', 'streamer']) expect(result).not.toHaveProperty(name);
   });
 });
