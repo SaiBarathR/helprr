@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   notifyAndLog: vi.fn(),
   refreshItem: vi.fn(),
   queryItems: vi.fn(),
+  scanAllLibraries: vi.fn(),
   getJellyfinClient: vi.fn(),
   getTwitchSettings: vi.fn(),
 }));
@@ -41,7 +42,7 @@ beforeEach(() => {
   vi.resetAllMocks();
   mocks.job.count.mockResolvedValue(0);
   mocks.getTwitchSettings.mockResolvedValue({ jellyfinLibraryItemId: 'lib', toolsPausedAt: null });
-  mocks.getJellyfinClient.mockResolvedValue({ refreshItem: mocks.refreshItem, queryItems: mocks.queryItems });
+  mocks.getJellyfinClient.mockResolvedValue({ refreshItem: mocks.refreshItem, queryItems: mocks.queryItems, scanAllLibraries: mocks.scanAllLibraries });
   mocks.refreshItem.mockResolvedValue(undefined);
   mocks.subscription.findMany.mockResolvedValue([{ userId: 'u1' }, { userId: 'u2' }]);
 });
@@ -67,9 +68,28 @@ describe('reconcileTwitchJobs', () => {
 
   it('refreshes the library for a streamer with no series yet', async () => {
     pending([doneJob()]);
-    mocks.queryItems.mockResolvedValue({ Items: [] });
+    mocks.queryItems.mockResolvedValue({ Items: [{ Id: 'other', Path: '/twitch/someone-else' }] });
     await reconcileTwitchJobs(now);
     expect(mocks.refreshItem).toHaveBeenCalledWith('lib', { recursive: true });
+    expect(mocks.scanAllLibraries).not.toHaveBeenCalled();
+  });
+
+  it('runs a full scan for an empty library, which a refresh of its own never looks at', async () => {
+    const first = new Date('2030-01-01T00:00:00Z');
+    mocks.queryItems.mockResolvedValue({ Items: [] });
+
+    pending([doneJob({ finishedAt: first })]);
+    await reconcileTwitchJobs(first);
+    expect(mocks.scanAllLibraries).toHaveBeenCalledTimes(1);
+    expect(mocks.refreshItem).not.toHaveBeenCalled();
+
+    pending([doneJob({ finishedAt: first })]);
+    await reconcileTwitchJobs(new Date(first.getTime() + 15_000));
+    expect(mocks.scanAllLibraries).toHaveBeenCalledTimes(1);
+
+    pending([doneJob({ finishedAt: first })]);
+    await reconcileTwitchJobs(new Date(first.getTime() + 11 * 60_000));
+    expect(mocks.scanAllLibraries).toHaveBeenCalledTimes(2);
   });
 
   it('keeps trying while Jellyfin has not indexed the file yet', async () => {

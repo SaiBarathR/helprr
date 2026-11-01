@@ -29,6 +29,7 @@ const REQUIRED_MIGRATION = '20261101130000_youtube_foundation';
 const CPU_POLL_MS = 30_000;
 const DELETED_CHECK_MS = 2 * 60_000;
 const TOOL_CHECK_MS = 24 * 3_600_000;
+const YOUTUBE_TOOL_RETRY_MS = 30 * 60_000;
 const EXTRACTOR_FAILURE_LIMIT = 3;
 const DISK_RECHECK_MS = 15 * 60_000;
 const HOUSEKEEPING_MS = 60 * 60_000;
@@ -51,6 +52,7 @@ let appliedPins = '';
 let toolsBusy = false;
 let youtubeRepairAt = 0;
 let youtubeMounted = false;
+let youtubeToolTriedAt = 0;
 
 function log(level: 'info' | 'warn' | 'error', message: string, extra: Record<string, unknown> = {}) {
   console[level](JSON.stringify({ at: new Date().toISOString(), level, message, ...extra }));
@@ -372,6 +374,7 @@ async function prepareSmokeVideos(): Promise<void> {
 // from starting. Without its tool YouTube waits, and the next tool check tries again.
 async function ensureYoutubeTool(pins: Partial<Record<ToolName, string>>): Promise<void> {
   if (!youtubeMounted) return;
+  youtubeToolTriedAt = Date.now();
   try {
     await ensureTools(pins, YOUTUBE_TOOLS);
     if (!PLATFORMS.includes('YOUTUBE')) PLATFORMS.push('YOUTUBE');
@@ -401,7 +404,8 @@ async function repairYoutubeTools(pins: Partial<Record<ToolName, string>>): Prom
 async function checkTools(): Promise<void> {
   const settings = await prisma.archiveSettings.findUnique({ where: { id: 'singleton' } });
   if (!settings) return;
-  if (youtubeMounted && !PLATFORMS.includes('YOUTUBE') && downloadsRunning === 0) {
+  // Not every tick: GitHub allows 60 lookups an hour, and Twitch's updates need them too.
+  if (youtubeMounted && !PLATFORMS.includes('YOUTUBE') && downloadsRunning === 0 && Date.now() - youtubeToolTriedAt > YOUTUBE_TOOL_RETRY_MS) {
     await prepareSmokeVideos();
     await ensureYoutubeTool((settings.pinnedTools ?? {}) as Partial<Record<ToolName, string>>);
   }
