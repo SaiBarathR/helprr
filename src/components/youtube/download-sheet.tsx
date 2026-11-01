@@ -1,7 +1,7 @@
 'use client';
 
-import { useMemo, useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChevronDown, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -11,17 +11,20 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useIsMobile } from '@/hooks/use-is-mobile';
 import { SwitchRow } from '@/components/creators/setting-rows';
 import { formatDuration, formatGb, type CreatorVideoItem } from '@/components/creators/types';
+import { pickOffered, type OfferedFormat, type VideoFormats } from '@/lib/youtube/formats';
 import { cn } from '@/lib/utils';
 
-// Measured on the owner's channels, H.264 at 1080p, and scaled by pixels above and below that.
+// Only until the worker answers: measured on real channels, and 4K varies the most.
 const QUALITIES = [
-  { id: 'best', label: 'Best', gbPerHour: 6 },
-  { id: '2160', label: '4K', gbPerHour: 4 },
-  { id: '1440', label: '1440p', gbPerHour: 1.5 },
-  { id: '1080', label: '1080p', gbPerHour: 0.5 },
-  { id: '720', label: '720p', gbPerHour: 0.3 },
-  { id: '480', label: '480p', gbPerHour: 0.15 },
+  { id: 'best', label: 'Best', gbPerHour: 9 },
+  { id: '2160', label: '4K', gbPerHour: 9 },
+  { id: '1440', label: '1440p', gbPerHour: 4 },
+  { id: '1080', label: '1080p', gbPerHour: 1 },
+  { id: '720', label: '720p', gbPerHour: 0.5 },
+  { id: '480', label: '480p', gbPerHour: 0.3 },
 ] as const;
+
+const CODEC_LABELS: Record<OfferedFormat['codec'], string> = { h264: 'H.264', vp9: 'VP9', av1: 'AV1' };
 
 const CODECS = [
   { id: 'compatible', label: 'Most compatible (H.264)' },
@@ -66,8 +69,32 @@ function ChoiceRow<T extends string>({ label, value, options, onChange }: {
   );
 }
 
+// What this video really offers. The answer usually takes a few seconds, and the sheet never
+// waits for it: until then, or with the worker off, it shows an estimate and says so.
+function useVideoFormats(videoId: string): { formats: VideoFormats | null; waiting: boolean } {
+  const asked = useRef(false);
+  const query = useQuery({
+    queryKey: ['youtube', 'formats', videoId],
+    queryFn: async ({ signal }) => {
+      const res = await fetch(`/api/youtube/videos/${videoId}/formats`, { signal });
+      if (!res.ok) throw new Error('Could not load the formats');
+      return (await res.json()) as { formats: VideoFormats | null; pending: boolean };
+    },
+    refetchInterval: (state) => (state.state.data?.pending ? 1_000 : false),
+    retry: false,
+  });
+  const { data, refetch } = query;
+  useEffect(() => {
+    if (!data || data.formats || data.pending || asked.current) return;
+    asked.current = true;
+    void fetch(`/api/youtube/videos/${videoId}/formats`, { method: 'POST' }).then(() => refetch());
+  }, [data, videoId, refetch]);
+  return { formats: data?.formats ?? null, waiting: query.isLoading || Boolean(data?.pending) };
+}
+
 function SheetBody({ video, onDone }: { video: CreatorVideoItem; onDone: () => void }) {
   const queryClient = useQueryClient();
+  const { formats, waiting } = useVideoFormats(video.id);
   const [quality, setQuality] = useState<(typeof QUALITIES)[number]['id']>('1080');
   const [codec, setCodec] = useState<(typeof CODECS)[number]['id']>('compatible');
   const [sponsorblock, setSponsorblock] = useState<(typeof SPONSORBLOCK)[number]['id']>('mark');
@@ -76,8 +103,15 @@ function SheetBody({ video, onDone }: { video: CreatorVideoItem; onDone: () => v
   // One id per sheet, so a double tap or a retry cannot queue the video twice.
   const clientRequestId = useMemo(() => crypto.randomUUID(), []);
 
-  const sizeGb = ((QUALITIES.find((item) => item.id === quality)?.gbPerHour ?? 0.5) * video.durationSeconds) / 3600;
-  const needsNewerCodec = codec === 'compatible' && ['best', '2160', '1440'].includes(quality);
+  const tallest = formats?.offered[0]?.height;
+  // A video only offers what it has: WAN Show stops at 1080p.
+  const qualities = QUALITIES.filter((item) => item.id === 'best' || !tallest || Number(item.id) <= tallest);
+  const picked = formats ? pickOffered(formats, quality, codec) : null;
+  const exactBytes = picked?.bytes && formats?.audioBytes ? picked.bytes + formats.audioBytes : null;
+  const estimateGb = ((QUALITIES.find((item) => item.id === quality)?.gbPerHour ?? 1) * video.durationSeconds) / 3600;
+  const asked = Math.min(quality === 'best' ? Infinity : Number(quality), tallest ?? Infinity);
+  const needsNewerCodec = codec === 'compatible' && (picked ? picked.height < asked : ['best', '2160', '1440'].includes(quality));
+  const sizeLabel = exactBytes ? formatGb(exactBytes / 1024 ** 3) : `≈ ${formatGb(estimateGb)}${waiting ? '' : ', estimated'}`;
 
   const queue = useMutation({
     mutationFn: async () => {
@@ -102,17 +136,18 @@ function SheetBody({ video, onDone }: { video: CreatorVideoItem; onDone: () => v
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4">
         <Tabs value={quality} onValueChange={(next) => setQuality(next as typeof quality)}>
           <TabsList className="w-full" aria-label="Quality">
-            {QUALITIES.map((item) => <TabsTrigger key={item.id} value={item.id} className="flex-1 px-1">{item.label}</TabsTrigger>)}
+            {qualities.map((item) => <TabsTrigger key={item.id} value={item.id} className="flex-1 px-1">{item.label}</TabsTrigger>)}
           </TabsList>
         </Tabs>
         {needsNewerCodec && (
           <p className="px-1 text-xs text-muted-foreground">
-            YouTube only offers H.264 up to 1080p, so this picks the best it has. Choose AV1 or VP9 under Advanced for higher quality.
+            YouTube only offers H.264 up to 1080p, so this saves {picked ? `${picked.height}p` : '1080p'}. Choose AV1 or VP9 under Advanced for higher quality.
           </p>
         )}
         <div className="grouped-section-content overflow-hidden">
           <EstimateRow label="Length" value={formatDuration(video.durationSeconds)} />
-          <EstimateRow label="Size" value={`≈ ${formatGb(sizeGb)}`} />
+          {picked && <EstimateRow label="Format" value={`${picked.height}p ${CODEC_LABELS[picked.codec]}`} />}
+          <EstimateRow label="Size" value={sizeLabel} />
         </div>
         <button
           type="button"

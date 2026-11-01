@@ -21,7 +21,7 @@ async function getHandler(): Promise<NextResponse> {
   // Apart, so a long queue cannot push the finished ones off the page.
   const [open, finished] = await Promise.all([
     prisma.archiveJob.findMany({
-      where: { platform: YOUTUBE, state: { notIn: ['DONE', 'CANCELLED'] } },
+      where: { platform: YOUTUBE, kind: { not: 'FORMATS' }, state: { notIn: ['DONE', 'CANCELLED'] } },
       orderBy: [{ priority: 'desc' }, { createdAt: 'desc' }],
       take: MAX_LISTED,
       select: JOB_SELECT,
