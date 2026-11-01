@@ -14,7 +14,7 @@ import { forgetFilesDeletedElsewhere, repairLibraryModes, runDeleteFiles } from 
 import { measureParkedOriginals, runDeleteOriginal, runRestoreOriginal } from './original-files';
 import { DiskGuardError, runDownload, WaitForRecordingError } from './pipeline';
 import { deleteExpiredOriginals, probeGpu, runReencode } from './reencode';
-import { assertSeparateRoots } from './library-paths';
+import { assertSeparateRoots, isMounted } from './library-paths';
 import { DeferJobError, JobCancelledError, LeaseLostError } from './process';
 import { activeVersion, ensureTools, latestVersion, setSmokeVideo, updateTools, type ToolName } from './tools';
 import { TWITCH } from '@/lib/twitch/platform';
@@ -24,7 +24,7 @@ const POLL_MS = 5_000;
 const CANCEL_POLL_MS = 2_000;
 const HEARTBEAT_MS = 15_000;
 const MIGRATION_POLL_MS = 5_000;
-const REQUIRED_MIGRATION = '20261101120000_archive_platform';
+const REQUIRED_MIGRATION = '20261101130000_youtube_foundation';
 const CPU_POLL_MS = 30_000;
 const DELETED_CHECK_MS = 2 * 60_000;
 const TOOL_CHECK_MS = 24 * 3_600_000;
@@ -36,6 +36,7 @@ const FILE_KINDS: ArchiveJobKind[] = ['DELETE_FILES', 'DELETE_ORIGINAL', 'RESTOR
 const NETWORK_KINDS: ArchiveJobKind[] = ['DOWNLOAD', ...FILE_KINDS];
 // Every root the worker looks after. A platform is added here with its adapter.
 const PLATFORMS: ArchivePlatform[] = [TWITCH];
+const ALL_PLATFORMS: ArchivePlatform[] = ['TWITCH', 'YOUTUBE'];
 
 const prisma = new PrismaClient();
 const workerId = `${os.hostname()}-${randomUUID().slice(0, 8)}`;
@@ -243,6 +244,12 @@ async function heartbeat(): Promise<void> {
     diskFreeBytes: stats ? BigInt(stats.bavail) * BigInt(stats.bsize) : null,
     diskTotalBytes: stats ? BigInt(stats.blocks) * BigInt(stats.bsize) : null,
     lanes: { running: running.size },
+    platforms: PLATFORMS,
+    roots: Object.fromEntries(await Promise.all(ALL_PLATFORMS.map(async (platform) => {
+      const { root } = libraryFor(platform);
+      const space = await isMounted(root) ? await statfs(root).catch(() => null) : null;
+      return [platform, { available: space !== null, freeBytes: space ? Number(BigInt(space.bavail) * BigInt(space.bsize)) : null }];
+    }))),
     lastSeenAt: new Date(),
   };
   await prisma.archiveWorkerHeartbeat.upsert({ where: { workerId }, update: data, create: { workerId, ...data } });

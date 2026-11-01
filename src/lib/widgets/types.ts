@@ -27,7 +27,8 @@ export type WidgetService =
   | 'TMDB'
   | 'ANILIST'
   | 'SEERR'
-  | 'TWITCH';
+  | 'TWITCH'
+  | 'YOUTUBE';
 
 export type WidgetLayoutVariant =
   | 'carousel'

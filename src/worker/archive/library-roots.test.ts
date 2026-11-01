@@ -17,7 +17,7 @@ vi.mock('./env', () => ({
 }));
 
 import { forgetFilesDeletedElsewhere, runDeleteFiles } from './delete-files';
-import { assertSeparateRoots, existsInLibrary, insideLibrary, removeInsideLibrary, replaceInsideLibrary } from './library-paths';
+import { assertSeparateRoots, existsInLibrary, insideLibrary, isMounted, removeInsideLibrary, replaceInsideLibrary } from './library-paths';
 import { deleteExpiredOriginals } from './reencode';
 
 const SAME = 'same/file.mkv';
@@ -169,5 +169,14 @@ describe('library roots', () => {
       expect(await exists(path.join(roots.YOUTUBE, ORIGINAL))).toBe(false);
       expect(await exists(path.join(roots.TWITCH, ORIGINAL))).toBe(true);
     });
+  });
+});
+
+describe('isMounted', () => {
+  it('knows a mount from a folder that merely exists', async () => {
+    const folder = await mkdtemp(path.join(os.tmpdir(), 'not-a-mount-'));
+    expect(await isMounted('/proc')).toBe(true);
+    expect(await isMounted(folder)).toBe(false);
+    await rm(folder, { recursive: true });
   });
 });

@@ -11,6 +11,7 @@ import { invalidateInstances } from '@/lib/query-invalidation';
 import { GroupedSection } from '@/components/settings/grouped-section';
 import { AnilistConnectionCard } from '@/components/settings/anilist-connection-card';
 import { TwitchConnectionCard } from '@/components/settings/twitch-connection-card';
+import { YoutubeConnectionCard } from '@/components/settings/youtube-connection-card';
 import { SERVICE_CONFIG } from '@/lib/settings/service-config';
 import { QuickContextMenu } from '@/components/ui/quick-context-menu';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -194,6 +195,7 @@ export default function InstancesIndexPage() {
 
       <AnilistConnectionCard />
       <TwitchConnectionCard />
+      <YoutubeConnectionCard />
       <ConfirmDialog
         open={confirmDelete !== null}
         onOpenChange={(open) => { if (!open && !deleteMutation.isPending) setConfirmDelete(null); }}

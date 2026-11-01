@@ -254,4 +254,37 @@ describe('Twitch secrets in the support bundle', () => {
     expect(text).not.toContain(appToken);
     expect(text).not.toContain(browserToken);
   });
+
+  it('keeps the YouTube key and account cookies out, though they are stored encrypted', async () => {
+    const apiKey = 'not-a-real-youtube-key';
+    const session = 'not-a-real-session-cookie';
+    const bundle = await buildSupportBundle({
+      environment: {},
+      readReadiness: async () => readiness,
+      loadImageCacheDiagnostics: async () => imageCacheDiagnostics,
+      loadDatabase: async () => ({
+        services: [{
+          type: 'YOUTUBE',
+          label: 'YouTube',
+          isDefault: false,
+          url: 'https://www.googleapis.com/youtube/v3',
+          externalUrl: null,
+          username: null,
+          apiKey: encryptTwitchToken(apiKey),
+          accessToken: null,
+          refreshToken: null,
+          customHeaders: null,
+        }],
+        settings: null,
+        youtubeCookies: encryptTwitchToken(`# Netscape HTTP Cookie File\n.youtube.com\tTRUE\t/\tTRUE\t0\tSID\t${session}\n`),
+        counts: {},
+        appliedMigrations: [],
+      }),
+      readLogs: async () => [{ message: `used ${apiKey} and ${session}` } as LogEntry],
+    });
+
+    const text = serializeSupportBundle(bundle);
+    expect(text).not.toContain(apiKey);
+    expect(text).not.toContain(session);
+  });
 });

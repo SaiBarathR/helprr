@@ -196,7 +196,7 @@ async function raiseUrgentJobs(now: Date): Promise<void> {
   });
 }
 
-const TYPE_LABELS = { ARCHIVE: 'past broadcast', HIGHLIGHT: 'highlight', UPLOAD: 'upload', CLIP: 'clip' } as const;
+const TYPE_LABELS = { SHORT: 'short', ARCHIVE: 'past broadcast', HIGHLIGHT: 'highlight', UPLOAD: 'upload', CLIP: 'clip' } as const;
 
 async function notifyNewVideos(streamerId: string, videoIds: string[], now: Date): Promise<void> {
   if (videoIds.length === 0) return;

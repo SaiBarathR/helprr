@@ -75,7 +75,7 @@ const EXACT_SENSITIVE_KEYS = new Set([
   'endpoint', 'auth', 'authorization', 'cookie', 'session', 'p256dh',
   'password', 'passwd', 'pwd', 'secret', 'token', 'jwt',
   'vapid', 'vapidsubject', 'vapidpublickey', 'vapidprivatekey',
-  'client_secret', 'clientsecret', 'auth-token', 'auth_token', 'authtoken', 'browserauthtoken',
+  'client_secret', 'clientsecret', 'auth-token', 'auth_token', 'authtoken', 'browserauthtoken', 'cookies',
 ]);
 const SUBSTRING_SENSITIVE_PATTERN = /api[-_ ]?key|access[-_ ]?token|refresh[-_ ]?token/i;
 const SENSITIVE_VALUE_PATTERN = /(Bearer\s+)[^\s,;]+|(api[_-]?key=)[^&\s]+|(apikey=)[^&\s]+|(password=)[^&\s]+|(token=)[^&\s]+|(sid=)[^;&\s]+|(code=)[^&\s]+|(state=)[^&\s]+|((?:passkey|authkey|torrent_pass|rsskey)=)[^&\s]+|(client_secret=)[^&\s]+|(clientSecret=)[^&\s]+|(auth-token=)[^;&\s]+/gi;

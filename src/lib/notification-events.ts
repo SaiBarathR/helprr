@@ -14,11 +14,12 @@ export const EVENT_TYPES = [
   'activityDigest',
   'twitchVodNew', 'twitchVodExpiring', 'twitchDownloadComplete',
   'twitchDownloadFailed', 'twitchWorkerIssue',
+  'youtubeVideoNew', 'youtubeDownloadComplete', 'youtubeDownloadFailed', 'youtubeCookiesExpired',
 ] as const;
 
 export type NotificationEventType = (typeof EVENT_TYPES)[number];
 
-export type NotificationEventGroupId = 'sonarrRadarr' | 'services' | 'qbittorrent' | 'jellyfin' | 'cleanup' | 'watchlist' | 'scheduled' | 'requests' | 'digests' | 'twitch';
+export type NotificationEventGroupId = 'sonarrRadarr' | 'services' | 'qbittorrent' | 'jellyfin' | 'cleanup' | 'watchlist' | 'scheduled' | 'requests' | 'digests' | 'twitch' | 'youtube';
 
 export interface NotificationEventMeta {
   type: NotificationEventType;
@@ -204,6 +205,30 @@ export const EVENT_META: Record<NotificationEventType, NotificationEventMeta> = 
     description: 'When the Twitch worker is offline or its tools stop working',
     iconName: 'AlertTriangle', colorClass: 'bg-amber-500/10 text-amber-400',
   },
+  youtubeVideoNew: {
+    type: 'youtubeVideoNew', group: 'youtube',
+    label: 'New YouTube Video',
+    description: 'When a followed channel or playlist has a new video',
+    iconName: 'Play', colorClass: 'bg-red-500/10 text-red-400',
+  },
+  youtubeDownloadComplete: {
+    type: 'youtubeDownloadComplete', group: 'youtube',
+    label: 'YouTube Download Complete',
+    description: 'When a video has landed in the Jellyfin library',
+    iconName: 'Check', colorClass: 'bg-green-500/10 text-green-500',
+  },
+  youtubeDownloadFailed: {
+    type: 'youtubeDownloadFailed', group: 'youtube',
+    label: 'YouTube Download Failed',
+    description: 'When a video download fails for good',
+    iconName: 'X', colorClass: 'bg-red-500/10 text-red-500',
+  },
+  youtubeCookiesExpired: {
+    type: 'youtubeCookiesExpired', group: 'youtube',
+    label: 'YouTube Account Needs Signing In',
+    description: 'When the account for age-restricted videos stops working',
+    iconName: 'AlertTriangle', colorClass: 'bg-amber-500/10 text-amber-400',
+  },
 };
 
 export const EVENT_GROUPS: { id: NotificationEventGroupId; title: string; types: NotificationEventType[] }[] = [
@@ -262,6 +287,11 @@ export const EVENT_GROUPS: { id: NotificationEventGroupId; title: string; types:
     id: 'twitch',
     title: 'Twitch',
     types: ['twitchVodNew', 'twitchVodExpiring', 'twitchDownloadComplete', 'twitchDownloadFailed', 'twitchWorkerIssue'],
+  },
+  {
+    id: 'youtube',
+    title: 'YouTube',
+    types: ['youtubeVideoNew', 'youtubeDownloadComplete', 'youtubeDownloadFailed', 'youtubeCookiesExpired'],
   },
 ];
 

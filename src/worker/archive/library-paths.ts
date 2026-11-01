@@ -1,5 +1,5 @@
 import { constants } from 'node:fs';
-import { lstat, open, realpath, rename, rm, type FileHandle } from 'node:fs/promises';
+import { lstat, open, readFile, realpath, rename, rm, type FileHandle } from 'node:fs/promises';
 import path from 'node:path';
 
 /** Stored paths are the worker's own, but a delete is the last place to take that on trust. */
@@ -21,6 +21,12 @@ export async function assertSeparateRoots(roots: string[]): Promise<void> {
       }
     }
   }
+}
+
+/** A folder that merely exists is not a library: files written there stay in the container and vanish. */
+export async function isMounted(root: string): Promise<boolean> {
+  const table = await readFile('/proc/self/mountinfo', 'utf8').catch(() => '');
+  return table.split('\n').some((line) => line.split(' ')[4] === root);
 }
 
 const codeOf = (error: unknown) => (error as NodeJS.ErrnoException).code;

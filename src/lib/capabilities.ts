@@ -151,6 +151,15 @@ export const CAPABILITY_GROUPS = [
     ],
   },
   {
+    id: 'youtube',
+    title: 'YouTube',
+    items: [
+      { cap: 'youtube.view', label: 'View YouTube feed, channels and queue' },
+      { cap: 'youtube.download', label: 'Queue, cancel and retry own YouTube downloads' },
+      { cap: 'youtube.manage', label: 'Manage YouTube settings, rules, library and files' },
+    ],
+  },
+  {
     id: 'notifications',
     title: 'Notifications',
     items: [
@@ -165,6 +174,7 @@ export const CAPABILITY_GROUPS = [
       { cap: 'notify.requests', label: 'Receive request notifications' },
       { cap: 'notify.digests', label: 'Receive activity digests' },
       { cap: 'notify.twitch', label: 'Receive Twitch notifications' },
+      { cap: 'notify.youtube', label: 'Receive YouTube notifications' },
     ],
   },
 ] as const satisfies readonly CapabilityGroup[];
@@ -242,4 +252,8 @@ export const EVENT_TYPE_TO_CAPABILITY: Record<NotificationEventType, Capability>
   twitchDownloadComplete: 'notify.twitch',
   twitchDownloadFailed: 'notify.twitch',
   twitchWorkerIssue: 'notify.twitch',
+  youtubeVideoNew: 'notify.youtube',
+  youtubeDownloadComplete: 'notify.youtube',
+  youtubeDownloadFailed: 'notify.youtube',
+  youtubeCookiesExpired: 'notify.youtube',
 };
