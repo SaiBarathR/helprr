@@ -12,9 +12,7 @@ const mocks = vi.hoisted(() => ({
   onProbe: null as null | (() => Promise<void>),
 }));
 vi.mock('./env', () => ({
-  get LIBRARY_DIR() { return mocks.library.dir; },
-  ORIGINALS_DIR: '',
-  STAGING_DIR: '',
+  libraryFor: () => ({ root: mocks.library.dir, staging: '', originals: '' }),
   FFMPEG: '',
   FFPROBE: '',
 }));
@@ -391,7 +389,7 @@ describe('runDeleteOriginal', () => {
 describe('deleteExpiredOriginals', () => {
   it('leaves an original alone while a job is on its file', async () => {
     const { mock, client } = fakePrisma(null);
-    await deleteExpiredOriginals(client);
+    await deleteExpiredOriginals(client, 'TWITCH');
     expect(mock.archiveMediaFile.findMany.mock.calls[0][0].where.jobs).toEqual({
       none: { state: { in: ['QUEUED', 'BLOCKED', 'RUNNING', 'RETRY_WAIT'] } },
     });
@@ -406,7 +404,7 @@ describe('deleteExpiredOriginals', () => {
     const { mock, client } = fakePrisma(file({ ...change }));
     mock.archiveMediaFile.findMany.mockResolvedValue([file()]);
 
-    expect(await deleteExpiredOriginals(client)).toBe(0);
+    expect(await deleteExpiredOriginals(client, 'TWITCH')).toBe(0);
 
     expect(await readFile(inLibrary('.originals/a/x.mkv'), 'utf8')).toBe('original!');
     expect(mock.archiveDeletedFile.create).not.toHaveBeenCalled();
@@ -420,7 +418,7 @@ describe('deleteExpiredOriginals', () => {
     await symlink(outside, inLibrary('.originals'));
     const { mock, client } = fakePrisma(file());
 
-    await deleteExpiredOriginals(client);
+    await deleteExpiredOriginals(client, 'TWITCH');
 
     expect(await readFile(path.join(outside, 'a/x.mkv'), 'utf8')).toBe('not ours');
     expect(mock.archiveMediaFile.update).not.toHaveBeenCalled();
@@ -432,7 +430,7 @@ describe('deleteExpiredOriginals', () => {
     await writeLibrary({ '.originals/a/x.mkv': 'original!' });
     const { mock, client } = fakePrisma(file());
 
-    await deleteExpiredOriginals(client);
+    await deleteExpiredOriginals(client, 'TWITCH');
 
     await expect(stat(inLibrary('.originals/a/x.mkv'))).rejects.toThrow();
     expect(mock.archiveDeletedFile.create).toHaveBeenCalledWith({
@@ -446,14 +444,14 @@ describe('measureParkedOriginals', () => {
     await writeLibrary({ '.originals/a/x.mkv': 'original!' });
     const { mock, client } = fakePrisma(file());
 
-    expect(await measureParkedOriginals(client)).toBe(1);
+    expect(await measureParkedOriginals(client, 'TWITCH')).toBe(1);
 
     expect(mock.archiveMediaFile.update).toHaveBeenCalledWith({ where: { id: 'f' }, data: { originalSizeBytes: BigInt(9) } });
   });
 
   it('skips one that is not there', async () => {
     const { mock, client } = fakePrisma(file());
-    expect(await measureParkedOriginals(client)).toBe(0);
+    expect(await measureParkedOriginals(client, 'TWITCH')).toBe(0);
     expect(mock.archiveMediaFile.update).not.toHaveBeenCalled();
   });
 });

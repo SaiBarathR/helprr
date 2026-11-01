@@ -798,6 +798,10 @@ Invariants:
   paths and request ids are unique per platform, and every Twitch route names `TWITCH`, so an
   id from another platform finds nothing. `platform-isolation.integration.test.ts` proves this
   on PostgreSQL, because mocked queries cannot.
+- Each platform has its own library root, from `libraryFor(platform)`. Every file operation
+  takes the root from the file's own platform, and the path helpers have no default root. The
+  worker stops at start if the roots it uses overlap, including through a link, and never
+  follows a link on the way from a root to a file.
 - Twitch settings live in `ArchiveSettings`, not `AppSettings`, because `GET /api/settings`
   returns that row to any signed-in user. The browser token is `enc:v1` and no API
   returns it.

@@ -5,9 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const library = vi.hoisted(() => ({ dir: '' }));
 vi.mock('./env', () => ({
-  get LIBRARY_DIR() { return library.dir; },
-  ORIGINALS_DIR: '',
-  STAGING_DIR: '',
+  libraryFor: () => ({ root: library.dir, staging: '', originals: '' }),
   FFMPEG: '',
   FFPROBE: '',
 }));
@@ -111,7 +109,7 @@ describe('forgetFilesDeletedElsewhere', () => {
     };
     return prisma;
   }
-  const run = (prisma: ReturnType<typeof fakePrisma>) => forgetFilesDeletedElsewhere(prisma as never);
+  const run = (prisma: ReturnType<typeof fakePrisma>) => forgetFilesDeletedElsewhere(prisma as never, 'TWITCH');
 
   it('forgets a file Jellyfin removed, sweeps its sidecars, audits it, and keeps the others', async () => {
     library.dir = await mkdtemp(path.join(os.tmpdir(), 'twitch-gone-'));

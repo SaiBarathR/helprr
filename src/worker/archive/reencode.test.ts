@@ -10,9 +10,11 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('./env', () => ({
-  get LIBRARY_DIR() { return mocks.dirs.library; },
-  get ORIGINALS_DIR() { return path.join(mocks.dirs.library, '.originals'); },
-  get STAGING_DIR() { return path.join(mocks.dirs.library, '.staging'); },
+  libraryFor: () => ({
+    root: mocks.dirs.library,
+    staging: path.join(mocks.dirs.library, '.staging'),
+    originals: path.join(mocks.dirs.library, '.originals'),
+  }),
   FFMPEG: 'ffmpeg',
   FFPROBE: 'ffprobe',
 }));

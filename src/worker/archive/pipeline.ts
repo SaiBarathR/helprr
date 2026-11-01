@@ -2,7 +2,7 @@ import { mkdir, readFile, rename, rm, stat, statfs, writeFile } from 'node:fs/pr
 import path from 'node:path';
 import { sanitizeInfoJson } from '@/lib/twitch/chapters';
 import type { DownloadContext, EpisodeLayout, PlatformAdapter, Sidecar } from './adapter';
-import { FFMPEG, FFPROBE, LIBRARY_DIR, STAGING_DIR } from './env';
+import { FFMPEG, FFPROBE, libraryFor } from './env';
 import { run } from './process';
 
 const RECORDING_RECHECK_MS = 15 * 60_000;
@@ -40,7 +40,7 @@ export function validateDuration(actual: number, expected: number): boolean {
 }
 
 async function checkDisk(ctx: DownloadContext, expectedBytes: number): Promise<void> {
-  const stats = await statfs(LIBRARY_DIR);
+  const stats = await statfs(libraryFor(ctx.video.platform).root);
   const free = stats.bavail * stats.bsize;
   if (free < expectedBytes + ctx.minFreeGb * GIB) throw new DiskGuardError();
 }
@@ -97,7 +97,8 @@ async function publish(
   extras: Sidecar[],
 ) {
   const { prisma, video, job, options } = ctx;
-  const seriesDir = path.join(LIBRARY_DIR, layout.seriesFolder);
+  const { root } = libraryFor(video.platform);
+  const seriesDir = path.join(root, layout.seriesFolder);
   const seasonDir = path.join(seriesDir, layout.seasonFolder);
   await mkdir(seasonDir, { recursive: true });
 
@@ -131,7 +132,7 @@ async function publish(
   const videoName = `${base}.mkv`;
   await rename(mkv, path.join(seasonDir, videoName));
 
-  const relativePath = path.relative(LIBRARY_DIR, path.join(seasonDir, videoName));
+  const relativePath = path.relative(root, path.join(seasonDir, videoName));
   const { size } = await stat(path.join(seasonDir, videoName));
   await prisma.archiveMediaFile.upsert({
     where: { platform_relativePath: { platform: video.platform, relativePath } },
@@ -140,7 +141,7 @@ async function publish(
       platform: video.platform,
       videoId: video.id,
       relativePath,
-      sidecars: sidecars.map((name) => path.relative(LIBRARY_DIR, path.join(seasonDir, name))),
+      sidecars: sidecars.map((name) => path.relative(root, path.join(seasonDir, name))),
       sizeBytes: BigInt(size),
       durationSeconds: Math.round(probed.duration),
       videoCodec: probed.videoCodec,
@@ -163,7 +164,7 @@ async function publish(
 }
 
 export async function runDownload(ctx: DownloadContext, adapter: PlatformAdapter): Promise<void> {
-  const staging = path.join(STAGING_DIR, ctx.stagingName);
+  const staging = path.join(libraryFor(ctx.video.platform).staging, ctx.stagingName);
   await rm(staging, { recursive: true, force: true });
   await mkdir(staging, { recursive: true });
 

@@ -1,13 +1,12 @@
 import { constants } from 'node:fs';
 import { open, readdir, stat } from 'node:fs/promises';
 import path from 'node:path';
-import type { PrismaClient, ArchiveJob } from '@prisma/client';
-import { LIBRARY_DIR } from './env';
+import type { ArchiveJob, ArchivePlatform, PrismaClient } from '@prisma/client';
+import { libraryFor } from './env';
 import { withFileLock } from './file-lock';
 import { existsInLibrary, insideLibrary, removeInsideLibrary } from './library-paths';
 import { DeferJobError } from './process';
 import { recordDeletion, writeDeleteAudit } from './reencode';
-import { TWITCH } from '@/lib/twitch/platform';
 
 export { insideLibrary };
 
@@ -48,12 +47,13 @@ export async function runDeleteFiles(prisma: PrismaClient, job: ArchiveJob, asse
 
   const sidecars = Array.isArray(file.sidecars) ? file.sidecars.filter((entry): entry is string => typeof entry === 'string') : [];
   const paths = [file.relativePath, ...sidecars, ...(file.originalRelativePath ? [file.originalRelativePath] : [])];
+  const { root } = libraryFor(file.platform);
   await assertLease();
   const startedAt = new Date();
   let errorMessage: string | null = null;
   try {
-    const freedBytes = await sizeOnDisk(paths);
-    for (const relative of paths) await removeInsideLibrary(relative);
+    const freedBytes = await sizeOnDisk(paths, root);
+    for (const relative of paths) await removeInsideLibrary(relative, root);
     await prisma.archiveMediaFile.delete({ where: { id: file.id } });
     await recordDeletion(prisma, {
       platform: file.platform,
@@ -111,8 +111,8 @@ export async function repairLibraryModes(target: string): Promise<number> {
   }
 }
 
-async function sizeOnDisk(paths: string[]): Promise<number> {
-  const sizes = await Promise.all(paths.map((relative) => stat(insideLibrary(relative)).then(({ size }) => size, () => 0)));
+async function sizeOnDisk(paths: string[], root: string): Promise<number> {
+  const sizes = await Promise.all(paths.map((relative) => stat(insideLibrary(relative, root)).then(({ size }) => size, () => 0)));
   return sizes.reduce((total, size) => total + size, 0);
 }
 
@@ -138,17 +138,18 @@ async function touchMarker(marker: string): Promise<void> {
  * The marker proves this is the real library: on an unmounted disk the folder is empty,
  * and every file would look deleted. It is only written once a file has been seen there.
  */
-export async function forgetFilesDeletedElsewhere(prisma: PrismaClient): Promise<number> {
+export async function forgetFilesDeletedElsewhere(prisma: PrismaClient, platform: ArchivePlatform): Promise<number> {
+  const { root } = libraryFor(platform);
   const files = await prisma.archiveMediaFile.findMany({
-    where: { platform: TWITCH, jobs: { none: { state: { in: [...IN_PROGRESS] } } } },
+    where: { platform, jobs: { none: { state: { in: [...IN_PROGRESS] } } } },
     include: { video: { select: { title: true, externalId: true, creator: { select: { displayName: true } } } } },
   });
   const missing = [];
   for (const file of files) {
-    if (!(await existsInLibrary(file.relativePath))) missing.push(file);
+    if (!(await existsInLibrary(file.relativePath, root))) missing.push(file);
   }
 
-  const marker = path.join(LIBRARY_DIR, LIBRARY_MARKER);
+  const marker = path.join(root, LIBRARY_MARKER);
   if (missing.length < files.length) await touchMarker(marker);
   if (missing.length === 0 || !(await exists(marker))) return 0;
 
@@ -157,12 +158,12 @@ export async function forgetFilesDeletedElsewhere(prisma: PrismaClient): Promise
     const sidecars = Array.isArray(file.sidecars) ? file.sidecars.filter((entry): entry is string => typeof entry === 'string') : [];
     const leftovers = [...sidecars, ...(file.originalRelativePath ? [file.originalRelativePath] : [])];
     const startedAt = new Date();
-    const freedBytes = await sizeOnDisk(leftovers);
+    const freedBytes = await sizeOnDisk(leftovers, root);
     // A swap in progress leaves the name empty for a moment, so "missing" has to be true now.
     const stillMissing = await withFileLock(prisma, file.id, async (tx) => {
       const busy = await tx.archiveJob.count({ where: { mediaFileId: file.id, state: { in: [...IN_PROGRESS] } } });
-      if (busy > 0 || await existsInLibrary(file.relativePath)) return false;
-      for (const relative of leftovers) await removeInsideLibrary(relative);
+      if (busy > 0 || await existsInLibrary(file.relativePath, root)) return false;
+      for (const relative of leftovers) await removeInsideLibrary(relative, root);
       await tx.archiveMediaFile.delete({ where: { id: file.id } });
       return true;
     });

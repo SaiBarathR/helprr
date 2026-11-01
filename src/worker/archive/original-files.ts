@@ -1,11 +1,11 @@
 import { lstat, stat } from 'node:fs/promises';
-import type { PrismaClient, ArchiveJob } from '@prisma/client';
+import type { ArchiveJob, ArchivePlatform, PrismaClient } from '@prisma/client';
 import { IN_PROGRESS } from './delete-files';
+import { libraryFor } from './env';
 import { withFileLock } from './file-lock';
 import { existsInLibrary, insideLibrary, removeInsideLibrary, replaceInsideLibrary } from './library-paths';
 import { DeferJobError } from './process';
 import { deleteAuditRow, probe, recordDeletion, writeDeleteAudit } from './reencode';
-import { TWITCH } from '@/lib/twitch/platform';
 
 const CONFLICT_WAIT_MS = 5 * 60_000;
 
@@ -51,17 +51,18 @@ export async function runDeleteOriginal(prisma: PrismaClient, job: ArchiveJob, a
   await waitForOtherWork(prisma, job, file);
   const relative = file.originalRelativePath;
   if (!relative) return;
+  const { root } = libraryFor(file.platform);
 
   const startedAt = new Date();
   let errorMessage: string | null = null;
   let done = false;
   try {
-    const freedBytes = (await lstat(insideLibrary(relative)).catch(() => null))?.size ?? 0;
+    const freedBytes = (await lstat(insideLibrary(relative, root)).catch(() => null))?.size ?? 0;
     done = await withFileLock(prisma, file.id, async (tx) => {
       const current = await tx.archiveMediaFile.findUnique({ where: { id: file.id }, select: { reencodedAt: true, originalRelativePath: true } });
       if (!current || !isCurrent(job, current) || current.originalRelativePath !== relative) return false;
       await assertLease();
-      await removeInsideLibrary(relative);
+      await removeInsideLibrary(relative, root);
       await tx.archiveMediaFile.update({
         where: { id: file.id },
         data: { originalRelativePath: null, originalDeleteAfter: null, originalDeletedAt: startedAt },
@@ -125,7 +126,8 @@ export async function runRestoreOriginal(prisma: PrismaClient, job: ArchiveJob, 
   const relative = file.originalRelativePath;
   if (!relative) throw new Error('validation failed: there is no original to restore');
 
-  const target = insideLibrary(file.relativePath);
+  const { root } = libraryFor(file.platform);
+  const target = insideLibrary(file.relativePath, root);
   const startedAt = new Date();
   const audit = {
     title: file.video.title,
@@ -137,10 +139,10 @@ export async function runRestoreOriginal(prisma: PrismaClient, job: ArchiveJob, 
   // True from the rename on, whatever fails after it: the re-encoded copy is gone by then.
   let replaced = false;
   try {
-    const stillParked = await existsInLibrary(relative);
+    const stillParked = await existsInLibrary(relative, root);
     let codec: string;
     if (stillParked) {
-      codec = await verifyOriginal(insideLibrary(relative), file);
+      codec = await verifyOriginal(insideLibrary(relative, root), file);
     } else {
       // Anything but HEVC here means a restart after the rename: the original is in place, and the row never heard.
       ({ codec } = await probe(target));
@@ -152,7 +154,7 @@ export async function runRestoreOriginal(prisma: PrismaClient, job: ArchiveJob, 
       if (!current || !isCurrent(job, current) || current.originalRelativePath !== relative) return;
       await assertLease();
       if (stillParked) {
-        await replaceInsideLibrary(relative, file.relativePath);
+        await replaceInsideLibrary(relative, file.relativePath, root);
         replaced = true;
       }
       const { size } = await stat(target);
@@ -182,14 +184,15 @@ export async function runRestoreOriginal(prisma: PrismaClient, job: ArchiveJob, 
 }
 
 /** For files re-encoded before sizes were kept: the parked copy still has the answer. */
-export async function measureParkedOriginals(prisma: PrismaClient): Promise<number> {
+export async function measureParkedOriginals(prisma: PrismaClient, platform: ArchivePlatform): Promise<number> {
+  const { root } = libraryFor(platform);
   const files = await prisma.archiveMediaFile.findMany({
-    where: { platform: TWITCH, originalRelativePath: { not: null }, originalSizeBytes: null },
+    where: { platform, originalRelativePath: { not: null }, originalSizeBytes: null },
     select: { id: true, originalRelativePath: true },
   });
   let measured = 0;
   for (const file of files) {
-    const info = await stat(insideLibrary(file.originalRelativePath!)).catch(() => null);
+    const info = await stat(insideLibrary(file.originalRelativePath!, root)).catch(() => null);
     if (!info) continue;
     await prisma.archiveMediaFile.update({ where: { id: file.id }, data: { originalSizeBytes: BigInt(info.size) } });
     measured += 1;
