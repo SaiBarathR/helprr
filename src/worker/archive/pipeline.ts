@@ -5,6 +5,8 @@ import type { DownloadContext, EpisodeLayout, PlatformAdapter, Sidecar } from '.
 import { FFMPEG, FFPROBE, libraryFor } from './env';
 import { run } from './process';
 
+// Sponsor cuts remove minutes, not most of a video.
+const MIN_SHARE_AFTER_CUTS = 0.5;
 const RECORDING_RECHECK_MS = 15 * 60_000;
 const GIB = 1024 ** 3;
 
@@ -35,8 +37,10 @@ async function probe(file: string): Promise<{ videoCodec: string; height: number
   };
 }
 
-export function validateDuration(actual: number, expected: number): boolean {
-  return Math.abs(actual - expected) <= Math.max(10, expected * 0.01);
+export function validateDuration(actual: number, expected: number, mayBeShorter = false): boolean {
+  const tolerance = Math.max(10, expected * 0.01);
+  if (mayBeShorter) return actual <= expected + tolerance && actual >= expected * MIN_SHARE_AFTER_CUTS;
+  return Math.abs(actual - expected) <= tolerance;
 }
 
 async function checkDisk(ctx: DownloadContext, expectedBytes: number): Promise<void> {
@@ -178,7 +182,7 @@ export async function runDownload(ctx: DownloadContext, adapter: PlatformAdapter
   await ctx.setStage('validating');
   const probed = await probe(mkv);
   if (probed.video !== (prepared.audioOnly ? 0 : 1) || probed.audio !== 1) throw new Error('validation failed: unexpected streams');
-  if (!validateDuration(probed.duration, prepared.duration)) throw new Error(`validation failed: duration mismatch ${probed.duration} vs ${prepared.duration}`);
+  if (!validateDuration(probed.duration, prepared.duration, prepared.mayBeShorter)) throw new Error(`validation failed: duration mismatch ${probed.duration} vs ${prepared.duration}`);
 
   const extras = await adapter.extras(ctx, staging);
 

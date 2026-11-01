@@ -24,6 +24,8 @@ export interface PreparedDownload<Info = unknown> {
   /** Space the download will need, for the disk guard. */
   expectedBytes: number;
   audioOnly: boolean;
+  /** Parts were cut on purpose, so the file can be shorter than the video. */
+  mayBeShorter?: boolean;
 }
 
 /** A finished file in staging, and the ending it takes on the published name. */

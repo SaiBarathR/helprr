@@ -97,6 +97,13 @@ const errorLabels = (name: string): Record<string, string> => ({
   extractor: `${name} changed something the download tool relies on`,
   transient: `Network or ${name} error`,
   disk: 'Not enough disk space',
+  ageRestricted: 'Age-restricted. Add your spare account in Settings → YouTube.',
+  blocked: 'YouTube is blocking this server for now. Downloads will try again later.',
+  rateLimited: 'Too many requests. Downloads will try again later.',
+  membersOnly: 'For channel members, which Helprr does not support',
+  notStarted: 'Has not started yet. It will download when it is ready.',
+  regionBlocked: 'YouTube does not offer this video in your country',
+  cookiesExpired: 'Your spare account needs signing in again in Settings → YouTube',
 });
 
 function gb(bytes: number): string {

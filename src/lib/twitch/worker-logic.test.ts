@@ -116,7 +116,7 @@ describe('classifyJobError', () => {
     ['ERROR: Unable to extract video data', 'extractor'],
     ['Read timed out', 'transient'],
     ['HTTP Error 502: Bad Gateway', 'transient'],
-  ])('reads %s', (message, expected) => expect(classifyJobError(message)).toBe(expected));
+  ])('reads %s', (message, expected) => expect(classifyJobError(message, 'TWITCH')).toBe(expected));
 });
 
 describe('nextStepAfterFailure', () => {

@@ -1,12 +1,13 @@
-import { readdir } from 'node:fs/promises';
+import { readdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { CreatorVideoType } from '@prisma/client';
 import { archiveEpisode, localDate, safeFilenameTitle } from '@/lib/archive/naming';
 import { seasonNfo } from '@/lib/archive/nfo';
 import { parseProgressLine, YT_DLP_PROGRESS_TEMPLATE } from '@/lib/archive/progress';
+import { vttToSrt } from '@/lib/youtube/captions';
 import { formatSelector, selectedBytes } from '@/lib/youtube/formats';
 import { youtubeEpisodeNfo, youtubeShowNfo } from '@/lib/youtube/nfo';
-import type { DownloadContext, EpisodeLayout, PlatformAdapter, PreparedDownload } from '../adapter';
+import type { DownloadContext, EpisodeLayout, PlatformAdapter, PreparedDownload, Sidecar } from '../adapter';
 import { FFMPEG } from '../env';
 import { nextSequentialEpisode } from '../episodes';
 import { WaitForRecordingError } from '../pipeline';
@@ -41,7 +42,38 @@ const videoUrl = (id: string) => `https://www.youtube.com/watch?v=${id}`;
 export const youtubeVideoArgs = (id: string) => [...BASE_ARGS, '-J', videoUrl(id)];
 
 function sponsorblockArgs(mode: string | undefined): string[] {
+  if (mode === 'remove') return ['--sponsorblock-mark', 'all', '--sponsorblock-remove', 'sponsor'];
   return mode === 'mark' ? ['--sponsorblock-mark', 'all'] : [];
+}
+
+const CAPTION_LANGUAGES = ['en', 'en-US', 'en-GB', 'en-orig'];
+
+// Captions are a bonus, and a new video may have none yet. Asked for in a separate run so
+// that a refused caption request can never fail the video.
+async function saveCaptions(ctx: DownloadContext, staging: string): Promise<Sidecar[]> {
+  const { video, signal } = ctx;
+  try {
+    await run(toolPath('ytdlpYoutube'), [
+      ...BASE_ARGS, '--skip-download', '--write-subs', '--write-auto-subs',
+      '--sub-langs', CAPTION_LANGUAGES.join(','), '--sub-format', 'vtt',
+      '-o', path.join(staging, 'captions.%(ext)s'),
+      videoUrl(video.externalId),
+    ], { signal });
+    const files = await readdir(staging);
+    const name = CAPTION_LANGUAGES.map((language) => `captions.${language}.vtt`).find((file) => files.includes(file));
+    const srt = name ? vttToSrt(await readFile(path.join(staging, name), 'utf8')) : '';
+    if (!srt) {
+      await ctx.note('YouTube has no English captions for this video yet');
+      return [];
+    }
+    const stagedPath = path.join(staging, 'captions.srt');
+    await writeFile(stagedPath, srt);
+    return [{ stagedPath, suffix: '.en.srt' }];
+  } catch (error) {
+    if (signal.aborted) throw error;
+    await ctx.note(`Captions skipped: ${error instanceof Error ? error.message.slice(0, 300) : String(error)}`);
+    return [];
+  }
 }
 
 async function downloadVideo(ctx: DownloadContext, staging: string, selector: string): Promise<string> {
@@ -110,6 +142,7 @@ export const youtubeAdapter: PlatformAdapter<YoutubeInfo> = {
       duration,
       audioOnly: false,
       expectedBytes: selectedBytes(info.requested_formats) ?? duration * FALLBACK_BYTES_PER_SECOND,
+      mayBeShorter: options.sponsorblock === 'remove',
     };
     return prepared;
   },
@@ -118,8 +151,10 @@ export const youtubeAdapter: PlatformAdapter<YoutubeInfo> = {
     return downloadVideo(ctx, staging, (prepared as YoutubePrepared).selector);
   },
 
-  async extras() {
-    return [];
+  async extras(ctx, staging) {
+    if (!ctx.options.captions) return [];
+    await ctx.setStage('saving captions');
+    return saveCaptions(ctx, staging);
   },
 
   async layout(ctx, prepared, duration): Promise<EpisodeLayout> {

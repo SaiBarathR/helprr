@@ -148,7 +148,7 @@ export const twitchAdapter: PlatformAdapter<TwitchInfo> = {
       info = JSON.parse(json) as TwitchInfo;
     } catch (error) {
       // Only a broken extractor: the fallback tool can still fetch by id, without chapters.
-      if (!(error instanceof ProcessFailedError) || classifyJobError(error.message) !== 'extractor') throw error;
+      if (!(error instanceof ProcessFailedError) || classifyJobError(error.message, 'TWITCH') !== 'extractor') throw error;
       await ctx.note('yt-dlp could not read the video, so trying the fallback tool');
     }
     if (info.live_status === 'is_live') throw new WaitForRecordingError();
