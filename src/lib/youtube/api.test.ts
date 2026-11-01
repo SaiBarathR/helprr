@@ -157,6 +157,19 @@ describe('YouTube API client', () => {
     await expect(verifyYoutubeKey(KEY)).rejects.toBeInstanceOf(YoutubeKeyRejectedError);
   });
 
+  it('drops a video whose id could not be a real one, because ids end up in file names', async () => {
+    mocks.get.mockResolvedValue({ data: { items: [video, { ...video, id: '../../etc/passwd' }] } });
+    expect((await videosById(['z7rgGfE8sug'])).map(({ id }) => id)).toEqual(['z7rgGfE8sug']);
+  });
+
+  it('drops the same from a list', async () => {
+    mocks.get.mockResolvedValue({ data: { items: [
+      { snippet: { title: 'Fine' }, contentDetails: { videoId: 'z7rgGfE8sug' } },
+      { snippet: { title: 'Bad' }, contentDetails: { videoId: '../../x' } },
+    ] } });
+    expect((await playlistItems('UUVlfe3MRSCZSeIWByrWHhkg'))?.items.map(({ videoId }) => videoId)).toEqual(['z7rgGfE8sug']);
+  });
+
   it('treats a missing list as an answer: a channel with no Shorts has none', async () => {
     mocks.get.mockRejectedValue(apiError(404, 'playlistNotFound'));
     expect(await playlistItems(shortsListOf('UCVlfe3MRSCZSeIWByrWHhkg'))).toBeNull();

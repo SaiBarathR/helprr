@@ -1,6 +1,7 @@
 import axios, { isAxiosError } from 'axios';
 import { prisma } from '@/lib/db';
 import { decryptTwitchToken } from '@/lib/twitch/token-cipher';
+import { isChannelId, isVideoId } from '@/lib/youtube/ids';
 import { getYoutubeSettings } from '@/lib/youtube/settings';
 
 export const YOUTUBE_API_URL = 'https://www.googleapis.com/youtube/v3';
@@ -148,6 +149,7 @@ interface ChannelResource {
 }
 
 function toChannel(channel: ChannelResource): YoutubeChannel {
+  if (!isChannelId(channel.id)) throw new Error('YouTube request failed: malformed channel id');
   return {
     id: channel.id,
     title: channel.snippet.title,
@@ -220,7 +222,7 @@ export async function playlistItems(playlistId: string, maxResults = BATCH, page
   }>('playlistItems', { part: 'contentDetails,snippet', maxResults, playlistId, ...(pageToken ? { pageToken } : {}) });
   if (!data) return null;
   return {
-    items: (data.items ?? []).map((item, index) => ({
+    items: (data.items ?? []).filter((item) => isVideoId(item.contentDetails.videoId)).map((item, index) => ({
       videoId: item.contentDetails.videoId,
       position: item.snippet?.position ?? index,
       title: item.snippet?.title ?? '',
@@ -296,7 +298,8 @@ export async function videosById(ids: string[]): Promise<YoutubeVideo[]> {
       part: 'snippet,contentDetails,liveStreamingDetails,statistics',
       id: ids.slice(start, start + BATCH).join(','),
     });
-    videos.push(...(data?.items ?? []).map(toVideo));
+    // An id ends up in a file name, so even Google's answer is checked first.
+    videos.push(...(data?.items ?? []).filter((item) => isVideoId(item.id) && isChannelId(item.snippet.channelId)).map(toVideo));
   }
   return videos;
 }

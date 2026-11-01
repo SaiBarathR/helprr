@@ -5,7 +5,7 @@ import path from 'node:path';
 import { Prisma, PrismaClient, type ArchiveJob, type ArchiveJobKind, type ArchivePlatform } from '@prisma/client';
 import type { DownloadSession, PlatformAdapter } from './adapter';
 import { twitchAdapter } from './adapters/twitch';
-import { readYoutubeFormats, youtubeAdapter, youtubeVideoArgs } from './adapters/youtube';
+import { readYoutubeFormats, removeLeftoverCookies, youtubeAdapter, youtubeVideoArgs } from './adapters/youtube';
 import { claimJob, LEASE_MS } from './claim';
 import { classifyJobError, nextStepAfterFailure } from '@/lib/archive/job-errors';
 import { inReencodeWindow, REENCODE_NOW_PRIORITY } from '@/lib/archive/reencode-window';
@@ -576,6 +576,8 @@ async function main(): Promise<void> {
   process.on('SIGINT', () => void shutdown('SIGINT'));
 
   await waitForMigrations();
+  const leftovers = await removeLeftoverCookies().catch(() => 0);
+  if (leftovers > 0) log('info', 'Removed leftover account files', { leftovers });
   youtubeMounted = await isMountedFolder(libraryFor('YOUTUBE').root);
   const roots = youtubeMounted ? ['TWITCH', 'YOUTUBE'] as const : ['TWITCH'] as const;
   await assertSeparateRoots(roots.map((platform) => libraryFor(platform).root));
