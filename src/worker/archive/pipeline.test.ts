@@ -10,9 +10,7 @@ const paths = vi.hoisted(() => {
 const mocks = vi.hoisted(() => ({ run: vi.fn() }));
 
 vi.mock('./env', () => ({
-  LIBRARY_DIR: paths.library,
-  STAGING_DIR: paths.staging,
-  ORIGINALS_DIR: `${paths.library}/.originals`,
+  libraryFor: () => ({ root: paths.library, staging: paths.staging, originals: `${paths.library}/.originals` }),
   FFMPEG: '/ffmpeg',
   FFPROBE: '/ffprobe',
   TOOLS_DIR: '/tools',

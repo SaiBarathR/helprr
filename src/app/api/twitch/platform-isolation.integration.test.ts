@@ -174,6 +174,7 @@ describe.skipIf(!url || !url.endsWith('/helprr_migration_test'))('platform isola
     expect(summary.totalFiles ?? summary.count).toBe(1);
     const history = await (await getHistory(req('/api/twitch/files/history'))).json() as { deletions: Array<{ title: string }> };
     expect(history.deletions.map((row) => row.title)).toEqual(['TWITCH']);
+    expect(history.deletions[0]).not.toHaveProperty('platform');
   });
 
   it('keeps a repeated request id to its own platform', async () => {

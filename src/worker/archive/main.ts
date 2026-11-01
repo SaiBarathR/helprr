@@ -2,18 +2,19 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, readdir, rm, stat, statfs, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { Prisma, PrismaClient, type ArchiveJob, type ArchiveJobKind } from '@prisma/client';
+import { Prisma, PrismaClient, type ArchiveJob, type ArchiveJobKind, type ArchivePlatform } from '@prisma/client';
 import type { DownloadSession } from './adapter';
 import { twitchAdapter } from './adapters/twitch';
 import { claimJob, LEASE_MS } from './claim';
 import { classifyJobError, nextStepAfterFailure } from '@/lib/twitch/job-errors';
 import { inReencodeWindow, REENCODE_NOW_PRIORITY } from '@/lib/twitch/reencode-window';
 import type { DownloadOptions } from '@/lib/twitch/jobs';
-import { LIBRARY_DIR, STAGING_DIR, WORKER_VERSION } from './env';
+import { libraryFor, WORKER_VERSION } from './env';
 import { forgetFilesDeletedElsewhere, repairLibraryModes, runDeleteFiles } from './delete-files';
 import { measureParkedOriginals, runDeleteOriginal, runRestoreOriginal } from './original-files';
 import { DiskGuardError, runDownload, WaitForRecordingError } from './pipeline';
 import { deleteExpiredOriginals, probeGpu, runReencode } from './reencode';
+import { assertSeparateRoots } from './library-paths';
 import { DeferJobError, JobCancelledError, LeaseLostError } from './process';
 import { activeVersion, ensureTools, latestVersion, setSmokeVideo, updateTools, type ToolName } from './tools';
 import { TWITCH } from '@/lib/twitch/platform';
@@ -33,6 +34,8 @@ const HOUSEKEEPING_MS = 60 * 60_000;
 // File housekeeping needs no tools, so it carries on while they are held.
 const FILE_KINDS: ArchiveJobKind[] = ['DELETE_FILES', 'DELETE_ORIGINAL', 'RESTORE_ORIGINAL'];
 const NETWORK_KINDS: ArchiveJobKind[] = ['DOWNLOAD', ...FILE_KINDS];
+// Every root the worker looks after. A platform is added here with its adapter.
+const PLATFORMS: ArchivePlatform[] = [TWITCH];
 
 const prisma = new PrismaClient();
 const workerId = `${os.hostname()}-${randomUUID().slice(0, 8)}`;
@@ -72,15 +75,16 @@ async function waitForMigrations(): Promise<void> {
 
 // Group-writable, because Jellyfin deletes through a group it shares with the worker's
 // user. Others can still read, for a Jellyfin that shares no group and only plays.
-async function probeLibrary(): Promise<void> {
+async function probeLibrary(platform: ArchivePlatform): Promise<void> {
+  const { root, staging } = libraryFor(platform);
   process.umask(0o002);
-  await mkdir(STAGING_DIR, { recursive: true });
-  const probe = path.join(STAGING_DIR, `.probe-${workerId}`);
+  await mkdir(staging, { recursive: true });
+  const probe = path.join(staging, `.probe-${workerId}`);
   await writeFile(probe, '');
   const { mode } = await stat(probe);
   await rm(probe);
-  log('info', 'Library is writable', { dir: LIBRARY_DIR, mode: (mode & 0o777).toString(8) });
-  const fixed = await repairLibraryModes(LIBRARY_DIR);
+  log('info', 'Library is writable', { dir: root, mode: (mode & 0o777).toString(8) });
+  const fixed = await repairLibraryModes(root);
   if (fixed > 0) log('info', 'Made older library files group-writable', { fixed });
 }
 
@@ -185,7 +189,7 @@ async function runJob(job: ArchiveJob): Promise<void> {
     await noteExtractorResult(false);
     log('info', 'Job finished', { jobId: job.id });
   } catch (error) {
-    await rm(path.join(STAGING_DIR, stagingName), { recursive: true, force: true }).catch(() => undefined);
+    await rm(path.join(libraryFor(job.platform).staging, stagingName), { recursive: true, force: true }).catch(() => undefined);
     if (leaseLost || error instanceof LeaseLostError) {
       log('warn', 'Lost the lease on a job', { jobId: job.id });
     } else if (stopping && error instanceof JobCancelledError) {
@@ -230,7 +234,7 @@ async function runJob(job: ArchiveJob): Promise<void> {
 }
 
 async function heartbeat(): Promise<void> {
-  const stats = await statfs(LIBRARY_DIR).catch(() => null);
+  const stats = await statfs(libraryFor(TWITCH).root).catch(() => null);
   const [ytdlp, td] = await Promise.all([activeVersion('ytdlp'), activeVersion('td')]);
   const data = {
     version: WORKER_VERSION,
@@ -286,16 +290,20 @@ async function cpuLane(): Promise<void> {
 }
 
 async function housekeeping(): Promise<void> {
-  const measured = await measureParkedOriginals(prisma);
-  if (measured > 0) log('info', 'Measured parked originals', { measured });
-  const deleted = await deleteExpiredOriginals(prisma);
-  if (deleted > 0) log('info', 'Deleted originals', { deleted });
+  for (const platform of PLATFORMS) {
+    const measured = await measureParkedOriginals(prisma, platform);
+    if (measured > 0) log('info', 'Measured parked originals', { platform, measured });
+    const deleted = await deleteExpiredOriginals(prisma, platform);
+    if (deleted > 0) log('info', 'Deleted originals', { platform, deleted });
+  }
   await cleanStaging();
 }
 
 async function checkDeletedFiles(): Promise<void> {
-  const forgotten = await forgetFilesDeletedElsewhere(prisma);
-  if (forgotten > 0) log('info', 'Forgot files deleted outside Helprr', { forgotten });
+  for (const platform of PLATFORMS) {
+    const forgotten = await forgetFilesDeletedElsewhere(prisma, platform);
+    if (forgotten > 0) log('info', 'Forgot files deleted outside Helprr', { platform, forgotten });
+  }
 }
 
 // Only what no live lease covers, so it cannot pull files from under another worker.
@@ -305,8 +313,11 @@ async function cleanStaging(): Promise<void> {
     select: { id: true },
   });
   const live = new Set([...running.keys(), ...leased.map((job) => job.id)]);
-  for (const entry of await readdir(STAGING_DIR)) {
-    if (!live.has(entry.split('-')[0])) await rm(path.join(STAGING_DIR, entry), { recursive: true, force: true });
+  for (const platform of PLATFORMS) {
+    const { staging } = libraryFor(platform);
+    for (const entry of await readdir(staging)) {
+      if (!live.has(entry.split('-')[0])) await rm(path.join(staging, entry), { recursive: true, force: true });
+    }
   }
 }
 
@@ -400,7 +411,8 @@ async function main(): Promise<void> {
   process.on('SIGINT', () => void shutdown('SIGINT'));
 
   await waitForMigrations();
-  await probeLibrary();
+  await assertSeparateRoots([libraryFor('TWITCH').root, libraryFor('YOUTUBE').root]);
+  for (const platform of PLATFORMS) await probeLibrary(platform);
   await cleanStaging();
 
   const settings = await prisma.archiveSettings.findUnique({ where: { id: 'singleton' } });

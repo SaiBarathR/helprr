@@ -2,11 +2,10 @@ import { mkdir, rm, stat } from 'node:fs/promises';
 import path from 'node:path';
 import type { ArchivePlatform, Prisma, PrismaClient, ArchiveDeletionCause, ArchiveDeletionKind, ArchiveJob } from '@prisma/client';
 import { worthKeeping } from '@/lib/twitch/reencode-window';
-import { FFMPEG, FFPROBE, LIBRARY_DIR, ORIGINALS_DIR, STAGING_DIR } from './env';
+import { FFMPEG, FFPROBE, libraryFor } from './env';
 import { withFileLock } from './file-lock';
 import { removeInsideLibrary, replaceInsideLibrary } from './library-paths';
 import { JobCancelledError, run } from './process';
-import { TWITCH } from '@/lib/twitch/platform';
 
 const RENDER_DEVICE = '/dev/dri/renderD128';
 const NICE = 10;
@@ -58,12 +57,14 @@ export async function runReencode(ctx: {
   if (!job.mediaFileId) throw new Error('validation failed: re-encode has no file');
   const file = await prisma.archiveMediaFile.findUniqueOrThrow({ where: { id: job.mediaFileId } });
 
-  const target = path.join(LIBRARY_DIR, file.relativePath);
-  const parked = path.join(ORIGINALS_DIR, file.relativePath);
+  const library = libraryFor(file.platform);
+  const { root } = library;
+  const target = path.join(root, file.relativePath);
+  const parked = path.join(library.originals, file.relativePath);
 
-  const parkedRelative = path.relative(LIBRARY_DIR, parked);
+  const parkedRelative = path.relative(root, parked);
   // A crash between the two renames below left the file parked with nothing in its place.
-  if (!(await exists(target)) && (await exists(parked))) await replaceInsideLibrary(parkedRelative, file.relativePath);
+  if (!(await exists(target)) && (await exists(parked))) await replaceInsideLibrary(parkedRelative, file.relativePath, root);
   if (!(await exists(target))) throw new Error('validation failed: the file is gone');
 
   const before = await probe(target);
@@ -72,7 +73,7 @@ export async function runReencode(ctx: {
     if (!file.originalRelativePath && (await exists(parked))) {
       const { size } = await stat(target);
       const { size: originalBytes } = await stat(parked);
-      await recordSwap(ctx, file.id, parked, { sizeBytes: size, originalBytes, originalCodec: null });
+      await recordSwap(ctx, file.id, parkedRelative, { sizeBytes: size, originalBytes, originalCodec: null });
       await ctx.note('Finished a swap interrupted by a restart');
       return;
     }
@@ -80,7 +81,7 @@ export async function runReencode(ctx: {
     return;
   }
 
-  const staging = path.join(STAGING_DIR, ctx.stagingName);
+  const staging = path.join(library.staging, ctx.stagingName);
   await rm(staging, { recursive: true, force: true });
   await mkdir(staging, { recursive: true });
   const encoded = path.join(staging, 'out.mkv');
@@ -124,22 +125,22 @@ export async function runReencode(ctx: {
   await ctx.assertLease();
   await ctx.setStage('swapping');
   await mkdir(path.dirname(parked), { recursive: true });
-  await replaceInsideLibrary(file.relativePath, parkedRelative);
+  await replaceInsideLibrary(file.relativePath, parkedRelative, root);
   try {
-    await replaceInsideLibrary(path.relative(LIBRARY_DIR, encoded), file.relativePath);
+    await replaceInsideLibrary(path.relative(root, encoded), file.relativePath, root);
   } catch (error) {
-    await replaceInsideLibrary(parkedRelative, file.relativePath);
+    await replaceInsideLibrary(parkedRelative, file.relativePath, root);
     throw error;
   }
 
-  await recordSwap(ctx, file.id, parked, { sizeBytes: encodedBytes, originalBytes, originalCodec: before.codec });
+  await recordSwap(ctx, file.id, parkedRelative, { sizeBytes: encodedBytes, originalBytes, originalCodec: before.codec });
   await rm(staging, { recursive: true, force: true });
 }
 
 async function recordSwap(
   ctx: { prisma: PrismaClient; job: ArchiveJob; keepOriginalDays: number; quality: number },
   fileId: string,
-  parked: string,
+  parkedRelative: string,
   sizes: { sizeBytes: number; originalBytes: number; originalCodec: string | null },
 ): Promise<void> {
   await ctx.prisma.archiveMediaFile.update({
@@ -151,7 +152,7 @@ async function recordSwap(
       reencodeQuality: ctx.quality,
       reencodeSkippedAt: null,
       reencodeSkippedBytes: null,
-      originalRelativePath: path.relative(LIBRARY_DIR, parked),
+      originalRelativePath: parkedRelative,
       originalDeleteAfter: new Date(Date.now() + ctx.keepOriginalDays * 86_400_000),
       originalSizeBytes: BigInt(sizes.originalBytes),
       originalVideoCodec: sizes.originalCodec,
@@ -162,11 +163,12 @@ async function recordSwap(
 }
 
 /** Deletes originals past their date. Every removal is audited, by a system actor. */
-export async function deleteExpiredOriginals(prisma: PrismaClient, now = new Date()): Promise<number> {
+export async function deleteExpiredOriginals(prisma: PrismaClient, platform: ArchivePlatform, now = new Date()): Promise<number> {
+  const { root } = libraryFor(platform);
   const due = await prisma.archiveMediaFile.findMany({
     // A job on the file may be about to restore this very original.
     where: {
-      platform: TWITCH,
+      platform,
       originalRelativePath: { not: null },
       originalDeleteAfter: { lte: now },
       jobs: { none: { state: { in: ['QUEUED', 'BLOCKED', 'RUNNING', 'RETRY_WAIT'] } } },
@@ -179,7 +181,7 @@ export async function deleteExpiredOriginals(prisma: PrismaClient, now = new Dat
     let errorMessage: string | null = null;
     let done = false;
     try {
-      const original = path.join(LIBRARY_DIR, file.originalRelativePath!);
+      const original = path.join(root, file.originalRelativePath!);
       const freedBytes = (await stat(original).catch(() => null))?.size ?? 0;
       // The list above can be old by now: a restore may have been accepted, or a new
       // re-encode may have parked a newer original under this same name.
@@ -199,7 +201,7 @@ export async function deleteExpiredOriginals(prisma: PrismaClient, now = new Dat
           || current.originalDeleteAfter > now
           || current.jobs.length > 0
         ) return false;
-        await removeInsideLibrary(file.originalRelativePath!);
+        await removeInsideLibrary(file.originalRelativePath!, root);
         await tx.archiveMediaFile.update({
           where: { id: file.id },
           data: { originalRelativePath: null, originalDeleteAfter: null, originalDeletedAt: now },
