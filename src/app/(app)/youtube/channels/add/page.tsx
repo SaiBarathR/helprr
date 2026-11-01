@@ -17,7 +17,7 @@ interface ChannelResult {
 }
 
 interface ChannelList {
-  subscriptions: Array<{ creator: { login: string } }>;
+  subscriptions: Array<{ creator: { externalId: string } }>;
 }
 
 async function readJson<T>(res: Response, fallback: string): Promise<T> {
@@ -39,7 +39,7 @@ export default function AddChannelPage() {
     queryKey: ['youtube', 'creators'],
     queryFn: async ({ signal }) => readJson<ChannelList>(await fetch('/api/youtube/channels', { signal }), 'Could not load'),
   });
-  const followed = new Set(list.data?.subscriptions.map(({ creator }) => creator.login));
+  const followed = new Set(list.data?.subscriptions.map(({ creator }) => creator.externalId));
 
   const search = useQuery({
     queryKey: ['youtube', 'search', searched],
@@ -122,7 +122,7 @@ export default function AddChannelPage() {
         ) : results.length > 0 ? (
           <div className="divide-y divide-border/50 overflow-hidden rounded-xl bg-card">
             {results.map((channel) => {
-              const added = Boolean(channel.handle) && followed.has(channel.handle!.replace(/^@/, ''));
+              const added = followed.has(channel.channelId);
               const pending = follow.isPending && follow.variables === channel.channelId;
               return (
                 <button

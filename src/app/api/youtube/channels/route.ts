@@ -17,7 +17,7 @@ async function getHandler(): Promise<NextResponse> {
     select: {
       id: true,
       notifyNewVods: true,
-      creator: { select: { id: true, login: true, displayName: true, profileImageUrl: true, isLive: true, liveTitle: true } },
+      creator: { select: { id: true, externalId: true, login: true, displayName: true, profileImageUrl: true, isLive: true, liveTitle: true } },
     },
   });
   return NextResponse.json({ subscriptions });
