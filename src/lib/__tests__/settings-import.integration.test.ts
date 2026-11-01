@@ -156,7 +156,7 @@ describe.skipIf(!url)('settings import against PostgreSQL', () => {
       autoDownloadEnabled: true, defaultPolicy: { quality: '720p60' }, keepOriginalDays: 9,
       reencodeWindowStart: '01:00', pinnedTools: { ytdlp: '2026.10.21' }, browserAuthToken: null,
     });
-    const streamer = await prisma.creator.findUniqueOrThrow({ where: { externalId: '123' }, include: { policy: true, subscriptions: true } });
+    const streamer = await prisma.creator.findUniqueOrThrow({ where: { platform_externalId: { platform: 'TWITCH', externalId: '123' } }, include: { policy: true, subscriptions: true } });
     expect(streamer.folderName).toBe('somebody');
     expect(streamer.subscriptions).toMatchObject([{ userId: IMPORTER_ID, notifyNewVods: false }]);
     expect(streamer.policy?.policy).toEqual({ keepLatest: 5 });

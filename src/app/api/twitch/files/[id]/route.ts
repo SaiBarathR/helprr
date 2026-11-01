@@ -4,6 +4,7 @@ import { withApiLogging } from '@/lib/api-logger';
 import { prisma } from '@/lib/db';
 import { FILE_SELECT, fileTimeline, serializeFile, typicalSavingPercent } from '@/lib/twitch/files';
 import { enqueueFileDelete, fileCleanupStatus, loadPlayedDates } from '@/lib/twitch/retention';
+import { TWITCH } from '@/lib/twitch/platform';
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -15,7 +16,7 @@ async function getHandler(_request: NextRequest, { params }: RouteContext): Prom
 
   const { id } = await params;
   const file = await prisma.archiveMediaFile.findUnique({
-    where: { id },
+    where: { id, platform: TWITCH },
     select: {
       ...FILE_SELECT,
       video: {
@@ -48,7 +49,7 @@ async function patchHandler(request: NextRequest, { params }: RouteContext): Pro
   if (typeof body?.keepForever !== 'boolean') return NextResponse.json({ error: 'keepForever is required' }, { status: 400 });
 
   const { id } = await params;
-  const { count } = await prisma.archiveMediaFile.updateMany({ where: { id }, data: { keepForever: body.keepForever } });
+  const { count } = await prisma.archiveMediaFile.updateMany({ where: { id, platform: TWITCH }, data: { keepForever: body.keepForever } });
   if (count === 0) return NextResponse.json({ error: 'File not found' }, { status: 404 });
   return NextResponse.json({ ok: true });
 }

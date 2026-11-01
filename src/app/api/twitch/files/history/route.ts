@@ -3,6 +3,7 @@ import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { prisma } from '@/lib/db';
 import { parsePageParams } from '@/lib/pagination';
+import { TWITCH } from '@/lib/twitch/platform';
 
 async function getHandler(request: NextRequest): Promise<NextResponse> {
   const auth = await requireUserCapability('twitch.view');
@@ -12,8 +13,8 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
   const { page, pageSize, skip, take } = parsePageParams(searchParams, { defaultSize: 30, maxSize: 60 });
   const q = searchParams.get('q')?.trim().slice(0, 100);
   const where = q
-    ? { OR: [{ title: { contains: q, mode: 'insensitive' as const } }, { streamer: { contains: q, mode: 'insensitive' as const } }] }
-    : {};
+    ? { platform: TWITCH, OR: [{ title: { contains: q, mode: 'insensitive' as const } }, { streamer: { contains: q, mode: 'insensitive' as const } }] }
+    : { platform: TWITCH };
   const [rows, total] = await Promise.all([
     prisma.archiveDeletedFile.findMany({ where, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], skip, take }),
     prisma.archiveDeletedFile.count({ where }),

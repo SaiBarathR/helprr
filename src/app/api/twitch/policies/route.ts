@@ -5,6 +5,7 @@ import { withApiLogging } from '@/lib/api-logger';
 import { prisma } from '@/lib/db';
 import { layerMap, sanitizeLayer } from '@/lib/twitch/policy';
 import { getTwitchSettings } from '@/lib/twitch/settings';
+import { TWITCH } from '@/lib/twitch/platform';
 
 const json = (value: unknown) => value as Prisma.InputJsonValue;
 
@@ -15,7 +16,7 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
   const streamerId = request.nextUrl.searchParams.get('streamerId');
   const settings = await getTwitchSettings();
   const stored = streamerId
-    ? await prisma.creatorPolicy.findUnique({ where: { creatorId: streamerId } })
+    ? await prisma.creatorPolicy.findUnique({ where: { creatorId: streamerId, creator: { platform: TWITCH } } })
     : null;
   return NextResponse.json({
     defaultPolicy: sanitizeLayer(settings.defaultPolicy),
@@ -32,7 +33,7 @@ async function putHandler(request: NextRequest): Promise<NextResponse> {
   if (!body) return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
 
   if (typeof body.streamerId === 'string') {
-    const streamer = await prisma.creator.findUnique({ where: { id: body.streamerId }, select: { id: true } });
+    const streamer = await prisma.creator.findUnique({ where: { id: body.streamerId, platform: TWITCH }, select: { id: true } });
     if (!streamer) return NextResponse.json({ error: 'Streamer not found' }, { status: 404 });
     const data = { policy: json(sanitizeLayer(body.policy)), typePolicies: json(layerMap(body.typePolicies)) };
     await prisma.creatorPolicy.upsert({ where: { creatorId: streamer.id }, update: data, create: { creatorId: streamer.id, ...data } });

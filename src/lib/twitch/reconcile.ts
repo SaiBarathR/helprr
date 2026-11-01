@@ -3,6 +3,7 @@ import { logger } from '@/lib/logger';
 import { notifyAndLog, errorMessage } from '@/lib/polling/shared';
 import { getJellyfinClient } from '@/lib/service-helpers';
 import { getTwitchSettings } from '@/lib/twitch/settings';
+import { TWITCH } from '@/lib/twitch/platform';
 
 const WORKER_OFFLINE_MS = 10 * 60_000;
 const REFRESH_GIVE_UP_MS = 30 * 60_000;
@@ -56,7 +57,7 @@ async function refreshed(
 
 async function finishPublishedJobs(now: Date): Promise<void> {
   const jobs = await prisma.archiveJob.findMany({
-    where: { needsJellyfinRefresh: true, state: 'DONE' },
+    where: { platform: TWITCH, needsJellyfinRefresh: true, state: 'DONE' },
     orderBy: { finishedAt: 'asc' },
     take: BATCH,
     include: { video: { include: { creator: true } }, mediaFile: { select: { jellyfinItemId: true } } },
@@ -142,7 +143,7 @@ async function finishPublishedJobs(now: Date): Promise<void> {
 
 async function notifyFailedJobs(now: Date): Promise<void> {
   const jobs = await prisma.archiveJob.findMany({
-    where: { state: 'FAILED', kind: 'DOWNLOAD', failureNotifiedAt: null },
+    where: { platform: TWITCH, state: 'FAILED', kind: 'DOWNLOAD', failureNotifiedAt: null },
     take: BATCH,
     include: { video: { include: { creator: true } } },
   });

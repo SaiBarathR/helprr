@@ -4,6 +4,7 @@ import { withApiLogging } from '@/lib/api-logger';
 import { prisma } from '@/lib/db';
 import { can } from '@/lib/permissions';
 import { ACTIVE_JOB_STATES } from '@/lib/twitch/jobs';
+import { TWITCH } from '@/lib/twitch/platform';
 
 /** The requester may cancel their own job; twitch.manage may cancel anyone's. */
 async function postHandler(
@@ -15,7 +16,7 @@ async function postHandler(
 
   const { id } = await params;
   const job = await prisma.archiveJob.findUnique({
-    where: { id },
+    where: { id, platform: TWITCH },
     select: { state: true, requestedByUserId: true },
   });
   if (!job) return NextResponse.json({ error: 'Job not found' }, { status: 404 });
@@ -27,12 +28,12 @@ async function postHandler(
 
   // A job the worker has not claimed ends here; a running one is the worker's to stop.
   const { count } = await prisma.archiveJob.updateMany({
-    where: { id, state: { in: ['QUEUED', 'BLOCKED', 'RETRY_WAIT'] } },
+    where: { id, platform: TWITCH, state: { in: ['QUEUED', 'BLOCKED', 'RETRY_WAIT'] } },
     data: { state: 'CANCELLED', finishedAt: new Date() },
   });
   if (count === 0) {
     const { count: running } = await prisma.archiveJob.updateMany({
-      where: { id, state: { in: ACTIVE_JOB_STATES } },
+      where: { id, platform: TWITCH, state: { in: ACTIVE_JOB_STATES } },
       data: { cancelRequested: true },
     });
     if (running === 0) return NextResponse.json({ error: 'Job has already finished' }, { status: 409 });

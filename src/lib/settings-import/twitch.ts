@@ -5,6 +5,7 @@ import type { Prisma } from '@prisma/client';
 import type { ExportedTwitch } from '@/lib/settings-export';
 import { layerMap, sanitizeLayer } from '@/lib/twitch/policy';
 import { parseTwitchLogin } from '@/lib/twitch/streamers';
+import { TWITCH } from '@/lib/twitch/platform';
 
 const REENCODE_PRESETS = new Set(['veryfast', 'faster', 'fast', 'medium', 'slow']);
 const json = (value: unknown) => value as Prisma.InputJsonValue;
@@ -55,9 +56,10 @@ export async function applyTwitchInTxn(
       continue;
     }
     const streamer = await tx.creator.upsert({
-      where: { externalId: entry.twitchUserId },
+      where: { platform_externalId: { platform: TWITCH, externalId: entry.twitchUserId } },
       update: {},
       create: {
+        platform: TWITCH,
         externalId: entry.twitchUserId,
         login,
         folderName: login,

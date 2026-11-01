@@ -13,6 +13,7 @@ import { checkStoredBrowserToken } from '@/lib/twitch/browser-token';
 import { getTwitchSettings } from '@/lib/twitch/settings';
 import { syncStreamerVideos } from '@/lib/twitch/sync';
 import { errorMessage, notifyAndLog } from './shared';
+import { TWITCH } from '@/lib/twitch/platform';
 
 const STREAMS_BATCH = 100;
 const MAX_VIDEO_CHECKS_PER_CYCLE = 40;
@@ -39,7 +40,7 @@ export async function pollTwitch(now = new Date()): Promise<void> {
   const connection = await prisma.serviceConnection.findFirst({ where: { type: 'TWITCH' }, select: { id: true } });
   if (!connection) return;
   // Nobody following a streamer means nothing to tell anyone, so no API budget goes on them.
-  const followed = { subscriptions: { some: {} } };
+  const followed = { platform: TWITCH, subscriptions: { some: {} } };
   const streamers = await prisma.creator.findMany({ where: followed, orderBy: { id: 'asc' } });
 
   const settings = await getTwitchSettings();
@@ -184,6 +185,7 @@ async function autoEnqueue(videoIds: string[]): Promise<void> {
 async function raiseUrgentJobs(now: Date): Promise<void> {
   await prisma.archiveJob.updateMany({
     where: {
+      platform: TWITCH,
       kind: 'DOWNLOAD',
       state: { in: ['QUEUED', 'RETRY_WAIT'] },
       priority: { lt: URGENT_PRIORITY },
@@ -228,6 +230,7 @@ async function notifyNewVideos(streamerId: string, videoIds: string[], now: Date
 async function notifyExpiring(now: Date): Promise<void> {
   const videos = await prisma.creatorVideo.findMany({
     where: {
+      platform: TWITCH,
       type: 'ARCHIVE',
       availability: 'PUBLISHED',
       expiryNotifiedAt: null,

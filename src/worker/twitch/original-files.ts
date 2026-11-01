@@ -5,6 +5,7 @@ import { withFileLock } from './file-lock';
 import { existsInLibrary, insideLibrary, removeInsideLibrary, replaceInsideLibrary } from './library-paths';
 import { DeferJobError } from './process';
 import { deleteAuditRow, probe, recordDeletion, writeDeleteAudit } from './reencode';
+import { TWITCH } from '@/lib/twitch/platform';
 
 const CONFLICT_WAIT_MS = 5 * 60_000;
 
@@ -69,6 +70,7 @@ export async function runDeleteOriginal(prisma: PrismaClient, job: ArchiveJob, a
     });
     if (done) {
       await recordDeletion(prisma, {
+        platform: file.platform,
         videoId: file.videoId,
         title: file.video.title,
         streamer: file.video.creator.displayName,
@@ -182,7 +184,7 @@ export async function runRestoreOriginal(prisma: PrismaClient, job: ArchiveJob, 
 /** For files re-encoded before sizes were kept: the parked copy still has the answer. */
 export async function measureParkedOriginals(prisma: PrismaClient): Promise<number> {
   const files = await prisma.archiveMediaFile.findMany({
-    where: { originalRelativePath: { not: null }, originalSizeBytes: null },
+    where: { platform: TWITCH, originalRelativePath: { not: null }, originalSizeBytes: null },
     select: { id: true, originalRelativePath: true },
   });
   let measured = 0;

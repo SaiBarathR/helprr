@@ -5,6 +5,7 @@ import { logger } from '@/lib/logger';
 import { getJellyfinClientForUser } from '@/lib/service-helpers';
 import { ACTIVE_JOB_STATES } from '@/lib/twitch/jobs';
 import { decideForVideo } from '@/lib/twitch/policy-store';
+import { TWITCH } from '@/lib/twitch/platform';
 
 const DAY_MS = 86_400_000;
 
@@ -75,6 +76,7 @@ export async function fileCleanupStatus(
   const { keepLatest, deleteAfterDays, deleteAfterWatchedDays } = policy;
   const rank = await prisma.archiveMediaFile.count({
     where: {
+      platform: TWITCH,
       keepForever: false,
       jobs: { none: { state: { in: ACTIVE_JOB_STATES } } },
       video: {
@@ -101,6 +103,7 @@ export async function findRetentionCandidates(
 ): Promise<RetentionCandidate[]> {
   const files = await prisma.archiveMediaFile.findMany({
     where: {
+      platform: TWITCH,
       keepForever: false,
       jobs: { none: { state: { in: ACTIVE_JOB_STATES } } },
       video: { jobs: { none: { state: { in: ACTIVE_JOB_STATES } } } },
@@ -178,7 +181,7 @@ export async function enqueueFileDelete(
 ): Promise<boolean> {
   return prisma.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`twitch-delete:${fileId}`}))`;
-    const file = await tx.archiveMediaFile.findUnique({ where: { id: fileId }, select: { videoId: true } });
+    const file = await tx.archiveMediaFile.findUnique({ where: { id: fileId, platform: TWITCH }, select: { videoId: true } });
     if (!file) return false;
     const active = await tx.archiveJob.findFirst({
       where: { mediaFileId: fileId, kind: 'DELETE_FILES', state: { in: ACTIVE_JOB_STATES } },
@@ -187,6 +190,7 @@ export async function enqueueFileDelete(
     if (active) return true;
     await tx.archiveJob.create({
       data: {
+        platform: TWITCH,
         kind: 'DELETE_FILES',
         options: origin,
         videoId: file.videoId,

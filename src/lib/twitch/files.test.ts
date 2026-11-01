@@ -60,11 +60,11 @@ describe('serializeFile', () => {
 
 describe('buildFileWhere', () => {
   it('ignores a filter it does not know', () => {
-    expect(buildFileWhere(new URLSearchParams('filter=nonsense'))).toEqual({ AND: [] });
+    expect(buildFileWhere(new URLSearchParams('filter=nonsense'))).toEqual({ AND: [{ platform: 'TWITCH' }] });
   });
 
   it('finds kept originals', () => {
-    expect(buildFileWhere(new URLSearchParams('filter=original-kept'))).toEqual({ AND: [{ originalRelativePath: { not: null } }] });
+    expect(buildFileWhere(new URLSearchParams('filter=original-kept'))).toEqual({ AND: [{ platform: 'TWITCH' }, { originalRelativePath: { not: null } }] });
   });
 });
 

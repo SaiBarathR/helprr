@@ -241,9 +241,10 @@ async function publish(ctx: JobContext, staging: string, mkv: string, info: Vide
   const relativePath = path.relative(LIBRARY_DIR, path.join(seasonDir, videoName));
   const { size } = await stat(path.join(seasonDir, videoName));
   await prisma.archiveMediaFile.upsert({
-    where: { relativePath },
+    where: { platform_relativePath: { platform: video.platform, relativePath } },
     update: { sizeBytes: BigInt(size), durationSeconds: Math.round(duration), videoCodec: probed.videoCodec, height: probed.height, keepForever: options.keepForever },
     create: {
+      platform: video.platform,
       videoId: video.id,
       relativePath,
       sidecars: sidecars.map((name) => path.relative(LIBRARY_DIR, path.join(seasonDir, name))),
@@ -267,9 +268,12 @@ async function publish(ctx: JobContext, staging: string, mkv: string, info: Vide
   });
 
   if (options.reencode && ctx.reencodeEnabled && probed.videoCodec === 'h264') {
-    const { id: mediaFileId } = await prisma.archiveMediaFile.findUniqueOrThrow({ where: { relativePath }, select: { id: true } });
+    const { id: mediaFileId } = await prisma.archiveMediaFile.findUniqueOrThrow({
+      where: { platform_relativePath: { platform: video.platform, relativePath } },
+      select: { id: true },
+    });
     await prisma.archiveJob.create({
-      data: { kind: 'REENCODE', videoId: video.id, mediaFileId, source: job.source, requestedByUserId: job.requestedByUserId, requestedByUsername: job.requestedByUsername },
+      data: { platform: video.platform, kind: 'REENCODE', videoId: video.id, mediaFileId, source: job.source, requestedByUserId: job.requestedByUserId, requestedByUsername: job.requestedByUsername },
     });
   }
 }

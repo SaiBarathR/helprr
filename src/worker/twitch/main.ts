@@ -15,13 +15,14 @@ import { DiskGuardError, runDownload, WaitForRecordingError } from './pipeline';
 import { deleteExpiredOriginals, probeGpu, runReencode } from './reencode';
 import { DeferJobError, JobCancelledError, LeaseLostError } from './process';
 import { activeVersion, ensureTools, latestVersion, setSmokeVideo, updateTools, type ToolName } from './tools';
+import { TWITCH } from '@/lib/twitch/platform';
 
 const RENEW_MS = 20_000;
 const POLL_MS = 5_000;
 const CANCEL_POLL_MS = 2_000;
 const HEARTBEAT_MS = 15_000;
 const MIGRATION_POLL_MS = 5_000;
-const REQUIRED_MIGRATION = '20261031120000_twitch_file_library';
+const REQUIRED_MIGRATION = '20261101120000_archive_platform';
 const CPU_POLL_MS = 30_000;
 const DELETED_CHECK_MS = 2 * 60_000;
 const TOOL_CHECK_MS = 24 * 3_600_000;
@@ -321,7 +322,7 @@ async function cleanStaging(): Promise<void> {
 
 async function prepareSmokeVideo(): Promise<void> {
   const video = await prisma.creatorVideo.findFirst({
-    where: { availability: 'PUBLISHED' },
+    where: { platform: TWITCH, availability: 'PUBLISHED' },
     orderBy: { sourceCreatedAt: 'desc' },
     select: { externalId: true },
   });

@@ -4,6 +4,7 @@ import { ACTIVE_JOB_STATES } from './jobs';
 import { REENCODE_NOW_PRIORITY } from './reencode-window';
 import { FILE_LOCK_TRANSACTION } from './retention';
 import { sizeThumbnail } from './serialize';
+import { TWITCH } from '@/lib/twitch/platform';
 
 // The paths are read only to tell whether an original is there; serializeFile drops them.
 export const FILE_SELECT = {
@@ -39,7 +40,7 @@ export const FILE_SELECT = {
     },
   },
   jobs: {
-    where: { state: { in: ACTIVE_JOB_STATES } },
+    where: { platform: TWITCH, state: { in: ACTIVE_JOB_STATES } },
     select: { id: true, kind: true, state: true, stage: true, progress: true, priority: true },
     take: 1,
   },
@@ -96,7 +97,7 @@ const FILTERS: Record<LibraryFilter, Prisma.ArchiveMediaFileWhereInput> = {
 };
 
 export function buildFileWhere(params: URLSearchParams): Prisma.ArchiveMediaFileWhereInput {
-  const and: Prisma.ArchiveMediaFileWhereInput[] = [];
+  const and: Prisma.ArchiveMediaFileWhereInput[] = [{ platform: TWITCH }];
   const filter = FILTERS[params.get('filter') as LibraryFilter];
   if (filter) and.push(filter);
   const streamer = params.get('streamer');
@@ -149,6 +150,7 @@ export async function listFiles(
 export async function summarizeFiles() {
   const [files, heartbeat, waiting, freed] = await Promise.all([
     prisma.archiveMediaFile.findMany({
+      where: { platform: TWITCH },
       select: {
         reencodedAt: true,
         sizeBytes: true,
@@ -158,8 +160,8 @@ export async function summarizeFiles() {
       },
     }),
     prisma.archiveWorkerHeartbeat.findFirst({ orderBy: { lastSeenAt: 'desc' }, select: { diskFreeBytes: true } }),
-    prisma.archiveJob.count({ where: { kind: 'REENCODE', state: { in: ACTIVE_JOB_STATES } } }),
-    prisma.archiveDeletedFile.aggregate({ _sum: { freedBytes: true } }),
+    prisma.archiveJob.count({ where: { platform: TWITCH, kind: 'REENCODE', state: { in: ACTIVE_JOB_STATES } } }),
+    prisma.archiveDeletedFile.aggregate({ where: { platform: TWITCH }, _sum: { freedBytes: true } }),
   ]);
 
   const streamers = new Map<string, { id: string; displayName: string; count: number; bytes: number }>();
@@ -201,7 +203,7 @@ export async function summarizeFiles() {
 /** What re-encoding has really saved here, as a percentage, or null before there is a result. */
 export async function typicalSavingPercent(): Promise<number | null> {
   const { _sum } = await prisma.archiveMediaFile.aggregate({
-    where: { reencodedAt: { not: null }, originalSizeBytes: { not: null } },
+    where: { platform: TWITCH, reencodedAt: { not: null }, originalSizeBytes: { not: null } },
     _sum: { sizeBytes: true, originalSizeBytes: true },
   });
   const before = Number(_sum.originalSizeBytes ?? 0);
@@ -231,7 +233,7 @@ const activeDownload = (tx: Prisma.TransactionClient, videoId: string) => (
 export function requestReencode(fileId: string, when: 'now' | 'tonight', actor: Actor): Promise<FileJobResult> {
   const priority = when === 'now' ? REENCODE_NOW_PRIORITY : 0;
   return withFileLock(fileId, async (tx) => {
-    const file = await tx.archiveMediaFile.findUnique({ where: { id: fileId }, select: { videoId: true, reencodedAt: true, videoCodec: true } });
+    const file = await tx.archiveMediaFile.findUnique({ where: { id: fileId, platform: TWITCH }, select: { videoId: true, reencodedAt: true, videoCodec: true } });
     if (!file) return 'missing';
     if (file.reencodedAt || file.videoCodec === 'hevc') return 'nothing-to-do';
 
@@ -249,6 +251,7 @@ export function requestReencode(fileId: string, when: 'now' | 'tonight', actor: 
 
     await tx.archiveJob.create({
       data: {
+        platform: TWITCH,
         kind: 'REENCODE',
         videoId: file.videoId,
         mediaFileId: fileId,
@@ -269,7 +272,7 @@ export function requestOriginalJob(
   actor: Actor,
 ): Promise<FileJobResult> {
   return withFileLock(fileId, async (tx) => {
-    const file = await tx.archiveMediaFile.findUnique({ where: { id: fileId }, select: { videoId: true, reencodedAt: true, originalRelativePath: true } });
+    const file = await tx.archiveMediaFile.findUnique({ where: { id: fileId, platform: TWITCH }, select: { videoId: true, reencodedAt: true, originalRelativePath: true } });
     if (!file) return 'missing';
     if (!file.originalRelativePath) return 'nothing-to-do';
     const active = await tx.archiveJob.findFirst({ where: { mediaFileId: fileId, state: { in: ACTIVE_JOB_STATES } }, select: { id: true } });
@@ -277,6 +280,7 @@ export function requestOriginalJob(
 
     await tx.archiveJob.create({
       data: {
+        platform: TWITCH,
         kind,
         // The worker refuses to act once this re-encode is no longer the current one.
         options: { generation: file.reencodedAt?.toISOString() ?? null },
@@ -294,13 +298,13 @@ export function requestOriginalJob(
 export async function fileTimeline(fileId: string, videoId: string) {
   const [jobs, deletions] = await Promise.all([
     prisma.archiveJob.findMany({
-      where: { OR: [{ mediaFileId: fileId }, { videoId, kind: 'DOWNLOAD' }] },
+      where: { platform: TWITCH, OR: [{ mediaFileId: fileId }, { videoId, kind: 'DOWNLOAD' }] },
       orderBy: { createdAt: 'asc' },
       take: 50,
       select: { id: true, kind: true, state: true, source: true, requestedByUsername: true, createdAt: true, startedAt: true, finishedAt: true },
     }),
     prisma.archiveDeletedFile.findMany({
-      where: { videoId, kind: 'ORIGINAL' },
+      where: { platform: TWITCH, videoId, kind: 'ORIGINAL' },
       orderBy: { createdAt: 'asc' },
       take: 20,
       select: { id: true, cause: true, freedBytes: true, deletedBy: true, createdAt: true },

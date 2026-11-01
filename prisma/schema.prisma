@@ -823,6 +823,11 @@ model ManualDownloadEvent {
   @@index([downloadId, at])
 }
 
+enum ArchivePlatform {
+  TWITCH
+  YOUTUBE
+}
+
 enum CreatorVideoType {
   ARCHIVE
   HIGHLIGHT
@@ -908,9 +913,10 @@ model ArchiveSettings {
 
 model Creator {
   id                String                @id @default(cuid())
-  externalId        String                @unique @map("twitchUserId")
+  platform          ArchivePlatform       @default(TWITCH)
+  externalId        String                @map("twitchUserId")
   login             String
-  folderName        String                @unique // library folder; set once at first add, never renamed
+  folderName        String // library folder; set once at first add, never renamed
   displayName       String
   description       String?
   profileImageUrl   String?
@@ -930,6 +936,8 @@ model Creator {
   policy            CreatorPolicy?
   videos            CreatorVideo[]
 
+  @@unique([platform, externalId])
+  @@unique([platform, folderName])
   @@index([nextVideosCheckAt])
   @@map("TwitchStreamer")
 }
@@ -963,7 +971,8 @@ model CreatorPolicy {
 
 model CreatorVideo {
   id                 String                   @id @default(cuid())
-  externalId         String                   @unique @map("twitchVideoId")
+  platform           ArchivePlatform          @default(TWITCH)
+  externalId         String                   @map("twitchVideoId")
   creatorId          String                   @map("streamerId")
   creator            Creator                  @relation(fields: [creatorId], references: [id], onDelete: Cascade)
   type               CreatorVideoType
@@ -994,6 +1003,7 @@ model CreatorVideo {
   mediaFiles         ArchiveMediaFile[]
   deletedFiles       ArchiveDeletedFile[]
 
+  @@unique([platform, externalId])
   @@index([creatorId, sourceCreatedAt])
   @@index([availability, estimatedExpiresAt])
   @@map("TwitchVideo")
@@ -1018,6 +1028,7 @@ model CreatorVideoState {
 // The app enqueues, the worker claims with a lease. A restart of either side loses nothing.
 model ArchiveJob {
   id                   String            @id @default(cuid())
+  platform             ArchivePlatform   @default(TWITCH)
   kind                 ArchiveJobKind
   videoId              String?
   video                CreatorVideo?     @relation(fields: [videoId], references: [id], onDelete: SetNull)
@@ -1052,7 +1063,7 @@ model ArchiveJob {
   updatedAt            DateTime          @updatedAt
   events               ArchiveJobEvent[]
 
-  @@unique([requestedByUserId, clientRequestId])
+  @@unique([platform, requestedByUserId, clientRequestId])
   @@index([state, kind, priority, runAfter])
   @@index([videoId])
   @@index([needsJellyfinRefresh])
@@ -1063,6 +1074,7 @@ model ArchiveJob {
 // it, and audit rows are pruned on their own schedule.
 model ArchiveDeletedFile {
   id         String               @id @default(cuid())
+  platform   ArchivePlatform      @default(TWITCH)
   videoId    String?
   video      CreatorVideo?        @relation(fields: [videoId], references: [id], onDelete: SetNull)
   title      String
@@ -1074,7 +1086,7 @@ model ArchiveDeletedFile {
   deletedBy  String?
   createdAt  DateTime             @default(now())
 
-  @@index([createdAt])
+  @@index([platform, createdAt])
   @@index([videoId])
   @@map("TwitchDeletedFile")
 }
@@ -1109,11 +1121,12 @@ model ArchiveJobEvent {
 }
 
 model ArchiveMediaFile {
-  id                   String       @id @default(cuid())
+  id                   String          @id @default(cuid())
+  platform             ArchivePlatform @default(TWITCH)
   videoId              String
-  video                CreatorVideo @relation(fields: [videoId], references: [id], onDelete: Cascade)
-  relativePath         String       @unique // under the library root; never sent to the browser
-  sidecars             Json         @default("[]")
+  video                CreatorVideo    @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  relativePath         String // under the library root; never sent to the browser
+  sidecars             Json            @default("[]")
   sizeBytes            BigInt
   durationSeconds      Int
   videoCodec           String
@@ -1127,12 +1140,13 @@ model ArchiveMediaFile {
   reencodeQuality      Int?
   reencodeSkippedAt    DateTime? // encoded, but it did not save enough to keep
   reencodeSkippedBytes BigInt?
-  keepForever          Boolean      @default(false)
+  keepForever          Boolean         @default(false)
   jellyfinItemId       String?
-  createdAt            DateTime     @default(now())
-  updatedAt            DateTime     @updatedAt
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
   jobs                 ArchiveJob[]
 
+  @@unique([platform, relativePath])
   @@index([videoId])
   @@index([originalDeleteAfter])
   @@map("TwitchMediaFile")

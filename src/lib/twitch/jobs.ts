@@ -1,5 +1,6 @@
 import { Prisma, type ArchiveJobSource, type ArchiveJobState } from '@prisma/client';
 import { prisma } from '@/lib/db';
+import { TWITCH } from '@/lib/twitch/platform';
 
 export const ACTIVE_JOB_STATES: ArchiveJobState[] = ['QUEUED', 'BLOCKED', 'RUNNING', 'RETRY_WAIT'];
 const CLIENT_REQUEST_ID = /^[A-Za-z0-9-]{8,64}$/;
@@ -44,7 +45,8 @@ export async function enqueueDownload(input: EnqueueInput): Promise<{ jobId: str
     if (input.clientRequestId && input.actor) {
       const repeat = await tx.archiveJob.findUnique({
         where: {
-          requestedByUserId_clientRequestId: {
+          platform_requestedByUserId_clientRequestId: {
+            platform: TWITCH,
             requestedByUserId: input.actor.id,
             clientRequestId: input.clientRequestId,
           },
@@ -62,6 +64,7 @@ export async function enqueueDownload(input: EnqueueInput): Promise<{ jobId: str
 
     const job = await tx.archiveJob.create({
       data: {
+        platform: TWITCH,
         kind: 'DOWNLOAD',
         videoId: input.videoId,
         source: input.source,
@@ -83,7 +86,7 @@ export async function retryJob(
   jobId: string,
   actor: { id: string; username: string },
 ): Promise<'retried' | 'active' | 'not-retryable'> {
-  const target = await prisma.archiveJob.findUnique({ where: { id: jobId }, select: { kind: true, videoId: true } });
+  const target = await prisma.archiveJob.findUnique({ where: { id: jobId, platform: TWITCH }, select: { kind: true, videoId: true } });
   if (!target) return 'not-retryable';
 
   return prisma.$transaction(async (tx) => {

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { prisma } from '@/lib/db';
+import { TWITCH } from '@/lib/twitch/platform';
 
 async function getHandler(
   _request: NextRequest,
@@ -12,7 +13,7 @@ async function getHandler(
 
   const { id } = await params;
   const streamer = await prisma.creator.findUnique({
-    where: { id },
+    where: { id, platform: TWITCH },
     select: {
       id: true, login: true, displayName: true, description: true, profileImageUrl: true,
       offlineImageUrl: true, broadcasterType: true, isLive: true, liveTitle: true, liveCategory: true,

@@ -35,6 +35,11 @@ describe.skipIf(!url || !url.endsWith('/helprr_migration_test'))('Twitch queue a
 
   const request = (overrides = {}) => ({ videoId, source: 'MANUAL' as const, options: DEFAULT_DOWNLOAD_OPTIONS, ...overrides });
 
+  it('leaves a job from another platform alone', async () => {
+    await db.archiveJob.create({ data: { platform: 'YOUTUBE', kind: 'DOWNLOAD', videoId } });
+    expect(await claimJob(db, 'worker', ['DOWNLOAD'])).toBeNull();
+  });
+
   it('leaves one active job after two racing enqueues', async () => {
     const results = await Promise.all(Array.from({ length: 8 }, () => enqueueDownload(request())));
 

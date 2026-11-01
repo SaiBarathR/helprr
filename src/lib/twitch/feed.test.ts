@@ -19,7 +19,8 @@ const conditions = async (query: string) =>
 describe('buildFeedWhere', () => {
   it('scopes to the user, and leaves out hidden and vanished videos', async () => {
     const and = await conditions('');
-    expect(findMany.mock.calls[0][0].where).toEqual({ userId: 'u1' });
+    expect(findMany.mock.calls[0][0].where).toEqual({ userId: 'u1', creator: { platform: 'TWITCH' } });
+    expect(and).toContainEqual({ platform: 'TWITCH' });
     expect(and).toContainEqual({ creatorId: { in: ['s1'] } });
     expect(and).toContainEqual({ userStates: { none: { userId: 'u1', hidden: true } } });
     expect(and).toContainEqual({ availability: { not: 'UNAVAILABLE' } });

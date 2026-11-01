@@ -7,6 +7,7 @@ import { withFileLock } from './file-lock';
 import { existsInLibrary, insideLibrary, removeInsideLibrary } from './library-paths';
 import { DeferJobError } from './process';
 import { recordDeletion, writeDeleteAudit } from './reencode';
+import { TWITCH } from '@/lib/twitch/platform';
 
 export { insideLibrary };
 
@@ -55,6 +56,7 @@ export async function runDeleteFiles(prisma: PrismaClient, job: ArchiveJob, asse
     for (const relative of paths) await removeInsideLibrary(relative);
     await prisma.archiveMediaFile.delete({ where: { id: file.id } });
     await recordDeletion(prisma, {
+      platform: file.platform,
       videoId: file.videoId,
       title: file.video.title,
       streamer: file.video.creator.displayName,
@@ -138,7 +140,7 @@ async function touchMarker(marker: string): Promise<void> {
  */
 export async function forgetFilesDeletedElsewhere(prisma: PrismaClient): Promise<number> {
   const files = await prisma.archiveMediaFile.findMany({
-    where: { jobs: { none: { state: { in: [...IN_PROGRESS] } } } },
+    where: { platform: TWITCH, jobs: { none: { state: { in: [...IN_PROGRESS] } } } },
     include: { video: { select: { title: true, externalId: true, creator: { select: { displayName: true } } } } },
   });
   const missing = [];
@@ -167,6 +169,7 @@ export async function forgetFilesDeletedElsewhere(prisma: PrismaClient): Promise
     if (!stillMissing) continue;
     forgotten += 1;
     await recordDeletion(prisma, {
+      platform: file.platform,
       videoId: file.videoId,
       title: file.video.title,
       streamer: file.video.creator.displayName,

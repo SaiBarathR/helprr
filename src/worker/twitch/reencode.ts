@@ -1,11 +1,12 @@
 import { mkdir, rm, stat } from 'node:fs/promises';
 import path from 'node:path';
-import type { Prisma, PrismaClient, ArchiveDeletionCause, ArchiveDeletionKind, ArchiveJob } from '@prisma/client';
+import type { ArchivePlatform, Prisma, PrismaClient, ArchiveDeletionCause, ArchiveDeletionKind, ArchiveJob } from '@prisma/client';
 import { worthKeeping } from '@/lib/twitch/reencode-window';
 import { FFMPEG, FFPROBE, LIBRARY_DIR, ORIGINALS_DIR, STAGING_DIR } from './env';
 import { withFileLock } from './file-lock';
 import { removeInsideLibrary, replaceInsideLibrary } from './library-paths';
 import { JobCancelledError, run } from './process';
+import { TWITCH } from '@/lib/twitch/platform';
 
 const RENDER_DEVICE = '/dev/dri/renderD128';
 const NICE = 10;
@@ -165,6 +166,7 @@ export async function deleteExpiredOriginals(prisma: PrismaClient, now = new Dat
   const due = await prisma.archiveMediaFile.findMany({
     // A job on the file may be about to restore this very original.
     where: {
+      platform: TWITCH,
       originalRelativePath: { not: null },
       originalDeleteAfter: { lte: now },
       jobs: { none: { state: { in: ['QUEUED', 'BLOCKED', 'RUNNING', 'RETRY_WAIT'] } } },
@@ -206,6 +208,7 @@ export async function deleteExpiredOriginals(prisma: PrismaClient, now = new Dat
       });
       if (done) {
         await recordDeletion(prisma, {
+          platform: file.platform,
           videoId: file.videoId,
           title: file.video.title,
           streamer: file.video.creator.displayName,
@@ -232,6 +235,7 @@ export async function deleteExpiredOriginals(prisma: PrismaClient, now = new Dat
 
 /** The Library's own record. A failure here must not fail a delete that already happened. */
 export async function recordDeletion(prisma: PrismaClient, input: {
+  platform: ArchivePlatform;
   videoId: string;
   title: string;
   streamer: string;
