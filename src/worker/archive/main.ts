@@ -175,7 +175,7 @@ async function runJob(job: ArchiveJob): Promise<void> {
     if (job.kind !== 'DOWNLOAD' || !job.videoId) throw new Error(`validation failed: ${job.kind} is not supported yet`);
     const video = await prisma.creatorVideo.findUniqueOrThrow({ where: { id: job.videoId }, include: { creator: true } });
     const adapter = ADAPTERS[job.platform];
-    session = await adapter.openSession(settings);
+    session = await adapter.openSession(settings, { prisma, video });
     downloadsRunning += 1;
     countedDownload = true;
     await runDownload({
@@ -195,6 +195,7 @@ async function runJob(job: ArchiveJob): Promise<void> {
     }, adapter);
     await finishJob(job, { state: 'DONE', stage: 'done', progress: 1, speedBps: null, etaSeconds: null, finishedAt: new Date(), lastError: null, errorClass: null });
     await noteExtractorResult(job.platform, false);
+    if (job.platform === 'YOUTUBE' && session?.cookiesFile) await noteAccount(true);
     log('info', 'Job finished', { jobId: job.id });
   } catch (error) {
     await rm(path.join(libraryFor(job.platform).staging, stagingName), { recursive: true, force: true }).catch(() => undefined);
@@ -219,7 +220,14 @@ async function runJob(job: ArchiveJob): Promise<void> {
       });
     } else {
       const message = error instanceof Error ? error.message : String(error);
-      const errorClass = classifyJobError(message, job.platform);
+      let errorClass = classifyJobError(message, job.platform);
+      // YouTube can ask for an age check on a video its API did not flag. With the account
+      // in use, the same answer means the account itself no longer works.
+      if (errorClass === 'ageRestricted' && job.videoId) {
+        await prisma.creatorVideo.update({ where: { id: job.videoId }, data: { ageRestricted: true } });
+        if (session?.cookiesFile) errorClass = 'cookiesExpired';
+      }
+      if (errorClass === 'cookiesExpired') await noteAccount(false);
       const next = nextStepAfterFailure(errorClass, job.attempts);
       if (job.kind === 'DOWNLOAD') await noteExtractorResult(job.platform, errorClass === 'extractor');
       await finishJob(job, {
@@ -275,6 +283,10 @@ async function readyPlatforms(settings: { toolsPausedAt: Date | null } | null): 
 async function claimNetworkJob(held: boolean, ready: ArchivePlatform[]): Promise<ArchiveJob | null> {
   const job = held ? null : await claimJob(prisma, workerId, NETWORK_KINDS, ready);
   return job ?? claimJob(prisma, workerId, FILE_KINDS, PLATFORMS);
+}
+
+async function noteAccount(works: boolean): Promise<void> {
+  await prisma.youtubeSettings.updateMany({ data: { cookiesValid: works, cookiesCheckedAt: new Date() } });
 }
 
 async function networkLane(): Promise<void> {

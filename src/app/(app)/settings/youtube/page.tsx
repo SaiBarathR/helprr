@@ -71,7 +71,9 @@ export default function YoutubeSettingsPage() {
           />
           <SetupRow label="Library folder" done={data.library.mounted} detail="Set YOUTUBE_LIBRARY_HOST_PATH to a folder for these videos, then restart the worker." />
           <SetupRow label="Jellyfin library" done={data.library.jellyfinLibrary} detail="Create it below, so Jellyfin and your players can see the videos." />
-          <SetupRow label="Age-restricted videos" optional done={data.account} detail="Add a spare Google account to save these. Everything else works without one." />
+          <Link href="/settings/youtube/account" className="block active:bg-foreground/5">
+            <SetupRow label="Age-restricted videos" optional done={data.account} detail="Add a spare Google account to save these. Everything else works without one." />
+          </Link>
           <SetupRow label="Automatic cleanup" optional done={data.cleanup} detail="Turn this on to clear videos a few days after you watch them." />
         </GroupedSection>
       )}
