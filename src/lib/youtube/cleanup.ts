@@ -6,6 +6,7 @@ import { JellyfinClient } from '@/lib/jellyfin-client';
 import { logger } from '@/lib/logger';
 import { errorMessage, notifyAndLog } from '@/lib/polling/shared';
 import { getConnectionHeaders } from '@/lib/service-connection-secrets';
+import { buildJellyfinConnectionFingerprint } from '@/lib/service-helpers';
 import { YOUTUBE } from '@/lib/youtube/platform';
 import { decideForYoutubeVideo, POLICY_VIDEO } from '@/lib/youtube/policy';
 import { getYoutubeSettings } from '@/lib/youtube/settings';
@@ -24,10 +25,13 @@ class CleanupStopped extends Error {}
 // The stored viewer on the stored connection, or nothing. Another user's watched state must
 // never stand in, so there is no fallback of any kind.
 async function viewerClient(settings: YoutubeSettings): Promise<JellyfinClient> {
-  const { cleanupJellyfinUserId: userId, cleanupConnectionId: connectionId } = settings;
+  const { cleanupJellyfinUserId: userId, cleanupConnectionId: connectionId, cleanupConnectionFingerprint: fingerprint } = settings;
   if (!userId || !connectionId) throw new CleanupStopped('Choose whose watched videos count.');
   const connection = await prisma.serviceConnection.findUnique({ where: { id: connectionId } });
-  if (connection?.type !== 'JELLYFIN') throw new CleanupStopped('The Jellyfin connection changed. Choose the viewer again.');
+  // Editing a connection keeps its id, and the same user id can exist on another server.
+  if (connection?.type !== 'JELLYFIN' || buildJellyfinConnectionFingerprint(connection) !== fingerprint) {
+    throw new CleanupStopped('The Jellyfin connection changed. Choose the viewer again.');
+  }
   const client = new JellyfinClient(connection.url, connection.apiKey, userId, getConnectionHeaders(connection));
   await client.getUser(userId).catch(() => {
     throw new CleanupStopped('Could not confirm the viewer in Jellyfin, so nothing was cleared.');

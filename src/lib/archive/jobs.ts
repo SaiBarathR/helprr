@@ -2,6 +2,8 @@ import { Prisma, type ArchiveJobSource, type ArchivePlatform, type ArchiveJobSta
 import { prisma } from '@/lib/db';
 
 export const ACTIVE_JOB_STATES: ArchiveJobState[] = ['QUEUED', 'BLOCKED', 'RUNNING', 'RETRY_WAIT'];
+/** An automatic delete that has passed its last check, so it can no longer be stopped. */
+export const REMOVING_STAGE = 'removing';
 const CLIENT_REQUEST_ID = /^[A-Za-z0-9-]{8,64}$/;
 
 export interface DownloadOptions {

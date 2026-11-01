@@ -44,7 +44,7 @@ async function putHandler(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Choose whose watched videos count' }, { status: 400 });
   }
   try {
-    const { client, connection } = await getJellyfinClientContext();
+    const { client, connection, connectionFingerprint } = await getJellyfinClientContext();
     const viewer = await client.getUser(body.viewerId);
     if (viewer.Id !== body.viewerId) throw new Error('not that user');
     await prisma.youtubeSettings.update({
@@ -53,6 +53,7 @@ async function putHandler(request: NextRequest): Promise<NextResponse> {
         autoCleanupEnabled: true,
         cleanupJellyfinUserId: viewer.Id,
         cleanupConnectionId: connection.id,
+        cleanupConnectionFingerprint: connectionFingerprint,
         cleanupStatus: null,
         cleanupRanAt: null,
       },

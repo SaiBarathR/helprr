@@ -1,6 +1,6 @@
 import type { ArchiveJobKind, ArchivePlatform, Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
-import { ACTIVE_JOB_STATES } from './jobs';
+import { ACTIVE_JOB_STATES, REMOVING_STAGE } from './jobs';
 import { REENCODE_NOW_PRIORITY } from './reencode-window';
 import { FILE_LOCK_TRANSACTION } from './retention';
 import { previousVideoNames, sizeThumbnail } from '@/lib/twitch/serialize';
@@ -233,13 +233,18 @@ const activeDownload = (tx: Prisma.TransactionClient, videoId: string) => (
 );
 
 /** Under the delete lock, so a tap on keep and a delete can never pass each other. */
-export function setKeepForever(fileId: string, keepForever: boolean, platform: ArchivePlatform): Promise<boolean> {
+export function setKeepForever(fileId: string, keepForever: boolean, platform: ArchivePlatform): Promise<'saved' | 'missing' | 'removing'> {
   return withFileLock(fileId, async (tx) => {
+    const removing = keepForever && await tx.archiveJob.findFirst({
+      where: { mediaFileId: fileId, kind: 'DELETE_FILES', state: 'RUNNING', stage: REMOVING_STAGE },
+      select: { id: true },
+    });
+    if (removing) return 'removing';
     const { count } = await tx.archiveMediaFile.updateMany({
       where: { id: fileId, platform },
       data: { keepForever, ...(keepForever ? { clearsAt: null } : {}) },
     });
-    return count > 0;
+    return count > 0 ? 'saved' : 'missing';
   });
 }
 

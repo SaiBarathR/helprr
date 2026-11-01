@@ -8,6 +8,7 @@ const url = process.env.TWITCH_QUEUE_TEST_DATABASE_URL;
 const prisma = url ? new PrismaClient({ datasources: { db: { url } } }) : null;
 const root = vi.hoisted(() => ({ dir: '' }));
 
+vi.mock('@/lib/db', () => ({ get prisma() { return prisma; } }));
 vi.mock('./env', () => ({
   libraryFor: () => ({ root: root.dir, staging: `${root.dir}/.staging`, originals: `${root.dir}/.originals` }),
   FFMPEG: '/ffmpeg',
@@ -15,8 +16,8 @@ vi.mock('./env', () => ({
   TOOLS_DIR: '/tools',
 }));
 
+import { setKeepForever } from '@/lib/archive/files';
 import { runDeleteFiles } from './delete-files';
-import { withFileLock } from './file-lock';
 
 const lease = async () => undefined;
 
@@ -111,22 +112,38 @@ describe.skipIf(!url || !url.endsWith('/helprr_migration_test'))('the last check
     expect(await onDisk()).toBe(true);
   });
 
-  it('settles a keep and a delete arriving together: the file is kept, or it was gone first', async () => {
-    const keep = withFileLock(db, fileId, async (tx) => {
-      await tx.archiveMediaFile.updateMany({ where: { id: fileId }, data: { keepForever: true } });
-    });
+  it('settles a keep and a delete arriving together: the file is kept, or keep is told it is too late', async () => {
     const queued = await job(3);
-    const remove = runDeleteFiles(db, queued, lease).then(() => 'deleted', () => 'refused');
-    const [, outcome] = await Promise.all([keep, remove]);
+    await db.archiveJob.update({ where: { id: queued.id }, data: { state: 'RUNNING' } });
+    const [keep, remove] = await Promise.all([
+      setKeepForever(fileId, true, 'YOUTUBE'),
+      runDeleteFiles(db, { ...queued, state: 'RUNNING' }, lease).then(() => 'deleted', () => 'refused'),
+    ]);
 
     const row = await db.archiveMediaFile.findUnique({ where: { id: fileId } });
-    if (outcome === 'refused') {
+    if (remove === 'refused') {
+      expect(keep).toBe('saved');
       expect(row?.keepForever).toBe(true);
       expect(await onDisk()).toBe(true);
     } else {
+      expect(['removing', 'missing']).toContain(keep);
       expect(row).toBeNull();
       expect(await onDisk()).toBe(false);
     }
+  });
+
+  it('tells keep forever it is too late once a delete has claimed the file', async () => {
+    const queued = await job(3);
+    await db.archiveJob.update({ where: { id: queued.id }, data: { state: 'RUNNING', stage: 'removing' } });
+    expect(await setKeepForever(fileId, true, 'YOUTUBE')).toBe('removing');
+    expect((await db.archiveMediaFile.findUniqueOrThrow({ where: { id: fileId } })).keepForever).toBe(false);
+  });
+
+  it('lets keep forever through while a delete is only queued, and the delete then refuses', async () => {
+    const queued = await job(3);
+    expect(await setKeepForever(fileId, true, 'YOUTUBE')).toBe('saved');
+    await expect(runDeleteFiles(db, queued, lease)).rejects.toThrow('keep forever');
+    expect(await onDisk()).toBe(true);
   });
 
   it('leaves a person confirming a delete able to override keep forever', async () => {

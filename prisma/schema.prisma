@@ -1200,6 +1200,7 @@ model YoutubeSettings {
   autoCleanupEnabled    Boolean   @default(false) // deletes real files, so it stays off until chosen
   cleanupJellyfinUserId String? // whose watched state counts
   cleanupConnectionId   String? // the Jellyfin connection that user belongs to
+  cleanupConnectionFingerprint String? // editing a connection keeps its id, so this proves it is the same server
   cleanupGeneration     Int       @default(0) // bumped on any change, so queued deletes can be refused
   cleanupStatus         String? // why the last sweep stopped, in words for Settings
   cleanupRanAt          DateTime?

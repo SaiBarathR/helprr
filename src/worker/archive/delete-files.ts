@@ -6,9 +6,11 @@ import { libraryFor } from './env';
 import { withFileLock } from './file-lock';
 import { existsInLibrary, insideLibrary, removeInsideLibrary } from './library-paths';
 import { DeferJobError } from './process';
+import { REMOVING_STAGE } from '@/lib/archive/jobs';
 import { recordDeletion, writeDeleteAudit } from './reencode';
 
 export { insideLibrary };
+export { REMOVING_STAGE };
 
 const LIBRARY_MARKER = '.helprr-library';
 const CONFLICT_WAIT_MS = 5 * 60_000;
@@ -82,7 +84,9 @@ export async function runDeleteFiles(prisma: PrismaClient, job: ArchiveJob, asse
     if (errorMessage) throw new Error(errorMessage);
   };
   // Nobody is watching this one, so it checks everything again at the last moment, under the
-  // lock a tap on keep forever also takes. Either that tap wins or this delete does.
+  // lock a tap on keep forever also takes. Either that tap wins, or this claims the file and
+  // keep forever answers that it is too late. The removal stays outside the lock, so a slow
+  // disk cannot outlast it.
   if (origin?.automatic) {
     await withFileLock(prisma, file.id, async (tx) => {
       const current = await tx.archiveMediaFile.findUnique({ where: { id: file.id }, select: { keepForever: true } });
@@ -94,11 +98,10 @@ export async function runDeleteFiles(prisma: PrismaClient, job: ArchiveJob, asse
       if (!settings?.autoCleanupEnabled || settings.cleanupGeneration !== origin.generation) {
         throw new Error('validation failed: the cleanup rules changed after this was queued');
       }
-      await removeFiles();
+      await tx.archiveJob.update({ where: { id: job.id }, data: { stage: REMOVING_STAGE } });
     });
-  } else {
-    await removeFiles();
   }
+  await removeFiles();
   await prisma.archiveJob.update({ where: { id: job.id }, data: { needsJellyfinRefresh: true } });
 }
 

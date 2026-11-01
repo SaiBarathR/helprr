@@ -102,12 +102,18 @@ describe('PATCH keep forever', () => {
   });
 
   it('reports a file that is gone', async () => {
-    mocks.setKeepForever.mockResolvedValue(false);
+    mocks.setKeepForever.mockResolvedValue('missing');
     expect((await PATCH(request({ keepForever: true }), context)).status).toBe(404);
   });
 
+  it('says so when cleanup has already started on it', async () => {
+    mocks.setKeepForever.mockResolvedValue('removing');
+    const response = await PATCH(request({ keepForever: true }), context);
+    expect(response.status).toBe(409);
+  });
+
   it('saves it, under the delete lock, for this platform only', async () => {
-    mocks.setKeepForever.mockResolvedValue(true);
+    mocks.setKeepForever.mockResolvedValue('saved');
     expect((await PATCH(request({ keepForever: true }), context)).status).toBe(200);
     expect(mocks.setKeepForever).toHaveBeenCalledWith('f', true, 'TWITCH');
   });

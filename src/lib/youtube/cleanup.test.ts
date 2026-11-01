@@ -33,7 +33,10 @@ vi.mock('@/lib/archive/retention', async (original) => ({
   ...await original<typeof import('@/lib/archive/retention')>(),
   enqueueFileDelete: mocks.enqueue,
 }));
-vi.mock('@/lib/service-helpers', () => ({ getJellyfinClientForUser: vi.fn() }));
+vi.mock('@/lib/service-helpers', () => ({
+  getJellyfinClientForUser: vi.fn(),
+  buildJellyfinConnectionFingerprint: (connection: { fingerprint?: string }) => connection.fingerprint ?? 'print',
+}));
 vi.mock('@/lib/jellyfin-client', () => ({
   JellyfinClient: class {
     constructor(...args: unknown[]) {
@@ -51,7 +54,7 @@ const NOW = new Date('2026-11-10T12:00:00Z');
 const DAY = 86_400_000;
 const daysAgo = (days: number) => new Date(NOW.getTime() - days * DAY);
 const settings = {
-  autoCleanupEnabled: true, cleanupJellyfinUserId: 'viewer', cleanupConnectionId: 'jf', cleanupGeneration: 7,
+  autoCleanupEnabled: true, cleanupJellyfinUserId: 'viewer', cleanupConnectionId: 'jf', cleanupConnectionFingerprint: 'print', cleanupGeneration: 7,
 };
 const file = (id: string) => ({ id, createdAt: daysAgo(30), clearsAt: null, jellyfinItemId: `item-${id}`, video: { title: id } });
 const watched = (ids: string[], days = 10) => ({
@@ -139,6 +142,7 @@ describe('automatic cleanup', () => {
     ['the viewer has gone', () => mocks.getUser.mockRejectedValue(new Error('404')), 'Could not confirm the viewer'],
     ['the connection has changed', () => mocks.connection.mockResolvedValue(null), 'connection changed'],
     ['it is not Jellyfin any more', () => mocks.connection.mockResolvedValue({ type: 'SONARR' }), 'connection changed'],
+    ['it was edited to point at another server', () => mocks.connection.mockResolvedValue({ type: 'JELLYFIN', url: 'http://other', apiKey: 'token', fingerprint: 'other' }), 'connection changed'],
     ['no viewer was chosen', () => mocks.settings.mockResolvedValue({ ...settings, cleanupJellyfinUserId: null }), 'Choose whose'],
   ])('stops when %s, clearing nothing and saying why', async (_label, arrange, message) => {
     arrange();

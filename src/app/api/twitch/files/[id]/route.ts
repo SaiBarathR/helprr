@@ -50,8 +50,9 @@ async function patchHandler(request: NextRequest, { params }: RouteContext): Pro
   if (typeof body?.keepForever !== 'boolean') return NextResponse.json({ error: 'keepForever is required' }, { status: 400 });
 
   const { id } = await params;
-  const found = await setKeepForever(id, body.keepForever, TWITCH);
-  if (!found) return NextResponse.json({ error: 'File not found' }, { status: 404 });
+  const result = await setKeepForever(id, body.keepForever, TWITCH);
+  if (result === 'removing') return NextResponse.json({ error: 'This file is already being cleared' }, { status: 409 });
+  if (result === 'missing') return NextResponse.json({ error: 'File not found' }, { status: 404 });
   return NextResponse.json({ ok: true });
 }
 
