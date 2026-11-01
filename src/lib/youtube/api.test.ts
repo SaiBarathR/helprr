@@ -147,6 +147,16 @@ describe('YouTube API client', () => {
     await expect(channelByHandle('wanshowyt')).rejects.toBeInstanceOf(type);
   });
 
+  it('recognises a bad key the way Google really answers one', async () => {
+    const error = new AxiosError('failed');
+    error.response = {
+      status: 400,
+      data: { error: { errors: [{ reason: 'badRequest', domain: 'global' }], details: [{ reason: 'API_KEY_INVALID', domain: 'googleapis.com' }] } },
+    } as AxiosResponse;
+    mocks.get.mockRejectedValue(error);
+    await expect(verifyYoutubeKey(KEY)).rejects.toBeInstanceOf(YoutubeKeyRejectedError);
+  });
+
   it('treats a missing list as an answer: a channel with no Shorts has none', async () => {
     mocks.get.mockRejectedValue(apiError(404, 'playlistNotFound'));
     expect(await playlistItems(shortsListOf('UCVlfe3MRSCZSeIWByrWHhkg'))).toBeNull();
