@@ -206,7 +206,7 @@ export async function playlistById(id: string): Promise<YoutubePlaylist | null> 
 }
 
 export interface PlaylistPage {
-  items: Array<{ videoId: string; position: number }>;
+  items: Array<{ videoId: string; position: number; title: string }>;
   total: number;
   nextPageToken: string | null;
 }
@@ -214,13 +214,17 @@ export interface PlaylistPage {
 /** Null when the list does not exist: a channel with no Shorts has no Shorts list. */
 export async function playlistItems(playlistId: string, maxResults = BATCH, pageToken?: string): Promise<PlaylistPage | null> {
   const data = await call<{
-    items?: Array<{ snippet?: { position?: number }; contentDetails: { videoId: string } }>;
+    items?: Array<{ snippet?: { position?: number; title?: string }; contentDetails: { videoId: string } }>;
     pageInfo?: { totalResults?: number };
     nextPageToken?: string;
   }>('playlistItems', { part: 'contentDetails,snippet', maxResults, playlistId, ...(pageToken ? { pageToken } : {}) });
   if (!data) return null;
   return {
-    items: (data.items ?? []).map((item, index) => ({ videoId: item.contentDetails.videoId, position: item.snippet?.position ?? index })),
+    items: (data.items ?? []).map((item, index) => ({
+      videoId: item.contentDetails.videoId,
+      position: item.snippet?.position ?? index,
+      title: item.snippet?.title ?? '',
+    })),
     total: data.pageInfo?.totalResults ?? 0,
     nextPageToken: data.nextPageToken ?? null,
   };
@@ -296,6 +300,8 @@ export async function videosById(ids: string[]): Promise<YoutubeVideo[]> {
   }
   return videos;
 }
+
+export const uploadsListOf = (channelId: string) => `UU${channelId.slice(2)}`;
 
 /** A Shorts list is one more unit, so only a video short enough to be one is checked. */
 export const shortsListOf = (channelId: string) => `UUSH${channelId.slice(2)}`;
