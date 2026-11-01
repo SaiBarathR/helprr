@@ -22,7 +22,7 @@ import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
 interface Subscription {
   id: string;
   notifyNewVods: boolean;
-  streamer: {
+  creator: {
     id: string;
     login: string;
     displayName: string;
@@ -44,7 +44,7 @@ function StreamerRow({ subscription, canManage, onToggleNotify, onUnsubscribe }:
   onToggleNotify: () => void;
   onUnsubscribe: () => void;
 }) {
-  const { notifyNewVods, streamer } = subscription;
+  const { notifyNewVods, creator: streamer } = subscription;
   const name = streamer.displayName;
   const NotifyIcon = notifyNewVods ? BellOff : Bell;
   const notifyLabel = notifyNewVods ? 'Turn off notifications' : 'Turn on notifications';
@@ -136,7 +136,7 @@ export default function TwitchStreamersPage() {
   const visible = useMemo(() => {
     const term = search.trim().toLowerCase();
     if (!term) return subscriptions;
-    return subscriptions.filter(({ streamer }) => streamer.displayName.toLowerCase().includes(term) || streamer.login.includes(term));
+    return subscriptions.filter(({ creator: streamer }) => streamer.displayName.toLowerCase().includes(term) || streamer.login.includes(term));
   }, [subscriptions, search]);
 
   const toggleNotify = useMutation({
@@ -227,7 +227,7 @@ export default function TwitchStreamersPage() {
       <ConfirmDialog
         open={leaving !== null}
         onOpenChange={(open) => { if (!open) setLeaving(null); }}
-        title={`Unsubscribe from ${leaving?.streamer.displayName}?`}
+        title={`Unsubscribe from ${leaving?.creator.displayName}?`}
         description="Their videos leave your feed. Anything already downloaded stays in your library."
         confirmLabel="Unsubscribe"
         destructive

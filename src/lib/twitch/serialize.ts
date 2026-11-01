@@ -34,12 +34,9 @@ export function sizeThumbnail(url: string | null, width = 640, height = 360): st
 }
 
 export function serializeVideo(video: VideoRow, seenAt?: Date | null) {
-  const { mediaFiles, jobs, thumbnailUrl, creator, externalId, sourceCreatedAt, ...rest } = video;
+  const { mediaFiles, jobs, thumbnailUrl, ...rest } = video;
   return {
     ...rest,
-    twitchVideoId: externalId,
-    twitchCreatedAt: sourceCreatedAt,
-    streamer: creator,
     thumbnailUrl: sizeThumbnail(thumbnailUrl),
     seen: Boolean(seenAt),
     downloaded: mediaFiles.length > 0,

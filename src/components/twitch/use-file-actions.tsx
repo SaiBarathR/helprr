@@ -118,7 +118,7 @@ export function useFileActions() {
         ...(file.jellyfinItemId
           ? [{ id: 'play', label: 'Play in Helprr', icon: <Play className="h-4 w-4" />, href: `/jellyfin/library/item/${file.jellyfinItemId}` }]
           : []),
-        { id: 'twitch', label: 'Open on Twitch', icon: <ExternalLink className="h-4 w-4" />, href: `https://www.twitch.tv/videos/${file.twitchVideoId}`, external: true },
+        { id: 'twitch', label: 'Open on Twitch', icon: <ExternalLink className="h-4 w-4" />, href: `https://www.twitch.tv/videos/${file.externalId}`, external: true },
       ],
     },
     {

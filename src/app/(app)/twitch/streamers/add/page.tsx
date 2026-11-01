@@ -19,7 +19,7 @@ interface ChannelResult {
 }
 
 interface StreamerList {
-  subscriptions: Array<{ streamer: { login: string } }>;
+  subscriptions: Array<{ creator: { login: string } }>;
 }
 
 // Text fields live on a page, not in a drawer: the iOS keyboard pushes a drawer out of view.
@@ -38,7 +38,7 @@ export default function AddStreamerPage() {
       return (await res.json()) as StreamerList;
     },
   });
-  const subscribed = new Set(list.data?.subscriptions.map(({ streamer }) => streamer.login));
+  const subscribed = new Set(list.data?.subscriptions.map(({ creator: streamer }) => streamer.login));
 
   const search = useQuery({
     queryKey: ['twitch', 'search', query],

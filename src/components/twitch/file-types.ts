@@ -10,12 +10,12 @@ export interface FileJob {
 export interface TwitchFile {
   id: string;
   videoId: string;
-  twitchVideoId: string;
+  externalId: string;
   type: 'ARCHIVE' | 'HIGHLIGHT' | 'UPLOAD' | 'CLIP';
   title: string;
   thumbnailUrl: string | null;
   streamedAt: string;
-  streamer: { id: string; displayName: string; profileImageUrl: string | null };
+  creator: { id: string; displayName: string; profileImageUrl: string | null };
   sizeBytes: number;
   durationSeconds: number;
   videoCodec: string;

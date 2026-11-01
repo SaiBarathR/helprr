@@ -102,7 +102,7 @@ export function useVideoActions() {
         ...(video.fileId
           ? [{ id: 'file', label: 'File details', icon: <HardDrive className="h-4 w-4" />, href: `/twitch/library/${video.fileId}` }]
           : []),
-        { id: 'streamer', label: video.streamer.displayName, icon: <User className="h-4 w-4" />, href: `/twitch/streamers/${video.streamer.id}` },
+        { id: 'streamer', label: video.creator.displayName, icon: <User className="h-4 w-4" />, href: `/twitch/streamers/${video.creator.id}` },
       ],
     },
     {
@@ -129,7 +129,7 @@ export function useVideoActions() {
           id: 'twitch',
           label: 'Open on Twitch',
           icon: <ExternalLink className="h-4 w-4" />,
-          href: `https://www.twitch.tv/videos/${video.twitchVideoId}`,
+          href: `https://www.twitch.tv/videos/${video.externalId}`,
           external: true,
         },
       ],

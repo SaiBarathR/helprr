@@ -35,17 +35,10 @@ export const JOB_SELECT = {
 export type JobRow = Prisma.ArchiveJobGetPayload<{ select: typeof JOB_SELECT }>;
 
 /** BigInt does not survive JSON. */
-export function serializeJob({ video, ...job }: JobRow) {
+export function serializeJob(job: JobRow) {
   return {
     ...job,
-    video: video && {
-      id: video.id,
-      twitchVideoId: video.externalId,
-      title: video.title,
-      thumbnailUrl: sizeThumbnail(video.thumbnailUrl, 320, 180),
-      durationSeconds: video.durationSeconds,
-      streamer: video.creator,
-    },
+    video: job.video && { ...job.video, thumbnailUrl: sizeThumbnail(job.video.thumbnailUrl, 320, 180) },
     bytesDone: job.bytesDone === null ? null : Number(job.bytesDone),
     bytesTotal: job.bytesTotal === null ? null : Number(job.bytesTotal),
   };

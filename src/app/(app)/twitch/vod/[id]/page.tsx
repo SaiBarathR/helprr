@@ -136,7 +136,7 @@ export default function TwitchVodPage({ params }: { params: Promise<{ id: string
   const groups = actions.groupsFor(video);
   const canDelete = hasCapability(me, 'twitch.manage') && Boolean(video.fileId) && !video.activeJob;
   const canDownload = hasCapability(me, 'twitch.download') && !video.downloaded && !video.activeJob && video.availability === 'PUBLISHED';
-  const twitchUrl = `https://www.twitch.tv/videos/${video.twitchVideoId}`;
+  const twitchUrl = `https://www.twitch.tv/videos/${video.externalId}`;
   const progress = Math.round((video.activeJob?.progress ?? 0) * 100);
 
   return (
@@ -161,8 +161,8 @@ export default function TwitchVodPage({ params }: { params: Promise<{ id: string
           </div>
           <div className="relative -mt-[72px] flex gap-3.5 px-2 md:px-6">
             <QuickContextMenu label={`${video.title} actions`} groups={groups}>
-              <Link href={`/twitch/streamers/${video.streamer.id}`} aria-label={video.streamer.displayName} className="block shrink-0 self-end">
-                <StreamerAvatar url={video.streamer.profileImageUrl} size={64} className="shadow-lg ring-1 ring-border/20" />
+              <Link href={`/twitch/streamers/${video.creator.id}`} aria-label={video.creator.displayName} className="block shrink-0 self-end">
+                <StreamerAvatar url={video.creator.profileImageUrl} size={64} className="shadow-lg ring-1 ring-border/20" />
               </Link>
             </QuickContextMenu>
             <div className="min-w-0 flex-1">
@@ -171,8 +171,8 @@ export default function TwitchVodPage({ params }: { params: Promise<{ id: string
               </Badge>
               <h1 className="line-clamp-3 text-xl font-bold leading-tight">{video.title}</h1>
               <p className="mt-1 truncate text-sm text-muted-foreground">
-                <Link href={`/twitch/streamers/${video.streamer.id}`}>{video.streamer.displayName}</Link>
-                {' · '}{format(new Date(video.twitchCreatedAt), 'PP')}{' · '}{formatDuration(video.durationSeconds)}
+                <Link href={`/twitch/streamers/${video.creator.id}`}>{video.creator.displayName}</Link>
+                {' · '}{format(new Date(video.sourceCreatedAt), 'PP')}{' · '}{formatDuration(video.durationSeconds)}
               </p>
             </div>
           </div>

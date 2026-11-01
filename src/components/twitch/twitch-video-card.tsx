@@ -60,10 +60,10 @@ function Thumbnail({ video, sizes, className }: { video: TwitchVideo; sizes: str
 }
 
 function metaLine(video: TwitchVideo, showStreamer: boolean): string {
-  const age = formatDistanceToNowStrict(new Date(video.twitchCreatedAt), { addSuffix: true });
+  const age = formatDistanceToNowStrict(new Date(video.sourceCreatedAt), { addSuffix: true });
   return [
     video.type === 'ARCHIVE' ? null : VIDEO_TYPE_LABELS[video.type],
-    showStreamer ? video.streamer.displayName : null,
+    showStreamer ? video.creator.displayName : null,
     age,
   ].filter(Boolean).join(' · ');
 }

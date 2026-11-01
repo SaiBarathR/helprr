@@ -28,14 +28,14 @@ describe('serializeJob', () => {
     expect(JOB_SELECT).not.toHaveProperty('lastError');
   });
 
-  it('keeps the names the pages read', () => {
+  it('sends the names the pages read', () => {
     expect(serializeJob(job).video).toEqual({
       id: 'video-1',
-      twitchVideoId: '100',
+      externalId: '100',
       title: 'A stream',
       thumbnailUrl: 'https://static-cdn.jtvnw.net/thumb-320x180.jpg',
       durationSeconds: 60,
-      streamer: { id: 'streamer-1', displayName: 'Gigguk' },
+      creator: { id: 'streamer-1', displayName: 'Gigguk' },
     });
   });
 
