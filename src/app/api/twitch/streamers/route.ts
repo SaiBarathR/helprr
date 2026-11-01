@@ -24,7 +24,10 @@ async function getHandler(): Promise<NextResponse> {
       },
     },
   });
-  return NextResponse.json({ subscriptions });
+  // `streamer` is for tabs still open from the previous release. See previousVideoNames.
+  return NextResponse.json({
+    subscriptions: subscriptions.map((subscription) => ({ ...subscription, streamer: subscription.creator })),
+  });
 }
 
 async function postHandler(request: NextRequest): Promise<NextResponse> {

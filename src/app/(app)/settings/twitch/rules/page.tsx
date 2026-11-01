@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChevronLeft, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
-import { RuleLayers, type RuleLayerValue } from '@/components/twitch/policy-editor';
+import { RuleLayers, type RuleLayerValue } from '@/components/creators/policy-editor';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { ErrorState } from '@/components/ui/error-state';

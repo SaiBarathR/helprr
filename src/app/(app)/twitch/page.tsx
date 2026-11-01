@@ -14,13 +14,13 @@ import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { ErrorState } from '@/components/ui/error-state';
 import { PullToRefresh } from '@/components/ui/pull-to-refresh';
-import { FilterGroup, type FilterOption } from '@/components/twitch/filter-group';
-import { ToolbarButton, toolbarButtonClass, TwitchToolbar } from '@/components/twitch/twitch-toolbar';
-import { TwitchVideoCard } from '@/components/twitch/twitch-video-card';
-import { TwitchVideoList, TwitchVideoSkeleton } from '@/components/twitch/twitch-video-list';
-import type { TwitchVideoPage } from '@/components/twitch/types';
-import { useVideoActions } from '@/components/twitch/use-video-actions';
-import { useVideoSelection } from '@/components/twitch/use-video-selection';
+import { FilterGroup, type FilterOption } from '@/components/creators/filter-group';
+import { ToolbarButton, toolbarButtonClass, CreatorToolbar } from '@/components/creators/toolbar';
+import { CreatorVideoCard } from '@/components/creators/video-card';
+import { CreatorVideoList, CreatorVideoSkeleton } from '@/components/creators/video-list';
+import type { CreatorVideoPage } from '@/components/creators/types';
+import { useVideoActions } from '@/components/creators/use-video-actions';
+import { useVideoSelection } from '@/components/creators/use-video-selection';
 import { useRestorableInfiniteQuery } from '@/lib/hooks/use-restorable-infinite-query';
 import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
 import { toCachedImageSrc } from '@/lib/image';
@@ -121,16 +121,16 @@ export default function TwitchFeedPage() {
 
   const feed = useRestorableInfiniteQuery({
     queryKey: ['twitch', 'feed', filters],
-    queryFn: ({ pageParam, signal }) => getJson<TwitchVideoPage>(`/api/twitch/feed?${filters}&page=${pageParam}`, signal),
+    queryFn: ({ pageParam, signal }) => getJson<CreatorVideoPage>(`/api/twitch/feed?${filters}&page=${pageParam}`, signal),
     initialPageParam: 1,
-    getNextPageParam: (last: TwitchVideoPage) => (last.page * last.pageSize < last.total ? last.page + 1 : undefined),
+    getNextPageParam: (last: CreatorVideoPage) => (last.page * last.pageSize < last.total ? last.page + 1 : undefined),
   });
   const videos = useMemo(() => feed.data?.pages.flatMap((page) => page.videos) ?? [], [feed.data]);
   const total = feed.data?.pages[0]?.total ?? 0;
 
   const expiringQuery = useQuery({
     queryKey: ['twitch', 'feed', 'expiring-shelf'],
-    queryFn: ({ signal }) => getJson<TwitchVideoPage>('/api/twitch/feed?expiring=1&notDownloaded=1&pageSize=12', signal),
+    queryFn: ({ signal }) => getJson<CreatorVideoPage>('/api/twitch/feed?expiring=1&notDownloaded=1&pageSize=12', signal),
   });
   const expiring = expiringQuery.data?.videos ?? [];
   const categories = feed.data?.pages[0]?.categories ?? [];
@@ -187,7 +187,7 @@ export default function TwitchFeedPage() {
     <div className="space-y-3 animate-content-in">
       <PullToRefresh onRefresh={refresh} disabled={selection.active} />
       <h1 className="sr-only">Twitch</h1>
-      <TwitchToolbar
+      <CreatorToolbar
         active="feed"
         actions={(
           <>
@@ -259,7 +259,7 @@ export default function TwitchFeedPage() {
         )}
       >
         <SearchBar value={search} onChange={setSearch} placeholder="Search videos..." historyKey="twitch-feed" debounceMs={250} />
-      </TwitchToolbar>
+      </CreatorToolbar>
       <ActiveFilterBar filters={activeFilters} onClearAll={clearFilters} />
 
       {canManage && !filtered && autoSettings.data?.autoDownloadEnabled === false && (
@@ -300,7 +300,7 @@ export default function TwitchFeedPage() {
           <div className="-mx-2 flex gap-3 overflow-x-auto px-2 pb-1 scrollbar-hide md:-mx-6 md:px-6">
             {expiring.map((video) => (
               <div key={video.id} className="w-[180px] shrink-0 sm:w-[220px]">
-                <TwitchVideoCard video={video} layout="grid" actions={actions} />
+                <CreatorVideoCard video={video} layout="grid" actions={actions} />
               </div>
             ))}
           </div>
@@ -308,7 +308,7 @@ export default function TwitchFeedPage() {
       )}
 
       {feed.isLoading ? (
-        <TwitchVideoSkeleton />
+        <CreatorVideoSkeleton />
       ) : feed.isError ? (
         <ErrorState message="Couldn't load the feed" onRetry={() => void feed.refetch()} />
       ) : videos.length === 0 ? (
@@ -333,11 +333,11 @@ export default function TwitchFeedPage() {
             <h2 className="mb-2 text-base font-semibold">All videos</h2>
           )}
           {filtered && <p className="mb-2 px-1 text-xs text-muted-foreground">{total} {total === 1 ? 'video' : 'videos'}</p>}
-          <TwitchVideoList
+          <CreatorVideoList
             videos={videos}
             layout={view}
             renderVideo={(video) => (
-              <TwitchVideoCard
+              <CreatorVideoCard
                 video={video}
                 layout={view}
                 actions={actions}

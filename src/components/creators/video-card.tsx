@@ -10,8 +10,9 @@ import { SwipeRow } from '@/components/ui/swipe-row';
 import { toCachedImageSrc } from '@/lib/image';
 import { cn } from '@/lib/utils';
 import { ActionsMenu } from './actions-menu';
-import { daysUntil, formatDuration, VIDEO_TYPE_LABELS, type TwitchVideo } from './types';
+import { daysUntil, formatDuration, VIDEO_TYPE_LABELS, type CreatorVideoItem } from './types';
 import type { VideoActions } from './use-video-actions';
+import { useCreatorPlatform } from './platform';
 
 export interface VideoSelection {
   selected: boolean;
@@ -26,7 +27,7 @@ function expiryLabel(iso: string | null): { text: string; urgent: boolean } | nu
   return { text: days <= 0 ? 'Today' : `${days}d left`, urgent: days <= 3 };
 }
 
-function Thumbnail({ video, sizes, className }: { video: TwitchVideo; sizes: string; className?: string }) {
+function Thumbnail({ video, sizes, className }: { video: CreatorVideoItem; sizes: string; className?: string }) {
   const src = toCachedImageSrc(video.thumbnailUrl, undefined, { width: 640 });
   const expiry = expiryLabel(video.estimatedExpiresAt);
   const muted = (video.mutedSegments?.length ?? 0) > 0;
@@ -59,7 +60,7 @@ function Thumbnail({ video, sizes, className }: { video: TwitchVideo; sizes: str
   );
 }
 
-function metaLine(video: TwitchVideo, showStreamer: boolean): string {
+function metaLine(video: CreatorVideoItem, showStreamer: boolean): string {
   const age = formatDistanceToNowStrict(new Date(video.sourceCreatedAt), { addSuffix: true });
   return [
     video.type === 'ARCHIVE' ? null : VIDEO_TYPE_LABELS[video.type],
@@ -69,6 +70,7 @@ function metaLine(video: TwitchVideo, showStreamer: boolean): string {
 }
 
 function VideoTile({ video, showStreamer, actions, selection, onSelect }: CardProps) {
+  const platform = useCreatorPlatform();
   const title = <span className="mt-1.5 line-clamp-2 text-xs font-medium leading-snug">{video.title}</span>;
   const meta = <span className="mt-0.5 block truncate pr-6 text-[11px] text-muted-foreground">{metaLine(video, showStreamer)}</span>;
   const sizes = '(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw';
@@ -98,7 +100,7 @@ function VideoTile({ video, showStreamer, actions, selection, onSelect }: CardPr
   return (
     <div className="group relative min-w-0">
       <QuickContextMenu label={`${video.title} actions`} groups={groups}>
-        <Link href={`/twitch/vod/${video.id}`} className="press-feedback block">
+        <Link href={`${platform.videoPath}/${video.id}`} className="press-feedback block">
           <Thumbnail video={video} sizes={sizes} className="rounded-xl shadow-sm" />
           {title}
           {meta}
@@ -114,6 +116,7 @@ function VideoTile({ video, showStreamer, actions, selection, onSelect }: CardPr
 }
 
 function VideoRow({ video, showStreamer, actions, selection, onSelect }: CardProps) {
+  const platform = useCreatorPlatform();
   const body = (
     <>
       <Thumbnail video={video} sizes="160px" className="w-32 shrink-0 rounded-lg sm:w-40" />
@@ -144,7 +147,7 @@ function VideoRow({ video, showStreamer, actions, selection, onSelect }: CardPro
     <SwipeRow contentClassName="bg-card" {...actions.swipeFor(video)}>
       <div className="flex items-center">
         <QuickContextMenu label={`${video.title} actions`} groups={groups}>
-          <Link href={`/twitch/vod/${video.id}`} className="flex min-w-0 flex-1 items-center gap-3 py-2.5 pl-3 active:bg-foreground/5">
+          <Link href={`${platform.videoPath}/${video.id}`} className="flex min-w-0 flex-1 items-center gap-3 py-2.5 pl-3 active:bg-foreground/5">
             {body}
           </Link>
         </QuickContextMenu>
@@ -159,7 +162,7 @@ function VideoRow({ video, showStreamer, actions, selection, onSelect }: CardPro
 }
 
 interface CardProps {
-  video: TwitchVideo;
+  video: CreatorVideoItem;
   showStreamer: boolean;
   actions: VideoActions;
   selection?: VideoSelection;
@@ -167,7 +170,7 @@ interface CardProps {
   onSelect?: () => void;
 }
 
-export function TwitchVideoCard({ layout, showStreamer = true, ...props }: Omit<CardProps, 'showStreamer'> & {
+export function CreatorVideoCard({ layout, showStreamer = true, ...props }: Omit<CardProps, 'showStreamer'> & {
   layout: 'grid' | 'list';
   showStreamer?: boolean;
 }) {

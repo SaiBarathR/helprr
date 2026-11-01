@@ -3,7 +3,7 @@ import { prisma } from '@/lib/db';
 import { ACTIVE_JOB_STATES } from './jobs';
 import { REENCODE_NOW_PRIORITY } from './reencode-window';
 import { FILE_LOCK_TRANSACTION } from './retention';
-import { sizeThumbnail } from '@/lib/twitch/serialize';
+import { previousVideoNames, sizeThumbnail } from '@/lib/twitch/serialize';
 
 // The paths are read only to tell whether an original is there; serializeFile drops them.
 export const fileSelect = (platform: ArchivePlatform) => ({
@@ -58,6 +58,7 @@ export function serializeFile(file: FileRow, watchedAt?: Date) {
     id: file.id,
     videoId: file.videoId,
     externalId: file.video.externalId,
+    ...previousVideoNames(file.video),
     type: file.video.type,
     title: file.video.title,
     thumbnailUrl: sizeThumbnail(file.video.thumbnailUrl),

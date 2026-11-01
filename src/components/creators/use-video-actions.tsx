@@ -9,8 +9,9 @@ import { useMe, hasCapability } from '@/components/permission-provider';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import type { ContextActionGroup } from '@/components/ui/quick-context-menu';
 import type { SwipeAction } from '@/components/ui/swipe-row';
-import { DownloadSheet } from './download-sheet';
-import type { TwitchVideo, TwitchVideoPage } from './types';
+import { DownloadSheet } from '@/components/twitch/download-sheet';
+import type { CreatorVideoItem, CreatorVideoPage } from './types';
+import { useCreatorPlatform } from './platform';
 
 async function post(url: string, body: unknown) {
   const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -20,8 +21,8 @@ async function post(url: string, body: unknown) {
 
 // Feed pages are either the infinite list or a single shelf.
 function withoutVideo(videoId: string) {
-  const drop = (page: TwitchVideoPage) => ({ ...page, videos: page.videos.filter((video) => video.id !== videoId) });
-  return (data: InfiniteData<TwitchVideoPage> | TwitchVideoPage | undefined) => {
+  const drop = (page: CreatorVideoPage) => ({ ...page, videos: page.videos.filter((video) => video.id !== videoId) });
+  return (data: InfiniteData<CreatorVideoPage> | CreatorVideoPage | undefined) => {
     if (!data) return data;
     return 'pages' in data ? { ...data, pages: data.pages.map(drop) } : drop(data);
   };
@@ -29,20 +30,21 @@ function withoutVideo(videoId: string) {
 
 /** What every video can do, on any surface, and the sheet and dialog they share. */
 export function useVideoActions() {
+  const platform = useCreatorPlatform();
   const queryClient = useQueryClient();
   const router = useRouter();
   const me = useMe();
-  const canDownload = hasCapability(me, 'twitch.download');
-  const canManage = hasCapability(me, 'twitch.manage');
-  const [sheetVideo, setSheetVideo] = useState<TwitchVideo | null>(null);
-  const refresh = () => void queryClient.invalidateQueries({ queryKey: ['twitch'] });
+  const canDownload = hasCapability(me, platform.canDownload);
+  const canManage = hasCapability(me, platform.canManage);
+  const [sheetVideo, setSheetVideo] = useState<CreatorVideoItem | null>(null);
+  const refresh = () => void queryClient.invalidateQueries({ queryKey: [platform.id] });
   const fail = (error: Error) => toast.error(error.message);
 
-  const [deleting, setDeleting] = useState<TwitchVideo[]>([]);
+  const [deleting, setDeleting] = useState<CreatorVideoItem[]>([]);
   const removeFiles = useMutation({
-    mutationFn: async (videos: TwitchVideo[]) => {
+    mutationFn: async (videos: CreatorVideoItem[]) => {
       const results = await Promise.allSettled(videos.map(async ({ fileId }) => {
-        const res = await fetch(`/api/twitch/files/${fileId}`, { method: 'DELETE' });
+        const res = await fetch(`${platform.api}/files/${fileId}`, { method: 'DELETE' });
         if (!res.ok) throw new Error('refused');
       }));
       return results.filter((result) => result.status === 'rejected').length;
@@ -58,7 +60,7 @@ export function useVideoActions() {
 
   const quick = useMutation({
     // No options: the rules for this video decide them.
-    mutationFn: (video: TwitchVideo) => post('/api/twitch/jobs', { videoId: video.id, clientRequestId: crypto.randomUUID() }),
+    mutationFn: (video: CreatorVideoItem) => post(`${platform.api}/jobs`, { videoId: video.id, clientRequestId: crypto.randomUUID() }),
     onSuccess: () => {
       toast.success('Download queued');
       refresh();
@@ -66,18 +68,18 @@ export function useVideoActions() {
     onError: fail,
   });
   const setState = useMutation({
-    mutationFn: ({ video, state }: { video: TwitchVideo; state: { seen?: boolean; hidden?: boolean } }) =>
-      post(`/api/twitch/videos/${video.id}/state`, state),
+    mutationFn: ({ video, state }: { video: CreatorVideoItem; state: { seen?: boolean; hidden?: boolean } }) =>
+      post(`${platform.api}/videos/${video.id}/state`, state),
     onSettled: refresh,
     onError: fail,
   });
 
   // There is no list of hidden videos, so a stray swipe has to be recoverable here.
   const hideVideo = useMutation({
-    mutationFn: (video: TwitchVideo) => post(`/api/twitch/videos/${video.id}/state`, { hidden: true }),
+    mutationFn: (video: CreatorVideoItem) => post(`${platform.api}/videos/${video.id}/state`, { hidden: true }),
     onMutate: async (video) => {
-      await queryClient.cancelQueries({ queryKey: ['twitch', 'feed'] });
-      queryClient.setQueriesData({ queryKey: ['twitch', 'feed'] }, withoutVideo(video.id));
+      await queryClient.cancelQueries({ queryKey: [platform.id, 'feed'] });
+      queryClient.setQueriesData({ queryKey: [platform.id, 'feed'] }, withoutVideo(video.id));
     },
     onSuccess: (_data, video) => toast('Hidden from your feed', {
       action: { label: 'Undo', onClick: () => setState.mutate({ video, state: { hidden: false } }) },
@@ -85,24 +87,24 @@ export function useVideoActions() {
     onSettled: refresh,
     onError: fail,
   });
-  const hide = (video: TwitchVideo) => hideVideo.mutate(video);
+  const hide = (video: CreatorVideoItem) => hideVideo.mutate(video);
 
-  const isDownloadable = (video: TwitchVideo) =>
+  const isDownloadable = (video: CreatorVideoItem) =>
     canDownload && !video.downloaded && !video.activeJob && video.availability === 'PUBLISHED';
-  const isDeletable = (video: TwitchVideo) => canManage && Boolean(video.fileId) && !video.activeJob;
+  const isDeletable = (video: CreatorVideoItem) => canManage && Boolean(video.fileId) && !video.activeJob;
 
-  const groupsFor = (video: TwitchVideo, onSelect?: () => void): ContextActionGroup[] => [
+  const groupsFor = (video: CreatorVideoItem, onSelect?: () => void): ContextActionGroup[] => [
     {
       id: 'open',
       actions: [
-        { id: 'open', label: 'View video', icon: <Info className="h-4 w-4" />, href: `/twitch/vod/${video.id}` },
+        { id: 'open', label: 'View video', icon: <Info className="h-4 w-4" />, href: `${platform.videoPath}/${video.id}` },
         ...(video.jellyfinItemId
           ? [{ id: 'play', label: 'Play in Helprr', icon: <Play className="h-4 w-4" />, href: `/jellyfin/library/item/${video.jellyfinItemId}` }]
           : []),
         ...(video.fileId
-          ? [{ id: 'file', label: 'File details', icon: <HardDrive className="h-4 w-4" />, href: `/twitch/library/${video.fileId}` }]
+          ? [{ id: 'file', label: 'File details', icon: <HardDrive className="h-4 w-4" />, href: `${platform.base}/library/${video.fileId}` }]
           : []),
-        { id: 'streamer', label: video.creator.displayName, icon: <User className="h-4 w-4" />, href: `/twitch/streamers/${video.creator.id}` },
+        { id: 'streamer', label: video.creator.displayName, icon: <User className="h-4 w-4" />, href: `${platform.creatorsPath}/${video.creator.id}` },
       ],
     },
     {
@@ -127,9 +129,9 @@ export function useVideoActions() {
         { id: 'hide', label: 'Hide', icon: <EyeOff className="h-4 w-4" />, onSelect: () => hide(video) },
         {
           id: 'twitch',
-          label: 'Open on Twitch',
+          label: `Open on ${platform.name}`,
           icon: <ExternalLink className="h-4 w-4" />,
-          href: `https://www.twitch.tv/videos/${video.externalId}`,
+          href: platform.externalVideoUrl(video.externalId),
           external: true,
         },
       ],
@@ -142,7 +144,7 @@ export function useVideoActions() {
     },
   ];
 
-  const swipeFor = (video: TwitchVideo): { leftAction?: SwipeAction; rightAction: SwipeAction } => ({
+  const swipeFor = (video: CreatorVideoItem): { leftAction?: SwipeAction; rightAction: SwipeAction } => ({
     leftAction: video.jellyfinItemId
       ? {
           label: 'Play',
@@ -178,7 +180,7 @@ export function useVideoActions() {
     swipeFor,
     openSheet: setSheetVideo,
     /** Asks first: this cannot be undone. */
-    deleteFiles: (videos: TwitchVideo[]) => setDeleting(videos.filter((video) => video.fileId)),
+    deleteFiles: (videos: CreatorVideoItem[]) => setDeleting(videos.filter((video) => video.fileId)),
     sheet: (
       <>
         {sheetVideo && <DownloadSheet video={sheetVideo} open onOpenChange={(open) => { if (!open) setSheetVideo(null); }} />}

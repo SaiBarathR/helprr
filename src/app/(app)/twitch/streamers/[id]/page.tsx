@@ -13,14 +13,14 @@ import { PullToRefresh } from '@/components/ui/pull-to-refresh';
 import type { ContextActionGroup } from '@/components/ui/quick-context-menu';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ActionsMenu } from '@/components/twitch/actions-menu';
-import { ClampedText } from '@/components/twitch/clamped-text';
-import { StreamerAvatar } from '@/components/twitch/streamer-avatar';
-import { TwitchVideoCard } from '@/components/twitch/twitch-video-card';
-import { TwitchVideoList, TwitchVideoSkeleton } from '@/components/twitch/twitch-video-list';
-import type { TwitchVideoPage } from '@/components/twitch/types';
-import { useVideoActions } from '@/components/twitch/use-video-actions';
-import { useVideoSelection } from '@/components/twitch/use-video-selection';
+import { ActionsMenu } from '@/components/creators/actions-menu';
+import { ClampedText } from '@/components/creators/clamped-text';
+import { CreatorAvatar } from '@/components/creators/creator-avatar';
+import { CreatorVideoCard } from '@/components/creators/video-card';
+import { CreatorVideoList, CreatorVideoSkeleton } from '@/components/creators/video-list';
+import type { CreatorVideoPage } from '@/components/creators/types';
+import { useVideoActions } from '@/components/creators/use-video-actions';
+import { useVideoSelection } from '@/components/creators/use-video-selection';
 import { useRestorableInfiniteQuery } from '@/lib/hooks/use-restorable-infinite-query';
 import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
 import { toCachedImageSrc } from '@/lib/image';
@@ -74,10 +74,10 @@ export default function TwitchStreamerPage({ params }: { params: Promise<{ id: s
     queryFn: async ({ pageParam, signal }) => {
       const res = await fetch(`/api/twitch/streamers/${id}/videos?type=${tab}&page=${pageParam}`, { signal });
       if (!res.ok) throw new Error('Failed to load videos');
-      return (await res.json()) as TwitchVideoPage;
+      return (await res.json()) as CreatorVideoPage;
     },
     initialPageParam: 1,
-    getNextPageParam: (last: TwitchVideoPage) => (last.page * last.pageSize < last.total ? last.page + 1 : undefined),
+    getNextPageParam: (last: CreatorVideoPage) => (last.page * last.pageSize < last.total ? last.page + 1 : undefined),
   });
   const rows = useMemo(() => videos.data?.pages.flatMap((page) => page.videos) ?? [], [videos.data]);
   const selection = useVideoSelection(rows, actions);
@@ -191,13 +191,13 @@ export default function TwitchStreamerPage({ params }: { params: Promise<{ id: s
               <div className="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent light:via-background/25" />
             </div>
             <div className="relative -mt-[52px] flex items-end gap-3.5 px-2 md:px-6">
-              <StreamerAvatar url={streamer.profileImageUrl} size={80} className="shadow-lg ring-1 ring-border/20" />
+              <CreatorAvatar url={streamer.profileImageUrl} size={80} className="shadow-lg ring-1 ring-border/20" />
               <div className="min-w-0 flex-1 pb-1">{identity}</div>
             </div>
           </div>
         ) : (
           <div className="flex items-center gap-3.5 pt-3">
-            <StreamerAvatar url={streamer.profileImageUrl} size={80} />
+            <CreatorAvatar url={streamer.profileImageUrl} size={80} />
             <div className="min-w-0 flex-1">{identity}</div>
           </div>
         )}
@@ -225,17 +225,17 @@ export default function TwitchStreamerPage({ params }: { params: Promise<{ id: s
         </Tabs>
 
         {videos.isLoading ? (
-          <TwitchVideoSkeleton />
+          <CreatorVideoSkeleton />
         ) : videos.isError ? (
           <ErrorState compact message="Couldn't load the videos" onRetry={() => void videos.refetch()} />
         ) : rows.length === 0 ? (
           <div className="rounded-xl bg-card p-8 text-center text-muted-foreground">No videos here.</div>
         ) : (
-          <TwitchVideoList
+          <CreatorVideoList
             videos={rows}
             layout={view}
             renderVideo={(video) => (
-              <TwitchVideoCard
+              <CreatorVideoCard
                 video={video}
                 layout={view}
                 showStreamer={false}

@@ -5,7 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { countEnabledContextActions } from '@/components/ui/quick-context-menu';
-import type { TwitchVideo, TwitchVideoPage } from './types';
+import type { CreatorVideoItem, CreatorVideoPage } from './types';
 
 const mocks = vi.hoisted(() => ({
   capabilities: {} as Record<string, boolean>,
@@ -22,8 +22,9 @@ vi.mock('./download-sheet', () => ({ DownloadSheet: () => null }));
 vi.mock('sonner', () => ({ toast: Object.assign(mocks.toast, { success: vi.fn(), error: vi.fn() }) }));
 
 import { useVideoActions } from './use-video-actions';
+import { CreatorPlatformProvider } from './platform';
 
-const video: TwitchVideo = {
+const video: CreatorVideoItem = {
   id: 'video-1',
   externalId: '100',
   type: 'ARCHIVE',
@@ -50,7 +51,7 @@ const downloading = { ...video, activeJob: { id: 'job-1', state: 'RUNNING', stag
 
 function setup() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+  const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}><CreatorPlatformProvider platform="twitch">{children}</CreatorPlatformProvider></QueryClientProvider>;
   return { client, ...renderHook(() => useVideoActions(), { wrapper }) };
 }
 
@@ -120,16 +121,16 @@ describe('useVideoActions', () => {
 
   it('hides from every cached feed list at once and can be undone', async () => {
     const { client, result } = setup();
-    const page: TwitchVideoPage = { videos: [video, { ...video, id: 'video-2' }], total: 2, page: 1, pageSize: 30 };
+    const page: CreatorVideoPage = { videos: [video, { ...video, id: 'video-2' }], total: 2, page: 1, pageSize: 30 };
     client.setQueryData(['twitch', 'feed', 'list'], { pages: [page], pageParams: [1] });
     client.setQueryData(['twitch', 'feed', 'expiring-shelf'], page);
 
     act(() => result.current.swipeFor(video).rightAction.onAction());
 
     await waitFor(() => expect(vi.mocked(fetch)).toHaveBeenCalled());
-    const list = client.getQueryData<{ pages: TwitchVideoPage[] }>(['twitch', 'feed', 'list']);
+    const list = client.getQueryData<{ pages: CreatorVideoPage[] }>(['twitch', 'feed', 'list']);
     expect(list?.pages[0].videos.map((item) => item.id)).toEqual(['video-2']);
-    expect(client.getQueryData<TwitchVideoPage>(['twitch', 'feed', 'expiring-shelf'])?.videos.map((item) => item.id)).toEqual(['video-2']);
+    expect(client.getQueryData<CreatorVideoPage>(['twitch', 'feed', 'expiring-shelf'])?.videos.map((item) => item.id)).toEqual(['video-2']);
 
     await waitFor(() => expect(mocks.toast).toHaveBeenCalled());
     const undo = mocks.toast.mock.calls[0][1].action.onClick as () => void;

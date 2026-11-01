@@ -6,7 +6,7 @@ import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import Link from '@/components/ui/app-link';
 import { GroupedSection } from '@/components/settings/grouped-section';
-import { changedNumber, NumberRow, ROW_INPUT, SwitchRow } from '@/components/twitch/setting-rows';
+import { changedNumber, NumberRow, ROW_INPUT, SwitchRow } from '@/components/creators/setting-rows';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Input } from '@/components/ui/input';

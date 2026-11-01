@@ -9,12 +9,13 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import type { ContextActionGroup } from '@/components/ui/quick-context-menu';
 import type { SwipeAction } from '@/components/ui/swipe-row';
 import { formatBytes } from '@/lib/format';
-import type { TwitchFile } from './file-types';
+import type { ArchiveFile } from './file-types';
+import { useCreatorPlatform } from './platform';
 
-type Confirming = { action: 'delete' | 'delete-original' | 'restore'; file: TwitchFile };
+type Confirming = { action: 'delete' | 'delete-original' | 'restore'; file: ArchiveFile };
 
 interface FilePage {
-  files: TwitchFile[];
+  files: ArchiveFile[];
 }
 
 async function send(url: string, method: string, body?: unknown) {
@@ -35,44 +36,45 @@ export const CONFIRMATIONS = {
   },
   'delete-original': {
     title: 'Delete the original?',
-    description: (file: TwitchFile) => `Frees ${file.originalSizeBytes ? formatBytes(file.originalSizeBytes) : 'its space'}. The re-encoded video stays and still plays, but you can no longer restore the original.`,
+    description: (file: ArchiveFile) => `Frees ${file.originalSizeBytes ? formatBytes(file.originalSizeBytes) : 'its space'}. The re-encoded video stays and still plays, but you can no longer restore the original.`,
     confirmLabel: 'Delete original',
   },
   restore: {
     title: 'Restore the original?',
-    description: (file: TwitchFile) => `The original goes back in place and the re-encoded copy is deleted, so this uses ${file.originalSizeBytes ? `${formatBytes(file.originalSizeBytes - file.sizeBytes)} more` : 'more'} space. Jellyfin keeps your watched state.`,
+    description: (file: ArchiveFile) => `The original goes back in place and the re-encoded copy is deleted, so this uses ${file.originalSizeBytes ? `${formatBytes(file.originalSizeBytes - file.sizeBytes)} more` : 'more'} space. Jellyfin keeps your watched state.`,
     confirmLabel: 'Restore',
   },
 } as const;
 
 /** What can be done to a saved file. The routes check every one of these again. */
 export function useFileActions() {
+  const platform = useCreatorPlatform();
   const queryClient = useQueryClient();
-  const canManage = hasCapability(useMe(), 'twitch.manage');
+  const canManage = hasCapability(useMe(), platform.canManage);
   const [confirming, setConfirming] = useState<Confirming | null>(null);
-  const refresh = () => void queryClient.invalidateQueries({ queryKey: ['twitch'] });
+  const refresh = () => void queryClient.invalidateQueries({ queryKey: [platform.id] });
   const fail = (error: Error) => toast.error(error.message);
 
   const keepForever = useMutation({
-    mutationFn: ({ file, keep }: { file: TwitchFile; keep: boolean }) => send(`/api/twitch/files/${file.id}`, 'PATCH', { keepForever: keep }),
+    mutationFn: ({ file, keep }: { file: ArchiveFile; keep: boolean }) => send(`${platform.api}/files/${file.id}`, 'PATCH', { keepForever: keep }),
     // The switch answers the tap; a failure puts it back, as a video that only looks protected is not.
     onMutate: async ({ file, keep }) => {
       await Promise.all([
-        queryClient.cancelQueries({ queryKey: ['twitch', 'files'] }),
-        queryClient.cancelQueries({ queryKey: ['twitch', 'file', file.id] }),
+        queryClient.cancelQueries({ queryKey: [platform.id, 'files'] }),
+        queryClient.cancelQueries({ queryKey: [platform.id, 'file', file.id] }),
       ]);
       const before: Array<[QueryKey, unknown]> = [
-        ...queryClient.getQueriesData({ queryKey: ['twitch', 'files'] }),
-        ...queryClient.getQueriesData({ queryKey: ['twitch', 'file', file.id] }),
+        ...queryClient.getQueriesData({ queryKey: [platform.id, 'files'] }),
+        ...queryClient.getQueriesData({ queryKey: [platform.id, 'file', file.id] }),
       ];
-      queryClient.setQueriesData<InfiniteData<FilePage>>({ queryKey: ['twitch', 'files'] }, (data) => data && {
+      queryClient.setQueriesData<InfiniteData<FilePage>>({ queryKey: [platform.id, 'files'] }, (data) => data && {
         ...data,
         pages: data.pages.map((page) => ({
           ...page,
           files: page.files.map((item) => (item.id === file.id ? { ...item, keepForever: keep } : item)),
         })),
       });
-      queryClient.setQueryData<TwitchFile>(['twitch', 'file', file.id], (data) => data && { ...data, keepForever: keep });
+      queryClient.setQueryData<ArchiveFile>([platform.id, 'file', file.id], (data) => data && { ...data, keepForever: keep });
       return before;
     },
     onSettled: refresh,
@@ -83,7 +85,7 @@ export function useFileActions() {
   });
 
   const reencode = useMutation({
-    mutationFn: ({ file, when }: { file: TwitchFile; when: 'now' | 'tonight' }) => send(`/api/twitch/files/${file.id}/reencode`, 'POST', { when }),
+    mutationFn: ({ file, when }: { file: ArchiveFile; when: 'now' | 'tonight' }) => send(`${platform.api}/files/${file.id}/reencode`, 'POST', { when }),
     onSuccess: (_data, { when }) => {
       toast.success(when === 'now' ? 'Re-encoding starts within a minute' : 'Queued for tonight');
       refresh();
@@ -93,9 +95,9 @@ export function useFileActions() {
 
   const confirm = useMutation({
     mutationFn: ({ action, file }: Confirming) => {
-      if (action === 'delete') return send(`/api/twitch/files/${file.id}`, 'DELETE');
-      if (action === 'restore') return send(`/api/twitch/files/${file.id}/original/restore`, 'POST');
-      return send(`/api/twitch/files/${file.id}/original`, 'DELETE');
+      if (action === 'delete') return send(`${platform.api}/files/${file.id}`, 'DELETE');
+      if (action === 'restore') return send(`${platform.api}/files/${file.id}/original/restore`, 'POST');
+      return send(`${platform.api}/files/${file.id}/original`, 'DELETE');
     },
     onSuccess: (_data, { action }) => {
       toast.success(action === 'restore' ? 'Restoring the original' : action === 'delete' ? 'Deleting the video' : 'Deleting the original');
@@ -105,20 +107,20 @@ export function useFileActions() {
     onError: fail,
   });
 
-  const idle = (file: TwitchFile) => canManage && !file.activeJob;
-  const canReencode = (file: TwitchFile) => canManage && !file.reencodedAt && file.videoCodec !== 'hevc'
+  const idle = (file: ArchiveFile) => canManage && !file.activeJob;
+  const canReencode = (file: ArchiveFile) => canManage && !file.reencodedAt && file.videoCodec !== 'hevc'
     && (!file.activeJob || (file.activeJob.kind === 'REENCODE' && file.activeJob.state !== 'RUNNING'));
 
-  const groupsFor = (file: TwitchFile): ContextActionGroup[] => [
+  const groupsFor = (file: ArchiveFile): ContextActionGroup[] => [
     {
       id: 'open',
       actions: [
-        { id: 'open', label: 'File details', icon: <HardDrive className="h-4 w-4" />, href: `/twitch/library/${file.id}` },
-        { id: 'video', label: 'View video', icon: <Info className="h-4 w-4" />, href: `/twitch/vod/${file.videoId}` },
+        { id: 'open', label: 'File details', icon: <HardDrive className="h-4 w-4" />, href: `${platform.base}/library/${file.id}` },
+        { id: 'video', label: 'View video', icon: <Info className="h-4 w-4" />, href: `${platform.videoPath}/${file.videoId}` },
         ...(file.jellyfinItemId
           ? [{ id: 'play', label: 'Play in Helprr', icon: <Play className="h-4 w-4" />, href: `/jellyfin/library/item/${file.jellyfinItemId}` }]
           : []),
-        { id: 'twitch', label: 'Open on Twitch', icon: <ExternalLink className="h-4 w-4" />, href: `https://www.twitch.tv/videos/${file.externalId}`, external: true },
+        { id: 'twitch', label: `Open on ${platform.name}`, icon: <ExternalLink className="h-4 w-4" />, href: platform.externalVideoUrl(file.externalId), external: true },
       ],
     },
     {
@@ -158,7 +160,7 @@ export function useFileActions() {
     },
   ];
 
-  const swipeFor = (file: TwitchFile): { leftAction?: SwipeAction; rightAction?: SwipeAction } => ({
+  const swipeFor = (file: ArchiveFile): { leftAction?: SwipeAction; rightAction?: SwipeAction } => ({
     leftAction: canManage
       ? {
           label: file.keepForever ? 'Unpin' : 'Keep',
@@ -185,10 +187,10 @@ export function useFileActions() {
     idle,
     groupsFor,
     swipeFor,
-    setKeepForever: (file: TwitchFile, keep: boolean) => keepForever.mutate({ file, keep }),
-    reencode: (file: TwitchFile, when: 'now' | 'tonight') => reencode.mutate({ file, when }),
+    setKeepForever: (file: ArchiveFile, keep: boolean) => keepForever.mutate({ file, keep }),
+    reencode: (file: ArchiveFile, when: 'now' | 'tonight') => reencode.mutate({ file, when }),
     reencoding: reencode.isPending,
-    ask: (action: Confirming['action'], file: TwitchFile) => setConfirming({ action, file }),
+    ask: (action: Confirming['action'], file: ArchiveFile) => setConfirming({ action, file }),
     dialogs: (
       <ConfirmDialog
         open={confirming !== null}

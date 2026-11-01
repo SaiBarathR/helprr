@@ -7,7 +7,7 @@ export interface FileJob {
   priority: number;
 }
 
-export interface TwitchFile {
+export interface ArchiveFile {
   id: string;
   videoId: string;
   externalId: string;
@@ -56,7 +56,7 @@ export interface TimelineDeletion {
   createdAt: string;
 }
 
-export interface TwitchFileDetail extends TwitchFile {
+export interface TwitchFileDetail extends ArchiveFile {
   cleanup: {
     keepLatest: number | null;
     deleteAfterDays: number | null;
@@ -96,11 +96,11 @@ export interface DeletedFile {
   createdAt: string;
 }
 
-export function savedBytes(file: Pick<TwitchFile, 'reencodedAt' | 'sizeBytes' | 'originalSizeBytes'>): number | null {
+export function savedBytes(file: Pick<ArchiveFile, 'reencodedAt' | 'sizeBytes' | 'originalSizeBytes'>): number | null {
   return file.reencodedAt && file.originalSizeBytes !== null ? file.originalSizeBytes - file.sizeBytes : null;
 }
 
-export function savedPercent(file: Pick<TwitchFile, 'reencodedAt' | 'sizeBytes' | 'originalSizeBytes'>): number | null {
+export function savedPercent(file: Pick<ArchiveFile, 'reencodedAt' | 'sizeBytes' | 'originalSizeBytes'>): number | null {
   const saved = savedBytes(file);
   return saved === null || !file.originalSizeBytes ? null : Math.round((saved / file.originalSizeBytes) * 100);
 }

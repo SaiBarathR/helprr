@@ -11,8 +11,8 @@ import { GroupedSection } from '@/components/settings/grouped-section';
 import { Button } from '@/components/ui/button';
 import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ActionsMenu } from '@/components/twitch/actions-menu';
-import { FileBadges } from '@/components/twitch/file-row';
+import { ActionsMenu } from '@/components/creators/actions-menu';
+import { FileBadges } from '@/components/creators/file-row';
 import {
   bitrateLabel,
   codecLabel,
@@ -22,10 +22,10 @@ import {
   type TimelineDeletion,
   type TimelineJob,
   type TwitchFileDetail,
-} from '@/components/twitch/file-types';
-import { SwitchRow } from '@/components/twitch/setting-rows';
-import { formatDuration } from '@/components/twitch/types';
-import { useFileActions } from '@/components/twitch/use-file-actions';
+} from '@/components/creators/file-types';
+import { SwitchRow } from '@/components/creators/setting-rows';
+import { formatDuration } from '@/components/creators/types';
+import { useFileActions } from '@/components/creators/use-file-actions';
 import { formatBytes } from '@/lib/format';
 import { toCachedImageSrc } from '@/lib/image';
 import { ApiError } from '@/lib/query-fetch';

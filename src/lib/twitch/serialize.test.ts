@@ -16,6 +16,9 @@ describe('serializeVideo', () => {
   it('sends the names the pages read', () => {
     const result = serializeVideo(video);
     expect(result).toMatchObject({ externalId: '100', sourceCreatedAt: createdAt, creator: video.creator });
-    for (const name of ['twitchVideoId', 'twitchCreatedAt', 'streamer']) expect(result).not.toHaveProperty(name);
+  });
+
+  it('keeps the previous names for a tab left open across the release', () => {
+    expect(serializeVideo(video)).toMatchObject({ twitchVideoId: '100', twitchCreatedAt: createdAt, streamer: video.creator });
   });
 });

@@ -4,7 +4,7 @@ import type { ReactNode } from 'react';
 import Link from '@/components/ui/app-link';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
-import { TwitchSubNav } from './twitch-subnav';
+import { CreatorSubNav } from './subnav';
 
 const BUTTON = 'relative p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg transition-colors disabled:opacity-60 disabled:cursor-default';
 const PLAIN = 'hover:bg-accent active:bg-accent/80';
@@ -48,7 +48,7 @@ export function ToolbarButton({ label, href, onClick, disabled, filled, pressed,
 }
 
 /** The same sticky two-row toolbar as the Movies and Torrents pages. */
-export function TwitchToolbar({ active, actions, trailing, children }: {
+export function CreatorToolbar({ active, actions, trailing, children }: {
   active: 'feed' | 'streamers' | 'queue' | 'library';
   actions?: ReactNode;
   trailing?: ReactNode;
@@ -63,7 +63,7 @@ export function TwitchToolbar({ active, actions, trailing, children }: {
         {trailing}
       </div>
       <div className="flex items-center gap-2">
-        <TwitchSubNav active={active} />
+        <CreatorSubNav active={active} />
         <div className="min-w-0 flex-1">{children}</div>
       </div>
     </div>

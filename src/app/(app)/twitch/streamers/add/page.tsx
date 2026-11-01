@@ -7,7 +7,7 @@ import { toast } from 'sonner';
 import { PageHeader } from '@/components/layout/page-header';
 import { SearchInput } from '@/components/media/search-input';
 import { ImportFollows } from '@/components/twitch/import-follows';
-import { StreamerAvatar } from '@/components/twitch/streamer-avatar';
+import { CreatorAvatar } from '@/components/creators/creator-avatar';
 
 interface ChannelResult {
   twitchUserId: string;
@@ -123,7 +123,7 @@ export default function AddStreamerPage() {
                   onClick={() => subscribe.mutate(channel.login)}
                   className="flex w-full items-center gap-3 px-3 py-2.5 text-left active:bg-foreground/5"
                 >
-                  <StreamerAvatar url={channel.profileImageUrl} />
+                  <CreatorAvatar url={channel.profileImageUrl} />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-medium">{channel.displayName}</span>
                     <span className={`block truncate text-[11px] ${channel.isLive ? 'text-red-400' : 'text-muted-foreground'}`}>

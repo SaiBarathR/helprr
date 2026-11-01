@@ -16,16 +16,16 @@ import { ErrorState } from '@/components/ui/error-state';
 import { Progress } from '@/components/ui/progress';
 import { QuickContextMenu } from '@/components/ui/quick-context-menu';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ActionsMenu } from '@/components/twitch/actions-menu';
-import { ClampedText } from '@/components/twitch/clamped-text';
+import { ActionsMenu } from '@/components/creators/actions-menu';
+import { ClampedText } from '@/components/creators/clamped-text';
 import { DownloadSheet } from '@/components/twitch/download-sheet';
-import { StreamerAvatar } from '@/components/twitch/streamer-avatar';
-import { daysUntil, formatDuration, stageLabel, VIDEO_TYPE_LABELS, type TwitchVideo } from '@/components/twitch/types';
-import { useVideoActions } from '@/components/twitch/use-video-actions';
+import { CreatorAvatar } from '@/components/creators/creator-avatar';
+import { daysUntil, formatDuration, stageLabel, VIDEO_TYPE_LABELS, type CreatorVideoItem } from '@/components/creators/types';
+import { useVideoActions } from '@/components/creators/use-video-actions';
 import { toCachedImageSrc } from '@/lib/image';
 import { cn } from '@/lib/utils';
 
-type VideoDetail = TwitchVideo & {
+type VideoDetail = CreatorVideoItem & {
   autoDownload: { enabled: boolean; reason: string; trace: Record<string, string> };
 };
 
@@ -162,7 +162,7 @@ export default function TwitchVodPage({ params }: { params: Promise<{ id: string
           <div className="relative -mt-[72px] flex gap-3.5 px-2 md:px-6">
             <QuickContextMenu label={`${video.title} actions`} groups={groups}>
               <Link href={`/twitch/streamers/${video.creator.id}`} aria-label={video.creator.displayName} className="block shrink-0 self-end">
-                <StreamerAvatar url={video.creator.profileImageUrl} size={64} className="shadow-lg ring-1 ring-border/20" />
+                <CreatorAvatar url={video.creator.profileImageUrl} size={64} className="shadow-lg ring-1 ring-border/20" />
               </Link>
             </QuickContextMenu>
             <div className="min-w-0 flex-1">

@@ -36,6 +36,8 @@ describe('serializeJob', () => {
       thumbnailUrl: 'https://static-cdn.jtvnw.net/thumb-320x180.jpg',
       durationSeconds: 60,
       creator: { id: 'streamer-1', displayName: 'Gigguk' },
+      twitchVideoId: '100',
+      streamer: { id: 'streamer-1', displayName: 'Gigguk' },
     });
   });
 
