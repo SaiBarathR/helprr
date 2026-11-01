@@ -10,9 +10,9 @@ import { SwipeRow } from '@/components/ui/swipe-row';
 import { toCachedImageSrc } from '@/lib/image';
 import { cn } from '@/lib/utils';
 import { ActionsMenu } from './actions-menu';
-import { daysUntil, formatDuration, VIDEO_TYPE_LABELS, type CreatorVideoItem } from './types';
+import { daysUntil, formatDuration, type CreatorVideoItem } from './types';
 import type { VideoActions } from './use-video-actions';
-import { useCreatorPlatform } from './platform';
+import { useCreatorPlatform, type CreatorPlatform } from './platform';
 
 export interface VideoSelection {
   selected: boolean;
@@ -32,6 +32,7 @@ function Thumbnail({ video, sizes, className }: { video: CreatorVideoItem; sizes
   const expiry = expiryLabel(video.estimatedExpiresAt);
   const muted = (video.mutedSegments?.length ?? 0) > 0;
   const recording = video.availability === 'RECORDING';
+  const platform = useCreatorPlatform();
   return (
     <span className={cn('relative block aspect-video overflow-hidden bg-muted', className)}>
       {src ? (
@@ -43,7 +44,7 @@ function Thumbnail({ video, sizes, className }: { video: CreatorVideoItem; sizes
       {(recording || expiry || muted) && (
         <span className="absolute right-1 top-1 flex items-center gap-1">
           {muted && <span aria-label="Some audio is muted" className={IMAGE_CHIP}><VolumeX className="h-2.5 w-2.5" /></span>}
-          {recording && <span className={cn(IMAGE_CHIP, 'text-red-300')}>Recording</span>}
+          {recording && <span className={cn(IMAGE_CHIP, 'text-red-300')}>{platform.recordingLabel}</span>}
           {expiry && <span className={cn(IMAGE_CHIP, expiry.urgent ? 'text-red-300' : 'text-amber-300')}>{expiry.text}</span>}
         </span>
       )}
@@ -60,10 +61,10 @@ function Thumbnail({ video, sizes, className }: { video: CreatorVideoItem; sizes
   );
 }
 
-function metaLine(video: CreatorVideoItem, showStreamer: boolean): string {
+function metaLine(video: CreatorVideoItem, showStreamer: boolean, platform: CreatorPlatform): string {
   const age = formatDistanceToNowStrict(new Date(video.sourceCreatedAt), { addSuffix: true });
   return [
-    video.type === 'ARCHIVE' ? null : VIDEO_TYPE_LABELS[video.type],
+    platform.cardTypeLabel(video.type),
     showStreamer ? video.creator.displayName : null,
     age,
   ].filter(Boolean).join(' · ');
@@ -72,7 +73,7 @@ function metaLine(video: CreatorVideoItem, showStreamer: boolean): string {
 function VideoTile({ video, showStreamer, actions, selection, onSelect }: CardProps) {
   const platform = useCreatorPlatform();
   const title = <span className="mt-1.5 line-clamp-2 text-xs font-medium leading-snug">{video.title}</span>;
-  const meta = <span className="mt-0.5 block truncate pr-6 text-[11px] text-muted-foreground">{metaLine(video, showStreamer)}</span>;
+  const meta = <span className="mt-0.5 block truncate pr-6 text-[11px] text-muted-foreground">{metaLine(video, showStreamer, platform)}</span>;
   const sizes = '(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw';
 
   if (selection) {
@@ -122,7 +123,7 @@ function VideoRow({ video, showStreamer, actions, selection, onSelect }: CardPro
       <Thumbnail video={video} sizes="160px" className="w-32 shrink-0 rounded-lg sm:w-40" />
       <span className="min-w-0 flex-1">
         <span className="line-clamp-2 text-sm font-medium leading-snug">{video.title}</span>
-        <span className="mt-1 block truncate text-[11px] text-muted-foreground">{metaLine(video, showStreamer)}</span>
+        <span className="mt-1 block truncate text-[11px] text-muted-foreground">{metaLine(video, showStreamer, platform)}</span>
       </span>
     </>
   );

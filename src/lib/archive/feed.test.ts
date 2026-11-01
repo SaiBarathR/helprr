@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const { findMany } = vi.hoisted(() => ({ findMany: vi.fn() }));
 vi.mock('@/lib/db', () => ({ prisma: { creatorSubscription: { findMany } } }));
 
-import { buildFeedWhere } from '@/lib/twitch/feed';
+import { buildFeedWhere } from './feed';
 
 const now = new Date('2026-10-30T12:00:00Z');
 const subscribed = new Date('2026-10-01T00:00:00Z');
@@ -14,7 +14,7 @@ beforeEach(() => {
 });
 
 const conditions = async (query: string) =>
-  ((await buildFeedWhere('u1', new URLSearchParams(query), now)).AND) as Array<Record<string, unknown>>;
+  ((await buildFeedWhere('TWITCH', 'u1', new URLSearchParams(query), now)).AND) as Array<Record<string, unknown>>;
 
 describe('buildFeedWhere', () => {
   it('scopes to the user, and leaves out hidden and vanished videos', async () => {
@@ -45,5 +45,30 @@ describe('buildFeedWhere', () => {
     expect(and).toContainEqual({ category: 'Elden Ring' });
     expect(and).toContainEqual({ sourceCreatedAt: { gte: new Date('2026-10-23T12:00:00Z') } });
     expect((await conditions('since=forever')).some((item) => 'sourceCreatedAt' in item)).toBe(false);
+  });
+
+  describe('on YouTube', () => {
+    const youtube = async (query: string) =>
+      ((await buildFeedWhere('YOUTUBE', 'u1', new URLSearchParams(query), now)).AND) as Array<Record<string, unknown>>;
+
+    it('stays on its own platform and leaves Shorts out until asked', async () => {
+      const where = await youtube('');
+      expect(where).toContainEqual({ platform: 'YOUTUBE' });
+      expect(where).toContainEqual({ type: { not: 'SHORT' } });
+    });
+
+    it('shows only Shorts when they are asked for', async () => {
+      const where = await youtube('type=SHORT');
+      expect(where).toContainEqual({ type: 'SHORT' });
+      expect(where).not.toContainEqual({ type: { not: 'SHORT' } });
+    });
+
+    it('ignores a Twitch type', async () => {
+      expect(await youtube('type=HIGHLIGHT')).not.toContainEqual({ type: 'HIGHLIGHT' });
+    });
+
+    it('never hides anything from Twitch for being a Short', async () => {
+      expect(await conditions('')).not.toContainEqual({ type: { not: 'SHORT' } });
+    });
   });
 });

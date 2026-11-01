@@ -22,8 +22,14 @@ async function getHandler(
   });
   if (!channel) return NextResponse.json({ error: 'Channel not found' }, { status: 404 });
 
+  // The channel page hides a tab with nothing in it: WAN Show only has Live.
+  const counts = await prisma.creatorVideo.groupBy({ by: ['type'], where: { creatorId: id }, _count: true });
   const { subscriptions, ...rest } = channel;
-  return NextResponse.json({ ...rest, subscription: subscriptions[0] ?? null });
+  return NextResponse.json({
+    ...rest,
+    subscription: subscriptions[0] ?? null,
+    videoCounts: Object.fromEntries(counts.map((row) => [row.type, row._count])),
+  });
 }
 
 export const GET = withApiLogging(getHandler, 'api/youtube/channels/[id]');

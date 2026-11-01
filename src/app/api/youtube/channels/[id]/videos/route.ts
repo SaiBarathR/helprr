@@ -1,0 +1,32 @@
+import { NextRequest, NextResponse } from 'next/server';
+import type { CreatorVideoType } from '@prisma/client';
+import { requireUserCapability } from '@/lib/auth';
+import { withApiLogging } from '@/lib/api-logger';
+import { serializeVideoRow, VIDEO_SELECT } from '@/lib/archive/serialize-video';
+import { prisma } from '@/lib/db';
+import { parsePageParams } from '@/lib/pagination';
+import { YOUTUBE } from '@/lib/youtube/platform';
+
+const TYPES = new Set<string>(['UPLOAD', 'ARCHIVE', 'SHORT']);
+
+async function getHandler(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+): Promise<NextResponse> {
+  const auth = await requireUserCapability('youtube.view');
+  if (!auth.ok) return auth.response;
+
+  const { id } = await params;
+  const { searchParams } = request.nextUrl;
+  const { page, pageSize, skip, take } = parsePageParams(searchParams, { defaultSize: 30, maxSize: 100 });
+  const type = searchParams.get('type');
+  const where = { creatorId: id, platform: YOUTUBE, ...(type && TYPES.has(type) ? { type: type as CreatorVideoType } : {}) };
+
+  const [videos, total] = await Promise.all([
+    prisma.creatorVideo.findMany({ where, orderBy: { sourceCreatedAt: 'desc' }, skip, take, select: VIDEO_SELECT }),
+    prisma.creatorVideo.count({ where }),
+  ]);
+  return NextResponse.json({ videos: videos.map((video) => serializeVideoRow(video)), total, page, pageSize });
+}
+
+export const GET = withApiLogging(getHandler, 'api/youtube/channels/[id]/videos');

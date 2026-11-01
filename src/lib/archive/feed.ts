@@ -1,25 +1,28 @@
-import type { Prisma, CreatorVideoType } from '@prisma/client';
+import type { ArchivePlatform, Prisma, CreatorVideoType } from '@prisma/client';
 import { prisma } from '@/lib/db';
-import { TWITCH } from '@/lib/twitch/platform';
 
 const DAY_MS = 86_400_000;
 const EXPIRING_WINDOW_MS = 7 * DAY_MS;
 const SINCE_DAYS: Record<string, number> = { week: 7, month: 30, quarter: 90 };
-const TYPES = new Set<string>(['ARCHIVE', 'HIGHLIGHT', 'UPLOAD']);
+const TYPES: Record<ArchivePlatform, Set<string>> = {
+  TWITCH: new Set(['ARCHIVE', 'HIGHLIGHT', 'UPLOAD']),
+  YOUTUBE: new Set(['UPLOAD', 'ARCHIVE', 'SHORT']),
+};
 const LENGTHS: Record<string, Prisma.IntFilter> = {
   short: { lt: 3600 },
   medium: { gte: 3600, lt: 3 * 3600 },
   long: { gte: 3 * 3600 },
 };
 
-/** Subscribed streamers, minus what the user hid. New = not seen, and first announced after the subscription began. */
+/** Subscribed creators, minus what the user hid. New = not seen, and first announced after the subscription began. */
 export async function buildFeedWhere(
+  platform: ArchivePlatform,
   userId: string,
   params: URLSearchParams,
   now = new Date(),
 ): Promise<Prisma.CreatorVideoWhereInput> {
   const subscriptions = await prisma.creatorSubscription.findMany({
-    where: { userId, creator: { platform: TWITCH } },
+    where: { userId, creator: { platform } },
     select: { creatorId: true, createdAt: true, creator: { select: { baselinedAt: true } } },
   });
 
@@ -28,7 +31,7 @@ export async function buildFeedWhere(
   const length = params.get('length');
   const q = params.get('q')?.trim().slice(0, 100);
   const and: Prisma.CreatorVideoWhereInput[] = [
-    { platform: TWITCH },
+    { platform },
     { creatorId: { in: subscriptions.map((subscription) => subscription.creatorId) } },
     { userStates: { none: { userId, hidden: true } } },
     { availability: { not: 'UNAVAILABLE' } },
@@ -45,7 +48,9 @@ export async function buildFeedWhere(
       })),
     });
   }
-  if (type && TYPES.has(type)) and.push({ type: type as CreatorVideoType });
+  if (type && TYPES[platform].has(type)) and.push({ type: type as CreatorVideoType });
+  // Shorts would crowd out everything else, so they only appear when asked for.
+  else if (platform === 'YOUTUBE') and.push({ type: { not: 'SHORT' } });
   if (streamer) and.push({ creatorId: streamer });
   if (length && LENGTHS[length]) and.push({ durationSeconds: LENGTHS[length] });
   const category = params.get('category');

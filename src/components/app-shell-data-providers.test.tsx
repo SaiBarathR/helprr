@@ -33,6 +33,7 @@ const me: MePayload = {
   jellyfinLinked: true,
   jellyfinConfigured: true,
   twitchConfigured: false,
+      youtubeConfigured: false,
   jellyfinConnected: true,
   customHeadersEnabled: false,
 };

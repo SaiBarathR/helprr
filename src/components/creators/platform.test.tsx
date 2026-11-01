@@ -21,6 +21,24 @@ describe('useCreatorPlatform', () => {
     expect(result.current.creatorsPath).toBe('/twitch/streamers');
   });
 
+  it('builds YouTube links from a handle, or from an id when there is no handle', () => {
+    const { result } = renderHook(useCreatorPlatform, {
+      wrapper: ({ children }) => <CreatorPlatformProvider platform="youtube">{children}</CreatorPlatformProvider>,
+    });
+    expect(result.current.externalVideoUrl('z7rgGfE8sug')).toBe('https://www.youtube.com/watch?v=z7rgGfE8sug');
+    expect(result.current.externalCreatorUrl({ login: 'wanshowyt' })).toBe('https://www.youtube.com/@wanshowyt');
+    expect(result.current.externalCreatorUrl({ login: 'UCVlfe3MRSCZSeIWByrWHhkg' })).toBe('https://www.youtube.com/channel/UCVlfe3MRSCZSeIWByrWHhkg');
+    expect(result.current.followBody('wanshowyt')).toEqual({ input: '@wanshowyt' });
+  });
+
+  it('offers no downloads on YouTube until they exist', () => {
+    const { result } = renderHook(useCreatorPlatform, {
+      wrapper: ({ children }) => <CreatorPlatformProvider platform="youtube">{children}</CreatorPlatformProvider>,
+    });
+    expect(result.current.downloads).toBe(false);
+    expect(result.current.autoDownload).toBe(false);
+  });
+
   it('fails outside a section rather than showing another platform', () => {
     const quiet = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     expect(() => render(<Name />)).toThrow('CreatorPlatformProvider');

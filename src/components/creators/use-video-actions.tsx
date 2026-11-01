@@ -34,7 +34,7 @@ export function useVideoActions() {
   const queryClient = useQueryClient();
   const router = useRouter();
   const me = useMe();
-  const canDownload = hasCapability(me, platform.canDownload);
+  const canDownload = platform.downloads && hasCapability(me, platform.canDownload);
   const canManage = hasCapability(me, platform.canManage);
   const [sheetVideo, setSheetVideo] = useState<CreatorVideoItem | null>(null);
   const refresh = () => void queryClient.invalidateQueries({ queryKey: [platform.id] });
