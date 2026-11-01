@@ -33,17 +33,30 @@ const post = (body: unknown) => POST(new NextRequest('http://test/api/youtube/jo
 describe('queuing a YouTube download', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.heartbeat.mockResolvedValue({ platforms: ['TWITCH', 'YOUTUBE'] });
+    mocks.heartbeat.mockResolvedValue({ platforms: ['TWITCH', 'YOUTUBE'], lastSeenAt: new Date() });
     mocks.video.mockResolvedValue({ id: 'v' });
     mocks.enqueue.mockResolvedValue({ jobId: 'j', created: true });
   });
 
   it('refuses, and says why, until the worker has a YouTube folder', async () => {
-    mocks.heartbeat.mockResolvedValue({ platforms: ['TWITCH'] });
+    mocks.heartbeat.mockResolvedValue({ platforms: ['TWITCH'], lastSeenAt: new Date() });
     const response = await post({ videoId: 'v' });
     expect(response.status).toBe(409);
     expect((await response.json()).error).toContain('Settings → YouTube');
     expect(mocks.enqueue).not.toHaveBeenCalled();
+  });
+
+  it('does not trust the last word of a worker that has gone', async () => {
+    mocks.heartbeat.mockResolvedValue({ platforms: ['TWITCH', 'YOUTUBE'], lastSeenAt: new Date(Date.now() - 10 * 60_000) });
+    const response = await post({ videoId: 'v' });
+    expect(response.status).toBe(409);
+    expect((await response.json()).error).toContain('offline');
+    expect(mocks.enqueue).not.toHaveBeenCalled();
+  });
+
+  it('rides out a worker restart', async () => {
+    mocks.heartbeat.mockResolvedValue({ platforms: ['TWITCH', 'YOUTUBE'], lastSeenAt: new Date(Date.now() - 60_000) });
+    expect((await post({ videoId: 'v' })).status).toBe(201);
   });
 
   it('asks only among YouTube videos, so a Twitch id cannot be queued here', async () => {

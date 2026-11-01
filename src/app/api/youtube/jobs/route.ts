@@ -12,6 +12,7 @@ import { youtubeErrorResponse } from '@/lib/youtube/route-errors';
 
 const MAX_LISTED = 200;
 const DONE_LISTED = 20;
+const WORKER_STALE_MS = 5 * 60_000;
 
 async function getHandler(): Promise<NextResponse> {
   const auth = await requireUserCapability('youtube.view');
@@ -53,9 +54,16 @@ function readOptions(value: unknown): DownloadOptions {
   };
 }
 
-async function workerHasYoutube(): Promise<boolean> {
-  const heartbeat = await prisma.archiveWorkerHeartbeat.findFirst({ orderBy: { lastSeenAt: 'desc' }, select: { platforms: true } });
-  return Array.isArray(heartbeat?.platforms) && heartbeat.platforms.includes('YOUTUBE');
+/** Why nothing could run this now, in words a person can act on. */
+async function whyNotReady(): Promise<string | null> {
+  const heartbeat = await prisma.archiveWorkerHeartbeat.findFirst({
+    orderBy: { lastSeenAt: 'desc' },
+    select: { platforms: true, lastSeenAt: true },
+  });
+  // Long enough to ride out a restart, so an update does not refuse a download.
+  if (!heartbeat || Date.now() - heartbeat.lastSeenAt.getTime() > WORKER_STALE_MS) return 'The worker is offline. Start it, then try again.';
+  const ready = Array.isArray(heartbeat.platforms) && heartbeat.platforms.includes('YOUTUBE');
+  return ready ? null : 'The worker has no YouTube folder yet. Finish setup in Settings → YouTube.';
 }
 
 // A pasted link may name a video Helprr has not seen. Only its id is ever used.
@@ -78,10 +86,9 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   if (body.clientRequestId !== undefined && !isClientRequestId(body.clientRequestId)) {
     return NextResponse.json({ error: 'Invalid clientRequestId' }, { status: 400 });
   }
-  // Queued now, it would wait forever with nothing to tell the person why.
-  if (!(await workerHasYoutube())) {
-    return NextResponse.json({ error: 'The worker has no YouTube folder yet. Finish setup in Settings → YouTube.' }, { status: 409 });
-  }
+  // Queued now, it could wait forever with nothing to tell the person why.
+  const notReady = await whyNotReady();
+  if (notReady) return NextResponse.json({ error: notReady }, { status: 409 });
 
   let videoId: string | null = null;
   const pasted = typeof body.url === 'string';

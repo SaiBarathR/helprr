@@ -50,6 +50,7 @@ let downloadsRunning = 0;
 let appliedPins = '';
 let toolsBusy = false;
 let youtubeRepairAt = 0;
+let youtubeMounted = false;
 
 function log(level: 'info' | 'warn' | 'error', message: string, extra: Record<string, unknown> = {}) {
   console[level](JSON.stringify({ at: new Date().toISOString(), level, message, ...extra }));
@@ -252,7 +253,11 @@ async function heartbeat(): Promise<void> {
     roots: Object.fromEntries(await Promise.all(ALL_PLATFORMS.map(async (platform) => {
       const { root } = libraryFor(platform);
       const space = await isMountedFolder(root) ? await statfs(root).catch(() => null) : null;
-      return [platform, { available: space !== null, freeBytes: space ? Number(BigInt(space.bavail) * BigInt(space.bsize)) : null }];
+      return [platform, {
+        available: space !== null,
+        freeBytes: space ? Number(BigInt(space.bavail) * BigInt(space.bsize)) : null,
+        totalBytes: space ? Number(BigInt(space.blocks) * BigInt(space.bsize)) : null,
+      }];
     }))),
     lastSeenAt: new Date(),
   };
@@ -363,7 +368,18 @@ async function prepareSmokeVideos(): Promise<void> {
   if (!youtube && PLATFORMS.includes('YOUTUBE')) log('info', 'No YouTube video to smoke test with');
 }
 
-const toolsInUse = () => (PLATFORMS.includes('YOUTUBE') ? [...TWITCH_TOOLS, ...YOUTUBE_TOOLS] : TWITCH_TOOLS);
+// Apart from Twitch's, because a bad YouTube release or a slow GitHub must never stop Twitch
+// from starting. Without its tool YouTube waits, and the next tool check tries again.
+async function ensureYoutubeTool(pins: Partial<Record<ToolName, string>>): Promise<void> {
+  if (!youtubeMounted) return;
+  try {
+    await ensureTools(pins, YOUTUBE_TOOLS);
+    if (!PLATFORMS.includes('YOUTUBE')) PLATFORMS.push('YOUTUBE');
+  } catch (error) {
+    PLATFORMS.splice(0, PLATFORMS.length, ...PLATFORMS.filter((platform) => platform !== 'YOUTUBE'));
+    log('error', 'YouTube is off: its yt-dlp could not be installed', { error: String(error).slice(0, 300) });
+  }
+}
 
 // Straight away, not at the next daily check: YouTube breaks often and is often fixed the same day.
 async function repairYoutubeTools(pins: Partial<Record<ToolName, string>>): Promise<void> {
@@ -385,6 +401,10 @@ async function repairYoutubeTools(pins: Partial<Record<ToolName, string>>): Prom
 async function checkTools(): Promise<void> {
   const settings = await prisma.archiveSettings.findUnique({ where: { id: 'singleton' } });
   if (!settings) return;
+  if (youtubeMounted && !PLATFORMS.includes('YOUTUBE') && downloadsRunning === 0) {
+    await prepareSmokeVideos();
+    await ensureYoutubeTool((settings.pinnedTools ?? {}) as Partial<Record<ToolName, string>>);
+  }
   await repairYoutubeTools((settings.pinnedTools ?? {}) as Partial<Record<ToolName, string>>)
     .catch((error) => log('warn', 'YouTube tool repair failed', { error: String(error).slice(0, 300) }));
 
@@ -395,9 +415,12 @@ async function checkTools(): Promise<void> {
     toolsBusy = true;
     try {
       await prepareSmokeVideos();
-      await ensureTools((settings.pinnedTools ?? {}) as Partial<Record<ToolName, string>>, toolsInUse());
+      const pins = (settings.pinnedTools ?? {}) as Partial<Record<ToolName, string>>;
+      await ensureTools(pins, TWITCH_TOOLS);
       // A pin can be the cure for a pause, so the tools get another go.
-      await Promise.all([pauseStores.TWITCH.clear(), pauseStores.YOUTUBE.clear()]);
+      await pauseStores.TWITCH.clear();
+      await ensureYoutubeTool(pins);
+      await pauseStores.YOUTUBE.clear();
     } finally {
       toolsBusy = false;
     }
@@ -417,10 +440,10 @@ async function checkTools(): Promise<void> {
     // Last and on its own, so a failed YouTube smoke test cannot stop a Twitch repair.
     if (requested && PLATFORMS.includes('YOUTUBE')) {
       youtubeRepairAt = 0;
-      if (await updateTools(pins, YOUTUBE_TOOLS).catch((error) => {
+      // As with Twitch, a pause ends when the owner says to try again, new tool or not.
+      await updateTools(pins, YOUTUBE_TOOLS).then(() => pauseStores.YOUTUBE.clear()).catch((error) => {
         log('warn', 'YouTube tool update failed', { error: String(error).slice(0, 300) });
-        return false;
-      })) await pauseStores.YOUTUBE.clear();
+      });
     }
   } catch (error) {
     // The installed tools still stand, so a failed update must not keep holding downloads.
@@ -461,9 +484,10 @@ const pauseStores: Record<ArchivePlatform, PauseStore> = {
   },
   YOUTUBE: {
     clear: () => prisma.youtubeSettings.updateMany({ data: { toolsPausedAt: null, extractorFailures: 0 } }),
-    countFailure: async () => (await prisma.youtubeSettings.update({
+    countFailure: async () => (await prisma.youtubeSettings.upsert({
       where: { id: 'singleton' },
-      data: { extractorFailures: { increment: 1 } },
+      update: { extractorFailures: { increment: 1 } },
+      create: { id: 'singleton', extractorFailures: 1 },
     })).extractorFailures,
     reset: () => prisma.youtubeSettings.updateMany({ where: { extractorFailures: { gt: 0 } }, data: { extractorFailures: 0 } }),
     pause: () => prisma.youtubeSettings.updateMany({ where: { toolsPausedAt: null }, data: { toolsPausedAt: new Date() } }),
@@ -498,14 +522,17 @@ async function main(): Promise<void> {
   process.on('SIGINT', () => void shutdown('SIGINT'));
 
   await waitForMigrations();
-  if (await isMountedFolder(libraryFor('YOUTUBE').root)) PLATFORMS.push('YOUTUBE');
-  await assertSeparateRoots(PLATFORMS.map((platform) => libraryFor(platform).root));
-  for (const platform of PLATFORMS) await probeLibrary(platform);
+  youtubeMounted = await isMountedFolder(libraryFor('YOUTUBE').root);
+  const roots = youtubeMounted ? ['TWITCH', 'YOUTUBE'] as const : ['TWITCH'] as const;
+  await assertSeparateRoots(roots.map((platform) => libraryFor(platform).root));
+  for (const platform of roots) await probeLibrary(platform);
   await cleanStaging();
 
   const settings = await prisma.archiveSettings.findUnique({ where: { id: 'singleton' } });
   appliedPins = JSON.stringify(settings?.pinnedTools ?? {});
-  await ensureTools((settings?.pinnedTools ?? {}) as Record<string, string>, toolsInUse());
+  const pins = (settings?.pinnedTools ?? {}) as Partial<Record<ToolName, string>>;
+  await ensureTools(pins, TWITCH_TOOLS);
+  await ensureYoutubeTool(pins);
 
   gpuAvailable = await probeGpu();
   log('info', 'GPU probe finished', { gpuAvailable });

@@ -19,6 +19,7 @@ async function getHandler(): Promise<NextResponse> {
     prisma.youtubeSettings.findUnique({ where: { id: 'singleton' }, select: { toolsPausedAt: true } }),
   ]);
   if (!heartbeat) return NextResponse.json({ online: false, seen: false });
+  const disk = (heartbeat.roots as { YOUTUBE?: { freeBytes?: number | null; totalBytes?: number | null } } | null)?.YOUTUBE;
   return NextResponse.json({
     online: Date.now() - heartbeat.lastSeenAt.getTime() < ONLINE_WITHIN_MS,
     seen: true,
@@ -33,8 +34,9 @@ async function getHandler(): Promise<NextResponse> {
     reencodeWindow: settings?.reencodeEnabled
       ? { open: inReencodeWindow(new Date(), settings.reencodeWindowStart, settings.reencodeWindowEnd), start: settings.reencodeWindowStart }
       : null,
-    diskFreeBytes: heartbeat.diskFreeBytes === null ? null : Number(heartbeat.diskFreeBytes),
-    diskTotalBytes: heartbeat.diskTotalBytes === null ? null : Number(heartbeat.diskTotalBytes),
+    // The YouTube folder can be on another disk from the Twitch one.
+    diskFreeBytes: disk?.freeBytes ?? null,
+    diskTotalBytes: disk?.totalBytes ?? null,
     lanes: heartbeat.lanes,
   });
 }
