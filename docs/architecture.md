@@ -733,6 +733,48 @@ deployed, and smoke-tested through the manual promotion workflow. See
 - Strict TypeScript service-worker code requires Web Worker-specific typing;
   `src/app/sw.ts` is intentionally outside the main DOM-oriented type path.
 
+## Twitch and YouTube archivers
+
+Both run on one shared engine. `src/lib/archive/` and `src/worker/archive/` hold what they
+share, each row carries an `ArchivePlatform`, and a `PlatformAdapter` supplies what differs.
+The section below describes the engine through Twitch. YouTube differs as follows.
+
+- **Tools:** YouTube has its own yt-dlp (`ytdlpYoutube`), so updating it cannot move Twitch's
+  tested version. `extractorFailures` and `toolsPausedAt` are per platform, and `claimJob`
+  takes the platforms it may claim. A failed YouTube install or smoke test turns YouTube off
+  and never stops Twitch. `main.ts` cannot be unit tested, because it starts on import.
+- **Library:** Compose mounts `/dev/null` at `/media/youtube` when no folder is chosen, so
+  nothing is created and nothing can be written. YouTube joins `PLATFORMS` only after
+  `isMountedFolder` confirms a mounted directory.
+- **API quota:** counted per Pacific day with conditional updates, so requests running
+  together cannot lose a count or pass a limit. `search.list` has its own daily bucket.
+- **Discovery:** one unit per channel for its uploads list, then `videos.list` only for new
+  ids and streams that have not ended. A playlist spends one unit on its item count, and
+  reads its items only when that moved. Titles come free with the list.
+- **`FORMATS` jobs:** a small lane with one reserved slot, so a person is never kept waiting
+  by long downloads. Only heights, codecs and sizes are stored, never a format link, and the
+  job row is removed when it finishes.
+- **Spare account:** stored `enc:v1`, write-only through its routes, and written to a mode 600
+  file for one job only when a video needs it. With no working account an age-restricted job
+  stops before YouTube is asked, because repeated failed logins could harm the account.
+
+### Automatic cleanup
+
+Twitch's cleanup only runs when a person presses Run. YouTube's `sweepWatchedVideos` runs
+hourly, so its safety rules are strict. Change them only with care.
+
+- Only the watched rule runs automatically, so an unwatched video can never clear itself.
+- It reads as the stored viewer on the stored connection, and checks the connection's
+  fingerprint, because editing a connection keeps its id. There is no fallback to another user.
+- Any failed read stops the sweep. It does not use `loadPlayedDates`, which returns nothing on
+  failure. Sessions are read last, and a video playing now is skipped.
+- 20 files a sweep and 50 a day. Going over pauses cleanup and sends a push.
+- The worker checks keep forever, cleanup on and the rule generation under the file lock, and
+  claims the file there with `REMOVING_STAGE`. Removal stays outside the lock, so a slow disk
+  cannot outlast it. `setKeepForever` takes the same lock, and refuses once a file is claimed.
+- Accepted: the worker has no Jellyfin access, so playback starting in the moments after the
+  session check is not seen. The video is already watched and can be downloaded again.
+
 ## Twitch archiver
 
 Optional, and off until a Twitch connection is saved. Admin-only by default: the

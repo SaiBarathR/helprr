@@ -5,6 +5,35 @@ All notable changes to Helprr are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **YouTube**: follow channels and playlists by `@handle`, link or name, see new videos
+  in a feed, and save them to a Jellyfin library. Off until you set it up, with a
+  checklist in **Settings → YouTube**.
+- **Downloads that show what a video really has**: exact sizes, quality and codec
+  choices, SponsorBlock chapters or removal, clean English captions, and a spare
+  account for age-restricted videos.
+- **Rules with presets**: Manual, Everything, Long videos and Live replays only, or
+  your own rules using the Twitch editor. New videos download after a 3-hour wait.
+- **Watch and clear**: videos can delete themselves a few days after you watch them.
+  Off by default, it only ever uses the watched rule, and keep forever always wins.
+- **Push alerts and an unseen count** for new videos.
+
+### Changed
+
+- The worker now serves Twitch and YouTube, starting on either Compose profile.
+  `COMPOSE_PROFILES=twitch` keeps working as before.
+- Each platform has its own tool pause, and YouTube has its own yt-dlp, so YouTube
+  breaking leaves Twitch downloading.
+- Keep forever now waits for any delete in progress, on both platforms.
+
+### Fixed
+
+- The first download into a brand-new Jellyfin library now appears there. Jellyfin
+  skips a folder that was empty when its library was made, so it needs a full scan.
+
 ## [1.11.0] - 2026-10-31
 
 ### Added
