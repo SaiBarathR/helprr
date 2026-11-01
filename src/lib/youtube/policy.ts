@@ -7,7 +7,13 @@ import { prisma } from '@/lib/db';
 import { getYoutubeSettings } from '@/lib/youtube/settings';
 
 // Three hours: higher qualities and SponsorBlock segments both take time to appear.
-export const YOUTUBE_BUILT_IN_POLICY: TwitchPolicy = { ...BUILT_IN_POLICY, ...DEFAULT_YOUTUBE_OPTIONS, delayMinutes: 180 };
+// Watch and clear: three days after watching, once automatic cleanup is turned on.
+export const YOUTUBE_BUILT_IN_POLICY: TwitchPolicy = {
+  ...BUILT_IN_POLICY,
+  ...DEFAULT_YOUTUBE_OPTIONS,
+  delayMinutes: 180,
+  deleteAfterWatchedDays: 3,
+};
 
 export const POLICY_VIDEO = {
   id: true, title: true, type: true, category: true, creatorId: true, durationSeconds: true, sourceCreatedAt: true, liveEndedAt: true,

@@ -294,6 +294,7 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
     'GET /api/dashboard-layouts/active',
   ],
   'cap:youtube.manage': [
+    'GET /api/youtube/cleanup',
     'GET /api/youtube/cookies',
     'GET /api/youtube/policies',
     'GET /api/youtube/settings',
@@ -517,7 +518,7 @@ describe('GET API route capability matrix', () => {
   const assignments = policyAssignments();
 
   it('explicitly assigns every GET handler exactly once', () => {
-    expect(handlers.size).toBe(256);
+    expect(handlers.size).toBe(257);
     expect([...assignments.keys()].sort()).toEqual([...handlers.keys()].sort());
   });
 

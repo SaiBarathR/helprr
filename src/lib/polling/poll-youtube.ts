@@ -7,6 +7,7 @@ import { enqueueDownload } from '@/lib/archive/jobs';
 import { YOUTUBE } from '@/lib/youtube/platform';
 import { decideForYoutubeVideo, optionsFromPolicy, POLICY_VIDEO, settleTime } from '@/lib/youtube/policy';
 import { reconcileYoutubeJobs } from '@/lib/youtube/reconcile';
+import { sweepWatchedVideos } from '@/lib/youtube/cleanup';
 import { syncPlaylist } from '@/lib/youtube/playlists';
 import { getYoutubeSettings } from '@/lib/youtube/settings';
 import { syncChannelVideos } from '@/lib/youtube/sync';
@@ -24,6 +25,11 @@ export async function pollYoutube(now = new Date()): Promise<void> {
   await reconcileYoutubeJobs(now).catch((error) => {
     noteJobFailure(error);
     logger.warn('YouTube reconcile failed', { error: errorMessage(error) }, { scope: 'polling' });
+  });
+
+  await sweepWatchedVideos(now).catch((error) => {
+    noteJobFailure(error);
+    logger.warn('YouTube cleanup failed', { error: errorMessage(error) }, { scope: 'polling' });
   });
 
   try {

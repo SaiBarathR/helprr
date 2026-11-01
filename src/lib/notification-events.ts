@@ -14,7 +14,7 @@ export const EVENT_TYPES = [
   'activityDigest',
   'twitchVodNew', 'twitchVodExpiring', 'twitchDownloadComplete',
   'twitchDownloadFailed', 'twitchWorkerIssue',
-  'youtubeVideoNew', 'youtubeDownloadComplete', 'youtubeDownloadFailed', 'youtubeCookiesExpired',
+  'youtubeVideoNew', 'youtubeDownloadComplete', 'youtubeDownloadFailed', 'youtubeCookiesExpired', 'youtubeCleanupPaused',
 ] as const;
 
 export type NotificationEventType = (typeof EVENT_TYPES)[number];
@@ -229,6 +229,12 @@ export const EVENT_META: Record<NotificationEventType, NotificationEventMeta> = 
     description: 'When the account for age-restricted videos stops working',
     iconName: 'AlertTriangle', colorClass: 'bg-amber-500/10 text-amber-400',
   },
+  youtubeCleanupPaused: {
+    type: 'youtubeCleanupPaused', group: 'youtube',
+    label: 'YouTube Cleanup Paused',
+    description: 'Automatic cleanup hit its limit, or could not read what was watched',
+    iconName: 'AlertTriangle', colorClass: 'bg-amber-500/10 text-amber-400',
+  },
 };
 
 export const EVENT_GROUPS: { id: NotificationEventGroupId; title: string; types: NotificationEventType[] }[] = [
@@ -291,7 +297,7 @@ export const EVENT_GROUPS: { id: NotificationEventGroupId; title: string; types:
   {
     id: 'youtube',
     title: 'YouTube',
-    types: ['youtubeVideoNew', 'youtubeDownloadComplete', 'youtubeDownloadFailed', 'youtubeCookiesExpired'],
+    types: ['youtubeVideoNew', 'youtubeDownloadComplete', 'youtubeDownloadFailed', 'youtubeCookiesExpired', 'youtubeCleanupPaused'],
   },
 ];
 

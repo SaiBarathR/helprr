@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
+  setKeepForever: vi.fn(),
   auth: { ok: true, user: { id: 'u', username: 'sai' } } as { ok: boolean; user?: object; response?: Response },
   heartbeat: vi.fn(),
   settings: vi.fn(),
@@ -26,6 +27,7 @@ vi.mock('@/lib/archive/files', () => ({
   fileTimeline: vi.fn(),
   serializeFile: vi.fn(),
   typicalSavingPercent: vi.fn(),
+  setKeepForever: mocks.setKeepForever,
 }));
 vi.mock('@/lib/archive/retention', () => ({ enqueueFileDelete: vi.fn(), fileCleanupStatus: vi.fn(), loadPlayedDates: vi.fn() }));
 
@@ -96,17 +98,17 @@ describe('the original', () => {
 describe('PATCH keep forever', () => {
   it('needs a real answer', async () => {
     expect((await PATCH(request({ keepForever: 'yes' }), context)).status).toBe(400);
-    expect(mocks.update).not.toHaveBeenCalled();
+    expect(mocks.setKeepForever).not.toHaveBeenCalled();
   });
 
   it('reports a file that is gone', async () => {
-    mocks.update.mockResolvedValue({ count: 0 });
+    mocks.setKeepForever.mockResolvedValue(false);
     expect((await PATCH(request({ keepForever: true }), context)).status).toBe(404);
   });
 
-  it('saves it', async () => {
-    mocks.update.mockResolvedValue({ count: 1 });
+  it('saves it, under the delete lock, for this platform only', async () => {
+    mocks.setKeepForever.mockResolvedValue(true);
     expect((await PATCH(request({ keepForever: true }), context)).status).toBe(200);
-    expect(mocks.update).toHaveBeenCalledWith({ where: { id: 'f', platform: 'TWITCH' }, data: { keepForever: true } });
+    expect(mocks.setKeepForever).toHaveBeenCalledWith('f', true, 'TWITCH');
   });
 });

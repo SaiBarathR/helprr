@@ -156,7 +156,9 @@ async function publish(
   await prisma.archiveJob.update({ where: { id: job.id }, data: { needsJellyfinRefresh: true } });
   await prisma.creatorVideo.update({ where: { id: video.id }, data: layout.videoUpdate });
 
-  if (options.reencode && ctx.reencodeEnabled && probed.videoCodec === 'h264') {
+  // Twitch sends H.264 only. YouTube can arrive as AV1 or VP9, and nobody asks for this by accident.
+  const convertible = probed.videoCodec === 'h264' || (ctx.video.platform === 'YOUTUBE' && probed.videoCodec !== 'hevc');
+  if (options.reencode && ctx.reencodeEnabled && convertible) {
     const { id: mediaFileId } = await prisma.archiveMediaFile.findUniqueOrThrow({
       where: { platform_relativePath: { platform: video.platform, relativePath } },
       select: { id: true },

@@ -25,7 +25,7 @@ export async function runDeleteFiles(prisma: PrismaClient, job: ArchiveJob, asse
   });
   if (!file) return;
   // Keep forever stops the rules. A person confirming this one file overrides it.
-  const origin = job.options as { retention?: boolean; reason?: string } | null;
+  const origin = job.options as { retention?: boolean; reason?: string; automatic?: boolean; generation?: number } | null;
   const fromRetention = origin?.retention === true;
   if (fromRetention && file.keepForever) throw new Error('validation failed: this file is marked keep forever');
   if (fromRetention && Date.now() - job.createdAt.getTime() > RETENTION_DELETE_VALID_MS) {
@@ -48,37 +48,57 @@ export async function runDeleteFiles(prisma: PrismaClient, job: ArchiveJob, asse
   const sidecars = Array.isArray(file.sidecars) ? file.sidecars.filter((entry): entry is string => typeof entry === 'string') : [];
   const paths = [file.relativePath, ...sidecars, ...(file.originalRelativePath ? [file.originalRelativePath] : [])];
   const { root } = libraryFor(file.platform);
-  await assertLease();
-  const startedAt = new Date();
-  let errorMessage: string | null = null;
-  try {
-    const freedBytes = await sizeOnDisk(paths, root);
-    for (const relative of paths) await removeInsideLibrary(relative, root);
-    await prisma.archiveMediaFile.delete({ where: { id: file.id } });
-    await recordDeletion(prisma, {
+  const removeFiles = async () => {
+    await assertLease();
+    const startedAt = new Date();
+    let errorMessage: string | null = null;
+    try {
+      const freedBytes = await sizeOnDisk(paths, root);
+      for (const relative of paths) await removeInsideLibrary(relative, root);
+      await prisma.archiveMediaFile.delete({ where: { id: file.id } });
+      await recordDeletion(prisma, {
+        platform: file.platform,
+        videoId: file.videoId,
+        title: file.video.title,
+        streamer: file.video.creator.displayName,
+        kind: 'FILE',
+        cause: fromRetention ? 'RULE' : 'PERSON',
+        detail: origin?.reason,
+        freedBytes,
+        deletedBy: job.requestedByUsername,
+      });
+    } catch (error) {
+      errorMessage = error instanceof Error ? error.message : String(error);
+    }
+    await writeDeleteAudit(prisma, {
       platform: file.platform,
-      videoId: file.videoId,
       title: file.video.title,
-      streamer: file.video.creator.displayName,
-      kind: 'FILE',
-      cause: fromRetention ? 'RULE' : 'PERSON',
-      detail: origin?.reason,
-      freedBytes,
-      deletedBy: job.requestedByUsername,
+      fileCount: paths.length,
+      details: { kind: 'twitch-file', twitchVideoId: file.video.externalId, paths },
+      startedAt,
+      errorMessage,
+      actor: job.requestedByUsername ? { id: job.requestedByUserId, username: job.requestedByUsername } : undefined,
     });
-  } catch (error) {
-    errorMessage = error instanceof Error ? error.message : String(error);
+    if (errorMessage) throw new Error(errorMessage);
+  };
+  // Nobody is watching this one, so it checks everything again at the last moment, under the
+  // lock a tap on keep forever also takes. Either that tap wins or this delete does.
+  if (origin?.automatic) {
+    await withFileLock(prisma, file.id, async (tx) => {
+      const current = await tx.archiveMediaFile.findUnique({ where: { id: file.id }, select: { keepForever: true } });
+      const settings = await tx.youtubeSettings.findUnique({
+        where: { id: 'singleton' },
+        select: { autoCleanupEnabled: true, cleanupGeneration: true },
+      });
+      if (!current || current.keepForever) throw new Error('validation failed: this file is marked keep forever');
+      if (!settings?.autoCleanupEnabled || settings.cleanupGeneration !== origin.generation) {
+        throw new Error('validation failed: the cleanup rules changed after this was queued');
+      }
+      await removeFiles();
+    });
+  } else {
+    await removeFiles();
   }
-  await writeDeleteAudit(prisma, {
-    platform: file.platform,
-    title: file.video.title,
-    fileCount: paths.length,
-    details: { kind: 'twitch-file', twitchVideoId: file.video.externalId, paths },
-    startedAt,
-    errorMessage,
-    actor: job.requestedByUsername ? { id: job.requestedByUserId, username: job.requestedByUsername } : undefined,
-  });
-  if (errorMessage) throw new Error(errorMessage);
   await prisma.archiveJob.update({ where: { id: job.id }, data: { needsJellyfinRefresh: true } });
 }
 

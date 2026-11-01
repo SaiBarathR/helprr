@@ -1,7 +1,7 @@
 'use client';
 
 import { Tv } from 'lucide-react';
-import { differenceInCalendarDays, formatDistanceToNowStrict } from 'date-fns';
+import { differenceInCalendarDays, format, formatDistanceToNowStrict } from 'date-fns';
 import Link from '@/components/ui/app-link';
 import { FadeInImage } from '@/components/media/fade-in-image';
 import { Badge } from '@/components/ui/badge';
@@ -42,6 +42,7 @@ export function FileBadges({ file, cleanupDue }: { file: ArchiveFile; cleanupDue
       {file.originalKept && <Badge variant="secondary" className={cn(BADGE, WARN)}>{keptFor(file.originalDeleteAfter)}</Badge>}
       {file.keepForever && <Badge variant="secondary" className={cn(BADGE, ACTIVE)}>Keep forever</Badge>}
       {cleanupDue && <Badge variant="secondary" className={cn(BADGE, WARN)}>Cleanup due</Badge>}
+      {file.clearsAt && !file.keepForever && <Badge variant="secondary" className={cn(BADGE, WARN)}>Clears {format(new Date(file.clearsAt), 'd MMM')}</Badge>}
       {file.watchedAt && <Badge variant="secondary" className={BADGE}>Watched</Badge>}
       {!file.jellyfinItemId && <Badge variant="secondary" className={cn(BADGE, WARN)}>Not in Jellyfin</Badge>}
     </>
