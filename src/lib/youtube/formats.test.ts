@@ -1,85 +1,156 @@
 import { describe, expect, it } from 'vitest';
-import { formatSelector, pickOffered, selectedBytes, summarizeFormats } from './formats';
+import hdr from './fixtures/hdr-60fps.json';
+import ltt from './fixtures/ltt-16-9.json';
+import mkbhd from './fixtures/mkbhd-2-1.json';
+import short from './fixtures/short-portrait.json';
+import wan from './fixtures/wan-1080.json';
+import { codecLabelOf, pickDownload, qualityLabel, qualityOf, resolutionLabel, summarizeFormats } from './formats';
 
-describe('formatSelector', () => {
-  it('defaults to the common option, falling back rather than failing', () => {
-    expect(formatSelector('1080', 'compatible')).toBe('bv*[height<=1080][vcodec^=avc1]+ba[ext=m4a]/bv*[height<=1080]+ba/b');
-  });
+// Trimmed from what yt-dlp really returned for these videos, so each shape stays covered.
+const MKBHD = summarizeFormats(mkbhd);
+const LTT = summarizeFormats(ltt);
+const SHORT = summarizeFormats(short);
+const WAN = summarizeFormats(wan);
+const HDR = summarizeFormats(hdr);
 
+const classes = (formats: typeof MKBHD) => [...new Set(formats.offered.map(({ quality }) => quality))];
+
+describe('qualityOf', () => {
   it.each([
-    ['2160', 'av1', 'bv*[height<=2160][vcodec^=av01]+ba/bv*[height<=2160]+ba/b'],
-    ['1440', 'vp9', 'bv*[height<=1440][vcodec^=vp9]+ba/bv*[height<=1440]+ba/b'],
-    ['720', 'best', 'bv*[height<=720]+ba/bv*[height<=720]+ba/b'],
-    ['best', 'best', 'bv*+ba/bv*+ba/b'],
-  ])('builds %s %s', (quality, codec, selector) => {
-    expect(formatSelector(quality, codec)).toBe(selector);
-  });
-
-  it('never lets anything but a fixed choice into the selector', () => {
-    const selector = formatSelector('1080]/worst[', 'x"; rm -rf /');
-    expect(selector).toBe('bv*+ba/bv*+ba/b');
+    [3840, 2160, 2160], [3840, 1920, 2160], [4096, 2160, 2160], [2560, 1280, 1440], [1920, 960, 1080], [1920, 800, 1080],
+    [1280, 640, 720], [854, 428, 480], [1080, 1920, 1080], [720, 1280, 720], [1440, 1080, 1080], [640, 480, 480], [7680, 4320, 4320],
+  ])('calls %d×%d %dp', (width, height, quality) => {
+    expect(qualityOf(width, height)).toBe(quality);
   });
 });
 
-describe('selectedBytes', () => {
-  it('adds the video and the audio, using an estimate where that is all there is', () => {
-    expect(selectedBytes([{ filesize: 900 }, { filesize_approx: 100 }])).toBe(1000);
-  });
-
-  it('gives no figure when any part has none, rather than a low one', () => {
-    expect(selectedBytes([{ filesize: 900 }, { filesize: null }])).toBeNull();
-    expect(selectedBytes(undefined)).toBeNull();
+describe('qualityLabel', () => {
+  it.each([[4320, '8K'], [2160, '4K'], [1440, '1440p'], [720, '720p']])('names %d', (quality, label) => {
+    expect(qualityLabel(quality)).toBe(label);
   });
 });
 
-// Shaped like what yt-dlp gave for a real Trash Taste episode.
-const RAW = [
-  { vcodec: 'none', acodec: 'none', ext: 'mhtml', height: 90 },
-  { vcodec: 'none', acodec: 'mp4a.40.2', ext: 'm4a', filesize: 23_000_000 },
-  { vcodec: 'none', acodec: 'mp4a.40.2', ext: 'm4a', filesize: 60_000_000 },
-  { vcodec: 'none', acodec: 'opus', ext: 'webm', filesize: 90_000_000 },
-  { vcodec: 'avc1.640028', acodec: 'none', ext: 'mp4', height: 1080, filesize: 1_993_000_000 },
-  { vcodec: 'avc1.640028', acodec: 'mp4a', ext: 'mp4', height: 1080 },
-  { vcodec: 'vp09.00.50.08', acodec: 'none', ext: 'mp4', height: 2160 },
-  { vcodec: 'vp9', acodec: 'none', ext: 'webm', height: 2160, filesize: 8_095_000_000 },
-  { vcodec: 'av01.0.13M.08', acodec: 'none', ext: 'mp4', height: 2160, filesize: 9_293_000_000 },
-  { vcodec: 'av01.0.08M.08', acodec: 'none', ext: 'mp4', height: 1080, filesize_approx: 1_603_000_000 },
-];
+describe('summarizeFormats, on real videos', () => {
+  it('finds 4K on a 2:1 video, where the picture is only 1920 high', () => {
+    expect(classes(MKBHD).slice(0, 5)).toEqual([2160, 1440, 1080, 720, 480]);
+    expect(MKBHD.offered[0]).toMatchObject({ id: '313', quality: 2160, width: 3840, height: 1920, codec: 'vp9' });
+  });
 
-describe('summarizeFormats', () => {
-  const summary = summarizeFormats(RAW);
+  it('stops where the video stops', () => {
+    expect(classes(WAN)[0]).toBe(1080);
+  });
 
-  it('gives one entry per height and codec, tallest first, keeping the copy with a size', () => {
-    expect(summary.offered).toEqual([
-      { height: 2160, codec: 'vp9', bytes: 8_095_000_000 },
-      { height: 2160, codec: 'av1', bytes: 9_293_000_000 },
-      { height: 1080, codec: 'h264', bytes: 1_993_000_000 },
-      { height: 1080, codec: 'av1', bytes: 1_603_000_000 },
+  it('keeps the full picture of a Short, which is taller than wide', () => {
+    expect(classes(SHORT)[0]).toBe(1080);
+    expect(SHORT.offered[0]).toMatchObject({ width: 1080, height: 1920, fps: 60 });
+  });
+
+  it('prefers the copy with a size over the HLS one, and never the one with sound in it', () => {
+    expect(WAN.offered.filter(({ quality }) => quality === 1080).map(({ id }) => id)).toEqual(['137', '248', '399']);
+    expect(LTT.offered.find(({ quality, codec }) => quality === 360 && codec === 'h264')).toMatchObject({ id: '134', muxed: false });
+  });
+
+  it('uses a known size over a smoother copy with none', () => {
+    expect(SHORT.offered.find(({ quality, codec }) => quality === 720 && codec === 'h264')).toMatchObject({ id: '298', fps: 60 });
+  });
+
+  it('takes the original voice, never a dub or the DRC track', () => {
+    expect(MKBHD.audio).toEqual([
+      { id: '140-5', codec: 'aac', bytes: expect.any(Number) },
+      { id: '251-5', codec: 'opus', bytes: expect.any(Number) },
     ]);
+    expect(LTT.audio.map(({ id }) => id)).toEqual(['140', '251']);
   });
 
-  it('measures the m4a audio that the default selector picks', () => {
-    expect(summary.audioBytes).toBe(60_000_000);
+  it('keeps HDR apart from the normal copy', () => {
+    const at4k = HDR.offered.filter(({ quality }) => quality === 2160);
+    expect(at4k.map(codecLabelOf)).toEqual(['VP9', 'VP9 HDR', 'AV1 HDR']);
   });
 
-  it('keeps no link', () => {
-    const withLink = summarizeFormats([{ ...RAW[4], url: 'https://rr1.googlevideo.com/signed' } as never]);
-    expect(JSON.stringify(withLink)).not.toContain('googlevideo');
+  it('stores no link', () => {
+    const summary = summarizeFormats([{ ...mkbhd.find(({ format_id }) => format_id === '313')!, url: 'https://rr1.googlevideo.com/x?sig=1' } as never]);
+    expect(JSON.stringify(summary)).not.toContain('googlevideo');
   });
 
-  it('copes with a video offering nothing', () => {
-    expect(summarizeFormats([])).toEqual({ offered: [], audioBytes: null });
+  it('handles a video with no formats', () => {
+    expect(summarizeFormats([])).toEqual({ offered: [], audio: [] });
+    expect(pickDownload(summarizeFormats([]), '1080', 'compatible')).toBeNull();
+  });
+});
+
+describe('pickDownload', () => {
+  it('means 4K when asked for 4K, even when H.264 stops at 1080p', () => {
+    expect(pickDownload(MKBHD, '2160', 'compatible')).toMatchObject({ selector: '313+251-5', video: { quality: 2160, codec: 'vp9' } });
+    expect(pickDownload(LTT, '1440', 'compatible')?.video).toMatchObject({ quality: 1440, codec: 'vp9' });
+    expect(pickDownload(MKBHD, 'best', 'compatible')?.video.quality).toBe(2160);
   });
 
-  it.each([
-    ['1080', 'compatible', 1080, 'h264'],
-    ['2160', 'av1', 2160, 'av1'],
-    ['2160', 'compatible', 1080, 'h264'],
-    ['best', 'compatible', 1080, 'h264'],
-    ['best', 'best', 2160, 'vp9'],
-    ['720', 'compatible', undefined, undefined],
-  ] as const)('says %s %s lands on what it really will', (quality, codec, height, picked) => {
-    expect(pickOffered(summary, quality, codec)?.height).toBe(height);
-    expect(pickOffered(summary, quality, codec)?.codec).toBe(picked);
+  it('uses H.264 and AAC wherever they exist', () => {
+    expect(pickDownload(MKBHD, '1080', 'compatible')).toMatchObject({ selector: '137+140-5', video: { width: 1920, height: 960 } });
+    expect(pickDownload(MKBHD, '720', 'compatible')?.selector).toBe('136+140-5');
+  });
+
+  it('gives the codec asked for at that quality', () => {
+    expect(pickDownload(MKBHD, '2160', 'av1')?.selector).toBe('401+251-5');
+    expect(pickDownload(LTT, '1080', 'vp9')?.selector).toBe('248+251');
+  });
+
+  it('adds the sound to the size', () => {
+    const picked = pickDownload(LTT, '1080', 'compatible');
+    expect(picked?.bytes).toBe(470_580_710 + 27_422_886);
+  });
+
+  it('falls to the nearest quality when the video stops lower', () => {
+    expect(pickDownload(WAN, '2160', 'compatible')?.video).toMatchObject({ quality: 1080, codec: 'h264' });
+    expect(pickDownload(WAN, 'best', 'av1')?.video).toMatchObject({ quality: 1080, codec: 'av1' });
+  });
+
+  it('gives a Short its full height at 1080p', () => {
+    expect(pickDownload(SHORT, '1080', 'compatible')).toMatchObject({ selector: '299+140', video: { width: 1080, height: 1920 } });
+  });
+
+  it('stays SDR unless HDR is asked for, or the codec is left to the best', () => {
+    expect(pickDownload(HDR, '2160', 'vp9')?.video).toMatchObject({ id: '315', hdr: false });
+    expect(pickDownload(HDR, '2160', 'vp9', true)?.video).toMatchObject({ id: '337', hdr: true });
+    expect(pickDownload(HDR, '2160', 'best')?.video).toMatchObject({ id: '701', hdr: true });
+    expect(pickDownload(HDR, '2160', 'compatible')?.video).toMatchObject({ id: '315', hdr: false });
+  });
+
+  it('takes the only AV1 copy when it is the HDR one', () => {
+    expect(pickDownload(HDR, '2160', 'av1')?.video).toMatchObject({ id: '701', hdr: true });
+  });
+
+  it('adds no sound to a copy that has its own', () => {
+    const video = { format_id: '18', vcodec: 'avc1.42001E', acodec: 'mp4a.40.2', width: 640, height: 360, filesize: 100 };
+    const formats = summarizeFormats([video, { format_id: '140', vcodec: 'none', acodec: 'mp4a.40.2', filesize: 50 }]);
+    expect(pickDownload(formats, '1080', 'compatible')).toMatchObject({ selector: '18', audio: null, bytes: 100 });
+  });
+
+  it('still gets sound when YouTube offers only a kind Helprr cannot name', () => {
+    const video = { format_id: '137', vcodec: 'avc1.640028', acodec: 'none', width: 1920, height: 1080, filesize: 100 };
+    const formats = summarizeFormats([video, { format_id: '328', vcodec: 'none', acodec: 'ec-3', filesize: 50 }]);
+    expect(pickDownload(formats, '1080', 'compatible')).toMatchObject({ selector: '137+ba', bytes: null });
+  });
+
+  it('fetches the copy the sheet showed, even when a better one has appeared since', () => {
+    expect(pickDownload(MKBHD, 'best', 'compatible', false, '401')?.selector).toBe('401+251-5');
+  });
+
+  it('decides afresh when that copy is gone, and never trusts an id that is not on the list', () => {
+    expect(pickDownload(MKBHD, '1080', 'compatible', false, 'gone')?.selector).toBe('137+140-5');
+    expect(pickDownload(MKBHD, '1080', 'compatible', false, 'bestvideo[ext=mp4]')?.selector).toBe('137+140-5');
+  });
+
+  it('admits when the size is not known', () => {
+    const video = { format_id: '270', vcodec: 'avc1.640028', acodec: 'none', width: 1920, height: 1080 };
+    const formats = summarizeFormats([video, { format_id: '140', vcodec: 'none', acodec: 'mp4a.40.2', filesize: 50 }]);
+    expect(pickDownload(formats, '1080', 'compatible')?.bytes).toBeNull();
+  });
+});
+
+describe('resolutionLabel', () => {
+  it('shows the name and the real pixels', () => {
+    expect(resolutionLabel(pickDownload(MKBHD, '2160', 'vp9')!.video)).toBe('4K (3840×1920)');
+    expect(resolutionLabel(pickDownload(SHORT, '1080', 'vp9')!.video)).toBe('1080p (1080×1920), 60 fps');
   });
 });

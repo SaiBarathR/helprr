@@ -4,10 +4,10 @@ import path from 'node:path';
 import type { CreatorVideoType, Prisma } from '@prisma/client';
 import { archiveEpisode, localDate, safeFilenameTitle } from '@/lib/archive/naming';
 import { seasonNfo } from '@/lib/archive/nfo';
-import { parseProgressLine, YT_DLP_PROGRESS_TEMPLATE } from '@/lib/archive/progress';
+import { parseProgressLine, trackStreams, YT_DLP_PROGRESS_TEMPLATE } from '@/lib/archive/progress';
 import { decryptTwitchToken } from '@/lib/twitch/token-cipher';
 import { vttToSrt } from '@/lib/youtube/captions';
-import { formatSelector, selectedBytes, summarizeFormats } from '@/lib/youtube/formats';
+import { codecLabelOf, pickDownload, qualityLabel, summarizeFormats } from '@/lib/youtube/formats';
 import { isVideoId } from '@/lib/youtube/ids';
 import { youtubeEpisodeNfo, youtubeShowNfo } from '@/lib/youtube/nfo';
 import type { DownloadContext, EpisodeLayout, PlatformAdapter, PreparedDownload, Sidecar } from '../adapter';
@@ -20,6 +20,8 @@ import { toolPath } from '../tools';
 const DB_PROGRESS_INTERVAL_MS = 5_000;
 // When YouTube gives no sizes: its heaviest common case, so the disk guard errs on the safe side.
 const FALLBACK_BYTES_PER_SECOND = 1_500_000;
+// Only for a video with no format Helprr can read: yt-dlp then chooses.
+const ANY_FORMAT = 'bv*+ba/b';
 const SHORTS_SEASON = 1;
 const ARTWORK_HOSTS = new Set(['i.ytimg.com', 'yt3.ggpht.com', 'yt3.googleusercontent.com']);
 const NFO_TYPES: Partial<Record<CreatorVideoType, 'video' | 'live' | 'short'>> = { UPLOAD: 'video', ARCHIVE: 'live', SHORT: 'short' };
@@ -31,13 +33,18 @@ const BASE_ARGS = ['--ignore-config', '--no-playlist', '--js-runtimes', 'node'];
 interface YoutubeInfo {
   live_status?: string;
   duration?: number;
-  requested_formats?: Array<{ filesize?: number | null; filesize_approx?: number | null }>;
+  formats?: Parameters<typeof summarizeFormats>[0];
   chapters?: Array<{ start_time: number; title?: string }> | null;
 }
 
 interface YoutubePrepared extends PreparedDownload<YoutubeInfo> {
   selector: string;
+  /** The real size, where `expectedBytes` may be the disk guard's safe guess. */
+  knownBytes: number | null;
 }
+
+// Long silent steps at the end, named so that 100% does not look stuck.
+const FINISHING_STAGES: Array<[prefix: string, stage: string]> = [['[Merger]', 'merging'], ['[ModifyChapters]', 'removing sponsors']];
 
 const videoUrl = (id: string) => `https://www.youtube.com/watch?v=${id}`;
 
@@ -81,9 +88,22 @@ async function saveCaptions(ctx: DownloadContext, staging: string): Promise<Side
   }
 }
 
-async function downloadVideo(ctx: DownloadContext, staging: string, selector: string): Promise<string> {
+async function downloadVideo(ctx: DownloadContext, staging: string, { selector, knownBytes }: YoutubePrepared): Promise<string> {
   const { prisma, job, video, signal, options } = ctx;
+  const track = trackStreams(knownBytes);
+  const reached = new Set<string>();
   let lastWrite = 0;
+  let latest: ReturnType<typeof track> | null = null;
+  const save = (overall: ReturnType<typeof track>) => prisma.archiveJob.update({
+    where: { id: job.id },
+    data: {
+      progress: overall.progress,
+      bytesDone: BigInt(Math.round(overall.doneBytes)),
+      bytesTotal: overall.totalBytes === null ? null : BigInt(Math.round(overall.totalBytes)),
+      speedBps: overall.speed,
+      etaSeconds: overall.etaSeconds === null ? null : Math.round(overall.etaSeconds),
+    },
+  }).catch(() => undefined);
   await run(toolPath('ytdlpYoutube'), [
     // A video can land on one file that already has its audio, with nothing to merge,
     // so the remux is what guarantees an MKV.
@@ -95,21 +115,25 @@ async function downloadVideo(ctx: DownloadContext, staging: string, selector: st
   ], {
     signal,
     onLine: (line) => {
-      const progress = parseProgressLine(line);
-      if (!progress || Date.now() - lastWrite < DB_PROGRESS_INTERVAL_MS) return;
+      const parsed = parseProgressLine(line);
+      if (!parsed) {
+        const stage = FINISHING_STAGES.find(([prefix]) => line.startsWith(prefix))?.[1];
+        if (stage && !reached.has(stage)) {
+          reached.add(stage);
+          if (latest) void save(latest);
+          void ctx.setStage(stage).catch(() => undefined);
+        }
+        return;
+      }
+      // Every line, even unwritten ones: this is how a new stream is noticed.
+      latest = track(parsed);
+      if (Date.now() - lastWrite < DB_PROGRESS_INTERVAL_MS) return;
       lastWrite = Date.now();
-      void prisma.archiveJob.update({
-        where: { id: job.id },
-        data: {
-          progress: progress.totalBytes ? Math.min(1, (progress.downloadedBytes ?? 0) / progress.totalBytes) : null,
-          bytesDone: progress.downloadedBytes === null ? null : BigInt(Math.round(progress.downloadedBytes)),
-          bytesTotal: progress.totalBytes === null ? null : BigInt(Math.round(progress.totalBytes)),
-          speedBps: progress.speed,
-          etaSeconds: progress.etaSeconds === null ? null : Math.round(progress.etaSeconds),
-        },
-      }).catch(() => undefined);
+      void save(latest);
     },
   });
+  // The last line can fall between writes.
+  if (latest) await save({ ...(latest as ReturnType<typeof track>), speed: null, etaSeconds: null });
   const file = (await readdir(staging)).find((name) => name === 'video.mkv');
   if (!file) throw new Error('validation failed: the download left no video');
   return path.join(staging, file);
@@ -170,31 +194,41 @@ export const youtubeAdapter: PlatformAdapter<YoutubeInfo> = {
   },
 
   async prepare(ctx) {
-    const { video, options, signal } = ctx;
+    const { prisma, job, video, options, signal } = ctx;
     if (video.availability === 'RECORDING') throw new WaitForRecordingError();
     // Stops here, before YouTube is asked: repeated failed logins could harm the account.
     if (video.ageRestricted && !ctx.cookiesFile) throw new Error('Sign in to confirm your age: no working account');
-    const selector = formatSelector(options.quality, options.codec ?? 'compatible');
-    const info = JSON.parse(await run(toolPath('ytdlpYoutube'), [...youtubeVideoArgs(video.externalId), ...cookieArgs(ctx), '-f', selector], {
+    const info = JSON.parse(await run(toolPath('ytdlpYoutube'), [...youtubeVideoArgs(video.externalId), ...cookieArgs(ctx)], {
       signal,
       captureStdout: true,
     })) as YoutubeInfo;
     if (info.live_status === 'is_live' || info.live_status === 'is_upcoming') throw new WaitForRecordingError();
 
+    // The decision the sheet showed, on this moment's list. Written down so the Queue can say what is coming.
+    const picked = pickDownload(summarizeFormats(info.formats ?? []), options.quality, options.codec ?? 'compatible', options.hdr, options.formatId);
+    await prisma.archiveJob.update({
+      where: { id: job.id },
+      data: {
+        chosenFormat: picked && `${qualityLabel(picked.video.quality)} ${codecLabelOf(picked.video)}`,
+        bytesTotal: picked?.bytes === null || !picked ? null : BigInt(picked.bytes),
+      },
+    });
+
     const duration = info.duration ?? video.durationSeconds;
     const prepared: YoutubePrepared = {
       info,
-      selector,
+      selector: picked?.selector ?? ANY_FORMAT,
+      knownBytes: picked?.bytes ?? null,
       duration,
       audioOnly: false,
-      expectedBytes: selectedBytes(info.requested_formats) ?? duration * FALLBACK_BYTES_PER_SECOND,
+      expectedBytes: picked?.bytes ?? duration * FALLBACK_BYTES_PER_SECOND,
       mayBeShorter: options.sponsorblock === 'remove',
     };
     return prepared;
   },
 
   async download(ctx, staging, prepared) {
-    return downloadVideo(ctx, staging, (prepared as YoutubePrepared).selector);
+    return downloadVideo(ctx, staging, prepared as YoutubePrepared);
   },
 
   async extras(ctx, staging) {

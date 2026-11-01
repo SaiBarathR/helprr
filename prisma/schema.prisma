@@ -1057,6 +1057,7 @@ model ArchiveJob {
   leaseUntil           DateTime?
   cancelRequested      Boolean           @default(false)
   stage                String?
+  chosenFormat         String? // what the worker found and is fetching, e.g. 4K VP9
   progress             Float?
   speedBps             Float?
   etaSeconds           Int?
@@ -1139,6 +1140,7 @@ model ArchiveMediaFile {
   sizeBytes            BigInt
   durationSeconds      Int
   videoCodec           String
+  width                Int?
   height               Int?
   reencodedAt          DateTime?
   originalRelativePath String?

@@ -5,7 +5,8 @@ import { ACTIVE_JOB_STATES } from '@/lib/archive/jobs';
 import { prisma } from '@/lib/db';
 import { YOUTUBE } from '@/lib/youtube/platform';
 
-const FRESH_MS = 6 * 3_600_000;
+// Short, because YouTube can finish a new video's 4K hours after its 1080p.
+const FRESH_MS = 30 * 60_000;
 
 type RouteContext = { params: Promise<{ id: string }> };
 

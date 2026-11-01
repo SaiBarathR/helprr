@@ -31,7 +31,7 @@ const YOUTUBE_SWITCHES = [
   ['autoDownload', 'Download automatically'],
   ['captions', 'Save captions'],
   ['chapters', 'Keep chapters'],
-  ['reencode', 'Convert to H.265 at night'],
+  ['reencode', 'Re-encode to H.265 at night'],
 ] as const;
 const YOUTUBE_QUALITIES: Record<string, string> = {
   best: 'Best',
@@ -106,7 +106,7 @@ export function PolicyEditor({ value, inherited, footer, onChange, variant = 'tw
 
   return (
     <>
-      <GroupedSection title="Downloads" footer={footer}>
+      <GroupedSection title="Downloads" footer={isYoutube ? `${footer}. Most compatible uses H.264 up to 1080p, and VP9 above that.` : footer}>
         {switches.slice(0, 1).map(switchRow)}
         {choiceRow('quality', 'Quality', qualities)}
         {isYoutube && choiceRow('codec', 'Codec', CODECS)}

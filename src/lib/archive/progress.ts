@@ -11,6 +11,31 @@ export const YT_DLP_PROGRESS_TEMPLATE =
 
 const number = (value: unknown) => (typeof value === 'number' && Number.isFinite(value) ? value : null);
 
+/**
+ * yt-dlp counts the picture, then starts from zero for the sound. This makes one figure of
+ * the two that only moves forward. Null `expectedBytes` means YouTube gave no size.
+ */
+export function trackStreams(expectedBytes: number | null) {
+  let finished = 0;
+  let current = 0;
+  let furthest = 0;
+  return ({ downloadedBytes, totalBytes, speed, etaSeconds }: DownloadProgress) => {
+    const done = downloadedBytes ?? current;
+    if (done < current) finished += current;
+    current = done;
+    const doneBytes = finished + current;
+    const total = expectedBytes ?? (totalBytes === null ? null : finished + totalBytes);
+    furthest = Math.max(furthest, total ? Math.min(1, doneBytes / total) : 0);
+    return {
+      progress: furthest,
+      doneBytes,
+      totalBytes: total,
+      speed,
+      etaSeconds: speed && total && total > doneBytes ? (total - doneBytes) / speed : etaSeconds,
+    };
+  };
+}
+
 /** One line of yt-dlp output: progress JSON, or null for anything else it prints. */
 export function parseProgressLine(line: string): DownloadProgress | null {
   const trimmed = line.trim();

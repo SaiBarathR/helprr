@@ -19,7 +19,7 @@ import { ToolbarButton, toolbarButtonClass, CreatorToolbar } from '@/components/
 import { CreatorVideoCard } from '@/components/creators/video-card';
 import { CreatorVideoList, CreatorVideoSkeleton } from '@/components/creators/video-list';
 import { useCreatorPlatform } from '@/components/creators/platform';
-import type { CreatorVideoPage } from '@/components/creators/types';
+import { whileDownloading, type CreatorVideoPage } from '@/components/creators/types';
 import { useFeedView } from '@/components/creators/use-feed-view';
 import { useVideoActions } from '@/components/creators/use-video-actions';
 import { useVideoSelection } from '@/components/creators/use-video-selection';
@@ -121,6 +121,8 @@ export function CreatorFeedPage() {
     queryFn: ({ pageParam, signal }) => getJson<CreatorVideoPage>(`${platform.api}/feed?${filters}&page=${pageParam}`, signal),
     initialPageParam: 1,
     getNextPageParam: (last: CreatorVideoPage) => (last.page * last.pageSize < last.total ? last.page + 1 : undefined),
+    refetchInterval: whileDownloading,
+    refetchIntervalInBackground: false,
   });
   const videos = useMemo(() => feed.data?.pages.flatMap((page) => page.videos) ?? [], [feed.data]);
   const total = feed.data?.pages[0]?.total ?? 0;

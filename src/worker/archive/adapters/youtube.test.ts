@@ -11,6 +11,7 @@ vi.mock('node:fs/promises', async (original) => ({
 
 import { stat } from 'node:fs/promises';
 import { encryptTwitchToken } from '@/lib/twitch/token-cipher';
+import mkbhd from '@/lib/youtube/fixtures/mkbhd-2-1.json';
 import type { DownloadContext } from '../adapter';
 import { youtubeAdapter, youtubeVideoArgs } from './youtube';
 
@@ -39,16 +40,38 @@ const context = (extra: Record<string, unknown> = {}) => ({
 describe('the YouTube adapter', () => {
   beforeEach(() => {
     run.mockReset();
-    run.mockResolvedValue(JSON.stringify({ duration: 3600, requested_formats: [{ filesize: 900 }, { filesize_approx: 100 }] }));
+    run.mockResolvedValue(JSON.stringify({ duration: 3600, formats: mkbhd }));
   });
 
-  it('reads a video with nothing from the host, on Node, with the selector the choice built', async () => {
-    const prepared = await youtubeAdapter.prepare(context());
+  it('reads a video with nothing from the host, on Node, and picks the same copies the sheet shows', async () => {
+    const prepared = await youtubeAdapter.prepare(context()) as unknown as { selector: string; knownBytes: number };
     const [tool, args] = run.mock.calls[0];
     expect(tool).toBe('/tools/ytdlpYoutube');
     expect(args).toEqual(expect.arrayContaining(['--ignore-config', '--no-playlist', '--js-runtimes', 'node']));
-    expect(args[args.indexOf('-f') + 1]).toBe('bv*[height<=1080][vcodec^=avc1]+ba[ext=m4a]/bv*[height<=1080]+ba/b');
-    expect(prepared.expectedBytes).toBe(1000);
+    expect(prepared.selector).toBe('137+140-5');
+    expect(prepared.knownBytes).toBe(108_749_558 + 10_580_405);
+  });
+
+  it('writes down what it found, so the Queue can say what is really coming', async () => {
+    const ctx = context({ options: { ...options, quality: '2160' } });
+    await youtubeAdapter.prepare(ctx);
+    expect(ctx.prisma.archiveJob.update).toHaveBeenCalledWith({
+      where: { id: 'j' },
+      data: { chosenFormat: '4K VP9', bytesTotal: BigInt(814_272_592 + 9_975_352) },
+    });
+  });
+
+  it('fetches the copy the person saw, checked against its own list', async () => {
+    const seen = await youtubeAdapter.prepare(context({ options: { ...options, formatId: '401' } }));
+    expect((seen as unknown as { selector: string }).selector).toBe('401+251-5');
+    const forged = await youtubeAdapter.prepare(context({ options: { ...options, formatId: 'b[ext=mp4]' } }));
+    expect((forged as unknown as { selector: string }).selector).toBe('137+140-5');
+  });
+
+  it('lets yt-dlp choose only when no format can be read', async () => {
+    run.mockResolvedValue(JSON.stringify({ duration: 100, formats: [] }));
+    const prepared = await youtubeAdapter.prepare(context()) as unknown as { selector: string; knownBytes: number | null };
+    expect(prepared).toMatchObject({ selector: 'bv*+ba/b', knownBytes: null });
   });
 
   it('never uses the tool Twitch relies on, and the smoke test reads the same way', () => {
@@ -57,7 +80,8 @@ describe('the YouTube adapter', () => {
   });
 
   it('plans for a generous size when YouTube gives none, so the disk guard stays safe', async () => {
-    run.mockResolvedValue(JSON.stringify({ duration: 100, requested_formats: [{ filesize: null }] }));
+    const noSizes = mkbhd.map((format) => ({ ...format, filesize: null, filesize_approx: null }));
+    run.mockResolvedValue(JSON.stringify({ duration: 100, formats: noSizes }));
     expect((await youtubeAdapter.prepare(context())).expectedBytes).toBe(150_000_000);
   });
 
@@ -81,6 +105,22 @@ describe('the YouTube adapter', () => {
     expect(args).toEqual(expect.arrayContaining(['--merge-output-format', 'mkv', '--remux-video', 'mkv', '--embed-chapters', '--sponsorblock-mark', 'all', '-f', 'SEL']));
     expect(args).not.toContain('--cookies');
     expect(args).toContain('/staging/x/video.%(ext)s');
+  });
+
+  it('reports one forward-moving figure across the picture and the sound, then names the merge', async () => {
+    vi.spyOn(Date, 'now').mockReturnValueOnce(10_000).mockReturnValueOnce(10_000).mockReturnValue(20_000);
+    run.mockImplementation(async (_tool, _args, { onLine }) => {
+      onLine('{"s":"downloading","d":900,"t":900,"v":10,"e":0}');
+      onLine('{"s":"downloading","d":50,"t":100,"v":10,"e":5}');
+      onLine('[Merger] Merging formats into "video.mkv"');
+      return '';
+    });
+    const ctx = context({ setStage: vi.fn(async () => undefined) });
+    await youtubeAdapter.download(ctx, '/staging/x', { info: {}, selector: 'S', knownBytes: 1000, duration: 1, expectedBytes: 1000, audioOnly: false } as never);
+    const updates = vi.mocked(ctx.prisma.archiveJob.update).mock.calls.map(([update]) => update.data);
+    expect(updates.at(-1)).toMatchObject({ progress: 0.95, bytesDone: BigInt(950), bytesTotal: BigInt(1000), speedBps: null, etaSeconds: null });
+    expect(ctx.setStage).toHaveBeenCalledWith('merging');
+    vi.restoreAllMocks();
   });
 
   it('leaves the marks out when SponsorBlock is off', async () => {

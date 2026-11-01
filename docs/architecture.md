@@ -752,8 +752,14 @@ The section below describes the engine through Twitch. YouTube differs as follow
   ids and streams that have not ended. A playlist spends one unit on its item count, and
   reads its items only when that moved. Titles come free with the list.
 - **`FORMATS` jobs:** a small lane with one reserved slot, so a person is never kept waiting
-  by long downloads. Only heights, codecs and sizes are stored, never a format link, and the
-  job row is removed when it finishes.
+  by long downloads. Only format ids, picture sizes, codecs and byte sizes are stored, never a
+  format link, and the job row is removed when it finishes.
+- **One format decision:** `pickDownload` in `src/lib/youtube/formats.ts` is used by the sheet
+  on the stored list and by the worker on a fresh list, which then passes exact format ids to
+  yt-dlp. So what the sheet shows is what is fetched, and no yt-dlp selector can disagree.
+  Quality outranks codec. A format's quality is YouTube's own label, or the smallest standard
+  frame it fits, never its height alone: 2:1 and portrait videos would be misnamed. The worker
+  records its choice in `chosenFormat`, for the Queue and the video page.
 - **Spare account:** stored `enc:v1`, write-only through its routes, and written to a mode 600
   file for one job only when a video needs it. With no working account an age-restricted job
   stops before YouTube is asked, because repeated failed logins could harm the account.

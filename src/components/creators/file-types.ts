@@ -19,6 +19,7 @@ export interface ArchiveFile {
   sizeBytes: number;
   durationSeconds: number;
   videoCodec: string;
+  width: number | null;
   height: number | null;
   downloadedAt: string;
   keepForever: boolean;

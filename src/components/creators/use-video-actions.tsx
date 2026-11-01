@@ -190,7 +190,7 @@ export function useVideoActions() {
           open={deleting.length > 0}
           onOpenChange={(open) => { if (!open && !removeFiles.isPending) setDeleting([]); }}
           title={deleting.length === 1 ? 'Delete this file?' : `Delete ${deleting.length} files?`}
-          description="They are removed from the disk and from Jellyfin, with their chat and subtitles. This cannot be undone."
+          description={`They are removed from the disk and from Jellyfin, with their ${platform.id === 'twitch' ? 'chat and subtitles' : 'captions'}. This cannot be undone.`}
           confirmLabel="Delete"
           destructive
           busy={removeFiles.isPending}

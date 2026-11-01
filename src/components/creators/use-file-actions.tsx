@@ -31,7 +31,7 @@ async function send(url: string, method: string, body?: unknown) {
 export const CONFIRMATIONS = {
   delete: {
     title: 'Delete this video?',
-    description: () => 'It is removed from the disk and from Jellyfin, with its chat, subtitles and any kept original. This cannot be undone.',
+    description: () => 'It is removed from the disk and from Jellyfin, with its subtitles, any chat and any kept original. This cannot be undone.',
     confirmLabel: 'Delete',
   },
   'delete-original': {

@@ -14,6 +14,7 @@ import { youtubeErrorResponse } from '@/lib/youtube/route-errors';
 const MAX_LISTED = 200;
 const DONE_LISTED = 20;
 const WORKER_STALE_MS = 5 * 60_000;
+const MAX_FORMAT_ID = 32;
 
 async function getHandler(): Promise<NextResponse> {
   const auth = await requireUserCapability('youtube.view');
@@ -48,6 +49,8 @@ function readOptions(value: unknown, defaults: DownloadOptions): DownloadOptions
     ...defaults,
     quality: oneOf(QUALITIES, body.quality, defaults.quality),
     codec: oneOf(CODECS, body.codec, defaults.codec!),
+    hdr: body.hdr === true,
+    ...(typeof body.formatId === 'string' ? { formatId: body.formatId.slice(0, MAX_FORMAT_ID) } : {}),
     sponsorblock: oneOf(SPONSORBLOCK_MODES, body.sponsorblock, defaults.sponsorblock!),
     keepForever: typeof body.keepForever === 'boolean' ? body.keepForever : defaults.keepForever,
     reencode: typeof body.reencode === 'boolean' ? body.reencode : defaults.reencode,

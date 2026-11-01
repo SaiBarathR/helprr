@@ -42,6 +42,7 @@ interface Job {
   requestedByUserId: string | null;
   state: string;
   stage: string | null;
+  chosenFormat?: string | null;
   progress: number | null;
   speedBps: number | null;
   etaSeconds: number | null;
@@ -124,7 +125,7 @@ function JobRow({ job, onCancel, onRetry }: { job: Job; onCancel?: () => void; o
   const running = job.state === 'RUNNING';
   const subtitle = job.state === 'FAILED'
     ? errorLabels(platform.name)[job.errorClass ?? ''] ?? 'Failed'
-    : video?.creator.displayName;
+    : [video?.creator.displayName, job.chosenFormat].filter(Boolean).join(' · ');
   const speed = [
     job.speedBps ? `${(job.speedBps / 1024 ** 2).toFixed(1)} MB/s` : null,
     job.bytesTotal ? gb(job.bytesTotal) : null,

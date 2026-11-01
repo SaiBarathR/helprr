@@ -13,12 +13,13 @@ import { HeroImage } from '@/components/media/hero-image';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ErrorState } from '@/components/ui/error-state';
+import { Progress } from '@/components/ui/progress';
 import { QuickContextMenu } from '@/components/ui/quick-context-menu';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ActionsMenu } from '@/components/creators/actions-menu';
 import { ClampedText } from '@/components/creators/clamped-text';
 import { CreatorAvatar } from '@/components/creators/creator-avatar';
-import { formatDuration, type CreatorVideoItem } from '@/components/creators/types';
+import { formatDuration, stageLabel, type CreatorVideoItem } from '@/components/creators/types';
 import { useVideoActions } from '@/components/creators/use-video-actions';
 import { toCachedImageSrc } from '@/lib/image';
 import { cn } from '@/lib/utils';
@@ -59,7 +60,7 @@ export default function YoutubeVideoPage({ params }: { params: Promise<{ id: str
       if (!res.ok) throw new Error('Failed to load video');
       return (await res.json()) as VideoDetail;
     },
-    refetchInterval: (state) => (state.state.data?.activeJob ? 5_000 : false),
+    refetchInterval: (state) => (state.state.data?.activeJob ? 3_000 : false),
     refetchIntervalInBackground: false,
   });
   const video = query.data;
@@ -97,6 +98,7 @@ export default function YoutubeVideoPage({ params }: { params: Promise<{ id: str
 
   const thumbnail = toCachedImageSrc(video.thumbnailUrl, undefined, { width: 1280 });
   const status = statusOf(video);
+  const progress = Math.round((video.activeJob?.progress ?? 0) * 100);
   const groups = actions.groupsFor(video);
   const channelHref = `/youtube/channels/${video.creator.id}`;
   const canDownload = hasCapability(me, 'youtube.download') && !video.downloaded && !video.activeJob && video.availability === 'PUBLISHED';
@@ -142,6 +144,19 @@ export default function YoutubeVideoPage({ params }: { params: Promise<{ id: str
 
         <div className="@container">
           <div className="detail-grid detail-grid-movie flex flex-col gap-6">
+            {video.activeJob && (
+              <Link href="/youtube/queue" className="block rounded-xl border border-primary/20 bg-primary/[0.04] px-3 py-2.5 [grid-area:progress]">
+                <span className="flex items-center gap-2 text-sm font-medium">
+                  <Download className="h-4 w-4 shrink-0 text-primary" />
+                  <span className="min-w-0 flex-1 truncate">{video.activeJob.stage ? stageLabel(video.activeJob.stage) : 'In the queue'}</span>
+                  <span className="text-xs tabular-nums text-muted-foreground">{progress}%</span>
+                  <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                </span>
+                <Progress value={progress} className="mt-2 h-1.5" />
+                {video.activeJob.chosenFormat && <span className="mt-1.5 block truncate text-xs text-muted-foreground">{video.activeJob.chosenFormat}</span>}
+              </Link>
+            )}
+
             <div className="[grid-area:facts]">
               <FactRow label="Type" value={TYPE_LABELS[video.type] ?? 'Video'} />
               <FactRow label="Views" value={video.viewCount.toLocaleString()} />

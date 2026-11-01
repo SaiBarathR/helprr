@@ -83,6 +83,14 @@ describe('queuing a YouTube download', () => {
     expect(mocks.enqueue.mock.calls[0][0].options).toMatchObject({ quality: '2160', codec: 'av1', sponsorblock: 'remove', keepForever: true });
   });
 
+  it('passes on the copy the sheet showed, cut to a sane length', async () => {
+    await post({ videoId: 'v', options: { formatId: '401', hdr: true } });
+    expect(mocks.enqueue.mock.calls[0][0].options).toMatchObject({ formatId: '401', hdr: true });
+    mocks.enqueue.mockClear();
+    await post({ videoId: 'v', options: { formatId: 'x'.repeat(500) } });
+    expect(mocks.enqueue.mock.calls[0][0].options.formatId).toHaveLength(32);
+  });
+
   it('drops anything that is not a fixed choice, so it can never reach yt-dlp', async () => {
     await post({ videoId: 'v', options: { quality: 'worst/--exec rm', codec: '[vcodec', sponsorblock: 'all', reencode: 'yes' } });
     expect(mocks.enqueue.mock.calls[0][0].options).toMatchObject({ quality: '1080', codec: 'compatible', sponsorblock: 'mark', reencode: false });
