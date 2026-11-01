@@ -219,7 +219,7 @@ async function runJob(job: ArchiveJob): Promise<void> {
       });
     } else {
       const message = error instanceof Error ? error.message : String(error);
-      const errorClass = classifyJobError(message);
+      const errorClass = classifyJobError(message, job.platform);
       const next = nextStepAfterFailure(errorClass, job.attempts);
       if (job.kind === 'DOWNLOAD') await noteExtractorResult(job.platform, errorClass === 'extractor');
       await finishJob(job, {

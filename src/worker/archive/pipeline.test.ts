@@ -301,6 +301,13 @@ describe('runDownload', () => {
 });
 
 describe('validateDuration', () => {
+  it('allows a file cut on purpose to be shorter, but not half gone or longer', () => {
+    expect(validateDuration(3000, 3600, true)).toBe(true);
+    expect(validateDuration(3000, 3600)).toBe(false);
+    expect(validateDuration(1000, 3600, true)).toBe(false);
+    expect(validateDuration(3900, 3600, true)).toBe(false);
+  });
+
   it('allows ten seconds or one percent, whichever is more', () => {
     expect(validateDuration(110, 120)).toBe(true);
     expect(validateDuration(100, 120)).toBe(false);

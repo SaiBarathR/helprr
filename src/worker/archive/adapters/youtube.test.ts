@@ -88,6 +88,46 @@ describe('the YouTube adapter', () => {
     expect(run.mock.calls[0][1]).not.toContain('--sponsorblock-mark');
   });
 
+  it('cuts only sponsors on Remove, marks the rest, and expects a shorter file', async () => {
+    run.mockResolvedValue('');
+    const remove = context({ options: { ...options, sponsorblock: 'remove' } });
+    await youtubeAdapter.download(remove, '/staging/x', { info: {}, selector: 'S', duration: 1, expectedBytes: 1, audioOnly: false } as never);
+    expect(run.mock.calls[0][1]).toEqual(expect.arrayContaining(['--sponsorblock-mark', 'all', '--sponsorblock-remove', 'sponsor']));
+
+    run.mockResolvedValue(JSON.stringify({ duration: 100 }));
+    expect((await youtubeAdapter.prepare(remove)).mayBeShorter).toBe(true);
+    expect((await youtubeAdapter.prepare(context())).mayBeShorter).toBe(false);
+  });
+
+  it('asks for captions only when wanted', async () => {
+    expect(await youtubeAdapter.extras(context({ options: { ...options, captions: false } }), '/staging/x')).toEqual([]);
+    expect(run).not.toHaveBeenCalled();
+  });
+
+  it('never lets a refused caption request cost the video', async () => {
+    const note = vi.fn(async () => undefined);
+    run.mockRejectedValue(new Error('HTTP Error 429: Too Many Requests'));
+    const wanted = context({ options: { ...options, captions: true }, setStage: vi.fn(async () => undefined), note });
+    expect(await youtubeAdapter.extras(wanted, '/staging/x')).toEqual([]);
+    expect(note).toHaveBeenCalledWith(expect.stringContaining('Captions skipped'));
+  });
+
+  it('stops for a cancel during captions, rather than carrying on', async () => {
+    const abort = new AbortController();
+    abort.abort();
+    run.mockRejectedValue(new Error('cancelled'));
+    const wanted = context({ options: { ...options, captions: true }, signal: abort.signal, setStage: vi.fn(async () => undefined), note: vi.fn() });
+    await expect(youtubeAdapter.extras(wanted, '/staging/x')).rejects.toThrow('cancelled');
+  });
+
+  it('says so when a video has no captions yet', async () => {
+    run.mockResolvedValue('');
+    const note = vi.fn(async () => undefined);
+    const wanted = context({ options: { ...options, captions: true }, setStage: vi.fn(async () => undefined), note });
+    expect(await youtubeAdapter.extras(wanted, '/staging/x')).toEqual([]);
+    expect(note).toHaveBeenCalledWith('YouTube has no English captions for this video yet');
+  });
+
   it('lays a video out under its year, with the tag cleanup needs to find it', async () => {
     const layout = await youtubeAdapter.layout(context(), { info: {}, duration: 1, expectedBytes: 1, audioOnly: false }, 3600);
     expect(layout.seriesFolder).toBe('trashtaste');
