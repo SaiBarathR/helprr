@@ -1,7 +1,6 @@
-import { prisma } from '@/lib/db';
+import { subscribeToCreator } from '@/lib/archive/subscribe';
 import { helixGet } from '@/lib/twitch/helix';
 import { syncStreamerVideos } from '@/lib/twitch/sync';
-import { logger } from '@/lib/logger';
 import { TWITCH } from '@/lib/twitch/platform';
 
 interface HelixUser {
@@ -32,46 +31,20 @@ export async function subscribeToStreamer(userId: string, login: string) {
   const user = data[0];
   if (!user) return null;
 
-  const profile = {
-    login: user.login,
-    displayName: user.display_name,
-    description: user.description || null,
-    profileImageUrl: user.profile_image_url || null,
-    offlineImageUrl: user.offline_image_url || null,
-    broadcasterType: user.broadcaster_type,
-  };
-  const key = { platform_externalId: { platform: TWITCH, externalId: user.id } };
-  const existing = await prisma.creator.findUnique({
-    where: key,
-    select: { _count: { select: { subscriptions: true } } },
+  const { creator, subscription } = await subscribeToCreator({
+    platform: TWITCH,
+    externalId: user.id,
+    userId,
+    profile: {
+      login: user.login,
+      displayName: user.display_name,
+      description: user.description || null,
+      profileImageUrl: user.profile_image_url || null,
+      offlineImageUrl: user.offline_image_url || null,
+      broadcasterType: user.broadcaster_type,
+    },
+    folderName: user.login,
+    baseline: (streamer) => syncStreamerVideos(streamer),
   });
-  // Unwatched for a while: what was published meanwhile is history, not news.
-  const unwatched = existing?._count.subscriptions === 0;
-  const streamer = await prisma.creator.upsert({
-    where: key,
-    update: { ...profile, ...(unwatched ? { baselinedAt: null, nextVideosCheckAt: null } : {}) },
-    create: { platform: TWITCH, externalId: user.id, folderName: user.login, ...profile },
-  });
-  const subscription = await prisma.creatorSubscription.upsert({
-    where: { userId_creatorId: { userId, creatorId: streamer.id } },
-    update: {},
-    create: { userId, creatorId: streamer.id },
-  });
-
-  if (!streamer.baselinedAt) {
-    try {
-      await syncStreamerVideos(streamer);
-      // A recording that published during the gap is already stored, so the sweep skips it.
-      if (unwatched) {
-        await prisma.creatorVideo.updateMany({
-          where: { creatorId: streamer.id, notifiedAt: null, availability: 'PUBLISHED' },
-          data: { notifiedAt: new Date() },
-        });
-      }
-    } catch (error) {
-      // nextVideosCheckAt is still null, so the next poll takes the baseline instead.
-      logger.warn('Twitch baseline failed', { streamerId: streamer.id, error: String(error) }, { scope: 'twitch' });
-    }
-  }
-  return { streamer, subscription };
+  return { streamer: creator, subscription };
 }
