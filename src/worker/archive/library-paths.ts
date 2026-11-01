@@ -33,7 +33,7 @@ const codeOf = (error: unknown) => (error as NodeJS.ErrnoException).code;
  */
 async function pinFolder(relative: string, root: string): Promise<FileHandle> {
   const steps = path.relative(root, path.dirname(insideLibrary(relative, root))).split(path.sep).filter(Boolean);
-  let folder = await open(root, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
+  let folder = await open(root, constants.O_RDONLY | constants.O_DIRECTORY);
   try {
     for (const step of steps) {
       const parent = folder;

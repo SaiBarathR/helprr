@@ -411,7 +411,7 @@ async function main(): Promise<void> {
   process.on('SIGINT', () => void shutdown('SIGINT'));
 
   await waitForMigrations();
-  await assertSeparateRoots([libraryFor('TWITCH').root, libraryFor('YOUTUBE').root]);
+  await assertSeparateRoots(PLATFORMS.map((platform) => libraryFor(platform).root));
   for (const platform of PLATFORMS) await probeLibrary(platform);
   await cleanStaging();
 

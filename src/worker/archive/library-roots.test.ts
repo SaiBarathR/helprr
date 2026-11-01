@@ -115,11 +115,12 @@ describe('library roots', () => {
       expect(() => insideLibrary(climb, roots.TWITCH)).toThrow('outside the library');
     });
 
-    it('refuses a root that is a link', async () => {
+    it('follows a root the admin set to a link', async () => {
       const link = `${roots.TWITCH}-link`;
-      await symlink(roots.YOUTUBE, link);
-      await expect(removeInsideLibrary(SAME, link)).rejects.toThrow();
-      expect(await exists(path.join(roots.YOUTUBE, SAME))).toBe(true);
+      await symlink(roots.TWITCH, link);
+      expect(await existsInLibrary(SAME, link)).toBe(true);
+      await removeInsideLibrary(SAME, link);
+      expect(await exists(path.join(roots.TWITCH, SAME))).toBe(false);
       await rm(link);
     });
 
