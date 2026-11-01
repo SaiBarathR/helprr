@@ -8,6 +8,7 @@ import { parseProgressLine, YT_DLP_PROGRESS_TEMPLATE } from '@/lib/archive/progr
 import { decryptTwitchToken } from '@/lib/twitch/token-cipher';
 import { vttToSrt } from '@/lib/youtube/captions';
 import { formatSelector, selectedBytes, summarizeFormats } from '@/lib/youtube/formats';
+import { isVideoId } from '@/lib/youtube/ids';
 import { youtubeEpisodeNfo, youtubeShowNfo } from '@/lib/youtube/nfo';
 import type { DownloadContext, EpisodeLayout, PlatformAdapter, PreparedDownload, Sidecar } from '../adapter';
 import { FFMPEG } from '../env';
@@ -127,6 +128,13 @@ export async function readYoutubeFormats(ctx: Pick<DownloadContext, 'prisma' | '
   });
 }
 
+/** A crash skips the cleanup at the end of a job, and these hold a signed-in session. */
+export async function removeLeftoverCookies(): Promise<number> {
+  const leftovers = (await readdir(os.tmpdir())).filter((name) => /^(?:youtube|twitch)-cookies-/.test(name));
+  await Promise.all(leftovers.map((name) => rm(path.join(os.tmpdir(), name), { recursive: true, force: true })));
+  return leftovers.length;
+}
+
 export const youtubeAdapter: PlatformAdapter<YoutubeInfo> = {
   platform: 'YOUTUBE',
 
@@ -198,6 +206,8 @@ export const youtubeAdapter: PlatformAdapter<YoutubeInfo> = {
   async layout(ctx, prepared, duration): Promise<EpisodeLayout> {
     const { prisma, video } = ctx;
     const { creator: channel } = video;
+    // The last stop before this id becomes part of a path.
+    if (!isVideoId(video.externalId)) throw new Error('validation failed: malformed video id');
     const date = video.sourceCreatedAt;
     const isShort = video.type === 'SHORT';
     const numbering = isShort ? await nextSequentialEpisode(prisma, video, SHORTS_SEASON, 'SHORT') : archiveEpisode(date);

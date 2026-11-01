@@ -154,7 +154,7 @@ export function PolicyEditor({ value, inherited, footer, onChange, variant = 'tw
           label="Keep the latest"
           unit="videos"
           min={0}
-          placeholder={String(baseline.keepLatest ?? 'All')}
+          placeholder={String(baseline.keepLatest ?? builtIn.keepLatest ?? 'All')}
           value={value.keepLatest ?? ''}
           onChange={(event) => setField('keepLatest', toNumber(event.target.value))}
         />
@@ -162,7 +162,7 @@ export function PolicyEditor({ value, inherited, footer, onChange, variant = 'tw
           label="Delete after"
           unit="days"
           min={0}
-          placeholder={String(baseline.deleteAfterDays ?? 'Never')}
+          placeholder={String(baseline.deleteAfterDays ?? builtIn.deleteAfterDays ?? 'Never')}
           value={value.deleteAfterDays ?? ''}
           onChange={(event) => setField('deleteAfterDays', toNumber(event.target.value))}
         />
@@ -170,7 +170,7 @@ export function PolicyEditor({ value, inherited, footer, onChange, variant = 'tw
           label="Delete once watched, after"
           unit="days"
           min={0}
-          placeholder={String(baseline.deleteAfterWatchedDays ?? 'Never')}
+          placeholder={String(baseline.deleteAfterWatchedDays ?? builtIn.deleteAfterWatchedDays ?? 'Never')}
           value={value.deleteAfterWatchedDays ?? ''}
           onChange={(event) => setField('deleteAfterWatchedDays', toNumber(event.target.value))}
         />

@@ -96,7 +96,7 @@ export function CreatorRules({ platform, creatorId, draft, setDraft }: {
   return (
     <>
       {platform === 'youtube' && (
-        <GroupedSection title="Downloads" footer="Choosing one keeps your other settings. Change anything below for rules of your own.">
+        <GroupedSection title="Preset" footer="Choosing one keeps your other settings. Change anything below for rules of your own.">
           {PRESETS.map((item) => (
             <button
               key={item.id}

@@ -28,6 +28,7 @@ function keptFor(deleteAfter: string | null): string {
 }
 
 export function FileBadges({ file, cleanupDue }: { file: ArchiveFile; cleanupDue?: boolean }) {
+  const { id: platform } = useCreatorPlatform();
   const percent = savedPercent(file);
   return (
     <>
@@ -36,7 +37,7 @@ export function FileBadges({ file, cleanupDue }: { file: ArchiveFile; cleanupDue
         <Badge variant="secondary" className={cn(BADGE, GOOD)}>{percent === null ? 'Re-encoded' : `Saved ${percent}%`}</Badge>
       ) : file.reencodeSkippedAt ? (
         <Badge variant="secondary" className={BADGE}>Not worth re-encoding</Badge>
-      ) : file.activeJob?.kind !== 'REENCODE' && file.videoCodec !== 'hevc' && (
+      ) : platform === 'twitch' && file.activeJob?.kind !== 'REENCODE' && file.videoCodec !== 'hevc' && (
         <Badge variant="secondary" className={BADGE}>Not re-encoded</Badge>
       )}
       {file.originalKept && <Badge variant="secondary" className={cn(BADGE, WARN)}>{keptFor(file.originalDeleteAfter)}</Badge>}

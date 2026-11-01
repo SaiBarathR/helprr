@@ -181,6 +181,12 @@ describe('the YouTube adapter', () => {
     expect(layout.artwork).toEqual([['poster.jpg', channel.profileImageUrl], ['fanart.jpg', channel.offlineImageUrl]]);
   });
 
+  it('refuses an id that could change the path', async () => {
+    const bad = { ...video, externalId: '../../../x' };
+    await expect(youtubeAdapter.layout(context({ video: bad }), { info: {}, duration: 1, expectedBytes: 1, audioOnly: false }, 1))
+      .rejects.toThrow('malformed video id');
+  });
+
   it('keeps Shorts in their own season, numbered once', async () => {
     const short = { ...video, type: 'SHORT', seasonEpisode: 7 };
     const layout = await youtubeAdapter.layout(context({ video: short }), { info: {}, duration: 1, expectedBytes: 1, audioOnly: false }, 30);

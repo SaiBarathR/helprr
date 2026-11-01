@@ -102,6 +102,8 @@ export function CreatorLibraryPage() {
     queryFn: ({ signal }) => getJson<LibrarySummary>(`${platform.api}/files/summary`, signal),
   });
   const stats = summary.data;
+  // YouTube files are rarely re-encoded, so these only show once there is something in them.
+  const showReencode = platform.id === 'twitch' || Boolean(stats && (stats.savedBytes > 0 || stats.originalsKept > 0));
 
   const files = useRestorableInfiniteQuery({
     queryKey: [platform.id, 'files', params],
@@ -217,22 +219,26 @@ export function CreatorLibraryPage() {
       </CreatorToolbar>
 
       {stats && (
-        <section aria-label="Storage" className="grid grid-cols-3 gap-2">
+        <section aria-label="Storage" className={showReencode ? 'grid grid-cols-3 gap-2' : 'grid grid-cols-1 gap-2'}>
           <StatTile value={formatBytes(stats.totalBytes)} label={`${stats.count} ${stats.count === 1 ? 'video' : 'videos'}`} pressed={false} onClick={clearFilters} />
-          <StatTile
-            value={formatBytes(stats.savedBytes)}
-            label="Saved by re-encoding"
-            tone={stats.savedBytes > 0 ? 'text-emerald-500' : 'text-muted-foreground'}
-            pressed={filter === 'reencoded'}
-            onClick={() => pickTile('reencoded', 'saved')}
-          />
-          <StatTile
-            value={formatBytes(stats.originalsBytes)}
-            label={`${stats.originalsKept} ${stats.originalsKept === 1 ? 'original' : 'originals'} kept`}
-            tone={stats.originalsKept > 0 ? 'text-amber-500' : 'text-muted-foreground'}
-            pressed={filter === 'original-kept'}
-            onClick={() => pickTile('original-kept', 'largest')}
-          />
+          {showReencode && (
+            <>
+              <StatTile
+                value={formatBytes(stats.savedBytes)}
+                label="Saved by re-encoding"
+                tone={stats.savedBytes > 0 ? 'text-emerald-500' : 'text-muted-foreground'}
+                pressed={filter === 'reencoded'}
+                onClick={() => pickTile('reencoded', 'saved')}
+              />
+              <StatTile
+                value={formatBytes(stats.originalsBytes)}
+                label={`${stats.originalsKept} ${stats.originalsKept === 1 ? 'original' : 'originals'} kept`}
+                tone={stats.originalsKept > 0 ? 'text-amber-500' : 'text-muted-foreground'}
+                pressed={filter === 'original-kept'}
+                onClick={() => pickTile('original-kept', 'largest')}
+              />
+            </>
+          )}
         </section>
       )}
 

@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import type { PolicyLayer } from '@/lib/archive/policy';
+import { BUILT_IN_POLICY, type PolicyLayer } from '@/lib/archive/policy';
 import { PolicyEditor } from './policy-editor';
 
 function Harness({ initial = {}, onChange }: { initial?: PolicyLayer; onChange: (next: PolicyLayer) => void }) {
@@ -62,5 +62,19 @@ describe('PolicyEditor', () => {
     await userEvent.click(resets[0]);
     expect(onChange).toHaveBeenLastCalledWith({});
     expect(screen.queryByRole('button', { name: 'Reset' })).toBeNull();
+  });
+});
+
+describe('what a blank clean up field means', () => {
+  const youtube = { ...BUILT_IN_POLICY, deleteAfterWatchedDays: 3 };
+
+  it('shows the value that really applies, not Never', () => {
+    render(<PolicyEditor value={{}} inherited={{}} footer="" onChange={vi.fn()} variant="youtube" builtIn={youtube} />);
+    expect((screen.getByLabelText(/Delete once watched/) as HTMLInputElement).placeholder).toBe('3');
+  });
+
+  it('still says Never where there is no default', () => {
+    render(<PolicyEditor value={{}} inherited={{}} footer="" onChange={vi.fn()} />);
+    expect((screen.getByLabelText(/Delete once watched/) as HTMLInputElement).placeholder).toBe('Never');
   });
 });
