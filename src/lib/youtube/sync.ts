@@ -34,7 +34,7 @@ async function shortIds(channelId: string): Promise<Set<string> | null> {
   return null;
 }
 
-function toRow(video: YoutubeVideo, creatorId: string, shorts: Set<string> | null) {
+export function toRow(video: YoutubeVideo, creatorId: string, shorts: Set<string> | null) {
   // A stream can only be saved once it has ended, so it waits here until then.
   const availability: CreatorVideoAvailability = video.liveState === 'none' ? 'PUBLISHED' : 'RECORDING';
   return {

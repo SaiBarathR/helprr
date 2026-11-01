@@ -4,6 +4,10 @@ const mocks = vi.hoisted(() => ({
   connection: vi.fn(),
   due: vi.fn(),
   advance: vi.fn(),
+  lists: vi.fn(),
+  advanceList: vi.fn(),
+  listSubscribers: vi.fn(),
+  syncList: vi.fn(),
   videos: vi.fn(),
   stamp: vi.fn(),
   subscribers: vi.fn(),
@@ -16,6 +20,8 @@ vi.mock('@/lib/db', () => ({
   prisma: {
     serviceConnection: { findFirst: mocks.connection },
     creator: { findMany: mocks.due, update: mocks.advance },
+    creatorPlaylist: { findMany: mocks.lists, update: mocks.advanceList },
+    creatorPlaylistSubscription: { findMany: mocks.listSubscribers },
     creatorVideo: { findMany: mocks.videos, updateMany: mocks.stamp },
     creatorSubscription: { findMany: mocks.subscribers },
   },
@@ -24,6 +30,7 @@ vi.mock('@/lib/logger', () => ({ logger: { warn: vi.fn() } }));
 vi.mock('@/lib/polling-job-report', () => ({ noteJobFailure: vi.fn() }));
 vi.mock('@/lib/youtube/settings', () => ({ getYoutubeSettings: vi.fn(async () => ({ pollVideosSecs: 600 })) }));
 vi.mock('@/lib/youtube/sync', () => ({ syncChannelVideos: mocks.sync }));
+vi.mock('@/lib/youtube/playlists', () => ({ syncPlaylist: mocks.syncList }));
 vi.mock('./shared', () => ({ errorMessage: String, notifyAndLog: mocks.notify }));
 vi.mock('@/lib/youtube/api', async (original) => ({
   ...await original<typeof import('@/lib/youtube/api')>(),
@@ -43,6 +50,8 @@ describe('polling YouTube', () => {
     mocks.quota.mockResolvedValue({ stopped: false, slowDown: false });
     mocks.due.mockResolvedValue([{ id: 'a' }, { id: 'b' }]);
     mocks.sync.mockResolvedValue({ newVideoIds: [] });
+    mocks.lists.mockResolvedValue([]);
+    mocks.syncList.mockResolvedValue({ newVideoIds: [] });
     mocks.subscribers.mockResolvedValue([{ userId: 'u1' }, { userId: 'u2' }]);
     mocks.videos.mockResolvedValue([{ id: 'v', externalId: 'ext', title: 'A video', type: 'ARCHIVE', creator: { displayName: 'WAN Show' } }]);
   });
@@ -87,6 +96,18 @@ describe('polling YouTube', () => {
     mocks.sync.mockRejectedValueOnce(error);
     await pollYoutube(NOW);
     expect(mocks.sync).toHaveBeenCalledTimes(1);
+  });
+
+  it('sweeps followed lists too, and tells their followers under the same key as a channel alert', async () => {
+    mocks.lists.mockResolvedValue([{ id: 'l', title: 'Best of' }]);
+    mocks.syncList.mockResolvedValue({ newVideoIds: ['v'] });
+    mocks.listSubscribers.mockResolvedValue([{ userId: 'u1' }]);
+
+    await pollYoutube(NOW);
+
+    expect(mocks.lists.mock.calls[0][0].where).toMatchObject({ platform: 'YOUTUBE', subscriptions: { some: {} } });
+    expect(mocks.advanceList.mock.calls[0][0].data).toEqual({ nextCheckAt: after(600) });
+    expect(mocks.notify.mock.calls[0][0]).toMatchObject({ title: 'Best of: new video', dedupeKey: 'youtube-video-ext-u1' });
   });
 
   it('tells each follower once, with a link that can start the download', async () => {

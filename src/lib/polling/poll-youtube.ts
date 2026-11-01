@@ -4,6 +4,7 @@ import { logger } from '@/lib/logger';
 import { noteJobFailure } from '@/lib/polling-job-report';
 import { quotaState, YoutubeKeyRejectedError, YoutubeQuotaError } from '@/lib/youtube/api';
 import { YOUTUBE } from '@/lib/youtube/platform';
+import { syncPlaylist } from '@/lib/youtube/playlists';
 import { getYoutubeSettings } from '@/lib/youtube/settings';
 import { syncChannelVideos } from '@/lib/youtube/sync';
 import { errorMessage, notifyAndLog } from './shared';
@@ -45,9 +46,53 @@ export async function pollYoutube(now = new Date()): Promise<void> {
         logger.warn('YouTube channel sweep failed', { channelId: channel.id, error: errorMessage(error) }, { scope: 'polling' });
       }
     }
+
+    const lists = await prisma.creatorPlaylist.findMany({
+      where: {
+        platform: YOUTUBE,
+        subscriptions: { some: {} },
+        OR: [{ nextCheckAt: null }, { nextCheckAt: { lte: now } }],
+      },
+      orderBy: { nextCheckAt: { sort: 'asc', nulls: 'first' } },
+      take: MAX_CHANNELS_PER_CYCLE,
+    });
+    for (const list of lists) {
+      await prisma.creatorPlaylist.update({ where: { id: list.id }, data: { nextCheckAt: new Date(now.getTime() + everyMs) } });
+      try {
+        const { newVideoIds } = await syncPlaylist(list, now);
+        await notifyListVideos(list.id, list.title, newVideoIds);
+      } catch (error) {
+        if (error instanceof YoutubeQuotaError || error instanceof YoutubeKeyRejectedError) throw error;
+        noteJobFailure(error);
+        logger.warn('YouTube playlist sweep failed', { playlistId: list.id, error: errorMessage(error) }, { scope: 'polling' });
+      }
+    }
   } catch (error) {
     noteJobFailure(error);
     logger.warn('YouTube poll failed', { error: errorMessage(error) }, { scope: 'polling' });
+  }
+}
+
+// The same key as a channel alert, so someone following both hears once.
+async function notifyListVideos(playlistId: string, listTitle: string, videoIds: string[]): Promise<void> {
+  if (videoIds.length === 0) return;
+  const [videos, subscriptions] = await Promise.all([
+    prisma.creatorVideo.findMany({ where: { id: { in: videoIds } }, select: { id: true, externalId: true, title: true } }),
+    prisma.creatorPlaylistSubscription.findMany({ where: { playlistId, notifyNewVideos: true }, select: { userId: true } }),
+  ]);
+  for (const video of videos) {
+    for (const { userId } of subscriptions) {
+      await notifyAndLog({
+        eventType: 'youtubeVideoNew',
+        title: `${listTitle}: new video`,
+        body: video.title.slice(0, 200),
+        url: `/youtube/video/${video.id}`,
+        dedupeKey: `youtube-video-${video.externalId}-${userId}`,
+        userIds: [userId],
+        ownerUserId: userId,
+        metadata: { source: 'youtube', id: video.id, redirect: `/youtube/video/${video.id}?download=1` },
+      }, { service: 'youtube', instanceId: playlistId, reason: 'new-video' });
+    }
   }
 }
 

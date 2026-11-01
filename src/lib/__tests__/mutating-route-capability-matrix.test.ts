@@ -210,6 +210,9 @@ const POLICY_GROUPS: Record<string, readonly string[]> = {
     'POST /api/youtube/channels',
     'POST /api/youtube/channels/[id]/sync',
     'POST /api/youtube/feed/seen',
+    'POST /api/youtube/playlists',
+    'PATCH /api/youtube/playlist-subscriptions/[id]',
+    'DELETE /api/youtube/playlist-subscriptions/[id]',
     'POST /api/youtube/videos/[id]/state',
     'PATCH /api/youtube/subscriptions/[id]',
     'DELETE /api/youtube/subscriptions/[id]',
@@ -512,7 +515,7 @@ describe('mutating API route capability matrix', () => {
   const assignments = policyAssignments();
 
   it('explicitly assigns every mutating handler exactly once', () => {
-    expect(handlers.size).toBe(210);
+    expect(handlers.size).toBe(213);
     expect([...assignments.keys()].sort()).toEqual([...handlers.keys()].sort());
   });
 

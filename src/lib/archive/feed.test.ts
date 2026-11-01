@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { findMany } = vi.hoisted(() => ({ findMany: vi.fn() }));
-vi.mock('@/lib/db', () => ({ prisma: { creatorSubscription: { findMany } } }));
+const { findMany, lists } = vi.hoisted(() => ({ findMany: vi.fn(), lists: vi.fn() }));
+vi.mock('@/lib/db', () => ({ prisma: { creatorSubscription: { findMany }, creatorPlaylistSubscription: { findMany: lists } } }));
 
 import { buildFeedWhere } from './feed';
 
@@ -10,6 +10,7 @@ const subscribed = new Date('2026-10-01T00:00:00Z');
 const baselined = new Date('2026-10-01T00:00:02Z');
 
 beforeEach(() => {
+  lists.mockResolvedValue([]);
   findMany.mockResolvedValue([{ creatorId: 's1', createdAt: subscribed, creator: { baselinedAt: baselined } }]);
 });
 
@@ -65,6 +66,27 @@ describe('buildFeedWhere', () => {
 
     it('ignores a Twitch type', async () => {
       expect(await youtube('type=HIGHLIGHT')).not.toContainEqual({ type: 'HIGHLIGHT' });
+    });
+
+    it('includes a followed list, whose videos may come from channels nobody follows', async () => {
+      lists.mockResolvedValue([{ playlistId: 'p1', createdAt: subscribed, playlist: { baselinedAt: baselined } }]);
+      expect(await youtube('')).toContainEqual({
+        OR: [{ creatorId: { in: ['s1'] } }, { playlists: { some: { playlistId: { in: ['p1'] } } } }],
+      });
+    });
+
+    it('counts a list video as new only once it joined after the baseline', async () => {
+      lists.mockResolvedValue([{ playlistId: 'p1', createdAt: subscribed, playlist: { baselinedAt: baselined } }]);
+      expect(await youtube('segment=new')).toContainEqual({
+        OR: [
+          { creatorId: 's1', notifiedAt: { gt: baselined } },
+          { playlists: { some: { playlistId: 'p1', createdAt: { gt: baselined } } } },
+        ],
+      });
+    });
+
+    it('filters to one list', async () => {
+      expect(await youtube('playlist=p1')).toContainEqual({ playlists: { some: { playlistId: 'p1' } } });
     });
 
     it('never hides anything from Twitch for being a Short', async () => {

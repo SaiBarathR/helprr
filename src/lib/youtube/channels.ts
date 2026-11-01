@@ -12,10 +12,20 @@ export function channelFolderBase(channel: Pick<YoutubeChannel, 'id' | 'handle'>
 }
 
 // A handle can pass to another channel, but a folder is never shared.
-async function freeFolderName(channel: YoutubeChannel): Promise<string> {
+export async function freeFolderName(channel: YoutubeChannel): Promise<string> {
   const name = channelFolderBase(channel);
   const taken = await prisma.creator.findUnique({ where: { platform_folderName: { platform: YOUTUBE, folderName: name } }, select: { id: true } });
   return taken ? `${name}-${channel.id.slice(-6).toLowerCase()}` : name;
+}
+
+export function profileOf(channel: YoutubeChannel) {
+  return {
+    login: channel.handle?.replace(/^@/, '') ?? channel.id,
+    displayName: channel.title,
+    description: channel.description,
+    profileImageUrl: channel.avatarUrl,
+    offlineImageUrl: channel.bannerUrl,
+  };
 }
 
 export async function followChannel(userId: string, query: ChannelQuery) {
@@ -25,13 +35,7 @@ export async function followChannel(userId: string, query: ChannelQuery) {
     platform: YOUTUBE,
     externalId: channel.id,
     userId,
-    profile: {
-      login: channel.handle?.replace(/^@/, '') ?? channel.id,
-      displayName: channel.title,
-      description: channel.description,
-      profileImageUrl: channel.avatarUrl,
-      offlineImageUrl: channel.bannerUrl,
-    },
+    profile: profileOf(channel),
     folderName: await freeFolderName(channel),
     baseline: (creator) => syncChannelVideos(creator),
   });
