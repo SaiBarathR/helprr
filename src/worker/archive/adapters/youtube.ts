@@ -1,9 +1,11 @@
-import { readdir, readFile, writeFile } from 'node:fs/promises';
+import { chmod, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import type { CreatorVideoType } from '@prisma/client';
 import { archiveEpisode, localDate, safeFilenameTitle } from '@/lib/archive/naming';
 import { seasonNfo } from '@/lib/archive/nfo';
 import { parseProgressLine, YT_DLP_PROGRESS_TEMPLATE } from '@/lib/archive/progress';
+import { decryptTwitchToken } from '@/lib/twitch/token-cipher';
 import { vttToSrt } from '@/lib/youtube/captions';
 import { formatSelector, selectedBytes } from '@/lib/youtube/formats';
 import { youtubeEpisodeNfo, youtubeShowNfo } from '@/lib/youtube/nfo';
@@ -41,6 +43,8 @@ const videoUrl = (id: string) => `https://www.youtube.com/watch?v=${id}`;
 /** What reads one video, shared with the tool smoke test. */
 export const youtubeVideoArgs = (id: string) => [...BASE_ARGS, '-J', videoUrl(id)];
 
+const cookieArgs = ({ cookiesFile }: DownloadContext) => (cookiesFile ? ['--cookies', cookiesFile] : []);
+
 function sponsorblockArgs(mode: string | undefined): string[] {
   if (mode === 'remove') return ['--sponsorblock-mark', 'all', '--sponsorblock-remove', 'sponsor'];
   return mode === 'mark' ? ['--sponsorblock-mark', 'all'] : [];
@@ -55,7 +59,7 @@ async function saveCaptions(ctx: DownloadContext, staging: string): Promise<Side
   try {
     await run(toolPath('ytdlpYoutube'), [
       ...BASE_ARGS, '--skip-download', '--write-subs', '--write-auto-subs',
-      '--sub-langs', CAPTION_LANGUAGES.join(','), '--sub-format', 'vtt',
+      '--sub-langs', CAPTION_LANGUAGES.join(','), '--sub-format', 'vtt', ...cookieArgs(ctx),
       '-o', path.join(staging, 'captions.%(ext)s'),
       videoUrl(video.externalId),
     ], { signal });
@@ -81,7 +85,7 @@ async function downloadVideo(ctx: DownloadContext, staging: string, selector: st
   let lastWrite = 0;
   await run(toolPath('ytdlpYoutube'), [
     ...BASE_ARGS, '--ffmpeg-location', FFMPEG, '-N', '6', '-f', selector, '--merge-output-format', 'mkv',
-    ...(options.chapters ? ['--embed-chapters'] : []), ...sponsorblockArgs(options.sponsorblock),
+    ...(options.chapters ? ['--embed-chapters'] : []), ...sponsorblockArgs(options.sponsorblock), ...cookieArgs(ctx),
     '--write-info-json', '--newline', '--no-color', '--progress-template', YT_DLP_PROGRESS_TEMPLATE,
     '-o', path.join(staging, 'video.%(ext)s'),
     videoUrl(video.externalId),
@@ -120,16 +124,35 @@ export const youtubeAdapter: PlatformAdapter<YoutubeInfo> = {
     }
   },
 
-  // Age-restricted videos add the spare account here. Everything else runs with no cookies.
-  async openSession() {
-    return { cookiesFile: null, browserToken: null, release: async () => undefined };
+  // Only a video that needs it. Everything else runs with no cookies at all, which limits what
+  // the account is exposed to. Each job gets its own copy, mode 600, gone when the job ends.
+  async openSession(_settings, { prisma, video }) {
+    const none = { cookiesFile: null, browserToken: null, release: async () => undefined };
+    if (!video.ageRestricted) return none;
+    const settings = await prisma.youtubeSettings.findUnique({ where: { id: 'singleton' }, select: { cookies: true, cookiesValid: true } });
+    const cookies = decryptTwitchToken(settings?.cookies);
+    if (!cookies || settings?.cookiesValid === false) return none;
+
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'youtube-cookies-'));
+    const file = path.join(dir, 'cookies.txt');
+    await writeFile(file, cookies, { mode: 0o600 });
+    await chmod(file, 0o600);
+    return {
+      cookiesFile: file,
+      browserToken: null,
+      release: async () => {
+        await rm(dir, { recursive: true, force: true }).catch(() => undefined);
+      },
+    };
   },
 
   async prepare(ctx) {
     const { video, options, signal } = ctx;
     if (video.availability === 'RECORDING') throw new WaitForRecordingError();
+    // Stops here, before YouTube is asked: repeated failed logins could harm the account.
+    if (video.ageRestricted && !ctx.cookiesFile) throw new Error('Sign in to confirm your age: no working account');
     const selector = formatSelector(options.quality, options.codec ?? 'compatible');
-    const info = JSON.parse(await run(toolPath('ytdlpYoutube'), [...youtubeVideoArgs(video.externalId), '-f', selector], {
+    const info = JSON.parse(await run(toolPath('ytdlpYoutube'), [...youtubeVideoArgs(video.externalId), ...cookieArgs(ctx), '-f', selector], {
       signal,
       captureStdout: true,
     })) as YoutubeInfo;

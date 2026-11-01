@@ -9,6 +9,8 @@ vi.mock('node:fs/promises', async (original) => ({
   readdir: vi.fn(async () => ['video.info.json', 'video.mkv']),
 }));
 
+import { stat } from 'node:fs/promises';
+import { encryptTwitchToken } from '@/lib/twitch/token-cipher';
 import type { DownloadContext } from '../adapter';
 import { youtubeAdapter, youtubeVideoArgs } from './youtube';
 
@@ -126,6 +128,46 @@ describe('the YouTube adapter', () => {
     const wanted = context({ options: { ...options, captions: true }, setStage: vi.fn(async () => undefined), note });
     expect(await youtubeAdapter.extras(wanted, '/staging/x')).toEqual([]);
     expect(note).toHaveBeenCalledWith('YouTube has no English captions for this video yet');
+  });
+
+  describe('the spare account', () => {
+    const prisma = (row: unknown) => ({ youtubeSettings: { findUnique: vi.fn(async () => row) } }) as never;
+    const restricted = { ...video, ageRestricted: true };
+
+    it('is never read for a normal video', async () => {
+      const db = prisma({ cookies: 'enc', cookiesValid: true });
+      expect((await youtubeAdapter.openSession(null, { prisma: db, video: video as never })).cookiesFile).toBeNull();
+      expect((db as unknown as { youtubeSettings: { findUnique: ReturnType<typeof vi.fn> } }).youtubeSettings.findUnique).not.toHaveBeenCalled();
+    });
+
+    it('goes in a private file for that job alone, removed afterwards', async () => {
+      vi.stubEnv('JWT_SECRET', 'test-only');
+      const stored = encryptTwitchToken('# Netscape HTTP Cookie File\n');
+      const session = await youtubeAdapter.openSession(null, { prisma: prisma({ cookies: stored, cookiesValid: null }), video: restricted as never });
+      const file = session.cookiesFile!;
+      expect((await stat(file)).mode & 0o777).toBe(0o600);
+      await session.release();
+      await expect(stat(file)).rejects.toThrow();
+      vi.unstubAllEnvs();
+    });
+
+    it.each([
+      ['none is set', { cookies: null, cookiesValid: null }],
+      ['it is known to be bad', { cookies: 'enc:v1:x', cookiesValid: false }],
+    ])('is left out when %s', async (_label, row) => {
+      expect((await youtubeAdapter.openSession(null, { prisma: prisma(row), video: restricted as never })).cookiesFile).toBeNull();
+    });
+
+    it('stops an age-restricted video before YouTube is asked, when there is no working account', async () => {
+      await expect(youtubeAdapter.prepare(context({ video: restricted }))).rejects.toThrow('Sign in to confirm your age');
+      expect(run).not.toHaveBeenCalled();
+    });
+
+    it('passes the file by path to every step, so the cookies are never in the arguments', async () => {
+      await youtubeAdapter.prepare(context({ video: restricted, cookiesFile: '/tmp/x/cookies.txt' }));
+      const args = run.mock.calls[0][1] as string[];
+      expect(args.slice(args.indexOf('--cookies'), args.indexOf('--cookies') + 2)).toEqual(['--cookies', '/tmp/x/cookies.txt']);
+    });
   });
 
   it('lays a video out under its year, with the tag cleanup needs to find it', async () => {

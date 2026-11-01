@@ -56,7 +56,7 @@ export interface DownloadSession {
 /** Everything the shared pipeline needs to ask a platform. */
 export interface PlatformAdapter<Info = unknown> {
   readonly platform: ArchivePlatform;
-  openSession(settings: ArchiveSettings | null): Promise<DownloadSession>;
+  openSession(settings: ArchiveSettings | null, target: { prisma: PrismaClient; video: CreatorVideo }): Promise<DownloadSession>;
   /** Throws if the video is not ready to download. */
   prepare(ctx: DownloadContext): Promise<PreparedDownload<Info>>;
   /** Returns the finished MKV in staging. */
