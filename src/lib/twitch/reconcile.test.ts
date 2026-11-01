@@ -14,10 +14,10 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('@/lib/db', () => ({
   prisma: {
-    twitchJob: mocks.job,
-    twitchMediaFile: mocks.mediaFile,
-    twitchSubscription: mocks.subscription,
-    twitchWorkerHeartbeat: mocks.heartbeat,
+    archiveJob: mocks.job,
+    archiveMediaFile: mocks.mediaFile,
+    creatorSubscription: mocks.subscription,
+    archiveWorkerHeartbeat: mocks.heartbeat,
   },
 }));
 vi.mock('@/lib/logger', () => ({ logger: { warn: vi.fn() } }));
@@ -28,7 +28,7 @@ vi.mock('@/lib/twitch/settings', () => ({ getTwitchSettings: mocks.getTwitchSett
 import { reconcileTwitchJobs } from '@/lib/twitch/reconcile';
 
 const now = new Date('2026-10-30T12:00:00Z');
-const video = { id: 'v1', twitchVideoId: '555', title: 'T', streamerId: 's1', streamer: { displayName: 'N', folderName: 'n' } };
+const video = { id: 'v1', externalId: '555', title: 'T', creatorId: 's1', creator: { displayName: 'N', folderName: 'n' } };
 const doneJob = (overrides = {}) => ({
   id: 'j1', kind: 'DOWNLOAD', video, requestedByUserId: 'u1', finishedAt: new Date(now.getTime() - 60_000), mediaFile: null, attempts: 1, ...overrides,
 });

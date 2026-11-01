@@ -14,9 +14,9 @@ vi.mock('@/lib/auth', () => ({ requireUserCapability: vi.fn(async () => mocks.au
 vi.mock('@/lib/api-logger', () => ({ withApiLogging: <T,>(handler: T) => handler }));
 vi.mock('@/lib/db', () => ({
   prisma: {
-    twitchWorkerHeartbeat: { findFirst: mocks.heartbeat },
-    twitchSettings: { findUnique: mocks.settings },
-    twitchMediaFile: { updateMany: mocks.update },
+    archiveWorkerHeartbeat: { findFirst: mocks.heartbeat },
+    archiveSettings: { findUnique: mocks.settings },
+    archiveMediaFile: { updateMany: mocks.update },
   },
 }));
 vi.mock('@/lib/twitch/files', () => ({

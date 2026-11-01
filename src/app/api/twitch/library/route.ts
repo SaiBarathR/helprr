@@ -43,7 +43,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
       status = await readLibraryStatus(client, path);
     }
     await getTwitchSettings();
-    await prisma.twitchSettings.update({
+    await prisma.archiveSettings.update({
       where: { id: 'singleton' },
       data: { jellyfinLibraryPath: path, jellyfinLibraryItemId: status.itemId },
     });

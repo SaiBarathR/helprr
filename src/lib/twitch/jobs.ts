@@ -1,7 +1,7 @@
-import { Prisma, type TwitchJobSource, type TwitchJobState } from '@prisma/client';
+import { Prisma, type ArchiveJobSource, type ArchiveJobState } from '@prisma/client';
 import { prisma } from '@/lib/db';
 
-export const ACTIVE_JOB_STATES: TwitchJobState[] = ['QUEUED', 'BLOCKED', 'RUNNING', 'RETRY_WAIT'];
+export const ACTIVE_JOB_STATES: ArchiveJobState[] = ['QUEUED', 'BLOCKED', 'RUNNING', 'RETRY_WAIT'];
 const CLIENT_REQUEST_ID = /^[A-Za-z0-9-]{8,64}$/;
 
 export interface DownloadOptions {
@@ -28,7 +28,7 @@ export function isClientRequestId(value: unknown): value is string {
 
 export interface EnqueueInput {
   videoId: string;
-  source: TwitchJobSource;
+  source: ArchiveJobSource;
   options: DownloadOptions;
   trace?: Prisma.InputJsonValue;
   priority?: number;
@@ -42,7 +42,7 @@ export async function enqueueDownload(input: EnqueueInput): Promise<{ jobId: str
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`twitch-download:${input.videoId}`}))`;
 
     if (input.clientRequestId && input.actor) {
-      const repeat = await tx.twitchJob.findUnique({
+      const repeat = await tx.archiveJob.findUnique({
         where: {
           requestedByUserId_clientRequestId: {
             requestedByUserId: input.actor.id,
@@ -54,13 +54,13 @@ export async function enqueueDownload(input: EnqueueInput): Promise<{ jobId: str
       if (repeat) return { jobId: repeat.id, created: false };
     }
 
-    const active = await tx.twitchJob.findFirst({
+    const active = await tx.archiveJob.findFirst({
       where: { videoId: input.videoId, kind: 'DOWNLOAD', state: { in: ACTIVE_JOB_STATES } },
       select: { id: true },
     });
     if (active) return { jobId: active.id, created: false };
 
-    const job = await tx.twitchJob.create({
+    const job = await tx.archiveJob.create({
       data: {
         kind: 'DOWNLOAD',
         videoId: input.videoId,
@@ -83,7 +83,7 @@ export async function retryJob(
   jobId: string,
   actor: { id: string; username: string },
 ): Promise<'retried' | 'active' | 'not-retryable'> {
-  const target = await prisma.twitchJob.findUnique({ where: { id: jobId }, select: { kind: true, videoId: true } });
+  const target = await prisma.archiveJob.findUnique({ where: { id: jobId }, select: { kind: true, videoId: true } });
   if (!target) return 'not-retryable';
 
   return prisma.$transaction(async (tx) => {
@@ -91,13 +91,13 @@ export async function retryJob(
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`twitch-download:${target.videoId}`}))`;
     }
     if (target.kind === 'DOWNLOAD' && target.videoId) {
-      const active = await tx.twitchJob.findFirst({
+      const active = await tx.archiveJob.findFirst({
         where: { videoId: target.videoId, kind: 'DOWNLOAD', state: { in: ACTIVE_JOB_STATES }, id: { not: jobId } },
         select: { id: true },
       });
       if (active) return 'active';
     }
-    const { count } = await tx.twitchJob.updateMany({
+    const { count } = await tx.archiveJob.updateMany({
       where: { id: jobId, state: { in: ['FAILED', 'CANCELLED'] } },
       data: {
         state: 'QUEUED',

@@ -10,7 +10,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('@/lib/auth', () => ({ requireUser: mocks.requireUser }));
 vi.mock('@/lib/api-logger', () => ({ withApiLogging: (handler: unknown) => handler }));
-vi.mock('@/lib/db', () => ({ prisma: { twitchJob: { findUnique: mocks.findUnique, updateMany: mocks.updateMany } } }));
+vi.mock('@/lib/db', () => ({ prisma: { archiveJob: { findUnique: mocks.findUnique, updateMany: mocks.updateMany } } }));
 vi.mock('@/lib/twitch/jobs', () => ({ retryJob: mocks.retryJob, ACTIVE_JOB_STATES: ['RUNNING'] }));
 
 import { POST as cancel } from '@/app/api/twitch/jobs/[id]/cancel/route';

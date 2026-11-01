@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { chmod, mkdir, mkdtemp, readdir, rm, stat, statfs, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { Prisma, PrismaClient, type TwitchJob, type TwitchJobKind } from '@prisma/client';
+import { Prisma, PrismaClient, type ArchiveJob, type ArchiveJobKind } from '@prisma/client';
 import { claimJob, LEASE_MS } from './claim';
 import { classifyJobError, nextStepAfterFailure } from '@/lib/twitch/job-errors';
 import { inReencodeWindow, REENCODE_NOW_PRIORITY } from '@/lib/twitch/reencode-window';
@@ -29,8 +29,8 @@ const EXTRACTOR_FAILURE_LIMIT = 3;
 const DISK_RECHECK_MS = 15 * 60_000;
 const HOUSEKEEPING_MS = 60 * 60_000;
 // File housekeeping needs no tools, so it carries on while they are held.
-const FILE_KINDS: TwitchJobKind[] = ['DELETE_FILES', 'DELETE_ORIGINAL', 'RESTORE_ORIGINAL'];
-const NETWORK_KINDS: TwitchJobKind[] = ['DOWNLOAD', ...FILE_KINDS];
+const FILE_KINDS: ArchiveJobKind[] = ['DELETE_FILES', 'DELETE_ORIGINAL', 'RESTORE_ORIGINAL'];
+const NETWORK_KINDS: ArchiveJobKind[] = ['DOWNLOAD', ...FILE_KINDS];
 
 const prisma = new PrismaClient();
 const workerId = `${os.hostname()}-${randomUUID().slice(0, 8)}`;
@@ -49,7 +49,7 @@ function log(level: 'info' | 'warn' | 'error', message: string, extra: Record<st
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function event(jobId: string, level: string, message: string) {
-  await prisma.twitchJobEvent.create({ data: { jobId, level, message: message.slice(0, 1000) } }).catch(() => undefined);
+  await prisma.archiveJobEvent.create({ data: { jobId, level, message: message.slice(0, 1000) } }).catch(() => undefined);
 }
 
 /** The app owns migrations. The worker only waits for them. */
@@ -92,15 +92,15 @@ async function writeCookies(token: string | null): Promise<{ file: string; dir: 
   return { file, dir };
 }
 
-async function finishJob(job: TwitchJob, data: Prisma.TwitchJobUpdateInput) {
+async function finishJob(job: ArchiveJob, data: Prisma.ArchiveJobUpdateInput) {
   // Only while the lease is ours: a takeover must not be overwritten by a slow first worker.
-  await prisma.twitchJob.updateMany({
+  await prisma.archiveJob.updateMany({
     where: { id: job.id, leaseOwner: workerId },
-    data: { leaseOwner: null, leaseUntil: null, ...data } as Prisma.TwitchJobUpdateManyMutationInput,
+    data: { leaseOwner: null, leaseUntil: null, ...data } as Prisma.ArchiveJobUpdateManyMutationInput,
   });
 }
 
-async function runJob(job: TwitchJob): Promise<void> {
+async function runJob(job: ArchiveJob): Promise<void> {
   const abort = new AbortController();
   running.set(job.id, abort);
   let leaseLost = false;
@@ -110,7 +110,7 @@ async function runJob(job: TwitchJob): Promise<void> {
     abort.abort();
   };
   const renew = setInterval(() => {
-    void prisma.twitchJob.updateMany({
+    void prisma.archiveJob.updateMany({
       where: { id: job.id, leaseOwner: workerId },
       data: { leaseUntil: new Date(Date.now() + LEASE_MS) },
     }).then(({ count }) => {
@@ -122,7 +122,7 @@ async function runJob(job: TwitchJob): Promise<void> {
     });
   }, RENEW_MS);
   const assertLease = async () => {
-    const owned = await prisma.twitchJob.count({ where: { id: job.id, leaseOwner: workerId, state: 'RUNNING' } });
+    const owned = await prisma.archiveJob.count({ where: { id: job.id, leaseOwner: workerId, state: 'RUNNING' } });
     if (owned === 0) {
       loseLease();
       throw new LeaseLostError();
@@ -131,7 +131,7 @@ async function runJob(job: TwitchJob): Promise<void> {
   // Unique per claim: attempts reset on retry, so they could name a directory still in use.
   const stagingName = `${job.id}-${randomUUID().slice(0, 8)}`;
   const cancelWatch = setInterval(() => {
-    void prisma.twitchJob.findUnique({ where: { id: job.id }, select: { cancelRequested: true } })
+    void prisma.archiveJob.findUnique({ where: { id: job.id }, select: { cancelRequested: true } })
       .then((row) => { if (row?.cancelRequested) abort.abort(); })
       .catch(() => undefined);
   }, CANCEL_POLL_MS);
@@ -139,9 +139,9 @@ async function runJob(job: TwitchJob): Promise<void> {
   let cookies: { file: string; dir: string } | null = null;
   let countedDownload = false;
   try {
-    const settings = await prisma.twitchSettings.findUnique({ where: { id: 'singleton' } });
+    const settings = await prisma.archiveSettings.findUnique({ where: { id: 'singleton' } });
     const setStage = async (stage: string) => {
-      await prisma.twitchJob.update({ where: { id: job.id }, data: { stage } });
+      await prisma.archiveJob.update({ where: { id: job.id }, data: { stage } });
       await event(job.id, 'info', stage);
     };
     const note = (message: string) => event(job.id, 'warn', message);
@@ -170,7 +170,7 @@ async function runJob(job: TwitchJob): Promise<void> {
       return;
     }
     if (job.kind !== 'DOWNLOAD' || !job.videoId) throw new Error(`validation failed: ${job.kind} is not supported yet`);
-    const video = await prisma.twitchVideo.findUniqueOrThrow({ where: { id: job.videoId }, include: { streamer: true } });
+    const video = await prisma.creatorVideo.findUniqueOrThrow({ where: { id: job.videoId }, include: { creator: true } });
     const browserToken = decryptTwitchToken(settings?.browserAuthToken);
     cookies = await writeCookies(browserToken);
     downloadsRunning += 1;
@@ -250,12 +250,12 @@ async function heartbeat(): Promise<void> {
     lanes: { running: running.size },
     lastSeenAt: new Date(),
   };
-  await prisma.twitchWorkerHeartbeat.upsert({ where: { workerId }, update: data, create: { workerId, ...data } });
+  await prisma.archiveWorkerHeartbeat.upsert({ where: { workerId }, update: data, create: { workerId, ...data } });
 }
 
 async function networkLane(): Promise<void> {
   while (!stopping) {
-    const settings = await prisma.twitchSettings.findUnique({ where: { id: 'singleton' } }).catch(() => null);
+    const settings = await prisma.archiveSettings.findUnique({ where: { id: 'singleton' } }).catch(() => null);
     if (running.size - (cpuBusy ? 1 : 0) < (settings?.maxConcurrentDownloads ?? 2)) {
       // Nothing new uses the tools while they are broken or about to be swapped.
       const held = toolsBusy || settings?.toolsPausedAt || settings?.toolUpdateRequestedAt;
@@ -279,7 +279,7 @@ async function cpuLane(): Promise<void> {
   while (!stopping) {
     await sleep(CPU_POLL_MS);
     if (!gpuAvailable || cpuBusy) continue;
-    const settings = await prisma.twitchSettings.findUnique({ where: { id: 'singleton' } }).catch(() => null);
+    const settings = await prisma.archiveSettings.findUnique({ where: { id: 'singleton' } }).catch(() => null);
     const now = new Date();
     const open = Boolean(settings?.reencodeEnabled)
       && inReencodeWindow(now, settings?.reencodeWindowStart ?? '01:00', settings?.reencodeWindowEnd ?? '08:00')
@@ -309,7 +309,7 @@ async function checkDeletedFiles(): Promise<void> {
 
 // Only what no live lease covers, so it cannot pull files from under another worker.
 async function cleanStaging(): Promise<void> {
-  const leased = await prisma.twitchJob.findMany({
+  const leased = await prisma.archiveJob.findMany({
     where: { state: 'RUNNING', leaseUntil: { gt: new Date() } },
     select: { id: true },
   });
@@ -320,18 +320,18 @@ async function cleanStaging(): Promise<void> {
 }
 
 async function prepareSmokeVideo(): Promise<void> {
-  const video = await prisma.twitchVideo.findFirst({
+  const video = await prisma.creatorVideo.findFirst({
     where: { availability: 'PUBLISHED' },
-    orderBy: { twitchCreatedAt: 'desc' },
-    select: { twitchVideoId: true },
+    orderBy: { sourceCreatedAt: 'desc' },
+    select: { externalId: true },
   });
-  setSmokeVideo(video ? `https://www.twitch.tv/videos/${video.twitchVideoId}` : null);
+  setSmokeVideo(video ? `https://www.twitch.tv/videos/${video.externalId}` : null);
 }
 
 // Daily: learn what is newest, and install it only if the current tools have stopped working.
 // A request from the owner installs at once. Either way, a running download keeps its tool.
 async function checkTools(): Promise<void> {
-  const settings = await prisma.twitchSettings.findUnique({ where: { id: 'singleton' } });
+  const settings = await prisma.archiveSettings.findUnique({ where: { id: 'singleton' } });
   if (!settings) return;
 
   // A new pin is tried once, so a mistyped version is not fetched every few seconds.
@@ -343,7 +343,7 @@ async function checkTools(): Promise<void> {
       await prepareSmokeVideo();
       await ensureTools((settings.pinnedTools ?? {}) as Partial<Record<ToolName, string>>);
       // A pin can be the cure for a pause, so the tools get another go.
-      await prisma.twitchSettings.update({ where: { id: 'singleton' }, data: { toolsPausedAt: null, extractorFailures: 0 } });
+      await prisma.archiveSettings.update({ where: { id: 'singleton' }, data: { toolsPausedAt: null, extractorFailures: 0 } });
     } finally {
       toolsBusy = false;
     }
@@ -362,11 +362,11 @@ async function checkTools(): Promise<void> {
     if ((requested || settings.toolsPausedAt) && downloadsRunning === 0) updated = await updateTools(pins);
   } catch (error) {
     // The installed tools still stand, so a failed update must not keep holding downloads.
-    await prisma.twitchSettings.update({ where: { id: 'singleton' }, data: { toolUpdateRequestedAt: null, toolCheckedAt: new Date() } });
+    await prisma.archiveSettings.update({ where: { id: 'singleton' }, data: { toolUpdateRequestedAt: null, toolCheckedAt: new Date() } });
     throw error;
   }
 
-  await prisma.twitchSettings.update({
+  await prisma.archiveSettings.update({
     where: { id: 'singleton' },
     data: {
       toolLatest,
@@ -382,15 +382,15 @@ async function checkTools(): Promise<void> {
 // Several videos failing the same way points at the tools, not the videos.
 async function noteExtractorResult(failed: boolean): Promise<void> {
   if (!failed) {
-    await prisma.twitchSettings.updateMany({ where: { extractorFailures: { gt: 0 } }, data: { extractorFailures: 0 } });
+    await prisma.archiveSettings.updateMany({ where: { extractorFailures: { gt: 0 } }, data: { extractorFailures: 0 } });
     return;
   }
-  const { extractorFailures } = await prisma.twitchSettings.update({
+  const { extractorFailures } = await prisma.archiveSettings.update({
     where: { id: 'singleton' },
     data: { extractorFailures: { increment: 1 } },
   });
   if (extractorFailures >= EXTRACTOR_FAILURE_LIMIT) {
-    await prisma.twitchSettings.updateMany({ where: { toolsPausedAt: null }, data: { toolsPausedAt: new Date(), toolCheckedAt: null } });
+    await prisma.archiveSettings.updateMany({ where: { toolsPausedAt: null }, data: { toolsPausedAt: new Date(), toolCheckedAt: null } });
     log('warn', 'Downloads paused: the tools keep failing', { extractorFailures });
   }
 }
@@ -412,7 +412,7 @@ async function main(): Promise<void> {
   await probeLibrary();
   await cleanStaging();
 
-  const settings = await prisma.twitchSettings.findUnique({ where: { id: 'singleton' } });
+  const settings = await prisma.archiveSettings.findUnique({ where: { id: 'singleton' } });
   appliedPins = JSON.stringify(settings?.pinnedTools ?? {});
   await ensureTools((settings?.pinnedTools ?? {}) as Record<string, string>);
 

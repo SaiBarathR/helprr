@@ -15,7 +15,7 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
   const where = buildFileWhere(searchParams);
   const [files, total] = await Promise.all([
     listFiles(where, searchParams.get('sort'), skip, take),
-    prisma.twitchMediaFile.count({ where }),
+    prisma.archiveMediaFile.count({ where }),
   ]);
   const played = await loadPlayedDates(auth.user, files.flatMap((file) => file.jellyfinItemId ?? []));
   return NextResponse.json({

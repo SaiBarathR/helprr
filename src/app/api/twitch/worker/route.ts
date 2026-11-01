@@ -11,8 +11,8 @@ async function getHandler(): Promise<NextResponse> {
   if (!auth.ok) return auth.response;
 
   const [heartbeat, settings] = await Promise.all([
-    prisma.twitchWorkerHeartbeat.findFirst({ orderBy: { lastSeenAt: 'desc' } }),
-    prisma.twitchSettings.findUnique({
+    prisma.archiveWorkerHeartbeat.findFirst({ orderBy: { lastSeenAt: 'desc' } }),
+    prisma.archiveSettings.findUnique({
       where: { id: 'singleton' },
       select: { toolLatest: true, toolsPausedAt: true, toolUpdateRequestedAt: true, reencodeEnabled: true, reencodeWindowStart: true, reencodeWindowEnd: true },
     }),

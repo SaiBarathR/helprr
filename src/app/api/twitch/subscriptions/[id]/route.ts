@@ -14,7 +14,7 @@ async function patchHandler(request: NextRequest, { params }: RouteContext): Pro
     return NextResponse.json({ error: 'notifyNewVods must be a boolean' }, { status: 400 });
   }
   const { id } = await params;
-  const { count } = await prisma.twitchSubscription.updateMany({
+  const { count } = await prisma.creatorSubscription.updateMany({
     where: { id, userId: auth.user.id },
     data: { notifyNewVods: body.notifyNewVods },
   });
@@ -27,7 +27,7 @@ async function deleteHandler(_request: NextRequest, { params }: RouteContext): P
   if (!auth.ok) return auth.response;
 
   const { id } = await params;
-  const { count } = await prisma.twitchSubscription.deleteMany({ where: { id, userId: auth.user.id } });
+  const { count } = await prisma.creatorSubscription.deleteMany({ where: { id, userId: auth.user.id } });
   if (count === 0) return NextResponse.json({ error: 'Subscription not found' }, { status: 404 });
   return NextResponse.json({ ok: true });
 }

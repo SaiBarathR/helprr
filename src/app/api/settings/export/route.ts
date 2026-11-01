@@ -300,10 +300,10 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
 
     if (wantTwitch) {
       const [settings, subscriptions] = await Promise.all([
-        prisma.twitchSettings.findUnique({ where: { id: 'singleton' } }),
-        prisma.twitchSubscription.findMany({
+        prisma.archiveSettings.findUnique({ where: { id: 'singleton' } }),
+        prisma.creatorSubscription.findMany({
           where: { userId: exporter.id },
-          select: { notifyNewVods: true, streamer: { include: { policy: true } } },
+          select: { notifyNewVods: true, creator: { include: { policy: true } } },
         }),
       ]);
       const twitch: ExportedTwitch = {
@@ -327,8 +327,8 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
             }
           : {},
         browserAuthToken: includeSecrets ? settings?.browserAuthToken ?? null : null,
-        subscriptions: subscriptions.map(({ notifyNewVods, streamer }) => ({
-          twitchUserId: streamer.twitchUserId,
+        subscriptions: subscriptions.map(({ notifyNewVods, creator: streamer }) => ({
+          twitchUserId: streamer.externalId,
           login: streamer.login,
           displayName: streamer.displayName,
           notifyNewVods,

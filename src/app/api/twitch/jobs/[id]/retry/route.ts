@@ -17,7 +17,7 @@ async function postHandler(
   if (!auth.ok) return auth.response;
 
   const { id } = await params;
-  const job = await prisma.twitchJob.findUnique({ where: { id }, select: { kind: true, requestedByUserId: true } });
+  const job = await prisma.archiveJob.findUnique({ where: { id }, select: { kind: true, requestedByUserId: true } });
   if (!job) return NextResponse.json({ error: 'Job not found' }, { status: 404 });
 
   const manager = can(auth.user, 'twitch.manage');

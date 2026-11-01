@@ -35,16 +35,16 @@ describe('runDeleteFiles', () => {
     library.dir = await mkdtemp(path.join(os.tmpdir(), 'twitch-del-'));
     await writeFile(path.join(library.dir, 'a.mkv'), '');
     const prisma = {
-      twitchMediaFile: {
+      archiveMediaFile: {
         findUnique: vi.fn().mockResolvedValue({
           id: 'f', videoId: 'v', keepForever: true, relativePath: 'a.mkv', sidecars: [], originalRelativePath: null,
-          video: { title: 'A', twitchVideoId: '1', streamer: { displayName: 'N' } },
+          video: { title: 'A', externalId: '1', creator: { displayName: 'N' } },
         }),
         delete: vi.fn().mockResolvedValue({}),
       },
-      twitchJob: { count: vi.fn().mockResolvedValue(0), update: vi.fn().mockResolvedValue({}) },
+      archiveJob: { count: vi.fn().mockResolvedValue(0), update: vi.fn().mockResolvedValue({}) },
       fileOperationAudit: { create: vi.fn().mockResolvedValue({}) },
-      twitchDeletedFile: { create: vi.fn().mockResolvedValue({}) },
+      archiveDeletedFile: { create: vi.fn().mockResolvedValue({}) },
     };
     return { prisma, job: { id: 'j', mediaFileId: 'f', options, createdAt: new Date(), requestedByUserId: 'u', requestedByUsername: 'u' } };
   }
@@ -98,14 +98,14 @@ describe('forgetFilesDeletedElsewhere', () => {
 
   const row = (id: string) => ({
     id, videoId: `video-${id}`, relativePath: `${id}.mkv`, sidecars: [`${id}.nfo`], originalRelativePath: null, sizeBytes: BigInt(1000),
-    video: { title: id, twitchVideoId: id, streamer: { displayName: 'N' } },
+    video: { title: id, externalId: id, creator: { displayName: 'N' } },
   });
   function fakePrisma(files: unknown[], busyJobs = 0) {
     const prisma = {
-      twitchMediaFile: { findMany: vi.fn().mockResolvedValue(files), delete: vi.fn().mockResolvedValue({}) },
-      twitchJob: { count: vi.fn().mockResolvedValue(busyJobs) },
+      archiveMediaFile: { findMany: vi.fn().mockResolvedValue(files), delete: vi.fn().mockResolvedValue({}) },
+      archiveJob: { count: vi.fn().mockResolvedValue(busyJobs) },
       fileOperationAudit: { create: vi.fn().mockResolvedValue({}) },
-      twitchDeletedFile: { create: vi.fn().mockResolvedValue({}) },
+      archiveDeletedFile: { create: vi.fn().mockResolvedValue({}) },
       $executeRaw: vi.fn().mockResolvedValue(1),
       $transaction: vi.fn((work: (tx: unknown) => unknown) => work(prisma)),
     };
@@ -121,10 +121,10 @@ describe('forgetFilesDeletedElsewhere', () => {
 
     expect(await run(prisma)).toBe(1);
 
-    expect(prisma.twitchMediaFile.delete).toHaveBeenCalledTimes(1);
-    expect(prisma.twitchMediaFile.delete).toHaveBeenCalledWith({ where: { id: 'gone' } });
+    expect(prisma.archiveMediaFile.delete).toHaveBeenCalledTimes(1);
+    expect(prisma.archiveMediaFile.delete).toHaveBeenCalledWith({ where: { id: 'gone' } });
     await expect(stat(path.join(library.dir, 'gone.nfo'))).rejects.toThrow();
-    expect(prisma.twitchDeletedFile.create).toHaveBeenCalledWith({
+    expect(prisma.archiveDeletedFile.create).toHaveBeenCalledWith({
       data: expect.objectContaining({ kind: 'FILE', cause: 'OUTSIDE', freedBytes: BigInt(1000), videoId: 'video-gone' }),
     });
     expect(prisma.fileOperationAudit.create.mock.calls[0][0].data).toMatchObject({ username: 'system:twitch-worker', service: 'TWITCH' });
@@ -137,8 +137,8 @@ describe('forgetFilesDeletedElsewhere', () => {
 
     expect(await run(prisma)).toBe(0);
 
-    expect(prisma.twitchMediaFile.delete).not.toHaveBeenCalled();
-    expect(prisma.twitchDeletedFile.create).not.toHaveBeenCalled();
+    expect(prisma.archiveMediaFile.delete).not.toHaveBeenCalled();
+    expect(prisma.archiveDeletedFile.create).not.toHaveBeenCalled();
   });
 
   it('stops at a file whose folder has become a link: that says nothing about the file', async () => {
@@ -151,7 +151,7 @@ describe('forgetFilesDeletedElsewhere', () => {
 
     await expect(run(prisma)).rejects.toThrow(/leads outside the library/);
 
-    expect(prisma.twitchMediaFile.delete).not.toHaveBeenCalled();
+    expect(prisma.archiveMediaFile.delete).not.toHaveBeenCalled();
     await rm(outside, { recursive: true, force: true });
   });
 
@@ -173,7 +173,7 @@ describe('forgetFilesDeletedElsewhere', () => {
     const prisma = fakePrisma(ids.map(row));
 
     expect(await run(prisma)).toBe(0);
-    expect(prisma.twitchMediaFile.delete).not.toHaveBeenCalled();
+    expect(prisma.archiveMediaFile.delete).not.toHaveBeenCalled();
   });
 
   it('forgets the last file once the marker proves this is the real library', async () => {
@@ -194,7 +194,7 @@ describe('forgetFilesDeletedElsewhere', () => {
 
     await expect(run(prisma)).rejects.toThrow(/leads outside the library/);
 
-    expect(prisma.twitchMediaFile.delete).not.toHaveBeenCalled();
+    expect(prisma.archiveMediaFile.delete).not.toHaveBeenCalled();
     expect(await stat(path.join(library.dir, 'bad.nfo'))).toBeTruthy();
   });
 
@@ -209,7 +209,7 @@ describe('forgetFilesDeletedElsewhere', () => {
 
     await expect(run(prisma)).rejects.toThrow(/EACCES/);
 
-    expect(prisma.twitchMediaFile.delete).not.toHaveBeenCalled();
+    expect(prisma.archiveMediaFile.delete).not.toHaveBeenCalled();
     await chmod(path.join(library.dir, 'locked'), 0o755);
   });
 
@@ -224,7 +224,7 @@ describe('forgetFilesDeletedElsewhere', () => {
     await expect(run(prisma)).rejects.toThrow(/outside the library/);
 
     expect(await stat(path.join(outside, 'victim.nfo'))).toBeTruthy();
-    expect(prisma.twitchMediaFile.delete).not.toHaveBeenCalled();
+    expect(prisma.archiveMediaFile.delete).not.toHaveBeenCalled();
     await rm(outside, { recursive: true, force: true });
   });
 
@@ -232,6 +232,6 @@ describe('forgetFilesDeletedElsewhere', () => {
     library.dir = await mkdtemp(path.join(os.tmpdir(), 'twitch-busy-'));
     const prisma = fakePrisma([]);
     await run(prisma);
-    expect(prisma.twitchMediaFile.findMany.mock.calls[0][0].where.jobs.none.state.in).toContain('RUNNING');
+    expect(prisma.archiveMediaFile.findMany.mock.calls[0][0].where.jobs.none.state.in).toContain('RUNNING');
   });
 });

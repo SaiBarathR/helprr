@@ -18,8 +18,8 @@ async function postHandler(
 
   // Either would sit in the queue with nothing to say why.
   const [heartbeat, settings] = await Promise.all([
-    prisma.twitchWorkerHeartbeat.findFirst({ orderBy: { lastSeenAt: 'desc' }, select: { gpuAvailable: true } }),
-    prisma.twitchSettings.findUnique({ where: { id: 'singleton' }, select: { reencodeEnabled: true } }),
+    prisma.archiveWorkerHeartbeat.findFirst({ orderBy: { lastSeenAt: 'desc' }, select: { gpuAvailable: true } }),
+    prisma.archiveSettings.findUnique({ where: { id: 'singleton' }, select: { reencodeEnabled: true } }),
   ]);
   if (heartbeat && !heartbeat.gpuAvailable) {
     return NextResponse.json({ error: 'Re-encoding needs an Intel GPU, and the worker has none' }, { status: 409 });

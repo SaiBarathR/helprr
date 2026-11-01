@@ -6,7 +6,7 @@ const { helixGet, video, streamerUpdate } = vi.hoisted(() => ({
   streamerUpdate: vi.fn(),
 }));
 
-vi.mock('@/lib/db', () => ({ prisma: { twitchVideo: video, twitchStreamer: { update: streamerUpdate } } }));
+vi.mock('@/lib/db', () => ({ prisma: { creatorVideo: video, creator: { update: streamerUpdate } } }));
 vi.mock('@/lib/twitch/helix', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/twitch/helix')>()),
   helixGet,
@@ -41,14 +41,14 @@ function helixVideo(id: string, overrides: Partial<HelixVideo> = {}): HelixVideo
 function stored(id: string, overrides: Record<string, unknown> = {}) {
   return {
     id: `row-${id}`,
-    twitchVideoId: id,
+    externalId: id,
     title: `Video ${id}`,
     durationSeconds: 3600,
     viewCount: 5,
     availability: 'PUBLISHED',
     notifiedAt: now,
     thumbnailUrl: 'https://static-cdn.jtvnw.net/thumb-%{width}x%{height}.jpg',
-    twitchCreatedAt: new Date('2026-10-29T10:00:00Z'),
+    sourceCreatedAt: new Date('2026-10-29T10:00:00Z'),
     missingSweeps: 0,
     ...overrides,
   };
@@ -56,7 +56,7 @@ function stored(id: string, overrides: Record<string, unknown> = {}) {
 
 const streamer = {
   id: 's1',
-  twitchUserId: '100',
+  externalId: '100',
   broadcasterType: 'partner',
   isLive: false,
   liveStreamId: null,
@@ -160,7 +160,7 @@ describe('syncStreamerVideos', () => {
     const full = Array.from({ length: 100 }, (_, index) => helixVideo(String(index)));
     helixGet.mockResolvedValueOnce(page(full));
     video.findMany
-      .mockResolvedValueOnce([stored('old', { twitchCreatedAt: new Date('2025-01-01T00:00:00Z'), missingSweeps: 5 })])
+      .mockResolvedValueOnce([stored('old', { sourceCreatedAt: new Date('2025-01-01T00:00:00Z'), missingSweeps: 5 })])
       .mockResolvedValueOnce([]);
 
     await syncStreamerVideos(streamer, now);

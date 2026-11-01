@@ -8,7 +8,7 @@ const mocks = vi.hoisted(() => ({
   subscription: { upsert: vi.fn() },
 }));
 
-vi.mock('@/lib/db', () => ({ prisma: { twitchStreamer: mocks.streamer, twitchSubscription: mocks.subscription, twitchVideo: mocks.video } }));
+vi.mock('@/lib/db', () => ({ prisma: { creator: mocks.streamer, creatorSubscription: mocks.subscription, creatorVideo: mocks.video } }));
 vi.mock('@/lib/logger', () => ({ logger: { warn: vi.fn() } }));
 vi.mock('@/lib/twitch/helix', () => ({ helixGet: mocks.helixGet }));
 vi.mock('@/lib/twitch/sync', () => ({ syncStreamerVideos: mocks.syncStreamerVideos }));
@@ -33,7 +33,7 @@ describe('subscribeToStreamer', () => {
 
     expect(mocks.streamer.upsert.mock.calls[0][0].update).toMatchObject({ baselinedAt: null, nextVideosCheckAt: null });
     expect(mocks.syncStreamerVideos).toHaveBeenCalledTimes(1);
-    expect(mocks.video.updateMany.mock.calls[0][0].where).toMatchObject({ streamerId: 's', notifiedAt: null, availability: 'PUBLISHED' });
+    expect(mocks.video.updateMany.mock.calls[0][0].where).toMatchObject({ creatorId: 's', notifiedAt: null, availability: 'PUBLISHED' });
   });
 
   it('leaves the baseline alone while someone else follows them', async () => {

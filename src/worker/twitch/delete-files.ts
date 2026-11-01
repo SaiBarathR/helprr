@@ -1,7 +1,7 @@
 import { constants } from 'node:fs';
 import { open, readdir, stat } from 'node:fs/promises';
 import path from 'node:path';
-import type { PrismaClient, TwitchJob } from '@prisma/client';
+import type { PrismaClient, ArchiveJob } from '@prisma/client';
 import { LIBRARY_DIR } from './env';
 import { withFileLock } from './file-lock';
 import { existsInLibrary, insideLibrary, removeInsideLibrary } from './library-paths';
@@ -17,11 +17,11 @@ const RETENTION_DELETE_VALID_MS = 10 * 60_000;
 export const IN_PROGRESS = ['QUEUED', 'BLOCKED', 'RUNNING', 'RETRY_WAIT'] as const;
 
 /** The API's delete leaves sidecars behind, so the whole set goes here, and is audited either way. */
-export async function runDeleteFiles(prisma: PrismaClient, job: TwitchJob, assertLease: () => Promise<void>): Promise<void> {
+export async function runDeleteFiles(prisma: PrismaClient, job: ArchiveJob, assertLease: () => Promise<void>): Promise<void> {
   if (!job.mediaFileId) return;
-  const file = await prisma.twitchMediaFile.findUnique({
+  const file = await prisma.archiveMediaFile.findUnique({
     where: { id: job.mediaFileId },
-    include: { video: { select: { title: true, twitchVideoId: true, streamer: { select: { displayName: true } } } } },
+    include: { video: { select: { title: true, externalId: true, creator: { select: { displayName: true } } } } },
   });
   if (!file) return;
   // Keep forever stops the rules. A person confirming this one file overrides it.
@@ -31,7 +31,7 @@ export async function runDeleteFiles(prisma: PrismaClient, job: TwitchJob, asser
   if (fromRetention && Date.now() - job.createdAt.getTime() > RETENTION_DELETE_VALID_MS) {
     throw new Error('validation failed: this retention delete waited too long, so preview again');
   }
-  const busy = await prisma.twitchJob.count({
+  const busy = await prisma.archiveJob.count({
     where: {
       id: { not: job.id },
       state: { in: [...IN_PROGRESS] },
@@ -53,11 +53,11 @@ export async function runDeleteFiles(prisma: PrismaClient, job: TwitchJob, asser
   try {
     const freedBytes = await sizeOnDisk(paths);
     for (const relative of paths) await removeInsideLibrary(relative);
-    await prisma.twitchMediaFile.delete({ where: { id: file.id } });
+    await prisma.archiveMediaFile.delete({ where: { id: file.id } });
     await recordDeletion(prisma, {
       videoId: file.videoId,
       title: file.video.title,
-      streamer: file.video.streamer.displayName,
+      streamer: file.video.creator.displayName,
       kind: 'FILE',
       cause: fromRetention ? 'RULE' : 'PERSON',
       detail: origin?.reason,
@@ -70,13 +70,13 @@ export async function runDeleteFiles(prisma: PrismaClient, job: TwitchJob, asser
   await writeDeleteAudit(prisma, {
     title: file.video.title,
     fileCount: paths.length,
-    details: { kind: 'twitch-file', twitchVideoId: file.video.twitchVideoId, paths },
+    details: { kind: 'twitch-file', twitchVideoId: file.video.externalId, paths },
     startedAt,
     errorMessage,
     actor: job.requestedByUsername ? { id: job.requestedByUserId, username: job.requestedByUsername } : undefined,
   });
   if (errorMessage) throw new Error(errorMessage);
-  await prisma.twitchJob.update({ where: { id: job.id }, data: { needsJellyfinRefresh: true } });
+  await prisma.archiveJob.update({ where: { id: job.id }, data: { needsJellyfinRefresh: true } });
 }
 
 /**
@@ -137,9 +137,9 @@ async function touchMarker(marker: string): Promise<void> {
  * and every file would look deleted. It is only written once a file has been seen there.
  */
 export async function forgetFilesDeletedElsewhere(prisma: PrismaClient): Promise<number> {
-  const files = await prisma.twitchMediaFile.findMany({
+  const files = await prisma.archiveMediaFile.findMany({
     where: { jobs: { none: { state: { in: [...IN_PROGRESS] } } } },
-    include: { video: { select: { title: true, twitchVideoId: true, streamer: { select: { displayName: true } } } } },
+    include: { video: { select: { title: true, externalId: true, creator: { select: { displayName: true } } } } },
   });
   const missing = [];
   for (const file of files) {
@@ -158,10 +158,10 @@ export async function forgetFilesDeletedElsewhere(prisma: PrismaClient): Promise
     const freedBytes = await sizeOnDisk(leftovers);
     // A swap in progress leaves the name empty for a moment, so "missing" has to be true now.
     const stillMissing = await withFileLock(prisma, file.id, async (tx) => {
-      const busy = await tx.twitchJob.count({ where: { mediaFileId: file.id, state: { in: [...IN_PROGRESS] } } });
+      const busy = await tx.archiveJob.count({ where: { mediaFileId: file.id, state: { in: [...IN_PROGRESS] } } });
       if (busy > 0 || await existsInLibrary(file.relativePath)) return false;
       for (const relative of leftovers) await removeInsideLibrary(relative);
-      await tx.twitchMediaFile.delete({ where: { id: file.id } });
+      await tx.archiveMediaFile.delete({ where: { id: file.id } });
       return true;
     });
     if (!stillMissing) continue;
@@ -169,7 +169,7 @@ export async function forgetFilesDeletedElsewhere(prisma: PrismaClient): Promise
     await recordDeletion(prisma, {
       videoId: file.videoId,
       title: file.video.title,
-      streamer: file.video.streamer.displayName,
+      streamer: file.video.creator.displayName,
       kind: 'FILE',
       cause: 'OUTSIDE',
       freedBytes: freedBytes + Number(file.sizeBytes),
@@ -177,7 +177,7 @@ export async function forgetFilesDeletedElsewhere(prisma: PrismaClient): Promise
     await writeDeleteAudit(prisma, {
       title: file.video.title,
       fileCount: leftovers.length,
-      details: { kind: 'deleted-outside-helprr', twitchVideoId: file.video.twitchVideoId, paths: leftovers },
+      details: { kind: 'deleted-outside-helprr', twitchVideoId: file.video.externalId, paths: leftovers },
       startedAt,
       errorMessage: null,
     });

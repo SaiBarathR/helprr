@@ -40,7 +40,7 @@ export async function pollTwitch(now = new Date()): Promise<void> {
   if (!connection) return;
   // Nobody following a streamer means nothing to tell anyone, so no API budget goes on them.
   const followed = { subscriptions: { some: {} } };
-  const streamers = await prisma.twitchStreamer.findMany({ where: followed, orderBy: { id: 'asc' } });
+  const streamers = await prisma.creator.findMany({ where: followed, orderBy: { id: 'asc' } });
 
   const settings = await getTwitchSettings();
   try {
@@ -57,18 +57,18 @@ export async function pollTwitch(now = new Date()): Promise<void> {
       || now.getTime() - settings.lastLivePollAt.getTime() >= settings.pollLiveSecs * 1000;
     if (liveDue) {
       const limited = await pollLive(streamers, now);
-      await prisma.twitchSettings.update({ where: { id: 'singleton' }, data: { lastLivePollAt: now } });
+      await prisma.archiveSettings.update({ where: { id: 'singleton' }, data: { lastLivePollAt: now } });
       if (limited) return;
     }
 
-    const due = await prisma.twitchStreamer.findMany({
+    const due = await prisma.creator.findMany({
       where: { ...followed, OR: [{ nextVideosCheckAt: null }, { nextVideosCheckAt: { lte: now } }] },
       orderBy: { nextVideosCheckAt: { sort: 'asc', nulls: 'first' } },
       take: MAX_VIDEO_CHECKS_PER_CYCLE,
     });
     for (const streamer of due) {
       // Advanced first, so one failing streamer cannot hold up the rest every cycle.
-      await prisma.twitchStreamer.update({
+      await prisma.creator.update({
         where: { id: streamer.id },
         data: { nextVideosCheckAt: new Date(now.getTime() + settings.pollVideosSecs * 1000) },
       });
@@ -100,13 +100,13 @@ async function isolated(step: string, run: () => Promise<void>): Promise<void> {
 }
 
 async function pollLive(
-  streamers: Array<{ id: string; twitchUserId: string; isLive: boolean; liveMissedChecks: number }>,
+  streamers: Array<{ id: string; externalId: string; isLive: boolean; liveMissedChecks: number }>,
   now: Date,
 ): Promise<boolean> {
   const live = new Map<string, HelixStream>();
   let limited = false;
   for (let start = 0; start < streamers.length; start += STREAMS_BATCH) {
-    const ids = streamers.slice(start, start + STREAMS_BATCH).map((streamer) => streamer.twitchUserId);
+    const ids = streamers.slice(start, start + STREAMS_BATCH).map((streamer) => streamer.externalId);
     const page = await helixGet<HelixStream>('/streams', { user_id: ids, first: STREAMS_BATCH });
     for (const stream of page.data) live.set(stream.user_id, stream);
     if (rateLimited(page.rateLimit)) {
@@ -116,9 +116,9 @@ async function pollLive(
   }
 
   for (const streamer of streamers) {
-    const stream = live.get(streamer.twitchUserId);
+    const stream = live.get(streamer.externalId);
     if (stream) {
-      await prisma.twitchStreamer.update({
+      await prisma.creator.update({
         where: { id: streamer.id },
         data: {
           isLive: true,
@@ -132,7 +132,7 @@ async function pollLive(
     } else if (streamer.isLive && !limited) {
       const misses = streamer.liveMissedChecks + 1;
       // The archive publishes shortly after a stream ends; the regular sweep covers the rest.
-      await prisma.twitchStreamer.update({
+      await prisma.creator.update({
         where: { id: streamer.id },
         data: misses >= OFFLINE_AFTER_MISSES
           ? { isLive: false, liveStreamId: null, liveMissedChecks: 0, nextVideosCheckAt: new Date(now.getTime() + AFTER_STREAM_CHECK_MS) }
@@ -149,12 +149,12 @@ async function markJellyfinBusy(
   now: Date,
 ): Promise<void> {
   if (!settings.reencodeEnabled || !inReencodeWindow(now, settings.reencodeWindowStart, settings.reencodeWindowEnd)) return;
-  const pending = await prisma.twitchJob.count({ where: { kind: 'REENCODE', state: { in: ['QUEUED', 'RETRY_WAIT'] } } });
+  const pending = await prisma.archiveJob.count({ where: { kind: 'REENCODE', state: { in: ['QUEUED', 'RETRY_WAIT'] } } });
   if (pending === 0) return;
   const client = await getJellyfinClient();
   const sessions = await client.getActiveSessions();
   if (sessions.some((session) => session.TranscodingInfo && session.TranscodingInfo.IsVideoDirect === false)) {
-    await prisma.twitchSettings.update({
+    await prisma.archiveSettings.update({
       where: { id: 'singleton' },
       data: { jellyfinBusyUntil: new Date(now.getTime() + JELLYFIN_BUSY_MS) },
     });
@@ -163,9 +163,9 @@ async function markJellyfinBusy(
 
 async function autoEnqueue(videoIds: string[]): Promise<void> {
   if (videoIds.length === 0) return;
-  const videos = await prisma.twitchVideo.findMany({
+  const videos = await prisma.creatorVideo.findMany({
     where: { id: { in: videoIds } },
-    select: { id: true, title: true, type: true, category: true, streamerId: true, durationSeconds: true },
+    select: { id: true, title: true, type: true, category: true, creatorId: true, durationSeconds: true },
   });
   for (const video of videos) {
     const { policy, trace, autoDownloadReason } = await decideForVideo(video);
@@ -182,7 +182,7 @@ async function autoEnqueue(videoIds: string[]): Promise<void> {
 
 // Moves what is already queued up the queue. It never queues anything itself.
 async function raiseUrgentJobs(now: Date): Promise<void> {
-  await prisma.twitchJob.updateMany({
+  await prisma.archiveJob.updateMany({
     where: {
       kind: 'DOWNLOAD',
       state: { in: ['QUEUED', 'RETRY_WAIT'] },
@@ -198,35 +198,35 @@ const TYPE_LABELS = { ARCHIVE: 'past broadcast', HIGHLIGHT: 'highlight', UPLOAD:
 async function notifyNewVideos(streamerId: string, videoIds: string[], now: Date): Promise<void> {
   if (videoIds.length === 0) return;
   const [videos, subscriptions] = await Promise.all([
-    prisma.twitchVideo.findMany({
+    prisma.creatorVideo.findMany({
       where: { id: { in: videoIds } },
       select: {
-        id: true, twitchVideoId: true, title: true, type: true, category: true, streamerId: true, durationSeconds: true,
-        streamer: { select: { displayName: true } },
+        id: true, externalId: true, title: true, type: true, category: true, creatorId: true, durationSeconds: true,
+        creator: { select: { displayName: true } },
       },
     }),
-    prisma.twitchSubscription.findMany({ where: { streamerId, notifyNewVods: true }, select: { userId: true } }),
+    prisma.creatorSubscription.findMany({ where: { creatorId: streamerId, notifyNewVods: true }, select: { userId: true } }),
   ]);
   for (const video of videos) {
     if (!(await decideForVideo(video)).policy.notify) continue;
     for (const { userId } of subscriptions) {
       await notifyAndLog({
         eventType: 'twitchVodNew',
-        title: `${video.streamer.displayName}: new ${TYPE_LABELS[video.type]}`,
+        title: `${video.creator.displayName}: new ${TYPE_LABELS[video.type]}`,
         body: video.title.slice(0, 200),
         url: `/twitch/vod/${video.id}`,
-        dedupeKey: `twitch-vod-${video.twitchVideoId}-${userId}`,
+        dedupeKey: `twitch-vod-${video.externalId}-${userId}`,
         userIds: [userId],
         ownerUserId: userId,
         metadata: { source: 'twitch', id: video.id, redirect: `/twitch/vod/${video.id}?download=1` },
       }, { service: 'twitch', instanceId: streamerId, reason: 'new-vod' });
     }
   }
-  await prisma.twitchVideo.updateMany({ where: { id: { in: videoIds } }, data: { notifiedAt: now } });
+  await prisma.creatorVideo.updateMany({ where: { id: { in: videoIds } }, data: { notifiedAt: now } });
 }
 
 async function notifyExpiring(now: Date): Promise<void> {
-  const videos = await prisma.twitchVideo.findMany({
+  const videos = await prisma.creatorVideo.findMany({
     where: {
       type: 'ARCHIVE',
       availability: 'PUBLISHED',
@@ -236,11 +236,11 @@ async function notifyExpiring(now: Date): Promise<void> {
     },
     select: {
       id: true,
-      twitchVideoId: true,
+      externalId: true,
       title: true,
-      streamerId: true,
+      creatorId: true,
       userStates: { where: { hidden: true }, select: { userId: true } },
-      streamer: {
+      creator: {
         select: {
           displayName: true,
           subscriptions: { where: { notifyNewVods: true }, select: { userId: true } },
@@ -250,19 +250,19 @@ async function notifyExpiring(now: Date): Promise<void> {
   });
   for (const video of videos) {
     const hiddenBy = new Set(video.userStates.map((state) => state.userId));
-    for (const { userId } of video.streamer.subscriptions) {
+    for (const { userId } of video.creator.subscriptions) {
       if (hiddenBy.has(userId)) continue;
       await notifyAndLog({
         eventType: 'twitchVodExpiring',
-        title: `${video.streamer.displayName}: VOD expiring soon`,
+        title: `${video.creator.displayName}: VOD expiring soon`,
         body: video.title.slice(0, 200),
         url: `/twitch/vod/${video.id}`,
-        dedupeKey: `twitch-vod-expiring-${video.twitchVideoId}-${userId}`,
+        dedupeKey: `twitch-vod-expiring-${video.externalId}-${userId}`,
         userIds: [userId],
         ownerUserId: userId,
         metadata: { source: 'twitch', id: video.id, redirect: `/twitch/vod/${video.id}?download=1` },
-      }, { service: 'twitch', instanceId: video.streamerId, reason: 'vod-expiring' });
+      }, { service: 'twitch', instanceId: video.creatorId, reason: 'vod-expiring' });
     }
-    await prisma.twitchVideo.update({ where: { id: video.id }, data: { expiryNotifiedAt: now } });
+    await prisma.creatorVideo.update({ where: { id: video.id }, data: { expiryNotifiedAt: now } });
   }
 }

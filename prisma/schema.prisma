@@ -56,8 +56,8 @@ model User {
   settings       UserSettings?
   scheduledAlerts ScheduledAlert[]
   recommendationEvents RecommendationEvent[]
-  twitchSubscriptions TwitchSubscription[]
-  twitchVideoStates TwitchUserVideoState[]
+  creatorSubscriptions CreatorSubscription[]
+  creatorVideoStates CreatorVideoState[]
   twitchLink TwitchUserLink?
   tasteProfile   UserTasteProfile?
 
@@ -823,28 +823,34 @@ model ManualDownloadEvent {
   @@index([downloadId, at])
 }
 
-enum TwitchVideoType {
+enum CreatorVideoType {
   ARCHIVE
   HIGHLIGHT
   UPLOAD
   CLIP
+
+  @@map("TwitchVideoType")
 }
 
-enum TwitchVideoAvailability {
+enum CreatorVideoAvailability {
   RECORDING
   PUBLISHED
   UNAVAILABLE
+
+  @@map("TwitchVideoAvailability")
 }
 
-enum TwitchJobKind {
+enum ArchiveJobKind {
   DOWNLOAD
   REENCODE
   DELETE_FILES
   DELETE_ORIGINAL
   RESTORE_ORIGINAL
+
+  @@map("TwitchJobKind")
 }
 
-enum TwitchJobState {
+enum ArchiveJobState {
   QUEUED
   BLOCKED
   RUNNING
@@ -852,17 +858,21 @@ enum TwitchJobState {
   DONE
   FAILED
   CANCELLED
+
+  @@map("TwitchJobState")
 }
 
-enum TwitchJobSource {
+enum ArchiveJobSource {
   MANUAL
   RULE
   URGENCY
   URL
+
+  @@map("TwitchJobSource")
 }
 
 // Singleton. Kept apart from AppSettings because GET /api/settings returns that row to any signed-in user.
-model TwitchSettings {
+model ArchiveSettings {
   id                        String    @id @default("singleton")
   autoDownloadEnabled       Boolean   @default(false) // hard override: while false, nothing downloads by itself
   defaultPolicy             Json      @default("{}") // global policy layer
@@ -892,11 +902,13 @@ model TwitchSettings {
   toolUpdateRequestedAt     DateTime? // set by the app, cleared by the worker
   createdAt                 DateTime  @default(now())
   updatedAt                 DateTime  @updatedAt
+
+  @@map("TwitchSettings")
 }
 
-model TwitchStreamer {
+model Creator {
   id                String                @id @default(cuid())
-  twitchUserId      String                @unique
+  externalId        String                @unique @map("twitchUserId")
   login             String
   folderName        String                @unique // library folder; set once at first add, never renamed
   displayName       String
@@ -914,110 +926,116 @@ model TwitchStreamer {
   nextVideosCheckAt DateTime?
   createdAt         DateTime              @default(now())
   updatedAt         DateTime              @updatedAt
-  subscriptions     TwitchSubscription[]
-  policy            TwitchStreamerPolicy?
-  videos            TwitchVideo[]
+  subscriptions     CreatorSubscription[]
+  policy            CreatorPolicy?
+  videos            CreatorVideo[]
 
   @@index([nextVideosCheckAt])
+  @@map("TwitchStreamer")
 }
 
-model TwitchSubscription {
-  id            String         @id @default(cuid())
+model CreatorSubscription {
+  id            String   @id @default(cuid())
   userId        String
-  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  streamerId    String
-  streamer      TwitchStreamer @relation(fields: [streamerId], references: [id], onDelete: Cascade)
-  notifyNewVods Boolean        @default(true)
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  creatorId     String   @map("streamerId")
+  creator       Creator  @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  notifyNewVods Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
-  @@unique([userId, streamerId])
-  @@index([streamerId])
+  @@unique([userId, creatorId])
+  @@index([creatorId])
+  @@map("TwitchSubscription")
 }
 
-model TwitchStreamerPolicy {
-  id           String         @id @default(cuid())
-  streamerId   String         @unique
-  streamer     TwitchStreamer @relation(fields: [streamerId], references: [id], onDelete: Cascade)
-  policy       Json           @default("{}") // streamer layer
-  typePolicies Json           @default("{}") // streamer x video type layers
-  createdAt    DateTime       @default(now())
-  updatedAt    DateTime       @updatedAt
+model CreatorPolicy {
+  id           String   @id @default(cuid())
+  creatorId    String   @unique @map("streamerId")
+  creator      Creator  @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  policy       Json     @default("{}") // streamer layer
+  typePolicies Json     @default("{}") // streamer x video type layers
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@map("TwitchStreamerPolicy")
 }
 
-model TwitchVideo {
-  id                 String                  @id @default(cuid())
-  twitchVideoId      String                  @unique
-  streamerId         String
-  streamer           TwitchStreamer          @relation(fields: [streamerId], references: [id], onDelete: Cascade)
-  type               TwitchVideoType
+model CreatorVideo {
+  id                 String                   @id @default(cuid())
+  externalId         String                   @unique @map("twitchVideoId")
+  creatorId          String                   @map("streamerId")
+  creator            Creator                  @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  type               CreatorVideoType
   title              String
   description        String?
-  twitchCreatedAt    DateTime
+  sourceCreatedAt    DateTime                 @map("twitchCreatedAt")
   publishedAt        DateTime?
   durationSeconds    Int
   thumbnailUrl       String?
   category           String? // from the live stream or the chapters; Helix has none for a video
-  viewCount          Int                     @default(0)
+  viewCount          Int                      @default(0)
   language           String?
   streamId           String? // equals the live stream id while the archive is still recording
   mutedSegments      Json? // Helix muted_segments: audio Twitch removed and that cannot be recovered
   chapters           Json? // from the download: Helix has none
-  availability       TwitchVideoAvailability @default(PUBLISHED)
+  availability       CreatorVideoAvailability @default(PUBLISHED)
   estimatedExpiresAt DateTime? // archives only; an estimate, because Prime/Turbo status is not visible
-  firstSeenAt        DateTime                @default(now())
-  lastSeenAt         DateTime                @default(now())
-  missingSweeps      Int                     @default(0)
+  firstSeenAt        DateTime                 @default(now())
+  lastSeenAt         DateTime                 @default(now())
+  missingSweeps      Int                      @default(0)
   notifiedAt         DateTime?
   expiryNotifiedAt   DateTime?
   seasonEpisode      Int? // highlights and uploads: assigned at publish, never renumbered
-  createdAt          DateTime                @default(now())
-  updatedAt          DateTime                @updatedAt
-  userStates         TwitchUserVideoState[]
-  jobs               TwitchJob[]
-  mediaFiles         TwitchMediaFile[]
-  deletedFiles      TwitchDeletedFile[]
+  createdAt          DateTime                 @default(now())
+  updatedAt          DateTime                 @updatedAt
+  userStates         CreatorVideoState[]
+  jobs               ArchiveJob[]
+  mediaFiles         ArchiveMediaFile[]
+  deletedFiles       ArchiveDeletedFile[]
 
-  @@index([streamerId, twitchCreatedAt])
+  @@index([creatorId, sourceCreatedAt])
   @@index([availability, estimatedExpiresAt])
+  @@map("TwitchVideo")
 }
 
-model TwitchUserVideoState {
-  id        String      @id @default(cuid())
+model CreatorVideoState {
+  id        String       @id @default(cuid())
   userId    String
-  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   videoId   String
-  video     TwitchVideo @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  video     CreatorVideo @relation(fields: [videoId], references: [id], onDelete: Cascade)
   seenAt    DateTime?
-  hidden    Boolean     @default(false)
-  createdAt DateTime    @default(now())
-  updatedAt DateTime    @updatedAt
+  hidden    Boolean      @default(false)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
 
   @@unique([userId, videoId])
   @@index([videoId])
+  @@map("TwitchUserVideoState")
 }
 
 // The app enqueues, the worker claims with a lease. A restart of either side loses nothing.
-model TwitchJob {
-  id                   String           @id @default(cuid())
-  kind                 TwitchJobKind
+model ArchiveJob {
+  id                   String            @id @default(cuid())
+  kind                 ArchiveJobKind
   videoId              String?
-  video                TwitchVideo?     @relation(fields: [videoId], references: [id], onDelete: SetNull)
+  video                CreatorVideo?     @relation(fields: [videoId], references: [id], onDelete: SetNull)
   mediaFileId          String?
-  mediaFile            TwitchMediaFile? @relation(fields: [mediaFileId], references: [id], onDelete: SetNull)
-  state                TwitchJobState   @default(QUEUED)
-  source               TwitchJobSource  @default(MANUAL)
-  priority             Int              @default(0) // higher runs first
-  options              Json             @default("{}") // resolved policy, frozen at enqueue
+  mediaFile            ArchiveMediaFile? @relation(fields: [mediaFileId], references: [id], onDelete: SetNull)
+  state                ArchiveJobState   @default(QUEUED)
+  source               ArchiveJobSource  @default(MANUAL)
+  priority             Int               @default(0) // higher runs first
+  options              Json              @default("{}") // resolved policy, frozen at enqueue
   trace                Json? // which policy layer set each option
   requestedByUserId    String?
   requestedByUsername  String?
   clientRequestId      String?
-  attempts             Int              @default(0)
-  runAfter             DateTime         @default(now())
+  attempts             Int               @default(0)
+  runAfter             DateTime          @default(now())
   leaseOwner           String?
   leaseUntil           DateTime?
-  cancelRequested      Boolean          @default(false)
+  cancelRequested      Boolean           @default(false)
   stage                String?
   progress             Float?
   speedBps             Float?
@@ -1026,69 +1044,76 @@ model TwitchJob {
   bytesTotal           BigInt?
   errorClass           String?
   lastError            String? // redacted
-  needsJellyfinRefresh Boolean          @default(false)
+  needsJellyfinRefresh Boolean           @default(false)
   failureNotifiedAt    DateTime? // set by the app, which alone holds the push keys
   startedAt            DateTime?
   finishedAt           DateTime?
-  createdAt            DateTime         @default(now())
-  updatedAt            DateTime         @updatedAt
-  events               TwitchJobEvent[]
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
+  events               ArchiveJobEvent[]
 
   @@unique([requestedByUserId, clientRequestId])
   @@index([state, kind, priority, runAfter])
   @@index([videoId])
   @@index([needsJellyfinRefresh])
+  @@map("TwitchJob")
 }
 
 // What the Library shows once a file is gone: the media file row is removed with
 // it, and audit rows are pruned on their own schedule.
-model TwitchDeletedFile {
-  id         String              @id @default(cuid())
+model ArchiveDeletedFile {
+  id         String               @id @default(cuid())
   videoId    String?
-  video      TwitchVideo?        @relation(fields: [videoId], references: [id], onDelete: SetNull)
+  video      CreatorVideo?        @relation(fields: [videoId], references: [id], onDelete: SetNull)
   title      String
   streamer   String
-  kind       TwitchDeletionKind
-  cause      TwitchDeletionCause
+  kind       ArchiveDeletionKind
+  cause      ArchiveDeletionCause
   detail     String? // the rule, in words, when a rule did it
   freedBytes BigInt
   deletedBy  String?
-  createdAt  DateTime            @default(now())
+  createdAt  DateTime             @default(now())
 
   @@index([createdAt])
   @@index([videoId])
+  @@map("TwitchDeletedFile")
 }
 
-enum TwitchDeletionKind {
+enum ArchiveDeletionKind {
   FILE
   ORIGINAL
+
+  @@map("TwitchDeletionKind")
 }
 
-enum TwitchDeletionCause {
+enum ArchiveDeletionCause {
   PERSON
   RULE
   KEEP_PERIOD
   OUTSIDE
+
+  @@map("TwitchDeletionCause")
 }
 
-model TwitchJobEvent {
-  id        String    @id @default(cuid())
+model ArchiveJobEvent {
+  id        String     @id @default(cuid())
   jobId     String
-  job       TwitchJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  job       ArchiveJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
   level     String
   message   String // redacted before it is written
-  createdAt DateTime  @default(now())
+  createdAt DateTime   @default(now())
 
   @@index([jobId, createdAt])
   @@index([createdAt])
+  @@map("TwitchJobEvent")
 }
 
-model TwitchMediaFile {
-  id                   String      @id @default(cuid())
+model ArchiveMediaFile {
+  id                   String       @id @default(cuid())
   videoId              String
-  video                TwitchVideo @relation(fields: [videoId], references: [id], onDelete: Cascade)
-  relativePath         String      @unique // under the library root; never sent to the browser
-  sidecars             Json        @default("[]")
+  video                CreatorVideo @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  relativePath         String       @unique // under the library root; never sent to the browser
+  sidecars             Json         @default("[]")
   sizeBytes            BigInt
   durationSeconds      Int
   videoCodec           String
@@ -1102,17 +1127,18 @@ model TwitchMediaFile {
   reencodeQuality      Int?
   reencodeSkippedAt    DateTime? // encoded, but it did not save enough to keep
   reencodeSkippedBytes BigInt?
-  keepForever          Boolean     @default(false)
+  keepForever          Boolean      @default(false)
   jellyfinItemId       String?
-  createdAt            DateTime    @default(now())
-  updatedAt            DateTime    @updatedAt
-  jobs                 TwitchJob[]
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime     @updatedAt
+  jobs                 ArchiveJob[]
 
   @@index([videoId])
   @@index([originalDeleteAfter])
+  @@map("TwitchMediaFile")
 }
 
-model TwitchWorkerHeartbeat {
+model ArchiveWorkerHeartbeat {
   id             String   @id @default(cuid())
   workerId       String   @unique
   version        String
@@ -1124,6 +1150,8 @@ model TwitchWorkerHeartbeat {
   lastSeenAt     DateTime @default(now())
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
+
+  @@map("TwitchWorkerHeartbeat")
 }
 
 // A user's own Twitch sign-in, only to read who they follow. Every token is enc:v1.

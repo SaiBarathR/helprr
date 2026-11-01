@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, readFile, rename, rm, stat, symlink, truncate, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import type { PrismaClient, TwitchJob } from '@prisma/client';
+import type { PrismaClient, ArchiveJob } from '@prisma/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
@@ -34,20 +34,20 @@ import { deleteExpiredOriginals } from './reencode';
 const reencodedAt = new Date('2026-10-30T02:00:00.000Z');
 const job = {
   id: 'j', mediaFileId: 'f', requestedByUserId: 'u', requestedByUsername: 'sai', options: { generation: reencodedAt.toISOString() },
-} as unknown as TwitchJob;
+} as unknown as ArchiveJob;
 const lease = async () => undefined;
 
 function fakePrisma(row: Record<string, unknown> | null, busyJobs = 0) {
   const prisma = {
     $executeRaw: vi.fn().mockResolvedValue(1),
     $transaction: vi.fn((work: (tx: unknown) => unknown) => work(prisma)),
-    twitchMediaFile: {
+    archiveMediaFile: {
       findUnique: vi.fn().mockResolvedValue(row),
       findMany: vi.fn().mockResolvedValue(row ? [row] : []),
       update: vi.fn().mockResolvedValue({}),
     },
-    twitchJob: { count: vi.fn().mockResolvedValue(busyJobs), update: vi.fn().mockResolvedValue({}) },
-    twitchDeletedFile: { create: vi.fn().mockResolvedValue({}) },
+    archiveJob: { count: vi.fn().mockResolvedValue(busyJobs), update: vi.fn().mockResolvedValue({}) },
+    archiveDeletedFile: { create: vi.fn().mockResolvedValue({}) },
     fileOperationAudit: { create: vi.fn().mockResolvedValue({}) },
   };
   return { mock: prisma, client: prisma as unknown as PrismaClient };
@@ -63,7 +63,7 @@ const file = (overrides: Record<string, unknown> = {}) => ({
   durationSeconds: 60,
   reencodedAt,
   jobs: [],
-  video: { title: 'A stream', twitchVideoId: '100', streamer: { displayName: 'Gigguk' } },
+  video: { title: 'A stream', externalId: '100', creator: { displayName: 'Gigguk' } },
   ...overrides,
 });
 
@@ -94,7 +94,7 @@ describe('runRestoreOriginal', () => {
 
     expect(await readFile(inLibrary('a/x.mkv'), 'utf8')).toBe('the much larger original');
     await expect(stat(inLibrary('.originals/a/x.mkv'))).rejects.toThrow();
-    expect(mock.twitchMediaFile.update).toHaveBeenCalledWith({
+    expect(mock.archiveMediaFile.update).toHaveBeenCalledWith({
       where: { id: 'f' },
       data: expect.objectContaining({
         sizeBytes: BigInt('the much larger original'.length),
@@ -104,7 +104,7 @@ describe('runRestoreOriginal', () => {
         originalSizeBytes: null,
       }),
     });
-    expect(mock.twitchJob.update).toHaveBeenCalledWith({ where: { id: 'j' }, data: { needsJellyfinRefresh: true } });
+    expect(mock.archiveJob.update).toHaveBeenCalledWith({ where: { id: 'j' }, data: { needsJellyfinRefresh: true } });
   });
 
   it('keeps the playable copy when the original cannot be read', async () => {
@@ -116,7 +116,7 @@ describe('runRestoreOriginal', () => {
 
     expect(await readFile(inLibrary('a/x.mkv'), 'utf8')).toBe('small');
     expect(await readFile(inLibrary('.originals/a/x.mkv'), 'utf8')).toBe('corrupt');
-    expect(mock.twitchMediaFile.update).not.toHaveBeenCalled();
+    expect(mock.archiveMediaFile.update).not.toHaveBeenCalled();
   });
 
   it('keeps the playable copy when the original is cut short', async () => {
@@ -158,20 +158,20 @@ describe('runRestoreOriginal', () => {
 
     expect(await readFile(inLibrary('a/x.mkv'), 'utf8')).toBe('newer encode');
     expect(await readFile(inLibrary('.originals/a/x.mkv'), 'utf8')).toBe('newly parked original');
-    expect(mock.twitchMediaFile.update).not.toHaveBeenCalled();
+    expect(mock.archiveMediaFile.update).not.toHaveBeenCalled();
   });
 
   it('does nothing when the file changed while it waited for the lock', async () => {
     await writeLibrary({ 'a/x.mkv': 'newer encode', '.originals/a/x.mkv': 'newly parked original' });
     const { mock, client } = fakePrisma(file());
-    mock.twitchMediaFile.findUnique
+    mock.archiveMediaFile.findUnique
       .mockResolvedValueOnce(file())
       .mockResolvedValueOnce({ reencodedAt: new Date('2026-10-31T02:00:00.000Z'), originalRelativePath: '.originals/a/x.mkv' });
 
     await runRestoreOriginal(client, job, lease);
 
     expect(await readFile(inLibrary('a/x.mkv'), 'utf8')).toBe('newer encode');
-    expect(mock.twitchMediaFile.update).not.toHaveBeenCalled();
+    expect(mock.archiveMediaFile.update).not.toHaveBeenCalled();
   });
 
   it('finishes quietly when a retry finds the restore already done', async () => {
@@ -180,7 +180,7 @@ describe('runRestoreOriginal', () => {
 
     await runRestoreOriginal(client, job, lease);
 
-    expect(mock.twitchMediaFile.update).not.toHaveBeenCalled();
+    expect(mock.archiveMediaFile.update).not.toHaveBeenCalled();
   });
 
   it('stops before touching anything when the lease has gone', async () => {
@@ -199,7 +199,7 @@ describe('runRestoreOriginal', () => {
     await runRestoreOriginal(client, job, lease);
 
     expect(await readFile(inLibrary('a/x.mkv'), 'utf8')).toBe('the original');
-    expect(mock.twitchMediaFile.update).toHaveBeenCalledWith(expect.objectContaining({
+    expect(mock.archiveMediaFile.update).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ reencodedAt: null, originalRelativePath: null }),
     }));
   });
@@ -212,7 +212,7 @@ describe('runRestoreOriginal', () => {
     await expect(runRestoreOriginal(client, job, lease)).rejects.toThrow('the original is gone');
 
     expect(await readFile(inLibrary('a/x.mkv'), 'utf8')).toBe('the re-encoded file');
-    expect(mock.twitchMediaFile.update).not.toHaveBeenCalled();
+    expect(mock.archiveMediaFile.update).not.toHaveBeenCalled();
   });
 
   it('refuses a file with no original', async () => {
@@ -257,7 +257,7 @@ describe('runRestoreOriginal', () => {
 
     expect(await readFile(path.join(outside, 'x.mkv'), 'utf8')).toBe('not ours');
     expect(await readFile(inLibrary('.originals/a/x.mkv'), 'utf8')).toBe('original');
-    expect(mock.twitchMediaFile.update).not.toHaveBeenCalled();
+    expect(mock.archiveMediaFile.update).not.toHaveBeenCalled();
     await rm(outside, { recursive: true, force: true });
   });
 
@@ -279,7 +279,7 @@ describe('runRestoreOriginal', () => {
     await writeLibrary({ 'a/x.mkv': 'small', '.originals/a/x.mkv': 'original' });
     const { mock, client } = fakePrisma(file());
     const order: string[] = [];
-    mock.twitchMediaFile.update.mockImplementation(async () => { order.push('row'); });
+    mock.archiveMediaFile.update.mockImplementation(async () => { order.push('row'); });
     mock.fileOperationAudit.create.mockImplementation(async () => { order.push('audit'); });
     mock.$transaction.mockImplementation(async (work: (tx: unknown) => unknown) => {
       await work(mock);
@@ -294,7 +294,7 @@ describe('runRestoreOriginal', () => {
   it('says the re-encoded copy is gone when a step after the rename fails', async () => {
     await writeLibrary({ 'a/x.mkv': 'small', '.originals/a/x.mkv': 'original' });
     const { mock, client } = fakePrisma(file());
-    mock.twitchMediaFile.update.mockRejectedValue(new Error('database hiccup'));
+    mock.archiveMediaFile.update.mockRejectedValue(new Error('database hiccup'));
 
     await expect(runRestoreOriginal(client, job, lease)).rejects.toThrow('database hiccup');
 
@@ -310,9 +310,9 @@ describe('runRestoreOriginal', () => {
     await expect(runRestoreOriginal(client, job, lease)).rejects.toThrow('audit table unavailable');
 
     // The retry: the original is already in place, and the row still has to catch up.
-    mock.twitchMediaFile.update.mockClear();
+    mock.archiveMediaFile.update.mockClear();
     await runRestoreOriginal(client, job, lease);
-    expect(mock.twitchMediaFile.update.mock.calls[0][0].data).toMatchObject({ reencodedAt: null, originalRelativePath: null });
+    expect(mock.archiveMediaFile.update.mock.calls[0][0].data).toMatchObject({ reencodedAt: null, originalRelativePath: null });
   });
 
   it('records a failed restore too', async () => {
@@ -338,7 +338,7 @@ describe('runRestoreOriginal', () => {
     await expect(runRestoreOriginal(client, job, lease)).rejects.toBeInstanceOf(DeferJobError);
 
     expect(await readFile(inLibrary('a/x.mkv'), 'utf8')).toBe('small');
-    expect(mock.twitchJob.count.mock.calls[0][0].where.kind).toEqual({ in: ['DOWNLOAD', 'REENCODE'] });
+    expect(mock.archiveJob.count.mock.calls[0][0].where.kind).toEqual({ in: ['DOWNLOAD', 'REENCODE'] });
   });
 });
 
@@ -351,12 +351,12 @@ describe('runDeleteOriginal', () => {
 
     expect(await readFile(inLibrary('a/x.mkv'), 'utf8')).toBe('small');
     await expect(stat(inLibrary('.originals/a/x.mkv'))).rejects.toThrow();
-    expect(mock.twitchMediaFile.update.mock.calls[0][0].data).toMatchObject({
+    expect(mock.archiveMediaFile.update.mock.calls[0][0].data).toMatchObject({
       originalRelativePath: null,
       originalDeleteAfter: null,
       originalDeletedAt: expect.any(Date),
     });
-    expect(mock.twitchDeletedFile.create).toHaveBeenCalledWith({
+    expect(mock.archiveDeletedFile.create).toHaveBeenCalledWith({
       data: expect.objectContaining({ kind: 'ORIGINAL', cause: 'PERSON', deletedBy: 'sai', freedBytes: BigInt(9), streamer: 'Gigguk' }),
     });
     expect(mock.fileOperationAudit.create).toHaveBeenCalledOnce();
@@ -365,25 +365,25 @@ describe('runDeleteOriginal', () => {
   it('still finishes when the history row cannot be written', async () => {
     await writeLibrary({ '.originals/a/x.mkv': 'original!' });
     const { mock, client } = fakePrisma(file());
-    mock.twitchDeletedFile.create.mockRejectedValue(new Error('database hiccup'));
+    mock.archiveDeletedFile.create.mockRejectedValue(new Error('database hiccup'));
     const quiet = vi.spyOn(console, 'error').mockImplementation(() => undefined);
 
     await runDeleteOriginal(client, job, lease);
 
-    expect(mock.twitchMediaFile.update).toHaveBeenCalledOnce();
+    expect(mock.archiveMediaFile.update).toHaveBeenCalledOnce();
     quiet.mockRestore();
   });
 
   it('does nothing once the original has already gone', async () => {
     const { mock, client } = fakePrisma(file({ originalRelativePath: null }));
     await runDeleteOriginal(client, job, lease);
-    expect(mock.twitchMediaFile.update).not.toHaveBeenCalled();
+    expect(mock.archiveMediaFile.update).not.toHaveBeenCalled();
   });
 
   it('never deletes through a stored path outside the library', async () => {
     const { mock, client } = fakePrisma(file({ originalRelativePath: '../../etc/passwd' }));
     await expect(runDeleteOriginal(client, job, lease)).rejects.toThrow(/outside the library/);
-    expect(mock.twitchMediaFile.update).not.toHaveBeenCalled();
+    expect(mock.archiveMediaFile.update).not.toHaveBeenCalled();
     expect(mock.fileOperationAudit.create).toHaveBeenCalledOnce();
   });
 });
@@ -392,7 +392,7 @@ describe('deleteExpiredOriginals', () => {
   it('leaves an original alone while a job is on its file', async () => {
     const { mock, client } = fakePrisma(null);
     await deleteExpiredOriginals(client);
-    expect(mock.twitchMediaFile.findMany.mock.calls[0][0].where.jobs).toEqual({
+    expect(mock.archiveMediaFile.findMany.mock.calls[0][0].where.jobs).toEqual({
       none: { state: { in: ['QUEUED', 'BLOCKED', 'RUNNING', 'RETRY_WAIT'] } },
     });
   });
@@ -404,12 +404,12 @@ describe('deleteExpiredOriginals', () => {
   ])('deletes nothing when %s', async (_name, change) => {
     await writeLibrary({ '.originals/a/x.mkv': 'original!' });
     const { mock, client } = fakePrisma(file({ ...change }));
-    mock.twitchMediaFile.findMany.mockResolvedValue([file()]);
+    mock.archiveMediaFile.findMany.mockResolvedValue([file()]);
 
     expect(await deleteExpiredOriginals(client)).toBe(0);
 
     expect(await readFile(inLibrary('.originals/a/x.mkv'), 'utf8')).toBe('original!');
-    expect(mock.twitchDeletedFile.create).not.toHaveBeenCalled();
+    expect(mock.archiveDeletedFile.create).not.toHaveBeenCalled();
   });
 
   it('never deletes through a folder that has become a link', async () => {
@@ -423,7 +423,7 @@ describe('deleteExpiredOriginals', () => {
     await deleteExpiredOriginals(client);
 
     expect(await readFile(path.join(outside, 'a/x.mkv'), 'utf8')).toBe('not ours');
-    expect(mock.twitchMediaFile.update).not.toHaveBeenCalled();
+    expect(mock.archiveMediaFile.update).not.toHaveBeenCalled();
     expect(mock.fileOperationAudit.create.mock.calls[0][0].data).toMatchObject({ success: false });
     await rm(outside, { recursive: true, force: true });
   });
@@ -435,7 +435,7 @@ describe('deleteExpiredOriginals', () => {
     await deleteExpiredOriginals(client);
 
     await expect(stat(inLibrary('.originals/a/x.mkv'))).rejects.toThrow();
-    expect(mock.twitchDeletedFile.create).toHaveBeenCalledWith({
+    expect(mock.archiveDeletedFile.create).toHaveBeenCalledWith({
       data: expect.objectContaining({ kind: 'ORIGINAL', cause: 'KEEP_PERIOD', freedBytes: BigInt(9) }),
     });
   });
@@ -448,12 +448,12 @@ describe('measureParkedOriginals', () => {
 
     expect(await measureParkedOriginals(client)).toBe(1);
 
-    expect(mock.twitchMediaFile.update).toHaveBeenCalledWith({ where: { id: 'f' }, data: { originalSizeBytes: BigInt(9) } });
+    expect(mock.archiveMediaFile.update).toHaveBeenCalledWith({ where: { id: 'f' }, data: { originalSizeBytes: BigInt(9) } });
   });
 
   it('skips one that is not there', async () => {
     const { mock, client } = fakePrisma(file());
     expect(await measureParkedOriginals(client)).toBe(0);
-    expect(mock.twitchMediaFile.update).not.toHaveBeenCalled();
+    expect(mock.archiveMediaFile.update).not.toHaveBeenCalled();
   });
 });

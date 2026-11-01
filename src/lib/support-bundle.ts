@@ -281,7 +281,7 @@ async function loadDatabaseSnapshot(): Promise<SupportDatabaseSnapshot> {
     operationAudit,
     diskSnapshots,
     migrations,
-    twitchSettings,
+    archiveSettings,
     twitchStreamers,
     twitchVideos,
     twitchJobs,
@@ -337,20 +337,20 @@ async function loadDatabaseSnapshot(): Promise<SupportDatabaseSnapshot> {
       WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL
       ORDER BY started_at ASC
     `,
-    prisma.twitchSettings.findUnique({ where: { id: 'singleton' }, select: { browserAuthToken: true } }),
-    prisma.twitchStreamer.count(),
-    prisma.twitchVideo.count(),
-    prisma.twitchJob.count(),
-    prisma.twitchMediaFile.count(),
-    prisma.twitchSubscription.count(),
-    prisma.twitchJobEvent.count(),
+    prisma.archiveSettings.findUnique({ where: { id: 'singleton' }, select: { browserAuthToken: true } }),
+    prisma.creator.count(),
+    prisma.creatorVideo.count(),
+    prisma.archiveJob.count(),
+    prisma.archiveMediaFile.count(),
+    prisma.creatorSubscription.count(),
+    prisma.archiveJobEvent.count(),
     prisma.twitchUserLink.count(),
   ]);
 
   return {
     services,
     settings,
-    twitchBrowserAuthToken: twitchSettings?.browserAuthToken,
+    twitchBrowserAuthToken: archiveSettings?.browserAuthToken,
     counts: {
       users,
       serviceConnections: services.length,

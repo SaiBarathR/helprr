@@ -20,11 +20,11 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@/lib/db', () => ({
   prisma: {
     serviceConnection: mocks.connection,
-    twitchStreamer: mocks.streamer,
-    twitchSettings: mocks.settings,
-    twitchVideo: mocks.video,
-    twitchSubscription: mocks.subscription,
-    twitchJob: mocks.job,
+    creator: mocks.streamer,
+    archiveSettings: mocks.settings,
+    creatorVideo: mocks.video,
+    creatorSubscription: mocks.subscription,
+    archiveJob: mocks.job,
   },
 }));
 vi.mock('@/lib/twitch/helix', () => ({ helixGet: mocks.helixGet }));
@@ -140,7 +140,7 @@ describe('pollTwitch', () => {
     dueStreamers([{ id: 's1' }]);
     mocks.syncStreamerVideos.mockResolvedValue({ rateLimit, newVideoIds: ['v1'] });
     mocks.video.findMany.mockResolvedValue([{
-      id: 'v1', twitchVideoId: '555', title: 'A stream', type: 'ARCHIVE', streamer: { displayName: 'Name' },
+      id: 'v1', externalId: '555', title: 'A stream', type: 'ARCHIVE', creator: { displayName: 'Name' },
     }]);
     mocks.decideForVideo.mockResolvedValue({ policy: { notify: true, autoDownload: false }, trace: {}, autoDownloadReason: '' });
 
@@ -156,7 +156,7 @@ describe('pollTwitch', () => {
   it('queues a new video only when the rules say so, with its trace', async () => {
     dueStreamers([{ id: 's1' }]);
     mocks.syncStreamerVideos.mockResolvedValue({ rateLimit, newVideoIds: ['v1', 'v2'] });
-    const row = (id: string) => ({ id, twitchVideoId: id, title: 'T', type: 'ARCHIVE', streamer: { displayName: 'N' }, streamerId: 's1', durationSeconds: 60 });
+    const row = (id: string) => ({ id, externalId: id, title: 'T', type: 'ARCHIVE', creator: { displayName: 'N' }, streamerId: 's1', durationSeconds: 60 });
     mocks.video.findMany.mockResolvedValue([row('v1'), row('v2')]);
     const policy = { autoDownload: true, quality: '720p60', chat: true, chapters: true, reencode: true, keepForever: false };
     mocks.decideForVideo
