@@ -1,4 +1,5 @@
 import { Prisma, type PrismaClient, type ArchiveJob, type ArchiveJobKind } from '@prisma/client';
+import { TWITCH } from '@/lib/twitch/platform';
 
 export const LEASE_MS = 60_000;
 
@@ -11,7 +12,7 @@ export async function claimJob(
 ): Promise<ArchiveJob | null> {
   // Cancelled, then its worker died: nothing is left to acknowledge the cancel, so it ends here.
   await prisma.archiveJob.updateMany({
-    where: { state: 'RUNNING', cancelRequested: true, leaseUntil: { lt: new Date() } },
+    where: { platform: TWITCH, state: 'RUNNING', cancelRequested: true, leaseUntil: { lt: new Date() } },
     data: { state: 'CANCELLED', stage: 'cancelled', finishedAt: new Date(), leaseOwner: null, leaseUntil: null },
   });
 
@@ -25,7 +26,8 @@ export async function claimJob(
       "updatedAt" = NOW()
     WHERE "id" = (
       SELECT "id" FROM "TwitchJob"
-      WHERE "kind"::text IN (${Prisma.join(kinds)})
+      WHERE "platform" = 'TWITCH'
+        AND "kind"::text IN (${Prisma.join(kinds)})
         AND "cancelRequested" = false
         ${minPriority === undefined ? Prisma.empty : Prisma.sql`AND "priority" >= ${minPriority}`}
         AND (

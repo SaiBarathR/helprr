@@ -40,7 +40,7 @@ export const FILE_SELECT = {
     },
   },
   jobs: {
-    where: { state: { in: ACTIVE_JOB_STATES } },
+    where: { platform: TWITCH, state: { in: ACTIVE_JOB_STATES } },
     select: { id: true, kind: true, state: true, stage: true, progress: true, priority: true },
     take: 1,
   },
@@ -298,13 +298,13 @@ export function requestOriginalJob(
 export async function fileTimeline(fileId: string, videoId: string) {
   const [jobs, deletions] = await Promise.all([
     prisma.archiveJob.findMany({
-      where: { OR: [{ mediaFileId: fileId }, { videoId, kind: 'DOWNLOAD' }] },
+      where: { platform: TWITCH, OR: [{ mediaFileId: fileId }, { videoId, kind: 'DOWNLOAD' }] },
       orderBy: { createdAt: 'asc' },
       take: 50,
       select: { id: true, kind: true, state: true, source: true, requestedByUsername: true, createdAt: true, startedAt: true, finishedAt: true },
     }),
     prisma.archiveDeletedFile.findMany({
-      where: { videoId, kind: 'ORIGINAL' },
+      where: { platform: TWITCH, videoId, kind: 'ORIGINAL' },
       orderBy: { createdAt: 'asc' },
       take: 20,
       select: { id: true, cause: true, freedBytes: true, deletedBy: true, createdAt: true },

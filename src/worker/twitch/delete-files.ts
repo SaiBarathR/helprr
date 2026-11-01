@@ -7,6 +7,7 @@ import { withFileLock } from './file-lock';
 import { existsInLibrary, insideLibrary, removeInsideLibrary } from './library-paths';
 import { DeferJobError } from './process';
 import { recordDeletion, writeDeleteAudit } from './reencode';
+import { TWITCH } from '@/lib/twitch/platform';
 
 export { insideLibrary };
 
@@ -139,7 +140,7 @@ async function touchMarker(marker: string): Promise<void> {
  */
 export async function forgetFilesDeletedElsewhere(prisma: PrismaClient): Promise<number> {
   const files = await prisma.archiveMediaFile.findMany({
-    where: { jobs: { none: { state: { in: [...IN_PROGRESS] } } } },
+    where: { platform: TWITCH, jobs: { none: { state: { in: [...IN_PROGRESS] } } } },
     include: { video: { select: { title: true, externalId: true, creator: { select: { displayName: true } } } } },
   });
   const missing = [];
