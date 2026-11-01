@@ -1,13 +1,13 @@
 import { chmod, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import type { CreatorVideoType } from '@prisma/client';
+import type { CreatorVideoType, Prisma } from '@prisma/client';
 import { archiveEpisode, localDate, safeFilenameTitle } from '@/lib/archive/naming';
 import { seasonNfo } from '@/lib/archive/nfo';
 import { parseProgressLine, YT_DLP_PROGRESS_TEMPLATE } from '@/lib/archive/progress';
 import { decryptTwitchToken } from '@/lib/twitch/token-cipher';
 import { vttToSrt } from '@/lib/youtube/captions';
-import { formatSelector, selectedBytes } from '@/lib/youtube/formats';
+import { formatSelector, selectedBytes, summarizeFormats } from '@/lib/youtube/formats';
 import { youtubeEpisodeNfo, youtubeShowNfo } from '@/lib/youtube/nfo';
 import type { DownloadContext, EpisodeLayout, PlatformAdapter, PreparedDownload, Sidecar } from '../adapter';
 import { FFMPEG } from '../env';
@@ -110,6 +110,19 @@ async function downloadVideo(ctx: DownloadContext, staging: string, selector: st
   const file = (await readdir(staging)).find((name) => name === 'video.mkv');
   if (!file) throw new Error('validation failed: the download left no video');
   return path.join(staging, file);
+}
+
+/** What a person sees in the sheet. Sizes only: no format link is ever stored. */
+export async function readYoutubeFormats(ctx: Pick<DownloadContext, 'prisma' | 'video' | 'cookiesFile' | 'signal'>): Promise<void> {
+  const { prisma, video, signal } = ctx;
+  const info = JSON.parse(await run(toolPath('ytdlpYoutube'), [
+    ...youtubeVideoArgs(video.externalId),
+    ...(ctx.cookiesFile ? ['--cookies', ctx.cookiesFile] : []),
+  ], { signal, captureStdout: true })) as { formats?: Parameters<typeof summarizeFormats>[0] };
+  await prisma.creatorVideo.update({
+    where: { id: video.id },
+    data: { formats: summarizeFormats(info.formats ?? []) as unknown as Prisma.InputJsonValue, formatsCheckedAt: new Date() },
+  });
 }
 
 export const youtubeAdapter: PlatformAdapter<YoutubeInfo> = {

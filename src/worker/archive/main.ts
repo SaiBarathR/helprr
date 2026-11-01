@@ -5,7 +5,7 @@ import path from 'node:path';
 import { Prisma, PrismaClient, type ArchiveJob, type ArchiveJobKind, type ArchivePlatform } from '@prisma/client';
 import type { DownloadSession, PlatformAdapter } from './adapter';
 import { twitchAdapter } from './adapters/twitch';
-import { youtubeAdapter, youtubeVideoArgs } from './adapters/youtube';
+import { readYoutubeFormats, youtubeAdapter, youtubeVideoArgs } from './adapters/youtube';
 import { claimJob, LEASE_MS } from './claim';
 import { classifyJobError, nextStepAfterFailure } from '@/lib/archive/job-errors';
 import { inReencodeWindow, REENCODE_NOW_PRIORITY } from '@/lib/archive/reencode-window';
@@ -22,6 +22,7 @@ import { TWITCH } from '@/lib/twitch/platform';
 
 const RENEW_MS = 20_000;
 const POLL_MS = 5_000;
+const FORMATS_POLL_MS = 2_000;
 const CANCEL_POLL_MS = 2_000;
 const HEARTBEAT_MS = 15_000;
 const MIGRATION_POLL_MS = 5_000;
@@ -47,6 +48,7 @@ const running = new Map<string, AbortController>();
 let stopping = false;
 let gpuAvailable = false;
 let cpuBusy = false;
+let formatsBusy = false;
 let downloadsRunning = 0;
 let appliedPins = '';
 let toolsBusy = false;
@@ -172,6 +174,15 @@ async function runJob(job: ArchiveJob): Promise<void> {
       await finishJob(job, { state: 'DONE', stage: 'done', progress: 1, finishedAt: new Date(), lastError: null, errorClass: null });
       return;
     }
+    if (job.kind === 'FORMATS' && job.videoId) {
+      const video = await prisma.creatorVideo.findUniqueOrThrow({ where: { id: job.videoId }, include: { creator: true } });
+      session = await ADAPTERS[job.platform].openSession(settings, { prisma, video });
+      downloadsRunning += 1;
+      countedDownload = true;
+      await readYoutubeFormats({ prisma, video, cookiesFile: session.cookiesFile, signal: abort.signal });
+      await forgetFormatsJob(job);
+      return;
+    }
     if (job.kind !== 'DOWNLOAD' || !job.videoId) throw new Error(`validation failed: ${job.kind} is not supported yet`);
     const video = await prisma.creatorVideo.findUniqueOrThrow({ where: { id: job.videoId }, include: { creator: true } });
     const adapter = ADAPTERS[job.platform];
@@ -201,6 +212,10 @@ async function runJob(job: ArchiveJob): Promise<void> {
     await rm(path.join(libraryFor(job.platform).staging, stagingName), { recursive: true, force: true }).catch(() => undefined);
     if (leaseLost || error instanceof LeaseLostError) {
       log('warn', 'Lost the lease on a job', { jobId: job.id });
+    } else if (job.kind === 'FORMATS') {
+      // Nothing is lost: the sheet falls back to estimates, and a person can open it again.
+      log('warn', 'Format lookup failed', { jobId: job.id, error: String(error).slice(0, 300) });
+      await forgetFormatsJob(job);
     } else if (stopping && error instanceof JobCancelledError) {
       await finishJob(job, { state: 'QUEUED', stage: null, attempts: { decrement: 1 } });
     } else if (error instanceof JobCancelledError) {
@@ -274,6 +289,11 @@ async function heartbeat(): Promise<void> {
   await prisma.archiveWorkerHeartbeat.upsert({ where: { workerId }, update: data, create: { workerId, ...data } });
 }
 
+// A lookup leaves no history worth keeping, and the Queue is for downloads.
+async function forgetFormatsJob(job: ArchiveJob): Promise<void> {
+  await prisma.archiveJob.deleteMany({ where: { id: job.id, leaseOwner: workerId } });
+}
+
 async function readyPlatforms(settings: { toolsPausedAt: Date | null } | null): Promise<ArchivePlatform[]> {
   const youtube = await prisma.youtubeSettings.findUnique({ where: { id: 'singleton' }, select: { toolsPausedAt: true } });
   const paused = { TWITCH: settings?.toolsPausedAt, YOUTUBE: youtube?.toolsPausedAt };
@@ -292,7 +312,7 @@ async function noteAccount(works: boolean): Promise<void> {
 async function networkLane(): Promise<void> {
   while (!stopping) {
     const settings = await prisma.archiveSettings.findUnique({ where: { id: 'singleton' } }).catch(() => null);
-    if (running.size - (cpuBusy ? 1 : 0) < (settings?.maxConcurrentDownloads ?? 2)) {
+    if (running.size - (cpuBusy ? 1 : 0) - (formatsBusy ? 1 : 0) < (settings?.maxConcurrentDownloads ?? 2)) {
       // Nothing new uses the tools while they are about to be swapped, and a platform whose
       // tools are broken stops alone. File housekeeping needs no tools.
       const held = Boolean(toolsBusy || settings?.toolUpdateRequestedAt);
@@ -306,6 +326,24 @@ async function networkLane(): Promise<void> {
       }
     }
     await sleep(POLL_MS);
+  }
+}
+
+// Its own slot, because a person is waiting on this and two long downloads must not hold it up.
+async function formatsLane(): Promise<void> {
+  while (!stopping) {
+    const settings = await prisma.archiveSettings.findUnique({ where: { id: 'singleton' } }).catch(() => null);
+    const ready = (await readyPlatforms(settings).catch(() => [])).filter((platform) => platform === 'YOUTUBE');
+    const held = toolsBusy || settings?.toolUpdateRequestedAt;
+    const job = held ? null : await claimJob(prisma, workerId, ['FORMATS'], ready).catch(() => null);
+    if (job) {
+      formatsBusy = true;
+      await runJob(job).finally(() => {
+        formatsBusy = false;
+      });
+    } else {
+      await sleep(FORMATS_POLL_MS);
+    }
   }
 }
 
@@ -560,7 +598,7 @@ async function main(): Promise<void> {
   setInterval(() => void checkTools().catch((error) => log('warn', 'Tool check failed', { error: String(error).slice(0, 300) })), HEARTBEAT_MS);
   setInterval(() => void heartbeat().catch((error) => log('warn', 'Heartbeat failed', { error: String(error) })), HEARTBEAT_MS);
   log('info', 'Worker ready', { workerId, version: WORKER_VERSION });
-  await Promise.all([networkLane(), cpuLane()]);
+  await Promise.all([networkLane(), cpuLane(), formatsLane()]);
 }
 
 main().catch((error) => {
