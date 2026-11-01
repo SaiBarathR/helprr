@@ -6,6 +6,7 @@ import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import Link from '@/components/ui/app-link';
 import { GroupedSection } from '@/components/settings/grouped-section';
+import { JellyfinLibrarySection } from '@/components/creators/jellyfin-library-section';
 import { changedNumber, NumberRow, ROW_INPUT, SwitchRow } from '@/components/creators/setting-rows';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -37,16 +38,6 @@ interface RetentionCandidate {
   streamer: string;
   sizeBytes: number;
   reason: string;
-}
-
-interface LibraryStatus {
-  configured?: boolean;
-  path?: string;
-  exists?: boolean;
-  name?: string | null;
-  fetchersOff?: boolean;
-  conflicts?: string[];
-  error?: string;
 }
 
 function reencodeFooter(settings: Settings | undefined): string {
@@ -105,13 +96,9 @@ function VersionRow({ label, defaultValue, onCommit }: { label: string; defaultV
 export default function TwitchSettingsPage() {
   const queryClient = useQueryClient();
   const settings = useQuery({ queryKey: ['twitch', 'settings'], queryFn: ({ signal }) => load<Settings>('/api/twitch/settings', signal) });
-  const library = useQuery({ queryKey: ['twitch', 'library'], queryFn: ({ signal }) => load<LibraryStatus>('/api/twitch/library', signal), retry: false });
 
-  const [libraryName, setLibraryName] = useState('Twitch');
   const [browserToken, setBrowserToken] = useState('');
   const [confirmRetention, setConfirmRetention] = useState(false);
-  const [typedPath, setLibraryPath] = useState<string | null>(null);
-  const libraryPath = typedPath ?? library.data?.path ?? '';
 
   const worker = useQuery({
     queryKey: ['twitch', 'worker'],
@@ -177,16 +164,7 @@ export default function TwitchSettingsPage() {
     },
     onError: fail,
   });
-  const createLibrary = useMutation({
-    mutationFn: () => send('/api/twitch/library', 'POST', { name: libraryName, path: libraryPath }),
-    onSuccess: () => {
-      toast.success('Library is ready');
-      refresh();
-    },
-    onError: fail,
-  });
 
-  const status = library.data;
   const data = settings.data;
 
   return (
@@ -329,36 +307,7 @@ export default function TwitchSettingsPage() {
         onConfirm={() => runRetention.mutate()}
       />
 
-      <GroupedSection
-        title="Jellyfin library"
-        footer={status?.exists ? 'Exclude this library from the Intro Skipper plugin, if you use it' : 'Creating a library changes your real Jellyfin'}
-      >
-        {status?.exists ? (
-          <>
-            <div className="grouped-row gap-3"><span className="text-sm">Library</span><span className="truncate text-sm text-muted-foreground">{status.name}</span></div>
-            <div className="grouped-row gap-3">
-              <span className="text-sm">Internet metadata</span>
-              <span className={cn('text-sm', status.fetchersOff ? 'text-muted-foreground' : 'text-amber-400')}>{status.fetchersOff ? 'Off' : 'On: turn it off'}</span>
-            </div>
-          </>
-        ) : (
-          <div className="space-y-2 px-4 py-3">
-            {status?.conflicts?.length ? (
-              <p className="text-sm text-amber-400">Already covered by {status.conflicts.join(', ')}.</p>
-            ) : null}
-            <Input aria-label="Library name" value={libraryName} onChange={(event) => setLibraryName(event.target.value)} />
-            <Input
-              aria-label="Library path, as Jellyfin sees it"
-              placeholder="Path, as Jellyfin sees it"
-              value={libraryPath}
-              onChange={(event) => setLibraryPath(event.target.value)}
-            />
-            <Button className="h-10 w-full rounded-full" disabled={!libraryPath.trim() || createLibrary.isPending} onClick={() => createLibrary.mutate()}>
-              Create library
-            </Button>
-          </div>
-        )}
-      </GroupedSection>
+      <JellyfinLibrarySection platform="twitch" defaultName="Twitch" />
     </div>
   );
 }

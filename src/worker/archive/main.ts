@@ -14,7 +14,7 @@ import { forgetFilesDeletedElsewhere, repairLibraryModes, runDeleteFiles } from 
 import { measureParkedOriginals, runDeleteOriginal, runRestoreOriginal } from './original-files';
 import { DiskGuardError, runDownload, WaitForRecordingError } from './pipeline';
 import { deleteExpiredOriginals, probeGpu, runReencode } from './reencode';
-import { assertSeparateRoots, isMounted } from './library-paths';
+import { assertSeparateRoots, isMountedFolder } from './library-paths';
 import { DeferJobError, JobCancelledError, LeaseLostError } from './process';
 import { activeVersion, ensureTools, latestVersion, setSmokeVideo, updateTools, type ToolName } from './tools';
 import { TWITCH } from '@/lib/twitch/platform';
@@ -247,7 +247,7 @@ async function heartbeat(): Promise<void> {
     platforms: PLATFORMS,
     roots: Object.fromEntries(await Promise.all(ALL_PLATFORMS.map(async (platform) => {
       const { root } = libraryFor(platform);
-      const space = await isMounted(root) ? await statfs(root).catch(() => null) : null;
+      const space = await isMountedFolder(root) ? await statfs(root).catch(() => null) : null;
       return [platform, { available: space !== null, freeBytes: space ? Number(BigInt(space.bavail) * BigInt(space.bsize)) : null }];
     }))),
     lastSeenAt: new Date(),

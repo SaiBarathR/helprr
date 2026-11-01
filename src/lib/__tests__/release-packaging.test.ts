@@ -62,13 +62,19 @@ describe('no-clone release packaging', () => {
     );
   });
 
-  it('keeps the Twitch worker behind a profile, off by default, in both stacks', () => {
+  it('keeps the worker behind a profile, off by default, in both stacks', () => {
     const stable = read('docker-compose.yml');
     const dev = read('docker-compose.dev.yml');
-    expect(stable).toMatch(/helprr-twitch-worker:\n[\s\S]*?profiles: \["twitch"\]/);
-    expect(dev).toMatch(/helprr-dev-twitch-worker:\n[\s\S]*?profiles: \["twitch"\]/);
+    expect(stable).toMatch(/helprr-twitch-worker:\n[\s\S]*?profiles: \["twitch", "youtube"\]/);
+    expect(dev).toMatch(/helprr-dev-twitch-worker:\n[\s\S]*?profiles: \["twitch", "youtube"\]/);
     expect(dev).toContain('HELPRR_DEV_TWITCH_LIBRARY_HOST_PATH');
     expect(read('.env.example')).toContain('# COMPOSE_PROFILES=twitch');
+  });
+
+  it('creates no YouTube folder until one is chosen, and keeps stable and dev apart', () => {
+    expect(read('docker-compose.yml')).toContain('${YOUTUBE_LIBRARY_HOST_PATH:-/dev/null}:/media/youtube');
+    expect(read('docker-compose.dev.yml')).toContain('${HELPRR_DEV_YOUTUBE_LIBRARY_HOST_PATH:-/dev/null}:/media/youtube');
+    expect(read('docker-compose.dev.yml')).not.toMatch(/\$\{YOUTUBE_LIBRARY_HOST_PATH/);
   });
 
   it('publishes and promotes the Twitch worker with the app', () => {

@@ -1,7 +1,7 @@
 import type { JellyfinClient } from '@/lib/jellyfin-client';
 
-/** Everything from the NFO files: a Twitch folder must never be matched against a TV database. */
-export function twitchLibraryOptions(path: string) {
+/** Everything from the NFO files: these folders must never be matched against a TV database. */
+export function archiveLibraryOptions(path: string) {
   const noFetchers = { MetadataFetchers: [], MetadataFetcherOrder: [], ImageFetchers: [], ImageFetcherOrder: [] };
   return {
     Enabled: true,
@@ -30,7 +30,7 @@ function coversPath(libraryPath: string, path: string): boolean {
   return path === root || path.startsWith(`${root}/`);
 }
 
-export interface TwitchLibraryStatus {
+export interface ArchiveLibraryStatus {
   exists: boolean;
   itemId: string | null;
   name: string | null;
@@ -40,7 +40,7 @@ export interface TwitchLibraryStatus {
   conflicts: string[];
 }
 
-export async function readLibraryStatus(client: JellyfinClient, path: string): Promise<TwitchLibraryStatus> {
+export async function readLibraryStatus(client: JellyfinClient, path: string): Promise<ArchiveLibraryStatus> {
   const folders = await client.getVirtualFolders();
   const library = folders.find((folder) => (folder.Locations ?? []).some((location) => location.replace(/\/+$/, '') === path.replace(/\/+$/, '')));
   const options = library?.LibraryOptions as {

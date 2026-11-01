@@ -9,7 +9,7 @@ Usage: update.sh [--keep N]
 Backs up the stable database with backup.sh, then pulls and restarts only the
 Helprr app container and waits until it is healthy and ready. PostgreSQL and
 Redis keep running. Nothing is pulled or restarted if the backup fails. With
-the twitch profile on, the Twitch worker follows once the app is ready.
+the twitch or youtube profile on, the worker follows once the app is ready.
   --keep N  Passed to backup.sh: keep the newest N backups (default 10; 0 keeps
             every backup)
 
@@ -87,12 +87,12 @@ ready=$(docker compose exec -T helprr wget -qO- http://127.0.0.1:3050/api/ready)
   fail 'Helprr is healthy but /api/ready did not report ready. See: docker compose logs helprr'
 printf 'Helprr is healthy and ready: %s\n' "$ready"
 
-# Only with COMPOSE_PROFILES=twitch. It starts after the app, which owns the
+# Only with the twitch or youtube profile. It starts after the app, which owns the
 # migrations it waits for; a job it was running is requeued, not lost.
 if docker compose config --services | grep -qx helprr-twitch-worker; then
-  docker compose pull helprr-twitch-worker || fail 'Pulling the Twitch worker failed; the app is updated and the old worker is still running.'
-  docker compose up -d --no-build --no-deps helprr-twitch-worker || fail 'Starting the new Twitch worker failed. See: docker compose logs helprr-twitch-worker'
-  printf 'Twitch worker updated.\n'
+  docker compose pull helprr-twitch-worker || fail 'Pulling the worker failed; the app is updated and the old worker is still running.'
+  docker compose up -d --no-build --no-deps helprr-twitch-worker || fail 'Starting the new worker failed. See: docker compose logs helprr-twitch-worker'
+  printf 'Worker updated.\n'
 fi
 
 printf 'To roll back, see README -> Backup and restore; the backup above is the restore point.\n'
