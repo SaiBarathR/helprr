@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { ErrorState } from '@/components/ui/error-state';
 import { FloatingActionBar } from '@/components/ui/floating-action-bar';
 import { useUnsavedChangesGuard } from '@/lib/hooks/use-unsaved-changes-guard';
-import type { PolicyLayer, TwitchPolicy } from '@/lib/twitch/policy';
+import type { PolicyLayer, TwitchPolicy } from '@/lib/archive/policy';
 import { RuleLayers, type RuleLayerValue } from './policy-editor';
 
 interface PoliciesResponse {

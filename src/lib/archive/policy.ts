@@ -1,4 +1,4 @@
-import type { DownloadOptions } from '@/lib/twitch/jobs';
+import type { DownloadOptions } from '@/lib/archive/jobs';
 
 export interface PolicyConditions {
   titleInclude?: string[];

@@ -6,9 +6,9 @@ import { Prisma, PrismaClient, type ArchiveJob, type ArchiveJobKind, type Archiv
 import type { DownloadSession } from './adapter';
 import { twitchAdapter } from './adapters/twitch';
 import { claimJob, LEASE_MS } from './claim';
-import { classifyJobError, nextStepAfterFailure } from '@/lib/twitch/job-errors';
-import { inReencodeWindow, REENCODE_NOW_PRIORITY } from '@/lib/twitch/reencode-window';
-import type { DownloadOptions } from '@/lib/twitch/jobs';
+import { classifyJobError, nextStepAfterFailure } from '@/lib/archive/job-errors';
+import { inReencodeWindow, REENCODE_NOW_PRIORITY } from '@/lib/archive/reencode-window';
+import type { DownloadOptions } from '@/lib/archive/jobs';
 import { libraryFor, WORKER_VERSION } from './env';
 import { forgetFilesDeletedElsewhere, repairLibraryModes, runDeleteFiles } from './delete-files';
 import { measureParkedOriginals, runDeleteOriginal, runRestoreOriginal } from './original-files';

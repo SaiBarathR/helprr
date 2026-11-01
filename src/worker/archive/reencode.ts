@@ -1,7 +1,7 @@
 import { mkdir, rm, stat } from 'node:fs/promises';
 import path from 'node:path';
 import type { ArchivePlatform, Prisma, PrismaClient, ArchiveDeletionCause, ArchiveDeletionKind, ArchiveJob } from '@prisma/client';
-import { worthKeeping } from '@/lib/twitch/reencode-window';
+import { worthKeeping } from '@/lib/archive/reencode-window';
 import { FFMPEG, FFPROBE, libraryFor } from './env';
 import { withFileLock } from './file-lock';
 import { removeInsideLibrary, replaceInsideLibrary } from './library-paths';

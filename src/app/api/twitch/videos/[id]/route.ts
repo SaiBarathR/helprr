@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { prisma } from '@/lib/db';
-import { decideForVideo } from '@/lib/twitch/policy-store';
+import { decideForVideo } from '@/lib/archive/policy-store';
 import { serializeVideo, VIDEO_SELECT } from '@/lib/twitch/serialize';
 import { getTwitchSettings } from '@/lib/twitch/settings';
 import { TWITCH } from '@/lib/twitch/platform';

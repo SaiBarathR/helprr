@@ -60,11 +60,11 @@ describe('serializeFile', () => {
 
 describe('buildFileWhere', () => {
   it('ignores a filter it does not know', () => {
-    expect(buildFileWhere(new URLSearchParams('filter=nonsense'))).toEqual({ AND: [{ platform: 'TWITCH' }] });
+    expect(buildFileWhere(new URLSearchParams('filter=nonsense'), 'TWITCH')).toEqual({ AND: [{ platform: 'TWITCH' }] });
   });
 
   it('finds kept originals', () => {
-    expect(buildFileWhere(new URLSearchParams('filter=original-kept'))).toEqual({ AND: [{ platform: 'TWITCH' }, { originalRelativePath: { not: null } }] });
+    expect(buildFileWhere(new URLSearchParams('filter=original-kept'), 'TWITCH')).toEqual({ AND: [{ platform: 'TWITCH' }, { originalRelativePath: { not: null } }] });
   });
 });
 
@@ -76,8 +76,8 @@ describe('listFiles sorted by most saved', () => {
       query.where.id ? query.where.id.in.map((id) => ({ id })) : [size('c', 0), size('a', 0), size('z', 50), size('b', 0)]
     ));
 
-    const first = await listFiles({}, 'saved', 0, 2);
-    const second = await listFiles({}, 'saved', 2, 2);
+    const first = await listFiles({}, 'TWITCH', 'saved', 0, 2);
+    const second = await listFiles({}, 'TWITCH', 'saved', 2, 2);
 
     expect([...first, ...second].map((file) => file.id)).toEqual(['z', 'a', 'b', 'c']);
   });
@@ -86,12 +86,12 @@ describe('listFiles sorted by most saved', () => {
 describe('typicalSavingPercent', () => {
   it('is what was really saved, across every re-encoded file', async () => {
     mocks.aggregate.mockResolvedValue({ _sum: { sizeBytes: BigInt(73), originalSizeBytes: BigInt(100) } });
-    expect(await typicalSavingPercent()).toBe(27);
+    expect(await typicalSavingPercent('TWITCH')).toBe(27);
   });
 
   it('promises nothing before there is a result', async () => {
     mocks.aggregate.mockResolvedValue({ _sum: { sizeBytes: null, originalSizeBytes: null } });
-    expect(await typicalSavingPercent()).toBeNull();
+    expect(await typicalSavingPercent('TWITCH')).toBeNull();
   });
 });
 
@@ -103,30 +103,30 @@ describe('requestReencode', () => {
   });
 
   it('takes the per-file lock before it checks anything', async () => {
-    await requestReencode('f', 'now', actor);
+    await requestReencode('f', 'now', actor, 'TWITCH');
     expect(tx.$executeRaw.mock.invocationCallOrder[0]).toBeLessThan(tx.archiveMediaFile.findUnique.mock.invocationCallOrder[0]);
   });
 
   it('queues a job the night window will not hold back', async () => {
-    expect(await requestReencode('f', 'now', actor)).toBe('queued');
+    expect(await requestReencode('f', 'now', actor, 'TWITCH')).toBe('queued');
     expect(tx.archiveJob.create.mock.calls[0][0].data).toMatchObject({ kind: 'REENCODE', priority: REENCODE_NOW_PRIORITY, mediaFileId: 'f' });
   });
 
   it('leaves a tonight job to the night window', async () => {
-    await requestReencode('f', 'tonight', actor);
+    await requestReencode('f', 'tonight', actor, 'TWITCH');
     expect(tx.archiveJob.create.mock.calls[0][0].data.priority).toBe(0);
   });
 
   it('moves a waiting re-encode rather than adding a second', async () => {
     tx.archiveJob.findFirst.mockResolvedValueOnce({ id: 'j', kind: 'REENCODE', state: 'QUEUED' });
-    expect(await requestReencode('f', 'now', actor)).toBe('queued');
+    expect(await requestReencode('f', 'now', actor, 'TWITCH')).toBe('queued');
     expect(tx.archiveJob.create).not.toHaveBeenCalled();
     expect(tx.archiveJob.update.mock.calls[0][0].data.priority).toBe(REENCODE_NOW_PRIORITY);
   });
 
   it('leaves a running re-encode alone', async () => {
     tx.archiveJob.findFirst.mockResolvedValueOnce({ id: 'j', kind: 'REENCODE', state: 'RUNNING' });
-    expect(await requestReencode('f', 'now', actor)).toBe('queued');
+    expect(await requestReencode('f', 'now', actor, 'TWITCH')).toBe('queued');
     expect(tx.archiveJob.update).not.toHaveBeenCalled();
   });
 
@@ -135,23 +135,23 @@ describe('requestReencode', () => {
     ['HEVC from the start', { videoId: 'v', reencodedAt: null, videoCodec: 'hevc' }],
   ])('has nothing to do for a file %s', async (_name, file) => {
     tx.archiveMediaFile.findUnique.mockResolvedValue(file);
-    expect(await requestReencode('f', 'now', actor)).toBe('nothing-to-do');
+    expect(await requestReencode('f', 'now', actor, 'TWITCH')).toBe('nothing-to-do');
   });
 
   it('refuses while another job is on the file', async () => {
     tx.archiveJob.findFirst.mockResolvedValueOnce({ id: 'j', kind: 'DELETE_FILES', state: 'QUEUED' });
-    expect(await requestReencode('f', 'now', actor)).toBe('busy');
+    expect(await requestReencode('f', 'now', actor, 'TWITCH')).toBe('busy');
     expect(tx.archiveJob.create).not.toHaveBeenCalled();
   });
 
   it('refuses while the video is being downloaded again', async () => {
     tx.archiveJob.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce({ id: 'download' });
-    expect(await requestReencode('f', 'now', actor)).toBe('busy');
+    expect(await requestReencode('f', 'now', actor, 'TWITCH')).toBe('busy');
   });
 
   it('reports a file that is gone', async () => {
     tx.archiveMediaFile.findUnique.mockResolvedValue(null);
-    expect(await requestReencode('f', 'now', actor)).toBe('missing');
+    expect(await requestReencode('f', 'now', actor, 'TWITCH')).toBe('missing');
   });
 });
 
@@ -165,12 +165,12 @@ describe('requestOriginalJob', () => {
   it('ties the job to the re-encode it is about', async () => {
     const reencodedAt = new Date('2026-10-30T02:00:00.000Z');
     tx.archiveMediaFile.findUnique.mockResolvedValue({ videoId: 'v', reencodedAt, originalRelativePath: '.originals/x.mkv' });
-    await requestOriginalJob('f', 'RESTORE_ORIGINAL', actor);
+    await requestOriginalJob('f', 'RESTORE_ORIGINAL', actor, 'TWITCH');
     expect(tx.archiveJob.create.mock.calls[0][0].data.options).toEqual({ generation: reencodedAt.toISOString() });
   });
 
   it('queues the job against the file, with the person who asked', async () => {
-    expect(await requestOriginalJob('f', 'RESTORE_ORIGINAL', actor)).toBe('queued');
+    expect(await requestOriginalJob('f', 'RESTORE_ORIGINAL', actor, 'TWITCH')).toBe('queued');
     expect(tx.archiveJob.create.mock.calls[0][0].data).toMatchObject({
       kind: 'RESTORE_ORIGINAL', mediaFileId: 'f', videoId: 'v', requestedByUsername: 'sai',
     });
@@ -178,12 +178,12 @@ describe('requestOriginalJob', () => {
 
   it('has nothing to do once the original has gone', async () => {
     tx.archiveMediaFile.findUnique.mockResolvedValue({ videoId: 'v', originalRelativePath: null });
-    expect(await requestOriginalJob('f', 'DELETE_ORIGINAL', actor)).toBe('nothing-to-do');
+    expect(await requestOriginalJob('f', 'DELETE_ORIGINAL', actor, 'TWITCH')).toBe('nothing-to-do');
   });
 
   it('refuses while another job is on the file', async () => {
     tx.archiveJob.findFirst.mockResolvedValueOnce({ id: 'j' });
-    expect(await requestOriginalJob('f', 'DELETE_ORIGINAL', actor)).toBe('busy');
+    expect(await requestOriginalJob('f', 'DELETE_ORIGINAL', actor, 'TWITCH')).toBe('busy');
     expect(tx.archiveJob.create).not.toHaveBeenCalled();
   });
 });

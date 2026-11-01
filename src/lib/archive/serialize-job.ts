@@ -1,5 +1,5 @@
 import type { Prisma } from '@prisma/client';
-import { sizeThumbnail } from './serialize';
+import { sizeThumbnail } from '@/lib/twitch/serialize';
 
 export const JOB_SELECT = {
   id: true,

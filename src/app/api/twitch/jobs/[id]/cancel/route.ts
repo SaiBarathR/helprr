@@ -3,7 +3,7 @@ import { requireUser } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { prisma } from '@/lib/db';
 import { can } from '@/lib/permissions';
-import { ACTIVE_JOB_STATES } from '@/lib/twitch/jobs';
+import { ACTIVE_JOB_STATES } from '@/lib/archive/jobs';
 import { TWITCH } from '@/lib/twitch/platform';
 
 /** The requester may cancel their own job; twitch.manage may cancel anyone's. */

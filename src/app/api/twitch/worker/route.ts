@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { prisma } from '@/lib/db';
-import { inReencodeWindow } from '@/lib/twitch/reencode-window';
+import { inReencodeWindow } from '@/lib/archive/reencode-window';
 
 const ONLINE_WITHIN_MS = 45_000;
 

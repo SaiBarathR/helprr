@@ -3,7 +3,7 @@ import { requireUser } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { prisma } from '@/lib/db';
 import { can } from '@/lib/permissions';
-import { retryJob } from '@/lib/twitch/jobs';
+import { retryJob } from '@/lib/archive/jobs';
 import { TWITCH } from '@/lib/twitch/platform';
 
 /**
@@ -30,7 +30,7 @@ async function postHandler(
     && can(auth.user, 'twitch.download');
   if (!manager && !ownDownload) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
-  const result = await retryJob(id, { id: auth.user.id, username: auth.user.username });
+  const result = await retryJob(id, { id: auth.user.id, username: auth.user.username }, TWITCH);
   if (result === 'active') return NextResponse.json({ error: 'This video is already being downloaded' }, { status: 409 });
   if (result === 'not-retryable') return NextResponse.json({ error: 'Only a failed or cancelled job can be retried' }, { status: 409 });
   return NextResponse.json({ ok: true });

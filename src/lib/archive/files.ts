@@ -1,13 +1,12 @@
-import type { Prisma, ArchiveJobKind } from '@prisma/client';
+import type { ArchiveJobKind, ArchivePlatform, Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { ACTIVE_JOB_STATES } from './jobs';
 import { REENCODE_NOW_PRIORITY } from './reencode-window';
 import { FILE_LOCK_TRANSACTION } from './retention';
-import { sizeThumbnail } from './serialize';
-import { TWITCH } from '@/lib/twitch/platform';
+import { sizeThumbnail } from '@/lib/twitch/serialize';
 
 // The paths are read only to tell whether an original is there; serializeFile drops them.
-export const FILE_SELECT = {
+export const fileSelect = (platform: ArchivePlatform) => ({
   id: true,
   videoId: true,
   relativePath: true,
@@ -40,13 +39,13 @@ export const FILE_SELECT = {
     },
   },
   jobs: {
-    where: { platform: TWITCH, state: { in: ACTIVE_JOB_STATES } },
+    where: { platform, state: { in: ACTIVE_JOB_STATES } },
     select: { id: true, kind: true, state: true, stage: true, progress: true, priority: true },
     take: 1,
   },
-} satisfies Prisma.ArchiveMediaFileSelect;
+}) satisfies Prisma.ArchiveMediaFileSelect;
 
-export type FileRow = Prisma.ArchiveMediaFileGetPayload<{ select: typeof FILE_SELECT }>;
+export type FileRow = Prisma.ArchiveMediaFileGetPayload<{ select: ReturnType<typeof fileSelect> }>;
 
 const sidecarNames = (sidecars: Prisma.JsonValue): string[] => (
   Array.isArray(sidecars) ? sidecars.filter((entry): entry is string => typeof entry === 'string') : []
@@ -96,8 +95,8 @@ const FILTERS: Record<LibraryFilter, Prisma.ArchiveMediaFileWhereInput> = {
   'not-in-jellyfin': { jellyfinItemId: null },
 };
 
-export function buildFileWhere(params: URLSearchParams): Prisma.ArchiveMediaFileWhereInput {
-  const and: Prisma.ArchiveMediaFileWhereInput[] = [{ platform: TWITCH }];
+export function buildFileWhere(params: URLSearchParams, platform: ArchivePlatform): Prisma.ArchiveMediaFileWhereInput {
+  const and: Prisma.ArchiveMediaFileWhereInput[] = [{ platform }];
   const filter = FILTERS[params.get('filter') as LibraryFilter];
   if (filter) and.push(filter);
   const streamer = params.get('streamer');
@@ -127,12 +126,13 @@ const savedBytes = (file: { reencodedAt: Date | null; sizeBytes: bigint; origina
 /** A saving is a difference of two columns, so that sort is done here. A library is small. */
 export async function listFiles(
   where: Prisma.ArchiveMediaFileWhereInput,
+  platform: ArchivePlatform,
   sort: string | null,
   skip: number,
   take: number,
 ): Promise<FileRow[]> {
   if (sort !== 'saved') {
-    return prisma.archiveMediaFile.findMany({ where, orderBy: ORDERS[sort ?? ''] ?? ORDERS.newest, skip, take, select: FILE_SELECT });
+    return prisma.archiveMediaFile.findMany({ where, orderBy: ORDERS[sort ?? ''] ?? ORDERS.newest, skip, take, select: fileSelect(platform) });
   }
   const sizes = await prisma.archiveMediaFile.findMany({
     where,
@@ -143,14 +143,14 @@ export async function listFiles(
     .sort((a, b) => savedBytes(b) - savedBytes(a) || a.id.localeCompare(b.id))
     .slice(skip, skip + take)
     .map((file) => file.id);
-  const rows = await prisma.archiveMediaFile.findMany({ where: { id: { in: ids } }, select: FILE_SELECT });
+  const rows = await prisma.archiveMediaFile.findMany({ where: { id: { in: ids } }, select: fileSelect(platform) });
   return ids.flatMap((id) => rows.find((row) => row.id === id) ?? []);
 }
 
-export async function summarizeFiles() {
+export async function summarizeFiles(platform: ArchivePlatform) {
   const [files, heartbeat, waiting, freed] = await Promise.all([
     prisma.archiveMediaFile.findMany({
-      where: { platform: TWITCH },
+      where: { platform },
       select: {
         reencodedAt: true,
         sizeBytes: true,
@@ -160,8 +160,8 @@ export async function summarizeFiles() {
       },
     }),
     prisma.archiveWorkerHeartbeat.findFirst({ orderBy: { lastSeenAt: 'desc' }, select: { diskFreeBytes: true } }),
-    prisma.archiveJob.count({ where: { platform: TWITCH, kind: 'REENCODE', state: { in: ACTIVE_JOB_STATES } } }),
-    prisma.archiveDeletedFile.aggregate({ where: { platform: TWITCH }, _sum: { freedBytes: true } }),
+    prisma.archiveJob.count({ where: { platform, kind: 'REENCODE', state: { in: ACTIVE_JOB_STATES } } }),
+    prisma.archiveDeletedFile.aggregate({ where: { platform }, _sum: { freedBytes: true } }),
   ]);
 
   const streamers = new Map<string, { id: string; displayName: string; count: number; bytes: number }>();
@@ -201,9 +201,9 @@ export async function summarizeFiles() {
 }
 
 /** What re-encoding has really saved here, as a percentage, or null before there is a result. */
-export async function typicalSavingPercent(): Promise<number | null> {
+export async function typicalSavingPercent(platform: ArchivePlatform): Promise<number | null> {
   const { _sum } = await prisma.archiveMediaFile.aggregate({
-    where: { platform: TWITCH, reencodedAt: { not: null }, originalSizeBytes: { not: null } },
+    where: { platform, reencodedAt: { not: null }, originalSizeBytes: { not: null } },
     _sum: { sizeBytes: true, originalSizeBytes: true },
   });
   const before = Number(_sum.originalSizeBytes ?? 0);
@@ -230,10 +230,10 @@ const activeDownload = (tx: Prisma.TransactionClient, videoId: string) => (
 );
 
 /** `now` beats the night window. Asking for a job already waiting moves it rather than doubling it. */
-export function requestReencode(fileId: string, when: 'now' | 'tonight', actor: Actor): Promise<FileJobResult> {
+export function requestReencode(fileId: string, when: 'now' | 'tonight', actor: Actor, platform: ArchivePlatform): Promise<FileJobResult> {
   const priority = when === 'now' ? REENCODE_NOW_PRIORITY : 0;
   return withFileLock(fileId, async (tx) => {
-    const file = await tx.archiveMediaFile.findUnique({ where: { id: fileId, platform: TWITCH }, select: { videoId: true, reencodedAt: true, videoCodec: true } });
+    const file = await tx.archiveMediaFile.findUnique({ where: { id: fileId, platform }, select: { videoId: true, reencodedAt: true, videoCodec: true } });
     if (!file) return 'missing';
     if (file.reencodedAt || file.videoCodec === 'hevc') return 'nothing-to-do';
 
@@ -251,7 +251,7 @@ export function requestReencode(fileId: string, when: 'now' | 'tonight', actor: 
 
     await tx.archiveJob.create({
       data: {
-        platform: TWITCH,
+        platform,
         kind: 'REENCODE',
         videoId: file.videoId,
         mediaFileId: fileId,
@@ -270,9 +270,10 @@ export function requestOriginalJob(
   fileId: string,
   kind: Extract<ArchiveJobKind, 'DELETE_ORIGINAL' | 'RESTORE_ORIGINAL'>,
   actor: Actor,
+  platform: ArchivePlatform,
 ): Promise<FileJobResult> {
   return withFileLock(fileId, async (tx) => {
-    const file = await tx.archiveMediaFile.findUnique({ where: { id: fileId, platform: TWITCH }, select: { videoId: true, reencodedAt: true, originalRelativePath: true } });
+    const file = await tx.archiveMediaFile.findUnique({ where: { id: fileId, platform }, select: { videoId: true, reencodedAt: true, originalRelativePath: true } });
     if (!file) return 'missing';
     if (!file.originalRelativePath) return 'nothing-to-do';
     const active = await tx.archiveJob.findFirst({ where: { mediaFileId: fileId, state: { in: ACTIVE_JOB_STATES } }, select: { id: true } });
@@ -280,7 +281,7 @@ export function requestOriginalJob(
 
     await tx.archiveJob.create({
       data: {
-        platform: TWITCH,
+        platform,
         kind,
         // The worker refuses to act once this re-encode is no longer the current one.
         options: { generation: file.reencodedAt?.toISOString() ?? null },
@@ -295,16 +296,16 @@ export function requestOriginalJob(
 }
 
 /** What happened to this video, oldest first. Job errors are left out: they can name paths. */
-export async function fileTimeline(fileId: string, videoId: string) {
+export async function fileTimeline(fileId: string, videoId: string, platform: ArchivePlatform) {
   const [jobs, deletions] = await Promise.all([
     prisma.archiveJob.findMany({
-      where: { platform: TWITCH, OR: [{ mediaFileId: fileId }, { videoId, kind: 'DOWNLOAD' }] },
+      where: { platform, OR: [{ mediaFileId: fileId }, { videoId, kind: 'DOWNLOAD' }] },
       orderBy: { createdAt: 'asc' },
       take: 50,
       select: { id: true, kind: true, state: true, source: true, requestedByUsername: true, createdAt: true, startedAt: true, finishedAt: true },
     }),
     prisma.archiveDeletedFile.findMany({
-      where: { platform: TWITCH, videoId, kind: 'ORIGINAL' },
+      where: { platform, videoId, kind: 'ORIGINAL' },
       orderBy: { createdAt: 'asc' },
       take: 20,
       select: { id: true, cause: true, freedBytes: true, deletedBy: true, createdAt: true },

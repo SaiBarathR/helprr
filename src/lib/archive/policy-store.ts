@@ -1,6 +1,6 @@
 import type { CreatorVideoType } from '@prisma/client';
 import { prisma } from '@/lib/db';
-import { evaluatePolicy, layerMap, sanitizeLayer, type PolicyDecision, type PolicyLayer, type VideoForPolicy, type VideoTypeKey } from '@/lib/twitch/policy';
+import { evaluatePolicy, layerMap, sanitizeLayer, type PolicyDecision, type PolicyLayer, type VideoForPolicy, type VideoTypeKey } from '@/lib/archive/policy';
 import { getTwitchSettings } from '@/lib/twitch/settings';
 
 /** The saved layers for one streamer's video type, with an optional unsaved draft on top of the streamer. */
