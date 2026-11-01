@@ -15,6 +15,7 @@ import { PullToRefresh } from '@/components/ui/pull-to-refresh';
 import { QuickContextMenu, type ContextActionGroup } from '@/components/ui/quick-context-menu';
 import { SwipeRow } from '@/components/ui/swipe-row';
 import { ImportFollows } from '@/components/twitch/import-follows';
+import { PlaylistsSection } from '@/components/youtube/playlists-section';
 import { CreatorAvatar } from '@/components/creators/creator-avatar';
 import { useCreatorPlatform } from '@/components/creators/platform';
 import { ToolbarButton, CreatorToolbar } from '@/components/creators/toolbar';
@@ -228,7 +229,8 @@ export function CreatorsPage() {
         </div>
       )}
 
-      <ImportFollows open={importOpen} onOpenChange={setImportOpen} />
+      {platform.id === 'youtube' && <PlaylistsSection />}
+      {platform.id === 'twitch' && <ImportFollows open={importOpen} onOpenChange={setImportOpen} />}
       <ConfirmDialog
         open={leaving !== null}
         onOpenChange={(open) => { if (!open) setLeaving(null); }}

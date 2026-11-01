@@ -7,7 +7,7 @@ import { toast } from 'sonner';
 import { PageHeader } from '@/components/layout/page-header';
 import { SearchInput } from '@/components/media/search-input';
 import { CreatorAvatar } from '@/components/creators/creator-avatar';
-import { isChannelId } from '@/lib/youtube/ids';
+import { isChannelId, parsePlaylistLink } from '@/lib/youtube/ids';
 
 interface ChannelResult {
   channelId: string;
@@ -34,6 +34,7 @@ export default function AddChannelPage() {
   const query = term.trim();
   // A pasted handle or link needs no search, and Google allows 100 searches a day.
   const direct = query.startsWith('@') || query.includes('/') || isChannelId(query);
+  const listLink = direct && parsePlaylistLink(query) !== null;
 
   const list = useQuery({
     queryKey: ['youtube', 'creators'],
@@ -55,11 +56,11 @@ export default function AddChannelPage() {
   const results = showResults ? search.data?.results ?? [] : [];
 
   const follow = useMutation({
-    mutationFn: async (input: string) => readJson(await fetch('/api/youtube/channels', {
+    mutationFn: async (input: string) => readJson(await fetch(listLink ? '/api/youtube/playlists' : '/api/youtube/channels', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ input }),
-    }), 'Could not follow this channel'),
+    }), 'Could not follow this'),
     onSuccess: () => {
       if (direct) setTerm('');
       toast.success('Following');
@@ -80,8 +81,8 @@ export default function AddChannelPage() {
             value={term}
             onChange={setTerm}
             historyKey="youtube-channels"
-            placeholder="@handle, channel link or name"
-            aria-label="@handle, channel link or name"
+            placeholder="@handle, link or name"
+            aria-label="@handle, link or name"
             autoCapitalize="none"
             autoCorrect="off"
             spellCheck={false}
@@ -99,7 +100,7 @@ export default function AddChannelPage() {
             >
               <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground"><Link2 className="h-4 w-4" /></span>
               <span className="min-w-0 flex-1">
-                <span className="block text-sm font-medium">Follow this channel</span>
+                <span className="block text-sm font-medium">{listLink ? 'Follow this playlist' : 'Follow this channel'}</span>
                 <span className="block truncate text-[11px] text-muted-foreground">{query}</span>
               </span>
               {follow.isPending ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /> : <Plus className="h-4 w-4 text-primary" />}
@@ -155,7 +156,7 @@ export default function AddChannelPage() {
         ) : (
           <div className="flex flex-col items-center gap-2 py-12 text-center text-muted-foreground">
             <Search className="h-6 w-6 opacity-50" />
-            <p className="text-sm">Paste a channel link or @handle, or search by name</p>
+            <p className="text-sm">Paste a channel or playlist link, an @handle, or search by name</p>
           </div>
         )}
       </div>
