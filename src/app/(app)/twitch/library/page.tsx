@@ -11,11 +11,11 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@/compon
 import { ErrorState } from '@/components/ui/error-state';
 import { ListSkeleton } from '@/components/ui/list-skeleton';
 import { PullToRefresh } from '@/components/ui/pull-to-refresh';
-import { DeletedRow, FileRow } from '@/components/twitch/file-row';
-import type { DeletedFile, LibrarySummary, TwitchFile } from '@/components/twitch/file-types';
-import { FilterGroup, type FilterOption } from '@/components/twitch/filter-group';
-import { ToolbarButton, toolbarButtonClass, TwitchToolbar } from '@/components/twitch/twitch-toolbar';
-import { useFileActions } from '@/components/twitch/use-file-actions';
+import { DeletedRow, FileRow } from '@/components/creators/file-row';
+import type { DeletedFile, LibrarySummary, ArchiveFile } from '@/components/creators/file-types';
+import { FilterGroup, type FilterOption } from '@/components/creators/filter-group';
+import { ToolbarButton, toolbarButtonClass, CreatorToolbar } from '@/components/creators/toolbar';
+import { useFileActions } from '@/components/creators/use-file-actions';
 import { formatBytes } from '@/lib/format';
 import { useRestorableInfiniteQuery } from '@/lib/hooks/use-restorable-infinite-query';
 import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
@@ -104,7 +104,7 @@ export default function TwitchLibraryPage() {
   const files = useRestorableInfiniteQuery({
     queryKey: ['twitch', 'files', params],
     enabled: !showingDeleted,
-    queryFn: ({ pageParam, signal }) => getJson<Page<TwitchFile>>(`/api/twitch/files?${params}&page=${pageParam}`, signal),
+    queryFn: ({ pageParam, signal }) => getJson<Page<ArchiveFile>>(`/api/twitch/files?${params}&page=${pageParam}`, signal),
     initialPageParam: 1,
     getNextPageParam: nextPage,
     refetchInterval: (query) => (query.state.data?.pages.some((page) => page.files?.some((file) => file.activeJob)) ? 3_000 : false),
@@ -162,7 +162,7 @@ export default function TwitchLibraryPage() {
     <div className="space-y-3 animate-content-in">
       <PullToRefresh onRefresh={refresh} />
       <h1 className="sr-only">Twitch library</h1>
-      <TwitchToolbar
+      <CreatorToolbar
         active="library"
         actions={(
           <>
@@ -212,7 +212,7 @@ export default function TwitchLibraryPage() {
         )}
       >
         <SearchBar value={search} onChange={setSearch} placeholder="Search..." historyKey="twitch-library" debounceMs={250} />
-      </TwitchToolbar>
+      </CreatorToolbar>
 
       {stats && (
         <section aria-label="Storage" className="grid grid-cols-3 gap-2">

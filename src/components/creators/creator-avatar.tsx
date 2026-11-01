@@ -3,7 +3,7 @@ import { FadeInImage } from '@/components/media/fade-in-image';
 import { toCachedImageSrc } from '@/lib/image';
 import { cn } from '@/lib/utils';
 
-export function StreamerAvatar({ url, size = 40, className }: { url: string | null | undefined; size?: number; className?: string }) {
+export function CreatorAvatar({ url, size = 40, className }: { url: string | null | undefined; size?: number; className?: string }) {
   const src = toCachedImageSrc(url, undefined, { width: size * 2 });
   return (
     <span className={cn('relative block shrink-0 overflow-hidden rounded-full bg-muted', className)} style={{ width: size, height: size }}>

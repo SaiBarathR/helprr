@@ -4,7 +4,7 @@ import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 
 import { useWindowVirtualizer } from '@tanstack/react-virtual';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
-import type { TwitchVideo } from './types';
+import type { CreatorVideoItem } from './types';
 
 const LIST_ROW_HEIGHT = 93;
 const GRID_GAP = 12;
@@ -18,10 +18,10 @@ function columnsFor(width: number): number {
 }
 
 /** Only the rows near the viewport are rendered, so a long feed costs a phone nothing. */
-export function TwitchVideoList({ videos, layout, renderVideo }: {
-  videos: TwitchVideo[];
+export function CreatorVideoList({ videos, layout, renderVideo }: {
+  videos: CreatorVideoItem[];
   layout: 'grid' | 'list';
-  renderVideo: (video: TwitchVideo) => React.ReactNode;
+  renderVideo: (video: CreatorVideoItem) => React.ReactNode;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
@@ -45,7 +45,7 @@ export function TwitchVideoList({ videos, layout, renderVideo }: {
   const isList = layout === 'list';
   const columns = isList ? 1 : columnsFor(width);
   const rows = useMemo(() => {
-    const chunks: TwitchVideo[][] = [];
+    const chunks: CreatorVideoItem[][] = [];
     for (let index = 0; index < videos.length; index += columns) chunks.push(videos.slice(index, index + columns));
     return chunks;
   }, [videos, columns]);
@@ -89,7 +89,7 @@ export function TwitchVideoList({ videos, layout, renderVideo }: {
   );
 }
 
-export function TwitchVideoSkeleton() {
+export function CreatorVideoSkeleton() {
   return (
     <div role="status" aria-live="polite" aria-label="Loading videos">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5" aria-hidden="true">

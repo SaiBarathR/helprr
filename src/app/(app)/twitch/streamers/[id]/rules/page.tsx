@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
 import { PageHeader } from '@/components/layout/page-header';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
-import type { RuleLayerValue } from '@/components/twitch/policy-editor';
+import type { RuleLayerValue } from '@/components/creators/policy-editor';
 import { StreamerRules } from '@/components/twitch/streamer-rules';
 
 export default function TwitchStreamerRulesPage({ params }: { params: Promise<{ id: string }> }) {

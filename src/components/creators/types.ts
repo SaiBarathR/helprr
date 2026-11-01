@@ -1,4 +1,4 @@
-export interface TwitchVideo {
+export interface CreatorVideoItem {
   id: string;
   externalId: string;
   type: 'ARCHIVE' | 'HIGHLIGHT' | 'UPLOAD' | 'CLIP';
@@ -21,15 +21,15 @@ export interface TwitchVideo {
   activeJob: { id: string; state: string; stage: string | null; progress: number | null } | null;
 }
 
-export interface TwitchVideoPage {
-  videos: TwitchVideo[];
+export interface CreatorVideoPage {
+  videos: CreatorVideoItem[];
   categories?: string[];
   total: number;
   page: number;
   pageSize: number;
 }
 
-export const VIDEO_TYPE_LABELS: Record<TwitchVideo['type'], string> = {
+export const VIDEO_TYPE_LABELS: Record<CreatorVideoItem['type'], string> = {
   ARCHIVE: 'Past broadcast',
   HIGHLIGHT: 'Highlight',
   UPLOAD: 'Upload',

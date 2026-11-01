@@ -5,7 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { countEnabledContextActions } from '@/components/ui/quick-context-menu';
-import type { TwitchFile } from './file-types';
+import type { ArchiveFile } from './file-types';
 
 const mocks = vi.hoisted(() => ({ capabilities: {} as Record<string, boolean> }));
 
@@ -16,6 +16,7 @@ vi.mock('@/components/permission-provider', () => ({
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 import { CONFIRMATIONS, useFileActions } from './use-file-actions';
+import { CreatorPlatformProvider } from './platform';
 
 const file = {
   id: 'f',
@@ -30,12 +31,12 @@ const file = {
   originalKept: false,
   originalSizeBytes: null,
   activeJob: null,
-} as unknown as TwitchFile;
+} as unknown as ArchiveFile;
 const reencoded = { ...file, videoCodec: 'hevc', reencodedAt: '2026-10-31T00:00:00.000Z', originalKept: true, originalSizeBytes: 1000 };
 
 function setup() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+  const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}><CreatorPlatformProvider platform="twitch">{children}</CreatorPlatformProvider></QueryClientProvider>;
   return { client, ...renderHook(() => useFileActions(), { wrapper }) };
 }
 
@@ -44,11 +45,11 @@ const ids = (groups: ReturnType<ReturnType<typeof useFileActions>['groupsFor']>)
 
 describe('the restore confirmation', () => {
   it('says how much more space a restore uses', () => {
-    expect(CONFIRMATIONS.restore.description(reencoded as TwitchFile)).toContain('uses 700 B more space');
+    expect(CONFIRMATIONS.restore.description(reencoded as ArchiveFile)).toContain('uses 700 B more space');
   });
 
   it('reads properly when the original size was never recorded', () => {
-    const text = CONFIRMATIONS.restore.description({ ...reencoded, originalSizeBytes: null } as TwitchFile);
+    const text = CONFIRMATIONS.restore.description({ ...reencoded, originalSizeBytes: null } as ArchiveFile);
     expect(text).toContain('uses more space');
     expect(text).not.toContain('more more');
   });
@@ -99,7 +100,7 @@ describe('useFileActions', () => {
 
   it('holds back destructive actions while a job is on the file', () => {
     const { result } = setup();
-    const busy = { ...reencoded, activeJob: { id: 'j', kind: 'DELETE_ORIGINAL', state: 'QUEUED', stage: null, progress: null, priority: 0 } } as TwitchFile;
+    const busy = { ...reencoded, activeJob: { id: 'j', kind: 'DELETE_ORIGINAL', state: 'QUEUED', stage: null, progress: null, priority: 0 } } as ArchiveFile;
     const actions = ids(result.current.groupsFor(busy));
     expect(actions).not.toContain('delete');
     expect(actions).not.toContain('restore');
@@ -113,7 +114,7 @@ describe('useFileActions', () => {
     act(() => result.current.swipeFor(file).leftAction?.onAction());
 
     await waitFor(() => {
-      const list = client.getQueryData<{ pages: Array<{ files: TwitchFile[] }> }>(['twitch', 'files', 'list']);
+      const list = client.getQueryData<{ pages: Array<{ files: ArchiveFile[] }> }>(['twitch', 'files', 'list']);
       expect(list?.pages[0].files[0].keepForever).toBe(true);
     });
     expect(vi.mocked(fetch)).toHaveBeenCalledWith('/api/twitch/files/f', expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ keepForever: true }) }));
@@ -129,9 +130,9 @@ describe('useFileActions', () => {
 
     await waitFor(() => expect(vi.mocked(fetch)).toHaveBeenCalled());
     await waitFor(() => {
-      const list = client.getQueryData<{ pages: Array<{ files: TwitchFile[] }> }>(['twitch', 'files', 'list']);
+      const list = client.getQueryData<{ pages: Array<{ files: ArchiveFile[] }> }>(['twitch', 'files', 'list']);
       expect(list?.pages[0].files[0].keepForever).toBe(false);
-      expect(client.getQueryData<TwitchFile>(['twitch', 'file', 'f'])?.keepForever).toBe(false);
+      expect(client.getQueryData<ArchiveFile>(['twitch', 'file', 'f'])?.keepForever).toBe(false);
     });
   });
 

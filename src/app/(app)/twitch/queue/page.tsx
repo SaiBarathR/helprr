@@ -27,9 +27,9 @@ import { Progress } from '@/components/ui/progress';
 import { PullToRefresh } from '@/components/ui/pull-to-refresh';
 import { QuickContextMenu, type ContextActionGroup } from '@/components/ui/quick-context-menu';
 import { SwipeRow, type SwipeAction } from '@/components/ui/swipe-row';
-import { ActionsMenu } from '@/components/twitch/actions-menu';
-import { ToolbarButton, toolbarButtonClass, TwitchToolbar } from '@/components/twitch/twitch-toolbar';
-import { formatDuration, stageLabel } from '@/components/twitch/types';
+import { ActionsMenu } from '@/components/creators/actions-menu';
+import { ToolbarButton, toolbarButtonClass, CreatorToolbar } from '@/components/creators/toolbar';
+import { formatDuration, stageLabel } from '@/components/creators/types';
 import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
 import { toCachedImageSrc } from '@/lib/image';
 import { backoffRefetchInterval } from '@/lib/query-fetch';
@@ -280,7 +280,7 @@ export default function TwitchQueuePage() {
     <div className="space-y-3 animate-content-in">
       <PullToRefresh onRefresh={refresh} />
       <h1 className="sr-only">Queue</h1>
-      <TwitchToolbar
+      <CreatorToolbar
         active="queue"
         actions={(
           <>
@@ -325,7 +325,7 @@ export default function TwitchQueuePage() {
           )}
           <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
         </button>
-      </TwitchToolbar>
+      </CreatorToolbar>
 
       {worker?.toolsPaused && (
         <div className="flex items-center gap-2.5 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 text-sm text-amber-300">

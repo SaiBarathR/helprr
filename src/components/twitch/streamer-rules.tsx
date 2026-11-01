@@ -10,7 +10,7 @@ import { ErrorState } from '@/components/ui/error-state';
 import { FloatingActionBar } from '@/components/ui/floating-action-bar';
 import { useUnsavedChangesGuard } from '@/lib/hooks/use-unsaved-changes-guard';
 import type { PolicyLayer, TwitchPolicy } from '@/lib/archive/policy';
-import { RuleLayers, type RuleLayerValue } from './policy-editor';
+import { RuleLayers, type RuleLayerValue } from '@/components/creators/policy-editor';
 
 interface PoliciesResponse {
   defaultPolicy: PolicyLayer;

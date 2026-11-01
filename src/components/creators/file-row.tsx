@@ -11,9 +11,10 @@ import { formatBytes } from '@/lib/format';
 import { toCachedImageSrc } from '@/lib/image';
 import { cn } from '@/lib/utils';
 import { ActionsMenu } from './actions-menu';
-import { codecLabel, jobLabel, savedPercent, type DeletedFile, DELETION_CAUSES, type TwitchFile } from './file-types';
+import { codecLabel, jobLabel, savedPercent, type DeletedFile, DELETION_CAUSES, type ArchiveFile } from './file-types';
 import { formatDuration } from './types';
 import type { FileActions } from './use-file-actions';
+import { useCreatorPlatform } from './platform';
 
 const BADGE = 'shrink-0 px-1.5 py-0 text-[10px]';
 const GOOD = 'bg-green-500/15 text-green-400';
@@ -26,7 +27,7 @@ function keptFor(deleteAfter: string | null): string {
   return days > 0 ? `Original kept ${days}d` : 'Original goes today';
 }
 
-export function FileBadges({ file, cleanupDue }: { file: TwitchFile; cleanupDue?: boolean }) {
+export function FileBadges({ file, cleanupDue }: { file: ArchiveFile; cleanupDue?: boolean }) {
   const percent = savedPercent(file);
   return (
     <>
@@ -47,7 +48,8 @@ export function FileBadges({ file, cleanupDue }: { file: TwitchFile; cleanupDue?
   );
 }
 
-export function FileRow({ file, actions, cleanupDue }: { file: TwitchFile; actions: FileActions; cleanupDue?: boolean }) {
+export function FileRow({ file, actions, cleanupDue }: { file: ArchiveFile; actions: FileActions; cleanupDue?: boolean }) {
+  const platform = useCreatorPlatform();
   const thumbnail = toCachedImageSrc(file.thumbnailUrl, undefined, { width: 320 });
   const groups = actions.groupsFor(file);
   const meta = [file.creator.displayName, formatBytes(file.sizeBytes), file.height ? `${file.height}p` : null, codecLabel(file.videoCodec)]
@@ -56,7 +58,7 @@ export function FileRow({ file, actions, cleanupDue }: { file: TwitchFile; actio
     <SwipeRow contentClassName="bg-card" {...actions.swipeFor(file)}>
       <div className="flex items-center">
         <QuickContextMenu label={`${file.title} actions`} groups={groups}>
-          <Link href={`/twitch/library/${file.id}`} className="flex min-w-0 flex-1 items-center gap-3 py-2.5 pl-3 active:bg-foreground/5">
+          <Link href={`${platform.base}/library/${file.id}`} className="flex min-w-0 flex-1 items-center gap-3 py-2.5 pl-3 active:bg-foreground/5">
             <span className="relative block aspect-video w-28 shrink-0 overflow-hidden rounded-lg bg-muted sm:w-36">
               {thumbnail ? (
                 <FadeInImage src={thumbnail} alt="" fill sizes="144px" className="object-cover" unoptimized />
@@ -85,6 +87,7 @@ export function FileRow({ file, actions, cleanupDue }: { file: TwitchFile; actio
 }
 
 export function DeletedRow({ row }: { row: DeletedFile }) {
+  const platform = useCreatorPlatform();
   const body = (
     <>
       <span className="min-w-0 flex-1">
@@ -107,6 +110,6 @@ export function DeletedRow({ row }: { row: DeletedFile }) {
   );
   const className = 'flex items-center gap-3 px-3 py-2.5';
   return row.videoId
-    ? <Link href={`/twitch/vod/${row.videoId}`} className={cn(className, 'active:bg-foreground/5')}>{body}</Link>
+    ? <Link href={`${platform.videoPath}/${row.videoId}`} className={cn(className, 'active:bg-foreground/5')}>{body}</Link>
     : <div className={className}>{body}</div>;
 }

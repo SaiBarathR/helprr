@@ -7,19 +7,21 @@ import { useMe, hasCapability } from '@/components/permission-provider';
 import { Button } from '@/components/ui/button';
 import { FloatingActionBar } from '@/components/ui/floating-action-bar';
 import { useBulkSelection } from '@/lib/use-bulk-selection';
-import type { TwitchVideo } from './types';
-import type { VideoSelection } from './twitch-video-card';
+import type { CreatorVideoItem } from './types';
+import type { VideoSelection } from './video-card';
 import type { VideoActions } from './use-video-actions';
+import { useCreatorPlatform } from './platform';
 
 /** Selecting videos on the feed and on a streamer: downloads what is missing, deletes what is saved. */
-export function useVideoSelection(rows: TwitchVideo[], actions: VideoActions) {
+export function useVideoSelection(rows: CreatorVideoItem[], actions: VideoActions) {
+  const platform = useCreatorPlatform();
   const me = useMe();
-  const canDownload = hasCapability(me, 'twitch.download');
-  const canManage = hasCapability(me, 'twitch.manage');
+  const canDownload = hasCapability(me, platform.canDownload);
+  const canManage = hasCapability(me, platform.canManage);
   const queryClient = useQueryClient();
   const selection = useBulkSelection();
 
-  const eligible = (video: TwitchVideo) => !video.activeJob
+  const eligible = (video: CreatorVideoItem) => !video.activeJob
     && (video.downloaded ? canManage : canDownload && video.availability === 'PUBLISHED');
   // Checked again here: a selected video can start downloading before the bar is used.
   const selected = rows.filter((video) => selection.selectedKeys.has(video.id) && eligible(video));
@@ -29,7 +31,7 @@ export function useVideoSelection(rows: TwitchVideo[], actions: VideoActions) {
   const downloadSelected = useMutation({
     mutationFn: async () => {
       const results = await Promise.allSettled(toDownload.map(async ({ id: videoId }) => {
-        const res = await fetch('/api/twitch/jobs', {
+        const res = await fetch(`${platform.api}/jobs`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ videoId, clientRequestId: crypto.randomUUID() }),
@@ -43,7 +45,7 @@ export function useVideoSelection(rows: TwitchVideo[], actions: VideoActions) {
       if (failed > 0) toast.error(`${queued} queued, ${failed} could not be queued`);
       else toast.success(`${queued} queued`);
       selection.exit();
-      void queryClient.invalidateQueries({ queryKey: ['twitch'] });
+      void queryClient.invalidateQueries({ queryKey: [platform.id] });
     },
   });
 
@@ -52,13 +54,13 @@ export function useVideoSelection(rows: TwitchVideo[], actions: VideoActions) {
     active: selection.selectionMode,
     toggleMode: () => (selection.selectionMode ? selection.exit() : selection.enter()),
     /** The long-press action that starts selecting with this video, if it can be selected. */
-    startWith: (video: TwitchVideo) => (eligible(video)
+    startWith: (video: CreatorVideoItem) => (eligible(video)
       ? () => {
           selection.enter();
           selection.selectMany([video.id]);
         }
       : undefined),
-    selectionFor: (video: TwitchVideo): VideoSelection | undefined => (
+    selectionFor: (video: CreatorVideoItem): VideoSelection | undefined => (
       selection.selectionMode && eligible(video)
         ? { selected: selection.selectedKeys.has(video.id), onToggle: () => selection.toggle(video.id) }
         : undefined

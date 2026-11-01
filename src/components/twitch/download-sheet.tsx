@@ -10,8 +10,8 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Drawer, DrawerContent, DrawerDescription, DrawerFooter, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useIsMobile } from '@/hooks/use-is-mobile';
-import { SwitchRow } from './setting-rows';
-import { formatDuration, formatGb, type TwitchVideo } from './types';
+import { SwitchRow } from '@/components/creators/setting-rows';
+import { formatDuration, formatGb, type CreatorVideoItem } from '@/components/creators/types';
 
 const QUALITIES = [
   { id: '1440p60', label: '1440p', gbPerHour: 4.07 },
@@ -72,7 +72,7 @@ function EstimateRow({ label, value }: { label: string; value: string }) {
 }
 
 function SheetBody({ video, defaults, canUse1440p, onDone }: {
-  video: TwitchVideo;
+  video: CreatorVideoItem;
   defaults: Defaults;
   canUse1440p: boolean;
   onDone: () => void;
@@ -162,7 +162,7 @@ function SheetBody({ video, defaults, canUse1440p, onDone }: {
 }
 
 export function DownloadSheet({ video, open, onOpenChange }: {
-  video: TwitchVideo;
+  video: CreatorVideoItem;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {

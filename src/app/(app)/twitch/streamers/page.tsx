@@ -15,8 +15,8 @@ import { PullToRefresh } from '@/components/ui/pull-to-refresh';
 import { QuickContextMenu, type ContextActionGroup } from '@/components/ui/quick-context-menu';
 import { SwipeRow } from '@/components/ui/swipe-row';
 import { ImportFollows } from '@/components/twitch/import-follows';
-import { StreamerAvatar } from '@/components/twitch/streamer-avatar';
-import { ToolbarButton, TwitchToolbar } from '@/components/twitch/twitch-toolbar';
+import { CreatorAvatar } from '@/components/creators/creator-avatar';
+import { ToolbarButton, CreatorToolbar } from '@/components/creators/toolbar';
 import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
 
 interface Subscription {
@@ -81,7 +81,7 @@ function StreamerRow({ subscription, canManage, onToggleNotify, onUnsubscribe }:
     >
       <QuickContextMenu label={`${name} actions`} groups={groups}>
         <div className="relative flex items-center gap-3 px-3 py-2.5">
-          <StreamerAvatar url={streamer.profileImageUrl} />
+          <CreatorAvatar url={streamer.profileImageUrl} />
           <div className="min-w-0 flex-1">
             {/* Stretched over the row; the bell sits above it. */}
             <Link
@@ -174,7 +174,7 @@ export default function TwitchStreamersPage() {
     <div className="space-y-3 animate-content-in">
       <PullToRefresh onRefresh={refresh} />
       <h1 className="sr-only">Streamers</h1>
-      <TwitchToolbar
+      <CreatorToolbar
         active="streamers"
         actions={(
           <ToolbarButton label="Refresh" disabled={list.isRefetching} onClick={() => void refresh()}>
@@ -193,7 +193,7 @@ export default function TwitchStreamersPage() {
         )}
       >
         <SearchBar value={search} onChange={setSearch} placeholder="Search..." debounceMs={150} />
-      </TwitchToolbar>
+      </CreatorToolbar>
 
       {list.isLoading ? (
         <ListSkeleton count={6} />

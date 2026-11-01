@@ -4,7 +4,7 @@ import type { ReactNode } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { TwitchVideo } from './types';
+import type { CreatorVideoItem } from './types';
 import type { VideoActions } from './use-video-actions';
 
 const mocks = vi.hoisted(() => ({ capabilities: {} as Record<string, boolean> }));
@@ -15,14 +15,15 @@ vi.mock('@/components/permission-provider', () => ({
 }));
 
 import { useVideoSelection } from './use-video-selection';
+import { CreatorPlatformProvider } from './platform';
 
-const video = { id: 'new', downloaded: false, fileId: null, activeJob: null, availability: 'PUBLISHED' } as TwitchVideo;
-const saved = { id: 'saved', downloaded: true, fileId: 'file-1', activeJob: null } as TwitchVideo;
-const running = { id: 'running', downloaded: false, fileId: null, activeJob: { id: 'job-1' }, availability: 'PUBLISHED' } as TwitchVideo;
+const video = { id: 'new', downloaded: false, fileId: null, activeJob: null, availability: 'PUBLISHED' } as CreatorVideoItem;
+const saved = { id: 'saved', downloaded: true, fileId: 'file-1', activeJob: null } as CreatorVideoItem;
+const running = { id: 'running', downloaded: false, fileId: null, activeJob: { id: 'job-1' }, availability: 'PUBLISHED' } as CreatorVideoItem;
 
 function setup() {
   const client = new QueryClient();
-  const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+  const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}><CreatorPlatformProvider platform="twitch">{children}</CreatorPlatformProvider></QueryClientProvider>;
   return renderHook(() => useVideoSelection([video, saved, running], {} as VideoActions), { wrapper });
 }
 
@@ -58,7 +59,7 @@ describe('useVideoSelection', () => {
   it('drops a selected video from the bar once its download starts', () => {
     mocks.capabilities = { 'twitch.download': true };
     const client = new QueryClient();
-    const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+    const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}><CreatorPlatformProvider platform="twitch">{children}</CreatorPlatformProvider></QueryClientProvider>;
     const { result, rerender } = renderHook(
       ({ rows }) => useVideoSelection(rows, {} as VideoActions),
       { wrapper, initialProps: { rows: [video] } },
