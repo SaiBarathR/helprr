@@ -17,7 +17,7 @@ import { WaitForRecordingError } from '../pipeline';
 import { run } from '../process';
 import { toolPath } from '../tools';
 
-const DB_PROGRESS_INTERVAL_MS = 5_000;
+const DB_PROGRESS_INTERVAL_MS = 2_000;
 // When YouTube gives no sizes: its heaviest common case, so the disk guard errs on the safe side.
 const FALLBACK_BYTES_PER_SECOND = 1_500_000;
 // Only for a video with no format Helprr can read: yt-dlp then chooses.

@@ -141,7 +141,7 @@ async function publish(
   const { size } = await stat(path.join(seasonDir, videoName));
   await prisma.archiveMediaFile.upsert({
     where: { platform_relativePath: { platform: video.platform, relativePath } },
-    update: { sizeBytes: BigInt(size), durationSeconds: Math.round(probed.duration), videoCodec: probed.videoCodec, height: probed.height, keepForever: options.keepForever },
+    update: { sizeBytes: BigInt(size), durationSeconds: Math.round(probed.duration), videoCodec: probed.videoCodec, width: probed.width, height: probed.height, keepForever: options.keepForever },
     create: {
       platform: video.platform,
       videoId: video.id,
@@ -156,6 +156,8 @@ async function publish(
     },
   });
   await prisma.archiveJob.update({ where: { id: job.id }, data: { needsJellyfinRefresh: true } });
+  // The video is saved, so its older failures are over. Left in the Queue, their Retry would replace this file.
+  await prisma.archiveJob.updateMany({ where: { videoId: video.id, kind: 'DOWNLOAD', state: 'FAILED' }, data: { state: 'CANCELLED' } });
   await prisma.creatorVideo.update({ where: { id: video.id }, data: layout.videoUpdate });
 
   // Twitch sends H.264 only. YouTube can arrive as AV1 or VP9, and nobody asks for this by accident.

@@ -84,7 +84,7 @@ function fakePrisma() {
   return {
     $transaction: vi.fn(async (work: (client: typeof tx) => unknown) => work(tx)),
     tx,
-    archiveJob: { update: vi.fn().mockResolvedValue({}), create: vi.fn().mockResolvedValue({}) },
+    archiveJob: { update: vi.fn().mockResolvedValue({}), updateMany: vi.fn().mockResolvedValue({}), create: vi.fn().mockResolvedValue({}) },
     archiveMediaFile: { upsert: vi.fn().mockResolvedValue({}), findUniqueOrThrow: vi.fn().mockResolvedValue({ id: 'f1' }) },
     creatorVideo: { update: vi.fn().mockResolvedValue({}) },
   };
@@ -132,6 +132,14 @@ describe('runDownload', () => {
   afterEach(async () => {
     vi.unstubAllGlobals();
     await rm(paths.library, { recursive: true, force: true });
+  });
+
+  it('closes the video\'s older failures once it is saved, so a Retry cannot replace this file', async () => {
+    await runDownload(context());
+    expect(prisma.archiveJob.updateMany).toHaveBeenCalledWith({
+      where: { videoId: 'v1', kind: 'DOWNLOAD', state: 'FAILED' },
+      data: { state: 'CANCELLED' },
+    });
   });
 
   it('publishes an archive with every file Jellyfin needs', async () => {
