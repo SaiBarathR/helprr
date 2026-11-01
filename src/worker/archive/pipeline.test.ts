@@ -21,8 +21,11 @@ vi.mock('./env', () => ({
 vi.mock('./tools', () => ({ toolPath: (tool: string) => `/tools/${tool}` }));
 vi.mock('./process', async (original) => ({ ...await original<typeof import('./process')>(), run: mocks.run }));
 
-import { DiskGuardError, runDownload, validateDuration, WaitForRecordingError } from './pipeline';
+import { twitchAdapter } from './adapters/twitch';
+import { DiskGuardError, runDownload as runPipeline, validateDuration, WaitForRecordingError } from './pipeline';
 import { ProcessFailedError } from './process';
+
+const runDownload = (ctx: Parameters<typeof runPipeline>[0]) => runPipeline(ctx, twitchAdapter);
 
 const created = new Date(2026, 9, 30, 10, 0);
 const streamer = {

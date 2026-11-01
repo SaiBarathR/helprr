@@ -1,13 +1,14 @@
 import { randomUUID } from 'node:crypto';
-import { chmod, mkdir, mkdtemp, readdir, rm, stat, statfs, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, rm, stat, statfs, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { Prisma, PrismaClient, type ArchiveJob, type ArchiveJobKind } from '@prisma/client';
+import type { DownloadSession } from './adapter';
+import { twitchAdapter } from './adapters/twitch';
 import { claimJob, LEASE_MS } from './claim';
 import { classifyJobError, nextStepAfterFailure } from '@/lib/twitch/job-errors';
 import { inReencodeWindow, REENCODE_NOW_PRIORITY } from '@/lib/twitch/reencode-window';
 import type { DownloadOptions } from '@/lib/twitch/jobs';
-import { decryptTwitchToken } from '@/lib/twitch/token-cipher';
 import { LIBRARY_DIR, STAGING_DIR, WORKER_VERSION } from './env';
 import { forgetFilesDeletedElsewhere, repairLibraryModes, runDeleteFiles } from './delete-files';
 import { measureParkedOriginals, runDeleteOriginal, runRestoreOriginal } from './original-files';
@@ -83,16 +84,6 @@ async function probeLibrary(): Promise<void> {
   if (fixed > 0) log('info', 'Made older library files group-writable', { fixed });
 }
 
-// Tokens go in a mode-600 file per job, never argv, and it is removed with the job.
-async function writeCookies(token: string | null): Promise<{ file: string; dir: string } | null> {
-  if (!token) return null;
-  const dir = await mkdtemp(path.join(os.tmpdir(), 'twitch-cookies-'));
-  const file = path.join(dir, 'cookies.txt');
-  await writeFile(file, `# Netscape HTTP Cookie File\n.twitch.tv\tTRUE\t/\tTRUE\t0\tauth-token\t${token}\n`, { mode: 0o600 });
-  await chmod(file, 0o600);
-  return { file, dir };
-}
-
 async function finishJob(job: ArchiveJob, data: Prisma.ArchiveJobUpdateInput) {
   // Only while the lease is ours: a takeover must not be overwritten by a slow first worker.
   await prisma.archiveJob.updateMany({
@@ -137,7 +128,7 @@ async function runJob(job: ArchiveJob): Promise<void> {
       .catch(() => undefined);
   }, CANCEL_POLL_MS);
 
-  let cookies: { file: string; dir: string } | null = null;
+  let session: DownloadSession | null = null;
   let countedDownload = false;
   try {
     const settings = await prisma.archiveSettings.findUnique({ where: { id: 'singleton' } });
@@ -172,8 +163,7 @@ async function runJob(job: ArchiveJob): Promise<void> {
     }
     if (job.kind !== 'DOWNLOAD' || !job.videoId) throw new Error(`validation failed: ${job.kind} is not supported yet`);
     const video = await prisma.creatorVideo.findUniqueOrThrow({ where: { id: job.videoId }, include: { creator: true } });
-    const browserToken = decryptTwitchToken(settings?.browserAuthToken);
-    cookies = await writeCookies(browserToken);
+    session = await twitchAdapter.openSession(settings);
     downloadsRunning += 1;
     countedDownload = true;
     await runDownload({
@@ -184,13 +174,13 @@ async function runJob(job: ArchiveJob): Promise<void> {
       signal: abort.signal,
       minFreeGb: settings?.minFreeGb ?? 50,
       reencodeEnabled: settings?.reencodeEnabled ?? true,
-      cookiesFile: cookies?.file ?? null,
-      browserToken,
+      cookiesFile: session.cookiesFile,
+      browserToken: session.browserToken,
       setStage,
       note,
       assertLease,
       stagingName,
-    });
+    }, twitchAdapter);
     await finishJob(job, { state: 'DONE', stage: 'done', progress: 1, speedBps: null, etaSeconds: null, finishedAt: new Date(), lastError: null, errorClass: null });
     await noteExtractorResult(false);
     log('info', 'Job finished', { jobId: job.id });
@@ -235,7 +225,7 @@ async function runJob(job: ArchiveJob): Promise<void> {
     clearInterval(cancelWatch);
     running.delete(job.id);
     if (countedDownload) downloadsRunning -= 1;
-    if (cookies) await rm(cookies.dir, { recursive: true, force: true }).catch(() => undefined);
+    await session?.release();
   }
 }
 
