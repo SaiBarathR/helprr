@@ -8,6 +8,7 @@ import type { NotificationEventType } from '@/lib/notification-events';
 const WORKER_OFFLINE_MS = 10 * 60_000;
 const REFRESH_GIVE_UP_MS = 30 * 60_000;
 const BATCH = 10;
+const FULL_SCAN_EVERY_MS = 10 * 60_000;
 
 /** What a platform tells the shared steps below. */
 export interface ReconcileProfile {
@@ -25,6 +26,21 @@ export interface ReconcileProfile {
   itemTag(externalId: string): string;
   videoUrl(videoId: string): string;
   toolsPausedAt(): Promise<Date | null>;
+}
+
+const lastFullScan = new Map<ArchivePlatform, number>();
+
+// Jellyfin skips a folder that was empty when the library was made, and refreshing that library
+// never looks again, so its first download would not appear. Only a full scan does, and a full
+// scan covers every library, so it is not repeated on every poll.
+async function scanWholeLibrary(
+  client: Awaited<ReturnType<typeof getJellyfinClient>>,
+  profile: ReconcileProfile,
+  now: Date,
+): Promise<void> {
+  if (now.getTime() - (lastFullScan.get(profile.platform) ?? 0) < FULL_SCAN_EVERY_MS) return;
+  lastFullScan.set(profile.platform, now.getTime());
+  await client.scanAllLibraries();
 }
 
 /** The worker has no Jellyfin access and no push keys, so finished jobs are finished here. */
@@ -119,7 +135,8 @@ async function finishPublishedJobs(now: Date, profile: ReconcileProfile): Promis
           ParentId: libraryItemId, IncludeItemTypes: 'Series', Recursive: true, Fields: 'Path',
         });
         const seriesItem = series.Items?.find((item) => item.Path?.endsWith(`/${video.creator.folderName}`));
-        await client.refreshItem(seriesItem?.Id ?? libraryItemId, { recursive: true });
+        if (series.Items?.length) await client.refreshItem(seriesItem?.Id ?? libraryItemId, { recursive: true });
+        else await scanWholeLibrary(client, profile, now);
 
         const found = await client.queryItems({
           ParentId: libraryItemId,
