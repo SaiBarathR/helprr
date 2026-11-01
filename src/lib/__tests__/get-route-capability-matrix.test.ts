@@ -274,6 +274,9 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
   'cap:dashboard.view': [
     'GET /api/dashboard-layouts/active',
   ],
+  'cap:youtube.manage': [
+    'GET /api/youtube/setup',
+  ],
   'cap:twitch.manage': [
     'GET /api/twitch/library',
     'GET /api/twitch/policies',
@@ -491,7 +494,7 @@ describe('GET API route capability matrix', () => {
   const assignments = policyAssignments();
 
   it('explicitly assigns every GET handler exactly once', () => {
-    expect(handlers.size).toBe(234);
+    expect(handlers.size).toBe(235);
     expect([...assignments.keys()].sort()).toEqual([...handlers.keys()].sort());
   });
 

@@ -18,6 +18,7 @@ enum ServiceType {
   SEERR
   LIDARR
   TWITCH
+  YOUTUBE
 }
 
 enum UserRole {
@@ -58,6 +59,7 @@ model User {
   recommendationEvents RecommendationEvent[]
   creatorSubscriptions CreatorSubscription[]
   creatorVideoStates CreatorVideoState[]
+  playlistSubscriptions CreatorPlaylistSubscription[]
   twitchLink TwitchUserLink?
   tasteProfile   UserTasteProfile?
 
@@ -833,6 +835,7 @@ enum CreatorVideoType {
   HIGHLIGHT
   UPLOAD
   CLIP
+  SHORT
 
   @@map("TwitchVideoType")
 }
@@ -851,6 +854,7 @@ enum ArchiveJobKind {
   DELETE_FILES
   DELETE_ORIGINAL
   RESTORE_ORIGINAL
+  FORMATS
 
   @@map("TwitchJobKind")
 }
@@ -996,11 +1000,16 @@ model CreatorVideo {
   notifiedAt         DateTime?
   expiryNotifiedAt   DateTime?
   seasonEpisode      Int? // highlights and uploads: assigned at publish, never renumbered
+  liveEndedAt        DateTime? // when a stream ended; YouTube only offers the replay after this
+  ageRestricted      Boolean                  @default(false) // needs the signed-in account
+  formats            Json? // what this video really offers, from the worker
+  formatsCheckedAt   DateTime?
   createdAt          DateTime                 @default(now())
   updatedAt          DateTime                 @updatedAt
   userStates         CreatorVideoState[]
   jobs               ArchiveJob[]
   mediaFiles         ArchiveMediaFile[]
+  playlists          CreatorPlaylistVideo[]
   deletedFiles       ArchiveDeletedFile[]
 
   @@unique([platform, externalId])
@@ -1161,6 +1170,8 @@ model ArchiveWorkerHeartbeat {
   diskFreeBytes  BigInt?
   diskTotalBytes BigInt?
   lanes          Json     @default("{}")
+  platforms      Json     @default("[]") // what this worker can run; the app queues nothing else
+  roots          Json     @default("{}") // availability and space per library folder
   lastSeenAt     DateTime @default(now())
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
@@ -1169,6 +1180,77 @@ model ArchiveWorkerHeartbeat {
 }
 
 // A user's own Twitch sign-in, only to read who they follow. Every token is enc:v1.
+model YoutubeSettings {
+  id                    String    @id @default("singleton")
+  autoDownloadEnabled   Boolean   @default(false) // hard override: while false, nothing downloads by rule
+  defaultPolicy         Json      @default("{}") // global policy layer
+  typePolicies          Json      @default("{}") // per-video-type policy layers
+  jellyfinLibraryPath   String? // the library root as Jellyfin sees it, not the worker's mount
+  jellyfinLibraryItemId String?
+  pollVideosSecs        Int       @default(600)
+  quotaDay              String? // the Pacific day the count below belongs to, Google's own reset
+  quotaUsed             Int       @default(0)
+  quotaSearches         Int       @default(0) // search.list has its own daily bucket at Google
+  cookies               String? // enc:v1 cookies.txt for age-restricted videos; never returned by any route
+  cookiesCheckedAt      DateTime?
+  cookiesValid          Boolean? // null until a video has needed them
+  extractorFailures     Int       @default(0) // in a row, across jobs
+  toolsPausedAt         DateTime? // downloads wait: YouTube probably changed something
+  autoCleanupEnabled    Boolean   @default(false) // deletes real files, so it stays off until chosen
+  cleanupJellyfinUserId String? // whose watched state counts
+  cleanupConnectionId   String? // the Jellyfin connection that user belongs to
+  cleanupGeneration     Int       @default(0) // bumped on any change, so queued deletes can be refused
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+}
+
+model CreatorPlaylist {
+  id            String                        @id @default(cuid())
+  platform      ArchivePlatform               @default(YOUTUBE)
+  externalId    String
+  title         String
+  ownerName     String?
+  description   String?
+  thumbnailUrl  String?
+  itemCount     Int                           @default(0)
+  policy        Json                          @default("{}") // playlist rule layer
+  baselinedAt   DateTime? // null until the first sweep recorded existing items without notifying
+  nextCheckAt   DateTime?
+  createdAt     DateTime                      @default(now())
+  updatedAt     DateTime                      @updatedAt
+  videos        CreatorPlaylistVideo[]
+  subscriptions CreatorPlaylistSubscription[]
+
+  @@unique([platform, externalId])
+  @@index([nextCheckAt])
+}
+
+model CreatorPlaylistVideo {
+  playlistId String
+  playlist   CreatorPlaylist @relation(fields: [playlistId], references: [id], onDelete: Cascade)
+  videoId    String
+  video      CreatorVideo    @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  position   Int             @default(0)
+  createdAt  DateTime        @default(now())
+
+  @@id([playlistId, videoId])
+  @@index([videoId])
+}
+
+model CreatorPlaylistSubscription {
+  id              String          @id @default(cuid())
+  userId          String
+  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  playlistId      String
+  playlist        CreatorPlaylist @relation(fields: [playlistId], references: [id], onDelete: Cascade)
+  notifyNewVideos Boolean         @default(true)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  @@unique([userId, playlistId])
+  @@index([playlistId])
+}
+
 model TwitchUserLink {
   id             String    @id @default(cuid())
   userId         String    @unique

@@ -48,6 +48,7 @@ export interface SupportDatabaseSnapshot {
   services: RawServiceConnection[];
   settings: SafeAppSettings | null;
   twitchBrowserAuthToken?: string | null;
+  youtubeCookies?: string | null;
   counts: Record<string, number>;
   appliedMigrations: string[];
 }
@@ -175,6 +176,7 @@ function collectKnownSecrets(
   environment: Readonly<Record<string, string | undefined>>,
   services: RawServiceConnection[],
   twitchBrowserAuthToken?: string | null,
+  youtubeCookies?: string | null,
 ): string[] {
   const secrets = new Set<string>();
   for (const name of ENV_SECRET_NAMES) {
@@ -194,8 +196,11 @@ function collectKnownSecrets(
     // Stored as enc:v1, so its plaintext is not in the fields above, and a 30-character
     // Twitch token misses the aggressive hex and 40-character shapes.
     if (service.type === 'TWITCH') addSecret(secrets, decryptTwitchToken(service.accessToken));
+    // Stored as enc:v1, unlike other connection keys.
+    if (service.type === 'YOUTUBE') addSecret(secrets, decryptTwitchToken(service.apiKey));
   }
   addSecret(secrets, decryptTwitchToken(twitchBrowserAuthToken));
+  for (const line of decryptTwitchToken(youtubeCookies)?.split('\n') ?? []) addSecret(secrets, line.split('\t')[6]);
 
   return [...secrets].sort((a, b) => b.length - a.length);
 }
@@ -282,6 +287,7 @@ async function loadDatabaseSnapshot(): Promise<SupportDatabaseSnapshot> {
     diskSnapshots,
     migrations,
     archiveSettings,
+    youtubeSettings,
     twitchStreamers,
     twitchVideos,
     twitchJobs,
@@ -338,6 +344,7 @@ async function loadDatabaseSnapshot(): Promise<SupportDatabaseSnapshot> {
       ORDER BY started_at ASC
     `,
     prisma.archiveSettings.findUnique({ where: { id: 'singleton' }, select: { browserAuthToken: true } }),
+    prisma.youtubeSettings.findUnique({ where: { id: 'singleton' }, select: { cookies: true } }),
     prisma.creator.count(),
     prisma.creatorVideo.count(),
     prisma.archiveJob.count(),
@@ -351,6 +358,7 @@ async function loadDatabaseSnapshot(): Promise<SupportDatabaseSnapshot> {
     services,
     settings,
     twitchBrowserAuthToken: archiveSettings?.browserAuthToken,
+    youtubeCookies: youtubeSettings?.cookies,
     counts: {
       users,
       serviceConnections: services.length,
@@ -423,6 +431,7 @@ export async function buildSupportBundle(
     environment,
     services,
     databaseResult.ok ? databaseResult.value.twitchBrowserAuthToken : null,
+    databaseResult.ok ? databaseResult.value.youtubeCookies : null,
   );
 
   let logs: SupportBundle['logs'];

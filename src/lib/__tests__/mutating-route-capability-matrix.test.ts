@@ -240,6 +240,9 @@ const POLICY_GROUPS: Record<string, readonly string[]> = {
     'POST /api/services/twitch',
     'DELETE /api/services/twitch',
     'POST /api/services/twitch/test',
+    'POST /api/services/youtube',
+    'DELETE /api/services/youtube',
+    'POST /api/services/youtube/test',
     'PUT /api/services/external-url',
     'POST /api/services',
     'POST /api/services/test',
@@ -498,7 +501,7 @@ describe('mutating API route capability matrix', () => {
   const assignments = policyAssignments();
 
   it('explicitly assigns every mutating handler exactly once', () => {
-    expect(handlers.size).toBe(200);
+    expect(handlers.size).toBe(203);
     expect([...assignments.keys()].sort()).toEqual([...handlers.keys()].sort());
   });
 

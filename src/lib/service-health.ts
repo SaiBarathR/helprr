@@ -10,6 +10,7 @@ import { TmdbClient } from '@/lib/tmdb-client';
 import { SeerrClient } from '@/lib/seerr-client';
 import { getConnectionHeaders } from '@/lib/service-connection-secrets';
 import { verifyTwitchAppToken } from '@/lib/twitch/helix';
+import { youtubeReachable } from '@/lib/youtube/api';
 
 export const SERVICE_LABELS: Record<ServiceType, string> = {
   SONARR: 'Sonarr',
@@ -22,6 +23,7 @@ export const SERVICE_LABELS: Record<ServiceType, string> = {
   ANILIST: 'AniList',
   SEERR: 'Seerr',
   TWITCH: 'Twitch',
+  YOUTUBE: 'YouTube',
 };
 
 // Reachability probe for a single connection — the lightest call per service
@@ -96,6 +98,11 @@ async function checkConnection(connection: ServiceConnection): Promise<void> {
     case 'TWITCH': {
       // Only the token: the reachability poller probes every connection, so no Helix sweep here.
       await verifyTwitchAppToken();
+      return;
+    }
+    case 'YOUTUBE': {
+      // The poller probes every connection often, and any real call spends daily quota.
+      await youtubeReachable();
       return;
     }
     default: {

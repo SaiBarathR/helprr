@@ -102,6 +102,9 @@ const DEFAULT_EXTERNAL_IMAGE_HOSTS = new Set<string>([
   'images.lidarr.audio',
   'static-cdn.jtvnw.net',
   'vod-secure.twitch.tv',
+  'i.ytimg.com',
+  'yt3.ggpht.com',
+  'yt3.googleusercontent.com',
 ]);
 
 function getAllowedExternalImageHosts(): Set<string> {

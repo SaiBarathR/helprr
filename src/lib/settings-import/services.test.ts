@@ -1,5 +1,5 @@
 import type { Prisma, ServiceConnection } from '@prisma/client';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ExportedServiceConnection } from '@/lib/settings-export';
 
 vi.mock('@/lib/db', () => ({ prisma: {} }));
@@ -8,6 +8,8 @@ vi.mock('@/lib/arr-instances', () => ({
 }));
 
 import { applyServiceConnectionInTxn } from './services';
+import { isServiceType } from '@/lib/service-connection-secrets';
+import { encryptTwitchToken } from '@/lib/twitch/token-cipher';
 
 const stored = {
   id: 'radarr-main', type: 'RADARR', label: 'Main', isDefault: true,
@@ -83,5 +85,44 @@ describe('importing service connection secrets', () => {
 
     expect(row).toEqual({ ...stored, url: stored.url });
     expect(skipped).toEqual([]);
+  });
+});
+
+describe('importing the YouTube connection', () => {
+  const youtube = (apiKey: string | null) => connection({ type: 'YOUTUBE', label: 'YouTube', url: 'https://www.googleapis.com/youtube/v3', apiKey });
+
+  beforeEach(() => {
+    vi.stubEnv('JWT_SECRET', 'this-install');
+    Object.assign(row, { type: 'YOUTUBE', url: 'https://www.googleapis.com/youtube/v3', apiKey: 'enc:v1:kept' });
+  });
+  afterEach(() => vi.unstubAllEnvs());
+
+  it('restores a key this install encrypted', async () => {
+    const apiKey = encryptTwitchToken('not-a-real-key');
+    expect(await applyServiceConnectionInTxn(tx, youtube(apiKey), [])).toBe('YOUTUBE');
+    expect(row.apiKey).toBe(apiKey);
+  });
+
+  it('keeps the stored key when the file has none', async () => {
+    expect(await applyServiceConnectionInTxn(tx, youtube(null), [])).toBe('YOUTUBE');
+    expect(row.apiKey).toBe('enc:v1:kept');
+  });
+
+  it('refuses a key from another install, leaving the working one alone', async () => {
+    vi.stubEnv('JWT_SECRET', 'another-install');
+    const foreign = encryptTwitchToken('not-a-real-key');
+    vi.stubEnv('JWT_SECRET', 'this-install');
+    const skipped: string[] = [];
+
+    expect(await applyServiceConnectionInTxn(tx, youtube(foreign), skipped)).toBeNull();
+
+    expect(update).not.toHaveBeenCalled();
+    expect(skipped).toEqual(['Skipped YouTube: its key came from another Helprr. Enter it again in Settings.']);
+  });
+});
+
+describe('the generic service routes', () => {
+  it('still refuse YouTube, whose key must only be stored encrypted', () => {
+    expect(isServiceType('YOUTUBE')).toBe(false);
   });
 });
