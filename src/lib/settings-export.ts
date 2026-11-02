@@ -76,6 +76,8 @@ export const UI_PREF_CATEGORY_FIELDS: Record<UiPrefCategoryId, readonly string[]
     'mediaView',
     'twitchFeedView',
     'youtubeFeedView',
+    'twitchLibraryView',
+    'youtubeLibraryView',
     'moviesView', 'moviesPosterSize', 'moviesSort', 'moviesSearch',
     'moviesSortDirection', 'moviesFilter', 'moviesInstanceFilter', 'moviesWatchFilter', 'moviesVisibleFields',
     'seriesView', 'seriesPosterSize', 'seriesSort', 'seriesSearch',

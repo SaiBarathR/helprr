@@ -14,3 +14,12 @@ describe('the feed view', () => {
     expect(migrateUiPrefs({ torrentsView: 'table' }, 48)).not.toHaveProperty('twitchFeedView');
   });
 });
+
+describe('the library view', () => {
+  it('starts grouped, and travels with the other view settings', async () => {
+    const { useUIStore } = await import('@/lib/store');
+    const { UI_PREF_CATEGORY_FIELDS } = await import('@/lib/settings-export');
+    expect(useUIStore.getState()).toMatchObject({ twitchLibraryView: 'grouped', youtubeLibraryView: 'grouped' });
+    expect(UI_PREF_CATEGORY_FIELDS.mediaViews).toEqual(expect.arrayContaining(['twitchLibraryView', 'youtubeLibraryView']));
+  });
+});

@@ -11,6 +11,14 @@ export function useFeedView() {
   return [view, setView] as const;
 }
 
+/** Each Library remembers its own view too. */
+export function useLibraryView() {
+  const { id } = useCreatorPlatform();
+  const view = useUIStore((state) => (id === 'twitch' ? state.twitchLibraryView : state.youtubeLibraryView));
+  const setView = useUIStore((state) => (id === 'twitch' ? state.setTwitchLibraryView : state.setYoutubeLibraryView));
+  return [view, setView] as const;
+}
+
 /** A channel or a playlist is already one source, so grouped shows as the grid there. */
 export function useFeedLayout(): 'grid' | 'list' {
   const [view] = useFeedView();

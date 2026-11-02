@@ -6,17 +6,20 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowUpDown, ChevronRight, Filter, Loader2, RefreshCw } from 'lucide-react';
 import Link from '@/components/ui/app-link';
 import { SearchBar } from '@/components/media/search-bar';
+import { ViewSelector } from '@/components/media/view-selector';
 import { ActiveFilterBar, FilterDot, filterButtonLabel, searchFilter, type ActiveFilter } from '@/components/ui/active-filter-bar';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { ErrorState } from '@/components/ui/error-state';
 import { ListSkeleton } from '@/components/ui/list-skeleton';
 import { PullToRefresh } from '@/components/ui/pull-to-refresh';
+import { FileGroups } from '@/components/creators/file-groups';
 import { DeletedRow, FileRow } from '@/components/creators/file-row';
-import type { DeletedFile, LibrarySummary, ArchiveFile } from '@/components/creators/file-types';
+import type { DeletedFile, FileGroupPage, LibrarySummary, ArchiveFile } from '@/components/creators/file-types';
 import { FilterGroup, type FilterOption } from '@/components/creators/filter-group';
 import { ToolbarButton, toolbarButtonClass, CreatorToolbar } from '@/components/creators/toolbar';
 import { useFileActions } from '@/components/creators/use-file-actions';
+import { useLibraryView } from '@/components/creators/use-feed-view';
 import { formatBytes } from '@/lib/format';
 import { useRestorableInfiniteQuery } from '@/lib/hooks/use-restorable-infinite-query';
 import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
@@ -87,6 +90,9 @@ export function CreatorLibraryPage() {
   const [streamer, setStreamer] = useRouteViewState('streamer', '');
   const [search, setSearch] = useRouteViewState('search', '');
   const showingDeleted = filter === DELETED;
+  const [view, setView] = useLibraryView();
+  // One channel is already a group, and deleted videos have no files left to group.
+  const grouped = view === 'grouped' && !showingDeleted && !streamer;
   const refresh = () => queryClient.invalidateQueries({ queryKey: [platform.id] });
 
   const params = useMemo(() => {
@@ -107,7 +113,7 @@ export function CreatorLibraryPage() {
 
   const files = useRestorableInfiniteQuery({
     queryKey: [platform.id, 'files', params],
-    enabled: !showingDeleted,
+    enabled: !showingDeleted && !grouped,
     queryFn: ({ pageParam, signal }) => getJson<Page<ArchiveFile>>(`${platform.api}/files?${params}&page=${pageParam}`, signal),
     initialPageParam: 1,
     getNextPageParam: nextPage,
@@ -115,14 +121,28 @@ export function CreatorLibraryPage() {
     refetchIntervalInBackground: false,
   });
   const rows = useMemo(() => files.data?.pages.flatMap((page) => page.files ?? []) ?? [], [files.data]);
+  // Under 'files' too, so keep forever and refreshes reach it the same way.
+  const groupsQuery = useRestorableInfiniteQuery({
+    queryKey: [platform.id, 'files', 'groups', params],
+    enabled: grouped,
+    queryFn: ({ pageParam, signal }) => getJson<FileGroupPage>(`${platform.api}/files/groups?${params}&page=${pageParam}`, signal),
+    initialPageParam: 1,
+    getNextPageParam: nextPage,
+    refetchInterval: (query) => (
+      query.state.data?.pages.some((page) => page.groups.some((group) => group.files.some((file) => file.activeJob))) ? 3_000 : false
+    ),
+    refetchIntervalInBackground: false,
+  });
+  const groups = useMemo(() => groupsQuery.data?.pages.flatMap((page) => page.groups) ?? [], [groupsQuery.data]);
+  const shown = useMemo(() => (grouped ? groups.flatMap((group) => group.files) : rows), [grouped, groups, rows]);
 
   // Only the rows poll, so the totals follow them through and catch the last job's result.
-  const working = rows.some((file) => file.activeJob);
+  const working = shown.some((file) => file.activeJob);
   const wasWorking = useRef(false);
   useEffect(() => {
     if (wasWorking.current || working) void queryClient.invalidateQueries({ queryKey: [platform.id, 'files-summary'] });
     wasWorking.current = working;
-  }, [working, rows, queryClient, platform.id]);
+  }, [working, shown, queryClient, platform.id]);
 
   const history = useRestorableInfiniteQuery({
     queryKey: [platform.id, 'file-history', params],
@@ -158,9 +178,9 @@ export function CreatorLibraryPage() {
     setSort(filter === next ? 'newest' : nextSort);
   };
 
-  const active = showingDeleted ? history : files;
-  const total = active.data?.pages[0]?.total ?? 0;
-  const empty = showingDeleted ? deletions.length === 0 : rows.length === 0;
+  const active = showingDeleted ? history : grouped ? groupsQuery : files;
+  const total = (grouped ? groupsQuery.data?.pages[0]?.videoTotal : (showingDeleted ? history : files).data?.pages[0]?.total) ?? 0;
+  const empty = showingDeleted ? deletions.length === 0 : shown.length === 0;
 
   return (
     <div className="space-y-3 animate-content-in">
@@ -206,6 +226,13 @@ export function CreatorLibraryPage() {
                   <FilterGroup label="Sort by" options={SORTS} value={sort} onChange={setSort} separated={false} />
                 </DropdownMenuContent>
               </DropdownMenu>
+            )}
+            {!showingDeleted && (
+              <ViewSelector
+                value={view === 'grouped' ? 'grouped' : 'overview'}
+                modes={['grouped', 'overview']}
+                onChange={(next) => setView(next === 'grouped' ? 'grouped' : 'list')}
+              />
             )}
           </>
         )}
@@ -291,11 +318,15 @@ export function CreatorLibraryPage() {
               ? ` · ${formatBytes(stats?.freedBytes ?? 0)} freed in total`
               : stats?.diskFreeBytes != null ? ` · ${formatBytes(stats.diskFreeBytes)} free on the disk` : ''}
           </p>
-          <div className="divide-y divide-border/50 overflow-hidden rounded-xl bg-card">
-            {showingDeleted
-              ? deletions.map((row) => <DeletedRow key={row.id} row={row} />)
-              : rows.map((file) => <FileRow key={file.id} file={file} actions={actions} cleanupDue={cleanupDue.has(file.id)} />)}
-          </div>
+          {grouped ? (
+            <FileGroups groups={groups} params={params} actions={actions} cleanupDue={cleanupDue} />
+          ) : (
+            <div className="divide-y divide-border/50 overflow-hidden rounded-xl bg-card">
+              {showingDeleted
+                ? deletions.map((row) => <DeletedRow key={row.id} row={row} />)
+                : rows.map((file) => <FileRow key={file.id} file={file} actions={actions} cleanupDue={cleanupDue.has(file.id)} />)}
+            </div>
+          )}
         </section>
       )}
 

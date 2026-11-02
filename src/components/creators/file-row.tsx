@@ -50,11 +50,17 @@ export function FileBadges({ file, cleanupDue }: { file: ArchiveFile; cleanupDue
   );
 }
 
-export function FileRow({ file, actions, cleanupDue }: { file: ArchiveFile; actions: FileActions; cleanupDue?: boolean }) {
+export function FileRow({ file, actions, cleanupDue, showCreator = true }: {
+  file: ArchiveFile;
+  actions: FileActions;
+  cleanupDue?: boolean;
+  /** Off under a channel's own header, which already names it. */
+  showCreator?: boolean;
+}) {
   const platform = useCreatorPlatform();
   const thumbnail = toCachedImageSrc(file.thumbnailUrl, undefined, { width: 320 });
   const groups = actions.groupsFor(file);
-  const meta = [file.creator.displayName, formatBytes(file.sizeBytes), fileQuality(file), codecLabel(file.videoCodec)]
+  const meta = [showCreator ? file.creator.displayName : null, formatBytes(file.sizeBytes), fileQuality(file), codecLabel(file.videoCodec)]
     .filter(Boolean).join(' · ');
   return (
     <SwipeRow contentClassName="bg-card" {...actions.swipeFor(file)}>

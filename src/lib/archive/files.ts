@@ -124,7 +124,7 @@ const ORDERS: Record<string, Prisma.ArchiveMediaFileOrderByWithRelationInput[]> 
   newest: [{ createdAt: 'desc' }, { id: 'desc' }],
 };
 
-const savedBytes = (file: { reencodedAt: Date | null; sizeBytes: bigint; originalSizeBytes: bigint | null }) => (
+export const savedBytes = (file: { reencodedAt: Date | null; sizeBytes: bigint; originalSizeBytes: bigint | null }) => (
   file.reencodedAt && file.originalSizeBytes !== null ? Number(file.originalSizeBytes - file.sizeBytes) : 0
 );
 

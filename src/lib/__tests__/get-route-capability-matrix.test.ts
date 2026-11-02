@@ -278,6 +278,7 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
     'GET /api/youtube/feed',
     'GET /api/youtube/feed/groups',
     'GET /api/youtube/files',
+    'GET /api/youtube/files/groups',
     'GET /api/youtube/files/[id]',
     'GET /api/youtube/files/history',
     'GET /api/youtube/files/summary',
@@ -312,6 +313,7 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
     'GET /api/twitch/feed',
     'GET /api/twitch/feed/groups',
     'GET /api/twitch/files',
+    'GET /api/twitch/files/groups',
     'GET /api/twitch/files/[id]',
     'GET /api/twitch/files/history',
     'GET /api/twitch/files/summary',
@@ -520,7 +522,7 @@ describe('GET API route capability matrix', () => {
   const assignments = policyAssignments();
 
   it('explicitly assigns every GET handler exactly once', () => {
-    expect(handlers.size).toBe(259);
+    expect(handlers.size).toBe(261);
     expect([...assignments.keys()].sort()).toEqual([...handlers.keys()].sort());
   });
 
