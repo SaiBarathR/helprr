@@ -31,6 +31,8 @@ import {
 } from '@/lib/jellyfin-playback/subtitle-appearance';
 
 export type MediaViewMode = 'posters' | 'overview' | 'table';
+/** A Twitch or YouTube feed: by channel, or every video together. */
+export type FeedView = 'grouped' | 'grid' | 'list';
 export type PosterSize = 'small' | 'medium' | 'large';
 export type VisibleFieldsByMode = Record<MediaViewMode, string[]>;
 
@@ -252,7 +254,7 @@ function cloneDiscoverFilters(filters: DiscoverFiltersState): DiscoverFiltersSta
   };
 }
 
-export const STORE_VERSION = 48;
+export const STORE_VERSION = 49;
 
 // Matches the calendar backdrop's previously hardcoded Tailwind `opacity-35`.
 export const DEFAULT_CALENDAR_IMAGE_OPACITY = 35;
@@ -492,6 +494,12 @@ export function migrateUiPrefs(persisted: unknown, version: number): Record<stri
     // a torrents category it never exported.
     state.torrentsView = 'auto';
   }
+  if (version < 49) {
+    // The owner asked for feeds grouped by channel by default, so a saved choice moves once.
+    // Only present values: a partial settings import must not gain fields it never exported.
+    if ('twitchFeedView' in state) state.twitchFeedView = 'grouped';
+    if ('youtubeFeedView' in state) state.youtubeFeedView = 'grouped';
+  }
   if (!isMediaWatchFilterPreference(state.moviesWatchFilter)) {
     state.moviesWatchFilter = 'all';
   }
@@ -512,10 +520,10 @@ interface UIState {
   setCalendarView: (view: 'month' | 'week' | 'agenda') => void;
   // Movies preferences
   moviesView: MediaViewMode;
-  twitchFeedView: 'grid' | 'list';
-  setTwitchFeedView: (view: 'grid' | 'list') => void;
-  youtubeFeedView: 'grid' | 'list';
-  setYoutubeFeedView: (view: 'grid' | 'list') => void;
+  twitchFeedView: FeedView;
+  setTwitchFeedView: (view: FeedView) => void;
+  youtubeFeedView: FeedView;
+  setYoutubeFeedView: (view: FeedView) => void;
   setMoviesView: (view: MediaViewMode) => void;
   moviesPosterSize: PosterSize;
   setMoviesPosterSize: (size: PosterSize) => void;
@@ -862,9 +870,9 @@ export const useUIStore = create<UIState>()(
       calendarView: 'agenda',
       setCalendarView: (view) => set({ calendarView: view }),
       // Movies
-      twitchFeedView: 'grid',
+      twitchFeedView: 'grouped',
       setTwitchFeedView: (view) => set({ twitchFeedView: view }),
-      youtubeFeedView: 'grid',
+      youtubeFeedView: 'grouped',
       setYoutubeFeedView: (view) => set({ youtubeFeedView: view }),
       moviesView: 'posters',
       setMoviesView: (view) => set({ moviesView: view }),

@@ -11,6 +11,7 @@ import type { ContextActionGroup } from '@/components/ui/quick-context-menu';
 import type { SwipeAction } from '@/components/ui/swipe-row';
 import { DownloadSheet } from '@/components/twitch/download-sheet';
 import { YoutubeDownloadSheet } from '@/components/youtube/download-sheet';
+import type { FeedGroupPage } from './feed-groups';
 import type { CreatorVideoItem, CreatorVideoPage } from './types';
 import { useCreatorPlatform } from './platform';
 
@@ -20,10 +21,13 @@ async function post(url: string, body: unknown) {
   if (!res.ok) throw new Error(data?.error || 'Request failed');
 }
 
-// Feed pages are either the infinite list or a single shelf.
+// Feed pages are the infinite list, the list by channel, or a single shelf.
 function withoutVideo(videoId: string) {
-  const drop = (page: CreatorVideoPage) => ({ ...page, videos: page.videos.filter((video) => video.id !== videoId) });
-  return (data: InfiniteData<CreatorVideoPage> | CreatorVideoPage | undefined) => {
+  const keep = (video: CreatorVideoItem) => video.id !== videoId;
+  const drop = (page: CreatorVideoPage | FeedGroupPage) => ('groups' in page
+    ? { ...page, groups: page.groups.map((group) => ({ ...group, videos: group.videos.filter(keep) })) }
+    : { ...page, videos: page.videos.filter(keep) });
+  return (data: InfiniteData<CreatorVideoPage | FeedGroupPage> | CreatorVideoPage | undefined) => {
     if (!data) return data;
     return 'pages' in data ? { ...data, pages: data.pages.map(drop) } : drop(data);
   };

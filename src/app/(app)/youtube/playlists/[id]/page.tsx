@@ -12,7 +12,7 @@ import type { ContextActionGroup } from '@/components/ui/quick-context-menu';
 import { ActionsMenu } from '@/components/creators/actions-menu';
 import { ClampedText } from '@/components/creators/clamped-text';
 import type { CreatorVideoPage } from '@/components/creators/types';
-import { useFeedView } from '@/components/creators/use-feed-view';
+import { useFeedLayout } from '@/components/creators/use-feed-view';
 import { useVideoActions } from '@/components/creators/use-video-actions';
 import { useVideoSelection } from '@/components/creators/use-video-selection';
 import { CreatorVideoCard } from '@/components/creators/video-card';
@@ -34,7 +34,7 @@ interface Playlist {
 export default function YoutubePlaylistPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const queryClient = useQueryClient();
-  const [view] = useFeedView();
+  const view = useFeedLayout();
   const refresh = () => queryClient.invalidateQueries({ queryKey: ['youtube'] });
 
   const query = useQuery({
