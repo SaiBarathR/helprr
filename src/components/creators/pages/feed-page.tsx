@@ -294,7 +294,7 @@ export function CreatorFeedPage() {
       {live.length > 0 && !filtered && (
         <section aria-label="Live now">
           <h2 className="mb-2 text-base font-semibold">Live now</h2>
-          <div className="-mx-2 flex gap-2 overflow-x-auto px-2 pb-1 scrollbar-hide md:-mx-6 md:px-6">
+          <div className="-mx-2 flex gap-2 overflow-x-auto overflow-y-hidden px-2 pb-1 scrollbar-hide md:-mx-6 md:px-6">
             {live.map(({ creator: item }) => {
               const avatar = toCachedImageSrc(item.profileImageUrl, undefined, { width: 72 });
               return (
@@ -316,7 +316,7 @@ export function CreatorFeedPage() {
       {expiring.length > 0 && !filtered && (
         <section aria-label="Expiring soon">
           <h2 className="mb-2 text-base font-semibold">Expiring soon</h2>
-          <div className="-mx-2 flex gap-3 overflow-x-auto px-2 pb-1 scrollbar-hide md:-mx-6 md:px-6">
+          <div className="-mx-2 flex gap-3 overflow-x-auto overflow-y-hidden px-2 pb-3 scrollbar-hide md:-mx-6 md:px-6">
             {expiring.map((video) => (
               <div key={video.id} className="w-[180px] shrink-0 sm:w-[220px]">
                 <CreatorVideoCard video={video} layout="grid" actions={actions} />
