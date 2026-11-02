@@ -91,3 +91,15 @@ export async function buildFeedWhere(
   }
   return { AND: and };
 }
+
+/** What the category filter offers. Helix has no category for a video, so older ones have none. */
+export async function feedCategories(platform: ArchivePlatform, userId: string): Promise<string[]> {
+  const rows = await prisma.creatorVideo.findMany({
+    where: { platform, creator: { subscriptions: { some: { userId } } }, category: { not: null } },
+    distinct: ['category'],
+    orderBy: { category: 'asc' },
+    select: { category: true },
+    take: 100,
+  });
+  return rows.map((row) => row.category!);
+}

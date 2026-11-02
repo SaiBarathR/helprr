@@ -16,6 +16,7 @@ import { ErrorState } from '@/components/ui/error-state';
 import { PullToRefresh } from '@/components/ui/pull-to-refresh';
 import { FilterGroup, type FilterOption } from '@/components/creators/filter-group';
 import { ToolbarButton, toolbarButtonClass, CreatorToolbar } from '@/components/creators/toolbar';
+import { FeedGroups, FeedGroupsSkeleton, whileGroupsDownloading, type FeedGroupPage } from '@/components/creators/feed-groups';
 import { CreatorVideoCard } from '@/components/creators/video-card';
 import { CreatorVideoList, CreatorVideoSkeleton } from '@/components/creators/video-list';
 import { useCreatorPlatform } from '@/components/creators/platform';
@@ -28,6 +29,7 @@ import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
 import { toCachedImageSrc } from '@/lib/image';
 
 const PAGE_SIZE = 30;
+const VIEW_MODES = { grouped: 'grouped', grid: 'posters', list: 'overview' } as const;
 
 const SHOW: FilterOption[] = [{ id: 'all', label: 'All videos' }, { id: 'new', label: 'New' }];
 const STATUSES: FilterOption[] = [
@@ -116,6 +118,7 @@ export function CreatorFeedPage() {
   const subscriptions = streamersQuery.data?.subscriptions ?? [];
   const live = subscriptions.filter((subscription) => subscription.creator.isLive);
 
+  const grouped = view === 'grouped';
   const feed = useRestorableInfiniteQuery({
     queryKey: [platform.id, 'feed', filters],
     queryFn: ({ pageParam, signal }) => getJson<CreatorVideoPage>(`${platform.api}/feed?${filters}&page=${pageParam}`, signal),
@@ -123,9 +126,25 @@ export function CreatorFeedPage() {
     getNextPageParam: (last: CreatorVideoPage) => (last.page * last.pageSize < last.total ? last.page + 1 : undefined),
     refetchInterval: whileDownloading,
     refetchIntervalInBackground: false,
+    enabled: !grouped,
   });
-  const videos = useMemo(() => feed.data?.pages.flatMap((page) => page.videos) ?? [], [feed.data]);
-  const total = feed.data?.pages[0]?.total ?? 0;
+  // Under 'feed' too, so marking seen and hiding reach it the same way.
+  const groupsQuery = useRestorableInfiniteQuery({
+    queryKey: [platform.id, 'feed', 'groups', filters],
+    queryFn: ({ pageParam, signal }) => getJson<FeedGroupPage>(`${platform.api}/feed/groups?${filters}&page=${pageParam}`, signal),
+    initialPageParam: 1,
+    getNextPageParam: (last: FeedGroupPage) => (last.page * last.pageSize < last.total ? last.page + 1 : undefined),
+    refetchInterval: whileGroupsDownloading,
+    refetchIntervalInBackground: false,
+    enabled: grouped,
+  });
+  const groups = useMemo(() => groupsQuery.data?.pages.flatMap((page) => page.groups) ?? [], [groupsQuery.data]);
+  const videos = useMemo(
+    () => (grouped ? groups.flatMap((group) => group.videos) : feed.data?.pages.flatMap((page) => page.videos) ?? []),
+    [grouped, groups, feed.data],
+  );
+  const active = grouped ? groupsQuery : feed;
+  const total = (grouped ? groupsQuery.data?.pages[0]?.videoTotal : feed.data?.pages[0]?.total) ?? 0;
 
   const expiringQuery = useQuery({
     queryKey: [platform.id, 'feed', 'expiring-shelf'],
@@ -133,7 +152,7 @@ export function CreatorFeedPage() {
     enabled: platform.expires,
   });
   const expiring = expiringQuery.data?.videos ?? [];
-  const categories = feed.data?.pages[0]?.categories ?? [];
+  const categories = (grouped ? groupsQuery.data?.pages[0]?.categories : feed.data?.pages[0]?.categories) ?? [];
   const actions = useVideoActions();
   const selection = useVideoSelection(videos, actions);
 
@@ -162,7 +181,7 @@ export function CreatorFeedPage() {
 
   // The list is virtual, so a sentinel under it asks for the next page.
   const loadMoreRef = useRef<HTMLDivElement>(null);
-  const { hasNextPage, isFetchingNextPage, fetchNextPage } = feed;
+  const { hasNextPage, isFetchingNextPage, fetchNextPage } = active;
   useEffect(() => {
     const sentinel = loadMoreRef.current;
     if (!sentinel || !hasNextPage) return;
@@ -226,9 +245,9 @@ export function CreatorFeedPage() {
               </DropdownMenuContent>
             </DropdownMenu>
             <ViewSelector
-              value={view === 'grid' ? 'posters' : 'overview'}
-              modes={['posters', 'overview']}
-              onChange={(next) => setView(next === 'posters' ? 'grid' : 'list')}
+              value={VIEW_MODES[view]}
+              modes={['grouped', 'posters', 'overview']}
+              onChange={(next) => setView(next === 'posters' ? 'grid' : next === 'overview' ? 'list' : 'grouped')}
             />
           </>
         )}
@@ -249,8 +268,8 @@ export function CreatorFeedPage() {
                 <ListChecks className="h-5 w-5" />
               </ToolbarButton>
             )}
-            <ToolbarButton label="Refresh" disabled={feed.isRefetching} onClick={() => void refresh()}>
-              <RefreshCw className={`h-5 w-5 ${feed.isRefetching ? 'animate-spin' : ''}`} />
+            <ToolbarButton label="Refresh" disabled={active.isRefetching} onClick={() => void refresh()}>
+              <RefreshCw className={`h-5 w-5 ${active.isRefetching ? 'animate-spin' : ''}`} />
             </ToolbarButton>
             <ToolbarButton label={`Add ${platform.creatorLabel.toLowerCase()}`} href={`${platform.creatorsPath}/add`} filled>
               <Plus className="h-5 w-5" />
@@ -307,10 +326,10 @@ export function CreatorFeedPage() {
         </section>
       )}
 
-      {feed.isLoading ? (
-        <CreatorVideoSkeleton />
-      ) : feed.isError ? (
-        <ErrorState message="Couldn't load the feed" onRetry={() => void feed.refetch()} />
+      {active.isLoading ? (
+        grouped ? <FeedGroupsSkeleton /> : <CreatorVideoSkeleton />
+      ) : active.isError ? (
+        <ErrorState message="Couldn't load the feed" onRetry={() => void active.refetch()} />
       ) : videos.length === 0 ? (
         <div className="rounded-xl bg-card p-8 text-center text-muted-foreground">
           {filtered ? (
@@ -327,6 +346,11 @@ export function CreatorFeedPage() {
             <p>Nothing here yet.</p>
           )}
         </div>
+      ) : grouped ? (
+        <section aria-label="Videos by channel">
+          {filtered && <p className="mb-2 px-1 text-xs text-muted-foreground">{total} {total === 1 ? 'video' : 'videos'}</p>}
+          <FeedGroups groups={groups} actions={actions} selection={selection} />
+        </section>
       ) : (
         <section aria-label="Videos">
           {(live.length > 0 || expiring.length > 0) && !filtered && (
@@ -335,11 +359,11 @@ export function CreatorFeedPage() {
           {filtered && <p className="mb-2 px-1 text-xs text-muted-foreground">{total} {total === 1 ? 'video' : 'videos'}</p>}
           <CreatorVideoList
             videos={videos}
-            layout={view}
+            layout={view === 'list' ? 'list' : 'grid'}
             renderVideo={(video) => (
               <CreatorVideoCard
                 video={video}
-                layout={view}
+                layout={view === 'list' ? 'list' : 'grid'}
                 actions={actions}
                 selection={selection.selectionFor(video)}
                 onSelect={selection.startWith(video)}
@@ -350,7 +374,7 @@ export function CreatorFeedPage() {
       )}
 
       <div ref={loadMoreRef} aria-hidden className="h-1" />
-      {feed.isFetchingNextPage && <p className="py-2 text-center text-sm text-muted-foreground">Loading…</p>}
+      {active.isFetchingNextPage && <p className="py-2 text-center text-sm text-muted-foreground">Loading…</p>}
       {actions.sheet}
       {selection.bar}
     </div>

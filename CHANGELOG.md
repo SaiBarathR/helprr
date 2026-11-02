@@ -23,6 +23,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Feeds grouped by channel**: the Twitch and YouTube feeds now open with a row per
+  channel, newest first, each showing its latest 10 videos and how many are new. Grid and
+  List are still one tap away, and each section remembers its own choice.
 - The worker now serves Twitch and YouTube, starting on either Compose profile.
   `COMPOSE_PROFILES=twitch` keeps working as before.
 - Each platform has its own tool pause, and YouTube has its own yt-dlp, so YouTube

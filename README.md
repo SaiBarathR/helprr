@@ -922,7 +922,8 @@ Release history lives in [CHANGELOG.md](CHANGELOG.md).
 ## Twitch archiver (optional)
 
 Follow streamers, get a push for new VODs, and save them into a Jellyfin library
-with chapters, chat and metadata. Saved files are re-encoded to HEVC overnight on
+with chapters, chat and metadata. The feed groups VODs by streamer; Grid and List are
+one tap away. Saved files are re-encoded to HEVC overnight on
 an Intel GPU. It is off until you configure it, and needs a separate worker container.
 
 1. Turn on two-factor authentication on your Twitch account, then register an
@@ -961,8 +962,8 @@ this for personal use.
 
 ## YouTube (optional)
 
-Follow channels and playlists, see new videos in a feed, and save them to a Jellyfin
-library with chapters and captions. Saved videos can clear themselves after you watch
+Follow channels and playlists, see new videos in a feed grouped by channel, and save
+them to a Jellyfin library with chapters and captions. Saved videos can clear themselves after you watch
 them. It shares the Twitch worker, and is off until you set it up.
 
 **Settings → YouTube** has a checklist that shows what is ready and what is left.

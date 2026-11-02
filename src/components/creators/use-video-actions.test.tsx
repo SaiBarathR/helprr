@@ -119,6 +119,18 @@ describe('useVideoActions', () => {
     await waitFor(() => expect(mocks.toast).toHaveBeenCalledTimes(2));
   });
 
+  it('hides from the list by channel too', async () => {
+    const { client, result } = setup();
+    const group = { creator: { id: 'c', login: 'c', displayName: 'C', profileImageUrl: null }, total: 2, newCount: 0, videos: [video, { ...video, id: 'video-2' }] };
+    client.setQueryData(['twitch', 'feed', 'groups', 'all'], { pages: [{ groups: [group], total: 1, videoTotal: 2, page: 1, pageSize: 8 }], pageParams: [1] });
+
+    act(() => result.current.swipeFor(video).rightAction.onAction());
+
+    await waitFor(() => expect(vi.mocked(fetch)).toHaveBeenCalled());
+    const grouped = client.getQueryData<{ pages: Array<{ groups: Array<{ videos: CreatorVideoPage['videos'] }> }> }>(['twitch', 'feed', 'groups', 'all']);
+    expect(grouped?.pages[0].groups[0].videos.map((item) => item.id)).toEqual(['video-2']);
+  });
+
   it('hides from every cached feed list at once and can be undone', async () => {
     const { client, result } = setup();
     const page: CreatorVideoPage = { videos: [video, { ...video, id: 'video-2' }], total: 2, page: 1, pageSize: 30 };

@@ -20,7 +20,7 @@ import { CreatorVideoCard } from '@/components/creators/video-card';
 import { CreatorVideoList, CreatorVideoSkeleton } from '@/components/creators/video-list';
 import { useCreatorPlatform } from '@/components/creators/platform';
 import { whileDownloading, type CreatorVideoPage } from '@/components/creators/types';
-import { useFeedView } from '@/components/creators/use-feed-view';
+import { useFeedLayout } from '@/components/creators/use-feed-view';
 import { useVideoActions } from '@/components/creators/use-video-actions';
 import { useVideoSelection } from '@/components/creators/use-video-selection';
 import { useRestorableInfiniteQuery } from '@/lib/hooks/use-restorable-infinite-query';
@@ -50,7 +50,7 @@ export function CreatorPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const me = useMe();
   const canManage = hasCapability(me, platform.canManage);
-  const [view] = useFeedView();
+  const view = useFeedLayout();
   const [pickedTab, setTab] = useRouteViewState<string>('tab', '');
   const [bannerFailed, setBannerFailed] = useState(false);
   const queryClient = useQueryClient();
