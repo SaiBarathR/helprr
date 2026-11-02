@@ -33,6 +33,8 @@ export const whileGroupsDownloading = (query: { state: { data?: { pages: FeedGro
   query.state.data?.pages.some((page) => page.groups.some((group) => group.videos.some((video) => video.activeJob))) ? 5_000 : false
 );
 
+export const RAIL = '-mx-2 flex snap-x scroll-px-2 gap-2.5 overflow-x-auto overflow-y-hidden px-2 pb-3 scrollbar-hide md:-mx-6 md:scroll-px-6 md:gap-3.5 md:px-6';
+
 // The thumbnail's height at each card width, so See all lines up with the pictures.
 const CARD = 'w-[160px] sm:w-[200px] lg:w-[220px]';
 const THUMB_HEIGHT = 'h-[90px] sm:h-[112px] lg:h-[124px]';
@@ -62,8 +64,10 @@ export function FeedGroups({ groups, actions, selection }: {
               </span>
               <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
             </Link>
-            {/* Snapping aligns to the padding, not the screen edge, so the first card lines up with the name. */}
-            <div className="-mx-2 flex snap-x scroll-px-2 gap-2.5 overflow-x-auto px-2 pb-1 scrollbar-hide md:-mx-6 md:scroll-px-6 md:gap-3.5 md:px-6">
+            {/* Snapping aligns to the padding, not the screen edge, so the first card lines up with the name.
+                Sideways only, with room for the menu button's tap area: otherwise the row can scroll
+                vertically by a few pixels and swallow the page's scroll. */}
+            <div className={RAIL}>
               {videos.map((video) => (
                 <div key={video.id} className={`${CARD} shrink-0 snap-start`}>
                   <CreatorVideoCard
