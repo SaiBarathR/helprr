@@ -62,7 +62,8 @@ export function FeedGroups({ groups, actions, selection }: {
               </span>
               <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
             </Link>
-            <div className="-mx-2 flex snap-x gap-2.5 overflow-x-auto px-2 pb-1 scrollbar-hide md:-mx-6 md:gap-3.5 md:px-6">
+            {/* Snapping aligns to the padding, not the screen edge, so the first card lines up with the name. */}
+            <div className="-mx-2 flex snap-x scroll-px-2 gap-2.5 overflow-x-auto px-2 pb-1 scrollbar-hide md:-mx-6 md:scroll-px-6 md:gap-3.5 md:px-6">
               {videos.map((video) => (
                 <div key={video.id} className={`${CARD} shrink-0 snap-start`}>
                   <CreatorVideoCard
