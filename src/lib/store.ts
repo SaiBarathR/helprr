@@ -33,6 +33,8 @@ import {
 export type MediaViewMode = 'posters' | 'overview' | 'table';
 /** A Twitch or YouTube feed: by channel, or every video together. */
 export type FeedView = 'grouped' | 'grid' | 'list';
+/** A Twitch or YouTube library: by channel, or one list. */
+export type LibraryView = 'grouped' | 'list';
 export type PosterSize = 'small' | 'medium' | 'large';
 export type VisibleFieldsByMode = Record<MediaViewMode, string[]>;
 
@@ -254,7 +256,7 @@ function cloneDiscoverFilters(filters: DiscoverFiltersState): DiscoverFiltersSta
   };
 }
 
-export const STORE_VERSION = 49;
+export const STORE_VERSION = 50;
 
 // Matches the calendar backdrop's previously hardcoded Tailwind `opacity-35`.
 export const DEFAULT_CALENDAR_IMAGE_OPACITY = 35;
@@ -524,6 +526,10 @@ interface UIState {
   setTwitchFeedView: (view: FeedView) => void;
   youtubeFeedView: FeedView;
   setYoutubeFeedView: (view: FeedView) => void;
+  twitchLibraryView: LibraryView;
+  setTwitchLibraryView: (view: LibraryView) => void;
+  youtubeLibraryView: LibraryView;
+  setYoutubeLibraryView: (view: LibraryView) => void;
   setMoviesView: (view: MediaViewMode) => void;
   moviesPosterSize: PosterSize;
   setMoviesPosterSize: (size: PosterSize) => void;
@@ -734,6 +740,8 @@ const PERSISTED_KEYS = [
   'moviesView',
   'twitchFeedView',
   'youtubeFeedView',
+  'twitchLibraryView',
+  'youtubeLibraryView',
   'moviesPosterSize',
   'moviesSort',
   'moviesSearch',
@@ -874,6 +882,10 @@ export const useUIStore = create<UIState>()(
       setTwitchFeedView: (view) => set({ twitchFeedView: view }),
       youtubeFeedView: 'grouped',
       setYoutubeFeedView: (view) => set({ youtubeFeedView: view }),
+      twitchLibraryView: 'grouped',
+      setTwitchLibraryView: (view) => set({ twitchLibraryView: view }),
+      youtubeLibraryView: 'grouped',
+      setYoutubeLibraryView: (view) => set({ youtubeLibraryView: view }),
       moviesView: 'posters',
       setMoviesView: (view) => set({ moviesView: view }),
       moviesPosterSize: 'medium',

@@ -139,3 +139,19 @@ export const DELETION_CAUSES: Record<DeletionCause, string> = {
   KEEP_PERIOD: 'Keep period ended',
   OUTSIDE: 'Removed outside Helprr',
 };
+
+/** One channel in the Library by channel: its newest few files, with totals for all of them. */
+export interface FileGroup {
+  creator: ArchiveFile['creator'];
+  total: number;
+  totalBytes: number;
+  files: ArchiveFile[];
+}
+
+export interface FileGroupPage {
+  groups: FileGroup[];
+  total: number;
+  videoTotal: number;
+  page: number;
+  pageSize: number;
+}

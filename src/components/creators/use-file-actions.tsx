@@ -9,7 +9,7 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import type { ContextActionGroup } from '@/components/ui/quick-context-menu';
 import type { SwipeAction } from '@/components/ui/swipe-row';
 import { formatBytes } from '@/lib/format';
-import type { ArchiveFile } from './file-types';
+import type { ArchiveFile, FileGroupPage } from './file-types';
 import { useCreatorPlatform } from './platform';
 
 type Confirming = { action: 'delete' | 'delete-original' | 'restore'; file: ArchiveFile };
@@ -67,12 +67,13 @@ export function useFileActions() {
         ...queryClient.getQueriesData({ queryKey: [platform.id, 'files'] }),
         ...queryClient.getQueriesData({ queryKey: [platform.id, 'file', file.id] }),
       ];
-      queryClient.setQueriesData<InfiniteData<FilePage>>({ queryKey: [platform.id, 'files'] }, (data) => data && {
+      const mark = (item: ArchiveFile) => (item.id === file.id ? { ...item, keepForever: keep } : item);
+      // Library pages are the plain list or the list by channel.
+      queryClient.setQueriesData<InfiniteData<FilePage | FileGroupPage>>({ queryKey: [platform.id, 'files'] }, (data) => data && {
         ...data,
-        pages: data.pages.map((page) => ({
-          ...page,
-          files: page.files.map((item) => (item.id === file.id ? { ...item, keepForever: keep } : item)),
-        })),
+        pages: data.pages.map((page) => ('groups' in page
+          ? { ...page, groups: page.groups.map((group) => ({ ...group, files: group.files.map(mark) })) }
+          : { ...page, files: page.files.map(mark) })),
       });
       queryClient.setQueryData<ArchiveFile>([platform.id, 'file', file.id], (data) => data && { ...data, keepForever: keep });
       return before;

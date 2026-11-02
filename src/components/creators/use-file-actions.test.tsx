@@ -120,6 +120,19 @@ describe('useFileActions', () => {
     expect(vi.mocked(fetch)).toHaveBeenCalledWith('/api/twitch/files/f', expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ keepForever: true }) }));
   });
 
+  it('answers Keep forever in the Library by channel too', async () => {
+    const { client, result } = setup();
+    const group = { creator: { id: 'c', displayName: 'C', profileImageUrl: null }, total: 1, totalBytes: 300, files: [file] };
+    client.setQueryData(['twitch', 'files', 'groups', 'sort=newest'], { pages: [{ groups: [group], total: 1, videoTotal: 1, page: 1, pageSize: 8 }], pageParams: [1] });
+
+    act(() => result.current.swipeFor(file).leftAction?.onAction());
+
+    await waitFor(() => {
+      const grouped = client.getQueryData<{ pages: Array<{ groups: Array<{ files: ArchiveFile[] }> }> }>(['twitch', 'files', 'groups', 'sort=newest']);
+      expect(grouped?.pages[0].groups[0].files[0].keepForever).toBe(true);
+    });
+  });
+
   it('puts Keep forever back when the server refuses, as a video that only looks protected is not', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response('{"error":"No"}', { status: 500 })));
     const { client, result } = setup();
