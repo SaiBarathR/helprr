@@ -6,7 +6,7 @@ import { readServiceBadgeCounts } from '@/lib/cache/badge-counts';
 import { buildFeedWhere } from '@/lib/archive/feed';
 import { TWITCH } from '@/lib/twitch/platform';
 import { YOUTUBE } from '@/lib/youtube/platform';
-import { ownerScope } from '@/lib/user-dto';
+import { historyScope } from '@/lib/notification-scope';
 import { withApiLogging } from '@/lib/api-logger';
 import { EMPTY_BADGE_SLICE, type BadgeCounts } from '@/types/badges';
 
@@ -26,10 +26,9 @@ async function getHandler(): Promise<NextResponse> {
       ? prisma.notificationHistory.count({
           where: {
             read: false,
-            // Same scoping the read/delete routes use (members → own; admins →
-            // everything incl. null-owner global), so the badge always matches
-            // exactly what mark-read / mark-all-read clear.
-            ...ownerScope(user),
+            // Same scoping the list and read/delete routes use, so the badge always
+            // matches exactly what mark-read / mark-all-read clear.
+            ...historyScope(user),
           },
         })
       : Promise.resolve(0),

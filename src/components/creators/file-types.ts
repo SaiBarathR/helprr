@@ -155,3 +155,21 @@ export interface FileGroupPage {
   page: number;
   pageSize: number;
 }
+
+const SAME_DELETE_MS = 5 * 60_000;
+
+/**
+ * A deleted original writes its own line, with the space freed and who asked, so the delete
+ * job that did it would say the same thing twice. Only that job is dropped: one that failed,
+ * or found nothing to delete, still shows.
+ */
+export function withoutRepeatedDeletes<T extends Pick<TimelineJob, 'kind' | 'state' | 'finishedAt'>>(
+  jobs: T[],
+  deletions: Array<Pick<TimelineDeletion, 'createdAt'>>,
+): T[] {
+  const deleted = deletions.map((row) => new Date(row.createdAt).getTime());
+  return jobs.filter((job) => !(
+    job.kind === 'DELETE_ORIGINAL' && job.state === 'DONE' && job.finishedAt
+    && deleted.some((at) => Math.abs(at - new Date(job.finishedAt!).getTime()) < SAME_DELETE_MS)
+  ));
+}

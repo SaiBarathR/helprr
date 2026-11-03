@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { requireUserCapability } from '@/lib/auth';
-import { ownerScope } from '@/lib/user-dto';
+import { historyScope } from '@/lib/notification-scope';
 import { withApiLogging } from '@/lib/api-logger';
 import { upstreamErrorResponse } from '@/lib/api-error';
 
@@ -15,7 +15,7 @@ async function getHandler() {
   try {
     const rows = await prisma.notificationHistory.groupBy({
       by: ['eventType'],
-      where: ownerScope(auth.user),
+      where: historyScope(auth.user),
     });
     return NextResponse.json({ eventTypes: rows.map((r) => r.eventType) });
   } catch (error) {

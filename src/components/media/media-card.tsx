@@ -190,7 +190,8 @@ export const MediaCard = memo(function MediaCard({
           through the anchor (no nested-interactive markup). In selection mode it
           shows the checkbox; otherwise the optional cornerAction. */}
       {selectable ? (
-        <div className="absolute top-1.5 left-1.5 z-10">
+        // Taps pass through to the card's button, as on Watchlist: a thumb aims at the checkbox.
+        <div className="pointer-events-none absolute top-1.5 left-1.5 z-10">
           <SelectionCheck selected={Boolean(selected)} />
         </div>
       ) : cornerAction ? (

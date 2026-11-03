@@ -3,7 +3,7 @@ import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { prisma } from '@/lib/db';
 import { helixGet, TwitchHelixError, TwitchNotConfiguredError } from '@/lib/twitch/helix';
-import { DOWNLOAD_OPTION_KEYS, enqueueDownload, isClientRequestId, type DownloadOptions } from '@/lib/archive/jobs';
+import { activeDownloadVideoIds, DOWNLOAD_OPTION_KEYS, enqueueDownload, isClientRequestId, type DownloadOptions } from '@/lib/archive/jobs';
 import { decideForVideo } from '@/lib/archive/policy-store';
 import { serializeJob, JOB_SELECT } from '@/lib/archive/serialize-job';
 import { getTwitchSettings } from '@/lib/twitch/settings';
@@ -15,9 +15,10 @@ const MAX_LISTED = 200;
 const DONE_LISTED = 20;
 const VIDEO_URL = /^(?:https?:\/\/)?(?:www\.|m\.)?twitch\.tv\/videos\/(\d{5,20})(?:[/?#].*)?$/;
 
-async function getHandler(): Promise<NextResponse> {
+async function getHandler(request: NextRequest): Promise<NextResponse> {
   const auth = await requireUserCapability('twitch.view');
   if (!auth.ok) return auth.response;
+  if (request.nextUrl.searchParams.get('active') === '1') return NextResponse.json({ videoIds: await activeDownloadVideoIds(TWITCH) });
 
   // Apart, so a long queue cannot push the finished ones off the page.
   const [open, finished] = await Promise.all([

@@ -167,7 +167,7 @@ describe.skipIf(!url || !url.endsWith('/helprr_migration_test'))('platform isola
     const titles = (rows: Array<{ id: string }>) => rows.map((row) => row.id);
     expect(titles((await (await getFeed(req('/api/twitch/feed'))).json()).videos)).toEqual([ids.twitch.video]);
     expect(titles((await (await getFiles(req('/api/twitch/files'))).json()).files)).toEqual([ids.twitch.file]);
-    expect(titles((await (await getJobs()).json()).jobs)).toEqual([ids.twitch.job]);
+    expect(titles((await (await getJobs(req('/api/twitch/jobs'))).json()).jobs)).toEqual([ids.twitch.job]);
     const { subscriptions } = await (await getStreamers()).json() as { subscriptions: Array<{ id: string }> };
     expect(titles(subscriptions)).toEqual([ids.twitch.subscription]);
     const summary = await (await getSummary()).json() as { totalFiles?: number; count?: number };

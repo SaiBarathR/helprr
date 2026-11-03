@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { requireUserCapability } from '@/lib/auth';
-import { ownerScope } from '@/lib/user-dto';
+import { historyScope } from '@/lib/notification-scope';
 import { withApiLogging } from '@/lib/api-logger';
 import { upstreamErrorResponse } from '@/lib/api-error';
 
@@ -12,7 +12,7 @@ async function postHandler() {
   try {
     await prisma.notificationHistory.updateMany({
       // Members mark only their own as read; admins clear everything.
-      where: { read: false, ...ownerScope(auth.user) },
+      where: { read: false, ...historyScope(auth.user) },
       data: { read: true },
     });
     return NextResponse.json({ success: true });

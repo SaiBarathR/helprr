@@ -43,6 +43,22 @@ export const DEFAULT_YOUTUBE_OPTIONS: DownloadOptions = {
   keepForever: false,
 };
 
+const WATCHED_DOWNLOADS = 500;
+
+/**
+ * The videos downloading or waiting to, and nothing else, so an open page can cheaply notice a
+ * download that a rule or another device started.
+ */
+export async function activeDownloadVideoIds(platform: ArchivePlatform): Promise<string[]> {
+  const rows = await prisma.archiveJob.findMany({
+    where: { platform, kind: 'DOWNLOAD', state: { in: ACTIVE_JOB_STATES }, videoId: { not: null } },
+    orderBy: { videoId: 'asc' },
+    take: WATCHED_DOWNLOADS,
+    select: { videoId: true },
+  });
+  return [...new Set(rows.map((row) => row.videoId!))];
+}
+
 export function isClientRequestId(value: unknown): value is string {
   return typeof value === 'string' && CLIENT_REQUEST_ID.test(value);
 }
