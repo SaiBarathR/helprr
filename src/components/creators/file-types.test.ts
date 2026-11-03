@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bitrateLabel, codecLabel, jobLabel, savedBytes, savedPercent, type FileJob } from './file-types';
+import { bitrateLabel, codecLabel, jobLabel, savedBytes, savedPercent, withoutRepeatedDeletes, type FileJob } from './file-types';
 
 const job = (overrides: Partial<FileJob>): FileJob => ({
   id: 'j', kind: 'REENCODE', state: 'QUEUED', stage: null, progress: null, priority: 0, ...overrides,
@@ -58,5 +58,22 @@ describe('jobLabel', () => {
     ['DELETE_FILES', 'Deleting'],
   ] as const)('names %s', (kind, label) => {
     expect(jobLabel(job({ kind }))).toBe(label);
+  });
+});
+
+describe('withoutRepeatedDeletes', () => {
+  const done = { kind: 'DELETE_ORIGINAL' as const, state: 'DONE', finishedAt: '2026-11-03T10:00:30.000Z' };
+
+  it('keeps one line for a deleted original, not the job and the deletion', () => {
+    expect(withoutRepeatedDeletes([done], [{ createdAt: '2026-11-03T10:00:31.000Z' }])).toEqual([]);
+  });
+
+  it('keeps a delete that failed, or found nothing to delete', () => {
+    expect(withoutRepeatedDeletes([{ ...done, state: 'FAILED' }], [{ createdAt: '2026-11-03T10:00:31.000Z' }])).toHaveLength(1);
+    expect(withoutRepeatedDeletes([done], [])).toHaveLength(1);
+  });
+
+  it('leaves every other job alone', () => {
+    expect(withoutRepeatedDeletes([{ ...done, kind: 'REENCODE' as const }], [{ createdAt: '2026-11-03T10:00:31.000Z' }])).toHaveLength(1);
   });
 });

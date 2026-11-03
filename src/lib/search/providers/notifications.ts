@@ -1,3 +1,4 @@
+import { historyScope } from '@/lib/notification-scope';
 import { prisma } from '@/lib/db';
 import { matchLocalQueryAny } from '@/lib/search/providers/local-module';
 import type { ProviderHandler } from '@/lib/search/providers/types';
@@ -9,7 +10,7 @@ export const searchNotifications: ProviderHandler = async ({ user, query, limit 
       { title: { contains: query, mode: 'insensitive' as const } },
       { body: { contains: query, mode: 'insensitive' as const } },
     ],
-    ...(user.role !== 'admin' ? { userId: user.id } : {}),
+    AND: [historyScope(user)],
   };
 
   const records = await prisma.notificationHistory.findMany({

@@ -131,7 +131,7 @@ describe('YoutubeDownloadSheet', () => {
   });
 
   it('never shows the failure while its own request is still on the way', async () => {
-    let finish = (_response: Response) => undefined as void;
+    let finish: (response: Response) => void = () => undefined;
     const answer = vi.mocked(fetch).getMockImplementation()!;
     vi.mocked(fetch).mockImplementation((url, init) => (
       init?.method === 'POST' ? new Promise<Response>((resolve) => { finish = resolve; }) : answer(url, init)

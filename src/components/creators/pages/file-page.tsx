@@ -23,6 +23,7 @@ import {
   type TimelineDeletion,
   type TimelineJob,
   type TwitchFileDetail,
+  withoutRepeatedDeletes,
 } from '@/components/creators/file-types';
 import { SwitchRow } from '@/components/creators/setting-rows';
 import { fileQuality, formatDuration } from '@/components/creators/types';
@@ -230,7 +231,10 @@ export function CreatorFilePage({ params }: { params: Promise<{ id: string }> })
   const canReencode = actions.canReencode(file);
   const running = file.activeJob?.kind === 'REENCODE' ? file.activeJob : null;
   const cleanup = cleanupStatus(file);
-  const timeline = [...file.timeline.jobs.map(jobEntry), ...file.timeline.deletions.map(deletionEntry)]
+  const timeline = [
+    ...withoutRepeatedDeletes(file.timeline.jobs, file.timeline.deletions).map(jobEntry),
+    ...file.timeline.deletions.map(deletionEntry),
+  ]
     .sort((a, b) => b.at.getTime() - a.at.getTime());
 
   return (

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { requireUserCapability } from '@/lib/auth';
-import { ownerScope } from '@/lib/user-dto';
+import { historyScope } from '@/lib/notification-scope';
 import { withApiLogging } from '@/lib/api-logger';
 import { upstreamErrorResponse } from '@/lib/api-error';
 
@@ -16,7 +16,7 @@ async function putHandler(
     const { id } = await params;
     // Members may only touch their own notifications.
     const owned = await prisma.notificationHistory.findFirst({
-      where: { id, ...ownerScope(auth.user) },
+      where: { id, ...historyScope(auth.user) },
       select: { id: true },
     });
     if (!owned) return NextResponse.json({ error: 'Not found' }, { status: 404 });
@@ -39,7 +39,7 @@ async function deleteHandler(
 
   try {
     const { id } = await params;
-    const result = await prisma.notificationHistory.deleteMany({ where: { id, ...ownerScope(auth.user) } });
+    const result = await prisma.notificationHistory.deleteMany({ where: { id, ...historyScope(auth.user) } });
     if (result.count === 0) return NextResponse.json({ error: 'Not found' }, { status: 404 });
     return NextResponse.json({ success: true });
   } catch (error) {

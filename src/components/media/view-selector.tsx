@@ -2,7 +2,7 @@
 
 import { LayoutGrid, List, Rows3, Table2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type { FeedView, MediaViewMode } from '@/lib/store';
+import type { MediaViewMode } from '@/lib/store';
 
 type ViewMode = MediaViewMode | 'grouped';
 

@@ -67,7 +67,7 @@ describe.skipIf(!url || !url.endsWith('/helprr_migration_test'))('a Twitch row s
   });
 
   it('lists only YouTube jobs and files', async () => {
-    const jobs = await (await getJobs()).json();
+    const jobs = await (await getJobs(req('/api/youtube/jobs'))).json();
     expect(jobs.jobs.map((job: { id: string }) => job.id)).toEqual([ids.youtubeJob]);
     const files = await (await getFiles(req('/api/youtube/files'))).json();
     expect(files.files.map((file: { id: string }) => file.id)).toEqual([ids.youtubeFile]);

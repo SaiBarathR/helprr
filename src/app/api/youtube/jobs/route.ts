@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { prisma } from '@/lib/db';
-import { enqueueDownload, isClientRequestId, type DownloadOptions } from '@/lib/archive/jobs';
+import { activeDownloadVideoIds, enqueueDownload, isClientRequestId, type DownloadOptions } from '@/lib/archive/jobs';
 import { serializeJob, JOB_SELECT } from '@/lib/archive/serialize-job';
 import { CODECS, QUALITIES, SPONSORBLOCK_MODES } from '@/lib/youtube/formats';
 import { parseVideoLink } from '@/lib/youtube/ids';
@@ -16,9 +16,10 @@ const DONE_LISTED = 20;
 const WORKER_STALE_MS = 5 * 60_000;
 const MAX_FORMAT_ID = 32;
 
-async function getHandler(): Promise<NextResponse> {
+async function getHandler(request: NextRequest): Promise<NextResponse> {
   const auth = await requireUserCapability('youtube.view');
   if (!auth.ok) return auth.response;
+  if (request.nextUrl.searchParams.get('active') === '1') return NextResponse.json({ videoIds: await activeDownloadVideoIds(YOUTUBE) });
 
   // Apart, so a long queue cannot push the finished ones off the page.
   const [open, finished] = await Promise.all([

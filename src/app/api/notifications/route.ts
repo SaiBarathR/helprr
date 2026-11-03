@@ -7,6 +7,7 @@ import { isKnownEventType } from '@/lib/notification-events';
 import { withApiLogging } from '@/lib/api-logger';
 import { upstreamErrorResponse } from '@/lib/api-error';
 import { parsePageParams } from '@/lib/pagination';
+import { historyScope } from '@/lib/notification-scope';
 
 // Covers the tallest dashboard Notifications widget (100 grid rows asks for
 // about 165); the history page asks for 30.
@@ -64,10 +65,9 @@ async function getHandler(request: NextRequest) {
     const { searchParams } = request.nextUrl;
     const { page, pageSize, skip, take } = parsePageParams(searchParams, { defaultSize: 50, maxSize: NOTIFICATIONS_MAX_PAGE_SIZE });
 
-    const where = buildWhere(searchParams);
     // Members see only their own owned events; admins see everything (incl. the
-    // null-owner instance/global events).
-    if (auth.user.role !== 'admin') where.userId = auth.user.id;
+    // null-owner instance/global events), but only their own copy of a follower alert.
+    const where = { ...buildWhere(searchParams), AND: [historyScope(auth.user)] };
 
     const [records, totalRecords] = await Promise.all([
       prisma.notificationHistory.findMany({
@@ -95,7 +95,6 @@ async function deleteHandler(request: NextRequest) {
     const all = searchParams.get('all') === 'true';
     // Members can only ever clear their own history.
     const scoped = auth.user.role !== 'admin';
-    if (scoped) where.userId = auth.user.id;
 
     if (Object.keys(where).length === 0 && !all && !scoped) {
       return NextResponse.json(
@@ -104,7 +103,7 @@ async function deleteHandler(request: NextRequest) {
       );
     }
 
-    const { count } = await prisma.notificationHistory.deleteMany({ where });
+    const { count } = await prisma.notificationHistory.deleteMany({ where: { ...where, AND: [historyScope(auth.user)] } });
     return NextResponse.json({ deletedCount: count });
   } catch (error) {
     return upstreamErrorResponse(error, 'Failed');
