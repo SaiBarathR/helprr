@@ -271,8 +271,37 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
     'GET /api/watchlist',
     'GET /api/watchlist/tags',
   ],
+  'cap:youtube.view': [
+    'GET /api/youtube/channels',
+    'GET /api/youtube/channels/[id]',
+    'GET /api/youtube/channels/[id]/videos',
+    'GET /api/youtube/feed',
+    'GET /api/youtube/feed/groups',
+    'GET /api/youtube/files',
+    'GET /api/youtube/files/groups',
+    'GET /api/youtube/files/[id]',
+    'GET /api/youtube/files/history',
+    'GET /api/youtube/files/summary',
+    'GET /api/youtube/jobs',
+    'GET /api/youtube/jobs/[id]',
+    'GET /api/youtube/worker',
+    'GET /api/youtube/playlists',
+    'GET /api/youtube/playlists/[id]',
+    'GET /api/youtube/playlists/[id]/videos',
+    'GET /api/youtube/videos/[id]',
+    'GET /api/youtube/videos/[id]/formats',
+    'GET /api/youtube/search',
+  ],
   'cap:dashboard.view': [
     'GET /api/dashboard-layouts/active',
+  ],
+  'cap:youtube.manage': [
+    'GET /api/youtube/cleanup',
+    'GET /api/youtube/cookies',
+    'GET /api/youtube/policies',
+    'GET /api/youtube/settings',
+    'GET /api/youtube/library',
+    'GET /api/youtube/setup',
   ],
   'cap:twitch.manage': [
     'GET /api/twitch/library',
@@ -282,6 +311,12 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
   ],
   'cap:twitch.view': [
     'GET /api/twitch/feed',
+    'GET /api/twitch/feed/groups',
+    'GET /api/twitch/files',
+    'GET /api/twitch/files/groups',
+    'GET /api/twitch/files/[id]',
+    'GET /api/twitch/files/history',
+    'GET /api/twitch/files/summary',
     'GET /api/twitch/follows',
     'GET /api/twitch/jobs',
     'GET /api/twitch/jobs/[id]',
@@ -487,7 +522,7 @@ describe('GET API route capability matrix', () => {
   const assignments = policyAssignments();
 
   it('explicitly assigns every GET handler exactly once', () => {
-    expect(handlers.size).toBe(230);
+    expect(handlers.size).toBe(261);
     expect([...assignments.keys()].sort()).toEqual([...handlers.keys()].sort());
   });
 

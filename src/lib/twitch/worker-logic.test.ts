@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { chapterGenres, chaptersToFfmetadata, sanitizeInfoJson } from '@/lib/twitch/chapters';
-import { classifyJobError, nextStepAfterFailure } from '@/lib/twitch/job-errors';
-import { archiveEpisode, episodeBaseName, safeFilenameTitle, seasonFolder } from '@/lib/twitch/naming';
-import { episodeNfo, seasonNfo, tvshowNfo } from '@/lib/twitch/nfo';
-import { parseProgressLine } from '@/lib/twitch/progress';
+import { classifyJobError, nextStepAfterFailure } from '@/lib/archive/job-errors';
+import { archiveEpisode, episodeBaseName, safeFilenameTitle, seasonFolder } from '@/lib/archive/naming';
+import { seasonNfo } from '@/lib/archive/nfo';
+import { episodeNfo, tvshowNfo } from '@/lib/twitch/nfo';
+import { parseProgressLine } from '@/lib/archive/progress';
 import { isTwitchArtworkUrl } from '@/lib/twitch/serialize';
 import { estimateSizeBytes, pickFormat, type YtDlpFormat } from '@/lib/twitch/quality';
 
@@ -115,7 +116,7 @@ describe('classifyJobError', () => {
     ['ERROR: Unable to extract video data', 'extractor'],
     ['Read timed out', 'transient'],
     ['HTTP Error 502: Bad Gateway', 'transient'],
-  ])('reads %s', (message, expected) => expect(classifyJobError(message)).toBe(expected));
+  ])('reads %s', (message, expected) => expect(classifyJobError(message, 'TWITCH')).toBe(expected));
 });
 
 describe('nextStepAfterFailure', () => {

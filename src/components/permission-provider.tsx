@@ -26,6 +26,8 @@ export interface MePayload {
   jellyfinConfigured: boolean;
   /** Whether a Twitch connection exists — the Twitch nav item stays hidden until then. */
   twitchConfigured: boolean;
+  /** Same for YouTube. */
+  youtubeConfigured: boolean;
   /**
    * Whether this user has a usable Jellyfin access token of their own. Distinct
    * from `jellyfinLinked`: that is identity (whose data to read), this is the

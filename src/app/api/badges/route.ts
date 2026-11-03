@@ -3,7 +3,9 @@ import { requireUser } from '@/lib/auth';
 import { can } from '@/lib/permissions';
 import { prisma } from '@/lib/db';
 import { readServiceBadgeCounts } from '@/lib/cache/badge-counts';
-import { buildFeedWhere } from '@/lib/twitch/feed';
+import { buildFeedWhere } from '@/lib/archive/feed';
+import { TWITCH } from '@/lib/twitch/platform';
+import { YOUTUBE } from '@/lib/youtube/platform';
 import { ownerScope } from '@/lib/user-dto';
 import { withApiLogging } from '@/lib/api-logger';
 import { EMPTY_BADGE_SLICE, type BadgeCounts } from '@/types/badges';
@@ -18,7 +20,7 @@ async function getHandler(): Promise<NextResponse> {
   if (!auth.ok) return auth.response;
   const { user } = auth;
 
-  const [service, unread, unseenVideos] = await Promise.all([
+  const [service, unread, unseenVideos, unseenYoutube] = await Promise.all([
     readServiceBadgeCounts(),
     can(user, 'notifications.view')
       ? prisma.notificationHistory.count({
@@ -32,7 +34,10 @@ async function getHandler(): Promise<NextResponse> {
         })
       : Promise.resolve(0),
     can(user, 'twitch.view')
-      ? buildFeedWhere(user.id, new URLSearchParams({ segment: 'new' })).then((where) => prisma.twitchVideo.count({ where }))
+      ? buildFeedWhere(TWITCH, user.id, new URLSearchParams({ segment: 'new' })).then((where) => prisma.creatorVideo.count({ where }))
+      : Promise.resolve(0),
+    can(user, 'youtube.view')
+      ? buildFeedWhere(YOUTUBE, user.id, new URLSearchParams({ segment: 'new' })).then((where) => prisma.creatorVideo.count({ where }))
       : Promise.resolve(0),
   ]);
 
@@ -43,6 +48,7 @@ async function getHandler(): Promise<NextResponse> {
     requests: can(user, 'requests.approve') ? service.requests : { ...EMPTY_BADGE_SLICE },
     notifications: { total: unread, attention: unread },
     twitch: { total: unseenVideos, attention: 0 },
+    youtube: { total: unseenYoutube, attention: 0 },
   };
 
   return NextResponse.json(counts);

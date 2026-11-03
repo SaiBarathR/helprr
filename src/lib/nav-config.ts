@@ -20,6 +20,7 @@ import {
   ChartLine,
   Clapperboard,
   Twitch,
+  Youtube,
   type LucideIcon,
 } from 'lucide-react';
 import type { Capability } from '@/lib/capabilities';
@@ -43,6 +44,7 @@ export type NavItemId =
   | 'jellyfin'
   | 'jellyfin-library'
   | 'twitch'
+  | 'youtube'
   | 'insights'
   | 'activity'
   | 'notifications'
@@ -63,7 +65,7 @@ export interface NavItemDef {
   // rails and the old Random Watch, gated independently server-side).
   requiredAnyCapability?: readonly Capability[];
   // When set, the item stays hidden until this service is configured (UX only).
-  requiresConfigured?: 'twitchConfigured';
+  requiresConfigured?: 'twitchConfigured' | 'youtubeConfigured';
   // When set, the item renders a live count badge from /api/badges.
   badgeArea?: BadgeArea;
 }
@@ -90,6 +92,7 @@ export const NAV_ITEMS: NavItemDef[] = [
   { id: 'jellyfin-library', href: '/jellyfin/library', icon: Clapperboard, label: 'Watch', shortLabel: 'Watch', requiredCapability: 'jellyfin.view' },
   { id: 'jellyfin', href: '/jellyfin', icon: MonitorPlay, label: 'Jellyfin', shortLabel: 'Jellyfin', requiredCapability: 'jellyfin.view' },
   { id: 'twitch', href: '/twitch', icon: Twitch, label: 'Twitch', shortLabel: 'Twitch', requiredCapability: 'twitch.view', requiresConfigured: 'twitchConfigured', badgeArea: 'twitch' },
+  { id: 'youtube', href: '/youtube', icon: Youtube, label: 'YouTube', shortLabel: 'YouTube', requiredCapability: 'youtube.view', requiresConfigured: 'youtubeConfigured', badgeArea: 'youtube' },
   { id: 'insights', href: '/insights', icon: ChartLine, label: 'Insights', shortLabel: 'Insights', requiredCapability: 'insights.view' },
   { id: 'activity', href: '/activity', icon: Activity, label: 'Activity', shortLabel: 'Activity', requiredCapability: 'activity.view', badgeArea: 'activity' },
   { id: 'notifications', href: '/notifications', icon: Bell, label: 'Notifications', shortLabel: 'Alerts', requiredCapability: 'notifications.view', badgeArea: 'notifications' },
@@ -101,7 +104,7 @@ export const NAV_ITEMS: NavItemDef[] = [
 export function navItemAllowed(
   item: NavItemDef,
   has: (cap: Capability) => boolean,
-  configured?: { twitchConfigured?: boolean } | null,
+  configured?: { twitchConfigured?: boolean; youtubeConfigured?: boolean } | null,
 ): boolean {
   if (item.requiresConfigured && !configured?.[item.requiresConfigured]) return false;
   if (item.requiredAnyCapability) return item.requiredAnyCapability.some(has);

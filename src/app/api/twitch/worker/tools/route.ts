@@ -10,7 +10,7 @@ async function postHandler(): Promise<NextResponse> {
   if (!auth.ok) return auth.response;
 
   await getTwitchSettings();
-  await prisma.twitchSettings.update({ where: { id: 'singleton' }, data: { toolUpdateRequestedAt: new Date() } });
+  await prisma.archiveSettings.update({ where: { id: 'singleton' }, data: { toolUpdateRequestedAt: new Date() } });
   return NextResponse.json({ ok: true }, { status: 202 });
 }
 

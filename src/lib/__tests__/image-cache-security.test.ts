@@ -321,6 +321,35 @@ describe('bounded upstream image validation', () => {
     expect(result).toMatchObject({ status: 415, body: null, contentType: null });
   });
 
+  it('serves Twitch CDN banners by their bytes, since that CDN labels JPEGs image/png', async () => {
+    const jpeg = await fixture('jpeg');
+    const { fetchImageWithServerCache } = await loadImageCache({ maxBytes: 2048 });
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(responseBody(jpeg), {
+      headers: { 'content-type': 'image/png' },
+    })));
+
+    const result = await fetchImageWithServerCache({
+      cacheKey: 'twitch-banner',
+      upstreamUrl: 'https://static-cdn.jtvnw.net/jtv_user_pictures/banner-1920x1080.png',
+    });
+
+    expect(result).toMatchObject({ status: 200, contentType: 'image/jpeg' });
+  });
+
+  it('still rejects non-image bytes from the Twitch CDN', async () => {
+    const { fetchImageWithServerCache } = await loadImageCache();
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(responseBody(Buffer.from('<!doctype html>')), {
+      headers: { 'content-type': 'image/png' },
+    })));
+
+    const result = await fetchImageWithServerCache({
+      cacheKey: 'twitch-not-an-image',
+      upstreamUrl: 'https://static-cdn.jtvnw.net/jtv_user_pictures/banner-1920x1080.png',
+    });
+
+    expect(result).toMatchObject({ status: 415, body: null });
+  });
+
   it('rejects a valid but unsupported GIF raster', async () => {
     const gif = await sharp({
       create: {

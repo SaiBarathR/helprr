@@ -2,15 +2,16 @@
 
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { PageHeader } from '@/components/layout/page-header';
+import Link from '@/components/ui/app-link';
 import { GroupedSection } from '@/components/settings/grouped-section';
-import { RuleLayers, type RuleLayerValue } from '@/components/twitch/policy-editor';
+import { JellyfinLibrarySection } from '@/components/creators/jellyfin-library-section';
+import { changedNumber, NumberRow, ROW_INPUT, SwitchRow } from '@/components/creators/setting-rows';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Input } from '@/components/ui/input';
-import { Switch } from '@/components/ui/switch';
-import type { PolicyLayer } from '@/lib/twitch/policy';
+import { cn } from '@/lib/utils';
 
 interface Settings {
   autoDownloadEnabled: boolean;
@@ -29,6 +30,8 @@ interface Settings {
   browserAuthTokenValid: boolean | null;
 }
 
+type NumberSetting = 'reencodeGlobalQuality' | 'keepOriginalDays' | 'maxConcurrentDownloads' | 'minFreeGb';
+
 interface RetentionCandidate {
   fileId: string;
   title: string;
@@ -37,22 +40,10 @@ interface RetentionCandidate {
   reason: string;
 }
 
-interface LibraryStatus {
-  configured?: boolean;
-  path?: string;
-  exists?: boolean;
-  name?: string | null;
-  fetchersOff?: boolean;
-  conflicts?: string[];
-  error?: string;
-}
-
-// Measured on real clips: re-encoded files came out 63–82% smaller.
 function reencodeFooter(settings: Settings | undefined): string {
   const waiting = settings?.reencodeWaiting ?? 0;
   if (waiting === 0 || !settings) return 'Nothing waiting';
-  const gib = settings.reencodeWaitingBytes / 1024 ** 3;
-  return `${waiting} waiting. Should save about ${(gib * 0.63).toFixed(1)}–${(gib * 0.82).toFixed(1)} GB`;
+  return `${waiting} waiting, ${(settings.reencodeWaitingBytes / 1024 ** 3).toFixed(1)} GB in total`;
 }
 
 async function send(url: string, method: string, body: unknown) {
@@ -69,18 +60,45 @@ async function load<T>(url: string, signal: AbortSignal): Promise<T> {
   return data as T;
 }
 
+function TimeRow({ label, defaultValue, onCommit }: { label: string; defaultValue: string; onCommit: (value: string) => void }) {
+  return (
+    <label className="grouped-row cursor-text gap-3">
+      <span className="text-sm">{label}</span>
+      <input
+        type="time"
+        aria-label={label}
+        defaultValue={defaultValue}
+        onBlur={(event) => onCommit(event.target.value)}
+        className={cn(ROW_INPUT, 'text-muted-foreground [color-scheme:dark] light:[color-scheme:light]')}
+      />
+    </label>
+  );
+}
+
+function VersionRow({ label, defaultValue, onCommit }: { label: string; defaultValue?: string; onCommit: (value: string) => void }) {
+  return (
+    <label className="grouped-row cursor-text gap-3">
+      <span className="shrink-0 text-sm">{label}</span>
+      <input
+        aria-label={`${label} version`}
+        placeholder="Not pinned"
+        autoCapitalize="none"
+        autoCorrect="off"
+        spellCheck={false}
+        defaultValue={defaultValue}
+        onBlur={(event) => onCommit(event.target.value)}
+        className={cn(ROW_INPUT, 'w-36 text-muted-foreground')}
+      />
+    </label>
+  );
+}
+
 export default function TwitchSettingsPage() {
   const queryClient = useQueryClient();
   const settings = useQuery({ queryKey: ['twitch', 'settings'], queryFn: ({ signal }) => load<Settings>('/api/twitch/settings', signal) });
-  const library = useQuery({ queryKey: ['twitch', 'library'], queryFn: ({ signal }) => load<LibraryStatus>('/api/twitch/library', signal), retry: false });
-  const policies = useQuery({ queryKey: ['twitch', 'policies'], queryFn: ({ signal }) => load<{ defaultPolicy: PolicyLayer; typePolicies: RuleLayerValue['types'] }>('/api/twitch/policies', signal) });
 
-  const [rules, setRules] = useState<RuleLayerValue | null>(null);
-  const [libraryName, setLibraryName] = useState('Twitch');
   const [browserToken, setBrowserToken] = useState('');
   const [confirmRetention, setConfirmRetention] = useState(false);
-  const [typedPath, setLibraryPath] = useState<string | null>(null);
-  const libraryPath = typedPath ?? library.data?.path ?? '';
 
   const worker = useQuery({
     queryKey: ['twitch', 'worker'],
@@ -95,19 +113,21 @@ export default function TwitchSettingsPage() {
     onSuccess: refresh,
     onError: fail,
   });
-  const saveRules = useMutation({
-    mutationFn: () => send('/api/twitch/policies', 'PUT', { defaultPolicy: rules?.base ?? {}, typePolicies: rules?.types ?? {} }),
-    onSuccess: () => {
-      toast.success('Rules saved');
-      refresh();
-    },
-    onError: fail,
-  });
   const saveSettings = useMutation({
     mutationFn: (patch: Partial<Settings>) => send('/api/twitch/settings', 'PUT', patch),
     onSuccess: refresh,
     onError: fail,
   });
+  // Left empty, the field goes back to what is saved rather than showing a value that is not.
+  const saveNumber = (field: NumberSetting, input: HTMLInputElement) => {
+    const stored = settings.data?.[field];
+    const value = changedNumber(input.value, stored);
+    if (value !== null) saveSettings.mutate({ [field]: value });
+    else if (input.value.trim() === '' && stored !== undefined) input.value = String(stored);
+  };
+  const saveTime = (field: 'reencodeWindowStart' | 'reencodeWindowEnd', value: string) => {
+    if (value && value !== settings.data?.[field]) saveSettings.mutate({ [field]: value });
+  };
   const savePin = (tool: 'ytdlp' | 'td', value: string) => {
     const pins = { ...settings.data?.pinnedTools };
     if ((pins[tool] ?? '') === value.trim()) return;
@@ -144,205 +164,150 @@ export default function TwitchSettingsPage() {
     },
     onError: fail,
   });
-  const createLibrary = useMutation({
-    mutationFn: () => send('/api/twitch/library', 'POST', { name: libraryName, path: libraryPath }),
-    onSuccess: () => {
-      toast.success('Library is ready');
-      refresh();
-    },
-    onError: fail,
-  });
 
-  const status = library.data;
+  const data = settings.data;
 
   return (
-    <div className="animate-content-in pb-8">
-      <PageHeader title="Twitch" backHref="/settings" />
-      <div className="px-4 pt-2">
-        <GroupedSection
-          title="Automatic downloads"
-          footer={settings.data?.autoDownloadEnabled ? 'Rules decide what downloads' : 'Off: nothing downloads by itself, whatever the rules say'}
-        >
-          <div className="grouped-row min-h-11">
-            <span className="text-sm">Auto-download</span>
-            <Switch
-              aria-label="Auto-download"
-              checked={settings.data?.autoDownloadEnabled ?? false}
-              disabled={!settings.data || toggle.isPending}
-              onCheckedChange={(checked) => toggle.mutate(checked)}
-            />
-          </div>
-        </GroupedSection>
-
-        <div className="grouped-section mb-6">
-          <div className="grouped-section-title">Global rules</div>
-          {policies.data && (
-            <RuleLayers value={rules ?? { base: policies.data.defaultPolicy, types: policies.data.typePolicies }} onChange={setRules} />
-          )}
-          <Button className="mt-3 h-10 w-full" disabled={saveRules.isPending || rules === null} onClick={() => saveRules.mutate()}>
-            Save rules
-          </Button>
-        </div>
-
-        <GroupedSection
-          title="Night re-encode"
-          footer={worker.data?.seen && !worker.data.gpuAvailable ? 'No Intel GPU found: re-encoding stays idle' : reencodeFooter(settings.data)}
-        >
-          <div className="grouped-row min-h-11">
-            <span className="text-sm">Re-encode to HEVC</span>
-            <Switch
-              aria-label="Re-encode to HEVC"
-              checked={settings.data?.reencodeEnabled ?? false}
-              disabled={!settings.data || saveSettings.isPending}
-              onCheckedChange={(reencodeEnabled) => saveSettings.mutate({ reencodeEnabled })}
-            />
-          </div>
-          {settings.data && (
-            <>
-              <label className="grouped-row min-h-11">
-                <span className="text-sm">Starts</span>
-                <input type="time" aria-label="Window start" defaultValue={settings.data.reencodeWindowStart} className="bg-transparent text-sm" onBlur={(event) => saveSettings.mutate({ reencodeWindowStart: event.target.value })} />
-              </label>
-              <label className="grouped-row min-h-11">
-                <span className="text-sm">Ends</span>
-                <input type="time" aria-label="Window end" defaultValue={settings.data.reencodeWindowEnd} className="bg-transparent text-sm" onBlur={(event) => saveSettings.mutate({ reencodeWindowEnd: event.target.value })} />
-              </label>
-              <label className="grouped-row min-h-11">
-                <span className="text-sm">Quality (lower is better)</span>
-                <input type="number" min={1} max={51} aria-label="Quality" defaultValue={settings.data.reencodeGlobalQuality} className="w-14 bg-transparent text-right text-sm" onBlur={(event) => saveSettings.mutate({ reencodeGlobalQuality: Number(event.target.value) })} />
-              </label>
-              <label className="grouped-row min-h-11">
-                <span className="text-sm">Keep originals (days)</span>
-                <input type="number" min={0} max={365} aria-label="Keep originals in days" defaultValue={settings.data.keepOriginalDays} className="w-14 bg-transparent text-right text-sm" onBlur={(event) => saveSettings.mutate({ keepOriginalDays: Number(event.target.value) })} />
-              </label>
-            </>
-          )}
-        </GroupedSection>
-
-        <GroupedSection title="Downloads">
-          {settings.data && (
-            <>
-              <label className="grouped-row min-h-11">
-                <span className="text-sm">At the same time</span>
-                <input type="number" min={1} max={6} aria-label="Downloads at the same time" defaultValue={settings.data.maxConcurrentDownloads} className="w-14 bg-transparent text-right text-sm" onBlur={(event) => saveSettings.mutate({ maxConcurrentDownloads: Number(event.target.value) })} />
-              </label>
-              <label className="grouped-row min-h-11">
-                <span className="text-sm">Keep free on disk (GB)</span>
-                <input type="number" min={1} aria-label="Free disk to keep in GB" defaultValue={settings.data.minFreeGb} className="w-20 bg-transparent text-right text-sm" onBlur={(event) => saveSettings.mutate({ minFreeGb: Number(event.target.value) })} />
-              </label>
-            </>
-          )}
-        </GroupedSection>
-
-        <GroupedSection title="Tool versions" footer="Empty follows the tested version and updates. A pin stays until you clear it">
-          {settings.data && (
-            <>
-              <label className="grouped-row min-h-11">
-                <span className="text-sm">yt-dlp</span>
-                <input aria-label="yt-dlp version" placeholder="Not pinned" defaultValue={settings.data.pinnedTools.ytdlp} className="w-32 bg-transparent text-right font-mono text-sm" onBlur={(event) => savePin('ytdlp', event.target.value)} />
-              </label>
-              <label className="grouped-row min-h-11">
-                <span className="text-sm">TwitchDownloader</span>
-                <input aria-label="TwitchDownloader version" placeholder="Not pinned" defaultValue={settings.data.pinnedTools.td} className="w-32 bg-transparent text-right font-mono text-sm" onBlur={(event) => savePin('td', event.target.value)} />
-              </label>
-            </>
-          )}
-        </GroupedSection>
-
-        <GroupedSection title="Twitch browser token" footer="Only for sub-only VODs and 1440p. It grants full access to your Twitch account">
-          {settings.data?.hasBrowserAuthToken ? (
-            <div className="grouped-row min-h-11">
-              <span className={`text-sm ${settings.data.browserAuthTokenValid === false ? 'text-amber-400' : ''}`}>
-                {settings.data.browserAuthTokenValid === false ? 'Stopped working' : 'Saved'}
-              </span>
-              <Button variant="ghost" size="sm" disabled={removeToken.isPending} onClick={() => removeToken.mutate()}>Remove</Button>
-            </div>
-          ) : (
-            <form
-              className="flex gap-2 p-3"
-              onSubmit={(event) => {
-                event.preventDefault();
-                saveToken.mutate();
-              }}
-            >
-              <Input
-                type="password"
-                aria-label="Twitch auth-token cookie"
-                placeholder="auth-token cookie"
-                autoComplete="off"
-                value={browserToken}
-                onChange={(event) => setBrowserToken(event.target.value)}
-                className="h-10"
-              />
-              <Button type="submit" className="h-10 shrink-0" disabled={!browserToken.trim() || saveToken.isPending}>Save</Button>
-            </form>
-          )}
-        </GroupedSection>
-
-        <GroupedSection title="Retention" footer="Set limits in the rules. Keep-forever files are never deleted">
-          <div className="space-y-2 p-3">
-            <Button variant="outline" className="h-10 w-full" disabled={preview.isPending} onClick={() => preview.mutate()}>
-              Preview what would be deleted
-            </Button>
-            {preview.data && candidates.length === 0 && <p className="text-sm text-muted-foreground">Nothing to delete.</p>}
-            {candidates.length > 0 && (
-              <>
-                <ul className="max-h-64 space-y-1 overflow-y-auto">
-                  {candidates.map((candidate) => (
-                    <li key={candidate.fileId} className="text-sm">
-                      <span className="block truncate">{candidate.title}</span>
-                      <span className="block truncate text-xs text-muted-foreground">{candidate.streamer} · {(candidate.sizeBytes / 1024 ** 3).toFixed(1)} GB · {candidate.reason}</span>
-                    </li>
-                  ))}
-                </ul>
-                <Button variant="destructive" className="h-10 w-full" onClick={() => setConfirmRetention(true)}>
-                  Delete {candidates.length} {candidates.length === 1 ? 'file' : 'files'}
-                </Button>
-              </>
-            )}
-          </div>
-        </GroupedSection>
-        <ConfirmDialog
-          open={confirmRetention}
-          onOpenChange={setConfirmRetention}
-          title="Delete these files?"
-          description="They are removed from the disk and from Jellyfin. This cannot be undone."
-          confirmLabel="Delete"
-          destructive
-          busy={runRetention.isPending}
-          onConfirm={() => runRetention.mutate()}
-        />
-
-        <GroupedSection title="Jellyfin library" footer="Creating a library changes your real Jellyfin">
-          {status?.exists ? (
-            <>
-              <div className="grouped-row"><span className="text-sm">Library</span><span className="truncate text-sm text-muted-foreground">{status.name}</span></div>
-              <div className="grouped-row">
-                <span className="text-sm">Internet metadata</span>
-                <span className={`text-sm ${status.fetchersOff ? 'text-emerald-400' : 'text-amber-400'}`}>{status.fetchersOff ? 'Off' : 'On: turn it off'}</span>
-              </div>
-            </>
-          ) : (
-            <div className="space-y-2 p-3">
-              {status?.conflicts?.length ? (
-                <p className="text-sm text-amber-400">Already covered by {status.conflicts.join(', ')}.</p>
-              ) : null}
-              <Input aria-label="Library name" value={libraryName} onChange={(event) => setLibraryName(event.target.value)} className="h-10" />
-              <Input
-                aria-label="Library path, as Jellyfin sees it"
-                placeholder="Path, as Jellyfin sees it"
-                value={libraryPath}
-                onChange={(event) => setLibraryPath(event.target.value)}
-                className="h-10"
-              />
-              <Button className="h-10 w-full" disabled={!libraryPath.trim() || createLibrary.isPending} onClick={() => createLibrary.mutate()}>
-                Create library
-              </Button>
-            </div>
-          )}
-        </GroupedSection>
-        <p className="text-xs text-muted-foreground">Exclude this library from the Intro Skipper plugin, if you use it.</p>
+    <div className="animate-content-in">
+      <div className="px-1 pb-2 pt-1">
+        <Link href="/settings" className="-ml-1 inline-flex min-h-[44px] items-center gap-1 px-1 text-sm text-primary">
+          <ChevronLeft className="h-5 w-5" />
+          Settings
+        </Link>
       </div>
+      <div className="mb-4 px-4">
+        <h1 className="text-2xl font-semibold">Twitch</h1>
+        <p className="mt-1 text-sm text-muted-foreground">What Helprr saves from Twitch, and how long it keeps it.</p>
+      </div>
+
+      <GroupedSection
+        title="Automatic downloads"
+        footer={data?.autoDownloadEnabled ? 'Rules decide what downloads' : 'Off: nothing downloads by itself, whatever the rules say'}
+      >
+        <SwitchRow
+          label="Auto-download"
+          checked={data?.autoDownloadEnabled ?? false}
+          disabled={!data || toggle.isPending}
+          onCheckedChange={(checked) => toggle.mutate(checked)}
+        />
+        <Link href="/settings/twitch/rules" className="grouped-row gap-3 hover:bg-foreground/[0.03] active:bg-foreground/5">
+          <span className="text-sm">Global rules</span>
+          <ChevronRight className="h-4 w-4 text-muted-foreground" />
+        </Link>
+      </GroupedSection>
+
+      <GroupedSection
+        title="Night re-encode"
+        footer={worker.data?.seen && !worker.data.gpuAvailable ? 'No Intel GPU found: re-encoding stays idle' : reencodeFooter(data)}
+      >
+        <SwitchRow
+          label="Re-encode to HEVC"
+          checked={data?.reencodeEnabled ?? false}
+          disabled={!data || saveSettings.isPending}
+          onCheckedChange={(reencodeEnabled) => saveSettings.mutate({ reencodeEnabled })}
+        />
+        {data && (
+          <>
+            <TimeRow label="Starts" defaultValue={data.reencodeWindowStart} onCommit={(value) => saveTime('reencodeWindowStart', value)} />
+            <TimeRow label="Ends" defaultValue={data.reencodeWindowEnd} onCommit={(value) => saveTime('reencodeWindowEnd', value)} />
+            <NumberRow label="Quality (lower is better)" min={1} max={51} defaultValue={data.reencodeGlobalQuality} onBlur={(event) => saveNumber('reencodeGlobalQuality', event.target)} />
+            <NumberRow label="Keep originals" unit="days" min={0} max={365} defaultValue={data.keepOriginalDays} onBlur={(event) => saveNumber('keepOriginalDays', event.target)} />
+          </>
+        )}
+      </GroupedSection>
+
+      <GroupedSection title="Downloads">
+        {data && (
+          <>
+            <NumberRow label="At the same time" min={1} max={6} defaultValue={data.maxConcurrentDownloads} onBlur={(event) => saveNumber('maxConcurrentDownloads', event.target)} />
+            <NumberRow label="Keep free on disk" unit="GB" min={1} defaultValue={data.minFreeGb} onBlur={(event) => saveNumber('minFreeGb', event.target)} />
+          </>
+        )}
+      </GroupedSection>
+
+      <GroupedSection title="Tool versions" footer="Empty follows the tested version and updates. A pin stays until you clear it">
+        {data && (
+          <>
+            <VersionRow label="yt-dlp" defaultValue={data.pinnedTools.ytdlp} onCommit={(value) => savePin('ytdlp', value)} />
+            <VersionRow label="TwitchDownloader" defaultValue={data.pinnedTools.td} onCommit={(value) => savePin('td', value)} />
+          </>
+        )}
+      </GroupedSection>
+
+      <GroupedSection title="Twitch browser token" footer="Only for sub-only VODs and 1440p. It grants full access to your Twitch account">
+        {data?.hasBrowserAuthToken ? (
+          <div className="grouped-row gap-3">
+            <span className={cn('text-sm', data.browserAuthTokenValid === false && 'text-amber-400')}>
+              {data.browserAuthTokenValid === false ? 'Stopped working' : 'Saved'}
+            </span>
+            <button type="button" disabled={removeToken.isPending} onClick={() => removeToken.mutate()} className="min-h-9 px-1 text-sm text-destructive">
+              Remove
+            </button>
+          </div>
+        ) : (
+          <form
+            className="flex items-center gap-2 px-4 py-2"
+            onSubmit={(event) => {
+              event.preventDefault();
+              saveToken.mutate();
+            }}
+          >
+            <Input
+              type="password"
+              aria-label="Twitch auth-token cookie"
+              placeholder="auth-token cookie"
+              autoComplete="off"
+              value={browserToken}
+              onChange={(event) => setBrowserToken(event.target.value)}
+            />
+            <Button type="submit" size="sm" className="shrink-0" disabled={!browserToken.trim() || saveToken.isPending}>Save</Button>
+          </form>
+        )}
+      </GroupedSection>
+
+      <GroupedSection title="Retention" footer="Set limits in the rules. Keep-forever files are never deleted">
+        <button
+          type="button"
+          disabled={preview.isPending}
+          onClick={() => preview.mutate()}
+          className="grouped-row w-full gap-3 text-left hover:bg-foreground/[0.03] active:bg-foreground/5"
+        >
+          <span className="text-sm">Preview what would be deleted</span>
+          {preview.isPending ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+        </button>
+        {preview.data && candidates.length === 0 && (
+          <div className="grouped-row"><span className="text-sm text-muted-foreground">Nothing to delete</span></div>
+        )}
+        {candidates.map((candidate) => (
+          <div key={candidate.fileId} className="grouped-row gap-3">
+            <span className="min-w-0">
+              <span className="block truncate text-sm">{candidate.title}</span>
+              <span className="block truncate text-[11px] text-muted-foreground">
+                {candidate.streamer} · {(candidate.sizeBytes / 1024 ** 3).toFixed(1)} GB · {candidate.reason}
+              </span>
+            </span>
+          </div>
+        ))}
+        {candidates.length > 0 && (
+          <div className="px-4 py-3">
+            <Button variant="destructive" className="h-10 w-full rounded-full" onClick={() => setConfirmRetention(true)}>
+              Delete {candidates.length} {candidates.length === 1 ? 'file' : 'files'}
+            </Button>
+          </div>
+        )}
+      </GroupedSection>
+      <ConfirmDialog
+        open={confirmRetention}
+        onOpenChange={setConfirmRetention}
+        title="Delete these files?"
+        description="They are removed from the disk and from Jellyfin. This cannot be undone."
+        confirmLabel="Delete"
+        destructive
+        busy={runRetention.isPending}
+        onConfirm={() => runRetention.mutate()}
+      />
+
+      <JellyfinLibrarySection platform="twitch" defaultName="Twitch" />
     </div>
   );
 }

@@ -4,18 +4,19 @@ import { withApiLogging } from '@/lib/api-logger';
 import { prisma } from '@/lib/db';
 import { TwitchNotConfiguredError } from '@/lib/twitch/helix';
 import { parseTwitchLogin, subscribeToStreamer } from '@/lib/twitch/streamers';
+import { TWITCH } from '@/lib/twitch/platform';
 
 async function getHandler(): Promise<NextResponse> {
   const auth = await requireUserCapability('twitch.view');
   if (!auth.ok) return auth.response;
 
-  const subscriptions = await prisma.twitchSubscription.findMany({
-    where: { userId: auth.user.id },
-    orderBy: { streamer: { displayName: 'asc' } },
+  const subscriptions = await prisma.creatorSubscription.findMany({
+    where: { userId: auth.user.id, creator: { platform: TWITCH } },
+    orderBy: { creator: { displayName: 'asc' } },
     select: {
       id: true,
       notifyNewVods: true,
-      streamer: {
+      creator: {
         select: {
           id: true, login: true, displayName: true, profileImageUrl: true,
           isLive: true, liveTitle: true, liveCategory: true, broadcasterType: true,
@@ -23,7 +24,10 @@ async function getHandler(): Promise<NextResponse> {
       },
     },
   });
-  return NextResponse.json({ subscriptions });
+  // `streamer` is for tabs still open from the previous release. See previousVideoNames.
+  return NextResponse.json({
+    subscriptions: subscriptions.map((subscription) => ({ ...subscription, streamer: subscription.creator })),
+  });
 }
 
 async function postHandler(request: NextRequest): Promise<NextResponse> {

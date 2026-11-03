@@ -30,6 +30,7 @@ import { EVENT_TYPES, type NotificationEventType } from '@/lib/notification-even
 import { STORE_VERSION } from '@/lib/store';
 import { loadQueueCleanerConfig, loadStallRules, loadSlowRules } from '@/lib/cleanup/queue-cleaner';
 import { loadDownloadCleanerConfig, loadSeedingRules } from '@/lib/cleanup/download-cleaner';
+import { TWITCH } from '@/lib/twitch/platform';
 
 interface ExportRequestBody {
   appSettings?: boolean;
@@ -300,10 +301,10 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
 
     if (wantTwitch) {
       const [settings, subscriptions] = await Promise.all([
-        prisma.twitchSettings.findUnique({ where: { id: 'singleton' } }),
-        prisma.twitchSubscription.findMany({
-          where: { userId: exporter.id },
-          select: { notifyNewVods: true, streamer: { include: { policy: true } } },
+        prisma.archiveSettings.findUnique({ where: { id: 'singleton' } }),
+        prisma.creatorSubscription.findMany({
+          where: { userId: exporter.id, creator: { platform: TWITCH } },
+          select: { notifyNewVods: true, creator: { include: { policy: true } } },
         }),
       ]);
       const twitch: ExportedTwitch = {
@@ -327,8 +328,8 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
             }
           : {},
         browserAuthToken: includeSecrets ? settings?.browserAuthToken ?? null : null,
-        subscriptions: subscriptions.map(({ notifyNewVods, streamer }) => ({
-          twitchUserId: streamer.twitchUserId,
+        subscriptions: subscriptions.map(({ notifyNewVods, creator: streamer }) => ({
+          twitchUserId: streamer.externalId,
           login: streamer.login,
           displayName: streamer.displayName,
           notifyNewVods,

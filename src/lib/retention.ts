@@ -28,9 +28,9 @@ type RetentionDatabase = Pick<
   | 'session'
   | 'fileOperationAudit'
   | 'recommendationEvent'
-  | 'twitchJobEvent'
-  | 'twitchJob'
-  | 'twitchVideo'
+  | 'archiveJobEvent'
+  | 'archiveJob'
+  | 'creatorVideo'
 >;
 
 export interface RetentionCounts {
@@ -142,10 +142,10 @@ export async function runRetentionSweep(
         ],
       },
     }),
-    database.twitchJobEvent.deleteMany({
+    database.archiveJobEvent.deleteMany({
       where: { createdAt: { lt: new Date(nowMs - TWITCH_JOB_EVENT_RETENTION_DAYS * DAY_MS) } },
     }),
-    database.twitchJob.deleteMany({
+    database.archiveJob.deleteMany({
       // Finished only: a job still in the queue is live work, however old.
       where: {
         state: { in: ['DONE', 'FAILED', 'CANCELLED'] },
@@ -153,7 +153,7 @@ export async function runRetentionSweep(
         updatedAt: { lt: new Date(nowMs - TWITCH_JOB_RETENTION_DAYS * DAY_MS) },
       },
     }),
-    database.twitchVideo.deleteMany({
+    database.creatorVideo.deleteMany({
       // Only what Twitch no longer has: a video it still lists would come back
       // from the next sweep looking new, and notify and auto-download again.
       where: {

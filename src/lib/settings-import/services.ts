@@ -4,6 +4,7 @@ import type { Prisma, ServiceType } from '@prisma/client';
 import { parseCustomHeaders, isServiceType, isNonEmptyString, normalizeServiceUrl, REENTER_SECRET_MESSAGE } from '@/lib/service-connection-secrets';
 import { isArrType } from '@/lib/arr-instances';
 import { findServiceByType } from '@/lib/settings/service-config';
+import { decryptTwitchToken } from '@/lib/twitch/token-cipher';
 import type { ExportedServiceConnection } from '@/lib/settings-export';
 
 export async function applyServiceConnectionInTxn(
@@ -11,12 +12,20 @@ export async function applyServiceConnectionInTxn(
   conn: ExportedServiceConnection,
   skipped: string[]
 ): Promise<ServiceType | null> {
-  if (typeof conn.type !== 'string' || !isServiceType(conn.type)) {
+  // YouTube stays out of isServiceType, which also opens the generic routes that would
+  // store its key unencrypted.
+  if (typeof conn.type !== 'string' || (conn.type !== 'YOUTUBE' && !isServiceType(conn.type))) {
     skipped.push(`Skipped service: invalid type "${String(conn.type)}"`);
     return null;
   }
   if (typeof conn.url !== 'string' || conn.url.trim().length === 0) {
     skipped.push(`Skipped ${conn.type}: missing URL`);
+    return null;
+  }
+  // Encrypted with this install's secret, so a key from another Helprr cannot be read here
+  // and must not replace one that works.
+  if (conn.type === 'YOUTUBE' && isNonEmptyString(conn.apiKey) && !decryptTwitchToken(conn.apiKey)) {
+    skipped.push('Skipped YouTube: its key came from another Helprr. Enter it again in Settings.');
     return null;
   }
   const url = normalizeServiceUrl(conn.url);

@@ -131,7 +131,7 @@ services:
       args:
         APP_VERSION: ${HELPRR_DEV_APP_VERSION:-development}
     container_name: helprr-dev-twitch-worker
-    profiles: ["twitch"]
+    profiles: ["twitch", "youtube"]
     restart: unless-stopped
     stop_grace_period: 60s
     user: "${TWITCH_PUID:-1000}:${TWITCH_PGID:-1000}"
@@ -148,10 +148,13 @@ services:
       JWT_SECRET: ${HELPRR_DEV_JWT_SECRET:?HELPRR_DEV_JWT_SECRET is required}
       APP_PASSWORD: ${HELPRR_DEV_APP_PASSWORD:?HELPRR_DEV_APP_PASSWORD is required}
       TWITCH_LIBRARY_DIR: /media/twitch
+      YOUTUBE_LIBRARY_DIR: /media/youtube
       TWITCH_TOOLS_DIR: /data/tools
     volumes:
       # Never point this at the stable library.
       - ${HELPRR_DEV_TWITCH_LIBRARY_HOST_PATH:-./twitch-library-dev}:/media/twitch
+      # /dev/null means no folder was chosen: nothing is created, and YouTube reports not ready.
+      - ${HELPRR_DEV_YOUTUBE_LIBRARY_HOST_PATH:-/dev/null}:/media/youtube
       - helprr-dev-twitch-tools:/data/tools
     networks:
       - helprr-dev-net

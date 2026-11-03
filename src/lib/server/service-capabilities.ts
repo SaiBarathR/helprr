@@ -18,6 +18,7 @@ export const SERVICE_VIEW_CAPABILITY: Readonly<Record<ServiceType, Capability>> 
   ANILIST: 'anime.view',
   SEERR: 'requests.view',
   TWITCH: 'twitch.view',
+  YOUTUBE: 'youtube.view',
 };
 
 const SERVICE_WIDGET_CAPABILITIES: Readonly<Record<ServiceType, readonly Capability[]>> = {
@@ -31,6 +32,7 @@ const SERVICE_WIDGET_CAPABILITIES: Readonly<Record<ServiceType, readonly Capabil
   ANILIST: ['anime.view'],
   SEERR: ['requests.view', 'requests.approve'],
   TWITCH: ['twitch.view'],
+  YOUTUBE: ['youtube.view'],
 };
 
 export function filterVisibleServiceTypes(

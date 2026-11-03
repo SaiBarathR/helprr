@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { prisma } from '@/lib/db';
+import { TWITCH } from '@/lib/twitch/platform';
 
 async function postHandler(
   request: NextRequest,
@@ -18,14 +19,14 @@ async function postHandler(
   }
 
   const { id: videoId } = await params;
-  const video = await prisma.twitchVideo.findUnique({ where: { id: videoId }, select: { id: true } });
+  const video = await prisma.creatorVideo.findUnique({ where: { id: videoId, platform: TWITCH }, select: { id: true } });
   if (!video) return NextResponse.json({ error: 'Video not found' }, { status: 404 });
 
   const data = {
     ...(seen === undefined ? {} : { seenAt: seen ? new Date() : null }),
     ...(hidden === undefined ? {} : { hidden }),
   };
-  await prisma.twitchUserVideoState.upsert({
+  await prisma.creatorVideoState.upsert({
     where: { userId_videoId: { userId: auth.user.id, videoId } },
     update: data,
     create: { userId: auth.user.id, videoId, ...data },
