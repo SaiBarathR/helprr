@@ -16,10 +16,11 @@ problem below. This release contains everything listed under 1.12.0.
 
 - A YouTube caption track that kept failing could hold a download for many minutes, and the
   worker runs one download at a time, so Twitch waited too. Captions now give up after 2
-  minutes and the video is kept without them. Reading a video or its formats gives up after
-  5 minutes and tries again later.
-- Deleting a Twitch file no longer waits for its nightly re-encode. A re-encode that has not
-  started is cancelled; one already running still finishes first.
+  minutes and the video is kept without them. Reading a video gives up after 5 minutes and
+  tries again later. A format check that long ends, and the download sheet says it could not
+  check, so opening it again tries once more.
+- Deleting a Twitch file no longer waits for its nightly re-encode. A re-encode that never
+  started is cancelled; one that ever ran still finishes first.
 
 ## [1.12.0] - 2026-11-03
 

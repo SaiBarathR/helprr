@@ -83,6 +83,24 @@ describe.skipIf(!url || !url.endsWith('/helprr_migration_test'))('the last check
     expect(audit).toMatchObject({ username: 'Automatic cleanup', service: 'YOUTUBE', mediaType: 'youtube-video' });
   });
 
+  it('lets a person delete past a re-encode that never started, and waits for one that ran', async () => {
+    const reencode = (startedAt: Date | null) => db.archiveJob.create({
+      data: { platform: 'YOUTUBE', kind: 'REENCODE', mediaFileId: fileId, videoId, state: 'QUEUED', startedAt },
+    });
+    const person = { reason: 'manual' };
+
+    const ran = await reencode(new Date());
+    await expect(runDeleteFiles(db, await job(0, new Date(), person), lease)).rejects.toThrow('waiting for other jobs');
+    expect(await onDisk()).toBe(true);
+    expect((await db.archiveJob.findUniqueOrThrow({ where: { id: ran.id } })).state).toBe('QUEUED');
+
+    await db.archiveJob.delete({ where: { id: ran.id } });
+    const waiting = await reencode(null);
+    await runDeleteFiles(db, await job(0, new Date(), person), lease);
+    expect(await onDisk()).toBe(false);
+    expect((await db.archiveJob.findUniqueOrThrow({ where: { id: waiting.id } })).state).toBe('CANCELLED');
+  });
+
   it('refuses when someone tapped keep forever after it was queued', async () => {
     await db.archiveMediaFile.update({ where: { id: fileId }, data: { keepForever: true } });
     await expect(runDeleteFiles(db, await job(3), lease)).rejects.toThrow('keep forever');

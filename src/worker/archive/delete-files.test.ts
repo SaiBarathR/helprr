@@ -54,11 +54,11 @@ describe('runDeleteFiles', () => {
     await expect(stat(path.join(library.dir, 'a.mkv'))).rejects.toThrow();
   });
 
-  it('cancels a re-encode that has not started, rather than waiting for the night', async () => {
+  it('cancels a re-encode that never started, rather than waiting for the night, and only that', async () => {
     const { prisma, job } = await setup({});
     await runDeleteFiles(prisma as never, job as never, async () => undefined);
     expect(prisma.archiveJob.updateMany).toHaveBeenCalledWith({
-      where: { mediaFileId: 'f', kind: 'REENCODE', state: { in: ['QUEUED', 'RETRY_WAIT', 'BLOCKED'] } },
+      where: { mediaFileId: 'f', kind: 'REENCODE', state: { in: ['QUEUED', 'RETRY_WAIT', 'BLOCKED'] }, startedAt: null },
       data: expect.objectContaining({ state: 'CANCELLED' }),
     });
   });
