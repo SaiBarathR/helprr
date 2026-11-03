@@ -33,6 +33,15 @@ export async function runDeleteFiles(prisma: PrismaClient, job: ArchiveJob, asse
   if (fromRetention && Date.now() - job.createdAt.getTime() > RETENTION_DELETE_VALID_MS) {
     throw new Error('validation failed: this retention delete waited too long, so preview again');
   }
+  // A re-encode that has not started is pointless for a file a person is deleting, and by
+  // default it waits for the night, which held the delete until then. One already running
+  // still finishes first.
+  if (!fromRetention) {
+    await prisma.archiveJob.updateMany({
+      where: { mediaFileId: file.id, kind: 'REENCODE', state: { in: ['QUEUED', 'RETRY_WAIT', 'BLOCKED'] } },
+      data: { state: 'CANCELLED', stage: 'cancelled', finishedAt: new Date() },
+    });
+  }
   const busy = await prisma.archiveJob.count({
     where: {
       id: { not: job.id },

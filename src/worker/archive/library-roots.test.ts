@@ -37,7 +37,7 @@ function fileRow(platform: 'TWITCH' | 'YOUTUBE', extra = {}) {
 function fakePrisma(rows: Array<ReturnType<typeof fileRow>>) {
   const tx = {
     $executeRaw: vi.fn().mockResolvedValue(1),
-    archiveJob: { count: vi.fn().mockResolvedValue(0) },
+    archiveJob: { count: vi.fn().mockResolvedValue(0), updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
     archiveMediaFile: {
       findUnique: vi.fn(async ({ where }) => ({
         ...rows.find((row) => row.id === where.id),

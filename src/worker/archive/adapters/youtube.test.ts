@@ -154,6 +154,33 @@ describe('the YouTube adapter', () => {
     expect(note).toHaveBeenCalledWith(expect.stringContaining('Captions skipped'));
   });
 
+  it('gives up on captions that take too long, and still keeps the video', async () => {
+    vi.useFakeTimers();
+    run.mockImplementation((_tool: string, _args: string[], { signal }: { signal: AbortSignal }) => new Promise((_resolve, reject) => {
+      signal.addEventListener('abort', () => reject(new Error('Job cancelled')));
+    }));
+    const note = vi.fn(async () => undefined);
+    const wanted = context({ options: { ...options, captions: true }, setStage: vi.fn(async () => undefined), note });
+    const pending = youtubeAdapter.extras(wanted, '/staging/x');
+    await vi.advanceTimersByTimeAsync(2 * 60_000 + 1);
+    expect(await pending).toEqual([]);
+    expect(note).toHaveBeenCalledWith(expect.stringContaining('Reading the captions took over 2 minutes'));
+    vi.useRealTimers();
+  });
+
+  it('turns a read that takes too long into a retry, never a cancel', async () => {
+    vi.useFakeTimers();
+    run.mockImplementation((_tool: string, _args: string[], { signal }: { signal: AbortSignal }) => new Promise((_resolve, reject) => {
+      signal.addEventListener('abort', () => reject(new Error('Job cancelled')));
+    }));
+    const pending = youtubeAdapter.prepare(context()).catch((error: Error) => error);
+    await vi.advanceTimersByTimeAsync(5 * 60_000 + 1);
+    const error = await pending;
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toBe('Reading the video took over 5 minutes, so it was stopped');
+    vi.useRealTimers();
+  });
+
   it('stops for a cancel during captions, rather than carrying on', async () => {
     const abort = new AbortController();
     abort.abort();
