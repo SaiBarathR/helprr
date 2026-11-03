@@ -16,7 +16,7 @@ import {
   Activity,
   FileStack,
   Terminal,
-  Twitch,
+  Twitch, Youtube,
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/query-keys';
@@ -101,6 +101,19 @@ export default function SettingsIndexPage() {
             iconColor="text-violet-400"
             label="Users"
             subtitle="Members, roles, and permissions"
+          />
+        </GroupedSection>
+      )}
+
+      {hasCapability(me, 'youtube.manage') && (
+        <GroupedSection>
+          <CategoryRow
+            href="/settings/youtube"
+            icon={Youtube}
+            iconBg="bg-red-500/10"
+            iconColor="text-red-400"
+            label="YouTube"
+            subtitle="Setup, rules, library"
           />
         </GroupedSection>
       )}

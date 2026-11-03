@@ -3,6 +3,7 @@ import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { prisma } from '@/lib/db';
 import { getTwitchSettings } from '@/lib/twitch/settings';
+import { TWITCH } from '@/lib/twitch/platform';
 
 const HH_MM = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
 const TOOL_VERSION = /^[A-Za-z0-9.-]{1,32}$/;
@@ -10,8 +11,8 @@ const TOOL_VERSION = /^[A-Za-z0-9.-]{1,32}$/;
 // Whatever this returns is safe for the browser: the browser token is never in it.
 async function publicSettings() {
   const { browserAuthToken, ...rest } = await getTwitchSettings();
-  const waiting = await prisma.twitchJob.findMany({
-    where: { kind: 'REENCODE', state: { in: ['QUEUED', 'RETRY_WAIT'] } },
+  const waiting = await prisma.archiveJob.findMany({
+    where: { platform: TWITCH, kind: 'REENCODE', state: { in: ['QUEUED', 'RETRY_WAIT'] } },
     select: { mediaFile: { select: { sizeBytes: true } } },
   });
   return {
@@ -74,7 +75,7 @@ async function putHandler(request: NextRequest): Promise<NextResponse> {
   }
 
   await getTwitchSettings();
-  await prisma.twitchSettings.update({ where: { id: 'singleton' }, data });
+  await prisma.archiveSettings.update({ where: { id: 'singleton' }, data });
   return NextResponse.json(await publicSettings());
 }
 

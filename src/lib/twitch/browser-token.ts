@@ -35,7 +35,7 @@ export async function checkStoredBrowserToken(
     logger.warn('Twitch browser token check could not reach Twitch', {}, { scope: 'polling' });
     return;
   }
-  await prisma.twitchSettings.update({
+  await prisma.archiveSettings.update({
     where: { id: 'singleton' },
     data: { browserAuthTokenValid: valid, browserAuthTokenCheckedAt: now },
   });

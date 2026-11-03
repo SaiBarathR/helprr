@@ -827,7 +827,7 @@ awk -F= '$1 == "HELPRR_VERSION" {print "HELPRR_VERSION=" $2}' .env
 
 Do not run full `docker compose config` in copied logs because it renders environment
 values. The stable result must contain only `helprr`, `helprr-db`, and `helprr-redis`,
-plus `helprr-twitch-worker` if and only if `.env` sets `COMPOSE_PROFILES=twitch`,
+plus `helprr-twitch-worker` if and only if `COMPOSE_PROFILES` in `.env` has `twitch` or `youtube`,
 with stable volumes/network. If any `helprr-dev-*` name appears, stop. Record the
 PostgreSQL and Redis start times so they can be compared after the app update.
 

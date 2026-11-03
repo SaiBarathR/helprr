@@ -206,11 +206,46 @@ const POLICY_GROUPS: Record<string, readonly string[]> = {
   'cap:twitch.download': [
     'POST /api/twitch/jobs',
   ],
+  'cap:youtube.view': [
+    'POST /api/youtube/channels',
+    'POST /api/youtube/channels/[id]/sync',
+    'POST /api/youtube/feed/seen',
+    'POST /api/youtube/playlists',
+    'PATCH /api/youtube/playlist-subscriptions/[id]',
+    'DELETE /api/youtube/playlist-subscriptions/[id]',
+    'POST /api/youtube/videos/[id]/state',
+    'PATCH /api/youtube/subscriptions/[id]',
+    'DELETE /api/youtube/subscriptions/[id]',
+  ],
+  'cap:youtube.download': [
+    'POST /api/youtube/jobs',
+    'POST /api/youtube/videos/[id]/formats',
+  ],
+  'cap:youtube.manage': [
+    'PUT /api/youtube/cleanup',
+    'PUT /api/youtube/cookies',
+    'PUT /api/youtube/policies',
+    'POST /api/youtube/policies/preview',
+    'PUT /api/youtube/settings',
+    'DELETE /api/youtube/cookies',
+    'DELETE /api/youtube/files/[id]',
+    'PATCH /api/youtube/files/[id]',
+    'DELETE /api/youtube/files/[id]/original',
+    'POST /api/youtube/files/[id]/original/restore',
+    'POST /api/youtube/files/[id]/reencode',
+    'PATCH /api/youtube/jobs/[id]',
+    'POST /api/youtube/worker/tools',
+    'POST /api/youtube/library',
+  ],
   'cap:twitch.manage': [
     'PATCH /api/twitch/jobs/[id]',
     'PUT /api/twitch/browser-token',
     'DELETE /api/twitch/browser-token',
     'DELETE /api/twitch/files/[id]',
+    'PATCH /api/twitch/files/[id]',
+    'DELETE /api/twitch/files/[id]/original',
+    'POST /api/twitch/files/[id]/original/restore',
+    'POST /api/twitch/files/[id]/reencode',
     'POST /api/twitch/library',
     'POST /api/twitch/retention/run',
     'POST /api/twitch/worker/tools',
@@ -236,6 +271,9 @@ const POLICY_GROUPS: Record<string, readonly string[]> = {
     'POST /api/services/twitch',
     'DELETE /api/services/twitch',
     'POST /api/services/twitch/test',
+    'POST /api/services/youtube',
+    'DELETE /api/services/youtube',
+    'POST /api/services/youtube/test',
     'PUT /api/services/external-url',
     'POST /api/services',
     'POST /api/services/test',
@@ -283,6 +321,16 @@ const SPECIAL_POLICIES: Record<string, SpecialPolicy> = {
     kind: 'owned-or-capability',
     marker: 'job.requestedByUserId === auth.user.id',
     capabilities: ['twitch.download', 'twitch.manage'],
+  },
+  'POST /api/youtube/jobs/[id]/retry': {
+    kind: 'owned-or-capability',
+    marker: 'job.requestedByUserId === auth.user.id',
+    capabilities: ['youtube.download', 'youtube.manage'],
+  },
+  'POST /api/youtube/jobs/[id]/cancel': {
+    kind: 'owned-or-capability',
+    marker: 'job.requestedByUserId === auth.user.id',
+    capabilities: ['youtube.download', 'youtube.manage'],
   },
   'POST /api/qbittorrent/[hash]': {
     kind: 'dynamic-capability',
@@ -494,7 +542,7 @@ describe('mutating API route capability matrix', () => {
   const assignments = policyAssignments();
 
   it('explicitly assigns every mutating handler exactly once', () => {
-    expect(handlers.size).toBe(196);
+    expect(handlers.size).toBe(230);
     expect([...assignments.keys()].sort()).toEqual([...handlers.keys()].sort());
   });
 

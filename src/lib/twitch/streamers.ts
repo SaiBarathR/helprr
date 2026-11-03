@@ -1,7 +1,7 @@
-import { prisma } from '@/lib/db';
+import { subscribeToCreator } from '@/lib/archive/subscribe';
 import { helixGet } from '@/lib/twitch/helix';
 import { syncStreamerVideos } from '@/lib/twitch/sync';
-import { logger } from '@/lib/logger';
+import { TWITCH } from '@/lib/twitch/platform';
 
 interface HelixUser {
   id: string;
@@ -31,32 +31,20 @@ export async function subscribeToStreamer(userId: string, login: string) {
   const user = data[0];
   if (!user) return null;
 
-  const profile = {
-    login: user.login,
-    displayName: user.display_name,
-    description: user.description || null,
-    profileImageUrl: user.profile_image_url || null,
-    offlineImageUrl: user.offline_image_url || null,
-    broadcasterType: user.broadcaster_type,
-  };
-  const streamer = await prisma.twitchStreamer.upsert({
-    where: { twitchUserId: user.id },
-    update: profile,
-    create: { twitchUserId: user.id, folderName: user.login, ...profile },
+  const { creator, subscription } = await subscribeToCreator({
+    platform: TWITCH,
+    externalId: user.id,
+    userId,
+    profile: {
+      login: user.login,
+      displayName: user.display_name,
+      description: user.description || null,
+      profileImageUrl: user.profile_image_url || null,
+      offlineImageUrl: user.offline_image_url || null,
+      broadcasterType: user.broadcaster_type,
+    },
+    folderName: user.login,
+    baseline: (streamer) => syncStreamerVideos(streamer),
   });
-  const subscription = await prisma.twitchSubscription.upsert({
-    where: { userId_streamerId: { userId, streamerId: streamer.id } },
-    update: {},
-    create: { userId, streamerId: streamer.id },
-  });
-
-  if (!streamer.baselinedAt) {
-    try {
-      await syncStreamerVideos(streamer);
-    } catch (error) {
-      // nextVideosCheckAt is still null, so the next poll takes the baseline instead.
-      logger.warn('Twitch baseline failed', { streamerId: streamer.id, error: String(error) }, { scope: 'twitch' });
-    }
-  }
-  return { streamer, subscription };
+  return { streamer: creator, subscription };
 }

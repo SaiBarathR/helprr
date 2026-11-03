@@ -1,0 +1,215 @@
+import { constants } from 'node:fs';
+import { open, readdir, stat } from 'node:fs/promises';
+import path from 'node:path';
+import type { ArchiveJob, ArchivePlatform, PrismaClient } from '@prisma/client';
+import { libraryFor } from './env';
+import { withFileLock } from './file-lock';
+import { existsInLibrary, insideLibrary, removeInsideLibrary } from './library-paths';
+import { DeferJobError } from './process';
+import { REMOVING_STAGE } from '@/lib/archive/jobs';
+import { recordDeletion, writeDeleteAudit } from './reencode';
+
+export { insideLibrary };
+export { REMOVING_STAGE };
+
+const LIBRARY_MARKER = '.helprr-library';
+const CONFLICT_WAIT_MS = 5 * 60_000;
+// Rules can change while a job waits, and only the app can re-read them: past this, ask again.
+const RETENTION_DELETE_VALID_MS = 10 * 60_000;
+export const IN_PROGRESS = ['QUEUED', 'BLOCKED', 'RUNNING', 'RETRY_WAIT'] as const;
+
+/** The API's delete leaves sidecars behind, so the whole set goes here, and is audited either way. */
+export async function runDeleteFiles(prisma: PrismaClient, job: ArchiveJob, assertLease: () => Promise<void>): Promise<void> {
+  if (!job.mediaFileId) return;
+  const file = await prisma.archiveMediaFile.findUnique({
+    where: { id: job.mediaFileId },
+    include: { video: { select: { title: true, externalId: true, creator: { select: { displayName: true } } } } },
+  });
+  if (!file) return;
+  // Keep forever stops the rules. A person confirming this one file overrides it.
+  const origin = job.options as { retention?: boolean; reason?: string; automatic?: boolean; generation?: number } | null;
+  const fromRetention = origin?.retention === true;
+  if (fromRetention && file.keepForever) throw new Error('validation failed: this file is marked keep forever');
+  if (fromRetention && Date.now() - job.createdAt.getTime() > RETENTION_DELETE_VALID_MS) {
+    throw new Error('validation failed: this retention delete waited too long, so preview again');
+  }
+  const busy = await prisma.archiveJob.count({
+    where: {
+      id: { not: job.id },
+      state: { in: [...IN_PROGRESS] },
+      kind: { not: 'DELETE_FILES' },
+      OR: [{ mediaFileId: file.id }, { videoId: file.videoId }],
+    },
+  });
+  if (busy > 0) {
+    // A retention delete yields for good: the file is in use again, so it is no longer a candidate.
+    if (fromRetention) throw new Error('validation failed: this file is in use again');
+    throw new DeferJobError('waiting for other jobs', CONFLICT_WAIT_MS);
+  }
+
+  const sidecars = Array.isArray(file.sidecars) ? file.sidecars.filter((entry): entry is string => typeof entry === 'string') : [];
+  const paths = [file.relativePath, ...sidecars, ...(file.originalRelativePath ? [file.originalRelativePath] : [])];
+  const { root } = libraryFor(file.platform);
+  const removeFiles = async () => {
+    await assertLease();
+    const startedAt = new Date();
+    let errorMessage: string | null = null;
+    try {
+      const freedBytes = await sizeOnDisk(paths, root);
+      for (const relative of paths) await removeInsideLibrary(relative, root);
+      await prisma.archiveMediaFile.delete({ where: { id: file.id } });
+      await recordDeletion(prisma, {
+        platform: file.platform,
+        videoId: file.videoId,
+        title: file.video.title,
+        streamer: file.video.creator.displayName,
+        kind: 'FILE',
+        cause: fromRetention ? 'RULE' : 'PERSON',
+        detail: origin?.reason,
+        freedBytes,
+        deletedBy: job.requestedByUsername,
+      });
+    } catch (error) {
+      errorMessage = error instanceof Error ? error.message : String(error);
+    }
+    await writeDeleteAudit(prisma, {
+      platform: file.platform,
+      title: file.video.title,
+      fileCount: paths.length,
+      details: { kind: 'twitch-file', twitchVideoId: file.video.externalId, paths },
+      startedAt,
+      errorMessage,
+      actor: job.requestedByUsername ? { id: job.requestedByUserId, username: job.requestedByUsername } : undefined,
+    });
+    if (errorMessage) throw new Error(errorMessage);
+  };
+  // Nobody is watching this one, so it checks everything again at the last moment, under the
+  // lock a tap on keep forever also takes. Either that tap wins, or this claims the file and
+  // keep forever answers that it is too late. The removal stays outside the lock, so a slow
+  // disk cannot outlast it.
+  if (origin?.automatic) {
+    await withFileLock(prisma, file.id, async (tx) => {
+      const current = await tx.archiveMediaFile.findUnique({ where: { id: file.id }, select: { keepForever: true } });
+      const settings = await tx.youtubeSettings.findUnique({
+        where: { id: 'singleton' },
+        select: { autoCleanupEnabled: true, cleanupGeneration: true },
+      });
+      if (!current || current.keepForever) throw new Error('validation failed: this file is marked keep forever');
+      if (!settings?.autoCleanupEnabled || settings.cleanupGeneration !== origin.generation) {
+        throw new Error('validation failed: the cleanup rules changed after this was queued');
+      }
+      await tx.archiveJob.update({ where: { id: job.id }, data: { stage: REMOVING_STAGE } });
+    });
+  }
+  await removeFiles();
+  await prisma.archiveJob.update({ where: { id: job.id }, data: { needsJellyfinRefresh: true } });
+}
+
+/**
+ * Files from before group write was on. Walks once at start, and touches only what differs.
+ * Everything goes through handles opened with no-follow, and folders are listed through
+ * their handle: other users of this group can write here, so a path could turn into a
+ * symlink between looking at it and using it.
+ */
+export async function repairLibraryModes(target: string): Promise<number> {
+  const handle = await open(target, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK).catch(() => null);
+  if (!handle) return 0;
+  try {
+    const info = await handle.stat();
+    if (!info.isFile() && !info.isDirectory()) return 0;
+    let fixed = 0;
+    if ((info.mode & 0o020) === 0) {
+      // Keeps setgid: without it, a folder made here would stop sharing the group.
+      await handle.chmod((info.mode & 0o7777) | 0o020);
+      fixed += 1;
+    }
+    if (info.isDirectory()) {
+      const self = `/proc/self/fd/${handle.fd}`;
+      for (const entry of await readdir(self, { withFileTypes: true })) {
+        if (!entry.isSymbolicLink()) fixed += await repairLibraryModes(path.join(self, entry.name));
+      }
+    }
+    return fixed;
+  } finally {
+    await handle.close();
+  }
+}
+
+async function sizeOnDisk(paths: string[], root: string): Promise<number> {
+  const sizes = await Promise.all(paths.map((relative) => stat(insideLibrary(relative, root)).then(({ size }) => size, () => 0)));
+  return sizes.reduce((total, size) => total + size, 0);
+}
+
+/** Only a clear "not there" counts: any other error says nothing about the file. */
+async function exists(file: string): Promise<boolean> {
+  try {
+    await stat(file);
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
+    throw error;
+  }
+}
+
+/** Never through a link: anything that can write here could point this at another file. */
+async function touchMarker(marker: string): Promise<void> {
+  const handle = await open(marker, constants.O_WRONLY | constants.O_CREAT | constants.O_NOFOLLOW, 0o664);
+  await handle.close();
+}
+
+/**
+ * A video removed in Jellyfin is gone from the disk, but Helprr still lists it as saved.
+ * The marker proves this is the real library: on an unmounted disk the folder is empty,
+ * and every file would look deleted. It is only written once a file has been seen there.
+ */
+export async function forgetFilesDeletedElsewhere(prisma: PrismaClient, platform: ArchivePlatform): Promise<number> {
+  const { root } = libraryFor(platform);
+  const files = await prisma.archiveMediaFile.findMany({
+    where: { platform, jobs: { none: { state: { in: [...IN_PROGRESS] } } } },
+    include: { video: { select: { title: true, externalId: true, creator: { select: { displayName: true } } } } },
+  });
+  const missing = [];
+  for (const file of files) {
+    if (!(await existsInLibrary(file.relativePath, root))) missing.push(file);
+  }
+
+  const marker = path.join(root, LIBRARY_MARKER);
+  if (missing.length < files.length) await touchMarker(marker);
+  if (missing.length === 0 || !(await exists(marker))) return 0;
+
+  let forgotten = 0;
+  for (const file of missing) {
+    const sidecars = Array.isArray(file.sidecars) ? file.sidecars.filter((entry): entry is string => typeof entry === 'string') : [];
+    const leftovers = [...sidecars, ...(file.originalRelativePath ? [file.originalRelativePath] : [])];
+    const startedAt = new Date();
+    const freedBytes = await sizeOnDisk(leftovers, root);
+    // A swap in progress leaves the name empty for a moment, so "missing" has to be true now.
+    const stillMissing = await withFileLock(prisma, file.id, async (tx) => {
+      const busy = await tx.archiveJob.count({ where: { mediaFileId: file.id, state: { in: [...IN_PROGRESS] } } });
+      if (busy > 0 || await existsInLibrary(file.relativePath, root)) return false;
+      for (const relative of leftovers) await removeInsideLibrary(relative, root);
+      await tx.archiveMediaFile.delete({ where: { id: file.id } });
+      return true;
+    });
+    if (!stillMissing) continue;
+    forgotten += 1;
+    await recordDeletion(prisma, {
+      platform: file.platform,
+      videoId: file.videoId,
+      title: file.video.title,
+      streamer: file.video.creator.displayName,
+      kind: 'FILE',
+      cause: 'OUTSIDE',
+      freedBytes: freedBytes + Number(file.sizeBytes),
+    });
+    await writeDeleteAudit(prisma, {
+      platform: file.platform,
+      title: file.video.title,
+      fileCount: leftovers.length,
+      details: { kind: 'deleted-outside-helprr', twitchVideoId: file.video.externalId, paths: leftovers },
+      startedAt,
+      errorMessage: null,
+    });
+  }
+  return forgotten;
+}

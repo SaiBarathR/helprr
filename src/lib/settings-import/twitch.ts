@@ -3,8 +3,9 @@
 
 import type { Prisma } from '@prisma/client';
 import type { ExportedTwitch } from '@/lib/settings-export';
-import { layerMap, sanitizeLayer } from '@/lib/twitch/policy';
+import { layerMap, sanitizeLayer } from '@/lib/archive/policy';
 import { parseTwitchLogin } from '@/lib/twitch/streamers';
+import { TWITCH } from '@/lib/twitch/platform';
 
 const REENCODE_PRESETS = new Set(['veryfast', 'faster', 'fast', 'medium', 'slow']);
 const json = (value: unknown) => value as Prisma.InputJsonValue;
@@ -44,7 +45,7 @@ export async function applyTwitchInTxn(
       ? { browserAuthToken: data.browserAuthToken }
       : {}),
   };
-  await tx.twitchSettings.upsert({ where: { id: 'singleton' }, update: settings, create: { id: 'singleton', ...settings } });
+  await tx.archiveSettings.upsert({ where: { id: 'singleton' }, update: settings, create: { id: 'singleton', ...settings } });
 
   let imported = 0;
   for (const entry of Array.isArray(data.subscriptions) ? data.subscriptions : []) {
@@ -54,24 +55,25 @@ export async function applyTwitchInTxn(
       skipped.push('Twitch: subscription with an invalid channel');
       continue;
     }
-    const streamer = await tx.twitchStreamer.upsert({
-      where: { twitchUserId: entry.twitchUserId },
+    const streamer = await tx.creator.upsert({
+      where: { platform_externalId: { platform: TWITCH, externalId: entry.twitchUserId } },
       update: {},
       create: {
-        twitchUserId: entry.twitchUserId,
+        platform: TWITCH,
+        externalId: entry.twitchUserId,
         login,
         folderName: login,
         displayName: typeof entry.displayName === 'string' ? entry.displayName.slice(0, 100) : login,
       },
     });
-    await tx.twitchSubscription.upsert({
-      where: { userId_streamerId: { userId: importerId, streamerId: streamer.id } },
+    await tx.creatorSubscription.upsert({
+      where: { userId_creatorId: { userId: importerId, creatorId: streamer.id } },
       update: { notifyNewVods: entry.notifyNewVods !== false },
-      create: { userId: importerId, streamerId: streamer.id, notifyNewVods: entry.notifyNewVods !== false },
+      create: { userId: importerId, creatorId: streamer.id, notifyNewVods: entry.notifyNewVods !== false },
     });
     if (entry.policy || entry.typePolicies) {
       const policy = { policy: json(sanitizeLayer(entry.policy)), typePolicies: json(layerMap(entry.typePolicies)) };
-      await tx.twitchStreamerPolicy.upsert({ where: { streamerId: streamer.id }, update: policy, create: { streamerId: streamer.id, ...policy } });
+      await tx.creatorPolicy.upsert({ where: { creatorId: streamer.id }, update: policy, create: { creatorId: streamer.id, ...policy } });
     }
     imported += 1;
   }

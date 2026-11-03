@@ -3,7 +3,8 @@ import { requireUser } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { prisma } from '@/lib/db';
 import { can } from '@/lib/permissions';
-import { retryJob } from '@/lib/twitch/jobs';
+import { retryJob } from '@/lib/archive/jobs';
+import { TWITCH } from '@/lib/twitch/platform';
 
 /**
  * The requester may retry their own download; twitch.manage may retry anything.
@@ -17,7 +18,10 @@ async function postHandler(
   if (!auth.ok) return auth.response;
 
   const { id } = await params;
-  const job = await prisma.twitchJob.findUnique({ where: { id }, select: { kind: true, requestedByUserId: true } });
+  const job = await prisma.archiveJob.findUnique({
+    where: { id, platform: TWITCH },
+    select: { kind: true, requestedByUserId: true },
+  });
   if (!job) return NextResponse.json({ error: 'Job not found' }, { status: 404 });
 
   const manager = can(auth.user, 'twitch.manage');
@@ -26,7 +30,7 @@ async function postHandler(
     && can(auth.user, 'twitch.download');
   if (!manager && !ownDownload) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
-  const result = await retryJob(id, { id: auth.user.id, username: auth.user.username });
+  const result = await retryJob(id, { id: auth.user.id, username: auth.user.username }, TWITCH);
   if (result === 'active') return NextResponse.json({ error: 'This video is already being downloaded' }, { status: 409 });
   if (result === 'not-retryable') return NextResponse.json({ error: 'Only a failed or cancelled job can be retried' }, { status: 409 });
   return NextResponse.json({ ok: true });

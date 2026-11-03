@@ -30,6 +30,7 @@ import { pollSeerr as pollSeerrPoller } from '@/lib/polling/poll-seerr';
 import { pollProwlarr as pollProwlarrPoller } from '@/lib/polling/poll-prowlarr';
 import { pollServiceReachability as pollServiceReachabilityPoller } from '@/lib/polling/service-reachability';
 import { pollTwitch } from '@/lib/polling/poll-twitch';
+import { pollYoutube } from '@/lib/polling/poll-youtube';
 import { checkDiskSpace as checkDiskSpacePoller } from '@/lib/polling/disk-space-alerts';
 import { checkUpcoming as checkUpcomingPoller } from '@/lib/polling/upcoming';
 import { checkActivityDigest as checkActivityDigestPoller } from '@/lib/polling/activity-digest';
@@ -99,6 +100,7 @@ const POLL_SOURCE_TIMEOUT_MS: Record<string, number> = {
   pollProwlarr: 45_000,
   pollManualDownloads: 60_000,
   pollTwitch: 25_000,
+  pollYoutube: 25_000,
   pollServiceReachability: 15_000,
   checkDiskSpace: 30_000,
   snapshotDiskUsage: 30_000,
@@ -286,6 +288,7 @@ export class PollingService {
         sourceTask('pollProwlarr', () => this.pollProwlarr()),
         sourceTask('pollManualDownloads', () => this.pollManualDownloads()),
         sourceTask('pollTwitch', () => pollTwitch()),
+        sourceTask('pollYoutube', () => pollYoutube()),
         sourceTask('pollServiceReachability', () => this.pollServiceReachability()),
         sourceTask('checkDiskSpace', () => this.checkDiskSpace(context)),
         sourceTask('snapshotDiskUsage', async () => {

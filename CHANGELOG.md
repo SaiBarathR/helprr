@@ -5,6 +5,108 @@ All notable changes to Helprr are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **YouTube**: follow channels and playlists by `@handle`, link or name, see new videos
+  in a feed, and save them to a Jellyfin library. Off until you set it up, with a
+  checklist in **Settings → YouTube**.
+- **Downloads that show what a video really has**: exact sizes, quality and codec
+  choices, SponsorBlock chapters or removal, clean English captions, and a spare
+  account for age-restricted videos.
+- **Rules with presets**: Manual, Everything, Long videos and Live replays only, or
+  your own rules using the Twitch editor. New videos download after a 3-hour wait.
+- **Watch and clear**: videos can delete themselves a few days after you watch them.
+  Off by default, it only ever uses the watched rule, and keep forever always wins.
+- **Push alerts and an unseen count** for new videos.
+
+### Changed
+
+- **Feeds grouped by channel**: the Twitch and YouTube feeds now open with a row per
+  channel, newest first, each showing its latest 10 videos and how many are new. Grid and
+  List are still one tap away, and each section remembers its own choice.
+- **Libraries grouped by channel**: each channel shows its video count and size, then its
+  newest three files with their badges and swipe actions, and Show all opens the rest in
+  place. The Library's sort also orders the channels. List is one tap away.
+- The worker now serves Twitch and YouTube, starting on either Compose profile.
+  `COMPOSE_PROFILES=twitch` keeps working as before.
+- Each platform has its own tool pause, and YouTube has its own yt-dlp, so YouTube
+  breaking leaves Twitch downloading.
+- Keep forever now waits for any delete in progress, on both platforms.
+
+### Fixed
+
+- The first download into a brand-new Jellyfin library now appears there. Jellyfin
+  skips a folder that was empty when its library was made, so it needs a full scan.
+
+## [1.11.0] - 2026-10-31
+
+### Added
+
+- **Twitch Library**: a new tab listing every saved video with its size, codec and
+  resolution, whether it was re-encoded, how much space that saved, and whether the
+  original is still kept and for how long. A summary shows space used, space saved
+  and space held by originals, with filters, and sorting by most saved.
+- **A detail page for each saved video**: original against current size, bitrate
+  before and after, what your cleanup rules would do to it, whether it was watched,
+  and a timeline of what happened to it.
+- **Control over your files**: re-encode now or tonight, restore a kept original,
+  delete a kept original early, and keep a video forever. Restoring puts the original
+  back under the same name, so Jellyfin keeps your watched state.
+- **A record of what was deleted**, when, by whom or which rule, and how much space
+  it freed. It starts with this release.
+- **Select several videos on the feed**, or start selecting with a long press.
+- **Undo** after hiding a video.
+
+### Changed
+
+- **The Twitch pages were rebuilt to match the rest of Helprr** on phone, tablet and
+  desktop: the same toolbars, lists, detail pages and grouped settings, with swipe
+  and long press. Filters moved into the Filter menu.
+- **Some Twitch controls moved.** Rules have their own pages, under ⋯ on a streamer
+  and Settings → Twitch → Global rules. Adding a streamer and pasting a video link use
+  the + button, and worker details open from Online in the queue.
+- **Helprr no longer promises a re-encode saving.** Real results vary: some videos
+  saved 27% or 46%, and others came out too large to keep. The Library shows what
+  yours actually saved. Raising the quality number in Settings saves more space.
+- The first start applies a new database migration. Back up first, as usual.
+
+### Fixed
+
+- **Some videos could never re-encode.** If a video's aspect ratio flag changed part
+  way through, ffmpeg stopped and the job retried. These videos now decode in software
+  and still encode on the GPU.
+- Long press now works on Twitch streamers and queue rows.
+- Streamer banners now load. Twitch labels its JPEGs as PNGs, so the image proxy
+  refused them.
+- Text fields in Twitch settings no longer make iOS zoom the page.
+- Queue thumbnails load, and Twitch worker errors no longer reach the browser.
+
+### Security
+
+- Updated `follow-redirects` for GHSA-mrwp-f3q8-3g9p.
+- The Twitch worker refuses links on the way to a file it changes, so something else
+  that can write to the library cannot point a delete or a restore outside it.
+
+## [1.10.1] - 2026-10-30
+
+### Added
+
+- **Delete Twitch files from more places**: the ⋯ menu on a video, a Downloaded
+  filter, and multi-select on a streamer's page.
+
+### Fixed
+
+- **Deleting a Twitch video from Jellyfin no longer fails.** Library files are now
+  writable by their group, and older ones are fixed when the worker starts.
+  Jellyfin's user needs to be in the worker's group (`TWITCH_PGID`).
+- **Files you delete in Jellyfin now leave Helprr too**, within a few minutes, with
+  their chat and subtitle files.
+- Twitch polling skips streamers nobody follows. Following one again does not push
+  everything you missed.
+- Free space in the queue reads in TB and says it is the library disk.
+
 ## [1.10.0] - 2026-10-30
 
 ### Added

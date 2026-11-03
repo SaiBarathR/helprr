@@ -733,6 +733,54 @@ deployed, and smoke-tested through the manual promotion workflow. See
 - Strict TypeScript service-worker code requires Web Worker-specific typing;
   `src/app/sw.ts` is intentionally outside the main DOM-oriented type path.
 
+## Twitch and YouTube archivers
+
+Both run on one shared engine. `src/lib/archive/` and `src/worker/archive/` hold what they
+share, each row carries an `ArchivePlatform`, and a `PlatformAdapter` supplies what differs.
+The section below describes the engine through Twitch. YouTube differs as follows.
+
+- **Tools:** YouTube has its own yt-dlp (`ytdlpYoutube`), so updating it cannot move Twitch's
+  tested version. `extractorFailures` and `toolsPausedAt` are per platform, and `claimJob`
+  takes the platforms it may claim. A failed YouTube install or smoke test turns YouTube off
+  and never stops Twitch. `main.ts` cannot be unit tested, because it starts on import.
+- **Library:** Compose mounts `/dev/null` at `/media/youtube` when no folder is chosen, so
+  nothing is created and nothing can be written. YouTube joins `PLATFORMS` only after
+  `isMountedFolder` confirms a mounted directory.
+- **API quota:** counted per Pacific day with conditional updates, so requests running
+  together cannot lose a count or pass a limit. `search.list` has its own daily bucket.
+- **Discovery:** one unit per channel for its uploads list, then `videos.list` only for new
+  ids and streams that have not ended. A playlist spends one unit on its item count, and
+  reads its items only when that moved. Titles come free with the list.
+- **`FORMATS` jobs:** a small lane with one reserved slot, so a person is never kept waiting
+  by long downloads. Only format ids, picture sizes, codecs and byte sizes are stored, never a
+  format link, and the job row is removed when it finishes.
+- **One format decision:** `pickDownload` in `src/lib/youtube/formats.ts` is used by the sheet
+  on the stored list and by the worker on a fresh list, which then passes exact format ids to
+  yt-dlp. So what the sheet shows is what is fetched, and no yt-dlp selector can disagree.
+  Quality outranks codec. A format's quality is YouTube's own label, or the smallest standard
+  frame it fits, never its height alone: 2:1 and portrait videos would be misnamed. The worker
+  records its choice in `chosenFormat`, for the Queue and the video page.
+- **Spare account:** stored `enc:v1`, write-only through its routes, and written to a mode 600
+  file for one job only when a video needs it. With no working account an age-restricted job
+  stops before YouTube is asked, because repeated failed logins could harm the account.
+
+### Automatic cleanup
+
+Twitch's cleanup only runs when a person presses Run. YouTube's `sweepWatchedVideos` runs
+hourly, so its safety rules are strict. Change them only with care.
+
+- Only the watched rule runs automatically, so an unwatched video can never clear itself.
+- It reads as the stored viewer on the stored connection, and checks the connection's
+  fingerprint, because editing a connection keeps its id. There is no fallback to another user.
+- Any failed read stops the sweep. It does not use `loadPlayedDates`, which returns nothing on
+  failure. Sessions are read last, and a video playing now is skipped.
+- 20 files a sweep and 50 a day. Going over pauses cleanup and sends a push.
+- The worker checks keep forever, cleanup on and the rule generation under the file lock, and
+  claims the file there with `REMOVING_STAGE`. Removal stays outside the lock, so a slow disk
+  cannot outlast it. `setKeepForever` takes the same lock, and refuses once a file is claimed.
+- Accepted: the worker has no Jellyfin access, so playback starting in the moments after the
+  session check is not seen. The video is already watched and can be downloaded again.
+
 ## Twitch archiver
 
 Optional, and off until a Twitch connection is saved. Admin-only by default: the
@@ -742,7 +790,7 @@ Optional, and off until a Twitch connection is saved. Admin-only by default: the
   discovery in `pollTwitch`, the rules engine, enqueueing, notifications, and
   every Jellyfin call. It never reads or writes media files or runs an external
   program.
-- **Worker** (`helprr-twitch-worker`, Compose profile `twitch`): the only process
+- **Worker** (`helprr-twitch-worker`, Compose profile `twitch` or `youtube`): the only process
   that runs yt-dlp, TwitchDownloaderCLI and ffmpeg, touches the library, or uses
   `/dev/dri`. It holds no Helix credentials, no Jellyfin access and no push keys.
 - They talk only through PostgreSQL. There is no new HTTP surface and `src/proxy.ts`
@@ -772,10 +820,39 @@ Invariants:
 - Three extractor failures in a row, across jobs, pause downloads and send a push: that
   pattern points at the tools rather than a video. The worker installs newer tools then,
   or when the owner asks, and never while a download is running.
+- The worker creates library files group-writable and adds group write to older ones, so a
+  Jellyfin sharing the worker's group can delete them. The worker then forgets a file that vanished, every two minutes, and
+  sweeps its sidecars with an audit row. It acts only on a clear not-found, and only with
+  the `.helprr-library` marker present, so an unmounted disk cannot look like a deletion.
+- `pollTwitch` spends nothing on a streamer with no subscribers. Subscribing again takes
+  a new silent baseline, so a gap cannot arrive as a flood of pushes.
 - A user's own Twitch sign-in (`TwitchUserLink`, device code flow) has one scope,
   `user:read:follows`, and importing follows only ever adds subscriptions.
 - A video's category comes from the live stream or its chapters, because Helix has none,
   so older videos have no category.
-- Twitch settings live in `TwitchSettings`, not `AppSettings`, because `GET /api/settings`
+- The Library (`/twitch/library`) reads `ArchiveMediaFile`, and `serializeFile` is the only
+  shape that leaves the server, so a stored path never reaches the browser. `sizeBytes`
+  is always the file as it is now; a re-encode keeps the size before it in
+  `originalSizeBytes`. Deleting and restoring an original are worker jobs
+  (`DELETE_ORIGINAL`, `RESTORE_ORIGINAL`) like any other file change: the app only
+  queues them, under the same per-file advisory lock as `enqueueFileDelete`, and refuses
+  while another job is on the file. A restore is one rename over the same name, so the
+  video is never missing and Jellyfin keeps the item.
+- A re-encode at `REENCODE_NOW_PRIORITY` or above skips the night window and the Jellyfin
+  hold, because a person asked for it. Anything below still waits for both.
+- `ArchiveDeletedFile` is the Library's own record of what was deleted. It is separate from
+  `FileOperationAudit`, which holds paths and is pruned on its own schedule.
+- Creators, videos, files, jobs and deletion history carry a `platform`. Ids, folder names,
+  paths and request ids are unique per platform, and every Twitch route names `TWITCH`, so an
+  id from another platform finds nothing. `platform-isolation.integration.test.ts` proves this
+  on PostgreSQL, because mocked queries cannot.
+- Each platform has its own library root, from `libraryFor(platform)`. Every file operation
+  takes the root from the file's own platform, and the path helpers have no default root. The
+  worker stops at start if the roots it uses overlap, including through a link, and never
+  follows a link on the way from a root to a file.
+- Shared rows, cards and hooks live in `src/components/creators`. They take the API path, links
+  and permissions from `CreatorPlatformProvider`, which has no default, so a page outside a
+  section fails instead of showing another platform's data.
+- Twitch settings live in `ArchiveSettings`, not `AppSettings`, because `GET /api/settings`
   returns that row to any signed-in user. The browser token is `enc:v1` and no API
   returns it.

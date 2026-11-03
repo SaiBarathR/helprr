@@ -1,13 +1,14 @@
 import type { ServiceType } from '@prisma/client';
 import { prisma } from '@/lib/db';
 
-const APP_SHELL_SERVICE_TYPES = ['SEERR', 'TMDB', 'JELLYFIN', 'TWITCH'] satisfies ServiceType[];
+const APP_SHELL_SERVICE_TYPES = ['SEERR', 'TMDB', 'JELLYFIN', 'TWITCH', 'YOUTUBE'] satisfies ServiceType[];
 
 export async function getAppShellServiceFlags(): Promise<{
   seerrConfigured: boolean;
   tmdbConfigured: boolean;
   jellyfinConfigured: boolean;
   twitchConfigured: boolean;
+  youtubeConfigured: boolean;
 }> {
   const connections = await prisma.serviceConnection.findMany({
     where: { type: { in: APP_SHELL_SERVICE_TYPES } },
@@ -21,5 +22,6 @@ export async function getAppShellServiceFlags(): Promise<{
     tmdbConfigured: configured.has('TMDB'),
     jellyfinConfigured: configured.has('JELLYFIN'),
     twitchConfigured: configured.has('TWITCH'),
+    youtubeConfigured: configured.has('YOUTUBE'),
   };
 }

@@ -1,6 +1,6 @@
 {
   "name": "helprr",
-  "version": "1.10.0",
+  "version": "1.11.0",
   "private": true,
   "scripts": {
     "predev": "node scripts/copy-libass-assets.mjs",
@@ -17,7 +17,7 @@
     "db:deploy": "node --env-file=.env.local ./node_modules/prisma/build/index.js migrate deploy",
     "db:generate": "npx prisma generate",
     "lint": "node scripts/check-settings-export.mjs && eslint",
-    "build:twitch-worker": "esbuild src/worker/twitch/main.ts --bundle --platform=node --target=node24 --format=esm --outfile=dist/twitch-worker.mjs --alias:@=./src --external:@prisma/client --banner:js=\"import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);\""
+    "build:twitch-worker": "esbuild src/worker/archive/main.ts --bundle --platform=node --target=node24 --format=esm --outfile=dist/twitch-worker.mjs --alias:@=./src --external:@prisma/client --banner:js=\"import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);\""
   },
   "dependencies": {
     "@date-fns/tz": "^1.5.0",
