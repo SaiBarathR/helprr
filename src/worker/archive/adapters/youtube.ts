@@ -30,6 +30,26 @@ const NFO_TYPES: Partial<Record<CreatorVideoType, 'video' | 'live' | 'short'>> =
 // runtime, and the worker has Node.
 const BASE_ARGS = ['--ignore-config', '--no-playlist', '--js-runtimes', 'node'];
 
+// yt-dlp can retry a failing YouTube request for many minutes, and the worker runs one download
+// at a time, so a step that only reads is stopped instead of holding every other download.
+// Seen on production: a caption track answering 502 kept a job at "saving captions" for 13 min.
+const CAPTIONS_MS = 2 * 60_000;
+const READ_MS = 5 * 60_000;
+
+/** Runs yt-dlp, stopped after `ms`. That stop is an ordinary error, never mistaken for a cancel. */
+async function runWithin(args: string[], options: { signal: AbortSignal; captureStdout?: boolean }, ms: number, what: string): Promise<string> {
+  const limit = new AbortController();
+  const timer = setTimeout(() => limit.abort(), ms);
+  try {
+    return await run(toolPath('ytdlpYoutube'), args, { ...options, signal: AbortSignal.any([options.signal, limit.signal]) });
+  } catch (error) {
+    if (limit.signal.aborted && !options.signal.aborted) throw new Error(`${what} took over ${ms / 60_000} minutes, so it was stopped`);
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 interface YoutubeInfo {
   live_status?: string;
   duration?: number;
@@ -65,12 +85,12 @@ const CAPTION_LANGUAGES = ['en', 'en-US', 'en-GB', 'en-orig'];
 async function saveCaptions(ctx: DownloadContext, staging: string): Promise<Sidecar[]> {
   const { video, signal } = ctx;
   try {
-    await run(toolPath('ytdlpYoutube'), [
+    await runWithin([
       ...BASE_ARGS, '--skip-download', '--write-subs', '--write-auto-subs',
       '--sub-langs', CAPTION_LANGUAGES.join(','), '--sub-format', 'vtt', ...cookieArgs(ctx),
       '-o', path.join(staging, 'captions.%(ext)s'),
       videoUrl(video.externalId),
-    ], { signal });
+    ], { signal }, CAPTIONS_MS, 'Reading the captions');
     const files = await readdir(staging);
     const name = CAPTION_LANGUAGES.map((language) => `captions.${language}.vtt`).find((file) => files.includes(file));
     const srt = name ? vttToSrt(await readFile(path.join(staging, name), 'utf8')) : '';
@@ -142,10 +162,10 @@ async function downloadVideo(ctx: DownloadContext, staging: string, { selector, 
 /** What a person sees in the sheet. Sizes only: no format link is ever stored. */
 export async function readYoutubeFormats(ctx: Pick<DownloadContext, 'prisma' | 'video' | 'cookiesFile' | 'signal'>): Promise<void> {
   const { prisma, video, signal } = ctx;
-  const info = JSON.parse(await run(toolPath('ytdlpYoutube'), [
+  const info = JSON.parse(await runWithin([
     ...youtubeVideoArgs(video.externalId),
     ...(ctx.cookiesFile ? ['--cookies', ctx.cookiesFile] : []),
-  ], { signal, captureStdout: true })) as { formats?: Parameters<typeof summarizeFormats>[0] };
+  ], { signal, captureStdout: true }, READ_MS, 'Reading the formats')) as { formats?: Parameters<typeof summarizeFormats>[0] };
   await prisma.creatorVideo.update({
     where: { id: video.id },
     data: { formats: summarizeFormats(info.formats ?? []) as unknown as Prisma.InputJsonValue, formatsCheckedAt: new Date() },
@@ -198,10 +218,10 @@ export const youtubeAdapter: PlatformAdapter<YoutubeInfo> = {
     if (video.availability === 'RECORDING') throw new WaitForRecordingError();
     // Stops here, before YouTube is asked: repeated failed logins could harm the account.
     if (video.ageRestricted && !ctx.cookiesFile) throw new Error('Sign in to confirm your age: no working account');
-    const info = JSON.parse(await run(toolPath('ytdlpYoutube'), [...youtubeVideoArgs(video.externalId), ...cookieArgs(ctx)], {
+    const info = JSON.parse(await runWithin([...youtubeVideoArgs(video.externalId), ...cookieArgs(ctx)], {
       signal,
       captureStdout: true,
-    })) as YoutubeInfo;
+    }, READ_MS, 'Reading the video')) as YoutubeInfo;
     if (info.live_status === 'is_live' || info.live_status === 'is_upcoming') throw new WaitForRecordingError();
 
     // The decision the sheet showed, on this moment's list. Written down so the Queue can say what is coming.

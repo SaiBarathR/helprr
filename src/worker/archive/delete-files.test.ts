@@ -41,7 +41,7 @@ describe('runDeleteFiles', () => {
         }),
         delete: vi.fn().mockResolvedValue({}),
       },
-      archiveJob: { count: vi.fn().mockResolvedValue(0), update: vi.fn().mockResolvedValue({}) },
+      archiveJob: { count: vi.fn().mockResolvedValue(0), update: vi.fn().mockResolvedValue({}), updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
       fileOperationAudit: { create: vi.fn().mockResolvedValue({}) },
       archiveDeletedFile: { create: vi.fn().mockResolvedValue({}) },
     };
@@ -52,6 +52,22 @@ describe('runDeleteFiles', () => {
     const { prisma, job } = await setup({});
     await runDeleteFiles(prisma as never, job as never, async () => undefined);
     await expect(stat(path.join(library.dir, 'a.mkv'))).rejects.toThrow();
+  });
+
+  it('cancels a re-encode that has not started, rather than waiting for the night', async () => {
+    const { prisma, job } = await setup({});
+    await runDeleteFiles(prisma as never, job as never, async () => undefined);
+    expect(prisma.archiveJob.updateMany).toHaveBeenCalledWith({
+      where: { mediaFileId: 'f', kind: 'REENCODE', state: { in: ['QUEUED', 'RETRY_WAIT', 'BLOCKED'] } },
+      data: expect.objectContaining({ state: 'CANCELLED' }),
+    });
+  });
+
+  it('leaves a waiting re-encode alone for a rule, which yields instead', async () => {
+    const { prisma, job } = await setup({ retention: true });
+    prisma.archiveMediaFile.findUnique.mockResolvedValue({ ...(await prisma.archiveMediaFile.findUnique()), keepForever: false });
+    await runDeleteFiles(prisma as never, job as never, async () => undefined);
+    expect(prisma.archiveJob.updateMany).not.toHaveBeenCalled();
   });
 
   it('never lets retention delete one', async () => {
