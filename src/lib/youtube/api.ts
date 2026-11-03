@@ -90,6 +90,8 @@ async function request<T>(path: string, params: Record<string, string | number>,
       params,
       headers: { 'X-Goog-Api-Key': key },
       timeout: TIMEOUT_MS,
+      // Google never redirects these, and a redirect would carry the key's header to another host.
+      maxRedirects: 0,
     });
     return data;
   } catch (error) {
@@ -116,7 +118,7 @@ export async function verifyYoutubeKey(key: string): Promise<void> {
 
 /** For the health poller, which probes every connection often: costs no quota and uses no key. */
 export async function youtubeReachable(): Promise<void> {
-  await axios.head(`${YOUTUBE_API_URL}/videos`, { timeout: TIMEOUT_MS, validateStatus: (status) => status < 500 });
+  await axios.head(`${YOUTUBE_API_URL}/videos`, { timeout: TIMEOUT_MS, maxRedirects: 0, validateStatus: (status) => status < 500 });
 }
 
 export interface YoutubeChannel {

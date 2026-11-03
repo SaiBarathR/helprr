@@ -19,6 +19,7 @@ import { assertSeparateRoots, isMountedFolder } from './library-paths';
 import { DeferJobError, JobCancelledError, LeaseLostError } from './process';
 import { activeVersion, ensureTools, latestVersion, setSmokeVideo, TWITCH_TOOLS, updateTools, YOUTUBE_TOOLS, type ToolName } from './tools';
 import { TWITCH } from '@/lib/twitch/platform';
+import { withoutSignedLinks } from '@/lib/archive/redact-links';
 
 const RENEW_MS = 20_000;
 const POLL_MS = 5_000;
@@ -63,7 +64,7 @@ function log(level: 'info' | 'warn' | 'error', message: string, extra: Record<st
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function event(jobId: string, level: string, message: string) {
-  await prisma.archiveJobEvent.create({ data: { jobId, level, message: message.slice(0, 1000) } }).catch(() => undefined);
+  await prisma.archiveJobEvent.create({ data: { jobId, level, message: withoutSignedLinks(message).slice(0, 1000) } }).catch(() => undefined);
 }
 
 /** The app owns migrations. The worker only waits for them. */
@@ -248,7 +249,7 @@ async function runJob(job: ArchiveJob): Promise<void> {
       await finishJob(job, {
         state: next.state,
         errorClass,
-        lastError: message.slice(0, 1000),
+        lastError: withoutSignedLinks(message).slice(0, 1000),
         ...(next.state === 'RETRY_WAIT' ? { runAfter: new Date(Date.now() + next.delayMs) } : {}),
         ...(next.state === 'FAILED' ? { finishedAt: new Date() } : {}),
       });

@@ -68,6 +68,12 @@ describe('YouTube API client', () => {
     expect(JSON.stringify([url, config.params])).not.toContain(KEY);
   });
 
+  it('never follows a redirect, which would carry the key to another host', async () => {
+    mocks.get.mockResolvedValue({ data: { items: [] } });
+    await channelByHandle('wanshowyt');
+    expect(mocks.get.mock.calls[0][1].maxRedirects).toBe(0);
+  });
+
   it('keeps the key out of an error', async () => {
     mocks.get.mockRejectedValue(apiError(500, 'backendError'));
     await expect(channelByHandle('wanshowyt')).rejects.toThrow('YouTube request failed: 500');
