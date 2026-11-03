@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.12.1] - 2026-11-03
+
+1.12.0 was tagged but stopped before release, when its production check found the first
+problem below. This release contains everything listed under 1.12.0.
+
+### Fixed
+
+- A YouTube caption track that kept failing could hold a download for many minutes, and the
+  worker runs one download at a time, so Twitch waited too. Captions now give up after 2
+  minutes and the video is kept without them. Reading a video or its formats gives up after
+  5 minutes and tries again later.
+- Deleting a Twitch file no longer waits for its nightly re-encode. A re-encode that has not
+  started is cancelled; one already running still finishes first.
+
 ## [1.12.0] - 2026-11-03
 
 ### Added
