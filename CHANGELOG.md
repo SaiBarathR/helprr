@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.12.0] - 2026-11-03
+
 ### Added
 
 - **YouTube**: follow channels and playlists by `@handle`, link or name, see new videos
@@ -34,11 +36,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Each platform has its own tool pause, and YouTube has its own yt-dlp, so YouTube
   breaking leaves Twitch downloading.
 - Keep forever now waits for any delete in progress, on both platforms.
+- The Queue and a video's page show the exact copy being saved, such as 4K VP9, with one
+  progress figure that only moves forward. The Library and file pages name a file by its
+  real shape, so a 3840×1920 video reads 4K, not 1920p.
 
 ### Fixed
 
 - The first download into a brand-new Jellyfin library now appears there. Jellyfin
   skips a folder that was empty when its library was made, so it needs a full scan.
+- Notifications: an admin saw one copy of a new-video, expiring or download alert per
+  follower of that channel. Admins now see only their own copy of these, and still see
+  members' requests and system alerts.
+- Feeds, libraries and video pages notice a download that a rule or another device
+  started, without a reload.
+- A failed download that a later download fixed no longer stays in the Queue, where its
+  Retry could replace the good file with a worse one.
+- Scrolling with the pointer over a row of cards scrolls the page, not the row.
+- Movies and Series: tapping a card's checkbox in select mode selects it.
+- A deleted original appears once on a file's timeline, not twice.
+
+### Security
+
+- The YouTube API client refuses redirects, so its key can never be sent to another host.
+- Signed media links that yt-dlp prints are removed before a download's error, its
+  events or the worker's log lines are stored.
+
+### Upgrading
+
+- The first start applies four new database migrations. Back up first, as usual. Update
+  the app before the worker: the worker waits for the new migrations.
+- To turn YouTube on, add `youtube` to `COMPOSE_PROFILES`, set
+  `YOUTUBE_LIBRARY_HOST_PATH`, run `./update.sh`, then follow the checklist in
+  **Settings → YouTube**. See the README's YouTube section.
 
 ## [1.11.0] - 2026-10-31
 
