@@ -58,7 +58,8 @@ let youtubeMounted = false;
 let youtubeToolTriedAt = 0;
 
 function log(level: 'info' | 'warn' | 'error', message: string, extra: Record<string, unknown> = {}) {
-  console[level](JSON.stringify({ at: new Date().toISOString(), level, message, ...extra }));
+  // Errors here can quote a tool's output, so every line loses signed links, like the job records.
+  console[level](withoutSignedLinks(JSON.stringify({ at: new Date().toISOString(), level, message, ...extra })));
 }
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));

@@ -17,4 +17,11 @@ describe('withoutSignedLinks', () => {
   it('leaves plain links and text alone', () => {
     expect(withoutSignedLinks('Sign in to confirm your age. See https://www.youtube.com/watch')).toBe('Sign in to confirm your age. See https://www.youtube.com/watch');
   });
+
+  it('keeps a JSON log line valid when a link sits right before an escaped quote', () => {
+    const line = JSON.stringify({ error: 'ERROR: "https://rr1---sn-x.googlevideo.com/videoplayback?sig=SECRET"' });
+    const clean = withoutSignedLinks(line);
+    expect(clean).not.toContain('SECRET');
+    expect(JSON.parse(clean)).toEqual({ error: 'ERROR: "[YouTube media link removed]"' });
+  });
 });

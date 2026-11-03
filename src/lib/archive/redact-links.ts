@@ -1,4 +1,5 @@
-const LINK = /https?:\/\/[^\s"'<>\])]+/g;
+// A backslash ends a link too, so a link inside JSON text keeps the string's escapes intact.
+const LINK = /https?:\/\/[^\s"'<>\])\\]+/g;
 
 /**
  * Links that yt-dlp and ffmpeg print can be signed. YouTube's media links carry the signature
