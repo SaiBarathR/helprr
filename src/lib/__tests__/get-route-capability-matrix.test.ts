@@ -380,6 +380,8 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
   public: [
     'GET /api/health',
     'GET /api/ready',
+    // Says only whether the first admin still has to be created.
+    'GET /api/setup/state',
     // Sonarr/Radarr fetch it with no session; the single-use token is the credential.
     'GET /api/manual-downloads/torrent/[token]',
   ],
@@ -522,7 +524,7 @@ describe('GET API route capability matrix', () => {
   const assignments = policyAssignments();
 
   it('explicitly assigns every GET handler exactly once', () => {
-    expect(handlers.size).toBe(261);
+    expect(handlers.size).toBe(262);
     expect([...assignments.keys()].sort()).toEqual([...handlers.keys()].sort());
   });
 

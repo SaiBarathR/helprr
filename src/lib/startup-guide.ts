@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/db';
 import { BOOTSTRAP_ADMIN_ID } from '@/lib/bootstrap-admin';
 import { verifyPasswordHash } from '@/lib/password';
+import { needsFirstAdmin } from '@/lib/first-admin';
 
 /**
  * How a new installer can sign in, decided from the database:
@@ -12,6 +13,7 @@ import { verifyPasswordHash } from '@/lib/password';
  * - `no-admin`: APP_PASSWORD is not set and no admin can sign in.
  */
 export type SignInHint =
+  | { kind: 'create-admin' }
   | { kind: 'app-password'; username: string }
   | { kind: 'admin-account' }
   | { kind: 'app-password-invalid' }
@@ -27,6 +29,9 @@ export function startupGuideLines(input: { port: string; inDocker: boolean; sign
     : `http://localhost:${input.port}`;
   const lines = [`[Helprr] Ready. Open ${where} in a browser.`];
   switch (input.signIn.kind) {
+    case 'create-admin':
+      lines.push('[Helprr] Open it and create your admin account. Do that before Helprr is reachable from the internet.');
+      break;
     case 'app-password':
       lines.push(`[Helprr] Sign in as "${input.signIn.username}" with the APP_PASSWORD from your .env file.`);
       break;
@@ -45,6 +50,7 @@ export function startupGuideLines(input: { port: string; inDocker: boolean; sign
 }
 
 async function signInHint(): Promise<SignInHint> {
+  if (await needsFirstAdmin()) return { kind: 'create-admin' };
   const appPassword = process.env.APP_PASSWORD;
   const bootstrap = await prisma.user.findUnique({
     where: { id: BOOTSTRAP_ADMIN_ID },

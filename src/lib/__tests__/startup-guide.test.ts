@@ -79,9 +79,18 @@ describe('logStartupGuide', () => {
     expect(printed[1]).toMatch(/^\[Helprr\] No admin can sign in yet: APP_PASSWORD did not create one/);
   });
 
-  it('asks for APP_PASSWORD when it is not set', async () => {
+  it('sends a brand-new install without APP_PASSWORD to create its admin', async () => {
     vi.stubEnv('APP_PASSWORD', '');
     mocks.admin.mockResolvedValue(null);
+    await logStartupGuide();
+    expect(printed[1]).toBe('[Helprr] Open it and create your admin account. Do that before Helprr is reachable from the internet.');
+  });
+
+  it('asks for APP_PASSWORD when users exist but no admin can sign in', async () => {
+    vi.stubEnv('APP_PASSWORD', '');
+    mocks.admin.mockResolvedValue(null);
+    // needsFirstAdmin counts every user (1: a member), the admin count finds none.
+    mocks.localAdmins.mockImplementation(async (args?: unknown) => (args ? 0 : 1));
     await logStartupGuide();
     expect(printed[1]).toBe('[Helprr] No admin can sign in yet: set APP_PASSWORD in your .env file, then restart Helprr.');
   });

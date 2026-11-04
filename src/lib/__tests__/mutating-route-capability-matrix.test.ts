@@ -21,6 +21,8 @@ const POLICY_GROUPS: Record<string, readonly string[]> = {
   public: [
     'POST /api/auth/jellyfin',
     'POST /api/auth/login',
+    // Only while no user exists and APP_PASSWORD is unset; same-origin JSON, rate-limited.
+    'POST /api/setup/admin',
   ],
   'optional-session': [
     'POST /api/auth/logout',
@@ -542,7 +544,7 @@ describe('mutating API route capability matrix', () => {
   const assignments = policyAssignments();
 
   it('explicitly assigns every mutating handler exactly once', () => {
-    expect(handlers.size).toBe(230);
+    expect(handlers.size).toBe(231);
     expect([...assignments.keys()].sort()).toEqual([...handlers.keys()].sort());
   });
 
