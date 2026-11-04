@@ -167,6 +167,26 @@ jobs:
           curl -fsS http://127.0.0.1:3050/api/setup/state | grep -q '"needsAdmin":true'
           echo "ready, and asking for the first admin"
 
+      # The local demo from an empty folder: the fake apps, the demo account, and every
+      # connection made by its seed, beside nothing else.
+      - name: Start the demo
+        run: |
+          dir=$(mktemp -d)
+          cp docker-compose.demo.yml "$dir/"
+          cd "$dir"
+          trap 'docker compose -f docker-compose.demo.yml down -v >/dev/null 2>&1 || true' EXIT
+          HELPRR_DEMO_VERSION=ci-smoke docker compose -f docker-compose.demo.yml up -d --quiet-pull
+          if [ "$(timeout 180 docker wait helprr-demo-seed)" != 0 ]; then
+            echo "the demo seed did not finish"
+            docker compose -f docker-compose.demo.yml logs --no-color --tail=100 helprr-demo-seed helprr-demo helprr-demo-upstreams
+            exit 1
+          fi
+          docker logs helprr-demo-seed
+          curl -fsS -o /dev/null http://127.0.0.1:3060/api/ready
+          curl -fsS -o /dev/null -H 'content-type: application/json' \
+            -d '{"username":"demo","password":"helprr-demo-password"}' http://127.0.0.1:3060/api/auth/login
+          echo "demo ready, seeded, and signing in"
+
       - name: Scan image for fixable high/critical vulnerabilities
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         env:
