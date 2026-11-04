@@ -14,11 +14,21 @@ import {
 } from 'fs';
 import { tmpdir } from 'os';
 import path from 'path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, describe, expect, it } from 'vitest';
 import { validateRuntimeConfig } from '@/lib/runtime-config';
 
 const repoRoot = process.cwd();
 const fixtureRoots: string[] = [];
+
+// A quiet docker for every run, so no test calls the host's real Docker (slow on CI,
+// and its volumes would change the output). Tests that need another one stub it.
+const quietDockerBin = mkdtempSync(path.join(tmpdir(), 'helprr-setup-docker-'));
+writeFileSync(
+  path.join(quietDockerBin, 'docker'),
+  '#!/bin/sh\ncase "$*" in "compose version --short") echo 2.29.1 ;; "volume inspect"*) exit 1 ;; esac\n',
+  { mode: 0o755 },
+);
+afterAll(() => rmSync(quietDockerBin, { recursive: true, force: true }));
 
 function createFixture(): string {
   const root = mkdtempSync(path.join(tmpdir(), 'helprr-setup-env-'));
@@ -32,10 +42,12 @@ function createFixture(): string {
 }
 
 function runSetup(root: string, args: string[] = [], env: NodeJS.ProcessEnv = process.env) {
+  // A caller that sets its own PATH brings its own docker stub (see withStubs).
+  const withQuietDocker = env.PATH === process.env.PATH ? { ...env, PATH: `${quietDockerBin}:${env.PATH ?? ''}` } : env;
   return spawnSync('/bin/sh', [path.join(root, 'scripts/setup-env.sh'), ...args], {
     cwd: root,
     encoding: 'utf8',
-    env,
+    env: withQuietDocker,
   });
 }
 
@@ -287,7 +299,7 @@ describe('setup-env.sh checks against stub programs', () => {
     for (const [name, body] of Object.entries(stubs)) {
       writeFileSync(path.join(bin, name), `#!/bin/sh\n${body}\n`, { mode: 0o755 });
     }
-    const env: NodeJS.ProcessEnv = { ...process.env, PATH: `${bin}:${process.env.PATH ?? ''}` };
+    const env: NodeJS.ProcessEnv = { ...process.env, PATH: `${bin}:${quietDockerBin}:${process.env.PATH ?? ''}` };
     delete env.HELPRR_SETUP_TZ;
     return env;
   }
