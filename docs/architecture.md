@@ -226,7 +226,9 @@ creates the row with the fixed `BOOTSTRAP_ADMIN_ID` in a transaction that re-che
 the table, so the primary key decides a race. It requires same-origin JSON: with
 `APP_ORIGIN` set the `Origin` must equal it, otherwise `Origin` must match `Host` and
 be a local address (IP, `localhost`, single-label, `.local`, `.lan`, `.home.arpa`,
-`.internal`), which rules out DNS rebinding. It is rate-limited per IP when a trusted
+`.internal`), which rules out DNS rebinding. The residual case is a single-label
+name completed through a hostile network's wildcard search domain; `APP_ORIGIN`
+closes it. It is rate-limited per IP when a trusted
 proxy gives one, and to ten claims a minute per process. On boot the bootstrap
 admin is renamed to `HELPRR_ADMIN_USERNAME` only when that variable is set, so a
 name chosen at `/setup` survives a later `APP_PASSWORD` reset. An admin password change through Settings ->

@@ -119,6 +119,12 @@ describe('isAllowedSetupOrigin', () => {
     expect(isAllowedSetupOrigin(req({ host: 'evil.example', origin: 'https://evil.example' }))).toBe(false);
   });
 
+  it.each(['helprr.example.com:443', 'https://helprr.example.com/path', 'not a url'])('accepts nothing when APP_ORIGIN is %j', (value) => {
+    vi.stubEnv('APP_ORIGIN', value);
+    expect(isAllowedSetupOrigin(req({ host: 'helprr.example.com', origin: 'https://helprr.example.com' }))).toBe(false);
+    expect(isAllowedSetupOrigin(req({ host: 'x', origin: 'x:y' }))).toBe(false);
+  });
+
   it.each(['localhost', '10.0.0.4', 'nas', 'box.local', 'router.home.arpa', 'pi.internal'])('treats %s as local', (name) => {
     expect(isLocalHostname(name)).toBe(true);
   });

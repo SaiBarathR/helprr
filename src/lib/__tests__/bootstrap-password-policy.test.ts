@@ -111,6 +111,10 @@ describe('bootstrap local-password policy', () => {
     await ensureBootstrapAdmin();
     expect(mocks.update).not.toHaveBeenCalled();
 
+    process.env.HELPRR_ADMIN_USERNAME = '""';
+    await ensureBootstrapAdmin();
+    expect(mocks.update).not.toHaveBeenCalled();
+
     process.env.HELPRR_ADMIN_USERNAME = 'admin';
     await ensureBootstrapAdmin();
     expect(mocks.update).toHaveBeenCalledWith({ where: { id: 'user-bootstrap-admin' }, data: { username: 'admin' } });

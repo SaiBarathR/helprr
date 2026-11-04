@@ -4,6 +4,7 @@ import { attachOwnerlessRowsToAdmin, BOOTSTRAP_ADMIN_ID } from '@/lib/bootstrap-
 import { hashPassword } from '@/lib/password';
 import { localPasswordValidationError } from '@/lib/password-policy';
 import { localUsernameValidationError, normalizeLocalUsername } from '@/lib/username-policy';
+import { parseBareOrigin } from '@/lib/request-utils';
 
 /**
  * Creating the first admin in the browser, as Jellyfin and Immich do.
@@ -38,7 +39,8 @@ const CLAIMS_PER_MINUTE = 10;
 const claimTimes: number[] = [];
 
 /** Whether another claim may run now; records it when it may. */
-export function takeClaimSlot(now = Date.now()): boolean {
+// A monotonic clock: a wall-clock step back would hold old entries "in the future".
+export function takeClaimSlot(now = performance.now()): boolean {
   while (claimTimes.length > 0 && now - claimTimes[0] > 60_000) claimTimes.shift();
   if (claimTimes.length >= CLAIMS_PER_MINUTE) return false;
   claimTimes.push(now);
@@ -113,7 +115,9 @@ const LOCAL_SUFFIXES = ['.local', '.lan', '.home.arpa', '.internal', '.localhost
 /**
  * A name only a home network uses: an IP address, localhost, a single-label name,
  * or a local-only suffix. DNS rebinding needs a public domain the attacker controls,
- * so an address like this cannot be one.
+ * so an address like this cannot be one. The one residual case: a single-label name
+ * completed through a DNS search domain whose wildcard record a hostile network
+ * controls. Setting APP_ORIGIN closes it.
  */
 export function isLocalHostname(hostname: string): boolean {
   const name = hostname.toLowerCase().replace(/^\[|\]$/g, '');
@@ -144,11 +148,9 @@ export function isAllowedSetupOrigin(request: Request): boolean {
   }
   const configured = process.env.APP_ORIGIN?.trim();
   if (configured) {
-    try {
-      return new URL(configured).origin === parsed.origin;
-    } catch {
-      return false;
-    }
+    // Parsed as strictly as the OAuth path: an invalid APP_ORIGIN accepts nothing.
+    const expected = parseBareOrigin(configured, false);
+    return expected !== null && expected === parsed.origin;
   }
   const host = request.headers.get('host');
   return Boolean(host) && parsed.host === host && isLocalHostname(parsed.hostname);

@@ -97,7 +97,8 @@ export async function ensureBootstrapAdmin(): Promise<void> {
   // change), only when it is set: an admin created in /setup keeps the name chosen
   // there if APP_PASSWORD is set later for a reset. Best-effort: a clash with
   // another user's username is logged, not fatal.
-  const usernameConfigured = Boolean(process.env.HELPRR_ADMIN_USERNAME?.trim());
+  // Normalised as the name itself is, so a quoted empty value counts as unset.
+  const usernameConfigured = Boolean(process.env.HELPRR_ADMIN_USERNAME?.trim().replace(/^["']|["']$/g, '').trim());
   if (existing && usernameConfigured && existing.username !== adminUsername) {
     try {
       await prisma.user.update({

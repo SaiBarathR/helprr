@@ -22,6 +22,10 @@ describe.skipIf(!url)('first admin against PostgreSQL', () => {
     vi.stubEnv('APP_PASSWORD', '');
     vi.spyOn(console, 'log').mockImplementation(() => {});
     await prisma.$executeRawUnsafe('TRUNCATE "User" CASCADE');
+    // Each case decides from the database, not from a previous case's latch.
+    firstAdmin.resetFirstAdminLatch();
+    expect(await firstAdmin.needsFirstAdmin()).toBe(true);
+    firstAdmin.resetFirstAdminLatch();
   });
   afterAll(async () => {
     await prisma.$executeRawUnsafe('TRUNCATE "User" CASCADE');
