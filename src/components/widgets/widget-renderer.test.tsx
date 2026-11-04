@@ -283,7 +283,7 @@ describe('WidgetRenderer lazy states', () => {
 
     await renderWidget({ services: [] });
 
-    expect(document.body.textContent).toContain('Configure JELLYFIN');
+    expect(document.body.textContent).toContain('connect Jellyfin');
     expect(mocks.getWidgetComponent).not.toHaveBeenCalled();
   });
 });
