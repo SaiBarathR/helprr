@@ -74,7 +74,8 @@ describe('Check push setup', () => {
     await waitFor(() => expect(screen.getByText('Service worker not running')).toBeTruthy());
     expect(screen.getByText('Notifications are blocked')).toBeTruthy();
     expect(screen.getByText(/missing VAPID_PRIVATE_KEY/)).toBeTruthy();
-    expect(screen.getByText(/4 things stop push on this device/)).toBeTruthy();
+    expect(screen.getByText(/3 things stop push on this device/)).toBeTruthy();
+    expect(row(/Needs the service worker first/).textContent).toContain('Not checked');
   });
 
   it('does not call a secure browser without push ready', async () => {
@@ -90,6 +91,8 @@ describe('Check push setup', () => {
     render(<PushCheckPage />);
     await waitFor(() => expect(screen.getByText('Could not reach Helprr to check its push keys')).toBeTruthy());
     expect(screen.queryByText('This server has no push keys')).toBeNull();
+    // Not "Push can reach this device": the server could not be asked.
+    expect(screen.getByText('Nothing found that stops push; 1 thing is worth a look.')).toBeTruthy();
   });
 
   it('tells a member to ask the admin about the server', async () => {

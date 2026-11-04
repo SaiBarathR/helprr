@@ -64,6 +64,20 @@ describe('pushReadinessChecks', () => {
     expect(byId({ ...ready, supported: false, secure: false }).browser).toBeUndefined();
   });
 
+  it('blames old or unknown iOS once, not twice, and never tells the installed app to install', () => {
+    const old = pushReadinessChecks({ ...ready, ios: true, iosVersion: [16, 3], supported: false });
+    expect(old.filter((check) => check.state === 'fail').map((check) => check.id)).toEqual(['ios-version']);
+    expect(byId({ ...ready, ios: true, iosVersion: null, supported: false }).browser).toBeUndefined();
+    expect(byId({ ...ready, ios: true, iosVersion: [18, 0], supported: false }).browser?.detail).toContain('Update iOS');
+  });
+
+  it('waits for the service worker before blaming the device, and ends a reason with a full stop', () => {
+    expect(byId({ ...ready, workerActive: false, subscribed: false }).subscribed).toMatchObject({ state: 'skip', detail: 'Needs the service worker first.' });
+    expect(byId({ ...ready, subscribed: false, deviceError: 'Service worker registration timed out' }).subscribed.detail).toMatch(
+      /^Service worker registration timed out\. Turn it on/,
+    );
+  });
+
   it('does not blame the server when it could not be asked', () => {
     expect(byId({ ...ready, serverConfigured: null, serverUnreachable: true }).server).toMatchObject({
       state: 'warn',

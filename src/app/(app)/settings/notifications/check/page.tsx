@@ -71,6 +71,8 @@ export default function PushCheckPage() {
     queryKey: ['push', 'public-key'],
     queryFn: jsonFetcher<{ publicKey: string | null; configured?: boolean; missing?: string[] }>('/api/push/public-key'),
     staleTime: 60_000,
+    // Offline, ask anyway: a paused query would leave the row "checking" for good.
+    networkMode: 'always',
   });
   const serverConfigured = serverPush ? (serverPush.configured ?? Boolean(serverPush.publicKey)) : null;
 
@@ -83,17 +85,21 @@ export default function PushCheckPage() {
     const settle = (active: boolean) => {
       if (!cancelled) setWorkerActive(active);
     };
+    let timer: ReturnType<typeof setTimeout> | undefined;
     navigator.serviceWorker
       .getRegistration()
       .then((registration) => {
-        if (!registration) return settle(false);
-        if (registration.active) return settle(true);
-        const timeout = new Promise<false>((resolve) => setTimeout(() => resolve(false), 10_000));
+        if (registration?.active) return settle(true);
+        // Installing, or not registered yet on a first visit (the app registers it as it starts).
+        const timeout = new Promise<false>((resolve) => {
+          timer = setTimeout(() => resolve(false), 10_000);
+        });
         return Promise.race([navigator.serviceWorker.ready.then(() => true), timeout]).then(settle);
       })
       .catch(() => settle(false));
     return () => {
       cancelled = true;
+      clearTimeout(timer);
     };
   }, [secure, isSupported]);
 
@@ -114,12 +120,15 @@ export default function PushCheckPage() {
     deviceError,
   });
   const failing = checks.filter((check) => check.state === 'fail').length;
+  const worthALook = checks.filter((check) => check.state === 'warn').length;
   const checking = checks.some((check) => check.state === 'checking');
   const summary = checking
     ? 'Checking this device…'
-    : failing === 0
-      ? 'Push can reach this device.'
-      : `${failing} ${failing === 1 ? 'thing stops' : 'things stop'} push on this device.`;
+    : failing > 0
+      ? `${failing} ${failing === 1 ? 'thing stops' : 'things stop'} push on this device.`
+      : worthALook > 0
+        ? `Nothing found that stops push; ${worthALook} ${worthALook === 1 ? 'thing is' : 'things are'} worth a look.`
+        : 'Push can reach this device.';
 
   const [testing, setTesting] = useState(false);
   async function sendTest() {
@@ -162,8 +171,9 @@ export default function PushCheckPage() {
       {/* What a page cannot read for itself, aligned like a section footer. */}
       <div className="grouped-section mb-6">
         <p className="px-4 text-xs text-muted-foreground">
-          Still nothing? Check this device&apos;s event types and quiet hours in Notifications, Focus or Do Not Disturb,
-          the system&apos;s notification settings for this browser, and battery saver.
+          Still nothing? Check this device&apos;s event types and quiet hours in{' '}
+          <Link href="/settings/notifications" className="text-primary">Notifications</Link>, Focus or Do Not Disturb, the
+          system&apos;s notification settings for this browser, and battery saver.
         </p>
       </div>
 

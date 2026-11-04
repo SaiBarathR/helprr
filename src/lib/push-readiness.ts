@@ -66,15 +66,19 @@ export function pushReadinessChecks(facts: PushFacts): PushCheck[] {
         },
   );
 
-  // A secure page without the push APIs: this browser cannot do push at all (iPhone
-  // Safari hides them until Helprr is installed; the install row says that).
-  const waitingForIosInstall = facts.ios && !facts.standalone;
-  if (facts.secure && !facts.supported && !waitingForIosInstall) {
+  // A secure page without the push APIs: this browser cannot do push at all. On iPhone
+  // and iPad the iOS rows name the cause (not installed yet, or iOS too old or unknown),
+  // so the row only stands for an installed app on a recent iOS that still lacks push.
+  const [iosMajor, iosMinor] = facts.iosVersion ?? [0, 0];
+  const recentIos = facts.iosVersion !== null && (iosMajor > 16 || (iosMajor === 16 && iosMinor >= 4));
+  if (facts.secure && !facts.supported && (!facts.ios || (facts.standalone && recentIos))) {
     checks.push({
       id: 'browser',
       state: 'fail',
       title: 'This browser cannot do push',
-      detail: 'Use Chrome, Edge, Firefox or Safari in a normal window (private windows have no push), or on iPhone and iPad the installed app.',
+      detail: facts.ios
+        ? 'This iPhone or iPad does not offer push to the installed app. Update iOS, then open Helprr again.'
+        : 'Use Chrome, Edge, Firefox or Safari in a normal window (private windows have no push).',
     });
   }
 
@@ -101,9 +105,9 @@ export function pushReadinessChecks(facts: PushFacts): PushCheck[] {
   }
 
   if (facts.ios) {
-    const [major, minor] = facts.iosVersion ?? [0, 0];
+    const [major, minor] = [iosMajor, iosMinor];
     const known = facts.iosVersion !== null;
-    const recent = major > 16 || (major === 16 && minor >= 4);
+    const recent = recentIos;
     checks.push(
       !known
         ? { id: 'ios-version', state: 'warn', title: 'iOS version unknown', detail: 'Push needs iOS 16.4 or later.' }
@@ -182,6 +186,9 @@ export function pushReadinessChecks(facts: PushFacts): PushCheck[] {
 
   if (!browserReady) {
     checks.push({ id: 'subscribed', state: 'skip', title: 'This device' });
+  } else if (facts.workerActive === false && !facts.subscribed) {
+    // Push needs the service worker; its own row says what to do.
+    checks.push({ id: 'subscribed', state: 'skip', title: 'This device', detail: 'Needs the service worker first.' });
   } else if (facts.subscribed === null) {
     checks.push({ id: 'subscribed', state: 'checking', title: 'This device' });
   } else if (facts.subscribed) {
@@ -191,7 +198,7 @@ export function pushReadinessChecks(facts: PushFacts): PushCheck[] {
       id: 'subscribed',
       state: 'fail',
       title: 'Push is off on this device',
-      detail: `${facts.deviceError ? `${facts.deviceError} ` : ''}Turn it on with "Enable on this device" in Settings → Notifications.`,
+      detail: `${facts.deviceError ? `${facts.deviceError.trim().replace(/[^.!?]$/, '$&.')} ` : ''}Turn it on with "Enable on this device" in Settings → Notifications.`,
       fixHref: '/settings/notifications',
     });
   }
