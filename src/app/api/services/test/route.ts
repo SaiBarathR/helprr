@@ -251,11 +251,11 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
       responseStatus,
     });
 
+    // A failed probe answers 200 with { success: false }, as the form expects: Helprr
+    // itself is fine, and a reverse proxy such as Cloudflare Tunnel swaps a 502 from
+    // the app for its own "Bad gateway" page, which would hide the hint.
     if (error instanceof NotServiceApiError) {
-      return NextResponse.json(
-        { success: false, error: notServiceApiMessage(attemptedType) },
-        { status: 502 }
-      );
+      return NextResponse.json({ success: false, error: notServiceApiMessage(attemptedType) });
     }
 
     const hint = async () => connectionFailureHint(error, attemptedUrl, await currentHintContext(attemptedUrl));
@@ -278,7 +278,6 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
 
     return NextResponse.json(
       { success: false, error: isRefusedRedirect(error) ? REDIRECT_REFUSED_MESSAGE : (await hint()) ?? 'Connection test failed' },
-      { status: 502 }
     );
   }
 }

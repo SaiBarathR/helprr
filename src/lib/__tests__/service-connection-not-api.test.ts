@@ -70,7 +70,7 @@ describe('an address that answers with a web page', () => {
     mocks.status.mockResolvedValue(page);
     const res = await test(type);
     const body = await res.json();
-    expect(res.status).toBe(502);
+    expect(res.status).toBe(200);
     expect(body.success).toBe(false);
     expect(body.error).toMatch(/answered, but not like .+ API\. Remove anything after the port/);
   });
@@ -78,14 +78,14 @@ describe('an address that answers with a web page', () => {
   it('fails a Jellyfin test whose system info is a page', async () => {
     mocks.status.mockResolvedValue(page);
     const res = await test('JELLYFIN', 'http://host.lan:8096/web');
-    expect(res.status).toBe(502);
+    expect(res.status).toBe(200);
     expect((await res.json()).success).toBe(false);
   });
 
   it('fails a qBittorrent test whose version is a page', async () => {
     mocks.version.mockResolvedValue(page);
     const res = await test('QBITTORRENT', 'http://host.lan:8080/foo');
-    expect(res.status).toBe(502);
+    expect(res.status).toBe(200);
     expect((await res.json()).success).toBe(false);
   });
 
@@ -97,7 +97,7 @@ describe('an address that answers with a web page', () => {
   it('points a wrong TMDB address at the real one', async () => {
     mocks.tmdb.mockRejectedValue(new NotServiceApiError());
     const res = await test('TMDB', 'https://example.com/3');
-    expect(res.status).toBe(502);
+    expect(res.status).toBe(200);
     expect((await res.json()).error).toContain('https://api.themoviedb.org/3');
   });
 });
@@ -153,7 +153,7 @@ describe('a failure Helprr can explain', () => {
   it('returns the hint instead of the generic message', async () => {
     mocks.status.mockRejectedValue(Object.assign(new Error('getaddrinfo ENOTFOUND sonarr'), { code: 'ENOTFOUND' }));
     const res = await test('SONARR', 'http://sonarr:8989');
-    expect(res.status).toBe(502);
+    expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.error).toMatch(/can't find that name/);
     expect(body.error).not.toContain('getaddrinfo');
@@ -175,7 +175,9 @@ describe('hint order', () => {
   it('still names a refused redirect first', async () => {
     const error = Object.assign(new Error('Redirect refused'), { code: 'ECONNRESET', cause: new RedirectRefusedError() });
     mocks.status.mockRejectedValue(error);
-    expect((await (await test('SONARR', 'http://host.lan:8989')).json()).error).toBe(REDIRECT_REFUSED_MESSAGE);
+    const res = await test('SONARR', 'http://host.lan:8989');
+    expect(res.status).toBe(200);
+    expect((await res.json()).error).toBe(REDIRECT_REFUSED_MESSAGE);
   });
 
   it('keeps the generic message for a 403', async () => {
@@ -197,5 +199,26 @@ describe('saving an address typed without http://', () => {
     expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ url: 'http://api.themoviedb.org/3' }),
     }));
+  });
+});
+
+// Cloudflare Tunnel and similar proxies replace a 502 from the app with their own
+// "Bad gateway" page, so no failure here may answer 502.
+describe('status codes a reverse proxy passes through', () => {
+  it('answers an unreachable service with 200 and success false', async () => {
+    mocks.status.mockRejectedValue(Object.assign(new Error('connect ECONNREFUSED'), { code: 'ECONNREFUSED' }));
+    const res = await test('SONARR', 'http://192.168.0.124:8999');
+    expect(res.status).toBe(200);
+    expect((await res.json()).success).toBe(false);
+  });
+
+  it('answers a Jellyfin save behind a refused redirect with 400', async () => {
+    mocks.jfUser.mockRejectedValue(Object.assign(new Error('Redirect refused'), { cause: new RedirectRefusedError() }));
+    const res = await saveConnection(new NextRequest('http://helprr.test/api/services', {
+      method: 'POST',
+      body: JSON.stringify({ type: 'JELLYFIN', url: 'http://host.lan:8096', apiKey: 'any-key' }),
+    }));
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: REDIRECT_REFUSED_MESSAGE });
   });
 });
