@@ -159,6 +159,9 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
   const searchParams = useSearchParams();
   const router = useRouter();
   const instanceParam = searchParams.get('instance'); // null | "new" | "<id>"
+  // An address found by "Find apps on this network": only fills the field of a new connection.
+  const urlParam = searchParams.get('url');
+  const prefillUrl = urlParam && /^https?:\/\/[^\s]+$/i.test(urlParam) ? urlParam : null;
   const isMultiInstance = config.supportsMultiInstance === true;
   const editingId = isMultiInstance && instanceParam && instanceParam !== 'new' ? instanceParam : null;
 
@@ -222,7 +225,7 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
   // not on a background refetch (which would clobber in-progress edits).
   // Always resets to defaults first so no state carries over from the previous
   // service/instance. Guarded during render.
-  const seedKey = `${type}:${instanceParam ?? ''}`;
+  const seedKey = `${type}:${instanceParam ?? ''}:${prefillUrl ?? ''}`;
   const [seededFor, setSeededFor] = useState<string | null>(null);
   if (servicesQuery.data && seededFor !== seedKey) {
     setSeededFor(seedKey);
@@ -231,7 +234,7 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
     setEditingConnId(existingConn?.id ?? null);
     setLabel(existingConn?.label ?? '');
     setIsDefault(existingConn?.isDefault ?? false);
-    setUrl(existingConn?.url ?? '');
+    setUrl(existingConn?.url ?? prefillUrl ?? '');
     setApiKey(existingConn?.apiKey ?? '');
     setUsername(existingConn?.username ?? '');
     setExternalUrl(existingConn?.externalUrl ?? '');

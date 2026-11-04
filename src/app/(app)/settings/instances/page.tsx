@@ -13,6 +13,7 @@ import { AnilistConnectionCard } from '@/components/settings/anilist-connection-
 import { TwitchConnectionCard } from '@/components/settings/twitch-connection-card';
 import { YoutubeConnectionCard } from '@/components/settings/youtube-connection-card';
 import { ImportFoundApps } from '@/components/settings/import-found-apps';
+import { FindAppsOnNetwork } from '@/components/settings/find-apps-on-network';
 import { useMe } from '@/components/permission-provider';
 import { SERVICE_CONFIG } from '@/lib/settings/service-config';
 import { QuickContextMenu } from '@/components/ui/quick-context-menu';
@@ -92,6 +93,7 @@ export default function InstancesIndexPage() {
       </div>
 
       {isAdmin && <ImportFoundApps />}
+      {isAdmin && <FindAppsOnNetwork />}
 
       {multiInstanceConfigs.map((config) => {
         const instances = byType.get(config.type) ?? [];
