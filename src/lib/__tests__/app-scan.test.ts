@@ -1,12 +1,24 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const mocks = vi.hoisted(() => ({ connections: [] as { type: string; url: string }[] }));
+const mocks = vi.hoisted(() => ({
+  connections: [] as { type: string; url: string }[],
+  // Container names resolve to a Docker address unless a test says otherwise.
+  dns: {} as Record<string, string[]>,
+}));
+vi.mock('node:dns/promises', () => ({
+  lookup: async (host: string) => {
+    const addresses = mocks.dns[host] ?? ['172.18.0.5'];
+    if (addresses.length === 0) throw Object.assign(new Error('not found'), { code: 'ENOTFOUND' });
+    return addresses.map((address) => ({ address, family: address.includes(':') ? 6 : 4 }));
+  },
+}));
 vi.mock('@/lib/db', () => ({ prisma: { serviceConnection: { findMany: async () => mocks.connections } } }));
 vi.mock('node:fs/promises', () => ({
   readFile: async () => 'Iface\tDestination\tGateway\tFlags\neth0\t00000000\t010011AC\t0003\neth0\t000011AC\t00000000\t0001\n',
 }));
 
-import { fingerprint, parseDefaultGateway, scanForApps, scanTargets } from '@/lib/app-scan';
+import { fingerprint, isLocalAddress, parseDefaultGateway, scanForApps, scanTargets } from '@/lib/app-scan';
+import { isScanAddress } from '@/lib/app-scan-targets';
 
 type Route = { status?: number; body?: string; location?: string };
 let routes: Record<string, Route> = {};
@@ -30,6 +42,7 @@ const OK = { body: '{ "status": "OK" }' };
 
 beforeEach(() => {
   mocks.connections = [];
+  mocks.dns = {};
   delete (globalThis as { __helprrAppScan?: unknown }).__helprrAppScan;
 });
 
@@ -106,6 +119,59 @@ describe('fingerprint', () => {
   });
 });
 
+describe('scanForApps, what it trusts', () => {
+  it('skips a name that resolves outside the network, without asking it anything', async () => {
+    mocks.dns = { sonarr: ['93.184.216.34'], 'host.docker.internal': [] };
+    serve({ 'http://sonarr:8989/ping': OK, 'http://sonarr:8989/': { body: '<title>Sonarr</title>' } });
+    expect(await scanForApps(2_000_000)).toEqual([]);
+    expect(requested.some((url) => url.startsWith('http://sonarr:8989'))).toBe(false);
+  });
+
+  it('shows the address Helprr already has, and says when another may be the same app', async () => {
+    serve({
+      'http://sonarr:8989/ping': OK,
+      'http://sonarr:8989/': { body: '<title>Sonarr</title>' },
+      'http://host.docker.internal:8989/ping': OK,
+      'http://host.docker.internal:8989/': { body: '<title>Sonarr</title>' },
+      'http://radarr:7878/ping': OK,
+      'http://radarr:7878/': { body: '<title>Radarr</title>' },
+    });
+    mocks.connections = [
+      { type: 'SONARR', url: 'http://HOST.docker.internal:8989/' },
+      { type: 'RADARR', url: 'http://192.168.1.10:7878' },
+    ];
+    expect(await scanForApps(3_000_000)).toEqual([
+      { type: 'SONARR', url: 'http://host.docker.internal:8989', connected: true, hasOther: false },
+      { type: 'RADARR', url: 'http://radarr:7878', connected: false, hasOther: true },
+    ]);
+  });
+
+  it.each([
+    ['172.18.0.5', true], ['10.0.0.1', true], ['127.0.0.1', true], ['169.254.1.1', true], ['100.100.1.1', true],
+    ['fd00::1', true], ['fe80::1', true], ['::1', true], ['8.8.8.8', false], ['2606:4700::1', false],
+  ])('counts %s as local: %s', (address, local) => {
+    expect(isLocalAddress(address)).toBe(local);
+  });
+});
+
+describe('isScanAddress (what a link may fill into the form)', () => {
+  it.each([
+    ['SONARR', 'http://sonarr:8989', true],
+    ['SONARR', 'http://host.docker.internal:8989', true],
+    ['SONARR', 'http://172.17.0.1:8989', true],
+    ['SEERR', 'http://jellyseerr:5055', true],
+    ['SONARR', 'http://evil.example:8989', false],
+    ['SONARR', 'http://sonarr:7878', false],
+    ['SONARR', 'http://user:pass@sonarr:8989', false],
+    ['SONARR', 'http://sonarr:8989/path', false],
+    ['SONARR', 'https://sonarr:8989', false],
+    ['SONARR', 'http://8.8.8.8:8989', false],
+    ['TMDB', 'http://sonarr:8989', false],
+  ])('%s %s: %s', (type, url, allowed) => {
+    expect(isScanAddress(type, url)).toBe(allowed);
+  });
+});
+
 describe('scanForApps', () => {
   it('finds each app once, marks what Helprr has, and scans at most every 30 seconds', async () => {
     serve({
@@ -119,8 +185,8 @@ describe('scanForApps', () => {
     mocks.connections = [{ type: 'RADARR', url: 'http://172.17.0.1:7878/' }];
     const found = await scanForApps(1_000_000);
     expect(found).toEqual([
-      { type: 'SONARR', url: 'http://sonarr:8989', connected: false },
-      { type: 'RADARR', url: 'http://172.17.0.1:7878', connected: true },
+      { type: 'SONARR', url: 'http://sonarr:8989', connected: false, hasOther: false },
+      { type: 'RADARR', url: 'http://172.17.0.1:7878', connected: true, hasOther: false },
     ]);
     const before = requested.length;
     mocks.connections = [];

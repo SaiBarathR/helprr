@@ -39,11 +39,16 @@ export function FindAppsOnNetwork() {
         </span>
         <span className="text-xs text-muted-foreground">{search.isPending ? 'Looking…' : ''}</span>
       </button>
-      <div role="status" className="contents">
-        {search.isError && <div className="px-4 py-3 text-sm text-red-400">Could not look for apps. Try again.</div>}
-        {found && found.length === 0 && (
-          <div className="px-4 py-3 text-sm text-muted-foreground">Nothing answered on the usual ports.</div>
-        )}
+      <div role="status" className={search.isError || found ? 'px-4 py-3 text-sm' : 'sr-only'}>
+        {search.isError ? (
+          <span className="text-red-400">Could not look for apps. Try again.</span>
+        ) : found ? (
+          <span className="text-muted-foreground">
+            {found.length === 0
+              ? 'Nothing answered on the usual ports.'
+              : `${found.length} ${found.length === 1 ? 'app answers' : 'apps answer'} here. Make sure each is yours before you add its key.`}
+          </span>
+        ) : null}
       </div>
       {found?.map((app) => {
         const config = findServiceByType(app.type);
@@ -59,8 +64,11 @@ export function FindAppsOnNetwork() {
                 </span>
               )}
               <span className="min-w-0">
-                <span className="block text-[15px] font-medium">Found {label}</span>
+                <span className="block text-[15px] font-medium">{label} answers here</span>
                 <span className="block font-mono text-xs text-muted-foreground break-all">{app.url}</span>
+                {app.hasOther && (
+                  <span className="block text-xs text-muted-foreground">You already have a {label}; this may be the same one.</span>
+                )}
               </span>
             </span>
             {app.connected ? (

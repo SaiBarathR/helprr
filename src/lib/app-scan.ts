@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises';
-import type { ServiceType } from '@prisma/client';
+import { lookup } from 'node:dns/promises';
 import { prisma } from '@/lib/db';
 
 /**
@@ -13,49 +13,48 @@ import { prisma } from '@/lib/db';
  * apart without credentials. /initialize.json is never read: Servarr apps return their API
  * key there to local requests, and no key may come from a scan.
  */
-export type ScanType = Extract<ServiceType, 'SONARR' | 'RADARR' | 'LIDARR' | 'PROWLARR' | 'QBITTORRENT' | 'JELLYFIN' | 'SEERR'>;
+import { isPrivateIpv4, scanTargets, type ScanTarget, type ScanType } from '@/lib/app-scan-targets';
 
-interface ScanApp {
-  type: ScanType;
-  port: number;
-  names: string[];
-}
-
-const APPS: ScanApp[] = [
-  { type: 'SONARR', port: 8989, names: ['sonarr'] },
-  { type: 'RADARR', port: 7878, names: ['radarr'] },
-  { type: 'LIDARR', port: 8686, names: ['lidarr'] },
-  { type: 'PROWLARR', port: 9696, names: ['prowlarr'] },
-  { type: 'QBITTORRENT', port: 8080, names: ['qbittorrent'] },
-  { type: 'JELLYFIN', port: 8096, names: ['jellyfin'] },
-  { type: 'SEERR', port: 5055, names: ['seerr', 'jellyseerr', 'overseerr'] },
-];
-
-export interface ScanTarget {
-  type: ScanType;
-  url: string;
-}
+export { scanTargets, type ScanTarget, type ScanType };
 
 export interface FoundApp extends ScanTarget {
   /** Helprr already has a connection at exactly this address. */
   connected: boolean;
+  /** Helprr has this kind of app at another address: this may be the same one. */
+  hasOther: boolean;
 }
 
 const REQUEST_TIMEOUT_MS = 1500;
+const LOOKUP_TIMEOUT_MS = 1000;
 const MAX_BODY_BYTES = 64 * 1024;
 const CONCURRENCY = 4;
 const MIN_INTERVAL_MS = 30_000;
 
-function isPrivateIpv4(host: string): boolean {
-  if (!/^\d{1,3}(\.\d{1,3}){3}$/.test(host)) return false;
-  const [a, b] = host.split('.').map(Number);
-  return a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168);
+/** An address only a home network or this machine uses. */
+export function isLocalAddress(address: string): boolean {
+  if (isPrivateIpv4(address)) return true;
+  if (/^127\./.test(address) || /^169\.254\./.test(address) || /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(address)) return true;
+  const v6 = address.toLowerCase();
+  return v6 === '::1' || /^f[cd][0-9a-f]{2}:/.test(v6) || /^fe[89ab][0-9a-f]:/.test(v6);
 }
 
-/** Every address a scan may contact: the fixed list, plus a private gateway address. */
-export function scanTargets(gateway: string | null): ScanTarget[] {
-  const extraHosts = ['host.docker.internal', ...(gateway && isPrivateIpv4(gateway) ? [gateway] : [])];
-  return APPS.flatMap((app) => [...app.names, ...extraHosts].map((host) => ({ type: app.type, url: `http://${host}:${app.port}` })));
+/**
+ * A name is looked up first, and skipped unless every address is local: a missing
+ * container name can otherwise be passed on to the host's resolvers and land on the
+ * internet. The lookup has its own short timeout.
+ */
+async function resolvesLocally(url: string): Promise<boolean> {
+  const host = new URL(url).hostname;
+  if (isPrivateIpv4(host)) return true;
+  try {
+    const addresses = await Promise.race([
+      lookup(host, { all: true }),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error('lookup timed out')), LOOKUP_TIMEOUT_MS)),
+    ]);
+    return addresses.length > 0 && addresses.every(({ address }) => isLocalAddress(address));
+  } catch {
+    return false;
+  }
 }
 
 /** The container's default gateway (the Docker host, from inside a container), from /proc/net/route. */
@@ -163,39 +162,51 @@ async function runScan(): Promise<ScanTarget[]> {
     Array.from({ length: CONCURRENCY }, async () => {
       while (next < targets.length) {
         const target = targets[next++];
-        if (await fingerprint(target.type, target.url)) hits.push(target);
+        if ((await resolvesLocally(target.url)) && (await fingerprint(target.type, target.url))) hits.push(target);
       }
     }),
   );
-  // One address per app: the same app often answers at its container name and the host.
+  // Every hit, in the fixed order; scanForApps keeps one per app.
   const order = (target: ScanTarget) => targets.findIndex((candidate) => candidate.url === target.url);
-  const found: ScanTarget[] = [];
-  for (const hit of hits.sort((a, b) => order(a) - order(b))) {
-    if (!found.some((kept) => kept.type === hit.type)) found.push(hit);
-  }
-  return found;
+  return hits.sort((a, b) => order(a) - order(b));
 }
 
 // One scan at a time, and a fresh one at most every 30 seconds (shared by Next.js's module copies).
-const state = globalThis as unknown as { __helprrAppScan?: { at: number; result: Promise<ScanTarget[]> } };
+const state = globalThis as unknown as { __helprrAppScan?: { at: number; running: boolean; result: Promise<ScanTarget[]> } };
 
 function scanOnce(now: number): Promise<ScanTarget[]> {
   const last = state.__helprrAppScan;
-  if (last && now - last.at < MIN_INTERVAL_MS) return last.result;
-  const result = runScan();
-  state.__helprrAppScan = { at: now, result };
-  result.catch(() => {
-    if (state.__helprrAppScan?.result === result) delete state.__helprrAppScan;
-  });
-  return result;
+  // A scan still running is always shared; a finished one for 30 seconds from its start.
+  if (last && (last.running || now - last.at < MIN_INTERVAL_MS)) return last.result;
+  const entry = { at: now, running: true, result: runScan() };
+  state.__helprrAppScan = entry;
+  entry.result.then(
+    () => {
+      entry.running = false;
+    },
+    () => {
+      if (state.__helprrAppScan === entry) delete state.__helprrAppScan;
+    },
+  );
+  return entry.result;
 }
 
-/** What answers on the fixed list; "connected" is worked out fresh each time. */
+/**
+ * What answers on the fixed list, one address per app: the one Helprr already has when it
+ * is among them, else the first in the fixed order. Worked out fresh against the
+ * connections each time.
+ */
 export async function scanForApps(now = Date.now()): Promise<FoundApp[]> {
-  const found = await scanOnce(now);
+  const hits = await scanOnce(now);
   const connections = await prisma.serviceConnection.findMany({ select: { type: true, url: true } });
-  return found.map((app) => ({
-    ...app,
-    connected: connections.some((connection) => connection.type === app.type && endpoint(connection.url) === endpoint(app.url)),
-  }));
+  const isConnected = (hit: ScanTarget) =>
+    connections.some((connection) => connection.type === hit.type && endpoint(connection.url) === endpoint(hit.url));
+  const found: FoundApp[] = [];
+  for (const hit of hits) {
+    if (found.some((kept) => kept.type === hit.type)) continue;
+    const pick = hits.find((other) => other.type === hit.type && isConnected(other)) ?? hit;
+    const connected = isConnected(pick);
+    found.push({ ...pick, connected, hasOther: !connected && connections.some((connection) => connection.type === hit.type) });
+  }
+  return found;
 }
