@@ -25,6 +25,8 @@ case "$APP_GID" in ''|*[!0-9]*) fail "the app's group id is not a number: $APP_G
 case "${TWITCH_PUID:-1000}$WORKER_GID" in
   *[!0-9]*) fail 'TWITCH_PUID and TWITCH_PGID must be numbers (user and group ids), not names.' ;;
 esac
+# The worker must never read the app's copies, such as the push private key.
+[ "$WORKER_GID" != "$APP_GID" ] || fail "TWITCH_PGID ($WORKER_GID) must differ from the app's group; pick another group for the worker."
 
 umask 077
 [ -d "$S" ] || fail "$S is not mounted"
@@ -48,10 +50,20 @@ reader_dir() {
   chmod 750 "$dir"
 }
 
+[ "$as_root" = no ] || chown 0:0 "$S"
 chmod 711 "$S"
+# Staging left by a run that was killed (older than ten minutes; a live run is shorter).
+find "$S" -maxdepth 1 -name '.staging.*' -type d -mmin +10 -exec rm -rf {} + 2>/dev/null || true
 # This run's own root-only staging folder, so two runs at once never share one.
 STAGE=$(mktemp -d "$S/.staging.XXXXXX")
 trap 'rm -rf "$STAGE"' 0
+trap 'exit 1' INT TERM HUP
+# Masters stay root-only 0600, even after a restore that lost their modes.
+for master in jwt_secret jwt_secret.created_at vapid_keys; do
+  [ -f "$S/$master" ] && [ ! -L "$S/$master" ] || continue
+  [ "$as_root" = no ] || chown 0:0 "$S/$master"
+  chmod 600 "$S/$master"
+done
 reader_dir app "$APP_GID"
 reader_dir worker "$WORKER_GID"
 
@@ -70,7 +82,15 @@ publish() {
   chmod 600 "$tmp"
   if ln "$tmp" "$S/$1" 2>/dev/null; then created=yes; else created=no; fi
   rm -f "$tmp"
+  [ "$created" = yes ] || [ -e "$S/$1" ] || fail "could not create $1 (does the volume support hard links?)"
   [ "$created" = yes ]
+}
+
+# place TMP DEST: move a staged copy into place. A folder or link at DEST (only root
+# could have made one) is removed first, so the copy can never land inside it.
+place() {
+  if [ -d "$2" ] || [ -L "$2" ]; then rm -rf "$2"; fi
+  mv -f "$1" "$2"
 }
 
 # copy_to READER NAME GROUP: refresh one reader's copy from the master.
@@ -80,7 +100,7 @@ copy_to() {
   cat "$S/$2" > "$tmp"
   set_owner "$tmp" "$3"
   chmod 640 "$tmp"
-  mv -f "$tmp" "$S/$1/$2"
+  place "$tmp" "$S/$1/$2"
 }
 
 # JWT_SECRET signs sessions and encrypts stored tokens, for the app and the worker.
@@ -122,6 +142,6 @@ else
     if [ "$part" = public ]; then printf '%s' "${keys% *}" > "$tmp"; else printf '%s' "${keys#* }" > "$tmp"; fi
     set_owner "$tmp" "$APP_GID"
     chmod 640 "$tmp"
-    mv -f "$tmp" "$S/app/vapid_$part"
+    place "$tmp" "$S/app/vapid_$part"
   done
 fi

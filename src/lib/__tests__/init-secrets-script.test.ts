@@ -1,6 +1,6 @@
 import { spawnSync } from 'child_process';
 import { spawn } from 'child_process';
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'fs';
+import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import path from 'path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -158,5 +158,46 @@ describe('init-secrets.sh', () => {
     const result = init(volume(), { TWITCH_PUID: 'abc' });
     expect(result.status).toBe(1);
     expect(result.stderr).toContain('must be numbers');
+  });
+
+  it('replaces a folder or a link to a folder where a copy belongs, never writing into it', () => {
+    const dir = volume();
+    const elsewhere = volume();
+    init(dir);
+    rmSync(path.join(dir, 'app', 'jwt_secret'));
+    mkdirSync(path.join(dir, 'app', 'jwt_secret'));
+    rmSync(path.join(dir, 'app', 'vapid_public'));
+    symlinkSync(elsewhere, path.join(dir, 'app', 'vapid_public'));
+    expect(init(dir).status).toBe(0);
+    expect(read(path.join(dir, 'app'), 'jwt_secret')).toBe(read(dir, 'jwt_secret'));
+    expect(lstatSync(path.join(dir, 'app', 'vapid_public')).isFile()).toBe(true);
+    expect(readdirSync(elsewhere)).toEqual([]);
+  });
+
+  it('puts the masters back to 0600 after a restore that lost their modes', () => {
+    const dir = volume();
+    init(dir);
+    chmodSync(path.join(dir, 'vapid_keys'), 0o644);
+    chmodSync(path.join(dir, 'jwt_secret'), 0o644);
+    init(dir);
+    expect(mode(path.join(dir, 'vapid_keys'))).toBe(0o600);
+    expect(mode(path.join(dir, 'jwt_secret'))).toBe(0o600);
+  });
+
+  it("refuses a worker group that is the app's group", () => {
+    const result = init(volume(), { HELPRR_APP_GID: '1000', TWITCH_PGID: '1000' });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("must differ from the app's group");
+  });
+
+  it('clears staging left by a run that was killed', () => {
+    const dir = volume();
+    const stale = path.join(dir, '.staging.killed');
+    mkdirSync(stale);
+    writeFileSync(path.join(stale, 'app-jwt_secret.x'), 'leftover');
+    const old = new Date(Date.now() - 3600_000);
+    utimesSync(stale, old, old);
+    expect(init(dir).status).toBe(0);
+    expect(existsSync(stale)).toBe(false);
   });
 });
