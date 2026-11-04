@@ -237,6 +237,13 @@ elif compose_version=$(docker compose version --short 2>/dev/null); then
 else
   printf 'Note: "docker compose" did not run. Install the Docker Compose plugin (2.18 or newer).\n'
 fi
+# An earlier start without .env keeps its passwords in helprr-secrets; new ones here
+# would not match the database it made.
+if [ "$mode" = stable ] && command -v docker >/dev/null 2>&1 && docker volume inspect helprr-secrets >/dev/null 2>&1; then
+  printf 'Note: Helprr has run on this computer before (the helprr-secrets volume exists). If it ran\n'
+  printf '      without .env, its database expects the passwords in that volume: delete the\n'
+  printf '      POSTGRES_PASSWORD, REDIS_PASSWORD and JWT_SECRET lines from %s before starting.\n' "$target_name"
+fi
 if command -v ss >/dev/null 2>&1 && [ -n "$(ss -Hltn "sport = :$app_port" 2>/dev/null)" ]; then
   printf 'Note: port %s is already in use. Set %s in %s before starting.\n' "$app_port" "$port_variable" "$target_name"
 fi

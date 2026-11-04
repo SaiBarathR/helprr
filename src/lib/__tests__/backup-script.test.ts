@@ -369,6 +369,16 @@ for a in "$@"; do case "$a" in *-${'20260701'}-000000.dump) /bin/rm -f "$a" "\${
     expect(existsSync(dockerLog)).toBe(false);
   });
 
+  it('backs up a stable install that has no .env (helprr-init made its passwords)', () => {
+    const { root, fakeBin } = createFixture();
+    rmSync(path.join(root, '.env'));
+
+    const result = runBackup(root, fakeBin);
+
+    expect(result.status).toBe(0);
+    expect(backupFiles(path.join(root, 'backups', 'stable'))).toHaveLength(1);
+  });
+
   describe('generated secrets', () => {
     function secretsDir(): string {
       const dir = mkdtempSync(path.join(tmpdir(), 'helprr-backup-secrets-'));

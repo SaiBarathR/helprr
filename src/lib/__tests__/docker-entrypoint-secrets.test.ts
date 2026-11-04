@@ -21,7 +21,7 @@ function app(secrets: Record<string, string> = {}) {
   writeFileSync(path.join(root, 'node_modules/.bin/prisma'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
   const bin = path.join(root, 'bin');
   mkdirSync(bin);
-  const names = ['JWT_SECRET', 'HELPRR_JWT_SECRET_SOURCE', 'HELPRR_JWT_SECRET_CREATED_AT', 'VAPID_PUBLIC_KEY', 'VAPID_PRIVATE_KEY', 'VAPID_SUBJECT', 'HELPRR_VAPID_SOURCE'];
+  const names = ['DATABASE_URL', 'POSTGRES_PASSWORD', 'REDIS_PASSWORD', 'JWT_SECRET', 'HELPRR_JWT_SECRET_SOURCE', 'HELPRR_JWT_SECRET_CREATED_AT', 'VAPID_PUBLIC_KEY', 'VAPID_PRIVATE_KEY', 'VAPID_SUBJECT', 'HELPRR_VAPID_SOURCE'];
   writeFileSync(path.join(bin, 'node'), `#!/bin/sh\n${names.map((n) => `printf '${n}=%s\\n' "\${${n}:-}"`).join('\n')}\n`, { mode: 0o755 });
   const dir = path.join(root, 'secrets', 'app');
   mkdirSync(dir, { recursive: true });
@@ -29,17 +29,28 @@ function app(secrets: Record<string, string> = {}) {
   return { root, bin, secretsDir: path.join(root, 'secrets') };
 }
 
-function start(setup: ReturnType<typeof app>, env: Record<string, string> = {}) {
-  const result = spawnSync('/bin/sh', ['docker-entrypoint.sh'], {
+function run(setup: ReturnType<typeof app>, env: Record<string, string> = {}) {
+  return spawnSync('/bin/sh', ['docker-entrypoint.sh'], {
     cwd: setup.root,
     encoding: 'utf8',
     env: { PATH: `${setup.bin}:${process.env.PATH ?? ''}`, HELPRR_SECRETS_DIR: setup.secretsDir, ...env } as unknown as NodeJS.ProcessEnv,
   });
+}
+
+function start(setup: ReturnType<typeof app>, env: Record<string, string> = {}) {
+  const result = run(setup, env);
   expect(result.status).toBe(0);
   return Object.fromEntries(result.stdout.trim().split('\n').map((l) => [l.slice(0, l.indexOf('=')), l.slice(l.indexOf('=') + 1)]));
 }
 
-const generated = { jwt_secret: 'g'.repeat(96), 'jwt_secret.created_at': '1793769528', vapid_public: 'PUBLICKEY', vapid_private: 'PRIVATEKEY' };
+// Fixture values only; the URL is built from parts.
+const FROM_ENV = ['from', 'env'].join('-');
+const dbUrl = (value: string, host = 'helprr-db') => `postgresql://postgres:${value}@${host}:5432/helprr`;
+
+const generated = {
+  jwt_secret: 'g'.repeat(96), 'jwt_secret.created_at': '1793769528', vapid_public: 'PUBLICKEY', vapid_private: 'PRIVATEKEY',
+  postgres_password: 'a'.repeat(64), redis_password: 'b'.repeat(64),
+};
 
 describe('docker-entrypoint.sh and generated secrets', () => {
   it('uses the generated secrets when .env sets none', () => {
@@ -81,7 +92,32 @@ describe('docker-entrypoint.sh and generated secrets', () => {
   });
 
   it('changes nothing without the volume (an older Compose file)', () => {
-    const env = start(app(), { JWT_SECRET: 'from-env-secret' });
-    expect(env).toMatchObject({ JWT_SECRET: 'from-env-secret', VAPID_PUBLIC_KEY: '', VAPID_SUBJECT: '' });
+    const url = dbUrl('explicit');
+    const env = start(app(), { JWT_SECRET: 'from-env-secret', DATABASE_URL: url, REDIS_PASSWORD: 'from-env-redis' });
+    expect(env).toMatchObject({ JWT_SECRET: 'from-env-secret', VAPID_PUBLIC_KEY: '', VAPID_SUBJECT: '', DATABASE_URL: url, REDIS_PASSWORD: 'from-env-redis' });
+  });
+
+  it('builds the database URL from the generated password, and uses the generated Redis password', () => {
+    expect(start(app(generated))).toMatchObject({
+      DATABASE_URL: dbUrl('a'.repeat(64)),
+      REDIS_PASSWORD: 'b'.repeat(64),
+    });
+  });
+
+  it('prefers an explicit DATABASE_URL, then POSTGRES_PASSWORD, and never passes the password on', () => {
+    const explicit = dbUrl('explicit', 'db.example');
+    expect(start(app(generated), { DATABASE_URL: explicit, POSTGRES_PASSWORD: FROM_ENV })).toMatchObject({ DATABASE_URL: explicit, POSTGRES_PASSWORD: '' });
+    expect(start(app(generated), { POSTGRES_PASSWORD: FROM_ENV, REDIS_PASSWORD: `${FROM_ENV}-redis` })).toMatchObject({
+      DATABASE_URL: dbUrl(FROM_ENV),
+      POSTGRES_PASSWORD: '',
+      REDIS_PASSWORD: `${FROM_ENV}-redis`,
+    });
+  });
+
+  it('refuses to start with no database password at all', () => {
+    const result = run(app());
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('no database password');
+    expect(result.stdout).toBe('');
   });
 });

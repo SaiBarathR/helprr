@@ -21,10 +21,20 @@ function volume(): string {
   return dir;
 }
 
+// Postgres's and Redis's own volumes, beside the secrets volume.
+function serviceVolumes(dir: string) {
+  const db = `${dir}-db`;
+  const redis = `${dir}-redis`;
+  if (existsSync(dir)) {
+    for (const folder of [db, redis]) if (!existsSync(folder)) { mkdirSync(folder); temporary.push(folder); }
+  }
+  return { HELPRR_DB_AUTH_DIR: db, HELPRR_REDIS_AUTH_DIR: redis };
+}
+
 function init(dir: string, env: Record<string, string> = {}) {
   return spawnSync('/bin/sh', [path.join(repoRoot, 'docker/init-secrets.sh')], {
     encoding: 'utf8',
-    env: { PATH: process.env.PATH ?? '', HELPRR_SECRETS_DIR: dir, HELPRR_APP_DIR: repoRoot, ...env } as unknown as NodeJS.ProcessEnv,
+    env: { PATH: process.env.PATH ?? '', HELPRR_SECRETS_DIR: dir, HELPRR_APP_DIR: repoRoot, ...serviceVolumes(dir), ...env } as unknown as NodeJS.ProcessEnv,
   });
 }
 
@@ -78,6 +88,62 @@ describe('init-secrets.sh', () => {
     }
   });
 
+  it('makes the database and Redis passwords once, each service seeing only its own', () => {
+    const dir = volume();
+    const result = init(dir);
+    expect(result.status).toBe(0);
+    const { HELPRR_DB_AUTH_DIR: db, HELPRR_REDIS_AUTH_DIR: redis } = serviceVolumes(dir);
+    const postgres = read(dir, 'postgres_password');
+    const redisPassword = read(dir, 'redis_password');
+    expect(postgres).toMatch(/^[0-9a-f]{64}$/);
+    expect(redisPassword).toMatch(/^[0-9a-f]{64}$/);
+    expect(read(db, 'postgres_password')).toBe(postgres);
+    expect(read(redis, 'redis_password')).toBe(redisPassword);
+    expect(readdirSync(db)).toEqual(['postgres_password']);
+    expect(readdirSync(redis)).toEqual(['redis_password']);
+    for (const folder of [db, redis]) expect(mode(folder)).toBe(0o700);
+    for (const file of [path.join(db, 'postgres_password'), path.join(redis, 'redis_password'), path.join(dir, 'postgres_password'), path.join(dir, 'redis_password')]) {
+      expect(mode(file), file).toBe(0o600);
+    }
+    expect(read(path.join(dir, 'app'), 'postgres_password')).toBe(postgres);
+    expect(read(path.join(dir, 'app'), 'redis_password')).toBe(redisPassword);
+    expect(read(path.join(dir, 'worker'), 'postgres_password')).toBe(postgres);
+    expect(existsSync(path.join(dir, 'worker', 'redis_password'))).toBe(false);
+    for (const file of ['app/postgres_password', 'app/redis_password', 'worker/postgres_password']) expect(mode(path.join(dir, file)), file).toBe(0o640);
+    expect(result.stdout + result.stderr).not.toContain(postgres);
+    expect(result.stdout + result.stderr).not.toContain(redisPassword);
+
+    writeFileSync(path.join(db, 'postgres_password'), 'stale');
+    const second = init(dir);
+    expect(second.status).toBe(0);
+    expect(second.stdout).not.toContain('created');
+    expect(read(dir, 'postgres_password')).toBe(postgres);
+    expect(read(db, 'postgres_password')).toBe(postgres);
+  });
+
+  it('uses the passwords in .env as they are, and removes stale copies', () => {
+    const dir = volume();
+    init(dir);
+    const { HELPRR_DB_AUTH_DIR: db, HELPRR_REDIS_AUTH_DIR: redis } = serviceVolumes(dir);
+    expect(init(dir, { POSTGRES_PASSWORD: 'p'.repeat(32), REDIS_PASSWORD: 'r'.repeat(32) }).status).toBe(0);
+    for (const file of [path.join(dir, 'app/postgres_password'), path.join(dir, 'worker/postgres_password'), path.join(dir, 'app/redis_password'), path.join(db, 'postgres_password'), path.join(redis, 'redis_password')]) {
+      expect(existsSync(file), file).toBe(false);
+    }
+  });
+
+  // The Compose file before this one passes no passwords and mounts no service volumes;
+  // its .env provides them, so nothing may be made (and a failure would stop updates).
+  it("makes no database or Redis password without their volumes (an older Compose file)", () => {
+    const dir = volume();
+    const result = init(dir, { HELPRR_DB_AUTH_DIR: '/nonexistent/db', HELPRR_REDIS_AUTH_DIR: '/nonexistent/redis' });
+    expect(result.status).toBe(0);
+    expect(result.stdout).not.toContain('database password');
+    for (const file of ['postgres_password', 'redis_password', 'app/postgres_password', 'app/redis_password', 'worker/postgres_password']) {
+      expect(existsSync(path.join(dir, file)), file).toBe(false);
+    }
+    expect(read(dir, 'jwt_secret')).toMatch(/^[0-9a-f]{96}$/);
+  });
+
   it('never pairs a key from .env with a generated one', () => {
     const dir = volume();
     expect(init(dir, { VAPID_PUBLIC_KEY: 'only-the-public-key' }).status).toBe(0);
@@ -126,7 +192,7 @@ describe('init-secrets.sh', () => {
     const dir = volume();
     const runs = await Promise.all(Array.from({ length: 5 }, () => new Promise<number>((resolve) => {
       const child = spawn('/bin/sh', [path.join(repoRoot, 'docker/init-secrets.sh')], {
-        env: { PATH: process.env.PATH ?? '', HELPRR_SECRETS_DIR: dir, HELPRR_APP_DIR: repoRoot } as unknown as NodeJS.ProcessEnv,
+        env: { PATH: process.env.PATH ?? '', HELPRR_SECRETS_DIR: dir, HELPRR_APP_DIR: repoRoot, ...serviceVolumes(dir) } as unknown as NodeJS.ProcessEnv,
         stdio: 'ignore',
       });
       child.on('exit', (code) => resolve(code ?? 1));
@@ -179,9 +245,11 @@ describe('init-secrets.sh', () => {
     init(dir);
     chmodSync(path.join(dir, 'vapid_keys'), 0o644);
     chmodSync(path.join(dir, 'jwt_secret'), 0o644);
+    chmodSync(path.join(dir, 'postgres_password'), 0o644);
     init(dir);
     expect(mode(path.join(dir, 'vapid_keys'))).toBe(0o600);
     expect(mode(path.join(dir, 'jwt_secret'))).toBe(0o600);
+    expect(mode(path.join(dir, 'postgres_password'))).toBe(0o600);
   });
 
   it("refuses a worker group that is the app's group", () => {

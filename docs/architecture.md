@@ -240,8 +240,8 @@ compromise also requires explicit session revocation.
 Generated secrets: with the bundled Compose file, a short-lived `helprr-init`
 service (`docker/init-secrets.sh`, the app image run as root with no network) makes
 what `.env` does not set, once, on the fixed-name `helprr-secrets` volume: a root-only
-master per value (`jwt_secret`, `vapid_public`, `vapid_private`, and the time the
-JWT secret was made), published with `ln` so two runs at once never both write one
+master per value (`jwt_secret` and the time it was made, `vapid_keys` holding both
+push keys, `postgres_password`, `redis_password`), published with `ln` so two runs at once never both write one
 and never regenerated while it exists, plus per-reader copies in `app/` (the image's
 `nextjs` group) and `worker/` (`TWITCH_PGID`). Readers own nothing in the volume:
 folders are `root:<group>` 0750 and copies `root:<group>` 0640, staged in a per-run
@@ -257,6 +257,23 @@ replacing the app, and `backup.sh` saves the volume beside each dump as
 `<dump>.secrets.tar`. When the generated JWT secret is younger than some user (the
 volume was lost), the app warns at startup and on **Settings -> Status** for 14 days:
 stored tokens are unreadable and every session ended.
+
+Start with no `.env`: `POSTGRES_PASSWORD` and `REDIS_PASSWORD` are generated the same
+way when unset, so `docker compose up -d` with only the Compose file runs Helprr.
+Postgres and Redis run as root at start (Redis stays root) and Redis's group is 1000,
+the worker's default group, so they never mount `helprr-secrets`: each gets a
+root-only copy (0600) of its own password on its own small volume
+(`helprr-db-auth`, `helprr-redis-auth`), which init rewrites from the master on every
+run. Their Compose entrypoints read the copy only when the environment has no
+password and refuse to start when there is neither; the official image's
+`POSTGRES_PASSWORD_FILE` is not used because it exits when `POSTGRES_PASSWORD` is also
+set. Postgres reads the password only when it creates the database, so removing a
+password from `.env` later does not change the database's password: keep `.env`
+once it exists. The app gets `DATABASE_URL=${DATABASE_URL:-}` and builds the default
+URL in `docker-entrypoint.sh`: an explicit URL, else `POSTGRES_PASSWORD`, else the
+`app/` copy (generated passwords are hex, so nothing needs encoding); `REDIS_PASSWORD`
+likewise. The worker builds its URL in the same order at the top of `main.ts`. The
+development Compose file keeps requiring its explicit values.
 
 Public proxy exceptions must remain narrow. Liveness, readiness and the
 first-admin screen and routes are exact paths, not prefixes. Share-target handling is public at the proxy only so

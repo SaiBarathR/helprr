@@ -3,12 +3,28 @@ services:
     image: postgres:16-alpine
     container_name: helprr-db
     restart: unless-stopped
+    # Empty POSTGRES_PASSWORD: the one helprr-init made. Postgres reads it only when it
+    # creates the database, so keep .env once it exists.
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        [ -n "$$POSTGRES_PASSWORD" ] || POSTGRES_PASSWORD=$$(cat /helprr-auth/postgres_password 2>/dev/null) || true
+        [ -n "$$POSTGRES_PASSWORD" ] || { echo 'helprr-db: no POSTGRES_PASSWORD and none generated (helprr-init)' >&2; exit 1; }
+        export POSTGRES_PASSWORD
+        exec docker-entrypoint.sh "$$@"
+      - helprr-db
+    command: ["postgres"]
+    depends_on:
+      helprr-init:
+        condition: service_completed_successfully
     environment:
       - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-}
       - POSTGRES_DB=helprr
     volumes:
       - helprr-db-data:/var/lib/postgresql/data
+      - helprr-db-auth:/helprr-auth:ro
     networks:
       - helprr-net
     healthcheck:
@@ -21,15 +37,29 @@ services:
     image: redis:8-alpine
     container_name: helprr-redis
     restart: unless-stopped
+    depends_on:
+      helprr-init:
+        condition: service_completed_successfully
     environment:
-      - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD is required}
-    command: [ "sh", "-c", "exec redis-server --requirepass \"$$REDIS_PASSWORD\" --appendonly yes" ]
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+    # Empty REDIS_PASSWORD: the one helprr-init made.
+    command:
+      - sh
+      - -c
+      - |
+        [ -n "$$REDIS_PASSWORD" ] || REDIS_PASSWORD=$$(cat /helprr-auth/redis_password 2>/dev/null) || true
+        [ -n "$$REDIS_PASSWORD" ] || { echo 'helprr-redis: no REDIS_PASSWORD and none generated (helprr-init)' >&2; exit 1; }
+        # From stdin, so the password is not in the process list; quoted for Redis.
+        exec redis-server - --appendonly yes <<EOF
+        requirepass "$$(printf '%s' "$$REDIS_PASSWORD" | sed 's/[\\"]/\\&/g')"
+        EOF
     volumes:
       - helprr-redis-data:/data
+      - helprr-redis-auth:/helprr-auth:ro
     networks:
       - helprr-net
     healthcheck:
-      test: [ "CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" --no-auth-warning ping | grep -q PONG" ]
+      test: [ "CMD-SHELL", "[ -n \"$$REDIS_PASSWORD\" ] || REDIS_PASSWORD=$$(cat /helprr-auth/redis_password); REDISCLI_AUTH=$$REDIS_PASSWORD redis-cli ping | grep -q PONG" ]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -44,14 +74,19 @@ services:
     entrypoint: ["/bin/sh", "/app/init-secrets.sh"]
     restart: "no"
     network_mode: none
+    # Init only needs to know which values .env sets ("set"), never the values.
     environment:
-      - JWT_SECRET=${JWT_SECRET:-}
+      - JWT_SECRET=${JWT_SECRET:+set}
       - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY:-${NEXT_PUBLIC_VAPID_PUBLIC_KEY:-}}
-      - VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY:-}
+      - VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY:+set}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:+set}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:+set}
       - TWITCH_PUID=${TWITCH_PUID:-1000}
       - TWITCH_PGID=${TWITCH_PGID:-1000}
     volumes:
       - helprr-secrets:/secrets
+      - helprr-db-auth:/auth/db
+      - helprr-redis-auth:/auth/redis
 
   helprr:
     # Published image. The default `stable` channel tracks qualified releases;
@@ -76,12 +111,14 @@ services:
     environment:
       - TZ=${TZ:-UTC}
       - LOG_DIR=${LOG_DIR:-/app/logs}
-      # Default URL embeds POSTGRES_PASSWORD; if the password contains URL
-      # special characters (@ : / ? # etc.), set DATABASE_URL explicitly with
-      # the password percent-encoded.
-      - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:${POSTGRES_PASSWORD}@helprr-db:5432/helprr}
+      # Empty DATABASE_URL: built from POSTGRES_PASSWORD, or from the generated one.
+      # If the password contains URL special characters (@ : / ? # etc.), set
+      # DATABASE_URL explicitly with the password percent-encoded.
+      - DATABASE_URL=${DATABASE_URL:-}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-}
       - REDIS_URL=${REDIS_URL:-redis://helprr-redis:6379}
-      - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+      # Empty: the one helprr-init made.
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
       - APP_PASSWORD=${APP_PASSWORD:-}
       - HELPRR_ADMIN_USERNAME=${HELPRR_ADMIN_USERNAME:-}
       - HELPRR_ADMIN_PASSWORD_RESET=${HELPRR_ADMIN_PASSWORD_RESET:-}
@@ -137,6 +174,47 @@ services:
       # Entrypoint runs `prisma migrate deploy` before the server starts.
       start_period: 60s
 
+  # With the worker only: a library folder that Docker has just created (empty, owned by
+  # root, made in the last five minutes) goes to the worker's user, so an install without
+  # setup-env.sh can write to it. Any other folder is left alone: a root-owned one gets a
+  # hint. Docker follows links in the host path, so never nest one library inside the other.
+  helprr-worker-init:
+    image: ghcr.io/saibarathr/helprr:${HELPRR_VERSION:-stable}
+    container_name: helprr-worker-init
+    profiles: ["twitch", "youtube"]
+    user: "0:0"
+    restart: "no"
+    network_mode: none
+    depends_on:
+      helprr-init:
+        condition: service_completed_successfully
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        for id in "$$TWITCH_PUID" "$$TWITCH_PGID"; do
+          case "$$id" in ''|*[!0-9]*) bad=yes ;; *) [ "$$id" -ne 0 ] || bad=yes ;; esac
+        done
+        [ -z "$${bad:-}" ] || { echo 'worker-init: TWITCH_PUID and TWITCH_PGID must be numbers, and not root (0)' >&2; exit 1; }
+        for d in /media/twitch /media/youtube; do
+          [ -d "$$d" ] && [ "$$(stat -c %u "$$d")" = 0 ] || continue
+          if [ -n "$$(ls -A "$$d")" ] || [ $$(( $$(date +%s) - $$(stat -c %Z "$$d") )) -gt 300 ]; then
+            echo "worker-init: $$d belongs to root; give it to $$TWITCH_PUID:$$TWITCH_PGID on the host so the worker can write to it" >&2
+            continue
+          fi
+          if chown "$$TWITCH_PUID:$$TWITCH_PGID" "$$d" && chmod 775 "$$d"; then
+            echo "worker-init: $$d now belongs to $$TWITCH_PUID:$$TWITCH_PGID"
+          else
+            echo "worker-init: could not give $$d to $$TWITCH_PUID:$$TWITCH_PGID (a network share?); the worker reports whether it can write there" >&2
+          fi
+        done
+    environment:
+      - TWITCH_PUID=${TWITCH_PUID:-1000}
+      - TWITCH_PGID=${TWITCH_PGID:-1000}
+    volumes:
+      - ${TWITCH_LIBRARY_HOST_PATH:-./twitch-library}:/media/twitch
+      - ${YOUTUBE_LIBRARY_HOST_PATH:-/dev/null}:/media/youtube
+
   # Optional, and off unless COMPOSE_PROFILES has twitch or youtube: the only process
   # that runs yt-dlp, TwitchDownloaderCLI and ffmpeg, or writes the libraries.
   helprr-twitch-worker:
@@ -157,11 +235,15 @@ services:
     depends_on:
       helprr-init:
         condition: service_completed_successfully
+      helprr-worker-init:
+        condition: service_completed_successfully
       helprr-db:
         condition: service_healthy
     environment:
       - TZ=${TZ:-UTC}
-      - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD}@helprr-db:5432/helprr
+      # Same order as the app: DATABASE_URL, POSTGRES_PASSWORD, the generated one.
+      - DATABASE_URL=${DATABASE_URL:-}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-}
       - JWT_SECRET=${JWT_SECRET:-}
       - APP_PASSWORD=${APP_PASSWORD:-}
       - TWITCH_LIBRARY_DIR=/media/twitch
@@ -191,5 +273,8 @@ volumes:
   # Generated secrets: losing it ends every session and makes stored tokens unreadable.
   helprr-secrets:
     name: helprr-secrets
+  # Root-only copies of the database and Redis passwords, rewritten by helprr-init.
+  helprr-db-auth:
+  helprr-redis-auth:
   helprr-logs:
   helprr-redis-data:
