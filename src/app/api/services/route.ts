@@ -18,6 +18,7 @@ import { withApiLogging } from '@/lib/api-logger';
 import { isRefusedRedirect, REDIRECT_REFUSED_MESSAGE } from '@/lib/redirect-guard';
 import { clearConnectionMemo, ensureDefaultForType, isArrType } from '@/lib/arr-instances';
 import { findServiceByType } from '@/lib/settings/service-config';
+import { withDefaultScheme } from '@/lib/service-url';
 
 function getErrorInfo(error: unknown): { message?: string; code?: string | number; responseStatus?: number } {
   return {
@@ -132,7 +133,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
 
     const type = typeValue;
     attemptedType = type;
-    const url = urlValue.trim().replace(/\/+$/, '');
+    const url = withDefaultScheme(urlValue).replace(/\/+$/, '');
     const apiKey = apiKeyValue.trim();
     const normalizedUsername = typeof usernameValue === 'string'
       ? usernameValue.trim()

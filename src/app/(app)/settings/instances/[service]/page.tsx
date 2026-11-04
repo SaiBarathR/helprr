@@ -24,7 +24,7 @@ import { GroupedSection } from '@/components/settings/grouped-section';
 import { findServiceBySlug, type ServiceConfigType } from '@/lib/settings/service-config';
 import { invalidateExternalUrls } from '@/lib/hooks/use-external-urls';
 import { invalidateInstances } from '@/lib/query-invalidation';
-import { normalizeServiceUrl } from '@/lib/service-url';
+import { normalizeServiceUrl, withDefaultScheme } from '@/lib/service-url';
 import {
   deleteServiceConnection,
   setServiceConnectionDefault,
@@ -181,7 +181,7 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
   // refuses its mask with any other (see resolveApiKeyForService). So once the
   // URL is edited, a key or header value left as it was will not work, and the
   // form says so up front rather than leaving a failed Test to explain it.
-  const urlChanged = Boolean(existingConn) && normalizeServiceUrl(url) !== normalizeServiceUrl(existingConn?.url ?? '');
+  const urlChanged = Boolean(existingConn) && normalizeServiceUrl(withDefaultScheme(url)) !== normalizeServiceUrl(existingConn?.url ?? '');
   // Compared as the server will see them: trimmed, and for a header name given
   // twice only the last row, which is the one that is sent.
   const savedKeyKept = urlChanged && apiKey.trim() === existingConn?.apiKey;
@@ -454,10 +454,17 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
     return Object.keys(errors).length === 0 && Object.keys(hdrErrors).length === 0;
   }
 
+  // `192.168.1.10:8989` works as typed: add http:// and show it in the field.
+  function schemedUrl(): string {
+    const schemed = withDefaultScheme(url);
+    if (schemed !== url.trim()) setUrl(schemed);
+    return schemed;
+  }
+
   function handleTest() {
     if (!validateConnection(false)) return;
     testMutation.mutate({
-      url: url.trim(),
+      url: schemedUrl(),
       apiKey: apiKey.trim(),
       username: username?.trim() ?? '',
     });
@@ -465,7 +472,7 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
 
   function handleSave() {
     if (!validateConnection(true)) return;
-    const trimmedUrl = url.trim();
+    const trimmedUrl = schemedUrl();
     const trimmedKey = apiKey.trim();
     const trimmedUser = username?.trim() ?? '';
     // Flow-level (not a correctable field): Jellyfin must be probed first.

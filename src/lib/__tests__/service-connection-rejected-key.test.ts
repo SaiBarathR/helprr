@@ -71,10 +71,13 @@ describe('a key the service turns down', () => {
     expect(await res.json()).toEqual({ error: 'Invalid Jellyfin API key or Jellyfin rejected token auth' });
   });
 
-  it.each([403, 404])('still passes a %i from the service through', async (status) => {
+  it.each([
+    [403, 'Connection test failed'],
+    [404, 'Something answered, but not the API. Check the address, and the base path if the app has one.'],
+  ])('still passes a %i from the service through', async (status, error) => {
     mocks.upstream.mockRejectedValue(upstreamError(status));
     const res = await post(testConnection, '/api/services/test', { type: 'SONARR', url: 'http://sonarr.lan:8989', apiKey: 'typed' });
     expect(res.status).toBe(status);
-    expect(await res.json()).toEqual({ success: false, error: 'Connection test failed' });
+    expect(await res.json()).toEqual({ success: false, error });
   });
 });

@@ -22,6 +22,8 @@ import { withApiLogging } from '@/lib/api-logger';
 import { isRefusedRedirect, REDIRECT_REFUSED_MESSAGE } from '@/lib/redirect-guard';
 import { expectServiceVersion, NotServiceApiError } from '@/lib/service-response';
 import { findServiceByType } from '@/lib/settings/service-config';
+import { connectionFailureHint, currentHintContext } from '@/lib/connection-hints';
+import { withDefaultScheme } from '@/lib/service-url';
 
 /** What to say when an address answers, but with a web page instead of the API. */
 function notServiceApiMessage(type: ServiceType | null): string {
@@ -47,6 +49,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   if (!auth.ok) return auth.response;
 
   let attemptedType: ServiceType | null = null;
+  let attemptedUrl = '';
 
   try {
     let rawBody: unknown;
@@ -90,7 +93,8 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
 
     const type: ServiceType = typeValue;
     attemptedType = type;
-    const url = urlValue.trim();
+    const url = withDefaultScheme(urlValue);
+    attemptedUrl = url;
     const apiKey = apiKeyValue.trim();
     const username = typeof usernameValue === 'string'
       ? (usernameValue.trim() || undefined)
@@ -254,10 +258,12 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
       );
     }
 
+    const hint = async () => connectionFailureHint(error, attemptedUrl, await currentHintContext(attemptedUrl));
+
     if (typeof responseStatus === 'number' && responseStatus >= 400 && responseStatus < 500) {
       const rejectedKey = responseStatus === 401;
-      const hint = !rejectedKey
-        ? 'Connection test failed'
+      const message = !rejectedKey
+        ? (await hint()) ?? 'Connection test failed'
         : attemptedType === 'JELLYFIN'
           ? 'Invalid Jellyfin API key or Jellyfin rejected token auth'
           : 'The service rejected the API key';
@@ -265,13 +271,13 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
       // has ended, and the client signs the user out on it. The service turning
       // down a mistyped key is not that.
       return NextResponse.json(
-        { success: false, error: hint },
+        { success: false, error: message },
         { status: rejectedKey ? 400 : responseStatus }
       );
     }
 
     return NextResponse.json(
-      { success: false, error: isRefusedRedirect(error) ? REDIRECT_REFUSED_MESSAGE : 'Connection test failed' },
+      { success: false, error: isRefusedRedirect(error) ? REDIRECT_REFUSED_MESSAGE : (await hint()) ?? 'Connection test failed' },
       { status: 502 }
     );
   }
