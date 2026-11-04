@@ -11,6 +11,7 @@ import { PollingHealthSection } from '@/components/settings/polling-health-secti
 import { cn } from '@/lib/utils';
 import { useMe } from '@/components/permission-provider';
 import type { UpdateCheckResult } from '@/lib/update-check';
+import type { SecretsStatus } from '@/lib/generated-secrets';
 
 // Inlined at build time (see next.config.ts `env`) — identifies the running build.
 // Release images carry the tag ("v1.6.3"); show it as the update notice does ("1.6.3").
@@ -53,6 +54,12 @@ export default function ServiceStatusPage() {
   } = useQuery({
     queryKey: queryKeys.adminUpdate(),
     queryFn: jsonFetcher<UpdateCheckResult>('/api/admin/update-check'),
+    enabled: isAdmin,
+    staleTime: 5 * 60 * 1000,
+  });
+  const { data: secrets = null } = useQuery({
+    queryKey: ['admin', 'secrets'],
+    queryFn: jsonFetcher<SecretsStatus>('/api/admin/secrets'),
     enabled: isAdmin,
     staleTime: 5 * 60 * 1000,
   });
@@ -151,6 +158,34 @@ export default function ServiceStatusPage() {
       {isAdmin && (
         <div className="mt-6">
           <PollingHealthSection />
+        </div>
+      )}
+
+      {isAdmin && secrets && (
+        <div className="mt-6">
+          <GroupedSection title="Secrets" footer="Where they come from, never their values. Made by Helprr means the helprr-secrets volume: back it up with the database.">
+            {secrets.lostSecret && (
+              <div className="grouped-row items-start bg-amber-500/[0.06]" role="alert">
+                <div className="min-w-0 flex-1 text-xs text-amber-300 light:text-amber-700">
+                  The session secret is newer than some accounts, so the one before it was lost (the
+                  helprr-secrets volume was removed or replaced). Stored service sign-ins cannot be read and
+                  everyone had to sign in again. Restore the volume from a backup to undo this.
+                </div>
+              </div>
+            )}
+            <div className="grouped-row">
+              <div className="min-w-0 flex-1 text-sm">Session secret</div>
+              <div className="shrink-0 text-sm text-muted-foreground">
+                {secrets.sessionSecret === 'generated' ? 'Made by Helprr' : 'From .env'}
+              </div>
+            </div>
+            <div className="grouped-row">
+              <div className="min-w-0 flex-1 text-sm">Push notification keys</div>
+              <div className="shrink-0 text-sm text-muted-foreground">
+                {secrets.pushKeys === 'generated' ? 'Made by Helprr' : secrets.pushKeys === 'env' ? 'From .env' : 'Not set'}
+              </div>
+            </div>
+          </GroupedSection>
         </div>
       )}
 

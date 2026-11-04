@@ -1,3 +1,5 @@
+// First: the generated secrets, before any module reads the environment.
+import './load-secrets';
 import { randomUUID } from 'node:crypto';
 import { mkdir, readdir, rm, stat, statfs, writeFile } from 'node:fs/promises';
 import os from 'node:os';

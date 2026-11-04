@@ -303,15 +303,19 @@ New local Helprr passwords must contain at least 15 characters; existing shorter
 passwords remain valid until they are reset. Jellyfin sign-in continues to use the
 password policy configured by Jellyfin.
 
-For push notifications, also set the Web Push keys — they are runtime
-configuration, no rebuild needed (generate a pair with
-`npx web-push generate-vapid-keys`):
+Push notification keys are made by Helprr on the first start (the `helprr-init`
+service stores them in the `helprr-secrets` volume, with the session secret when `.env`
+has no `JWT_SECRET`). To use your own instead, set all three in `.env`; they are runtime
+configuration, no rebuild needed (generate a pair with `npx web-push generate-vapid-keys`):
 
 ```dotenv
 VAPID_SUBJECT=mailto:you@example.com
 VAPID_PUBLIC_KEY=generated-public-key
 VAPID_PRIVATE_KEY=generated-private-key
 ```
+
+Values in `.env` always win, and a key from `.env` is never paired with a generated one.
+Back the `helprr-secrets` volume up with the database: `scripts/backup.sh` does both.
 
 ### 3. Start
 
@@ -461,7 +465,7 @@ stored password unless `HELPRR_ADMIN_PASSWORD_RESET=true`.
 | `REDIS_URL`         | Required by the app                              | Redis connection URL. Use `redis://helprr-redis:6379` inside Compose and `redis://localhost:6380` for a host-run Node process on the isolated development stack.             |
 | `REDIS_PASSWORD`    | Required by the app and Compose                  | Redis AUTH password. Compose starts Redis with this password.                                                                                                                |
 | `APP_PASSWORD`      | Optional                                         | Seeds the bootstrap admin only. Without it, the first admin is created in the browser at `/setup`. It is never used as the normal live login password after that account has a stored hash. |
-| `JWT_SECRET`        | Required by the app                              | Session-signing secret; must be at least 32 characters. Generate with `openssl rand -base64 48`.                                                                             |
+| `JWT_SECRET`        | Required by the app; made by `helprr-init` when empty | Session-signing secret that also encrypts stored service tokens; must be at least 32 characters. With the bundled Compose file, leaving it empty makes `helprr-init` generate one once, in the `helprr-secrets` volume. Generate your own with `openssl rand -base64 48`. |
 
 
 
@@ -500,7 +504,7 @@ Generate a pair with:
 npx web-push generate-vapid-keys
 ```
 
-Without a complete VAPID set, Helprr still runs but push notifications are not delivered.
+With the bundled Compose file and no VAPID values in `.env`, `helprr-init` generates the keys once, and the subject defaults to `APP_ORIGIN` or the project's page. Set all three to use your own. Without any keys (an older Compose file), Helprr still runs but push notifications are not delivered.
 
 ### Cache and image tuning
 
@@ -561,7 +565,7 @@ same bounded image-cache summary is included in administrator support bundles.
 3. In **Settings → Users**, create member accounts and grant only the capabilities they need.
 4. If you use the Watch section, have each member connect their Jellyfin account — signing in with the **Sign in with Jellyfin** button does it automatically, and anyone using a Helprr password can do it from **Settings → Account**. Until they do, Helprr asks them to sign in when they press play. **Settings → Users** shows who is still not connected.
 5. Configure preferences, dashboard layout, notifications, and optional cleanup/bandwidth rules.
-6. For push: serve the app over HTTPS, configure VAPID values, open Helprr on the target device, install it as a PWA if desired, and allow notifications.
+6. For push: serve the app over HTTPS (Helprr makes the push keys itself), open Helprr on the target device, install it as a PWA if desired, and allow notifications. **Settings → Notifications** says what is missing.
 7. Export a backup from **Settings → Backup & Restore** after the initial configuration and keep it secure.
 
 
@@ -689,7 +693,10 @@ data before sharing it.
 
 ## Backup and restore
 
-Everything Helprr needs to recover lives in PostgreSQL. Redis holds only
+Everything Helprr needs to recover lives in PostgreSQL, plus the `helprr-secrets`
+volume when Helprr made its own session secret and push keys (no `JWT_SECRET` or VAPID
+values in `.env`): without it, stored service sign-ins cannot be read and everyone must
+sign in again. `backup.sh` saves both. Redis holds only
 cache, rate-limit, and other short-lived state and never needs to be backed up. The
 in-app settings export (**Settings → Backup & Restore**) is a *portable* subset —
 connections, preferences, rules, watchlists — useful for moving settings
@@ -719,7 +726,8 @@ in that directory and deletes older ones. Use `--keep N` to keep a different num
 or `--keep 0` to keep every dump. Only files it names
 `helprr-pre-upgrade-<timestamp>.dump` (`helprr-dev-pre-upgrade-` with `--dev`) are
 counted or removed; other files in the directory are left alone, and only dumps older
-than the one just written are removed.
+than the one just written are removed. When the Compose file has `helprr-init`, each dump
+gets a `<same name>.secrets.tar` beside it (0600), pruned with it; restore the two together.
 
 > [!WARNING]
 > Dumps contain your service API keys and users' password hashes. Treat backup
@@ -777,14 +785,25 @@ docker compose exec -T helprr-db pg_restore --exit-on-error --file=/dev/null < "
   docker compose up -d --no-build --no-deps --wait helprr
 ```
 
+If the dump has a `.secrets.tar` beside it and the `helprr-secrets` volume was lost or
+replaced, put it back before starting Helprr (the `run` uses `helprr-init`, which has
+the volume mounted and runs as root):
+
+```bash
+docker compose run --rm --no-deps -T --entrypoint tar helprr-init -C /secrets -xf - < "${dump%.dump}.secrets.tar"
+```
+
 **Restore onto a fresh host** (disaster recovery):
 
 ```bash
 # 1. Set up the deployment files and .env as in the quick start. Reuse the old
-#    install's JWT_SECRET (or sessions are invalidated), VAPID keys (or devices
-#    must re-subscribe), and HELPRR_ADMIN_USERNAME — on boot the bootstrap
-#    admin is renamed to that value (default "admin"). Passwords are safe
-#    either way: APP_PASSWORD never overwrites an existing password hash.
+#    install's JWT_SECRET (or sessions are invalidated and stored tokens are
+#    unreadable), VAPID keys (or devices must re-subscribe), and
+#    HELPRR_ADMIN_USERNAME if it was set — on boot the bootstrap admin is renamed
+#    to it. Passwords are safe either way: APP_PASSWORD never overwrites an
+#    existing password hash. If Helprr made those secrets itself, restore the
+#    dump's .secrets.tar instead of copying them into .env:
+docker compose run --rm --no-deps -T --entrypoint tar helprr-init -C /secrets -xf - < backups/stable/helprr-pre-upgrade-YYYYMMDD-HHMMSS.secrets.tar
 docker compose up -d --wait helprr-db
 docker compose exec -T helprr-db pg_restore -U postgres --clean --if-exists -d helprr < backups/stable/helprr-pre-upgrade-YYYYMMDD-HHMMSS.dump
 docker compose up -d

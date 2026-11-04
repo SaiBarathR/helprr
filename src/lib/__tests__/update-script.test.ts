@@ -51,6 +51,8 @@ case " $* " in
     [ "\${FAKE_PULL_FAILURE:-}" != 1 ] || exit 44
     ;;
   *" up -d --no-build --no-deps helprr "*) ;;
+  *" run --rm --no-deps helprr-init "*) [ "\${FAKE_INIT_FAILURE:-}" != 1 ] || exit 46 ;;
+  *" run --rm --no-deps -T --entrypoint tar helprr-init "*) tar -cf - -C "\$(dirname "\$DOCKER_LOG")" docker-compose.yml ;;
   *" ps -q helprr "*) printf 'cid123\\n' ;;
   " inspect -f {{.RestartCount}} cid123 ") printf '0\\n' ;;
   " inspect -f "*)
@@ -113,11 +115,27 @@ describe('update.sh', () => {
       if (line.includes('config --services')) return 'services';
       return line;
     });
-    expect(steps).toEqual(['dump', 'validate', 'pull', 'up', 'ps', 'inspect', 'inspect', 'sleep', 'inspect', 'sleep', 'inspect', 'ready', 'services']);
+    // backup.sh asks for the services (to save generated secrets), update.sh before and after the app.
+    expect(steps).toEqual(['dump', 'validate', 'services', 'pull', 'services', 'up', 'ps', 'inspect', 'inspect', 'sleep', 'inspect', 'sleep', 'inspect', 'ready', 'services']);
     // Plain `docker compose` in the install directory, so overrides apply as they do by hand.
     expect(result.log).toMatch(/^compose pull helprr$/m);
     expect(result.log).toMatch(/^compose up -d --no-build --no-deps helprr$/m);
     expect(readFileSync(path.join(root, 'docker.log.cwd'), 'utf8').trim()).toBe(realpathSync(root));
+  });
+
+  it('refreshes the generated secrets before the app, when the Compose file has helprr-init', () => {
+    const result = runUpdate(createFixture(), [], { FAKE_SERVICES: 'helprr-init' });
+    expect(result.status).toBe(0);
+    const lines = result.log.split('\n');
+    expect(lines.indexOf('compose run --rm --no-deps helprr-init')).toBeGreaterThan(-1);
+    expect(lines.indexOf('compose run --rm --no-deps helprr-init')).toBeLessThan(lines.indexOf('compose up -d --no-build --no-deps helprr'));
+  });
+
+  it('leaves the running app alone when preparing the secrets fails', () => {
+    const result = runUpdate(createFixture(), [], { FAKE_SERVICES: 'helprr-init', FAKE_INIT_FAILURE: '1' });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('Preparing the secrets failed; the running container was not changed.');
+    expect(result.log).not.toContain('up -d --no-build --no-deps helprr');
   });
 
   it('leaves the worker alone without a profile for it', () => {

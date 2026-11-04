@@ -50,6 +50,11 @@ case " $* " in
     cat >/dev/null
     [ "\${FAKE_VERIFY_FAILURE:-}" != 1 ] || exit 42
     ;;
+  *" config --services "*) printf '%s\\n' "\${FAKE_SERVICES:-helprr}" ;;
+  *" run --rm --no-deps -T --entrypoint tar helprr-init "*)
+    [ "\${FAKE_SECRETS_FAILURE:-}" != 1 ] || exit 47
+    tar -cf - -C "\$FAKE_SECRETS_DIR" .
+    ;;
   *)
     exit 43
     ;;
@@ -362,5 +367,53 @@ for a in "$@"; do case "$a" in *-${'20260701'}-000000.dump) /bin/rm -f "$a" "\${
     expect(result.status).toBe(1);
     expect(result.stderr).toContain('Missing environment file: .env.dev');
     expect(existsSync(dockerLog)).toBe(false);
+  });
+
+  describe('generated secrets', () => {
+    function secretsDir(): string {
+      const dir = mkdtempSync(path.join(tmpdir(), 'helprr-backup-secrets-'));
+      fixtureRoots.push(dir);
+      writeFileSync(path.join(dir, 'jwt_secret'), 'not-a-real-secret');
+      return dir;
+    }
+
+    it('saves them beside the dump, private, when the Compose file has helprr-init', () => {
+      const { root, fakeBin } = createFixture();
+      const result = runBackup(root, fakeBin, [], { FAKE_SERVICES: 'helprr\nhelprr-init', FAKE_SECRETS_DIR: secretsDir() });
+      expect(result.status).toBe(0);
+      const tarFile = path.join(root, 'backups/stable/helprr-pre-upgrade-20260714-120000.secrets.tar');
+      expect(result.stdout).toContain(`Saved the generated secrets: ${tarFile}`);
+      expect(lstatSync(tarFile).mode & 0o777).toBe(0o600);
+      expect(spawnSync('tar', ['-tf', tarFile], { encoding: 'utf8' }).stdout).toContain('jwt_secret');
+      expect(result.stdout).not.toContain('not-a-real-secret');
+    });
+
+    it('does nothing extra without helprr-init', () => {
+      const { root, fakeBin } = createFixture();
+      const result = runBackup(root, fakeBin);
+      expect(result.status).toBe(0);
+      expect(readdirSync(path.join(root, 'backups/stable')).some((name) => name.endsWith('.secrets.tar'))).toBe(false);
+    });
+
+    it('says so, and keeps the dump, when the secrets cannot be saved', () => {
+      const { root, fakeBin } = createFixture();
+      const result = runBackup(root, fakeBin, [], { FAKE_SERVICES: 'helprr-init', FAKE_SECRETS_FAILURE: '1' });
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain('but the generated secrets could not be saved');
+      expect(backupFiles(path.join(root, 'backups/stable'))).toHaveLength(1);
+      expect(readdirSync(path.join(root, 'backups/stable')).filter((n) => n.startsWith('.helprr-secrets.'))).toEqual([]);
+    });
+
+    it('prunes a dump together with its secrets', () => {
+      const { root, fakeBin } = createFixture();
+      const dir = path.join(root, 'backups/stable');
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(path.join(dir, 'helprr-pre-upgrade-20260101-000000.dump'), 'old');
+      writeFileSync(path.join(dir, 'helprr-pre-upgrade-20260101-000000.secrets.tar'), 'old');
+      const result = runBackup(root, fakeBin, ['--keep', '1'], { FAKE_SERVICES: 'helprr-init', FAKE_SECRETS_DIR: secretsDir() });
+      expect(result.status).toBe(0);
+      expect(existsSync(path.join(dir, 'helprr-pre-upgrade-20260101-000000.secrets.tar'))).toBe(false);
+      expect(existsSync(path.join(dir, 'helprr-pre-upgrade-20260714-120000.secrets.tar'))).toBe(true);
+    });
   });
 });
