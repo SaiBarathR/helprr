@@ -50,6 +50,15 @@ describe('phoneLinkKind', () => {
     ['https://[fd00::1]', 'local'],
     ['https://helprr.example.com', 'public'],
     ['https://helprr.tail1234.ts.net', 'public'],
+    // What a server prints as "listening on every address": a phone cannot open it.
+    ['http://0.0.0.0:3050', 'loopback'],
+    ['http://[::]:3050', 'loopback'],
+    ['http://localhost.:3050', 'loopback'],
+    ['https://127.example.com', 'public'],
+    ['https://203.0.113.5', 'public'],
+    ['https://10.0.0.5', 'local'],
+    ['https://172.20.1.1', 'local'],
+    ['https://100.101.102.103', 'local'],
   ])('%s is %s', (origin, kind) => {
     expect(phoneLinkKind(origin)).toBe(kind);
   });

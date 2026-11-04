@@ -39,6 +39,6 @@ describe('OpenOnPhoneDrawer', () => {
     render(<OpenOnPhoneDrawer open onOpenChange={() => {}} />);
     expect(screen.queryByRole('img')).toBeNull();
     expect(document.body.textContent).toContain('This address only works on this computer.');
-    expect(document.body.textContent).toContain("open Helprr at this computer's address on your network");
+    expect(document.body.textContent).toContain("Open Helprr in this browser at this computer's address on your network");
   });
 });

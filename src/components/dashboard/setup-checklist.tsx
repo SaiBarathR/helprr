@@ -91,9 +91,10 @@ function isPhone(): boolean {
 }
 const emptySubscribe = () => () => {};
 
-// Loaded only when opened: it carries the QR encoder.
-const OpenOnPhoneDrawer = dynamic(() =>
-  import('@/components/settings/open-on-phone').then((module) => module.OpenOnPhoneDrawer),
+// Loaded on first open: it carries the QR encoder.
+const OpenOnPhoneDrawer = dynamic(
+  () => import('@/components/settings/open-on-phone').then((module) => module.OpenOnPhoneDrawer),
+  { loading: () => null },
 );
 
 /** The admin's "what to do next" card at the top of the dashboard. */
@@ -148,6 +149,12 @@ export function SetupChecklist({ initial, mobile }: { initial: SetupChecklistSta
   // On a computer, the install step offers a QR code for the phone.
   const onPhone = useSyncExternalStore(emptySubscribe, isPhone, () => true);
   const [phoneOpen, setPhoneOpen] = useState(false);
+  // Kept mounted once opened, so closing plays the drawer's slide-down.
+  const [phoneOpened, setPhoneOpened] = useState(false);
+  const openPhone = () => {
+    setPhoneOpened(true);
+    setPhoneOpen(true);
+  };
 
   // Opened as an installed app on a phone: the phone step is done. (An installed
   // desktop app window is standalone too, but it is not a phone.)
@@ -284,7 +291,7 @@ export function SetupChecklist({ initial, mobile }: { initial: SetupChecklistSta
                   type="button"
                   className="touch-target press-feedback"
                   aria-label="Show a code to open Helprr on your phone"
-                  onClick={() => setPhoneOpen(true)}
+                  onClick={openPhone}
                   style={SMALL_BUTTON}
                 >
                   Show code
@@ -305,7 +312,7 @@ export function SetupChecklist({ initial, mobile }: { initial: SetupChecklistSta
           );
         })}
       </ol>
-      {phoneOpen && <OpenOnPhoneDrawer open={phoneOpen} onOpenChange={setPhoneOpen} />}
+      {phoneOpened && <OpenOnPhoneDrawer open={phoneOpen} onOpenChange={setPhoneOpen} />}
     </section>
   );
 }

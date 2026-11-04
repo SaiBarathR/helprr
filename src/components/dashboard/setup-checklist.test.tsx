@@ -21,8 +21,13 @@ vi.mock('@/components/ui/drawer', () => {
 // The drawer has its own tests (open-on-phone.test.tsx); here, only that it opens.
 vi.mock('next/dynamic', () => ({
   default: () =>
-    function OpenOnPhoneStub({ open }: { open: boolean }) {
-      return open ? <div role="dialog" aria-label="Open on your phone" /> : null;
+    function OpenOnPhoneStub({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+      return (
+        <div data-testid="phone-drawer" data-open={String(open)}>
+          {open && <div role="dialog" aria-label="Open on your phone" />}
+          <button type="button" aria-label="Close phone drawer" onClick={() => onOpenChange(false)} />
+        </div>
+      );
     },
 }));
 
@@ -181,6 +186,17 @@ describe('SetupChecklist', () => {
     render(<SetupChecklist initial={fresh} mobile={false} />);
     await userEvent.click(screen.getByRole('button', { name: 'Show a code to open Helprr on your phone' }));
     expect(screen.getByRole('dialog', { name: 'Open on your phone' })).toBeTruthy();
+  });
+
+  it('keeps the drawer mounted after closing, so it can slide away and open again', async () => {
+    respond(fresh);
+    render(<SetupChecklist initial={fresh} mobile={false} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Show a code to open Helprr on your phone' }));
+    expect(screen.getByTestId('phone-drawer').dataset.open).toBe('true');
+    await userEvent.click(screen.getByRole('button', { name: 'Close phone drawer' }));
+    expect(screen.getByTestId('phone-drawer').dataset.open).toBe('false');
+    await userEvent.click(screen.getByRole('button', { name: 'Show a code to open Helprr on your phone' }));
+    expect(screen.getByTestId('phone-drawer').dataset.open).toBe('true');
   });
 
   it('does not offer the code on the phone itself', () => {

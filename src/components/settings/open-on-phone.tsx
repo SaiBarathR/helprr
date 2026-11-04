@@ -71,9 +71,9 @@ export function OpenOnPhoneDrawer({ open, onOpenChange }: { open: boolean; onOpe
         <div className="mx-auto w-full max-w-md px-6 pb-2 space-y-4 overflow-y-auto">
           {kind === 'loopback' ? (
             <p className="text-sm text-muted-foreground">
-              {origin} is this computer. On your phone, open Helprr at this computer&apos;s address on your network
-              instead, such as <span className="font-mono">http://192.168.1.10:3050</span> (find it in your router or
-              with <span className="font-mono">hostname -I</span>), then come back here from that address for a code.
+              {origin} is this computer, so a phone cannot open it. Open Helprr in this browser at this computer&apos;s
+              address on your network instead, such as <span className="font-mono">http://192.168.1.10:3050</span> (your
+              router lists it), and the code will be there.
             </p>
           ) : origin ? (
             <>
@@ -82,7 +82,7 @@ export function OpenOnPhoneDrawer({ open, onOpenChange }: { open: boolean; onOpe
                 <span className="font-mono text-xs text-muted-foreground select-all break-all text-center">{origin}</span>
               </div>
               {kind === 'local' && (
-                <p className="text-xs text-orange-400">
+                <p className="text-xs text-orange-700 dark:text-orange-400">
                   The phone must be on the same network as Helprr. Push notifications need an https:// address; see
                   Settings → Notifications → Check push setup.
                 </p>

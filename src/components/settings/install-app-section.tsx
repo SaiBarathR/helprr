@@ -14,12 +14,20 @@ import {
   DrawerFooter,
 } from '@/components/ui/drawer';
 import { useInstallPrompt } from '@/hooks/use-install-prompt';
-import { OpenOnPhoneDrawer } from '@/components/settings/open-on-phone';
+import dynamic from 'next/dynamic';
+
+// Loaded on first open: it carries the QR encoder.
+const OpenOnPhoneDrawer = dynamic(
+  () => import('@/components/settings/open-on-phone').then((module) => module.OpenOnPhoneDrawer),
+  { loading: () => null },
+);
 
 export function InstallAppSection() {
   const { isStandalone, platform, canPrompt, triggerInstall } = useInstallPrompt();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [phoneOpen, setPhoneOpen] = useState(false);
+  // Kept mounted once opened, so closing plays the drawer's slide-down.
+  const [phoneOpened, setPhoneOpened] = useState(false);
 
   async function handleInstallTap() {
     if (platform === 'ios') {
@@ -84,7 +92,10 @@ export function InstallAppSection() {
           </button>
           {platform === 'desktop' && (
             <button
-              onClick={() => setPhoneOpen(true)}
+              onClick={() => {
+                setPhoneOpened(true);
+                setPhoneOpen(true);
+              }}
               className="grouped-row w-full active:bg-foreground/5 transition-colors"
             >
               <div className="flex items-center gap-3">
@@ -108,7 +119,7 @@ export function InstallAppSection() {
         </div>
       </div>
 
-      {phoneOpen && <OpenOnPhoneDrawer open={phoneOpen} onOpenChange={setPhoneOpen} />}
+      {phoneOpened && <OpenOnPhoneDrawer open={phoneOpen} onOpenChange={setPhoneOpen} />}
 
       <Drawer open={drawerOpen} onOpenChange={setDrawerOpen}>
         <DrawerContent>
