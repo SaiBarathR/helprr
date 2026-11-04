@@ -61,6 +61,19 @@ export interface SeerrListUserParams {
   sort?: 'created' | 'updated' | 'requests' | 'displayname';
 }
 
+export interface SeerrArrServer {
+  id: number;
+  name: string;
+  hostname: string;
+  port: number;
+  useSsl: boolean;
+  baseUrl?: string;
+  /** Seerr returns it unmasked: it must never leave Helprr's server. */
+  apiKey: string;
+  is4k: boolean;
+  isDefault: boolean;
+}
+
 export class SeerrClient {
   private client: AxiosInstance;
   private baseUrl: string;
@@ -106,6 +119,11 @@ export class SeerrClient {
 
   async verify(): Promise<SeerrUserSummary> {
     return this.get<SeerrUserSummary>('/auth/me');
+  }
+
+  /** The Sonarr or Radarr servers Seerr sends requests to; each carries its API key. */
+  async getArrServers(kind: 'sonarr' | 'radarr'): Promise<SeerrArrServer[]> {
+    return this.get<SeerrArrServer[]>(`/settings/${kind}`);
   }
 
   async getStatus(): Promise<SeerrStatus> {

@@ -12,6 +12,8 @@ import { GroupedSection } from '@/components/settings/grouped-section';
 import { AnilistConnectionCard } from '@/components/settings/anilist-connection-card';
 import { TwitchConnectionCard } from '@/components/settings/twitch-connection-card';
 import { YoutubeConnectionCard } from '@/components/settings/youtube-connection-card';
+import { ImportFoundApps } from '@/components/settings/import-found-apps';
+import { useMe } from '@/components/permission-provider';
 import { SERVICE_CONFIG } from '@/lib/settings/service-config';
 import { QuickContextMenu } from '@/components/ui/quick-context-menu';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -29,6 +31,7 @@ interface LoadedConnection {
 
 export default function InstancesIndexPage() {
   const queryClient = useQueryClient();
+  const isAdmin = useMe()?.role === 'admin';
   const [confirmDelete, setConfirmDelete] = useState<LoadedConnection | null>(null);
   const { data: connections = [], isSuccess, isError } = useQuery({
     queryKey: queryKeys.instances(),
@@ -87,6 +90,8 @@ export default function InstancesIndexPage() {
           Connect Helprr to your media services and indexers.
         </p>
       </div>
+
+      {isAdmin && <ImportFoundApps />}
 
       {multiInstanceConfigs.map((config) => {
         const instances = byType.get(config.type) ?? [];
