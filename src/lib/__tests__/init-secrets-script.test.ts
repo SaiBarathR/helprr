@@ -1,5 +1,6 @@
 import { spawnSync } from 'child_process';
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
+import { spawn } from 'child_process';
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import path from 'path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -36,19 +37,19 @@ describe('init-secrets.sh', () => {
     const result = init(dir);
     expect(result.status).toBe(0);
     expect(read(dir, 'jwt_secret')).toMatch(/^[0-9a-f]{96}$/);
-    expect(read(dir, 'vapid_public')).toMatch(/^[A-Za-z0-9_-]{80,}$/);
-    expect(read(dir, 'vapid_private')).toMatch(/^[A-Za-z0-9_-]{40,}$/);
+    expect(read(dir, 'vapid_keys')).toMatch(/^[A-Za-z0-9_-]{80,} [A-Za-z0-9_-]{40,}$/);
+    expect(read(path.join(dir, 'app'), 'vapid_public')).toBe(read(dir, 'vapid_keys').split(' ')[0]);
     expect(read(dir, 'jwt_secret.created_at')).toMatch(/^\d{10}$/);
     expect(read(path.join(dir, 'app'), 'jwt_secret')).toBe(read(dir, 'jwt_secret'));
     expect(read(path.join(dir, 'worker'), 'jwt_secret')).toBe(read(dir, 'jwt_secret'));
-    expect(read(path.join(dir, 'app'), 'vapid_private')).toBe(read(dir, 'vapid_private'));
+    expect(read(path.join(dir, 'app'), 'vapid_private')).toBe(read(dir, 'vapid_keys').split(' ')[1]);
     expect(existsSync(path.join(dir, 'worker', 'vapid_private'))).toBe(false);
     expect(mode(dir)).toBe(0o711);
-    for (const reader of ['app', 'worker']) expect(mode(path.join(dir, reader))).toBe(0o700);
-    for (const file of ['jwt_secret', 'vapid_private', 'app/jwt_secret', 'worker/jwt_secret', 'app/vapid_private']) {
-      expect(mode(path.join(dir, file)), file).toBe(0o600);
-    }
-    for (const secret of [read(dir, 'jwt_secret'), read(dir, 'vapid_private')]) {
+    for (const reader of ['app', 'worker']) expect(mode(path.join(dir, reader))).toBe(0o750);
+    for (const file of ['jwt_secret', 'vapid_keys']) expect(mode(path.join(dir, file)), file).toBe(0o600);
+    for (const file of ['app/jwt_secret', 'worker/jwt_secret', 'app/vapid_private']) expect(mode(path.join(dir, file)), file).toBe(0o640);
+    expect(readdirSync(dir).filter((name) => name.startsWith('.staging'))).toEqual([]);
+    for (const secret of [read(dir, 'jwt_secret'), read(dir, 'vapid_keys').split(' ')[1]]) {
       expect(result.stdout + result.stderr).not.toContain(secret);
     }
   });
@@ -56,13 +57,13 @@ describe('init-secrets.sh', () => {
   it('never regenerates what exists, and refreshes the copies', () => {
     const dir = volume();
     init(dir);
-    const before = { jwt: read(dir, 'jwt_secret'), vapid: read(dir, 'vapid_private'), at: read(dir, 'jwt_secret.created_at') };
+    const before = { jwt: read(dir, 'jwt_secret'), vapid: read(dir, 'vapid_keys'), at: read(dir, 'jwt_secret.created_at') };
     writeFileSync(path.join(dir, 'app', 'jwt_secret'), 'stale');
     const second = init(dir);
     expect(second.status).toBe(0);
     expect(second.stdout).not.toContain('created');
     expect(read(dir, 'jwt_secret')).toBe(before.jwt);
-    expect(read(dir, 'vapid_private')).toBe(before.vapid);
+    expect(read(dir, 'vapid_keys')).toBe(before.vapid);
     expect(read(dir, 'jwt_secret.created_at')).toBe(before.at);
     expect(read(path.join(dir, 'app'), 'jwt_secret')).toBe(before.jwt);
   });
@@ -80,7 +81,7 @@ describe('init-secrets.sh', () => {
   it('never pairs a key from .env with a generated one', () => {
     const dir = volume();
     expect(init(dir, { VAPID_PUBLIC_KEY: 'only-the-public-key' }).status).toBe(0);
-    expect(existsSync(path.join(dir, 'vapid_private'))).toBe(false);
+    expect(existsSync(path.join(dir, 'vapid_keys'))).toBe(false);
     expect(existsSync(path.join(dir, 'app', 'vapid_public'))).toBe(false);
   });
 
@@ -94,6 +95,68 @@ describe('init-secrets.sh', () => {
     const dir = volume();
     mkdirSync(path.join(dir, 'app'), { mode: 0o755 });
     init(dir);
-    expect(mode(path.join(dir, 'app'))).toBe(0o700);
+    expect(mode(path.join(dir, 'app'))).toBe(0o750);
+  });
+
+  // A reader with code execution could plant links in its folder under the first
+  // layout, and init (root) followed them: the public push key landed on the master.
+  it('replaces a planted link instead of writing through it', () => {
+    const dir = volume();
+    init(dir);
+    const master = read(dir, 'jwt_secret');
+    rmSync(path.join(dir, 'app', 'vapid_public'));
+    symlinkSync(path.join(dir, 'jwt_secret'), path.join(dir, 'app', 'vapid_public'));
+    symlinkSync(path.join(dir, 'jwt_secret'), path.join(dir, 'app', '.vapid_public.new'));
+    expect(init(dir).status).toBe(0);
+    expect(read(dir, 'jwt_secret')).toBe(master);
+    expect(lstatSync(path.join(dir, 'app', 'vapid_public')).isSymbolicLink()).toBe(false);
+    expect(read(path.join(dir, 'app'), 'vapid_public')).toBe(read(dir, 'vapid_keys').split(' ')[0]);
+  });
+
+  it('replaces a reader folder that is a link, without writing into its target', () => {
+    const dir = volume();
+    const elsewhere = volume();
+    symlinkSync(elsewhere, path.join(dir, 'app'));
+    expect(init(dir).status).toBe(0);
+    expect(lstatSync(path.join(dir, 'app')).isSymbolicLink()).toBe(false);
+    expect(readdirSync(elsewhere)).toEqual([]);
+  });
+
+  it('lets only one of several runs at once make the secret, and every copy agrees', async () => {
+    const dir = volume();
+    const runs = await Promise.all(Array.from({ length: 5 }, () => new Promise<number>((resolve) => {
+      const child = spawn('/bin/sh', [path.join(repoRoot, 'docker/init-secrets.sh')], {
+        env: { PATH: process.env.PATH ?? '', HELPRR_SECRETS_DIR: dir, HELPRR_APP_DIR: repoRoot } as unknown as NodeJS.ProcessEnv,
+        stdio: 'ignore',
+      });
+      child.on('exit', (code) => resolve(code ?? 1));
+    })));
+    expect(runs).toEqual([0, 0, 0, 0, 0]);
+    const master = read(dir, 'jwt_secret');
+    expect(read(path.join(dir, 'app'), 'jwt_secret')).toBe(master);
+    expect(read(path.join(dir, 'worker'), 'jwt_secret')).toBe(master);
+    expect(read(path.join(dir, 'app'), 'vapid_public')).toBe(read(dir, 'vapid_keys').split(' ')[0]);
+  });
+
+  it('fails loudly, writing nothing, when it cannot generate a secret', () => {
+    const dir = volume();
+    const bin = volume();
+    for (const tool of ['sh', 'mkdir', 'mktemp', 'chmod', 'rm', 'id', 'cat', 'mv', 'ln', 'date', 'stat']) {
+      const found = spawnSync('/bin/sh', ['-c', `command -v ${tool}`], { encoding: 'utf8' }).stdout.trim();
+      if (found) symlinkSync(found, path.join(bin, tool));
+    }
+    const result = spawnSync('/bin/sh', [path.join(repoRoot, 'docker/init-secrets.sh')], {
+      encoding: 'utf8',
+      env: { PATH: bin, HELPRR_SECRETS_DIR: dir } as unknown as NodeJS.ProcessEnv,
+    });
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('could not generate a secret');
+    expect(existsSync(path.join(dir, 'jwt_secret'))).toBe(false);
+  });
+
+  it('refuses a worker user given as a name', () => {
+    const result = init(volume(), { TWITCH_PUID: 'abc' });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('must be numbers');
   });
 });

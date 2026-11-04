@@ -134,7 +134,7 @@ describe('update.sh', () => {
   it('leaves the running app alone when preparing the secrets fails', () => {
     const result = runUpdate(createFixture(), [], { FAKE_SERVICES: 'helprr-init', FAKE_INIT_FAILURE: '1' });
     expect(result.status).toBe(1);
-    expect(result.stderr).toContain('Preparing the secrets failed; the running container was not changed.');
+    expect(result.stderr).toContain('Preparing the secrets failed (see the message above); the running container was not changed.');
     expect(result.log).not.toContain('up -d --no-build --no-deps helprr');
   });
 

@@ -120,7 +120,8 @@ services:
     volumes:
       - helprr-logs:${LOG_DIR:-/app/logs}
       - helprr-image-cache:/app/image-cache
-      - helprr-secrets:/app/secrets
+      # Read-only: the app only reads its copies; helprr-init writes them.
+      - helprr-secrets:/app/secrets:ro
     # Lets an app on the same machine be reached as http://host.docker.internal:<port>.
     extra_hosts:
       - "host.docker.internal:host-gateway"

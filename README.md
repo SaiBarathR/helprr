@@ -785,12 +785,15 @@ docker compose exec -T helprr-db pg_restore --exit-on-error --file=/dev/null < "
   docker compose up -d --no-build --no-deps --wait helprr
 ```
 
-If the dump has a `.secrets.tar` beside it and the `helprr-secrets` volume was lost or
-replaced, put it back before starting Helprr (the `run` uses `helprr-init`, which has
-the volume mounted and runs as root):
+If the `helprr-secrets` volume was lost or replaced and the dump has a `.secrets.tar`
+beside it, put the secrets back with Helprr and the worker stopped, then refresh the
+copies (the `run` uses `helprr-init`, which has the volume mounted and runs as root):
 
 ```bash
-docker compose run --rm --no-deps -T --entrypoint tar helprr-init -C /secrets -xf - < "${dump%.dump}.secrets.tar"
+docker compose stop helprr helprr-twitch-worker &&
+  docker compose run --rm --no-deps -T --entrypoint tar helprr-init -C /secrets -xf - < "${dump%.dump}.secrets.tar" &&
+  docker compose run --rm --no-deps helprr-init &&
+  docker compose up -d
 ```
 
 **Restore onto a fresh host** (disaster recovery):
@@ -802,8 +805,11 @@ docker compose run --rm --no-deps -T --entrypoint tar helprr-init -C /secrets -x
 #    HELPRR_ADMIN_USERNAME if it was set — on boot the bootstrap admin is renamed
 #    to it. Passwords are safe either way: APP_PASSWORD never overwrites an
 #    existing password hash. If Helprr made those secrets itself, restore the
-#    dump's .secrets.tar instead of copying them into .env:
+#    dump's .secrets.tar instead, and leave JWT_SECRET, VAPID_PUBLIC_KEY and
+#    VAPID_PRIVATE_KEY empty in .env (setup-env.sh writes a new JWT_SECRET: empty
+#    it), since a value in .env wins over the restored one:
 docker compose run --rm --no-deps -T --entrypoint tar helprr-init -C /secrets -xf - < backups/stable/helprr-pre-upgrade-YYYYMMDD-HHMMSS.secrets.tar
+docker compose run --rm --no-deps helprr-init
 docker compose up -d --wait helprr-db
 docker compose exec -T helprr-db pg_restore -U postgres --clean --if-exists -d helprr < backups/stable/helprr-pre-upgrade-YYYYMMDD-HHMMSS.dump
 docker compose up -d

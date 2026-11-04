@@ -67,8 +67,8 @@ docker compose pull helprr || fail 'Pulling the Helprr image failed; the running
 # With a Compose file that has it, refresh the generated secrets' copies first (it
 # never regenerates one); --no-deps below would otherwise skip it.
 if docker compose config --services | grep -qx helprr-init; then
-  docker compose run --rm --no-deps helprr-init > /dev/null 2>&1 \
-    || fail 'Preparing the secrets failed; the running container was not changed. See: docker compose logs helprr-init'
+  docker compose run --rm --no-deps helprr-init > /dev/null \
+    || fail 'Preparing the secrets failed (see the message above); the running container was not changed.'
 fi
 docker compose up -d --no-build --no-deps helprr || fail 'Starting the new Helprr container failed. See: docker compose logs helprr'
 

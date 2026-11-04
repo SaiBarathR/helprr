@@ -241,10 +241,13 @@ Generated secrets: with the bundled Compose file, a short-lived `helprr-init`
 service (`docker/init-secrets.sh`, the app image run as root with no network) makes
 what `.env` does not set, once, on the fixed-name `helprr-secrets` volume: a root-only
 master per value (`jwt_secret`, `vapid_public`, `vapid_private`, and the time the
-JWT secret was made), never regenerated while it exists, plus per-reader copies in
-`app/` (uid 1001) and `worker/` (`TWITCH_PUID:TWITCH_PGID`), folders 0700 and files
-0600. A value set in the environment always wins, its stale copies are removed, and
-the VAPID pair is all or nothing. `docker-entrypoint.sh` exports the app's copies
+JWT secret was made), published with `ln` so two runs at once never both write one
+and never regenerated while it exists, plus per-reader copies in `app/` (the image's
+`nextjs` group) and `worker/` (`TWITCH_PGID`). Readers own nothing in the volume:
+folders are `root:<group>` 0750 and copies `root:<group>` 0640, staged in a per-run
+root-only folder and moved in, so a reader cannot plant a link the root init would
+follow; the app mounts the volume read-only. A value set in the environment always
+wins, its stale copies are removed, and the VAPID pair is all or nothing. `docker-entrypoint.sh` exports the app's copies
 before migrations and `node server.js` only when the environment has none, so the
 proxy, startup validation and every token cipher see one value; the worker loads its
 `JWT_SECRET` copy first thing in `main.ts`. An older Compose file has no init and no

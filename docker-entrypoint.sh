@@ -22,9 +22,15 @@ if [ -z "${VAPID_PUBLIC_KEY:-}${NEXT_PUBLIC_VAPID_PUBLIC_KEY:-}${VAPID_PRIVATE_K
   export VAPID_PUBLIC_KEY VAPID_PRIVATE_KEY
   export HELPRR_VAPID_SOURCE=generated
 fi
-# A contact for the push services: the public address, else the project's page.
+# A contact for the push services: the public address when it is https and not
+# localhost (web-push refuses anything but https: and mailto:, and Apple refuses
+# localhost), else the project's page.
 if [ -z "${VAPID_SUBJECT:-}" ] && [ -n "${VAPID_PUBLIC_KEY:-}${NEXT_PUBLIC_VAPID_PUBLIC_KEY:-}" ]; then
-  VAPID_SUBJECT=${APP_ORIGIN:-https://github.com/SaiBarathR/helprr}
+  case "${APP_ORIGIN:-}" in
+    https://localhost*|https://127.*|https://\[::1\]*) VAPID_SUBJECT=https://github.com/SaiBarathR/helprr ;;
+    https://?*) VAPID_SUBJECT=$APP_ORIGIN ;;
+    *) VAPID_SUBJECT=https://github.com/SaiBarathR/helprr ;;
+  esac
   export VAPID_SUBJECT
 fi
 

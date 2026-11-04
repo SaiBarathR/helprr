@@ -71,8 +71,13 @@ describe('docker-entrypoint.sh and generated secrets', () => {
     expect(env.HELPRR_VAPID_SOURCE).toBe('');
   });
 
-  it('uses APP_ORIGIN as the push contact when it is set', () => {
-    expect(start(app(generated), { APP_ORIGIN: 'https://helprr.example.com' }).VAPID_SUBJECT).toBe('https://helprr.example.com');
+  it.each([
+    ['https://helprr.example.com', 'https://helprr.example.com'],
+    ['http://helprr.lan:3050', 'https://github.com/SaiBarathR/helprr'],
+    ['https://localhost:3050', 'https://github.com/SaiBarathR/helprr'],
+    ['https://127.0.0.1', 'https://github.com/SaiBarathR/helprr'],
+  ])('with APP_ORIGIN %s the push contact is %s', (origin, subject) => {
+    expect(start(app(generated), { APP_ORIGIN: origin }).VAPID_SUBJECT).toBe(subject);
   });
 
   it('changes nothing without the volume (an older Compose file)', () => {
