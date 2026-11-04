@@ -206,6 +206,34 @@ releases reject the Compose file's nested `DATABASE_URL` default) on a Docker En
 release that Docker still supports. The iPhone PWA supports the latest two major iOS
 versions, today iOS 26 and 27.
 
+### One command
+
+On a Linux machine with Docker Engine and the Compose plugin:
+
+```bash
+curl -fsSL https://github.com/SaiBarathR/helprr/releases/latest/download/install.sh | sh
+```
+
+It asks for a folder (`./helprr`), a port (3050) and a timezone (this computer's), downloads
+the release files and checks each against the release's `SHA256SUMS`, creates `.env` with
+new secrets, starts Helprr, waits until it is ready, and says where to open it and how to
+sign in. It never installs Docker and never overwrites an existing install. To read it
+first, and check it against the release's checksums:
+
+```bash
+base=https://github.com/SaiBarathR/helprr/releases/latest/download
+curl -fsSLO "$base/install.sh" && curl -fsSLO "$base/SHA256SUMS"
+sha256sum -c --ignore-missing SHA256SUMS
+sh install.sh
+```
+
+Run `sh install.sh --help` for its options, such as `--yes`, `--port`, `--tz`,
+`--version` and `--no-start`. Without a terminal (over SSH without `-t`, or from
+cloud-init) it uses the defaults. The checksums catch a broken or mixed download; they
+come from the same release, so they do not protect against a compromised release.
+
+The steps below do the same by hand.
+
 ### 1. Download the deployment files
 
 No clone, no build — Helprr ships as a prebuilt multi-arch image
