@@ -6,6 +6,7 @@ import { getOrCreateAppSettings } from '@/lib/app-settings';
 import { parseDiskThresholds } from '@/lib/disk-space';
 import { parseCustomHeaders } from '@/lib/service-connection-secrets';
 import { withApiLogging } from '@/lib/api-logger';
+import { markSetupStepDone } from '@/lib/setup-checklist';
 import {
   type ExportedAnimeMapping,
   type ExportedAppSettings,
@@ -515,6 +516,13 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
         })),
       }));
       payload.users = { accounts };
+    }
+
+    // Ticks "Export a backup" on the admin's setup checklist; never fails the export.
+    if (exporter.role === 'admin') {
+      await markSetupStepDone(exporter.id, 'backup').catch((error) => {
+        console.warn('Could not record the export on the setup checklist', error);
+      });
     }
 
     return NextResponse.json(payload);

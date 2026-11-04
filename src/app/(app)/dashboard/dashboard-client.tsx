@@ -18,6 +18,8 @@ import {
 import { WidgetAvailabilityProvider } from '@/lib/widgets/widget-availability-context';
 import { LayoutSwitcher } from '@/components/widgets/layout-switcher';
 import type { WidgetInstance, WidgetService } from '@/lib/widgets/types';
+import { SetupChecklist } from '@/components/dashboard/setup-checklist';
+import type { SetupChecklistState } from '@/lib/setup-checklist-steps';
 
 export interface InitialDashboardLayout {
   id: string;
@@ -30,6 +32,8 @@ interface DashboardClientProps {
   initialLayout: InitialDashboardLayout;
   initialDevice: 'desktop' | 'mobile';
   configuredServices: WidgetService[];
+  /** The admin's setup checklist; null for members. */
+  setupChecklist?: SetupChecklistState | null;
 }
 
 function setDeviceCookie(device: 'desktop' | 'mobile'): void {
@@ -72,6 +76,7 @@ export function DashboardClient({
   initialLayout,
   initialDevice,
   configuredServices,
+  setupChecklist = null,
 }: DashboardClientProps) {
   // No `key` here — keying on initialLayout.id remounts the provider (and
   // every drawer / edit-mode flag below it) on every layout switch. The
@@ -88,13 +93,14 @@ export function DashboardClient({
           initialLayout={initialLayout}
           initialDevice={initialDevice}
           configuredServices={configuredServices}
+          setupChecklist={setupChecklist}
         />
       </DashboardLayoutProvider>
     </WidgetAvailabilityProvider>
   );
 }
 
-function DashboardInner({ initialLayout, initialDevice }: DashboardClientProps) {
+function DashboardInner({ initialLayout, initialDevice, setupChecklist }: DashboardClientProps) {
   const router = useRouter();
   const isMobile = useIsMobile(768);
   const detectedDevice: 'desktop' | 'mobile' = isMobile ? 'mobile' : 'desktop';
@@ -225,6 +231,7 @@ function DashboardInner({ initialLayout, initialDevice }: DashboardClientProps) 
           dirty={isDirty}
         />
       )}
+      {!editMode && setupChecklist && <SetupChecklist initial={setupChecklist} mobile={isMobile} />}
       <WidgetGrid isMobile={isMobile} onConfigureRefresh={() => setRefreshDrawerOpen(true)} />
 
      {!editMode && <FloatingEdit edit={editMode} mobile={isMobile} onClick={handleFloatingToggle} />}

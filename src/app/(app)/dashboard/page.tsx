@@ -6,6 +6,7 @@ import { prisma } from '@/lib/db';
 import { can } from '@/lib/permissions';
 import { NAV_ITEMS } from '@/lib/nav-config';
 import { filterVisibleServiceTypes } from '@/lib/server/service-capabilities';
+import { getSetupChecklist } from '@/lib/setup-checklist';
 import { DashboardClient, type InitialDashboardLayout } from './dashboard-client';
 import type { WidgetInstance } from '@/lib/widgets/types';
 
@@ -37,12 +38,14 @@ export default async function DashboardPage() {
   // Global built-ins are seeded for admins; members get their own personal set
   // (seeded on first load) resolved inside getActiveLayoutForUser.
   await seedInitialLayouts();
-  const [layout, configuredServices] = await Promise.all([
+  const [layout, configuredServices, setupChecklist] = await Promise.all([
     getActiveLayoutForUser({ id: user.id, role: user.role }, device),
     prisma.serviceConnection.findMany({
       distinct: ['type'],
       select: { type: true },
     }),
+    // Admins only: members never see the setup checklist.
+    user.role === 'admin' ? getSetupChecklist(user.id) : null,
   ]);
 
   if (!layout) {
@@ -62,6 +65,7 @@ export default async function DashboardPage() {
     <DashboardClient
       initialLayout={initialLayout}
       initialDevice={device}
+      setupChecklist={setupChecklist}
       configuredServices={filterVisibleServiceTypes(
         user,
         configuredServices.map(({ type }) => type),
