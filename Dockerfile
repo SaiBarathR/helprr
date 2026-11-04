@@ -83,6 +83,8 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 COPY --chown=nextjs:nodejs docker-entrypoint.sh ./
 # Run by the helprr-init service, as root, to make the secrets .env does not set.
 COPY --chmod=0755 docker/init-secrets.sh ./init-secrets.sh
+# The demo's fake upstreams (docker-compose.demo.yml runs them as a second command).
+COPY --from=builder /app/demo ./demo
 
 # Prisma CLI needs node_modules for boot-time migrate deploy. Startup calls the
 # local `.bin/prisma` directly; the runtime image intentionally contains no npm.
