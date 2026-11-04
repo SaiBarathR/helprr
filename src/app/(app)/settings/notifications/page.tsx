@@ -201,9 +201,9 @@ export default function NotificationsSettingsPage() {
         <PushUnavailable icon={<BellOff className="h-5 w-5 text-orange-400 mt-0.5 shrink-0" />} title="Push is not set up on this server">
           {isAdmin ? (
             <>
-              Helprr is missing {(serverPush?.missing ?? ['its push keys']).join(', ')}. Make a key pair with{' '}
-              <code>npx web-push generate-vapid-keys</code>, put VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY and VAPID_SUBJECT in
-              .env, then run <code>docker compose up -d --no-build --no-deps helprr</code>.
+              Helprr is missing {(serverPush?.missing ?? ['its push keys']).join(', ')}. Leave VAPID_PUBLIC_KEY,
+              VAPID_PRIVATE_KEY and VAPID_SUBJECT all out of .env (with the current docker-compose.yml Helprr then makes
+              its own keys), or set all three; then run <code>docker compose up -d</code>.
             </>
           ) : (
             'Ask your Helprr admin to turn on push notifications for this server.'
@@ -286,6 +286,16 @@ export default function NotificationsSettingsPage() {
       )}
 
       <GroupedSection>
+        <Link
+          href="/settings/notifications/check"
+          className="grouped-row hover:bg-foreground/[0.03] active:bg-foreground/5 transition-colors"
+        >
+          <div className="text-sm font-medium">Check push setup</div>
+          <div className="flex items-center gap-2 shrink-0 text-xs text-muted-foreground">
+            <span>Why push is off</span>
+            <ChevronRight className="h-4 w-4" />
+          </div>
+        </Link>
         <Link
           href="/settings/notifications/devices"
           className="grouped-row hover:bg-foreground/[0.03] active:bg-foreground/5 transition-colors"

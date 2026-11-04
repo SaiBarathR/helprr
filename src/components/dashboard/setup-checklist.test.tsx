@@ -43,7 +43,7 @@ describe('SetupChecklist', () => {
     expect(screen.getByRole('heading', { name: 'Set up Helprr' })).toBeTruthy();
     expect(screen.getByText(/1 of 4/)).toBeTruthy();
     expect(screen.getByRole('link', { name: /Connect your first service, done/ }).getAttribute('href')).toBe('/settings/instances');
-    expect(screen.getByRole('link', { name: /Turn on push notifications/ }).getAttribute('href')).toBe('/settings/notifications');
+    expect(screen.getByRole('link', { name: /Turn on push notifications/ }).getAttribute('href')).toBe('/settings/notifications/check');
     expect(screen.getByRole('link', { name: /Install on your phone/ }).getAttribute('href')).toBe('/settings/appearance#install');
     expect(screen.getByText('(optional)')).toBeTruthy();
     // Only what the server cannot see can be marked by hand.

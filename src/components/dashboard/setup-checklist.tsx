@@ -32,7 +32,8 @@ const STEP_COPY: Record<SetupStep, { title: string; detail: string; href: string
   push: {
     title: 'Turn on push notifications',
     detail: 'Hear about downloads and new episodes.',
-    href: '/settings/notifications',
+    // The check page says what stands in the way (HTTPS, install) and links to Enable.
+    href: '/settings/notifications/check',
     icon: Bell,
   },
   install: {

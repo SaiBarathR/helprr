@@ -1,0 +1,172 @@
+'use client';
+
+import { useEffect, useState, useSyncExternalStore } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, Loader2, MinusCircle, Send, XCircle } from 'lucide-react';
+import { toast } from 'sonner';
+import Link from '@/components/ui/app-link';
+import { Button } from '@/components/ui/button';
+import { GroupedSection } from '@/components/settings/grouped-section';
+import { useMe } from '@/components/permission-provider';
+import { usePushNotifications } from '@/hooks/use-push-notifications';
+import { jsonFetcher } from '@/lib/query-fetch';
+import { isIosDevice } from '@/lib/push-availability';
+import { parseIosVersion, pushReadinessChecks, type PushCheck } from '@/lib/push-readiness';
+
+// Facts about this browser that never change within a session.
+const emptySubscribe = () => () => {};
+const getSecure = () => window.isSecureContext;
+const getOrigin = () => window.location.origin;
+const getIos = () => isIosDevice(navigator.userAgent, navigator.platform, navigator.maxTouchPoints);
+const getUserAgent = () => navigator.userAgent;
+// Re-read on every render, so a grant or a block shows once the page re-renders.
+const getPermission = (): NotificationPermission | null => ('Notification' in window ? Notification.permission : null);
+
+const STATE_ICON: Record<PushCheck['state'], React.ReactNode> = {
+  ok: <CheckCircle2 className="h-5 w-5 text-green-500 shrink-0" aria-hidden="true" />,
+  fail: <XCircle className="h-5 w-5 text-red-400 shrink-0" aria-hidden="true" />,
+  warn: <AlertTriangle className="h-5 w-5 text-orange-400 shrink-0" aria-hidden="true" />,
+  checking: <Loader2 className="h-5 w-5 text-muted-foreground animate-spin shrink-0" aria-hidden="true" />,
+  skip: <MinusCircle className="h-5 w-5 text-muted-foreground/60 shrink-0" aria-hidden="true" />,
+};
+const STATE_LABEL: Record<PushCheck['state'], string> = {
+  ok: 'OK',
+  fail: 'Needs fixing',
+  warn: 'Worth a look',
+  checking: 'Checking',
+  skip: 'Not checked',
+};
+
+function CheckRow({ check }: { check: PushCheck }) {
+  return (
+    <li className="px-4 py-3 flex items-start gap-3">
+      <span className="mt-0.5">{STATE_ICON[check.state]}</span>
+      <div className="min-w-0 flex-1 text-sm">
+        <div className="font-medium">
+          {check.title}
+          <span className="sr-only">: {STATE_LABEL[check.state]}</span>
+        </div>
+        {check.detail && <div className="text-xs text-muted-foreground mt-0.5">{check.detail}</div>}
+        {check.fixHref && check.state !== 'ok' && (
+          <Link href={check.fixHref} className="inline-flex items-center gap-0.5 text-xs text-primary mt-1 min-h-[32px]">
+            {check.fixHref.startsWith('/settings/appearance') ? 'How to install' : 'Open Notifications'}
+            <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
+          </Link>
+        )}
+      </div>
+    </li>
+  );
+}
+
+export default function PushCheckPage() {
+  const isAdmin = useMe()?.role === 'admin';
+  const { isSupported, isSubscribed, isStandalone, loading } = usePushNotifications();
+  const secure = useSyncExternalStore(emptySubscribe, getSecure, () => true);
+  const origin = useSyncExternalStore(emptySubscribe, getOrigin, () => '');
+  const ios = useSyncExternalStore(emptySubscribe, getIos, () => false);
+  const userAgent = useSyncExternalStore(emptySubscribe, getUserAgent, () => '');
+  const permission = useSyncExternalStore(emptySubscribe, getPermission, () => null);
+
+  const { data: serverPush, isError: serverError } = useQuery({
+    queryKey: ['push', 'public-key'],
+    queryFn: jsonFetcher<{ publicKey: string | null; configured?: boolean; missing?: string[] }>('/api/push/public-key'),
+    staleTime: 60_000,
+  });
+  const serverConfigured = serverPush
+    ? (serverPush.configured ?? Boolean(serverPush.publicKey))
+    : serverError
+      ? false
+      : null;
+
+  // Is a service worker installed and running for this page?
+  const [workerActive, setWorkerActive] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (!secure || !isSupported) return;
+    let cancelled = false;
+    navigator.serviceWorker
+      .getRegistration()
+      .then((registration) => {
+        if (!cancelled) setWorkerActive(Boolean(registration?.active));
+      })
+      .catch(() => {
+        if (!cancelled) setWorkerActive(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [secure, isSupported]);
+
+  const checks = pushReadinessChecks({
+    secure,
+    origin,
+    supported: isSupported,
+    ios,
+    iosVersion: ios ? parseIosVersion(userAgent) : null,
+    standalone: isStandalone,
+    serverConfigured,
+    serverMissing: serverPush?.missing,
+    admin: isAdmin,
+    workerActive,
+    permission,
+    subscribed: loading ? null : isSubscribed,
+  });
+  const failing = checks.filter((check) => check.state === 'fail').length;
+  const checking = checks.some((check) => check.state === 'checking');
+  const summary = checking
+    ? 'Checking this device…'
+    : failing === 0
+      ? 'Push can reach this device.'
+      : `${failing} ${failing === 1 ? 'thing stops' : 'things stop'} push on this device.`;
+
+  const [testing, setTesting] = useState(false);
+  async function sendTest() {
+    setTesting(true);
+    try {
+      const res = await fetch('/api/notifications/test', { method: 'POST' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = (await res.json()) as { sent?: number };
+      const count = data.sent ?? 0;
+      if (count > 0) toast.success(`Test sent to ${count} device${count === 1 ? '' : 's'}`);
+      else toast.error('No devices received the test — check the logs.');
+    } catch {
+      toast.error('Test notification failed');
+    } finally {
+      setTesting(false);
+    }
+  }
+
+  return (
+    <div className="animate-content-in pb-12">
+      <div className="px-1 pt-1 pb-2">
+        <Link href="/settings/notifications" className="inline-flex items-center gap-1 text-sm text-primary -ml-1 min-h-[44px] px-1">
+          <ChevronLeft className="h-5 w-5" />
+          Notifications
+        </Link>
+      </div>
+
+      <div className="px-4 mb-4">
+        <h1 className="text-2xl font-semibold">Check push setup</h1>
+        <p className="text-sm text-muted-foreground mt-1" role="status">{summary}</p>
+      </div>
+
+      <GroupedSection title="This device and server">
+        <ul className="divide-y divide-border/50">
+          {checks.map((check) => (
+            <CheckRow key={check.id} check={check} />
+          ))}
+        </ul>
+      </GroupedSection>
+
+      {!loading && isSubscribed && (
+        <GroupedSection footer="Sends to every device of yours that has push on">
+          <div className="px-4 py-3">
+            <Button variant="outline" size="sm" onClick={sendTest} disabled={testing} className="w-full h-9">
+              {testing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
+              Send a test notification
+            </Button>
+          </div>
+        </GroupedSection>
+      )}
+    </div>
+  );
+}
