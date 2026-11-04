@@ -1,13 +1,13 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Clapperboard, Loader2, ShieldAlert } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { completeBrowserSignIn, setDeviceCookieFromMatchMedia } from '@/lib/client-sign-in';
-import { LOCAL_PASSWORD_MIN_LENGTH } from '@/lib/password-policy';
+import { countPasswordCodePoints, LOCAL_PASSWORD_MIN_LENGTH } from '@/lib/password-policy';
 
 /**
  * Creating the first admin, on a brand-new install with no APP_PASSWORD. The
@@ -16,29 +16,43 @@ import { LOCAL_PASSWORD_MIN_LENGTH } from '@/lib/password-policy';
  */
 export default function SetupPage() {
   const router = useRouter();
-  const [ready, setReady] = useState(false);
+  // 'checking' until the server answers; 'unreachable' keeps the person here with a
+  // retry, since sending a brand-new install to a sign-in page would be a dead end.
+  const [status, setStatus] = useState<'checking' | 'ready' | 'unreachable'>('checking');
   const [username, setUsername] = useState('admin');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [error, setError] = useState('');
   const [pending, setPending] = useState(false);
 
-  useEffect(() => {
-    setDeviceCookieFromMatchMedia();
+  const loadState = useCallback(() => {
     void fetch('/api/setup/state', { cache: 'no-store' })
-      .then((res) => (res.ok ? res.json() : { needsAdmin: false }))
-      .then((state: { needsAdmin?: boolean }) => {
-        if (state.needsAdmin) setReady(true);
+      .then((res) => {
+        if (!res.ok) throw new Error(`setup state ${res.status}`);
+        return res.json() as Promise<{ needsAdmin?: boolean }>;
+      })
+      .then((state) => {
+        if (state.needsAdmin === true) setStatus('ready');
         else router.replace('/login');
       })
-      .catch(() => router.replace('/login'));
+      .catch(() => setStatus('unreachable'));
   }, [router]);
+
+  useEffect(() => {
+    setDeviceCookieFromMatchMedia();
+    loadState();
+  }, [loadState]);
+
+  function retry() {
+    setStatus('checking');
+    loadState();
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (pending) return;
     setError('');
-    if (password.length < LOCAL_PASSWORD_MIN_LENGTH) {
+    if (countPasswordCodePoints(password) < LOCAL_PASSWORD_MIN_LENGTH) {
       setError(`Use at least ${LOCAL_PASSWORD_MIN_LENGTH} characters.`);
       return;
     }
@@ -54,7 +68,14 @@ export default function SetupPage() {
         body: JSON.stringify({ username, password }),
       });
       if (res.ok) {
-        await completeBrowserSignIn();
+        try {
+          await completeBrowserSignIn();
+        } catch {
+          // The admin exists; only this browser's old data could not be cleared.
+          setError('Your admin account was created, but this browser could not be prepared. Sign in to continue.');
+          setTimeout(() => router.replace('/login'), 2500);
+          return;
+        }
         router.replace('/');
         router.refresh();
         return;
@@ -87,13 +108,22 @@ export default function SetupPage() {
               <Clapperboard className="h-8 w-8 text-primary" />
             </div>
           </div>
-          <CardTitle className="text-2xl font-bold">Welcome to Helprr</CardTitle>
-          <p className="text-sm text-muted-foreground">Create your admin account to get started</p>
+          <CardTitle className="text-2xl font-bold">{status === 'ready' ? 'Welcome to Helprr' : 'Helprr'}</CardTitle>
+          {status === 'ready' && (
+            <p className="text-sm text-muted-foreground">Create your admin account to get started</p>
+          )}
         </CardHeader>
         <CardContent>
-          {!ready ? (
+          {status === 'checking' ? (
             <div className="flex justify-center py-6">
               <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" aria-label="Loading" />
+            </div>
+          ) : status === 'unreachable' ? (
+            <div className="space-y-4 text-center">
+              <p className="text-sm text-muted-foreground" role="alert">Couldn&apos;t reach Helprr. It may still be starting.</p>
+              <Button type="button" variant="outline" className="w-full" onClick={retry}>
+                Try again
+              </Button>
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-4">

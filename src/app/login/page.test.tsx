@@ -5,10 +5,13 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
+  replace: vi.fn(),
   clearUserScopedBrowserCaches: vi.fn(),
   boundaryListeners: new Set<() => void>(),
 }));
-vi.mock('next/navigation', () => ({ useRouter: () => ({ replace: vi.fn(), refresh: vi.fn() }) }));
+// One router for every render, so a redirect can be checked.
+const router = { replace: mocks.replace, refresh: vi.fn() };
+vi.mock('next/navigation', () => ({ useRouter: () => router }));
 vi.mock('@/lib/query-client', () => ({ getQueryClient: () => ({ clear: vi.fn() }) }));
 vi.mock('@/lib/hooks/use-external-urls', () => ({ invalidateExternalUrls: vi.fn() }));
 vi.mock('@/lib/client-cache', () => ({
@@ -100,5 +103,31 @@ describe('Login page', () => {
     act(() => mocks.boundaryListeners.forEach((listener) => listener()));
     await act(async () => answer(new Response(null, { status: 401 })));
     expect(mocks.clearUserScopedBrowserCaches).not.toHaveBeenCalled();
+  });
+
+  describe('a brand-new install', () => {
+    function answers(setupState: Promise<Response>) {
+      vi.stubGlobal('fetch', vi.fn((url: string) => (
+        url === '/api/setup/state' ? setupState : Promise.resolve(Response.json({ error: 'Unauthorized' }, { status: 401 }))
+      )));
+    }
+
+    it('goes to /setup while the first admin is still needed', async () => {
+      answers(Promise.resolve(Response.json({ needsAdmin: true })));
+      await openLogin();
+      expect(mocks.replace).toHaveBeenCalledWith('/setup');
+    });
+
+    it('stays on the sign-in form once there is an admin', async () => {
+      answers(Promise.resolve(Response.json({ needsAdmin: false })));
+      await openLogin();
+      expect(mocks.replace).not.toHaveBeenCalled();
+    });
+
+    it('stays on the sign-in form when the check fails', async () => {
+      answers(Promise.reject(new Error('offline')));
+      await openLogin();
+      expect(mocks.replace).not.toHaveBeenCalled();
+    });
   });
 });

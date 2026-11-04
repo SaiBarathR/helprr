@@ -16,7 +16,7 @@ vi.mock('@/lib/first-admin', async (importOriginal) => {
 
 import { POST } from './route';
 import { GET as state } from '../state/route';
-import { FirstAdminInputError, FirstAdminTakenError, isSameOriginRequest } from '@/lib/first-admin';
+import { FirstAdminInputError, FirstAdminTakenError, isAllowedSetupOrigin, isLocalHostname, resetClaimSlots } from '@/lib/first-admin';
 
 const post = (headers: Record<string, string> = {}, body: unknown = { username: 'admin', password: 'a-long-first-admin-password' }) =>
   POST(new NextRequest('http://helprr.lan:3050/api/setup/admin', {
@@ -27,6 +27,8 @@ const post = (headers: Record<string, string> = {}, body: unknown = { username: 
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.unstubAllEnvs();
+  resetClaimSlots();
   mocks.needs.mockResolvedValue(true);
   mocks.claim.mockResolvedValue({ id: 'user-bootstrap-admin', role: 'admin' });
   mocks.session.mockResolvedValue('token-123');
@@ -91,16 +93,62 @@ describe('GET /api/setup/state', () => {
   });
 });
 
-describe('isSameOriginRequest', () => {
+describe('isAllowedSetupOrigin', () => {
   const req = (headers: Record<string, string>) => new Request('http://helprr.lan/x', { headers });
   it.each([
     [{ host: 'helprr.lan', origin: 'http://helprr.lan' }, true],
-    [{ host: 'helprr.lan', origin: 'http://helprr.lan', 'sec-fetch-site': 'same-origin' }, true],
+    [{ host: '192.168.1.10:3050', origin: 'http://192.168.1.10:3050', 'sec-fetch-site': 'same-origin' }, true],
+    [{ host: 'localhost:3050', origin: 'http://localhost:3050' }, true],
+    [{ host: 'nas:3050', origin: 'http://nas:3050' }, true],
+    [{ host: '[fd00::5]:3050', origin: 'http://[fd00::5]:3050' }, true],
     [{ host: 'helprr.lan', origin: 'http://other.lan' }, false],
     [{ host: 'helprr.lan' }, false],
     [{ host: 'helprr.lan', origin: 'http://helprr.lan', 'sec-fetch-site': 'same-site' }, false],
     [{ host: 'helprr.lan', origin: 'not a url' }, false],
+    // DNS rebinding: the attacker's page looks same-origin, but its name is public.
+    [{ host: 'evil.example:3050', origin: 'http://evil.example:3050', 'sec-fetch-site': 'same-origin' }, false],
+    [{ host: '192.168.1.10.nip.io:3050', origin: 'http://192.168.1.10.nip.io:3050' }, false],
   ])('%j → %s', (headers, expected) => {
-    expect(isSameOriginRequest(req(headers))).toBe(expected);
+    expect(isAllowedSetupOrigin(req(headers))).toBe(expected);
+  });
+
+  it('accepts exactly APP_ORIGIN when it is set, even when a proxy rewrites Host', () => {
+    vi.stubEnv('APP_ORIGIN', 'https://helprr.example.com');
+    expect(isAllowedSetupOrigin(req({ host: 'helprr:3050', origin: 'https://helprr.example.com' }))).toBe(true);
+    expect(isAllowedSetupOrigin(req({ host: 'helprr.lan', origin: 'http://helprr.lan' }))).toBe(false);
+    expect(isAllowedSetupOrigin(req({ host: 'evil.example', origin: 'https://evil.example' }))).toBe(false);
+  });
+
+  it.each(['localhost', '10.0.0.4', 'nas', 'box.local', 'router.home.arpa', 'pi.internal'])('treats %s as local', (name) => {
+    expect(isLocalHostname(name)).toBe(true);
+  });
+
+  it.each(['helprr.example.com', 'attacker.example', 'host.tailnet.ts.net'])('treats %s as public', (name) => {
+    expect(isLocalHostname(name)).toBe(false);
+  });
+});
+
+describe('POST /api/setup/admin limits', () => {
+  it('allows at most ten claims a minute', async () => {
+    mocks.claim.mockRejectedValue(new FirstAdminInputError('Password must contain at least 15 characters'));
+    for (let i = 0; i < 10; i++) expect((await post()).status).toBe(400);
+    expect((await post()).status).toBe(429);
+  });
+
+  it.each([[[1, 2]], [null], ['text']])('refuses the body %j', async (body) => {
+    expect((await post({}, body)).status).toBe(400);
+    expect(mocks.claim).not.toHaveBeenCalled();
+  });
+
+  it('refuses an oversized body', async () => {
+    const res = await post({}, { username: 'admin', password: 'x'.repeat(20_000) });
+    expect([400, 413]).toContain(res.status);
+    expect(mocks.claim).not.toHaveBeenCalled();
+  });
+
+  it('points a refused origin at the local address or APP_ORIGIN', async () => {
+    const res = await post({ origin: 'https://helprr.example.com', host: 'helprr.example.com' });
+    expect(res.status).toBe(403);
+    expect((await res.json()).error).toContain('set APP_ORIGIN');
   });
 });

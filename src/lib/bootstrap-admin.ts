@@ -94,8 +94,11 @@ export async function ensureBootstrapAdmin(): Promise<void> {
   }
 
   // Keep the admin's username in sync with HELPRR_ADMIN_USERNAME (renames on
-  // change). Best-effort: a clash with another user's username is logged, not fatal.
-  if (existing && existing.username !== adminUsername) {
+  // change), only when it is set: an admin created in /setup keeps the name chosen
+  // there if APP_PASSWORD is set later for a reset. Best-effort: a clash with
+  // another user's username is logged, not fatal.
+  const usernameConfigured = Boolean(process.env.HELPRR_ADMIN_USERNAME?.trim());
+  if (existing && usernameConfigured && existing.username !== adminUsername) {
     try {
       await prisma.user.update({
         where: { id: BOOTSTRAP_ADMIN_ID },

@@ -287,6 +287,16 @@ group, `TWITCH_RENDER_GID`; creates the default `twitch-library` folder, owned b
 user; and warns when Docker Compose is missing or too old, or port 3050 is taken.
 
 `APP_PASSWORD` creates the bootstrap administrator on first boot. Its username is `admin` by default, or the value of `HELPRR_ADMIN_USERNAME`. Changing `APP_PASSWORD` later does **not** change an existing user's password.
+
+Without `APP_PASSWORD`, Helprr asks for the first admin in the browser instead: open it,
+and the sign-in page sends you to **Welcome to Helprr**, where you choose the username
+and password. Whoever opens Helprr first can take that step, so do it before Helprr is
+reachable from the internet. The screen only works at Helprr's address on your network
+(such as `http://192.168.1.10:3050`); to create the admin through a reverse proxy or a
+public address, set `APP_ORIGIN` to that address first. Once any user exists, the screen
+is gone for good. That admin keeps the name you chose. If `HELPRR_ADMIN_USERNAME` is set
+in `.env`, though, Helprr renames the admin to it at every start, so leave it unset or set
+it to your chosen name (for example before a reset with `HELPRR_ADMIN_PASSWORD_RESET`).
 New local Helprr passwords must contain at least 15 characters; existing shorter
 passwords remain valid until they are reset. Jellyfin sign-in continues to use the
 password policy configured by Jellyfin.
@@ -448,7 +458,7 @@ stored password unless `HELPRR_ADMIN_PASSWORD_RESET=true`.
 | `DATABASE_URL`      | Required by the app                              | PostgreSQL Prisma connection string. In Compose it is optional if the bundled default is suitable; explicitly set it for an external database or a percent-encoded password. |
 | `REDIS_URL`         | Required by the app                              | Redis connection URL. Use `redis://helprr-redis:6379` inside Compose and `redis://localhost:6380` for a host-run Node process on the isolated development stack.             |
 | `REDIS_PASSWORD`    | Required by the app and Compose                  | Redis AUTH password. Compose starts Redis with this password.                                                                                                                |
-| `APP_PASSWORD`      | Needed to create/recover the bootstrap admin     | Seeds the bootstrap admin only. It is never used as the normal live login password after that account has a stored hash.                                                     |
+| `APP_PASSWORD`      | Optional                                         | Seeds the bootstrap admin only. Without it, the first admin is created in the browser at `/setup`. It is never used as the normal live login password after that account has a stored hash. |
 | `JWT_SECRET`        | Required by the app                              | Session-signing secret; must be at least 32 characters. Generate with `openssl rand -base64 48`.                                                                             |
 
 
@@ -544,7 +554,7 @@ same bounded image-cache summary is included in administrator support bundles.
 
 ## First-run checklist
 
-1. Sign in with the bootstrap administrator.
+1. Sign in with the bootstrap administrator, or, without `APP_PASSWORD`, create the admin on the **Welcome to Helprr** screen.
 2. Open **Settings → Instances** and connect the services you actually use. Test each connection before relying on it. If you later change a connection's URL, enter its API key (or password) again as well: a saved key is only used with the URL it was saved for, and the form reminds you.
 3. In **Settings → Users**, create member accounts and grant only the capabilities they need.
 4. If you use the Watch section, have each member connect their Jellyfin account — signing in with the **Sign in with Jellyfin** button does it automatically, and anyone using a Helprr password can do it from **Settings → Account**. Until they do, Helprr asks them to sign in when they press play. **Settings → Users** shows who is still not connected.

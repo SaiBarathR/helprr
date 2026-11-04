@@ -5,12 +5,15 @@ import { needsFirstAdmin } from '@/lib/first-admin';
 
 /**
  * How a new installer can sign in, decided from the database:
+ * - `create-admin`: no user at all and no APP_PASSWORD, so the first admin is
+ *   created in the browser at /setup;
  * - `app-password`: the bootstrap admin is an active admin whose stored
  *   password still matches APP_PASSWORD;
  * - `admin-account`: some active admin has a local password, but not that one;
  * - `app-password-invalid`: APP_PASSWORD is set but made no usable admin
  *   (startup logged why, for example a password that is too short);
- * - `no-admin`: APP_PASSWORD is not set and no admin can sign in.
+ * - `no-admin`: APP_PASSWORD is not set, users exist, and none of them is an
+ *   admin who can sign in.
  */
 export type SignInHint =
   | { kind: 'create-admin' }

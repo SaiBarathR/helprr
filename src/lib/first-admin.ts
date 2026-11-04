@@ -14,9 +14,40 @@ import { localUsernameValidationError, normalizeLocalUsername } from '@/lib/user
  * only admin signs in with Jellyfin, or whose bootstrap admin was deleted, must
  * never reopen it.
  */
+// Once any user exists no app path empties the table again, so the answer stays
+// "no" for the life of the process, and the public routes stop counting.
+let firstAdminDone = false;
+
 export async function needsFirstAdmin(): Promise<boolean> {
-  if (process.env.APP_PASSWORD) return false;
-  return (await prisma.user.count()) === 0;
+  if (process.env.APP_PASSWORD || firstAdminDone) return false;
+  if ((await prisma.user.count()) > 0) {
+    firstAdminDone = true;
+    return false;
+  }
+  return true;
+}
+
+/** For tests that empty the User table between cases. */
+export function resetFirstAdminLatch(): void {
+  firstAdminDone = false;
+}
+
+// A public endpoint that hashes a password: at most this many claims a minute per
+// process. The per-IP sign-in limit needs a trusted proxy, so it may not apply here.
+const CLAIMS_PER_MINUTE = 10;
+const claimTimes: number[] = [];
+
+/** Whether another claim may run now; records it when it may. */
+export function takeClaimSlot(now = Date.now()): boolean {
+  while (claimTimes.length > 0 && now - claimTimes[0] > 60_000) claimTimes.shift();
+  if (claimTimes.length >= CLAIMS_PER_MINUTE) return false;
+  claimTimes.push(now);
+  return true;
+}
+
+/** For tests. */
+export function resetClaimSlots(): void {
+  claimTimes.length = 0;
 }
 
 export class FirstAdminTakenError extends Error {
@@ -71,24 +102,54 @@ export async function claimFirstAdmin(input: { username: unknown; password: unkn
     }
     throw error;
   }
+  firstAdminDone = true;
   console.log(`[Helprr] First admin created in the browser (username: ${username})`);
   await attachOwnerlessRowsToAdmin();
   return { id: BOOTSTRAP_ADMIN_ID, role: 'admin' };
 }
 
+const LOCAL_SUFFIXES = ['.local', '.lan', '.home.arpa', '.internal', '.localhost'];
+
 /**
- * Whether a request comes from Helprr's own pages. The claim needs no cookie, so
- * a page on another site could otherwise post it from a visitor's browser.
+ * A name only a home network uses: an IP address, localhost, a single-label name,
+ * or a local-only suffix. DNS rebinding needs a public domain the attacker controls,
+ * so an address like this cannot be one.
  */
-export function isSameOriginRequest(request: Request): boolean {
+export function isLocalHostname(hostname: string): boolean {
+  const name = hostname.toLowerCase().replace(/^\[|\]$/g, '');
+  if (name === 'localhost' || name.includes(':')) return true;
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(name)) return true;
+  if (!name.includes('.')) return true;
+  return LOCAL_SUFFIXES.some((suffix) => name.endsWith(suffix));
+}
+
+/**
+ * Whether a claim comes from Helprr's own page, at an address that cannot be a
+ * rebound one. The claim needs no cookie, so a page on another site could otherwise
+ * post it from a visitor's browser, and a DNS-rebinding page looks same-origin.
+ * - With APP_ORIGIN set, the request must come from exactly that origin, which
+ *   also works behind a reverse proxy that rewrites Host.
+ * - Without it, the page must be at a local address and its origin must match Host.
+ */
+export function isAllowedSetupOrigin(request: Request): boolean {
   const site = request.headers.get('sec-fetch-site');
   if (site && site !== 'same-origin' && site !== 'none') return false;
   const origin = request.headers.get('origin');
-  const host = request.headers.get('host');
-  if (!origin || !host) return false;
+  if (!origin) return false;
+  let parsed: URL;
   try {
-    return new URL(origin).host === host;
+    parsed = new URL(origin);
   } catch {
     return false;
   }
+  const configured = process.env.APP_ORIGIN?.trim();
+  if (configured) {
+    try {
+      return new URL(configured).origin === parsed.origin;
+    } catch {
+      return false;
+    }
+  }
+  const host = request.headers.get('host');
+  return Boolean(host) && parsed.host === host && isLocalHostname(parsed.hostname);
 }
