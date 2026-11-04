@@ -12,6 +12,7 @@ describe('no-clone release packaging', () => {
     { releaseName: 'setup-env.sh', source: 'scripts/setup-env.sh', executable: true },
     { releaseName: 'backup.sh', source: 'scripts/backup.sh', executable: true },
     { releaseName: 'update.sh', source: 'scripts/update.sh', executable: true },
+    { releaseName: 'install.sh', source: 'scripts/install.sh', executable: true },
   ];
 
   it('keeps every required source file available and helper scripts executable', () => {
@@ -32,7 +33,9 @@ describe('no-clone release packaging', () => {
     expect(releaseJob).toContain('install -m 0755 scripts/setup-env.sh setup-env.sh');
     expect(releaseJob).toContain('install -m 0755 scripts/backup.sh backup.sh');
     expect(releaseJob).toContain('install -m 0755 scripts/update.sh update.sh');
-    expect(releaseJob).toContain('docker-compose.yml env.example setup-env.sh backup.sh update.sh');
+    expect(releaseJob).toContain('install -m 0755 scripts/install.sh install.sh');
+    expect(releaseJob).toContain('sha256sum docker-compose.yml env.example setup-env.sh backup.sh update.sh install.sh > SHA256SUMS');
+    expect(releaseJob).toContain('docker-compose.yml env.example setup-env.sh backup.sh update.sh install.sh SHA256SUMS');
     for (const asset of assets) {
       expect(releaseJob, asset.releaseName).toContain(asset.releaseName);
     }
