@@ -34,6 +34,25 @@ services:
       timeout: 5s
       retries: 5
 
+  # Makes the secrets that .env does not set (docker/init-secrets.sh), once, on the
+  # helprr-secrets volume, with a copy for each reader; then exits. A value set in
+  # .env always wins. Back the volume up with the database (scripts/backup.sh).
+  helprr-init:
+    image: ghcr.io/saibarathr/helprr:${HELPRR_VERSION:-stable}
+    container_name: helprr-init
+    user: "0:0"
+    entrypoint: ["/bin/sh", "/app/init-secrets.sh"]
+    restart: "no"
+    network_mode: none
+    environment:
+      - JWT_SECRET=${JWT_SECRET:-}
+      - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY:-${NEXT_PUBLIC_VAPID_PUBLIC_KEY:-}}
+      - VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY:-}
+      - TWITCH_PUID=${TWITCH_PUID:-1000}
+      - TWITCH_PGID=${TWITCH_PGID:-1000}
+    volumes:
+      - helprr-secrets:/secrets
+
   helprr:
     # Published image. The default `stable` channel tracks qualified releases;
     # pin an exact version with HELPRR_VERSION (e.g. 1.0.0). Build source only in
@@ -48,6 +67,8 @@ services:
     ports:
       - "${HELPRR_PORT:-3050}:3050"
     depends_on:
+      helprr-init:
+        condition: service_completed_successfully
       helprr-db:
         condition: service_healthy
       helprr-redis:
@@ -65,8 +86,8 @@ services:
       - HELPRR_ADMIN_USERNAME=${HELPRR_ADMIN_USERNAME:-}
       - HELPRR_ADMIN_PASSWORD_RESET=${HELPRR_ADMIN_PASSWORD_RESET:-}
       - TRUST_FORWARDED_PROTO=${TRUST_FORWARDED_PROTO:-}
-      # Must be >=32 chars or the app refuses to boot. Generate: openssl rand -base64 48
-      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET is required}
+      # At least 32 characters. Empty: helprr-init makes one on the helprr-secrets volume.
+      - JWT_SECRET=${JWT_SECRET:-}
       # VAPID_PUBLIC_KEY is runtime config (NEXT_PUBLIC_VAPID_PUBLIC_KEY kept as
       # a fallback for .env files from when it was baked in at build time).
       - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY:-${NEXT_PUBLIC_VAPID_PUBLIC_KEY:-}}
@@ -99,6 +120,8 @@ services:
     volumes:
       - helprr-logs:${LOG_DIR:-/app/logs}
       - helprr-image-cache:/app/image-cache
+      # Read-only: the app only reads its copies; helprr-init writes them.
+      - helprr-secrets:/app/secrets:ro
     # Lets an app on the same machine be reached as http://host.docker.internal:<port>.
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -132,12 +155,14 @@ services:
     device_cgroup_rules:
       - "c 226:* rw"
     depends_on:
+      helprr-init:
+        condition: service_completed_successfully
       helprr-db:
         condition: service_healthy
     environment:
       - TZ=${TZ:-UTC}
       - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD}@helprr-db:5432/helprr
-      - JWT_SECRET=${JWT_SECRET}
+      - JWT_SECRET=${JWT_SECRET:-}
       - APP_PASSWORD=${APP_PASSWORD:-}
       - TWITCH_LIBRARY_DIR=/media/twitch
       - YOUTUBE_LIBRARY_DIR=/media/youtube
@@ -150,6 +175,7 @@ services:
       # /dev/null means no folder was chosen: nothing is created, and YouTube reports not ready.
       - ${YOUTUBE_LIBRARY_HOST_PATH:-/dev/null}:/media/youtube
       - helprr-twitch-tools:/data/tools
+      - helprr-secrets:/secrets:ro
     networks:
       - helprr-net
 
@@ -162,5 +188,8 @@ volumes:
   helprr-db-data:
   helprr-image-cache:
     name: helprr-image-cache
+  # Generated secrets: losing it ends every session and makes stored tokens unreadable.
+  helprr-secrets:
+    name: helprr-secrets
   helprr-logs:
   helprr-redis-data:

@@ -20,7 +20,8 @@ Default directories:
   dev:    ./backups/development
 
 Backup files contain secrets. The directory is restricted to 0700 and each dump
-to 0600. Existing files are never overwritten. Pruning removes only files this
+to 0600. When the Compose file has helprr-init, the generated secrets are saved
+beside each dump as <name>.secrets.tar (0600); restore both together. Existing files are never overwritten. Pruning removes only files this
 helper names helprr-pre-upgrade-<timestamp>.dump (helprr-dev-pre-upgrade- with
 --dev); other files in the directory are left alone.
 EOF
@@ -172,6 +173,27 @@ trap - 0 HUP INT TERM
 
 printf 'Created and validated PostgreSQL backup: %s\n' "$backup_file"
 
+# The secrets helprr-init made (when .env does not set them) live on the
+# helprr-secrets volume. Without them stored tokens cannot be read and every
+# session ends, so they are saved beside the dump, read through helprr-init,
+# which runs as root and has the volume mounted.
+secrets_file=${backup_file%.dump}.secrets.tar
+if compose config --services 2>/dev/null | grep -qx helprr-init; then
+  secrets_temporary=$(mktemp "$output_dir/.helprr-secrets.XXXXXX") || fail 'Could not create a temporary secrets file.'
+  if ! compose run --rm --no-deps -T --entrypoint tar helprr-init -C /secrets -cf - . > "$secrets_temporary" 2>/dev/null \
+    || ! tar -tf "$secrets_temporary" > /dev/null 2>&1; then
+    rm -f "$secrets_temporary"
+    fail "The database backup is in $backup_file, but the generated secrets could not be saved."
+  fi
+  chmod 600 "$secrets_temporary"
+  if ! ln "$secrets_temporary" "$secrets_file" 2>/dev/null; then
+    rm -f "$secrets_temporary"
+    fail 'The secrets backup path already exists; it was not overwritten.'
+  fi
+  rm -f "$secrets_temporary"
+  printf 'Saved the generated secrets: %s\n' "$secrets_file"
+fi
+
 # Prune only this helper's own dumps, oldest first: the timestamped names sort in
 # creation order. Only dumps older than this run's timestamp are removed, so two
 # runs at once never delete each other's newer dump (even if this run's own file
@@ -201,6 +223,7 @@ if [ "$keep" -gt 0 ]; then
       continue
     fi
     if rm -f -- "$file"; then
+      rm -f -- "${file%.dump}.secrets.tar"
       removed=$((removed + 1))
       printf 'Removed older backup: %s\n' "$file"
     else

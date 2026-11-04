@@ -259,4 +259,8 @@ else
   printf '  2. Open http://THIS-SERVER:%s and create your admin account.\n' "$app_port"
   printf '     Do it before Helprr is reachable from the internet: whoever opens it first can.\n'
 fi
-printf '  Push notifications need the three VAPID values in %s; see the README.\n' "$target_name"
+if [ "$mode" = dev ]; then
+  printf '  Push notifications need the three VAPID values in %s; see the README.\n' "$target_name"
+else
+  printf '  Helprr makes its push notification keys on the first start; to use your own, see the README.\n'
+fi

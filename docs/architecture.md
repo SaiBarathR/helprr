@@ -237,6 +237,27 @@ transaction. `HELPRR_ADMIN_PASSWORD_RESET=true` is a separate startup recovery
 path for the bootstrap admin and does not revoke existing sessions, so suspected
 compromise also requires explicit session revocation.
 
+Generated secrets: with the bundled Compose file, a short-lived `helprr-init`
+service (`docker/init-secrets.sh`, the app image run as root with no network) makes
+what `.env` does not set, once, on the fixed-name `helprr-secrets` volume: a root-only
+master per value (`jwt_secret`, `vapid_public`, `vapid_private`, and the time the
+JWT secret was made), published with `ln` so two runs at once never both write one
+and never regenerated while it exists, plus per-reader copies in `app/` (the image's
+`nextjs` group) and `worker/` (`TWITCH_PGID`). Readers own nothing in the volume:
+folders are `root:<group>` 0750 and copies `root:<group>` 0640, staged in a per-run
+root-only folder and moved in, so a reader cannot plant a link the root init would
+follow; the app mounts the volume read-only. A value set in the environment always
+wins, its stale copies are removed, and the VAPID pair is all or nothing. `docker-entrypoint.sh` exports the app's copies
+before migrations and `node server.js` only when the environment has none, so the
+proxy, startup validation and every token cipher see one value; the worker loads its
+`JWT_SECRET` copy first thing in `main.ts`. An older Compose file has no init and no
+volume, so the app never generates into its container layer and the environment must
+provide the values, as before. `update.sh` runs the init (it never regenerates) before
+replacing the app, and `backup.sh` saves the volume beside each dump as
+`<dump>.secrets.tar`. When the generated JWT secret is younger than some user (the
+volume was lost), the app warns at startup and on **Settings -> Status** for 14 days:
+stored tokens are unreadable and every session ended.
+
 Public proxy exceptions must remain narrow. Liveness, readiness and the
 first-admin screen and routes are exact paths, not prefixes. Share-target handling is public at the proxy only so
 its route can preserve the incoming payload while applying its own auth check.

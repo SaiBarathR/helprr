@@ -41,6 +41,13 @@ export async function register() {
       console.warn('[Helprr] Could not ensure bootstrap admin:', adminErr);
     }
 
+    try {
+      const { checkGeneratedSecretsAtStartup } = await import('@/lib/generated-secrets');
+      await checkGeneratedSecretsAtStartup();
+    } catch (secretsErr) {
+      console.warn('[Helprr] Could not check the generated secrets:', secretsErr);
+    }
+
     const { pollingService } = await import('@/lib/polling-service');
     const { getOrCreateAppSettings } = await import('@/lib/app-settings');
     const { configureApiLogging } = await import('@/lib/api-logger');

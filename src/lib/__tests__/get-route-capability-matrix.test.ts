@@ -22,6 +22,7 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
   admin: [
     'GET /api/admin/polling-status',
     'GET /api/admin/support-bundle',
+    'GET /api/admin/secrets',
     'GET /api/admin/update-check',
     'GET /api/anilist/library',
     'GET /api/anilist/list-entry',
@@ -524,7 +525,7 @@ describe('GET API route capability matrix', () => {
   const assignments = policyAssignments();
 
   it('explicitly assigns every GET handler exactly once', () => {
-    expect(handlers.size).toBe(262);
+    expect(handlers.size).toBe(263);
     expect([...assignments.keys()].sort()).toEqual([...handlers.keys()].sort());
   });
 
