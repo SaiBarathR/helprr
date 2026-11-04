@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useSyncExternalStore } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import Link from '@/components/ui/app-link';
 import { Bell, BellOff, ChevronLeft, ChevronRight, Loader2, Send, Smartphone } from 'lucide-react';
 import { toast } from 'sonner';
@@ -21,6 +22,8 @@ import { EventTypePrefs } from '@/components/notifications/event-type-prefs';
 import { QuietHoursSection } from '@/components/notifications/quiet-hours-section';
 import { DiskLowSpaceAlerts } from '@/components/settings/disk-low-space-alerts';
 import { useMe } from '@/components/permission-provider';
+import { jsonFetcher } from '@/lib/query-fetch';
+import { isIosDevice, pushUnavailableReason } from '@/lib/push-availability';
 
 const TIMING_OPTIONS = [
   { value: 'before_air', label: 'Before air time' },
@@ -64,6 +67,27 @@ const HISTORY_RETENTION_OPTIONS = [
   { value: '365', label: '1 year' },
 ];
 
+// Facts about this browser that never change within a session (server snapshot: unknown → secure, not iOS).
+const emptySubscribe = () => () => {};
+const getSecure = () => window.isSecureContext;
+const getIos = () => isIosDevice(navigator.userAgent, navigator.platform, navigator.maxTouchPoints);
+// False while the server render is being hydrated, so no reason shows until the real browser facts are known.
+const getHydrated = () => true;
+
+function PushUnavailable({ icon, title, children }: { icon: React.ReactNode; title: string; children: React.ReactNode }) {
+  return (
+    <GroupedSection>
+      <div className="px-4 py-4 flex items-start gap-3">
+        {icon}
+        <div className="text-sm space-y-1">
+          <div className="font-medium">{title}</div>
+          <div className="text-xs text-muted-foreground">{children}</div>
+        </div>
+      </div>
+    </GroupedSection>
+  );
+}
+
 export default function NotificationsSettingsPage() {
   const { settings, loading, update } = useAppSettings();
   // Upcoming-release timing + activity digest write the global AppSettings
@@ -81,6 +105,22 @@ export default function NotificationsSettingsPage() {
     subscriptionEndpoint,
   } = usePushNotifications();
   const [testing, setTesting] = useState(false);
+  const secure = useSyncExternalStore(emptySubscribe, getSecure, () => true);
+  const ios = useSyncExternalStore(emptySubscribe, getIos, () => false);
+  const hydrated = useSyncExternalStore(emptySubscribe, getHydrated, () => false);
+  const unavailable = hydrated
+    ? pushUnavailableReason({ secure, supported: isSupported, ios, standalone: isStandalone })
+    : null;
+  // Only worth asking once the browser itself can do push.
+  const { data: serverPush } = useQuery({
+    queryKey: ['push', 'public-key'],
+    queryFn: jsonFetcher<{ publicKey: string | null; configured?: boolean; missing?: string[] }>('/api/push/public-key'),
+    enabled: hydrated && unavailable === null,
+    staleTime: 5 * 60_000,
+  });
+  // Unknown (loading, or the check failed) counts as configured, so the normal page shows.
+  const serverConfigured = serverPush ? (serverPush.configured ?? Boolean(serverPush.publicKey)) : true;
+  const canEnable = isSupported && serverConfigured;
 
   const mode = settings?.upcomingNotifyMode ?? 'before_air';
   const digestMode = settings?.activityDigestMode ?? 'off';
@@ -133,7 +173,22 @@ export default function NotificationsSettingsPage() {
         </p>
       </div>
 
-      {!isSupported && (
+      {unavailable === 'insecure' && (
+        <PushUnavailable icon={<BellOff className="h-5 w-5 text-orange-400 mt-0.5 shrink-0" />} title="Push needs HTTPS">
+          You are on {window.location.origin}. Browsers only allow
+          notifications on an https:// address. Put Helprr behind HTTPS, for example with Tailscale Serve, Cloudflare
+          Tunnel or a reverse proxy, then open it at that address.
+        </PushUnavailable>
+      )}
+
+      {unavailable === 'ios-not-installed' && (
+        <PushUnavailable icon={<Smartphone className="h-5 w-5 text-orange-400 mt-0.5 shrink-0" />} title="Add Helprr to your Home Screen first">
+          On iPhone and iPad, notifications only work in the installed app (iOS 16.4 or later). Tap the Share
+          button, then &ldquo;Add to Home Screen&rdquo;, and open Helprr from there.
+        </PushUnavailable>
+      )}
+
+      {unavailable === 'unsupported' && (
         <GroupedSection>
           <div className="px-4 py-6 text-center text-sm text-muted-foreground">
             <BellOff className="h-6 w-6 mx-auto mb-2 opacity-60" />
@@ -142,7 +197,21 @@ export default function NotificationsSettingsPage() {
         </GroupedSection>
       )}
 
-      {isSupported && !isStandalone && (
+      {hydrated && unavailable === null && !serverConfigured && (
+        <PushUnavailable icon={<BellOff className="h-5 w-5 text-orange-400 mt-0.5 shrink-0" />} title="Push is not set up on this server">
+          {isAdmin ? (
+            <>
+              Helprr is missing {(serverPush?.missing ?? ['its push keys']).join(', ')}. Make a key pair with{' '}
+              <code>npx web-push generate-vapid-keys</code>, put VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY and VAPID_SUBJECT in
+              .env, then run <code>docker compose up -d --no-build --no-deps helprr</code>.
+            </>
+          ) : (
+            'Ask your Helprr admin to turn on push notifications for this server.'
+          )}
+        </PushUnavailable>
+      )}
+
+      {canEnable && !isStandalone && (
         <GroupedSection>
           <div className="px-4 py-4 flex items-start gap-3">
             <Smartphone className="h-5 w-5 text-orange-400 mt-0.5 shrink-0" />
@@ -163,7 +232,7 @@ export default function NotificationsSettingsPage() {
         </GroupedSection>
       )}
 
-      {isSupported && (
+      {canEnable && (
         <GroupedSection title="This device" footer="Per-device — preferences below apply to this browser/PWA only">
           {!isSubscribed ? (
             <div className="px-4 py-4 space-y-3">
