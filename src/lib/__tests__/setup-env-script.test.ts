@@ -291,7 +291,7 @@ describe('setup-env.sh checks against stub programs', () => {
     delete env.HELPRR_SETUP_TZ;
     return env;
   }
-  const quietDocker = 'case "$*" in "compose version --short") echo 2.29.1 ;; esac';
+  const quietDocker = 'case "$*" in "compose version --short") echo 2.29.1 ;; "volume inspect"*) exit 1 ;; esac';
 
   it('reads the timezone from timedatectl', () => {
     const root = createFixture();
@@ -325,6 +325,19 @@ describe('setup-env.sh checks against stub programs', () => {
     }));
     expect(result.status).toBe(0);
     expect(result.stdout.includes('is too old; Helprr needs 2.18 or newer')).toBe(warns);
+  });
+
+  it.each([
+    ['exists', 'exit 0', true],
+    ['does not exist', 'exit 1', false],
+  ])('when the helprr-secrets volume %s, says whether to drop the passwords', (_, inspect, warns) => {
+    const root = createFixture();
+    const result = runSetup(root, [], withStubs({
+      timedatectl: 'echo Etc/UTC',
+      docker: `case "$*" in "compose version --short") echo 2.29.1 ;; "volume inspect helprr-secrets") ${inspect} ;; esac`,
+    }));
+    expect(result.status).toBe(0);
+    expect(result.stdout.includes('the helprr-secrets volume exists')).toBe(warns);
   });
 
   it('says when Docker Compose does not run', () => {

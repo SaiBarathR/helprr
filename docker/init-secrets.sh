@@ -4,9 +4,13 @@
 # exits; it never prints a secret.
 #
 #   /secrets/<name>          root-only master (0600), written once, never replaced:
-#                            jwt_secret, jwt_secret.created_at, vapid_keys ("public private")
+#                            jwt_secret, jwt_secret.created_at, vapid_keys ("public private"),
+#                            postgres_password, redis_password
 #   /secrets/app/<name>      root:<app group> 0640, read by docker-entrypoint.sh
 #   /secrets/worker/<name>   root:<worker group> 0640, read by the Twitch/YouTube worker
+#   /auth/db/postgres_password, /auth/redis/redis_password
+#                            root-only (0600) copies on Postgres's and Redis's own volumes,
+#                            so those containers (root at start) never see the others
 #
 # Readers own nothing in the volume: every folder and file belongs to root, so a
 # reader cannot plant a link that this root process would follow. Copies are staged in
@@ -16,6 +20,8 @@
 set -eu
 
 S=${HELPRR_SECRETS_DIR:-/secrets}
+DB_AUTH=${HELPRR_DB_AUTH_DIR:-/auth/db}
+REDIS_AUTH=${HELPRR_REDIS_AUTH_DIR:-/auth/redis}
 fail() { echo "init-secrets: $*" >&2; exit 1; }
 
 # The app runs as the image's nextjs user; read its group from the image itself.
@@ -59,7 +65,7 @@ STAGE=$(mktemp -d "$S/.staging.XXXXXX")
 trap 'rm -rf "$STAGE"' 0
 trap 'exit 1' INT TERM HUP
 # Masters stay root-only 0600, even after a restore that lost their modes.
-for master in jwt_secret jwt_secret.created_at vapid_keys; do
+for master in jwt_secret jwt_secret.created_at vapid_keys postgres_password redis_password; do
   [ -f "$S/$master" ] && [ ! -L "$S/$master" ] || continue
   [ "$as_root" = no ] || chown 0:0 "$S/$master"
   chmod 600 "$S/$master"
@@ -103,6 +109,28 @@ copy_to() {
   place "$tmp" "$S/$1/$2"
 }
 
+# own_copy DIR NAME: a root-only copy for a service that reads it as root when it starts
+# (Postgres, Redis), on that service's own volume. Staged in the same folder, so the
+# move is a rename.
+own_copy() {
+  { [ -f "$S/$2" ] && [ ! -L "$S/$2" ]; } || fail "the master $2 is missing or not a file"
+  [ -d "$1" ] || fail "$1 is not mounted"
+  [ "$as_root" = no ] || chown 0:0 "$1"
+  chmod 700 "$1"
+  find "$1" -maxdepth 1 -name '.new.*' -mmin +10 -exec rm -f {} + 2>/dev/null || true
+  tmp=$(mktemp "$1/.new.XXXXXX")
+  cat "$S/$2" > "$tmp"
+  chmod 600 "$tmp"
+  place "$tmp" "$1/$2"
+}
+
+# ensure NAME WHAT: make a random master once.
+ensure() {
+  [ ! -e "$S/$1" ] || return 0
+  value=$(new_secret 32)
+  if publish "$1" "$value"; then echo "init-secrets: created the $2"; fi
+}
+
 # JWT_SECRET signs sessions and encrypts stored tokens, for the app and the worker.
 if [ -n "${JWT_SECRET:-}" ]; then
   rm -f "$S/app/jwt_secret" "$S/worker/jwt_secret" "$S/app/jwt_secret.created_at"
@@ -144,4 +172,24 @@ else
     chmod 640 "$tmp"
     place "$tmp" "$S/app/vapid_$part"
   done
+fi
+
+# The database and Redis passwords. Set in .env (every install before this one): used
+# as they are, and stale copies are removed. Without the service's own volume, the
+# Compose file is older than this and .env provides the password: nothing is made.
+# Otherwise made once; Postgres reads its password only when it creates the database.
+if [ -n "${POSTGRES_PASSWORD:-}" ] || [ ! -d "$DB_AUTH" ]; then
+  rm -f "$S/app/postgres_password" "$S/worker/postgres_password" "$DB_AUTH/postgres_password"
+else
+  ensure postgres_password 'database password'
+  own_copy "$DB_AUTH" postgres_password
+  copy_to app postgres_password "$APP_GID"
+  copy_to worker postgres_password "$WORKER_GID"
+fi
+if [ -n "${REDIS_PASSWORD:-}" ] || [ ! -d "$REDIS_AUTH" ]; then
+  rm -f "$S/app/redis_password" "$REDIS_AUTH/redis_password"
+else
+  ensure redis_password 'Redis password'
+  own_copy "$REDIS_AUTH" redis_password
+  copy_to app redis_password "$APP_GID"
 fi

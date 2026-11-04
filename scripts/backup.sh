@@ -94,7 +94,8 @@ else
 fi
 
 [ -f "$compose_file" ] || fail "Missing Compose file: $(basename -- "$compose_file")"
-[ -f "$env_file" ] || fail "Missing environment file: $(basename -- "$env_file")"
+# The stable install may have no .env at all (helprr-init made its passwords).
+[ "$mode" != dev ] || [ -f "$env_file" ] || fail "Missing environment file: $(basename -- "$env_file")"
 command -v docker >/dev/null 2>&1 || fail 'Docker is required to create a backup.'
 
 if [ -z "$output_dir" ]; then

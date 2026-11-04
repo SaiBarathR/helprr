@@ -22,6 +22,29 @@ if [ -z "${VAPID_PUBLIC_KEY:-}${NEXT_PUBLIC_VAPID_PUBLIC_KEY:-}${VAPID_PRIVATE_K
   export VAPID_PUBLIC_KEY VAPID_PRIVATE_KEY
   export HELPRR_VAPID_SOURCE=generated
 fi
+# The database URL: an explicit DATABASE_URL, else one built from POSTGRES_PASSWORD,
+# else from the password helprr-init made (no .env at all). The bundled Compose file
+# names the database helprr-db. A password with URL characters (@ : / ? #) needs an
+# explicit, percent-encoded DATABASE_URL; generated ones are hex.
+if [ -z "${DATABASE_URL:-}" ]; then
+  db_password=${POSTGRES_PASSWORD:-}
+  if [ -z "$db_password" ] && [ -r "$SECRETS/postgres_password" ]; then
+    db_password=$(cat "$SECRETS/postgres_password")
+  fi
+  if [ -z "$db_password" ]; then
+    echo 'Helprr: no database password. Set POSTGRES_PASSWORD (or DATABASE_URL) in .env, or start Helprr with its docker-compose.yml, which makes one.' >&2
+    exit 1
+  fi
+  DATABASE_URL="postgresql://postgres:$db_password@helprr-db:5432/helprr"
+  export DATABASE_URL
+  unset db_password
+fi
+unset POSTGRES_PASSWORD
+if [ -z "${REDIS_PASSWORD:-}" ] && [ -r "$SECRETS/redis_password" ]; then
+  REDIS_PASSWORD=$(cat "$SECRETS/redis_password")
+  export REDIS_PASSWORD
+fi
+
 # A contact for the push services: the public address when it is https and not
 # localhost (web-push refuses anything but https: and mailto:, and Apple refuses
 # localhost), else the project's page.

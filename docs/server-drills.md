@@ -12,11 +12,13 @@ installation.
   `fresh-` container names on host port `3059`. The stable stack uses `3050` and
   the isolated development stack `3051`; if `3059` is taken (`ss -ltn`), pick
   another free port.
-- **Own image-cache volume.** The stable Compose file gives one volume a fixed
-  name, `helprr-image-cache`, so a scratch copy started from it would share the
-  real installation's image cache. Rename it in the copy before `up`, and never
-  run `down -v` against a file that still names `helprr-image-cache`. The
-  database, Redis, and log volumes are already per-project.
+- **Own image-cache and secrets volumes.** The stable Compose file gives two volumes
+  fixed names, `helprr-image-cache` and `helprr-secrets`, so a scratch copy started
+  from it would share the real installation's image cache and generated secrets.
+  Rename both in the copy before `up`, and never run `down -v` against a file that
+  still names either: losing `helprr-secrets` ends every session, and on an install
+  without `.env` it locks the app out of its database. The database, Redis, and log
+  volumes are already per-project.
 - **No network for real data.** A restored copy holds the real installation's
   service connections, cleaner rules, and push subscriptions, and its background
   jobs would act on them. Restore only into a copy whose network is
@@ -54,19 +56,20 @@ sed -i "s/^#\? *HELPRR_VERSION=.*/HELPRR_VERSION=${HELPRR_RELEASE#v}/" .env
 grep '^HELPRR_VERSION=' .env
 ```
 
-Give the copy its own names, port, and image-cache volume, then check the
-rendered file before starting anything:
+Give the copy its own names, port, and image-cache and secrets volumes, then check
+the rendered file before starting anything:
 
 ```bash
 sed -i -e 's/container_name: helprr/container_name: fresh-helprr/' \
   -e 's/^\( *name:\) helprr-image-cache$/\1 helprr-fresh-image-cache/' \
+  -e 's/^\( *name:\) helprr-secrets$/\1 helprr-fresh-secrets/' \
   docker-compose.yml
 echo HELPRR_PORT=3059 >> .env
 docker compose -p helprr-fresh config | grep -E 'container_name|published|name: helprr'
 ```
 
 Every container name must start with `fresh-`, the published port must be
-`3059`, and the image-cache volume must be `helprr-fresh-image-cache`.
+`3059`, and the volumes must be `helprr-fresh-image-cache` and `helprr-fresh-secrets`.
 
 ```bash
 docker compose -p helprr-fresh pull
@@ -130,13 +133,14 @@ docker compose exec -T helprr-db psql -U postgres -d helprr -tAc "$q"
 ```
 
 Clean up from the copy's directory. `down -v` is safe there only because the copy's
-image-cache volume was renamed; afterwards `helprr-image-cache` must still be listed:
+fixed-name volumes were renamed; afterwards `helprr-image-cache` and `helprr-secrets`
+must still be listed:
 
 ```bash
 cd /tmp/helprr-fresh
 docker compose -p helprr-fresh down -v
 cd / && rm -rf /tmp/helprr-fresh
-docker volume ls -q | grep -x helprr-image-cache
+docker volume ls -q | grep -x -e helprr-image-cache -e helprr-secrets
 ```
 
 The scratch `.env` held generated secrets and is removed with the directory. The

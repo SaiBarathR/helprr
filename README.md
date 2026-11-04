@@ -202,7 +202,7 @@ https://github.com/user-attachments/assets/7fa980fd-0dc6-48a8-91c1-cd35453571fd
 Docker Compose starts Helprr, PostgreSQL 16, and password-protected Redis 8. It creates named volumes for database, Redis, and log data; waits for database/Redis health; runs pending Prisma migrations before Helprr starts; and exposes Helprr on port **3050** (set `HELPRR_PORT` in `.env` to use another).
 
 **Requirements:** Docker Compose 2.18 or newer (`docker compose version`; older
-releases reject the Compose file's nested `DATABASE_URL` default) on a Docker Engine
+releases reject the Compose file's nested `VAPID_PUBLIC_KEY` default) on a Docker Engine
 release that Docker still supports. The iPhone PWA supports the latest two major iOS
 versions, today iOS 26 and 27.
 
@@ -232,7 +232,28 @@ Run `sh install.sh --help` for its options, such as `--yes`, `--port`, `--tz`,
 cloud-init) it uses the defaults. The checksums catch a broken or mixed download; they
 come from the same release, so they do not protect against a compromised release.
 
-The steps below do the same by hand.
+### Only the Compose file
+
+Helprr also starts with no `.env` at all, which suits Portainer stacks and other
+web forms where you paste a Compose file:
+
+```bash
+mkdir helprr && cd helprr
+curl -fsSLO https://github.com/SaiBarathR/helprr/releases/latest/download/docker-compose.yml
+docker compose up -d
+```
+
+The `helprr-init` service makes the database, Redis and session passwords and the push
+keys once, in the `helprr-secrets` volume, and you create the admin in the browser.
+The timezone is UTC and the port 3050 until you set `TZ` and `HELPRR_PORT` (in `.env`
+or the stack's environment). With the Twitch or YouTube worker, a library folder Docker
+has just created is given to the worker's user; if the worker says it cannot write to
+its folder, run `sudo chown 1000:1000 twitch-library` (your `TWITCH_PUID:TWITCH_PGID`).
+Back the volume up with the database (see
+[Backup and restore](#backup-and-restore)). If you add a `.env` later, leave its
+passwords out: the database already uses the generated one.
+
+The steps below do the same as the installer by hand.
 
 ### 1. Download the deployment files
 
@@ -460,10 +481,10 @@ stored password unless `HELPRR_ADMIN_PASSWORD_RESET=true`.
 
 | Variable            | Docker Compose / local                           | Purpose and guidance                                                                                                                                                         |
 | ------------------- | ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `POSTGRES_PASSWORD` | Required by Compose; not used by a Node-only app | Password for the bundled PostgreSQL container. It is used to form Compose's default `DATABASE_URL`.                                                                          |
+| `POSTGRES_PASSWORD` | Compose; made by `helprr-init` when empty; not used by a Node-only app | Password for the bundled PostgreSQL container, used to form the default `DATABASE_URL`. PostgreSQL reads it only when it creates the database, so never change or remove it afterwards. |
 | `DATABASE_URL`      | Required by the app                              | PostgreSQL Prisma connection string. In Compose it is optional if the bundled default is suitable; explicitly set it for an external database or a percent-encoded password. |
 | `REDIS_URL`         | Required by the app                              | Redis connection URL. Use `redis://helprr-redis:6379` inside Compose and `redis://localhost:6380` for a host-run Node process on the isolated development stack.             |
-| `REDIS_PASSWORD`    | Required by the app and Compose                  | Redis AUTH password. Compose starts Redis with this password.                                                                                                                |
+| `REDIS_PASSWORD`    | Required by the app; made by `helprr-init` when empty | Redis AUTH password. Compose starts Redis with this password.                                                                                                                |
 | `APP_PASSWORD`      | Optional                                         | Seeds the bootstrap admin only. Without it, the first admin is created in the browser at `/setup`. It is never used as the normal live login password after that account has a stored hash. |
 | `JWT_SECRET`        | Required by the app; made by `helprr-init` when empty | Session-signing secret that also encrypts stored service tokens; must be at least 32 characters. With the bundled Compose file, leaving it empty makes `helprr-init` generate one once, in the `helprr-secrets` volume. Generate your own with `openssl rand -base64 48`. |
 
@@ -794,6 +815,18 @@ docker compose stop helprr helprr-twitch-worker &&
   docker compose run --rm --no-deps -T --entrypoint tar helprr-init -C /secrets -xf - < "${dump%.dump}.secrets.tar" &&
   docker compose run --rm --no-deps helprr-init &&
   docker compose up -d
+```
+
+If the volume was lost with no `.secrets.tar`, Helprr made its database password and
+`.env` has no `POSTGRES_PASSWORD`, the database still expects the old password. Give it
+the new one, then start again (sessions end and stored tokens must be entered again):
+
+```bash
+docker compose exec -T helprr-db psql -q -U postgres <<'SQL'
+\set pw `cat /helprr-auth/postgres_password`
+ALTER USER postgres PASSWORD :'pw';
+SQL
+docker compose up -d
 ```
 
 **Restore onto a fresh host** (disaster recovery):

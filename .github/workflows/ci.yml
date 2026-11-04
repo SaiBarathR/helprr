@@ -146,6 +146,27 @@ jobs:
             echo "$path returned 200"
           done
 
+      # The same image from an empty folder with only the Compose file and no .env:
+      # helprr-init makes every password, and the app asks for its first admin.
+      - name: Start with no .env
+        run: |
+          dir=$(mktemp -d)
+          cp docker-compose.yml "$dir/"
+          cd "$dir"
+          trap 'docker compose down -v >/dev/null 2>&1 || true' EXIT
+          HELPRR_VERSION=ci-smoke docker compose up -d --quiet-pull
+          deadline=$((SECONDS + 120))
+          until [ "$(curl -s -o /dev/null -w '%{http_code}' --connect-timeout 2 --max-time 5 http://127.0.0.1:3050/api/ready)" = 200 ]; do
+            if [ "$SECONDS" -ge "$deadline" ]; then
+              echo "/api/ready did not return 200 within two minutes"
+              docker compose logs --no-color --tail=100 helprr-init helprr-db helprr-redis helprr
+              exit 1
+            fi
+            sleep 2
+          done
+          curl -fsS http://127.0.0.1:3050/api/setup/state | grep -q '"needsAdmin":true'
+          echo "ready, and asking for the first admin"
+
       - name: Scan image for fixable high/critical vulnerabilities
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         env:
