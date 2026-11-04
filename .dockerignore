@@ -20,3 +20,5 @@ docs
 jellyfinDocs
 header-issue-mobile
 *.tsbuildinfo
+twitch-library
+twitch-library-dev

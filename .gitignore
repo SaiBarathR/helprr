@@ -75,3 +75,7 @@ postman/
 
 # Twitch worker bundle
 /dist
+
+# Default Twitch/YouTube worker libraries, made by scripts/setup-env.sh
+/twitch-library/
+/twitch-library-dev/
