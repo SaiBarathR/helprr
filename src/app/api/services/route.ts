@@ -280,7 +280,8 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
 
     console.error('Failed to save service connection:', getErrorInfo(error));
     if (isRefusedRedirect(error)) {
-      return NextResponse.json({ error: REDIRECT_REFUSED_MESSAGE }, { status: 502 });
+      // Not 502: a reverse proxy such as Cloudflare Tunnel replaces that with its own page.
+      return NextResponse.json({ error: REDIRECT_REFUSED_MESSAGE }, { status: 400 });
     }
     return NextResponse.json(
       { error: 'Failed to save service connection' },
