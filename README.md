@@ -239,9 +239,10 @@ Generate all required secrets and create `.env`:
 
 The helper uses independent URL-safe secrets, writes the completed file with mode
 `0600`, never prints secret values, and refuses to overwrite an existing `.env`.
-Open `.env` to retrieve the generated bootstrap `APP_PASSWORD`, then review the
-timezone and optional settings before the first start. You may replace the generated
-bootstrap password with your own strong password before first boot.
+It ends with what to do next, including the command that shows the generated
+bootstrap `APP_PASSWORD`. Review the timezone and optional settings before the first
+start. You may replace the generated bootstrap password with your own strong password
+before first boot.
 
 The helper fills these required variables:
 
@@ -252,7 +253,10 @@ APP_PASSWORD
 JWT_SECRET
 ```
 
-It leaves `TZ` at the template's `Asia/Kolkata`; set it to your own IANA timezone.
+It also sets `TZ` to this computer's timezone (`Etc/UTC` when it cannot tell) and says
+where it found it; sets `TWITCH_PUID`, `TWITCH_PGID` and, when the host has a `render`
+group, `TWITCH_RENDER_GID`; creates the default `twitch-library` folder, owned by that
+user; and warns when Docker Compose is missing or too old, or port 3050 is taken.
 
 `APP_PASSWORD` creates the bootstrap administrator on first boot. Its username is `admin` by default, or the value of `HELPRR_ADMIN_USERNAME`. Changing `APP_PASSWORD` later does **not** change an existing user's password.
 New local Helprr passwords must contain at least 15 characters; existing shorter
@@ -948,6 +952,16 @@ an Intel GPU. It is off until you configure it, and needs a separate worker cont
    **No GPU**, and leaves files as they are. On an SELinux host, run
    `setsebool -P container_use_devices 1` if the worker reports no GPU.
 
+   Create the library folder first, owned by the worker's user. Otherwise Docker
+   creates it as root, and the worker cannot write to it:
+
+   ```sh
+   mkdir -p /path/to/twitch && sudo chown "$TWITCH_PUID:$TWITCH_PGID" /path/to/twitch
+   ```
+
+   On a new install, `setup-env.sh` already set `TWITCH_PUID`, `TWITCH_PGID` and
+   `TWITCH_RENDER_GID`, and made the default `./twitch-library` folder.
+
    The worker writes files that its group can change, so add Jellyfin's user to the
    group in `TWITCH_PGID` if you want to delete from Jellyfin. Files you delete there
    drop out of Helprr within a few minutes.
@@ -988,6 +1002,12 @@ them. It shares the Twitch worker, and is off until you set it up.
    COMPOSE_PROFILES=youtube         # or twitch,youtube for both
    YOUTUBE_LIBRARY_HOST_PATH=/path/to/youtube
    ```
+
+   Create the folder first, owned by the worker's user (`TWITCH_PUID:TWITCH_PGID`);
+   otherwise Docker creates it as root and the worker cannot write to it:
+   `mkdir -p /path/to/youtube && sudo chown "$TWITCH_PUID:$TWITCH_PGID" /path/to/youtube`.
+   The worker also mounts the Twitch folder (`./twitch-library` unless set), which
+   `setup-env.sh` makes on a new install.
 
    Without a folder YouTube stays not ready, and Twitch carries on as normal. Keep it
    separate from the Twitch folder. If you want to delete from Jellyfin, add Jellyfin's

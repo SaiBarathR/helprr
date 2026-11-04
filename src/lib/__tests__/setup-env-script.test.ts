@@ -190,3 +190,145 @@ describe('setup-env.sh', () => {
     expect(() => lstatSync(path.join(root, '.env.dev'))).toThrow();
   });
 });
+
+describe('setup-env.sh friendlier defaults', () => {
+  const env = (extra: Record<string, string> = {}): NodeJS.ProcessEnv => ({ ...process.env, HELPRR_SETUP_TZ: 'Europe/Berlin', ...extra });
+
+  it('fills in the timezone, the worker user, and says what to do next', () => {
+    const root = createFixture();
+    const result = runSetup(root, [], env());
+    expect(result.status).toBe(0);
+    const values = parseEnv(readFileSync(path.join(root, '.env'), 'utf8'));
+    expect(values.TZ).toBe('Europe/Berlin');
+    expect(values.TWITCH_PUID).toBe(String(process.getuid?.() === 0 ? 1000 : process.getuid?.()));
+    expect(values.TWITCH_PGID).toMatch(/^\d+$/);
+    expect(values.TWITCH_RENDER_GID ?? '').toMatch(/^\d*$/);
+    expect(result.stdout).toContain('Timezone: Europe/Berlin, from HELPRR_SETUP_TZ. If that is wrong, change TZ in .env.');
+    expect(result.stdout).toContain(`  cd ${root}\n`);
+    expect(result.stdout).toContain('1. Start Helprr:  docker compose up -d');
+    expect(result.stdout).toContain('sign in as "admin"');
+    expect(result.stdout).toContain("To show it on screen:  grep '^APP_PASSWORD=' .env");
+    expect(result.stdout).not.toContain(values.APP_PASSWORD);
+  });
+
+  it.each(['../../etc/passwd', 'Europe/Berlin\nAPP_PASSWORD=x', 'Europe/Ber lin'])('falls back to Etc/UTC for %j', (zone) => {
+    const root = createFixture();
+    const result = runSetup(root, [], env({ HELPRR_SETUP_TZ: zone }));
+    expect(result.status).toBe(0);
+    const content = readFileSync(path.join(root, '.env'), 'utf8');
+    expect(parseEnv(content).TZ).toBe('Etc/UTC');
+    expect(content.match(/^APP_PASSWORD=/gm)).toHaveLength(1);
+    expect(result.stdout).toContain('Timezone: Etc/UTC, from the default; this computer did not say.');
+  });
+
+  it('makes the library folder the worker can write to, readable by Jellyfin', () => {
+    const root = createFixture();
+    runSetup(root, [], env());
+    const folder = lstatSync(path.join(root, 'twitch-library'));
+    expect(folder.isDirectory()).toBe(true);
+    expect(folder.mode & 0o777).toBe(0o775);
+  });
+
+  it('leaves an existing library folder alone', () => {
+    const root = createFixture();
+    mkdirSync(path.join(root, 'twitch-library'), { mode: 0o750 });
+    writeFileSync(path.join(root, 'twitch-library', 'kept.mkv'), 'video');
+    runSetup(root, [], env());
+    expect(lstatSync(path.join(root, 'twitch-library')).mode & 0o777).toBe(0o750);
+    expect(existsSync(path.join(root, 'twitch-library', 'kept.mkv'))).toBe(true);
+  });
+
+  it('does the same for the development stack, with its own names', () => {
+    const root = createFixture();
+    const result = runSetup(root, ['--dev'], env());
+    expect(result.status).toBe(0);
+    const values = parseEnv(readFileSync(path.join(root, '.env.dev'), 'utf8'));
+    expect(values.HELPRR_DEV_TZ).toBe('Europe/Berlin');
+    expect(lstatSync(path.join(root, 'twitch-library-dev')).isDirectory()).toBe(true);
+    expect(existsSync(path.join(root, 'twitch-library'))).toBe(false);
+    expect(result.stdout).toContain('docker compose --env-file .env.dev -f docker-compose.dev.yml up -d --build');
+    expect(result.stdout).toContain('sign in as "dev-admin"');
+  });
+});
+
+// Small programs placed first on PATH, so the script's checks can be driven.
+describe('setup-env.sh checks against stub programs', () => {
+  function withStubs(stubs: Record<string, string>): NodeJS.ProcessEnv {
+    const bin = mkdtempSync(path.join(tmpdir(), 'helprr-setup-bin-'));
+    fixtureRoots.push(bin);
+    for (const [name, body] of Object.entries(stubs)) {
+      writeFileSync(path.join(bin, name), `#!/bin/sh\n${body}\n`, { mode: 0o755 });
+    }
+    const env: NodeJS.ProcessEnv = { ...process.env, PATH: `${bin}:${process.env.PATH ?? ''}` };
+    delete env.HELPRR_SETUP_TZ;
+    return env;
+  }
+  const quietDocker = 'case "$*" in "compose version --short") echo 2.29.1 ;; esac';
+
+  it('reads the timezone from timedatectl', () => {
+    const root = createFixture();
+    const result = runSetup(root, [], withStubs({ timedatectl: 'echo America/New_York', docker: quietDocker }));
+    expect(parseEnv(readFileSync(path.join(root, '.env'), 'utf8')).TZ).toBe('America/New_York');
+    expect(result.stdout).toContain('from this computer (timedatectl)');
+  });
+
+  it('writes the render group only when the host has one', () => {
+    const withGroup = createFixture();
+    runSetup(withGroup, [], withStubs({ getent: 'echo render:x:989:', timedatectl: 'echo Etc/UTC', docker: quietDocker }));
+    expect(parseEnv(readFileSync(path.join(withGroup, '.env'), 'utf8')).TWITCH_RENDER_GID).toBe('989');
+
+    const without = createFixture();
+    runSetup(without, [], withStubs({ getent: 'exit 2', timedatectl: 'echo Etc/UTC', docker: quietDocker }));
+    const content = readFileSync(path.join(without, '.env'), 'utf8');
+    expect(parseEnv(content).TWITCH_RENDER_GID).toBeUndefined();
+    expect(content).toContain('# TWITCH_RENDER_GID=992');
+  });
+
+  it.each([
+    ['2.17.0', true],
+    ['v2.29.1', false],
+    ['2.29.1-desktop.1', false],
+    ['5.7.0', false],
+  ])('warns about Docker Compose %s: %s', (version, warns) => {
+    const root = createFixture();
+    const result = runSetup(root, [], withStubs({
+      timedatectl: 'echo Etc/UTC',
+      docker: `case "$*" in "compose version --short") echo ${version} ;; esac`,
+    }));
+    expect(result.status).toBe(0);
+    expect(result.stdout.includes('is too old; Helprr needs 2.18 or newer')).toBe(warns);
+  });
+
+  it('says when Docker Compose does not run', () => {
+    const root = createFixture();
+    const result = runSetup(root, [], withStubs({ timedatectl: 'echo Etc/UTC', docker: 'exit 1' }));
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('"docker compose" did not run');
+  });
+
+  it('warns when the port is taken, naming the variable to change', () => {
+    const root = createFixture();
+    const result = runSetup(root, [], withStubs({
+      timedatectl: 'echo Etc/UTC',
+      docker: quietDocker,
+      ss: 'echo "LISTEN 0 4096 0.0.0.0:3050 0.0.0.0:*"',
+    }));
+    expect(result.stdout).toContain('Note: port 3050 is already in use. Set HELPRR_PORT in .env before starting.');
+  });
+
+  it('says how to fix a library folder the worker cannot write to', () => {
+    const root = createFixture();
+    mkdirSync(path.join(root, 'twitch-library'));
+    // The ls -nd the script reads ownership from, reporting root as the owner.
+    const result = runSetup(root, [], withStubs({
+      timedatectl: 'echo Etc/UTC',
+      docker: quietDocker,
+      ls: 'echo "drwxr-xr-x 2 0 0 4096 Nov  4 12:00 twitch-library"',
+    }));
+    expect(result.stdout).toContain('is not owned by');
+    expect(result.stdout).toContain('sudo chown');
+  });
+
+  // The root path (SUDO_UID handling and chown) needs the tests to run as root, so it is
+  // covered by the real runs on Alpine in Docker instead.
+});
