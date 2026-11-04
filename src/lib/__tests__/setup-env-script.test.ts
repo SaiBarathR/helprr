@@ -42,6 +42,7 @@ function createFixture(): string {
 }
 
 function runSetup(root: string, args: string[] = [], env: NodeJS.ProcessEnv = process.env) {
+  // A caller that sets its own PATH brings its own docker stub (see withStubs).
   const withQuietDocker = env.PATH === process.env.PATH ? { ...env, PATH: `${quietDockerBin}:${env.PATH ?? ''}` } : env;
   return spawnSync('/bin/sh', [path.join(root, 'scripts/setup-env.sh'), ...args], {
     cwd: root,
