@@ -102,12 +102,23 @@ export function SetupChecklist({ initial, mobile }: { initial: SetupChecklistSta
     // The button goes away; keep focus on the step instead of losing it.
     links.current[step]?.focus();
   };
+  // Hide and Undo are sent one after the other, so the server ends where the user did.
+  const hideQueue = useRef<Promise<void>>(Promise.resolve());
+  const hideChanges = useRef(0);
   const setHidden = (hidden: boolean) => {
+    const change = ++hideChanges.current;
     setState((prev) => ({ ...prev, hidden }));
-    send({ action: hidden ? 'dismiss' : 'restore' }).catch(() => {
-      setState((prev) => ({ ...prev, hidden: !hidden }));
-      toast.error('Could not save that. Try again.');
-    });
+    hideQueue.current = hideQueue.current.then(() =>
+      send({ action: hidden ? 'dismiss' : 'restore' }).then(
+        () => undefined,
+        () => {
+          // Roll back only if the user has not changed it again since.
+          if (hideChanges.current !== change) return;
+          setState((prev) => ({ ...prev, hidden: !hidden }));
+          toast.error('Could not save that. Try again.');
+        },
+      ),
+    );
     if (hidden) {
       toast('Setup checklist hidden', { action: { label: 'Undo', onClick: () => setHidden(false) } });
     }

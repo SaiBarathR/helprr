@@ -129,7 +129,38 @@ describe('SetupChecklist', () => {
     const [, options] = mocks.toast.mock.calls[0];
     act(() => options.action.onClick());
     expect(screen.getByRole('heading', { name: 'Set up Helprr' })).toBeTruthy();
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
     expect(fetchMock.mock.calls.map((call) => JSON.parse(call[1].body))).toEqual([{ action: 'dismiss' }, { action: 'restore' }]);
+  });
+
+  it('sends Undo only after the hide is saved, so the server ends shown', async () => {
+    const replies: Array<(value: unknown) => void> = [];
+    const fetchMock = vi.fn(() => new Promise((resolve) => replies.push(resolve)));
+    vi.stubGlobal('fetch', fetchMock);
+    render(<SetupChecklist initial={fresh} mobile />);
+    await userEvent.click(screen.getByRole('button', { name: 'Hide the setup checklist' }));
+    act(() => mocks.toast.mock.calls[0][1].action.onClick());
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    replies[0]({ ok: true, json: async () => ({ ...fresh, hidden: true }) });
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(JSON.parse((fetchMock.mock.calls[1] as unknown as [string, { body: string }])[1].body)).toEqual({ action: 'restore' });
+    // A failed hide after Undo does not hide it again or complain.
+    replies[1]({ ok: true, json: async () => fresh });
+    expect(screen.getByRole('heading', { name: 'Set up Helprr' })).toBeTruthy();
+    expect(mocks.toastError).not.toHaveBeenCalled();
+  });
+
+  it('does not roll back a hide that the user already undid', async () => {
+    const replies: Array<(value: unknown) => void> = [];
+    vi.stubGlobal('fetch', vi.fn(() => new Promise((resolve) => replies.push(resolve))));
+    render(<SetupChecklist initial={fresh} mobile />);
+    await userEvent.click(screen.getByRole('button', { name: 'Hide the setup checklist' }));
+    act(() => mocks.toast.mock.calls[0][1].action.onClick());
+    replies[0]({ ok: false, json: async () => null });
+    await waitFor(() => expect(replies).toHaveLength(2));
+    expect(mocks.toastError).not.toHaveBeenCalled();
+    expect(screen.getByRole('heading', { name: 'Set up Helprr' })).toBeTruthy();
   });
 
   it('does not mark the phone step from an installed desktop app window', async () => {

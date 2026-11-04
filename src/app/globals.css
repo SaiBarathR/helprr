@@ -1495,7 +1495,7 @@ html[data-glass] [data-sonner-toaster] {
 
 /* Sonner also paints an action button's label (Undo) in --normal-bg, which glass
    makes transparent: give it the popover colour back. */
-html[data-glass] [data-sonner-toast] [data-button] {
+html[data-glass] [data-sonner-toast] [data-button]:not([data-cancel]) {
   color: var(--popover);
 }
 
