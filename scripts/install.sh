@@ -18,6 +18,8 @@ Usage: install.sh [options]
   --version X.Y.Z   A specific release (default: the latest)
   --asset-base URL  Where to download the release files from (for testing)
   --no-start        Set everything up, but do not start Helprr
+  --admin-password  Create the admin from a generated APP_PASSWORD, instead of
+                    in the browser on first open
   --yes             Ask nothing; use the defaults and the options given
   -h, --help        Show this help
 EOF
@@ -37,6 +39,7 @@ main() {
   version=
   asset_base=
   start=yes
+  admin_password=no
   ask=yes
 
   while [ "$#" -gt 0 ]; do
@@ -48,6 +51,7 @@ main() {
         case "$version" in ''|*[!0-9A-Za-z.-]*) fail "\"$version\" is not a Helprr version, such as 1.12.1." ;; esac ;;
       --asset-base) [ "$#" -ge 2 ] || fail '--asset-base needs a URL.'; asset_base=$2; shift 2 ;;
       --no-start) start=no; shift ;;
+      --admin-password) admin_password=yes; shift ;;
       --yes|-y) ask=no; shift ;;
       -h|--help) usage; exit 0 ;;
       *) usage >&2; exit 2 ;;
@@ -188,7 +192,10 @@ main() {
 
   # 4. The .env file, with its own new secrets.
   say ''
-  HELPRR_SETUP_TZ=$tz sh "$dir/scripts/setup-env.sh" < /dev/null > "$staging/setup.log" || {
+  setup_flags=
+  [ "$admin_password" = no ] || setup_flags=--admin-password
+  # shellcheck disable=SC2086 # empty or one flag
+  HELPRR_SETUP_TZ=$tz sh "$dir/scripts/setup-env.sh" $setup_flags < /dev/null > "$staging/setup.log" || {
     cat "$staging/setup.log"
     fail 'Creating .env failed.'
   }
@@ -200,9 +207,14 @@ main() {
   sign_in() {
     username=$(sed -n 's/^HELPRR_ADMIN_USERNAME=//p' "$dir/.env" | head -n 1)
     address=$(hostname -I 2>/dev/null | awk '{ print $1 }')
-    say "  Open http://${address:-THIS-SERVER}:$port and sign in as \"${username:-admin}\"."
-    say "  The password is APP_PASSWORD in $dir/.env. To show it on screen:"
-    say "    grep '^APP_PASSWORD=' \"$dir/.env\""
+    if grep -q '^APP_PASSWORD=.' "$dir/.env"; then
+      say "  Open http://${address:-THIS-SERVER}:$port and sign in as \"${username:-admin}\"."
+      say "  The password is APP_PASSWORD in $dir/.env. To show it on screen:"
+      say "    grep '^APP_PASSWORD=' \"$dir/.env\""
+    else
+      say "  Open http://${address:-THIS-SERVER}:$port and create your admin account."
+      say '  Do it now, before Helprr is reachable from the internet: whoever opens it first can.'
+    fi
     say '  For push notifications on a phone, Helprr needs an https:// address; see the README.'
   }
 

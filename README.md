@@ -267,19 +267,21 @@ Generate all required secrets and create `.env`:
 
 The helper uses independent URL-safe secrets, writes the completed file with mode
 `0600`, never prints secret values, and refuses to overwrite an existing `.env`.
-It ends with what to do next, including the command that shows the generated
-bootstrap `APP_PASSWORD`. Review the timezone and optional settings before the first
-start. You may replace the generated bootstrap password with your own strong password
-before first boot.
+It ends with what to do next. Review the timezone and optional settings before the
+first start.
 
 The helper fills these required variables:
 
 ```text
 POSTGRES_PASSWORD
 REDIS_PASSWORD
-APP_PASSWORD
 JWT_SECRET
 ```
+
+It leaves `APP_PASSWORD` empty, so you create the admin in the browser the first time
+you open Helprr (see below). For a scripted install, run
+`./scripts/setup-env.sh --admin-password` instead: it also generates `APP_PASSWORD`,
+which creates the admin at the first start, and prints the command that shows it.
 
 It also sets `TZ` to this computer's timezone (`Etc/UTC` when it cannot tell) and says
 where it found it; sets `TWITCH_PUID`, `TWITCH_PGID` and, when the host has a `render`
@@ -323,7 +325,7 @@ docker compose up -d
 docker compose ps
 ```
 
-Open `http://YOUR_SERVER:3050` (or your `HELPRR_PORT`), sign in with the bootstrap account, then connect services in **Settings → Instances**.
+Open `http://YOUR_SERVER:3050` (or your `HELPRR_PORT`), create your admin account (or sign in, if you set `APP_PASSWORD`), then connect services in **Settings → Instances**.
 
 When a service runs on the same machine as Helprr but outside its Compose stack, use `http://host.docker.internal:<port>` as its address. The service must listen on all addresses (`0.0.0.0`), not only `127.0.0.1`, and a host firewall such as ufw may need to allow Docker's networks. `localhost` does not work there: inside the container it means Helprr itself.
 

@@ -4,11 +4,14 @@ set -eu
 
 usage() {
   cat <<'EOF'
-Usage: setup-env.sh [--stable|--dev]
+Usage: setup-env.sh [--stable|--dev] [--admin-password]
 
 Creates a new environment file with independently generated required secrets.
-  --stable  Create .env from .env.example (default)
-  --dev     Create .env.dev from .env.dev.example
+  --stable          Create .env from .env.example (default)
+  --dev             Create .env.dev from .env.dev.example
+  --admin-password  Also generate APP_PASSWORD, which creates the admin at the
+                    first start. Without it, the first admin is created in the
+                    browser. The development stack always gets one.
 
 The command refuses to overwrite an existing target and never prints secrets.
 EOF
@@ -20,24 +23,23 @@ fail() {
 }
 
 mode=stable
-case "${1:-}" in
-  '') ;;
-  --stable) ;;
-  --dev) mode=dev ;;
-  -h|--help)
-    usage
-    exit 0
-    ;;
-  *)
-    usage >&2
-    exit 2
-    ;;
-esac
-
-[ "$#" -le 1 ] || {
-  usage >&2
-  exit 2
-}
+with_admin_password=no
+for argument in "$@"; do
+  case "$argument" in
+    --stable) mode=stable ;;
+    --dev) mode=dev ;;
+    --admin-password) with_admin_password=yes ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      usage >&2
+      exit 2
+      ;;
+  esac
+done
+[ "$mode" = stable ] || with_admin_password=yes
 
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 if [ -f "$script_dir/.env.example" ]; then
@@ -130,7 +132,8 @@ case "$render_gid" in *[!0-9]*) render_gid= ;; esac
 # Hex is safe when embedded directly in Compose's PostgreSQL URL and dotenv files.
 postgres_password=$(random_hex 32)
 redis_password=$(random_hex 32)
-admin_password=$(random_hex 32)
+admin_password=
+[ "$with_admin_password" = no ] || admin_password=$(random_hex 32)
 jwt_secret=$(random_hex 32)
 
 umask 077
@@ -249,6 +252,11 @@ else
   printf '  1. Start Helprr:  docker compose up -d\n'
 fi
 admin_username=$(sed -n "s/^$username_variable=//p" "$target" | head -n 1)
-printf '  2. Open http://THIS-SERVER:%s and sign in as "%s".\n' "$app_port" "${admin_username:-admin}"
-printf "     The password is %s in %s. To show it on screen:  %sgrep '^%s=' %s\n" "$password_variable" "$target_name" "$as_owner" "$password_variable" "$target_name"
+if [ -n "$admin_password" ]; then
+  printf '  2. Open http://THIS-SERVER:%s and sign in as "%s".\n' "$app_port" "${admin_username:-admin}"
+  printf "     The password is %s in %s. To show it on screen:  %sgrep '^%s=' %s\n" "$password_variable" "$target_name" "$as_owner" "$password_variable" "$target_name"
+else
+  printf '  2. Open http://THIS-SERVER:%s and create your admin account.\n' "$app_port"
+  printf '     Do it before Helprr is reachable from the internet: whoever opens it first can.\n'
+fi
 printf '  Push notifications need the three VAPID values in %s; see the README.\n' "$target_name"

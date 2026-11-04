@@ -74,7 +74,7 @@ function install(args: string[], options: { docker?: string; extraStubs?: Record
 
 describe('install.sh', () => {
   it('sets Helprr up in a folder of its own, without starting it', () => {
-    const { status, stdout, stderr, work } = install(['--dir', 'helprr', '--port', '3061', '--tz', 'Europe/Berlin', '--no-start']);
+    const { status, stdout, stderr, work } = install(['--dir', 'helprr', '--port', '3061', '--tz', 'Europe/Berlin', '--no-start', '--admin-password']);
     expect(stderr).toBe('');
     expect(status).toBe(0);
     const dir = path.join(work, 'helprr');
@@ -204,7 +204,9 @@ describe('install.sh, the paths a terminal or a real start would take', () => {
     expect(result.status).toBe(0);
     expect(readFileSync(path.join(work, 'docker.log'), 'utf8')).toBe('compose pull --quiet\ncompose up -d\n');
     expect(result.stdout).toContain('Helprr is running.');
-    expect(result.stdout).toContain(':3050 and sign in as "admin"');
+    // No APP_PASSWORD by default: the first admin is created in the browser.
+    expect(result.stdout).toContain(':3050 and create your admin account.');
+    expect(readFileSync(path.join(work, 'helprr', '.env'), 'utf8')).toMatch(/^APP_PASSWORD=$/m);
   });
 
   it('gives up after about three minutes when Helprr never becomes ready', () => {
