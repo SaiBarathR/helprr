@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   getSetupChecklist: vi.fn(),
   markSetupStepDone: vi.fn(),
   dismissSetupChecklist: vi.fn(),
+  restoreSetupChecklist: vi.fn(),
 }));
 
 vi.mock('@/lib/auth', () => ({ requireAdmin: mocks.requireAdmin }));
@@ -15,6 +16,7 @@ vi.mock('@/lib/setup-checklist', async () => ({
   getSetupChecklist: mocks.getSetupChecklist,
   markSetupStepDone: mocks.markSetupStepDone,
   dismissSetupChecklist: mocks.dismissSetupChecklist,
+  restoreSetupChecklist: mocks.restoreSetupChecklist,
 }));
 
 import { GET, POST } from '@/app/api/setup-checklist/route';
@@ -48,6 +50,8 @@ describe('/api/setup-checklist', () => {
   it('dismisses it, and marks a step the server cannot see', async () => {
     expect((await post({ action: 'dismiss' })).status).toBe(200);
     expect(mocks.dismissSetupChecklist).toHaveBeenCalledWith('admin-1');
+    expect((await post({ action: 'restore' })).status).toBe(200);
+    expect(mocks.restoreSetupChecklist).toHaveBeenCalledWith('admin-1');
     expect((await post({ action: 'done', step: 'install' })).status).toBe(200);
     expect(mocks.markSetupStepDone).toHaveBeenCalledWith('admin-1', 'install');
   });

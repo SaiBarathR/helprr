@@ -14,11 +14,8 @@ import {
  */
 export * from '@/lib/setup-checklist-steps';
 
-// Only Apple's push service serves iOS, and iOS allows push only from an installed app.
-const IOS_PUSH_HOST = 'web.push.apple.com';
-
 export async function getSetupChecklist(userId: string): Promise<SetupChecklistState> {
-  const [settings, services, people, pushDevices, iosDevices] = await Promise.all([
+  const [settings, services, people, pushDevices] = await Promise.all([
     prisma.userSettings.findUnique({
       where: { userId },
       select: { setupChecklistDismissedAt: true, setupStepsDone: true },
@@ -26,14 +23,15 @@ export async function getSetupChecklist(userId: string): Promise<SetupChecklistS
     prisma.serviceConnection.count(),
     prisma.user.count(),
     prisma.pushSubscription.count({ where: { userId, revokedAt: null } }),
-    prisma.pushSubscription.count({ where: { userId, revokedAt: null, endpoint: { contains: IOS_PUSH_HOST } } }),
   ]);
   const marked = new Set(settings?.setupStepsDone ?? []);
   const done: Record<SetupStep, boolean> = {
     service: services > 0,
     people: people > 1 || marked.has('people'),
     push: pushDevices > 0,
-    install: iosDevices > 0 || marked.has('install'),
+    // The server cannot tell a phone from a Mac (Safari on macOS uses Apple's push
+    // service too): opening Helprr as an installed app on a phone marks it instead.
+    install: marked.has('install'),
     backup: marked.has('backup'),
   };
   const complete = SETUP_STEPS.every((step) => done[step] || OPTIONAL_SETUP_STEPS.has(step));
@@ -54,7 +52,10 @@ async function upsertUserSettings(
   }
 }
 
-/** Marks a step done for this user, once. Adding to the list is one statement, so two at once never lose one. */
+/**
+ * Marks a step done for this user. Adding to the list is one statement, so two at once
+ * never lose one; two at once may both add it, which is harmless (it is read as a set).
+ */
 export async function markSetupStepDone(userId: string, step: SetupStep): Promise<void> {
   const settings = await prisma.userSettings.findUnique({ where: { userId }, select: { setupStepsDone: true } });
   if (settings?.setupStepsDone.includes(step)) return;
@@ -64,4 +65,9 @@ export async function markSetupStepDone(userId: string, step: SetupStep): Promis
 export async function dismissSetupChecklist(userId: string): Promise<void> {
   const now = new Date();
   await upsertUserSettings(userId, { userId, setupChecklistDismissedAt: now }, { setupChecklistDismissedAt: now });
+}
+
+/** Undoes a dismissal (the toast's Undo). */
+export async function restoreSetupChecklist(userId: string): Promise<void> {
+  await prisma.userSettings.updateMany({ where: { userId }, data: { setupChecklistDismissedAt: null } });
 }

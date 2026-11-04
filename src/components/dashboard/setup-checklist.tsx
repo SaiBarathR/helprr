@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { Bell, Check, DatabaseBackup, Plug, Smartphone, Users, X, type LucideIcon } from 'lucide-react';
 import Link from '@/components/ui/app-link';
 import { useIsStandalone } from '@/hooks/use-is-standalone';
+import { isIosDevice } from '@/lib/push-availability';
 import { Eyebrow, FONT_DISPLAY, FONT_MONO, HPR, mix } from '@/components/widgets/bento-primitives';
 import {
   MANUAL_SETUP_STEPS,
@@ -50,7 +51,9 @@ const STEP_COPY: Record<SetupStep, { title: string; detail: string; href: string
   },
 };
 
-async function send(body: { action: 'dismiss' } | { action: 'done'; step: SetupStep }): Promise<SetupChecklistState> {
+type ChecklistAction = { action: 'dismiss' } | { action: 'restore' } | { action: 'done'; step: SetupStep };
+
+async function send(body: ChecklistAction): Promise<SetupChecklistState> {
   const res = await fetch('/api/setup-checklist', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -58,6 +61,18 @@ async function send(body: { action: 'dismiss' } | { action: 'done'; step: SetupS
   });
   if (!res.ok) throw new Error('checklist update failed');
   return res.json();
+}
+
+// Replies can arrive out of order, so one only adds the ticks it saw: a late reply never
+// undoes a newer tick. Whether the card is hidden is decided here, not by replies.
+function mergeReply(prev: SetupChecklistState, reply: SetupChecklistState): SetupChecklistState {
+  const done = { ...prev.done };
+  for (const step of SETUP_STEPS) done[step] = prev.done[step] || Boolean(reply.done?.[step]);
+  return { ...prev, done };
+}
+
+function isPhone(): boolean {
+  return isIosDevice(navigator.userAgent, navigator.platform, navigator.maxTouchPoints) || /Android/.test(navigator.userAgent);
 }
 
 /** The admin's "what to do next" card at the top of the dashboard. */
@@ -70,24 +85,40 @@ export function SetupChecklist({ initial, mobile }: { initial: SetupChecklistSta
     setState(initial);
   }
 
-  const update = (optimistic: SetupChecklistState, body: Parameters<typeof send>[0], quiet = false) => {
-    const before = state;
-    setState(optimistic);
-    send(body)
-      .then(setState)
+  const links = useRef<Partial<Record<SetupStep, HTMLAnchorElement | null>>>({});
+
+  const markDone = (step: SetupStep, quiet = false) => {
+    setState((prev) => ({ ...prev, done: { ...prev.done, [step]: true } }));
+    send({ action: 'done', step })
+      .then((reply) => setState((prev) => mergeReply(prev, reply)))
       .catch(() => {
-        setState(before);
+        // Undo only this step: other ticks may have saved meanwhile.
+        setState((prev) => ({ ...prev, done: { ...prev.done, [step]: false } }));
         if (!quiet) toast.error('Could not save that. Try again.');
       });
   };
-  const markDone = (step: SetupStep, quiet = false) =>
-    update({ ...state, done: { ...state.done, [step]: true } }, { action: 'done', step }, quiet);
+  const markByHand = (step: SetupStep) => {
+    markDone(step);
+    // The button goes away; keep focus on the step instead of losing it.
+    links.current[step]?.focus();
+  };
+  const setHidden = (hidden: boolean) => {
+    setState((prev) => ({ ...prev, hidden }));
+    send({ action: hidden ? 'dismiss' : 'restore' }).catch(() => {
+      setState((prev) => ({ ...prev, hidden: !hidden }));
+      toast.error('Could not save that. Try again.');
+    });
+    if (hidden) {
+      toast('Setup checklist hidden', { action: { label: 'Undo', onClick: () => setHidden(false) } });
+    }
+  };
 
-  // Opened as an installed app: this device is installed, so the step is done.
+  // Opened as an installed app on a phone: the phone step is done. (An installed
+  // desktop app window is standalone too, but it is not a phone.)
   const standalone = useIsStandalone();
   const autoMarked = useRef(false);
   useEffect(() => {
-    if (!standalone || state.done.install || state.hidden || autoMarked.current) return;
+    if (!standalone || state.done.install || state.hidden || autoMarked.current || !isPhone()) return;
     autoMarked.current = true;
     markDone('install', true);
   });
@@ -125,7 +156,7 @@ export function SetupChecklist({ initial, mobile }: { initial: SetupChecklistSta
           aria-label="Hide the setup checklist"
           title="Hide"
           className="touch-target press-feedback"
-          onClick={() => update({ ...state, hidden: true }, { action: 'dismiss' })}
+          onClick={() => setHidden(true)}
           style={{
             // touch-target's larger hit area is placed against this button.
             position: 'relative',
@@ -188,6 +219,9 @@ export function SetupChecklist({ initial, mobile }: { initial: SetupChecklistSta
                 {done ? <Check size={15} strokeWidth={2.5} /> : <Icon size={14} />}
               </span>
               <Link
+                ref={(element: HTMLAnchorElement | null) => {
+                  links.current[step] = element;
+                }}
                 href={copy.href}
                 className="press-feedback"
                 style={{ flex: 1, minWidth: 0, display: 'block', padding: '4px 0', color: 'inherit', textDecoration: 'none' }}
@@ -214,7 +248,7 @@ export function SetupChecklist({ initial, mobile }: { initial: SetupChecklistSta
                   type="button"
                   className="touch-target press-feedback"
                   aria-label={`${copy.manualLabel}: ${copy.title}`}
-                  onClick={() => markDone(step)}
+                  onClick={() => markByHand(step)}
                   style={{
                     position: 'relative',
                     flexShrink: 0,

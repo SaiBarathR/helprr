@@ -1493,6 +1493,12 @@ html[data-glass] [data-sonner-toaster] {
   --normal-bg: transparent !important;
 }
 
+/* Sonner also paints an action button's label (Undo) in --normal-bg, which glass
+   makes transparent: give it the popover colour back. */
+html[data-glass] [data-sonner-toast] [data-button] {
+  color: var(--popover);
+}
+
 /* Full-screen scrims dim, never blur (a viewport-sized backdrop-filter is a
    GPU cliff on mobile — the panel above already frosts what's behind it). */
 html[data-glass] [data-slot='dialog-overlay'],

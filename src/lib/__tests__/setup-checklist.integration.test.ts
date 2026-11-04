@@ -51,9 +51,9 @@ describe.skipIf(!url)('setup checklist against PostgreSQL', () => {
     state = await checklist.getSetupChecklist(adminId);
     expect(state.done).toMatchObject({ push: true, install: false });
 
-    // Apple's push service serves only an installed app.
-    await pushDevice(adminId, 'https://web.push.apple.com/iphone');
-    expect((await checklist.getSetupChecklist(adminId)).done.install).toBe(true);
+    // Safari on a Mac uses Apple's push service too: a push device is not a phone.
+    await pushDevice(adminId, 'https://web.push.apple.com/mac-or-iphone');
+    expect((await checklist.getSetupChecklist(adminId)).done.install).toBe(false);
   });
 
   it('keeps every mark when several arrive at once for a user with no settings yet', async () => {
@@ -74,6 +74,7 @@ describe.skipIf(!url)('setup checklist against PostgreSQL', () => {
   it('hides once every required step is done, people or not', async () => {
     await prisma.serviceConnection.create({ data: { type: 'RADARR', label: 'Radarr', url: 'http://radarr:7878', apiKey: 'k' } });
     await pushDevice(adminId, 'https://web.push.apple.com/iphone');
+    await checklist.markSetupStepDone(adminId, 'install');
     expect((await checklist.getSetupChecklist(adminId)).hidden).toBe(false);
     await checklist.markSetupStepDone(adminId, 'backup');
     const state = await checklist.getSetupChecklist(adminId);
@@ -81,12 +82,14 @@ describe.skipIf(!url)('setup checklist against PostgreSQL', () => {
     expect(state.hidden).toBe(true);
   });
 
-  it('stays hidden after it is dismissed, without touching the marks', async () => {
+  it('stays hidden after it is dismissed, without touching the marks, until restored', async () => {
     await checklist.markSetupStepDone(adminId, 'install');
     await checklist.dismissSetupChecklist(adminId);
     const state = await checklist.getSetupChecklist(adminId);
     expect(state.hidden).toBe(true);
     expect(state.done.install).toBe(true);
+    await checklist.restoreSetupChecklist(adminId);
+    expect((await checklist.getSetupChecklist(adminId)).hidden).toBe(false);
   });
 
   it('keeps each admin\'s marks to themselves', async () => {

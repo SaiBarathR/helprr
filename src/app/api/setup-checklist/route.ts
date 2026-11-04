@@ -7,6 +7,7 @@ import {
   getSetupChecklist,
   isSetupStep,
   markSetupStepDone,
+  restoreSetupChecklist,
 } from '@/lib/setup-checklist';
 
 const NO_STORE = { 'Cache-Control': 'private, no-store' };
@@ -18,8 +19,8 @@ async function getHandler(): Promise<NextResponse> {
   return NextResponse.json(await getSetupChecklist(admin.user.id), { headers: NO_STORE });
 }
 
-// { action: 'dismiss' } hides it for good; { action: 'done', step } marks a step the
-// server cannot see for itself (people, install, backup).
+// { action: 'dismiss' } hides it on every device ({ action: 'restore' } undoes that);
+// { action: 'done', step } marks a step the server cannot see (people, install, backup).
 async function postHandler(request: NextRequest): Promise<NextResponse> {
   const admin = await requireAdmin();
   if (!admin.ok) return admin.response;
@@ -27,6 +28,8 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   const body = (await request.json().catch(() => null)) as { action?: unknown; step?: unknown } | null;
   if (body?.action === 'dismiss') {
     await dismissSetupChecklist(admin.user.id);
+  } else if (body?.action === 'restore') {
+    await restoreSetupChecklist(admin.user.id);
   } else if (body?.action === 'done' && isSetupStep(body.step) && MANUAL_SETUP_STEPS.has(body.step)) {
     await markSetupStepDone(admin.user.id, body.step);
   } else {
