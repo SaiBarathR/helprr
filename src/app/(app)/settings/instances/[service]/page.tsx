@@ -6,6 +6,7 @@ import { ApiError, jsonFetcher } from '@/lib/query-fetch';
 import { handleAuthError } from '@/lib/query-client';
 import Link from '@/components/ui/app-link';
 import { notFound, useSearchParams } from 'next/navigation';
+import { isScanAddress } from '@/lib/app-scan-targets';
 import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
 import { toast } from 'sonner';
 import { ChevronLeft, CheckCircle, XCircle, Loader2, Trash2, Plus } from 'lucide-react';
@@ -159,6 +160,10 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
   const searchParams = useSearchParams();
   const router = useRouter();
   const instanceParam = searchParams.get('instance'); // null | "new" | "<id>"
+  // An address found by "Find apps on this network": it fills only a new connection's field,
+  // and only when the scan itself could have found it, so a crafted link cannot.
+  const urlParam = searchParams.get('url');
+  const prefillUrl = urlParam && isScanAddress(type, urlParam) ? urlParam : null;
   const isMultiInstance = config.supportsMultiInstance === true;
   const editingId = isMultiInstance && instanceParam && instanceParam !== 'new' ? instanceParam : null;
 
@@ -222,7 +227,7 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
   // not on a background refetch (which would clobber in-progress edits).
   // Always resets to defaults first so no state carries over from the previous
   // service/instance. Guarded during render.
-  const seedKey = `${type}:${instanceParam ?? ''}`;
+  const seedKey = `${type}:${instanceParam ?? ''}:${prefillUrl ?? ''}`;
   const [seededFor, setSeededFor] = useState<string | null>(null);
   if (servicesQuery.data && seededFor !== seedKey) {
     setSeededFor(seedKey);
@@ -231,7 +236,7 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
     setEditingConnId(existingConn?.id ?? null);
     setLabel(existingConn?.label ?? '');
     setIsDefault(existingConn?.isDefault ?? false);
-    setUrl(existingConn?.url ?? '');
+    setUrl(existingConn?.url ?? prefillUrl ?? '');
     setApiKey(existingConn?.apiKey ?? '');
     setUsername(existingConn?.username ?? '');
     setExternalUrl(existingConn?.externalUrl ?? '');
@@ -607,6 +612,11 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
             aria-describedby={fieldErrors.url ? 'conn-url-error' : config.type === 'TMDB' ? undefined : 'conn-url-help'}
           />
           <FieldError id="conn-url-error" message={fieldErrors.url} />
+          {prefillUrl && !editingConnId && url === prefillUrl && (
+            <p className="text-xs text-orange-700 dark:text-orange-400">
+              Found on this network. Make sure this is your {config.label} before you add its key.
+            </p>
+          )}
           {config.type !== 'TMDB' && !fieldErrors.url && (
             <p id="conn-url-help" className="text-xs text-muted-foreground">
               Use the address you open {config.label} at in your browser. If Helprr runs in Docker, not localhost.
