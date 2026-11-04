@@ -59,9 +59,9 @@ rendered file before starting anything:
 
 ```bash
 sed -i -e 's/container_name: helprr/container_name: fresh-helprr/' \
-  -e 's/"3050:3050"/"3059:3050"/' \
   -e 's/^\( *name:\) helprr-image-cache$/\1 helprr-fresh-image-cache/' \
   docker-compose.yml
+echo HELPRR_PORT=3059 >> .env
 docker compose -p helprr-fresh config | grep -E 'container_name|published|name: helprr'
 ```
 

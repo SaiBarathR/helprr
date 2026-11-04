@@ -46,7 +46,7 @@ services:
     # (src/lib/shutdown.ts); give it headroom before Docker SIGKILLs.
     stop_grace_period: 45s
     ports:
-      - "3050:3050"
+      - "${HELPRR_PORT:-3050}:3050"
     depends_on:
       helprr-db:
         condition: service_healthy
@@ -99,6 +99,9 @@ services:
     volumes:
       - helprr-logs:${LOG_DIR:-/app/logs}
       - helprr-image-cache:/app/image-cache
+    # Lets an app on the same machine be reached as http://host.docker.internal:<port>.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       - helprr-net
     healthcheck:
@@ -122,8 +125,12 @@ services:
     user: "${TWITCH_PUID:-1000}:${TWITCH_PGID:-1000}"
     group_add:
       - "${TWITCH_RENDER_GID:-992}"
-    devices:
-      - /dev/dri:/dev/dri
+    # The GPU is optional: a bind mount (not `devices:`) starts even on a host without
+    # /dev/dri, and the cgroup rule lets ffmpeg open DRM nodes (major 226) when they
+    # exist. Without them the worker reports "No GPU" and re-encoding stays idle. On an
+    # SELinux host, `setsebool -P container_use_devices 1` lets the worker use the GPU.
+    device_cgroup_rules:
+      - "c 226:* rw"
     depends_on:
       helprr-db:
         condition: service_healthy
@@ -136,6 +143,9 @@ services:
       - YOUTUBE_LIBRARY_DIR=/media/youtube
       - TWITCH_TOOLS_DIR=/data/tools
     volumes:
+      # The GPU when there is one; see device_cgroup_rules. Never add :z or :Z here: that
+      # would relabel the host's /dev/dri under SELinux.
+      - /dev/dri:/dev/dri:ro
       - ${TWITCH_LIBRARY_HOST_PATH:-./twitch-library}:/media/twitch
       # /dev/null means no folder was chosen: nothing is created, and YouTube reports not ready.
       - ${YOUTUBE_LIBRARY_HOST_PATH:-/dev/null}:/media/youtube
