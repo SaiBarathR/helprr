@@ -85,3 +85,42 @@ describe('no-clone release packaging', () => {
     expect(promote).toContain('worker_digest');
   });
 });
+
+describe('Compose defaults that fit more machines', () => {
+  const stable = read('docker-compose.yml');
+  const dev = read('docker-compose.dev.yml');
+  const service = (file: string, name: string) => {
+    const start = file.indexOf(`\n  ${name}:\n`);
+    const next = file.slice(start + 1).search(/\n  [a-z][\w-]*:\n/);
+    return file.slice(start, next < 0 ? undefined : start + 1 + next);
+  };
+
+  it('lets the stable host port change, and keeps dev on its own variable', () => {
+    expect(stable).toContain('"${HELPRR_PORT:-3050}:3050"');
+    expect(stable).not.toContain('"3050:3050"');
+    expect(dev).toContain('${HELPRR_DEV_APP_PORT:-3051}:3050');
+    expect(dev).not.toContain('HELPRR_PORT');
+  });
+
+  it('maps host.docker.internal for the app, which reaches the services', () => {
+    expect(service(stable, 'helprr')).toContain('"host.docker.internal:host-gateway"');
+    expect(service(dev, 'helprr-dev')).toContain('"host.docker.internal:host-gateway"');
+  });
+
+  it.each([
+    ['stable', stable, 'helprr-twitch-worker'],
+    ['dev', dev, 'helprr-dev-twitch-worker'],
+  ])('starts the %s worker without a GPU, and gives it the GPU when there is one', (_label, file, name) => {
+    const worker = service(file, name);
+    expect(worker).not.toMatch(/\n    devices:/);
+    expect(worker).toContain('- /dev/dri:/dev/dri:ro');
+    expect(worker).toContain('"c 226:* rw"');
+    expect(worker).not.toMatch(/\/dev\/dri:\/dev\/dri:[^\n]*[zZ]/);
+  });
+
+  it('keeps the fresh-install drill working with the port variable', () => {
+    const drill = read('docs/server-drills.md');
+    expect(drill).not.toContain('"3050:3050"');
+    expect(drill).toContain('HELPRR_PORT=3059');
+  });
+});

@@ -199,7 +199,7 @@ https://github.com/user-attachments/assets/7fa980fd-0dc6-48a8-91c1-cd35453571fd
 
 ## Quick start with Docker (recommended)
 
-Docker Compose starts Helprr, PostgreSQL 16, and password-protected Redis 8. It creates named volumes for database, Redis, and log data; waits for database/Redis health; runs pending Prisma migrations before Helprr starts; and exposes Helprr on port **3050**.
+Docker Compose starts Helprr, PostgreSQL 16, and password-protected Redis 8. It creates named volumes for database, Redis, and log data; waits for database/Redis health; runs pending Prisma migrations before Helprr starts; and exposes Helprr on port **3050** (set `HELPRR_PORT` in `.env` to use another).
 
 **Requirements:** Docker Compose 2.18 or newer (`docker compose version`; older
 releases reject the Compose file's nested `DATABASE_URL` default) on a Docker Engine
@@ -281,7 +281,11 @@ docker compose up -d
 docker compose ps
 ```
 
-Open `http://YOUR_SERVER:3050`, sign in with the bootstrap account, then connect services in **Settings → Instances**.
+Open `http://YOUR_SERVER:3050` (or your `HELPRR_PORT`), sign in with the bootstrap account, then connect services in **Settings → Instances**.
+
+When a service runs on the same machine as Helprr but outside its Compose stack, use `http://host.docker.internal:<port>` as its address. The service must listen on all addresses (`0.0.0.0`), not only `127.0.0.1`, and a host firewall such as ufw may need to allow Docker's networks. `localhost` does not work there: inside the container it means Helprr itself.
+
+Tested with Docker Engine and Docker Compose 2.18 or newer. Podman and rootless Docker are not tested; Podman before 5.3 rejects the Compose file's `host-gateway` entry.
 
 Use `docker compose logs -f helprr` to follow startup. `GET /api/health` is an
 unauthenticated liveness probe that checks only whether the Node process responds.
@@ -428,7 +432,7 @@ stored password unless `HELPRR_ADMIN_PASSWORD_RESET=true`.
 | `TZ`                          | `UTC` when invalid or absent                | IANA timezone used for application date/time behavior, for example `Asia/Kolkata`.                                                                             |
 | `LOG_DIR`                     | app `logs` directory; `/app/logs` in Docker | Location for server logs. Compose persists its default through the `helprr-logs` volume.                                                                       |
 | `APP_ORIGIN`                  | none                                        | Required for AniList OAuth in production. Use the public HTTPS origin, such as `https://helprr.example.com`.                                                   |
-| `ARR_CALLBACK_ORIGIN`         | `APP_ORIGIN`                                | Where Sonarr and Radarr can reach Helprr when Add Torrent sends them a `.torrent` file: they fetch it once, from a link that works for two minutes. Plain `http` on your network is fine, such as `http://helprr.lan:3050`. Magnet links need neither. |
+| `ARR_CALLBACK_ORIGIN`         | `APP_ORIGIN`                                | Where Sonarr and Radarr can reach Helprr when Add Torrent sends them a `.torrent` file: they fetch it once, from a link that works for two minutes. Plain `http` on your network is fine, such as `http://helprr.lan:3050` (with your `HELPRR_PORT`). Magnet links need neither. |
 | `TRUST_FORWARDED_PROTO`       | off                                         | Set to `true` only behind a trusted proxy that sanitizes `X-Forwarded-*`; enables secure cookies and forwarded client-IP rate limiting.                        |
 | `HELPRR_CUSTOM_HEADERS`       | off                                         | Set to `true` to expose per-connection custom HTTP headers for supported services behind an authenticating proxy (for example, Authelia or Cloudflare Access). A `Host` header is not accepted. |
 | `EXTRA_ALLOWED_IMAGE_HOSTS`   | none                                        | Comma-separated trusted external image hosts to permit through the image proxy. Do not add private/internal hosts.                                             |
@@ -939,6 +943,10 @@ an Intel GPU. It is off until you configure it, and needs a separate worker cont
    # The host's render group, for the re-encode: getent group render
    TWITCH_RENDER_GID=992
    ```
+
+   The GPU is optional. On a host without `/dev/dri` the worker still runs, shows
+   **No GPU**, and leaves files as they are. On an SELinux host, run
+   `setsebool -P container_use_devices 1` if the worker reports no GPU.
 
    The worker writes files that its group can change, so add Jellyfin's user to the
    group in `TWITCH_PGID` if you want to delete from Jellyfin. Files you delete there
