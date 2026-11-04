@@ -275,6 +275,16 @@ URL in `docker-entrypoint.sh`: an explicit URL, else `POSTGRES_PASSWORD`, else t
 likewise. The worker builds its URL in the same order at the top of `main.ts`. The
 development Compose file keeps requiring its explicit values.
 
+Importing apps from Seerr and Prowlarr (`src/lib/service-import.ts`, admin only): Seerr's
+`/settings/sonarr|radarr` return each server's API key, Prowlarr masks every key. Keys
+never reach the browser; an import looks Seerr's key up again on the server and sends it
+only to the exact address Seerr holds (scheme, host, port, path), else a typed key is
+needed. To find an address Helprr can reach, the list sends credential-free `GET /ping`
+requests (2.5 s, redirects not followed, exactly 200) to the addresses those apps hold,
+the same port on Prowlarr's own host, and `host.docker.internal`. A changed Seerr or
+Prowlarr config can therefore make each admin listing touch other addresses, learning
+only whether they answered: the same trust as an admin-configured connection.
+
 Public proxy exceptions must remain narrow. Liveness, readiness and the
 first-admin screen and routes are exact paths, not prefixes. Share-target handling is public at the proxy only so
 its route can preserve the incoming payload while applying its own auth check.

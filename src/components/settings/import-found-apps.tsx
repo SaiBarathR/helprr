@@ -15,15 +15,29 @@ import type { ImportCandidate, ImportDiscovery, ImportResult } from '@/lib/servi
 
 interface RowState {
   selected: boolean;
+  label: string;
   url: string;
   apiKey: string;
+}
+
+/** The same address, however it is typed (case, a trailing slash, a default port). */
+function sameAddress(a: string, b: string): boolean {
+  const normal = (value: string) => {
+    try {
+      const url = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(value.trim()) ? value.trim() : `http://${value.trim()}`);
+      return `${url.protocol}//${url.host}${url.pathname.replace(/\/+$/, '')}`;
+    } catch {
+      return value.trim();
+    }
+  };
+  return normal(a) === normal(b);
 }
 
 const SOURCE_LABEL = { seerr: 'Seerr', prowlarr: 'Prowlarr' } as const;
 
 function initialRow(candidate: ImportCandidate): RowState {
   // Seerr's apps can import as they are; Prowlarr's need a key typed in first.
-  return { selected: !candidate.needsKey && candidate.reachable, url: candidate.url, apiKey: '' };
+  return { selected: !candidate.needsKey && candidate.reachable, label: candidate.name, url: candidate.url, apiKey: '' };
 }
 
 /**
@@ -45,10 +59,11 @@ export function ImportFoundApps() {
   const update = (candidate: ImportCandidate, change: Partial<RowState>) =>
     setRows((prev) => ({ ...prev, [candidate.id]: { ...row(candidate), ...change } }));
   // A Seerr key belongs to Seerr's address; another address needs a key typed in.
-  const needsKey = (candidate: ImportCandidate) =>
-    candidate.needsKey || row(candidate).url.trim().replace(/\/+$/, '') !== candidate.url;
+  const needsKey = (candidate: ImportCandidate) => candidate.needsKey || !sameAddress(row(candidate).url, candidate.url);
   const chosen = candidates.filter((candidate) => row(candidate).selected);
-  const missingKey = chosen.some((candidate) => needsKey(candidate) && !row(candidate).apiKey.trim());
+  const missingKey = chosen.some(
+    (candidate) => (needsKey(candidate) && !row(candidate).apiKey.trim()) || !row(candidate).label.trim(),
+  );
 
   const add = useMutation({
     mutationFn: async () => {
@@ -58,6 +73,7 @@ export function ImportFoundApps() {
         body: JSON.stringify({
           items: chosen.map((candidate) => ({
             id: candidate.id,
+            label: row(candidate).label,
             url: row(candidate).url,
             apiKey: needsKey(candidate) ? row(candidate).apiKey : undefined,
           })),
@@ -121,6 +137,13 @@ export function ImportFoundApps() {
               </div>
               {state.selected && (
                 <div className="pl-7 space-y-2">
+                  <Input
+                    value={state.label}
+                    onChange={(event) => update(candidate, { label: event.target.value })}
+                    aria-label={`${candidate.name} name in Helprr`}
+                    placeholder="Name in Helprr"
+                    className="h-9 text-sm"
+                  />
                   <Input
                     value={state.url}
                     onChange={(event) => update(candidate, { url: event.target.value })}

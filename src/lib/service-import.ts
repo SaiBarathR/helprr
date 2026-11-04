@@ -57,12 +57,12 @@ function cleanUrl(url: string): string {
   return withDefaultScheme(url.trim()).replace(/\/+$/, '');
 }
 
-/** host:port/path, so http://Sonarr:8989/ and http://sonarr:8989 are one address. */
+/** scheme://host:port/path, so http://Sonarr:8989/ and http://sonarr:8989 are one address. */
 function endpoint(url: string): string | null {
   try {
     const parsed = new URL(url);
     const port = parsed.port || (parsed.protocol === 'https:' ? '443' : '80');
-    return `${parsed.hostname.toLowerCase()}:${port}${parsed.pathname.replace(/\/+$/, '')}`;
+    return `${parsed.protocol}//${parsed.hostname.toLowerCase()}:${port}${parsed.pathname.replace(/\/+$/, '')}`;
   } catch {
     return null;
   }
@@ -122,19 +122,23 @@ function prowlarrBaseUrl(application: ProwlarrApplication): string | null {
   return typeof field?.value === 'string' && field.value ? cleanUrl(field.value) : null;
 }
 
-/** Already connected: the same address, or (for a loopback address) the same port. */
+/**
+ * Already connected: Helprr has a connection at exactly this address. A port alone is
+ * not enough: two servers on one default port (8989) are often different apps.
+ */
 function isConnected(type: ImportType, urls: string[], connections: Pick<ServiceConnection, 'type' | 'url'>[]): boolean {
-  const mine = connections.filter((connection) => connection.type === type).map((connection) => endpoint(connection.url));
+  const mine = new Set(connections.filter((connection) => connection.type === type).map((connection) => endpoint(connection.url)));
   return urls.some((url) => {
     const target = endpoint(url);
-    if (!target) return false;
-    if (mine.includes(target)) return true;
-    const [host, rest] = [target.split(':')[0], target.slice(target.indexOf(':'))];
-    return isLoopbackHost(host) && mine.some((existing) => existing?.endsWith(rest));
+    return target !== null && mine.has(target);
   });
 }
 
-async function resolveCandidates(): Promise<{ resolved: Resolved[]; sources: ImportDiscovery['sources'] }> {
+/**
+ * What Seerr and Prowlarr know. With probe, each address is checked for an answer (for the
+ * list); without it (for an import, which tests the chosen address itself), no probe runs.
+ */
+async function resolveCandidates({ probe }: { probe: boolean }): Promise<{ resolved: Resolved[]; sources: ImportDiscovery['sources'] }> {
   const connections = await prisma.serviceConnection.findMany({ select: { type: true, url: true } });
   const has = (type: string) => connections.some((connection) => connection.type === type);
   const sources: ImportDiscovery['sources'] = { seerr: 'missing', prowlarr: 'missing' };
@@ -144,22 +148,29 @@ async function resolveCandidates(): Promise<{ resolved: Resolved[]; sources: Imp
     try {
       const seerr = await getSeerrClient();
       for (const kind of ['sonarr', 'radarr'] as const) {
-        for (const server of await seerr.getArrServers(kind)) {
-          const url = cleanUrl(seerrServerUrl(server));
-          const type: ImportType = kind === 'sonarr' ? 'SONARR' : 'RADARR';
-          resolved.push({
-            id: `seerr:${kind}:${server.id}`,
-            source: 'seerr',
-            type,
-            name: server.name || (kind === 'sonarr' ? 'Sonarr' : 'Radarr'),
-            url,
-            sourceUrl: url,
-            reachable: await answersPing(url),
-            needsKey: !server.apiKey,
-            connected: isConnected(type, [url], connections),
-            sourceKey: server.apiKey || undefined,
-          });
-        }
+        const servers = await seerr.getArrServers(kind);
+        // A wrong address can answer with a page instead of a list.
+        if (!Array.isArray(servers)) throw new Error('Seerr did not return its servers');
+        await Promise.all(
+          servers
+            .filter((server) => server && typeof server.hostname === 'string' && server.hostname && Number.isInteger(server.port))
+            .map(async (server) => {
+              const url = cleanUrl(seerrServerUrl(server));
+              const type: ImportType = kind === 'sonarr' ? 'SONARR' : 'RADARR';
+              resolved.push({
+                id: `seerr:${kind}:${server.id}`,
+                source: 'seerr',
+                type,
+                name: server.name || (kind === 'sonarr' ? 'Sonarr' : 'Radarr'),
+                url,
+                sourceUrl: url,
+                reachable: probe ? await answersPing(url) : false,
+                needsKey: !server.apiKey,
+                connected: isConnected(type, [url], connections),
+                sourceKey: server.apiKey || undefined,
+              });
+            }),
+        );
       }
       sources.seerr = 'ok';
     } catch {
@@ -177,7 +188,7 @@ async function resolveCandidates(): Promise<{ resolved: Resolved[]; sources: Imp
           const type = PROWLARR_TYPES[application.implementation];
           const base = prowlarrBaseUrl(application);
           if (!type || !base) return;
-          const { url, reachable } = await reachableUrl(base, prowlarrUrl);
+          const { url, reachable } = probe ? await reachableUrl(base, prowlarrUrl) : { url: base, reachable: false };
           resolved.push({
             id: `prowlarr:${application.id}`,
             source: 'prowlarr',
@@ -200,7 +211,8 @@ async function resolveCandidates(): Promise<{ resolved: Resolved[]; sources: Imp
   // Seerr and Prowlarr often know the same app: list it once, keeping the one whose key
   // is known (Seerr's) and otherwise the first found.
   const unique: Resolved[] = [];
-  for (const candidate of [...resolved].sort((a, b) => Number(Boolean(b.sourceKey)) - Number(Boolean(a.sourceKey)))) {
+  const order = (candidate: Resolved) => Number(Boolean(candidate.sourceKey)) * 2 + Number(candidate.source === 'seerr');
+  for (const candidate of [...resolved].sort((a, b) => order(b) - order(a) || a.id.localeCompare(b.id))) {
     const at = endpoint(candidate.url);
     if (!unique.some((kept) => kept.type === candidate.type && endpoint(kept.url) === at)) unique.push(candidate);
   }
@@ -209,7 +221,7 @@ async function resolveCandidates(): Promise<{ resolved: Resolved[]; sources: Imp
 }
 
 export async function discoverImportCandidates(): Promise<ImportDiscovery> {
-  const { resolved, sources } = await resolveCandidates();
+  const { resolved, sources } = await resolveCandidates({ probe: true });
   // Only what the browser may see: no key, no source address.
   const candidates = resolved.map(({ id, source, type, name, url, reachable, needsKey, connected }) => ({
     id, source, type, name, url, reachable, needsKey, connected,
@@ -247,7 +259,7 @@ async function testFailure(error: unknown, url: string): Promise<string> {
 
 /** Tests each chosen app from Helprr, then saves it as a new instance. One at a time, so names never collide. */
 export async function importServices(items: ImportItem[]): Promise<ImportResult[]> {
-  const { resolved } = await resolveCandidates();
+  const { resolved } = await resolveCandidates({ probe: false });
   const results: ImportResult[] = [];
   for (const item of items) {
     const candidate = resolved.find((entry) => entry.id === item.id);
