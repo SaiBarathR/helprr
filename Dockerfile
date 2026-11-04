@@ -92,6 +92,8 @@ EXPOSE 3050
 ENV PORT=3050
 ENV HOSTNAME="0.0.0.0"
 ENV LOG_DIR=/app/logs
+# Lets connection hints say "in Docker, localhost means Helprr itself".
+ENV HELPRR_RUNTIME=docker
 ENV IMAGE_CACHE_DIR=/app/image-cache
 # Our shutdown coordinator (src/lib/shutdown.ts) owns SIGTERM/SIGINT and drains
 # background work; without this Next.js exits immediately on the first signal.
