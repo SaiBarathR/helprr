@@ -166,7 +166,8 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
         client.hasAdminAccess(),
       ]);
 
-      if (!currentUser) {
+      // A page from a wrong path is not a user, so it must not pass as one.
+      if (!currentUser || typeof currentUser.Id !== 'string') {
         return NextResponse.json(
           { error: 'Unable to resolve Jellyfin user for this API key.' },
           { status: 400 }

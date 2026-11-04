@@ -9,6 +9,7 @@ import {
 } from '@/lib/cache/config';
 import { getTmdbJsonWithCache, type TmdbCachePolicy } from '@/lib/cache/tmdb-api-cache';
 import { parseRetryAfter } from '@/lib/http-rate-limit';
+import { NotServiceApiError } from '@/lib/service-response';
 
 export type TmdbMediaType = 'movie' | 'tv';
 
@@ -555,59 +556,73 @@ export class TmdbClient {
       params,
       apiKey: this.apiKey,
       policy: cachePolicy,
-      fetcher: async () => {
-        const nowMs = Date.now();
-        maybeSweepTmdbCooldowns(nowMs);
-
-        const cooldownUntil = tmdbCooldowns.get(this.apiKey);
-        if (cooldownUntil && nowMs >= cooldownUntil) {
-          tmdbCooldowns.delete(this.apiKey);
-        }
-        if (cooldownUntil && nowMs < cooldownUntil) {
-          const remainingSeconds = Math.max(1, Math.ceil((cooldownUntil - nowMs) / 1000));
-          throw new TmdbRateLimitError(
-            'TMDB rate limit reached',
-            remainingSeconds,
-            new Date(cooldownUntil).toISOString()
-          );
-        }
-
-        try {
-          const response = await this.client.get<T>(endpoint, {
-            params: {
-              ...params,
-              ...(this.useBearerAuth ? {} : { api_key: this.apiKey }),
-            },
-            headers: {
-              ...(this.useBearerAuth ? { Authorization: `Bearer ${this.apiKey}` } : {}),
-            },
-          });
-          return response.data;
-        } catch (error) {
-          if (axios.isAxiosError(error) && error.response?.status === 429) {
-            const parsed = parseRetryAfter(error.response.headers);
-            const retryAfterSeconds = parsed.retryAfterSeconds ?? 60;
-            const parsedRetryAtMs = parsed.retryAt ? Date.parse(parsed.retryAt) : Number.NaN;
-            const retryAtMs = Number.isFinite(parsedRetryAtMs)
-              ? parsedRetryAtMs
-              : Date.now() + retryAfterSeconds * 1000;
-            tmdbCooldowns.set(this.apiKey, retryAtMs);
-            maybeSweepTmdbCooldowns(Date.now());
-            throw new TmdbRateLimitError(
-              'TMDB rate limit reached',
-              retryAfterSeconds,
-              parsed.retryAt || new Date(retryAtMs).toISOString()
-            );
-          }
-
-          throw error;
-        }
-      },
+      fetcher: () => this.fetchLive<T>(endpoint, params),
     });
+  }
+
+  /** One request to this address, honouring and setting the per-key 429 cooldown. */
+  private async fetchLive<T>(endpoint: string, params?: Record<string, unknown>): Promise<T> {
+    const nowMs = Date.now();
+    maybeSweepTmdbCooldowns(nowMs);
+
+    const cooldownUntil = tmdbCooldowns.get(this.apiKey);
+    if (cooldownUntil && nowMs >= cooldownUntil) {
+      tmdbCooldowns.delete(this.apiKey);
+    }
+    if (cooldownUntil && nowMs < cooldownUntil) {
+      const remainingSeconds = Math.max(1, Math.ceil((cooldownUntil - nowMs) / 1000));
+      throw new TmdbRateLimitError(
+        'TMDB rate limit reached',
+        remainingSeconds,
+        new Date(cooldownUntil).toISOString()
+      );
+    }
+
+    try {
+      const response = await this.client.get<T>(endpoint, {
+        params: {
+          ...params,
+          ...(this.useBearerAuth ? {} : { api_key: this.apiKey }),
+        },
+        headers: {
+          ...(this.useBearerAuth ? { Authorization: `Bearer ${this.apiKey}` } : {}),
+        },
+      });
+      return response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error) && error.response?.status === 429) {
+        const parsed = parseRetryAfter(error.response.headers);
+        const retryAfterSeconds = parsed.retryAfterSeconds ?? 60;
+        const parsedRetryAtMs = parsed.retryAt ? Date.parse(parsed.retryAt) : Number.NaN;
+        const retryAtMs = Number.isFinite(parsedRetryAtMs)
+          ? parsedRetryAtMs
+          : Date.now() + retryAfterSeconds * 1000;
+        tmdbCooldowns.set(this.apiKey, retryAtMs);
+        maybeSweepTmdbCooldowns(Date.now());
+        throw new TmdbRateLimitError(
+          'TMDB rate limit reached',
+          retryAfterSeconds,
+          parsed.retryAt || new Date(retryAtMs).toISOString()
+        );
+      }
+
+      throw error;
+    }
   }
 
   async validateConnection(): Promise<void> {
     await this.get('/configuration');
+  }
+
+  /**
+   * The connection Test: asks this address itself, not the shared cache. That cache is
+   * keyed by API key and endpoint only, so a cached answer says nothing about this URL,
+   * and a page from a wrong address must never be stored for the right one.
+   */
+  async testAddress(): Promise<void> {
+    const config = await this.fetchLive<{ images?: unknown }>('/configuration');
+    // A wrong base URL can answer 200 with a web page; only the API returns this object.
+    if (!config || typeof config !== 'object' || !config.images) throw new NotServiceApiError();
   }
 
   async trending(mediaType: 'all' | TmdbMediaType, page = 1): Promise<TmdbListResponse> {

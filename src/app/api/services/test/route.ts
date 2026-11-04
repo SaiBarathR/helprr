@@ -20,6 +20,18 @@ import {
 import type { ServiceType } from '@prisma/client';
 import { withApiLogging } from '@/lib/api-logger';
 import { isRefusedRedirect, REDIRECT_REFUSED_MESSAGE } from '@/lib/redirect-guard';
+import { expectServiceVersion, NotServiceApiError } from '@/lib/service-response';
+import { findServiceByType } from '@/lib/settings/service-config';
+
+/** What to say when an address answers, but with a web page instead of the API. */
+function notServiceApiMessage(type: ServiceType | null): string {
+  if (type === 'TMDB') {
+    return 'This address answered, but not like the TMDB API. Use https://api.themoviedb.org/3.';
+  }
+  const label = (type && findServiceByType(type)?.label) || 'the service';
+  return `This address answered, but not like ${label}'s API. Remove anything after the port, `
+    + `such as /settings/general, unless ${label} runs under a base path.`;
+}
 
 /**
  * Handle POST requests to check connectivity and retrieve version information from supported services.
@@ -106,7 +118,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
         const status = await client.getSystemStatus();
         return NextResponse.json({
           success: true,
-          version: status.version,
+          version: expectServiceVersion(status?.version),
         });
       }
 
@@ -115,7 +127,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
         const status = await client.getSystemStatus();
         return NextResponse.json({
           success: true,
-          version: status.version,
+          version: expectServiceVersion(status?.version),
         });
       }
 
@@ -124,13 +136,13 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
         const status = await client.getSystemStatus();
         return NextResponse.json({
           success: true,
-          version: status.version,
+          version: expectServiceVersion(status?.version),
         });
       }
 
       case 'QBITTORRENT': {
         const client = new QBittorrentClient(cleanUrl, resolvedApiKey, username || 'admin', customHeaders);
-        const version = await client.getVersion();
+        const version = expectServiceVersion(await client.getVersion());
         return NextResponse.json({
           success: true,
           version,
@@ -142,7 +154,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
         const status = await client.getSystemStatus();
         return NextResponse.json({
           success: true,
-          version: status.version,
+          version: expectServiceVersion(status?.version),
         });
       }
 
@@ -153,8 +165,9 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
           client.resolveCurrentUser(resolvedApiKey),
           client.hasAdminAccess(),
         ]);
+        const version = expectServiceVersion(sysInfo?.Version);
 
-        if (!user) {
+        if (!user || typeof user.Id !== 'string') {
           return NextResponse.json(
             {
               success: false,
@@ -190,7 +203,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
 
         return NextResponse.json({
           success: true,
-          version: sysInfo.Version,
+          version,
           serverName: sysInfo.ServerName,
           userId: user.Id,
           users,
@@ -199,7 +212,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
 
       case 'TMDB': {
         const client = new TmdbClient(cleanUrl, resolvedApiKey);
-        await client.validateConnection();
+        await client.testAddress();
         return NextResponse.json({
           success: true,
           version: 'API reachable',
@@ -211,7 +224,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
         const [me, status] = await Promise.all([client.verify(), client.getStatus()]);
         return NextResponse.json({
           success: true,
-          version: status.version,
+          version: expectServiceVersion(status?.version),
           userId: me.id,
           username: me.displayName ?? me.username ?? me.email ?? null,
         });
@@ -233,6 +246,13 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
       code,
       responseStatus,
     });
+
+    if (error instanceof NotServiceApiError) {
+      return NextResponse.json(
+        { success: false, error: notServiceApiMessage(attemptedType) },
+        { status: 502 }
+      );
+    }
 
     if (typeof responseStatus === 'number' && responseStatus >= 400 && responseStatus < 500) {
       const rejectedKey = responseStatus === 401;
