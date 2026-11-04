@@ -6,17 +6,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Clapperboard, Loader2 } from 'lucide-react';
-import { getQueryClient } from '@/lib/query-client';
-import { invalidateExternalUrls } from '@/lib/hooks/use-external-urls';
-import {
-  broadcastAuthenticationBoundary,
-  clearUserScopedBrowserCaches,
-  requestSessionLogout,
-  subscribeToAuthenticationBoundaries,
-} from '@/lib/client-cache';
-
-const DEVICE_COOKIE = 'helprr-device';
-const DEVICE_COOKIE_MAX_AGE = 60 * 60 * 24 * 365; // 1 year
+import { clearUserScopedBrowserCaches, subscribeToAuthenticationBoundaries } from '@/lib/client-cache';
+import { completeBrowserSignIn, setDeviceCookieFromMatchMedia } from '@/lib/client-sign-in';
 
 // Where to land after a successful login. The share-target fallback sends
 // unauthenticated users to /login?next=/share?... so the shared payload
@@ -31,15 +22,6 @@ function getPostLoginTarget(): string {
     return next;
   }
   return '/';
-}
-
-function setDeviceCookieFromMatchMedia(): void {
-  if (typeof document === 'undefined' || typeof window === 'undefined') return;
-  const device = window.matchMedia('(max-width: 768px)').matches ? 'mobile' : 'desktop';
-  // Browsers reject Secure cookies over plain HTTP (except localhost), so omit
-  // the flag on http:// origins — LAN-hosted self-hosted instances need this.
-  const secure = window.location.protocol === 'https:' ? '; Secure' : '';
-  document.cookie = `${DEVICE_COOKIE}=${device}; Path=/; SameSite=Lax${secure}; Max-Age=${DEVICE_COOKIE_MAX_AGE}`;
 }
 
 export default function LoginPage() {
@@ -64,6 +46,16 @@ export default function LoginPage() {
   useEffect(() => {
     setDeviceCookieFromMatchMedia();
   }, []);
+
+  // A brand-new install with no APP_PASSWORD has nobody to sign in as yet.
+  useEffect(() => {
+    void fetch('/api/setup/state', { cache: 'no-store' })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((state: { needsAdmin?: boolean } | null) => {
+        if (state?.needsAdmin) router.replace('/setup');
+      })
+      .catch(() => undefined);
+  }, [router]);
 
   // A session that ended here (signed out, expired, or revoked from another
   // device) leaves page shells carrying its identity, posters and saved reads
@@ -112,37 +104,7 @@ export default function LoginPage() {
       });
 
       if (res.ok) {
-        // Re-read device class right before redirect in case the user resized
-        // the window between mount and login.
-        setDeviceCookieFromMatchMedia();
-        // Drop any in-memory TanStack cache from a prior session before entering
-        // the app — the browser QueryClient is a persistent singleton, so without
-        // this a different user signing in on the same browser could briefly see
-        // the previous user's cached lists/sessions/widgets.
-        getQueryClient().clear();
-        invalidateExternalUrls();
-        // The successful response changed the origin-wide cookie. Notify other
-        // tabs immediately so their mounted state cannot keep running under the
-        // newly authenticated identity while persistent caches are cleared.
-        broadcastAuthenticationBoundary();
-        try {
-          await clearUserScopedBrowserCaches();
-        } catch {
-          // The server already issued a session. Roll it back and stay on the
-          // login screen rather than entering the app with another user's
-          // persistent browser caches still available.
-          const rollbackResult = await requestSessionLogout();
-          // Rollback is itself an origin-wide authentication boundary. Broadcast
-          // even when it cannot be confirmed so every other tab reloads instead
-          // of retaining state from whichever identity its cookie now represents.
-          broadcastAuthenticationBoundary();
-          if (rollbackResult !== 'success') {
-            throw new Error(
-              'Browser data could not be cleared and sign-in rollback could not be confirmed. Close this browser and revoke the session before retrying.',
-            );
-          }
-          throw new Error('Could not safely clear browser data. Please retry.');
-        }
+        await completeBrowserSignIn();
         router.replace(getPostLoginTarget());
         router.refresh();
         return;

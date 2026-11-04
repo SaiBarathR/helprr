@@ -104,4 +104,19 @@ describe('bootstrap local-password policy', () => {
     );
     expect(mocks.update).not.toHaveBeenCalled();
   });
+
+  it('keeps the name an admin chose in /setup unless HELPRR_ADMIN_USERNAME is set', async () => {
+    process.env.APP_PASSWORD = 'a-long-bootstrap-password-1';
+    mocks.findUnique.mockResolvedValue({ id: 'user-bootstrap-admin', username: 'sai', passwordHash: 'existing-hash' });
+    await ensureBootstrapAdmin();
+    expect(mocks.update).not.toHaveBeenCalled();
+
+    process.env.HELPRR_ADMIN_USERNAME = '""';
+    await ensureBootstrapAdmin();
+    expect(mocks.update).not.toHaveBeenCalled();
+
+    process.env.HELPRR_ADMIN_USERNAME = 'admin';
+    await ensureBootstrapAdmin();
+    expect(mocks.update).toHaveBeenCalledWith({ where: { id: 'user-bootstrap-admin' }, data: { username: 'admin' } });
+  });
 });

@@ -138,7 +138,7 @@ services:
       - TZ=${TZ:-UTC}
       - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD}@helprr-db:5432/helprr
       - JWT_SECRET=${JWT_SECRET}
-      - APP_PASSWORD=${APP_PASSWORD}
+      - APP_PASSWORD=${APP_PASSWORD:-}
       - TWITCH_LIBRARY_DIR=/media/twitch
       - YOUTUBE_LIBRARY_DIR=/media/youtube
       - TWITCH_TOOLS_DIR=/data/tools

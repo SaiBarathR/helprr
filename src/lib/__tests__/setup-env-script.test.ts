@@ -63,7 +63,7 @@ afterEach(() => {
 describe('setup-env.sh', () => {
   it('creates a private stable env with independent valid secrets without printing them', () => {
     const root = createFixture();
-    const result = runSetup(root);
+    const result = runSetup(root, ['--admin-password']);
 
     expect(result.status).toBe(0);
     expect(result.stderr).toBe('');
@@ -97,6 +97,34 @@ describe('setup-env.sh', () => {
       }),
     ).not.toThrow();
     expectNoTemporaryFiles(root);
+  });
+
+  it('leaves APP_PASSWORD empty by default, so the first admin is created in the browser', () => {
+    const root = createFixture();
+    const result = runSetup(root);
+    expect(result.status).toBe(0);
+    const env = parseEnv(readFileSync(path.join(root, '.env'), 'utf8'));
+    expect(env.APP_PASSWORD).toBe('');
+    for (const secret of [env.POSTGRES_PASSWORD, env.REDIS_PASSWORD, env.JWT_SECRET]) {
+      expect(secret).toMatch(/^[0-9a-f]{64}$/);
+    }
+    expect(result.stdout).toContain('and create your admin account.');
+    expect(result.stdout).not.toContain("grep '^APP_PASSWORD='");
+    expect(() =>
+      validateRuntimeConfig({
+        DATABASE_URL: `postgresql://postgres:${env.POSTGRES_PASSWORD}@helprr-db:5432/helprr`,
+        REDIS_URL: 'redis://helprr-redis:6379',
+        REDIS_PASSWORD: env.REDIS_PASSWORD,
+        APP_PASSWORD: env.APP_PASSWORD,
+        JWT_SECRET: env.JWT_SECRET,
+      }),
+    ).not.toThrow();
+  });
+
+  it('accepts its flags in either order', () => {
+    const root = createFixture();
+    expect(runSetup(root, ['--admin-password', '--stable']).status).toBe(0);
+    expect(parseEnv(readFileSync(path.join(root, '.env'), 'utf8')).APP_PASSWORD).toMatch(/^[0-9a-f]{64}$/);
   });
 
   it('creates an isolated private development env with valid development-only secrets', () => {
@@ -196,7 +224,7 @@ describe('setup-env.sh friendlier defaults', () => {
 
   it('fills in the timezone, the worker user, and says what to do next', () => {
     const root = createFixture();
-    const result = runSetup(root, [], env());
+    const result = runSetup(root, ['--admin-password'], env());
     expect(result.status).toBe(0);
     const values = parseEnv(readFileSync(path.join(root, '.env'), 'utf8'));
     expect(values.TZ).toBe('Europe/Berlin');

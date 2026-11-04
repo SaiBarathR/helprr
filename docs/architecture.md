@@ -217,14 +217,28 @@ also connects that member's playback credential; see "Jellyfin Identity and
 Playback Credentials" below.
 
 `APP_PASSWORD` seeds the bootstrap admin only when a hash is needed; ordinary
-login checks `User.passwordHash`. An admin password change through Settings ->
+login checks `User.passwordHash`. Without `APP_PASSWORD`, the first admin is
+created in the browser at `/setup` (`src/lib/first-admin.ts`). That screen and its
+routes (`GET /api/setup/state`, `POST /api/setup/admin`) are open only while the
+`User` table is empty and `APP_PASSWORD` is unset; the answer is latched per
+process once a user exists, and no app path empties the table again. The claim
+creates the row with the fixed `BOOTSTRAP_ADMIN_ID` in a transaction that re-checks
+the table, so the primary key decides a race. It requires same-origin JSON: with
+`APP_ORIGIN` set the `Origin` must equal it, otherwise `Origin` must match `Host` and
+be a local address (IP, `localhost`, single-label, `.local`, `.lan`, `.home.arpa`,
+`.internal`), which rules out DNS rebinding. The residual case is a single-label
+name completed through a hostile network's wildcard search domain; `APP_ORIGIN`
+closes it. It is rate-limited per IP when a trusted
+proxy gives one, and to ten claims a minute per process. On boot the bootstrap
+admin is renamed to `HELPRR_ADMIN_USERNAME` only when that variable is set, so a
+name chosen at `/setup` survives a later `APP_PASSWORD` reset. An admin password change through Settings ->
 Users updates the hash and revokes all active sessions for the target in one
 transaction. `HELPRR_ADMIN_PASSWORD_RESET=true` is a separate startup recovery
 path for the bootstrap admin and does not revoke existing sessions, so suspected
 compromise also requires explicit session revocation.
 
-Public proxy exceptions must remain narrow. Liveness and readiness are
-exact paths, not prefixes. Share-target handling is public at the proxy only so
+Public proxy exceptions must remain narrow. Liveness, readiness and the
+first-admin screen and routes are exact paths, not prefixes. Share-target handling is public at the proxy only so
 its route can preserve the incoming payload while applying its own auth check.
 
 ## Jellyfin Identity and Playback Credentials

@@ -12,7 +12,8 @@ const PUBLIC_PATHS = ['/login', '/api/auth/login', '/api/auth/jellyfin', '/api/m
 // Probes and the static offline document must work without a session. The worker
 // installs on /login too; redirecting offline.html would precache login HTML.
 // Match exactly so neighboring paths do not become silently exposed.
-const PUBLIC_EXACT_PATHS = ['/api/health', '/api/ready', '/offline.html'];
+// The first-admin screen and its routes: they check for themselves that no user exists yet.
+const PUBLIC_EXACT_PATHS = ['/api/health', '/api/ready', '/offline.html', '/setup', '/api/setup/state', '/api/setup/admin'];
 const IS_DEV = process.env.NODE_ENV === 'development';
 
 const SECURITY_HEADERS: Record<string, string> = {

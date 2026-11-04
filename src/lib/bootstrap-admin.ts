@@ -26,7 +26,8 @@ export const BOOTSTRAP_ADMIN_ID = 'user-bootstrap-admin';
 export async function ensureBootstrapAdmin(): Promise<void> {
   const appPassword = process.env.APP_PASSWORD;
   if (!appPassword) {
-    console.warn('[Helprr] APP_PASSWORD is not set — bootstrap admin local login will be unavailable');
+    // With no user at all, the first admin is created in the browser (/setup).
+    console.log('[Helprr] APP_PASSWORD is not set: the bootstrap admin is not created from it');
     return;
   }
 
@@ -93,8 +94,12 @@ export async function ensureBootstrapAdmin(): Promise<void> {
   }
 
   // Keep the admin's username in sync with HELPRR_ADMIN_USERNAME (renames on
-  // change). Best-effort: a clash with another user's username is logged, not fatal.
-  if (existing && existing.username !== adminUsername) {
+  // change), only when it is set: an admin created in /setup keeps the name chosen
+  // there if APP_PASSWORD is set later for a reset. Best-effort: a clash with
+  // another user's username is logged, not fatal.
+  // Normalised as the name itself is, so a quoted empty value counts as unset.
+  const usernameConfigured = Boolean(process.env.HELPRR_ADMIN_USERNAME?.trim().replace(/^["']|["']$/g, '').trim());
+  if (existing && usernameConfigured && existing.username !== adminUsername) {
     try {
       await prisma.user.update({
         where: { id: BOOTSTRAP_ADMIN_ID },
@@ -116,7 +121,7 @@ export async function ensureBootstrapAdmin(): Promise<void> {
  * stay logged in; their watchlist and push subscriptions stay theirs). Idempotent:
  * once everything has an owner these updates touch zero rows.
  */
-async function attachOwnerlessRowsToAdmin(): Promise<void> {
+export async function attachOwnerlessRowsToAdmin(): Promise<void> {
   try {
     const [sessions, watchlist, subs] = await prisma.$transaction([
       prisma.session.updateMany({ where: { userId: null }, data: { userId: BOOTSTRAP_ADMIN_ID } }),
