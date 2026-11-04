@@ -24,7 +24,7 @@ import { GroupedSection } from '@/components/settings/grouped-section';
 import { findServiceBySlug, type ServiceConfigType } from '@/lib/settings/service-config';
 import { invalidateExternalUrls } from '@/lib/hooks/use-external-urls';
 import { invalidateInstances } from '@/lib/query-invalidation';
-import { normalizeServiceUrl, withDefaultScheme } from '@/lib/service-url';
+import { normalizeServiceUrl, servicePageUrl, withDefaultScheme } from '@/lib/service-url';
 import {
   deleteServiceConnection,
   setServiceConnectionDefault,
@@ -113,6 +113,27 @@ function UrlChangeNote({ id, secret }: { id: string; secret: string }) {
     <p id={id} role="status" className="text-xs text-amber-400 light:text-amber-700">
       The URL has changed, so the saved {secret} will not be used with it. Enter the {secret} again
       before you test or save.
+    </p>
+  );
+}
+
+function KeyHelp({ id, url, help }: {
+  id: string;
+  url: string;
+  help: { where: string; path: string | null; href: string | null };
+}) {
+  const link = help.href ?? servicePageUrl(url, help.path);
+  return (
+    <p id={id} className="text-xs text-muted-foreground">
+      Where to find it: {help.where}.
+      {link && (
+        <>
+          {' '}
+          <a href={link} target="_blank" rel="noopener noreferrer" className="text-primary underline-offset-2 hover:underline">
+            Open
+          </a>
+        </>
+      )}
     </p>
   );
 }
@@ -583,9 +604,14 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
             }}
             className="h-10"
             aria-invalid={fieldErrors.url ? true : undefined}
-            aria-describedby={fieldErrors.url ? 'conn-url-error' : undefined}
+            aria-describedby={fieldErrors.url ? 'conn-url-error' : config.type === 'TMDB' ? undefined : 'conn-url-help'}
           />
           <FieldError id="conn-url-error" message={fieldErrors.url} />
+          {config.type !== 'TMDB' && !fieldErrors.url && (
+            <p id="conn-url-help" className="text-xs text-muted-foreground">
+              Use the address you open {config.label} at in your browser. If Helprr runs in Docker, not localhost.
+            </p>
+          )}
         </div>
 
         {isQbt ? (
@@ -613,10 +639,11 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
                 }}
                 className="h-10"
                 aria-invalid={fieldErrors.apiKey ? true : undefined}
-                aria-describedby={fieldErrors.apiKey ? 'conn-apiKey-error' : savedKeyKept ? 'conn-apiKey-note' : undefined}
+                aria-describedby={fieldErrors.apiKey ? 'conn-apiKey-error' : savedKeyKept ? 'conn-apiKey-note conn-apiKey-help' : 'conn-apiKey-help'}
               />
               <FieldError id="conn-apiKey-error" message={fieldErrors.apiKey} />
               {savedKeyKept && !fieldErrors.apiKey && <UrlChangeNote id="conn-apiKey-note" secret={secretNoun} />}
+              {!fieldErrors.apiKey && <KeyHelp id="conn-apiKey-help" url={url} help={config.keyHelp} />}
             </div>
           </>
         ) : (
@@ -641,10 +668,11 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
                 }}
                 className="h-10"
                 aria-invalid={fieldErrors.apiKey ? true : undefined}
-                aria-describedby={fieldErrors.apiKey ? 'conn-apiKey-error' : savedKeyKept ? 'conn-apiKey-note' : undefined}
+                aria-describedby={fieldErrors.apiKey ? 'conn-apiKey-error' : savedKeyKept ? 'conn-apiKey-note conn-apiKey-help' : 'conn-apiKey-help'}
               />
               <FieldError id="conn-apiKey-error" message={fieldErrors.apiKey} />
               {savedKeyKept && !fieldErrors.apiKey && <UrlChangeNote id="conn-apiKey-note" secret={secretNoun} />}
+              {!fieldErrors.apiKey && <KeyHelp id="conn-apiKey-help" url={url} help={config.keyHelp} />}
             </div>
             {isJellyfin && (
               <div className="px-4 py-3 border-b border-foreground/[0.06] space-y-1.5">

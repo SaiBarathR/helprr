@@ -18,3 +18,25 @@ export function withDefaultScheme(url: string): string {
   if (!trimmed || /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed)) return trimmed;
   return `http://${trimmed}`;
 }
+
+/**
+ * A page of the service itself (for example its API key settings) under the
+ * address typed in the form, or null unless that is a real http(s) URL.
+ */
+export function servicePageUrl(url: string, path: string | null): string | null {
+  if (!path) return null;
+  try {
+    const parsed = new URL(withDefaultScheme(url));
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
+    // Origin and path only: a typed query, fragment or user:password must not end up in the link.
+    let base = normalizeServiceUrl(parsed.origin + parsed.pathname);
+    // An address copied from inside the app already ends in that page (or in
+    // Jellyfin's /web); don't repeat it.
+    const pagePath = path.split('#')[0].replace(/\/+$/, '');
+    if (pagePath && base.endsWith(pagePath)) base = base.slice(0, -pagePath.length);
+    else if (pagePath.startsWith('/web') && /\/web(\/index\.html)?$/.test(base)) base = base.replace(/\/web(\/index\.html)?$/, '');
+    return `${base}${path}`;
+  } catch {
+    return null;
+  }
+}
