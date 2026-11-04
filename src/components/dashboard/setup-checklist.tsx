@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import dynamic from 'next/dynamic';
 import { toast } from 'sonner';
 import { Bell, Check, DatabaseBackup, Plug, Smartphone, Users, X, type LucideIcon } from 'lucide-react';
 import Link from '@/components/ui/app-link';
@@ -54,6 +55,19 @@ const STEP_COPY: Record<SetupStep, { title: string; detail: string; href: string
 
 type ChecklistAction = { action: 'dismiss' } | { action: 'restore' } | { action: 'done'; step: SetupStep };
 
+const SMALL_BUTTON: React.CSSProperties = {
+  // touch-target's larger hit area is placed against this button.
+  position: 'relative',
+  flexShrink: 0,
+  fontSize: 12,
+  fontWeight: 600,
+  color: HPR.fgMute,
+  background: 'transparent',
+  border: `1px solid ${HPR.hairline2}`,
+  borderRadius: 7,
+  padding: '5px 10px',
+};
+
 async function send(body: ChecklistAction): Promise<SetupChecklistState> {
   const res = await fetch('/api/setup-checklist', {
     method: 'POST',
@@ -75,6 +89,13 @@ function mergeReply(prev: SetupChecklistState, reply: SetupChecklistState): Setu
 function isPhone(): boolean {
   return isIosDevice(navigator.userAgent, navigator.platform, navigator.maxTouchPoints) || /Android/.test(navigator.userAgent);
 }
+const emptySubscribe = () => () => {};
+
+// Loaded on first open: it carries the QR encoder.
+const OpenOnPhoneDrawer = dynamic(
+  () => import('@/components/settings/open-on-phone').then((module) => module.OpenOnPhoneDrawer),
+  { loading: () => null },
+);
 
 /** The admin's "what to do next" card at the top of the dashboard. */
 export function SetupChecklist({ initial, mobile }: { initial: SetupChecklistState; mobile: boolean }) {
@@ -123,6 +144,16 @@ export function SetupChecklist({ initial, mobile }: { initial: SetupChecklistSta
     if (hidden) {
       toast('Setup checklist hidden', { action: { label: 'Undo', onClick: () => setHidden(false) } });
     }
+  };
+
+  // On a computer, the install step offers a QR code for the phone.
+  const onPhone = useSyncExternalStore(emptySubscribe, isPhone, () => true);
+  const [phoneOpen, setPhoneOpen] = useState(false);
+  // Kept mounted once opened, so closing plays the drawer's slide-down.
+  const [phoneOpened, setPhoneOpened] = useState(false);
+  const openPhone = () => {
+    setPhoneOpened(true);
+    setPhoneOpen(true);
   };
 
   // Opened as an installed app on a phone: the phone step is done. (An installed
@@ -255,23 +286,24 @@ export function SetupChecklist({ initial, mobile }: { initial: SetupChecklistSta
                 </span>
                 <span style={{ display: 'block', fontSize: 12, color: HPR.fgMute, marginTop: 1 }}>{copy.detail}</span>
               </Link>
+              {!done && step === 'install' && !onPhone && (
+                <button
+                  type="button"
+                  className="touch-target press-feedback"
+                  aria-label="Show a code to open Helprr on your phone"
+                  onClick={openPhone}
+                  style={SMALL_BUTTON}
+                >
+                  Show code
+                </button>
+              )}
               {!done && MANUAL_SETUP_STEPS.has(step) && copy.manualLabel && (
                 <button
                   type="button"
                   className="touch-target press-feedback"
                   aria-label={`${copy.manualLabel}: ${copy.title}`}
                   onClick={() => markByHand(step)}
-                  style={{
-                    position: 'relative',
-                    flexShrink: 0,
-                    fontSize: 12,
-                    fontWeight: 600,
-                    color: HPR.fgMute,
-                    background: 'transparent',
-                    border: `1px solid ${HPR.hairline2}`,
-                    borderRadius: 7,
-                    padding: '5px 10px',
-                  }}
+                  style={SMALL_BUTTON}
                 >
                   {copy.manualLabel}
                 </button>
@@ -280,6 +312,7 @@ export function SetupChecklist({ initial, mobile }: { initial: SetupChecklistSta
           );
         })}
       </ol>
+      {phoneOpened && <OpenOnPhoneDrawer open={phoneOpen} onOpenChange={setPhoneOpen} />}
     </section>
   );
 }

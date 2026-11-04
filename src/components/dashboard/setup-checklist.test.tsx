@@ -13,6 +13,24 @@ vi.mock('@/components/ui/app-link', () => ({
   default: ({ children, ...props }: { children: ReactNode }) => <a {...props}>{children}</a>,
 }));
 
+vi.mock('@/components/ui/drawer', () => {
+  const Pass = ({ children }: { children?: ReactNode }) => <>{children}</>;
+  return { Drawer: Pass, DrawerClose: Pass, DrawerContent: Pass, DrawerDescription: Pass, DrawerFooter: Pass, DrawerHeader: Pass, DrawerTitle: Pass };
+});
+
+// The drawer has its own tests (open-on-phone.test.tsx); here, only that it opens.
+vi.mock('next/dynamic', () => ({
+  default: () =>
+    function OpenOnPhoneStub({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+      return (
+        <div data-testid="phone-drawer" data-open={String(open)}>
+          {open && <div role="dialog" aria-label="Open on your phone" />}
+          <button type="button" aria-label="Close phone drawer" onClick={() => onOpenChange(false)} />
+        </div>
+      );
+    },
+}));
+
 import { SetupChecklist } from './setup-checklist';
 
 const fresh: SetupChecklistState = {
@@ -161,6 +179,31 @@ describe('SetupChecklist', () => {
     await waitFor(() => expect(replies).toHaveLength(2));
     expect(mocks.toastError).not.toHaveBeenCalled();
     expect(screen.getByRole('heading', { name: 'Set up Helprr' })).toBeTruthy();
+  });
+
+  it('offers a QR code for the phone on a computer, and opens it', async () => {
+    respond(fresh);
+    render(<SetupChecklist initial={fresh} mobile={false} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Show a code to open Helprr on your phone' }));
+    expect(screen.getByRole('dialog', { name: 'Open on your phone' })).toBeTruthy();
+  });
+
+  it('keeps the drawer mounted after closing, so it can slide away and open again', async () => {
+    respond(fresh);
+    render(<SetupChecklist initial={fresh} mobile={false} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Show a code to open Helprr on your phone' }));
+    expect(screen.getByTestId('phone-drawer').dataset.open).toBe('true');
+    await userEvent.click(screen.getByRole('button', { name: 'Close phone drawer' }));
+    expect(screen.getByTestId('phone-drawer').dataset.open).toBe('false');
+    await userEvent.click(screen.getByRole('button', { name: 'Show a code to open Helprr on your phone' }));
+    expect(screen.getByTestId('phone-drawer').dataset.open).toBe('true');
+  });
+
+  it('does not offer the code on the phone itself', () => {
+    vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue('Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)');
+    respond(fresh);
+    render(<SetupChecklist initial={fresh} mobile />);
+    expect(screen.queryByRole('button', { name: 'Show a code to open Helprr on your phone' })).toBeNull();
   });
 
   it('does not mark the phone step from an installed desktop app window', async () => {

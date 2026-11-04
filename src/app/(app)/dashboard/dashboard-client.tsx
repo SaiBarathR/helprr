@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
 import { useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -19,6 +19,9 @@ import { WidgetAvailabilityProvider } from '@/lib/widgets/widget-availability-co
 import { LayoutSwitcher } from '@/components/widgets/layout-switcher';
 import type { WidgetInstance, WidgetService } from '@/lib/widgets/types';
 import { SetupChecklist } from '@/components/dashboard/setup-checklist';
+// Without Secure on plain http: a rejected cookie made the server render the other
+// layout on every refresh, and this page refreshed forever.
+import { writeDeviceCookie as setDeviceCookie } from '@/lib/client-sign-in';
 import type { SetupChecklistState } from '@/lib/setup-checklist-steps';
 
 export interface InitialDashboardLayout {
@@ -36,13 +39,6 @@ interface DashboardClientProps {
   setupChecklist?: SetupChecklistState | null;
 }
 
-function setDeviceCookie(device: 'desktop' | 'mobile'): void {
-  if (typeof document === 'undefined') return;
-  const maxAge = 60 * 60 * 24 * 365; // 1 year
-  // `Secure` is ignored by browsers over plain HTTP, so it's safe to always
-  // include — adds protection when the PWA is served over HTTPS.
-  document.cookie = `helprr-device=${device}; Path=/; SameSite=Lax; Secure; Max-Age=${maxAge}`;
-}
 
 function FullPageSpinner() {
   return (
@@ -105,20 +101,24 @@ function DashboardInner({ initialLayout, initialDevice, setupChecklist }: Dashbo
   const isMobile = useIsMobile(768);
   const detectedDevice: 'desktop' | 'mobile' = isMobile ? 'mobile' : 'desktop';
   const [reloading, setReloading] = useState(false);
+  // The device a refresh was already asked for. If the server still renders the other
+  // layout after it (the cookie was refused: cookies blocked, a policy), show that
+  // layout rather than refresh forever.
+  const refreshedFor = useRef<'desktop' | 'mobile' | null>(null);
 
   // Sync the cookie + reload when the detected device disagrees with what the
   // server rendered. matchMedia is null on first render (server-safe default),
   // so we wait until React commits before deciding.
   useEffect(() => {
-    if (detectedDevice === initialDevice) {
+    if (detectedDevice === initialDevice || refreshedFor.current === detectedDevice) {
       // After a refresh triggered by the mismatch branch, the effect re-runs
       // here with matched devices — clear the spinner so the page becomes
       // interactive again.
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- clear the reload spinner once devices match
       setReloading(false);
       setDeviceCookie(detectedDevice);
       return;
     }
+    refreshedFor.current = detectedDevice;
     setReloading(true);
     setDeviceCookie(detectedDevice);
     router.refresh();
