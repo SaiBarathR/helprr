@@ -21,6 +21,7 @@ describe('pushReadinessChecks', () => {
   it('is all ok when everything is ready', () => {
     const checks = pushReadinessChecks(ready);
     expect(checks.map((check) => check.state)).toEqual(['ok', 'ok', 'ok', 'ok', 'ok', 'ok']);
+    expect(checks.map((check) => check.id)).toEqual(['secure', 'server', 'installed', 'worker', 'permission', 'subscribed']);
     expect(checks.every((check) => !check.detail)).toBe(true);
   });
 
@@ -51,8 +52,29 @@ describe('pushReadinessChecks', () => {
     expect(byId(ready)['ios-version']).toBeUndefined();
   });
 
-  it('only suggests installing on other devices', () => {
-    expect(byId({ ...ready, standalone: false }).installed.state).toBe('warn');
+  it('counts the browser as fine outside iOS, where installing is optional', () => {
+    expect(byId({ ...ready, standalone: false }).installed).toMatchObject({ state: 'ok', title: 'Opened in the browser (installing is optional here)' });
+  });
+
+  it('fails a secure browser without push, but leaves an iPhone waiting for install to its own row', () => {
+    const checks = byId({ ...ready, supported: false });
+    expect(checks.browser).toMatchObject({ state: 'fail', title: 'This browser cannot do push' });
+    expect(pushReadinessChecks({ ...ready, supported: false }).filter((check) => check.state === 'fail')).toHaveLength(1);
+    expect(byId({ ...ready, supported: false, ios: true, iosVersion: [18, 0], standalone: false }).browser).toBeUndefined();
+    expect(byId({ ...ready, supported: false, secure: false }).browser).toBeUndefined();
+  });
+
+  it('does not blame the server when it could not be asked', () => {
+    expect(byId({ ...ready, serverConfigured: null, serverUnreachable: true }).server).toMatchObject({
+      state: 'warn',
+      title: 'Could not reach Helprr to check its push keys',
+    });
+  });
+
+  it("puts the push hook's own reason first on an unsubscribed device", () => {
+    expect(byId({ ...ready, subscribed: false, deviceError: 'Turn notifications on again on this device.' }).subscribed.detail).toMatch(
+      /^Turn notifications on again on this device\. Turn it on/,
+    );
   });
 
   it('names a stopped service worker, a blocked or unasked permission, and an unsubscribed device', () => {

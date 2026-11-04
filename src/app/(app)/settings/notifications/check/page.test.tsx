@@ -11,10 +11,11 @@ const mocks = vi.hoisted(() => ({
   push: { isSupported: true, isStandalone: true, isSubscribed: true, loading: false },
   role: 'admin' as 'admin' | 'member',
   serverPush: { publicKey: 'key', configured: true } as { publicKey: string | null; configured?: boolean; missing?: string[] } | undefined,
+  serverError: false,
 }));
 
 vi.mock('@tanstack/react-query', () => ({
-  useQuery: () => ({ data: mocks.serverPush, isError: false }),
+  useQuery: () => ({ data: mocks.serverPush, isError: mocks.serverError }),
 }));
 vi.mock('@/hooks/use-push-notifications', () => ({ usePushNotifications: () => mocks.push }));
 vi.mock('@/components/permission-provider', () => ({ useMe: () => ({ role: mocks.role }) }));
@@ -41,6 +42,7 @@ beforeEach(() => {
   mocks.push = { isSupported: true, isStandalone: true, isSubscribed: true, loading: false };
   mocks.role = 'admin';
   mocks.serverPush = { publicKey: 'key', configured: true };
+  mocks.serverError = false;
   browser();
 });
 afterEach(() => browser());
@@ -73,6 +75,21 @@ describe('Check push setup', () => {
     expect(screen.getByText('Notifications are blocked')).toBeTruthy();
     expect(screen.getByText(/missing VAPID_PRIVATE_KEY/)).toBeTruthy();
     expect(screen.getByText(/4 things stop push on this device/)).toBeTruthy();
+  });
+
+  it('does not call a secure browser without push ready', async () => {
+    mocks.push = { isSupported: false, isStandalone: false, isSubscribed: false, loading: false };
+    render(<PushCheckPage />);
+    await waitFor(() => expect(screen.getByText(/1 thing stops push on this device/)).toBeTruthy());
+    expect(row('This browser cannot do push').textContent).toContain('Needs fixing');
+  });
+
+  it('says it could not reach Helprr instead of blaming its keys', async () => {
+    mocks.serverPush = undefined;
+    mocks.serverError = true;
+    render(<PushCheckPage />);
+    await waitFor(() => expect(screen.getByText('Could not reach Helprr to check its push keys')).toBeTruthy());
+    expect(screen.queryByText('This server has no push keys')).toBeNull();
   });
 
   it('tells a member to ask the admin about the server', async () => {

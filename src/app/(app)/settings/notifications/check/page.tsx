@@ -60,7 +60,7 @@ function CheckRow({ check }: { check: PushCheck }) {
 
 export default function PushCheckPage() {
   const isAdmin = useMe()?.role === 'admin';
-  const { isSupported, isSubscribed, isStandalone, loading } = usePushNotifications();
+  const { isSupported, isSubscribed, isStandalone, loading, error: deviceError } = usePushNotifications();
   const secure = useSyncExternalStore(emptySubscribe, getSecure, () => true);
   const origin = useSyncExternalStore(emptySubscribe, getOrigin, () => '');
   const ios = useSyncExternalStore(emptySubscribe, getIos, () => false);
@@ -72,25 +72,26 @@ export default function PushCheckPage() {
     queryFn: jsonFetcher<{ publicKey: string | null; configured?: boolean; missing?: string[] }>('/api/push/public-key'),
     staleTime: 60_000,
   });
-  const serverConfigured = serverPush
-    ? (serverPush.configured ?? Boolean(serverPush.publicKey))
-    : serverError
-      ? false
-      : null;
+  const serverConfigured = serverPush ? (serverPush.configured ?? Boolean(serverPush.publicKey)) : null;
 
-  // Is a service worker installed and running for this page?
+  // Is a service worker installed and running for this page? One that is still
+  // installing (a first visit) gets ten seconds to become ready.
   const [workerActive, setWorkerActive] = useState<boolean | null>(null);
   useEffect(() => {
     if (!secure || !isSupported) return;
     let cancelled = false;
+    const settle = (active: boolean) => {
+      if (!cancelled) setWorkerActive(active);
+    };
     navigator.serviceWorker
       .getRegistration()
       .then((registration) => {
-        if (!cancelled) setWorkerActive(Boolean(registration?.active));
+        if (!registration) return settle(false);
+        if (registration.active) return settle(true);
+        const timeout = new Promise<false>((resolve) => setTimeout(() => resolve(false), 10_000));
+        return Promise.race([navigator.serviceWorker.ready.then(() => true), timeout]).then(settle);
       })
-      .catch(() => {
-        if (!cancelled) setWorkerActive(false);
-      });
+      .catch(() => settle(false));
     return () => {
       cancelled = true;
     };
@@ -104,11 +105,13 @@ export default function PushCheckPage() {
     iosVersion: ios ? parseIosVersion(userAgent) : null,
     standalone: isStandalone,
     serverConfigured,
+    serverUnreachable: serverError,
     serverMissing: serverPush?.missing,
     admin: isAdmin,
     workerActive,
     permission,
     subscribed: loading ? null : isSubscribed,
+    deviceError,
   });
   const failing = checks.filter((check) => check.state === 'fail').length;
   const checking = checks.some((check) => check.state === 'checking');
@@ -139,7 +142,7 @@ export default function PushCheckPage() {
     <div className="animate-content-in pb-12">
       <div className="px-1 pt-1 pb-2">
         <Link href="/settings/notifications" className="inline-flex items-center gap-1 text-sm text-primary -ml-1 min-h-[44px] px-1">
-          <ChevronLeft className="h-5 w-5" />
+          <ChevronLeft className="h-5 w-5" aria-hidden="true" />
           Notifications
         </Link>
       </div>
@@ -149,19 +152,26 @@ export default function PushCheckPage() {
         <p className="text-sm text-muted-foreground mt-1" role="status">{summary}</p>
       </div>
 
-      <GroupedSection title="This device and server">
+      <GroupedSection title="This device and server" className="mb-2">
         <ul className="divide-y divide-border/50">
           {checks.map((check) => (
             <CheckRow key={check.id} check={check} />
           ))}
         </ul>
       </GroupedSection>
+      {/* What a page cannot read for itself, aligned like a section footer. */}
+      <div className="grouped-section mb-6">
+        <p className="px-4 text-xs text-muted-foreground">
+          Still nothing? Check this device&apos;s event types and quiet hours in Notifications, Focus or Do Not Disturb,
+          the system&apos;s notification settings for this browser, and battery saver.
+        </p>
+      </div>
 
       {!loading && isSubscribed && (
         <GroupedSection footer="Sends to every device of yours that has push on">
           <div className="px-4 py-3">
             <Button variant="outline" size="sm" onClick={sendTest} disabled={testing} className="w-full h-9">
-              {testing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
+              {testing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" /> : <Send className="mr-2 h-4 w-4" aria-hidden="true" />}
               Send a test notification
             </Button>
           </div>

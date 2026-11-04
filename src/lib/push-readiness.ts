@@ -4,7 +4,7 @@
  */
 export type PushCheckState = 'ok' | 'fail' | 'warn' | 'checking' | 'skip';
 
-export type PushCheckId = 'secure' | 'server' | 'worker' | 'ios-version' | 'installed' | 'permission' | 'subscribed';
+export type PushCheckId = 'secure' | 'browser' | 'server' | 'worker' | 'ios-version' | 'installed' | 'permission' | 'subscribed';
 
 export interface PushCheck {
   id: PushCheckId;
@@ -28,6 +28,8 @@ export interface PushFacts {
   standalone: boolean;
   /** null while asking the server. */
   serverConfigured: boolean | null;
+  /** The server could not be asked (offline, an error, a proxy in the way). */
+  serverUnreachable?: boolean;
   /** The server's own words for what is missing (admins only). */
   serverMissing?: string[];
   admin: boolean;
@@ -36,6 +38,8 @@ export interface PushFacts {
   permission: NotificationPermission | null;
   /** null while checking. */
   subscribed: boolean | null;
+  /** The push hook's own words for why turning push on failed, if it did. */
+  deviceError?: string | null;
 }
 
 const INSTALL_PAGE = '/settings/appearance#install';
@@ -62,7 +66,26 @@ export function pushReadinessChecks(facts: PushFacts): PushCheck[] {
         },
   );
 
-  if (facts.serverConfigured === null) {
+  // A secure page without the push APIs: this browser cannot do push at all (iPhone
+  // Safari hides them until Helprr is installed; the install row says that).
+  const waitingForIosInstall = facts.ios && !facts.standalone;
+  if (facts.secure && !facts.supported && !waitingForIosInstall) {
+    checks.push({
+      id: 'browser',
+      state: 'fail',
+      title: 'This browser cannot do push',
+      detail: 'Use Chrome, Edge, Firefox or Safari in a normal window (private windows have no push), or on iPhone and iPad the installed app.',
+    });
+  }
+
+  if (facts.serverUnreachable && facts.serverConfigured === null) {
+    checks.push({
+      id: 'server',
+      state: 'warn',
+      title: 'Could not reach Helprr to check its push keys',
+      detail: 'Check the connection and reload this page.',
+    });
+  } else if (facts.serverConfigured === null) {
     checks.push({ id: 'server', state: 'checking', title: 'Server push keys' });
   } else if (facts.serverConfigured) {
     checks.push({ id: 'server', state: 'ok', title: 'Server push keys' });
@@ -102,17 +125,12 @@ export function pushReadinessChecks(facts: PushFacts): PushCheck[] {
       id: 'installed',
       state: 'fail',
       title: 'Not opened as the installed app',
-      detail: 'On iPhone and iPad, notifications only work in the installed app. Tap Share, then "Add to Home Screen", and open Helprr from the Home Screen.',
+      detail: 'On iPhone and iPad, notifications only work in the installed app. In Safari, tap Share, then "Add to Home Screen", and open Helprr from the Home Screen.',
       fixHref: INSTALL_PAGE,
     });
   } else {
-    checks.push({
-      id: 'installed',
-      state: 'warn',
-      title: 'Open in the browser',
-      detail: 'Push works here too. Installing Helprr as an app keeps notifications coming when the tab is closed.',
-      fixHref: INSTALL_PAGE,
-    });
+    // Outside iOS, push reaches the browser with the tab closed; installing is optional.
+    checks.push({ id: 'installed', state: 'ok', title: 'Opened in the browser (installing is optional here)' });
   }
 
   if (!browserReady) {
@@ -173,7 +191,7 @@ export function pushReadinessChecks(facts: PushFacts): PushCheck[] {
       id: 'subscribed',
       state: 'fail',
       title: 'Push is off on this device',
-      detail: 'Turn it on with "Enable on this device" in Settings → Notifications.',
+      detail: `${facts.deviceError ? `${facts.deviceError} ` : ''}Turn it on with "Enable on this device" in Settings → Notifications.`,
       fixHref: '/settings/notifications',
     });
   }
