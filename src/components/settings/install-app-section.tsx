@@ -42,7 +42,7 @@ export function InstallAppSection() {
 
   if (isStandalone) {
     return (
-      <div className="grouped-section px-4 mb-6">
+      <div id="install" className="grouped-section px-4 mb-6 scroll-mt-20">
         <div className="grouped-section-title">App</div>
         <div className="grouped-section-content">
           <div className="grouped-row">
@@ -67,7 +67,7 @@ export function InstallAppSection() {
 
   return (
     <>
-      <div className="grouped-section mb-6">
+      <div id="install" className="grouped-section mb-6 scroll-mt-20">
         <div className="grouped-section-title">App</div>
         <div className="grouped-section-content">
           <button

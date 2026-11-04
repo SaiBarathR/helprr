@@ -49,6 +49,7 @@ const POLICY_GROUPS: Record<string, readonly string[]> = {
     'DELETE /api/settings/anime-mappings',
     'PUT /api/settings/discover-layout',
     'PUT /api/settings',
+    'POST /api/setup-checklist',
     'POST /api/sonarr/[id]/anime',
     'PATCH /api/sonarr/[id]/anime',
     'DELETE /api/sonarr/[id]/anime',
@@ -544,7 +545,7 @@ describe('mutating API route capability matrix', () => {
   const assignments = policyAssignments();
 
   it('explicitly assigns every mutating handler exactly once', () => {
-    expect(handlers.size).toBe(231);
+    expect(handlers.size).toBe(232);
     expect([...assignments.keys()].sort()).toEqual([...handlers.keys()].sort());
   });
 
