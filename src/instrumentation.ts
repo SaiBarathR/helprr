@@ -104,6 +104,11 @@ export async function register() {
       } catch (cleanupErr) {
         console.warn('[Helprr] Could not start cleanup jobs:', cleanupErr);
       }
+
+      // Only a hint, so startup never waits on it.
+      void import('@/lib/startup-guide')
+        .then(({ logStartupGuide }) => logStartupGuide())
+        .catch((guideErr) => console.warn('[Helprr] Could not print the startup guide:', guideErr));
     };
 
     // A DB that isn't reachable yet (e.g. Postgres restart racing app boot)
