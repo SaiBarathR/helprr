@@ -11,13 +11,18 @@ import {
 const DEVICE_COOKIE = 'helprr-device';
 const DEVICE_COOKIE_MAX_AGE = 60 * 60 * 24 * 365; // 1 year
 
-export function setDeviceCookieFromMatchMedia(): void {
+/** Which dashboard layout the server renders for this device. */
+export function writeDeviceCookie(device: 'desktop' | 'mobile'): void {
   if (typeof document === 'undefined' || typeof window === 'undefined') return;
-  const device = window.matchMedia('(max-width: 768px)').matches ? 'mobile' : 'desktop';
   // Browsers reject Secure cookies over plain HTTP (except localhost), so omit
   // the flag on http:// origins — LAN-hosted self-hosted instances need this.
   const secure = window.location.protocol === 'https:' ? '; Secure' : '';
   document.cookie = `${DEVICE_COOKIE}=${device}; Path=/; SameSite=Lax${secure}; Max-Age=${DEVICE_COOKIE_MAX_AGE}`;
+}
+
+export function setDeviceCookieFromMatchMedia(): void {
+  if (typeof window === 'undefined') return;
+  writeDeviceCookie(window.matchMedia('(max-width: 768px)').matches ? 'mobile' : 'desktop');
 }
 
 /**

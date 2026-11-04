@@ -19,6 +19,9 @@ import { WidgetAvailabilityProvider } from '@/lib/widgets/widget-availability-co
 import { LayoutSwitcher } from '@/components/widgets/layout-switcher';
 import type { WidgetInstance, WidgetService } from '@/lib/widgets/types';
 import { SetupChecklist } from '@/components/dashboard/setup-checklist';
+// Without Secure on plain http: a rejected cookie made the server render the other
+// layout on every refresh, and this page refreshed forever.
+import { writeDeviceCookie as setDeviceCookie } from '@/lib/client-sign-in';
 import type { SetupChecklistState } from '@/lib/setup-checklist-steps';
 
 export interface InitialDashboardLayout {
@@ -36,13 +39,6 @@ interface DashboardClientProps {
   setupChecklist?: SetupChecklistState | null;
 }
 
-function setDeviceCookie(device: 'desktop' | 'mobile'): void {
-  if (typeof document === 'undefined') return;
-  const maxAge = 60 * 60 * 24 * 365; // 1 year
-  // `Secure` is ignored by browsers over plain HTTP, so it's safe to always
-  // include — adds protection when the PWA is served over HTTPS.
-  document.cookie = `helprr-device=${device}; Path=/; SameSite=Lax; Secure; Max-Age=${maxAge}`;
-}
 
 function FullPageSpinner() {
   return (
