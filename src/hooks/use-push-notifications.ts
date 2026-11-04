@@ -89,7 +89,7 @@ async function getAppServerKey(): Promise<Uint8Array> {
   const res = await fetch('/api/push/public-key');
   const publicKey = res.ok ? (await res.json()).publicKey : null;
   if (!publicKey) {
-    throw new Error('VAPID public key not configured on the server. Set VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY / VAPID_SUBJECT.');
+    throw new Error('Push is not set up on this server yet. See Settings → Notifications.');
   }
   return urlBase64ToUint8Array(publicKey);
 }
