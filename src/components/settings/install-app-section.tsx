@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { Check, ChevronRight, Share, SquarePlus, Zap } from 'lucide-react';
+import { Check, ChevronRight, QrCode, Share, SquarePlus, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { CategoryRow } from '@/components/settings/category-row';
 import {
@@ -14,10 +14,12 @@ import {
   DrawerFooter,
 } from '@/components/ui/drawer';
 import { useInstallPrompt } from '@/hooks/use-install-prompt';
+import { OpenOnPhoneDrawer } from '@/components/settings/open-on-phone';
 
 export function InstallAppSection() {
   const { isStandalone, platform, canPrompt, triggerInstall } = useInstallPrompt();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [phoneOpen, setPhoneOpen] = useState(false);
 
   async function handleInstallTap() {
     if (platform === 'ios') {
@@ -80,6 +82,21 @@ export function InstallAppSection() {
             </div>
             <ChevronRight className="h-4 w-4 text-muted-foreground" />
           </button>
+          {platform === 'desktop' && (
+            <button
+              onClick={() => setPhoneOpen(true)}
+              className="grouped-row w-full active:bg-foreground/5 transition-colors"
+            >
+              <div className="flex items-center gap-3">
+                <QrCode className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                <div className="flex flex-col items-start">
+                  <span className="text-sm font-medium">Open on your phone</span>
+                  <span className="text-xs text-muted-foreground">Scan a code instead of typing the address</span>
+                </div>
+              </div>
+              <ChevronRight className="h-4 w-4 text-muted-foreground" />
+            </button>
+          )}
           <CategoryRow
             href="/settings/shortcuts"
             icon={Zap}
@@ -90,6 +107,8 @@ export function InstallAppSection() {
           />
         </div>
       </div>
+
+      {phoneOpen && <OpenOnPhoneDrawer open={phoneOpen} onOpenChange={setPhoneOpen} />}
 
       <Drawer open={drawerOpen} onOpenChange={setDrawerOpen}>
         <DrawerContent>
