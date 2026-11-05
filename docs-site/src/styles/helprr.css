@@ -1,0 +1,46 @@
+/* Helprr's look: projector amber on warm ink, and the app's own system fonts
+   (src/app/globals.css, the --hpr-* tokens). No web fonts are loaded. */
+:root {
+  --sl-font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Segoe UI", system-ui, sans-serif;
+  --sl-font-mono: "SF Mono", ui-monospace, "JetBrains Mono", Menlo, monospace;
+}
+
+/* Dark: the app's palette. */
+:root,
+::backdrop {
+  --sl-color-accent-low: #3a2a0e;
+  --sl-color-accent: #f5b948;
+  --sl-color-accent-high: #fbe1ad;
+  --sl-color-white: #f4ead7;
+  --sl-color-gray-1: #e6dac3;
+  --sl-color-gray-2: #b9a98c;
+  --sl-color-gray-3: #8f8068;
+  --sl-color-gray-4: #5e5240;
+  --sl-color-gray-5: #3a3226;
+  --sl-color-gray-6: #1c1813;
+  --sl-color-black: #100c08;
+}
+
+/* Light: warm bone, with an amber dark enough to read as text. */
+:root[data-theme='light'],
+[data-theme='light'] ::backdrop {
+  --sl-color-accent-low: #f6e3bd;
+  --sl-color-accent: #8a5a00;
+  --sl-color-accent-high: #4a3000;
+  --sl-color-white: #1a140c;
+  --sl-color-gray-1: #2b2318;
+  --sl-color-gray-2: #4a3f30;
+  --sl-color-gray-3: #6f624e;
+  --sl-color-gray-4: #9a8c74;
+  --sl-color-gray-5: #cdbfa6;
+  --sl-color-gray-6: #efe6d4;
+  --sl-color-gray-7: #f8f2e6;
+  --sl-color-black: #fdf9f1;
+}
+
+/* The main call to action is amber, as in the app. */
+:root:not([data-theme='light']) .sl-link-button.primary {
+  background: var(--sl-color-accent);
+  border-color: var(--sl-color-accent);
+  color: var(--sl-color-black);
+}

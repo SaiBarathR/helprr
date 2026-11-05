@@ -34,6 +34,8 @@ desktop is fully supported.
   `N` (default 10, `0` keeps all) of its dumps in that directory.
 - `./scripts/update.sh [--keep N]` — back up the stable database, then pull and
   replace only the app container and wait until it is healthy and ready.
+- `cd docs-site && npm ci && npm run build` — build the guides site and check its
+  links (its own package; the app's lint, tests and image leave it out).
 
 ## Repository Map
 
@@ -48,6 +50,8 @@ desktop is fully supported.
   schema, append-only migration history, and released upgrade baselines.
 - `public/` and `src/app/sw.ts` — PWA assets and service workers.
 - `docs/` — tracked architecture, operations, compatibility, and user guides.
+- `docs-site/` — the published guides (Astro Starlight), built by
+  `.github/workflows/docs.yml` and published to GitHub Pages only from `main`.
 - `plans/` — intentionally gitignored local execution records.
 
 ## Architecture and Safety Boundaries

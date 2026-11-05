@@ -10,6 +10,8 @@ const eslintConfig = defineConfig([
     // Default ignores of eslint-config-next:
     ".next/**",
     "dist/**",
+    // The docs site (docs-site/) is its own Astro package with its own checks.
+    "docs-site/**",
     "out/**",
     // Local qualification artifacts include generated bundles and browser traces.
     "plans/**",

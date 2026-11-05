@@ -1,0 +1,14 @@
+{
+  "name": "helprr-docs",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "ASTRO_TELEMETRY_DISABLED=1 astro dev",
+    "build": "ASTRO_TELEMETRY_DISABLED=1 astro build && node scripts/check-links.mjs",
+    "preview": "ASTRO_TELEMETRY_DISABLED=1 astro preview"
+  },
+  "dependencies": {
+    "@astrojs/starlight": "0.42.9",
+    "astro": "7.4.5"
+  }
+}

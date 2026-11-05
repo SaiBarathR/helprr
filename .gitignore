@@ -28,6 +28,8 @@
 .DS_Store
 *.pem
 docs
+# ...but the guides site's pages are tracked.
+!/docs-site/src/content/docs/
 .claude
 
 # debug
