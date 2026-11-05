@@ -10,8 +10,9 @@ access token, from your TMDB account's
 **What it adds:** Discover, Recommendations, collections, people and credits, and
 artwork for films and series. Without it, those pages ask for it.
 
-A TMDB account and its API key are free. Open **Settings → Instances → TMDB**, enter the
-address above and the key, then **Test** and **Save**.
+A TMDB account and its API key are free. In **Settings → Instances**, open **TMDB** under
+**Services**, enter the address above and the key, then **Test**, and **Save** once it
+works.
 
 ## AniList
 

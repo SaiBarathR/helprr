@@ -118,6 +118,16 @@ describe('demo fake upstreams', () => {
     expect(me.Policy?.IsAdministrator).toBe(true);
   });
 
+  it('is recognised by "Find apps on this network", as the real apps are', async () => {
+    const { fingerprint } = await import('@/lib/app-scan');
+    const found = await Promise.all(([
+      ['SONARR', 8989], ['RADARR', 7878], ['LIDARR', 8686], ['PROWLARR', 9696], ['QBITTORRENT', 8080], ['JELLYFIN', 8096], ['SEERR', 5055],
+    ] as const).map(async ([type, port]) => [type, await fingerprint(type, url(port, ''))]));
+    expect(Object.fromEntries(found)).toEqual({ SONARR: true, RADARR: true, LIDARR: true, PROWLARR: true, QBITTORRENT: true, JELLYFIN: true, SEERR: true });
+    // Each answers as itself only.
+    expect(await fingerprint('RADARR', url(8989, ''))).toBe(false);
+  });
+
   it('draws a PNG poster for any image', async () => {
     for (const target of [url(9000, '/demo-image/movie-1-poster.png?title=The+Silent+Harbor'), url(8096, '/Items/abc/Images/Primary')]) {
       const res = await fetch(target);

@@ -4,20 +4,36 @@ const mocks = vi.hoisted(() => ({
   connections: [] as { type: string; url: string }[],
   // Container names resolve to a Docker address unless a test says otherwise.
   dns: {} as Record<string, string[]>,
+  // Docker writes host.docker.internal into /etc/hosts.
+  hosts: '',
+  resolverOptions: [] as unknown[],
 }));
+const HOSTS = '127.0.0.1\tlocalhost\n172.17.0.1\thost.docker.internal\n';
 vi.mock('node:dns/promises', () => ({
-  lookup: async (host: string) => {
-    const addresses = mocks.dns[host] ?? ['172.18.0.5'];
-    if (addresses.length === 0) throw Object.assign(new Error('not found'), { code: 'ENOTFOUND' });
-    return addresses.map((address) => ({ address, family: address.includes(':') ? 6 : 4 }));
+  Resolver: class {
+    constructor(options: unknown) {
+      mocks.resolverOptions.push(options);
+    }
+    async resolve4(host: string) {
+      const addresses = (mocks.dns[host] ?? ['172.18.0.5']).filter((address) => !address.includes(':'));
+      if (addresses.length === 0) throw Object.assign(new Error('not found'), { code: 'ENOTFOUND' });
+      return addresses;
+    }
+    async resolve6(host: string) {
+      const addresses = (mocks.dns[host] ?? []).filter((address) => address.includes(':'));
+      if (addresses.length === 0) throw Object.assign(new Error('not found'), { code: 'ENODATA' });
+      return addresses;
+    }
   },
 }));
 vi.mock('@/lib/db', () => ({ prisma: { serviceConnection: { findMany: async () => mocks.connections } } }));
 vi.mock('node:fs/promises', () => ({
-  readFile: async () => 'Iface\tDestination\tGateway\tFlags\neth0\t00000000\t010011AC\t0003\neth0\t000011AC\t00000000\t0001\n',
+  readFile: async (file: string) => file === '/etc/hosts'
+    ? mocks.hosts
+    : 'Iface\tDestination\tGateway\tFlags\neth0\t00000000\t010011AC\t0003\neth0\t000011AC\t00000000\t0001\n',
 }));
 
-import { fingerprint, isLocalAddress, parseDefaultGateway, scanForApps, scanTargets } from '@/lib/app-scan';
+import { fingerprint, hostsFileAddresses, isLocalAddress, parseDefaultGateway, scanForApps, scanTargets } from '@/lib/app-scan';
 import { isScanAddress } from '@/lib/app-scan-targets';
 
 type Route = { status?: number; body?: string; location?: string };
@@ -43,6 +59,8 @@ const OK = { body: '{ "status": "OK" }' };
 beforeEach(() => {
   mocks.connections = [];
   mocks.dns = {};
+  mocks.hosts = HOSTS;
+  mocks.resolverOptions = [];
   delete (globalThis as { __helprrAppScan?: unknown }).__helprrAppScan;
 });
 
@@ -121,10 +139,25 @@ describe('fingerprint', () => {
 
 describe('scanForApps, what it trusts', () => {
   it('skips a name that resolves outside the network, without asking it anything', async () => {
-    mocks.dns = { sonarr: ['93.184.216.34'], 'host.docker.internal': [] };
+    mocks.dns = { sonarr: ['93.184.216.34'] };
     serve({ 'http://sonarr:8989/ping': OK, 'http://sonarr:8989/': { body: '<title>Sonarr</title>' } });
     expect(await scanForApps(2_000_000)).toEqual([]);
     expect(requested.some((url) => url.startsWith('http://sonarr:8989'))).toBe(false);
+  });
+
+  it('takes /etc/hosts over DNS, and skips a public address there too', async () => {
+    mocks.hosts = `${HOSTS}8.8.8.8\tsonarr\n`;
+    mocks.dns = { sonarr: ['172.18.0.5'] };
+    serve({ 'http://sonarr:8989/ping': OK, 'http://sonarr:8989/': { body: '<title>Sonarr</title>' } });
+    expect(await scanForApps(2_100_000)).toEqual([]);
+    expect(requested.some((url) => url.startsWith('http://sonarr:8989'))).toBe(false);
+  });
+
+  it('asks DNS once, with a short timeout, so a missing name cannot hold the scan up', async () => {
+    serve({});
+    await scanForApps(2_200_000);
+    expect(mocks.resolverOptions.length).toBeGreaterThan(0);
+    for (const options of mocks.resolverOptions) expect(options).toEqual({ timeout: 1000, tries: 1 });
   });
 
   it('shows the address Helprr already has, and says when another may be the same app', async () => {
@@ -198,5 +231,13 @@ describe('scanForApps', () => {
     // Every request went to a fixed target (the gateway is the one in the route table).
     const bases = scanTargets('172.17.0.1').map((target) => target.url);
     expect(requested.every((url) => bases.some((base) => url.startsWith(`${base}/`)))).toBe(true);
+  });
+});
+
+describe('hostsFileAddresses', () => {
+  it('reads every address /etc/hosts gives a name, and nothing from comments', () => {
+    const file = '# 1.2.3.4 host.docker.internal\n127.0.0.1 localhost\n172.17.0.1\thost.docker.internal  other\nfd00::1 HOST.DOCKER.INTERNAL\n';
+    expect(hostsFileAddresses(file, 'host.docker.internal')).toEqual(['172.17.0.1', 'fd00::1']);
+    expect(hostsFileAddresses(file, 'sonarr')).toEqual([]);
   });
 });

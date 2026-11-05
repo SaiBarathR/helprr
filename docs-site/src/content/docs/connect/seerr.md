@@ -7,8 +7,9 @@ description: Connect Seerr to Helprr.
 
 **What it adds:** Requests: who asked for what, approving and declining, and asking for new titles.
 
-Open **Settings → Instances → Seerr**, enter the address ([which one?](/helprr/connect/#which-address-to-use))
-and the key, then **Test** and **Save**.
+In **Settings → Instances**, open **Seerr** under **Services**. Enter the address
+([which one?](/helprr/connect/#which-address-to-use)) and the key, then **Test**, and
+**Save** once it works.
 
 Once Seerr is connected, **Settings → Instances** lists the Sonarr and Radarr it sends
 requests to, ready to add.

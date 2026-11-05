@@ -12,9 +12,14 @@ depends on which apps you connect, and on what each person is allowed to do.
 
 - **Find apps on this network** (in **Settings → Instances**) tries each app's usual
   name and port, as in a shared Compose file (`http://sonarr:8989`), and the same ports
-  on this machine (`host.docker.internal`) and at Helprr's network gateway. Pick what it
-  found to fill in the address. Apps on other machines are not found this way: type
-  their address.
+  on this machine (`host.docker.internal`) and at Helprr's network gateway. Tap **Add
+  its key** on an app it found: for a new connection, the form opens with the address
+  filled in. An app on this machine shows up at `host.docker.internal`, or, when that
+  does not answer, at Helprr's network gateway, such as `http://172.18.0.1:8989`, which
+  works but can change if Docker's network is recreated. Make sure each app it found is
+  yours. Apps on other
+  machines are not found this way, and when it finds nothing, type the address yourself,
+  from the table below.
 - **Found in Prowlarr / Seerr**: once Prowlarr or Seerr is connected, Helprr lists the
   Sonarr, Radarr and Lidarr they already know. Seerr gives each app's key, so those add
   as they are; Prowlarr hides keys, so type each one's key first. **Test and add** adds
@@ -27,7 +32,7 @@ Inside Docker, `localhost` means Helprr's own container, never your server. Use:
 | Where the app runs | Address | Example |
 | --- | --- | --- |
 | In the same Compose file as Helprr | The service name and the app's port | `http://sonarr:8989` |
-| On the same machine, outside Docker or in another stack | `host.docker.internal` and the published port | `http://host.docker.internal:8989` |
+| On the same machine, outside Docker or in another stack | `host.docker.internal` (or the machine's IP address) and the published port | `http://host.docker.internal:8989` |
 | On another machine | That machine's IP address or name | `http://192.168.1.10:8989` |
 
 For `host.docker.internal`, the app must listen on all addresses (`0.0.0.0`), not only
@@ -38,8 +43,10 @@ If the app has a base path (Sonarr behind `/sonarr`, for example), add it:
 
 ## Test, then save
 
-**Test** checks that the address answers as that app, with that key. When it fails, it
-says why in plain words, with a link to [Troubleshooting](/helprr/troubleshooting/).
+**Test** checks that the address answers as that app, with that key, and a message at the
+edge of the screen says how it went: the app's version when it worked, or why it did not,
+in plain words, with a link to [Troubleshooting](/helprr/troubleshooting/). **Save** keeps
+it.
 
 If you later change a connection's address, enter its key (or password) again too: a
 saved key is only used with the address it was saved for.
@@ -47,7 +54,8 @@ saved key is only used with the address it was saved for.
 ## More than one
 
 Sonarr, Radarr and Lidarr can each be connected more than once, such as a second
-Sonarr for anime. Each one gets its own name.
+Sonarr for anime. Each one gets its own name, and the first is the **Default**, the one
+Helprr uses when a page needs just one, until you choose another with **Make default**.
 
 ## Apps behind a sign-in proxy
 

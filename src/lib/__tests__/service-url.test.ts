@@ -44,7 +44,7 @@ describe('servicePageUrl', () => {
     expect(servicePageUrl(url, path)).toBe(expected);
   });
 
-  it.each([['', '/settings/general'], ['javascript:alert(1)', '/x'], ['ftp://host', '/x'], ['http://host:8989', null]])(
+  it.each([['', '/settings/general'], ['javascript:alert(1)', '/x'], ['ftp://host', '/x'], ['http://host:8989', null], ['http://host.docker.internal:8989', '/settings/general']])(
     'offers no link for %j',
     (url, path) => {
       expect(servicePageUrl(url, path)).toBeNull();
