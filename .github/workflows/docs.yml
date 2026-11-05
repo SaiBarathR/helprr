@@ -9,11 +9,15 @@ on:
     paths:
       - 'docs-site/**'
       - '.github/workflows/docs.yml'
+      # The install configurator builds on it.
+      - 'docker-compose.yml'
   push:
     branches: [main]
     paths:
       - 'docs-site/**'
       - '.github/workflows/docs.yml'
+      # The install configurator builds on it.
+      - 'docker-compose.yml'
   workflow_dispatch:
 
 permissions:
@@ -54,6 +58,10 @@ jobs:
 
       - name: Build and check links
         run: npm run build
+
+      # Every answer the install configurator accepts gives a valid Compose file.
+      - name: Check the install configurator
+        run: node scripts/check-configurator.mjs
 
       - name: Keep the built site for publishing
         if: github.ref == 'refs/heads/main' && vars.DOCS_PAGES_ENABLED == 'true'
