@@ -38,6 +38,8 @@ device, and says what to do about any that fail: a secure address, a browser tha
 do push, the server's push keys, the iOS version, opening the installed app, the
 service worker, permission to notify, and whether this device gets push.
 
+![Check push setup on a phone: each check, with what to do about the two that fail](../../assets/screens/phone-push-check.png)
+
 If a device stops getting notifications, turn them off and on again in **Settings →
 Notifications**.
 
