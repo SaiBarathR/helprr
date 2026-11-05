@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { SonarrClient } from '@/lib/sonarr-client';
 import { RadarrClient } from '@/lib/radarr-client';
 import { LidarrClient } from '@/lib/lidarr-client';
-import { QBittorrentClient } from '@/lib/qbittorrent-client';
+import { QBittorrentClient, QBittorrentLoginError } from '@/lib/qbittorrent-client';
 import { ProwlarrClient } from '@/lib/prowlarr-client';
 import { JellyfinClient } from '@/lib/jellyfin-client';
 import { TmdbClient } from '@/lib/tmdb-client';
@@ -22,7 +22,8 @@ import { withApiLogging } from '@/lib/api-logger';
 import { isRefusedRedirect, REDIRECT_REFUSED_MESSAGE } from '@/lib/redirect-guard';
 import { expectServiceVersion, NotServiceApiError } from '@/lib/service-response';
 import { findServiceByType } from '@/lib/settings/service-config';
-import { connectionFailureHint, currentHintContext } from '@/lib/connection-hints';
+import { connectionFailure, currentHintContext } from '@/lib/connection-hints';
+import type { TroubleshootingSection } from '@/lib/docs-links';
 import { withDefaultScheme } from '@/lib/service-url';
 
 /** What to say when an address answers, but with a web page instead of the API. */
@@ -254,31 +255,56 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     // A failed probe answers 200 with { success: false }, as the form expects: Helprr
     // itself is fine, and a reverse proxy such as Cloudflare Tunnel swaps a 502 from
     // the app for its own "Bad gateway" page, which would hide the hint.
+    // `help` names the guides section that explains the failure (src/lib/docs-links.ts).
     if (error instanceof NotServiceApiError) {
-      return NextResponse.json({ success: false, error: notServiceApiMessage(attemptedType) });
+      return NextResponse.json({ success: false, error: notServiceApiMessage(attemptedType), help: 'it-answered-but-not-as-that-app' satisfies TroubleshootingSection });
     }
 
-    const hint = async () => connectionFailureHint(error, attemptedUrl, await currentHintContext(attemptedUrl));
+    // qBittorrent answers a wrong Web UI password with "Fails.": the same as a refused key.
+    if (attemptedType === 'QBITTORRENT' && error instanceof QBittorrentLoginError) {
+      return NextResponse.json(
+        { success: false, error: 'qBittorrent turned down the username or password.', help: 'the-key-was-refused' satisfies TroubleshootingSection },
+        { status: 400 },
+      );
+    }
+    // A 403 is not a wrong password: qBittorrent blocks an address for a while after
+    // several wrong ones, and a proxy in front of it can refuse Helprr too.
+    if (attemptedType === 'QBITTORRENT' && responseStatus === 403) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'qBittorrent, or a proxy in front of it, refused Helprr. After several wrong passwords qBittorrent blocks the address for a while: wait, then test again.',
+          help: 'qbittorrent-blocks-helprr' satisfies TroubleshootingSection,
+        },
+        { status: 400 },
+      );
+    }
+
+    const hint = async () => connectionFailure(error, attemptedUrl, await currentHintContext(attemptedUrl));
 
     if (typeof responseStatus === 'number' && responseStatus >= 400 && responseStatus < 500) {
       const rejectedKey = responseStatus === 401;
+      const found = rejectedKey ? null : await hint();
       const message = !rejectedKey
-        ? (await hint()) ?? 'Connection test failed'
+        ? found?.message ?? 'Connection test failed'
         : attemptedType === 'JELLYFIN'
           ? 'Invalid Jellyfin API key or Jellyfin rejected token auth'
           : 'The service rejected the API key';
+      const help: TroubleshootingSection | undefined = rejectedKey ? 'the-key-was-refused' : found?.section;
       // Not passed on as 401: from this app's own API that means the session
       // has ended, and the client signs the user out on it. The service turning
       // down a mistyped key is not that.
       return NextResponse.json(
-        { success: false, error: message },
+        { success: false, error: message, ...(help && { help }) },
         { status: rejectedKey ? 400 : responseStatus }
       );
     }
 
-    return NextResponse.json(
-      { success: false, error: isRefusedRedirect(error) ? REDIRECT_REFUSED_MESSAGE : (await hint()) ?? 'Connection test failed' },
-    );
+    if (isRefusedRedirect(error)) {
+      return NextResponse.json({ success: false, error: REDIRECT_REFUSED_MESSAGE, help: 'the-address-redirects' satisfies TroubleshootingSection });
+    }
+    const found = await hint();
+    return NextResponse.json({ success: false, error: found?.message ?? 'Connection test failed', ...(found && { help: found.section }) });
   }
 }
 

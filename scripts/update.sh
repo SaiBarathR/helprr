@@ -101,4 +101,4 @@ if docker compose config --services | grep -qx helprr-twitch-worker; then
   printf 'Worker updated.\n'
 fi
 
-printf 'To roll back, see README -> Backup and restore; the backup above is the restore point.\n'
+printf 'To roll back, see https://saibarathr.github.io/helprr/maintain/backup/; the backup above is the restore point.\n'

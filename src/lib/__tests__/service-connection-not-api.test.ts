@@ -161,7 +161,7 @@ describe('a failure Helprr can explain', () => {
 
   it('adds http:// to an address typed without it', async () => {
     mocks.status.mockResolvedValue({ version: '4.0.20.3014' });
-    const res = await test('SONARR', '192.168.0.124:8990');
+    const res = await test('SONARR', '192.168.1.10:8990');
     expect(await res.json()).toEqual({ success: true, version: '4.0.20.3014' });
   });
 
@@ -207,7 +207,7 @@ describe('saving an address typed without http://', () => {
 describe('status codes a reverse proxy passes through', () => {
   it('answers an unreachable service with 200 and success false', async () => {
     mocks.status.mockRejectedValue(Object.assign(new Error('connect ECONNREFUSED'), { code: 'ECONNREFUSED' }));
-    const res = await test('SONARR', 'http://192.168.0.124:8999');
+    const res = await test('SONARR', 'http://192.168.1.10:8999');
     expect(res.status).toBe(200);
     expect((await res.json()).success).toBe(false);
   });

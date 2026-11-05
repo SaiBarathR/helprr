@@ -47,11 +47,11 @@ vi.mock('@/lib/radarr-client', () => ({ RadarrClient: fakeClient('RADARR') }));
 vi.mock('@/lib/lidarr-client', () => ({ LidarrClient: fakeClient('LIDARR') }));
 vi.mock('@/lib/arr-instances', () => ({ ensureDefaultForType: mocks.ensureDefault, clearConnectionMemo: vi.fn() }));
 vi.mock('@/lib/cache/reference-labels', () => ({ invalidateReferenceLabels: vi.fn() }));
-vi.mock('@/lib/connection-hints', () => ({ connectionFailureHint: () => null, currentHintContext: async () => ({}) }));
+vi.mock('@/lib/connection-hints', () => ({ connectionFailure: () => null, currentHintContext: async () => ({}) }));
 
 import { discoverImportCandidates, importServices } from '@/lib/service-import';
 
-const seerrSonarr = { id: 0, name: 'Sonarr', hostname: '192.168.0.124', port: 8989, useSsl: false, apiKey: SEERR_SONARR_KEY, is4k: false, isDefault: true };
+const seerrSonarr = { id: 0, name: 'Sonarr', hostname: '192.168.1.10', port: 8989, useSsl: false, apiKey: SEERR_SONARR_KEY, is4k: false, isDefault: true };
 const prowlarrApp = (id: number, implementation: string, name: string, baseUrl: string) => ({
   id, name, implementation, implementationName: implementation, syncLevel: 'fullSync', enable: true,
   fields: [{ name: 'baseUrl', value: baseUrl }, { name: 'apiKey', value: '********' }],
@@ -59,13 +59,13 @@ const prowlarrApp = (id: number, implementation: string, name: string, baseUrl: 
 
 beforeEach(() => {
   mocks.connections = [
-    { type: 'SEERR', url: 'http://192.168.0.124:5055' },
-    { type: 'PROWLARR', url: 'http://192.168.0.124:9696' },
+    { type: 'SEERR', url: 'http://192.168.1.10:5055' },
+    { type: 'PROWLARR', url: 'http://192.168.1.10:9696' },
   ];
   mocks.created = [];
   mocks.seerrServers = { sonarr: [seerrSonarr], radarr: [] };
   mocks.apps = [prowlarrApp(5, 'Sonarr', 'Sonarr-anime', 'http://localhost:8990'), prowlarrApp(6, 'Lidarr', 'Lidarr', 'http://localhost:8686')];
-  mocks.answers = new Set(['http://192.168.0.124:8989/ping', 'http://192.168.0.124:8990/ping']);
+  mocks.answers = new Set(['http://192.168.1.10:8989/ping', 'http://192.168.1.10:8990/ping']);
   mocks.statusCalls = [];
   mocks.statusError = null;
   mocks.ensureDefault.mockReset();
@@ -79,18 +79,18 @@ describe('discoverImportCandidates', () => {
     expect(JSON.stringify(candidates)).not.toContain(SEERR_SONARR_KEY);
     expect(JSON.stringify(candidates)).not.toContain('apiKey');
     expect(candidates.find((c) => c.id === 'seerr:sonarr:0')).toMatchObject({
-      type: 'SONARR', url: 'http://192.168.0.124:8989', reachable: true, needsKey: false, connected: false,
+      type: 'SONARR', url: 'http://192.168.1.10:8989', reachable: true, needsKey: false, connected: false,
     });
   });
 
   it("finds a Prowlarr app's localhost address on Prowlarr's own host, or says it does not answer", async () => {
     const { candidates } = await discoverImportCandidates();
-    expect(candidates.find((c) => c.id === 'prowlarr:5')).toMatchObject({ url: 'http://192.168.0.124:8990', reachable: true, needsKey: true });
+    expect(candidates.find((c) => c.id === 'prowlarr:5')).toMatchObject({ url: 'http://192.168.1.10:8990', reachable: true, needsKey: true });
     expect(candidates.find((c) => c.id === 'prowlarr:6')).toMatchObject({ url: 'http://localhost:8686', reachable: false });
   });
 
   it('marks apps Helprr already has at exactly that address, never by a port alone', async () => {
-    mocks.connections.push({ type: 'SONARR', url: 'http://192.168.0.124:8989/' }, { type: 'LIDARR', url: 'http://nas.lan:8686' });
+    mocks.connections.push({ type: 'SONARR', url: 'http://192.168.1.10:8989/' }, { type: 'LIDARR', url: 'http://nas.lan:8686' });
     const { candidates } = await discoverImportCandidates();
     expect(candidates.find((c) => c.id === 'seerr:sonarr:0')?.connected).toBe(true);
     // Another Lidarr on the same default port is not this one.
@@ -115,8 +115,8 @@ describe('importServices', () => {
   it("adds a Seerr app with Seerr's key, after testing it at Seerr's address", async () => {
     const [result] = await importServices([{ id: 'seerr:sonarr:0' }]);
     expect(result).toEqual({ id: 'seerr:sonarr:0', ok: true, label: 'Sonarr' });
-    expect(mocks.statusCalls).toEqual([{ type: 'SONARR', url: 'http://192.168.0.124:8989', apiKey: SEERR_SONARR_KEY }]);
-    expect(mocks.created).toEqual([{ type: 'SONARR', label: 'Sonarr', url: 'http://192.168.0.124:8989', apiKey: SEERR_SONARR_KEY }]);
+    expect(mocks.statusCalls).toEqual([{ type: 'SONARR', url: 'http://192.168.1.10:8989', apiKey: SEERR_SONARR_KEY }]);
+    expect(mocks.created).toEqual([{ type: 'SONARR', label: 'Sonarr', url: 'http://192.168.1.10:8989', apiKey: SEERR_SONARR_KEY }]);
     expect(mocks.ensureDefault).toHaveBeenCalledWith('SONARR');
   });
 
@@ -132,14 +132,22 @@ describe('importServices', () => {
   it('needs a typed key for a Prowlarr app, and uses the address chosen', async () => {
     expect((await importServices([{ id: 'prowlarr:5' }]))[0]).toMatchObject({ ok: false, error: 'Enter the API key.' });
     // The page sends the address it showed (the one that answered).
-    const [result] = await importServices([{ id: 'prowlarr:5', url: 'http://192.168.0.124:8990', apiKey: TYPED_KEY, label: 'Anime' }]);
+    const [result] = await importServices([{ id: 'prowlarr:5', url: 'http://192.168.1.10:8990', apiKey: TYPED_KEY, label: 'Anime' }]);
     expect(result).toEqual({ id: 'prowlarr:5', ok: true, label: 'Anime' });
-    expect(mocks.created[0]).toMatchObject({ type: 'SONARR', label: 'Anime', url: 'http://192.168.0.124:8990' });
+    expect(mocks.created[0]).toMatchObject({ type: 'SONARR', label: 'Anime', url: 'http://192.168.1.10:8990' });
+  });
+
+  it('links each refused test to its troubleshooting section', async () => {
+    const { NotServiceApiError } = await import('@/lib/service-response');
+    mocks.statusError = new NotServiceApiError();
+    expect((await importServices([{ id: 'prowlarr:5', apiKey: TYPED_KEY }]))[0]).toMatchObject({ ok: false, help: 'it-answered-but-not-as-that-app' });
+    mocks.statusError = null;
+    expect(mocks.created).toEqual([]);
   });
 
   it('saves nothing the test turned down, or under a name already taken', async () => {
     mocks.statusError = Object.assign(new Error('Unauthorized'), { response: { status: 401 } });
-    expect((await importServices([{ id: 'prowlarr:5', apiKey: TYPED_KEY }]))[0]).toMatchObject({ ok: false, error: 'The app turned down the API key.' });
+    expect((await importServices([{ id: 'prowlarr:5', apiKey: TYPED_KEY }]))[0]).toMatchObject({ ok: false, error: 'The app turned down the API key.', help: 'the-key-was-refused' });
     mocks.statusError = null;
     mocks.connections.push({ type: 'SONARR', url: 'http://other:8989', label: 'Sonarr' });
     expect((await importServices([{ id: 'seerr:sonarr:0' }]))[0]).toMatchObject({ ok: false, error: 'An instance named "Sonarr" already exists for this service.' });
@@ -149,13 +157,13 @@ describe('importServices', () => {
   it('lists an app Seerr and Prowlarr both know once, keeping Seerr\'s known key', async () => {
     mocks.apps.push(prowlarrApp(7, 'Sonarr', 'Sonarr', 'http://localhost:8989'));
     const { candidates } = await discoverImportCandidates();
-    const sonarrs = candidates.filter((c) => c.type === 'SONARR' && c.url === 'http://192.168.0.124:8989');
+    const sonarrs = candidates.filter((c) => c.type === 'SONARR' && c.url === 'http://192.168.1.10:8989');
     expect(sonarrs.map((c) => c.id)).toEqual(['seerr:sonarr:0']);
   });
 
   it('refuses to add an app Helprr already has at that address', async () => {
-    mocks.connections.push({ type: 'SONARR', url: 'http://192.168.0.124:8990', label: 'Anime' });
-    expect((await importServices([{ id: 'prowlarr:5', url: 'http://192.168.0.124:8990', apiKey: TYPED_KEY, label: 'Anime 2' }]))[0]).toMatchObject({
+    mocks.connections.push({ type: 'SONARR', url: 'http://192.168.1.10:8990', label: 'Anime' });
+    expect((await importServices([{ id: 'prowlarr:5', url: 'http://192.168.1.10:8990', apiKey: TYPED_KEY, label: 'Anime 2' }]))[0]).toMatchObject({
       ok: false,
       error: 'Helprr already has this app at that address.',
     });
@@ -168,7 +176,7 @@ describe('importServices', () => {
       probes++;
       return { status: 200 };
     });
-    await importServices([{ id: 'prowlarr:5', url: 'http://192.168.0.124:8990', apiKey: TYPED_KEY }]);
+    await importServices([{ id: 'prowlarr:5', url: 'http://192.168.1.10:8990', apiKey: TYPED_KEY }]);
     expect(probes).toBe(0);
     expect(mocks.created).toHaveLength(1);
   });

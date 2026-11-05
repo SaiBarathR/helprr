@@ -133,7 +133,7 @@ needs a build without that cache. The Compose files keep major-line `postgres:16
 pulls those services, since the documented update pulls only `helprr`. When a release
 moves one of those tags (Redis 7 → 8 because the Redis 7 images stay on Alpine 3.21,
 end of life 2026-11-01), its release notes must tell users to pull that service once
-(README → Updating).
+(Guides → Update, `docs-site/src/content/docs/maintain/update.md`).
 
 A push to `main` runs CI but does **not** publish an image. A version tag is required
 to publish an exact release image.
@@ -339,7 +339,7 @@ CI also starts a disposable PostgreSQL 16 database and runs
 snapshot, seeds representative rows, applies the current migrations, and checks both
 data preservation and the new schema. It also baselines a database created by the old
 `prisma db push` workflow (the `0001_init` tables with no migration history) the way the
-README documents, and checks the later migrations apply and its rows survive. For a local run, point
+guides document (Update → An old database with no migration history), and checks the later migrations apply and its rows survive. For a local run, point
 `MIGRATION_TEST_DATABASE_URL` at a disposable database named exactly
 `helprr_migration_test`; the script refuses every other database name and clears the
 scratch schema afterward. Never point it at `helprr`, `helprr_dev`, or any database
@@ -590,7 +590,8 @@ npm version "$VERSION" --no-git-tag-version
 
 Update `CHANGELOG.md` with the release date and user-facing changes. Also verify:
 
-- `README.md` documents new configuration or behavior.
+- The guides (`docs-site/src/content/docs/`) document new configuration or behavior;
+  `README.md` stays an overview.
 - `docs/upstream-compatibility.md` records any newly qualified upstream version and
   distinguishes a connection probe from real feature-flow evidence.
 - `.env.example` includes new runtime variables without secrets.
@@ -622,7 +623,7 @@ git diff --check
 Commit and push the release preparation branch:
 
 ```bash
-git add package.json package-lock.json CHANGELOG.md README.md .env.example docker-compose.yml
+git add package.json package-lock.json CHANGELOG.md README.md docs-site .env.example docker-compose.yml
 git add prisma/migrations prisma/release-snapshots 2>/dev/null || true
 git commit -m "chore(release): prepare Helprr $VERSION"
 git push -u origin "$RELEASE_BRANCH"
@@ -984,8 +985,8 @@ container.
 
 If the new release applied a migration and the previous version is not compatible,
 stop the application and restore the matching pre-upgrade PostgreSQL backup. Do not
-attempt an unsupported downgrade across migrations. See [README.md](../README.md) for
-the complete restore procedure.
+attempt an unsupported downgrade across migrations. See
+[Back up and restore](../docs-site/src/content/docs/maintain/backup.md) for the complete restore procedure.
 
 [Server drills](server-drills.md) rehearses a fresh install, a restore, and an upgrade
 on a scratch stack beside the real installation.

@@ -25,6 +25,7 @@ import { GroupedSection } from '@/components/settings/grouped-section';
 import { findServiceBySlug, type ServiceConfigType } from '@/lib/settings/service-config';
 import { invalidateExternalUrls } from '@/lib/hooks/use-external-urls';
 import { invalidateInstances } from '@/lib/query-invalidation';
+import { isTroubleshootingSection, troubleshootingUrl } from '@/lib/docs-links';
 import { normalizeServiceUrl, servicePageUrl, withDefaultScheme } from '@/lib/service-url';
 import {
   deleteServiceConnection,
@@ -331,8 +332,14 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
           setJellyfinValidated(null);
           setJellyfinUsers([]);
         }
+        const help = isTroubleshootingSection(data.help) ? data.help : null;
         toast.error(data.error || 'Connection failed', {
           icon: <XCircle className="h-4 w-4 text-red-500" />,
+          // Long enough to read the reason and reach the link.
+          ...(help && {
+            duration: 15_000,
+            action: { label: 'How to fix this', onClick: () => window.open(troubleshootingUrl(help), '_blank', 'noopener,noreferrer') },
+          }),
         });
       }
     },

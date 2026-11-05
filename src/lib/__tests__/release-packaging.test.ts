@@ -42,7 +42,10 @@ describe('no-clone release packaging', () => {
   });
 
   it('documents a complete clean-directory layout and isolated source command', () => {
-    const readme = read('README.md');
+    // The step-by-step install and the update and backup guides (docs-site/).
+    const readme = ['install/manual.md', 'maintain/update.md', 'maintain/backup.md']
+      .map((page) => read(`docs-site/src/content/docs/${page}`))
+      .join('\n');
     const compose = read('docker-compose.yml');
 
     expect(readme).toContain('mkdir -p helprr/scripts && cd helprr');

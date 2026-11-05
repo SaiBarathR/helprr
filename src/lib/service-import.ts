@@ -8,7 +8,8 @@ import type { SeerrArrServer } from '@/lib/seerr-client';
 import { getProwlarrClient, getSeerrClient } from '@/lib/service-helpers';
 import { clearConnectionMemo, ensureDefaultForType } from '@/lib/arr-instances';
 import { invalidateReferenceLabels } from '@/lib/cache/reference-labels';
-import { connectionFailureHint, currentHintContext } from '@/lib/connection-hints';
+import { connectionFailure, currentHintContext } from '@/lib/connection-hints';
+import type { TroubleshootingSection } from '@/lib/docs-links';
 import { isRefusedRedirect, REDIRECT_REFUSED_MESSAGE } from '@/lib/redirect-guard';
 import { expectServiceVersion, NotServiceApiError } from '@/lib/service-response';
 import { withDefaultScheme } from '@/lib/service-url';
@@ -241,6 +242,8 @@ export interface ImportResult {
   ok: boolean;
   label?: string;
   error?: string;
+  /** The guides section that explains a failed test. */
+  help?: TroubleshootingSection;
 }
 
 function clientFor(type: ImportType, url: string, apiKey: string) {
@@ -249,12 +252,13 @@ function clientFor(type: ImportType, url: string, apiKey: string) {
   return new LidarrClient(url, apiKey);
 }
 
-async function testFailure(error: unknown, url: string): Promise<string> {
-  if (error instanceof NotServiceApiError) return 'That address answers, but not as this app. Check the address.';
-  if (isRefusedRedirect(error)) return REDIRECT_REFUSED_MESSAGE;
+async function testFailure(error: unknown, url: string): Promise<{ error: string; help?: TroubleshootingSection }> {
+  if (error instanceof NotServiceApiError) return { error: 'That address answers, but not as this app. Check the address.', help: 'it-answered-but-not-as-that-app' };
+  if (isRefusedRedirect(error)) return { error: REDIRECT_REFUSED_MESSAGE, help: 'the-address-redirects' };
   const status = (error as { response?: { status?: number } })?.response?.status;
-  if (status === 401) return 'The app turned down the API key.';
-  return connectionFailureHint(error, url, await currentHintContext(url)) ?? `Helprr could not reach ${url}.`;
+  if (status === 401) return { error: 'The app turned down the API key.', help: 'the-key-was-refused' };
+  const found = connectionFailure(error, url, await currentHintContext(url));
+  return found ? { error: found.message, help: found.section } : { error: `Helprr could not reach ${url}.` };
 }
 
 /** Tests each chosen app from Helprr, then saves it as a new instance. One at a time, so names never collide. */
@@ -295,7 +299,7 @@ export async function importServices(items: ImportItem[]): Promise<ImportResult[
       const status = await clientFor(candidate.type, url, apiKey).getSystemStatus();
       expectServiceVersion(status?.version);
     } catch (error) {
-      results.push({ id: item.id, ok: false, label, error: await testFailure(error, url) });
+      results.push({ id: item.id, ok: false, label, ...(await testFailure(error, url)) });
       continue;
     }
     try {

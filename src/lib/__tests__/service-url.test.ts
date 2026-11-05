@@ -27,10 +27,10 @@ describe('normalizeServiceUrl', () => {
 
 describe('servicePageUrl', () => {
   it.each([
-    ['http://192.168.0.124:8990', '/settings/general', 'http://192.168.0.124:8990/settings/general'],
-    ['192.168.0.124:8990/', '/settings/general', 'http://192.168.0.124:8990/settings/general'],
+    ['http://192.168.1.10:8990', '/settings/general', 'http://192.168.1.10:8990/settings/general'],
+    ['192.168.1.10:8990/', '/settings/general', 'http://192.168.1.10:8990/settings/general'],
     ['https://home.example/sonarr', '/settings/general', 'https://home.example/sonarr/settings/general'],
-    ['http://192.168.0.124:8096', '/web/#/dashboard/keys', 'http://192.168.0.124:8096/web/#/dashboard/keys'],
+    ['http://192.168.1.10:8096', '/web/#/dashboard/keys', 'http://192.168.1.10:8096/web/#/dashboard/keys'],
     // A query, fragment or password typed with the address stays out of the link.
     ['http://h:8096/#/home', '/web/#/dashboard/keys', 'http://h:8096/web/#/dashboard/keys'],
     ['http://h:8989/?a=1', '/settings/general', 'http://h:8989/settings/general'],

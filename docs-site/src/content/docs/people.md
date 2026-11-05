@@ -1,0 +1,36 @@
+---
+title: People and permissions
+description: Give family and friends their own sign-in, with only the access they need.
+---
+
+Each person gets their own account in **Settings → Users**. Helprr has two templates:
+
+- **Admin**: everything, including settings, connections, deleting and cleanup.
+- **Member**: browsing the library, Discover, the calendar, their own watchlist,
+  reminders and dashboard, asking for titles through Seerr, and watching through
+  Jellyfin. Only their own settings (account, sessions, notifications, appearance and
+  preferences). No torrents, no deleting, no connections.
+
+For each person you can switch single permissions on or off on top of their template.
+Anything not given is refused, including permissions added in later versions.
+
+## Signing in
+
+- **With a Helprr password**, set when you create the account. It needs at least 15
+  characters.
+- **With Jellyfin**: **Sign in with Jellyfin** on the sign-in page uses the person's
+  Jellyfin account, with Jellyfin's own password rules.
+
+## Watching
+
+Watching in Helprr plays through each person's own Jellyfin account, so their progress,
+resume points and history are saved there. Signing in with Jellyfin connects it; anyone
+with a Helprr password connects it in **Settings → Account**. Until they do, Helprr asks
+them to sign in to Jellyfin when they press play. **Settings → Users** shows who is not
+connected yet.
+
+## Sessions
+
+**Settings → Sessions** lists where each person is signed in, and signs any of them out.
+Resetting a password does not end existing sessions: end them here when access needs to
+be removed.

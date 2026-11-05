@@ -181,7 +181,9 @@ How to apply:
 - `docs/maintainer-development-release-workflow.md` — development and release runbook.
 - `docs/upstream-compatibility.md` — qualified upstream versions/contracts.
 - `docs/ios-shortcuts.md` — iOS Shortcut integration.
-- `README.md` — user-facing features, installation, update, backup, and restore.
+- `README.md` — what Helprr is, screenshots, a three-step install, and links to the guides.
+- `docs-site/src/content/docs/` — the user guides: install, connecting apps, push,
+  HTTPS, update, backup and restore, troubleshooting, every setting, contributing.
 
 <!-- BEGIN:nextjs-agent-rules -->
 

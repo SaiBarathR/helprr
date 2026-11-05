@@ -93,7 +93,8 @@ safely.
 - `docs/maintainer-development-release-workflow.md` is the release/deployment
   source of truth.
 - `docs/upstream-compatibility.md` records qualified upstream evidence.
-- `README.md` is the user-facing installation and operations guide.
+- `README.md` is the overview; the user-facing installation and operations guides
+  are in `docs-site/src/content/docs/`.
 
 Keep this file concise. Put durable technical detail in the appropriate tracked
 document and temporary execution notes in gitignored `plans/`.

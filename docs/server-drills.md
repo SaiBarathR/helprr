@@ -38,7 +38,7 @@ the dump's path under `backups/stable/`. Drill 2 restores that file.
 
 ## Drill 1 — fresh install from an empty database
 
-Download the assets of the release under test, as in README → Quick start, and
+Download the assets of the release under test, as in the guides' step-by-step install (`docs-site/src/content/docs/install/manual.md`), and
 pin its image:
 
 ```bash
@@ -106,7 +106,7 @@ real installation's cleaner rules against its services.
 In the copy's `.env`, set `HELPRR_ADMIN_USERNAME` to the real installation's
 value; otherwise the restored bootstrap admin is renamed on boot. Keep
 `HELPRR_VERSION` at the same or a newer version than the one that wrote the
-dump. Then restore, as in README → Backup and restore:
+dump. Then restore, as in the guides' Back up and restore (`docs-site/src/content/docs/maintain/backup.md`):
 
 ```bash
 docker compose -p helprr-fresh up -d --wait helprr-db
@@ -149,7 +149,7 @@ hashes.
 
 ## Drill 3 — upgrade the real installation
 
-After Drills 0–2 pass, update as in README → Updating, from the real
+After Drills 0–2 pass, update as in the guides' Update (`docs-site/src/content/docs/maintain/update.md`), from the real
 installation's directory, with `HELPRR_VERSION` set to the new release.
 `update.sh` takes a validated backup first and replaces only the app container:
 
@@ -180,7 +180,7 @@ If the update fails, follow the rollback rule in
 [the maintainer workflow](maintainer-development-release-workflow.md#rollback-rule):
 with no new migration, set `HELPRR_VERSION` back to the previous exact version
 and recreate the app container; after a migration the previous version cannot
-use, restore Drill 0's dump as in README → Backup and restore → Restore over an
+use, restore Drill 0's dump as in the guides' Back up and restore → Restore over an
 existing installation.
 
 ## Drill 4 — failed upgrade and rollback

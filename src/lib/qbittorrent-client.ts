@@ -1,7 +1,11 @@
 import axios, { AxiosInstance } from 'axios';
 import { keepAliveHttpAgent, keepAliveHttpsAgent } from '@/lib/http-agents';
 import { refuseRedirectToAnotherHost } from '@/lib/redirect-guard';
+import { NotServiceApiError } from '@/lib/service-response';
 import type { QBittorrentTorrent, QBittorrentTransferInfo } from '@/types';
+
+/** qBittorrent turned the Web UI username or password down (it answered "Fails."). */
+export class QBittorrentLoginError extends Error {}
 
 export interface TorrentFile {
   index: number;
@@ -124,7 +128,12 @@ export class QBittorrentClient {
     }
 
     if (!this.cookie) {
-      throw new Error('qBittorrent authentication failed: no SID cookie received');
+      // "Fails." is qBittorrent refusing the username or password. Anything else with no
+      // session is not qBittorrent's sign-in (a sign-in page, the wrong port).
+      const body = typeof response.data === 'string' ? response.data.trim() : '';
+      if (body === 'Fails.') throw new QBittorrentLoginError('qBittorrent authentication failed: wrong username or password');
+      if (body === 'Ok.') throw new Error('qBittorrent authentication failed: no SID cookie received');
+      throw new NotServiceApiError();
     }
   }
 

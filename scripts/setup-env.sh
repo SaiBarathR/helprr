@@ -267,7 +267,7 @@ else
   printf '     Do it before Helprr is reachable from the internet: whoever opens it first can.\n'
 fi
 if [ "$mode" = dev ]; then
-  printf '  Push notifications need the three VAPID values in %s; see the README.\n' "$target_name"
+  printf '  Push notifications need the three VAPID values in %s; see\n  https://saibarathr.github.io/helprr/phone-and-push/#use-your-own-push-keys\n' "$target_name"
 else
-  printf '  Helprr makes its push notification keys on the first start; to use your own, see the README.\n'
+  printf '  Helprr makes its push notification keys on the first start; to use your own, see\n  https://saibarathr.github.io/helprr/phone-and-push/#use-your-own-push-keys\n'
 fi

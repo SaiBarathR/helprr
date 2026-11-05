@@ -6,13 +6,23 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 // The demo's fake upstreams (demo/fake-upstreams.mjs), which invent their library at start-up.
 describe('demo fake upstreams', () => {
-  // A random block of ports, so a port another run holds does not get in the way.
-  const OFFSET = 20_000 + Math.floor(Math.random() * 200) * 100;
+  // A block of free ports, below the range the system hands out for other connections
+  // (32768 and up), so nothing else running can take one while the server starts.
+  let OFFSET = 0;
   let server: ChildProcess;
   const url = (port: number, p: string) => `http://127.0.0.1:${port + OFFSET}${p}`;
   const json = async (port: number, p: string, init?: RequestInit) => (await fetch(url(port, p), init)).json();
 
   beforeAll(async () => {
+    const free = (port: number) => new Promise<boolean>((resolve) => {
+      const probe = net.createServer().once('error', () => resolve(false)).listen(port, '127.0.0.1', () => probe.close(() => resolve(true)));
+    });
+    for (let tries = 0; !OFFSET && tries < 20; tries++) {
+      const offset = 10_000 + Math.floor(Math.random() * 120) * 100;
+      if ((await Promise.all([8989, 7878, 8686, 8080, 9696, 8096, 5055, 9000].map((port) => free(port + offset)))).every(Boolean)) OFFSET = offset;
+    }
+    // Never the real ports: on a machine running the real apps, the tests would reach them.
+    if (!OFFSET) throw new Error('No free block of ports for the demo upstreams.');
     server = spawn(process.execPath, ['demo/fake-upstreams.mjs'], { env: { ...process.env, DEMO_PORT_OFFSET: String(OFFSET) }, stdio: 'pipe' });
     await new Promise<void>((resolve, reject) => {
       let out = '';

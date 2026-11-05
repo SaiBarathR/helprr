@@ -19,7 +19,10 @@ vi.mock('@/lib/sonarr-client', () => ({ SonarrClient: class { getSystemStatus = 
 vi.mock('@/lib/radarr-client', () => ({ RadarrClient: class {} }));
 vi.mock('@/lib/lidarr-client', () => ({ LidarrClient: class {} }));
 vi.mock('@/lib/prowlarr-client', () => ({ ProwlarrClient: class {} }));
-vi.mock('@/lib/qbittorrent-client', () => ({ QBittorrentClient: class {} }));
+vi.mock('@/lib/qbittorrent-client', () => {
+  class QBittorrentLoginError extends Error {}
+  return { QBittorrentLoginError, QBittorrentClient: class { getVersion = mocks.upstream; } };
+});
 vi.mock('@/lib/tmdb-client', () => ({ TmdbClient: class {} }));
 vi.mock('@/lib/seerr-client', () => ({ SeerrClient: class {} }));
 vi.mock('@/lib/jellyfin-client', () => ({
@@ -54,14 +57,31 @@ describe('a key the service turns down', () => {
     mocks.upstream.mockRejectedValue(upstreamError(401));
     const res = await post(testConnection, '/api/services/test', { type: 'SONARR', url: 'http://sonarr.lan:8989', apiKey: 'mistyped' });
     expect(res.status).toBe(400);
-    expect(await res.json()).toEqual({ success: false, error: 'The service rejected the API key' });
+    expect(await res.json()).toEqual({ success: false, error: 'The service rejected the API key', help: 'the-key-was-refused' });
+  });
+
+  it('treats a refused qBittorrent sign-in as a refused key', async () => {
+    const { QBittorrentLoginError } = await import('@/lib/qbittorrent-client');
+    mocks.upstream.mockRejectedValue(new QBittorrentLoginError('Fails.'));
+    const res = await post(testConnection, '/api/services/test', { type: 'QBITTORRENT', url: 'http://qbit.lan:8080', apiKey: 'wrong', username: 'admin' });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ success: false, error: 'qBittorrent turned down the username or password.', help: 'the-key-was-refused' });
+  });
+
+  it('says a 403 from qBittorrent is a block, not a wrong password', async () => {
+    mocks.upstream.mockRejectedValue(upstreamError(403));
+    const res = await post(testConnection, '/api/services/test', { type: 'QBITTORRENT', url: 'http://qbit.lan:8080', apiKey: 'right', username: 'admin' });
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body).toMatchObject({ success: false, help: 'qbittorrent-blocks-helprr' });
+    expect(body.error).toMatch(/blocks the address for a while/);
   });
 
   it('keeps the Jellyfin wording for a Jellyfin test', async () => {
     mocks.upstream.mockRejectedValue(upstreamError(401));
     const res = await post(testConnection, '/api/services/test', { type: 'JELLYFIN', url: 'http://jellyfin.lan:8096', apiKey: 'mistyped' });
     expect(res.status).toBe(400);
-    expect(await res.json()).toEqual({ success: false, error: 'Invalid Jellyfin API key or Jellyfin rejected token auth' });
+    expect(await res.json()).toEqual({ success: false, error: 'Invalid Jellyfin API key or Jellyfin rejected token auth', help: 'the-key-was-refused' });
   });
 
   it('fails a Jellyfin save the same way', async () => {
@@ -72,12 +92,12 @@ describe('a key the service turns down', () => {
   });
 
   it.each([
-    [403, 'Connection test failed'],
-    [404, 'Something answered, but not the API. Check the address, and the base path if the app has one.'],
-  ])('still passes a %i from the service through', async (status, error) => {
+    [403, 'Connection test failed', undefined],
+    [404, 'Something answered, but not the API. Check the address, and the base path if the app has one.', 'it-answered-but-not-as-that-app'],
+  ])('still passes a %i from the service through', async (status, error, help) => {
     mocks.upstream.mockRejectedValue(upstreamError(status));
     const res = await post(testConnection, '/api/services/test', { type: 'SONARR', url: 'http://sonarr.lan:8989', apiKey: 'typed' });
     expect(res.status).toBe(status);
-    expect(await res.json()).toEqual({ success: false, error });
+    expect(await res.json()).toEqual({ success: false, error, ...(help && { help }) });
   });
 });
