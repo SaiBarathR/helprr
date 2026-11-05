@@ -45,30 +45,59 @@ or two. On the stack's page, `helprr`, `helprr-db` and `helprr-redis` show **hea
 `helprr-init` shows **exited - code 0**: it makes Helprr's passwords once, then stops, and
 that is normal.
 
-![The helprr stack in Portainer: helprr, helprr-db and helprr-redis healthy, helprr-init exited with code 0](../../../assets/screens/portainer-running.png)
+![The helprr stack in Portainer: helprr and helprr-db healthy, helprr-init exited with code 0](../../../assets/screens/portainer-running.png)
 
 Then open `http://YOUR_SERVER:3050` (your Portainer machine's address, or your
 `HELPRR_PORT`) and [create your admin](/helprr/first-run/).
 
 ## Update
 
-**Stacks → helprr → Editor → Update the stack**, turn on **Re-pull image and redeploy**,
-then **Update**. Your data stays: it lives in the stack's volumes.
+[Back up](#back-up) first. Then **Stacks → helprr → Editor**. If the release notes say
+Helprr's Compose file changed, replace the editor's contents with the new one (from the
+same link, or from [Your setup, step by step](/helprr/install/configurator/) if you took
+it from there). Select **Update the stack**, turn on **Re-pull image and redeploy**, then
+**Update**. Your data stays: it lives in the stack's volumes.
 
 ![Portainer's update dialog, with Re-pull image and redeploy turned on](../../../assets/screens/portainer-update.png)
 
 ## Back up
 
 Portainer has no backup for a stack's data, so take one in a terminal on Portainer's
-machine:
+machine. Only you can read the two files it writes:
 
 ```bash
-docker exec helprr-db pg_dump -U postgres -Fc helprr > helprr.dump
-docker run --rm -v helprr-secrets:/s:ro alpine tar -C /s -cf - . > helprr-secrets.tar
+(
+  umask 077
+  docker exec helprr-db pg_dump -U postgres -Fc helprr > helprr.dump &&
+    docker run --rm -v helprr-secrets:/s:ro alpine tar -C /s -cf - . > helprr.secrets.tar
+)
 ```
 
 The first is the database; the second, the passwords and keys Helprr made, which the
-database needs. Keep both together and private. To restore, follow
-[Back up and restore](/helprr/maintain/backup/#restore-over-an-existing-install): use
-`docker exec -i helprr-db` where it says `docker compose exec -T helprr-db`, and stop or
-start `helprr` from Portainer's **Containers** page where it uses `docker compose`.
+database needs. Keep both together and private, and copy them off the machine
+([Back up and restore](/helprr/maintain/backup/#keep-a-copy-off-the-host) has a way).
+
+## Restore
+
+To roll back an update, first set the variable `HELPRR_VERSION` to the version that
+wrote the backup (such as `1.12.1`) in the stack's **Environment variables**, and
+**Update the stack**. Then, in the folder with the two files:
+
+```bash
+docker exec -i helprr-db pg_restore --exit-on-error --file=/dev/null < helprr.dump &&
+  docker stop helprr &&
+  docker exec helprr-db dropdb -U postgres --if-exists --force helprr &&
+  docker exec helprr-db createdb -U postgres helprr &&
+  docker exec -i helprr-db pg_restore -U postgres --exit-on-error -d helprr < helprr.dump &&
+  docker start helprr
+```
+
+It reads the whole backup before it changes anything, and stops at the first step that
+fails. If the `helprr-secrets` volume was lost or replaced, put the secrets back too:
+
+```bash
+docker stop helprr &&
+  docker run --rm -i -v helprr-secrets:/s alpine tar -C /s -xf - < helprr.secrets.tar &&
+  docker start -a helprr-init &&
+  docker start helprr
+```

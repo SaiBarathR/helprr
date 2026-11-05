@@ -101,6 +101,7 @@ import { ACCESS, DEFAULTS, SYSTEMS, WHERE } from '../lib/configurator.mjs';
   const slot = (name: string) => out.querySelector<HTMLElement>(`[data-out="${name}"]`)!;
   const status = document.querySelector<HTMLElement>('[data-out="status"]')!;
   let current: ReturnType<typeof generate> | null = null;
+  let shownSystem = '';
 
   function code(text: string) {
     const element = document.createElement('code');
@@ -142,7 +143,9 @@ import { ACCESS, DEFAULTS, SYSTEMS, WHERE } from '../lib/configurator.mjs';
     slot('composeSummary').textContent = result.portainer
       ? 'docker-compose.yml, to paste into the Web editor'
       : "The docker-compose.yml it writes: the release's file, with your apps' network added";
-    (slot('composeDetails') as HTMLDetailsElement).open = Boolean(result.portainer);
+    // Opened for Portainer when it is chosen; otherwise left as the reader set it.
+    if (answers.system !== shownSystem) (slot('composeDetails') as HTMLDetailsElement).open = Boolean(result.portainer);
+    shownSystem = answers.system;
     if (result.portainer) {
       slot('portainerSteps').replaceChildren(...result.portainer.steps.map((step: string) => {
         const item = document.createElement('li');

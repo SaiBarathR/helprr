@@ -41,12 +41,13 @@ exit 2
   return { dir, home, status: run.status, stdout: run.stdout, stderr: run.stderr, config: existsSync(configFile) ? JSON.parse(readFileSync(configFile, 'utf8')) : null };
 }
 
-/** Portainer's way: the pasted file, with the variables table as Compose's environment. */
+/** Portainer's way: the pasted file, with the variables table as its stack.env file. */
 function runPortainer(out) {
   const dir = mkdtempSync(join(tmpdir(), 'helprr-configurator-'));
   writeFileSync(join(dir, 'docker-compose.yml'), out.compose);
-  const variables = Object.fromEntries(out.portainer.variables.map(({ name, value }) => [name, value]));
-  const run = spawnSync(realDocker, ['compose', '-p', 'helprr', 'config', '--format', 'json'], { cwd: dir, env: { ...process.env, ...variables }, encoding: 'utf8' });
+  writeFileSync(join(dir, 'stack.env'), out.portainer.variables.map(({ name, value }) => `${name}=${value}\n`).join(''));
+  // Nothing from this shell: only what the reader enters reaches Compose.
+  const run = spawnSync(realDocker, ['compose', '-p', 'helprr', '--env-file', 'stack.env', 'config', '--format', 'json'], { cwd: dir, env: { PATH: process.env.PATH, HOME: process.env.HOME }, encoding: 'utf8' });
   return { dir, status: run.status, stderr: run.stderr, config: run.status === 0 ? JSON.parse(run.stdout) : null };
 }
 

@@ -179,6 +179,8 @@ export function generate(answers, releaseCompose) {
       link: `${GUIDES}https/#nginx-proxy-manager`,
     },
   }[answers.access];
+  // Portainer has no terminal of its own; HTTPS is set up on the machine itself.
+  if (answers.system === 'portainer' && answers.access !== 'home') https.steps.unshift("On Portainer's machine, in a terminal where a step shows a command:");
 
   // Portainer: its forms instead of a terminal (install/portainer.md).
   const portainer = answers.system === 'portainer' ? {
