@@ -33,8 +33,10 @@ const initial = truenasCompose(releaseCompose, 'tank');
       const pool = input.value.trim();
       const ok = isPoolName(pool);
       input.setAttribute('aria-invalid', ok ? 'false' : 'true');
-      error.textContent = ok ? '' : 'A pool name starts with a letter, then letters, digits and _ . : - only.';
+      error.textContent = ok ? '' : 'A pool name starts with a letter, then letters, digits and _ . - only.';
       copy.disabled = !ok;
+      // The file below is for the last good name: dimmed until the name is fixed.
+      root.classList.toggle('tn-stale', !ok);
       if (!ok) return;
       out.textContent = truenasCompose(release, pool);
       path.textContent = `/mnt/${pool}/helprr`;
@@ -69,4 +71,5 @@ const initial = truenasCompose(releaseCompose, 'tank');
     color: var(--sl-color-white); min-height: 44px;
   }
   .tn-code button:disabled { opacity: 0.5; cursor: not-allowed; }
+  .tn-stale .tn-code pre, .tn-stale .tn-hint { opacity: 0.35; }
 </style>

@@ -123,7 +123,7 @@ check('truenas: no variables', () => {
 commonChecks('truenas', config(truenas), '/mnt/tank/helprr', false);
 check('truenas: only pool names', () => {
   for (const pool of ['tank', 'Pool_1', 'my.pool']) truenasCompose(release, pool);
-  for (const pool of ['', '1tank', 'tank/x', 'a b', '../etc']) {
+  for (const pool of ['', '1tank', 'tank/x', 'a b', '../etc', 'a:b']) {
     let refused = false;
     try { truenasCompose(release, pool); } catch { refused = true; }
     if (!refused) throw new Error(`accepted ${JSON.stringify(pool)}`);

@@ -130,9 +130,9 @@ x-casaos:
 `;
 }
 
-/** A TrueNAS pool name, as TrueNAS allows it. */
+/** A TrueNAS pool name that also works in a Compose volume line (no ':', which splits it). */
 export function isPoolName(pool) {
-  return /^[A-Za-z][A-Za-z0-9_.:-]{0,49}$/.test(pool);
+  return /^[A-Za-z][A-Za-z0-9_.-]{0,49}$/.test(pool);
 }
 
 /**

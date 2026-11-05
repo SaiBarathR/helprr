@@ -42,7 +42,8 @@ Helprr.
 
    ![TrueNAS's Discover page, with the ⋮ menu open on Install via YAML](../../../assets/screens/truenas-discover-menu.png)
 
-2. **Name**: `helprr`. Paste the file into **Custom Config**, and select **Save**.
+2. **Name** (above the editor): `helprr`. Paste the file into **Custom Config**, and
+   select **Save**.
 
    ![TrueNAS's Install via YAML with Helprr's Compose file pasted](../../../assets/screens/truenas-install-yaml.png)
 
@@ -72,7 +73,7 @@ TrueNAS shows the file in its own order once saved; that is normal.
 
 TrueNAS checks for newer images by itself. When Helprr's **Updates** column shows
 **Update available**, [take a snapshot](#back-up) first, then select **Update All** and
-**Update**. TrueNAS pulls the new Helprr and starts it, and your data stays in the
+**Update**. **Update All** updates every app that shows an update, not only Helprr. TrueNAS pulls the new Helprr and starts it, and your data stays in the
 dataset.
 
 ![TrueNAS's Apps with Update available, and the Update All button](../../../assets/screens/truenas-update-available.png)
@@ -85,7 +86,8 @@ If the release notes say Helprr's Compose file changed, take the new file from
 
 Open **Datasets**, select `helprr`, and under **Data Protection** select **Take
 Snapshot**, then **Save**. A snapshot holds the whole folder at one moment (the database
-and the passwords and keys Helprr made), so Helprr can keep running. TrueNAS can also
+and the passwords and keys Helprr made), so Helprr can keep running: restoring it is like
+starting again after a power cut, which Helprr's database is made for. TrueNAS can also
 take snapshots on a schedule and copy them to another machine (**Data Protection**).
 
 ![TrueNAS's Add Snapshot for the dataset tank/helprr](../../../assets/screens/truenas-take-snapshot.png)
@@ -95,8 +97,8 @@ To restore one:
 1. In **Apps**, stop Helprr with the stop button in its row.
 2. In **Datasets**, select `helprr`, then **View Snapshots**. Select the snapshot, then
    **Rollback**, tick **Confirm**, and select **Rollback**. This removes everything
-   written after that snapshot, and TrueNAS refuses while newer snapshots of `helprr`
-   exist, unless you choose otherwise in that window.
+   written after that snapshot. If newer snapshots of `helprr` exist, TrueNAS refuses;
+   the window's other choices go ahead but **delete those newer snapshots** too.
 3. Start Helprr again with the same button.
 
 Restore with the same Helprr as the one that made the snapshot, or a newer one: a newer
