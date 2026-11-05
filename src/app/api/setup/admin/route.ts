@@ -24,7 +24,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   if (!(await needsFirstAdmin())) return NOT_FOUND();
   if (!isAllowedSetupOrigin(request)) {
     return NextResponse.json({
-      error: 'Open Helprr at its address on your network (such as http://192.168.1.10:3050) to create the admin, or set APP_ORIGIN to the address you use.',
+      error: 'Open Helprr at its address on your network (such as http://192.168.1.10:3050), or on the server itself (http://localhost:3050, through an SSH tunnel), to create the admin; or set APP_ORIGIN to the address you use.',
     }, { status: 403 });
   }
   if (!request.headers.get('content-type')?.toLowerCase().startsWith('application/json')) {

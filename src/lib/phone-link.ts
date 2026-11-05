@@ -41,8 +41,8 @@ export function phoneLinkKind(origin: string): PhoneLinkKind {
   if (url.protocol !== 'https:') return 'local';
   // An IPv4 address is local only in a home range; a public one works anywhere.
   if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host)) return isPrivateIpv4(host) ? 'local' : 'public';
-  // IPv6 counts as local here (isLocalHostname treats every IPv6 literal that way); a
-  // public IPv6 address still works from a phone on the same network.
+  // An IPv6 address is local in the loopback, unique-local and link-local ranges
+  // (isLocalHostname); a public one works anywhere.
   return isLocalHostname(host) ? 'local' : 'public';
 }
 

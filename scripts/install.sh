@@ -224,7 +224,8 @@ main() {
           # A public address: the admin is created only at a local one (src/lib/local-hostname.ts).
           say "  This server's address ($address) is public, so create your admin on the server itself:"
           say "  from your computer, run  ssh -L $port:localhost:$port YOU@$address"
-          say "  and open http://localhost:$port while it runs. Or see the HTTPS guide (APP_ORIGIN)." ;;
+          say "  and open http://localhost:$port while it runs. Or see the HTTPS guide (APP_ORIGIN)."
+          say "  Do it now: until an admin exists, anyone who can reach port $port can create one." ;;
       esac
     fi
     say '  For push notifications on a phone, Helprr needs an https:// address; see'

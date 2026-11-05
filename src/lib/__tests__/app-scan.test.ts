@@ -170,6 +170,13 @@ describe('scanForApps, what it trusts', () => {
     expect(requested.some((url) => url.startsWith('http://sonarr:'))).toBe(false);
   });
 
+  it('skips a name whose address is not a plain address, instead of asking for the name again', async () => {
+    mocks.hosts = `${HOSTS}fe80::1%eth0\tsonarr\n`;
+    serve({ 'http://sonarr:8989/ping': OK, 'http://sonarr:8989/': { body: '<title>Sonarr</title>' } });
+    expect((await scanForApps(2_160_000)).some((app) => app.url === 'http://sonarr:8989')).toBe(false);
+    expect(requested.some((url) => url.startsWith('http://sonarr:'))).toBe(false);
+  });
+
   it('asks DNS once, with a short timeout, so a missing name cannot hold the scan up', async () => {
     serve({});
     await scanForApps(2_200_000);

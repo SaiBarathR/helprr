@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { Resolver } from 'node:dns/promises';
+import { isIP } from 'node:net';
 import { prisma } from '@/lib/db';
 
 /**
@@ -60,14 +61,18 @@ async function localAddress(url: string): Promise<string | null> {
     const [v4, v6] = await Promise.all([resolver.resolve4(host).catch(() => []), resolver.resolve6(host).catch(() => [])]);
     addresses = [...v4, ...v6];
   }
-  return addresses.length > 0 && addresses.every(isLocalAddress) ? addresses[0] : null;
+  // Only real addresses (no zone id), each one local.
+  const real = addresses.every((address) => isIP(address) !== 0 && !address.includes('%'));
+  return addresses.length > 0 && real && addresses.every(isLocalAddress) ? addresses[0] : null;
 }
 
-/** The URL with its name replaced by the address checked for it. */
-function atAddress(url: string, address: string): string {
+/** The URL with its name replaced by the address checked for it; null if it cannot be. */
+function atAddress(url: string, address: string): string | null {
   const parsed = new URL(url);
-  parsed.hostname = address.includes(':') ? `[${address}]` : address;
-  return parsed.toString().replace(/\/$/, '');
+  const host = address.includes(':') ? `[${address}]` : address;
+  parsed.hostname = host;
+  // URL ignores a hostname it cannot take: then the request would go to the name again.
+  return parsed.hostname === host.toLowerCase() ? parsed.toString().replace(/\/$/, '') : null;
 }
 
 /** The container's default gateway (the Docker host, from inside a container), from /proc/net/route. */
@@ -176,7 +181,8 @@ async function runScan(): Promise<ScanTarget[]> {
       while (next < targets.length) {
         const target = targets[next++];
         const address = await localAddress(target.url);
-        if (address && (await fingerprint(target.type, atAddress(target.url, address)))) hits.push(target);
+        const at = address ? atAddress(target.url, address) : null;
+        if (at && (await fingerprint(target.type, at))) hits.push(target);
       }
     }),
   );
