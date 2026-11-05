@@ -89,7 +89,7 @@ function dashboardCompose(release, dataDir) {
   kept.splice(requirepass, 1, REDIS_REQUIREPASS);
   // In place of the release's check that a password was found: Redis with an empty one
   // would turn authentication off.
-  const exec = kept.findIndex((line, index) => index > redis && /^\s+exec redis-server /.test(line));
+  const exec = kept.findIndex((line, index) => index > redis && /^\s+exec docker-entrypoint\.sh redis-server /.test(line));
   if (exec < 0) throw new Error('docker-compose.yml starts Redis differently');
   kept.splice(exec, 0, `${kept[exec].match(/^\s+/)[0]}[ -s /helprr-auth/redis_password ] || { echo 'helprr-redis: no password from helprr-init' >&2; exit 1; }`);
   for (let index = kept.length - 1; index > redis; index -= 1) if (/^\s+\[ -n "\$\$REDIS_PASSWORD" \]/.test(kept[index])) kept.splice(index, 1);
