@@ -86,7 +86,22 @@ environment as described above.
 
 For example, to roll back after a bad change.
 When rolling back an upgrade, first set `HELPRR_VERSION` in `.env` back to the
-version that wrote the dump. The database is recreated before the restore:
+version that wrote the dump.
+
+If the `helprr-secrets` volume was lost or replaced and the dump has a `.secrets.tar`
+beside it, put the secrets back first, with Helprr, the worker and Redis stopped (Redis
+reads its password only as it starts), then refresh the copies (the `run` uses
+`helprr-init`, which has the volume mounted and runs as root):
+
+```bash
+dump=backups/stable/helprr-pre-upgrade-YYYYMMDD-HHMMSS.dump
+docker compose stop helprr helprr-twitch-worker helprr-redis &&
+  docker compose run --rm --no-deps -T --entrypoint tar helprr-init -C /secrets -xf - < "${dump%.dump}.secrets.tar" &&
+  docker compose run --rm --no-deps helprr-init &&
+  docker compose up -d
+```
+
+Then restore the database. It is recreated before the restore:
 `pg_restore --clean` drops only what is in the dump, so tables a newer release's
 migrations added would stay behind and break the next upgrade. The whole dump
 is read first and each step runs only if the one before it succeeded, so a
@@ -100,18 +115,6 @@ docker compose exec -T helprr-db pg_restore --exit-on-error --file=/dev/null < "
   docker compose exec -T helprr-db createdb -U postgres helprr &&
   docker compose exec -T helprr-db pg_restore -U postgres --exit-on-error -d helprr < "$dump" &&
   docker compose up -d --no-build --no-deps --wait helprr
-```
-
-If the `helprr-secrets` volume was lost or replaced and the dump has a `.secrets.tar`
-beside it, put the secrets back with Helprr, the worker and Redis stopped (Redis reads
-its password only as it starts), then refresh the copies (the `run` uses `helprr-init`,
-which has the volume mounted and runs as root):
-
-```bash
-docker compose stop helprr helprr-twitch-worker helprr-redis &&
-  docker compose run --rm --no-deps -T --entrypoint tar helprr-init -C /secrets -xf - < "${dump%.dump}.secrets.tar" &&
-  docker compose run --rm --no-deps helprr-init &&
-  docker compose up -d
 ```
 
 If the volume was lost with no `.secrets.tar`, Helprr made its database password and

@@ -89,29 +89,40 @@ which the database needs. Keep both together and private, and copy them off the 
 
 To roll back an update, first set the variable `HELPRR_VERSION` to the version that
 wrote the backup (such as `1.12.1`) in the stack's **Environment variables**, and
-**Update the stack**. Then, in the folder with the two files, name the backup:
+**Update the stack**. Then, in the folder with the two files, name the backup, and check
+that both files read in full, before anything changes:
 
 ```bash
 dump=helprr-YYYYMMDD-HHMMSS.dump
+docker exec -i helprr-db pg_restore --exit-on-error --file=/dev/null < "$dump" &&
+  tar -tf "${dump%.dump}.secrets.tar" >/dev/null && echo "Both files read"
 ```
 
 If the `helprr-secrets` volume was lost or replaced (or this is a new machine), put the
-secrets back first. This restarts Redis, and gives the database, with the passwords from
-the backup:
+secrets back first. This also restarts Redis with the password from the backup. If you
+use the Twitch or YouTube worker, run `docker stop helprr-twitch-worker` first, and
+`docker start helprr-twitch-worker` at the very end.
 
 ```bash
 docker stop helprr helprr-redis &&
   docker run --rm -i -v helprr-secrets:/s alpine tar -C /s -xf - < "${dump%.dump}.secrets.tar" &&
   docker start -a helprr-init &&
-  docker start helprr-redis &&
+  docker start helprr-redis
+```
+
+Then give the database the password from the backup. This does nothing if you set
+`POSTGRES_PASSWORD` yourself:
+
+```bash
+docker exec helprr-db test -s /helprr-auth/postgres_password &&
   docker exec -i helprr-db psql -q -U postgres <<'SQL'
 \set pw `cat /helprr-auth/postgres_password`
 ALTER USER postgres PASSWORD :'pw';
 SQL
 ```
 
-Then restore the database. It reads the whole backup before it changes anything, and
-stops at the first step that fails:
+Then restore the database. It reads the whole backup again before it changes anything,
+and stops at the first step that fails:
 
 ```bash
 docker exec -i helprr-db pg_restore --exit-on-error --file=/dev/null < "$dump" &&
