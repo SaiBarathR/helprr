@@ -7,6 +7,86 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.13.0] - 2026-11-06
+
+Setting Helprr up for the first time is now much easier. Existing installs need no
+changes: every value already in your `.env` keeps working and always wins.
+
+### Added
+
+- **Create the first admin in the browser.** A new install opens a setup screen, like
+  Jellyfin's, when opened at a home-network or local address. Whoever opens it first
+  creates the admin, so do it before Helprr is reachable from the internet.
+  `APP_PASSWORD` is now optional; set it and the screen is skipped as before.
+- **No `.env` needed.** A new `helprr-init` service makes the session secret, the push
+  keys and the database and Redis passwords on first start, on the new `helprr-secrets`
+  volume, and never overwrites them. `docker compose up -d` with only the Compose file
+  runs Helprr. **Settings → Status** says which secrets Helprr made for itself.
+- **One-line installer** (`install.sh`, a release asset): downloads the release files,
+  writes `.env`, starts Helprr and prints the address to open. `setup-env.sh` now fills
+  in the timezone and the worker's user too.
+- **Proxmox VE script** (`proxmox-lxc.sh`, a release asset): makes an unprivileged
+  Debian 13 container and installs Helprr in it.
+- **Setup checklist** on the admin's dashboard: connect a service, add people, turn on
+  push, install on your phone, export a backup. Hide it any time.
+- **Find apps on this network**, in **Settings → Instances**: finds Sonarr, Radarr,
+  Lidarr, Prowlarr, qBittorrent, Jellyfin and Seerr on your network. You can also
+  import your apps from Seerr or Prowlarr.
+- **Push check page** (**Settings → Notifications → Check**) names every reason push
+  can be off on this device, and what to do.
+- **Open on your phone**: a QR code with Helprr's address, in **Settings → Appearance**.
+- **A local demo** (`docker-compose.demo.yml`) with invented apps and library, to try
+  Helprr without connecting anything.
+- **Guides site** at https://saibarathr.github.io/helprr/ with install guides for
+  Docker, Portainer, CasaOS, Runtipi, TrueNAS and Proxmox, an install configurator,
+  HTTPS recipes, backup and restore, and troubleshooting. The README is now an
+  overview.
+- **Runtipi app store** at https://github.com/SaiBarathR/helprr-runtipi. CasaOS and
+  TrueNAS files are made on the guides site from each release's Compose file.
+- New optional Compose settings: `HELPRR_PORT` (default 3050), `TRUSTED_PROXY_HOPS`
+  (default 1), `host.docker.internal` for apps on the same machine, and an optional GPU
+  for the worker.
+
+### Changed
+
+- A failed connection test says why in plain words (wrong address, wrong key, not
+  reachable, and more), with a link to the fix. The connection form says
+  which address to use and where to find the key.
+- Empty dashboard widgets link to the connection they need. The push section says why
+  push is off.
+- The startup log says how to open Helprr and sign in.
+- Behind a proxy, the visitor's address is the `X-Forwarded-For` entry
+  `TRUSTED_PROXY_HOPS` from the end (default 1, the nearest proxy's), and `X-Real-IP` is
+  no longer read. Sign-in limits and **Settings → Sessions** use it.
+- Redis now runs as its own user instead of root. It takes effect when Redis is next
+  recreated from the new Compose file; the Redis image then hands its data folder to
+  that user, and nothing is lost.
+
+### Fixed
+
+- A Sonarr or Radarr address with a page path, such as `/settings/general`, passed the
+  connection test with any key.
+- Connection test failures reached the form as a generic error behind Cloudflare
+  Tunnel.
+- The dashboard no longer refreshes endlessly when Helprr is opened over plain http.
+- The worker image takes Debian's security fixes.
+
+### Upgrade notes
+
+- Update as usual: fetch the new release files and run `./scripts/update.sh` (see
+  **Update** in the guides). It backs up, then replaces only the app container. One new
+  migration runs on start. Your `.env` keeps working unchanged, and its values always
+  win over generated ones.
+- Optional, once: recreate Redis so it runs as its own user,
+  `docker compose up -d --no-deps helprr-redis`. Its data is kept.
+- The release Compose file adds the one-shot `helprr-init` service and the
+  `helprr-secrets`, `helprr-db-auth` and `helprr-redis-auth` volumes. They are created
+  the next time you run `docker compose up -d`; with a complete `.env`, init makes
+  nothing new.
+- A new install whose secrets Helprr made keeps them on `helprr-secrets`: back that
+  volume up with the database (`backup.sh` does both). Without it, stored tokens and
+  sessions are lost.
+
 ## [1.12.1] - 2026-11-03
 
 1.12.0 was tagged but stopped before release, when its production check found the first
