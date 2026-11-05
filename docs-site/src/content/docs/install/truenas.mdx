@@ -78,7 +78,8 @@ dataset.
 
 ![TrueNAS's Apps with Update available, and the Update All button](../../../assets/screens/truenas-update-available.png)
 
-If the release notes say Helprr's Compose file changed, take the new file from
+If the [release notes](https://github.com/SaiBarathR/helprr/releases) say Helprr's
+Compose file changed, take the new file from
 [step 2](#2-get-the-compose-file), then **Edit**, replace the whole file with it, and
 **Save**. Set again any setting you changed.
 
@@ -99,15 +100,15 @@ To restore one:
    **Rollback**, tick **Confirm**, and select **Rollback**. This removes everything
    written after that snapshot. If newer snapshots of `helprr` exist, TrueNAS refuses;
    the window's other choices go ahead but **delete those newer snapshots** too.
-3. Start Helprr again with the same button.
+3. Start Helprr again with the start button in the same place.
 
 Restore with the same Helprr as the one that made the snapshot, or a newer one: a newer
 Helprr updates the restored database as it starts.
 
 ## Delete
 
-In **Apps**, select Helprr, then **Delete**, and **Delete** again. The `helprr` dataset
-stays, so installing Helprr again later (same name, same file) brings back your data,
+In **Apps**, select Helprr, then **Delete**, and **Delete** again (**Remove Images** only
+removes the downloaded images, not your data). The `helprr` dataset stays, so installing Helprr again later (same name, same file) brings back your data,
 but not the settings you changed. To remove Helprr's data too, delete the `helprr`
 dataset in **Datasets**.
 
