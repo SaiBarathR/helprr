@@ -6,7 +6,9 @@ description: What Helprr's messages mean, and what to do about each one.
 ## Connecting an app
 
 When **Test** fails, Helprr says why in plain words and links to the matching section
-here. The address in each example is yours to change.
+here with **How to fix this**. The address in each example is yours to change.
+
+![A failed Test on a phone: the reason, and a How to fix this button](../../assets/screens/phone-test-failed.png)
 
 ### Not a valid address
 

@@ -6,6 +6,8 @@ description: Which address to use for each app, and where its key is.
 Every app is optional, and connected in **Settings → Instances**. What Helprr shows
 depends on which apps you connect, and on what each person is allowed to do.
 
+![Settings → Instances in the demo, with Find apps on this network and the connected Radarr, Sonarr and Lidarr](../../assets/screens/instances.png)
+
 ## Let Helprr find them
 
 - **Find apps on this network** (in **Settings → Instances**) tries each app's usual
