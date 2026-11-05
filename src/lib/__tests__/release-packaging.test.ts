@@ -13,6 +13,7 @@ describe('no-clone release packaging', () => {
     { releaseName: 'backup.sh', source: 'scripts/backup.sh', executable: true },
     { releaseName: 'update.sh', source: 'scripts/update.sh', executable: true },
     { releaseName: 'install.sh', source: 'scripts/install.sh', executable: true },
+    { releaseName: 'proxmox-lxc.sh', source: 'scripts/proxmox-lxc.sh', executable: true },
   ];
 
   it('keeps every required source file available and helper scripts executable', () => {
@@ -34,8 +35,9 @@ describe('no-clone release packaging', () => {
     expect(releaseJob).toContain('install -m 0755 scripts/backup.sh backup.sh');
     expect(releaseJob).toContain('install -m 0755 scripts/update.sh update.sh');
     expect(releaseJob).toContain('install -m 0755 scripts/install.sh install.sh');
-    expect(releaseJob).toContain('sha256sum docker-compose.yml env.example setup-env.sh backup.sh update.sh install.sh > SHA256SUMS');
-    expect(releaseJob).toContain('docker-compose.yml env.example setup-env.sh backup.sh update.sh install.sh SHA256SUMS');
+    expect(releaseJob).toContain('install -m 0755 scripts/proxmox-lxc.sh proxmox-lxc.sh');
+    expect(releaseJob).toContain('sha256sum docker-compose.yml env.example setup-env.sh backup.sh update.sh install.sh proxmox-lxc.sh > SHA256SUMS');
+    expect(releaseJob).toContain('docker-compose.yml env.example setup-env.sh backup.sh update.sh install.sh proxmox-lxc.sh SHA256SUMS');
     for (const asset of assets) {
       expect(releaseJob, asset.releaseName).toContain(asset.releaseName);
     }
