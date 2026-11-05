@@ -78,10 +78,9 @@ export function getClientIp(request: NextRequest): string | undefined {
     const entries = forwardedFor.split(',').map((entry) => entry.trim());
     const visitor = entries[Math.max(0, entries.length - trustedProxyHops())];
     if (visitor && isIP(visitor) !== 0) return visitor;
-    return undefined;
   }
-  const realIp = request.headers.get('x-real-ip')?.trim();
-  if (realIp && isIP(realIp) !== 0) return realIp;
+  // X-Real-IP is not read: a proxy that does not set X-Forwarded-For may pass a
+  // visitor's X-Real-IP on as it came.
   return undefined;
 }
 

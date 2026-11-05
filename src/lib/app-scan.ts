@@ -14,8 +14,9 @@ import { prisma } from '@/lib/db';
  * key there to local requests, and no key may come from a scan.
  */
 import { isPrivateIpv4, scanTargets, type ScanTarget, type ScanType } from '@/lib/app-scan-targets';
+import { isLocalAddress } from '@/lib/local-hostname';
 
-export { scanTargets, type ScanTarget, type ScanType };
+export { isLocalAddress, scanTargets, type ScanTarget, type ScanType };
 
 export interface FoundApp extends ScanTarget {
   /** Helprr already has a connection at exactly this address. */
@@ -29,14 +30,6 @@ const LOOKUP_TIMEOUT_MS = 1000;
 const MAX_BODY_BYTES = 64 * 1024;
 const CONCURRENCY = 4;
 const MIN_INTERVAL_MS = 30_000;
-
-/** An address only a home network or this machine uses. */
-export function isLocalAddress(address: string): boolean {
-  if (isPrivateIpv4(address)) return true;
-  if (/^127\./.test(address) || /^169\.254\./.test(address) || /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(address)) return true;
-  const v6 = address.toLowerCase();
-  return v6 === '::1' || /^f[cd][0-9a-f]{2}:/.test(v6) || /^fe[89ab][0-9a-f]:/.test(v6);
-}
 
 /** The addresses /etc/hosts gives a name (Docker writes host.docker.internal there). */
 export function hostsFileAddresses(hostsFile: string, host: string): string[] {

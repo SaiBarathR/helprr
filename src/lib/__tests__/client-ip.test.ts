@@ -44,9 +44,9 @@ describe('getClientIp', () => {
     }
   });
 
-  it('gives no address when the chosen entry is not one, and does not look further', () => {
+  it('gives no address when the chosen entry is not one, and never reads X-Real-IP', () => {
     vi.stubEnv('TRUST_FORWARDED_PROTO', 'true');
     expect(getClientIp(request({ 'x-forwarded-for': '203.0.113.7, unknown', 'x-real-ip': '6.6.6.6' }))).toBeUndefined();
-    expect(getClientIp(request({ 'x-real-ip': '203.0.113.7' }))).toBe('203.0.113.7');
+    expect(getClientIp(request({ 'x-real-ip': '203.0.113.7' }))).toBeUndefined();
   });
 });

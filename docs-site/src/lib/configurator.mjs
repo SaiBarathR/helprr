@@ -43,10 +43,22 @@ const ADDRESS = /^(\d{1,3}(\.\d{1,3}){3}|[a-z0-9]([a-z0-9.-]{0,251}[a-z0-9])?)$/
 const LOCAL_SUFFIXES = ['.local', '.lan', '.home.arpa', '.internal', '.localhost'];
 export function isLocalHostname(hostname) {
   const name = hostname.toLowerCase().replace(/^\[|\]$/g, '');
-  if (name === 'localhost' || name.includes(':')) return true;
-  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(name)) return true;
+  if (name === 'localhost') return true;
+  if (name.includes(':') || /^\d{1,3}(\.\d{1,3}){3}$/.test(name)) return isLocalAddress(name);
   if (!name.includes('.')) return true;
   return LOCAL_SUFFIXES.some((suffix) => name.endsWith(suffix));
+}
+
+/** Helprr's isLocalAddress (src/lib/local-hostname.ts): private, loopback, link-local or Tailscale. */
+function isLocalAddress(address) {
+  const v4 = /^(\d{1,3})\.(\d{1,3})\.\d{1,3}\.\d{1,3}$/.exec(address);
+  if (v4) {
+    const [a, b] = [Number(v4[1]), Number(v4[2])];
+    return a === 10 || a === 127 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168)
+      || (a === 169 && b === 254) || (a === 100 && b >= 64 && b <= 127);
+  }
+  const v6 = address.toLowerCase();
+  return v6 === '::1' || /^f[cd][0-9a-f]{2}:/.test(v6) || /^fe[89ab][0-9a-f]:/.test(v6);
 }
 
 export const DEFAULTS = { system: 'linux', where: 'host', access: 'home', network: 'arr_default', domain: 'helprr.example.com', serverAddress: '192.168.1.10' };
@@ -67,7 +79,7 @@ export function problems(answers) {
   // Without a domain the first admin is created at this address, which Helprr accepts only
   // when it is a home-network one.
   else if (!['cloudflare', 'caddy', 'npm'].includes(answers.access) && !isLocalHostname(answers.serverAddress)) {
-    out.serverAddress = 'Use its IP address or a home-network name (such as nas, nas.lan or nas.local): Helprr creates the first admin only at one of those.';
+    out.serverAddress = 'Use its address on your network or a home-network name (such as 192.168.1.10, nas, nas.lan or nas.local): Helprr creates the first admin only at one of those.';
   }
   return out;
 }

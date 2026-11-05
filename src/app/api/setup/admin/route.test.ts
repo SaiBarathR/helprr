@@ -16,7 +16,7 @@ vi.mock('@/lib/first-admin', async (importOriginal) => {
 
 import { POST } from './route';
 import { GET as state } from '../state/route';
-import { FirstAdminInputError, FirstAdminTakenError, isAllowedSetupOrigin, isLocalHostname, resetClaimSlots } from '@/lib/first-admin';
+import { FirstAdminBusyError, FirstAdminInputError, FirstAdminTakenError, isAllowedSetupOrigin, isLocalHostname, resetClaimSlots } from '@/lib/first-admin';
 
 const post = (headers: Record<string, string> = {}, body: unknown = { username: 'admin', password: 'a-long-first-admin-password' }) =>
   POST(new NextRequest('http://helprr.lan:3050/api/setup/admin', {
@@ -125,20 +125,21 @@ describe('isAllowedSetupOrigin', () => {
     expect(isAllowedSetupOrigin(req({ host: 'x', origin: 'x:y' }))).toBe(false);
   });
 
-  it.each(['localhost', '10.0.0.4', 'nas', 'box.local', 'router.home.arpa', 'pi.internal'])('treats %s as local', (name) => {
+  it.each(['localhost', '10.0.0.4', '192.168.1.10', '100.101.1.2', '[::1]', '[fd00::1]', 'nas', 'box.local', 'router.home.arpa', 'pi.internal'])('treats %s as local', (name) => {
     expect(isLocalHostname(name)).toBe(true);
   });
 
-  it.each(['helprr.example.com', 'attacker.example', 'host.tailnet.ts.net'])('treats %s as public', (name) => {
+  it.each(['helprr.example.com', 'attacker.example', 'host.tailnet.ts.net', '203.0.113.5', '8.8.8.8', '[2606:4700::1]'])('treats %s as public', (name) => {
     expect(isLocalHostname(name)).toBe(false);
   });
 });
 
 describe('POST /api/setup/admin limits', () => {
-  it('allows at most ten claims a minute', async () => {
-    mocks.claim.mockRejectedValue(new FirstAdminInputError('Password must contain at least 15 characters'));
-    for (let i = 0; i < 10; i++) expect((await post()).status).toBe(400);
-    expect((await post()).status).toBe(429);
+  it('says to wait when claims are busy', async () => {
+    mocks.claim.mockRejectedValue(new FirstAdminBusyError());
+    const res = await post();
+    expect(res.status).toBe(429);
+    expect(res.headers.get('retry-after')).toBe('60');
   });
 
   it.each([[[1, 2]], [null], ['text']])('refuses the body %j', async (body) => {

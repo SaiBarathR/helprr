@@ -2,12 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { withApiLogging } from '@/lib/api-logger';
 import { COOKIE_NAME, SESSION_DURATION, createSession } from '@/lib/auth';
 import {
+  FirstAdminBusyError,
   FirstAdminInputError,
   FirstAdminTakenError,
   claimFirstAdmin,
   isAllowedSetupOrigin,
   needsFirstAdmin,
-  takeClaimSlot,
 } from '@/lib/first-admin';
 import { enforceGlobalLoginBackstop, enforceLoginRateLimit, getClientIp } from '@/lib/login-rate-limit';
 import { isHttpsRequest } from '@/lib/request-utils';
@@ -35,10 +35,6 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   if (limited) return limited;
   const backstop = await enforceGlobalLoginBackstop();
   if (backstop) return backstop;
-  if (!takeClaimSlot()) {
-    return NextResponse.json({ error: 'Too many attempts. Try again in a minute.' }, { status: 429, headers: { 'Retry-After': '60' } });
-  }
-
   let body: unknown;
   try {
     body = await readBoundedJson<unknown>(request, LOGIN_BODY_MAX_BYTES);
@@ -57,6 +53,9 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     admin = await claimFirstAdmin({ username, password });
   } catch (error) {
     if (error instanceof FirstAdminInputError) return NextResponse.json({ error: error.message }, { status: 400 });
+    if (error instanceof FirstAdminBusyError) {
+      return NextResponse.json({ error: 'Too many attempts. Try again in a minute.' }, { status: 429, headers: { 'Retry-After': '60' } });
+    }
     if (error instanceof FirstAdminTakenError) {
       return NextResponse.json({ error: 'An admin already exists. Sign in instead.' }, { status: 409 });
     }
