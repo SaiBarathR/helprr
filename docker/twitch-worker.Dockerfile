@@ -29,7 +29,11 @@ ENV APP_VERSION=$APP_VERSION
 # TwitchDownloaderCLI is .NET; without ICU it needs the invariant mode.
 ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1
 
+# Debian's own security fixes, newer than the Node base image (image-scan fails on any
+# fixable high or critical one). A blanket upgrade, unlike the app image's targeted apk
+# one: Debian stable updates bring only point and security fixes.
 RUN apt-get update \
+    && apt-get upgrade -y --no-install-recommends \
     && apt-get install -y --no-install-recommends ca-certificates curl gnupg unzip \
     && curl -fsSL https://repo.jellyfin.org/jellyfin_team.gpg.key | gpg --dearmor -o /usr/share/keyrings/jellyfin.gpg \
     && echo "deb [signed-by=/usr/share/keyrings/jellyfin.gpg] https://repo.jellyfin.org/debian bookworm main" > /etc/apt/sources.list.d/jellyfin.list \
