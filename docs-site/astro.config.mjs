@@ -5,6 +5,8 @@ import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
 
 export default defineConfig({
+  // The configurator reads the repository's docker-compose.yml.
+  vite: { server: { fs: { allow: ['.', '../docker-compose.yml'] } } },
   site: 'https://saibarathr.github.io',
   base: '/helprr',
   integrations: [
@@ -17,7 +19,7 @@ export default defineConfig({
       editLink: { baseUrl: 'https://github.com/SaiBarathR/helprr/edit/development/docs-site/' },
       customCss: ['./src/styles/helprr.css'],
       sidebar: [
-        { label: 'Start here', items: ['start-here', 'install/demo'] },
+        { label: 'Start here', items: ['start-here', 'install/configurator', 'install/demo'] },
         { label: 'Install', items: ['install/one-command', 'install/compose-only', 'install/manual', 'first-run'] },
         {
           label: 'Connect your apps',

@@ -23,6 +23,7 @@ Podman and rootless Docker are not tested. Podman before 5.3 rejects the Compose
 
 | You want | Use |
 | --- | --- |
+| Your own files and steps, from three questions | [Your setup, step by step](/helprr/install/configurator/) |
 | To look around first, with fake apps and nothing to set up | [Try the demo](/helprr/install/demo/) |
 | The quickest install on a Linux machine | [One command](/helprr/install/one-command/) |
 | To paste a Compose file into Portainer or another web form | [Only the Compose file](/helprr/install/compose-only/) |

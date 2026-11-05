@@ -1,0 +1,203 @@
+---
+// Three questions, the reader's files and steps. Runs in the browser; the logic is
+// src/lib/configurator.mjs, which scripts/check-configurator.mjs checks.
+import releaseCompose from '../../../docker-compose.yml?raw';
+import { ACCESS, DEFAULTS, SYSTEMS, WHERE } from '../lib/configurator.mjs';
+---
+
+<form class="cfg not-content" data-compose={releaseCompose} novalidate>
+  <fieldset>
+    <legend>1. Your system</legend>
+    {Object.entries(SYSTEMS).map(([value, label]) => (
+      <label><input type="radio" name="system" value={value} checked={value === DEFAULTS.system} /> {label}</label>
+    ))}
+    <p class="cfg-hint">Portainer, CasaOS, Runtipi, TrueNAS and Proxmox are added here as their guides are tested.</p>
+  </fieldset>
+
+  <fieldset>
+    <legend>2. Where your apps run</legend>
+    {Object.entries(WHERE).map(([value, label]) => (
+      <label><input type="radio" name="where" value={value} checked={value === DEFAULTS.where} /> {label}</label>
+    ))}
+    <label class="cfg-field" data-show="where=stack">
+      Their Docker network (<code>docker network ls</code> shows it)
+      <input name="network" value={DEFAULTS.network} autocomplete="off" spellcheck="false" aria-describedby="cfg-error-network" />
+    </label>
+    <span class="cfg-error" id="cfg-error-network" data-error="network"></span>
+  </fieldset>
+
+  <fieldset>
+    <legend>3. How you reach Helprr away from home</legend>
+    {Object.entries(ACCESS).map(([value, label]) => (
+      <label><input type="radio" name="access" value={value} checked={value === DEFAULTS.access} /> {label}</label>
+    ))}
+    <label class="cfg-field" data-show="access=cloudflare,caddy,npm">
+      Helprr's name on your domain
+      <input name="domain" value={DEFAULTS.domain} autocomplete="off" spellcheck="false" aria-describedby="cfg-error-domain" />
+    </label>
+    <span class="cfg-error" id="cfg-error-domain" data-error="domain"></span>
+  </fieldset>
+
+  <label class="cfg-field">
+    This machine's address on your network
+    <input name="serverAddress" value={DEFAULTS.serverAddress} autocomplete="off" spellcheck="false" aria-describedby="cfg-error-serverAddress" />
+  </label>
+  <span class="cfg-error" id="cfg-error-serverAddress" data-error="serverAddress"></span>
+</form>
+
+<p class="cfg-status" role="status" data-out="status"></p>
+<section class="cfg-out">
+  <h2 id="your-steps">Your steps</h2>
+  <ol data-out="steps">
+    <li data-step="commands">
+      <p>On the machine, in a terminal. It makes a <code>helprr</code> folder, stops at the first
+      thing that fails, never replaces an existing <code>.env</code>, and keeps an existing
+      <code>docker-compose.yml</code> as <code>docker-compose.yml.bak</code>:</p>
+      <div class="cfg-code"><pre data-out="commands"></pre><button type="button" data-copy="commands">Copy</button></div>
+      <div data-show-out="compose">
+        <details>
+          <summary>The docker-compose.yml it writes: the release's file, with your apps' network added</summary>
+          <div class="cfg-code"><pre data-out="compose"></pre></div>
+        </details>
+        <p><button type="button" data-download="compose">Download docker-compose.yml</button></p>
+      </div>
+    </li>
+    <li data-step="open">
+      <p>Open <strong data-out="open"></strong> and <a href="/helprr/first-run/">create your admin</a>.</p>
+    </li>
+    <li data-step="apps">
+      <p>In <strong>Settings → Instances</strong>, <a href="/helprr/connect/">connect your apps</a> at these addresses:</p>
+      <table>
+        <thead><tr><th>App</th><th>Address</th></tr></thead>
+        <tbody data-out="apps"></tbody>
+      </table>
+      <p class="cfg-hint" data-out="appsNote"></p>
+    </li>
+    <li data-step="https">
+      <p><strong data-out="httpsTitle"></strong> (<a data-out="httpsLink">the full recipe</a>):</p>
+      <ol data-out="httpsSteps"></ol>
+    </li>
+  </ol>
+</section>
+
+<script>
+  import { generate } from '../lib/configurator.mjs';
+
+  const form = document.querySelector<HTMLFormElement>('form.cfg')!;
+  const out = document.querySelector<HTMLElement>('section.cfg-out')!;
+  const release = form.dataset.compose ?? '';
+  const pick = (name: string) => (form.querySelector<HTMLInputElement>(`input[name="${name}"]:checked`)?.value ?? '');
+  const field = (name: string) => (form.querySelector<HTMLInputElement>(`input[name="${name}"]`)?.value.trim() ?? '');
+  const slot = (name: string) => out.querySelector<HTMLElement>(`[data-out="${name}"]`)!;
+  const status = document.querySelector<HTMLElement>('[data-out="status"]')!;
+  let current: ReturnType<typeof generate> | null = null;
+
+  function code(text: string) {
+    const element = document.createElement('code');
+    element.textContent = text;
+    return element;
+  }
+
+  function render() {
+    const answers = { system: pick('system'), where: pick('where'), access: pick('access'), network: field('network'), domain: field('domain'), serverAddress: field('serverAddress') };
+    for (const element of form.querySelectorAll<HTMLElement>('[data-show]')) {
+      const [key, values] = element.dataset.show!.split('=');
+      element.hidden = !values.split(',').includes(answers[key as 'where' | 'access']);
+    }
+    const result = generate(answers, release);
+    for (const element of form.querySelectorAll<HTMLElement>('[data-error]')) {
+      const problem = result.problems[element.dataset.error!] ?? '';
+      element.textContent = problem;
+      form.querySelector(`input[name="${element.dataset.error}"]`)?.setAttribute('aria-invalid', problem ? 'true' : 'false');
+    }
+    const ok = Object.keys(result.problems).length === 0;
+    out.hidden = !ok;
+    status.textContent = ok ? '' : 'Fix the answer marked above to see your steps.';
+    if (!ok || !('compose' in result)) return;
+    // With a domain, Helprr accepts the first admin only there, so HTTPS comes first.
+    const steps = slot('steps');
+    const order = result.httpsFirst ? ['commands', 'https', 'open', 'apps'] : ['commands', 'open', 'apps', 'https'];
+    // Moved only when the order changes: moving a step during a click (a field's change
+    // event fires as the click takes focus) would cancel that click.
+    const now = [...steps.children].map((item) => (item as HTMLElement).dataset.step).join();
+    if (now !== order.join()) for (const name of order) steps.append(steps.querySelector(`[data-step="${name}"]`)!);
+    current = result;
+    slot('commands').textContent = result.commands.join('\n');
+    slot('compose').textContent = result.compose;
+    out.querySelector<HTMLElement>('[data-show-out="compose"]')!.hidden = !result.composeChanged;
+    slot('open').textContent = result.open;
+    slot('apps').replaceChildren(...result.apps.map((app) => {
+      const row = document.createElement('tr');
+      const name = document.createElement('td');
+      name.textContent = app.name;
+      const address = document.createElement('td');
+      address.append(code(app.url));
+      row.append(name, address);
+      return row;
+    }));
+    slot('appsNote').textContent = result.appsNote;
+    slot('httpsTitle').textContent = result.https.title;
+    slot('httpsLink').setAttribute('href', result.https.link);
+    // A step is text, or { code } to show as a command or file.
+    slot('httpsSteps').replaceChildren(...result.https.steps.map((step: string | { code: string }) => {
+      const item = document.createElement('li');
+      if (typeof step === 'string') {
+        item.textContent = step;
+      } else {
+        const pre = document.createElement('pre');
+        pre.textContent = step.code;
+        item.append(pre);
+      }
+      return item;
+    }));
+  }
+
+  form.addEventListener('input', render);
+  form.addEventListener('change', render);
+  out.addEventListener('click', async (event) => {
+    const target = event.target as HTMLElement;
+    const copy = target.closest<HTMLButtonElement>('[data-copy]');
+    if (copy) {
+      const copied = await navigator.clipboard?.writeText(slot(copy.dataset.copy!).textContent ?? '').then(() => true, () => false);
+      copy.textContent = copied ? 'Copied' : 'Select and copy by hand';
+      setTimeout(() => (copy.textContent = 'Copy'), 2000);
+    }
+    if (target.closest('[data-download]') && current && 'compose' in current) {
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(new Blob([current.compose], { type: 'text/yaml' }));
+      link.download = 'docker-compose.yml';
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+    }
+  });
+  render();
+</script>
+
+<style>
+  .cfg { display: grid; gap: 1rem; margin-block: 1rem 2rem; }
+  .cfg [hidden], .cfg-out [hidden] { display: none; }
+  .cfg fieldset { border: 1px solid var(--sl-color-gray-5); border-radius: 0.5rem; padding: 0.75rem 1rem 1rem; display: grid; gap: 0.5rem; }
+  .cfg legend { font-weight: 600; color: var(--sl-color-white); padding-inline: 0.25rem; }
+  .cfg label { display: flex; gap: 0.5rem; align-items: center; color: var(--sl-color-gray-1); min-height: 44px; }
+  .cfg input[type='radio'] { accent-color: var(--sl-color-accent); width: 1.1rem; height: 1.1rem; }
+  .cfg .cfg-field { flex-direction: column; align-items: stretch; gap: 0.35rem; font-size: var(--sl-text-sm); }
+  .cfg .cfg-field input {
+    font: inherit; font-family: var(--sl-font-mono); padding: 0.5rem 0.65rem; border-radius: 0.4rem;
+    border: 1px solid var(--sl-color-gray-5); background: var(--sl-color-black); color: var(--sl-color-white); min-height: 44px;
+  }
+  .cfg-error { color: #e36a7a; font-size: var(--sl-text-xs); min-height: 1em; }
+  :global([data-theme='light']) .cfg-error { color: #a3182d; }
+  .cfg-status:empty { display: none; }
+  .cfg-hint { font-size: var(--sl-text-sm); color: var(--sl-color-gray-3); margin: 0; }
+  .cfg-code { position: relative; }
+  .cfg-code pre, .cfg-out li pre {
+    overflow-x: auto; padding: 0.75rem 1rem; border-radius: 0.5rem; border: 1px solid var(--sl-color-gray-5);
+    background: var(--sl-color-gray-6); font-family: var(--sl-font-mono); font-size: var(--sl-text-sm); white-space: pre;
+  }
+  .cfg-code button { position: absolute; top: 0.4rem; right: 0.4rem; }
+  .cfg-out button {
+    font: inherit; font-size: var(--sl-text-sm); padding: 0.3rem 0.7rem; border-radius: 0.4rem; cursor: pointer;
+    border: 1px solid var(--sl-color-gray-5); background: var(--sl-color-black); color: var(--sl-color-white); min-height: 44px;
+  }
+  .cfg-out [data-download] { background: var(--sl-color-accent); color: var(--sl-color-black); border-color: var(--sl-color-accent); }
+</style>
