@@ -7,7 +7,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { CASAOS_DATA, casaosCompose, runtipiCompose } from '../src/lib/app-store-compose.mjs';
+import { CASAOS_DATA, casaosCompose, runtipiCompose, truenasCompose } from '../src/lib/app-store-compose.mjs';
 
 const release = readFileSync(fileURLToPath(new URL('../../docker-compose.yml', import.meta.url)), 'utf8');
 const docker = execFileSync('sh', ['-c', 'command -v docker'], { encoding: 'utf8' }).trim();
@@ -115,6 +115,21 @@ check('casaos: CasaOS opens Helprr at its port', () => {
   same([meta.main, meta.port_map, String(casaosConfig.services.helprr.ports[0].published)], ['helprr', '3050', '3050'], 'x-casaos');
 });
 
+// TrueNAS: the same, in the reader's dataset; a pool name that is not one is refused.
+const truenas = truenasCompose(release, 'tank');
+check('truenas: no variables', () => {
+  if (/\$[$A-Za-z_{]/.test(truenas)) throw new Error('a $ is left');
+});
+commonChecks('truenas', config(truenas), '/mnt/tank/helprr', false);
+check('truenas: only pool names', () => {
+  for (const pool of ['tank', 'Pool_1', 'my.pool']) truenasCompose(release, pool);
+  for (const pool of ['', '1tank', 'tank/x', 'a b', '../etc', 'a:b']) {
+    let refused = false;
+    try { truenasCompose(release, pool); } catch { refused = true; }
+    if (!refused) throw new Error(`accepted ${JSON.stringify(pool)}`);
+  }
+});
+
 // Runtipi: with the variables Runtipi sets.
 const runtipi = runtipiCompose(release, '1.13.0');
 const runtipiConfig = config(runtipi, { APP_DATA_DIR: '/runtipi/app-data/helprr', TZ: 'Europe/London' });
@@ -133,5 +148,5 @@ check('runtipi: only its own variables', () => {
   if (/\$\$|\$[A-Za-z_]/.test(runtipi)) throw new Error('a $ is left');
 });
 
-console.log(failed ? `${failed} checks failed.` : 'The CasaOS and Runtipi files match the release.');
+console.log(failed ? `${failed} checks failed.` : 'The CasaOS, Runtipi and TrueNAS files match the release.');
 process.exit(failed ? 1 : 0);

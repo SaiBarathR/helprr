@@ -65,9 +65,10 @@ services:
 ```
 
 Then **Stop** and **Start** Helprr on its page in Runtipi. Leave `POSTGRES_PASSWORD`,
-`REDIS_PASSWORD`, `DATABASE_URL`, `JWT_SECRET` and the `VAPID_` keys out: Helprr makes
-those. A password here would not reach its database and Redis, and new keys would end
-sessions and push.
+`REDIS_PASSWORD`, `DATABASE_URL` and `JWT_SECRET` out: Helprr makes those. A password set here would not reach its database and Redis, and a new
+`JWT_SECRET` ends every session and makes the app connections Helprr saved unreadable.
+To use push keys of your own, set `VAPID_SUBJECT` and both keys together, as
+[Phone and push](/helprr/phone-and-push/#use-your-own-push-keys) describes.
 
 ## Update
 
@@ -93,5 +94,7 @@ off the machine, and keep them private.
 Helprr's **⋯** menu → **Remove**, then **Uninstall**, removes Helprr and its data. Its
 backups stay, so installing Helprr again can restore one, unless you turn on **Remove
 backups**: do that to remove everything, as the backups hold Helprr's passwords and keys.
+A file from [Change a setting](#change-a-setting) stays too, and a new install would use
+it again: remove it with `sudo rm -r ~/runtipi/user-config/helprr`.
 
 ![Runtipi's Uninstall Helprr question](../../../assets/screens/runtipi-remove.png)
