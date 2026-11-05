@@ -3,17 +3,17 @@ title: Windows
 description: Install Helprr on a Windows PC with Docker Desktop, then update it and back it up from PowerShell.
 ---
 
-Helprr runs on Windows 10 or 11 in Docker Desktop, from its Compose file alone. You type
+Helprr runs on Windows 11 in Docker Desktop, from its Compose file alone. You type
 a few commands in PowerShell; there is nothing else to set up.
 
-*Tested 2026-11-06 with Windows 11 Pro 25H2, Docker Desktop 4.98 and WSL 3.0.3: install,
+*Tested 2026-11-06 with Windows 11 Pro 25H2, Docker Desktop 4.98 on WSL 2: install,
 first run, a phone-style visit from another machine, restarts of Windows, an update, and a
 backup restored after every Helprr volume was deleted. The Twitch and YouTube worker was
 not tested on Windows.*
 
 Helprr runs only while Docker Desktop does, and Docker Desktop starts only once someone
-signs in to Windows. Use a PC that stays on and signs in by itself, and set **Sleep** to
-**Never** for when it is plugged in (**Settings → System → Power**, or **Power & battery** on a
+signs in to Windows: after every restart of the PC, sign in to Windows. Use a PC that
+stays on, and set **Sleep** to **Never** for when it is plugged in (**Settings → System → Power**, or **Power & battery** on a
 laptop).
 
 ## 1. Install Docker Desktop
@@ -32,7 +32,7 @@ laptop).
 Open **PowerShell** (from the Start menu) and run:
 
 ```powershell
-mkdir helprr; cd helprr
+cd $HOME; mkdir helprr; cd helprr
 Invoke-WebRequest https://github.com/SaiBarathR/helprr/releases/latest/download/docker-compose.yml -OutFile docker-compose.yml
 docker compose up -d
 ```
@@ -89,46 +89,92 @@ Database changes apply on the first start of the new version. Read the
 
 ## Back up
 
-The backup script the other guides use needs Linux, so on Windows the same backup takes
-a few PowerShell commands. They save the database and Helprr's own passwords and keys to
-the `backups` folder, as two files with the same name: a `.dump` and a `.secrets.tar`.
-Helprr keeps running.
+Back up before every update, and now and then. The backup script the other guides use
+needs Linux, so on Windows the same backup is one PowerShell block. It saves the
+database and Helprr's own passwords and keys to the `backups` folder, as two files with
+the same name: a `.dump` and a `.secrets.tar`. Helprr keeps running.
 
 ```powershell
 cd $HOME\helprr
-$name = "helprr-" + (Get-Date -Format yyyyMMdd-HHmmss)
-New-Item -ItemType Directory backups -Force | Out-Null
-docker compose exec -T helprr-db sh -c 'pg_dump -U postgres -d helprr -Fc -f /tmp/backup.dump && pg_restore --list /tmp/backup.dump > /dev/null'
-docker compose cp helprr-db:/tmp/backup.dump "backups\$name.dump"
-docker compose exec -T helprr-db rm /tmp/backup.dump
-docker compose run --rm --no-deps -v "${PWD}\backups:/backups" --entrypoint tar helprr-init -C /secrets -cf "/backups/$name.secrets.tar" .
+& {
+  $name = "helprr-" + (Get-Date -Format yyyyMMdd-HHmmss)
+  New-Item -ItemType Directory backups -Force | Out-Null
+  docker compose exec -T helprr-db sh -c 'rm -f /tmp/backup.dump && pg_dump -U postgres -d helprr -Fc --no-owner --no-privileges --lock-wait-timeout=10s -f /tmp/backup.dump && pg_restore --list /tmp/backup.dump > /dev/null'
+  if ($LASTEXITCODE) { throw "The backup failed. Nothing was saved." }
+  docker compose cp helprr-db:/tmp/backup.dump "backups\$name.dump"
+  if ($LASTEXITCODE) { throw "Copying the backup failed. Nothing was saved." }
+  docker compose exec -T helprr-db rm /tmp/backup.dump
+  docker compose run --rm --no-deps -v "${PWD}\backups:/backups" --entrypoint tar helprr-init -C /secrets -cf "/backups/$name.secrets.tar" .
+  if ($LASTEXITCODE) { Remove-Item "backups\$name.dump"; throw "Saving the passwords and keys failed. Nothing was saved." }
+  "Saved backups\$name.dump and backups\$name.secrets.tar"
+}
 ```
 
-The two files hold your apps' API keys and your users' password hashes: keep them
-private, and keep a copy off this PC. The commands copy files instead of piping them,
-because Windows PowerShell 5.1 changes binary data sent through `>` and `<`.
+It ends with **Saved** and the two file names. On an error it stops, saves nothing, and
+says what failed. The files hold your apps' API keys and your users' password hashes:
+keep them private, and keep a copy off this PC. The commands copy files instead of piping
+them, because Windows PowerShell 5.1 changes binary data sent through `>` and `<`.
 
 ## Restore, or move to another PC
 
-This brings Helprr back from a backup after its data was lost, or onto a new PC. It
-expects a `helprr` folder with the Compose file (step 2, without `docker compose up`),
-and the two backup files in `helprr\backups`. If Helprr is running there, run
-`docker compose down -v` first: it **deletes Helprr's data** on this PC.
+This brings Helprr back from a backup after its data was lost, or onto a new PC.
+
+**1. The files.** You need a `helprr` folder with the Compose file and, if you made one,
+your `.env`, and the two backup files in `helprr\backups`. On a new PC, make the folder
+and download the Compose file (copy your old `.env` and the backups there yourself):
+
+```powershell
+cd $HOME; mkdir helprr; cd helprr
+Invoke-WebRequest https://github.com/SaiBarathR/helprr/releases/latest/download/docker-compose.yml -OutFile docker-compose.yml
+```
+
+Restore with the same or a newer Helprr version than the one that made the backup. To go
+back to an older version, set it in `.env` first, as `HELPRR_VERSION=1.13.0`.
+
+**2. Check the backup.** Set its name (without `.dump`), and check that both files read
+in full. Nothing changes yet:
 
 ```powershell
 cd $HOME\helprr
-$name = "helprr-20261106-120000"   # the backup's name, without .dump
-docker compose run --rm --no-deps -v "${PWD}\backups:/backups" --entrypoint tar helprr-init -C /secrets -xf "/backups/$name.secrets.tar"
-docker compose run --rm --no-deps helprr-init
-docker compose up -d --wait helprr-db
-docker compose cp "backups\$name.dump" helprr-db:/tmp/backup.dump
-docker compose exec -T helprr-db pg_restore -U postgres --clean --if-exists -d helprr /tmp/backup.dump
-docker compose exec -T helprr-db rm /tmp/backup.dump
-docker compose up -d
+$name = "helprr-20261106-120000"
+& {
+  if (!(Test-Path "backups\$name.dump") -or !(Test-Path "backups\$name.secrets.tar")) { throw "backups\$name.dump or backups\$name.secrets.tar is missing." }
+  docker run --rm -v "${PWD}\backups:/backups" postgres:16-alpine sh -c "pg_restore --list '/backups/$name.dump' > /dev/null && tar -tf '/backups/$name.secrets.tar' > /dev/null"
+  if ($LASTEXITCODE) { throw "The backup cannot be read. Do not go on with it." }
+  "The backup reads in full."
+}
 ```
 
-Users, their passwords and sign-ins, and your settings come back as they were. Restore with the same
-or a newer Helprr version than the one that made the backup.
+**3. Clear this PC's Helprr.** If Helprr was ever started in this folder, delete its data
+first. This **deletes everything Helprr has on this PC**, so if it still holds anything you
+want, [back it up](#back-up) and keep that backup until the restore works:
+
+```powershell
+docker compose down -v
+```
+
+**4. Restore.** In the same PowerShell window (it uses `$name` from step 2):
+
+```powershell
+& {
+  docker compose run --rm --no-deps -v "${PWD}\backups:/backups" --entrypoint tar helprr-init -C /secrets -xf "/backups/$name.secrets.tar"
+  if ($LASTEXITCODE) { throw "Restoring the passwords and keys failed." }
+  docker compose run --rm --no-deps helprr-init
+  if ($LASTEXITCODE) { throw "Preparing the passwords and keys failed." }
+  docker compose up -d --wait helprr-db
+  if ($LASTEXITCODE) { throw "The database did not start." }
+  docker compose cp "backups\$name.dump" helprr-db:/tmp/backup.dump
+  if ($LASTEXITCODE) { throw "Copying the backup in failed." }
+  docker compose exec -T helprr-db pg_restore -U postgres --exit-on-error -d helprr /tmp/backup.dump
+  if ($LASTEXITCODE) { throw "Restoring the database failed." }
+  docker compose exec -T helprr-db rm /tmp/backup.dump
+  docker compose up -d
+}
+```
+
+If it stops with an error, fix the cause, then run `docker compose down -v` and step 4
+again: a restore that stopped partway leaves data that a second try cannot reuse. Users,
+their passwords and sign-ins, and your settings come back as they were.
 
 ## Remove
 
