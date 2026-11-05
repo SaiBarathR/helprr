@@ -8,7 +8,8 @@
 # every file against the release's SHA256SUMS). It changes nothing else on the host and
 # stops if a container named helprr already exists.
 
-set -euo pipefail
+# -E: the failure message (trap ERR) also covers commands run by in_ct, below.
+set -Eeuo pipefail
 
 usage() {
   cat <<'EOF'
@@ -52,6 +53,7 @@ for number in "$disk" "$cores" "$memory" ${ctid:+"$ctid"}; do
 done
 case "$version" in *[!0-9A-Za-z.-]*) fail "\"$version\" is not a Helprr version, such as 1.13.0." ;; esac
 case "$bridge$storage" in *[!0-9A-Za-z_.-]*) fail 'Storage and bridge names are letters, digits and _ . - only.' ;; esac
+case "$asset_base" in ''|https://*) ;; *) say "Note: $asset_base is not https, so the checksums it serves prove nothing; use it only for testing." ;; esac
 
 [ "$(id -u)" = 0 ] || fail 'Run this as root on the Proxmox VE host.'
 for tool in pct pveam pvesm pvesh; do
@@ -75,10 +77,10 @@ if [ -z "$storage" ]; then
   for candidate in local-lvm local-zfs; do
     holds rootdir | grep -qx "$candidate" && { storage=$candidate; break; }
   done
-  [ -n "$storage" ] || storage=$(holds rootdir | head -n 1)
+  [ -n "$storage" ] || storage=$(holds rootdir | head -n 1 || true)
 fi
 holds rootdir | grep -qx "$storage" || fail "Storage \"$storage\" cannot hold containers. Choose one with --storage (pvesm status --content rootdir lists them)."
-template_storage=$(holds vztmpl | head -n 1)
+template_storage=$(holds vztmpl | head -n 1 || true)
 [ -n "$template_storage" ] || fail 'No storage holds container templates. Enable "Container template" on one (Datacenter → Storage).'
 ip link show "$bridge" >/dev/null 2>&1 || fail "There is no network bridge \"$bridge\". Choose one with --bridge."
 
@@ -92,22 +94,24 @@ fi
 
 say 'Getting the Debian 13 template...'
 pveam update >/dev/null || fail 'Could not update the template list (pveam update). Is the host online?'
-template=$(pveam available --section system | awk '{ print $2 }' | grep -E '^debian-13-standard_.*_amd64\.tar\.zst$' | sort -V | tail -n 1)
+template=$(pveam available --section system | awk '$2 ~ /^debian-13-standard_.*_amd64\.tar\.zst$/ { print $2 }' | sort -V | tail -n 1)
 [ -n "$template" ] || fail 'Proxmox lists no Debian 13 template (pveam available --section system).'
-pveam list "$template_storage" | grep -q "/$template" || pveam download "$template_storage" "$template" >/dev/null
+if ! pveam list "$template_storage" | awk -v t="/$template" 'index($1, t) { found = 1 } END { exit !found }'; then
+  pveam download "$template_storage" "$template" >/dev/null
+fi
 
 say "Creating container $ctid..."
 pct create "$ctid" "$template_storage:vztmpl/$template" \
   --hostname helprr --tags helprr --ostype debian --unprivileged 1 --features nesting=1,keyctl=1 \
   --cores "$cores" --memory "$memory" --swap 512 --rootfs "$storage:$disk" \
   --net0 "name=eth0,bridge=$bridge,ip=dhcp" --timezone host --onboot 1 >/dev/null
+
+# From here a failure leaves the container for you to look at or remove.
+trap 'printf "Error: the install stopped. Container %s is left as it is: look inside with pct enter %s, or remove it with pct stop %s && pct destroy %s\n" "$ctid" "$ctid" "$ctid" "$ctid" >&2' ERR
 pct start "$ctid"
 
 # Commands in the container run with a locale it has (a host's LANG may name one it lacks).
 in_ct() { pct exec "$ctid" -- env LC_ALL=C.UTF-8 LANG=C.UTF-8 "$@"; }
-
-# From here a failure leaves the container for you to look at or remove.
-trap 'printf "Error: the install stopped. Container %s is left as it is: look inside with pct enter %s, or remove it with pct stop %s && pct destroy %s\n" "$ctid" "$ctid" "$ctid" "$ctid" >&2' ERR
 
 say 'Waiting for the container to get online...'
 for _ in $(seq 1 60); do
@@ -119,7 +123,7 @@ in_ct getent hosts deb.debian.org >/dev/null 2>&1 || { trap - ERR; fail "Contain
 say 'Installing Docker in the container (its log: /root/docker-install.log in the container)...'
 in_ct bash -c 'export DEBIAN_FRONTEND=noninteractive
   { apt-get update -qq && apt-get install -y -qq curl ca-certificates &&
-    curl -fsSL https://get.docker.com | sh; } > /root/docker-install.log 2>&1' ||
+    curl -fsSL https://get.docker.com -o /root/get-docker.sh && sh /root/get-docker.sh; } > /root/docker-install.log 2>&1' ||
   { in_ct tail -n 20 /root/docker-install.log; false; }
 
 say 'Installing Helprr in the container...'
@@ -130,11 +134,11 @@ fi
 args=(--yes --dir /opt/helprr)
 [ -z "$version" ] || args+=(--version "$version")
 [ -z "$asset_base" ] || args+=(--asset-base "$asset_base")
+# Downloaded first, then run: a failed download stops here instead of running nothing.
 # shellcheck disable=SC2016 # $0 and $@ belong to the container's shell.
-in_ct bash -c 'cd /root && curl -fsSL "$0/install.sh" | sh -s -- "$@"' "$base" "${args[@]}"
+in_ct bash -c 'cd /root && curl -fsSL "$0/install.sh" -o install.sh && sh install.sh "$@"' "$base" "${args[@]}"
 trap - ERR
 
-address=$(in_ct hostname -I | awk '{ print $1 }')
 say ''
-say "Helprr is running in container $ctid. Open http://$address:3050 and create your admin."
+say "Helprr is installed in container $ctid: open it at the address above, and create your admin."
 say "Its files are in /opt/helprr inside the container (pct enter $ctid)."

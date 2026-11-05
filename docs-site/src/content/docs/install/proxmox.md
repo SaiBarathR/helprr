@@ -29,8 +29,9 @@ It says what it will make and asks before it starts. Then, in two or three minut
    checksums,
 5. prints Helprr's address. Open it and [create your admin](/helprr/first-run/).
 
-It changes nothing else on the host. If a container named `helprr` already exists, it
-stops before changing anything.
+It changes nothing else on the host. If a container named `helprr` already exists on
+this node, it stops before changing anything (in a cluster, it does not look at the other
+nodes).
 
 Its options, after the command (`bash -c "$(curl ...)" -- --disk 16`, or on a downloaded
 copy):
@@ -69,7 +70,7 @@ followed by the container's ID gives you a shell in it; Helprr is in `/opt/helpr
   Helprr's passwords and keys to `/opt/helprr/backups`. See
   [Back up and restore](/helprr/maintain/backup/).
 - **Settings**: in `/opt/helprr/.env`, as the [environment reference](/helprr/reference/environment/)
-  describes; then `docker compose up -d`.
+  describes; then `docker compose up -d --no-build --no-deps helprr`.
 
 Proxmox's own backups of the container hold everything too: select the container, then
 **Backup → Backup now**, or a scheduled job under **Datacenter → Backup** (the command is
