@@ -55,23 +55,26 @@ export function hostsFileAddresses(hostsFile: string, host: string): string[] {
  * lookup, host.docker.internal's included, and every fetch. /etc/hosts is read
  * directly, and DNS asked with its own timeout.
  *
- * The fetch that follows looks the name up again, the system's way. In Docker the two
- * agree (ndots:0, Docker's DNS). Elsewhere, a search domain, or a DNS server that
- * answers differently the second time, could send that fetch to another address. The
- * fetch carries no credentials and reads two fixed paths, and the result only lists the
- * app for the admin to confirm; connecting to the checked address itself would close
- * this (recorded for the security review).
+ * Returns the address the requests then go to: the one checked, never a second lookup
+ * that a search domain or a changing DNS answer could send elsewhere.
  */
-async function resolvesLocally(url: string): Promise<boolean> {
+async function localAddress(url: string): Promise<string | null> {
   const host = new URL(url).hostname;
-  if (isPrivateIpv4(host)) return true;
+  if (isPrivateIpv4(host)) return host;
   let addresses = hostsFileAddresses(await readFile('/etc/hosts', 'utf8').catch(() => ''), host);
   if (addresses.length === 0) {
     const resolver = new Resolver({ timeout: LOOKUP_TIMEOUT_MS, tries: 1 });
     const [v4, v6] = await Promise.all([resolver.resolve4(host).catch(() => []), resolver.resolve6(host).catch(() => [])]);
     addresses = [...v4, ...v6];
   }
-  return addresses.length > 0 && addresses.every(isLocalAddress);
+  return addresses.length > 0 && addresses.every(isLocalAddress) ? addresses[0] : null;
+}
+
+/** The URL with its name replaced by the address checked for it. */
+function atAddress(url: string, address: string): string {
+  const parsed = new URL(url);
+  parsed.hostname = address.includes(':') ? `[${address}]` : address;
+  return parsed.toString().replace(/\/$/, '');
 }
 
 /** The container's default gateway (the Docker host, from inside a container), from /proc/net/route. */
@@ -179,7 +182,8 @@ async function runScan(): Promise<ScanTarget[]> {
     Array.from({ length: CONCURRENCY }, async () => {
       while (next < targets.length) {
         const target = targets[next++];
-        if ((await resolvesLocally(target.url)) && (await fingerprint(target.type, target.url))) hits.push(target);
+        const address = await localAddress(target.url);
+        if (address && (await fingerprint(target.type, atAddress(target.url, address)))) hits.push(target);
       }
     }),
   );

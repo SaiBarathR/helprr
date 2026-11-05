@@ -123,6 +123,7 @@ services:
       - HELPRR_ADMIN_USERNAME=${HELPRR_ADMIN_USERNAME:-}
       - HELPRR_ADMIN_PASSWORD_RESET=${HELPRR_ADMIN_PASSWORD_RESET:-}
       - TRUST_FORWARDED_PROTO=${TRUST_FORWARDED_PROTO:-}
+      - TRUSTED_PROXY_HOPS=${TRUSTED_PROXY_HOPS:-}
       # At least 32 characters. Empty: helprr-init makes one on the helprr-secrets volume.
       - JWT_SECRET=${JWT_SECRET:-}
       # VAPID_PUBLIC_KEY is runtime config (NEXT_PUBLIC_VAPID_PUBLIC_KEY kept as

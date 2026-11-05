@@ -8,7 +8,8 @@ const mocks = vi.hoisted(() => ({
   hosts: '',
   resolverOptions: [] as unknown[],
 }));
-const HOSTS = '127.0.0.1\tlocalhost\n172.17.0.1\thost.docker.internal\n';
+// host.docker.internal apart from the gateway (172.17.0.1), so each target has its own address.
+const HOSTS = '127.0.0.1\tlocalhost\n172.17.0.254\thost.docker.internal\n';
 vi.mock('node:dns/promises', () => ({
   Resolver: class {
     constructor(options: unknown) {
@@ -37,10 +38,18 @@ import { fingerprint, hostsFileAddresses, isLocalAddress, parseDefaultGateway, s
 import { isScanAddress } from '@/lib/app-scan-targets';
 
 type Route = { status?: number; body?: string; location?: string };
+// The scan requests the address it checked for a name, so a route at a name is served at that address.
+function at(url: string): string {
+  const parsed = new URL(url);
+  const host = parsed.hostname;
+  const fromHosts = mocks.hosts.split('\n').find((line) => line.split(/\s+/).slice(1).includes(host))?.split(/\s+/)[0];
+  const address = /^[\d.]+$/.test(host) ? host : fromHosts ?? (mocks.dns[host] ?? ['172.18.0.5'])[0];
+  return url.replace(`//${host}:`, `//${address.includes(':') ? `[${address}]` : address}:`);
+}
 let routes: Record<string, Route> = {};
 let requested: string[] = [];
-function serve(map: Record<string, Route>) {
-  routes = map;
+function serve(map: Record<string, Route>, { byAddress = false } = {}) {
+  routes = byAddress ? Object.fromEntries(Object.entries(map).map(([url, route]) => [at(url), route])) : map;
   requested = [];
   vi.stubGlobal('fetch', async (url: string, init: RequestInit) => {
     requested.push(url);
@@ -140,17 +149,25 @@ describe('fingerprint', () => {
 describe('scanForApps, what it trusts', () => {
   it('skips a name that resolves outside the network, without asking it anything', async () => {
     mocks.dns = { sonarr: ['93.184.216.34'] };
-    serve({ 'http://sonarr:8989/ping': OK, 'http://sonarr:8989/': { body: '<title>Sonarr</title>' } });
+    serve({ 'http://sonarr:8989/ping': OK, 'http://sonarr:8989/': { body: '<title>Sonarr</title>' } }, { byAddress: true });
     expect(await scanForApps(2_000_000)).toEqual([]);
-    expect(requested.some((url) => url.startsWith('http://sonarr:8989'))).toBe(false);
+    expect(requested.some((url) => url.includes('93.184.216.34'))).toBe(false);
   });
 
   it('takes /etc/hosts over DNS, and skips a public address there too', async () => {
     mocks.hosts = `${HOSTS}8.8.8.8\tsonarr\n`;
     mocks.dns = { sonarr: ['172.18.0.5'] };
-    serve({ 'http://sonarr:8989/ping': OK, 'http://sonarr:8989/': { body: '<title>Sonarr</title>' } });
+    serve({ 'http://sonarr:8989/ping': OK, 'http://sonarr:8989/': { body: '<title>Sonarr</title>' } }, { byAddress: true });
     expect(await scanForApps(2_100_000)).toEqual([]);
-    expect(requested.some((url) => url.startsWith('http://sonarr:8989'))).toBe(false);
+    expect(requested.some((url) => url.includes('8.8.8.8') || url.includes('172.18.0.5:8989'))).toBe(false);
+  });
+
+  it('sends its requests to the address it checked, not to a second lookup of the name', async () => {
+    mocks.dns = { sonarr: ['172.18.0.9'] };
+    serve({ 'http://172.18.0.9:8989/ping': OK, 'http://172.18.0.9:8989/': { body: '<title>Sonarr</title>' } });
+    expect((await scanForApps(2_150_000)).map((app) => app.url)).toContain('http://sonarr:8989');
+    expect(requested).toContain('http://172.18.0.9:8989/ping');
+    expect(requested.some((url) => url.startsWith('http://sonarr:'))).toBe(false);
   });
 
   it('asks DNS once, with a short timeout, so a missing name cannot hold the scan up', async () => {
@@ -168,7 +185,7 @@ describe('scanForApps, what it trusts', () => {
       'http://host.docker.internal:8989/': { body: '<title>Sonarr</title>' },
       'http://radarr:7878/ping': OK,
       'http://radarr:7878/': { body: '<title>Radarr</title>' },
-    });
+    }, { byAddress: true });
     mocks.connections = [
       { type: 'SONARR', url: 'http://HOST.docker.internal:8989/' },
       { type: 'RADARR', url: 'http://192.168.1.10:7878' },
@@ -214,7 +231,7 @@ describe('scanForApps', () => {
       'http://host.docker.internal:8989/': { body: '<title>Sonarr</title>' },
       'http://172.17.0.1:7878/ping': OK,
       'http://172.17.0.1:7878/': { body: '<title>Radarr</title>' },
-    });
+    }, { byAddress: true });
     mocks.connections = [{ type: 'RADARR', url: 'http://172.17.0.1:7878/' }];
     const found = await scanForApps(1_000_000);
     expect(found).toEqual([
@@ -229,7 +246,7 @@ describe('scanForApps', () => {
     await scanForApps(1_031_000);
     expect(requested.length).toBeGreaterThan(before);
     // Every request went to a fixed target (the gateway is the one in the route table).
-    const bases = scanTargets('172.17.0.1').map((target) => target.url);
+    const bases = scanTargets('172.17.0.1').map((target) => at(target.url));
     expect(requested.every((url) => bases.some((base) => url.startsWith(`${base}/`)))).toBe(true);
   });
 });
