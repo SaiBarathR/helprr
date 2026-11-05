@@ -50,7 +50,11 @@ services:
         [ -n "$$REDIS_PASSWORD" ] || REDIS_PASSWORD=$$(cat /helprr-auth/redis_password 2>/dev/null) || true
         [ -n "$$REDIS_PASSWORD" ] || { echo 'helprr-redis: no REDIS_PASSWORD and none generated (helprr-init)' >&2; exit 1; }
         # From stdin, so the password is not in the process list; quoted for Redis.
-        exec redis-server - --appendonly yes <<EOF
+        # Through the image's entrypoint, which drops root before starting the server.
+        # /data is handed to the redis user here, whole: the entrypoint skips that when
+        # it finds a file it does not know, and Redis could then not read its own data.
+        chown -R redis /data 2>/dev/null || true
+        exec docker-entrypoint.sh redis-server - --appendonly yes <<EOF
         requirepass "$$(printf '%s' "$$REDIS_PASSWORD" | sed 's/[\\"]/\\&/g')"
         EOF
     volumes:

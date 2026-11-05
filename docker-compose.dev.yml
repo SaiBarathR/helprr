@@ -39,7 +39,7 @@ services:
     restart: unless-stopped
     environment:
       REDIS_PASSWORD: ${HELPRR_DEV_REDIS_PASSWORD:?HELPRR_DEV_REDIS_PASSWORD is required}
-    command: [ "sh", "-c", "exec redis-server --requirepass \"$$REDIS_PASSWORD\" --appendonly yes" ]
+    command: [ "sh", "-c", "chown -R redis /data 2>/dev/null || true; exec docker-entrypoint.sh redis-server --requirepass \"$$REDIS_PASSWORD\" --appendonly yes" ]
     ports:
       # Loopback-only for local debugging tools.
       - "127.0.0.1:${HELPRR_DEV_REDIS_PORT:-6380}:6379"

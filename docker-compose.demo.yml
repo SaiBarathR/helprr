@@ -76,7 +76,7 @@ services:
       - -c
       - |
         REDIS_PASSWORD=$$(cat /helprr-auth/redis_password) || exit 1
-        exec redis-server - --appendonly no --save "" <<EOF
+        exec docker-entrypoint.sh redis-server - --appendonly no --save "" <<EOF
         requirepass "$$(printf '%s' "$$REDIS_PASSWORD" | sed 's/[\\"]/\\&/g')"
         EOF
     # Also keeps the image's /data volume from leaving an unnamed volume behind.
