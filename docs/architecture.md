@@ -260,9 +260,9 @@ stored tokens are unreadable and every session ended.
 
 Start with no `.env`: `POSTGRES_PASSWORD` and `REDIS_PASSWORD` are generated the same
 way when unset, so `docker compose up -d` with only the Compose file runs Helprr.
-Postgres and Redis run as root at start (both then drop to their own user: Redis
-starts through its image's `docker-entrypoint.sh`, which hands `/data` to uid 999
-first) and Redis's group is 1000, the worker's default group, so they never mount
+Postgres and Redis run as root at start (both then drop to their own user: Redis's
+wrapper gives `/data` to uid 999, then starts through its image's
+`docker-entrypoint.sh`, which drops root) and Redis's group is 1000, the worker's default group, so they never mount
 `helprr-secrets`: each gets a
 root-only copy (0600) of its own password on its own small volume
 (`helprr-db-auth`, `helprr-redis-auth`), which init rewrites from the master on every
