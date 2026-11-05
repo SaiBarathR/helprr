@@ -9,4 +9,3 @@ description: Connect Lidarr to Helprr.
 
 Open **Settings → Instances → Lidarr**, enter the address ([which one?](/helprr/connect/#which-address-to-use))
 and the key, then **Test** and **Save**.
-
