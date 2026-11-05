@@ -14,7 +14,7 @@ import { buildLibrary } from './library.mjs';
 import { lidarr, radarr, sonarr } from './apps/servarr.mjs';
 import { prowlarr, qbittorrent, seerr } from './apps/downloads.mjs';
 import { createJellyfin } from './apps/jellyfin.mjs';
-import { RAW } from './apps/raw.mjs';
+import { RAW, raw } from './apps/raw.mjs';
 
 // DEMO_PORT_OFFSET moves every port (tests run beside the real apps).
 const OFFSET = Number(process.env.DEMO_PORT_OFFSET ?? 0);
@@ -33,7 +33,15 @@ function state() {
   return current;
 }
 
+// What "Find apps on this network" reads to recognise each app, without a key: Servarr's
+// /ping and page title, qBittorrent's page title (Jellyfin and Seerr answer through
+// their handlers).
+const TITLES = { sonarr: 'Sonarr', radarr: 'Radarr', lidarr: 'Lidarr', prowlarr: 'Prowlarr', qbittorrent: 'qBittorrent Web UI' };
+const SERVARR = new Set(['sonarr', 'radarr', 'lidarr', 'prowlarr']);
+
 function answer(app, method, path, query, body) {
+  if (method === 'GET' && path === '/ping' && SERVARR.has(app)) return { status: 'OK' };
+  if (method === 'GET' && path === '/' && TITLES[app]) return raw(200, `<!doctype html><title>${TITLES[app]}</title>`, 'text/html');
   const s = state();
   return app === 'jellyfin' ? s.jellyfin(method, path, query, body) : s[app](s.lib, method, path, query);
 }

@@ -7,5 +7,7 @@ description: Connect Lidarr to Helprr.
 
 **What it adds:** Music: artists and albums, monitoring, the queue, and files.
 
-Open **Settings → Instances → Lidarr**, enter the address ([which one?](/helprr/connect/#which-address-to-use))
-and the key, then **Test** and **Save**.
+In **Settings → Instances**, tap **+ Add Lidarr instance** (or **Add its key**, if Find
+apps on this network found it). Enter a name (any label,
+such as Main), the address ([which one?](/helprr/connect/#which-address-to-use)) and the
+key, then **Test**, and **Save** once it works.

@@ -9,8 +9,8 @@ in a browser, or add it to your phone's home screen to get push notifications.
 ## What you need
 
 - A computer that stays on, with Docker Engine and the Compose plugin: Docker Compose
-  2.18 or newer (`docker compose version`), on a Docker Engine release Docker still
-  supports.
+  2.18 or newer (`docker compose version`; current releases are 5.x), on a Docker Engine
+  release Docker still supports.
 - At least one of Sonarr, Radarr, Lidarr, qBittorrent, Prowlarr, Jellyfin or Seerr.
   Helprr finds them on your network, or you type their address and API key.
 - For push notifications on an iPhone: iOS 16.4 or later (Helprr supports the latest

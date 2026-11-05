@@ -13,8 +13,10 @@ docker compose up -d
 ```
 
 The `helprr-init` service makes the database, Redis and session passwords and the push
-keys once, in the `helprr-secrets` volume, and you
-[create the admin in the browser](/helprr/first-run/).
+keys once, in the `helprr-secrets` volume, then exits. Helprr is ready when
+`docker compose ps` shows `helprr` as `(healthy)` (run it again until it does; it
+takes a minute or two). Then open `http://THIS-SERVER:3050` (this machine's IP address
+or name) and [create the admin in the browser](/helprr/first-run/).
 
 - The timezone is UTC and the port 3050 until you set `TZ` and `HELPRR_PORT`, in `.env`
   or the stack's environment.

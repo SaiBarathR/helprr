@@ -28,6 +28,8 @@ export function servicePageUrl(url: string, path: string | null): string | null 
   try {
     const parsed = new URL(withDefaultScheme(url));
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
+    // Docker's name for the host machine: no browser elsewhere can open it.
+    if (parsed.hostname.toLowerCase() === 'host.docker.internal') return null;
     // Origin and path only: a typed query, fragment or user:password must not end up in the link.
     let base = normalizeServiceUrl(parsed.origin + parsed.pathname);
     // An address copied from inside the app already ends in that page (or in

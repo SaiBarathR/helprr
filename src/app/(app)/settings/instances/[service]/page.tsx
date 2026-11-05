@@ -25,7 +25,7 @@ import { GroupedSection } from '@/components/settings/grouped-section';
 import { findServiceBySlug, type ServiceConfigType } from '@/lib/settings/service-config';
 import { invalidateExternalUrls } from '@/lib/hooks/use-external-urls';
 import { invalidateInstances } from '@/lib/query-invalidation';
-import { isTroubleshootingSection, troubleshootingUrl } from '@/lib/docs-links';
+import { isTroubleshootingSection, troubleshootingUrl, WHICH_ADDRESS_URL } from '@/lib/docs-links';
 import { normalizeServiceUrl, servicePageUrl, withDefaultScheme } from '@/lib/service-url';
 import {
   deleteServiceConnection,
@@ -119,12 +119,14 @@ function UrlChangeNote({ id, secret }: { id: string; secret: string }) {
   );
 }
 
-function KeyHelp({ id, url, help }: {
+function KeyHelp({ id, url, help, browsable = true }: {
   id: string;
   url: string;
   help: { where: string; path: string | null; href: string | null };
+  /** False for an address only Helprr's container can use (one "Find apps" filled in). */
+  browsable?: boolean;
 }) {
-  const link = help.href ?? servicePageUrl(url, help.path);
+  const link = help.href ?? (browsable ? servicePageUrl(url, help.path) : null);
   return (
     <p id={id} className="text-xs text-muted-foreground">
       Where to find it: {help.where}.
@@ -626,7 +628,10 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
           )}
           {config.type !== 'TMDB' && !fieldErrors.url && (
             <p id="conn-url-help" className="text-xs text-muted-foreground">
-              Use the address you open {config.label} at in your browser. If Helprr runs in Docker, not localhost.
+              Use the address you open {config.label} at in your browser. If Helprr runs in Docker, not localhost.{' '}
+              <a href={WHICH_ADDRESS_URL} target="_blank" rel="noopener noreferrer" className="text-primary underline-offset-2 hover:underline">
+                Which address?
+              </a>
             </p>
           )}
         </div>
@@ -660,7 +665,7 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
               />
               <FieldError id="conn-apiKey-error" message={fieldErrors.apiKey} />
               {savedKeyKept && !fieldErrors.apiKey && <UrlChangeNote id="conn-apiKey-note" secret={secretNoun} />}
-              {!fieldErrors.apiKey && <KeyHelp id="conn-apiKey-help" url={url} help={config.keyHelp} />}
+              {!fieldErrors.apiKey && <KeyHelp id="conn-apiKey-help" url={url} help={config.keyHelp} browsable={url !== prefillUrl} />}
             </div>
           </>
         ) : (
@@ -689,7 +694,7 @@ export default function ServiceDetailPage({ params }: { params: Promise<{ servic
               />
               <FieldError id="conn-apiKey-error" message={fieldErrors.apiKey} />
               {savedKeyKept && !fieldErrors.apiKey && <UrlChangeNote id="conn-apiKey-note" secret={secretNoun} />}
-              {!fieldErrors.apiKey && <KeyHelp id="conn-apiKey-help" url={url} help={config.keyHelp} />}
+              {!fieldErrors.apiKey && <KeyHelp id="conn-apiKey-help" url={url} help={config.keyHelp} browsable={url !== prefillUrl} />}
             </div>
             {isJellyfin && (
               <div className="px-4 py-3 border-b border-foreground/[0.06] space-y-1.5">

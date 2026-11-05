@@ -6,13 +6,14 @@ description: Create your admin, then the few things worth doing first.
 ## Create your admin
 
 Open Helprr. With no `APP_PASSWORD` in `.env`, the sign-in page sends you to
-**Welcome to Helprr**, where you choose the admin's username and password.
+**Welcome to Helprr**, where you choose the admin's username (it suggests `admin`) and
+password.
 
 - Whoever opens Helprr first can take this step, so do it before Helprr is reachable
   from the internet.
 - The screen works only at Helprr's address on your network, such as
-  `http://192.168.1.10:3050`. To create the admin through a reverse proxy or a public
-  address, set `APP_ORIGIN` to that address first.
+  `http://192.168.1.10:3050`, or on the server itself. To create the admin through a
+  reverse proxy or a public address, set `APP_ORIGIN` to that address first.
 - Once any user exists, the screen is gone for good.
 - Passwords need at least 15 characters. Jellyfin sign-in uses Jellyfin's own rules.
 
@@ -29,12 +30,15 @@ leave it unset or set it to the name you chose.
 
 ## Then
 
-The dashboard's **Set up Helprr** list walks through these, and ticks them off:
+The dashboard's **Set up Helprr** list has these, and ticks them off as you go (its
+count leaves out the optional one):
 
 1. [Connect your apps](/helprr/connect/) in **Settings → Instances**. Test each one.
-2. [Add people](/helprr/people/) in **Settings → Users**, with only the access they need.
-3. [Install Helprr on your phone and turn on push](/helprr/phone-and-push/).
-4. Export a backup from **Settings → Backup & Restore**, and keep it safe. It is a copy
+2. [Add people](/helprr/people/) in **Settings → Users**, with only the access they need
+   (optional).
+3. [Turn on push notifications](/helprr/phone-and-push/).
+4. [Install Helprr on your phone](/helprr/phone-and-push/#3-install-it).
+5. Export a backup from **Settings → Backup & Restore**, and keep it safe. It is a copy
    of your settings; for the database, see [Back up and restore](/helprr/maintain/backup/).
 
 Preferences, the dashboard layout, notifications, and cleanup and bandwidth rules are

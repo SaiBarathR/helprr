@@ -40,7 +40,8 @@ It writes `.env` with new secrets (`POSTGRES_PASSWORD`, `REDIS_PASSWORD`,
 
 - sets `TZ` to this computer's timezone (`Etc/UTC` when it cannot tell), and says where
   it found it;
-- sets `TWITCH_PUID`, `TWITCH_PGID` and, when the host has a `render` group,
+- for the optional [Twitch](/helprr/twitch/) and [YouTube](/helprr/youtube/) archiving,
+  sets `TWITCH_PUID`, `TWITCH_PGID` and, when the host has a `render` group,
   `TWITCH_RENDER_GID`, and makes the default `twitch-library` folder, owned by that
   user;
 - warns when Docker Compose is missing or too old, or port 3050 is taken.
@@ -61,6 +62,12 @@ docker compose pull
 docker compose up -d
 docker compose ps
 ```
+
+`helprr-init` makes the secrets it needs, then exits; that is normal
+(`docker compose ps -a` shows it as `Exited (0)`). Helprr is ready when `docker compose ps`
+shows `helprr` as `(healthy)`: run it again until it does, which takes a minute or two.
+The script's own "Next" step, `docker compose up -d`, does the same without pulling
+first.
 
 The Compose file uses the `stable` channel; pin a version with `HELPRR_VERSION` in
 `.env`. For `edge` or builds from source, use the separate development stack in

@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises';
-import { lookup } from 'node:dns/promises';
+import { Resolver } from 'node:dns/promises';
 import { prisma } from '@/lib/db';
 
 /**
@@ -38,23 +38,40 @@ export function isLocalAddress(address: string): boolean {
   return v6 === '::1' || /^f[cd][0-9a-f]{2}:/.test(v6) || /^fe[89ab][0-9a-f]:/.test(v6);
 }
 
+/** The addresses /etc/hosts gives a name (Docker writes host.docker.internal there). */
+export function hostsFileAddresses(hostsFile: string, host: string): string[] {
+  const name = host.toLowerCase();
+  return hostsFile.split('\n').flatMap((line) => {
+    const [address, ...names] = line.replace(/#.*/, '').trim().split(/\s+/);
+    return address && names.some((entry) => entry.toLowerCase() === name) ? [address] : [];
+  });
+}
+
 /**
  * A name is looked up first, and skipped unless every address is local: a missing
  * container name can otherwise be passed on to the host's resolvers and land on the
- * internet. The lookup has its own short timeout.
+ * internet. Not with the system lookup: it runs on Node's four-thread pool and cannot be
+ * stopped, so a missing name left waiting there past the timeout held up every later
+ * lookup, host.docker.internal's included, and every fetch. /etc/hosts is read
+ * directly, and DNS asked with its own timeout.
+ *
+ * The fetch that follows looks the name up again, the system's way. In Docker the two
+ * agree (ndots:0, Docker's DNS). Elsewhere, a search domain, or a DNS server that
+ * answers differently the second time, could send that fetch to another address. The
+ * fetch carries no credentials and reads two fixed paths, and the result only lists the
+ * app for the admin to confirm; connecting to the checked address itself would close
+ * this (recorded for the security review).
  */
 async function resolvesLocally(url: string): Promise<boolean> {
   const host = new URL(url).hostname;
   if (isPrivateIpv4(host)) return true;
-  try {
-    const addresses = await Promise.race([
-      lookup(host, { all: true }),
-      new Promise<never>((_, reject) => setTimeout(() => reject(new Error('lookup timed out')), LOOKUP_TIMEOUT_MS)),
-    ]);
-    return addresses.length > 0 && addresses.every(({ address }) => isLocalAddress(address));
-  } catch {
-    return false;
+  let addresses = hostsFileAddresses(await readFile('/etc/hosts', 'utf8').catch(() => ''), host);
+  if (addresses.length === 0) {
+    const resolver = new Resolver({ timeout: LOOKUP_TIMEOUT_MS, tries: 1 });
+    const [v4, v6] = await Promise.all([resolver.resolve4(host).catch(() => []), resolver.resolve6(host).catch(() => [])]);
+    addresses = [...v4, ...v6];
   }
+  return addresses.length > 0 && addresses.every(isLocalAddress);
 }
 
 /** The container's default gateway (the Docker host, from inside a container), from /proc/net/route. */

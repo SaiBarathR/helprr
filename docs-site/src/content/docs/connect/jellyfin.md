@@ -7,8 +7,9 @@ description: Connect Jellyfin to Helprr.
 
 **What it adds:** Libraries and watch status, watching in Helprr, active sessions and devices, playback statistics, and server tasks.
 
-Open **Settings → Instances → Jellyfin**, enter the address ([which one?](/helprr/connect/#which-address-to-use))
-and the key, then **Test** and **Save**.
+In **Settings → Instances**, open **Jellyfin** under **Services**. Enter the address
+([which one?](/helprr/connect/#which-address-to-use)) and the key, then **Test**, and
+**Save** once it works.
 
 After **Test**, choose the **Primary Default User**: the Jellyfin user whose libraries
 Helprr shows for admins.
