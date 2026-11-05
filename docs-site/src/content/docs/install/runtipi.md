@@ -93,5 +93,7 @@ off the machine, and keep them private.
 Helprr's **⋯** menu → **Remove**, then **Uninstall**, removes Helprr and its data. Its
 backups stay, so installing Helprr again can restore one, unless you turn on **Remove
 backups**: do that to remove everything, as the backups hold Helprr's passwords and keys.
+A file from [Change a setting](#change-a-setting) stays too, and a new install would use
+it again: remove it with `sudo rm -r ~/runtipi/user-config/helprr`.
 
 ![Runtipi's Uninstall Helprr question](../../../assets/screens/runtipi-remove.png)

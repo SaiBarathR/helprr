@@ -40,7 +40,10 @@ count leaves out the optional one):
 3. [Turn on push notifications](/helprr/phone-and-push/).
 4. [Install Helprr on your phone](/helprr/phone-and-push/#3-install-it).
 5. Export a backup from **Settings → Backup & Restore**, and keep it safe. It is a copy
-   of your settings; for the database, see [Back up and restore](/helprr/maintain/backup/).
+   of your settings; for the database, see [Back up and restore](/helprr/maintain/backup/),
+   or your dashboard's guide ([Portainer](/helprr/install/portainer/#back-up),
+   [CasaOS](/helprr/install/casaos/#back-up), [Runtipi](/helprr/install/runtipi/#back-up),
+   [TrueNAS](/helprr/install/truenas/#back-up)).
 
 Preferences, the dashboard layout, notifications, and cleanup and bandwidth rules are
 all in **Settings** when you want them.
