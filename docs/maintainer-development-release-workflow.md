@@ -1111,7 +1111,7 @@ the update after **Update App Stores**:
   set -eu
   STORE=$(mktemp -d /tmp/helprr-runtipi.XXXXXX)
   TAGTREE=$(mktemp -d /tmp/helprr-tag.XXXXXX)
-  trap 'git worktree remove --force "$TAGTREE"; rm -rf "$STORE"' EXIT
+  trap 'git worktree remove --force "$TAGTREE" 2>/dev/null || true; rm -rf "$STORE" "$TAGTREE"' EXIT
   git clone https://github.com/SaiBarathR/helprr-runtipi "$STORE"
   git worktree add --detach "$TAGTREE" "$TAG"
   (cd "$TAGTREE/docs-site" && node scripts/runtipi-store.mjs "$STORE" "$VERSION")

@@ -64,8 +64,8 @@ the **helprr** tab, under **Environment Variables** (in alphabetical order, so `
 near the end), change the value, such as `TZ` to your timezone, like `Europe/London`.
 Then select **Save**. The [environment reference](/helprr/reference/environment/) lists
 every setting. Leave `POSTGRES_PASSWORD`, `REDIS_PASSWORD`, `DATABASE_URL`, `JWT_SECRET`
-and the `VAPID_` keys empty: Helprr makes those, and a value on this tab alone would not
-reach its database and Redis.
+and the `VAPID_` keys empty: Helprr makes those. A password on this tab alone would not
+reach its database and Redis, and new keys would end sessions and push.
 
 ![Helprr's settings in CasaOS: TZ set to Europe/London, and Save](../../../assets/screens/casaos-settings-tz.png)
 
@@ -104,13 +104,14 @@ as `helprr.old`, and put the backup in its place:
 
 ```bash
 backup=helprr-backup-YYYYMMDD-HHMMSS.tar.gz
-tar -tzf "$backup" >/dev/null &&
+tar -tzf "$backup" >/dev/null && [ ! -e /DATA/AppData/helprr.old ] &&
   sudo mv /DATA/AppData/helprr /DATA/AppData/helprr.old &&
   sudo tar -C /DATA/AppData -xzf "$backup"
 ```
 
 Start Helprr again. Once it works, remove the old data:
-`sudo rm -rf /DATA/AppData/helprr.old`.
+`sudo rm -rf /DATA/AppData/helprr.old`. If the restore stops partway, put the old data
+back instead: `sudo rm -rf /DATA/AppData/helprr && sudo mv /DATA/AppData/helprr.old /DATA/AppData/helprr`.
 
 Restore with the same Helprr as the one that made the backup, or a newer one: a newer
 Helprr updates the restored database as it starts.

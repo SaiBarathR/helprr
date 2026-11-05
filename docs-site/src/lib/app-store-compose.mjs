@@ -30,6 +30,7 @@ export function withDefaults(text) {
 // Compose leaves alone.
 const DB_PASSWORD_FILE = '      - POSTGRES_PASSWORD_FILE=/helprr-auth/postgres_password';
 const REDIS_REQUIREPASS = "        requirepass \"$(sed 's/[\\\\\"]/\\\\&/g' /helprr-auth/redis_password)\"";
+const REDIS_RELEASE_HEALTH = "      test: [ \"CMD-SHELL\", \"[ -n \\\"$$REDIS_PASSWORD\\\" ] || REDIS_PASSWORD=$$(cat /helprr-auth/redis_password); REDISCLI_AUTH=$$REDIS_PASSWORD redis-cli ping | grep -q PONG\" ]";
 const REDIS_HEALTH = '      test: [ "CMD-SHELL", "REDISCLI_AUTH=\\"$(cat /helprr-auth/redis_password)\\" redis-cli ping | grep -q PONG" ]';
 
 /** Lines from `from` (a line) to the next line indented no deeper than `indent`. */
@@ -86,13 +87,19 @@ function dashboardCompose(release, dataDir) {
   const requirepass = kept.findIndex((line, index) => index > redis && /^\s+requirepass /.test(line));
   if (redis < 0 || passwordChecks !== 2 || requirepass < 0) throw new Error('docker-compose.yml starts Redis differently');
   kept.splice(requirepass, 1, REDIS_REQUIREPASS);
+  // In place of the release's check that a password was found: Redis with an empty one
+  // would turn authentication off.
+  const exec = kept.findIndex((line, index) => index > redis && /^\s+exec redis-server /.test(line));
+  if (exec < 0) throw new Error('docker-compose.yml starts Redis differently');
+  kept.splice(exec, 0, `${kept[exec].match(/^\s+/)[0]}[ -s /helprr-auth/redis_password ] || { echo 'helprr-redis: no password from helprr-init' >&2; exit 1; }`);
   for (let index = kept.length - 1; index > redis; index -= 1) if (/^\s+\[ -n "\$\$REDIS_PASSWORD" \]/.test(kept[index])) kept.splice(index, 1);
   replaceLine(kept, '      - REDIS_PASSWORD=${REDIS_PASSWORD:-}', []);
   // Redis's environment had only that line.
   const empty = kept.findIndex((line, index) => line === '    environment:' && !kept[index + 1].startsWith('      '));
   if (empty >= 0) kept.splice(empty, 1);
-  const health = kept.findIndex((line) => line.includes('redis-cli ping'));
-  if (health < 0) throw new Error('docker-compose.yml has no Redis health check');
+  // Replaced whole, so only while it is the release's own: a change there must come here too.
+  const health = kept.indexOf(REDIS_RELEASE_HEALTH);
+  if (health < 0) throw new Error('docker-compose.yml checks Redis differently');
   kept.splice(health, 1, REDIS_HEALTH);
 
   const body = withDefaults(kept.join('\n'));

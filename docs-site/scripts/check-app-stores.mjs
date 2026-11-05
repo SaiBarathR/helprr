@@ -94,7 +94,9 @@ function commonChecks(name, out, dataRoot, initHealthy) {
     // Everything in the release's command but its password lines is kept, such as Redis's options.
     const kept = base.services['helprr-redis'].command.join('\n').split('\n').filter((line) => line.trim() && !line.trim().startsWith('#') && !line.includes('REDIS_PASSWORD'));
     for (const line of kept) if (!command.includes(line)) throw new Error(`Redis lost: ${line.trim()}`);
-    same(out.services['helprr-redis'].healthcheck.interval, base.services['helprr-redis'].healthcheck.interval, 'Redis health check');
+    const { test: _test, ...health } = out.services['helprr-redis'].healthcheck;
+    const { test: _baseTest, ...baseHealth } = base.services['helprr-redis'].healthcheck;
+    same(health, baseHealth, 'Redis health check timing');
   });
 }
 

@@ -47,9 +47,10 @@ of the Runtipi app; use a [terminal install](/helprr/install/one-command/) for t
 Settings from the [environment reference](/helprr/reference/environment/) go in a file
 of Runtipi's for your own changes, `user-config/helprr/helprr/docker-compose.yml` in
 Runtipi's folder. Runtipi keeps it across updates. In a terminal on the Runtipi machine,
-from the folder that holds `runtipi`:
+as the user who installed Runtipi:
 
 ```bash
+cd ~
 sudo mkdir -p runtipi/user-config/helprr/helprr
 sudo nano runtipi/user-config/helprr/helprr/docker-compose.yml
 ```
@@ -65,7 +66,8 @@ services:
 
 Then **Stop** and **Start** Helprr on its page in Runtipi. Leave `POSTGRES_PASSWORD`,
 `REDIS_PASSWORD`, `DATABASE_URL`, `JWT_SECRET` and the `VAPID_` keys out: Helprr makes
-those, and a value here would not reach its database and Redis.
+those. A password here would not reach its database and Redis, and new keys would end
+sessions and push.
 
 ## Update
 
