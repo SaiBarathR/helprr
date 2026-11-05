@@ -61,9 +61,11 @@ for push notifications on your phone, see [Phone and push](/helprr/phone-and-pus
 In **Apps**, select Helprr, then **Edit**. Change the setting's line, such as `- TZ=UTC`
 to your timezone, like `- TZ=Europe/London`, then select **Save**: TrueNAS starts Helprr
 again with it. The [environment reference](/helprr/reference/environment/) lists every
-setting. Leave `POSTGRES_PASSWORD`, `REDIS_PASSWORD`, `DATABASE_URL`, `JWT_SECRET` and the
-`VAPID_` keys empty: Helprr makes those. A password here would not reach its database
-and Redis, and new keys would end sessions and push.
+setting. Leave `POSTGRES_PASSWORD`, `REDIS_PASSWORD`, `DATABASE_URL` and `JWT_SECRET`
+empty: Helprr makes those. A password set here would not reach its database and Redis, and a new
+`JWT_SECRET` ends every session and makes the app connections Helprr saved unreadable.
+To use push keys of your own, set `VAPID_SUBJECT` and both keys together, as
+[Phone and push](/helprr/phone-and-push/#use-your-own-push-keys) describes.
 
 ![TrueNAS's Edit App YAML, with TZ set to Europe/London](../../../assets/screens/truenas-edit.png)
 

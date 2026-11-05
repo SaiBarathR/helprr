@@ -65,7 +65,7 @@ function dashboardCompose(release, dataDir) {
   const volumes = lines.findIndex((line) => line === 'volumes:');
   if (workerStart < 0 || networks < workerStart || volumes < networks) throw new Error('docker-compose.yml is not laid out as expected');
   // Only the worker's two services may go: a new one there must be added here on purpose.
-  const left = lines.slice(workerStart, networks).filter((line) => /^  [a-z][a-z0-9-]*:$/.test(line));
+  const left = lines.slice(workerStart, networks).filter((line) => /^  [A-Za-z0-9][A-Za-z0-9_.-]*:$/.test(line));
   if (left.join() !== '  helprr-worker-init:,  helprr-twitch-worker:') throw new Error(`docker-compose.yml has services after the worker: ${left.join(' ').trim()}`);
   let start = workerStart;
   while (lines[start - 1].startsWith('  #')) start -= 1;

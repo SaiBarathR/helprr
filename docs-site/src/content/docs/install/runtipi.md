@@ -65,9 +65,10 @@ services:
 ```
 
 Then **Stop** and **Start** Helprr on its page in Runtipi. Leave `POSTGRES_PASSWORD`,
-`REDIS_PASSWORD`, `DATABASE_URL`, `JWT_SECRET` and the `VAPID_` keys out: Helprr makes
-those. A password here would not reach its database and Redis, and new keys would end
-sessions and push.
+`REDIS_PASSWORD`, `DATABASE_URL` and `JWT_SECRET` out: Helprr makes those. A password set here would not reach its database and Redis, and a new
+`JWT_SECRET` ends every session and makes the app connections Helprr saved unreadable.
+To use push keys of your own, set `VAPID_SUBJECT` and both keys together, as
+[Phone and push](/helprr/phone-and-push/#use-your-own-push-keys) describes.
 
 ## Update
 

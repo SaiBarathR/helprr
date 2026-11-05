@@ -63,9 +63,11 @@ Point at the Helprr tile to show its **⋮** menu, open it, then select **Settin
 the **helprr** tab, under **Environment Variables** (in alphabetical order, so `TZ` is
 near the end), change the value, such as `TZ` to your timezone, like `Europe/London`.
 Then select **Save**. The [environment reference](/helprr/reference/environment/) lists
-every setting. Leave `POSTGRES_PASSWORD`, `REDIS_PASSWORD`, `DATABASE_URL`, `JWT_SECRET`
-and the `VAPID_` keys empty: Helprr makes those. A password on this tab alone would not
-reach its database and Redis, and new keys would end sessions and push.
+every setting. Leave `POSTGRES_PASSWORD`, `REDIS_PASSWORD`, `DATABASE_URL` and
+`JWT_SECRET` empty: Helprr makes those. A password set here would not reach its database and Redis, and a new
+`JWT_SECRET` ends every session and makes the app connections Helprr saved unreadable.
+To use push keys of your own, set `VAPID_SUBJECT` and both keys together, as
+[Phone and push](/helprr/phone-and-push/#use-your-own-push-keys) describes.
 
 ![Helprr's settings in CasaOS: TZ set to Europe/London, and Save](../../../assets/screens/casaos-settings-tz.png)
 
