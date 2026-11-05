@@ -69,42 +69,56 @@ at once, but Helprr takes a minute or so to stop and start again.
 ## Back up
 
 Portainer has no backup for a stack's data, so take one in a terminal on Portainer's
-machine. Only you can read the two files it writes:
+machine. It writes two files named with the date and time, which only you can read:
 
 ```bash
 (
   umask 077
-  docker exec helprr-db pg_dump -U postgres -Fc helprr > helprr.dump &&
-    docker run --rm -v helprr-secrets:/s:ro alpine tar -C /s -cf - . > helprr.secrets.tar
+  name=helprr-$(date +%Y%m%d-%H%M%S)
+  docker exec helprr-db pg_dump -U postgres -Fc helprr > "$name.dump" &&
+    docker run --rm -v helprr-secrets:/s:ro alpine tar -C /s -cf - . > "$name.secrets.tar" &&
+    echo "Saved $name.dump and $name.secrets.tar"
 )
 ```
 
-The first is the database; the second, the passwords and keys Helprr made, which the
-database needs. Keep both together and private, and copy them off the machine
+The `.dump` is the database; the `.secrets.tar`, the passwords and keys Helprr made,
+which the database needs. Keep both together and private, and copy them off the machine
 ([Back up and restore](/helprr/maintain/backup/#keep-a-copy-off-the-host) has a way).
 
 ## Restore
 
 To roll back an update, first set the variable `HELPRR_VERSION` to the version that
 wrote the backup (such as `1.12.1`) in the stack's **Environment variables**, and
-**Update the stack**. Then, in the folder with the two files:
+**Update the stack**. Then, in the folder with the two files, name the backup:
 
 ```bash
-docker exec -i helprr-db pg_restore --exit-on-error --file=/dev/null < helprr.dump &&
+dump=helprr-YYYYMMDD-HHMMSS.dump
+```
+
+If the `helprr-secrets` volume was lost or replaced (or this is a new machine), put the
+secrets back first. This restarts Redis, and gives the database, with the passwords from
+the backup:
+
+```bash
+docker stop helprr helprr-redis &&
+  docker run --rm -i -v helprr-secrets:/s alpine tar -C /s -xf - < "${dump%.dump}.secrets.tar" &&
+  docker start -a helprr-init &&
+  docker start helprr-redis &&
+  docker exec -i helprr-db psql -q -U postgres <<'SQL'
+\set pw `cat /helprr-auth/postgres_password`
+ALTER USER postgres PASSWORD :'pw';
+SQL
+```
+
+Then restore the database. It reads the whole backup before it changes anything, and
+stops at the first step that fails:
+
+```bash
+docker exec -i helprr-db pg_restore --exit-on-error --file=/dev/null < "$dump" &&
   docker stop helprr &&
   docker exec helprr-db dropdb -U postgres --if-exists --force helprr &&
   docker exec helprr-db createdb -U postgres helprr &&
-  docker exec -i helprr-db pg_restore -U postgres --exit-on-error -d helprr < helprr.dump &&
-  docker start helprr
-```
-
-It reads the whole backup before it changes anything, and stops at the first step that
-fails. If the `helprr-secrets` volume was lost or replaced, put the secrets back too:
-
-```bash
-docker stop helprr &&
-  docker run --rm -i -v helprr-secrets:/s alpine tar -C /s -xf - < helprr.secrets.tar &&
-  docker start -a helprr-init &&
+  docker exec -i helprr-db pg_restore -U postgres --exit-on-error -d helprr < "$dump" &&
   docker start helprr
 ```
 

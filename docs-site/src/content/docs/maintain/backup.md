@@ -103,11 +103,12 @@ docker compose exec -T helprr-db pg_restore --exit-on-error --file=/dev/null < "
 ```
 
 If the `helprr-secrets` volume was lost or replaced and the dump has a `.secrets.tar`
-beside it, put the secrets back with Helprr and the worker stopped, then refresh the
-copies (the `run` uses `helprr-init`, which has the volume mounted and runs as root):
+beside it, put the secrets back with Helprr, the worker and Redis stopped (Redis reads
+its password only as it starts), then refresh the copies (the `run` uses `helprr-init`,
+which has the volume mounted and runs as root):
 
 ```bash
-docker compose stop helprr helprr-twitch-worker &&
+docker compose stop helprr helprr-twitch-worker helprr-redis &&
   docker compose run --rm --no-deps -T --entrypoint tar helprr-init -C /secrets -xf - < "${dump%.dump}.secrets.tar" &&
   docker compose run --rm --no-deps helprr-init &&
   docker compose up -d
