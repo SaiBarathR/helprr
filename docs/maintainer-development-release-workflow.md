@@ -1305,7 +1305,11 @@ and `worker_digest` for the worker. Record both, and confirm each with
 `docker buildx imagetools inspect` before promoting.
 
 The worker is Debian-based, so expect occasional rebuilds for Debian and .NET
-patches when the Trivy gate blocks. Never weaken the gate.
+patches when the Trivy gate blocks. Never weaken the gate. It takes Debian's fixes with
+`apt-get upgrade` in its runtime stage, a blanket upgrade (unlike the app image's
+targeted `apk` upgrade), because Debian stable updates bring only point and security
+fixes. That step is cached like the app image's: a Debian fix that arrives before a new
+Node image needs a build without that cache, or a bump of the base-image pin.
 
 Development worker, with the dev stack only:
 
