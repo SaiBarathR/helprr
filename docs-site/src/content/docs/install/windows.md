@@ -97,15 +97,16 @@ the same name: a `.dump` and a `.secrets.tar`. Helprr keeps running.
 ```powershell
 cd $HOME\helprr
 & {
+  if (!(Get-Command docker -ErrorAction SilentlyContinue)) { throw "Docker is not found. Start Docker Desktop, then open a new PowerShell window." }
   $name = "helprr-" + (Get-Date -Format yyyyMMdd-HHmmss)
   New-Item -ItemType Directory backups -Force | Out-Null
   docker compose exec -T helprr-db sh -c 'rm -f /tmp/backup.dump && pg_dump -U postgres -d helprr -Fc --no-owner --no-privileges --lock-wait-timeout=10s -f /tmp/backup.dump && pg_restore --list /tmp/backup.dump > /dev/null'
   if ($LASTEXITCODE) { throw "The backup failed. Nothing was saved." }
   docker compose cp helprr-db:/tmp/backup.dump "backups\$name.dump"
-  if ($LASTEXITCODE) { throw "Copying the backup failed. Nothing was saved." }
+  if ($LASTEXITCODE) { Remove-Item "backups\$name.*" -ErrorAction SilentlyContinue; throw "Copying the backup failed. Nothing was saved." }
   docker compose exec -T helprr-db rm /tmp/backup.dump
   docker compose run --rm --no-deps -v "${PWD}\backups:/backups" --entrypoint tar helprr-init -C /secrets -cf "/backups/$name.secrets.tar" .
-  if ($LASTEXITCODE) { Remove-Item "backups\$name.dump"; throw "Saving the passwords and keys failed. Nothing was saved." }
+  if ($LASTEXITCODE) { Remove-Item "backups\$name.*" -ErrorAction SilentlyContinue; throw "Saving the passwords and keys failed. Nothing was saved." }
   "Saved backups\$name.dump and backups\$name.secrets.tar"
 }
 ```
@@ -138,6 +139,7 @@ in full. Nothing changes yet:
 cd $HOME\helprr
 $name = "helprr-20261106-120000"
 & {
+  if (!(Get-Command docker -ErrorAction SilentlyContinue)) { throw "Docker is not found. Start Docker Desktop, then open a new PowerShell window." }
   if (!(Test-Path "backups\$name.dump") -or !(Test-Path "backups\$name.secrets.tar")) { throw "backups\$name.dump or backups\$name.secrets.tar is missing." }
   docker run --rm -v "${PWD}\backups:/backups" postgres:16-alpine sh -c "pg_restore --list '/backups/$name.dump' > /dev/null && tar -tf '/backups/$name.secrets.tar' > /dev/null"
   if ($LASTEXITCODE) { throw "The backup cannot be read. Do not go on with it." }
@@ -150,6 +152,7 @@ first. This **deletes everything Helprr has on this PC**, so if it still holds a
 want, [back it up](#back-up) and keep that backup until the restore works:
 
 ```powershell
+cd $HOME\helprr
 docker compose down -v
 ```
 
@@ -157,6 +160,7 @@ docker compose down -v
 
 ```powershell
 & {
+  if (!$name) { throw "Run step 2 first, in this same window." }
   docker compose run --rm --no-deps -v "${PWD}\backups:/backups" --entrypoint tar helprr-init -C /secrets -xf "/backups/$name.secrets.tar"
   if ($LASTEXITCODE) { throw "Restoring the passwords and keys failed." }
   docker compose run --rm --no-deps helprr-init
@@ -169,6 +173,8 @@ docker compose down -v
   if ($LASTEXITCODE) { throw "Restoring the database failed." }
   docker compose exec -T helprr-db rm /tmp/backup.dump
   docker compose up -d
+  if ($LASTEXITCODE) { throw "The database is restored, but Helprr did not start. See: docker compose logs helprr" }
+  "Restored. Open Helprr and sign in as before."
 }
 ```
 
