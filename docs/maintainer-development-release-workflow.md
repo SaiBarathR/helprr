@@ -1040,8 +1040,9 @@ The tag workflow creates a draft release. Before publishing it:
 2. Summarize user-visible features and fixes.
 3. Call out configuration changes and migrations.
 4. Include update and backup guidance.
-5. Confirm `docker-compose.yml`, `env.example`, `setup-env.sh`, `backup.sh`, and
-   `update.sh` are attached and downloadable.
+5. Confirm `docker-compose.yml`, `env.example`, `setup-env.sh`, `backup.sh`,
+   `update.sh`, `install.sh`, `proxmox-lxc.sh` and `SHA256SUMS` are attached and
+   downloadable.
 6. Include the qualified multi-arch digest.
 7. Mark a stable release as the latest release, not as a prerelease.
 
@@ -1072,7 +1073,7 @@ compare every file with the tagged source:
 ```bash
 ASSET_DIR=$(mktemp -d /tmp/helprr-release-assets.XXXXXX)
 ASSET_BASE="https://github.com/SaiBarathR/helprr/releases/download/$TAG"
-for asset in docker-compose.yml env.example setup-env.sh backup.sh update.sh; do
+for asset in docker-compose.yml env.example setup-env.sh backup.sh update.sh install.sh proxmox-lxc.sh; do
   curl -fsSL -o "$ASSET_DIR/$asset" "$ASSET_BASE/$asset"
 done
 
@@ -1081,7 +1082,9 @@ for mapping in \
   env.example:.env.example \
   setup-env.sh:scripts/setup-env.sh \
   backup.sh:scripts/backup.sh \
-  update.sh:scripts/update.sh; do
+  update.sh:scripts/update.sh \
+  install.sh:scripts/install.sh \
+  proxmox-lxc.sh:scripts/proxmox-lxc.sh; do
   asset_name=${mapping%%:*}
   source_name=${mapping#*:}
   actual=$(shasum -a 256 "$ASSET_DIR/$asset_name" | awk '{print $1}')
@@ -1093,6 +1096,8 @@ done
 sh -n "$ASSET_DIR/setup-env.sh"
 sh -n "$ASSET_DIR/backup.sh"
 sh -n "$ASSET_DIR/update.sh"
+sh -n "$ASSET_DIR/install.sh"
+bash -n "$ASSET_DIR/proxmox-lxc.sh"
 docker compose --env-file "$ASSET_DIR/env.example" \
   -f "$ASSET_DIR/docker-compose.yml" config --quiet
 ```

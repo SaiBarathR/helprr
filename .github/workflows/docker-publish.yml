@@ -212,10 +212,11 @@ jobs:
           install -m 0755 scripts/backup.sh backup.sh
           install -m 0755 scripts/update.sh update.sh
           install -m 0755 scripts/install.sh install.sh
+          install -m 0755 scripts/proxmox-lxc.sh proxmox-lxc.sh
           # install.sh refuses any file whose checksum is not listed here.
-          sha256sum docker-compose.yml env.example setup-env.sh backup.sh update.sh install.sh > SHA256SUMS
+          sha256sum docker-compose.yml env.example setup-env.sh backup.sh update.sh install.sh proxmox-lxc.sh > SHA256SUMS
           gh release create "$GITHUB_REF_NAME" \
             --draft \
             --generate-notes \
             $prerelease_flag \
-            docker-compose.yml env.example setup-env.sh backup.sh update.sh install.sh SHA256SUMS
+            docker-compose.yml env.example setup-env.sh backup.sh update.sh install.sh proxmox-lxc.sh SHA256SUMS
