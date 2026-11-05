@@ -22,3 +22,5 @@ header-issue-mobile
 *.tsbuildinfo
 twitch-library
 twitch-library-dev
+# The docs site is published on its own, never part of the image.
+docs-site

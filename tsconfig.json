@@ -33,6 +33,7 @@
   "exclude": [
     "node_modules",
     "src/app/sw.ts",
-    "jellyfinDocs"
+    "jellyfinDocs",
+    "docs-site"
   ]
 }

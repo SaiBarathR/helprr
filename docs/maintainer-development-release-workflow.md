@@ -117,6 +117,7 @@ external updater they configured themselves. For the maintainer stack, use the s
 | [Docker publish](../.github/workflows/docker-publish.yml) | Push to `development` | Builds and scans native amd64/arm64 images, then updates `edge` |
 | Docker publish | Push of a `vX.Y.Z` tag | Builds exact `X.Y.Z` image and creates a draft GitHub release with deployment assets (re-running on an existing tag skips creation instead of failing) |
 | [Docker promote](../.github/workflows/docker-promote.yml) | Manual workflow dispatch | Verifies a qualified digest, then moves minor, major, and `stable` aliases to it |
+| [Docs](../.github/workflows/docs.yml) | PRs and `main` pushes touching `docs-site/`; manual dispatch | Installs, audits, builds and link-checks the guides site; on `main` only, and only when the repository variable `DOCS_PAGES_ENABLED` is `true`, publishes it to GitHub Pages |
 
 Every action is pinned to a commit SHA with its version in a comment, and the
 Dockerfile's Node base image to an exact version and multi-arch digest.
@@ -1057,6 +1058,13 @@ gh api repos/SaiBarathR/helprr/releases/latest --jq '.tag_name'
 ```
 
 The release must be public, not a prerelease, and returned by the `latest` endpoint.
+
+**Guides site, first publish only** (with the release the owner approves): in the
+repository's Settings → Pages, set the source to GitHub Actions, then set the
+repository variable `DOCS_PAGES_ENABLED` to `true`, and run the Docs workflow once on
+`main` (`gh workflow run docs.yml --ref main`). Setting the variable publishes nothing
+by itself: `main` pushes run the workflow only when `docs-site/` changes. Later releases
+that change `docs-site/` publish on their own.
 Verify the public unauthenticated asset URLs—not only authenticated `gh` downloads—and
 compare every file with the tagged source:
 
