@@ -9,8 +9,9 @@ import { NavigationLoading } from '@/components/layout/navigation-loading';
 import { BrowseFreshnessNotice } from '@/components/browse-freshness-notice';
 import { getQueryClient } from '@/lib/query-client';
 import { RouteScrollRestoration } from '@/components/layout/route-scroll-restoration';
+import { DemoBanner } from '@/components/layout/demo-banner';
 
-export function AppShell({ children }: { children: React.ReactNode }) {
+export function AppShell({ children, demo = false }: { children: React.ReactNode; demo?: boolean }) {
   const mainRef = useRef<HTMLElement>(null);
   const pendingHref = usePendingHref();
   const navPosition = useUIStore((s) => s.navPosition);
@@ -60,6 +61,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         className="app-main flex-1 [overflow-x:clip] pb-[calc(var(--footer-height)+1rem)]"
       >
         <BrowseFreshnessNotice onRetry={() => void getQueryClient().invalidateQueries({ refetchType: 'active' })} />
+        {demo && <DemoBanner />}
         <PushReenableBanner />
         {pendingHref !== null && (
           <div className="fixed right-0 bottom-0 top-[env(safe-area-inset-top)] z-30 overflow-y-auto bg-background" style={{ left: 'var(--app-main-left, 0px)' }}>

@@ -206,6 +206,26 @@ releases reject the Compose file's nested `VAPID_PUBLIC_KEY` default) on a Docke
 release that Docker still supports. The iPhone PWA supports the latest two major iOS
 versions, today iOS 26 and 27.
 
+### Try the demo first
+
+To look around before connecting anything, the demo runs Helprr with fake Sonarr,
+Radarr, Lidarr, qBittorrent, Prowlarr, Jellyfin and Seerr, full of invented shows, films
+and music. It has its own names, port and data, so it runs beside a real install without
+touching it:
+
+```bash
+mkdir helprr-demo && cd helprr-demo
+curl -fsSLO https://raw.githubusercontent.com/SaiBarathR/helprr/main/docker-compose.demo.yml
+docker compose -f docker-compose.demo.yml up -d
+```
+
+Open <http://localhost:3060> and sign in as `demo` with the password
+`helprr-demo-password` (the sign-in page shows it too). Nothing can be changed in the fake
+apps, and TMDB is not connected, so Discover and Recommendations ask for it.
+`docker compose -f docker-compose.demo.yml down` removes the demo and its data (add `-v`
+to also remove its generated passwords). The account is public: the demo answers on this
+computer only, and should never be exposed to a network or put behind a proxy.
+
 ### One command
 
 On a Linux machine with Docker Engine and the Compose plugin:

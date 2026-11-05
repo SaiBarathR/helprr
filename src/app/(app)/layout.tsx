@@ -18,6 +18,7 @@ import { getAppShellServiceFlags } from '@/lib/app-shell-services';
 import { setImageCacheGeneration } from '@/lib/image';
 import { getCacheGeneration } from '@/lib/cache/state';
 import { NavigationProvider } from '@/components/layout/navigation-provider';
+import { isDemo } from '@/lib/demo';
 
 // Revocation is enforced server-side here (getSession() hits the DB on every
 // invocation). Force-dynamic guarantees this layout re-runs on every request
@@ -82,7 +83,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               <DiscoverLayoutHydrator />
               <CommandPalette />
               <Sidebar />
-              <AppShell>{children}</AppShell>
+              <AppShell demo={isDemo()}>{children}</AppShell>
             </div>
               </BadgeProvider>
             </JellyfinStreamingRoot>

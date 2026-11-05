@@ -1,0 +1,164 @@
+# Helprr's local demo: Helprr with fake Sonarr, Radarr, Lidarr, qBittorrent, Prowlarr,
+# Jellyfin and Seerr, full of invented shows, films and music. Nothing real, nothing to
+# set up, and it runs beside a real install without touching it.
+#
+#   docker compose -f docker-compose.demo.yml up -d
+#
+# Then open http://localhost:3060 and sign in as "demo" with the password
+# "helprr-demo-password" (the sign-in page shows it too). It is ready in about a minute.
+#
+#   docker compose -f docker-compose.demo.yml down       stop it; everything is wiped
+#   docker compose -f docker-compose.demo.yml down -v    also remove its generated passwords
+#
+# HELPRR_DEMO_VERSION picks the image (default stable); it needs a release that has the demo.
+# Use it on this computer only: the account is public, so never expose the port or put it
+# behind a proxy. It is a standalone file: never layer it on docker-compose.yml.
+name: helprr-demo
+
+services:
+  # Makes the demo's own passwords and keys, as a real install does (docker/init-secrets.sh).
+  helprr-demo-init:
+    image: ghcr.io/saibarathr/helprr:${HELPRR_DEMO_VERSION:-stable}
+    container_name: helprr-demo-init
+    user: "0:0"
+    entrypoint: ["/bin/sh", "/app/init-secrets.sh"]
+    restart: "no"
+    network_mode: none
+    volumes:
+      - helprr-demo-secrets:/secrets
+      - helprr-demo-db-auth:/auth/db
+      - helprr-demo-redis-auth:/auth/redis
+
+  # The database and Redis keep their data in memory: removing the demo wipes it.
+  helprr-demo-db:
+    image: postgres:16-alpine
+    container_name: helprr-demo-db
+    restart: "no"
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        POSTGRES_PASSWORD=$$(cat /helprr-auth/postgres_password) || exit 1
+        export POSTGRES_PASSWORD
+        exec docker-entrypoint.sh "$$@"
+      - helprr-demo-db
+    command: ["postgres"]
+    depends_on:
+      helprr-demo-init:
+        condition: service_completed_successfully
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_DB=helprr
+    tmpfs:
+      - /var/lib/postgresql/data
+    volumes:
+      - helprr-demo-db-auth:/helprr-auth:ro
+    networks:
+      helprr-demo-net:
+        # Helprr finds its database by this name (docker-entrypoint.sh); the demo network
+        # is its own, so a real install's helprr-db is never reached.
+        aliases: [helprr-db]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  helprr-demo-redis:
+    image: redis:8-alpine
+    container_name: helprr-demo-redis
+    restart: "no"
+    depends_on:
+      helprr-demo-init:
+        condition: service_completed_successfully
+    command:
+      - sh
+      - -c
+      - |
+        REDIS_PASSWORD=$$(cat /helprr-auth/redis_password) || exit 1
+        exec redis-server - --appendonly no --save "" <<EOF
+        requirepass "$$(printf '%s' "$$REDIS_PASSWORD" | sed 's/[\\"]/\\&/g')"
+        EOF
+    # Also keeps the image's /data volume from leaving an unnamed volume behind.
+    tmpfs:
+      - /data
+    volumes:
+      - helprr-demo-redis-auth:/helprr-auth:ro
+    networks:
+      - helprr-demo-net
+    healthcheck:
+      test: ["CMD-SHELL", "REDISCLI_AUTH=$$(cat /helprr-auth/redis_password) redis-cli ping | grep -q PONG"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  # The fake apps (demo/fake-upstreams.mjs): read-only, with a library invented from a seed.
+  helprr-demo-upstreams:
+    image: ghcr.io/saibarathr/helprr:${HELPRR_DEMO_VERSION:-stable}
+    container_name: helprr-demo-upstreams
+    restart: "no"
+    entrypoint: ["node", "demo/fake-upstreams.mjs"]
+    networks:
+      - helprr-demo-net
+    # Up once it answers; an image without the demo fails here, and so does `up`.
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8989/api/v3/system/status').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  helprr-demo:
+    image: ghcr.io/saibarathr/helprr:${HELPRR_DEMO_VERSION:-stable}
+    container_name: helprr-demo
+    restart: "no"
+    stop_grace_period: 45s
+    # This computer only.
+    ports:
+      - "127.0.0.1:${HELPRR_DEMO_PORT:-3060}:3050"
+    depends_on:
+      helprr-demo-init:
+        condition: service_completed_successfully
+      helprr-demo-db:
+        condition: service_healthy
+      helprr-demo-redis:
+        condition: service_healthy
+      helprr-demo-upstreams:
+        condition: service_healthy
+    environment:
+      - HELPRR_DEMO=true
+      # The demo account (src/lib/demo.ts), made when Helprr starts.
+      - HELPRR_ADMIN_USERNAME=demo
+      - APP_PASSWORD=helprr-demo-password
+      - REDIS_URL=redis://helprr-demo-redis:6379
+      # Posters come from the fake apps.
+      - EXTRA_ALLOWED_IMAGE_HOSTS=helprr-demo-upstreams
+    volumes:
+      - helprr-demo-secrets:/app/secrets:ro
+    networks:
+      - helprr-demo-net
+    healthcheck:
+      test: ["CMD", "wget", "-qO", "/dev/null", "http://127.0.0.1:3050/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+
+  # Connects the demo Helprr to the fake apps (demo/seed.mjs), then exits.
+  helprr-demo-seed:
+    image: ghcr.io/saibarathr/helprr:${HELPRR_DEMO_VERSION:-stable}
+    container_name: helprr-demo-seed
+    restart: "no"
+    entrypoint: ["node", "demo/seed.mjs"]
+    depends_on:
+      helprr-demo:
+        condition: service_started
+    networks:
+      - helprr-demo-net
+
+volumes:
+  helprr-demo-secrets:
+  helprr-demo-db-auth:
+  helprr-demo-redis-auth:
+
+networks:
+  helprr-demo-net:

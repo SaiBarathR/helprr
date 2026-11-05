@@ -130,11 +130,14 @@ describe('demo library', () => {
 
   it('repeats the same history and cast on a rebuild, so nothing is announced twice', async () => {
     const { buildLibrary } = await import('../../../demo/library.mjs');
-    const now = Date.now();
-    const events = (lib: { history: { id: number; date: string }[] }) => lib.history.map((h) => `${h.id} ${h.date}`);
+    // Fixed times, so the test never depends on when it runs.
+    const now = Date.UTC(2026, 10, 5, 12);
     const before = buildLibrary(now);
     const after = buildLibrary(now + 6 * 60_000);
-    expect(events(after)).toEqual(events(before));
+    // An event seen before keeps its date (a new import may join, and push the oldest out).
+    const seen = new Map(before.history.map((h: { id: number; date: string }) => [h.id, h.date]));
+    for (const h of after.history) if (seen.has(h.id)) expect(h.date).toBe(seen.get(h.id));
+    expect(after.history.filter((h: { id: number }) => seen.has(h.id)).length).toBeGreaterThan(0);
     for (const h of before.history) expect(Date.parse(h.date)).toBeLessThanOrEqual(now);
     expect(after.cast(1)).toEqual(before.cast(1));
     expect(before.cast(1)).toEqual(before.cast(1));
