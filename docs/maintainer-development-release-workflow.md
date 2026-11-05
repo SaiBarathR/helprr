@@ -1101,6 +1101,32 @@ Only after publication can older no-clone installations use the public exact-ver
 URLs for the new helpers. Remove the temporary directory after recording the successful
 checks.
 
+**Runtipi app store.** Once `stable` points at the release, write the release into
+[helprr-runtipi](https://github.com/SaiBarathR/helprr-runtipi), from a checkout of the
+tag (its `docker-compose.yml` is the one the store must follow). Runtipi users then see
+the update after **Update App Stores**:
+
+```bash
+(
+  set -eu
+  STORE=$(mktemp -d /tmp/helprr-runtipi.XXXXXX)
+  TAGTREE=$(mktemp -d /tmp/helprr-tag.XXXXXX)
+  trap 'git worktree remove --force "$TAGTREE" 2>/dev/null || true; rm -rf "$STORE" "$TAGTREE"' EXIT
+  git clone https://github.com/SaiBarathR/helprr-runtipi "$STORE"
+  git worktree add --detach "$TAGTREE" "$TAG"
+  (cd "$TAGTREE/docs-site" && node scripts/runtipi-store.mjs "$STORE" "$VERSION")
+  git -C "$STORE" add -A
+  git -C "$STORE" commit -m "Helprr $VERSION"
+  git -C "$STORE" push
+)
+```
+
+The script refuses a version that is not newer than the store's, which Runtipi would
+not offer as an update.
+
+The CasaOS page builds its file from the same `docker-compose.yml` with the guides
+site, so it needs no step of its own.
+
 ## Part 10: refresh isolated edge and close the release
 
 If the maintainer Docker host runs the isolated development stack, finish by ensuring
@@ -1292,6 +1318,7 @@ a new release.
 - [ ] Tested digest promoted to minor, major, and `stable` aliases.
 - [ ] Draft GitHub release reviewed and published with all four deployment assets.
 - [ ] Public assets match tagged files and downloaded Compose renders successfully.
+- [ ] Runtipi app store written for the release and pushed.
 - [ ] Isolated `edge` refreshed app-only; development liveness/readiness pass.
 - [ ] Public release page, image aliases, workflows, branch/tag alignment, and local
       release plan verified.

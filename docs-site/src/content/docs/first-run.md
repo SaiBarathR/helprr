@@ -5,7 +5,8 @@ description: Create your admin, then the few things worth doing first.
 
 ## Create your admin
 
-Open Helprr. With no `APP_PASSWORD` in `.env`, the sign-in page sends you to
+Open Helprr. With no `APP_PASSWORD` set (in `.env`, or in your dashboard's settings for
+Helprr), the sign-in page sends you to
 **Welcome to Helprr**, where you choose the admin's username (it suggests `admin`) and
 password.
 
