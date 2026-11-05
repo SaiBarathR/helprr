@@ -91,6 +91,7 @@ copy it to the host first, with a name from `/opt/helprr/backups/stable` (both t
 
 ```bash
 pct pull ID /opt/helprr/backups/stable/helprr-pre-upgrade-YYYYMMDD-HHMMSS.dump ./helprr.dump --perms 600
+pct pull ID /opt/helprr/backups/stable/helprr-pre-upgrade-YYYYMMDD-HHMMSS.secrets.tar ./helprr.secrets.tar --perms 600
 ```
 
 Proxmox's own backups of the container are kept on their storage. Then, on the host:
