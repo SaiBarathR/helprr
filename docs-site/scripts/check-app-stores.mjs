@@ -41,7 +41,8 @@ function same(actual, expected, what) {
 }
 
 const base = config(release);
-const SERVICES = ['helprr', 'helprr-db', 'helprr-init', 'helprr-redis'];
+// The release's services, less the optional worker (behind a profile, so not in Compose's view).
+const SERVICES = Object.keys(base.services).sort();
 // Kept the same as the release: everything about a service except where its data lives.
 const KEYS = ['image', 'user', 'entrypoint', 'command', 'environment', 'healthcheck', 'network_mode', 'stop_grace_period', 'extra_hosts', 'container_name'];
 const targets = (service) => (service.volumes ?? []).map((volume) => volume.target).sort();
@@ -75,13 +76,25 @@ function commonChecks(name, out, dataRoot, initHealthy) {
     const waits = Object.values(out.services).flatMap((service) => Object.entries(service.depends_on ?? {}).filter(([on]) => on === 'helprr-init').map(([, rule]) => rule.condition));
     same([...new Set(waits)], [initHealthy ? 'service_healthy' : 'service_completed_successfully'], 'waiting for helprr-init');
   });
+  check(`${name}: the same networks, restart policies and waits`, () => {
+    for (const service of SERVICES) {
+      same(Object.keys(out.services[service].networks ?? {}).sort(), Object.keys(base.services[service].networks ?? {}).sort(), `${service} networks`);
+      same(Object.keys(out.services[service].depends_on ?? {}).sort(), Object.keys(base.services[service].depends_on ?? {}).sort(), `${service} waits for`);
+      if (service !== 'helprr-init') same(out.services[service].restart, base.services[service].restart, `${service} restart`);
+    }
+  });
   check(`${name}: the database and Redis read helprr-init's passwords`, () => {
     const db = out.services['helprr-db'];
     same(db.environment.POSTGRES_PASSWORD_FILE, '/helprr-auth/postgres_password', 'POSTGRES_PASSWORD_FILE');
     same(db.environment.POSTGRES_PASSWORD, undefined, 'POSTGRES_PASSWORD');
     for (const key of ['image', 'command', 'healthcheck']) same(db[key], base.services['helprr-db'][key], `helprr-db ${key}`);
-    same(out.services['helprr-redis'].image, base.services['helprr-redis'].image, 'redis image');
-    if (!out.services['helprr-redis'].command.join(' ').includes('/helprr-auth/redis_password')) throw new Error('Redis does not read its password file');
+    for (const key of ['image', 'environment']) same(out.services['helprr-redis'][key], key === 'environment' ? undefined : base.services['helprr-redis'][key], `helprr-redis ${key}`);
+    const command = out.services['helprr-redis'].command.join('\n');
+    if (!command.includes('/helprr-auth/redis_password')) throw new Error('Redis does not read its password file');
+    // Everything in the release's command but its password lines is kept, such as Redis's options.
+    const kept = base.services['helprr-redis'].command.join('\n').split('\n').filter((line) => line.trim() && !line.trim().startsWith('#') && !line.includes('REDIS_PASSWORD'));
+    for (const line of kept) if (!command.includes(line)) throw new Error(`Redis lost: ${line.trim()}`);
+    same(out.services['helprr-redis'].healthcheck.interval, base.services['helprr-redis'].healthcheck.interval, 'Redis health check');
   });
 }
 

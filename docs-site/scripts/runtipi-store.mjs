@@ -1,7 +1,7 @@
 // Writes Helprr's Runtipi app store (github.com/SaiBarathR/helprr-runtipi) for a release,
 // from the release's docker-compose.yml. Run from docs-site/:
 //   node scripts/runtipi-store.mjs <store checkout> <version, such as 1.13.0>
-import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runtipiCompose } from '../src/lib/app-store-compose.mjs';
@@ -17,6 +17,10 @@ const [major, minor, patch] = version.split('.').map(Number);
 if (minor > 999 || patch > 999) throw new Error(`version ${version} does not fit tipi_version`);
 
 const app = join(store, 'apps', 'helprr');
+const tipiVersion = major * 1_000_000 + minor * 1_000 + patch;
+// Runtipi offers an update only when tipi_version grows: never write an older release.
+const current = existsSync(join(app, 'config.json')) ? JSON.parse(readFileSync(join(app, 'config.json'), 'utf8')) : null;
+if (current && current.tipi_version >= tipiVersion) throw new Error(`the store already has ${current.version}; ${version} would not be offered as an update`);
 mkdirSync(join(app, 'metadata'), { recursive: true });
 writeFileSync(join(app, 'docker-compose.yml'), runtipiCompose(release, version));
 writeFileSync(join(app, 'config.json'), `${JSON.stringify({
@@ -28,8 +32,8 @@ writeFileSync(join(app, 'config.json'), `${JSON.stringify({
   port: 3050,
   categories: ['media'],
   description: 'Helprr brings your media apps into one web app you install on your phone, with push notifications.',
-  // Runtipi offers an update when this number grows: one per release, in version order.
-  tipi_version: major * 1_000_000 + minor * 1_000 + patch,
+  // One per release, in version order.
+  tipi_version: tipiVersion,
   version,
   source: 'https://github.com/SaiBarathR/helprr',
   website: 'https://saibarathr.github.io/helprr/',

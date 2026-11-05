@@ -16,7 +16,7 @@ the machine, a settings change, an update, a backup and restore, and uninstallin
 
 ## 1. Get the Compose file
 
-[Download Helprr's CasaOS Compose file](/helprr/downloads/casaos/docker-compose.yml), or
+<a href="/helprr/downloads/casaos/docker-compose.yml" download="docker-compose.yml">Download Helprr's CasaOS Compose file</a>, or
 copy it from here. It is Helprr's own Compose file, with its data in CasaOS's folder and
 every value written out, as CasaOS needs:
 
@@ -29,7 +29,9 @@ every value written out, as CasaOS needs:
 
 It leaves out the optional Twitch and YouTube worker, which needs folders of its own;
 use [Only the Compose file](/helprr/install/compose-only/) or a
-[terminal install](/helprr/install/one-command/) for that.
+[terminal install](/helprr/install/one-command/) for that. Its containers have fixed
+names (`helprr`, `helprr-db` and so on), so a machine runs one Helprr: remove another
+install first.
 
 ## 2. Install it
 
@@ -51,14 +53,19 @@ use [Only the Compose file](/helprr/install/compose-only/) or a
 
 CasaOS pulls the images and starts Helprr; give it a minute or two. A **Helprr** tile
 appears on the dashboard. Select it, or open `http://YOUR_SERVER:3050`, and
-[create your admin](/helprr/first-run/).
+[create your admin](/helprr/first-run/). Then [connect your apps](/helprr/connect/),
+and for push notifications on your phone, see [Phone and push](/helprr/phone-and-push/)
+and [HTTPS](/helprr/https/).
 
 ## Change a setting
 
-On the Helprr tile, open the **⋮** menu, then **Settings**. On the **helprr** tab, under
-**Environment Variables**, change the value (such as `TZ` to your timezone, like
-`Europe/London`), then select **Save**. The
-[environment reference](/helprr/reference/environment/) lists every setting.
+Point at the Helprr tile to show its **⋮** menu, open it, then select **Settings**. On
+the **helprr** tab, under **Environment Variables** (in alphabetical order, so `TZ` is
+near the end), change the value, such as `TZ` to your timezone, like `Europe/London`.
+Then select **Save**. The [environment reference](/helprr/reference/environment/) lists
+every setting. Leave `POSTGRES_PASSWORD`, `REDIS_PASSWORD`, `DATABASE_URL`, `JWT_SECRET`
+and the `VAPID_` keys empty: Helprr makes those, and a value on this tab alone would not
+reach its database and Redis.
 
 ![Helprr's settings in CasaOS: TZ set to Europe/London, and Save](../../../assets/screens/casaos-settings-tz.png)
 
@@ -69,13 +76,14 @@ The tile's **⋮** menu also stops, starts and restarts Helprr.
 ## Update
 
 [Back up](#back-up) first. Then open the tile's **⋮** menu, **Settings**, and select
-**Save** without changing anything: CasaOS pulls the newest Helprr and restarts it, and
-your data stays. **Check then update** in the same menu works only for apps from CasaOS's
+**Save** without changing anything: CasaOS pulls the newest Helprr and, if there is a
+newer one, restarts Helprr on it. Your data stays. **Check then update** in the same menu works only for apps from CasaOS's
 own store, so it does nothing for Helprr.
 
-If the release notes say Helprr's Compose file changed, uninstall Helprr *without*
-**Delete userdata**, and install the new file as in [step 2](#2-install-it): Helprr
-starts again with all your data.
+If the release notes say Helprr's Compose file changed, note the settings you changed,
+uninstall Helprr *without* **Delete userdata**, and install the new file as in
+[step 2](#2-install-it). Helprr starts again with all your data; set your changed
+settings again.
 
 ## Back up
 
@@ -90,19 +98,28 @@ you can read:
 Start Helprr again with the same button. The file has your database and the passwords
 and keys Helprr made: keep it private, and copy it off the machine.
 
-To restore, stop Helprr the same way, put the folder back, and start it again:
+To restore, stop Helprr the same way. Then, in the folder with the backup, with its
+name in place of the example, check the backup reads in full, set the current data aside
+as `helprr.old`, and put the backup in its place:
 
 ```bash
-sudo rm -rf /DATA/AppData/helprr && sudo tar -C /DATA/AppData -xzf helprr-backup-YYYYMMDD-HHMMSS.tar.gz
+backup=helprr-backup-YYYYMMDD-HHMMSS.tar.gz
+tar -tzf "$backup" >/dev/null &&
+  sudo mv /DATA/AppData/helprr /DATA/AppData/helprr.old &&
+  sudo tar -C /DATA/AppData -xzf "$backup"
 ```
+
+Start Helprr again. Once it works, remove the old data:
+`sudo rm -rf /DATA/AppData/helprr.old`.
 
 Restore with the same Helprr as the one that made the backup, or a newer one: a newer
 Helprr updates the restored database as it starts.
 
 ## Uninstall
 
-Open the tile's **⋮** menu, then **Uninstall**. Leave **Delete userdata** unticked to
-keep `/DATA/AppData/helprr`, so installing Helprr again later brings back everything; tick
-it to remove Helprr's data too.
+Open the tile's **⋮** menu, then **Uninstall**. CasaOS always warns that data cannot be
+recovered. Leave the **Delete userdata** box unticked to keep `/DATA/AppData/helprr`, so
+installing Helprr again later brings back your data (not the settings you changed). To
+remove Helprr's data too, tick the box itself; clicking its words does not tick it.
 
 ![CasaOS's uninstall question, with the Delete userdata box](../../../assets/screens/casaos-uninstall.png)

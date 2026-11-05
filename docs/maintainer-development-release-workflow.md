@@ -1107,15 +1107,22 @@ tag (its `docker-compose.yml` is the one the store must follow). Runtipi users t
 the update after **Update App Stores**:
 
 ```bash
-STORE=$(mktemp -d /tmp/helprr-runtipi.XXXXXX)
-git clone https://github.com/SaiBarathR/helprr-runtipi "$STORE"
-git worktree add --detach /tmp/helprr-tag "$TAG"
-(cd /tmp/helprr-tag/docs-site && node scripts/runtipi-store.mjs "$STORE" "$VERSION")
-git -C "$STORE" add -A
-git -C "$STORE" commit -m "Helprr $VERSION"
-git -C "$STORE" push
-git worktree remove /tmp/helprr-tag
+(
+  set -eu
+  STORE=$(mktemp -d /tmp/helprr-runtipi.XXXXXX)
+  TAGTREE=$(mktemp -d /tmp/helprr-tag.XXXXXX)
+  trap 'git worktree remove --force "$TAGTREE"; rm -rf "$STORE"' EXIT
+  git clone https://github.com/SaiBarathR/helprr-runtipi "$STORE"
+  git worktree add --detach "$TAGTREE" "$TAG"
+  (cd "$TAGTREE/docs-site" && node scripts/runtipi-store.mjs "$STORE" "$VERSION")
+  git -C "$STORE" add -A
+  git -C "$STORE" commit -m "Helprr $VERSION"
+  git -C "$STORE" push
+)
 ```
+
+The script refuses a version that is not newer than the store's, which Runtipi would
+not offer as an update.
 
 The CasaOS page builds its file from the same `docker-compose.yml` with the guides
 site, so it needs no step of its own.

@@ -29,15 +29,7 @@ export function withDefaults(text) {
 // Postgres by POSTGRES_PASSWORD_FILE, Redis and its health check by $(cat ...), which
 // Compose leaves alone.
 const DB_PASSWORD_FILE = '      - POSTGRES_PASSWORD_FILE=/helprr-auth/postgres_password';
-const REDIS_COMMAND = [
-  '    command:',
-  '      - sh',
-  '      - -c',
-  '      - |',
-  "        exec redis-server - --appendonly yes <<EOF",
-  "        requirepass \"$(sed 's/[\\\\\"]/\\\\&/g' /helprr-auth/redis_password)\"",
-  '        EOF',
-];
+const REDIS_REQUIREPASS = "        requirepass \"$(sed 's/[\\\\\"]/\\\\&/g' /helprr-auth/redis_password)\"";
 const REDIS_HEALTH = '      test: [ "CMD-SHELL", "REDISCLI_AUTH=\\"$(cat /helprr-auth/redis_password)\\" redis-cli ping | grep -q PONG" ]';
 
 /** Lines from `from` (a line) to the next line indented no deeper than `indent`. */
@@ -71,6 +63,9 @@ function dashboardCompose(release, dataDir) {
   const networks = lines.findIndex((line) => line === 'networks:');
   const volumes = lines.findIndex((line) => line === 'volumes:');
   if (workerStart < 0 || networks < workerStart || volumes < networks) throw new Error('docker-compose.yml is not laid out as expected');
+  // Only the worker's two services may go: a new one there must be added here on purpose.
+  const left = lines.slice(workerStart, networks).filter((line) => /^  [a-z][a-z0-9-]*:$/.test(line));
+  if (left.join() !== '  helprr-worker-init:,  helprr-twitch-worker:') throw new Error(`docker-compose.yml has services after the worker: ${left.join(' ').trim()}`);
   let start = workerStart;
   while (lines[start - 1].startsWith('  #')) start -= 1;
   const kept = [...lines.slice(0, start), ...lines.slice(networks, volumes)]
@@ -85,7 +80,13 @@ function dashboardCompose(release, dataDir) {
 
   replaceBlock(kept, 'helprr-db', 'entrypoint', []);
   replaceLine(kept, '      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-}', [DB_PASSWORD_FILE]);
-  replaceBlock(kept, 'helprr-redis', 'command', REDIS_COMMAND);
+  // Redis's command, less the lines that read REDIS_PASSWORD: the file has the password.
+  const redis = kept.indexOf('  helprr-redis:');
+  const passwordChecks = kept.filter((line, index) => index > redis && /^\s+\[ -n "\$\$REDIS_PASSWORD" \]/.test(line)).length;
+  const requirepass = kept.findIndex((line, index) => index > redis && /^\s+requirepass /.test(line));
+  if (redis < 0 || passwordChecks !== 2 || requirepass < 0) throw new Error('docker-compose.yml starts Redis differently');
+  kept.splice(requirepass, 1, REDIS_REQUIREPASS);
+  for (let index = kept.length - 1; index > redis; index -= 1) if (/^\s+\[ -n "\$\$REDIS_PASSWORD" \]/.test(kept[index])) kept.splice(index, 1);
   replaceLine(kept, '      - REDIS_PASSWORD=${REDIS_PASSWORD:-}', []);
   // Redis's environment had only that line.
   const empty = kept.findIndex((line, index) => line === '    environment:' && !kept[index + 1].startsWith('      '));
@@ -138,9 +139,11 @@ const RUNTIPI_INIT = [
   '    restart: unless-stopped',
   '    healthcheck:',
   '      test: ["CMD", "test", "-f", "/tmp/helprr-init-done"]',
-  '      interval: 2s',
-  '      timeout: 2s',
-  '      retries: 60',
+  '      interval: 30s',
+  '      timeout: 5s',
+  '      retries: 3',
+  '      start_period: 5m',
+  '      start_interval: 2s',
 ];
 
 /**
