@@ -1,0 +1,72 @@
+---
+// The TrueNAS Compose file for the reader's pool: src/lib/app-store-compose.mjs, which
+// scripts/check-app-stores.mjs checks. Shows the file for `tank` until a pool is typed.
+import releaseCompose from '../../../docker-compose.yml?raw';
+import { truenasCompose } from '../lib/app-store-compose.mjs';
+const initial = truenasCompose(releaseCompose, 'tank');
+---
+
+<div class="tn not-content" data-compose={releaseCompose}>
+  <label class="tn-field">
+    Your pool's name (on <strong>Storage</strong>)
+    <input name="pool" value="tank" autocomplete="off" spellcheck="false" aria-describedby="tn-error" />
+  </label>
+  <span class="tn-error" id="tn-error" role="status"></span>
+  <p class="tn-hint">The file keeps Helprr's data in <code data-out="path">/mnt/tank/helprr</code>.</p>
+  <div class="tn-code">
+    <pre data-out="compose">{initial}</pre>
+    <button type="button" data-copy>Copy</button>
+  </div>
+</div>
+
+<script>
+  import { isPoolName, truenasCompose } from '../lib/app-store-compose.mjs';
+
+  for (const root of document.querySelectorAll<HTMLElement>('.tn')) {
+    const release = root.dataset.compose ?? '';
+    const input = root.querySelector<HTMLInputElement>('input[name="pool"]')!;
+    const out = root.querySelector<HTMLElement>('[data-out="compose"]')!;
+    const path = root.querySelector<HTMLElement>('[data-out="path"]')!;
+    const error = root.querySelector<HTMLElement>('.tn-error')!;
+    const copy = root.querySelector<HTMLButtonElement>('[data-copy]')!;
+    input.addEventListener('input', () => {
+      const pool = input.value.trim();
+      const ok = isPoolName(pool);
+      input.setAttribute('aria-invalid', ok ? 'false' : 'true');
+      error.textContent = ok ? '' : 'A pool name starts with a letter, then letters, digits and _ . : - only.';
+      copy.disabled = !ok;
+      if (!ok) return;
+      out.textContent = truenasCompose(release, pool);
+      path.textContent = `/mnt/${pool}/helprr`;
+    });
+    copy.addEventListener('click', async () => {
+      const copied = await navigator.clipboard?.writeText(out.textContent ?? '').then(() => true, () => false);
+      copy.textContent = copied ? 'Copied' : 'Select and copy by hand';
+      setTimeout(() => (copy.textContent = 'Copy'), 2000);
+    });
+  }
+</script>
+
+<style>
+  /* minmax(0, 1fr): the file scrolls inside its box instead of widening the page. */
+  .tn { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0.5rem; margin-block: 1rem 1.5rem; }
+  .tn-field { display: flex; flex-direction: column; gap: 0.35rem; font-size: var(--sl-text-sm); color: var(--sl-color-gray-1); }
+  .tn-field input {
+    font: inherit; font-family: var(--sl-font-mono); padding: 0.5rem 0.65rem; border-radius: 0.4rem; max-width: 20rem;
+    border: 1px solid var(--sl-color-gray-5); background: var(--sl-color-black); color: var(--sl-color-white); min-height: 44px;
+  }
+  .tn-error { color: #e36a7a; font-size: var(--sl-text-xs); min-height: 1em; }
+  :global([data-theme='light']) .tn-error { color: #a3182d; }
+  .tn-hint { font-size: var(--sl-text-sm); color: var(--sl-color-gray-3); margin: 0; }
+  .tn-code { position: relative; }
+  .tn-code pre {
+    overflow: auto; max-height: 28rem; padding: 0.75rem 1rem; border-radius: 0.5rem; border: 1px solid var(--sl-color-gray-5);
+    background: var(--sl-color-gray-6); font-family: var(--sl-font-mono); font-size: var(--sl-text-sm); white-space: pre; margin: 0;
+  }
+  .tn-code button {
+    position: absolute; top: 0.4rem; right: 1rem; font: inherit; font-size: var(--sl-text-sm); padding: 0.3rem 0.7rem;
+    border-radius: 0.4rem; cursor: pointer; border: 1px solid var(--sl-color-gray-5); background: var(--sl-color-black);
+    color: var(--sl-color-white); min-height: 44px;
+  }
+  .tn-code button:disabled { opacity: 0.5; cursor: not-allowed; }
+</style>

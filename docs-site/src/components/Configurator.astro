@@ -11,7 +11,9 @@ import { ACCESS, DEFAULTS, SYSTEMS, WHERE } from '../lib/configurator.mjs';
     {Object.entries(SYSTEMS).map(([value, label]) => (
       <label><input type="radio" name="system" value={value} checked={value === DEFAULTS.system} /> {label}</label>
     ))}
-    <p class="cfg-hint">CasaOS, Runtipi, TrueNAS and Proxmox are added here as their guides are tested.</p>
+    <p class="cfg-hint">On CasaOS, Runtipi or TrueNAS? Their guides have a file of their own:
+      <a href="/helprr/install/casaos/">CasaOS</a>, <a href="/helprr/install/runtipi/">Runtipi</a>,
+      <a href="/helprr/install/truenas/">TrueNAS</a>.</p>
   </fieldset>
 
   <fieldset>

@@ -1,6 +1,6 @@
 // Helprr's Compose file for app dashboards that read a Compose file as it is: no .env,
 // no ${...} variables, and folders on the host instead of Docker volumes (CasaOS,
-// Runtipi).
+// Runtipi, TrueNAS).
 // Made from the release's docker-compose.yml at build time, so it follows every
 // release; scripts/check-app-stores.mjs checks it against that file with Compose.
 
@@ -128,6 +128,21 @@ x-casaos:
     - amd64
     - arm64
 `;
+}
+
+/** A TrueNAS pool name, as TrueNAS allows it. */
+export function isPoolName(pool) {
+  return /^[A-Za-z][A-Za-z0-9_.:-]{0,49}$/.test(pool);
+}
+
+/**
+ * For TrueNAS: pasted into Apps → Discover → Install via YAML, with the data in the
+ * reader's `helprr` dataset on their pool. TrueNAS keeps the file as it is, but has no
+ * .env either, so the file is the same as CasaOS's, less CasaOS's own section.
+ */
+export function truenasCompose(release, pool) {
+  if (!isPoolName(pool)) throw new Error(`not a pool name: ${pool}`);
+  return dashboardCompose(release, `/mnt/${pool}/helprr`);
 }
 
 // Runtipi counts an app with a stopped container as stopped, and starts only running
