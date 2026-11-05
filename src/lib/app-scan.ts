@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { Resolver } from 'node:dns/promises';
+import { isIP } from 'node:net';
 import { prisma } from '@/lib/db';
 
 /**
@@ -14,8 +15,9 @@ import { prisma } from '@/lib/db';
  * key there to local requests, and no key may come from a scan.
  */
 import { isPrivateIpv4, scanTargets, type ScanTarget, type ScanType } from '@/lib/app-scan-targets';
+import { isLocalAddress } from '@/lib/local-hostname';
 
-export { scanTargets, type ScanTarget, type ScanType };
+export { isLocalAddress, scanTargets, type ScanTarget, type ScanType };
 
 export interface FoundApp extends ScanTarget {
   /** Helprr already has a connection at exactly this address. */
@@ -29,14 +31,6 @@ const LOOKUP_TIMEOUT_MS = 1000;
 const MAX_BODY_BYTES = 64 * 1024;
 const CONCURRENCY = 4;
 const MIN_INTERVAL_MS = 30_000;
-
-/** An address only a home network or this machine uses. */
-export function isLocalAddress(address: string): boolean {
-  if (isPrivateIpv4(address)) return true;
-  if (/^127\./.test(address) || /^169\.254\./.test(address) || /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(address)) return true;
-  const v6 = address.toLowerCase();
-  return v6 === '::1' || /^f[cd][0-9a-f]{2}:/.test(v6) || /^fe[89ab][0-9a-f]:/.test(v6);
-}
 
 /** The addresses /etc/hosts gives a name (Docker writes host.docker.internal there). */
 export function hostsFileAddresses(hostsFile: string, host: string): string[] {
@@ -55,23 +49,30 @@ export function hostsFileAddresses(hostsFile: string, host: string): string[] {
  * lookup, host.docker.internal's included, and every fetch. /etc/hosts is read
  * directly, and DNS asked with its own timeout.
  *
- * The fetch that follows looks the name up again, the system's way. In Docker the two
- * agree (ndots:0, Docker's DNS). Elsewhere, a search domain, or a DNS server that
- * answers differently the second time, could send that fetch to another address. The
- * fetch carries no credentials and reads two fixed paths, and the result only lists the
- * app for the admin to confirm; connecting to the checked address itself would close
- * this (recorded for the security review).
+ * Returns the address the requests then go to: the one checked, never a second lookup
+ * that a search domain or a changing DNS answer could send elsewhere.
  */
-async function resolvesLocally(url: string): Promise<boolean> {
+async function localAddress(url: string): Promise<string | null> {
   const host = new URL(url).hostname;
-  if (isPrivateIpv4(host)) return true;
+  if (isPrivateIpv4(host)) return host;
   let addresses = hostsFileAddresses(await readFile('/etc/hosts', 'utf8').catch(() => ''), host);
   if (addresses.length === 0) {
     const resolver = new Resolver({ timeout: LOOKUP_TIMEOUT_MS, tries: 1 });
     const [v4, v6] = await Promise.all([resolver.resolve4(host).catch(() => []), resolver.resolve6(host).catch(() => [])]);
     addresses = [...v4, ...v6];
   }
-  return addresses.length > 0 && addresses.every(isLocalAddress);
+  // Only real addresses (no zone id), each one local.
+  const real = addresses.every((address) => isIP(address) !== 0 && !address.includes('%'));
+  return addresses.length > 0 && real && addresses.every(isLocalAddress) ? addresses[0] : null;
+}
+
+/** The URL with its name replaced by the address checked for it; null if it cannot be. */
+function atAddress(url: string, address: string): string | null {
+  const parsed = new URL(url);
+  const host = address.includes(':') ? `[${address}]` : address;
+  parsed.hostname = host;
+  // URL ignores a hostname it cannot take: then the request would go to the name again.
+  return parsed.hostname === host.toLowerCase() ? parsed.toString().replace(/\/$/, '') : null;
 }
 
 /** The container's default gateway (the Docker host, from inside a container), from /proc/net/route. */
@@ -179,7 +180,9 @@ async function runScan(): Promise<ScanTarget[]> {
     Array.from({ length: CONCURRENCY }, async () => {
       while (next < targets.length) {
         const target = targets[next++];
-        if ((await resolvesLocally(target.url)) && (await fingerprint(target.type, target.url))) hits.push(target);
+        const address = await localAddress(target.url);
+        const at = address ? atAddress(target.url, address) : null;
+        if (at && (await fingerprint(target.type, at))) hits.push(target);
       }
     }),
   );

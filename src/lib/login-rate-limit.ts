@@ -55,6 +55,12 @@ function formatWindowDuration(ms: number): string {
 
 const LOGIN_WINDOW_TEXT = formatWindowDuration(LOGIN_WINDOW_MS);
 
+/** How many proxies in front of Helprr append to X-Forwarded-For: 1 to 10, default 1. */
+function trustedProxyHops(): number {
+  const hops = Number(process.env.TRUSTED_PROXY_HOPS || 1);
+  return Number.isInteger(hops) && hops >= 1 && hops <= 10 ? hops : 1;
+}
+
 export function getClientIp(request: NextRequest): string | undefined {
   // Without a sanitized reverse proxy, x-forwarded-* is attacker-controlled
   // — feeding it into rate limiting lets one client trivially bypass the
@@ -63,14 +69,18 @@ export function getClientIp(request: NextRequest): string | undefined {
   // login response already uses for the Secure cookie flag.
   if (process.env.TRUST_FORWARDED_PROTO !== 'true') return undefined;
 
+  // Each proxy appends the address it received the request from, after whatever the
+  // visitor sent: with N trusted proxies in front of Helprr (TRUSTED_PROXY_HOPS,
+  // default 1), the visitor is the Nth entry from the end. Entries before it are the
+  // visitor's to choose. An entry that is not an address counts as no address.
   const forwardedFor = request.headers.get('x-forwarded-for');
   if (forwardedFor) {
-    const [firstIp] = forwardedFor.split(',');
-    const trimmed = firstIp?.trim();
-    if (trimmed && isIP(trimmed) !== 0) return trimmed;
+    const entries = forwardedFor.split(',').map((entry) => entry.trim());
+    const visitor = entries[Math.max(0, entries.length - trustedProxyHops())];
+    if (visitor && isIP(visitor) !== 0) return visitor;
   }
-  const realIp = request.headers.get('x-real-ip')?.trim();
-  if (realIp && isIP(realIp) !== 0) return realIp;
+  // X-Real-IP is not read: a proxy that does not set X-Forwarded-For may pass a
+  // visitor's X-Real-IP on as it came.
   return undefined;
 }
 

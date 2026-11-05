@@ -159,6 +159,10 @@ main() {
     fail "Port $port is already in use. Choose another with --port."
   fi
 
+  case "$asset_base" in
+    ''|https://*) ;;
+    *) say "Note: $asset_base is not https, so the checksums it serves prove nothing; use it only for testing." ;;
+  esac
   if [ -z "$asset_base" ]; then
     if [ -n "$version" ]; then
       asset_base="https://github.com/SaiBarathR/helprr/releases/download/v$version"
@@ -212,8 +216,17 @@ main() {
       say "  The password is APP_PASSWORD in $dir/.env. To show it on screen:"
       say "    grep '^APP_PASSWORD=' \"$dir/.env\""
     else
-      say "  Open http://${address:-THIS-SERVER}:$port and create your admin account."
-      say '  Do it now, before Helprr is reachable from the internet: whoever opens it first can.'
+      case "$address" in
+        ''|10.*|127.*|192.168.*|172.1[6-9].*|172.2[0-9].*|172.3[01].*|100.6[4-9].*|100.[7-9][0-9].*|100.1[01][0-9].*|100.12[0-7].*)
+          say "  Open http://${address:-THIS-SERVER}:$port and create your admin account."
+          say '  Do it now, before Helprr is reachable from the internet: whoever opens it first can.' ;;
+        *)
+          # A public address: the admin is created only at a local one (src/lib/local-hostname.ts).
+          say "  This server's address ($address) is public, so create your admin on the server itself:"
+          say "  from your computer, run  ssh -L $port:localhost:$port YOU@$address"
+          say "  and open http://localhost:$port while it runs. Or see the HTTPS guide (APP_ORIGIN)."
+          say "  Do it now: until an admin exists, anyone who can reach port $port can create one." ;;
+      esac
     fi
     say '  For push notifications on a phone, Helprr needs an https:// address; see'
     say '  https://saibarathr.github.io/helprr/https/'

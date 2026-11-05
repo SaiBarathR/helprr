@@ -36,6 +36,7 @@ export function resetFirstAdminLatch(): void {
 
 // A public endpoint that hashes a password: at most this many claims a minute per
 // process. The per-IP sign-in limit needs a trusted proxy, so it may not apply here.
+// Only a claim that passes the cheap checks takes a slot, so junk cannot use them up.
 const CLAIMS_PER_MINUTE = 10;
 const claimTimes: number[] = [];
 
@@ -57,6 +58,13 @@ export class FirstAdminTakenError extends Error {
   constructor() {
     super('An admin already exists');
     this.name = 'FirstAdminTakenError';
+  }
+}
+
+export class FirstAdminBusyError extends Error {
+  constructor() {
+    super('Too many attempts');
+    this.name = 'FirstAdminBusyError';
   }
 }
 
@@ -82,6 +90,7 @@ export async function claimFirstAdmin(input: { username: unknown; password: unkn
   if (passwordError) throw new FirstAdminInputError(passwordError);
 
   if (!(await needsFirstAdmin())) throw new FirstAdminTakenError();
+  if (!takeClaimSlot()) throw new FirstAdminBusyError();
   const passwordHash = await hashPassword(input.password);
   try {
     await prisma.$transaction(async (tx) => {
