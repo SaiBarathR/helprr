@@ -18,11 +18,12 @@ In the host's shell, as root (in the web interface: select the node, then **Shel
 bash -c "$(curl -fsSL https://github.com/SaiBarathR/helprr/releases/latest/download/proxmox-lxc.sh)"
 ```
 
-It says what it will make and asks before it starts. Then, in two or three minutes, it:
+It says what it will make and, in a terminal, asks before it starts. Then, in two or
+three minutes, it:
 
-1. downloads Proxmox's Debian 13 container template, if you do not have it yet,
+1. downloads Proxmox's newest Debian 13 container template, if you do not have it yet,
 2. creates the container: named `helprr`, unprivileged, with nesting on (Docker needs
-   it), 2 cores, 2 GiB of memory, an 8 GB disk, its address by DHCP on `vmbr0`, the
+   it), 2 cores, 2 GiB of memory, an 8 GiB disk, its address by DHCP on `vmbr0`, the
    host's timezone, and started when the host starts,
 3. installs Docker in it, from Docker's own install script,
 4. installs Helprr in `/opt/helprr` inside it, checking every file against the release's
@@ -31,17 +32,18 @@ It says what it will make and asks before it starts. Then, in two or three minut
 
 It changes nothing else on the host. If a container named `helprr` already exists on
 this node, it stops before changing anything (in a cluster, it does not look at the other
-nodes).
+nodes). If an install stopped partway (a closed shell, say), remove that container as in
+[Remove](#remove) and run the command again.
 
-Its options, after the command (`bash -c "$(curl ...)" -- --disk 16`, or on a downloaded
-copy):
+Its options go after the command, as `bash -c "$(curl ...)" -- --disk 16`, or
+`bash proxmox-lxc.sh --disk 16` on a downloaded copy. Sizes are plain numbers:
 
 | Option | Default |
 | --- | --- |
 | `--ctid ID` | The next free ID |
 | `--storage NAME` | `local-lvm`, else `local-zfs`, else the first storage that holds containers |
 | `--bridge NAME` | `vmbr0` |
-| `--disk GB` | `8` |
+| `--disk GIB` | `8` |
 | `--cores N` | `2` |
 | `--memory MIB` | `2048` |
 | `--version X.Y.Z` | The latest release |
@@ -61,13 +63,14 @@ bash proxmox-lxc.sh
 
 ## Inside the container
 
-Helprr runs there as on any Linux machine with Docker. From the host's shell, `pct enter`
-followed by the container's ID gives you a shell in it; Helprr is in `/opt/helprr`.
+Helprr runs there as on any Linux machine with Docker. In the host's shell, `pct list`
+shows the container's ID, and `pct enter` followed by it gives you a shell in the
+container; Helprr is in `/opt/helprr`.
 
 - **Update**: `cd /opt/helprr && ./scripts/update.sh`, which backs up first. See
   [Update](/helprr/maintain/update/).
 - **Back up**: `cd /opt/helprr && ./scripts/backup.sh`, which writes the database and
-  Helprr's passwords and keys to `/opt/helprr/backups`. See
+  Helprr's passwords and keys to `/opt/helprr/backups/stable`, inside the container. See
   [Back up and restore](/helprr/maintain/backup/).
 - **Settings**: in `/opt/helprr/.env`, as the [environment reference](/helprr/reference/environment/)
   describes; then `docker compose up -d --no-build --no-deps helprr`.
@@ -82,5 +85,13 @@ Then [connect your apps](/helprr/connect/), and for push notifications on your p
 
 ## Remove
 
-To remove Helprr and everything it kept, back up anything you want first, then on the
-host: `pct stop` and `pct destroy`, each followed by the container's ID.
+Removing the container removes everything in it, Helprr's own backups too. To keep one,
+copy it to the host first, with a name from `/opt/helprr/backups/stable` (both the
+`.dump` and the `.secrets.tar`):
+
+```bash
+pct pull ID /opt/helprr/backups/stable/helprr-pre-upgrade-YYYYMMDD-HHMMSS.dump ./helprr.dump --perms 600
+```
+
+Proxmox's own backups of the container are kept on their storage. Then, on the host:
+`pct stop` and `pct destroy`, each followed by the container's ID (`pct list` shows it).

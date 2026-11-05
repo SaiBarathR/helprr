@@ -19,7 +19,7 @@ Usage: proxmox-lxc.sh [options]
   --storage NAME    Storage for the container's disk (default: local-lvm, local-zfs,
                     or the first that holds containers)
   --bridge NAME     Network bridge (default: vmbr0; the container gets its address by DHCP)
-  --disk GB         Disk size (default: 8)
+  --disk GIB        Disk size in GiB (default: 8)
   --cores N         CPU cores (default: 2)
   --memory MIB      Memory (default: 2048)
   --version X.Y.Z   A specific Helprr release (default: the latest)
@@ -65,7 +65,8 @@ existing=$(pct list | awk 'NR > 1 && $NF == "helprr" { print $1 }' | head -n 1)
 if [ -n "$existing" ]; then
   fail "Container $existing is already named helprr, so this stops here and changes nothing.
 To update Helprr, update it inside that container (pct enter $existing, then see the update guide).
-To install again from scratch, back it up, then remove it: pct stop $existing && pct destroy $existing"
+If an earlier install stopped partway, or to start again from scratch, remove it (copy out any
+backups first: removing it deletes them), then run this again: pct stop $existing && pct destroy $existing"
 fi
 
 [ -n "$ctid" ] || ctid=$(pvesh get /cluster/nextid)
@@ -85,7 +86,7 @@ template_storage=$(holds vztmpl | head -n 1 || true)
 ip link show "$bridge" >/dev/null 2>&1 || fail "There is no network bridge \"$bridge\". Choose one with --bridge."
 
 say "This creates container $ctid, named helprr: Debian 13, unprivileged, nesting on (for Docker),"
-say "$cores cores, $memory MiB memory, a ${disk} GB disk on $storage, on $bridge by DHCP, started at boot."
+say "$cores cores, $memory MiB memory, a ${disk} GiB disk on $storage, on $bridge by DHCP, started at boot."
 if [ "$ask" = yes ] && { [ -r /dev/tty ] && ( : < /dev/tty ); } 2>/dev/null; then
   printf 'Go ahead? [Y/n] ' > /dev/tty
   IFS= read -r answer < /dev/tty || answer=
