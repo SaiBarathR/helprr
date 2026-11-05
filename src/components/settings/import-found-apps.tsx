@@ -11,6 +11,7 @@ import { GroupedSection } from '@/components/settings/grouped-section';
 import { jsonFetcher } from '@/lib/query-fetch';
 import { invalidateInstances } from '@/lib/query-invalidation';
 import { findServiceByType } from '@/lib/settings/service-config';
+import { isTroubleshootingSection, troubleshootingUrl } from '@/lib/docs-links';
 import type { ImportCandidate, ImportDiscovery, ImportResult } from '@/lib/service-import';
 
 interface RowState {
@@ -173,7 +174,19 @@ export function ImportFoundApps() {
                   )}
                 </div>
               )}
-              {result && !result.ok && <p className="pl-7 text-xs text-red-400" role="alert">{result.error}</p>}
+              {result && !result.ok && (
+                <p className="pl-7 text-xs text-red-400" role="alert">
+                  {result.error}
+                  {isTroubleshootingSection(result.help) && (
+                    <>
+                      {' '}
+                      <a href={troubleshootingUrl(result.help)} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2">
+                        How to fix this
+                      </a>
+                    </>
+                  )}
+                </p>
+              )}
             </li>
           );
         })}

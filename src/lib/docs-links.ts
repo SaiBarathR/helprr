@@ -1,0 +1,32 @@
+/**
+ * Links from the app into its guides (docs-site/, published at DOCS_URL). Every section
+ * named here is a heading on docs-site/src/content/docs/troubleshooting.md; a test
+ * (src/lib/__tests__/docs-links.test.ts) checks each one exists.
+ */
+export const DOCS_URL = 'https://saibarathr.github.io/helprr/';
+
+export const TROUBLESHOOTING_SECTIONS = [
+  'not-a-valid-address',
+  'localhost-does-not-reach-your-server',
+  'it-answered-but-not-as-that-app',
+  'nothing-is-answering',
+  'the-name-is-not-found',
+  'no-answer-in-time',
+  'the-address-cannot-be-reached',
+  'the-connection-was-cut-off',
+  'that-port-speaks-plain-http',
+  'the-certificate-was-refused',
+  'the-key-was-refused',
+  'qbittorrent-blocks-helprr',
+  'the-address-redirects',
+] as const;
+
+export type TroubleshootingSection = (typeof TROUBLESHOOTING_SECTIONS)[number];
+
+export function isTroubleshootingSection(value: unknown): value is TroubleshootingSection {
+  return typeof value === 'string' && (TROUBLESHOOTING_SECTIONS as readonly string[]).includes(value);
+}
+
+export function troubleshootingUrl(section: TroubleshootingSection): string {
+  return `${DOCS_URL}troubleshooting/#${section}`;
+}

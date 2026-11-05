@@ -24,7 +24,7 @@ describe('currentHintContext', () => {
   });
 
   it('looks nothing up for an address that is not loopback', async () => {
-    expect(await currentHintContext('http://192.168.0.124:8989')).toEqual({ inDocker: true, hostGatewayResolves: false });
+    expect(await currentHintContext('http://192.168.1.10:8989')).toEqual({ inDocker: true, hostGatewayResolves: false });
     expect(lookup).not.toHaveBeenCalled();
   });
 

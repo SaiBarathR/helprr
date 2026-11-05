@@ -15,5 +15,5 @@ issue are closed. Their durable invariants now live in
 
 Current cache behavior, persistence, queueing, stale revalidation, diagnostics,
 and operational guidance are documented in `docs/architecture.md` and the
-README. This file remains only as a pointer for links in older investigation
+guides (`docs-site/src/content/docs/reference/cache.md`). This file remains only as a pointer for links in older investigation
 records.

@@ -215,7 +215,8 @@ main() {
       say "  Open http://${address:-THIS-SERVER}:$port and create your admin account."
       say '  Do it now, before Helprr is reachable from the internet: whoever opens it first can.'
     fi
-    say '  For push notifications on a phone, Helprr needs an https:// address; see the README.'
+    say '  For push notifications on a phone, Helprr needs an https:// address; see'
+    say '  https://saibarathr.github.io/helprr/https/'
   }
 
   if [ "$start" = no ]; then

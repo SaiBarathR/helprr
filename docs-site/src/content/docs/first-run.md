@@ -1,0 +1,41 @@
+---
+title: First run
+description: Create your admin, then the few things worth doing first.
+---
+
+## Create your admin
+
+Open Helprr. With no `APP_PASSWORD` in `.env`, the sign-in page sends you to
+**Welcome to Helprr**, where you choose the admin's username and password.
+
+- Whoever opens Helprr first can take this step, so do it before Helprr is reachable
+  from the internet.
+- The screen works only at Helprr's address on your network, such as
+  `http://192.168.1.10:3050`. To create the admin through a reverse proxy or a public
+  address, set `APP_ORIGIN` to that address first.
+- Once any user exists, the screen is gone for good.
+- Passwords need at least 15 characters. Jellyfin sign-in uses Jellyfin's own rules.
+
+### With `APP_PASSWORD`
+
+`APP_PASSWORD` creates the admin at the first start instead. Its username is `admin`,
+or `HELPRR_ADMIN_USERNAME`. Changing `APP_PASSWORD` later does **not** change the
+password. To reset it, set `APP_PASSWORD` to the new password (at least 15 characters)
+and `HELPRR_ADMIN_PASSWORD_RESET=true`, restart Helprr, then remove the reset line. That
+does not end anyone's sessions; do that in **Settings → Sessions**.
+
+If `HELPRR_ADMIN_USERNAME` is set, Helprr renames the admin to it at every start, so
+leave it unset or set it to the name you chose.
+
+## Then
+
+The dashboard's **Set up Helprr** list walks through these, and ticks them off:
+
+1. [Connect your apps](/helprr/connect/) in **Settings → Instances**. Test each one.
+2. [Add people](/helprr/people/) in **Settings → Users**, with only the access they need.
+3. [Install Helprr on your phone and turn on push](/helprr/phone-and-push/).
+4. Export a backup from **Settings → Backup & Restore**, and keep it safe. It is a copy
+   of your settings; for the database, see [Back up and restore](/helprr/maintain/backup/).
+
+Preferences, the dashboard layout, notifications, and cleanup and bandwidth rules are
+all in **Settings** when you want them.
