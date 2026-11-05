@@ -1,0 +1,74 @@
+---
+title: Portainer
+description: Install Helprr as a Portainer stack, from its Compose file, with no terminal.
+---
+
+Helprr installs as a Portainer stack from its own Compose file. There is nothing to type
+in a terminal and no secrets to make: Helprr makes its passwords and keys the first time
+it starts.
+
+*Tested 2026-11-05 with Portainer Community Edition 2.45.3 LTS, on its local Docker
+environment: deploy, first run, and an update that kept the data.*
+
+## 1. Add the stack
+
+1. In Portainer, open your environment (usually **local**), then **Stacks → Add stack**.
+2. **Name**: `helprr`.
+3. **Build method**: **Web editor**. Open
+   [Helprr's Compose file](https://github.com/SaiBarathR/helprr/releases/latest/download/docker-compose.yml),
+   copy all of it, and paste it into the editor. If Sonarr and your other apps run in
+   their own stack, take the Compose file from
+   [Your setup, step by step](/helprr/install/configurator/) instead (choose
+   **Portainer**): it adds their network, so Helprr reaches them by name.
+
+![Portainer's Create stack page: the name helprr, Web editor chosen, and Helprr's Compose file pasted](../../../assets/screens/portainer-create-stack.png)
+
+## 2. Settings (optional)
+
+Under **Environment variables**, **Add an environment variable** for each setting you
+want. None is required; the most useful are:
+
+| Name | Value |
+| --- | --- |
+| `TZ` | Your timezone, such as `Europe/London` (UTC otherwise) |
+| `HELPRR_PORT` | Another port, if 3050 is taken |
+
+Every other setting is in the [environment reference](/helprr/reference/environment/), and
+[Your setup, step by step](/helprr/install/configurator/) lists the ones your setup needs.
+
+![Portainer's Environment variables: TZ set to Europe/London](../../../assets/screens/portainer-variables.png)
+
+## 3. Deploy
+
+Press **Deploy the stack**. Portainer pulls the images and starts Helprr; give it a minute
+or two. On the stack's page, `helprr`, `helprr-db` and `helprr-redis` show **healthy**.
+`helprr-init` shows **exited - code 0**: it makes Helprr's passwords once, then stops, and
+that is normal.
+
+![The helprr stack in Portainer: helprr, helprr-db and helprr-redis healthy, helprr-init exited with code 0](../../../assets/screens/portainer-running.png)
+
+Then open `http://YOUR_SERVER:3050` (your Portainer machine's address, or your
+`HELPRR_PORT`) and [create your admin](/helprr/first-run/).
+
+## Update
+
+**Stacks → helprr → Editor → Update the stack**, turn on **Re-pull image and redeploy**,
+then **Update**. Your data stays: it lives in the stack's volumes.
+
+![Portainer's update dialog, with Re-pull image and redeploy turned on](../../../assets/screens/portainer-update.png)
+
+## Back up
+
+Portainer has no backup for a stack's data, so take one in a terminal on Portainer's
+machine:
+
+```bash
+docker exec helprr-db pg_dump -U postgres -Fc helprr > helprr.dump
+docker run --rm -v helprr-secrets:/s:ro alpine tar -C /s -cf - . > helprr-secrets.tar
+```
+
+The first is the database; the second, the passwords and keys Helprr made, which the
+database needs. Keep both together and private. To restore, follow
+[Back up and restore](/helprr/maintain/backup/#restore-over-an-existing-install): use
+`docker exec -i helprr-db` where it says `docker compose exec -T helprr-db`, and stop or
+start `helprr` from Portainer's **Containers** page where it uses `docker compose`.

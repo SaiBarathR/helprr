@@ -18,7 +18,7 @@ export const APPS = [
 ];
 
 // Each Phase 7 platform adds itself here, with its tested guide.
-export const SYSTEMS = { linux: 'Linux with Docker Compose' };
+export const SYSTEMS = { linux: 'Linux with Docker Compose', portainer: 'Portainer' };
 
 export const WHERE = {
   stack: 'In Docker on this machine, in their own Compose stack',
@@ -125,7 +125,10 @@ export function generate(answers, releaseCompose) {
   commands.push('  docker compose up -d', ')');
 
   // On a public server, the port must answer only this machine (see https.md).
-  const vps = `On a machine with a public IP address (a VPS), add HELPRR_PORT=127.0.0.1:3050 to .env and restart Helprr (cd helprr && docker compose up -d --no-build --no-deps helprr), so no one can go around the proxy.${answers.where === 'remote' ? ' Sonarr and Radarr on other machines then add torrents by magnet link only.' : ''}${answers.access === 'npm' ? " Nginx Proxy Manager, in Docker, then cannot reach that port: add the network helprr_helprr-net to its Compose file as an external network (keep its other networks), recreate it, and change the proxy host's Forward Hostname to helprr (see Helprr's Docker network in the HTTPS guide)." : ''}${answers.access === 'cloudflare' ? ' Install cloudflared on the machine itself (not the Docker option), so localhost:3050 still reaches Helprr.' : ''}`;
+  const addPort = answers.system === 'portainer'
+    ? "add the variable HELPRR_PORT with the value 127.0.0.1:3050 to the stack's Environment variables and select Update the stack"
+    : 'add HELPRR_PORT=127.0.0.1:3050 to .env and restart Helprr (cd helprr && docker compose up -d --no-build --no-deps helprr)';
+  const vps = `On a machine with a public IP address (a VPS), ${addPort}, so no one can go around the proxy.${answers.where === 'remote' ? ' Sonarr and Radarr on other machines then add torrents by magnet link only.' : ''}${answers.access === 'npm' ? " Nginx Proxy Manager, in Docker, then cannot reach that port: add the network helprr_helprr-net to its Compose file as an external network (keep its other networks), recreate it, and change the proxy host's Forward Hostname to helprr (see Helprr's Docker network in the HTTPS guide)." : ''}${answers.access === 'cloudflare' ? ' Install cloudflared on the machine itself (not the Docker option), so localhost:3050 still reaches Helprr.' : ''}`;
   const https = {
     home: {
       title: 'No HTTPS',
@@ -177,12 +180,25 @@ export function generate(answers, releaseCompose) {
     },
   }[answers.access];
 
+  // Portainer: its forms instead of a terminal (install/portainer.md).
+  const portainer = answers.system === 'portainer' ? {
+    steps: [
+      ...(answers.where === 'stack' ? [`Check that ${answers.network} is listed under Networks: Helprr joins it.`] : []),
+      'Stacks → Add stack. Name: helprr. Build method: Web editor.',
+      'Paste the docker-compose.yml below into the editor.',
+      'Under Environment variables, add each of the variables below.',
+      'Deploy the stack, and give it a minute or two. helprr-init shows exited - code 0: that is normal.',
+    ],
+    variables: env.map((line) => ({ name: line.slice(0, line.indexOf('=')), value: line.slice(line.indexOf('=') + 1) })),
+  } : null;
+
   return {
     problems: {},
     compose,
     composeChanged: changed,
     env,
     commands,
+    portainer,
     // Where the first admin is created: the only address Helprr accepts for it. With
     // APP_ORIGIN, exactly that (so HTTPS comes first); without, the home-network address.
     open: origin ?? `http://${answers.serverAddress}:3050`,
