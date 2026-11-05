@@ -89,7 +89,13 @@ which the database needs. Keep both together and private, and copy them off the 
 
 To roll back an update, first set the variable `HELPRR_VERSION` to the version that
 wrote the backup (such as `1.12.1`) in the stack's **Environment variables**, and
-**Update the stack**. Then, in the folder with the two files, name the backup, and check
+**Update the stack**.
+
+If you use the Twitch or YouTube worker, run
+`docker stop helprr-twitch-worker` before the steps below, and
+`docker start helprr-twitch-worker` after them.
+
+In the folder with the two files, name the backup, and check
 that both files read in full, before anything changes:
 
 ```bash
@@ -99,9 +105,7 @@ docker exec -i helprr-db pg_restore --exit-on-error --file=/dev/null < "$dump" &
 ```
 
 If the `helprr-secrets` volume was lost or replaced (or this is a new machine), put the
-secrets back first. This also restarts Redis with the password from the backup. If you
-use the Twitch or YouTube worker, run `docker stop helprr-twitch-worker` first, and
-`docker start helprr-twitch-worker` at the very end.
+secrets back first. This also restarts Redis with the password from the backup.
 
 ```bash
 docker stop helprr helprr-redis &&
