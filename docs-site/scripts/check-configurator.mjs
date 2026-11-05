@@ -41,6 +41,16 @@ exit 2
   return { dir, home, status: run.status, stdout: run.stdout, stderr: run.stderr, config: existsSync(configFile) ? JSON.parse(readFileSync(configFile, 'utf8')) : null };
 }
 
+/** Portainer's way: the pasted file, with the variables table as its stack.env file. */
+function runPortainer(out) {
+  const dir = mkdtempSync(join(tmpdir(), 'helprr-configurator-'));
+  writeFileSync(join(dir, 'docker-compose.yml'), out.compose);
+  writeFileSync(join(dir, 'stack.env'), out.portainer.variables.map(({ name, value }) => `${name}=${value}\n`).join(''));
+  // Nothing from this shell: only what the reader enters reaches Compose.
+  const run = spawnSync(realDocker, ['compose', '-p', 'helprr', '--env-file', 'stack.env', 'config', '--format', 'json'], { cwd: dir, env: { PATH: process.env.PATH, HOME: process.env.HOME }, encoding: 'utf8' });
+  return { dir, status: run.status, stderr: run.stderr, config: run.status === 0 ? JSON.parse(run.stdout) : null };
+}
+
 function check(label, answers, assert) {
   try {
     assert(answers);
@@ -62,7 +72,9 @@ for (const answers of all) {
   failed += check(`${answers.system}/${answers.where}/${answers.access}`, answers, () => {
     const out = generate(answers, release);
     must(Object.keys(out.problems).length === 0, `refused its own sample answers: ${JSON.stringify(out.problems)}`);
-    const run = runBlock(out.commands);
+    // Portainer pastes the file and takes the variables in a table: Compose sees them as
+    // its environment. The terminal runs the block.
+    const run = out.portainer ? runPortainer(out) : runBlock(out.commands);
     try {
       must(run.status === 0 && run.config, `the command block failed: ${run.stderr.trim()}`);
       const { services, networks } = run.config;
@@ -84,6 +96,8 @@ for (const answers of all) {
       if (!origin) must(isLocalHostname(new URL(out.open).hostname), `${out.open} is not an address Helprr creates the first admin at`);
       // Sonarr and Radarr always get an address to fetch .torrent files from.
       must(Boolean(helprr.environment.ARR_CALLBACK_ORIGIN), 'no ARR_CALLBACK_ORIGIN');
+      // Portainer has no .env or terminal: its steps say where things go instead.
+      if (out.portainer) must(!JSON.stringify(out.https.steps).includes('.env'), 'a Portainer step talks about .env');
     } finally {
       rmSync(run.dir, { recursive: true, force: true });
     }

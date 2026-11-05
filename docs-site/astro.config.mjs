@@ -20,7 +20,7 @@ export default defineConfig({
       customCss: ['./src/styles/helprr.css'],
       sidebar: [
         { label: 'Start here', items: ['start-here', 'install/configurator', 'install/demo'] },
-        { label: 'Install', items: ['install/one-command', 'install/compose-only', 'install/manual', 'first-run'] },
+        { label: 'Install', items: ['install/one-command', 'install/compose-only', 'install/manual', 'install/portainer', 'first-run'] },
         {
           label: 'Connect your apps',
           items: ['connect', 'connect/sonarr', 'connect/radarr', 'connect/lidarr', 'connect/qbittorrent', 'connect/prowlarr', 'connect/jellyfin', 'connect/seerr', 'connect/tmdb'],

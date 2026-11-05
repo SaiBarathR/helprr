@@ -11,7 +11,7 @@ import { ACCESS, DEFAULTS, SYSTEMS, WHERE } from '../lib/configurator.mjs';
     {Object.entries(SYSTEMS).map(([value, label]) => (
       <label><input type="radio" name="system" value={value} checked={value === DEFAULTS.system} /> {label}</label>
     ))}
-    <p class="cfg-hint">Portainer, CasaOS, Runtipi, TrueNAS and Proxmox are added here as their guides are tested.</p>
+    <p class="cfg-hint">CasaOS, Runtipi, TrueNAS and Proxmox are added here as their guides are tested.</p>
   </fieldset>
 
   <fieldset>
@@ -50,14 +50,24 @@ import { ACCESS, DEFAULTS, SYSTEMS, WHERE } from '../lib/configurator.mjs';
   <h2 id="your-steps">Your steps</h2>
   <ol data-out="steps">
     <li data-step="commands">
-      <p>On the machine, in a terminal. It makes a <code>helprr</code> folder, stops at the first
-      thing that fails, never replaces an existing <code>.env</code>, and keeps an existing
-      <code>docker-compose.yml</code> as <code>docker-compose.yml.bak</code>:</p>
-      <div class="cfg-code"><pre data-out="commands"></pre><button type="button" data-copy="commands">Copy</button></div>
+      <div data-show-out="shell">
+        <p>On the machine, in a terminal. It makes a <code>helprr</code> folder, stops at the first
+        thing that fails, never replaces an existing <code>.env</code>, and keeps an
+        existing <code>docker-compose.yml</code> as <code>docker-compose.yml.bak</code>:</p>
+        <div class="cfg-code"><pre data-out="commands"></pre><button type="button" data-copy="commands">Copy</button></div>
+      </div>
+      <div data-show-out="portainer">
+        <p>In Portainer, in your environment (<a href="/helprr/install/portainer/">the Portainer guide</a> has pictures):</p>
+        <ol data-out="portainerSteps"></ol>
+        <table>
+          <thead><tr><th>Name</th><th>Value</th></tr></thead>
+          <tbody data-out="variables"></tbody>
+        </table>
+      </div>
       <div data-show-out="compose">
-        <details>
-          <summary>The docker-compose.yml it writes: the release's file, with your apps' network added</summary>
-          <div class="cfg-code"><pre data-out="compose"></pre></div>
+        <details data-out="composeDetails">
+          <summary data-out="composeSummary"></summary>
+          <div class="cfg-code"><pre data-out="compose"></pre><button type="button" data-copy="compose">Copy</button></div>
         </details>
         <p><button type="button" data-download="compose">Download docker-compose.yml</button></p>
       </div>
@@ -91,6 +101,7 @@ import { ACCESS, DEFAULTS, SYSTEMS, WHERE } from '../lib/configurator.mjs';
   const slot = (name: string) => out.querySelector<HTMLElement>(`[data-out="${name}"]`)!;
   const status = document.querySelector<HTMLElement>('[data-out="status"]')!;
   let current: ReturnType<typeof generate> | null = null;
+  let shownSystem = '';
 
   function code(text: string) {
     const element = document.createElement('code');
@@ -122,9 +133,35 @@ import { ACCESS, DEFAULTS, SYSTEMS, WHERE } from '../lib/configurator.mjs';
     const now = [...steps.children].map((item) => (item as HTMLElement).dataset.step).join();
     if (now !== order.join()) for (const name of order) steps.append(steps.querySelector(`[data-step="${name}"]`)!);
     current = result;
+    const show = (name: string, visible: boolean) => { out.querySelector<HTMLElement>(`[data-show-out="${name}"]`)!.hidden = !visible; };
     slot('commands').textContent = result.commands.join('\n');
     slot('compose').textContent = result.compose;
-    out.querySelector<HTMLElement>('[data-show-out="compose"]')!.hidden = !result.composeChanged;
+    show('shell', !result.portainer);
+    show('portainer', Boolean(result.portainer));
+    // Portainer pastes the file, so it is always shown; the terminal writes it itself.
+    show('compose', Boolean(result.portainer) || result.composeChanged);
+    slot('composeSummary').textContent = result.portainer
+      ? 'docker-compose.yml, to paste into the Web editor'
+      : "The docker-compose.yml it writes: the release's file, with your apps' network added";
+    // Opened for Portainer when it is chosen; otherwise left as the reader set it.
+    if (answers.system !== shownSystem) (slot('composeDetails') as HTMLDetailsElement).open = Boolean(result.portainer);
+    shownSystem = answers.system;
+    if (result.portainer) {
+      slot('portainerSteps').replaceChildren(...result.portainer.steps.map((step: string) => {
+        const item = document.createElement('li');
+        item.textContent = step;
+        return item;
+      }));
+      slot('variables').replaceChildren(...result.portainer.variables.map((variable: { name: string; value: string }) => {
+        const row = document.createElement('tr');
+        for (const text of [variable.name, variable.value]) {
+          const cell = document.createElement('td');
+          cell.append(code(text));
+          row.append(cell);
+        }
+        return row;
+      }));
+    }
     slot('open').textContent = result.open;
     slot('apps').replaceChildren(...result.apps.map((app) => {
       const row = document.createElement('tr');
