@@ -12,7 +12,8 @@ environment: deploy, first run, and an update that kept the data.*
 
 ## 1. Add the stack
 
-1. In Portainer, open your environment (usually **local**), then **Stacks → Add stack**.
+1. In Portainer, open your environment (usually **local**; on a new Portainer, select
+   **Get Started** first), then **Stacks → Add stack**.
 2. **Name**: `helprr`.
 3. **Build method**: **Web editor**. Open
    [Helprr's Compose file](https://github.com/SaiBarathR/helprr/releases/latest/download/docker-compose.yml),
@@ -45,6 +46,10 @@ or two. On the stack's page, `helprr`, `helprr-db` and `helprr-redis` show **hea
 `helprr-init` shows **exited - code 0**: it makes Helprr's passwords once, then stops, and
 that is normal.
 
+If Portainer shows an error instead, it still keeps a stack named `helprr`, so a second
+try with that name is refused: **Stacks → helprr → Delete this stack**, fix what the error
+said, and add the stack again.
+
 ![The helprr stack in Portainer: helprr and helprr-db healthy, helprr-init exited with code 0](../../../assets/screens/portainer-running.png)
 
 Then open `http://YOUR_SERVER:3050` (your Portainer machine's address, or your
@@ -56,7 +61,8 @@ Then open `http://YOUR_SERVER:3050` (your Portainer machine's address, or your
 Helprr's Compose file changed, replace the editor's contents with the new one (from the
 same link, or from [Your setup, step by step](/helprr/install/configurator/) if you took
 it from there). Select **Update the stack**, turn on **Re-pull image and redeploy**, then
-**Update**. Your data stays: it lives in the stack's volumes.
+**Update**. Your data stays: it lives in the stack's volumes. Portainer closes the dialog
+at once, but Helprr takes a minute or so to stop and start again.
 
 ![Portainer's update dialog, with Re-pull image and redeploy turned on](../../../assets/screens/portainer-update.png)
 
@@ -101,3 +107,11 @@ docker stop helprr &&
   docker start -a helprr-init &&
   docker start helprr
 ```
+
+## Remove, or start over
+
+**Stacks → helprr → Delete this stack** removes Helprr's containers but keeps its data,
+so a new `helprr` stack starts with the same database, users and passwords. To start
+from nothing, also delete Helprr's volumes under **Volumes**: `helprr-secrets`,
+`helprr-image-cache`, and the ones whose names start with `helprr_`. That deletes
+everything Helprr kept, so [back up](#back-up) first if you might want it.
