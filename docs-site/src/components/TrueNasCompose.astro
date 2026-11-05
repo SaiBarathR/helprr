@@ -33,7 +33,7 @@ const initial = truenasCompose(releaseCompose, 'tank');
       const pool = input.value.trim();
       const ok = isPoolName(pool);
       input.setAttribute('aria-invalid', ok ? 'false' : 'true');
-      error.textContent = ok ? '' : 'A pool name starts with a letter, then letters, digits and _ . - only.';
+      error.textContent = ok ? '' : 'This file needs a pool name that starts with a letter, then letters, digits and _ . - only.';
       copy.disabled = !ok;
       // The file below is for the last good name: dimmed until the name is fixed.
       root.classList.toggle('tn-stale', !ok);
