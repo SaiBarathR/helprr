@@ -189,7 +189,7 @@ describe('Discover home (characterization)', () => {
     await user.click((await screen.findAllByRole('button', { name: /^Alpha/ })).find((button) => !button.closest('[aria-label="Hero"]'))!);
     expect(mocks.push).toHaveBeenCalledWith('/discover/movie/1');
     expect(within(screen.getByRole('group', { name: 'Charlie actions' })).getByRole('link', { name: 'Open in library' }).getAttribute('href')).toBe('/movies/5?instance=rad-1');
-    expect(within(screen.getAllByRole('group', { name: 'Alpha actions' })[0]).getByRole('link', { name: 'Add to Radarr' }).getAttribute('href')).toBe('/movies/add?term=Alpha&tmdbId=1');
+    expect(within(screen.getAllByRole('group', { name: 'Alpha actions' })[0]).getByRole('link', { name: 'Add to library' }).getAttribute('href')).toBe('/movies/add?term=Alpha&tmdbId=1');
     expect(within(screen.getAllByRole('group', { name: 'Bravo Show actions' })[0]).queryByRole('link', { name: /Add to/ })).toBeNull();
   });
 

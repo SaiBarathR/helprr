@@ -29,9 +29,15 @@ vi.mock('@/lib/widgets/use-element-size', () => ({ useElementSize: () => ({ ref:
 vi.mock('@/lib/widgets/use-list-fetch-size', () => ({ useListFetchSize: () => ({ visibleCount: 10 }) }));
 vi.mock('@/lib/hooks/use-external-urls', () => ({ useExternalUrls: () => ({}) }));
 vi.mock('@/components/layout/badge-provider', () => ({ useBadgeActions: () => ({ adjustBadge: vi.fn() }) }));
-vi.mock('@/components/seerr/pending-approval-section', () => ({
-  PendingApprovalSection: () => mocks.pendingApproval ? <section>Pending approval: Family movie</section> : null,
-}));
+vi.mock('@/components/seerr/pending-approval-section', async () => {
+  const { useEffect } = await import('react');
+  return {
+    PendingApprovalSection: ({ onCountChange }: { onCountChange?: (count: number) => void }) => {
+      useEffect(() => onCountChange?.(mocks.pendingApproval ? 1 : 0), [onCountChange]);
+      return mocks.pendingApproval ? <section>Pending approval: Family movie</section> : null;
+    },
+  };
+});
 vi.mock('@/components/seerr/seerr-request-modal', () => ({ SeerrRequestModal: () => null }));
 vi.mock('@/components/ui/app-link', () => ({ default: ({ children, ...props }: { children: ReactNode }) => <a {...props}>{children}</a> }));
 vi.mock('@/components/media/fade-in-image', () => ({ FadeInImage: () => null }));
@@ -78,20 +84,30 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
-describe('RequestsListWidget empty Seerr results', () => {
-  it.each([false, true])('qualifies pending results beside Helprr approvals (unbounded=%s)', (unbounded) => {
+describe('RequestsListWidget empty results', () => {
+  it.each([false, true])('says "other" beside Helprr approvals, without naming Seerr (unbounded=%s)', (unbounded) => {
     mocks.results = [];
     mocks.pendingApproval = true;
-    render(<RequestsListWidget refreshInterval={0} filter="pending" unbounded={unbounded} />);
+    const { unmount } = render(<RequestsListWidget refreshInterval={0} filter="pending" unbounded={unbounded} />);
     expect(screen.getByText('Pending approval: Family movie')).toBeTruthy();
-    expect(screen.getByText('No pending requests in Seerr')).toBeTruthy();
+    expect(screen.getByText('No other pending requests')).toBeTruthy();
     expect(screen.queryByText('No pending requests', { exact: true })).toBeNull();
+    unmount();
+
+    render(<RequestsListWidget refreshInterval={0} filter="all" unbounded={unbounded} />);
+    expect(screen.getByText('No other requests')).toBeTruthy();
+    expect(screen.queryByText(/Seerr/)).toBeNull();
   });
 
-  it('qualifies the unfiltered empty state too', () => {
+  it.each([false, true])('says "No requests yet" when nothing waits for approval either (unbounded=%s)', (unbounded) => {
     mocks.results = [];
-    render(<RequestsListWidget refreshInterval={0} filter="all" unbounded />);
-    expect(screen.getByText('No requests in Seerr')).toBeTruthy();
+    const { unmount } = render(<RequestsListWidget refreshInterval={0} filter="all" unbounded={unbounded} />);
+    expect(screen.getByText('No requests yet')).toBeTruthy();
+    unmount();
+
+    render(<RequestsListWidget refreshInterval={0} filter="pending" unbounded={unbounded} />);
+    expect(screen.getByText('No pending requests')).toBeTruthy();
+    expect(screen.queryByText(/Seerr/)).toBeNull();
   });
 });
 
@@ -137,7 +153,7 @@ describe('RequestsListWidget empty state next step', () => {
     ]) {
       mocks.me = me;
       const { unmount } = render(<RequestsListWidget refreshInterval={0} filter="all" unbounded />);
-      expect(screen.getByText('No requests in Seerr')).toBeTruthy();
+      expect(screen.getByText('No requests yet')).toBeTruthy();
       expect(screen.queryByText('Find something to request')).toBeNull();
       unmount();
     }

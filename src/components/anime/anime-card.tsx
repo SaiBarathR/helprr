@@ -38,7 +38,6 @@ export function AnimeCard({
     ? `${item.library.type === 'movie' ? '/movies' : '/series'}/${item.library.id}${item.library.instanceId ? `?instance=${item.library.instanceId}` : ''}`
     : null;
   const isMovie = isMovieFormat(item.format);
-  const addService = isMovie ? 'Radarr' : 'Sonarr';
   const canAdd = !item.library?.exists && hasCapability(me, isMovie ? 'movies.add' : 'series.add');
   const canWatchlist = !item.library?.exists && hasCapability(me, 'watchlist.edit');
   const canSchedule = !item.library?.exists && hasCapability(me, 'scheduledAlerts.edit');
@@ -85,7 +84,7 @@ export function AnimeCard({
           },
         },
         ...(libraryHref ? [{ id: 'open-library', label: 'Open in library', icon: <Check className="h-4 w-4" />, href: libraryHref }] : []),
-        ...(canAdd ? [{ id: 'add-library', label: `Add to ${addService}`, icon: <Plus className="h-4 w-4" />, href: addHref }] : []),
+        ...(canAdd ? [{ id: 'add-library', label: 'Add to library', icon: <Plus className="h-4 w-4" />, href: addHref }] : []),
       ],
     },
     ...(anilistAction ? [{ id: 'anilist', actions: [anilistAction] }] : []),

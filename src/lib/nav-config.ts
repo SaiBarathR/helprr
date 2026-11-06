@@ -98,7 +98,7 @@ export const NAV_ITEMS: NavItemDef[] = [
   // Keeps the historical 'random' id so persisted nav orders / default-page
   // preferences survive the rename to Recommendations. Visible with EITHER
   // capability: a random.view-only user still reaches the Random mode.
-  { id: 'random', href: '/recommendations', icon: Popcorn, label: 'Recommendations', shortLabel: 'For You', group: 'discover', requiredAnyCapability: ['recommendations.view', 'random.view'] },
+  { id: 'random', href: '/recommendations', icon: Popcorn, label: 'Recommendations', shortLabel: 'Recs', group: 'discover', requiredAnyCapability: ['recommendations.view', 'random.view'] },
   { id: 'calendar', href: '/calendar', icon: CalendarDays, label: 'Calendar', shortLabel: 'Calendar', group: 'library', requiredCapability: 'calendar.view' },
   { id: 'library-gaps', href: '/library-gaps', icon: LibraryBig, label: 'Library Gaps', shortLabel: 'Gaps', group: 'library' },
   { id: 'torrents', href: '/torrents', icon: HardDrive, label: 'Torrents', shortLabel: 'Torrents', group: 'downloads', requiredCapability: 'torrents.view', badgeArea: 'downloads' },
@@ -110,7 +110,7 @@ export const NAV_ITEMS: NavItemDef[] = [
   { id: 'youtube', href: '/youtube', icon: Youtube, label: 'YouTube', shortLabel: 'YouTube', group: 'creators', requiredCapability: 'youtube.view', requiresConfigured: 'youtubeConfigured', badgeArea: 'youtube' },
   { id: 'insights', href: '/insights', icon: ChartLine, label: 'Insights', shortLabel: 'Insights', group: 'overview', requiredCapability: 'insights.view' },
   { id: 'activity', href: '/activity', icon: Activity, label: 'Activity', shortLabel: 'Activity', group: 'downloads', requiredCapability: 'activity.view', badgeArea: 'activity' },
-  { id: 'notifications', href: '/notifications', icon: Bell, label: 'Notifications', shortLabel: 'Alerts', requiredCapability: 'notifications.view', badgeArea: 'notifications' },
+  { id: 'notifications', href: '/notifications', icon: Bell, label: 'Notifications', shortLabel: 'Notifications', requiredCapability: 'notifications.view', badgeArea: 'notifications' },
   { id: 'settings', href: '/settings', icon: Settings, label: 'Settings', shortLabel: 'Settings', pinned: true },
 ];
 

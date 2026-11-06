@@ -41,10 +41,13 @@ interface PendingRow {
  */
 export function PendingApprovalSection({
   onChanged,
+  onCountChange,
   grid = false,
   contextMenuDisabled = false,
 }: {
   onChanged?: () => void;
+  /** Called with the number of rows waiting for approval whenever it changes. */
+  onCountChange?: (count: number) => void;
   grid?: boolean;
   contextMenuDisabled?: boolean;
 }) {
@@ -76,6 +79,10 @@ export function PendingApprovalSection({
   const getId = useCallback((r: PendingRow) => r.id, []);
   const { items: rows, total, loading, loadingMore, hasMore, loadMore, reload, removeItem } =
     useInfiniteScroll<PendingRow>({ fetchPage, getId, take: 20 });
+
+  useEffect(() => {
+    onCountChange?.(rows.length);
+  }, [rows.length, onCountChange]);
 
   // Walk pages until the deep-linked row surfaces (it may be beyond page 1),
   // then open the approve sheet. One-shot — gives up once pages are exhausted.

@@ -377,7 +377,6 @@ export default function AnimeDetailPage() {
   ];
 
   const isMovie = isMovieFormat(detail.format);
-  const addService = isMovie ? 'Radarr' : 'Sonarr';
   const serviceAvailable = isMovie
     ? detail.libraryAvailability?.radarr !== 'unavailable'
     : detail.libraryAvailability?.sonarr !== 'unavailable';
@@ -435,7 +434,7 @@ export default function AnimeDetailPage() {
       id: 'library',
       actions: [
         ...libraryAppActions,
-        ...(canAddDirectly ? [{ id: 'add-library', label: `Add to ${addService}`, icon: <Plus className="h-4 w-4" />, href: addHref }] : []),
+        ...(canAddDirectly ? [{ id: 'add-library', label: 'Add to library', icon: <Plus className="h-4 w-4" />, href: addHref }] : []),
       ],
     },
     ...(anilistAction ? [{ id: 'anilist', actions: [anilistAction] }] : []),

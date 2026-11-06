@@ -101,7 +101,6 @@ function RailCard({
   // Add-to-library mirrors the detail page button: a title-search hand-off to the
   // add page (list items carry no tvdb/tmdb id for an exact pre-match).
   const isMovie = isMovieFormat(item.format ?? null);
-  const addService = isMovie ? 'Radarr' : 'Sonarr';
   const canAdd = showActions && !inLibrary && hasCapability(me, isMovie ? 'movies.add' : 'series.add');
   const canWatchlist = showActions && hasCapability(me, 'watchlist.edit');
   const canSchedule = showActions && hasCapability(me, 'scheduledAlerts.edit');
@@ -140,7 +139,7 @@ function RailCard({
         ...(canAdd
           ? [{
               id: 'add-library',
-              label: `Add to ${addService}`,
+              label: 'Add to library',
               icon: <Plus className="h-4 w-4" />,
               href: addHref,
             }]
@@ -180,7 +179,7 @@ function RailCard({
       {showActions && (
         <div className="absolute top-1 right-1 z-10 hidden md:flex items-center gap-1.5">
           {canAdd && (
-            <Link href={addHref} aria-label={`Add to ${addService}`} className={iconClass}>
+            <Link href={addHref} aria-label="Add to library" className={iconClass}>
               <Plus className="h-3.5 w-3.5" />
             </Link>
           )}
@@ -265,7 +264,7 @@ function RailCard({
                   <DropdownMenuItem asChild>
                     <Link href={addHref}>
                       <Plus className="mr-2 h-4 w-4" />
-                      Add to {addService}
+                      Add to library
                     </Link>
                   </DropdownMenuItem>
                 )}

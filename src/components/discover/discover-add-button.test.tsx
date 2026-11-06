@@ -69,7 +69,7 @@ describe('DiscoverAddButton across instances', () => {
   it('offers the one instance that lacks the title, preselected on the add page', async () => {
     await render(movie([{ instanceId: 'rad-a', instanceLabel: 'RADARR', id: 7 }]));
     expect(links()).toContainEqual(['Add to radarr-anime', '/movies/add?term=12+Angry+Men&tmdbId=389&instance=rad-b']);
-    expect(container.textContent).toContain('Open in Radarr');
+    expect(container.textContent).toContain('Open in library');
   });
 
   it('lists several missing instances under "Add to another"', async () => {
@@ -98,7 +98,7 @@ describe('DiscoverAddButton across instances', () => {
     detail.addTarget.uncheckedInstanceIds = ['rad-b'];
     await render(detail);
     expect(container.textContent).not.toMatch(/Add to/);
-    expect(container.textContent).toContain('Open in Radarr');
+    expect(container.textContent).toContain('Open in library');
   });
 
   it('offers nothing when the holder\'s instance is unknown', async () => {
@@ -114,5 +114,16 @@ describe('DiscoverAddButton across instances', () => {
     } as unknown as DiscoverDetail;
     await render(show, [...INSTANCES, { id: 'son-b', label: 'sonarr-anime', type: 'SONARR' }]);
     expect(links()).toContainEqual(['Add to sonarr-anime', '/series/add?term=Breaking+Bad&tmdbId=389&tvdbId=81189&seriesType=standard&instance=son-b']);
+  });
+});
+
+describe('DiscoverAddButton for a title in no library', () => {
+  it('says "Add to library", not the service name', async () => {
+    const detail = { ...movie([]), addTarget: { exists: false, service: 'radarr' } } as unknown as DiscoverDetail;
+    await render(detail);
+    const add = container.querySelector('a[href^="/movies/add"]');
+    expect(add?.textContent?.trim()).toBe('Add to library');
+    expect(add?.getAttribute('aria-label')).toBeNull();
+    expect(container.textContent).not.toMatch(/Radarr/i);
   });
 });

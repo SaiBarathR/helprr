@@ -101,3 +101,15 @@ describe('pre-paint nav position stamp', () => {
     expect(document.documentElement.dataset.navPosition).toBe('bottom');
   });
 });
+
+describe('nav names', () => {
+  // A phone tab may shorten its sidebar name, never rename it (gap plan U11).
+  it.each([
+    ['notifications', 'Notifications', 'Notifications'],
+    ['random', 'Recommendations', 'Recs'],
+    ['library-gaps', 'Library Gaps', 'Gaps'],
+  ] as const)('%s reads %s / %s', (id, label, shortLabel) => {
+    const item = NAV_ITEMS.find((i) => i.id === id)!;
+    expect([item.label, item.shortLabel]).toEqual([label, shortLabel]);
+  });
+});
