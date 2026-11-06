@@ -28,6 +28,11 @@ import {
 } from '@/components/ui/active-filter-bar';
 import { withAppName } from '@/components/instance-filter';
 import { PullToRefresh } from '@/components/ui/pull-to-refresh';
+import {
+  ResponsiveMenu,
+  ResponsiveMenuCheckboxItem,
+  ResponsiveMenuSeparator,
+} from '@/components/ui/responsive-menu';
 import { useRefreshAction } from '@/lib/hooks/use-refresh-action';
 import { useToolbarHeight } from '@/lib/hooks/use-toolbar-height';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
@@ -783,45 +788,42 @@ export default function SeriesPage() {
             </DropdownMenuContent>
           </DropdownMenu>
 
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
+          <ResponsiveMenu
+            title="Sort By"
+            titleInDropdown
+            contentClassName="w-52"
+            trigger={(
               <button
                 className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent active:bg-accent/80 transition-colors"
                 aria-label={`Sort: ${activeSortLabel} ${sortDir === 'asc' ? 'Ascending' : 'Descending'}`}
               >
                 <ArrowUpDown className="h-5 w-5" />
               </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-52">
-              <DropdownMenuLabel>Sort By</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              {sortOptions.map((opt) => (
-                <DropdownMenuCheckboxItem
-                  key={opt.value}
-                  checked={sort === opt.value}
-                  onCheckedChange={() => setSort(opt.value)}
-                  onSelect={(e) => e.preventDefault()}
-                >
-                  {opt.label}
-                </DropdownMenuCheckboxItem>
-              ))}
-              <DropdownMenuSeparator />
-              <DropdownMenuCheckboxItem
-                checked={sortDir === 'asc'}
-                onCheckedChange={() => setSortDir('asc')}
-                onSelect={(e) => e.preventDefault()}
+            )}
+          >
+            {sortOptions.map((opt) => (
+              <ResponsiveMenuCheckboxItem
+                key={opt.value}
+                checked={sort === opt.value}
+                onCheckedChange={() => setSort(opt.value)}
               >
-                Ascending
-              </DropdownMenuCheckboxItem>
-              <DropdownMenuCheckboxItem
-                checked={sortDir === 'desc'}
-                onCheckedChange={() => setSortDir('desc')}
-                onSelect={(e) => e.preventDefault()}
-              >
-                Descending
-              </DropdownMenuCheckboxItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+                {opt.label}
+              </ResponsiveMenuCheckboxItem>
+            ))}
+            <ResponsiveMenuSeparator />
+            <ResponsiveMenuCheckboxItem
+              checked={sortDir === 'asc'}
+              onCheckedChange={() => setSortDir('asc')}
+            >
+              Ascending
+            </ResponsiveMenuCheckboxItem>
+            <ResponsiveMenuCheckboxItem
+              checked={sortDir === 'desc'}
+              onCheckedChange={() => setSortDir('desc')}
+            >
+              Descending
+            </ResponsiveMenuCheckboxItem>
+          </ResponsiveMenu>
 
           <ViewSelector value={viewMode} onChange={setViewMode} />
           <FieldToggles

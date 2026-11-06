@@ -11,9 +11,9 @@ import { SearchBar } from '@/components/media/search-bar';
 import { ViewSelector } from '@/components/media/view-selector';
 import { ActiveFilterBar, FilterDot, filterButtonLabel, searchFilter, type ActiveFilter } from '@/components/ui/active-filter-bar';
 import { Button } from '@/components/ui/button';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { ErrorState } from '@/components/ui/error-state';
 import { PullToRefresh } from '@/components/ui/pull-to-refresh';
+import { ResponsiveMenu } from '@/components/ui/responsive-menu';
 import { FilterGroup, type FilterOption } from '@/components/creators/filter-group';
 import { ToolbarButton, toolbarButtonClass, CreatorToolbar } from '@/components/creators/toolbar';
 import { FeedGroups, FeedGroupsSkeleton, whileGroupsDownloading, type FeedGroupPage } from '@/components/creators/feed-groups';
@@ -211,8 +211,10 @@ export function CreatorFeedPage() {
         active="feed"
         actions={(
           <>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
+            <ResponsiveMenu
+              title="Filter"
+              contentClassName="max-h-[70dvh] w-56 overflow-y-auto"
+              trigger={(
                 <button
                   className={toolbarButtonClass()}
                   aria-label={filterButtonLabel(`Filter: ${menuFilters.map((filter) => filter.label).join(', ') || 'All'}`, menuFilters.length > 0)}
@@ -220,31 +222,30 @@ export function CreatorFeedPage() {
                   <Filter className="h-5 w-5" />
                   <FilterDot active={menuFilters.length > 0} />
                 </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="max-h-[70dvh] w-56 overflow-y-auto">
-                <FilterGroup label="Show" options={SHOW} value={show} onChange={setShow} separated={false} />
-                <FilterGroup label="Type" options={types} value={type} onChange={setType} />
-                <FilterGroup label="Status" options={statuses} value={status} onChange={setStatus} />
-                <FilterGroup label="Length" options={LENGTHS} value={length} onChange={setLength} />
-                <FilterGroup label="Date" options={SINCE} value={since} onChange={setSince} />
-                {subscriptions.length > 1 && (
-                  <FilterGroup
-                    label={platform.creatorLabel}
-                    options={[{ id: '', label: `All ${platform.creatorsLabel.toLowerCase()}` }, ...subscriptions.map((item) => ({ id: item.creator.id, label: item.creator.displayName }))]}
-                    value={streamer}
-                    onChange={setStreamer}
-                  />
-                )}
-                {categories.length > 0 && (
-                  <FilterGroup
-                    label="Category"
-                    options={[{ id: '', label: 'All categories' }, ...categories.map((item) => ({ id: item, label: item }))]}
-                    value={category}
-                    onChange={setCategory}
-                  />
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
+              )}
+            >
+              <FilterGroup label="Show" options={SHOW} value={show} onChange={setShow} separated={false} />
+              <FilterGroup label="Type" options={types} value={type} onChange={setType} />
+              <FilterGroup label="Status" options={statuses} value={status} onChange={setStatus} />
+              <FilterGroup label="Length" options={LENGTHS} value={length} onChange={setLength} />
+              <FilterGroup label="Date" options={SINCE} value={since} onChange={setSince} />
+              {subscriptions.length > 1 && (
+                <FilterGroup
+                  label={platform.creatorLabel}
+                  options={[{ id: '', label: `All ${platform.creatorsLabel.toLowerCase()}` }, ...subscriptions.map((item) => ({ id: item.creator.id, label: item.creator.displayName }))]}
+                  value={streamer}
+                  onChange={setStreamer}
+                />
+              )}
+              {categories.length > 0 && (
+                <FilterGroup
+                  label="Category"
+                  options={[{ id: '', label: 'All categories' }, ...categories.map((item) => ({ id: item, label: item }))]}
+                  value={category}
+                  onChange={setCategory}
+                />
+              )}
+            </ResponsiveMenu>
             <ViewSelector
               value={VIEW_MODES[view]}
               modes={['grouped', 'posters', 'overview']}

@@ -25,8 +25,14 @@ import { BottomNav } from './bottom-nav';
 import { useSearchPalette } from '@/components/search/search-store';
 import { useUIStore } from '@/lib/store';
 
+// jsdom has no pointer capture, which the drawer asks for on a press inside it.
+HTMLElement.prototype.setPointerCapture ??= () => {};
+HTMLElement.prototype.releasePointerCapture ??= () => {};
+
 beforeEach(() => {
   vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
+  // The tab bar only shows below md, so the More menu is the phone drawer.
+  vi.stubGlobal('matchMedia', () => ({ matches: true, addEventListener() {}, removeEventListener() {} }));
   mocks.counts = { ...EMPTY_BADGE_COUNTS };
   useSearchPalette.setState({ open: false });
   useUIStore.setState(useUIStore.getInitialState());
@@ -67,10 +73,21 @@ describe('BottomNav', () => {
     expect([...bar.classList].some((name) => /^(fixed|sticky)$/.test(name))).toBe(false);
   });
 
+  it('opens More as a titled bottom sheet whose items navigate and close it', async () => {
+    render(<BottomNav />);
+    await userEvent.click(screen.getByRole('button', { name: 'More' }));
+    const sheet = await screen.findByRole('dialog', { name: 'More' });
+    expect(sheet.getAttribute('data-vaul-drawer-direction')).toBe('bottom');
+    const discover = within(sheet).getByRole('link', { name: 'Discover' });
+    expect(discover.getAttribute('href')).toBe('/discover');
+    await userEvent.click(discover);
+    expect(screen.queryByRole('dialog', { name: 'More' })).toBeNull();
+  });
+
   it('ends the More list with Customize tabs, linking to the navigation settings', async () => {
     render(<BottomNav />);
     await userEvent.click(screen.getByRole('button', { name: 'More' }));
-    const customize = await screen.findByRole('link', { name: 'Customize tabs' });
+    const customize = await within(await screen.findByRole('dialog', { name: 'More' })).findByRole('link', { name: 'Customize tabs' });
     expect(customize.getAttribute('href')).toBe('/settings/appearance#navigation');
     await userEvent.click(customize);
     expect(screen.queryByRole('link', { name: 'Customize tabs' })).toBeNull();
