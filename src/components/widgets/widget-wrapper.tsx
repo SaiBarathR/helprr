@@ -2,6 +2,7 @@
 
 import { Component, type ReactNode } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
+import { reloadForChunkLoadError } from '@/lib/chunk-load-recovery';
 
 interface WidgetWrapperProps {
   widgetId: string;
@@ -27,10 +28,7 @@ class WidgetErrorBoundary extends Component<WidgetWrapperProps, ErrorBoundarySta
   }
 
   private resetError = () => {
-    if (isChunkLoadError(this.state.error) && globalThis.navigator.onLine) {
-      reloadAfterClearingPageCache();
-      return;
-    }
+    if (reloadForChunkLoadError(this.state.error)) return;
     this.props.onRetry();
     this.setState({ error: null });
   };
@@ -52,24 +50,6 @@ class WidgetErrorBoundary extends Component<WidgetWrapperProps, ErrorBoundarySta
     }
     return this.props.children();
   }
-}
-
-export function isChunkLoadError(error: Error | null): boolean {
-  if (!error) return false;
-  return (
-    error.name === 'ChunkLoadError' ||
-    /Loading chunk \d+ failed|Failed to fetch dynamically imported module|Importing a module script failed/i
-      .test(error.message)
-  );
-}
-
-function reloadAfterClearingPageCache(): void {
-  const reload = () => globalThis.location.reload();
-  if (!('caches' in globalThis)) {
-    reload();
-    return;
-  }
-  void globalThis.caches.delete('pages').finally(reload);
 }
 
 export function WidgetSkeleton({ rowSpan = 1 }: { rowSpan?: number }) {

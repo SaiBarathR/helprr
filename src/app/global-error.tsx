@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
+import { reloadForChunkLoadError } from '@/lib/chunk-load-recovery';
 
 // Last-resort boundary: replaces the root layout when it (or an error boundary
 // above a page) throws. globals.css is not loaded here, so styles are inline.
@@ -13,7 +14,13 @@ export default function GlobalError({
 }) {
   useEffect(() => {
     console.error('[App] Unhandled root-layout error:', error);
+    reloadForChunkLoadError(error, { automatic: true });
   }, [error]);
+
+  // Retrying a stale-deploy chunk re-imports the same missing file; reload instead.
+  const retry = () => {
+    if (!reloadForChunkLoadError(error)) reset();
+  };
 
   return (
     <html lang="en">
@@ -39,7 +46,7 @@ export default function GlobalError({
           {error.digest ? ` (Error ID: ${error.digest})` : ''}
         </p>
         <button
-          onClick={reset}
+          onClick={retry}
           style={{
             padding: '8px 16px',
             borderRadius: 8,
