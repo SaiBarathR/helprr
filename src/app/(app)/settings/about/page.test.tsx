@@ -2,7 +2,8 @@
 
 import type { ReactNode } from 'react';
 import { render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import userEvent from '@testing-library/user-event';
 
 vi.mock('@/components/ui/app-link', () => ({
   default: ({ children, href }: { children: ReactNode; href: string }) => <a href={href}>{children}</a>,
@@ -22,5 +23,31 @@ describe('About page', () => {
     expect(screen.getByRole('img', { name: 'TMDB' }).getAttribute('src')).toContain('/images/tmdb-logo.svg');
     expect(screen.getByRole('link', { name: 'AniList' }).getAttribute('href')).toBe('https://anilist.co');
     expect(screen.getByRole('link', { name: 'Jellyfin' }).getAttribute('href')).toBe('https://jellyfin.org');
+  });
+
+  describe("What's new", () => {
+    afterEach(() => vi.unstubAllGlobals());
+
+    it("loads the running release's notes, and tries again after a failed load", async () => {
+      const fetchMock = vi.fn()
+        .mockRejectedValueOnce(new TypeError('offline'))
+        .mockResolvedValueOnce(new Response(JSON.stringify({
+          version: '1.14.0',
+          omitted: 0,
+          releases: [{ version: '1.14.0', date: '2026-11-06', body: '- Phone controls.' }],
+        })));
+      vi.stubGlobal('fetch', fetchMock);
+      render(<AboutSettingsPage />);
+
+      await userEvent.click(screen.getByRole('button', { name: /What's new/ }));
+      expect(await screen.findByText(/Could not load the release notes/)).toBeTruthy();
+      expect(fetchMock).toHaveBeenCalledWith('/api/whats-new?current=1', expect.anything());
+
+      await userEvent.click(screen.getByRole('button', { name: 'Done' }));
+      await userEvent.click(screen.getByRole('button', { name: /What's new/ }));
+      expect(await screen.findByText('Phone controls.')).toBeTruthy();
+      expect(screen.getByRole('dialog', { name: "What's new in 1.14.0" })).toBeTruthy();
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
   });
 });

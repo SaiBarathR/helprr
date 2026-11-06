@@ -4,6 +4,8 @@ node_modules
 .gitignore
 .env*
 *.md
+# Shipped in the image for the in-app "What's new".
+!CHANGELOG.md
 Dockerfile
 docker-compose.yml
 .claude

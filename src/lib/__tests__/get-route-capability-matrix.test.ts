@@ -58,6 +58,7 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
     'GET /api/sessions',
     'GET /api/sonarr/rootfolders',
     'GET /api/storage/trend',
+    'GET /api/whats-new',
   ],
   'cap:activity.manage': [
     'GET /api/activity/manualimport',
@@ -529,7 +530,7 @@ describe('GET API route capability matrix', () => {
   const assignments = policyAssignments();
 
   it('explicitly assigns every GET handler exactly once', () => {
-    expect(handlers.size).toBe(267);
+    expect(handlers.size).toBe(268);
     expect([...assignments.keys()].sort()).toEqual([...handlers.keys()].sort());
   });
 

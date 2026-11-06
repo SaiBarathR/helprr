@@ -396,6 +396,7 @@ model UserSettings {
   quietHoursEnd          Int?                      // 0-23 local hour the window closes; start > end = crosses midnight
   setupChecklistDismissedAt DateTime?                // the admin hid the dashboard setup checklist; follows them across devices
   setupStepsDone         String[] @default([])       // checklist steps marked done that the server cannot see (install, backup, people)
+  lastSeenVersion        String?                     // the release whose "What's new" this user last saw or dismissed; null until their first visit
   createdAt              DateTime @default(now())
   updatedAt              DateTime @updatedAt
 }

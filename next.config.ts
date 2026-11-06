@@ -57,6 +57,8 @@ const nextConfig: NextConfig = {
       }
     : {}),
   output: 'standalone',
+  // "What's new" reads the release notes from the build's own CHANGELOG.md.
+  outputFileTracingIncludes: { '/api/whats-new': ['./CHANGELOG.md'] },
   // Force webpack for Serwist compatibility
   turbopack: {},
   // sharp ships a native .node binary; keep webpack from trying to bundle it so
