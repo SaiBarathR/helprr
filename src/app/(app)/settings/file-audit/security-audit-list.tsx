@@ -29,7 +29,10 @@ type SecurityAction =
   | 'RESET_LINK_CREATED'
   | 'RESET_LINK_REVOKED'
   | 'RESET_LINK_USED'
-  | 'INVITE_LINK_FAILED';
+  | 'INVITE_LINK_FAILED'
+  | 'CALENDAR_FEED_CREATED'
+  | 'CALENDAR_FEED_ROTATED'
+  | 'CALENDAR_FEED_REVOKED';
 
 export interface SecurityAuditRecord {
   id: string;
@@ -67,6 +70,9 @@ const ACTION_BADGE: Record<SecurityAction, { label: string; variant: 'default' |
   RESET_LINK_REVOKED: { label: 'RESET LINK REVOKED', variant: 'secondary' },
   RESET_LINK_USED: { label: 'PASSWORD RESET', variant: 'secondary' },
   INVITE_LINK_FAILED: { label: 'LINK FAILED', variant: 'destructive' },
+  CALENDAR_FEED_CREATED: { label: 'CALENDAR LINK', variant: 'default' },
+  CALENDAR_FEED_ROTATED: { label: 'CALENDAR LINK RENEWED', variant: 'secondary' },
+  CALENDAR_FEED_REVOKED: { label: 'CALENDAR LINK OFF', variant: 'secondary' },
 };
 
 const SIGN_IN_METHOD: Record<string, string> = {

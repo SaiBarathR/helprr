@@ -91,6 +91,7 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
   ],
   'cap:calendar.view': [
     'GET /api/calendar',
+    'GET /api/calendar/feed-token',
   ],
   'cap:cleanup.view': [
     'GET /api/cleanup/download/config',
@@ -392,6 +393,11 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
     // Sonarr/Radarr fetch it with no session; the single-use token is the credential.
     'GET /api/manual-downloads/torrent/[token]',
   ],
+  // Calendar apps send no session: the per-user feed token is the credential,
+  // and authorizeFeedToken re-checks the owner's status and calendar.view.
+  'feed-token:calendar.view': [
+    'GET /api/calendar/feed.ics',
+  ],
   'all:torrents.view|activity.view': [
     'GET /api/manual-downloads',
     'GET /api/manual-downloads/[id]',
@@ -531,7 +537,7 @@ describe('GET API route capability matrix', () => {
   const assignments = policyAssignments();
 
   it('explicitly assigns every GET handler exactly once', () => {
-    expect(handlers.size).toBe(269);
+    expect(handlers.size).toBe(271);
     expect([...assignments.keys()].sort()).toEqual([...handlers.keys()].sort());
   });
 
@@ -606,6 +612,11 @@ describe('GET API route capability matrix', () => {
     }
     for (const route of POLICY_GROUPS.public) {
       expect(handlers.get(route)!.calls, `${route} must remain dependency-free/public`).toEqual([]);
+    }
+    for (const route of POLICY_GROUPS['feed-token:calendar.view']) {
+      const evidence = handlers.get(route)!;
+      expect(evidence.handlerText, route).toContain('authorizeFeedToken(');
+      expect(evidence.handlerText, route).toContain('takeFeedRateLimit(');
     }
   });
 

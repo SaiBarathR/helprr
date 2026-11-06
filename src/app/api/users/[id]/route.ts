@@ -156,7 +156,14 @@ async function patchHandler(
       if (data.passwordHash !== undefined || statusChanges) {
         endedLink = (await tx.passwordLink.deleteMany({ where: { userId: id } })).count > 0;
       }
-      return { ok: true as const, updated, revokedSessions, endedLink };
+      // A reset or a disable also ends the calendar feed link, so re-enabling
+      // the account does not bring an old link back.
+      let feedRevoked = false;
+      if (data.passwordHash !== undefined || (data.status && data.status !== 'active')) {
+        const feed = await tx.calendarFeedToken.deleteMany({ where: { userId: id } });
+        feedRevoked = feed.count > 0;
+      }
+      return { ok: true as const, updated, revokedSessions, endedLink, feedRevoked };
     });
     if (!result.ok) {
       return NextResponse.json(
@@ -187,6 +194,16 @@ async function patchHandler(
         fields,
         // Sessions the password reset revoked; 1 for any other change.
         ...(data.passwordHash !== undefined ? { count: result.revokedSessions } : {}),
+      });
+    }
+    if (result.feedRevoked) {
+      await recordSecurityEvent(request, {
+        actor: admin.user,
+        action: 'CALENDAR_FEED_REVOKED',
+        targetType: 'user',
+        targetId: id,
+        targetLabel: result.updated.username,
+        fields: data.passwordHash !== undefined ? ['password'] : ['status'],
       });
     }
     return NextResponse.json(toSafeUser(result.updated));

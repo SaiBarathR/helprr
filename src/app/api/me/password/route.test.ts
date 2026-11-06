@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   sessionUpdateMany: vi.fn(),
   userUpdateMany: vi.fn(),
   passwordLinkDeleteMany: vi.fn(),
+  feedDeleteMany: vi.fn(),
   enforceLoginRateLimit: vi.fn(),
   enforceUsernameBackoff: vi.fn(),
   enforceGlobalLoginBackstop: vi.fn(),
@@ -27,6 +28,7 @@ vi.mock('@/lib/db', () => {
     session: { updateMany: (args: unknown) => (mocks.order.push('session'), mocks.sessionUpdateMany(args)) },
     user: { updateMany: (args: unknown) => (mocks.order.push('user'), mocks.userUpdateMany(args)) },
     passwordLink: { deleteMany: (args: unknown) => (mocks.order.push('link'), mocks.passwordLinkDeleteMany(args)) },
+    calendarFeedToken: { deleteMany: (args: unknown) => (mocks.order.push('feed'), mocks.feedDeleteMany(args)) },
   };
   return { prisma: { $transaction: (fn: (t: typeof tx) => unknown) => fn(tx) } };
 });
@@ -72,6 +74,7 @@ beforeEach(() => {
   mocks.sessionUpdateMany.mockResolvedValue({ count: 1 });
   mocks.userUpdateMany.mockResolvedValue({ count: 1 });
   mocks.passwordLinkDeleteMany.mockResolvedValue({ count: 0 });
+  mocks.feedDeleteMany.mockResolvedValue({ count: 0 });
   for (const gate of [mocks.enforceLoginRateLimit, mocks.enforceUsernameBackoff, mocks.enforceGlobalLoginBackstop]) {
     gate.mockResolvedValue(null);
   }
@@ -110,9 +113,11 @@ describe('POST /api/me/password', () => {
     expect(res.headers.get('set-cookie')).toBeNull();
     expect(mocks.clearUsernameBackoff).toHaveBeenCalledWith('member');
     // User row before sessions, like Settings -> Users, so concurrent writes can't deadlock.
-    expect(mocks.order).toEqual(['user', 'session', 'session', 'link']);
+    expect(mocks.order).toEqual(['user', 'session', 'session', 'link', 'feed']);
     // An outstanding reset link can no longer override the new password.
     expect(mocks.passwordLinkDeleteMany).toHaveBeenCalledWith({ where: { userId: 'user-1' } });
+    // The calendar feed link ends with the other sessions.
+    expect(mocks.feedDeleteMany).toHaveBeenCalledWith({ where: { userId: 'user-1' } });
     expect(mocks.enforceLoginRateLimit).toHaveBeenCalledWith('10.0.0.5');
   });
 

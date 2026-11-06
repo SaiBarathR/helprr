@@ -201,6 +201,7 @@ describe('my-data export coverage', () => {
     tasteProfile: 'derived from other data; rebuilt on demand',
     creatorVideoStates: 'per-video seen/hidden flags',
     passwordLink: 'holds only a token hash',
+    calendarFeedToken: 'holds only a token hash',
   };
 
   it('exports or explicitly excludes every relation of User', async () => {

@@ -17,6 +17,9 @@ const mocks = vi.hoisted(() => {
     passwordLink: {
       deleteMany: vi.fn(),
     },
+    calendarFeedToken: {
+      deleteMany: vi.fn(),
+    },
   };
   return {
     tx,
@@ -90,6 +93,7 @@ describe('user local-password boundaries', () => {
     mocks.tx.session.updateMany.mockResolvedValue({ count: 2 });
     mocks.tx.user.create.mockImplementation((args) => mocks.userCreate(args));
     mocks.tx.passwordLink.deleteMany.mockResolvedValue({ count: 0 });
+    mocks.tx.calendarFeedToken.deleteMany.mockResolvedValue({ count: 0 });
     mocks.transaction.mockImplementation(async (callback) => callback(mocks.tx));
   });
 
@@ -220,6 +224,17 @@ describe('user local-password boundaries', () => {
       where: { userId: 'user-1', revokedAt: null },
       data: { revokedAt: expect.any(Date) },
     });
+    expect(mocks.tx.calendarFeedToken.deleteMany).toHaveBeenCalledWith({ where: { userId: 'user-1' } });
+  });
+
+  it('ends the calendar feed link when an admin disables the user', async () => {
+    const response = await updateUser(
+      jsonRequest('/api/users/user-1', 'PATCH', { status: 'disabled' }),
+      params,
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.tx.calendarFeedToken.deleteMany).toHaveBeenCalledWith({ where: { userId: 'user-1' } });
   });
 
   it('realigns role permissions without revoking sessions', async () => {
@@ -234,6 +249,7 @@ describe('user local-password boundaries', () => {
       data: { role: 'admin', template: 'admin', permissions: {} },
     });
     expect(mocks.tx.session.updateMany).not.toHaveBeenCalled();
+    expect(mocks.tx.calendarFeedToken.deleteMany).not.toHaveBeenCalled();
   });
 
   it.each([

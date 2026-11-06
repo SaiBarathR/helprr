@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 // transaction restores the snapshot when its callback throws, as PostgreSQL does.
 const db = vi.hoisted(() => {
   type Row = Record<string, unknown>;
-  const state = { users: [] as Row[], links: [] as Row[], sessions: [] as Row[] };
+  const state = { users: [] as Row[], links: [] as Row[], sessions: [] as Row[], feeds: [] as Row[] };
   const matches = (row: Row, where: Row) => Object.entries(where).every(([k, v]) => row[k] === v);
   const client = {
     passwordLink: {
@@ -44,8 +44,15 @@ const db = vi.hoisted(() => {
         return { count: rows.length };
       }),
     },
+    calendarFeedToken: {
+      deleteMany: vi.fn(async ({ where }: { where: Row }) => {
+        const before = state.feeds.length;
+        state.feeds = state.feeds.filter((f) => !matches(f, where));
+        return { count: before - state.feeds.length };
+      }),
+    },
     $transaction: vi.fn(async (fn: (tx: unknown) => unknown) => {
-      const snapshot = structuredClone({ users: state.users, links: state.links, sessions: state.sessions });
+      const snapshot = structuredClone({ users: state.users, links: state.links, sessions: state.sessions, feeds: state.feeds });
       try {
         return await fn(client);
       } catch (error) {
@@ -83,6 +90,7 @@ beforeEach(() => {
   db.state.users = [];
   db.state.links = [];
   db.state.sessions = [];
+  db.state.feeds = [];
 });
 
 describe('issuing a link', () => {
@@ -149,10 +157,14 @@ describe('using a link', () => {
     );
     const { token } = await issuePasswordLink(tx, { userId: 'u1', purpose: 'reset', createdById: 'admin', now: NOW });
 
+    db.state.feeds.push({ id: 'f1', userId: 'u1' }, { id: 'f2', userId: 'someone-else' });
+
     const used = await redeemPasswordLink(token, 'new-hash', NOW);
-    expect(used).toMatchObject({ purpose: 'reset', revokedSessions: 2 });
+    expect(used).toMatchObject({ purpose: 'reset', revokedSessions: 2, feedRevoked: true });
     expect(db.state.users[0].passwordHash).toBe('new-hash');
     expect(db.state.sessions.filter((s) => s.revokedAt !== null).map((s) => s.id)).toEqual(['s1', 's2']);
+    // The calendar feed link ends with the sessions.
+    expect(db.state.feeds.map((f) => f.id)).toEqual(['f2']);
   });
 
   it('a second use of a reset link racing the first writes nothing', async () => {

@@ -41,6 +41,16 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     // Sessions the reset revoked; an invited account has none.
     ...(user.purpose === 'reset' ? { count: user.revokedSessions } : {}),
   });
+  if (user.feedRevoked) {
+    await recordSecurityEvent(request, {
+      actor: { id: user.id, username: user.username },
+      action: 'CALENDAR_FEED_REVOKED',
+      targetType: 'user',
+      targetId: user.id,
+      targetLabel: user.username,
+      fields: ['password'],
+    });
+  }
 
   const sessionToken = await createSession({
     userId: user.id,

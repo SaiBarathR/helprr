@@ -17,9 +17,11 @@ const PUBLIC_PATHS = ['/login', '/api/auth/login', '/api/auth/jellyfin', '/api/m
 // It sits in the page URL's fragment (/invite#<token>), which never reaches a
 // server, and the page posts it to the routes in a JSON body.
 const INVITE_PAGE_PATH = '/invite';
+// The calendar feed: calendar apps send no session; the route checks its per-user feed token.
 const PUBLIC_EXACT_PATHS = [
   '/api/health', '/api/ready', '/offline.html', '/setup', '/api/setup/state', '/api/setup/admin',
   '/api/invite/state', '/api/invite/accept',
+  '/api/calendar/feed.ics',
 ];
 const IS_DEV = process.env.NODE_ENV === 'development';
 
