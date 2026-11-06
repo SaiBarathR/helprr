@@ -51,7 +51,7 @@ import type { LidarrArtist, LidarrAlbum } from '@/types';
 import { isProtectedApiImageSrc } from '@/lib/image';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/query-keys';
-import { invalidateMusic } from '@/lib/query-invalidation';
+import { invalidateMusic, patchLibraryMonitored } from '@/lib/query-invalidation';
 import { ApiError, arrMutationFetch, ensureArray, jsonFetcher } from '@/lib/query-fetch';
 import { handleAuthError } from '@/lib/query-client';
 import { useQualityProfiles, useMetadataProfiles, useTags } from '@/lib/hooks/use-reference-data';
@@ -203,11 +203,7 @@ export default function ArtistDetailPage() {
       if (res.ok) {
         const updated = await res.json();
         persistArtist(updated);
-        // Patch this artist's monitored flag in the cached library lists
-        // (slim/full/all-instances) instead of refetching the whole library —
-        // preserves the server-resolved profile/tag labels.
-        queryClient.setQueriesData({ queryKey: queryKeys.library('lidarr') }, (prev) =>
-          Array.isArray(prev) ? prev.map((a) => (a.id === artist.id ? { ...a, monitored: updated.monitored } : a)) : prev);
+        patchLibraryMonitored(queryClient, 'lidarr', { itemId: artist.id, instanceId: instance, monitored: updated.monitored });
         toast.success(updated.monitored ? 'Now monitored' : 'Unmonitored');
       } else {
         toast.error('Failed to update');

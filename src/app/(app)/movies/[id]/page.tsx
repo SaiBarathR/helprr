@@ -56,7 +56,7 @@ import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import { crewRolePriority } from '@/lib/crew-priority';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/query-keys';
-import { invalidateMovies } from '@/lib/query-invalidation';
+import { invalidateMovies, patchLibraryMonitored } from '@/lib/query-invalidation';
 import { useQualityProfiles, useTags } from '@/lib/hooks/use-reference-data';
 import { pollCommand } from '@/lib/arr-command';
 import { useExternalUrls, useExternalUrlResolver } from '@/lib/hooks/use-external-urls';
@@ -119,6 +119,7 @@ export default function MovieDetailPage() {
   const [showDelete, setShowDelete] = useState(false);
   const [deleteFiles, setDeleteFiles] = useState(false);
   const [actionLoading, setActionLoading] = useState('');
+  const monitorQueue = useRef<Promise<void>>(Promise.resolve());
   const [overviewExpanded, setOverviewExpanded] = useState(false);
   const [showRenamePreview, setShowRenamePreview] = useState(false);
   const [showAddWatchlist, setShowAddWatchlist] = useState(false);
@@ -255,7 +256,17 @@ export default function MovieDetailPage() {
     if (movie) await setMonitored(movie, !movie.monitored);
   }
 
-  async function setMonitored(base: RadarrMovie, monitored: boolean) {
+  // Monitor writes for this movie run one at a time, so an Undo tapped while
+  // another write is still in flight runs after it and its intent wins.
+  function setMonitored(fallback: RadarrMovie, monitored: boolean) {
+    const run = monitorQueue.current.then(() => putMonitored(fallback, monitored));
+    monitorQueue.current = run;
+    return run;
+  }
+
+  async function putMonitored(fallback: RadarrMovie, monitored: boolean) {
+    // Send the latest cached movie when the write runs, so edits made meanwhile survive.
+    const base = queryClient.getQueryData<RadarrMovie | null>(queryKeys.detail('radarr', movieId, instance)) ?? fallback;
     setActionLoading('monitor');
     try {
       const res = await arrMutationFetch(instance, `/api/radarr/${base.id}`, {
@@ -266,21 +277,11 @@ export default function MovieDetailPage() {
       if (res.ok) {
         const updated = await res.json();
         queryClient.setQueryData(queryKeys.detail('radarr', movieId, instance), updated);
-        // Patch this movie's monitored flag in the cached library lists
-        // (slim/full/all-instances) instead of refetching the whole library —
-        // preserves the server-resolved profile/tag labels.
-        queryClient.setQueriesData({ queryKey: queryKeys.library('radarr') }, (prev) =>
-          Array.isArray(prev) ? prev.map((m) => (m.id === movieId ? { ...m, monitored: updated.monitored } : m)) : prev);
+        patchLibraryMonitored(queryClient, 'radarr', { itemId: movieId, instanceId: instance, monitored: updated.monitored });
         if (updated.monitored) toast.success('Now monitored');
         // Unmonitoring is a library change, so a stray tap must be recoverable.
-        // Undo re-sends the latest cached movie so edits made meanwhile survive.
         else toast.success('Unmonitored', {
-          action: {
-            label: 'Undo',
-            onClick: () => {
-              void setMonitored(queryClient.getQueryData<RadarrMovie | null>(queryKeys.detail('radarr', movieId, instance)) ?? updated, true);
-            },
-          },
+          action: { label: 'Undo', onClick: () => { void setMonitored(updated, true); } },
         });
       } else toast.error('Failed to update');
     } catch (e) { handleAuthError(e); toast.error('Failed to update'); }

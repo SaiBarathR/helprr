@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import { FadeInImage } from '@/components/media/fade-in-image';
 import Link from '@/components/ui/app-link';
-import { Check, Plus, Search, Loader2, Film, Bookmark, Eye, EyeOff } from 'lucide-react';
+import { Check, Plus, Search, Loader2, Film, Clock, Eye, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -359,11 +359,14 @@ function CollectionMoviePoster({
               'inline-flex h-4 w-4 items-center justify-center rounded-full shadow',
               movie.hasFile ? 'bg-[var(--hpr-green)]' : 'bg-[var(--hpr-amber)]'
             )}
+            role="img"
+            aria-label={movie.hasFile ? 'In library' : 'In library, no file yet'}
+            title={movie.hasFile ? 'In library' : 'In library, no file yet'}
           >
             {movie.hasFile ? (
               <Check className="h-2.5 w-2.5 text-[var(--hpr-ink)]" />
             ) : (
-              <Bookmark className="h-2.5 w-2.5 text-[var(--hpr-ink)]" />
+              <Clock className="h-2.5 w-2.5 text-[var(--hpr-ink)]" />
             )}
           </span>
         </div>

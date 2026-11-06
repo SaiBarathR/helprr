@@ -9,6 +9,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() },
   sent: [] as Array<{ method: string; path: string; body: { monitored: boolean } }>,
+  // When set, PUT responses wait for it, so a write can be held in flight.
+  gate: null as Promise<void> | null,
 }));
 vi.mock('next/navigation', () => ({
   useParams: () => ({ id: '5' }),
@@ -43,6 +45,7 @@ vi.mock('@/components/scheduled-alerts/scheduled-alert-dialog', () => ({ Schedul
 vi.mock('@/components/media/rename-preview-dialog', () => ({ RenamePreviewDialog: () => null }));
 
 import MovieDetailPage from './page';
+import { queryKeys } from '@/lib/query-keys';
 
 const movie = {
   id: 5, title: 'Dune', year: 2021, monitored: true, hasFile: false, status: 'released', runtime: 155,
@@ -52,12 +55,14 @@ const movie = {
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.sent = [];
+  mocks.gate = null;
   vi.stubGlobal('fetch', vi.fn(async (input: string, init?: RequestInit) => {
     const url = new URL(String(input), 'http://helprr.test');
     const method = init?.method ?? 'GET';
     if (method === 'PUT' && url.pathname === '/api/radarr/5') {
       const body = JSON.parse(String(init!.body));
       mocks.sent.push({ method, path: `${url.pathname}${url.search}`, body });
+      if (mocks.gate) await mocks.gate;
       return Response.json(body);
     }
     if (url.pathname === '/api/radarr/5') return Response.json(movie);
@@ -66,8 +71,7 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllGlobals());
 
-function renderPage() {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+function renderPage(client = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
   const user = userEvent.setup();
   render(<QueryClientProvider client={client}><MovieDetailPage /></QueryClientProvider>);
   return user;
@@ -100,5 +104,42 @@ describe('movie detail monitored toggle', () => {
     expect(mocks.sent.map((s) => s.body.monitored)).toEqual([false, true]);
     expect(mocks.sent[1].path).toBe('/api/radarr/5?instanceId=rad-1');
     expect(screen.getByRole('button', { name: 'Monitored' }).getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('runs an Undo tapped mid-write after that write, so the Undo wins', async () => {
+    const user = renderPage();
+    const toggle = await screen.findByRole('button', { name: 'Monitored' });
+    await user.click(toggle); // unmonitor → toast with Undo
+    await waitFor(() => expect(mocks.toast.success).toHaveBeenCalledWith('Unmonitored', expect.anything()));
+    const { action } = mocks.toast.success.mock.calls[0][1] as { action: { onClick: () => void } };
+    await user.click(toggle); // monitor again
+    await waitFor(() => expect(toggle.getAttribute('aria-pressed')).toBe('true'));
+
+    let release!: () => void;
+    mocks.gate = new Promise((resolve) => { release = resolve; });
+    await user.click(toggle); // unmonitor, held in flight
+    await waitFor(() => expect(mocks.sent).toHaveLength(3));
+    act(() => action.onClick()); // the first toast's Undo, tapped while that write is pending
+    await act(async () => { await Promise.resolve(); });
+    expect(mocks.sent).toHaveLength(3); // waits its turn instead of racing
+
+    mocks.gate = null;
+    act(() => release());
+    await waitFor(() => expect(mocks.sent).toHaveLength(4));
+    expect(mocks.sent.map((s) => s.body.monitored)).toEqual([false, true, false, true]);
+    await waitFor(() => expect(toggle.getAttribute('aria-pressed')).toBe('true'));
+  });
+
+  it('flips only this instance\'s movie in the cached library list', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+    client.setQueryData(queryKeys.library('radarr'), [
+      { id: 5, instanceId: 'rad-1', title: 'Dune', monitored: true },
+      { id: 5, instanceId: 'rad-2', title: 'Alien', monitored: true },
+    ]);
+    const user = renderPage(client);
+    await user.click(await screen.findByRole('button', { name: 'Monitored' }));
+    await waitFor(() => expect(mocks.toast.success).toHaveBeenCalledWith('Unmonitored', expect.anything()));
+    expect(client.getQueryData<Array<{ instanceId: string; monitored: boolean }>>(queryKeys.library('radarr'))!
+      .map((m) => [m.instanceId, m.monitored])).toEqual([['rad-1', false], ['rad-2', true]]);
   });
 });

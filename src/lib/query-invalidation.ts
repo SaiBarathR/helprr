@@ -63,3 +63,25 @@ export function invalidateInstances(qc: QueryClient) {
   qc.invalidateQueries({ queryKey: queryKeys.widgetServiceAvailability() });
   for (const svc of ['radarr', 'sonarr', 'lidarr'] as const) qc.invalidateQueries({ queryKey: [svc, 'library'] });
 }
+
+// After a monitor toggle, patch that one item's flag in the cached library lists
+// (slim + full + every instance) instead of refetching the whole library, which
+// keeps the server-resolved profile/tag labels. Ids are per instance, so match
+// on id AND instanceId: another instance can hold a different item with the same
+// id. Without an instanceId the write went to the default connection, which a
+// list item cannot be matched to, so refetch the lists instead.
+export function patchLibraryMonitored(
+  qc: QueryClient,
+  svc: ArrService,
+  t: { itemId: number; instanceId?: string; monitored: boolean },
+) {
+  if (!t.instanceId) {
+    qc.invalidateQueries({ queryKey: [svc, 'library'] });
+    return;
+  }
+  qc.setQueriesData<unknown>({ queryKey: [svc, 'library'] }, (prev: unknown) =>
+    Array.isArray(prev)
+      ? prev.map((item: { id: number; instanceId?: string }) =>
+          item.id === t.itemId && item.instanceId === t.instanceId ? { ...item, monitored: t.monitored } : item)
+      : prev);
+}
