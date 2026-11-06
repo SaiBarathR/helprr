@@ -18,6 +18,7 @@ export interface SonarrSeries {
   qualityProfileId: number;
   seasonFolder: boolean;
   monitored: boolean;
+  monitorNewItems?: 'all' | 'none';
   runtime: number;
   tvdbId: number;
   tmdbId?: number;

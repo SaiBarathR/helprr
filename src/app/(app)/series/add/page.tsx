@@ -44,6 +44,7 @@ function AddSeriesPageContent() {
   const [rootFolder, setRootFolder] = useState('');
   const [selectedTags, setSelectedTags] = useState<number[]>([]);
   const [monitorOption, setMonitorOption] = useState('all');
+  const [monitorNewItems, setMonitorNewItems] = useState<'all' | 'none'>('all');
   const [searchForMissingEpisodes, setSearchForMissingEpisodes] = useState(true);
   const [seriesType, setSeriesType] = useState('standard');
   const [seasonFolder, setSeasonFolder] = useState(true);
@@ -186,6 +187,7 @@ function AddSeriesPageContent() {
       qualityProfileId: Number(profileId),
       rootFolderPath: rootFolder,
       monitored: monitorOption !== 'none',
+      monitorNewItems,
       tags: selectedTags,
       seriesType,
       seasonFolder,
@@ -420,6 +422,19 @@ function AddSeriesPageContent() {
                         {MONITOR_OPTIONS.map((o) => (
                           <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
                         ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="grouped-row">
+                    <Label className="text-sm shrink-0">Monitor New Seasons</Label>
+                    <Select value={monitorNewItems} onValueChange={(v) => setMonitorNewItems(v as 'all' | 'none')}>
+                      <SelectTrigger className="w-auto h-auto border-0 bg-transparent px-2 py-1 gap-1 text-sm text-muted-foreground shadow-none focus:ring-0 [&>svg]:h-3.5 [&>svg]:w-3.5">
+                        <SelectValue>{monitorNewItems === 'all' ? 'All' : 'None'}</SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All</SelectItem>
+                        <SelectItem value="none">None</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>

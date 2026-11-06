@@ -132,7 +132,7 @@ function standardSeries(extra: Record<string, unknown> = {}) {
     id: 7, title: 'Severance', seriesType: 'standard', tmdbId: 95396, tvdbId: 371980, imdbId: 'tt11280740', titleSlug: 'severance',
     monitored: true, status: 'continuing', year: 2022, runtime: 55, certification: 'TV-MA', ratings: { value: 8.7 },
     images: [{ coverType: 'poster', url: '/api/images/poster.jpg', remoteUrl: 'https://img.example/poster.jpg' }],
-    qualityProfileId: 4, tags: [9], path: '/tv/Severance', seasonFolder: true, added: '2022-02-18T10:00:00Z',
+    qualityProfileId: 4, tags: [9], path: '/tv/Severance', seasonFolder: true, monitorNewItems: 'all', added: '2022-02-18T10:00:00Z',
     network: 'Apple TV+', genres: ['Drama', 'Mystery'], nextAiring: null, overview: 'Mark leads a team of office workers whose memories have been surgically divided between their work and personal lives.',
     firstAired: '2022-02-18', lastAired: '2025-03-21', previousAiring: '2025-03-21T01:00:00Z', releaseDate: null, originalLanguage: { name: 'English' },
     seasons: [season(0, false, { episodeFileCount: 0, episodeCount: 0, totalEpisodeCount: 1, sizeOnDisk: 0, percentOfEpisodes: 0, previousAiring: null, releaseGroups: [] }), season(1, true), season(2, false)],

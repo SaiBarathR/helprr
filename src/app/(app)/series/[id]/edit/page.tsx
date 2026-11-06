@@ -51,6 +51,7 @@ export default function SeriesEditPage() {
   const [qualityProfileId, setQualityProfileId] = useState<number>(0);
   const [seriesType, setSeriesType] = useState('');
   const [seasonFolder, setSeasonFolder] = useState(true);
+  const [monitorNewItems, setMonitorNewItems] = useState<'all' | 'none'>('all');
   const [rootFolder, setRootFolder] = useState('');
   const [rootFolderTouched, setRootFolderTouched] = useState(false);
   const [selectedTags, setSelectedTags] = useState<number[]>([]);
@@ -68,6 +69,7 @@ export default function SeriesEditPage() {
     setQualityProfileId(series.qualityProfileId);
     setSeriesType(series.seriesType);
     setSeasonFolder(series.seasonFolder);
+    setMonitorNewItems(series.monitorNewItems ?? 'all');
     setSelectedTags([...series.tags]);
     setRootFolder(series.path ? parentPath(series.path) : '');
   }, [series]);
@@ -81,6 +83,7 @@ export default function SeriesEditPage() {
         qualityProfileId,
         seriesType,
         seasonFolder,
+        monitorNewItems,
         tags: selectedTags,
       };
 
@@ -173,6 +176,27 @@ export default function SeriesEditPage() {
                   <SelectItem value="standard">Standard</SelectItem>
                   <SelectItem value="daily">Daily</SelectItem>
                   <SelectItem value="anime">Anime</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </div>
+
+        {/* Monitoring */}
+        <div className="grouped-section">
+          <p className="grouped-section-title">Monitoring</p>
+          <div className="grouped-section-content">
+            <div className="grouped-row">
+              <Label htmlFor="monitor-new-items" className="text-sm shrink-0">
+                Monitor New Seasons
+              </Label>
+              <Select value={monitorNewItems} onValueChange={(v) => setMonitorNewItems(v as 'all' | 'none')}>
+                <SelectTrigger id="monitor-new-items" className="w-[180px] border-0 bg-transparent text-right">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All new seasons</SelectItem>
+                  <SelectItem value="none">None</SelectItem>
                 </SelectContent>
               </Select>
             </div>

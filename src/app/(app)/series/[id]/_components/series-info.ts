@@ -117,7 +117,9 @@ export function buildSeriesInfoRows({
     ...(tagLabels.length > 0 ? [{ label: 'Tags', value: tagLabels.join(', ') }] : []),
     ...(series.path ? [{ label: 'Path', value: series.path }] : []),
     ...(rootFolderPath ? [{ label: 'Root Folder', value: rootFolderPath }] : []),
-    { label: 'New Seasons', value: series.monitored ? 'Monitored' : 'Not Monitored' },
+    ...(series.monitorNewItems
+      ? [{ label: 'New Seasons', value: series.monitorNewItems === 'all' ? 'Monitored' : 'Not Monitored' }]
+      : []),
     { label: 'Season Folders', value: series.seasonFolder ? 'Yes' : 'No' },
     ...statisticsRows,
     {
