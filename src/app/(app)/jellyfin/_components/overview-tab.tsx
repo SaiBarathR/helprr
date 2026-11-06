@@ -366,7 +366,7 @@ function PosterCard({ item, showProgress, jellyfinUrl, imagePriority }: { item: 
   const progress = item.UserData?.PlayedPercentage ?? 0;
   const imageId = item.Type === 'Episode' && item.SeriesId ? item.SeriesId : item.Id;
   const hasImage = item.ImageTags?.Primary || (item.Type === 'Episode' && item.SeriesId);
-  const posterSrc = `/api/jellyfin/image?itemId=${imageId}&type=Primary&maxWidth=220&quality=90`;
+  const posterSrc = `/api/jellyfin/image?itemId=${imageId}&type=Primary&maxWidth=220&quality=80`;
   const targetId = item.Type === 'Episode' && item.SeriesId ? item.SeriesId : item.Id;
   const href = jellyfinUrl ? `${jellyfinUrl}/web/index.html#!/details?id=${targetId}` : undefined;
 

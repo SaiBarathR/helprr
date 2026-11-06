@@ -548,16 +548,20 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
             {hasMediaDetail && (
               <div className="space-y-2 rounded-xl border bg-card/60 p-3">
                 {videoStream && (
-                  <p className="flex items-center gap-2 text-sm font-medium">
-                    <Film className="size-4 shrink-0 text-muted-foreground" />
-                    {[
-                      videoStream.DisplayTitle
-                        ?? [videoStream.Height ? `${videoStream.Height}p` : null, videoStream.Codec?.toUpperCase()]
-                          .filter(Boolean).join(' '),
-                      videoStream.AverageFrameRate
-                        ? `${Math.round(videoStream.AverageFrameRate * 1000) / 1000} fps`
-                        : null,
-                    ].filter(Boolean).join(' · ')}
+                  <p className="flex items-start gap-2 text-sm font-medium">
+                    <Film className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                    {/* A stream's embedded title is often a dotted file name — one
+                        unbroken word that would otherwise run past the panel. */}
+                    <span className="min-w-0 [overflow-wrap:anywhere]">
+                      {[
+                        videoStream.DisplayTitle
+                          ?? [videoStream.Height ? `${videoStream.Height}p` : null, videoStream.Codec?.toUpperCase()]
+                            .filter(Boolean).join(' '),
+                        videoStream.AverageFrameRate
+                          ? `${Math.round(videoStream.AverageFrameRate * 1000) / 1000} fps`
+                          : null,
+                      ].filter(Boolean).join(' · ')}
+                    </span>
                   </p>
                 )}
                 {fileLine && (

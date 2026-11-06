@@ -232,7 +232,7 @@ export function ContinueWatchingWidget({
           const imageId = it.Type === 'Episode' && it.SeriesId ? it.SeriesId : it.Id;
           const hasImage = it.ImageTags?.Primary || (it.Type === 'Episode' && it.SeriesId);
           const imageSrc = hasImage
-            ? `/api/jellyfin/image?itemId=${imageId}&type=Primary&maxWidth=220&quality=90`
+            ? `/api/jellyfin/image?itemId=${imageId}&type=Primary&maxWidth=220&quality=80`
             : undefined;
           const cardInner = (
             <>
