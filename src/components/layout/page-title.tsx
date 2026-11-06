@@ -1,15 +1,10 @@
 import type { ReactNode } from 'react';
-import { cn } from '@/lib/utils';
 
 /**
- * A top-level page's visible title: the same large title the Settings pages use. It scrolls
- * away above the page's sticky toolbar. Its bottom margin is the page's top padding, which a
- * flush toolbar right after it pulls itself up by (.page-toolbar-flush), as under DemoBanner.
+ * A top-level page's title, for screen readers only. The owner does not want a visible
+ * title on top-level pages: the tab bar or sidebar already shows where you are, and the
+ * space belongs to the content. Never make this visible.
  */
-export function PageTitle({ children, className }: { children: ReactNode; className?: string }) {
-  return (
-    <h1 className={cn('mb-[var(--main-pad-top)] px-1 text-2xl font-semibold leading-tight', className)}>
-      {children}
-    </h1>
-  );
+export function PageTitle({ children }: { children: ReactNode }) {
+  return <h1 className="sr-only">{children}</h1>;
 }

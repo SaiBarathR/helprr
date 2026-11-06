@@ -561,11 +561,11 @@ describe('Activity: wanted tabs, sorting and refresh', () => {
 });
 
 describe('Activity toolbar', () => {
-  it('shows the page title, then the section tabs, then named actions', async () => {
+  it('keeps the page title for screen readers, then the section tabs, then named actions', async () => {
     await renderPage();
     const title = document.querySelector('h1')!;
     expect(title.textContent).toBe('Activity');
-    expect(title.className).not.toContain('sr-only');
+    expect(title.className).toContain('sr-only');
 
     const toolbar = document.querySelector('.page-toolbar')!;
     const tablist = toolbar.querySelector<HTMLElement>('[role="tablist"]')!;

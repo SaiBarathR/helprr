@@ -272,9 +272,9 @@ describe('torrents page (characterization)', () => {
     expect(mocks.asked[0]).toBe('/api/qbittorrent/summary?view=delta');
   });
 
-  it('shows the page title and names every icon in its toolbar', async () => {
+  it('keeps the page title for screen readers and names every icon in its toolbar', async () => {
     renderPage();
-    expect(screen.getByRole('heading', { level: 1, name: 'Torrents' }).className).not.toContain('sr-only');
+    expect(screen.getByRole('heading', { level: 1, name: 'Torrents' }).className).toContain('sr-only');
     const toolbar = document.querySelector<HTMLElement>('.page-toolbar')!;
     const icons = [...toolbar.querySelectorAll('button')].filter((b) => !b.textContent?.trim());
     expect(icons.length).toBeGreaterThan(0);

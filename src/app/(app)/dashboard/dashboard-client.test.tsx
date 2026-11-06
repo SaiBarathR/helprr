@@ -152,13 +152,13 @@ describe('DashboardClient device sync', () => {
 });
 
 describe('DashboardClient heading', () => {
-  it('shows the page title, as every other top-level page does', () => {
+  it('keeps the page title for screen readers only, as on every top-level page', () => {
     mocks.isMobile = false;
     render('desktop');
     const headings = document.querySelectorAll('h1');
     expect(headings).toHaveLength(1);
     expect(headings[0].textContent).toBe('Dashboard');
-    expect(headings[0].className).not.toContain('sr-only');
+    expect(headings[0].className).toContain('sr-only');
   });
 });
 

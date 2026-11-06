@@ -13,7 +13,6 @@ import { LogsFilterMenu, type LogLevel, type LogSource } from './logs-filter-men
 import { LogsDateRangePicker } from './logs-date-range-picker';
 import { cn } from '@/lib/utils';
 import Link from '@/components/ui/app-link';
-import { PageTitle } from '@/components/layout/page-title';
 
 interface LogFile {
   name: string;
@@ -65,18 +64,16 @@ export function LogsToolbar({
 }: LogsToolbarProps) {
 
   return (
-    <>
-    <Link
-      href="/settings"
-      className="inline-flex items-center gap-1 text-sm text-primary -ml-1 min-h-[44px] px-1"
-    >
-      <ChevronLeft className="h-5 w-5" />
-      Settings
-    </Link>
-    <PageTitle>Logs</PageTitle>
     <div
       className="page-toolbar page-toolbar-flush pb-2 app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 space-y-2"
     >
+        <Link
+          href="/settings"
+          className="inline-flex items-center gap-1 text-sm text-primary -ml-1 min-h-[44px] px-1"
+        >
+          <ChevronLeft className="h-5 w-5" />
+          Settings
+        </Link>
       <div className="relative">
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <SearchInput
@@ -154,6 +151,5 @@ export function LogsToolbar({
         </button>
       </div>
     </div>
-    </>
   );
 }
