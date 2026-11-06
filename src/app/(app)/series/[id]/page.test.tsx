@@ -273,6 +273,18 @@ describe('series detail page (characterization)', () => {
     expect(screen.getByRole('link', { name: 'Red Hour' }).getAttribute('href')).toBe('/discover?companies=3&companyName=Red%20Hour&contentType=show');
   });
 
+  it('opens the detail grid with a split hero, so wide screens put the poster and title atop the facts column', async () => {
+    renderPage();
+    await screen.findByText('“Work is a mystery.”');
+    const hero = screen.getAllByRole('heading', { level: 1, name: 'Severance' }).at(-1)!.closest('.detail-hero')!;
+    expect(hero.classList).toContain('detail-hero-split');
+    expect(hero.parentElement!.classList).toContain('detail-grid-series');
+    // The backdrop runs full width; the poster, title and tagline sit together.
+    expect(hero.querySelector(':scope > .detail-hero-banner')).toBeTruthy();
+    expect(hero.querySelector(':scope > .detail-hero-identity')!.textContent).toContain('“Work is a mystery.”');
+    expect(screen.getAllByRole('button', { name: 'Add to watchlist' })).toHaveLength(1);
+  });
+
   it('offers each action only to someone who may take it', async () => {
     renderPage();
     await screen.findAllByRole('heading', { level: 1, name: 'Severance' });
@@ -464,6 +476,8 @@ describe('series detail page (characterization)', () => {
       const user = renderPage();
       expect(await screen.findByRole('banner', { name: 'Anime hero' })).toBeTruthy();
       expect(screen.getByRole('banner', { name: 'Anime hero' }).textContent).toContain("Frieren: Beyond Journey's End · next in 0m");
+      // The AniList hero keeps its full-width row on wide screens.
+      expect(screen.getByRole('banner', { name: 'Anime hero' }).closest('.detail-hero')!.classList).not.toContain('detail-hero-split');
       // No TMDB enrichment for a mapped anime.
       expect(screen.queryByText('Adam Scott (Mark Scout · 19 ep)')).toBeNull();
       expect(screen.queryByRole('button', { name: 'Season 1 episodes' })).toBeNull();

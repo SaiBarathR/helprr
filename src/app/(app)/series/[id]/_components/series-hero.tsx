@@ -17,7 +17,8 @@ import type { SeriesDialog } from './types';
 /**
  * The top of the page: an anime's season tabs and AniList hero, else the TMDB
  * backdrop with the poster, else the poster alone, each with the status badge
- * and title.
+ * and title. It is the first section of the page's .detail-grid; the poster
+ * layouts are "split" so the poster and title can open its left column.
  */
 export function SeriesHero({
   series,
@@ -46,8 +47,9 @@ export function SeriesHero({
     animeEntries, animeDetailsById, animePrimaryTitle, expandedAnimeTabId, setExpandedAnimeTabId,
     activeAnimeIdx, selectAnimeTab, animeDetail, nextAiringSeconds, activeDetailLoading, animeLoading,
   } = anime;
+  const animeHero = isAnimeSeries && (animeDetail || animeEntries.length > 0);
   return (
-    <>
+    <div className={animeHero ? 'detail-hero' : 'detail-hero detail-hero-split'}>
       {isAnimeSeries && animeEntries.length > 1 && (
         <div data-scroll-restoration-key="series-anime-tabs" className="flex items-center gap-1.5 overflow-x-auto pt-1 pb-3 -mx-2 px-2 md:mx-0 md:px-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {animeEntries.map((entry, index) => {
@@ -136,8 +138,8 @@ export function SeriesHero({
           </div>
         </div>
       ) : tmdbData?.backdropPath ? (
-        <div className='-mx-2 md:-mx-6'>
-          <div className="relative w-full h-[220px] overflow-hidden bg-muted/40 ">
+        <>
+          <div className="detail-hero-banner relative -mx-2 md:-mx-6 h-[220px] overflow-hidden bg-muted/40">
             <HeroImage
               src={toCachedImageSrc(tmdbData.backdropPath, 'tmdb', { width: 1280 }) || tmdbData.backdropPath}
               alt=""
@@ -170,51 +172,53 @@ export function SeriesHero({
               )}
             </div>
           </div>
-          <div className="relative -mt-[90px] px-2 md:px-6 flex gap-3.5">
-            <div className="w-[100px] shrink-0">
-              <QuickContextMenu label={`${series.title} actions`} groups={contextGroups}>
-              <div className="relative aspect-[2/3] rounded-lg overflow-hidden bg-muted shadow-lg ring-1 ring-border/20">
-                {poster ? (
-                  <FadeInImage
-                    src={poster}
-                    alt={series.title}
-                    fill
-                    sizes="100px"
-                    className="object-cover"
-                    unoptimized={isProtectedApiImageSrc(poster)}
-                  />
-                ) : (
-                  <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
-                    <Tv className="h-8 w-8" />
+          <div className="detail-hero-identity -mt-[90px]">
+            <div className="relative flex gap-3.5">
+              <div className="w-[100px] shrink-0">
+                <QuickContextMenu label={`${series.title} actions`} groups={contextGroups}>
+                <div className="relative aspect-[2/3] rounded-lg overflow-hidden bg-muted shadow-lg ring-1 ring-border/20">
+                  {poster ? (
+                    <FadeInImage
+                      src={poster}
+                      alt={series.title}
+                      fill
+                      sizes="100px"
+                      className="object-cover"
+                      unoptimized={isProtectedApiImageSrc(poster)}
+                    />
+                  ) : (
+                    <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
+                      <Tv className="h-8 w-8" />
+                    </div>
+                  )}
+                </div>
+                </QuickContextMenu>
+              </div>
+              <div className="flex-1 min-w-0 pt-[60px]">
+                <span className={`inline-block text-[10px] font-bold tracking-wider px-1.5 py-0.5 rounded ${statusColor} mb-1.5`}>
+                  {statusLabel}
+                </span>
+                <h1 className="text-lg font-bold leading-tight">{series.title}</h1>
+                <p className="text-sm text-muted-foreground mt-0.5">
+                  {series.year}
+                  {series.runtime > 0 && <> &middot; {series.runtime}m</>}
+                  {series.certification && <> &middot; {series.certification}</>}
+                </p>
+                {series.ratings && series.ratings.value > 0 && (
+                  <div className="flex items-center gap-1 mt-1.5">
+                    <Heart className="h-3.5 w-3.5 text-red-500 fill-red-500" />
+                    <span className="text-sm font-medium">{Math.round(series.ratings.value * 10)}%</span>
                   </div>
                 )}
               </div>
-              </QuickContextMenu>
-            </div>
-            <div className="flex-1 min-w-0 pt-[60px]">
-              <span className={`inline-block text-[10px] font-bold tracking-wider px-1.5 py-0.5 rounded ${statusColor} mb-1.5`}>
-                {statusLabel}
-              </span>
-              <h1 className="text-lg font-bold leading-tight">{series.title}</h1>
-              <p className="text-sm text-muted-foreground mt-0.5">
-                {series.year}
-                {series.runtime > 0 && <> &middot; {series.runtime}m</>}
-                {series.certification && <> &middot; {series.certification}</>}
-              </p>
-              {series.ratings && series.ratings.value > 0 && (
-                <div className="flex items-center gap-1 mt-1.5">
-                  <Heart className="h-3.5 w-3.5 text-red-500 fill-red-500" />
-                  <span className="text-sm font-medium">{Math.round(series.ratings.value * 10)}%</span>
-                </div>
-              )}
-            </div>
           </div>
           {tmdbData.tagline && (
-            <p className="px-2 md:px-6 mt-3 text-sm italic text-muted-foreground">&ldquo;{tmdbData.tagline}&rdquo;</p>
+            <p className="mt-3 text-sm italic text-muted-foreground">&ldquo;{tmdbData.tagline}&rdquo;</p>
           )}
-        </div>
+          </div>
+        </>
       ) : (
-        <div className="flex gap-4 pt-3 pb-4">
+        <div className="detail-hero-identity flex gap-4 pt-3 pb-4">
           <div className="w-28 shrink-0">
             <QuickContextMenu label={`${series.title} actions`} groups={contextGroups}>
             <div className="relative aspect-[2/3] rounded-lg overflow-hidden bg-muted">
@@ -266,6 +270,6 @@ export function SeriesHero({
           </div>
         </div>
       )}
-    </>
+    </div>
   );
 }

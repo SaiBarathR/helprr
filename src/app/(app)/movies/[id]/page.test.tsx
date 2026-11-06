@@ -89,6 +89,15 @@ describe('movie detail monitored toggle', () => {
     expect(screen.getAllByRole('button', { name: 'Add to watchlist' })[0].querySelector('svg.lucide-bookmark')).toBeTruthy();
   });
 
+  it('opens the detail grid with a split hero, so wide screens put the poster and title atop the facts column', async () => {
+    renderPage();
+    const title = (await screen.findAllByRole('heading', { level: 1, name: movie.title })).at(-1)!;
+    const hero = title.closest('.detail-hero')!;
+    expect(hero.classList).toContain('detail-hero-split');
+    expect(hero.parentElement!.classList).toContain('detail-grid-movie');
+    expect(title.closest('.detail-hero-identity')!.parentElement).toBe(hero);
+  });
+
   it('offers Undo after unmonitoring, and Undo monitors the movie again', async () => {
     const user = renderPage();
     await user.click(await screen.findByRole('button', { name: 'Monitored' }));
