@@ -111,8 +111,16 @@ export function navItemAllowed(
   return !item.requiredCapability || has(item.requiredCapability);
 }
 
+// The first four enabled items become the phone tabs, so a new install opens
+// with the pages people check most; the rest follow in NAV_ITEMS order. A user
+// who lacks one of these gets the next allowed item in that slot.
+const DEFAULT_TAB_IDS: readonly NavItemId[] = ['dashboard', 'movies', 'series', 'activity'];
+
 /** Default ID ordering */
-export const DEFAULT_NAV_ORDER: NavItemId[] = NAV_ITEMS.map((item) => item.id);
+export const DEFAULT_NAV_ORDER: NavItemId[] = [
+  ...DEFAULT_TAB_IDS,
+  ...NAV_ITEMS.map((item) => item.id).filter((id) => !DEFAULT_TAB_IDS.includes(id)),
+];
 
 /** ID → NavItemDef lookup */
 export const NAV_ITEM_MAP: Record<NavItemId, NavItemDef> = Object.fromEntries(

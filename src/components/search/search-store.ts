@@ -3,7 +3,7 @@
 import { create } from 'zustand';
 
 // Open-state for the global search palette. Deliberately NOT persisted (unlike the
-// UI store) — it's transient session state any trigger (sidebar button, mobile FAB,
+// UI store) — it's transient session state any trigger (sidebar button, tab-bar Search button,
 // ⌘K) can flip.
 interface SearchPaletteState {
   open: boolean;

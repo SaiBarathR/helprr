@@ -238,9 +238,14 @@ function DashboardInner({ initialLayout, initialDevice, setupChecklist }: Dashbo
         // pinned inline here, so the bento doesn't override them with stale
         // pre-hydration defaults — first paint already uses the persisted theme.
         margin: isMobile ? '-0.5rem -0.5rem -1rem' : '-1.5rem',
-        padding: isMobile ? '0.5rem 0.75rem 5rem' : '1.25rem 1.75rem 3.5rem',
+        // The bottom padding lets the last row scroll clear of the floating
+        // Edit button (48px at 16px/30px above the tab bar, lifted over the
+        // mini player when it is up) instead of resting under it.
+        padding: isMobile
+          ? '0.5rem 0.75rem calc(5rem + var(--mini-player-clearance, 0px))'
+          : '1.25rem 1.75rem calc(6.5rem + var(--mini-player-clearance, 0px))',
         minHeight: isMobile
-          ? 'calc(100dvh - var(--header-height, 0px) - 4rem)'
+          ? 'calc(100dvh - var(--header-height, 0px) - var(--footer-height, 0px))'
           : '100%',
       }}
     >

@@ -215,7 +215,7 @@ export function NavOrderSettings() {
   }
 
   return (
-    <div className="grouped-section mb-6">
+    <div id="navigation" className="grouped-section mb-6 scroll-mt-[calc(var(--header-height,0px)+0.75rem)]">
       <div className="grouped-section-title">Navigation</div>
       <div className="grouped-section-content">
         <div className="grouped-row">

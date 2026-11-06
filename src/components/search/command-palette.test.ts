@@ -40,16 +40,16 @@ describe('CommandPalette', () => {
     expect(document.querySelector('[role="dialog"]')).toBeNull();
   });
 
-  it('keeps the launcher lightweight and opens the lazy dialog from button or hotkey', async () => {
+  it('renders nothing until opened, then the lazy dialog; the hotkey toggles it', async () => {
     await act(async () => {
       root.render(createElement(CommandPalette));
     });
 
-    const launcher = document.querySelector('[aria-label="Search"]') as HTMLButtonElement;
-    expect(launcher).toBeInstanceOf(HTMLButtonElement);
+    // The phone entry is the tab bar's Search button; no floating edge tab.
+    expect(document.querySelector('button')).toBeNull();
     expect(document.querySelector('[data-command-dialog]')).toBeNull();
 
-    await act(async () => launcher.click());
+    await act(async () => useSearchPalette.getState().setOpen(true));
     expect(document.querySelector('[data-command-dialog]')).not.toBeNull();
 
     await act(async () => {

@@ -4,7 +4,7 @@ import { useEffect, useState, useMemo } from 'react';
 import Link from '@/components/ui/app-link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
-import { Loader2, MoreHorizontal } from 'lucide-react';
+import { Loader2, MoreHorizontal, Search, SlidersHorizontal } from 'lucide-react';
 import {
   Popover,
   PopoverContent,
@@ -16,6 +16,7 @@ import { usePendingHref } from '@/components/layout/navigation-provider';
 import { useMe, hasCapability } from '@/components/permission-provider';
 import { useBadgeCounts } from '@/components/layout/badge-provider';
 import { NavBadge } from '@/components/layout/nav-badge';
+import { useSearchPalette } from '@/components/search/search-store';
 import type { BadgeSlice } from '@/types/badges';
 
 export function BottomNav() {
@@ -28,6 +29,7 @@ export function BottomNav() {
   const isBottom = navPosition === 'bottom';
   const me = useMe();
   const counts = useBadgeCounts();
+  const openSearch = useSearchPalette((state) => state.setOpen);
 
   const { tabs, moreItems } = useMemo(() => {
     const enabled = getEnabledNavItems(navOrder, disabledNavItems).filter(
@@ -39,11 +41,15 @@ export function BottomNav() {
   const activeHref = getActiveNavHref([...tabs, ...moreItems], pendingHref?.split('?')[0] || pathname);
   const isMoreActive = moreItems.some((item) => item.href === activeHref);
 
-  // Roll the hidden items' badges into one indicator on the "More" button.
+  // Roll the hidden items' badges into one count on the "More" button. The
+  // Activity queue and Torrents largely count the same downloads, so when both
+  // are hidden only Torrents counts.
   const moreBadge = useMemo<BadgeSlice>(
-    () =>
-      moreItems.reduce(
+    () => {
+      const hasDownloads = moreItems.some((item) => item.badgeArea === 'downloads');
+      return moreItems.reduce(
         (acc, item) => {
+          if (hasDownloads && item.badgeArea === 'activity') return acc;
           const slice = item.badgeArea ? counts[item.badgeArea] : undefined;
           if (slice) {
             acc.total += slice.total;
@@ -52,7 +58,8 @@ export function BottomNav() {
           return acc;
         },
         { total: 0, attention: 0 },
-      ),
+      );
+    },
     [moreItems, counts],
   );
 
@@ -77,12 +84,9 @@ export function BottomNav() {
     <nav
       // Stable hook for the cinematic Watch skin, which goes full screen.
       data-app-bottom-nav
-      className={cn(
-      'md:hidden z-50 border-border app-chrome-bar bg-background/95 backdrop-blur-sm',
-      isBottom
-        ? 'fixed bottom-0 left-0 right-0 border-t pb-[env(safe-area-inset-bottom)]'
-        : 'sticky top-0 border-b pt-[env(safe-area-inset-top)]'
-    )}>
+      // Its edge, border and safe-area padding come from .app-tab-bar (globals.css).
+      className="app-tab-bar md:hidden z-50 border-border app-chrome-bar bg-background/95 backdrop-blur-sm"
+    >
       <div className="flex items-center justify-around h-12">
         {tabs.map(({ href, icon: Icon, shortLabel, badgeArea }) => {
           const slice = badgeArea ? counts[badgeArea] : undefined;
@@ -123,7 +127,7 @@ export function BottomNav() {
               >
                 <span className="relative">
                   <MoreHorizontal className="h-5 w-5" strokeWidth={isMoreActive ? 2.5 : 2} />
-                  <NavBadge slice={moreBadge} dot className="absolute -right-1.5 -top-0.5" />
+                  <NavBadge slice={moreBadge} className="absolute -right-2.5 -top-1.5 h-4 min-w-[1rem] px-1 text-[10px]" />
                 </span>
                 More
               </button>
@@ -173,9 +177,30 @@ export function BottomNav() {
                   );
                 })}
               </div>
+              <div className="mt-1 shrink-0 border-t border-border pt-1">
+                <Link
+                  href="/settings/appearance#navigation"
+                  prefetch={null}
+                  onClick={() => setMoreOpen(false)}
+                  className="flex min-h-11 items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent"
+                >
+                  <SlidersHorizontal className="h-5 w-5 shrink-0" />
+                  Customize tabs
+                </Link>
+              </div>
             </PopoverContent>
           </Popover>
         )}
+
+        {/* Phone search: the sidebar's search and its shortcut hint are md+ only. */}
+        <button
+          type="button"
+          onClick={() => openSearch(true)}
+          className="flex flex-col items-center justify-center gap-0.5 flex-1 h-full min-h-[48px] text-[11px] font-medium text-muted-foreground transition-colors"
+        >
+          <Search className="h-5 w-5" />
+          Search
+        </button>
       </div>
     </nav>
   );
