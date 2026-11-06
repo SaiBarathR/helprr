@@ -30,6 +30,21 @@ import type { SonarrLookupResult } from '@/types';
 import { useQualityProfiles, useRootFolders } from '@/lib/hooks/use-reference-data';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import { resolveAddPageInstance } from '@/lib/add-page-instances';
+import { pickRememberedOption, readAddDefaults, saveAddDefaults } from '@/lib/add-defaults';
+
+const MONITOR_OPTIONS = [
+  { value: 'all', label: 'All Episodes' },
+  { value: 'future', label: 'Future Episodes' },
+  { value: 'missing', label: 'Missing Episodes' },
+  { value: 'existing', label: 'Existing Episodes' },
+  { value: 'recent', label: 'Recent Episodes' },
+  { value: 'pilot', label: 'Pilot Episode' },
+  { value: 'firstSeason', label: 'First Season' },
+  { value: 'lastSeason', label: 'Last Season' },
+  { value: 'monitorSpecials', label: 'Monitor Specials' },
+  { value: 'unmonitorSpecials', label: 'Unmonitor Specials' },
+  { value: 'none', label: 'None' },
+];
 
 function AddSeriesPageContent() {
   const router = useRouter();
@@ -93,6 +108,10 @@ function AddSeriesPageContent() {
     setProfileId('');
     setRootFolder('');
     setSelectedTags([]);
+    // The monitor choice isn't instance-local, so it only changes when this
+    // instance has a remembered one.
+    const rememberedMonitor = readAddDefaults('sonarr', instanceId).monitor;
+    if (rememberedMonitor && MONITOR_OPTIONS.some((o) => o.value === rememberedMonitor)) setMonitorOption(rememberedMonitor);
   }
 
   // Auto-select the prefilled result (by tvdbId or tmdbId) once the lookup resolves.
@@ -114,15 +133,16 @@ function AddSeriesPageContent() {
     toast.error('Search failed');
   }, [lookupQuery.isError, lookupQuery.error]);
 
-  // Default the profile / root-folder selection to the first option when the
-  // instance's reference data arrives. Keep a still-valid user choice on a
-  // background refetch; re-default only when the current value is missing from
-  // the fresh list (e.g. after switching instances).
+  // Default the profile / root-folder selection when the instance's reference
+  // data arrives: the last one used on this instance while it still exists,
+  // else the first option. Keep a still-valid user choice on a background
+  // refetch; re-default only when the current value is missing from the fresh
+  // list (e.g. after switching instances).
   if (profiles.length > 0 && !(profileId && profiles.some((p) => String(p.id) === profileId))) {
-    setProfileId(String(profiles[0].id));
+    setProfileId(pickRememberedOption(profiles.map((p) => String(p.id)), readAddDefaults('sonarr', instanceId).profileId)!);
   }
   if (rootFolders.length > 0 && !(rootFolder && rootFolders.some((f) => f.path === rootFolder))) {
-    setRootFolder(rootFolders[0].path);
+    setRootFolder(pickRememberedOption(rootFolders.map((f) => f.path), readAddDefaults('sonarr', instanceId).rootFolder)!);
   }
 
   function handleSearch(e: React.FormEvent) {
@@ -144,7 +164,14 @@ function AddSeriesPageContent() {
   }
 
   const addMutation = useMutation({
-    mutationFn: async (payload: { title: string; [k: string]: unknown }) => {
+    mutationFn: async (payload: {
+      title: string;
+      instanceId?: string;
+      qualityProfileId: number;
+      rootFolderPath: string;
+      addOptions: { monitor: string; [k: string]: unknown };
+      [k: string]: unknown;
+    }) => {
       const res = await fetch('/api/sonarr', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -158,6 +185,11 @@ function AddSeriesPageContent() {
     },
     onSuccess: (s, payload) => {
       invalidateSeries(queryClient);
+      saveAddDefaults('sonarr', payload.instanceId, {
+        profileId: String(payload.qualityProfileId),
+        rootFolder: payload.rootFolderPath,
+        monitor: payload.addOptions.monitor,
+      });
       toast.success(`${payload.title} added`);
       router.push(`/series/${s.id}${instanceId ? `?instance=${instanceId}` : ''}`);
     },
@@ -205,20 +237,6 @@ function AddSeriesPageContent() {
 
   const posterUrl = (images: { coverType: string; remoteUrl: string }[]) =>
     toCachedImageSrc(images.find((i) => i.coverType === 'poster')?.remoteUrl, 'sonarr');
-
-  const MONITOR_OPTIONS = [
-    { value: 'all', label: 'All Episodes' },
-    { value: 'future', label: 'Future Episodes' },
-    { value: 'missing', label: 'Missing Episodes' },
-    { value: 'existing', label: 'Existing Episodes' },
-    { value: 'recent', label: 'Recent Episodes' },
-    { value: 'pilot', label: 'Pilot Episode' },
-    { value: 'firstSeason', label: 'First Season' },
-    { value: 'lastSeason', label: 'Last Season' },
-    { value: 'monitorSpecials', label: 'Monitor Specials' },
-    { value: 'unmonitorSpecials', label: 'Unmonitor Specials' },
-    { value: 'none', label: 'None' },
-  ];
 
   const SERIES_TYPE_OPTIONS = [
     { value: 'standard', label: 'Standard' },

@@ -23,6 +23,7 @@ import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { useMe } from '@/components/permission-provider';
+import { readAddDefaults, saveAddDefaults } from '@/lib/add-defaults';
 import { SEERR_MEDIA_STATUS, type SeerrMediaStatus, type SeerrServiceData, type SeerrSeasonInfo } from '@/types/seerr';
 
 // 'approve-pending' approves a Helprr-side pending request (creates it in Seerr).
@@ -95,6 +96,7 @@ export function SeerrRequestModal({
   const isAdmin = me?.role === 'admin';
   const isTv = mediaType === 'tv';
   const service = isTv ? 'sonarr' : 'radarr';
+  const rememberScope = `seerr-${service}` as const;
 
   // Form state.
   const [selectedSeasons, setSelectedSeasons] = useState<Set<number>>(new Set(initialSeasons ?? []));
@@ -146,20 +148,27 @@ export function SeerrRequestModal({
   // Seed defaults that weren't pre-filled by an existing request, once the
   // service data resolves. Guard on the CURRENT value (via functional updaters)
   // rather than the initial prop, so a background refetch can't overwrite a
-  // selection the user has already made.
+  // selection the user has already made. A new request starts from the last
+  // profile/folder requested on this Seerr server while it still offers them,
+  // then Seerr's own default.
   const isNewRequest = initialTags == null;
   useEffect(() => {
     if (!open) return;
     const svc = serviceQuery.data;
     if (!svc) return;
+    const remembered = mode === 'create'
+      ? readAddDefaults(rememberScope, svc.serverId != null ? String(svc.serverId) : null)
+      : {};
+    const defaultProfileId = svc.profiles.find((p) => String(p.id) === remembered.profileId)?.id ?? svc.defaultProfileId;
+    const defaultRootFolder = svc.rootFolders.find((r) => r.path === remembered.rootFolder)?.path ?? svc.defaultRootFolder;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- seed unresolved service defaults while preserving the current user selections
-    if (svc.defaultProfileId != null) setProfileId((prev) => (prev == null ? svc.defaultProfileId! : prev));
-    if (svc.defaultRootFolder != null) setRootFolder((prev) => (prev == null ? svc.defaultRootFolder! : prev));
+    if (defaultProfileId != null) setProfileId((prev) => (prev == null ? defaultProfileId : prev));
+    if (defaultRootFolder != null) setRootFolder((prev) => (prev == null ? defaultRootFolder : prev));
     // Only auto-fill default tags for a NEW request (initialTags nullish). An
     // existing request opened with an explicit [] tags must stay tagless — don't
     // inject defaults onto it (prev.length===0 alone can't tell the two apart).
     if (isNewRequest && svc.defaultTags?.length) setTags((prev) => (prev.length === 0 ? svc.defaultTags! : prev));
-  }, [open, serviceQuery.data, isNewRequest]);
+  }, [open, serviceQuery.data, isNewRequest, mode, rememberScope]);
 
   // Request as the user's own Seerr account by default, also when their
   // identity arrives after the service data. Its own effect, so that arrival
@@ -255,6 +264,10 @@ export function SeerrRequestModal({
       }
       // A member's create can be held for approval (gate) → distinct toast.
       if (mode === 'create') {
+        saveAddDefaults(rememberScope, serviceData?.serverId != null ? String(serviceData.serverId) : null, {
+          ...(profileId != null ? { profileId: String(profileId) } : {}),
+          ...(rootFolder ? { rootFolder } : {}),
+        });
         const data = (await res.json().catch(() => ({}))) as { pending?: boolean };
         toast.success(data.pending ? 'Submitted for approval' : 'Requested');
       } else {
