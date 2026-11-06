@@ -167,8 +167,17 @@ describe('POST /api/me/password', () => {
   it('rolls back when this session was revoked during the request', async () => {
     mocks.sessionUpdateMany.mockResolvedValueOnce({ count: 0 });
     expect((await post({ currentPassword: CURRENT, newPassword: NEXT })).status).toBe(401);
-    // Thrown inside the transaction, so the hash write is rolled back; no other session is revoked.
+    // The error is thrown inside the transaction callback, so Postgres rolls the hash write back.
+    // The mocked transaction cannot prove the rollback itself; this checks the 401 and that no
+    // other session is revoked.
     expect(mocks.sessionUpdateMany).toHaveBeenCalledTimes(1);
+  });
+
+  it('answers 409 when Postgres ends the transaction as a deadlock or write conflict', async () => {
+    mocks.sessionUpdateMany.mockRejectedValueOnce(Object.assign(new Error('Transaction failed'), { code: 'P2034' }));
+    const res = await post({ currentPassword: CURRENT, newPassword: NEXT });
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toMatch(/try again/);
   });
 
   it('writes and revokes nothing when the account changed meanwhile', async () => {

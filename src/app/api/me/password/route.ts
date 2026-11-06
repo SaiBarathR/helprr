@@ -119,6 +119,14 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     }
     // Name and code only: a Prisma message can echo the arguments, which here include a hash.
     const code = (error as { code?: unknown } | null)?.code;
+    // P2034: Postgres ended this transaction as a deadlock/write conflict (e.g. with a
+    // concurrent "revoke other sessions"). Nothing was written; a retry succeeds.
+    if (code === 'P2034') {
+      return NextResponse.json(
+        { error: 'Your account changed while saving. Reload and try again.' },
+        { status: 409 }
+      );
+    }
     const reason = error instanceof Error
       ? `${error.name}${typeof code === 'string' ? ` ${code}` : ''}`
       : 'unknown error';
