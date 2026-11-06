@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/select';
 import { GroupedSection } from '@/components/settings/grouped-section';
 import { SubtitleAppearanceSection } from '@/components/settings/subtitle-appearance-section';
+import { PlayerSection } from '@/components/settings/player-section';
 import { hasCapability, useMe } from '@/components/permission-provider';
 import { useAppSettings } from '@/lib/hooks/use-app-settings';
 import { useDebouncedCommit } from '@/lib/hooks/use-debounced-commit';
@@ -236,7 +237,12 @@ export default function PreferencesPage() {
         </Link>
       </GroupedSection>
 
-      {hasCapability(me, 'jellyfin.view') && <SubtitleAppearanceSection />}
+      {hasCapability(me, 'jellyfin.view') && (
+        <>
+          <PlayerSection />
+          <SubtitleAppearanceSection />
+        </>
+      )}
     </div>
   );
 }

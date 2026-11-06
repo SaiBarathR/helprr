@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import dynamic from 'next/dynamic';
 const JellyfinConnectForm = dynamic(() => import('@/components/settings/jellyfin-connect-form').then((module) => module.JellyfinConnectForm));
@@ -8,12 +8,18 @@ import {
   ChevronDown,
   Gauge,
   ListMusic,
+  ListVideo,
+  LoaderCircle,
+  Lock,
+  LockOpen,
   Maximize,
   Pause,
   PictureInPicture2,
   Play,
   Repeat,
   Repeat1,
+  RotateCcw,
+  RotateCw,
   Settings,
   Shuffle,
   SkipBack,
@@ -48,6 +54,7 @@ import { jsonFetcher } from '@/lib/query-fetch';
 import { queryKeys } from '@/lib/query-keys';
 import type { LyricsResponse } from '@/types/jellyfin-streaming';
 import { useUIStore } from '@/lib/store';
+import { SKIP_LENGTH_OPTIONS } from '@/lib/jellyfin-playback/skip-length';
 import {
   DROP_SHADOW_OPTIONS as DROP_SHADOWS,
   FONT_OPTIONS as SUBTITLE_FONTS,
@@ -87,6 +94,37 @@ const VIDEO_CLASS = 'hpr-jf-video';
  */
 const CONTROLS_HIDE_MS = 3500;
 
+/** Two taps on the same side closer together than this are a double-tap. */
+const DOUBLE_TAP_MS = 300;
+/** Once a double-tap has skipped, each further tap on that side within this adds a step. */
+const TAP_STREAK_MS = 700;
+/** How long the unlock button stays up after a tap on a locked player. */
+const UNLOCK_HINT_MS = 3000;
+/** A touch that moves further than this, or is held longer, is a drag or a press, not a tap. */
+const TAP_SLOP_PX = 10;
+const TAP_MAX_MS = 500;
+/** How long after a handled tap the browser's own click for it is swallowed. */
+const TAP_CLICK_SUPPRESS_MS = 600;
+
+const COARSE_POINTER_QUERY = '(pointer: coarse)';
+
+function subscribeCoarsePointer(onChange: () => void) {
+  const list = window.matchMedia?.(COARSE_POINTER_QUERY);
+  list?.addEventListener?.('change', onChange);
+  return () => list?.removeEventListener?.('change', onChange);
+}
+
+/** Phones and tablets: the centre transport, double-tap, lock and rotation are for them. */
+function useCoarsePointer(): boolean {
+  return useSyncExternalStore(
+    subscribeCoarsePointer,
+    () => window.matchMedia?.(COARSE_POINTER_QUERY).matches ?? false,
+    () => false,
+  );
+}
+
+type TapSide = 'left' | 'middle' | 'right';
+
 /**
  * A key the player must leave alone: typed into a field, or pressed inside a
  * dialog or a menu or list popup, whose keys are its own. A dialog's dropdown
@@ -109,7 +147,19 @@ export function VideoStage({ mediaContainer }: { mediaContainer: HTMLDivElement 
   const playback = useJellyfinPlayback();
   const mediaRef = useJellyfinMediaRef();
   const [controlsVisible, setControlsVisible] = useState(true);
-  const [panel, setPanel] = useState<'none' | 'audio' | 'subs' | 'quality' | 'speed' | 'chapters' | 'stats' | 'more'>('none');
+  const [panel, setPanel] = useState<'none' | 'subs' | 'quality' | 'speed' | 'chapters' | 'stats' | 'more'>('none');
+  const coarse = useCoarsePointer();
+  const skipBack = useUIStore((state) => state.playerSkipBackSeconds);
+  const skipForward = useUIStore((state) => state.playerSkipForwardSeconds);
+  const setSkipBack = useUIStore((state) => state.setPlayerSkipBackSeconds);
+  const setSkipForward = useUIStore((state) => state.setPlayerSkipForwardSeconds);
+  // Screen lock: the id of the title it was locked on, so a new title (or
+  // closing the player) starts unlocked without an effect to reset it.
+  const [lockedFor, setLockedFor] = useState<string | null>(null);
+  const [unlockVisible, setUnlockVisible] = useState(false);
+  const unlockTimerRef = useRef<number | null>(null);
+  // Zoom to fill: crop a 16:9 picture to a taller screen instead of letterboxing.
+  const [fill, setFill] = useState(false);
   const isAudio = playback.item?.MediaType === 'Audio';
   const isActive = playback.status !== 'idle' && Boolean(playback.item);
   const isVideo = isActive && !isAudio;
@@ -125,7 +175,15 @@ export function VideoStage({ mediaContainer }: { mediaContainer: HTMLDivElement 
   if (expanded !== chromeWasOpen) {
     setChromeWasOpen(expanded);
     if (expanded) setControlsVisible(true);
+    else setLockedFor(null);
   }
+  const locked = expanded && lockedFor !== null && lockedFor === playback.item?.Id;
+  // Locking unmounts the focused Lock button with the rest of the chrome; hand
+  // focus to the way out so a keyboard or screen reader is not left on <body>.
+  const unlockButtonRef = useRef<HTMLButtonElement | null>(null);
+  useEffect(() => {
+    if (locked) unlockButtonRef.current?.focus({ preventScroll: true });
+  }, [locked]);
 
   // Reading the live context through a ref keeps window listeners bound once
   // per open instead of re-binding on every timeupdate.
@@ -143,6 +201,19 @@ export function VideoStage({ mediaContainer }: { mediaContainer: HTMLDivElement 
     hideTimerRef.current = window.setTimeout(() => {
       if (playbackRef.current.status === 'playing') setControlsVisible(false);
     }, CONTROLS_HIDE_MS);
+  }, []);
+  const hideControls = useCallback(() => {
+    if (hideTimerRef.current) window.clearTimeout(hideTimerRef.current);
+    setControlsVisible(false);
+  }, []);
+
+  const showUnlock = useCallback(() => {
+    setUnlockVisible(true);
+    if (unlockTimerRef.current) window.clearTimeout(unlockTimerRef.current);
+    unlockTimerRef.current = window.setTimeout(() => setUnlockVisible(false), UNLOCK_HINT_MS);
+  }, []);
+  useEffect(() => () => {
+    if (unlockTimerRef.current) window.clearTimeout(unlockTimerRef.current);
   }, []);
 
   /**
@@ -185,11 +256,17 @@ export function VideoStage({ mediaContainer }: { mediaContainer: HTMLDivElement 
     hideTimerRef.current = window.setTimeout(() => {
       if (playbackRef.current.status === 'playing') setControlsVisible(false);
     }, CONTROLS_HIDE_MS);
-    window.addEventListener('pointermove', revealControls);
+    // A finger that drifts during a tap also fires pointermove, which would
+    // bring back the controls the same tap just hid. Only a mouse reveals by
+    // moving; everything else reveals by tapping.
+    const onPointerMove = (event: PointerEvent) => {
+      if (event.pointerType === 'mouse') revealControls();
+    };
+    window.addEventListener('pointermove', onPointerMove);
     window.addEventListener('keydown', revealControls);
     return () => {
       if (hideTimerRef.current) window.clearTimeout(hideTimerRef.current);
-      window.removeEventListener('pointermove', revealControls);
+      window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('keydown', revealControls);
     };
   }, [expanded, revealControls]);
@@ -201,8 +278,8 @@ export function VideoStage({ mediaContainer }: { mediaContainer: HTMLDivElement 
       const p = playbackRef.current;
       if (!p.item) return;
       if (event.key === ' ' || event.key === 'k') { event.preventDefault(); p.togglePause(); }
-      if (event.key === 'ArrowLeft' || event.key === 'j') p.skip(-10);
-      if (event.key === 'ArrowRight' || event.key === 'l') p.skip(10);
+      if (event.key === 'ArrowLeft' || event.key === 'j') p.skip(-useUIStore.getState().playerSkipBackSeconds);
+      if (event.key === 'ArrowRight' || event.key === 'l') p.skip(useUIStore.getState().playerSkipForwardSeconds);
       if (event.key === 'ArrowUp') { event.preventDefault(); p.setVolume(Math.min(1, p.volume + 0.05)); }
       if (event.key === 'ArrowDown') { event.preventDefault(); p.setVolume(Math.max(0, p.volume - 0.05)); }
       if (event.key === 'Escape') {
@@ -292,7 +369,82 @@ export function VideoStage({ mediaContainer }: { mediaContainer: HTMLDivElement 
   const mini = isVideo && !expanded && !sheet.present;
   const audioFull = isAudio && expanded;
   const video = playback.stream?.mediaSource.MediaStreams?.find((stream) => stream.Type === 'Video');
-  const showChrome = expanded && (controlsVisible || panel !== 'none' || playback.status !== 'playing');
+  const showChrome = expanded && !locked && (controlsVisible || panel !== 'none' || playback.status !== 'playing');
+  // The centre transport replaces the bottom row's on touch screens.
+  const centreTransport = coarse && showChrome && panel === 'none';
+  const nextItem = isVideo ? playback.queue[playback.index + 1] : undefined;
+
+  useEffect(() => {
+    const el = mediaRef.current;
+    if (!el) return;
+    el.toggleAttribute('data-fill', fill && expanded && isVideo);
+  }, [expanded, fill, isVideo, mediaRef]);
+
+  // On a phone, fullscreen for a wide picture turns the screen to landscape
+  // and leaving fullscreen lets it rotate freely again. Android Chrome allows
+  // the lock only in fullscreen; iOS has no lock and keeps following rotation.
+  useEffect(() => {
+    if (!expanded || !coarse) return undefined;
+    const onFullscreenChange = () => {
+      const orientation = screen.orientation as (ScreenOrientation & { lock?: (orientation: string) => Promise<void> }) | undefined;
+      if (!orientation) return;
+      const el = mediaRef.current;
+      if (document.fullscreenElement) {
+        if (el && el.videoWidth > el.videoHeight) void orientation.lock?.('landscape').catch(() => undefined);
+        return;
+      }
+      try { orientation.unlock(); } catch { /* not supported here */ }
+    };
+    document.addEventListener('fullscreenchange', onFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', onFullscreenChange);
+  }, [coarse, expanded, mediaRef]);
+
+  // Double-tap to skip, read off finger taps on the bare surface (pointerup,
+  // see the surface). The pointer type is kept from pointerdown for the click
+  // that follows, which on iOS reports 'mouse' even for a finger.
+  const pointerTypeRef = useRef('mouse');
+  const pointerDownRef = useRef<{ x: number; y: number; at: number } | null>(null);
+  const suppressClickUntilRef = useRef(0);
+  const tapRef = useRef<{ at: number; side: TapSide; chromeBefore: boolean; streak: number } | null>(null);
+  const [skipFlash, setSkipFlash] = useState<{ side: 'left' | 'right'; seconds: number; id: number } | null>(null);
+  const flashTimerRef = useRef<number | null>(null);
+  useEffect(() => () => {
+    if (flashTimerRef.current) window.clearTimeout(flashTimerRef.current);
+  }, []);
+
+  /**
+   * A tap with a finger shows or hides the controls and never touches
+   * playback — play/pause is the centre button. Every phone player works this
+   * way; pausing on a tap stopped the film whenever the controls happened to
+   * be up. Two quick taps on the left or right third skip instead, and each
+   * further tap there adds another step, as YouTube and Netflix do.
+   */
+  const touchTap = (event: React.PointerEvent<HTMLDivElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const fraction = rect.width > 0 ? (event.clientX - rect.left) / rect.width : 0.5;
+    const side: TapSide = fraction < 1 / 3 ? 'left' : fraction > 2 / 3 ? 'right' : 'middle';
+    const now = event.timeStamp;
+    const last = tapRef.current;
+    const limit = last && last.streak > 0 ? TAP_STREAK_MS : DOUBLE_TAP_MS;
+    if (side !== 'middle' && !live && last && last.side === side && now - last.at < limit) {
+      const step = side === 'left' ? -skipBack : skipForward;
+      playback.skip(step);
+      const streak = last.streak + 1;
+      tapRef.current = { ...last, at: now, streak };
+      // The first tap of the pair toggled the controls; put them back.
+      if (streak === 1) {
+        if (last.chromeBefore) revealControls();
+        else hideControls();
+      }
+      setSkipFlash({ side, seconds: Math.abs(step) * streak, id: now });
+      if (flashTimerRef.current) window.clearTimeout(flashTimerRef.current);
+      flashTimerRef.current = window.setTimeout(() => setSkipFlash(null), TAP_STREAK_MS);
+      return;
+    }
+    tapRef.current = { at: now, side, chromeBefore: controlsVisible, streak: 0 };
+    if (controlsVisible) hideControls();
+    else revealControls();
+  };
 
   // Cue placement still lives entirely in the provider — a second writer here
   // used to overwrite every cue whenever the chrome appeared, which silently
@@ -348,9 +500,6 @@ export function VideoStage({ mediaContainer }: { mediaContainer: HTMLDivElement 
       >
         {playback.repeat === 'RepeatOne' ? <Repeat1 className="text-[var(--hpr-amber)]" /> : <Repeat className={playback.repeat === 'RepeatAll' ? 'text-[var(--hpr-amber)]' : undefined} />}
       </Button>
-      {audios.length > 1 && (
-        <Button variant="ghost" size="sm" className="text-white" onClick={() => setPanel(panel === 'audio' ? 'none' : 'audio')}>Audio</Button>
-      )}
       {chapters.length > 0 && (
         <Button variant="ghost" size="sm" className="text-white" onClick={() => setPanel(panel === 'chapters' ? 'none' : 'chapters')}>Chapters</Button>
       )}
@@ -373,6 +522,16 @@ export function VideoStage({ mediaContainer }: { mediaContainer: HTMLDivElement 
         }}
       >
         <PictureInPicture2 />
+      </Button>
+      <Button
+        variant="ghost"
+        size="sm"
+        className={cn('text-white', fill && 'text-[var(--hpr-amber)]')}
+        aria-pressed={fill}
+        aria-label="Zoom to fill"
+        onClick={() => setFill(!fill)}
+      >
+        Fill
       </Button>
       <Button variant="ghost" size="sm" className="text-white" onClick={() => setPanel(panel === 'stats' ? 'none' : 'stats')}>Stats</Button>
       {/* No Stop here any more — Close sits in the top bar, on screen the whole
@@ -401,10 +560,54 @@ export function VideoStage({ mediaContainer }: { mediaContainer: HTMLDivElement 
         )}
       >
         <div
-          className={cn('relative h-full w-full', (mini || expanded) && 'cursor-pointer')}
+          // touch-manipulation: no double-tap zoom eating the double-tap skip.
+          className={cn('relative h-full w-full touch-manipulation', (mini || expanded) && 'cursor-pointer')}
+          onPointerDown={(event) => {
+            pointerTypeRef.current = event.pointerType;
+            pointerDownRef.current = { x: event.clientX, y: event.clientY, at: event.timeStamp };
+            // A new touch is a new gesture: its click, a quick press of a
+            // control included, is not the leftover one being swallowed.
+            suppressClickUntilRef.current = 0;
+          }}
+          onPointerCancel={() => { pointerDownRef.current = null; }}
+          // Taps by finger are read here rather than from click. iOS Safari
+          // folds a quick double tap into a single click (sometimes with a
+          // dblclick, sometimes not), so a click-based double-tap skip only
+          // worked on Android. Every touch does produce its own pointerup.
+          onPointerUp={(event) => {
+            // Anything but a mouse: finger, pen, or an input whose type the
+            // browser could not tell (reported as '').
+            if (event.pointerType === 'mouse' || !expanded || mini || locked) return;
+            const down = pointerDownRef.current;
+            pointerDownRef.current = null;
+            // A drag or a long press is not a tap.
+            if (!down || Math.hypot(event.clientX - down.x, event.clientY - down.y) > TAP_SLOP_PX || event.timeStamp - down.at > TAP_MAX_MS) return;
+            const target = event.target as HTMLElement | null;
+            // Controls handle their own taps; only the bare surface toggles.
+            if (target?.closest('button, a, input, select, label, [data-player-panel]')) return;
+            // The click the browser sends after this tap must not land too:
+            // iOS hit-tests it after the controls this tap revealed are drawn,
+            // so it would press the Pause button that just appeared under the
+            // finger.
+            suppressClickUntilRef.current = event.timeStamp + TAP_CLICK_SUPPRESS_MS;
+            // An open panel takes the tap and nothing else does.
+            if (panel !== 'none') {
+              setPanel('none');
+              return;
+            }
+            touchTap(event);
+          }}
+          onClickCapture={(event) => {
+            if (event.timeStamp < suppressClickUntilRef.current) {
+              event.stopPropagation();
+              event.preventDefault();
+            }
+          }}
           onClick={(event) => {
             if (mini) { playback.setVideoExpanded(true); return; }
             if (!expanded) return;
+            // A finger's taps were handled on pointerup.
+            if (pointerTypeRef.current !== 'mouse') return;
             // Controls handle their own clicks; only the bare surface toggles.
             if ((event.target as HTMLElement | null)?.closest('button, a, input, select, label')) return;
             // An open panel takes the tap and nothing else does: tapping away
@@ -414,6 +617,9 @@ export function VideoStage({ mediaContainer }: { mediaContainer: HTMLDivElement 
               setPanel('none');
               return;
             }
+            // A click on a panel's own padding is not a click on the video.
+            if ((event.target as HTMLElement | null)?.closest('[data-player-panel]')) return;
+            // A mouse click still pauses, as on YouTube and Netflix on a computer.
             if (controlsVisible) playback.togglePause();
             else revealControls();
           }}
@@ -424,11 +630,13 @@ export function VideoStage({ mediaContainer }: { mediaContainer: HTMLDivElement 
               click/gesture bubbling independently of the media portal tree. */}
           <div className="absolute inset-0" aria-hidden="true" />
 
-            {playback.status === 'loading' && (
+            {playback.status === 'loading' && !centreTransport && (
               <div className="absolute inset-0 flex items-center justify-center text-sm text-white/80">Loading stream…</div>
             )}
             {playback.needsJellyfinConnect ? (
-              <div className="absolute inset-0 z-20 flex items-center justify-center overflow-y-auto bg-black/90 p-6 [--destructive-text:var(--destructive-on-dark)]">
+              // Marked as a panel so taps on its blank space neither toggle
+              // the hidden controls nor count towards a double-tap skip.
+              <div data-player-panel className="absolute inset-0 z-20 flex items-center justify-center overflow-y-auto bg-black/90 p-6 [--destructive-text:var(--destructive-on-dark)]">
                 <div className="w-full max-w-xs space-y-4">
                   <div className="space-y-1.5 text-center">
                     <p className="text-sm font-medium text-white">Connect your Jellyfin account</p>
@@ -454,15 +662,68 @@ export function VideoStage({ mediaContainer }: { mediaContainer: HTMLDivElement 
             ) : null}
 
             {/* Both sit where an open panel grows to, and covered its controls. */}
-            {intro && expanded && panel === 'none' && (
-              <Button className="absolute right-4 bottom-36 z-10" onClick={() => playback.skipSegment(intro)}>
+            {intro && expanded && !locked && panel === 'none' && (
+              <Button className="absolute right-[max(1rem,env(safe-area-inset-right))] bottom-36 z-10" onClick={() => playback.skipSegment(intro)}>
                 Skip {intro.Type}
               </Button>
             )}
-            {credits && expanded && panel === 'none' && (
-              <Button variant="secondary" className="absolute right-4 bottom-36 z-10" onClick={() => void playback.next()}>
+            {credits && expanded && !locked && panel === 'none' && (
+              <Button variant="secondary" className="absolute right-[max(1rem,env(safe-area-inset-right))] bottom-36 z-10" onClick={() => void playback.next()}>
                 Next episode
               </Button>
+            )}
+
+            {skipFlash && (
+              <div
+                key={skipFlash.id}
+                aria-hidden="true"
+                className={cn(
+                  // pb-32 lifts it clear of the centre skip button, which is in
+                  // the same spot when the controls are up.
+                  'pointer-events-none absolute inset-y-0 z-10 flex w-1/3 items-center justify-center pb-32',
+                  skipFlash.side === 'left' ? 'left-0' : 'right-0',
+                )}
+              >
+                <span className="flex items-center gap-1.5 rounded-full bg-black/55 px-3 py-1.5 text-sm font-semibold tabular-nums text-white">
+                  {skipFlash.side === 'left' ? <RotateCcw className="size-4" /> : <RotateCw className="size-4" />}
+                  {skipFlash.side === 'left' ? '−' : '+'}{skipFlash.seconds} s
+                </span>
+              </div>
+            )}
+
+            {locked && (
+              // Takes every touch while locked, so nothing underneath can pause,
+              // seek or open the controls. A tap only brings up the way out.
+              <div
+                className="absolute inset-0 z-30"
+                onClick={(event) => { event.stopPropagation(); showUnlock(); }}
+              >
+                {/* Kept mounted while hidden so keyboard focus, moved here on
+                    lock, never drops to <body> when the hint fades. Hidden, it
+                    takes no taps: those reach the shield and bring it back. */}
+                <div
+                  className={cn(
+                    'absolute inset-x-0 bottom-[max(1.5rem,env(safe-area-inset-bottom))] flex flex-col items-center gap-1.5 text-white transition-opacity motion-reduce:transition-none',
+                    !unlockVisible && 'pointer-events-none opacity-0',
+                  )}
+                >
+                    <button
+                      ref={unlockButtonRef}
+                      type="button"
+                      className="flex size-14 items-center justify-center rounded-full bg-black/55 ring-1 ring-white/30"
+                      aria-label="Unlock screen"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setLockedFor(null);
+                        setUnlockVisible(false);
+                        revealControls();
+                      }}
+                    >
+                      <LockOpen className="size-6" />
+                    </button>
+                    <span className="rounded bg-black/55 px-2 py-0.5 text-xs">Screen locked · tap to unlock</span>
+                </div>
+              </div>
             )}
 
             {showChrome && (
@@ -476,13 +737,52 @@ export function VideoStage({ mediaContainer }: { mediaContainer: HTMLDivElement 
                 onPointerDown={revealControls}
                 className="absolute inset-0 flex flex-col justify-between bg-gradient-to-t from-black/80 via-black/20 to-black/50"
               >
+                {centreTransport && (
+                  // First in the chrome so the bars paint over it if a short
+                  // landscape screen ever brings them together. Only the
+                  // buttons take touches; the gaps stay the bare surface.
+                  <div className="pointer-events-none absolute inset-0 flex items-center justify-center gap-10">
+                    {!live && (
+                      <button
+                        type="button"
+                        className="pointer-events-auto flex size-14 items-center justify-center rounded-full bg-black/30 text-white active:bg-black/50"
+                        onClick={() => playback.skip(-skipBack)}
+                        aria-label={`Back ${skipBack} seconds`}
+                      >
+                        <SkipIcon direction="back" seconds={skipBack} large />
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className="pointer-events-auto flex size-16 items-center justify-center rounded-full bg-black/30 text-white active:bg-black/50"
+                      onClick={playback.togglePause}
+                      aria-label={transportShowsPlay(playback.status) ? 'Play' : 'Pause'}
+                    >
+                      {playback.status === 'loading'
+                        ? <LoaderCircle className="size-9 animate-spin" />
+                        : transportShowsPlay(playback.status)
+                          ? <Play className="size-9 fill-current" />
+                          : <Pause className="size-9 fill-current" />}
+                    </button>
+                    {!live && (
+                      <button
+                        type="button"
+                        className="pointer-events-auto flex size-14 items-center justify-center rounded-full bg-black/30 text-white active:bg-black/50"
+                        onClick={() => playback.skip(skipForward)}
+                        aria-label={`Forward ${skipForward} seconds`}
+                      >
+                        <SkipIcon direction="forward" seconds={skipForward} large />
+                      </button>
+                    )}
+                  </div>
+                )}
                 {/* The site keeps a single control in the top-left of its
                     player and nothing else up there. Ours is Minimize rather
                     than its Back, so it keeps the chevron that says so — but it
                     sits in the same corner, and the title moved down into the
                     control row. A phone has no room for a centred title there,
                     so it stays up here beside the button. */}
-                <div className="flex items-start gap-3 px-4 pt-[max(1rem,env(safe-area-inset-top))] pb-4 md:px-8">
+                <div className="flex items-start gap-3 pt-[max(1rem,env(safe-area-inset-top))] pr-[max(1rem,env(safe-area-inset-right))] pb-4 pl-[max(1rem,env(safe-area-inset-left))] md:pr-[max(2rem,env(safe-area-inset-right))] md:pl-[max(2rem,env(safe-area-inset-left))]">
                   <Button variant="ghost" size="icon" className="shrink-0 text-white" onClick={() => playback.setVideoExpanded(false)} aria-label="Minimize player">
                     <ChevronDown />
                   </Button>
@@ -510,30 +810,64 @@ export function VideoStage({ mediaContainer }: { mediaContainer: HTMLDivElement 
                         : playback.item?.ProductionYear}
                     </p>
                   </div>
+                  {coarse && playback.item && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="ml-auto shrink-0 text-white"
+                      aria-label="Lock screen"
+                      title="Lock screen"
+                      onClick={() => {
+                        setPanel('none');
+                        setLockedFor(playback.item?.Id ?? null);
+                        showUnlock();
+                      }}
+                    >
+                      <Lock />
+                    </Button>
+                  )}
                 </div>
 
-                <div ref={bottomChromeRef} className="space-y-2 px-4 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))] md:px-8">
+                <div ref={bottomChromeRef} className="space-y-2 pt-4 pr-[max(1rem,env(safe-area-inset-right))] pb-[max(1rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))] md:pr-[max(2rem,env(safe-area-inset-right))] md:pl-[max(2rem,env(safe-area-inset-left))]">
                   {/* Panels sit above the scrubber, which is the top row. */}
                   {panel === 'more' && (
                     <Panel>
                       <div className="flex flex-wrap items-center gap-1">{secondaryControls}</div>
-                    </Panel>
-                  )}
-                  {panel === 'audio' && (
-                    <Panel>
-                      {audios.map((stream) => (
-                        <PanelButton
-                          key={stream.Index}
-                          active={stream.Index === playback.audioStreamIndex}
-                          onClick={() => void playback.setAudioStream(stream.Index ?? -1)}
-                        >
-                          {stream.DisplayTitle || stream.Language || `Audio ${stream.Index}`}
-                        </PanelButton>
-                      ))}
+                      <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-white/10 px-2 pt-2 text-xs text-white/70">
+                        <label className="flex items-center gap-1.5">
+                          Skip back
+                          <select className={PANEL_SELECT_CLASS} value={skipBack} onChange={(event) => setSkipBack(Number(event.target.value))}>
+                            {SKIP_LENGTH_OPTIONS.map((seconds) => <option key={seconds} value={seconds}>{seconds} s</option>)}
+                          </select>
+                        </label>
+                        <label className="flex items-center gap-1.5">
+                          Skip forward
+                          <select className={PANEL_SELECT_CLASS} value={skipForward} onChange={(event) => setSkipForward(Number(event.target.value))}>
+                            {SKIP_LENGTH_OPTIONS.map((seconds) => <option key={seconds} value={seconds}>{seconds} s</option>)}
+                          </select>
+                        </label>
+                      </div>
                     </Panel>
                   )}
                   {panel === 'subs' && (
                     <Panel>
+                      {/* One panel for both, as on Netflix: audio was two taps
+                          away behind the gear. */}
+                      {audios.length > 1 && (
+                        <>
+                          <p className="px-3 pt-1 text-[11px] font-medium tracking-wide text-white/50 uppercase">Audio</p>
+                          {audios.map((stream) => (
+                            <PanelButton
+                              key={stream.Index}
+                              active={stream.Index === playback.audioStreamIndex}
+                              onClick={() => void playback.setAudioStream(stream.Index ?? -1)}
+                            >
+                              {stream.DisplayTitle || stream.Language || `Audio ${stream.Index}`}
+                            </PanelButton>
+                          ))}
+                          <p className="mt-1 border-t border-white/10 px-3 pt-2 text-[11px] font-medium tracking-wide text-white/50 uppercase">Subtitles</p>
+                        </>
+                      )}
                       <PanelButton active={playback.subtitleStreamIndex == null || playback.subtitleStreamIndex < 0} onClick={() => void playback.setSubtitleStream(-1)}>Off</PanelButton>
                       {subs.map((stream) => (
                         <PanelButton
@@ -640,25 +974,28 @@ export function VideoStage({ mediaContainer }: { mediaContainer: HTMLDivElement 
                       phones keep the gear on screen at 344px. */}
                   <div className="flex items-center justify-between gap-1 sm:gap-2">
                     <div className="flex items-center gap-0.5 sm:gap-1">
-                      {!live && (
-                        <Button variant="ghost" size="icon" className="text-white" onClick={() => playback.skip(-10)} aria-label="Back 10 seconds">
-                          <SkipBack />
+                      {/* On a touch screen these three are the centre buttons. */}
+                      {!coarse && !live && (
+                        <Button variant="ghost" size="icon" className="text-white" onClick={() => playback.skip(-skipBack)} aria-label={`Back ${skipBack} seconds`}>
+                          <SkipIcon direction="back" seconds={skipBack} />
                         </Button>
                       )}
-                      <Button
-                        variant="ghost"
-                        size="icon-lg"
-                        className="text-white"
-                        onClick={playback.togglePause}
-                        aria-label={transportShowsPlay(playback.status) ? 'Play' : 'Pause'}
-                      >
-                        {transportShowsPlay(playback.status)
-                          ? <Play className="size-7 fill-current" />
-                          : <Pause className="size-7 fill-current" />}
-                      </Button>
-                      {!live && (
-                        <Button variant="ghost" size="icon" className="text-white" onClick={() => playback.skip(10)} aria-label="Forward 10 seconds">
-                          <SkipForward />
+                      {!coarse && (
+                        <Button
+                          variant="ghost"
+                          size="icon-lg"
+                          className="text-white"
+                          onClick={playback.togglePause}
+                          aria-label={transportShowsPlay(playback.status) ? 'Play' : 'Pause'}
+                        >
+                          {transportShowsPlay(playback.status)
+                            ? <Play className="size-7 fill-current" />
+                            : <Pause className="size-7 fill-current" />}
+                        </Button>
+                      )}
+                      {!coarse && !live && (
+                        <Button variant="ghost" size="icon" className="text-white" onClick={() => playback.skip(skipForward)} aria-label={`Forward ${skipForward} seconds`}>
+                          <SkipIcon direction="forward" seconds={skipForward} />
                         </Button>
                       )}
                       <Button variant="ghost" size="icon" className="text-white" onClick={() => playback.setMuted(!playback.muted)} aria-label={playback.muted ? 'Unmute' : 'Mute'}>
@@ -696,11 +1033,29 @@ export function VideoStage({ mediaContainer }: { mediaContainer: HTMLDivElement 
                       )}
                     </p>
                     <div className="flex items-center justify-end gap-0.5 sm:gap-1">
-                      <Button variant="ghost" size="icon" className="text-white" onClick={() => setPanel(panel === 'subs' ? 'none' : 'subs')} aria-label="Subtitles">
+                      {nextItem && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="text-white"
+                          onClick={() => void playback.next()}
+                          aria-label={nextItem.Type === 'Episode' ? 'Next episode' : 'Next'}
+                          title={nextItem.Type === 'Episode' ? 'Next episode' : 'Next'}
+                        >
+                          <SkipForward />
+                        </Button>
+                      )}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="text-white"
+                        onClick={() => setPanel(panel === 'subs' ? 'none' : 'subs')}
+                        aria-label={audios.length > 1 ? 'Audio and subtitles' : 'Subtitles'}
+                      >
                         <Subtitles />
                       </Button>
                       <Button variant="ghost" size="icon" className="text-white" onClick={() => playback.setQueueOpen(!playback.queueOpen)} aria-label="Queue">
-                        <ListMusic />
+                        {isVideo ? <ListVideo /> : <ListMusic />}
                       </Button>
                       <Button
                         variant="ghost"
@@ -969,7 +1324,10 @@ export function SeekBar({
             })}
             <span
               aria-hidden
-              className="pointer-events-none absolute top-1/2 size-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[var(--hpr-seek)] shadow"
+              className={cn(
+                'pointer-events-none absolute top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[var(--hpr-seek)] shadow transition-[width,height] motion-reduce:transition-none',
+                dragSeconds != null ? 'size-4' : 'size-3',
+              )}
               style={{ left: `${Math.min(100, (value / max) * 100)}%` }}
             />
           </>
@@ -986,7 +1344,9 @@ export function SeekBar({
             'w-full',
             bare
               ? 'accent-[var(--hpr-seek)]'
-              : 'absolute inset-0 h-full cursor-pointer appearance-none bg-transparent [&::-moz-range-thumb]:size-3 [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-transparent [&::-webkit-slider-thumb]:size-3 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:bg-transparent',
+              // The look stays a 16px row; on touch the invisible hit area is
+              // 32px tall, centred on it, so a finger finds the bar.
+              : 'absolute inset-x-0 top-1/2 h-full -translate-y-1/2 cursor-pointer appearance-none bg-transparent pointer-coarse:h-8 [&::-moz-range-thumb]:size-3 [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-transparent [&::-webkit-slider-thumb]:size-3 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:bg-transparent',
           )}
           onPointerDown={() => { heldRef.current = true; }}
           onKeyDown={() => { heldRef.current = true; }}
@@ -1095,6 +1455,21 @@ function SubtitleAppearanceControls({
         Preview subtitle text
       </p>
     </div>
+  );
+}
+
+const PANEL_SELECT_CLASS = 'rounded bg-white/10 px-1.5 py-1 text-xs text-white [&>option]:text-black';
+
+/** A circular arrow with the skip length inside, as streaming players draw it. */
+function SkipIcon({ direction, seconds, large = false }: { direction: 'back' | 'forward'; seconds: number; large?: boolean }) {
+  const Arrow = direction === 'back' ? RotateCcw : RotateCw;
+  return (
+    <span className={cn('relative inline-flex items-center justify-center', large ? 'size-9' : 'size-6')} aria-hidden="true">
+      <Arrow className="size-full" strokeWidth={1.75} />
+      <span className={cn('absolute inset-0 flex items-center justify-center pt-px font-semibold tabular-nums', large ? 'text-[11px]' : 'text-[8px]')}>
+        {seconds}
+      </span>
+    </span>
   );
 }
 

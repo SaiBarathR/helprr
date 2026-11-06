@@ -693,6 +693,23 @@ export function positionToReport(el: HTMLMediaElement | null, stream: HelprrStre
  * that gets through: jellyfin-web has this for free because it mutates one
  * `playerData` before it awaits anything.
  */
+/**
+ * A transcode served as one progressive file rather than HLS. Jellyfin starts
+ * it at the requested position, so moving inside it is a stop and a fresh
+ * stream, not a seek on the element.
+ */
+function isProgressiveTranscode(stream: HelprrStreamInfo): boolean {
+  const isHls = stream.mimeType.toLowerCase().includes('mpegurl') || stream.mediaUrl.includes('.m3u8');
+  return stream.playMethod === 'Transcode' && !isHls;
+}
+
+/**
+ * How long a run of skips on a progressive transcode waits for the next press
+ * before restarting the stream once at the final position. Tapping +10 three
+ * times used to start three streams, two of them thrown away.
+ */
+const SKIP_BURST_MS = 400;
+
 export function reserveStart(token: { current: number }): () => boolean {
   const claimed = token.current + 1;
   token.current = claimed;
@@ -825,6 +842,14 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
   const positionRef = useRef(0);
   const [positionSeconds, setClockPosition] = useState(0);
   const setPositionSeconds = useCallback((value: number) => { positionRef.current = value; setClockPosition(value); }, []);
+  // A run of skips on a progressive transcode, still gathering (see `skip`).
+  // Anything else that moves or restarts the stream drops it, or its timer
+  // would land later and undo that move.
+  const pendingSkipRef = useRef<{ target: number; itemId: string | undefined; timer: ReturnType<typeof setTimeout> } | null>(null);
+  const cancelPendingSkip = useCallback(() => {
+    if (pendingSkipRef.current) clearTimeout(pendingSkipRef.current.timer);
+    pendingSkipRef.current = null;
+  }, []);
   const [durationSeconds, setDurationSeconds] = useState(0);
   const [volume, setVolumeState] = useState(1);
   const [muted, setMutedState] = useState(false);
@@ -1440,6 +1465,8 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
   }, [attachMedia, destroyPlayers, maxBitrate, muted, noteRetryPosition, playbackRate, setPositionSeconds, volume]);
 
   const playItems = useCallback(async (items: JellyfinItem[], startIndex = 0, options?: PlayOptions) => {
+    // Starting a title, even the same one again, ends a gathering run of skips.
+    cancelPendingSkip();
     if (!items.length) return;
     expansionRef.current?.abort();
     const controller = new AbortController();
@@ -1547,11 +1574,13 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
       setStatus('error');
       setError(cause instanceof Error ? cause.message : 'Unable to prepare playback');
     }
-  }, [destroyPlayers, maxBitrate, muted, playbackRate, setPositionSeconds, shuffled, startItem, volume]);
+  }, [cancelPendingSkip, destroyPlayers, maxBitrate, muted, playbackRate, setPositionSeconds, shuffled, startItem, volume]);
 
   const playItem = useCallback(async (next: JellyfinItem, options?: PlayOptions) => {
+    // Starting a title, even the same one again, ends a gathering run of skips.
+    cancelPendingSkip();
     await playItems([next], 0, options);
-  }, [playItems]);
+  }, [cancelPendingSkip, playItems]);
 
   const addToQueue = useCallback((items: JellyfinItem[]) => {
     const epoch = queueEpochRef.current;
@@ -1586,6 +1615,8 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
   }, []);
 
   const playQueueIndex = useCallback(async (nextIndex: number) => {
+    // Starting a title, even the same one again, ends a gathering run of skips.
+    cancelPendingSkip();
     const nextItem = queueRef.current[nextIndex];
     if (!nextItem) return;
     indexRef.current = nextIndex;
@@ -1595,9 +1626,10 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     // the panel restarted it, which is not what any episode row in the rest of
     // the app does.
     await startItem(nextItem);
-  }, [startItem]);
+  }, [cancelPendingSkip, startItem]);
 
   const stop = useCallback(async () => {
+    cancelPendingSkip();
     // Retire any start still in flight, or it will finish into a player the
     // viewer has already closed.
     startTokenRef.current += 1;
@@ -1670,7 +1702,7 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
       void getQueryClient().invalidateQueries({ queryKey: ['jellyfin', 'catalog'] });
       await stopEncodings(current.playSessionId, AbortSignal.timeout(10_000));
     }
-  }, [destroyPlayers, maxBitrate, muted, playbackRate, setPositionSeconds, volume]);
+  }, [cancelPendingSkip, destroyPlayers, maxBitrate, muted, playbackRate, setPositionSeconds, volume]);
 
   const togglePause = useCallback(() => {
     const el = mediaRef.current;
@@ -1687,6 +1719,7 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
   }, []);
 
   const seek = useCallback((seconds: number) => {
+    cancelPendingSkip();
     const el = mediaRef.current;
     const current = streamRef.current;
     if (!el || !current) return;
@@ -1699,8 +1732,11 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     // incoming item at this position with the outgoing item's source id, and a
     // plain seek would move a title the viewer has already left.
     if (current.item.Id !== queueRef.current[indexRef.current]?.Id) return;
-    const isHls = current.mimeType.toLowerCase().includes('mpegurl') || current.mediaUrl.includes('.m3u8');
-    if (current.playMethod === 'Transcode' && !isHls) {
+    if (isProgressiveTranscode(current)) {
+      // The outgoing stream's clock is ignored from here until the new one
+      // plays, so the position has to move now: a skip pressed meanwhile
+      // counts from it, and +10 +10 lands at +20 rather than +10.
+      setPositionSeconds(seconds);
       void (async () => {
         const stillCurrent = reserveStart(startTokenRef);
         clearTimers();
@@ -1723,13 +1759,40 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     }
     el.currentTime = seconds;
     setPositionSeconds(seconds);
-  }, [maxBitrate, setPositionSeconds, startItem]);
+  }, [cancelPendingSkip, maxBitrate, setPositionSeconds, startItem]);
 
   const skip = useCallback((deltaSeconds: number) => {
-    seek(Math.max(0, positionRef.current + deltaSeconds));
-  }, [seek]);
+    const current = streamRef.current;
+    const itemId = current?.item.Id;
+    // Another title's start owns the player (see `seek`): the clock is still
+    // the outgoing title's, so there is nothing to skip inside.
+    if (current && itemId !== queueRef.current[indexRef.current]?.Id) return;
+    const pending = pendingSkipRef.current;
+    cancelPendingSkip();
+    // Compared by title, not stream: a run's own restart attaches a new
+    // session, and a skip pressed while it lands still counts from the run.
+    const from = pending && pending.itemId === itemId ? pending.target : positionRef.current;
+    const target = Math.max(0, from + deltaSeconds);
+    if (!current || !isProgressiveTranscode(current) || isLiveStream(current.item, current)) {
+      seek(target);
+      return;
+    }
+    setPositionSeconds(target);
+    pendingSkipRef.current = {
+      target,
+      itemId,
+      timer: setTimeout(() => {
+        pendingSkipRef.current = null;
+        // Stopped, or another title started, while the run was gathering.
+        if (streamRef.current?.item.Id !== itemId) return;
+        seek(target);
+      }, SKIP_BURST_MS),
+    };
+  }, [cancelPendingSkip, seek, setPositionSeconds]);
 
   const next = useCallback(async () => {
+    // Starting a title, even the same one again, ends a gathering run of skips.
+    cancelPendingSkip();
     const list = queueRef.current;
     const currentIndex = indexRef.current;
     if (repeat === 'RepeatOne') {
@@ -1750,9 +1813,11 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
       return;
     }
     await stop();
-  }, [repeat, startItem, stop]);
+  }, [cancelPendingSkip, repeat, startItem, stop]);
 
   const previous = useCallback(async () => {
+    // Starting a title, even the same one again, ends a gathering run of skips.
+    cancelPendingSkip();
     // Rewinding is for a file. A broadcast is always "past five seconds" and
     // cannot be rewound, so it goes straight to the item before it.
     const current = streamRef.current;
@@ -1773,9 +1838,11 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     indexRef.current = currentIndex - 1;
     setIndex(currentIndex - 1);
     await startItem(queueRef.current[currentIndex - 1], { startTimeTicks: 0 });
-  }, [seek, startItem]);
+  }, [cancelPendingSkip, seek, startItem]);
 
   const restartWith = useCallback(async (patch: PlayOptions) => {
+    // Restarts at the position, which already shows a gathering skip run.
+    cancelPendingSkip();
     const current = streamRef.current;
     const nextItem = queueRef.current[indexRef.current];
     if (!current || !nextItem) return;
@@ -1821,7 +1888,7 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
       enableDirectStream: patch.enableDirectStream,
       startPaused: wasPaused,
     }, stillCurrent, current.playSessionId);
-  }, [maxBitrate, startItem]);
+  }, [cancelPendingSkip, maxBitrate, startItem]);
 
   // Published for the burn-in fallback in applySubtitleTrack, which sits above
   // this and so cannot depend on it directly.
@@ -1919,7 +1986,8 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
       if (el.currentTime > 0) reachedStartRef.current = true;
       // A progressive transcode's element counts from where it was started.
       const offset = ticksToSeconds(streamRef.current?.transcodingOffsetTicks);
-      setPositionSeconds(offset + el.currentTime);
+      // A run of skips is still gathering: keep showing where it will land.
+      if (!pendingSkipRef.current) setPositionSeconds(offset + el.currentTime);
       if (el.duration && Number.isFinite(el.duration)) setDurationSeconds(offset + el.duration);
     };
     let stallTimer: ReturnType<typeof setTimeout> | undefined;
@@ -2137,8 +2205,13 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
   const live = isLiveStream(item, stream);
   useEffect(() => {
     if (typeof navigator === 'undefined' || !navigator.mediaSession) return;
-    navigator.mediaSession.setActionHandler('seekbackward', live ? null : () => transportRef.current.skip(-10));
-    navigator.mediaSession.setActionHandler('seekforward', live ? null : () => transportRef.current.skip(10));
+    // The OS may name its own step; otherwise the viewer's chosen lengths.
+    navigator.mediaSession.setActionHandler('seekbackward', live ? null : (details) => {
+      transportRef.current.skip(-(details.seekOffset || useUIStore.getState().playerSkipBackSeconds));
+    });
+    navigator.mediaSession.setActionHandler('seekforward', live ? null : (details) => {
+      transportRef.current.skip(details.seekOffset || useUIStore.getState().playerSkipForwardSeconds);
+    });
     navigator.mediaSession.setActionHandler('seekto', live ? null : (details) => {
       if (typeof details.seekTime === 'number') transportRef.current.seek(details.seekTime);
     });

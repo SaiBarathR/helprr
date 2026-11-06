@@ -29,6 +29,7 @@ import {
   DEFAULT_SUBTITLE_APPEARANCE,
   type SubtitleAppearance,
 } from '@/lib/jellyfin-playback/subtitle-appearance';
+import { DEFAULT_SKIP_SECONDS, isSkipLength } from '@/lib/jellyfin-playback/skip-length';
 
 export type MediaViewMode = 'posters' | 'overview' | 'table';
 /** A Twitch or YouTube feed: by channel, or every video together. */
@@ -256,7 +257,7 @@ function cloneDiscoverFilters(filters: DiscoverFiltersState): DiscoverFiltersSta
   };
 }
 
-export const STORE_VERSION = 50;
+export const STORE_VERSION = 51;
 
 // Matches the calendar backdrop's previously hardcoded Tailwind `opacity-35`.
 export const DEFAULT_CALENDAR_IMAGE_OPACITY = 35;
@@ -502,6 +503,12 @@ export function migrateUiPrefs(persisted: unknown, version: number): Record<stri
     if ('twitchFeedView' in state) state.twitchFeedView = 'grouped';
     if ('youtubeFeedView' in state) state.youtubeFeedView = 'grouped';
   }
+  // The player's skip lengths arrived in version 51; a missing value takes the
+  // store default. Only a present, unusable value is replaced, so a partial
+  // settings import does not gain fields it never exported.
+  for (const key of ['playerSkipBackSeconds', 'playerSkipForwardSeconds']) {
+    if (key in state && !isSkipLength(state[key])) state[key] = DEFAULT_SKIP_SECONDS;
+  }
   if (!isMediaWatchFilterPreference(state.moviesWatchFilter)) {
     state.moviesWatchFilter = 'all';
   }
@@ -720,6 +727,11 @@ interface UIState {
   subtitleAppearance: SubtitleAppearance;
   setSubtitleAppearance: (patch: Partial<SubtitleAppearance>) => void;
   resetSubtitleAppearance: () => void;
+  // Jellyfin player: seconds the back and forward controls jump
+  playerSkipBackSeconds: number;
+  setPlayerSkipBackSeconds: (seconds: number) => void;
+  playerSkipForwardSeconds: number;
+  setPlayerSkipForwardSeconds: (seconds: number) => void;
   // Discover layout (server-side, cached locally for dashboard widget catalog)
   discoverLayout: DiscoverLayoutConfig | null;
   setDiscoverLayout: (config: DiscoverLayoutConfig | null) => void;
@@ -820,6 +832,8 @@ const PERSISTED_KEYS = [
   'glassIntensity',
   'hapticsEnabled',
   'subtitleAppearance',
+  'playerSkipBackSeconds',
+  'playerSkipForwardSeconds',
   'searchHistory',
 ] as const satisfies readonly (keyof UIState)[];
 
@@ -1145,6 +1159,15 @@ export const useUIStore = create<UIState>()(
         set((state) => ({ subtitleAppearance: { ...state.subtitleAppearance, ...patch } })),
       resetSubtitleAppearance: () =>
         set({ subtitleAppearance: { ...DEFAULT_SUBTITLE_APPEARANCE } }),
+      // Jellyfin player skip lengths
+      playerSkipBackSeconds: DEFAULT_SKIP_SECONDS,
+      setPlayerSkipBackSeconds: (seconds) => {
+        if (isSkipLength(seconds)) set({ playerSkipBackSeconds: seconds });
+      },
+      playerSkipForwardSeconds: DEFAULT_SKIP_SECONDS,
+      setPlayerSkipForwardSeconds: (seconds) => {
+        if (isSkipLength(seconds)) set({ playerSkipForwardSeconds: seconds });
+      },
       // Discover layout cache
       discoverLayout: null,
       setDiscoverLayout: (config) =>
@@ -1201,6 +1224,11 @@ export const useUIStore = create<UIState>()(
             if (key === 'glassIntensity' || key === 'calendarImageOpacity') {
               if (typeof value !== 'number' || !Number.isFinite(value)) continue;
               next[key] = Math.min(100, Math.max(0, Math.round(value)));
+              continue;
+            }
+            if (key === 'playerSkipBackSeconds' || key === 'playerSkipForwardSeconds') {
+              if (!isSkipLength(value)) continue;
+              next[key] = value;
               continue;
             }
             if (ARRAY_PERSISTED_KEYS.has(key) && !Array.isArray(value)) continue;
