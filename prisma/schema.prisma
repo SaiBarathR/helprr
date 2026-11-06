@@ -690,6 +690,7 @@ enum FileOperation {
   REMOVE_QUEUE // remove an Arr queue item, optionally from the download client
   CREATE_MEDIA // add a series / movie to an Arr library (manual downloads)
   PUSH_RELEASE // hand a magnet / .torrent to an Arr instance as a manual release
+  REMOVE_BLOCKLIST // remove (unblock) one or more Arr blocklist entries
 }
 
 // Unified accountability log for file operations and destructive media/download
@@ -704,7 +705,7 @@ model FileOperationAudit {
   service      ServiceType // SONARR | RADARR | LIDARR | QBITTORRENT
   instanceId   String? // which ServiceConnection instance the op ran against
   operation    FileOperation
-  mediaType    String // generic target type: series | movie | artist | album | torrent | queue
+  mediaType    String // generic target type: series | movie | artist | album | torrent | queue | blocklist
   mediaId      Int? // numeric target id when one exists; torrent hashes live in details
   mediaTitle   String
   fileCount    Int // operation item count (legacy rows use number of files)

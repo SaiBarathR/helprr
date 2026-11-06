@@ -143,6 +143,33 @@ export interface HistoryResponse {
   records: HistoryItem[];
 }
 
+/** A release the *arr refuses to grab again (Sonarr/Radarr /api/v3/blocklist, Lidarr /api/v1/blocklist). */
+export interface BlocklistItem {
+  id: number;
+  sourceTitle: string;
+  date: string;
+  protocol?: string;
+  indexer?: string;
+  message?: string;
+  quality?: { quality: { name: string } };
+  // Sonarr-specific
+  seriesId?: number;
+  series?: { id: number; title: string };
+  // Radarr-specific
+  movieId?: number;
+  movie?: { id: number; title: string; year?: number };
+  // Lidarr-specific
+  artistId?: number;
+  artist?: { id: number; artistName: string };
+}
+
+export interface BlocklistResponse {
+  page: number;
+  pageSize: number;
+  totalRecords: number;
+  records: BlocklistItem[];
+}
+
 export interface ManualImportItem {
   id: number;
   path: string;

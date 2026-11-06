@@ -9,6 +9,7 @@ import type {
   SonarrRenamePreview,
   QueueResponse,
   HistoryResponse,
+  BlocklistResponse,
   HistoryItem,
   ManualImportItem,
   EpisodeFileResource,
@@ -354,6 +355,25 @@ export class SonarrClient {
     if (options.changeCategory) params.changeCategory = true;
     if (options.skipRedownload) params.skipRedownload = true;
     await this.delete(`/api/v3/queue/${id}`, params);
+  }
+
+  // Blocklist — releases the *arr will not grab again. Removing an entry lets
+  // the release be grabbed again; the bulk call carries its ids in the body.
+  async getBlocklist(page: number = 1, pageSize: number = 20): Promise<BlocklistResponse> {
+    return this.get<BlocklistResponse>('/api/v3/blocklist', {
+      page,
+      pageSize,
+      sortKey: 'date',
+      sortDirection: 'descending',
+    });
+  }
+
+  async deleteBlocklistItem(id: number): Promise<void> {
+    await this.delete(`/api/v3/blocklist/${id}`);
+  }
+
+  async deleteBlocklistBulk(ids: number[]): Promise<void> {
+    await this.client.delete('/api/v3/blocklist/bulk', { data: { ids } });
   }
 
   // History

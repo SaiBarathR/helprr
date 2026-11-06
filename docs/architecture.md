@@ -421,8 +421,10 @@ must occur before deletion, import, or mutation.
 
 The unified `FileOperationAudit` model records file edits and deletes, manual
 imports, and the destructive whole-media, torrent, and queue operations a user
-performs directly. It stores actor, service/instance, operation, target, item
-count, whether files/data were to be deleted (the choice made: a failed row may
+performs directly, including removing *arr blocklist entries
+(`REMOVE_BLOCKLIST`: one row per request and instance, with the entry ids in its
+details; the request must name an instance of that service, never the default).
+It stores actor, service/instance, operation, target, item count, whether files/data were to be deleted (the choice made: a failed row may
 have deleted nothing), structured details, success, and error
 information, plus when the upstream call started and, for a row written while
 an API request is handled, that request's `x-request-id` (`withApiLogging` opens
