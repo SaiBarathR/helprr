@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 
 import { act } from 'react';
-import { createRoot, type Root } from 'react-dom/client';
+import { createRoot, hydrateRoot, type Root } from 'react-dom/client';
+import { renderToString } from 'react-dom/server';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -11,7 +12,6 @@ const mocks = vi.hoisted(() => {
   return { isMobile: false, refresh, router: { refresh } };
 });
 vi.mock('@/components/layout/navigation-provider', () => ({ useAppRouter: () => mocks.router }));
-vi.mock('@/hooks/use-is-mobile', () => ({ useIsMobile: () => mocks.isMobile }));
 vi.mock('@/components/widgets/widget-grid', () => ({ WidgetGrid: () => <div data-testid="grid" /> }));
 vi.mock('next/dynamic', () => ({ default: () => () => null }));
 vi.mock('@/components/widgets/bento-primitives', () => ({ BentoTopBar: () => null, FloatingEdit: () => null, HPR: { ink: '#000', hairline2: '#111', amber: '#f90' } }));
@@ -29,20 +29,29 @@ import { DashboardClient } from './dashboard-client';
 const LAYOUT = { id: 'layout-1', name: 'Home', widgets: [], isBuiltIn: true };
 let root: Root;
 const client = new QueryClient();
-const render = (initialDevice: 'desktop' | 'mobile') => act(() => root.render(
+const page = (initialDevice: 'desktop' | 'mobile') => (
   <QueryClientProvider client={client}>
     <DashboardClient initialLayout={LAYOUT} initialDevice={initialDevice} configuredServices={[]} />
-  </QueryClientProvider>,
-));
+  </QueryClientProvider>
+);
+const render = (initialDevice: 'desktop' | 'mobile') => act(() => root.render(page(initialDevice)));
 const showsGrid = () => document.querySelector('[data-testid="grid"]') !== null;
 
 beforeEach(() => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   mocks.refresh.mockClear();
+  // The real useIsMobile reads this; one object, as the hook caches it.
+  const query = { get matches() { return mocks.isMobile; }, addEventListener() {}, removeEventListener() {} };
+  vi.stubGlobal('matchMedia', () => query);
+  sessionStorage.clear();
+  document.cookie = 'helprr-device=; Path=/; Max-Age=0';
   document.body.innerHTML = '<div id="root"></div>';
   root = createRoot(document.getElementById('root')!);
 });
-afterEach(() => act(() => root.unmount()));
+afterEach(() => {
+  act(() => root.unmount());
+  vi.restoreAllMocks();
+});
 
 // Kept suppression (audit-w8 Batch B): the effect clears the reload spinner once
 // the server has rendered for the device the browser detects.
@@ -58,6 +67,60 @@ describe('DashboardClient device sync', () => {
     render('mobile');
     expect(showsGrid()).toBe(true);
     expect(mocks.refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not refresh a phone page the server rendered for the phone, on the hydration pass', () => {
+    // The hydration pass sees useIsMobile's server snapshot (desktop).
+    mocks.isMobile = true;
+    act(() => root.unmount());
+    const container = document.getElementById('root')!;
+    container.innerHTML = renderToString(page('mobile'));
+    const hydrationErrors: unknown[] = [];
+    act(() => {
+      root = hydrateRoot(container, page('mobile'), { onRecoverableError: (error) => hydrationErrors.push(error) });
+    });
+    // A failed hydration would client-render and skip the pass under test.
+    expect(hydrationErrors).toEqual([]);
+    expect(mocks.refresh).not.toHaveBeenCalled();
+    expect(showsGrid()).toBe(true);
+    expect(document.cookie).toContain('helprr-device=mobile');
+  });
+
+  it('keeps the spinner up while the hydration pass refresh is on its way', () => {
+    mocks.isMobile = true;
+    act(() => root.unmount());
+    const container = document.getElementById('root')!;
+    container.innerHTML = renderToString(page('desktop'));
+    act(() => {
+      root = hydrateRoot(container, page('desktop'));
+    });
+    expect(mocks.refresh).toHaveBeenCalledTimes(1);
+    expect(showsGrid()).toBe(false);
+
+    act(() => root.render(page('mobile')));
+    expect(showsGrid()).toBe(true);
+    expect(mocks.refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not refresh while offline: the failed fetch would reload the whole page', () => {
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    mocks.isMobile = true;
+    render('desktop');
+    expect(mocks.refresh).not.toHaveBeenCalled();
+    expect(showsGrid()).toBe(true);
+  });
+
+  it('does not refresh again for the same device on the next page load', () => {
+    mocks.isMobile = true;
+    render('desktop');
+    expect(mocks.refresh).toHaveBeenCalledTimes(1);
+
+    // A fresh document: the component state is gone, sessionStorage is not.
+    act(() => root.unmount());
+    root = createRoot(document.getElementById('root')!);
+    render('desktop');
+    expect(mocks.refresh).toHaveBeenCalledTimes(1);
+    expect(showsGrid()).toBe(true);
   });
 
   it('renders straight away when the devices already match', () => {
