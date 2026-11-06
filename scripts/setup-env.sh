@@ -244,7 +244,18 @@ if [ "$mode" = stable ] && command -v docker >/dev/null 2>&1 && docker volume in
   printf '      without .env, its database expects the passwords in that volume: delete the\n'
   printf '      POSTGRES_PASSWORD, REDIS_PASSWORD and JWT_SECRET lines from %s before starting.\n' "$target_name"
 fi
-if command -v ss >/dev/null 2>&1 && [ -n "$(ss -Hltn "sport = :$app_port" 2>/dev/null)" ]; then
+# Whether something listens on this TCP port: a Mac's netstat lists listeners only with
+# -an (its -l means something else); elsewhere ss.
+port_in_use() {
+  if [ "$(uname -s 2>/dev/null)" = Darwin ]; then
+    netstat -an -p tcp 2>/dev/null | awk -v p="$1" '$NF == "LISTEN" { n = split($4, a, "."); if (a[n] == p) found = 1 } END { exit !found }'
+  elif command -v ss >/dev/null 2>&1; then
+    [ -n "$(ss -Hltn "sport = :$1" 2>/dev/null)" ]
+  else
+    return 1
+  fi
+}
+if port_in_use "$app_port"; then
   printf 'Note: port %s is already in use. Set %s in %s before starting.\n' "$app_port" "$port_variable" "$target_name"
 fi
 

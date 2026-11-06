@@ -369,6 +369,21 @@ describe('setup-env.sh checks against stub programs', () => {
     expect(result.stdout).toContain('Note: port 3050 is already in use. Set HELPRR_PORT in .env before starting.');
   });
 
+  // macOS: netstat -l does not list listeners there, and there is no ss.
+  const macNetstat = (state: string) =>
+    `printf 'Active Internet connections (including servers)\\ntcp4  0  0  *.3050  *.*  ${state}\\n'`;
+
+  it.each([['LISTEN', true], ['ESTABLISHED', false]])('on a Mac, reads a %s socket on the port with netstat -an', (state, warns) => {
+    const root = createFixture();
+    const result = runSetup(root, [], withStubs({
+      timedatectl: 'echo Etc/UTC',
+      docker: quietDocker,
+      uname: 'echo Darwin',
+      netstat: `[ "$*" = "-an -p tcp" ] || exit 2; ${macNetstat(state)}`,
+    }));
+    expect(result.stdout.includes('Note: port 3050 is already in use.')).toBe(warns);
+  });
+
   it('says how to fix a library folder the worker cannot write to', () => {
     const root = createFixture();
     mkdirSync(path.join(root, 'twitch-library'));

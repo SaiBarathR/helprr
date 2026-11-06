@@ -87,14 +87,14 @@ main() {
   else
     fail 'curl or wget is needed to download Helprr. Install one of them, then run this again.'
   fi
-  command -v docker >/dev/null 2>&1 || fail 'Docker was not found. Install Docker Engine with the Compose plugin (https://docs.docker.com/engine/install/), then run this again.'
+  command -v docker >/dev/null 2>&1 || fail 'Docker was not found. Install Docker Engine with the Compose plugin, or on a Mac Docker Desktop or OrbStack (https://docs.docker.com/get-started/get-docker/), then run this again.'
   docker_info=$(docker info 2>&1) || {
     case "$docker_info" in
       *'permission denied'*) fail "Docker is installed, but this user cannot use it. Run this with sudo, or add the user to the docker group (sudo usermod -aG docker \"\$USER\", then log in again)." ;;
-      *) fail 'Docker is installed but not running. Start it (for example: sudo systemctl start docker), then run this again.' ;;
+      *) fail 'Docker is installed but not running. Start it (on a Mac, open Docker Desktop or OrbStack; on Linux, for example: sudo systemctl start docker), then run this again.' ;;
     esac
   }
-  compose_version=$(docker compose version --short 2>/dev/null) || fail 'The Docker Compose plugin was not found. Install it (https://docs.docker.com/compose/install/linux/), then run this again.'
+  compose_version=$(docker compose version --short 2>/dev/null) || fail 'The Docker Compose plugin was not found. Install it (https://docs.docker.com/compose/install/), then run this again.'
   compose_version=${compose_version#v}
   compose_major=${compose_version%%.*}
   compose_minor=${compose_version#*.}
@@ -120,9 +120,12 @@ main() {
     checksum() { openssl dgst -sha256 -r "$1" | cut -d' ' -f1; }
   fi
 
-  # Whether something listens on this TCP port here (ss, else busybox/BSD netstat).
+  # Whether something listens on this TCP port here: a Mac's netstat lists listeners
+  # only with -an (its -l means something else), else ss, else busybox netstat.
   port_in_use() {
-    if command -v ss >/dev/null 2>&1; then
+    if [ "$(uname -s 2>/dev/null)" = Darwin ]; then
+      netstat -an -p tcp 2>/dev/null | awk -v p="$1" '$NF == "LISTEN" { n = split($4, a, "."); if (a[n] == p) found = 1 } END { exit !found }'
+    elif command -v ss >/dev/null 2>&1; then
       [ -n "$(ss -Hltn "sport = :$1" 2>/dev/null)" ]
     elif command -v netstat >/dev/null 2>&1; then
       netstat -ltn 2>/dev/null | awk -v p="$1" '{ n = split($4, a, /[:.]/); if (a[n] == p) found = 1 } END { exit !found }'
@@ -210,7 +213,11 @@ main() {
 
   sign_in() {
     username=$(sed -n 's/^HELPRR_ADMIN_USERNAME=//p' "$dir/.env" | head -n 1)
-    address=$(hostname -I 2>/dev/null | awk '{ print $1 }')
+    address=$(hostname -I 2>/dev/null | awk '{ print $1 }') || address=
+    # A Mac has no hostname -I: the address of the interface its default route uses.
+    if [ -z "$address" ] && [ "$(uname -s 2>/dev/null)" = Darwin ]; then
+      address=$(ipconfig getifaddr "$(route -n get default 2>/dev/null | awk '/interface:/ { print $2 }')" 2>/dev/null) || address=
+    fi
     if grep -q '^APP_PASSWORD=.' "$dir/.env"; then
       say "  Open http://${address:-THIS-SERVER}:$port and sign in as \"${username:-admin}\"."
       say "  The password is APP_PASSWORD in $dir/.env. To show it on screen:"

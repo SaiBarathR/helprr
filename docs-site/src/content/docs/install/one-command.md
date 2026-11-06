@@ -1,9 +1,10 @@
 ---
 title: One command
-description: Install Helprr on a Linux machine with one command.
+description: Install Helprr on a Linux machine or a Mac with one command.
 ---
 
-On a Linux machine with Docker Engine and the Compose plugin:
+On a Linux machine with Docker Engine and the Compose plugin, or a Mac with OrbStack or
+Docker Desktop ([Mac](/helprr/install/macos/)):
 
 ```bash
 curl -fsSL https://github.com/SaiBarathR/helprr/releases/latest/download/install.sh | sh

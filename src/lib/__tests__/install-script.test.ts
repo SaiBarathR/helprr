@@ -217,6 +217,32 @@ describe('install.sh, the paths a terminal or a real start would take', () => {
     expect(result.stderr).toContain('did not become ready within three minutes');
   });
 
+  // macOS: netstat -l lists no listeners there, and hostname has no -I.
+  const mac = (netstatState: string) => ({
+    uname: 'echo Darwin',
+    netstat: `[ "$*" = "-an -p tcp" ] || exit 2; printf 'tcp4  0  0  *.3050  *.*  ${netstatState}\\ntcp46  0  0  *.5000  *.*  LISTEN\\n'`,
+    hostname: 'exit 1',
+    route: '[ "$*" = "-n get default" ] && printf "   route to: default\\n  interface: en0\\n"',
+    ipconfig: '[ "$*" = "getifaddr en0" ] && echo 192.168.0.20',
+  });
+
+  it('on a Mac, finds a port that is taken with netstat -an', () => {
+    const work = tempDir('helprr-install-');
+    const busy = run(['--yes', '--no-start', '--asset-base', `file://${release()}`], pathWith(stubs({ docker: goodDocker, ...mac('LISTEN') })), work);
+    expect(busy.status).toBe(1);
+    expect(busy.stderr).toContain('Port 3050 is already in use. Choose another with --port.');
+    const airplay = run(['--yes', '--no-start', '--port', '5000', '--asset-base', `file://${release()}`], pathWith(stubs({ docker: goodDocker, ...mac('LISTEN') })), work);
+    expect(airplay.stderr).toContain('Port 5000 is already in use.');
+  });
+
+  it('on a Mac, prints the address of the interface the default route uses', () => {
+    const work = tempDir('helprr-install-');
+    const result = run(['--yes', '--no-start', '--asset-base', `file://${release()}`], pathWith(stubs({ docker: goodDocker, ...mac('ESTABLISHED') })), work);
+    expect(result.stderr).toBe('');
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('Open http://192.168.0.20:3050 and create your admin account.');
+  });
+
   it('refuses a port that is taken before writing anything, and explains a rerun after a failed start', () => {
     const work = tempDir('helprr-install-');
     const busy = run(['--yes', '--no-start', '--asset-base', `file://${release()}`],
