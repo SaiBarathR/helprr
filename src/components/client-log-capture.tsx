@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
+import { fetchAppSettings } from '@/lib/app-settings-fetch';
 
 type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
@@ -185,9 +186,8 @@ export function ClientLogCapture() {
 
     async function refreshFromServer() {
       try {
-        const response = await fetch('/api/settings', { cache: 'no-store' });
-        if (cancelled || !response.ok) return;
-        const settings = (await response.json()) as ClientLogCaptureSettingsEvent;
+        const settings = (await fetchAppSettings()) as ClientLogCaptureSettingsEvent;
+        if (cancelled) return;
         applySettings(settings);
       } catch {
         // Silent failure — keep current state.

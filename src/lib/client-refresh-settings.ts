@@ -1,3 +1,5 @@
+import { fetchAppSettings } from '@/lib/app-settings-fetch';
+
 const MIN_REFRESH_SECS = 2;
 
 export type RefreshSettingKey =
@@ -16,9 +18,7 @@ export async function getRefreshIntervalMs(
   fallbackSecs = 5,
 ): Promise<number> {
   try {
-    const res = await fetch('/api/settings', { cache: 'no-store' });
-    if (!res.ok) return fallbackSecs * 1000;
-    const settings = await res.json();
+    const settings = await fetchAppSettings();
     const raw = Number(settings?.[key]);
     const secs = Number.isFinite(raw) ? Math.max(MIN_REFRESH_SECS, raw) : fallbackSecs;
     return secs * 1000;

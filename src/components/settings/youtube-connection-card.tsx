@@ -7,9 +7,8 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { ApiError } from '@/lib/query-fetch';
-
-const QUERY_KEY = ['services', 'youtube-connection'];
+import { ApiError, jsonFetcher } from '@/lib/query-fetch';
+import { queryKeys } from '@/lib/query-keys';
 
 async function postJson(url: string, body?: unknown) {
   const res = await fetch(url, {
@@ -28,17 +27,14 @@ export function YoutubeConnectionCard({ defaultExpanded = false }: { defaultExpa
   const [apiKey, setApiKey] = useState('');
 
   const connectionQuery = useQuery({
-    queryKey: QUERY_KEY,
-    queryFn: async ({ signal }) => {
-      const res = await fetch('/api/services', { signal });
-      if (!res.ok) throw new ApiError(res.status, 'Failed to load the YouTube connection');
-      const rows = (await res.json()) as Array<{ type: string }>;
-      return rows.some((row) => row.type === 'YOUTUBE');
-    },
+    // Same query as the Instances page list, so the page loads /api/services once.
+    queryKey: queryKeys.instances(),
+    queryFn: jsonFetcher<Array<{ type: string }>>('/api/services'),
+    select: (rows) => Array.isArray(rows) && rows.some((row) => row.type === 'YOUTUBE'),
   });
   const connected = connectionQuery.data ?? false;
   const refresh = () => {
-    void queryClient.invalidateQueries({ queryKey: QUERY_KEY });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.instances() });
     void queryClient.invalidateQueries({ queryKey: ['youtube', 'setup'] });
   };
   const reportError = (err: unknown) => {

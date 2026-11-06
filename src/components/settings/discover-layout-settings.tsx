@@ -2,8 +2,9 @@
 
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { usePathname, useSearchParams } from 'next/navigation';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError } from '@/lib/query-fetch';
+import { queryKeys } from '@/lib/query-keys';
 import {
   DndContext,
   closestCenter,
@@ -548,6 +549,7 @@ export function DiscoverLayoutSettings() {
   // component mounted, so unsaved layout edits survive opening it, and the back
   // gesture returns to the list.
   const router = useRouter();
+  const queryClient = useQueryClient();
   const pathname = usePathname();
   const carouselParam = useSearchParams().get('carousel');
   const editingId = carouselParam && carouselParam !== 'new' ? carouselParam : null;
@@ -705,6 +707,7 @@ export function DiscoverLayoutSettings() {
     onSuccess: (saved, vars) => {
       setLayout(saved);
       useUIStore.getState().setDiscoverLayout(saved);
+      void queryClient.invalidateQueries({ queryKey: queryKeys.discover('layout') });
       setDirty(false);
       toast.success(vars.successMsg);
     },

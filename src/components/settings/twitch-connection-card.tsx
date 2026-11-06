@@ -7,15 +7,14 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { ApiError } from '@/lib/query-fetch';
+import { ApiError, jsonFetcher } from '@/lib/query-fetch';
+import { queryKeys } from '@/lib/query-keys';
 
 interface StoredConnection {
   type: string;
   externalUrl: string | null;
   apiKey: string;
 }
-
-const QUERY_KEY = ['services', 'twitch-connection'];
 
 async function postJson(url: string, body?: unknown) {
   const res = await fetch(url, {
@@ -34,13 +33,10 @@ export function TwitchConnectionCard() {
   const [draft, setDraft] = useState<{ clientId: string; clientSecret: string } | null>(null);
 
   const connectionQuery = useQuery({
-    queryKey: QUERY_KEY,
-    queryFn: async ({ signal }) => {
-      const res = await fetch('/api/services', { signal });
-      if (!res.ok) throw new ApiError(res.status, 'Failed to load Twitch connection');
-      const rows = (await res.json()) as StoredConnection[];
-      return rows.find((row) => row.type === 'TWITCH') ?? null;
-    },
+    // Same query as the Instances page list, so the page loads /api/services once.
+    queryKey: queryKeys.instances(),
+    queryFn: jsonFetcher<StoredConnection[]>('/api/services'),
+    select: (rows) => (Array.isArray(rows) ? rows.find((row) => row.type === 'TWITCH') ?? null : null),
   });
   const connection = connectionQuery.data ?? null;
   const clientId = draft?.clientId ?? connection?.externalUrl ?? '';
@@ -57,7 +53,7 @@ export function TwitchConnectionCard() {
     onSuccess: () => {
       setDraft(null);
       toast.success('Connected to Twitch', { icon: <Check className="h-4 w-4 text-green-500" /> });
-      void queryClient.invalidateQueries({ queryKey: QUERY_KEY });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.instances() });
     },
     onError: reportError,
   });
@@ -79,7 +75,7 @@ export function TwitchConnectionCard() {
     onSuccess: () => {
       setDraft(null);
       toast.success('Twitch disconnected');
-      void queryClient.invalidateQueries({ queryKey: QUERY_KEY });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.instances() });
     },
     onError: reportError,
   });
