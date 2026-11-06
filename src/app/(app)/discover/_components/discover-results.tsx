@@ -13,6 +13,8 @@ const gridClassName = 'grid grid-cols-[repeat(auto-fill,minmax(122px,1fr))] sm:g
 /** Discover's browse and search results: what narrows them, the grid, and the sentinel that loads the next page. */
 export function DiscoverResults({
   shownPerson,
+  searchQuery,
+  clearSearch,
   updateView,
   activeSectionKey,
   sortPresetNote,
@@ -26,6 +28,8 @@ export function DiscoverResults({
   loadingMore,
 }: {
   shownPerson: DiscoverView['person'];
+  searchQuery: string;
+  clearSearch: () => void;
   updateView: (patch: Partial<DiscoverView>) => void;
   activeSectionKey: string | null;
   sortPresetNote: string | null;
@@ -53,15 +57,30 @@ export function DiscoverResults({
         </div>
       )}
       <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-sm text-muted-foreground">Discover Results</p>
-          <p className="text-xs text-muted-foreground">
-            {shownPerson ? `Filtered by: ${shownPerson.name}` : activeSectionKey ? `Section: ${activeSectionKey.replaceAll('_', ' ')}` : 'Custom search and filters'}
-          </p>
-          {sortPresetNote && <p className="text-xs text-muted-foreground">{sortPresetNote}</p>}
-        </div>
+        {searchQuery ? (
+          <div className="flex min-w-0 items-center gap-1">
+            <p className="text-sm text-muted-foreground truncate">Results for &quot;{searchQuery}&quot;</p>
+            <button
+              type="button"
+              onClick={clearSearch}
+              aria-label={`Clear search for "${searchQuery}"`}
+              className="relative touch-target shrink-0 h-6 w-6 rounded-full flex items-center justify-center hover:bg-accent"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        ) : (
+          <div>
+            <p className="text-sm text-muted-foreground">Discover Results</p>
+            <p className="text-xs text-muted-foreground">
+              {shownPerson ? `Filtered by: ${shownPerson.name}` : activeSectionKey ? `Section: ${activeSectionKey.replaceAll('_', ' ')}` : 'Custom search and filters'}
+            </p>
+            {sortPresetNote && <p className="text-xs text-muted-foreground">{sortPresetNote}</p>}
+          </div>
+        )}
         <div className="flex items-center gap-2">
-          {activeSectionKey && (
+          {/* Search ignores the section. */}
+          {activeSectionKey && !searchQuery && (
             <Button
               variant="ghost"
               size="sm"

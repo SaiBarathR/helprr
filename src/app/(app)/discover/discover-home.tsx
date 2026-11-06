@@ -259,12 +259,15 @@ export default function DiscoverPage() {
   }, [discoverContentType, gridMode, refetchGrid, updateView]);
 
   const handleSelectSort = useCallback((sort: string) => {
-    if (discoverSort === sort && gridMode) {
+    // No chip is chosen while searching, so picking one leaves the search for it.
+    if (query.trim()) {
+      setQuery('');
+    } else if (discoverSort === sort && gridMode) {
       void refetchGrid();
       return;
     }
     updateView({ sort, section: null, manualBrowseMode: true });
-  }, [discoverSort, gridMode, refetchGrid, updateView]);
+  }, [query, setQuery, discoverSort, gridMode, refetchGrid, updateView]);
 
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -463,6 +466,8 @@ export default function DiscoverPage() {
       {gridMode && (
         <DiscoverResults
           shownPerson={shownPerson}
+          searchQuery={query.trim()}
+          clearSearch={() => setQuery('')}
           updateView={updateView}
           activeSectionKey={activeSectionKey}
           sortPresetNote={sortPresetNote}

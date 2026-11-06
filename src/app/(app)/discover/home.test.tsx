@@ -328,6 +328,52 @@ describe('Discover home (characterization)', () => {
     await waitFor(() => expect(lastGrid().with_people).toBeUndefined());
   });
 
+  it('titles a search by its query with no sort chip chosen, and clearing it brings the chosen chip back', async () => {
+    const user = renderHome();
+    const sortRow = () => within(document.querySelector<HTMLElement>('[data-scroll-restoration-key="discover-sort"]')!);
+    await user.click(await screen.findByRole('button', { name: 'Popular' }));
+    await waitFor(() => expect(lastGrid()).toEqual(expect.objectContaining({ mode: 'browse', sortBy: 'popular' })));
+    expect(sortRow().getByRole('button', { pressed: true }).textContent).toBe('Popular');
+
+    await user.type(screen.getByPlaceholderText('Search movies and shows'), 'dune');
+    expect(await screen.findByText('Results for "dune"', {}, { timeout: 2000 })).toBeTruthy();
+    await waitFor(() => expect(lastGrid()).toEqual(expect.objectContaining({ mode: 'search', q: 'dune' })));
+    expect(sortRow().queryByRole('button', { pressed: true })).toBeNull();
+    expect(screen.queryByText('Custom search and filters')).toBeNull();
+
+    await user.click(screen.getByRole('button', { name: 'Clear search for "dune"' }));
+    // The Popular grid comes back from the cache.
+    await waitFor(() => expect(screen.getByText('Discover Results')).toBeTruthy());
+    expect(useUIStore.getState().discoverSort).toBe('popular');
+    expect((screen.getByPlaceholderText('Search movies and shows') as HTMLInputElement).value).toBe('');
+    expect(screen.queryByText('Results for "dune"')).toBeNull();
+    expect(sortRow().getByRole('button', { pressed: true }).textContent).toBe('Popular');
+  });
+
+  it("titles a search link's results by its query, and clears it back to the link's chip", async () => {
+    mocks.search = new URLSearchParams('q=dune');
+    const user = renderHome();
+    expect(await screen.findByText('Results for "dune"')).toBeTruthy();
+    expect(screen.queryByRole('button', { pressed: true })).toBeNull();
+
+    await user.click(screen.getByRole('button', { name: 'Clear search for "dune"' }));
+    await waitFor(() => expect(lastGrid()).toEqual(expect.objectContaining({ mode: 'browse', sortBy: 'popular' })));
+    expect(screen.getByRole('button', { name: 'Popular', pressed: true })).toBeTruthy();
+  });
+
+  it('leaves a search for the sort chip chosen while searching', async () => {
+    const user = renderHome();
+    await waitFor(() => expect(sectionTitles()).toContain('Trending'));
+    await user.type(screen.getByPlaceholderText('Search movies and shows'), 'dune');
+    expect(await screen.findByText('Results for "dune"', {}, { timeout: 2000 })).toBeTruthy();
+
+    await user.click(screen.getByRole('button', { name: 'Trending' }));
+    await waitFor(() => expect(lastGrid()).toEqual(expect.objectContaining({ mode: 'browse', sortBy: 'trending' })));
+    expect(lastGrid().q).toBeUndefined();
+    expect((screen.getByPlaceholderText('Search movies and shows') as HTMLInputElement).value).toBe('');
+    expect(screen.getByRole('button', { name: 'Trending', pressed: true })).toBeTruthy();
+  });
+
   it('shows the loading skeleton until the carousels arrive', async () => {
     let arrive!: (value: unknown) => void;
     mocks.sections = () => new Promise((resolve) => { arrive = resolve; });
