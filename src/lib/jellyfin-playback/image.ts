@@ -13,16 +13,19 @@ export function jellyfinImageUrl(
 }
 
 export function jellyfinBackdropUrl(
-  item: { Id: string; BackdropImageTags?: string[]; ParentId?: string; SeriesId?: string },
+  item: { Id: string; BackdropImageTags?: string[]; SeriesId?: string; ParentBackdropItemId?: string; ParentBackdropImageTags?: string[] },
   width = 1920,
 ): string | null {
   if (item.BackdropImageTags && item.BackdropImageTags.length > 0) {
     return jellyfinImageUrl(item.Id, 'Backdrop', width);
   }
+  if (item.ParentBackdropItemId && item.ParentBackdropImageTags && item.ParentBackdropImageTags.length > 0) {
+    return jellyfinImageUrl(item.ParentBackdropItemId, 'Backdrop', width);
+  }
   if (item.SeriesId) return jellyfinImageUrl(item.SeriesId, 'Backdrop', width);
-  if (item.ParentId) return jellyfinImageUrl(item.ParentId, 'Backdrop', width);
-  // No tags and no parent to borrow from: requesting it anyway is a guaranteed
-  // 404 that FadeInImage then retries three times.
+  // Nothing to borrow from. A bare ParentId is usually the library folder, so
+  // a series without a backdrop asked for one that is certain to 404, which
+  // FadeInImage then retries three times.
   return null;
 }
 

@@ -243,7 +243,10 @@ export function PreviewBackdrop({
           unoptimized
           className={cn(
             'object-cover transition-opacity duration-700',
-            showPreview ? 'opacity-0' : 'opacity-100',
+            // Only ever hides it: an opacity-100 here would override the
+            // image's own hidden-until-loaded state and show the browser's
+            // broken-image glyph while a failed backdrop retries.
+            showPreview && 'opacity-0',
             className,
           )}
         />

@@ -318,7 +318,7 @@ export function CreatorFeedPage() {
           <h2 className="mb-2 text-base font-semibold">Expiring soon</h2>
           <div className="-mx-2 flex gap-3 overflow-x-auto overflow-y-hidden px-2 pb-3 scrollbar-hide md:-mx-6 md:px-6">
             {expiring.map((video) => (
-              <div key={video.id} className="w-[180px] shrink-0 sm:w-[220px]">
+              <div key={video.id} className="w-[240px] shrink-0 sm:w-[280px]">
                 <CreatorVideoCard video={video} layout="grid" actions={actions} />
               </div>
             ))}

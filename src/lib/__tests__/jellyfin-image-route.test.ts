@@ -120,6 +120,8 @@ describe('dedicated Jellyfin image authorization', () => {
         upstreamUrl:
           'http://jellyfin.internal:8096/Items/abc123/Images/Primary?maxWidth=400&quality=90',
         requesterId: 'user-1',
+        // Jellyfin names unresized art by its file extension.
+        ignoreDeclaredType: true,
         upstreamHeaders: {
           'X-Proxy-Auth': 'proxy-secret',
           Authorization: 'MediaBrowser Token="secret-key"',

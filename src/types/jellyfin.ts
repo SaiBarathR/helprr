@@ -144,6 +144,8 @@ export interface JellyfinItem {
   SeriesThumbImageTag?: string;
   ParentThumbImageTag?: string;
   ParentBackdropImageTags?: string[];
+  /** The nearest ancestor that has a backdrop; absent when none does. */
+  ParentBackdropItemId?: string;
   CollectionType?: string;
   OfficialRating?: string;
   CriticRating?: number;

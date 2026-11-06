@@ -350,6 +350,37 @@ describe('bounded upstream image validation', () => {
     expect(result).toMatchObject({ status: 415, body: null });
   });
 
+  it('serves a PNG an upstream labels by its .jpg extension when told to ignore the header', async () => {
+    const png = await fixture('png');
+    const { fetchImageWithServerCache } = await loadImageCache({ maxBytes: 2048 });
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(responseBody(png), {
+      headers: { 'content-type': 'image/jpeg' },
+    })));
+
+    const result = await fetchImageWithServerCache({
+      cacheKey: 'jellyfin-fanart',
+      upstreamUrl: 'http://jellyfin.example/Items/abc/Images/Backdrop',
+      ignoreDeclaredType: true,
+    });
+
+    expect(result).toMatchObject({ status: 200, contentType: 'image/png' });
+  });
+
+  it('still rejects non-image bytes when the header is ignored', async () => {
+    const { fetchImageWithServerCache } = await loadImageCache();
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(responseBody(Buffer.from('<!doctype html>')), {
+      headers: { 'content-type': 'image/jpeg' },
+    })));
+
+    const result = await fetchImageWithServerCache({
+      cacheKey: 'jellyfin-not-an-image',
+      upstreamUrl: 'http://jellyfin.example/Items/abc/Images/Backdrop',
+      ignoreDeclaredType: true,
+    });
+
+    expect(result).toMatchObject({ status: 415, body: null });
+  });
+
   it('rejects a valid but unsupported GIF raster', async () => {
     const gif = await sharp({
       create: {
