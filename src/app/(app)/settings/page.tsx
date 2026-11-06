@@ -235,7 +235,7 @@ export default function SettingsIndexPage() {
 
   return (
     <div className="animate-content-in pb-12">
-      <PageTitle className="px-4 mb-4">Settings</PageTitle>
+      <PageTitle>Settings</PageTitle>
       <div className="relative mb-6">
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <Input
