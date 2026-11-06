@@ -26,6 +26,12 @@ async function postHandler(request: NextRequest) {
       case 'EpisodeSearch':
         result = await client.searchEpisode(body.episodeIds);
         break;
+      case 'MissingEpisodeSearch':
+        result = await client.searchWanted('missing');
+        break;
+      case 'CutoffUnmetEpisodeSearch':
+        result = await client.searchWanted('cutoff');
+        break;
       case 'SeasonSearch':
         result = await client.searchSeason(body.seriesId, body.seasonNumber);
         break;

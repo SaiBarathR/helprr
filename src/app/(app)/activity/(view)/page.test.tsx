@@ -507,7 +507,7 @@ describe('Activity: wanted tabs, sorting and refresh', () => {
     await selectTab('Missing');
     await waitFor(() => expect(text()).toContain('Lost Film (2001)'));
 
-    await act(async () => (document.querySelector('button svg.lucide-search')!.closest('button') as HTMLButtonElement).click());
+    await act(async () => (document.querySelector('button[aria-label="Search for release"]') as HTMLButtonElement).click());
 
     await waitFor(() => expect(posts()).toHaveLength(1));
     const [url, init] = posts()[0];

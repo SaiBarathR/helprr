@@ -433,6 +433,23 @@ import.
   takes `seriesIds`); `GET /api/v3/history/series?seriesId=&eventType=3` and
   Radarr's `/api/v3/history/movie?movieId=&eventType=3` return one title's imports.
 
+### Wanted searches (source contract, not yet live-qualified)
+
+Activity → Missing and Cutoff Unmet search a selection with each app's item
+command (`EpisodeSearch` `episodeIds`, `MoviesSearch` `movieIds`, Lidarr
+`AlbumSearch` `albumIds`), one command per instance. **Search all** sends the
+whole-list command with no other fields, one per instance the filters cover:
+Sonarr `MissingEpisodeSearch` / `CutoffUnmetEpisodeSearch` (their `Monitored`
+defaults to true), Radarr `MissingMoviesSearch` / `CutoffUnmetMoviesSearch`
+(monitored movies only, skipping those already queued) and Lidarr
+`MissingAlbumSearch` / `CutoffUnmetAlbumSearch`. Radarr's wanted records carry
+`isAvailable` (its minimum-availability check), `inCinemas`, `digitalRelease` and
+`physicalRelease`; Missing groups films with `isAvailable: false` under **Not
+released yet**. A command sent through the API runs as a manual search, which
+skips Radarr's availability check, so **Search all** searches those films too
+(as Radarr's own Search All does); the confirm says so. Read from the Sonarr v5-develop, Radarr and Lidarr develop
+sources on 2026-11-06.
+
 ## Before reporting an upstream compatibility problem
 
 1. In **Settings → Instances**, re-test the affected connection and record the exact

@@ -67,6 +67,12 @@ async function postHandler(request: NextRequest) {
         result = await client.searchAlbums(albumIds);
         break;
       }
+      case 'MissingAlbumSearch':
+        result = await client.searchWanted('missing');
+        break;
+      case 'CutoffUnmetAlbumSearch':
+        result = await client.searchWanted('cutoff');
+        break;
       case 'RefreshArtist': {
         const artistId = toPositiveInt(body.artistId);
         if (artistId === null) {

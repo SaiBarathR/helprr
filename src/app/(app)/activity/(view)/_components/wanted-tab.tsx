@@ -1,13 +1,18 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from '@/components/ui/app-link';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { FloatingActionBar } from '@/components/ui/floating-action-bar';
 import { ListSkeleton } from '@/components/ui/list-skeleton';
 import { QuickContextMenu } from '@/components/ui/quick-context-menu';
 import {
+  ChevronDown,
   Download,
+  ListChecks,
   Loader2,
   Search,
   Tv,
@@ -19,48 +24,50 @@ import {
 import { formatDistanceToNow } from 'date-fns';
 import { toast } from 'sonner';
 import { useRestorableInfiniteQuery as useInfiniteQuery } from '@/lib/hooks/use-restorable-infinite-query';
-import { keepPreviousData } from '@tanstack/react-query';
-import { ApiError } from '@/lib/query-fetch';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { ApiError, jsonFetcher } from '@/lib/query-fetch';
+import { queryKeys } from '@/lib/query-keys';
 import { useCan } from '@/components/permission-provider';
+import { cn } from '@/lib/utils';
 import { TabErrorState } from './shared';
+import {
+  isNotReleased,
+  searchAllRequests,
+  searchAllTargets,
+  selectedSearchRequests,
+  wantedDate,
+  wantedRecordKey,
+  type SearchRequest,
+  type WantedInstance,
+  type WantedRecord,
+} from './wanted-records';
 
 // --- Wanted Tab ---
 
-interface WantedRecord {
-  id: number;
-  source: 'sonarr' | 'radarr' | 'lidarr';
-  instanceId?: string;
-  instanceLabel?: string;
-  mediaType: 'episode' | 'movie' | 'album';
-  title?: string;
-  seriesId?: number;
-  seasonNumber?: number;
-  episodeNumber?: number;
-  airDateUtc?: string;
-  airDate?: string;
-  series?: { id: number; title: string };
-  year?: number;
-  added?: string;
-  monitored?: boolean;
-  // Lidarr album fields
-  artistId?: number;
-  albumId?: number;
-  releaseDate?: string;
-  artist?: { id: number; artistName: string };
-}
+const SOURCE_BY_TYPE: Record<string, WantedInstance['source']> = { SONARR: 'sonarr', RADARR: 'radarr', LIDARR: 'lidarr' };
 
-// Row identity for list keys and per-item search state: multi-instance setups
-// can repeat a (source, id) pair, so the instance must be part of the key.
-function wantedRecordKey(record: WantedRecord): string {
-  return `${record.source}-${record.instanceId ?? 'default'}-${record.id}`;
+/** Send each command; resolves to how many items the accepted and the refused ones covered. */
+async function sendSearches(requests: SearchRequest[]): Promise<{ ok: number; fail: number }> {
+  const results = await Promise.all(requests.map(async ({ url, body, count }) => {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }).catch(() => null);
+    return { ok: !!res?.ok, count };
+  }));
+  return results.reduce(
+    (sum, r) => (r.ok ? { ...sum, ok: sum.ok + r.count } : { ...sum, fail: sum.fail + r.count }),
+    { ok: 0, fail: 0 },
+  );
 }
 
 /**
- * Render the Wanted tab showing either missing or cutoff items with per-item search and pagination.
+ * Render the Wanted tab showing either missing or cutoff items with per-item, selected and whole-list search, and pagination.
  *
  * @param type - Specifies which set of wanted items to display: `'missing'` or `'cutoff'`.
  * @param filterBy - Selected sources for results (`'sonarr'`, `'radarr'`, `'lidarr'`); an empty array means all sources, otherwise results are limited to the selected sources.
- * @returns The tab content element that lists records, shows loading and empty states, provides a per-record search action, and supports "Load more" pagination.
+ * @returns The tab content element that lists records, shows loading and empty states, provides per-record, selected and "Search all" actions, and supports "Load more" pagination.
  */
 export function WantedTab({ type, filterBy, instanceFilter }: { type: 'missing' | 'cutoff'; filterBy: string[]; instanceFilter: string }) {
   const PAGE_SIZE = 20;
@@ -68,12 +75,28 @@ export function WantedTab({ type, filterBy, instanceFilter }: { type: 'missing' 
   // Keyed per item: overlapping searches on two items must not clear each
   // other's spinner (a single string flag would).
   const [searching, setSearching] = useState<ReadonlySet<string>>(new Set());
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedKeys, setSelectedKeys] = useState<ReadonlySet<string>>(new Set());
+  const [bulkSearching, setBulkSearching] = useState(false);
+  const [confirmSearchAll, setConfirmSearchAll] = useState(false);
+  const [showNotReleased, setShowNotReleased] = useState(false);
+  const sourcesKey = [...filterBy].sort().join(',') || 'all';
+
+  // A selection belongs to the list it was made on: a filter change drops it, so
+  // switching back can't bring hidden picks into "Search selected".
+  const listKey = `${sourcesKey}|${instanceFilter}`;
+  const [selectionListKey, setSelectionListKey] = useState(listKey);
+  if (selectionListKey !== listKey) {
+    setSelectionListKey(listKey);
+    setSelectionMode(false);
+    setSelectedKeys(new Set());
+  }
 
   // The server filters and paginates for exactly this source set + instance, so
   // every filter combination is a genuinely different result — key on all of them
   // and request the page directly. No client-side filtering, no auto-advance.
   const wantedQuery = useInfiniteQuery({
-    queryKey: ['activity', 'wanted', type, [...filterBy].sort().join(',') || 'all', instanceFilter],
+    queryKey: ['activity', 'wanted', type, sourcesKey, instanceFilter],
     queryFn: async ({ pageParam, signal }) => {
       const params = new URLSearchParams({ type, page: String(pageParam), pageSize: String(PAGE_SIZE) });
       if (filterBy.length > 0) params.set('sources', filterBy.join(','));
@@ -90,7 +113,40 @@ export function WantedTab({ type, filterBy, instanceFilter }: { type: 'missing' 
     placeholderData: keepPreviousData,
   });
   const loading = wantedQuery.isLoading;
-  const records = wantedQuery.data?.pages.flatMap((pg) => pg.records ?? []) ?? [];
+  // Pages are slices of a fresh merge each time, so an item added between loads
+  // can repeat the previous page's last row: keep its first copy.
+  const records = useMemo(() => {
+    const seen = new Set<string>();
+    return (wantedQuery.data?.pages.flatMap((pg) => pg.records ?? []) ?? []).filter((record) => {
+      const key = wantedRecordKey(record);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [wantedQuery.data]);
+  const totalRecords = wantedQuery.data?.pages.at(-1)?.totalRecords ?? 0;
+  // Films Radarr doesn't count as available yet sit in their own group on
+  // Missing, folded away, so the list reads as what is actually out and missing.
+  const notReleased = type === 'missing' ? records.filter(isNotReleased) : [];
+  const listed = notReleased.length > 0 ? records.filter((r) => !isNotReleased(r)) : records;
+  const selectedRecords = records.filter((r) => selectedKeys.has(wantedRecordKey(r)));
+
+  // Same connection list (and query key) as the page's instance filter.
+  const { data: instances = [] } = useQuery({
+    queryKey: queryKeys.arrInstances(),
+    queryFn: jsonFetcher<Array<{ id: string; label: string; type: string }>>('/api/instances'),
+    select: (conns): WantedInstance[] => (Array.isArray(conns) ? conns : []).flatMap((c) =>
+      SOURCE_BY_TYPE[c.type] ? [{ id: c.id, source: SOURCE_BY_TYPE[c.type] }] : []),
+    staleTime: 5 * 60_000,
+    enabled: canManageActivity,
+  });
+  const searchAllInstances = searchAllTargets(instances, filterBy, instanceFilter);
+  const listName = type === 'missing' ? 'missing' : 'cutoff unmet';
+  // Radarr's whole-list search is a manual search, which skips its availability
+  // check: it searches the "Not released yet" films too.
+  const searchAllNote = type === 'missing' && searchAllInstances.some((i) => i.source === 'radarr')
+    ? ' Radarr also searches films that are not released yet.'
+    : '';
 
   // Surface fetch failures instead of silently rendering "No missing items" (or
   // stale rows under keepPreviousData). Mirrors the toast-on-error the action
@@ -105,37 +161,54 @@ export function WantedTab({ type, filterBy, instanceFilter }: { type: 'missing' 
     const key = wantedRecordKey(record);
     setSearching((prev) => new Set(prev).add(key));
     // Route the search command to the instance the wanted item lives on.
-    const qs = record.instanceId ? `?instanceId=${record.instanceId}` : '';
     try {
-      let res: Response;
-      if (record.source === 'sonarr') {
-        res = await fetch(`/api/sonarr/command${qs}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: 'EpisodeSearch', episodeIds: [record.id] }),
-        });
-      } else if (record.source === 'lidarr') {
-        res = await fetch(`/api/lidarr/command${qs}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: 'AlbumSearch', albumIds: [record.id] }),
-        });
-      } else {
-        res = await fetch(`/api/radarr/command${qs}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: 'MoviesSearch', movieIds: [record.id] }),
-        });
-      }
-      if (!res.ok) throw new Error(`Search failed (${res.status})`);
-      toast.success('Search started');
-    } catch { toast.error('Search failed'); }
-    finally {
+      const { fail } = await sendSearches(selectedSearchRequests([record]));
+      if (fail > 0) toast.error('Search failed');
+      else toast.success('Search started');
+    } finally {
       setSearching((prev) => {
         const next = new Set(prev);
         next.delete(key);
         return next;
       });
+    }
+  }
+
+  function exitSelection() {
+    setSelectionMode(false);
+    setSelectedKeys(new Set());
+  }
+
+  function toggleSelected(key: string) {
+    setSelectedKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
+  async function searchSelected() {
+    setBulkSearching(true);
+    try {
+      const { ok, fail } = await sendSearches(selectedSearchRequests(selectedRecords));
+      if (fail === 0) toast.success(ok === 1 ? 'Search started for 1 item' : `Search started for ${ok} items`);
+      else toast.error(ok > 0 ? `Search started for ${ok}, but ${fail} failed` : 'Search failed');
+      if (ok > 0) exitSelection();
+    } finally {
+      setBulkSearching(false);
+    }
+  }
+
+  async function searchAll() {
+    setBulkSearching(true);
+    try {
+      const { ok, fail } = await sendSearches(searchAllRequests(type, searchAllInstances));
+      if (fail === 0) toast.success(`Searching for every ${listName} item`);
+      else toast.error(ok > 0 ? `Search started on ${ok} of ${ok + fail} instances` : 'Search failed');
+      setConfirmSearchAll(false);
+    } finally {
+      setBulkSearching(false);
     }
   }
 
@@ -164,106 +237,164 @@ export function WantedTab({ type, filterBy, instanceFilter }: { type: 'missing' 
     );
   }
 
+  function renderRow(record: WantedRecord) {
+    const key = wantedRecordKey(record);
+    const isEpisode = record.mediaType === 'episode';
+    const isAlbum = record.mediaType === 'album';
+    const albumYear = record.releaseDate ? new Date(record.releaseDate).getFullYear() : undefined;
+    const displayTitle = isEpisode
+      ? `${record.series?.title || 'Unknown'} - S${String(record.seasonNumber ?? 0).padStart(2, '0')}E${String(record.episodeNumber ?? 0).padStart(2, '0')} - ${record.title || 'TBA'}`
+      : isAlbum
+        ? `${record.artist?.artistName ? `${record.artist.artistName} - ` : ''}${record.title || 'Unknown'}${albumYear ? ` (${albumYear})` : ''}`
+        : `${record.title || 'Unknown'} (${record.year || '?'})`;
+    const dated = wantedDate(record);
+    const icon = isEpisode ? <Tv className="h-3.5 w-3.5 text-muted-foreground" /> : isAlbum ? <Disc3 className="h-3.5 w-3.5 text-muted-foreground" /> : <Film className="h-3.5 w-3.5 text-muted-foreground" />;
+    const meta = (
+      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+        <Badge variant="outline" className="text-[10px] px-1.5 py-0">{record.source}</Badge>
+        {dated && (
+          <span>{`${dated.label} ${formatDistanceToNow(dated.date, { addSuffix: true })}`}</span>
+        )}
+      </div>
+    );
+
+    if (selectionMode) {
+      const selected = selectedKeys.has(key);
+      return (
+        <button
+          key={key}
+          type="button"
+          onClick={() => toggleSelected(key)}
+          aria-pressed={selected}
+          className="w-full text-left flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-muted/50 active:bg-muted/50 transition-colors"
+        >
+          <Checkbox checked={selected} tabIndex={-1} aria-hidden className="pointer-events-none" />
+          <div className="p-1.5 rounded bg-muted">{icon}</div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm truncate">{displayTitle}</p>
+            {meta}
+          </div>
+        </button>
+      );
+    }
+
+    const hasSeriesId = Number.isFinite(record.seriesId);
+    const hasSeasonNumber = Number.isFinite(record.seasonNumber);
+    const q = record.instanceId ? `?instance=${record.instanceId}` : '';
+    const href = isAlbum
+      ? `/music/album/${record.id}${q}`
+      : isEpisode && hasSeriesId && hasSeasonNumber
+        ? `/series/${record.seriesId}/season/${record.seasonNumber}/episode/${record.id}${q}`
+        : isEpisode && hasSeriesId
+          ? `/series/${record.seriesId}${q}`
+          : !isEpisode
+            ? `/movies/${record.id}${q}`
+            : null;
+
+    return (
+      <QuickContextMenu
+        key={key}
+        label={`Actions for ${displayTitle}`}
+        groups={[
+          {
+            id: 'actions',
+            actions: [
+              ...(href
+                ? [{
+                  id: 'open-media',
+                  label: 'Open related media',
+                  icon: <ExternalLink className="h-4 w-4" />,
+                  href,
+                }]
+                : []),
+              ...(canManageActivity
+                ? [{
+                  id: 'search-release',
+                  label: 'Search for release',
+                  icon: <Search className="h-4 w-4" />,
+                  pending: searching.has(key),
+                  onSelect: () => void handleSearch(record),
+                }]
+                : []),
+            ],
+          },
+        ]}
+      >
+        <div className="flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-muted/50 active:bg-muted/50 transition-colors">
+          {href ? (
+            <Link href={href} className="p-1.5 rounded bg-muted hover:bg-muted/80 transition-colors">
+              {icon}
+            </Link>
+          ) : (
+            <div className="p-1.5 rounded bg-muted">
+              {icon}
+            </div>
+          )}
+          <div className="flex-1 min-w-0">
+            {href ? (
+              <Link href={href} className="block">
+                <p className="text-sm truncate">{displayTitle}</p>
+              </Link>
+            ) : (
+              <p className="text-sm truncate">{displayTitle}</p>
+            )}
+            {meta}
+          </div>
+          {canManageActivity && (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 w-7 p-0 shrink-0"
+              onClick={() => handleSearch(record)}
+              disabled={searching.has(key)}
+              aria-label="Search for release"
+            >
+              {searching.has(key) ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Search className="h-3.5 w-3.5" />
+              )}
+            </Button>
+          )}
+        </div>
+      </QuickContextMenu>
+    );
+  }
+
   return (
     <div className="space-y-1 animate-list-in">
-      {records.map((record) => {
-        const key = wantedRecordKey(record);
-        const isEpisode = record.mediaType === 'episode';
-        const isAlbum = record.mediaType === 'album';
-        const albumYear = record.releaseDate ? new Date(record.releaseDate).getFullYear() : undefined;
-        const displayTitle = isEpisode
-          ? `${record.series?.title || 'Unknown'} - S${String(record.seasonNumber ?? 0).padStart(2, '0')}E${String(record.episodeNumber ?? 0).padStart(2, '0')} - ${record.title || 'TBA'}`
-          : isAlbum
-            ? `${record.artist?.artistName ? `${record.artist.artistName} - ` : ''}${record.title || 'Unknown'}${albumYear ? ` (${albumYear})` : ''}`
-            : `${record.title || 'Unknown'} (${record.year || '?'})`;
-        const dateStr = isEpisode ? record.airDateUtc || record.airDate : isAlbum ? record.releaseDate : record.added;
-
-        const hasSeriesId = Number.isFinite(record.seriesId);
-        const hasSeasonNumber = Number.isFinite(record.seasonNumber);
-        const q = record.instanceId ? `?instance=${record.instanceId}` : '';
-        const href = isAlbum
-          ? `/music/album/${record.id}${q}`
-          : isEpisode && hasSeriesId && hasSeasonNumber
-            ? `/series/${record.seriesId}/season/${record.seasonNumber}/episode/${record.id}${q}`
-            : isEpisode && hasSeriesId
-              ? `/series/${record.seriesId}${q}`
-              : !isEpisode
-                ? `/movies/${record.id}${q}`
-                : null;
-
-        return (
-          <QuickContextMenu
-            key={key}
-            label={`Actions for ${displayTitle}`}
-            groups={[
-              {
-                id: 'actions',
-                actions: [
-                  ...(href
-                    ? [{
-                      id: 'open-media',
-                      label: 'Open related media',
-                      icon: <ExternalLink className="h-4 w-4" />,
-                      href,
-                    }]
-                    : []),
-                  ...(canManageActivity
-                    ? [{
-                      id: 'search-release',
-                      label: 'Search for release',
-                      icon: <Search className="h-4 w-4" />,
-                      pending: searching.has(key),
-                      onSelect: () => void handleSearch(record),
-                    }]
-                    : []),
-                ],
-              },
-            ]}
+      {canManageActivity && (
+        <div className="flex items-center gap-2 px-3 pt-2 pb-1">
+          <span className="flex-1 text-xs text-muted-foreground">
+            {totalRecords} {totalRecords === 1 ? 'item' : 'items'}
+          </span>
+          <Button
+            size="sm"
+            variant={selectionMode ? 'default' : 'ghost'}
+            className="h-8"
+            onClick={() => (selectionMode ? exitSelection() : setSelectionMode(true))}
+            aria-pressed={selectionMode}
           >
-            <div className="flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-muted/50 active:bg-muted/50 transition-colors">
-              {href ? (
-                <Link href={href} className="p-1.5 rounded bg-muted hover:bg-muted/80 transition-colors">
-                  {isEpisode ? <Tv className="h-3.5 w-3.5 text-muted-foreground" /> : isAlbum ? <Disc3 className="h-3.5 w-3.5 text-muted-foreground" /> : <Film className="h-3.5 w-3.5 text-muted-foreground" />}
-                </Link>
-              ) : (
-                <div className="p-1.5 rounded bg-muted">
-                  {isEpisode ? <Tv className="h-3.5 w-3.5 text-muted-foreground" /> : isAlbum ? <Disc3 className="h-3.5 w-3.5 text-muted-foreground" /> : <Film className="h-3.5 w-3.5 text-muted-foreground" />}
-                </div>
-              )}
-              <div className="flex-1 min-w-0">
-                {href ? (
-                  <Link href={href} className="block">
-                    <p className="text-sm truncate">{displayTitle}</p>
-                  </Link>
-                ) : (
-                  <p className="text-sm truncate">{displayTitle}</p>
-                )}
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <Badge variant="outline" className="text-[10px] px-1.5 py-0">{record.source}</Badge>
-                  {dateStr && (
-                    <span>{formatDistanceToNow(new Date(dateStr), { addSuffix: true })}</span>
-                  )}
-                </div>
-              </div>
-              {canManageActivity && (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-7 w-7 p-0 shrink-0"
-                  onClick={() => handleSearch(record)}
-                  disabled={searching.has(key)}
-                >
-                  {searching.has(key) ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <Search className="h-3.5 w-3.5" />
-                  )}
-                </Button>
-              )}
-            </div>
-          </QuickContextMenu>
-        );
-      })}
+            <ListChecks className="mr-1.5 h-4 w-4" />
+            Select
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-8"
+            onClick={() => setConfirmSearchAll(true)}
+            // While a filter change loads, the count shown is still the old list's.
+            disabled={bulkSearching || searchAllInstances.length === 0 || wantedQuery.isPlaceholderData}
+          >
+            <Search className="mr-1.5 h-4 w-4" />
+            Search all
+          </Button>
+        </div>
+      )}
+      {listed.map(renderRow)}
+      {listed.length === 0 && !wantedQuery.hasNextPage && (
+        <p className="px-3 py-4 text-center text-sm text-muted-foreground">Nothing that is out yet is missing.</p>
+      )}
       {wantedQuery.hasNextPage && (
         <Button
           variant="ghost"
@@ -275,6 +406,50 @@ export function WantedTab({ type, filterBy, instanceFilter }: { type: 'missing' 
           Load more
         </Button>
       )}
+      {notReleased.length > 0 && (
+        <div className="pt-2">
+          <button
+            type="button"
+            onClick={() => setShowNotReleased((v) => !v)}
+            aria-expanded={showNotReleased}
+            className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs font-medium text-muted-foreground"
+          >
+            <ChevronDown className={cn('h-3.5 w-3.5 transition-transform', !showNotReleased && '-rotate-90')} />
+            Not released yet ({notReleased.length})
+          </button>
+          {showNotReleased && (
+            <>
+              <p className="px-3 pb-1 text-xs text-muted-foreground">Films Radarr does not count as available yet.</p>
+              {notReleased.map(renderRow)}
+            </>
+          )}
+        </div>
+      )}
+
+      {selectionMode && (
+        <FloatingActionBar className="p-2">
+          <span className="flex-1 px-2 text-sm text-muted-foreground">{selectedRecords.length} selected</span>
+          <Button variant="ghost" className="h-11" onClick={exitSelection}>Cancel</Button>
+          <Button
+            className="h-11"
+            disabled={selectedRecords.length === 0 || bulkSearching}
+            onClick={() => void searchSelected()}
+          >
+            {bulkSearching ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Search className="mr-2 h-4 w-4" />}
+            Search selected
+          </Button>
+        </FloatingActionBar>
+      )}
+
+      <ConfirmDialog
+        open={confirmSearchAll}
+        onOpenChange={(open) => { if (!open && !bulkSearching) setConfirmSearchAll(false); }}
+        title={`Search for all ${totalRecords} ${listName} ${totalRecords === 1 ? 'item' : 'items'}?`}
+        description={`${searchAllInstances.length === 1 ? 'The instance' : `Each of the ${searchAllInstances.length} instances`} this list covers searches your indexers for every monitored item on it. A long list can take a while and use up indexer request limits.${searchAllNote}`}
+        confirmLabel="Search all"
+        busy={bulkSearching}
+        onConfirm={searchAll}
+      />
     </div>
   );
 }
