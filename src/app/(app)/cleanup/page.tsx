@@ -70,20 +70,20 @@ export default function CleanupPage() {
           </TabsList>
         </div>
 
-        <TabsContent value="dashboard">
+        <TabsContent value="dashboard" className="readable-column-wide">
           <CleanupDashboardTab onNavigate={(target) => setTab(target)} />
         </TabsContent>
         {canManage && (
-          <TabsContent value="queue">
+          <TabsContent value="queue" className="readable-column-wide">
             <QueueCleanerTab onDirtyChange={onQueueDirty} />
           </TabsContent>
         )}
         {canManage && (
-          <TabsContent value="download">
+          <TabsContent value="download" className="readable-column-wide">
             <DownloadCleanerTab onDirtyChange={onDownloadDirty} />
           </TabsContent>
         )}
-        <TabsContent value="history">
+        <TabsContent value="history" className="readable-column-wide">
           <CleanupHistoryTab />
         </TabsContent>
       </Tabs>
