@@ -48,7 +48,8 @@ push devices and sessions. It never holds a password, token or another person's 
 **Delete my account** removes the account and everything it owns, and signs it out
 everywhere. It asks for the current password; an account that signs in only with
 Jellyfin types its username instead. The last active admin cannot delete itself:
-make someone else an admin first.
+make someone else an admin first. The admin created from `APP_PASSWORD` cannot delete
+itself either, because Helprr re-creates it on every start while `APP_PASSWORD` is set.
 
 ## Sessions
 

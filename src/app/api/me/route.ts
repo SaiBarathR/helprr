@@ -17,6 +17,7 @@ import { boundedBodyErrorResponse, readBoundedJson } from '@/lib/server/bounded-
 import { isHttpsRequest } from '@/lib/request-utils';
 import { recordFailedSignIn, recordSecurityEvent } from '@/lib/security-audit';
 import { deleteUserUnlessLastAdmin, lockActiveAdminGuard } from '@/lib/user-deletion';
+import { BOOTSTRAP_ADMIN_ID } from '@/lib/bootstrap-admin';
 
 const DELETE_BODY_MAX_BYTES = 8 * 1024;
 
@@ -64,6 +65,14 @@ async function deleteHandler(request: NextRequest): Promise<NextResponse> {
   const auth = await requireUser();
   if (!auth.ok) return auth.response;
   const { user, session } = auth;
+  // The install's recovery admin is re-created from APP_PASSWORD on every start,
+  // so a self-delete would not stick; refuse it rather than pretend.
+  if (user.id === BOOTSTRAP_ADMIN_ID && process.env.APP_PASSWORD) {
+    return NextResponse.json(
+      { error: "This is the install's recovery admin (APP_PASSWORD); it is re-created on restart and can't be deleted here." },
+      { status: 409 },
+    );
+  }
 
   // JSON only: a cross-site form post can't send this content type, and a
   // cross-site fetch that does needs a preflight Helprr never grants.

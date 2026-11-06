@@ -23,8 +23,14 @@ export async function deleteUserUnlessLastAdmin(
   tx: Prisma.TransactionClient,
   user: Pick<User, 'id' | 'role' | 'status'>,
 ): Promise<boolean> {
-  if (user.role === 'admin' && user.status === 'active') {
-    await lockActiveAdminGuard(tx);
+  // Always take the guard lock, then lock and re-read the row: the caller's copy
+  // may be stale (a disabled admin re-enabled meanwhile still has to count).
+  await lockActiveAdminGuard(tx);
+  const rows = await tx.$queryRaw<Array<{ role: string; status: string }>>`
+    SELECT "role", "status" FROM "User" WHERE "id" = ${user.id} FOR UPDATE`;
+  const current = rows[0];
+  if (!current) return true; // already gone
+  if (current.role === 'admin' && current.status === 'active') {
     const remaining = await tx.user.count({
       where: { role: 'admin', status: 'active', NOT: { id: user.id } },
     });
@@ -32,6 +38,6 @@ export async function deleteUserUnlessLastAdmin(
   }
   // Cascade (schema onDelete: Cascade) drops their sessions, watchlist, push
   // subscriptions, AniList link, and settings with them.
-  await tx.user.delete({ where: { id: user.id } });
+  await tx.user.deleteMany({ where: { id: user.id } });
   return true;
 }

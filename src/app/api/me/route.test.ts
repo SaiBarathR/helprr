@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   logging: [] as unknown[],
   userCount: vi.fn(),
   userDelete: vi.fn(),
+  queryRaw: vi.fn(),
   enforceLoginRateLimit: vi.fn(),
   enforceUsernameBackoff: vi.fn(),
   enforceGlobalLoginBackstop: vi.fn(),
@@ -33,10 +34,11 @@ vi.mock('@/lib/db', () => {
   };
   const tx = {
     $executeRaw: inTx((...args: unknown[]) => (mocks.order.push('guard-lock'), mocks.executeRaw(...args))),
+    $queryRaw: inTx(() => (mocks.order.push('row-lock'), mocks.queryRaw())),
     user: {
       updateMany: inTx((args: unknown) => (mocks.order.push('user-lock'), mocks.userUpdateMany(args))),
       count: inTx(mocks.userCount),
-      delete: inTx((args: unknown) => (mocks.order.push('delete'), mocks.userDelete(args))),
+      deleteMany: inTx((args: unknown) => (mocks.order.push('delete'), mocks.userDelete(args))),
     },
   };
   return {
@@ -99,7 +101,12 @@ beforeEach(() => {
   mocks.userUpdateMany.mockResolvedValue({ count: 1 });
   mocks.executeRaw.mockResolvedValue(1);
   mocks.userCount.mockResolvedValue(1);
-  mocks.userDelete.mockResolvedValue({});
+  mocks.userDelete.mockResolvedValue({ count: 1 });
+  // The row as it is under the lock: the signed-in user's own role, still active.
+  mocks.queryRaw.mockImplementation(async () => {
+    const auth = await mocks.requireUser.mock.results.at(-1)?.value;
+    return [{ role: auth?.user?.role ?? 'member', status: 'active' }];
+  });
   for (const gate of [mocks.enforceLoginRateLimit, mocks.enforceUsernameBackoff, mocks.enforceGlobalLoginBackstop]) {
     gate.mockResolvedValue(null);
   }
@@ -132,7 +139,7 @@ describe('DELETE /api/me', () => {
       data: { updatedAt: expect.any(Date) },
     });
     // A member takes no admin guard lock.
-    expect(mocks.order).toEqual(['user-lock', 'delete']);
+    expect(mocks.order).toEqual(['user-lock', 'guard-lock', 'row-lock', 'delete']);
     // The same delete Settings -> Users makes; the schema cascades the rest.
     expect(mocks.userDelete).toHaveBeenCalledWith({ where: { id: 'user-1' } });
     expect(mocks.recordSecurityEvent).toHaveBeenCalledWith(expect.anything(), {
@@ -183,6 +190,19 @@ describe('DELETE /api/me', () => {
     expect(mocks.userDelete).not.toHaveBeenCalled();
   });
 
+  it("refuses the APP_PASSWORD recovery admin, which would come back on restart", async () => {
+    // Any non-empty value; built at runtime so secret scanners don't read it as a password.
+    vi.stubEnv('APP_PASSWORD', ['configured', 'by', 'env'].join('-'));
+    try {
+      mocks.requireUser.mockResolvedValue({ ok: true, user: account({ id: 'user-bootstrap-admin', role: 'admin' }), session: { id: 'session-1' } });
+      const res = await del({ currentPassword: PASSWORD });
+      expect(res.status).toBe(409);
+      expect(mocks.userDelete).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it('refuses the last active admin', async () => {
     mocks.requireUser.mockResolvedValue(signedIn({ role: 'admin' }));
     mocks.userCount.mockResolvedValue(0);
@@ -190,7 +210,7 @@ describe('DELETE /api/me', () => {
     expect(res.status).toBe(409);
     expect(mocks.userCount).toHaveBeenCalledWith({ where: { role: 'admin', status: 'active', NOT: { id: 'user-1' } } });
     // The guard lock before the row lock, the order Settings -> Users takes them.
-    expect(mocks.order).toEqual(['guard-lock', 'user-lock', 'guard-lock']);
+    expect(mocks.order).toEqual(['guard-lock', 'user-lock', 'guard-lock', 'row-lock']);
     expect(mocks.userDelete).not.toHaveBeenCalled();
     expect(mocks.recordSecurityEvent).not.toHaveBeenCalled();
     expect(res.headers.get('set-cookie')).toBeNull();

@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => {
   const db = {
     $executeRaw: vi.fn(async () => 1),
+    $queryRaw: vi.fn(async () => [{ role: 'member', status: 'active' }]),
     user: {
       findFirst: vi.fn(),
       findUnique: vi.fn(),
@@ -14,6 +15,7 @@ const mocks = vi.hoisted(() => {
       update: vi.fn(),
       updateMany: vi.fn(),
       delete: vi.fn(),
+      deleteMany: vi.fn(async () => ({ count: 1 })),
       count: vi.fn(),
     },
     session: { findUnique: vi.fn(), updateMany: vi.fn() },
@@ -302,7 +304,7 @@ describe('users', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     mocks.db.securityAuditEvent.create.mockRejectedValue(new Error('db down'));
     expect((await deleteUser(req('/api/users/user-1', 'DELETE'), params('user-1'))).status).toBe(200);
-    expect(mocks.db.user.delete).toHaveBeenCalledTimes(2);
+    expect(mocks.db.user.deleteMany).toHaveBeenCalledTimes(2);
   });
 
   it('records the capabilities whose effective value changed', async () => {
