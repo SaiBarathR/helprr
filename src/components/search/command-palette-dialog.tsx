@@ -19,6 +19,7 @@ import { suggestScopes } from '@/lib/search/parse-query';
 import { resolveProviderFromAlias } from '@/lib/search/provider-defs';
 import {
   SEARCH_MODULE_ORDER,
+  isSearchModuleProvider,
   type SearchModule,
   type SearchProviderResult,
   type SearchProviderResponse,
@@ -33,6 +34,7 @@ import {
 } from '@/components/search/registry';
 import { useSearchPalette } from '@/components/search/search-store';
 import { useSearchHistory } from '@/lib/hooks/use-search-history';
+import { useRequestedMedia } from '@/components/seerr/requested-media-provider';
 
 const LOCAL_DEBOUNCE_MS = 280;
 const MIN_LOCAL_QUERY = 2;
@@ -79,6 +81,19 @@ export function CommandPaletteDialog() {
   const availableProviders = useMemo(
     () => SEARCH_PROVIDER_ORDER.map((id) => SEARCH_PROVIDER_UI[id]).filter((def) => providerAvailable(me, def)),
     [me]
+  );
+
+  // Sources outside the library (TMDB, AniList), offered after library matches.
+  const remoteProviders = useMemo(
+    () => availableProviders.filter((def) => def.cost === 'remote'),
+    [availableProviders]
+  );
+
+  // With no library match, skip the library scopes that were just searched;
+  // provider order already puts the remote sources first.
+  const fallbackProviders = useMemo(
+    () => availableProviders.filter((def) => !isSearchModuleProvider(def.id)),
+    [availableProviders]
   );
 
   // Reset transient state whenever the palette closes.
@@ -338,16 +353,19 @@ export function CommandPaletteDialog() {
                   <div className="px-4 py-3 text-center text-sm text-muted-foreground">
                     No library matches found for &ldquo;{trimmedQuery}&rdquo;.
                   </div>
-                  <CommandGroup heading="Try searching in">
-                    {availableProviders.map((def) => (
-                      <ScopeHelpItem
-                        key={def.id}
-                        def={def}
-                        onSelect={() => applyScope(def, true)}
-                        hint={`Search ${def.label} for “${trimmedQuery}”`}
-                      />
-                    ))}
-                  </CommandGroup>
+                  {fallbackProviders.length > 0 && (
+                    <CommandGroup heading="Try searching in">
+                      {fallbackProviders.map((def) => (
+                        <ScopeHelpItem
+                          key={def.id}
+                          def={def}
+                          value={`fallback-${def.id}`}
+                          onSelect={() => applyScope(def, true)}
+                          hint={`Search ${def.label} for “${trimmedQuery}”`}
+                        />
+                      ))}
+                    </CommandGroup>
+                  )}
                 </>
               )}
               {showEmptyScoped && <CommandEmpty>No matches in this scope.</CommandEmpty>}
@@ -367,6 +385,20 @@ export function CommandPaletteDialog() {
                     </CommandGroup>
                   );
                 })}
+
+              {hasLocalResults && remoteProviders.length > 0 && (
+                <CommandGroup heading="Not in your library?">
+                  {remoteProviders.map((def) => (
+                    <ScopeHelpItem
+                      key={def.id}
+                      def={def}
+                      value={`remote-${def.id}`}
+                      onSelect={() => applyScope(def, true)}
+                      hint={`Search ${def.label} for “${trimmedQuery}”`}
+                    />
+                  ))}
+                </CommandGroup>
+              )}
 
               {hasProviderResults && activeScope && (
                 <CommandGroup heading={activeScope.label}>
@@ -390,14 +422,17 @@ function ScopeHelpItem({
   def,
   onSelect,
   hint,
+  value,
 }: {
   def: SearchProviderUiDef;
   onSelect: () => void;
   hint?: string;
+  /** cmdk value; override when the same scope can render twice (e.g. as a suggestion too). */
+  value?: string;
 }) {
   const Icon = def.icon;
   return (
-    <CommandItem value={`scope-${def.id}`} onSelect={onSelect} className="gap-3">
+    <CommandItem value={value ?? `scope-${def.id}`} onSelect={onSelect} className="gap-3">
       <Icon className="size-4 shrink-0 text-muted-foreground" />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
@@ -465,6 +500,12 @@ function ProviderResultRow({
   const def = SEARCH_PROVIDER_UI[result.provider];
   const Icon = def.icon;
   const poster = toCachedImageSrc(result.poster, result.posterService, { width: 92 });
+  // Same outstanding-request set the Discover cards read; fetched once per session.
+  const me = useMe();
+  const canRequest = !!me?.seerrConfigured && hasCapability(me, 'requests.create');
+  const { isRequested } = useRequestedMedia(canRequest && !!result.tmdb);
+  const badge = result.badge
+    ?? (result.tmdb && isRequested(result.tmdb.mediaType, result.tmdb.id) ? 'Requested' : undefined);
 
   return (
     <CommandItem value={result.id} onSelect={() => onSelect(result.route)} className="gap-3">
@@ -480,9 +521,9 @@ function ProviderResultRow({
         )}
       </div>
       <div className="flex shrink-0 items-center gap-1">
-        {result.badge && (
+        {badge && (
           <span className="rounded-full border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground">
-            {result.badge}
+            {badge}
           </span>
         )}
         <span

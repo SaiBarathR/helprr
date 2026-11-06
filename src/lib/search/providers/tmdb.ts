@@ -33,6 +33,7 @@ export const searchTmdb: ProviderHandler = async ({ query, limit }) => {
         posterService: 'tmdb',
         route: item.mediaType === 'movie' ? `/discover/movie/${item.tmdbId}` : `/discover/tv/${item.tmdbId}`,
         provider: 'tmdb',
+        tmdb: { mediaType: item.mediaType, id: item.tmdbId },
         badge: inLibrary ? 'In library' : undefined,
       };
     });
