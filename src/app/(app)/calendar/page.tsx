@@ -1194,7 +1194,7 @@ function WeekView({
                           </p>
                         </div>
                         <span className="text-[10px] text-muted-foreground shrink-0 tabular-nums">
-                          {format(new Date(event.date), 'h:mm a')}
+                          {formatTime(new Date(event.date))}
                         </span>
                       </div>
                     </Link>
@@ -1500,7 +1500,7 @@ export default function CalendarPage() {
     if (calendarView === 'week') {
       const ws = startOfWeek(currentDate, { weekStartsOn: 1 });
       const we = endOfWeek(currentDate, { weekStartsOn: 1 });
-      return `${format(ws, 'MMM d')} – ${format(we, 'MMM d, yyyy')}`;
+      return `${formatDate(ws, { month: 'short', day: 'numeric' })} – ${formatDate(we)}`;
     }
     return format(currentDate, 'MMMM yyyy');
   }, [calendarView, currentDate]);

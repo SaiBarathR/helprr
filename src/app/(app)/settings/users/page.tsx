@@ -34,6 +34,7 @@ import {
   localPasswordValidationError,
 } from '@/lib/password-policy';
 import { useMe } from '@/components/permission-provider';
+import { formatDateTime } from '@/lib/date-format';
 
 interface SafeUser {
   id: string;
@@ -67,7 +68,7 @@ interface ExternalUser {
 const NONE = '__none__';
 
 function formatExpiry(iso: string): string {
-  return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+  return formatDateTime(iso);
 }
 
 function linkIsLive(link: SafeUser['passwordLink']): boolean {

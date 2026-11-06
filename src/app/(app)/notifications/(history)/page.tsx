@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from '@/components/ui/app-link';
 import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
 import { format, subDays } from 'date-fns';
+import { formatDate } from '@/lib/date-format';
 import type { DateRange } from 'react-day-picker';
 import { PageTitle } from '@/components/layout/page-title';
 import { Button } from '@/components/ui/button';
@@ -532,8 +533,8 @@ export default function NotificationsPage() {
 
   const dateRangeLabel = useMemo(() => {
     if (!filters.dateFrom && !filters.dateTo) return 'Any time';
-    const fromStr = filters.dateFrom ? format(parseIsoDate(filters.dateFrom)!, 'MMM d, yyyy') : '…';
-    const toStr = filters.dateTo ? format(parseIsoDate(filters.dateTo)!, 'MMM d, yyyy') : 'now';
+    const fromStr = filters.dateFrom ? formatDate(parseIsoDate(filters.dateFrom)!) : '…';
+    const toStr = filters.dateTo ? formatDate(parseIsoDate(filters.dateTo)!) : 'now';
     return fromStr === toStr ? fromStr : `${fromStr} → ${toStr}`;
   }, [filters.dateFrom, filters.dateTo]);
 

@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
 import { format, formatDistanceToNow } from 'date-fns';
+import { formatDateTime } from '@/lib/date-format';
 import { Copy, ExternalLink, FileStack, Info } from 'lucide-react';
 import { PageHeader } from '@/components/layout/page-header';
 import { Badge } from '@/components/ui/badge';
@@ -421,7 +422,7 @@ export default function MovieFilesPage() {
             <DrawerTitle>{selectedHistoryItem ? eventTypeLabel(selectedHistoryItem.eventType) : ''}</DrawerTitle>
             <DrawerDescription>
               {selectedHistoryItem?.date
-                ? format(new Date(selectedHistoryItem.date), 'MMM d, yyyy h:mm a')
+                ? formatDateTime(new Date(selectedHistoryItem.date))
                 : ''}
             </DrawerDescription>
           </DrawerHeader>
@@ -437,7 +438,7 @@ export default function MovieFilesPage() {
                 <div className="flex justify-between items-center gap-4 px-4 py-2.5">
                   <span className="shrink-0 text-xs text-muted-foreground uppercase tracking-wide">Date</span>
                   <span className="min-w-0 text-right text-sm [overflow-wrap:anywhere]">
-                    {format(new Date(selectedHistoryItem.date), 'MMM d, yyyy h:mm a')}
+                    {formatDateTime(new Date(selectedHistoryItem.date))}
                   </span>
                 </div>
                 <div className="flex justify-between items-center gap-4 px-4 py-2.5">

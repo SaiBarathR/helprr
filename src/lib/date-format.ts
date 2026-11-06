@@ -116,8 +116,9 @@ function toValidDate(input: Date | string | number): Date | null {
 
 /**
  * Formats with the given Intl options under the user's preference. Returns ''
- * for an invalid date. iso turns a full date into YYYY-MM-DD; shorter forms
- * ("Nov 7", "Monday") keep the browser locale.
+ * for an invalid date. iso turns a full date into YYYY-MM-DD (dropping any
+ * weekday or era asked for); shorter forms ("Nov 7", "Monday") keep the
+ * browser locale.
  */
 export function formatDateTime(
   input: Date | string | number,

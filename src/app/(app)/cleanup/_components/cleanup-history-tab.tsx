@@ -39,7 +39,7 @@ import type { CleanupHistoryFiltersState } from '@/lib/store';
 import { jsonOk } from '@/lib/http';
 import { resolveCleanupHistoryOutcomeStatus } from '@/lib/cleanup/history-status';
 import { QuickContextMenu } from '@/components/ui/quick-context-menu';
-import { formatDateTime } from '@/lib/date-format';
+import { formatDate, formatDateTime } from '@/lib/date-format';
 
 interface HistoryRow {
   id: string;
@@ -248,8 +248,8 @@ export function CleanupHistoryTab() {
     if (!filters.dateFrom && !filters.dateTo) return 'Any time';
     const parsedFrom = filters.dateFrom ? parseIsoDate(filters.dateFrom) : undefined;
     const parsedTo = filters.dateTo ? parseIsoDate(filters.dateTo) : undefined;
-    const fromStr = parsedFrom ? format(parsedFrom, 'MMM d, yyyy') : '…';
-    const toStr = parsedTo ? format(parsedTo, 'MMM d, yyyy') : 'now';
+    const fromStr = parsedFrom ? formatDate(parsedFrom) : '…';
+    const toStr = parsedTo ? formatDate(parsedTo) : 'now';
     return fromStr === toStr ? fromStr : `${fromStr} → ${toStr}`;
   }, [filters.dateFrom, filters.dateTo]);
 

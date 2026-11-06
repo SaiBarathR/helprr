@@ -3,7 +3,7 @@
 import { FadeInImage } from '@/components/media/fade-in-image';
 import Link from '@/components/ui/app-link';
 import { useQuery } from '@tanstack/react-query';
-import { format } from 'date-fns';
+import { formatDate } from '@/lib/date-format';
 import { ChevronRight, Loader2, Star } from 'lucide-react';
 import type { SonarrEpisode, DiscoverSeasonDetailResponse } from '@/types';
 import { jsonFetcher } from '@/lib/query-fetch';
@@ -71,7 +71,7 @@ export function ExpandedSeasonEpisodes({
                   </span>
                 </div>
                 <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
-                  {ep.airDate && <span>{format(new Date(ep.airDate), 'MMM d, yyyy')}</span>}
+                  {ep.airDate && <span>{formatDate(new Date(ep.airDate))}</span>}
                   {ep.runtime && <span>{ep.runtime}m</span>}
                   {ep.voteAverage > 0 && (
                     <span className="inline-flex items-center gap-0.5">

@@ -4,7 +4,7 @@ import { use, useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'next/navigation';
 import { ChevronRight, Download, ExternalLink, Lock, MoreHorizontal, Play } from 'lucide-react';
-import { format } from 'date-fns';
+import { formatDate, formatDateTime } from '@/lib/date-format';
 import Link from '@/components/ui/app-link';
 import { PageHeader } from '@/components/layout/page-header';
 import { useMe, hasCapability } from '@/components/permission-provider';
@@ -138,7 +138,7 @@ export default function YoutubeVideoPage({ params }: { params: Promise<{ id: str
               <h1 className="line-clamp-3 text-xl font-bold leading-tight">{video.title}</h1>
               <p className="mt-1 truncate text-sm text-muted-foreground">
                 <Link href={channelHref}>{video.creator.displayName}</Link>
-                {' · '}{format(new Date(video.sourceCreatedAt), 'PP')}{' · '}{formatDuration(video.durationSeconds)}
+                {' · '}{formatDate(new Date(video.sourceCreatedAt))}{' · '}{formatDuration(video.durationSeconds)}
               </p>
             </div>
           </div>
@@ -162,7 +162,7 @@ export default function YoutubeVideoPage({ params }: { params: Promise<{ id: str
             <div className="[grid-area:facts]">
               <FactRow label="Type" value={TYPE_LABELS[video.type] ?? 'Video'} />
               <FactRow label="Views" value={video.viewCount.toLocaleString()} />
-              {video.liveEndedAt && <FactRow label="Stream ended" value={format(new Date(video.liveEndedAt), 'PPp')} />}
+              {video.liveEndedAt && <FactRow label="Stream ended" value={formatDateTime(new Date(video.liveEndedAt))} />}
               {video.fileId && (
                 <Link href={`/youtube/library/${video.fileId}`} className="flex items-center justify-between py-2.5">
                   <span className="shrink-0 text-xs font-medium uppercase tracking-wide text-muted-foreground">File</span>

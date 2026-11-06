@@ -6,7 +6,8 @@ import { ApiError, ensureArray, jsonFetcher, withInstanceQuery } from '@/lib/que
 import { queryKeys } from '@/lib/query-keys';
 import { useParams, useSearchParams } from 'next/navigation';
 import { useAppRouter } from '@/components/layout/navigation-provider';
-import { format, formatDistanceToNow } from 'date-fns';
+import { formatDistanceToNow } from 'date-fns';
+import { formatDate, formatTime } from '@/lib/date-format';
 import { Copy, Info, Loader2, Search, Trash2 } from 'lucide-react';
 import { PageHeader } from '@/components/layout/page-header';
 import { Badge } from '@/components/ui/badge';
@@ -200,7 +201,7 @@ export default function ArtistFilesPage() {
     const mi = file.mediaInfo;
     return [
       { label: 'Filename', value: basename(file.path), breakValue: true },
-      ...(file.dateAdded ? [{ label: 'Added', value: format(new Date(file.dateAdded), "d MMM yyyy 'at' h:mm a") }] : []),
+      ...(file.dateAdded ? [{ label: 'Added', value: `${formatDate(new Date(file.dateAdded))} at ${formatTime(new Date(file.dateAdded))}` }] : []),
       { label: 'Size', value: formatBytes(file.size) },
       { label: 'Quality', value: file.quality?.quality?.name ?? 'Unknown' },
       ...(mi?.audioCodec ? [{ label: 'Codec', value: mi.audioCodec }] : []),

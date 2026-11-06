@@ -4,7 +4,7 @@ import { use, useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'next/navigation';
 import { AlertTriangle, ChevronRight, Download, ExternalLink, MoreHorizontal, Play, Trash2 } from 'lucide-react';
-import { format } from 'date-fns';
+import { formatDate } from '@/lib/date-format';
 import Link from '@/components/ui/app-link';
 import { PageHeader } from '@/components/layout/page-header';
 import { useMe, hasCapability } from '@/components/permission-provider';
@@ -173,7 +173,7 @@ export default function TwitchVodPage({ params }: { params: Promise<{ id: string
               <h1 className="line-clamp-3 text-xl font-bold leading-tight">{video.title}</h1>
               <p className="mt-1 truncate text-sm text-muted-foreground">
                 <Link href={`/twitch/streamers/${video.creator.id}`}>{video.creator.displayName}</Link>
-                {' · '}{format(new Date(video.sourceCreatedAt), 'PP')}{' · '}{formatDuration(video.durationSeconds)}
+                {' · '}{formatDate(new Date(video.sourceCreatedAt))}{' · '}{formatDuration(video.durationSeconds)}
               </p>
             </div>
           </div>

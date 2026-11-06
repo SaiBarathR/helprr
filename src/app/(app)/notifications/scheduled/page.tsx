@@ -5,6 +5,7 @@ import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from '@/components/ui/app-link';
 import { format, formatDistanceToNow } from 'date-fns';
+import { formatDateTime } from '@/lib/date-format';
 import { useRestorableInfiniteQuery as useInfiniteQuery } from '@/lib/hooks/use-restorable-infinite-query';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -473,7 +474,7 @@ export default function ScheduledAlertsPage() {
                         </div>
                         {alert.nextOccurrence && (
                           <p className="text-[11px] text-muted-foreground mt-1">
-                            Next: {format(new Date(alert.nextOccurrence.notifyAt), 'MMM d, h:mm a')}
+                            Next: {formatDateTime(new Date(alert.nextOccurrence.notifyAt), { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
                             {' · '}
                             {formatDistanceToNow(new Date(alert.nextOccurrence.notifyAt), { addSuffix: true })}
                           </p>
