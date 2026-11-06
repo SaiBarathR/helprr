@@ -160,3 +160,7 @@ docker compose up -d
 The restored database already contains the applied-migrations history, so the
 app boots without re-running old migrations. Restore with the **same or newer**
 Helprr version than the one that produced the dump.
+
+The dump holds Helprr's database only. A database user you added yourself, such as one
+a monitoring exporter signs in with, lives outside it: create it again on the new
+install (`docker compose exec helprr-db psql -U postgres`).
