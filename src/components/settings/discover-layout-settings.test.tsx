@@ -9,6 +9,8 @@ const mocks = vi.hoisted(() => ({
   push: vi.fn(),
   replace: vi.fn(),
   back: vi.fn(),
+  invalidateQueries: vi.fn(),
+  mutationOptions: null as null | { onSuccess: (saved: unknown, vars: { successMsg: string }) => void },
   layout: {
     sections: [
       { id: 'trending', type: 'builtin', label: 'Trending', enabled: true },
@@ -31,14 +33,20 @@ vi.mock('@/components/layout/navigation-provider', () => ({
 }));
 vi.mock('@tanstack/react-query', () => ({
   useQuery: () => ({ data: { layout: mocks.layout, filtersMeta: null }, isLoading: false }),
-  useMutation: () => ({ mutate: vi.fn(), isPending: false }),
+  useMutation: (options: NonNullable<typeof mocks.mutationOptions>) => {
+    mocks.mutationOptions = options;
+    return { mutate: vi.fn(), isPending: false };
+  },
+  useQueryClient: () => ({ invalidateQueries: mocks.invalidateQueries }),
 }));
+vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 vi.mock('@/components/ui/language-region-combobox', () => ({ LanguageRegionCombobox: () => null }));
 vi.mock('@/components/ui/quick-context-menu', () => ({
   QuickContextMenu: ({ children }: { children: React.ReactNode }) => children,
 }));
 
 import { DiscoverLayoutSettings } from './discover-layout-settings';
+import { useUIStore } from '@/lib/store';
 
 let root: Root;
 
@@ -119,5 +127,15 @@ describe('Discover layout custom carousel editor', () => {
   it('says so when the carousel is not in the layout', async () => {
     await render('carousel=custom_missing');
     expect(document.body.textContent).toContain("isn't in your layout any more");
+  });
+});
+
+describe('Discover layout save', () => {
+  it('stores the saved layout and refetches the cached Discover layout', async () => {
+    await render('');
+    act(() => mocks.mutationOptions!.onSuccess(mocks.layout, { successMsg: 'Discover layout saved' }));
+
+    expect(useUIStore.getState().discoverLayout?.sections[0]?.id).toBe('trending');
+    expect(mocks.invalidateQueries).toHaveBeenCalledWith({ queryKey: ['discover', 'layout'] });
   });
 });

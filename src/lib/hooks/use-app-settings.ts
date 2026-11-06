@@ -3,7 +3,8 @@
 import { useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { ApiError, jsonFetcher } from '@/lib/query-fetch';
+import { ApiError } from '@/lib/query-fetch';
+import { fetchAppSettings } from '@/lib/app-settings-fetch';
 import { normalizeRegionCode } from '@/lib/region';
 
 export interface AppSettingsState {
@@ -125,8 +126,8 @@ export function useAppSettings(): UseAppSettingsResult {
 
   const query = useQuery({
     queryKey: SETTINGS_KEY,
-    queryFn: async ({ signal }) =>
-      normalize(await jsonFetcher<Record<string, unknown>>('/api/settings')({ signal })),
+    // Shares an in-flight GET with ClientLogCapture and getRefreshIntervalMs.
+    queryFn: async () => normalize(await fetchAppSettings()),
     staleTime: 5 * 60_000,
   });
 

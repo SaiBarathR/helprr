@@ -1,12 +1,14 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import Link from '@/components/ui/app-link';
 import { Sparkles, Pencil, Plus, Loader2, AlertTriangle, ChevronRight } from 'lucide-react';
 import { AnilistStatusDrawer } from '@/components/anime/anilist-status-drawer';
 import { useMe } from '@/components/permission-provider';
 import type { AniListMediaListEntryBase, AniListMediaListStatus } from '@/lib/anilist-mutations';
 import { parseAnilistListEntryResponse } from '@/lib/anilist-list-entry-response';
+import { fetchAnilistViewer } from '@/lib/anilist-viewer';
 
 interface ViewerSummary {
   configured: boolean;
@@ -71,6 +73,7 @@ export function AnilistStatusPanel({
   // must not see (or be aware of) the add/edit-entry UI.
   const me = useMe();
   const isAdmin = me?.role === 'admin';
+  const queryClient = useQueryClient();
 
   const loadEntry = useCallback(async (viewData: ViewerSummary) => {
     try {
@@ -100,12 +103,19 @@ export function AnilistStatusPanel({
     let cancelled = false;
     async function loadAll() {
       try {
-        const res = await fetch('/api/anilist/viewer');
-        if (!res.ok) {
+        let data: ViewerSummary;
+        try {
+          // Joins the viewer query the page's AniList context menu starts at the
+          // same time; staleTime 0 still reads fresh once that request settles.
+          data = await queryClient.fetchQuery({
+            queryKey: ['anilist', 'viewer'],
+            queryFn: ({ signal }) => fetchAnilistViewer<ViewerSummary>(signal),
+            staleTime: 0,
+          });
+        } catch {
           if (!cancelled) setViewer({ configured: false, connected: false, requiresReauth: false });
           return;
         }
-        const data: ViewerSummary = await res.json();
         if (cancelled) return;
         setViewer(data);
         if (data.connected) {
@@ -119,7 +129,7 @@ export function AnilistStatusPanel({
     return () => {
       cancelled = true;
     };
-  }, [loadEntry, isAdmin]);
+  }, [loadEntry, isAdmin, queryClient]);
 
   if (!isAdmin) return null;
 

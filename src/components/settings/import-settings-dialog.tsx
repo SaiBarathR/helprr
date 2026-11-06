@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { AlertTriangle, FileJson, Loader2, Upload } from 'lucide-react';
 import {
@@ -44,6 +44,7 @@ import {
 } from '@/app/(app)/cleanup/_components/auto-cleanup-confirm';
 import { toAutoRunMode, type AutoRunMode } from '@/lib/cleanup/types';
 import { jsonFetcher } from '@/lib/query-fetch';
+import { queryKeys } from '@/lib/query-keys';
 
 interface ImportSettingsDialogProps {
   open: boolean;
@@ -153,6 +154,7 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
   const [pendingCleanup, setPendingCleanup] = useState<{ replaceAll: boolean; cleaners: Cleaner[] } | null>(null);
   const applyImportedUiPrefs = useUIStore((s) => s.applyImportedUiPrefs);
   const setDiscoverLayout = useUIStore((s) => s.setDiscoverLayout);
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     if (!open) {
@@ -496,6 +498,7 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
         if (json?.discoverLayoutApplied && parsed.payload.discoverLayout) {
           const validatedLayout = validateDiscoverLayout(parsed.payload.discoverLayout);
           if (validatedLayout) setDiscoverLayout(validatedLayout);
+          void queryClient.invalidateQueries({ queryKey: queryKeys.discover('layout') });
         }
         const skipped: string[] = Array.isArray(json?.skipped) ? json.skipped : [];
         const successMsg = json?.discoverLayoutApplied
