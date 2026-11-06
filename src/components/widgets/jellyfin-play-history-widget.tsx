@@ -19,6 +19,7 @@ import {
 } from './widget-filter-controls';
 import { SectionHeader, HPR, EmptyState } from './bento-primitives';
 import { formatDurationSeconds } from '@/lib/jellyfin-helpers';
+import { formatDate, formatDateTime } from '@/lib/date-format';
 
 interface Filters {
   fromIso: string;
@@ -46,19 +47,11 @@ function toDateStr(d: Date): string {
 }
 
 function formatDateCreated(dateStr: string): string {
-  try {
-    return new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(dateStr));
-  } catch {
-    return dateStr;
-  }
+  return formatDateTime(dateStr) || dateStr;
 }
 
 function formatDateCreatedShort(dateStr: string): string {
-  try {
-    return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(new Date(dateStr));
-  } catch {
-    return dateStr;
-  }
+  return formatDate(dateStr, { month: 'short', day: 'numeric' }) || dateStr;
 }
 
 function getMethodColor(method: string): string {

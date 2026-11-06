@@ -26,6 +26,7 @@ import {
 import { prowlarrStatsQuery } from './prowlarr-stats-query';
 import type { IndexerActions } from './use-indexer-actions';
 import type { Tag } from '@/types/arr';
+import { formatDate as formatShortDate, formatDateTime } from '@/lib/date-format';
 
 /**
  * Format an ISO date-time string into a locale-aware date and time representation.
@@ -34,7 +35,7 @@ import type { Tag } from '@/types/arr';
  * @returns The input date formatted using the runtime's locale and conventions
  */
 export function formatDate(iso: string): string {
-  return new Date(iso).toLocaleString();
+  return formatDateTime(iso);
 }
 
 export function getActiveBlockedStatus(indexerId: number, statuses: ProwlarrIndexerStatus[]): ProwlarrIndexerStatus | undefined {
@@ -352,7 +353,7 @@ export function IndexerSheet({
                         <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-rose-500/40 text-rose-400">Failed</Badge>
                       )}
                       <span className="shrink-0 text-muted-foreground">
-                        {new Date(record.date).toLocaleDateString([], { month: 'short', day: 'numeric' })}
+                        {formatShortDate(record.date, { month: 'short', day: 'numeric' })}
                       </span>
                     </div>
                   ))}

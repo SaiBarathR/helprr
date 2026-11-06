@@ -13,12 +13,13 @@ import { ErrorState } from '@/components/ui/error-state';
 import { FadeInImage } from '@/components/media/fade-in-image';
 import type { LiveTvResponse } from '@/types/jellyfin-streaming';
 import type { JellyfinItem } from '@/types/jellyfin';
+import { formatTime } from '@/lib/date-format';
 
 function formatGuideTime(iso?: string): string {
   if (!iso) return '';
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return '';
-  return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  return formatTime(date);
 }
 
 function programsForChannel(programs: JellyfinItem[], channelId: string): JellyfinItem[] {

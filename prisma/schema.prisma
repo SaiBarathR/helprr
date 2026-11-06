@@ -408,6 +408,8 @@ model UserSettings {
   userId                 String   @unique
   user                   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   timeZone               String?
+  timeFormat             String?                     // display clock: '12h' | '24h'; null = follow the browser locale
+  dateFormat             String?                     // display date: 'dmy' | 'mdy' | 'iso'; null = follow the browser locale
   upcomingNotifyMode     String?
   activityDigestMode     String?
   defaultDesktopLayoutId String?

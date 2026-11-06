@@ -19,13 +19,14 @@ import {
 } from '@/components/ui/select';
 import { useAppSettings } from '@/lib/hooks/use-app-settings';
 import { jsonFetcher, backoffRefetchInterval } from '@/lib/query-fetch';
-import { formatBytes } from '@/lib/format';
+import { formatBytes, hourLabel } from '@/lib/format';
+import { formatDate, formatDateTime } from '@/lib/date-format';
 
 function relativeTime(iso: string): string {
   const t = new Date(iso).getTime();
   if (!Number.isFinite(t)) return '';
   const diff = Date.now() - t;
-  if (diff < 0) return new Date(iso).toLocaleString();
+  if (diff < 0) return formatDateTime(iso);
   const sec = Math.floor(diff / 1000);
   if (sec < 60) return `${sec}s ago`;
   const min = Math.floor(sec / 60);
@@ -34,14 +35,7 @@ function relativeTime(iso: string): string {
   if (hr < 24) return `${hr}h ago`;
   const day = Math.floor(hr / 24);
   if (day < 30) return `${day}d ago`;
-  return new Date(iso).toLocaleDateString();
-}
-
-function hourLabel(h: number): string {
-  if (h === 0) return '12:00 AM';
-  if (h < 12) return `${h}:00 AM`;
-  if (h === 12) return '12:00 PM';
-  return `${h - 12}:00 PM`;
+  return formatDate(iso);
 }
 
 interface AutoMapStatus {

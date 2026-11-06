@@ -530,6 +530,8 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
               quietHoursEnabled: u.settings.quietHoursEnabled,
               quietHoursStart: u.settings.quietHoursStart ?? null,
               quietHoursEnd: u.settings.quietHoursEnd ?? null,
+              timeFormat: u.settings.timeFormat ?? null,
+              dateFormat: u.settings.dateFormat ?? null,
               defaultDesktopLayoutName: u.settings.defaultDesktopLayoutId
                 ? layoutNameById.get(u.settings.defaultDesktopLayoutId) ?? null
                 : null,

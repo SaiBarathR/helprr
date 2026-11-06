@@ -40,12 +40,13 @@ import { usePreviewSource } from '@/components/jellyfin-streaming/cinematic/use-
 import { useWatchSkin } from '@/lib/hooks/use-watch-skin';
 import { useCompactViewport } from '@/lib/hooks/use-compact-viewport';
 import { cn } from '@/lib/utils';
+import { formatDate, formatTime } from '@/lib/date-format';
 
 /** Clock time the title would finish if started now — the reference shows this. */
 function endsAt(remainingSeconds: number): string | null {
   if (remainingSeconds <= 0) return null;
   const done = new Date(Date.now() + remainingSeconds * 1000);
-  return `Ends at ${done.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
+  return `Ends at ${formatTime(done)}`;
 }
 
 function streamLabel(stream: JellyfinMediaStream): string {
@@ -196,7 +197,7 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
     ['Director', directors.join(', ')],
     ['Writers', writers.join(', ')],
     ['Studios', (item.Studios ?? []).map((studio) => studio.Name).filter(Boolean).join(', ')],
-    ['Released', item.PremiereDate ? new Date(item.PremiereDate).toLocaleDateString() : ''],
+    ['Released', item.PremiereDate ? formatDate(item.PremiereDate) : ''],
   ] as Array<[string, string]>).filter(([, value]) => value);
 
   // Jellyfin carries provider ids, which is the bridge to Helprr's own TMDB data.
@@ -356,7 +357,7 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
                 </span>
               )}
               {item.Type === 'Episode' && item.PremiereDate
-                ? <span>{new Date(item.PremiereDate).toLocaleDateString()}</span>
+                ? <span>{formatDate(item.PremiereDate)}</span>
                 : item.ProductionYear ? <span>{item.ProductionYear}</span> : null}
               {runtimeSeconds > 0 && <span>{formatClock(runtimeSeconds)}</span>}
               {/* Next to the runtime rather than at the end of the row: these

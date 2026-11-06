@@ -26,6 +26,7 @@ import {
   toneFromString,
 } from './bento-primitives';
 import { useDashboardLayout } from './dashboard-layout-context';
+import { formatDate, formatDateTime } from '@/lib/date-format';
 
 const DAYS_OPTIONS = [7, 14, 30] as const;
 const STORAGE_KEY = 'helprr-upcoming-days';
@@ -33,13 +34,8 @@ const STORAGE_KEY = 'helprr-upcoming-days';
 function formatEventDate(dateStr: string): string {
   const d = new Date(dateStr);
   if (!Number.isFinite(d.getTime())) return '';
-  const month = d.toLocaleString('en-US', { month: 'short' });
-  const day = d.getDate();
-  const hours = d.getHours();
-  const mins = d.getMinutes();
-  if (hours === 0 && mins === 0) return `${month} ${day}`;
-  const time = d.toLocaleString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
-  return `${month} ${day}, ${time}`;
+  if (d.getHours() === 0 && d.getMinutes() === 0) return formatDate(d, { month: 'short', day: 'numeric' });
+  return formatDateTime(d, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 
 function getPoster(images: MediaImage[], hint?: ImageServiceHint): string | null {

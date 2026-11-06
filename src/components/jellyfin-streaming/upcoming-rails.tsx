@@ -11,6 +11,7 @@ import { MediaRail } from '@/components/jellyfin-streaming/media-rail';
 import { MediaTile } from '@/components/jellyfin-streaming/media-tile';
 import { toCachedImageSrc, type ImageServiceHint } from '@/lib/image';
 import type { CalendarEvent } from '@/types';
+import { formatDateTime } from '@/lib/date-format';
 
 const DAY_MS = 86_400_000;
 const EPISODE_WINDOW_DAYS = 7;
@@ -50,7 +51,7 @@ function airsAt(iso: string): string | null {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return null;
   const midnight = date.getHours() === 0 && date.getMinutes() === 0;
-  return date.toLocaleString([], {
+  return formatDateTime(date, {
     day: 'numeric',
     month: 'short',
     ...(midnight ? {} : { hour: 'numeric', minute: '2-digit' }),

@@ -13,6 +13,7 @@ import { RequestedMediaProvider } from '@/components/seerr/requested-media-provi
 import { WatchStatusProvider } from '@/components/jellyfin/watch-status-provider';
 import { JellyfinStreamingRoot } from '@/components/jellyfin-streaming/streaming-root';
 import { ImageCacheGenerationInit } from '@/components/image-cache-generation-init';
+import { DateFormatInit } from '@/components/date-format-init';
 import { getCurrentUser } from '@/lib/auth';
 import { effectiveCapabilities } from '@/lib/permissions';
 import { readJellyfinToken } from '@/lib/jellyfin-token';
@@ -21,12 +22,25 @@ import { setImageCacheGeneration } from '@/lib/image';
 import { getCacheGeneration } from '@/lib/cache/state';
 import { NavigationProvider } from '@/components/layout/navigation-provider';
 import { isDemo } from '@/lib/demo';
+import { prisma } from '@/lib/db';
+import { parseDateFormat, parseTimeFormat, type DateTimePrefs } from '@/lib/date-format';
 
 // Revocation is enforced server-side here (getSession() hits the DB on every
 // invocation). Force-dynamic guarantees this layout re-runs on every request
 // instead of being served from Next.js's full-route cache, so a session
 // revoked from another device takes effect on the very next navigation.
 export const dynamic = 'force-dynamic';
+
+async function readDateTimePrefs(userId: string): Promise<DateTimePrefs> {
+  const settings = await prisma.userSettings.findUnique({
+    where: { userId },
+    select: { timeFormat: true, dateFormat: true },
+  });
+  return {
+    timeFormat: parseTimeFormat(settings?.timeFormat),
+    dateFormat: parseDateFormat(settings?.dateFormat),
+  };
+}
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   // The request proxy only checks the JWT signature/sid claim; it stays off
@@ -35,8 +49,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // effect for SSR navs, and so the permission provider is seeded server-side.
   // Independent of each other, so resolve in parallel to keep one DB round-trip
   // off the critical path of every authenticated navigation.
-  const [user, serviceFlags, imageCacheGeneration] = await Promise.all([
-    getCurrentUser(),
+  const [{ user, dateTimePrefs }, serviceFlags, imageCacheGeneration] = await Promise.all([
+    getCurrentUser().then(async (u) => ({ user: u, dateTimePrefs: u ? await readDateTimePrefs(u.id) : null })),
     getAppShellServiceFlags(),
     getCacheGeneration(),
   ]);
@@ -77,6 +91,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <NavigationProvider>
       <PermissionProvider value={me}>
         <ImageCacheGenerationInit value={imageCacheGeneration} />
+        {dateTimePrefs && <DateFormatInit value={dateTimePrefs} />}
         <RequestedMediaProvider>
           <WatchStatusProvider>
             <JellyfinStreamingRoot>

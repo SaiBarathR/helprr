@@ -74,6 +74,7 @@ import { FadeInImage } from '@/components/media/fade-in-image';
 import { HeroImage } from '@/components/media/hero-image';
 import { isProtectedApiImageSrc, toCachedImageSrc, type ImageServiceHint } from '@/lib/image';
 import { PageTitle } from '@/components/layout/page-title';
+import { formatDate, formatTime } from '@/lib/date-format';
 
 /** The app behind each event type, to tell same-named instances apart. */
 const EVENT_APP = { episode: 'sonarr', movie: 'radarr', album: 'lidarr' } as const;
@@ -602,7 +603,7 @@ function AgendaEventRow({ row, showImages }: { row: AgendaRow; showImages: boole
                   </p>
                 </div>
                 <span className="ml-2 shrink-0 text-xs tabular-nums text-muted-foreground">
-                  {format(eventDate, 'h:mm a')}
+                  {formatTime(eventDate)}
                 </span>
               </div>
               <div className="mt-0.5 flex items-center gap-1.5 pl-[18px]">
@@ -732,7 +733,7 @@ function MonthEventItem({ event, showImages }: { event: CalendarEvent; showImage
               <p className="text-xs text-muted-foreground line-clamp-2">{event.subtitle}</p>
             )}
             <p className="text-xs text-muted-foreground tabular-nums">
-              {format(eventDate, 'EEE, MMM d · h:mm a')}
+              {formatDate(eventDate, { weekday: 'short', month: 'short', day: 'numeric' })} · {formatTime(eventDate)}
             </p>
             <div className="flex flex-wrap items-center gap-1 pt-0.5">
               {event.releaseType && <ReleaseTypeBadge type={event.releaseType} />}
@@ -835,7 +836,7 @@ function DayEventRow({ event, showImages }: { event: CalendarEvent; showImages: 
             </div>
           </div>
           <span className="text-xs text-muted-foreground shrink-0 tabular-nums">
-            {format(eventDate, 'h:mm a')}
+            {formatTime(eventDate)}
           </span>
         </div>
         </Link>

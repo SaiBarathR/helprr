@@ -13,6 +13,7 @@ import { AnimeScheduleWeekNav } from '@/components/anime/anime-schedule-week-nav
 import { jsonFetcher } from '@/lib/query-fetch';
 import type { AniListScheduleEntry } from '@/types/anilist';
 import type { DiscoverLibraryStatus } from '@/types';
+import { formatDate } from '@/lib/date-format';
 
 type EntryWithLibrary = AniListScheduleEntry & { library?: DiscoverLibraryStatus };
 
@@ -231,7 +232,7 @@ export default function AnimeSchedulePage() {
 }
 
 function DaySection({ bucket, now }: { bucket: DayBucket; now: number }) {
-  const monthDay = bucket.date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  const monthDay = formatDate(bucket.date, { month: 'short', day: 'numeric' });
   return (
     <section
       data-schedule-today={bucket.isToday ? '' : undefined}

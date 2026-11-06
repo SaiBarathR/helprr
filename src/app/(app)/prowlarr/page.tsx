@@ -63,6 +63,7 @@ import { prowlarrStatsQuery, type DateRange } from './prowlarr-stats-query';
 import { SearchTab } from './search-tab';
 import { ApplicationsTab } from './applications-tab';
 import { refreshProwlarrHealth, useIndexerActions, useIndexersWithPending, type IndexerActions } from './use-indexer-actions';
+import { formatTime as formatDisplayTime } from '@/lib/date-format';
 
 // Recharts is heavy and only the Stats tab renders charts, so load the chart
 // module on demand (client-only) instead of bundling it into the page chunk.
@@ -91,7 +92,7 @@ import { PageTitle } from '@/components/layout/page-title';
  * @returns The time portion formatted according to the user's locale with hour and two-digit minute (e.g., "3:05 PM").
  */
 function formatTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  return formatDisplayTime(iso);
 }
 
 /**

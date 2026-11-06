@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { parseNotes } from '@/lib/changelog';
 import type { WhatsNew } from '@/lib/whats-new';
+import { formatDate as formatDisplayDate } from '@/lib/date-format';
 
 export const CHANGELOG_URL = 'https://github.com/SaiBarathR/helprr/blob/main/CHANGELOG.md';
 
@@ -33,7 +34,7 @@ function renderInline(text: string): ReactNode[] {
 function formatDate(date: string | null): string | null {
   if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
   // Noon UTC keeps the day the same in every time zone.
-  return new Date(`${date}T12:00:00Z`).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+  return formatDisplayDate(`${date}T12:00:00Z`, { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
 function ReleaseBody({ body }: { body: string }) {

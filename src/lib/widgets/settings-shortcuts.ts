@@ -26,7 +26,7 @@ export const SETTINGS_SHORTCUTS: SettingsShortcut[] = [
   { key: 'users', label: 'Users', subtitle: 'Members, roles, and permissions', href: '/settings/users', iconName: 'Users', iconBg: 'bg-violet-500/10', iconColor: 'text-violet-400', adminOnly: true },
   { key: 'anime-mappings', label: 'Anime mappings', subtitle: 'AniList season links, bulk reset', href: '/settings/anime-mappings', iconName: 'Link2', iconBg: 'bg-cyan-500/10', iconColor: 'text-cyan-400', adminOnly: true },
   { key: 'file-audit', label: 'Operation audit', subtitle: 'Media actions, sign-ins and account changes', href: '/settings/file-audit', iconName: 'FileStack', iconBg: 'bg-amber-500/10', iconColor: 'text-amber-400', adminOnly: true },
-  { key: 'preferences', label: 'Preferences', subtitle: 'Timezone, polling, refresh intervals', href: '/settings/preferences', iconName: 'Sliders', iconBg: 'bg-sky-500/10', iconColor: 'text-sky-400' },
+  { key: 'preferences', label: 'Preferences', subtitle: 'Timezone, date & time format, polling', href: '/settings/preferences', iconName: 'Sliders', iconBg: 'bg-sky-500/10', iconColor: 'text-sky-400' },
   { key: 'notifications', label: 'Notifications', subtitle: 'Push, event types, devices, upcoming', href: '/settings/notifications', iconName: 'Bell', iconBg: 'bg-rose-500/10', iconColor: 'text-rose-400' },
   { key: 'status', label: 'Service status', subtitle: 'Live reachability of connected services', href: '/settings/status', iconName: 'Activity', iconBg: 'bg-teal-500/10', iconColor: 'text-teal-400' },
   { key: 'storage', label: 'Storage', subtitle: 'Cache and cleanup history', href: '/settings/storage', iconName: 'HardDrive', iconBg: 'bg-emerald-500/10', iconColor: 'text-emerald-400', capability: 'settings.storage' },

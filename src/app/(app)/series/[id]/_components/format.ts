@@ -1,4 +1,5 @@
-import { format, parse } from 'date-fns';
+import { parse } from 'date-fns';
+import { formatDate, formatTime } from '@/lib/date-format';
 import type { SonarrSeries } from '@/types';
 import type { SeriesAniListResponse } from '@/types/anilist';
 
@@ -19,7 +20,7 @@ export function formatDateValue(value: string | null | undefined, includeTime = 
     ? parse(value, 'yyyy-MM-dd', new Date())
     : new Date(value);
   if (!Number.isFinite(date.getTime())) return null;
-  return format(date, includeTime ? "MMM d, yyyy 'at' h:mm a" : 'MMM d, yyyy');
+  return includeTime ? `${formatDate(date)} at ${formatTime(date)}` : formatDate(date);
 }
 
 export const STATUS_COLORS: Record<string, string> = {

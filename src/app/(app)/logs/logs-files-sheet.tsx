@@ -18,6 +18,7 @@ import {
 } from '@/components/ui/drawer';
 import { cn } from '@/lib/utils';
 import { QuickContextMenu, type ContextAction } from '@/components/ui/quick-context-menu';
+import { formatDate } from '@/lib/date-format';
 
 export interface LogFile {
   name: string;
@@ -55,7 +56,7 @@ function formatRelative(iso: string) {
   if (hours < 24) return `${hours}h ago`;
   const days = Math.floor(hours / 24);
   if (days < 30) return `${days}d ago`;
-  return date.toLocaleDateString();
+  return formatDate(date);
 }
 
 interface FileListProps extends Omit<LogsFilesSheetProps, 'open' | 'onOpenChange'> {

@@ -1,6 +1,7 @@
 'use client';
 import { useSyncExternalStore } from 'react';
 import { getBrowseFreshness, subscribeBrowseFreshness } from '@/lib/browse-freshness';
+import { formatTime } from '@/lib/date-format';
 export function BrowseFreshnessNotice({ onRetry }: { onRetry: () => void }) {
   const at = useSyncExternalStore(subscribeBrowseFreshness, getBrowseFreshness, () => 0);
   if (!at) return null;
@@ -18,7 +19,7 @@ export function BrowseFreshnessNotice({ onRetry }: { onRetry: () => void }) {
 export function BrowseFreshnessBanner({ at, onRetry }: { at: number; onRetry: () => void }) {
   return <div role="status" className="flex items-center justify-center gap-3 bg-amber-950 px-3 py-2 text-xs text-amber-100"
     style={{ position: 'relative' }}>
-    <span className="min-w-0">Showing saved browse data from {new Date(at).toLocaleTimeString()}. Updates are unavailable.</span>
+    <span className="min-w-0">Showing saved browse data from {formatTime(at)}. Updates are unavailable.</span>
     <button type="button" className="underline" style={{ minHeight: 44, minWidth: 44, flexShrink: 0 }} onClick={onRetry}>Retry</button>
   </div>;
 }

@@ -25,6 +25,7 @@ import {
   ArrowDownNarrowWide,
   ArrowUpNarrowWide,
 } from 'lucide-react';
+import { formatDate as formatDisplayDate } from '@/lib/date-format';
 
 interface PersonCredit {
   id: number;
@@ -85,15 +86,9 @@ const SORT_OPTIONS: { key: SortKey; label: string }[] = [
 
 function formatDate(dateStr: string | null) {
   if (!dateStr) return null;
-  try {
-    return new Date(dateStr).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    });
-  } catch {
-    return dateStr;
-  }
+  // TMDB dates are plain YYYY-MM-DD, which parse as UTC midnight: format in UTC
+  // so the day doesn't shift back west of Greenwich.
+  return formatDisplayDate(dateStr, { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' }) || dateStr;
 }
 
 function calcAge(birthday: string | null, deathday: string | null) {

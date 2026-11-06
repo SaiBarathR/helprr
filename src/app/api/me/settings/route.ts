@@ -2,24 +2,48 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { requireUser } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
+import { DATE_FORMATS, TIME_FORMATS, parseDateFormat, parseTimeFormat } from '@/lib/date-format';
 
-// Genuinely-personal settings for the current user. Today this is just the
-// per-user push quiet-hours window; the global AppSettings (admin) are served
+// Genuinely-personal settings for the current user: the push quiet-hours window
+// and the date/time display format; the global AppSettings (admin) are served
 // separately by /api/settings.
+const SELECT = {
+  quietHoursEnabled: true,
+  quietHoursStart: true,
+  quietHoursEnd: true,
+  timeFormat: true,
+  dateFormat: true,
+} as const;
+
+type SavedSettings = {
+  quietHoursEnabled: boolean;
+  quietHoursStart: number | null;
+  quietHoursEnd: number | null;
+  timeFormat: string | null;
+  dateFormat: string | null;
+} | null;
+
+// Stored null means 'auto' (follow the browser locale).
+function toResponse(settings: SavedSettings) {
+  return {
+    quietHoursEnabled: settings?.quietHoursEnabled ?? false,
+    quietHoursStart: settings?.quietHoursStart ?? null,
+    quietHoursEnd: settings?.quietHoursEnd ?? null,
+    timeFormat: parseTimeFormat(settings?.timeFormat),
+    dateFormat: parseDateFormat(settings?.dateFormat),
+  };
+}
+
 async function getHandler(): Promise<NextResponse> {
   const auth = await requireUser();
   if (!auth.ok) return auth.response;
 
   const settings = await prisma.userSettings.findUnique({
     where: { userId: auth.user.id },
-    select: { quietHoursEnabled: true, quietHoursStart: true, quietHoursEnd: true },
+    select: SELECT,
   });
 
-  return NextResponse.json({
-    quietHoursEnabled: settings?.quietHoursEnabled ?? false,
-    quietHoursStart: settings?.quietHoursStart ?? null,
-    quietHoursEnd: settings?.quietHoursEnd ?? null,
-  });
+  return NextResponse.json(toResponse(settings));
 }
 
 function parseHour(value: unknown): number | null | undefined {
@@ -44,6 +68,8 @@ async function patchHandler(request: NextRequest): Promise<NextResponse> {
     quietHoursEnabled?: boolean;
     quietHoursStart?: number | null;
     quietHoursEnd?: number | null;
+    timeFormat?: string | null;
+    dateFormat?: string | null;
   } = {};
 
   if ('quietHoursEnabled' in body) {
@@ -63,14 +89,27 @@ async function patchHandler(request: NextRequest): Promise<NextResponse> {
     data.quietHoursEnd = h;
   }
 
+  if ('timeFormat' in body) {
+    if (typeof body.timeFormat !== 'string' || !(TIME_FORMATS as readonly string[]).includes(body.timeFormat)) {
+      return NextResponse.json({ error: `timeFormat must be one of ${TIME_FORMATS.join(', ')}` }, { status: 400 });
+    }
+    data.timeFormat = body.timeFormat === 'auto' ? null : body.timeFormat;
+  }
+  if ('dateFormat' in body) {
+    if (typeof body.dateFormat !== 'string' || !(DATE_FORMATS as readonly string[]).includes(body.dateFormat)) {
+      return NextResponse.json({ error: `dateFormat must be one of ${DATE_FORMATS.join(', ')}` }, { status: 400 });
+    }
+    data.dateFormat = body.dateFormat === 'auto' ? null : body.dateFormat;
+  }
+
   const saved = await prisma.userSettings.upsert({
     where: { userId: auth.user.id },
     update: data,
     create: { userId: auth.user.id, ...data },
-    select: { quietHoursEnabled: true, quietHoursStart: true, quietHoursEnd: true },
+    select: SELECT,
   });
 
-  return NextResponse.json(saved);
+  return NextResponse.json(toResponse(saved));
 }
 
 export const GET = withApiLogging(getHandler, 'api/me/settings');

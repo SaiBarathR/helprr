@@ -3,6 +3,7 @@
 import type { Prisma, ScheduledAlert, UserRole, UserStatus } from '@prisma/client';
 import { BOOTSTRAP_ADMIN_ID } from '@/lib/bootstrap-admin';
 import { isValidTimeZone } from '@/lib/timezone';
+import { parseDateFormat, parseTimeFormat } from '@/lib/date-format';
 import { parsePermissions } from '@/lib/permissions';
 import {
   USER_ROLE_VALUES,
@@ -200,6 +201,9 @@ export async function applyUsersInTxn(
       const s = acc.settings;
       const timeZone =
         typeof s.timeZone === 'string' && isValidTimeZone(s.timeZone) ? s.timeZone : null;
+      // Stored null = 'auto'; unknown or missing values (older exports) fall back to it.
+      const timeFormat = parseTimeFormat(s.timeFormat);
+      const dateFormat = parseDateFormat(s.dateFormat);
       const settingsData = {
         timeZone,
         upcomingNotifyMode:
@@ -213,6 +217,8 @@ export async function applyUsersInTxn(
         quietHoursEnabled: Boolean(s.quietHoursEnabled),
         quietHoursStart: clampHourOrNull(s.quietHoursStart),
         quietHoursEnd: clampHourOrNull(s.quietHoursEnd),
+        timeFormat: timeFormat === 'auto' ? null : timeFormat,
+        dateFormat: dateFormat === 'auto' ? null : dateFormat,
       };
       await tx.userSettings.upsert({
         where: { userId },

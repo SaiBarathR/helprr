@@ -10,6 +10,7 @@ import type { TorrentFile, TorrentTracker } from '@/lib/qbittorrent-client';
 import { formatSpeedLimit } from './speed-limit-input';
 import { realTrackers, trackerCount, trackerStatusLabel } from './torrent-trackers';
 import { formatBytes, formatEta, formatSeedingTime, formatSpeed, torrentSizeUnknown } from './torrent-list';
+import { formatDateTime } from '@/lib/date-format';
 
 export interface TorrentDetailData {
   properties: Record<string, unknown>;
@@ -136,10 +137,10 @@ export function TorrentDetailDrawer({
                 <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Timing</h3>
                 <div className="rounded-lg border divide-y">
                   {Number(detailData.properties.addition_date) > 0 && (
-                    <DetailRow label="Added" value={new Date(Number(detailData.properties.addition_date) * 1000).toLocaleString()} />
+                    <DetailRow label="Added" value={formatDateTime(Number(detailData.properties.addition_date) * 1000)} />
                   )}
                   {Number(detailData.properties.completion_date) > 0 && (
-                    <DetailRow label="Completed" value={new Date(Number(detailData.properties.completion_date) * 1000).toLocaleString()} />
+                    <DetailRow label="Completed" value={formatDateTime(Number(detailData.properties.completion_date) * 1000)} />
                   )}
                   <DetailRow label="Seeding Time" value={formatSeedingTime(Number(detailData.properties.seeding_time) || 0)} />
                   <DetailRow label="Time Elapsed" value={formatSeedingTime(Number(detailData.properties.time_elapsed) || 0)} />

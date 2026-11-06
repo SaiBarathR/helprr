@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { jsonFetcher } from '@/lib/query-fetch';
 import { Loader2 } from 'lucide-react';
 import { SectionHeader, HPR, mix } from '@/components/widgets/bento-primitives';
+import { formatDate } from '@/lib/date-format';
 
 // ─── Date-range type shared by the page + cards ───
 export interface InsightsRange {
@@ -24,7 +25,7 @@ export function toDateKey(d: Date): string {
 /** "2026-05-12" → "May 12" for chart axes / labels. */
 export function shortDate(dateKey: string): string {
   const [y, m, d] = dateKey.split('-').map(Number);
-  return new Date(y, m - 1, d).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  return formatDate(new Date(y, m - 1, d), { month: 'short', day: 'numeric' });
 }
 
 /**

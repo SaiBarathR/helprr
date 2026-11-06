@@ -25,11 +25,12 @@ import {
   toneFromString,
 } from './bento-primitives';
 import { useDashboardLayout } from './dashboard-layout-context';
+import { formatTime as formatDisplayTime } from '@/lib/date-format';
 
 function formatTime(dateStr: string): string {
   const d = new Date(dateStr);
   if (!Number.isFinite(d.getTime())) return '';
-  return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  return formatDisplayTime(d);
 }
 
 function getPoster(images: MediaImage[], hint?: ImageServiceHint): string | null {
