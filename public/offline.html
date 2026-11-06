@@ -4,6 +4,11 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>Offline · Helprr</title>
+    <!-- Retry by itself once the connection returns. A meta refresh, not a
+         script: this file is served with the app's nonce CSP ('strict-dynamic'),
+         which blocks any script here, inline or same-origin. While still offline
+         the worker answers the reload with this precached copy again. -->
+    <meta http-equiv="refresh" content="10" />
     <style>
       :root { color-scheme: dark; }
       * { box-sizing: border-box; }
@@ -55,7 +60,7 @@
         </svg>
       </div>
       <h1>You're offline</h1>
-      <p>This page hasn't been opened yet, so there's no saved copy to show. Pages you've already visited still work offline.</p>
+      <p>This page hasn't been opened yet, so there's no saved copy to show. Pages you've already visited still work offline. This page opens by itself when you're back online.</p>
       <a class="retry" href="">Try again</a>
     </div>
   </body>

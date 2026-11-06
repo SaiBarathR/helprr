@@ -518,4 +518,12 @@ describe('torrents page (characterization)', () => {
     expect(await screen.findByText('Make sure qBittorrent is configured in Settings.')).toBeTruthy();
     expect(screen.getByText('Failed to fetch')).toBeTruthy();
   });
+
+  it('says the device is offline, not to check Settings, when the request never reached the server', async () => {
+    mocks.summary = () => { throw new TypeError('Failed to fetch'); };
+    renderPage();
+    expect(await screen.findByText("You're offline")).toBeTruthy();
+    expect(screen.getByText('Torrents load again when the connection returns.')).toBeTruthy();
+    expect(screen.queryByText('Make sure qBittorrent is configured in Settings.')).toBeNull();
+  });
 });

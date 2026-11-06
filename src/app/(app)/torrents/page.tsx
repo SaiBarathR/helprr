@@ -112,6 +112,7 @@ export default function TorrentsPage() {
     refreshing,
     refresh,
     error,
+    offline,
   } = useTorrentsSummary(filter, hasHydrated);
 
   const listRef = useRef<HTMLDivElement | null>(null);
@@ -524,7 +525,9 @@ export default function TorrentsPage() {
       ) : error && torrents.length === 0 ? (
         <div className="rounded-xl bg-card p-8 text-center text-muted-foreground">
           <p>{error}</p>
-          <p className="text-sm mt-2">Make sure qBittorrent is configured in Settings.</p>
+          <p className="text-sm mt-2">
+            {offline ? 'Torrents load again when the connection returns.' : 'Make sure qBittorrent is configured in Settings.'}
+          </p>
         </div>
       ) : filteredTorrents.length === 0 ? (
         <div className="rounded-xl bg-card p-8 text-center text-muted-foreground">

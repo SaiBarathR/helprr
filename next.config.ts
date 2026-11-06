@@ -10,7 +10,7 @@ const withSerwist = withSerwistInit({
   // Serwist reloads the page on every `online` event by default, so a network
   // blip (Wi-Fi to cellular) ended playback and dropped unsaved forms. The app
   // refetches its own queries on reconnect (refreshAfterReconnect), and the
-  // offline page has its own Try again.
+  // offline page retries by itself (a meta refresh) and has its own Try again.
   reloadOnOnline: false,
   // Install only the offline shell and its build-graph dependencies. Route and
   // optional feature chunks use the existing runtime cache on first visit.

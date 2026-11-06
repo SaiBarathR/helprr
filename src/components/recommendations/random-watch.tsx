@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { jsonFetcher } from '@/lib/query-fetch';
+import { isOfflineError } from '@/lib/network-error';
 import { HeroImage } from '@/components/media/hero-image';
 import { FadeInImage } from '@/components/media/fade-in-image';
 import Link from '@/components/ui/app-link';
@@ -43,10 +44,13 @@ export function RandomWatchView() {
   const pick = rollQuery.data?.pick ?? null;
   const poolSize = rollQuery.data?.poolSize ?? null;
   const loading = rollQuery.isFetching;
+  const offline = rollQuery.isError && isOfflineError(rollQuery.error);
   const error = rollQuery.isError
-    ? rollQuery.error instanceof Error
-      ? rollQuery.error.message
-      : 'Failed to fetch a pick'
+    ? offline
+      ? "You're offline"
+      : rollQuery.error instanceof Error
+        ? rollQuery.error.message
+        : 'Failed to fetch a pick'
     : null;
 
   const poster = pick?.posterUrl
@@ -141,12 +145,18 @@ export function RandomWatchView() {
         ) : !pick ? (
           <div className="py-24 text-center text-muted-foreground space-y-1">
             <Dices className="h-10 w-10 mx-auto opacity-50" />
-            <p className="text-sm">Nothing downloaded matches this filter.</p>
-            <p className="text-xs">
-              {watch === 'unwatched'
-                ? 'Try turning off Unwatched only, or mark something unwatched in Jellyfin.'
-                : 'Configure Sonarr/Radarr in Settings and download a few items first.'}
-            </p>
+            {offline ? (
+              <p className="text-sm">A pick loads when the connection returns.</p>
+            ) : (
+              <>
+                <p className="text-sm">Nothing downloaded matches this filter.</p>
+                <p className="text-xs">
+                  {watch === 'unwatched'
+                    ? 'Try turning off Unwatched only, or mark something unwatched in Jellyfin.'
+                    : 'Configure Sonarr/Radarr in Settings and download a few items first.'}
+                </p>
+              </>
+            )}
           </div>
         ) : (
           <div className="relative -mx-2 overflow-hidden md:-mx-6 md:rounded-2xl">
