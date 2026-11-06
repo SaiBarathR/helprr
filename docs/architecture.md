@@ -790,9 +790,10 @@ preserve secret-handling behavior before applying any imported configuration.
 
 An import is checked before any database work: 4 MiB, 20,000 array entries and
 50,000 object properties for the document, then per-section limits
-(`src/lib/settings-import/limits.ts`) only where the app itself caps the data
-(dashboard layouts, notification rules), so no export of a real install is
-refused. Each section lives in its own module under `src/lib/settings-import/`;
+(`src/lib/settings-import/limits.ts`) where the app itself caps the data
+(dashboard layouts, notification rules), plus YouTube channel and playlist
+follows (2,000 each, far more than the daily API quota can poll), which are
+written row by row, so no export of a real install is refused. Each section lives in its own module under `src/lib/settings-import/`;
 the large ones (watchlists, alerts, anime mappings) are validated and normalized
 before the transaction opens and written with bulk statements. The whole import
 is one transaction, so a failure in any section saves nothing, with an explicit

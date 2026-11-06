@@ -17,6 +17,7 @@ describe('settings import section limits', () => {
       watchlist: { items: [{ tags: items(500) }], tags: items(5_000) },
       scheduledAlerts: { alerts: items(5_000) },
       users: { accounts: [{ dashboardLayouts: items(MAX_LAYOUTS), watchlist: { items: items(5_000) } }] },
+      youtube: { subscriptions: items(IMPORT_SECTION_LIMITS.youtubeChannels), playlists: items(IMPORT_SECTION_LIMITS.youtubePlaylists) },
     } as never)).toBeNull();
   });
 
@@ -29,6 +30,8 @@ describe('settings import section limits', () => {
     [{ notificationDevice: { rules: items(101) } }, 'Notification rules exceed the import limit of 100'],
     [{ dashboardLayouts: { layouts: items(MAX_LAYOUTS + 1) } }, `Dashboard layouts exceed the import limit of ${MAX_LAYOUTS}`],
     [{ users: { accounts: [{}, { dashboardLayouts: items(MAX_LAYOUTS + 1) }] } }, `One user's dashboard layouts exceed the import limit of ${MAX_LAYOUTS}`],
+    [{ youtube: { subscriptions: items(2_001) } }, 'YouTube channels exceed the import limit of 2000'],
+    [{ youtube: { playlists: items(2_001) } }, 'YouTube playlists exceed the import limit of 2000'],
   ])('name the section over its limit %#', (body, message) => {
     expect(validateImportSectionLimits(body as never)).toBe(message);
   });

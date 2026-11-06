@@ -42,7 +42,8 @@ async function creatorIdsFor(videos: YoutubeVideo[]): Promise<Map<string, string
 }
 
 // A followed channel's own sweep announces its videos. Nothing else would, so those are done here.
-async function storeVideos(videos: YoutubeVideo[], now: Date): Promise<void> {
+// A list's first sweep is history for everyone, or that channel's next sweep would announce it all.
+async function storeVideos(videos: YoutubeVideo[], now: Date, isBaseline = false): Promise<void> {
   const creators = await creatorIdsFor(videos);
   const followed = new Set((await prisma.creator.findMany({
     where: { id: { in: [...creators.values()] }, subscriptions: { some: {} } },
@@ -52,7 +53,7 @@ async function storeVideos(videos: YoutubeVideo[], now: Date): Promise<void> {
     data: videos.flatMap((video) => {
       const creatorId = creators.get(video.channelId);
       if (!creatorId) return [];
-      return [{ ...toRow(video, creatorId, null), firstSeenAt: now, lastSeenAt: now, notifiedAt: followed.has(creatorId) ? null : now }];
+      return [{ ...toRow(video, creatorId, null), firstSeenAt: now, lastSeenAt: now, notifiedAt: followed.has(creatorId) && !isBaseline ? null : now }];
     }),
     skipDuplicates: true,
   });
@@ -95,7 +96,7 @@ export async function syncPlaylist(
   });
   const known = new Set((await stored()).map((video) => video.externalId));
   // A hidden video in a list has no details, so it simply stays out.
-  await storeVideos(await videosById(externalIds.filter((id) => !known.has(id))), now);
+  await storeVideos(await videosById(externalIds.filter((id) => !known.has(id))), now, isBaseline);
   const videoIds = new Map((await stored()).map((video) => [video.externalId, video.id]));
 
   const members = await prisma.creatorPlaylistVideo.findMany({ where: { playlistId: playlist.id }, select: { videoId: true } });

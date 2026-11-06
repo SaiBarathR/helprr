@@ -24,8 +24,9 @@ export const USER_TEMPLATE_VALUES = new Set<string>(['admin', 'member']);
 export const EXPORT_FORMAT_KIND = 'helprr-settings-export';
 // v2: scheduledAlerts section; per-account watchlist/scheduledAlerts/dashboardLayouts
 // under users; dashboardLayouts section restricted to global (admin) layouts.
-// Older files import fine — every v2 field is additive and optional.
-export const EXPORT_FORMAT_VERSION = 2;
+// v3: youtube section (settings, rules, the exporter's channel and playlist follows).
+// Older files import fine — every v2/v3 field is additive and optional.
+export const EXPORT_FORMAT_VERSION = 3;
 // Max import payload size. v2 exports carry every account's watchlist, alerts,
 // and layouts under users, so the ceiling is higher than the old 2 MiB.
 export const MAX_IMPORT_BYTES = 4_194_304;
@@ -355,6 +356,26 @@ export interface ExportedTwitch {
   }>;
 }
 
+export interface ExportedYoutube {
+  // The spare account's cookies and the cleanup viewer never leave: one is a
+  // credential, the other names a Jellyfin user and connection of this install.
+  settings?: Record<string, unknown>;
+  subscriptions?: Array<{
+    channelId: string;
+    login: string;
+    folderName: string;
+    displayName: string;
+    notifyNewVods: boolean;
+    policy?: unknown;
+    typePolicies?: unknown;
+  }>;
+  playlists?: Array<{
+    playlistId: string;
+    title: string;
+    notifyNewVideos: boolean;
+  }>;
+}
+
 export interface ExportedUsers {
   accounts: ExportedUserAccount[];
 }
@@ -371,6 +392,7 @@ export interface SettingsExportPayload {
   notificationPrefs?: ExportedNotificationDevice[];
   cleanup?: ExportedCleanup;
   twitch?: ExportedTwitch;
+  youtube?: ExportedYoutube;
   discoverLayout?: Record<string, unknown>;
   dashboardLayouts?: ExportedDashboardLayouts;
   watchlist?: ExportedWatchlist;
@@ -442,6 +464,9 @@ export function validateImportFile(
   }
   if (obj.twitch !== undefined && (typeof obj.twitch !== 'object' || obj.twitch === null)) {
     return { ok: false, error: 'Invalid Twitch section.' };
+  }
+  if (obj.youtube !== undefined && (typeof obj.youtube !== 'object' || obj.youtube === null || Array.isArray(obj.youtube))) {
+    return { ok: false, error: 'Invalid YouTube section.' };
   }
   if (obj.cleanup !== undefined && (typeof obj.cleanup !== 'object' || obj.cleanup === null)) {
     return { ok: false, error: 'Invalid cleanup section.' };

@@ -13,6 +13,7 @@ import { applyServiceConnectionInTxn } from './services';
 import { applyNotificationDeviceInTxn } from './notifications';
 import { applyCleanupInTxn } from './cleanup';
 import { applyTwitchInTxn } from './twitch';
+import { applyYoutubeInTxn } from './youtube';
 import { applyDashboardLayoutsInTxn } from './layouts';
 import { applyPreparedScheduledAlerts, prepareScheduledAlerts } from './alerts';
 import { applyPreparedWatchlist, prepareWatchlist } from './watchlist';
@@ -40,6 +41,8 @@ function sectionCounts(body: ImportRequestBody): Record<string, number> {
     scheduledAlerts: length(body.scheduledAlerts?.alerts) + accounts.reduce((n, a) => n + length(a?.scheduledAlerts), 0),
     animeMappings: length(body.animeMappings?.mappings),
     twitchSubscriptions: length(body.twitch?.subscriptions),
+    youtubeSubscriptions: length(body.youtube?.subscriptions),
+    youtubePlaylists: length(body.youtube?.playlists),
     users: accounts.length,
   };
 }
@@ -50,6 +53,8 @@ export interface ImportApplied {
   notificationRules: number;
   cleanup: boolean;
   twitchSubscriptions: number;
+  youtubeSubscriptions: number;
+  youtubePlaylists: number;
   dashboardLayouts: number;
   watchlistItems: number;
   watchlistTags: number;
@@ -73,6 +78,7 @@ export async function applySettingsImport(body: ImportRequestBody, importerId: s
   let appliedNotificationRules = 0;
   let appliedCleanup = false;
   let appliedTwitchSubscriptions = 0;
+  let appliedYoutube = { subscriptions: 0, playlists: 0 };
   let discoverLayoutApplied = false;
   let appliedDashboardLayouts = 0;
   let appliedWatchlistItems = 0;
@@ -138,6 +144,10 @@ export async function applySettingsImport(body: ImportRequestBody, importerId: s
 
       if (body.twitch && typeof body.twitch === 'object') {
         appliedTwitchSubscriptions = await applyTwitchInTxn(tx, body.twitch, importerId, skipped);
+      }
+
+      if (body.youtube && typeof body.youtube === 'object') {
+        appliedYoutube = await applyYoutubeInTxn(tx, body.youtube, importerId, skipped);
       }
 
       // Import discover layout
@@ -220,6 +230,8 @@ export async function applySettingsImport(body: ImportRequestBody, importerId: s
       notificationRules: appliedNotificationRules,
       cleanup: appliedCleanup,
       twitchSubscriptions: appliedTwitchSubscriptions,
+      youtubeSubscriptions: appliedYoutube.subscriptions,
+      youtubePlaylists: appliedYoutube.playlists,
       dashboardLayouts: appliedDashboardLayouts,
       watchlistItems: appliedWatchlistItems,
       watchlistTags: appliedWatchlistTags,

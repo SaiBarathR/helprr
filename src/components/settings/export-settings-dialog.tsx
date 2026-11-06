@@ -52,6 +52,7 @@ export function ExportSettingsDialog({ open, onOpenChange }: ExportSettingsDialo
   const [selectedNotifPrefs, setSelectedNotifPrefs] = useState(isAdmin);
   const [selectedCleanup, setSelectedCleanup] = useState(isAdmin);
   const [selectedTwitch, setSelectedTwitch] = useState(isAdmin);
+  const [selectedYoutube, setSelectedYoutube] = useState(isAdmin);
   const [selectedDashboardLayouts, setSelectedDashboardLayouts] = useState(isAdmin);
   const [selectedWatchlist, setSelectedWatchlist] = useState(false);
   const [selectedScheduledAlerts, setSelectedScheduledAlerts] = useState(false);
@@ -130,13 +131,14 @@ export function ExportSettingsDialog({ open, onOpenChange }: ExportSettingsDialo
     && !selectedNotifPrefs
     && !selectedCleanup
     && !selectedTwitch
+    && !selectedYoutube
     && !selectedDashboardLayouts
     && !selectedWatchlist
     && !selectedScheduledAlerts
     && !selectedAnimeMappings
     && !selectedUsers
     && selectedServices.size === 0
-  ), [selectedUi, selectedAppSettings, selectedDiscoverLayout, selectedNotifPrefs, selectedCleanup, selectedTwitch, selectedDashboardLayouts, selectedWatchlist, selectedScheduledAlerts, selectedAnimeMappings, selectedUsers, selectedServices]);
+  ), [selectedUi, selectedAppSettings, selectedDiscoverLayout, selectedNotifPrefs, selectedCleanup, selectedTwitch, selectedYoutube, selectedDashboardLayouts, selectedWatchlist, selectedScheduledAlerts, selectedAnimeMappings, selectedUsers, selectedServices]);
 
   async function handleExport() {
     if (nothingSelected) {
@@ -155,6 +157,7 @@ export function ExportSettingsDialog({ open, onOpenChange }: ExportSettingsDialo
           notificationPrefs: selectedNotifPrefs,
           cleanup: selectedCleanup,
           twitch: selectedTwitch,
+          youtube: selectedYoutube,
           dashboardLayouts: selectedDashboardLayouts,
           watchlist: selectedWatchlist,
           scheduledAlerts: selectedScheduledAlerts,
@@ -187,6 +190,7 @@ export function ExportSettingsDialog({ open, onOpenChange }: ExportSettingsDialo
         ...(serverPayload.notificationPrefs && { notificationPrefs: serverPayload.notificationPrefs }),
         ...(serverPayload.cleanup && { cleanup: serverPayload.cleanup }),
         ...(serverPayload.twitch && { twitch: serverPayload.twitch }),
+        ...(serverPayload.youtube && { youtube: serverPayload.youtube }),
         ...(serverPayload.discoverLayout && { discoverLayout: serverPayload.discoverLayout }),
         ...(serverPayload.dashboardLayouts && { dashboardLayouts: serverPayload.dashboardLayouts }),
         ...(serverPayload.watchlist && { watchlist: serverPayload.watchlist }),
@@ -373,6 +377,18 @@ export function ExportSettingsDialog({ open, onOpenChange }: ExportSettingsDialo
                 <div className="text-sm font-medium">Twitch</div>
                 <div className="text-xs text-muted-foreground">
                   Settings, rules and your subscriptions
+                </div>
+              </div>
+            </label>
+            <label className="mt-3 flex w-full items-center gap-3 cursor-pointer">
+              <Checkbox
+                checked={selectedYoutube}
+                onCheckedChange={(v) => setSelectedYoutube(v === true)}
+              />
+              <div>
+                <div className="text-sm font-medium">YouTube</div>
+                <div className="text-xs text-muted-foreground">
+                  Settings, rules and your channels and playlists
                 </div>
               </div>
             </label>

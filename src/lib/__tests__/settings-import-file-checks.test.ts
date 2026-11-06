@@ -22,6 +22,15 @@ describe('an import file from a newer Helprr', () => {
     });
   });
 
+  it('is accepted from v2, before the YouTube section existed', () => {
+    expect(validateImportFile(file({ version: 2, twitch: { subscriptions: [] } }))).toMatchObject({ ok: true });
+  });
+
+  it('is refused when its YouTube section is not an object', () => {
+    expect(validateImportFile(file({ youtube: [] }))).toEqual({ ok: false, error: 'Invalid YouTube section.' });
+    expect(validateImportFile(file({ youtube: null }))).toEqual({ ok: false, error: 'Invalid YouTube section.' });
+  });
+
   it('is refused when its preferences come from a newer store', () => {
     expect(validateImportFile(file({ zustandVersion: STORE_VERSION + 1 }))).toEqual({
       ok: false,
