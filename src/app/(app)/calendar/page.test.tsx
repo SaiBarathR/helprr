@@ -264,3 +264,14 @@ it('keeps the pick on a Forward back to a freshly visited Calendar (iOS order)',
   }
   expect(screen.getByRole('heading', { level: 2 }).textContent).toBe('Thursday, October 15');
 });
+
+it('marks the active scheduled-alerts toggle with the theme primary, not a fixed violet', () => {
+  render(<Page />);
+  // The toolbar renders once per breakpoint layout.
+  const toggles = screen.getAllByRole('button', { name: 'Scheduled alerts' });
+  for (const toggle of toggles) {
+    expect(toggle.getAttribute('aria-pressed')).toBe('true');
+    expect(toggle.className).toContain('text-primary');
+    expect(toggle.className).not.toMatch(/violet/);
+  }
+});

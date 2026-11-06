@@ -298,7 +298,7 @@ function CompactFilters({
         <button
           onClick={() => setTypeFilter('episode')}
           className={`p-1.5 rounded-md transition-colors ${typeFilter === 'episode'
-            ? 'bg-blue-500/15 text-blue-400'
+            ? 'bg-[var(--hpr-blue)]/15 text-[var(--hpr-blue)]'
             : 'text-muted-foreground hover:text-foreground hover:bg-muted'
             }`}
           title="Episodes"
@@ -359,7 +359,7 @@ function CompactFilters({
       <button
         onClick={() => setShowScheduled(!showScheduled)}
         className={`p-1.5 rounded-md transition-colors ${showScheduled
-          ? 'bg-violet-500/15 text-violet-400'
+          ? 'bg-primary/15 text-primary'
           : 'text-muted-foreground hover:text-foreground hover:bg-muted'
           }`}
         title={showScheduled ? 'Showing scheduled alerts' : 'Hiding scheduled alerts'}
@@ -589,7 +589,7 @@ function AgendaEventRow({ row, showImages }: { row: AgendaRow; showImages: boole
               <div className="flex items-center justify-between gap-2">
                 <div className="flex min-w-0 items-center gap-1.5">
                   {event.type === 'episode' ? (
-                    <Tv className="h-3 w-3 shrink-0 text-blue-400" />
+                    <Tv className="h-3 w-3 shrink-0 text-[var(--hpr-blue)]" />
                   ) : event.type === 'album' ? (
                     <Disc3 className="h-3 w-3 shrink-0 text-emerald-400" />
                   ) : (
@@ -681,7 +681,7 @@ function MonthEventItem({ event, showImages }: { event: CalendarEvent; showImage
           >
           <div
             className={`flex items-center gap-1 rounded px-1.5 py-1 text-[10px] leading-tight font-medium truncate transition-opacity hover:opacity-80 ${event.type === 'episode'
-              ? 'bg-blue-500/15 text-blue-400'
+              ? 'bg-[var(--hpr-blue)]/15 text-[var(--hpr-blue)]'
               : event.type === 'album'
                 ? 'bg-emerald-500/15 text-emerald-400'
                 : 'bg-orange-500/15 text-orange-400'
@@ -718,7 +718,7 @@ function MonthEventItem({ event, showImages }: { event: CalendarEvent; showImage
           <div className="min-w-0 flex-1 space-y-1">
             <div className="flex items-center gap-1.5">
               {event.type === 'episode' ? (
-                <Tv className="h-3 w-3 text-blue-400 shrink-0" />
+                <Tv className="h-3 w-3 text-[var(--hpr-blue)] shrink-0" />
               ) : event.type === 'album' ? (
                 <Disc3 className="h-3 w-3 text-emerald-400 shrink-0" />
               ) : (
@@ -764,8 +764,8 @@ function MonthEventItem({ event, showImages }: { event: CalendarEvent; showImage
 
 /** Type/origin color for the mobile day-cell dots. */
 function dotClass(event: CalendarEvent): string {
-  if (event.origin === 'scheduled' || event.scheduleLabel) return 'bg-violet-400';
-  if (event.type === 'episode') return 'bg-blue-400';
+  if (event.origin === 'scheduled' || event.scheduleLabel) return 'bg-[var(--hpr-violet)]';
+  if (event.type === 'episode') return 'bg-[var(--hpr-blue)]';
   if (event.type === 'album') return 'bg-emerald-400';
   return 'bg-orange-400';
 }
@@ -804,7 +804,7 @@ function DayEventRow({ event, showImages }: { event: CalendarEvent; showImages: 
           <div className={`flex-1 min-w-0 ${event.hasFile ? 'opacity-60' : ''}`}>
             <div className="flex items-center gap-1.5">
               {event.type === 'episode' ? (
-                <Tv className="h-3 w-3 text-blue-400 shrink-0" />
+                <Tv className="h-3 w-3 text-[var(--hpr-blue)] shrink-0" />
               ) : event.type === 'album' ? (
                 <Disc3 className="h-3 w-3 text-emerald-400 shrink-0" />
               ) : (
@@ -1162,7 +1162,7 @@ function WeekView({
                           </div>
                         )}
                         {event.type === 'episode' ? (
-                          <Tv className="h-3 w-3 text-blue-400 shrink-0" />
+                          <Tv className="h-3 w-3 text-[var(--hpr-blue)] shrink-0" />
                         ) : event.type === 'album' ? (
                           <Disc3 className="h-3 w-3 text-emerald-400 shrink-0" />
                         ) : (
