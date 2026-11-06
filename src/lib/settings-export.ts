@@ -105,7 +105,7 @@ export const UI_PREF_CATEGORY_FIELDS: Record<UiPrefCategoryId, readonly string[]
   ],
   interaction: ['hapticsEnabled'],
   watch: ['watchSkin', 'watchPreviews'],
-  playback: ['subtitleAppearance'],
+  playback: ['subtitleAppearance', 'playerSkipBackSeconds', 'playerSkipForwardSeconds'],
   search: ['searchHistory'],
 };
 

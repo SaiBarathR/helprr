@@ -60,9 +60,11 @@ describe('seeking a progressive transcode', () => {
     await seekTo(h, 600);
     await timeupdate(h, 5);
 
-    // A ten-second skip from 605 s asks for 615 s, not 15 s.
+    // A ten-second skip from 605 s asks for 615 s, not 15 s, once the run of
+    // skips has stopped gathering.
     await h.act(async () => {
       h.playback().skip(10);
+      await new Promise((resolve) => setTimeout(resolve, 450));
       for (let i = 0; i < 10; i += 1) await flush();
     });
     expect(h.requests.at(-1)?.startTimeTicks).toBe(615 * 10_000_000);
@@ -80,5 +82,81 @@ describe('seeking a progressive transcode', () => {
     expect(h.requests.at(-1)?.startTimeTicks).toBe(300 * 10_000_000);
     expect(h.media.paused()).toBe(true);
     expect([...h.reports].reverse().find((report) => report.event === 'playing')?.isPaused).toBe(true);
+  });
+
+  it('adds up quick skips and restarts once, at where they land', async () => {
+    const h = await mountPlayback({ progressive: true });
+    harness = h;
+    await h.act(async () => { await h.playback().playItem(ITEM); });
+    await timeupdate(h, 100);
+    const before = h.requests.length;
+
+    await h.act(async () => {
+      h.playback().skip(10);
+      h.playback().skip(10);
+      h.playback().skip(10);
+    });
+    // The clock shows the landing point straight away.
+    expect(h.playback().positionSeconds).toBe(130);
+    // The old stream's clock does not drag it back while the run gathers.
+    await timeupdate(h, 101);
+    expect(h.playback().positionSeconds).toBe(130);
+
+    await h.act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 450));
+      for (let i = 0; i < 10; i += 1) await flush();
+    });
+    expect(h.requests.length).toBe(before + 1);
+    expect(h.requests.at(-1)?.startTimeTicks).toBe(130 * 10_000_000);
+    expect(h.encodingStops).toEqual(['session-1']);
+  });
+
+  it('counts a skip pressed during a restart from the restart\'s target', async () => {
+    const h = await mountPlayback({ progressive: true });
+    harness = h;
+    await h.act(async () => { await h.playback().playItem(ITEM); });
+    await timeupdate(h, 100);
+
+    // The seek's restart is still in flight (no flush) when the skip comes.
+    await h.act(async () => {
+      h.playback().seek(300);
+      h.playback().skip(10);
+      await new Promise((resolve) => setTimeout(resolve, 450));
+      for (let i = 0; i < 10; i += 1) await flush();
+    });
+    expect(h.requests.at(-1)?.startTimeTicks).toBe(310 * 10_000_000);
+  });
+
+  it('lets a later seek win over a run of skips still gathering', async () => {
+    const h = await mountPlayback({ progressive: true });
+    harness = h;
+    await h.act(async () => { await h.playback().playItem(ITEM); });
+    await timeupdate(h, 100);
+
+    await h.act(async () => {
+      h.playback().skip(10);
+      h.playback().seek(3000);
+      await new Promise((resolve) => setTimeout(resolve, 450));
+      for (let i = 0; i < 10; i += 1) await flush();
+    });
+    expect(h.requests.at(-1)?.startTimeTicks).toBe(3000 * 10_000_000);
+  });
+
+  it('keeps a skip pressed while the run\'s own restart is landing', async () => {
+    const h = await mountPlayback({ progressive: true });
+    harness = h;
+    await h.act(async () => { await h.playback().playItem(ITEM); });
+    await timeupdate(h, 100);
+
+    await h.act(async () => {
+      h.playback().skip(10);
+      // The run fires and its restart begins; no flush, so it has not landed.
+      await new Promise((resolve) => setTimeout(resolve, 420));
+      h.playback().skip(10);
+      for (let i = 0; i < 10; i += 1) await flush();
+      await new Promise((resolve) => setTimeout(resolve, 450));
+      for (let i = 0; i < 10; i += 1) await flush();
+    });
+    expect(h.requests.at(-1)?.startTimeTicks).toBe(120 * 10_000_000);
   });
 });

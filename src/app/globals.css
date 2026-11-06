@@ -851,6 +851,13 @@ video[data-cue-lift]::-webkit-media-text-track-container {
   transform: translateY(calc(-1 * var(--hpr-cue-lift, 0px)));
 }
 
+/* The player's Fill toggle: crop the picture to the screen instead of
+   letterboxing it. Set only while the full player is open, so the mini player
+   always shows the whole frame. */
+video[data-fill] {
+  object-fit: cover;
+}
+
 .hpr-watch-player-enter[data-closing='true'] {
   animation: watch-player-out 160ms ease-in forwards;
   pointer-events: none;
