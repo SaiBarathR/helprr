@@ -3,7 +3,11 @@ import { prisma } from '@/lib/db';
 import { getJellyfinUserContext, isJellyfinUnavailable } from '@/lib/service-helpers';
 import { escapeSqlLiteral } from '@/lib/jellyfin-playback-query';
 import { loadAniListConnection } from '@/lib/anilist-oauth';
-import { fetchMediaListCollection, type AniListMediaListEntry } from '@/lib/anilist-mutations';
+import {
+  fetchMediaListCollection,
+  MEDIA_LIST_COLLECTION_CACHE_ENDPOINT,
+  type AniListMediaListEntry,
+} from '@/lib/anilist-mutations';
 import { getAnilistJsonWithCache } from '@/lib/cache/anilist-api-cache';
 import { noteJobFailure } from '@/lib/polling-job-report';
 import type { JellyfinItem } from '@/types/jellyfin';
@@ -310,7 +314,7 @@ export async function collectAniListSignals(
 
     const userId = anilistUserId;
     const collection = await getAnilistJsonWithCache({
-      endpoint: 'mediaListCollection',
+      endpoint: MEDIA_LIST_COLLECTION_CACHE_ENDPOINT,
       params: { userId, type: 'ANIME', status: null },
       policy: { ttlSeconds: 30 * 60, staleSeconds: 2 * 60 * 60 },
       fetcher: () => fetchMediaListCollection({ userId, type: 'ANIME' }),
