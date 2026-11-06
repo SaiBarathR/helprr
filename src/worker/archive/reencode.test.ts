@@ -45,6 +45,7 @@ function setup() {
   };
   const jobUpdate = prisma.archiveJob.update;
   const note = vi.fn().mockResolvedValue(undefined);
+  const setStage = vi.fn().mockResolvedValue(undefined);
   const start = () => runReencode({
     prisma: prisma as unknown as PrismaClient,
     job: { id: 'j', mediaFileId: 'f' } as ArchiveJob,
@@ -52,12 +53,12 @@ function setup() {
     quality: 20,
     preset: 'faster',
     keepOriginalDays: 3,
-    setStage: vi.fn().mockResolvedValue(undefined),
+    setStage,
     note,
     assertLease: vi.fn().mockResolvedValue(undefined),
     stagingName: 'stage',
   });
-  return { update, jobUpdate, note, start };
+  return { update, jobUpdate, note, setStage, start };
 }
 
 beforeEach(async () => {
@@ -154,6 +155,35 @@ describe('runReencode', () => {
 
     const progressWrites = jobUpdate.mock.calls.filter(([call]) => 'progress' in call.data).map(([call]) => call.data);
     expect(progressWrites).toEqual([{ progress: 0.7, etaSeconds: 6 }, { progress: 0, etaSeconds: null }]);
+  });
+
+  it('waits for a slow progress write before validating, and skips saves while it runs', async () => {
+    let finishWrite!: () => void;
+    mocks.ffmpeg.mockImplementation(async (args: string[], options: RunOptions) => {
+      const now = vi.spyOn(Date, 'now');
+      now.mockReturnValue(1_000_000);
+      options.onStdoutLine!('out_time_us=10000000');
+      options.onStdoutLine!('progress=continue');
+      now.mockReturnValue(1_010_000);
+      options.onStdoutLine!('out_time_us=20000000');
+      options.onStdoutLine!('progress=continue');
+      now.mockRestore();
+      await writeFile(output(args), 'small');
+    });
+    const { jobUpdate, setStage, start } = setup();
+    jobUpdate.mockImplementationOnce(() => new Promise((resolve) => { finishWrite = () => resolve({}); }));
+
+    const running = start();
+    await vi.waitFor(() => expect(jobUpdate).toHaveBeenCalledOnce());
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(setStage).not.toHaveBeenCalledWith('validating');
+
+    finishWrite();
+    await running;
+
+    expect(setStage).toHaveBeenCalledWith('validating');
+    const progressWrites = jobUpdate.mock.calls.filter(([call]) => 'progress' in call.data);
+    expect(progressWrites).toHaveLength(1);
   });
 
   it('keeps the original and records the attempt when the encode is not worth it', async () => {

@@ -116,12 +116,14 @@ export async function runReencode(ctx: {
 
   await ctx.setStage('encoding');
   let lastWrite = 0;
-  // One write after another, so the last one waited for below is really the last.
-  let lastUpdate: Promise<unknown> = Promise.resolve();
+  // One write at a time: a slow database skips saves rather than queueing them.
+  let writing: Promise<unknown> | null = null;
   const save = (progress: number, etaSeconds: number | null) => {
-    if (Date.now() - lastWrite < PROGRESS_INTERVAL_MS) return;
+    if (writing || Date.now() - lastWrite < PROGRESS_INTERVAL_MS) return;
     lastWrite = Date.now();
-    lastUpdate = lastUpdate.then(() => prisma.archiveJob.update({ where: { id: job.id }, data: { progress, etaSeconds } }).catch(() => undefined));
+    writing = prisma.archiveJob.update({ where: { id: job.id }, data: { progress, etaSeconds } })
+      .catch(() => undefined)
+      .finally(() => { writing = null; });
   };
   // Each attempt reads its own ffmpeg from zero.
   const encode = (decoding: string[], filtering: string[]) => run(FFMPEG, [
@@ -142,7 +144,7 @@ export async function runReencode(ctx: {
     await encode(['-reinit_filter', '0'], ['-vf', 'format=nv12,hwupload=extra_hw_frames=64']);
   } finally {
     // A write still in flight must not land on top of the finished job.
-    await lastUpdate;
+    await writing;
   }
 
   await ctx.setStage('validating');
