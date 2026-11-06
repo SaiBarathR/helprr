@@ -8,6 +8,7 @@ import { Copy, FolderOpen, Loader2, SlidersHorizontal } from 'lucide-react';
 import type { QBittorrentTorrent } from '@/types';
 import type { TorrentFile, TorrentTracker } from '@/lib/qbittorrent-client';
 import { formatSpeedLimit } from './speed-limit-input';
+import { realTrackers, trackerCount, trackerStatusLabel } from './torrent-trackers';
 import { formatBytes, formatEta, formatSeedingTime, formatSpeed, torrentSizeUnknown } from './torrent-list';
 
 export interface TorrentDetailData {
@@ -40,6 +41,7 @@ export function TorrentDetailDrawer({
   canManageTorrents: boolean;
   router: { push: (href: string) => void };
 }) {
+  const trackers = detailData ? realTrackers(detailData.trackers) : [];
   return (
     <Drawer
       open={!!detailHash}
@@ -223,23 +225,22 @@ export function TorrentDetailDrawer({
               )}
 
               {/* Trackers */}
-              {detailData.trackers.length > 0 && (
+              {trackers.length > 0 && (
                 <div>
                   <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
-                    Trackers ({detailData.trackers.filter((t) => t.url.startsWith('http')).length})
+                    Trackers ({trackers.length})
                   </h3>
                   <div className="rounded-lg border divide-y">
-                    {detailData.trackers
-                      .filter((t) => t.url.startsWith('http'))
-                      .map((tracker, i) => (
-                        <div key={i} className="px-3 py-2 space-y-0.5">
-                          <p className="text-xs break-all">{tracker.url}</p>
-                          <p className="text-[10px] text-muted-foreground">
-                            Seeds: {tracker.num_seeds} &middot; Peers: {tracker.num_leeches}
-                            {tracker.msg && ` &middot; ${tracker.msg}`}
-                          </p>
-                        </div>
-                      ))}
+                    {trackers.map((tracker, i) => (
+                      <div key={i} className="px-3 py-2 space-y-0.5">
+                        <p className="text-xs break-all">{tracker.url}</p>
+                        <p className="text-[10px] text-muted-foreground break-words">
+                          {trackerStatusLabel(tracker.status)} &middot; Tier {tracker.tier} &middot; Seeds:{' '}
+                          {trackerCount(tracker.num_seeds)} &middot; Leechers: {trackerCount(tracker.num_leeches)}
+                          {tracker.msg && ` · ${tracker.msg}`}
+                        </p>
+                      </div>
+                    ))}
                   </div>
                 </div>
               )}

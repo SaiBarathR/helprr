@@ -147,7 +147,11 @@ beforeEach(() => {
         properties: { total_size: mocks.detailTotalSize, total_downloaded: 1024 ** 3, total_uploaded: 0, share_ratio: 0.25, dl_speed: 1024 * 1024, up_speed: 0, dl_limit: 0, up_limit: 0,
           addition_date: 0, completion_date: 0, seeding_time: 0, time_elapsed: 3700, seeds: 4, seeds_total: 9, peers: 2, peers_total: 5, nb_connections: 6, total_wasted: 0, save_path: '/data/movies' },
         files: Array.from({ length: 6 }, (_, index) => ({ index, name: `Alpha.Movie/part${index + 1}.mkv`, size: 1024 ** 2, progress: 0.5 })),
-        trackers: [{ url: 'http://tracker.example/announce', num_seeds: 4, num_leeches: 2, msg: '' }, { url: '** [DHT] **', num_seeds: 0, num_leeches: 0, msg: '' }],
+        trackers: [
+          { url: '** [DHT] **', status: 2, tier: -1, num_seeds: 0, num_leeches: 0, msg: '' },
+          { url: 'http://tracker.example/announce', status: 2, tier: 0, num_seeds: 4, num_leeches: 2, msg: '' },
+          { url: 'udp://tracker.example:1337/announce', status: 4, tier: 1, num_seeds: -1, num_leeches: -1, msg: 'Connection timed out' },
+        ],
       });
     }
     return Response.json({});
@@ -387,7 +391,11 @@ describe('torrents page (characterization)', () => {
     expect(row('Auto Torrent Management')).toBe('On');
     expect(within(drawer).getByText('Files (6)')).toBeTruthy();
     expect(within(drawer).getByText('+1 more files')).toBeTruthy();
-    expect(within(drawer).getByText('Trackers (1)')).toBeTruthy();
+    expect(within(drawer).getByText('Trackers (2)')).toBeTruthy();
+    expect(within(drawer).queryByText('** [DHT] **')).toBeNull();
+    expect(within(drawer).getByText('http://tracker.example/announce').nextElementSibling?.textContent).toBe('Working · Tier 0 · Seeds: 4 · Leechers: 2');
+    expect(within(drawer).getByText('udp://tracker.example:1337/announce').nextElementSibling?.textContent)
+      .toBe('Not working · Tier 1 · Seeds: N/A · Leechers: N/A · Connection timed out');
     expect(within(drawer).getByRole('button', { name: 'Copy Magnet URI' })).toBeTruthy();
 
     await user.click(within(drawer).getByRole('button', { name: 'Manage Files' }));
