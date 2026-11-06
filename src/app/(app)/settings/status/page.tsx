@@ -12,11 +12,7 @@ import { cn } from '@/lib/utils';
 import { useMe } from '@/components/permission-provider';
 import type { UpdateCheckResult } from '@/lib/update-check';
 import type { SecretsStatus } from '@/lib/generated-secrets';
-
-// Inlined at build time (see next.config.ts `env`) — identifies the running build.
-// Release images carry the tag ("v1.6.3"); show it as the update notice does ("1.6.3").
-const APP_VERSION = (process.env.NEXT_PUBLIC_APP_VERSION || 'unknown').replace(/^v(?=\d)/, '');
-const GIT_SHA = process.env.NEXT_PUBLIC_GIT_SHA || '';
+import { APP_VERSION, GIT_SHA } from '@/lib/app-version';
 
 interface ServiceHealthStatus {
   instanceId: string;

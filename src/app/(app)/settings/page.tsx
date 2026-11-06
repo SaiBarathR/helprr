@@ -17,6 +17,7 @@ import {
   FileStack,
   Terminal,
   Twitch, Youtube,
+  Info,
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/query-keys';
@@ -259,6 +260,17 @@ export default function SettingsIndexPage() {
           iconColor="text-red-400"
           label="Account"
           subtitle="Sign out"
+        />
+      </GroupedSection>
+
+      <GroupedSection>
+        <CategoryRow
+          href="/settings/about"
+          icon={Info}
+          iconBg="bg-slate-500/10"
+          iconColor="text-slate-400"
+          label="About"
+          subtitle="Version, license, credits"
         />
       </GroupedSection>
     </div>

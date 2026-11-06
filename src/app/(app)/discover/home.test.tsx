@@ -170,6 +170,13 @@ describe('Discover home (characterization)', () => {
     expect(gridUrls()).toEqual([]);
   });
 
+  it('credits TMDB at the foot of the page, linking to About', async () => {
+    renderHome();
+    const credit = await screen.findByRole('link', { name: /Data and images from/ });
+    expect(credit.getAttribute('href')).toBe('/settings/about');
+    expect(within(credit).getByRole('img', { name: 'TMDB' })).toBeTruthy();
+  });
+
   it('opens a poster, its library copy, or the add page', async () => {
     const user = renderHome();
     await user.click((await screen.findAllByRole('button', { name: /^Alpha/ })).find((button) => !button.closest('[aria-label="Hero"]'))!);

@@ -4,6 +4,8 @@ import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
+import Image from 'next/image';
+import Link from '@/components/ui/app-link';
 import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
 import { DEFAULT_DISCOVER_FILTERS, type DiscoverFiltersState, useUIStore } from '@/lib/store';
 import { ActiveFilterBar, type ActiveFilter } from '@/components/ui/active-filter-bar';
@@ -474,6 +476,13 @@ export default function DiscoverPage() {
           loadingMore={loadingMore}
         />
       )}
+
+      <p className="pt-2 pb-1 text-center text-[11px] text-muted-foreground">
+        <Link href="/settings/about" className="inline-flex items-center gap-1.5 hover:text-foreground">
+          Data and images from
+          <Image src="/images/tmdb-logo.svg" alt="TMDB" width={77} height={10} className="h-2.5 w-auto" />
+        </Link>
+      </p>
 
       <DiscoverFilterSheet
         filtersOpen={filtersOpen}
