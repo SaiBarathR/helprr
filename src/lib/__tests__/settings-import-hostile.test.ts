@@ -81,6 +81,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.requireUserCapability.mockResolvedValue({ ok: true, user: admin, session: {} });
   const tx = {
+    $executeRaw: vi.fn(async () => 1),
     user: { findUnique: mocks.userFindUnique, update: mocks.userUpdate },
     session: { updateMany: mocks.sessionUpdateMany },
     userTasteProfile: { updateMany: vi.fn(async () => ({ count: 0 })) },

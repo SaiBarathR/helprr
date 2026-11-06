@@ -40,6 +40,17 @@ with a Helprr password connects it in **Settings → Account**. Until they do, H
 them to sign in to Jellyfin when they press play. **Settings → Users** shows who is not
 connected yet.
 
+## Your data
+
+In **Settings → Account**, anyone can **Download my data**: one JSON file with their
+profile, settings, watchlist, alerts, layouts, notification history, pending requests,
+push devices and sessions. It never holds a password, token or another person's data.
+**Delete my account** removes the account and everything it owns, and signs it out
+everywhere. It asks for the current password; an account that signs in only with
+Jellyfin types its username instead. The last active admin cannot delete itself:
+make someone else an admin first. The admin created from `APP_PASSWORD` cannot delete
+itself either, because Helprr re-creates it on every start while `APP_PASSWORD` is set.
+
 ## Sessions
 
 **Settings → Sessions** lists where each person is signed in, and signs any of them out.

@@ -2,6 +2,7 @@
 
 import type { Prisma, ScheduledAlert, UserRole, UserStatus } from '@prisma/client';
 import { BOOTSTRAP_ADMIN_ID } from '@/lib/bootstrap-admin';
+import { lockActiveAdminGuard } from '@/lib/user-deletion';
 import { isValidTimeZone } from '@/lib/timezone';
 import { parseDateFormat, parseTimeFormat } from '@/lib/date-format';
 import { parsePermissions } from '@/lib/permissions';
@@ -66,6 +67,10 @@ export async function applyUsersInTxn(
     skipped.push('Users: missing accounts array');
     return 0;
   }
+
+  // An import can demote or disable admins: hold the last-admin guard lock for
+  // the rest of the transaction, like every other change that can remove one.
+  await lockActiveAdminGuard(tx);
 
   let applied = 0;
   for (const acc of data.accounts) {

@@ -3,17 +3,38 @@
 import { useState } from 'react';
 import Link from '@/components/ui/app-link';
 import { toast } from 'sonner';
-import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Download, Loader2 } from 'lucide-react';
 import { GroupedSection } from '@/components/settings/grouped-section';
 import { JellyfinConnection } from '@/components/settings/jellyfin-connection';
 import { ChangePasswordDrawer } from '@/components/settings/change-password-drawer';
+import { DeleteAccountDrawer } from '@/components/settings/delete-account-drawer';
 import { useMe } from '@/components/permission-provider';
 import { endSessionInThisBrowser, requestSessionLogout } from '@/lib/client-cache';
+import { saveFile } from '@/lib/save-file';
 
 export default function AccountSettingsPage() {
   const me = useMe();
   const [signingOut, setSigningOut] = useState(false);
   const [changingPassword, setChangingPassword] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  const [deletingAccount, setDeletingAccount] = useState(false);
+
+  async function handleDownloadData() {
+    setDownloading(true);
+    try {
+      const res = await fetch('/api/me/export', { cache: 'no-store' });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(data.error ?? 'Failed to download your data');
+      }
+      await saveFile(await res.blob(), `helprr-my-data-${new Date().toISOString().slice(0, 10)}.json`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to download your data');
+    } finally {
+      setDownloading(false);
+    }
+  }
+
   async function handleSignOut() {
     setSigningOut(true);
     try {
@@ -83,6 +104,42 @@ export default function AccountSettingsPage() {
       )}
 
       <JellyfinConnection />
+
+      {me && (
+        <GroupedSection
+          title="Your data"
+          footer="The download holds your profile, settings, watchlist, alerts, layouts, notification history, requests, devices and sessions. Never passwords or tokens."
+        >
+          <button
+            type="button"
+            onClick={handleDownloadData}
+            disabled={downloading}
+            className="grouped-row w-full text-left hover:bg-foreground/[0.03] active:bg-foreground/5 transition-colors disabled:opacity-50"
+          >
+            <span className="text-sm font-medium">{downloading ? 'Preparing…' : 'Download my data'}</span>
+            {downloading
+              ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+              : <Download className="h-4 w-4 text-muted-foreground" />}
+          </button>
+          <button
+            type="button"
+            onClick={() => setDeletingAccount(true)}
+            className="grouped-row w-full text-left hover:bg-foreground/[0.03] active:bg-foreground/5 transition-colors"
+          >
+            <span className="text-sm font-medium text-red-500">Delete my account</span>
+            <ChevronRight className="h-4 w-4 text-muted-foreground" />
+          </button>
+        </GroupedSection>
+      )}
+
+      {me && (
+        <DeleteAccountDrawer
+          open={deletingAccount}
+          onOpenChange={setDeletingAccount}
+          username={me.username ?? ''}
+          hasLocalPassword={me.hasLocalPassword}
+        />
+      )}
 
       <GroupedSection>
         <button

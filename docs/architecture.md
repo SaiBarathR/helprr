@@ -247,6 +247,20 @@ every 401 to Login), then writes the hash and revokes every other session of tha
 one transaction; the current session stays valid without a new cookie. Accounts without
 a local password (Jellyfin-only) get 409.
 
+Settings -> Account also lets a user delete their own account (`DELETE /api/me`). The
+user comes from the session only; an id in the body is ignored. A local account
+re-enters its password behind the same throttles as a password change; a Jellyfin-only
+account types its username. In one transaction it takes the last-admin guard lock (for
+an admin), locks the user row only if it is still the account just confirmed (same hash,
+role and status, this session still live), then runs the same guarded delete and cascade
+as Settings -> Users (`deleteUserUnlessLastAdmin` in `src/lib/user-deletion.ts`). Every
+change that can remove an active admin (delete, demotion, disable) takes the same
+transaction-scoped advisory lock before counting the admins left, so two of them cannot
+both pass the guard. The self-delete writes `USER_DELETED` with the user as actor and
+clears the cookie. `GET /api/me/export` is the matching "Download my data": the user's
+own rows, by named columns, never a hash, token, push endpoint or key, session id or
+another user's rows.
+
 Invite and password-reset links (`src/lib/password-links.ts`, table `PasswordLink`,
 one row per user) let a person set their own local password. An admin makes one in
 Settings -> Users: creating a user with `invite: true` makes a `pending` user with no
