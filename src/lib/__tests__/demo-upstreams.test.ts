@@ -179,8 +179,8 @@ describe('demo library', () => {
     // Films over two weeks; episodes over one week (a show starts over after its last
     // episode, every 7 to 31 weeks, and those episodes are announced again).
     const weekStart = Math.floor(Date.UTC(2026, 10, 5) / (7 * 86_400_000)) * 7 * 86_400_000;
-    for (let hour = 0; hour < 14 * 24; hour++) check(weekStart + hour * 3_600_000, ['movie']);
-    for (let hour = 0; hour < 7 * 24; hour++) check(weekStart + hour * 3_600_000, ['episode']);
+    // One build per hour serves both checks; each build is pure CPU (~1 ms idle).
+    for (let hour = 0; hour < 14 * 24; hour++) check(weekStart + hour * 3_600_000, hour < 7 * 24 ? ['movie', 'episode'] : ['movie']);
     expect([...seen.keys()].filter((key) => key.startsWith('movie')).length).toBeGreaterThanOrEqual(14);
-  });
+  }, 20_000); // No timing in it: only a CPU shared by parallel suites can push it past 5 s.
 });

@@ -119,7 +119,9 @@ describe('Add Torrent: where it goes', () => {
     )));
     renderPage();
     await userEvent.click(await screen.findByRole('radio', { name: /Add to qBittorrent only/ }));
-    await userEvent.type(screen.getByPlaceholderText('magnet:?xt=urn:btih:...'), 'magnet:?xt=urn:btih:382CC016FF22946008ECDDCB0DDA820F42B0CD5A');
+    // Pasted, as a user would: typing it renders the page once per character, too slow under load.
+    await userEvent.click(screen.getByPlaceholderText('magnet:?xt=urn:btih:...'));
+    await userEvent.paste('magnet:?xt=urn:btih:382CC016FF22946008ECDDCB0DDA820F42B0CD5A');
     await userEvent.click(screen.getByRole('button', { name: 'Add Torrent' }));
 
     expect((screen.getByRole('radio', { name: /Send to Sonarr or Radarr/ }) as HTMLButtonElement).disabled).toBe(true);
@@ -152,7 +154,8 @@ describe('Add Torrent: where it goes', () => {
       await waitFor(() => expect(mocks.adds).toHaveLength(1));
 
       await user.click(screen.getByRole('radio', { name: /Add to qBittorrent only/ }));
-      await user.type(screen.getByPlaceholderText('magnet:?xt=urn:btih:...'), 'magnet:?xt=urn:btih:382CC016FF22946008ECDDCB0DDA820F42B0CD5A');
+      await user.click(screen.getByPlaceholderText('magnet:?xt=urn:btih:...'));
+      await user.paste('magnet:?xt=urn:btih:382CC016FF22946008ECDDCB0DDA820F42B0CD5A');
       await user.click(screen.getByRole('button', { name: 'Next: Choose Files' }));
       await screen.findByRole('checkbox', { name: 'Select a.mkv' });
       expect(screen.getByRole('button', { name: /Add (Stopped|& Start)/ })).toBeTruthy();

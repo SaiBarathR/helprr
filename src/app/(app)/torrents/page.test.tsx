@@ -454,8 +454,9 @@ describe('torrents page (characterization)', () => {
 
     rows = [{ ...ALPHA, state: 'stalledDL', dlspeed: 0 }, BRAVO, torrent('ddd', 'Delta')];
     await act(() => client.refetchQueries({ queryKey: ['torrents'] }));
-    await waitFor(() => expect(screen.getByText('3 torrents')).toBeTruthy());
-    expect(screen.getByRole('button', { name: 'Delta' })).toBeTruthy();
+    // Still 3 torrents before the poll lands, so wait for what it adds.
+    expect(await screen.findByRole('button', { name: 'Delta' })).toBeTruthy();
+    expect(screen.getByText('3 torrents')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Charlie' })).toBeNull();
     expect(within(screen.getByRole('button', { name: 'Alpha.Movie' }).closest('.px-3')! as HTMLElement).getByText('Stalled')).toBeTruthy();
     await waitFor(() => expect(screen.queryByRole('button', { name: 'Clear' })).toBeNull());
