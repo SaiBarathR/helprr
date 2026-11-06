@@ -66,6 +66,18 @@ async function postHandler(request: NextRequest) {
           result = await client.renameMovie(body.movieId);
         }
         break;
+      case 'RenameMovie': {
+        // Bulk Organize: rename every file of each movie to the naming format.
+        const movieIds = coercePositiveIntArray(body.movieIds);
+        if (!movieIds) {
+          return NextResponse.json(
+            { error: 'movieIds must be a non-empty array of positive integers' },
+            { status: 400 }
+          );
+        }
+        result = await client.renameMovies(movieIds);
+        break;
+      }
       default:
         return NextResponse.json(
           { error: `Unknown command: ${body.name}` },

@@ -3,16 +3,23 @@ import { getLidarrClient } from '@/lib/service-helpers';
 import { LidarrClient } from '@/lib/lidarr-client';
 import { resolveConnection } from '@/lib/arr-instances';
 import { getConnectionHeaders } from '@/lib/service-connection-secrets';
-import { requireAuth, requireUserCapability } from '@/lib/auth';
+import { getCurrentUser, requireAuth, requireUserCapability } from '@/lib/auth';
 import { guardBulkEdit } from '@/lib/library-edit-guard';
-import { parseBulkEditBody, parseBulkDeleteBody, resolveTagIds, readJsonBody } from '@/lib/bulk-editor';
+import {
+  changesAdminOnlyFields,
+  parseBulkEditBody,
+  parseBulkDeleteBody,
+  resolveTagIds,
+  readJsonBody,
+  validateInstanceSettings,
+} from '@/lib/bulk-editor';
 import { invalidateTaggedLibrary } from '@/lib/cache/tagged-library';
 import { invalidateReferenceLabels } from '@/lib/cache/reference-labels';
 import { withApiLogging } from '@/lib/api-logger';
 import { upstreamErrorResponse } from '@/lib/api-error';
 import { runWithOperationAudit } from '@/lib/file-audit';
 
-// Bulk monitor/tag across many artists via Lidarr's native /artist/editor endpoint.
+// Bulk monitor/tag/settings across many artists via Lidarr's native /artist/editor endpoint.
 async function putHandler(request: NextRequest) {
   const authError = await requireAuth();
   if (authError) return authError;
@@ -20,12 +27,17 @@ async function putHandler(request: NextRequest) {
   try {
     const json = await readJsonBody(request);
     if (!json.ok) return NextResponse.json({ error: 'Malformed JSON' }, { status: 400 });
-    const parsed = parseBulkEditBody(json.body);
+    const parsed = parseBulkEditBody(json.body, 'lidarr');
     if ('error' in parsed) return NextResponse.json({ error: parsed.error }, { status: 400 });
 
     const guardError = await guardBulkEdit(
-      { monitoring: parsed.monitored !== undefined, tags: parsed.tags !== undefined },
-      { monitoring: 'music.editMonitoring', tags: 'music.editTags' }
+      {
+        monitoring: parsed.monitored !== undefined,
+        tags: parsed.tags !== undefined,
+        path: parsed.rootFolderPath !== undefined,
+        other: changesAdminOnlyFields(parsed),
+      },
+      { monitoring: 'music.editMonitoring', tags: 'music.editTags', path: 'music.changePath' }
     );
     if (guardError) return guardError;
 
@@ -34,15 +46,46 @@ async function putHandler(request: NextRequest) {
     // second lookup — and so the only throwing call (the DB resolve) runs before any write.
     const conn = await resolveConnection('LIDARR', instanceId);
     const client = new LidarrClient(conn.url, conn.apiKey, getConnectionHeaders(conn));
+    // Profile ids and root folders are per-instance: check them against this instance
+    // before anything is written (tags included).
+    const invalid = await validateInstanceSettings(client, parsed);
+    if (invalid) return NextResponse.json({ error: invalid }, { status: 400 });
     const tagResult = parsed.tags
       ? await resolveTagIds(client, parsed.tags, parsed.applyTags ?? 'add')
       : undefined;
-    const result = await client.artistEditor({
+    const edit = () => client.artistEditor({
       artistIds: parsed.ids,
       monitored: parsed.monitored,
       tags: tagResult?.ids,
       applyTags: parsed.applyTags,
+      qualityProfileId: parsed.qualityProfileId,
+      rootFolderPath: parsed.rootFolderPath,
+      moveFiles: parsed.moveFiles,
+      metadataProfileId: parsed.metadataProfileId,
+      monitorNewItems: parsed.monitorNewItems,
     });
+    // A root-folder change rewrites every item's path and, with moveFiles, moves its
+    // files on disk, so it goes through the operation audit like the other file ops.
+    const result = parsed.rootFolderPath !== undefined
+      ? await runWithOperationAudit({
+          user: await getCurrentUser(),
+          // The resolved connection, so a request that names no instance still records
+          // which instance's files were moved.
+          instanceId: conn.id,
+          service: 'LIDARR',
+          operation: 'MOVE_MEDIA',
+          targetType: 'artist',
+          targetId: parsed.ids.length === 1 ? parsed.ids[0] : null,
+          targetTitle: `${parsed.ids.length} artist${parsed.ids.length === 1 ? '' : 's'}`,
+          itemCount: parsed.ids.length,
+          details: {
+            targetIds: parsed.ids,
+            rootFolderPath: parsed.rootFolderPath,
+            moveFiles: parsed.moveFiles === true,
+            bulk: true,
+          },
+        }, edit)
+      : await edit();
     await invalidateTaggedLibrary('lidarr', instanceId);
     // Only drop the label cache when a brand-new tag was actually created — otherwise the next
     // list read would refetch reference data for nothing.

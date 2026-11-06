@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import {
-  Eye, EyeOff, Tags, Search, Trash2, X, Loader2, Plus, CheckCheck, Check,
+  Eye, EyeOff, Tags, Search, Trash2, X, Loader2, Plus, CheckCheck, Check, SlidersHorizontal,
   type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -10,6 +10,11 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { buttonVariants } from '@/components/ui/button';
 import { FloatingActionBar } from '@/components/ui/floating-action-bar';
 import { MediaDeleteConfirmDialog } from '@/components/media/media-delete-confirm-dialog';
+import {
+  BulkEditSheet,
+  bulkEditSheetAvailable,
+  type BulkEditSheetOptions,
+} from '@/components/media/bulk-edit-sheet';
 
 export interface BulkTag {
   id: number;
@@ -45,6 +50,8 @@ interface BulkActionBarProps {
   deleteVerb?: string;
   /** Override the delete dialog description. */
   deleteDescription?: string;
+  /** Library pages: the "More" sheet (profiles, root folder, organize). */
+  bulkEdit?: BulkEditSheetOptions;
 }
 
 function TagPickMark({ checked }: { checked: boolean }) {
@@ -118,6 +125,7 @@ export function BulkActionBar({
   deleteFilesOption = true,
   deleteVerb = 'Delete',
   deleteDescription,
+  bulkEdit,
 }: BulkActionBarProps) {
   const [busy, setBusy] = useState<string | null>(null);
 
@@ -149,6 +157,8 @@ export function BulkActionBar({
 
   // Delete dialog state (the delete-files checkbox lives in the dialog).
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const showMore = variant === 'full' && bulkEdit !== undefined && bulkEditSheetAvailable(bulkEdit);
 
   const disabled = count === 0 || busy !== null;
 
@@ -394,6 +404,16 @@ export function BulkActionBar({
             />
           )}
 
+          {showMore && (
+            <BarButton
+              icon={SlidersHorizontal}
+              label="More"
+              disabled={disabled}
+              busy={busy === 'more'}
+              onClick={() => setMoreOpen(true)}
+            />
+          )}
+
           {variant === 'full' && canDelete && onDelete && (
             <BarButton
               icon={Trash2}
@@ -405,6 +425,29 @@ export function BulkActionBar({
           )}
         </div>
       </FloatingActionBar>
+
+      {showMore && bulkEdit && (
+        <BulkEditSheet
+          {...bulkEdit}
+          open={moreOpen}
+          onOpenChange={(open) => { if (!busy) setMoreOpen(open); }}
+          count={count}
+          plural={plural}
+          busy={busy === 'more'}
+          onApply={(changes) =>
+            run('more', async () => {
+              await bulkEdit.onApply(changes);
+              setMoreOpen(false);
+            })
+          }
+          onOrganize={() =>
+            run('more', async () => {
+              await bulkEdit.onOrganize();
+              setMoreOpen(false);
+            })
+          }
+        />
+      )}
 
       {variant === 'full' && onDelete && (
         <MediaDeleteConfirmDialog

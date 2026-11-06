@@ -180,12 +180,18 @@ export class LidarrClient {
     await this.delete(`/api/v1/artist/${id}`, { deleteFiles, addImportListExclusion });
   }
 
-  // Bulk editor — one request for monitored/tags across many artists.
+  // Bulk editor — one request for monitored/tags/settings across many artists. Lidarr
+  // applies only the fields present; moveFiles moves each artist's files into rootFolderPath.
   async artistEditor(body: {
     artistIds: number[];
     monitored?: boolean;
     tags?: number[];
     applyTags?: 'add' | 'remove' | 'replace';
+    qualityProfileId?: number;
+    metadataProfileId?: number;
+    rootFolderPath?: string;
+    moveFiles?: boolean;
+    monitorNewItems?: string;
   }): Promise<LidarrArtist[]> {
     return this.put<LidarrArtist[]>('/api/v1/artist/editor', body);
   }
@@ -395,6 +401,11 @@ export class LidarrClient {
     const body: Record<string, unknown> = { name: 'RenameFiles', artistId };
     if (files && files.length > 0) body.files = files;
     return this.post<CommandResponse>('/api/v1/command', body);
+  }
+
+  /** Rename every track file of each artist to the naming format (Lidarr's RenameArtist command). */
+  async renameArtists(artistIds: number[]): Promise<CommandResponse> {
+    return this.post<CommandResponse>('/api/v1/command', { name: 'RenameArtist', artistIds });
   }
 
   async getRenamePreview(artistId: number, albumId?: number): Promise<LidarrRenamePreview[]> {

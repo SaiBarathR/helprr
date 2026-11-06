@@ -216,20 +216,31 @@ export async function guardLibraryEdit(
  * Capability guard for the bulk editor route. Unlike guardLibraryEdit, the intent
  * here is explicit (the payload says exactly what it changes), so no diff against a
  * live item is needed — we just gate each declared change behind its capability.
+ * A root-folder change (with or without moving files) needs the path capability, and
+ * the settings fields no capability covers (`other`) are admin-only, as on the
+ * single-item edit.
  */
 export async function guardBulkEdit(
-  intent: { monitoring: boolean; tags: boolean },
-  caps: { monitoring: Capability; tags: Capability }
+  intent: { monitoring: boolean; tags: boolean; path: boolean; other: boolean },
+  caps: { monitoring: Capability; tags: Capability; path: Capability }
 ): Promise<NextResponse | null> {
-  if (!intent.monitoring && !intent.tags) return null;
+  if (!intent.monitoring && !intent.tags && !intent.path && !intent.other) return null;
 
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   if (user.role === 'admin') return null;
 
+  if (intent.other) {
+    return NextResponse.json(
+      { error: 'Forbidden: only an admin can change these fields' },
+      { status: 403 }
+    );
+  }
+
   const missing: Capability[] = [];
   if (intent.monitoring && !can(user, caps.monitoring)) missing.push(caps.monitoring);
   if (intent.tags && !can(user, caps.tags)) missing.push(caps.tags);
+  if (intent.path && !can(user, caps.path)) missing.push(caps.path);
 
   if (missing.length > 0) {
     return NextResponse.json(

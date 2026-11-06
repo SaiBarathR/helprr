@@ -40,6 +40,7 @@ import { useUIStore } from '@/lib/store';
 import { matchesWatchFilter } from '@/lib/watch-status-filter';
 import { useBulkSelection } from '@/lib/use-bulk-selection';
 import { BulkActionBar } from '@/components/media/bulk-action-bar';
+import type { BulkEditChanges } from '@/components/media/bulk-edit-sheet';
 import { getListViewState, setListViewState } from '@/lib/media-list-cache';
 import { useQuery } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/query-keys';
@@ -173,6 +174,7 @@ function getPosterColumns(width: number, posterSize: 'small' | 'medium' | 'large
 export default function MoviesPage() {
   const { toolbarRef, toolbarStyle } = useToolbarHeight();
   const me = useMe();
+  const isAdmin = me?.role === 'admin';
   const canFilterByWatchStatus = me?.jellyfinLinked === true && hasCapability(me, 'jellyfin.view');
   const watchLookup = useWatchLookup(canFilterByWatchStatus);
   const watchMapReady = useWatchMapReady(canFilterByWatchStatus);
@@ -186,7 +188,7 @@ export default function MoviesPage() {
   const canDelete = useCan('movies.delete');
   const canSearch = useCan('activity.manage');
   const { setWatched, canWrite: canSetWatched, isWriting: isWritingWatched } = useWatchStatus();
-  const canBulk = canMonitor || canTag || canDelete || canSearch;
+  const canBulk = canMonitor || canTag || canDelete || canSearch || canChangePath || isAdmin;
   const {
     selectionMode, selectedKeys, count: selectedCount,
     toggle, selectMany, deselectMany, enter, exit,
@@ -446,6 +448,34 @@ export default function MoviesPage() {
     (deleteFiles: boolean) => runDelete(selectedMovies, deleteFiles, true).then(() => undefined),
     [runDelete, selectedMovies],
   );
+
+  // "More" sheet. Profile ids and root folders are per-instance, so the sheet offers
+  // those pickers only when every selected item is on one instance (null = mixed).
+  const selectedInstance = useMemo(() => {
+    const ids = new Set(selectedMovies.map((item) => item.instanceId));
+    return ids.size === 1 ? [...ids][0] : null;
+  }, [selectedMovies]);
+
+  const handleBulkEdit = useCallback(async (changes: BulkEditChanges) => {
+    const { ok, fail, firstError } = await fanOutItems(selectedMovies, (instanceId, ids) =>
+      fetch(`/api/radarr/editor${instanceId ? `?instanceId=${encodeURIComponent(instanceId)}` : ''}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids, ...changes }),
+      }));
+    reportBulk('Updated', ok, fail, { noun: 'movie', pluralNoun: 'movies', reason: firstError });
+    await refetchMovies();
+    if (fail === 0) exit();
+  }, [fanOutItems, selectedMovies, refetchMovies, exit]);
+
+  const handleOrganize = useCallback(async () => {
+    const { ok, fail, firstError } = await fanOutItems(selectedMovies, (instanceId, ids) =>
+      fetch(`/api/radarr/command${instanceId ? `?instanceId=${encodeURIComponent(instanceId)}` : ''}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'RenameMovie', movieIds: ids }),
+      }));
+    reportBulk('Organizing', ok, fail, { noun: 'movie', pluralNoun: 'movies', reason: firstError });
+    if (fail === 0) exit();
+  }, [fanOutItems, selectedMovies, exit]);
 
   const confirmSingleDelete = useCallback(async (deleteFiles: boolean) => {
     if (!deleteTarget || deletingTarget) return;
@@ -1109,6 +1139,15 @@ export default function MoviesPage() {
           onSearch={handleBulkSearch}
           onDelete={handleDelete}
           itemNoun="movie"
+          bulkEdit={{
+            service: 'radarr',
+            instanceId: selectedInstance,
+            isAdmin,
+            canChangePath,
+            canOrganize: canSearch,
+            onApply: handleBulkEdit,
+            onOrganize: handleOrganize,
+          }}
         />
       )}
     </div>

@@ -475,7 +475,15 @@ The unified `FileOperationAudit` model records file edits and deletes, manual
 imports, and the destructive whole-media, torrent, and queue operations a user
 performs directly, including removing *arr blocklist entries
 (`REMOVE_BLOCKLIST`: one row per request and instance, with the entry ids in its
-details; the request must name an instance of that service, never the default).
+details; the request must name an instance of that service, never the default),
+and changing the root folder of library items from the bulk editor (`MOVE_MEDIA`:
+one row per request and instance, with the item ids, the folder, and whether files
+were to be moved; success means the *arr accepted the change and queued any move, not
+that the move finished; it needs the service's `changePath` capability, and the folder must
+be one of that instance's root folders). The bulk editor's other settings (quality and
+metadata profile, series type, season folder, monitor-new, minimum availability) are
+admin-only, as on the single-item edit, and profile ids are checked against the
+instance before the write.
 It stores actor, service/instance, operation, target, item count, whether files/data were to be deleted (the choice made: a failed row may
 have deleted nothing), structured details, success, and error
 information, plus when the upstream call started and, for a row written while

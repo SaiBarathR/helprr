@@ -105,6 +105,15 @@ async function postHandler(request: NextRequest) {
         result = await client.renameArtistFiles(artistId, files);
         break;
       }
+      case 'RenameArtist': {
+        // Bulk Organize: rename every track file of each artist to the naming format.
+        const artistIds = toPositiveIntArray(body.artistIds);
+        if (artistIds === null) {
+          return NextResponse.json({ error: 'artistIds must be a non-empty array of positive integers' }, { status: 400 });
+        }
+        result = await client.renameArtists(artistIds);
+        break;
+      }
       default:
         return NextResponse.json({ error: `Unknown command: ${body.name}` }, { status: 400 });
     }

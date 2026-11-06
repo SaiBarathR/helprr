@@ -715,6 +715,7 @@ enum FileOperation {
   CREATE_MEDIA // add a series / movie to an Arr library (manual downloads)
   PUSH_RELEASE // hand a magnet / .torrent to an Arr instance as a manual release
   REMOVE_BLOCKLIST // remove (unblock) one or more Arr blocklist entries
+  MOVE_MEDIA // change the root folder of series / movies / artists, optionally moving their files
 }
 
 // Unified accountability log for file operations and destructive media/download

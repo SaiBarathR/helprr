@@ -96,6 +96,6 @@ describe('renames that name no files', () => {
     mocks.sonarr.renameSeries.mockResolvedValue({ id: 902 });
     const res = await post(sonarrCommand as Handler, 'sonarr', { name: 'RenameSeries', seriesId: 7 });
     expect(res.status).toBe(200);
-    expect(mocks.sonarr.renameSeries).toHaveBeenCalledWith(7);
+    expect(mocks.sonarr.renameSeries).toHaveBeenCalledWith([7]);
   });
 });

@@ -76,9 +76,21 @@ async function postHandler(request: NextRequest) {
       case 'RefreshMonitoredDownloads':
         result = await client.refreshMonitoredDownloads();
         break;
-      case 'RenameSeries':
-        result = await client.renameSeries(body.seriesId);
+      case 'RenameSeries': {
+        // Bulk Organize sends `seriesIds`; a single-id caller may still send `seriesId`.
+        const legacyId = coercePositiveInt(body.seriesId);
+        const seriesIds = body.seriesIds !== undefined
+          ? coercePositiveIntArray(body.seriesIds)
+          : legacyId ? [legacyId] : null;
+        if (!seriesIds) {
+          return NextResponse.json(
+            { error: 'seriesIds must be a non-empty array of positive integers' },
+            { status: 400 }
+          );
+        }
+        result = await client.renameSeries(seriesIds);
         break;
+      }
       case 'RenameFiles': {
         if (!Array.isArray(body.files) || body.files.length === 0) {
           return NextResponse.json(

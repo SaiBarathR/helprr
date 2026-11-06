@@ -16,7 +16,7 @@ interface AuditRecord {
   username: string;
   service: 'SONARR' | 'RADARR' | 'LIDARR' | 'QBITTORRENT';
   instanceId: string | null;
-  operation: 'EDIT' | 'DELETE' | 'IMPORT' | 'DELETE_MEDIA' | 'DELETE_TORRENT' | 'REMOVE_QUEUE' | 'REMOVE_BLOCKLIST';
+  operation: 'EDIT' | 'DELETE' | 'IMPORT' | 'DELETE_MEDIA' | 'DELETE_TORRENT' | 'REMOVE_QUEUE' | 'REMOVE_BLOCKLIST' | 'MOVE_MEDIA';
   mediaType: string;
   mediaId: number | null;
   mediaTitle: string;
@@ -37,6 +37,7 @@ const OP_VARIANT: Record<AuditRecord['operation'], 'default' | 'secondary' | 'de
   DELETE_TORRENT: 'destructive',
   REMOVE_QUEUE: 'destructive',
   REMOVE_BLOCKLIST: 'secondary',
+  MOVE_MEDIA: 'default',
 };
 
 const OP_LABEL: Record<AuditRecord['operation'], string> = {
@@ -47,6 +48,7 @@ const OP_LABEL: Record<AuditRecord['operation'], string> = {
   DELETE_TORRENT: 'TORRENT DELETE',
   REMOVE_QUEUE: 'QUEUE REMOVE',
   REMOVE_BLOCKLIST: 'BLOCKLIST REMOVE',
+  MOVE_MEDIA: 'ROOT FOLDER',
 };
 
 function serviceLabel(service: AuditRecord['service']): string {
@@ -56,7 +58,7 @@ function serviceLabel(service: AuditRecord['service']): string {
 
 function countLabel(record: AuditRecord): string {
   const count = record.fileCount;
-  if (record.operation === 'DELETE_MEDIA') {
+  if (record.operation === 'DELETE_MEDIA' || record.operation === 'MOVE_MEDIA') {
     const noun = record.mediaType === 'series' ? 'series' : record.mediaType;
     return `${count} ${noun}${count === 1 || noun === 'series' ? '' : 's'}`;
   }
@@ -129,6 +131,9 @@ function OperationsList() {
             const paths = Array.isArray(r.details?.paths) ? (r.details!.paths as string[]) : null;
             const totalBytes = typeof r.details?.totalBytes === 'number' ? (r.details!.totalBytes as number) : null;
             const fields = Array.isArray(r.details?.fields) ? (r.details!.fields as string[]) : null;
+            const rootFolder = r.operation === 'MOVE_MEDIA' && typeof r.details?.rootFolderPath === 'string'
+              ? r.details.rootFolderPath
+              : null;
             return (
               <div key={r.id} className="rounded-xl border bg-muted/30 p-3.5">
                 <div className="flex items-center justify-between gap-2">
@@ -148,8 +153,17 @@ function OperationsList() {
                   {totalBytes != null ? ` · ${formatBytes(totalBytes)}` : ''}
                   {/* The choice made; a failed operation may not have deleted anything. */}
                   {r.filesDeleted === true ? (r.success ? ' · files/data deleted' : ' · files/data were to be deleted') : r.filesDeleted === false ? ' · files/data kept' : ''}
+                  {rootFolder
+                    // The *arr accepts the change and queues the move; success is not the move finishing.
+                    ? r.details?.moveFiles === true
+                      ? (r.success ? ' · file move queued' : ' · files were to be moved')
+                      : ' · files not moved'
+                    : ''}
                   {' · by '}{r.username}
                 </p>
+                {rootFolder && (
+                  <p className="mt-1 break-all text-[11px] font-mono text-muted-foreground/80">→ {rootFolder}</p>
+                )}
                 {paths?.length ? (
                   <p className="mt-1 break-all text-[11px] font-mono text-muted-foreground/80">
                     {paths.slice(0, 3).join(' • ')}{paths.length > 3 ? ` • +${paths.length - 3} more` : ''}
