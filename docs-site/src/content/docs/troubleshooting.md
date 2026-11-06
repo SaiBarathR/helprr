@@ -9,8 +9,8 @@ description: What Helprr's messages mean, and what to do about each one.
 
 `docker compose up` stops with this when Docker has no room for another network. Each
 Compose app gets its own network, and Docker's default settings have room for about 30,
-so a computer that already runs many apps runs out. Nothing of Helprr's was created
-yet; fix it and run the same command again.
+so a computer that already runs many apps runs out. Helprr has not started; its
+volumes may already exist, which is fine. Fix it and run the same command again.
 
 - Remove the networks no container uses (an app you stopped keeps its network until it
   is removed):
