@@ -496,8 +496,7 @@ html[data-scheme='light'] :is([class*='bg-pink-400/'], [class*='bg-pink-500/']) 
    on series the tall overview/Play block spans the hero, download and first
    facts rows (its progress wrapper always renders); on movies the hero spans
    the short overview's row and the first row of the actions, which take the
-   overview's place when there is none. YouTube and Twitch share
-   .detail-grid-movie without a hero and keep its plain layout. */
+   overview's place when there is none. */
 @container (min-width: 56rem) {
   .detail-grid {
     display: grid;

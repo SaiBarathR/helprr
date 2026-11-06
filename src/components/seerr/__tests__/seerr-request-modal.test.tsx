@@ -9,9 +9,11 @@ const mocks = vi.hoisted(() => ({
   tags: { defaultTags: [] as number[], tags: [] as { id: number; label: string }[] },
   service: {} as Record<string, unknown>,
   posts: [] as Array<{ url: string; body: Record<string, unknown> }>,
+  mobile: false,
 }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 vi.mock('@/components/permission-provider', () => ({ useMe: () => mocks.me }));
+vi.mock('@/hooks/use-is-mobile', () => ({ useIsMobile: () => mocks.mobile }));
 
 import { SeerrRequestModal } from '../seerr-request-modal';
 
@@ -29,6 +31,7 @@ beforeEach(() => {
   mocks.tags = { defaultTags: [], tags: [] };
   mocks.service = {};
   mocks.posts = [];
+  mocks.mobile = false;
   localStorage.clear();
   (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
@@ -128,4 +131,26 @@ it('does not apply the remembered choice when editing an existing request', asyn
   const post = await submitAndRead();
   expect(post.url).toBe('/api/seerr/requests/11');
   expect(post.body).toEqual(expect.objectContaining({ profileId: 4, rootFolder: '/movies' }));
+});
+
+it('opens as a bottom drawer on a phone and as a dialog on wider screens (gap plan X1)', async () => {
+  mocks.me = { role: 'member', seerrUserId: null };
+  await render();
+  await vi.waitFor(() => expect(submitButton()).toBeTruthy());
+  expect(document.querySelector('[data-slot="dialog-content"]')).toBeTruthy();
+  expect(document.querySelector('[data-slot="drawer-content"]')).toBeNull();
+  await act(async () => root.unmount());
+
+  mocks.mobile = true;
+  root = createRoot(document.getElementById('root')!);
+  await render();
+  await vi.waitFor(() => expect(submitButton()).toBeTruthy());
+  const drawer = document.querySelector('[data-slot="drawer-content"]');
+  expect(drawer).toBeTruthy();
+  expect(document.querySelector('[data-slot="dialog-content"]')).toBeNull();
+  expect(drawer!.textContent).toContain('Request Movie');
+  expect(drawer!.textContent).toContain('The Matrix');
+
+  const post = await submitAndRead();
+  expect(post.url).toBe('/api/seerr/requests');
 });

@@ -25,6 +25,7 @@ export function SeriesHero({
   isAnimeSeries,
   anime,
   tmdbData,
+  holdBackdrop,
   poster,
   statusLabel,
   statusColor,
@@ -36,6 +37,8 @@ export function SeriesHero({
   isAnimeSeries: boolean;
   anime: SeriesAnime;
   tmdbData: DiscoverTvFullDetail | null;
+  /** TMDB is still loading: keep the backdrop's space so the page does not jump. */
+  holdBackdrop: boolean;
   poster: string | null | undefined;
   statusLabel: string;
   statusColor: string;
@@ -47,7 +50,7 @@ export function SeriesHero({
     animeEntries, animeDetailsById, animePrimaryTitle, expandedAnimeTabId, setExpandedAnimeTabId,
     activeAnimeIdx, selectAnimeTab, animeDetail, nextAiringSeconds, activeDetailLoading, animeLoading,
   } = anime;
-  const animeHero = isAnimeSeries && (animeDetail || animeEntries.length > 0);
+  const animeHero = isAnimeSeries && (animeDetail || animeEntries.length > 0 || animeLoading);
   return (
     <div className={animeHero ? 'detail-hero' : 'detail-hero detail-hero-split'}>
       {isAnimeSeries && animeEntries.length > 1 && (
@@ -116,8 +119,8 @@ export function SeriesHero({
           nextAiringSeconds={formatCountdown(nextAiringSeconds ?? 0)}
           nextAiringEpisode={animeDetail.nextAiringEpisode}
         />
-      ) : isAnimeSeries && animeEntries.length > 0 ? (
-        // Active tab's detail is loading (lazy per-tab fetch) — hero-height placeholder.
+      ) : isAnimeSeries && (animeEntries.length > 0 || animeLoading) ? (
+        // The mapping or the active tab's detail is loading (lazy per-tab fetch) — hero-height placeholder.
         <div className="-mx-2 md:-mx-6">
           <div className="relative flex h-[220px] w-full items-center justify-center bg-muted/20">
             {activeDetailLoading || animeLoading ? (
@@ -137,18 +140,20 @@ export function SeriesHero({
             <Skeleton className="h-4 w-1/3" />
           </div>
         </div>
-      ) : tmdbData?.backdropPath ? (
+      ) : tmdbData?.backdropPath || holdBackdrop ? (
         <>
           <div className="detail-hero-banner relative -mx-2 md:-mx-6 h-[220px] overflow-hidden bg-muted/40">
-            <HeroImage
-              src={toCachedImageSrc(tmdbData.backdropPath, 'tmdb', { width: 1280 }) || tmdbData.backdropPath}
-              alt=""
-              fill
-              sizes="100vw"
-              className="object-cover"
-              priority
-              unoptimized
-            />
+            {tmdbData?.backdropPath && (
+              <HeroImage
+                src={toCachedImageSrc(tmdbData.backdropPath, 'tmdb', { width: 1280 }) || tmdbData.backdropPath}
+                alt=""
+                fill
+                sizes="100vw"
+                className="object-cover"
+                priority
+                unoptimized
+              />
+            )}
             <div className="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent light:via-background/25" />
             {/* Watchlist + schedule alert icons — top right, mirrors discover hero */}
             <div className="absolute top-2 right-2 flex items-center gap-1.5">
@@ -212,7 +217,7 @@ export function SeriesHero({
                 )}
               </div>
           </div>
-          {tmdbData.tagline && (
+          {tmdbData?.tagline && (
             <p className="mt-3 text-sm italic text-muted-foreground">&ldquo;{tmdbData.tagline}&rdquo;</p>
           )}
           </div>

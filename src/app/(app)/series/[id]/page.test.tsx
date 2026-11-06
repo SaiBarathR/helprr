@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   caps: new Set<string>(),
   role: 'admin' as 'admin' | 'member',
+  tmdbConfigured: true,
   push: vi.fn(),
   toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() },
   search: 'instance=son-1',
@@ -25,7 +26,7 @@ vi.mock('next/navigation', () => ({
   usePathname: () => '/series/7',
 }));
 vi.mock('@/components/layout/navigation-provider', () => ({ useAppRouter: () => ({ push: mocks.push, replace: vi.fn(), back: vi.fn() }) }));
-vi.mock('@/components/permission-provider', () => ({ useCan: (cap: string) => mocks.caps.has(cap), useMe: () => ({ role: mocks.role }) }));
+vi.mock('@/components/permission-provider', () => ({ useCan: (cap: string) => mocks.caps.has(cap), useMe: () => ({ role: mocks.role, tmdbConfigured: mocks.tmdbConfigured }) }));
 vi.mock('sonner', () => ({ toast: mocks.toast }));
 vi.mock('@/lib/arr-command', () => ({ pollCommand: vi.fn(async () => 'completed') }));
 vi.mock('@/lib/hooks/use-external-urls', () => ({
@@ -184,6 +185,7 @@ beforeEach(() => {
   mocks.search = `instance=son-1&case=${caseCounter}`;
   mocks.caps = new Set(['activity.manage', 'series.editMonitoring', 'series.editTags', 'series.changePath', 'series.add', 'series.delete', 'series.manageFiles', 'scheduledAlerts.edit', 'anime.view', 'discover.view']);
   mocks.role = 'admin';
+  mocks.tmdbConfigured = true;
   mocks.sent = [];
   mocks.remapResult = null;
   mocks.contextMenus = false;
@@ -223,6 +225,35 @@ const rowValue = (label: string) => {
 };
 
 describe('series detail page (characterization)', () => {
+  it('holds the backdrop space while TMDB loads, so the page does not jump when it arrives (gap plan X1)', async () => {
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    mocks.routes['GET /api/discover/tv/95396'] = async () => { await held; return Response.json(tmdb); };
+    renderPage();
+    await screen.findAllByRole('heading', { level: 1, name: 'Severance' });
+    const backdrop = () => document.querySelector('.h-\\[220px\\]');
+    expect(backdrop()).toBeTruthy();
+    expect(backdrop()!.querySelector('img')).toBeNull();
+
+    release();
+    await waitFor(() => expect(backdrop()!.querySelector('img')).toBeTruthy());
+  });
+
+  it('holds no backdrop space without TMDB set up', async () => {
+    mocks.tmdbConfigured = false;
+    mocks.routes['GET /api/discover/tv/95396'] = () => new Promise<Response>(() => {});
+    renderPage();
+    await screen.findAllByRole('heading', { level: 1, name: 'Severance' });
+    expect(document.querySelector('.h-\\[220px\\]')).toBeNull();
+  });
+
+  it('falls back to the flat poster layout when TMDB has no backdrop', async () => {
+    mocks.routes['GET /api/discover/tv/95396'] = () => Response.json({ ...tmdb, backdropPath: null });
+    renderPage();
+    await screen.findAllByRole('heading', { level: 1, name: 'Severance' });
+    await waitFor(() => expect(document.querySelector('.h-\\[220px\\]')).toBeNull());
+  });
+
   it('shows the series, its facts, seasons, cast and TMDB sections', async () => {
     renderPage();
     expect(await screen.findAllByRole('heading', { level: 1, name: 'Severance' })).toHaveLength(2);
@@ -466,6 +497,16 @@ describe('series detail page (characterization)', () => {
 
   describe('an anime series', () => {
     const anime = () => standardSeries({ seriesType: 'anime', title: 'Frieren', tmdbId: 209867 });
+
+    it('holds the hero band while the AniList mapping loads (gap plan X1)', async () => {
+      mocks.routes['GET /api/sonarr/7'] = () => Response.json(anime());
+      mocks.routes['GET /api/sonarr/7/anime'] = () => new Promise<Response>(() => {});
+      renderPage();
+      await screen.findAllByRole('heading', { level: 1, name: 'Frieren' });
+      const band = document.querySelector('.h-\\[220px\\]')!;
+      expect(band).toBeTruthy();
+      expect(band.closest('.detail-hero')!.classList).not.toContain('detail-hero-split');
+    });
 
     it('shows AniList detail for the mapped season, with tabs, facts and links', async () => {
       mocks.routes['GET /api/sonarr/7'] = () => Response.json(anime());

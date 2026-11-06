@@ -135,6 +135,11 @@ export default function SeriesDetailPage() {
     staleTime: 30 * 60_000,
   });
   const tmdbData = tmdbQuery.data ?? null;
+  // Hold the backdrop's space while the first TMDB request is out, so the page
+  // does not jump down when the backdrop arrives. Not without TMDB, and not
+  // through a retry, so a failure falls back to the flat layout quickly.
+  const tmdbConfigured = useMe()?.tmdbConfigured === true;
+  const holdBackdrop = tmdbConfigured && tmdbQuery.isLoading && tmdbQuery.failureCount === 0;
 
   // Jellyfin watch status — series aggregate (shared map) + per-episode map (shared hook).
   const seriesWatchQuery = {
@@ -321,6 +326,7 @@ export default function SeriesDetailPage() {
               isAnimeSeries={isAnimeSeries}
               anime={anime}
               tmdbData={tmdbData}
+              holdBackdrop={holdBackdrop}
               poster={poster}
               statusLabel={statusLabel}
               statusColor={statusColor}

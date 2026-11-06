@@ -405,7 +405,7 @@ function BlocklistDrawer({
   const date = item ? new Date(item.date) : null;
   return (
     <Drawer open={!!item} onOpenChange={(open) => { if (!open) onClose(); }}>
-      <DrawerContent className="max-h-[85vh]">
+      <DrawerContent>
         {item && (
           <>
             <DrawerHeader className="text-left">

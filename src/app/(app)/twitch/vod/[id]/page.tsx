@@ -154,35 +154,41 @@ export default function TwitchVodPage({ params }: { params: Promise<{ id: string
           />
         )}
       />
-      <div className="space-y-6 animate-content-in">
-        <div className="-mx-2 md:-mx-6">
-          <div className="relative h-[220px] w-full overflow-hidden bg-muted/40 md:h-[300px]">
-            {thumbnail && <HeroImage src={thumbnail} alt="" fill sizes="100vw" className="object-cover" priority unoptimized />}
-            <div className="absolute inset-0 bg-gradient-to-t from-background via-background/40 to-transparent light:via-background/25" />
-          </div>
-          <div className="relative -mt-[72px] flex gap-3.5 px-2 md:px-6">
-            <QuickContextMenu label={`${video.title} actions`} groups={groups}>
-              <Link href={`/twitch/streamers/${video.creator.id}`} aria-label={video.creator.displayName} className="block shrink-0 self-end">
-                <CreatorAvatar url={video.creator.profileImageUrl} size={64} className="shadow-lg ring-1 ring-border/20" />
-              </Link>
-            </QuickContextMenu>
-            <div className="min-w-0 flex-1">
-              <Badge variant={status.variant ?? 'outline'} className={cn('mb-1.5 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide', status.className)}>
-                {status.label}
-              </Badge>
-              <h1 className="line-clamp-3 text-xl font-bold leading-tight">{video.title}</h1>
-              <p className="mt-1 truncate text-sm text-muted-foreground">
-                <Link href={`/twitch/streamers/${video.creator.id}`}>{video.creator.displayName}</Link>
-                {' · '}{formatDate(new Date(video.sourceCreatedAt))}{' · '}{formatDuration(video.durationSeconds)}
-              </p>
+      <div className="@container animate-content-in">
+        {/* Phones stack everything under a full-bleed hero. Once the content area
+            is wide (56rem, so the sidebar counts, as on the other detail pages)
+            the thumbnail sits on the left with the title, facts and actions beside
+            it, and the description and chapters run full width below. The dense
+            flow keeps the right column in DOM order; its last row soaks up the
+            thumbnail's height. */}
+        <div className="space-y-6 @4xl:grid @4xl:grid-flow-row-dense @4xl:grid-cols-[minmax(0,1fr)_24rem] @4xl:grid-rows-[auto_auto_auto_1fr] @4xl:gap-x-8 @4xl:gap-y-5 @4xl:space-y-0 @4xl:pt-3">
+          <div className="-mx-2 md:-mx-6 @4xl:contents">
+            <div className="relative h-[220px] w-full overflow-hidden bg-muted/40 md:h-[300px] @4xl:col-start-1 @4xl:row-span-4 @4xl:row-start-1 @4xl:h-auto @4xl:aspect-video @4xl:self-start @4xl:rounded-xl">
+              {thumbnail && <HeroImage src={thumbnail} alt="" fill sizes="(min-width: 1024px) 66vw, 100vw" className="object-cover" priority unoptimized />}
+              <div className="absolute inset-0 bg-gradient-to-t from-background via-background/40 to-transparent light:via-background/25 @4xl:hidden" />
+            </div>
+            <div className="relative -mt-[72px] flex gap-3.5 px-2 md:px-6 @4xl:col-start-2 @4xl:mt-0 @4xl:px-0">
+              <QuickContextMenu label={`${video.title} actions`} groups={groups}>
+                <Link href={`/twitch/streamers/${video.creator.id}`} aria-label={video.creator.displayName} className="block shrink-0 self-end">
+                  <CreatorAvatar url={video.creator.profileImageUrl} size={64} className="shadow-lg ring-1 ring-border/20" />
+                </Link>
+              </QuickContextMenu>
+              <div className="min-w-0 flex-1">
+                <Badge variant={status.variant ?? 'outline'} className={cn('mb-1.5 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide', status.className)}>
+                  {status.label}
+                </Badge>
+                <h1 className="line-clamp-3 text-xl font-bold leading-tight">{video.title}</h1>
+                <p className="mt-1 truncate text-sm text-muted-foreground">
+                  <Link href={`/twitch/streamers/${video.creator.id}`}>{video.creator.displayName}</Link>
+                  {' · '}{formatDate(new Date(video.sourceCreatedAt))}{' · '}{formatDuration(video.durationSeconds)}
+                </p>
+              </div>
             </div>
           </div>
-        </div>
 
-        <div className="@container">
-          <div className="detail-grid detail-grid-movie flex flex-col gap-6">
+          <div className="flex flex-col gap-6 @4xl:contents">
             {video.activeJob && (
-              <Link href="/twitch/queue" className="block rounded-xl border border-primary/20 bg-primary/[0.04] px-3 py-2.5 [grid-area:progress]">
+              <Link href="/twitch/queue" className="block rounded-xl border border-primary/20 bg-primary/[0.04] px-3 py-2.5 @4xl:col-start-2">
                 <span className="flex items-center gap-2 text-sm font-medium">
                   <Download className="h-4 w-4 shrink-0 text-primary" />
                   <span className="min-w-0 flex-1 truncate">{video.activeJob.stage ? stageLabel(video.activeJob.stage) : startsLabel(video.activeJob) ?? 'In the queue'}</span>
@@ -193,7 +199,7 @@ export default function TwitchVodPage({ params }: { params: Promise<{ id: string
               </Link>
             )}
 
-            <div className="[grid-area:facts]">
+            <div className="@4xl:col-start-2">
               <FactRow label="Type" value={VIDEO_TYPE_LABELS[video.type]} />
               {video.category && <FactRow label="Category" value={video.category} />}
               <FactRow label="Views" value={video.viewCount.toLocaleString()} />
@@ -219,12 +225,12 @@ export default function TwitchVodPage({ params }: { params: Promise<{ id: string
             </div>
 
             {video.description && (
-              <div className="[grid-area:overview]">
+              <div className="@4xl:col-span-2">
                 <ClampedText text={video.description} className="whitespace-pre-wrap" />
               </div>
             )}
 
-            <div className="flex flex-col gap-3 [grid-area:actions]">
+            <div className="flex flex-col gap-3 @4xl:col-start-2">
               {muted > 0 && (
                 <div className="flex items-start gap-2.5 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 text-sm text-amber-300">
                   <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
@@ -258,7 +264,7 @@ export default function TwitchVodPage({ params }: { params: Promise<{ id: string
             </div>
 
             {(video.chapters?.length ?? 0) > 0 && (
-              <section aria-label="Chapters" className="[grid-area:cast]">
+              <section aria-label="Chapters" className="@4xl:col-span-2">
                 <h2 className="mb-2 text-base font-semibold">Chapters</h2>
                 <div className="divide-y divide-border/50 overflow-hidden rounded-xl bg-card">
                   {video.chapters!.map((chapter) => (
