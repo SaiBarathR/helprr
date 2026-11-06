@@ -43,12 +43,13 @@ import { useUIStore } from '@/lib/store';
 import { matchesWatchFilter } from '@/lib/watch-status-filter';
 import { useBulkSelection } from '@/lib/use-bulk-selection';
 import { BulkActionBar } from '@/components/media/bulk-action-bar';
+import type { BulkEditChanges } from '@/components/media/bulk-edit-sheet';
 import { getListViewState, setListViewState } from '@/lib/media-list-cache';
 import { useQuery } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/query-keys';
 import { jsonFetcher, ensureArray } from '@/lib/query-fetch';
 import { isQueryOffline } from '@/lib/network-error';
-import { bulkFanOut, parseSeriesSearchTallies, reportBulk } from '@/lib/bulk-fan-out';
+import { bulkFanOut, itemsOnSucceededInstances, parseSeriesSearchTallies, reportBulk } from '@/lib/bulk-fan-out';
 import { useUnionTags } from '@/lib/hooks/use-reference-data';
 import { type ContextActionGroup } from '@/components/ui/quick-context-menu';
 import { MediaDeleteConfirmDialog } from '@/components/media/media-delete-confirm-dialog';
@@ -168,6 +169,7 @@ function getPosterColumns(width: number, posterSize: 'small' | 'medium' | 'large
 export default function SeriesPage() {
   const { toolbarRef, toolbarStyle } = useToolbarHeight();
   const me = useMe();
+  const isAdmin = me?.role === 'admin';
   const canFilterByWatchStatus = me?.jellyfinLinked === true && hasCapability(me, 'jellyfin.view');
   const watchLookup = useWatchLookup(canFilterByWatchStatus);
   const watchMapReady = useWatchMapReady(canFilterByWatchStatus);
@@ -181,7 +183,7 @@ export default function SeriesPage() {
   const canDelete = useCan('series.delete');
   const canSearch = useCan('activity.manage');
   const { setWatched, canWrite: canSetWatched, isWriting: isWritingWatched } = useWatchStatus();
-  const canBulk = canMonitor || canTag || canDelete || canSearch;
+  const canBulk = canMonitor || canTag || canDelete || canSearch || canChangePath || isAdmin;
   const {
     selectionMode, selectedKeys, count: selectedCount,
     toggle, selectMany, deselectMany, enter, exit,
@@ -444,6 +446,40 @@ export default function SeriesPage() {
     (deleteFiles: boolean) => runDelete(selectedSeries, deleteFiles, true).then(() => undefined),
     [runDelete, selectedSeries],
   );
+
+  // "More" sheet. Profile ids and root folders are per-instance, so the sheet offers
+  // those pickers only when every selected item is on one instance (null = mixed).
+  const selectedInstance = useMemo(() => {
+    const ids = new Set(selectedSeries.map((item) => item.instanceId));
+    return ids.size === 1 ? [...ids][0] : null;
+  }, [selectedSeries]);
+
+  const handleBulkEdit = useCallback(async (changes: BulkEditChanges) => {
+    const { ok, fail, firstError, failedInstanceIds } = await fanOutItems(selectedSeries, (instanceId, ids) =>
+      fetch(`/api/sonarr/editor${instanceId ? `?instanceId=${encodeURIComponent(instanceId)}` : ''}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids, ...changes }),
+      }));
+    reportBulk('Updated', ok, fail, { noun: 'series', pluralNoun: 'series', reason: firstError });
+    await refetchSeries();
+    if (fail === 0) exit();
+    // Partial failure: the sheet stays open with only the failed instances' items selected.
+    else deselectMany(itemsOnSucceededInstances(selectedSeries, failedInstanceIds).map(keyOf));
+    return fail === 0;
+  }, [fanOutItems, selectedSeries, refetchSeries, exit, deselectMany, keyOf]);
+
+  const handleOrganize = useCallback(async () => {
+    const { ok, fail, firstError, failedInstanceIds } = await fanOutItems(selectedSeries, (instanceId, ids) =>
+      fetch(`/api/sonarr/command${instanceId ? `?instanceId=${encodeURIComponent(instanceId)}` : ''}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'RenameSeries', seriesIds: ids }),
+      }));
+    reportBulk('Organizing', ok, fail, { noun: 'series', pluralNoun: 'series', reason: firstError });
+    if (fail === 0) exit();
+    // Partial failure: the sheet stays open with only the failed instances' items selected.
+    else deselectMany(itemsOnSucceededInstances(selectedSeries, failedInstanceIds).map(keyOf));
+    return fail === 0;
+  }, [fanOutItems, selectedSeries, exit, deselectMany, keyOf]);
 
   const confirmSingleDelete = useCallback(async (deleteFiles: boolean) => {
     if (!deleteTarget || deletingTarget) return;
@@ -1081,6 +1117,15 @@ export default function SeriesPage() {
           onSearch={handleBulkSearch}
           onDelete={handleDelete}
           itemNoun="series"
+          bulkEdit={{
+            service: 'sonarr',
+            instanceId: selectedInstance,
+            isAdmin,
+            canChangePath,
+            canOrganize: canSearch,
+            onApply: handleBulkEdit,
+            onOrganize: handleOrganize,
+          }}
         />
       )}
     </div>

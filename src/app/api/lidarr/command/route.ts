@@ -11,15 +11,16 @@ function toPositiveInt(value: unknown): number | null {
 }
 
 /** Map an array to positive integers, returning null if any entry is invalid. */
+// Duplicates are dropped so a repeated id isn't searched or renamed twice.
 function toPositiveIntArray(value: unknown): number[] | null {
   if (!Array.isArray(value) || value.length === 0) return null;
-  const out: number[] = [];
+  const seen = new Set<number>();
   for (const entry of value) {
     const n = toPositiveInt(entry);
     if (n === null) return null;
-    out.push(n);
+    seen.add(n);
   }
-  return out;
+  return [...seen];
 }
 
 async function postHandler(request: NextRequest) {
@@ -103,6 +104,15 @@ async function postHandler(request: NextRequest) {
           );
         }
         result = await client.renameArtistFiles(artistId, files);
+        break;
+      }
+      case 'RenameArtist': {
+        // Bulk Organize: rename every track file of each artist to the naming format.
+        const artistIds = toPositiveIntArray(body.artistIds);
+        if (artistIds === null) {
+          return NextResponse.json({ error: 'artistIds must be a non-empty array of positive integers' }, { status: 400 });
+        }
+        result = await client.renameArtists(artistIds);
         break;
       }
       default:

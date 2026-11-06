@@ -19,11 +19,12 @@ import type {
 // share one cached entry instead of each re-fetching it.
 const REFERENCE_STALE = 10 * 60_000;
 
-export function useQualityProfiles(service: ArrService, instanceId?: string) {
+export function useQualityProfiles(service: ArrService, instanceId?: string, enabled = true) {
   return useQuery({
     queryKey: queryKeys.qualityProfiles(service, instanceId),
     queryFn: jsonFetcher<QualityProfile[]>(`/api/${service}/qualityprofiles`, instanceId),
     staleTime: REFERENCE_STALE,
+    enabled,
     select: ensureArray,
   });
 }
@@ -155,11 +156,12 @@ export function useUnionTags(service: ArrService, instanceIds: string[]): Tag[] 
   });
 }
 
-export function useMetadataProfiles(instanceId?: string) {
+export function useMetadataProfiles(instanceId?: string, enabled = true) {
   return useQuery({
     queryKey: queryKeys.metadataProfiles(instanceId),
     queryFn: jsonFetcher<LidarrMetadataProfile[]>('/api/lidarr/metadataprofiles', instanceId),
     staleTime: REFERENCE_STALE,
+    enabled,
     select: ensureArray,
   });
 }

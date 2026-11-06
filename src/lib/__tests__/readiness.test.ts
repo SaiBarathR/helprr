@@ -111,7 +111,8 @@ describe('migration readiness', () => {
     expect(names).toContain('20261106190711_whats_new_last_seen_version');
     expect(names).toContain('20261107010000_password_links');
     expect(names).toContain('20261107160000_user_date_time_format');
+    expect(names).toContain('20261107180000_move_media_audit');
     expect(names).not.toContain('migration_lock.toml');
-    expect(names).toHaveLength(28);
+    expect(names).toHaveLength(29);
   });
 });

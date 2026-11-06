@@ -131,12 +131,19 @@ export class SonarrClient {
     await this.delete(`/api/v3/series/${id}`, { deleteFiles });
   }
 
-  // Bulk editor — one request for monitored/tags across many series.
+  // Bulk editor — one request for monitored/tags/settings across many series. Sonarr
+  // applies only the fields present; moveFiles moves each series' files into rootFolderPath.
   async seriesEditor(body: {
     seriesIds: number[];
     monitored?: boolean;
     tags?: number[];
     applyTags?: 'add' | 'remove' | 'replace';
+    qualityProfileId?: number;
+    rootFolderPath?: string;
+    moveFiles?: boolean;
+    seriesType?: string;
+    seasonFolder?: boolean;
+    monitorNewItems?: string;
   }): Promise<SonarrSeries[]> {
     return this.put<SonarrSeries[]>('/api/v3/series/editor', body);
   }
@@ -264,10 +271,11 @@ export class SonarrClient {
     return this.get('/api/v3/command');
   }
 
-  async renameSeries(seriesId: number): Promise<CommandResponse> {
+  // Sonarr's RenameSeries command takes a list (seriesIds); a singular seriesId is ignored.
+  async renameSeries(seriesIds: number[]): Promise<CommandResponse> {
     return this.post<CommandResponse>('/api/v3/command', {
       name: 'RenameSeries',
-      seriesId,
+      seriesIds,
     });
   }
 

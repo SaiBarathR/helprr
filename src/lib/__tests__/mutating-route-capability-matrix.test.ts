@@ -354,17 +354,17 @@ const SPECIAL_POLICIES: Record<string, SpecialPolicy> = {
   'PUT /api/sonarr/editor': {
     kind: 'field-capability',
     marker: 'guardBulkEdit',
-    capabilities: ['series.editMonitoring', 'series.editTags'],
+    capabilities: ['series.editMonitoring', 'series.editTags', 'series.changePath'],
   },
   'PUT /api/radarr/editor': {
     kind: 'field-capability',
     marker: 'guardBulkEdit',
-    capabilities: ['movies.editMonitoring', 'movies.editTags'],
+    capabilities: ['movies.editMonitoring', 'movies.editTags', 'movies.changePath'],
   },
   'PUT /api/lidarr/editor': {
     kind: 'field-capability',
     marker: 'guardBulkEdit',
-    capabilities: ['music.editMonitoring', 'music.editTags'],
+    capabilities: ['music.editMonitoring', 'music.editTags', 'music.changePath'],
   },
   'PUT /api/sonarr/[id]': {
     kind: 'field-capability',

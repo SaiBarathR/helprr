@@ -32,16 +32,17 @@ import { useRefreshAction } from '@/lib/hooks/use-refresh-action';
 import { useToolbarHeight } from '@/lib/hooks/use-toolbar-height';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { Filter, ArrowUpDown, Plus, RefreshCw, ListChecks, Eye, EyeOff, Search, Trash2, Pencil, FileText, FileEdit } from 'lucide-react';
-import { useCan } from '@/components/permission-provider';
+import { useCan, useMe } from '@/components/permission-provider';
 import { useUIStore } from '@/lib/store';
 import { useBulkSelection } from '@/lib/use-bulk-selection';
 import { BulkActionBar } from '@/components/media/bulk-action-bar';
+import type { BulkEditChanges } from '@/components/media/bulk-edit-sheet';
 import { getListViewState, setListViewState } from '@/lib/media-list-cache';
 import { useQuery } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/query-keys';
 import { jsonFetcher, ensureArray } from '@/lib/query-fetch';
 import { isQueryOffline } from '@/lib/network-error';
-import { bulkFanOut, reportBulk } from '@/lib/bulk-fan-out';
+import { bulkFanOut, itemsOnSucceededInstances, reportBulk } from '@/lib/bulk-fan-out';
 import { useUnionTags } from '@/lib/hooks/use-reference-data';
 import { type ContextActionGroup } from '@/components/ui/quick-context-menu';
 import { MediaDeleteConfirmDialog } from '@/components/media/media-delete-confirm-dialog';
@@ -151,6 +152,7 @@ function trackProgressLabel(artist: LidarrArtistListItem): string {
  */
 export default function MusicPage() {
   const { toolbarRef, toolbarStyle } = useToolbarHeight();
+  const isAdmin = useMe()?.role === 'admin';
   const canAddMusic = useCan('music.add');
   const canMonitor = useCan('music.editMonitoring');
   const canTag = useCan('music.editTags');
@@ -158,7 +160,7 @@ export default function MusicPage() {
   const canEditArtist = canMonitor || canTag || canChangePath;
   const canDelete = useCan('music.delete');
   const canSearch = useCan('activity.manage');
-  const canBulk = canMonitor || canTag || canDelete || canSearch;
+  const canBulk = canMonitor || canTag || canDelete || canSearch || canChangePath || isAdmin;
   const {
     selectionMode, selectedKeys, count: selectedCount,
     toggle, selectMany, deselectMany, enter, exit,
@@ -411,6 +413,40 @@ export default function MusicPage() {
     (deleteFiles: boolean) => runDelete(selectedArtists, deleteFiles, true).then(() => undefined),
     [runDelete, selectedArtists],
   );
+
+  // "More" sheet. Profile ids and root folders are per-instance, so the sheet offers
+  // those pickers only when every selected item is on one instance (null = mixed).
+  const selectedInstance = useMemo(() => {
+    const ids = new Set(selectedArtists.map((item) => item.instanceId));
+    return ids.size === 1 ? [...ids][0] : null;
+  }, [selectedArtists]);
+
+  const handleBulkEdit = useCallback(async (changes: BulkEditChanges) => {
+    const { ok, fail, firstError, failedInstanceIds } = await fanOutItems(selectedArtists, (instanceId, ids) =>
+      fetch(`/api/lidarr/editor${instanceId ? `?instanceId=${encodeURIComponent(instanceId)}` : ''}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids, ...changes }),
+      }));
+    reportBulk('Updated', ok, fail, { noun: 'artist', pluralNoun: 'artists', reason: firstError });
+    await refetchArtists();
+    if (fail === 0) exit();
+    // Partial failure: the sheet stays open with only the failed instances' items selected.
+    else deselectMany(itemsOnSucceededInstances(selectedArtists, failedInstanceIds).map(keyOf));
+    return fail === 0;
+  }, [fanOutItems, selectedArtists, refetchArtists, exit, deselectMany, keyOf]);
+
+  const handleOrganize = useCallback(async () => {
+    const { ok, fail, firstError, failedInstanceIds } = await fanOutItems(selectedArtists, (instanceId, ids) =>
+      fetch(`/api/lidarr/command${instanceId ? `?instanceId=${encodeURIComponent(instanceId)}` : ''}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'RenameArtist', artistIds: ids }),
+      }));
+    reportBulk('Organizing', ok, fail, { noun: 'artist', pluralNoun: 'artists', reason: firstError });
+    if (fail === 0) exit();
+    // Partial failure: the sheet stays open with only the failed instances' items selected.
+    else deselectMany(itemsOnSucceededInstances(selectedArtists, failedInstanceIds).map(keyOf));
+    return fail === 0;
+  }, [fanOutItems, selectedArtists, exit, deselectMany, keyOf]);
 
   const confirmSingleDelete = useCallback(async (deleteFiles: boolean) => {
     if (!deleteTarget || deletingTarget) return;
@@ -993,6 +1029,15 @@ export default function MusicPage() {
           onSearch={handleBulkSearch}
           onDelete={handleDelete}
           itemNoun="artist"
+          bulkEdit={{
+            service: 'lidarr',
+            instanceId: selectedInstance,
+            isAdmin,
+            canChangePath,
+            canOrganize: canSearch,
+            onApply: handleBulkEdit,
+            onOrganize: handleOrganize,
+          }}
         />
       )}
     </div>

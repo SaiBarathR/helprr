@@ -136,12 +136,17 @@ export class RadarrClient {
     await this.delete(`/api/v3/movie/${id}`, { deleteFiles, addImportExclusion });
   }
 
-  // Bulk editor — one request for monitored/tags across many movies.
+  // Bulk editor — one request for monitored/tags/settings across many movies. Radarr
+  // applies only the fields present; moveFiles moves each movie's files into rootFolderPath.
   async movieEditor(body: {
     movieIds: number[];
     monitored?: boolean;
     tags?: number[];
     applyTags?: 'add' | 'remove' | 'replace';
+    qualityProfileId?: number;
+    minimumAvailability?: string;
+    rootFolderPath?: string;
+    moveFiles?: boolean;
   }): Promise<RadarrMovie[]> {
     return this.put<RadarrMovie[]>('/api/v3/movie/editor', body);
   }
@@ -410,6 +415,14 @@ export class RadarrClient {
     return this.post<CommandResponse>('/api/v3/command', {
       name: 'RenameFiles',
       movieId,
+    });
+  }
+
+  /** Rename every file of each movie to the naming format (Radarr's RenameMovie command). */
+  async renameMovies(movieIds: number[]): Promise<CommandResponse> {
+    return this.post<CommandResponse>('/api/v3/command', {
+      name: 'RenameMovie',
+      movieIds,
     });
   }
 
