@@ -559,7 +559,7 @@ export default function SeasonDetailPage() {
                     e.stopPropagation();
                     handleToggleEpisodeMonitor(ep.id, !ep.monitored);
                   }}
-                  className="relative min-w-[36px] min-h-[36px] flex items-center justify-center shrink-0 self-center"
+                  className="relative touch-target min-w-[36px] min-h-[36px] flex items-center justify-center shrink-0 self-center"
                 >
                   {ep.monitored ? (
                     <Eye className="h-4 w-4 text-primary" />

@@ -122,7 +122,9 @@ export function SectionHeader({
     // Layout props live in classes so tiny cells can wrap the header onto two
     // lines (title, then badge/controls) instead of crushing the title away.
     <div className="mb-1.5 flex min-w-0 items-center justify-between gap-2 @max-[159px]/cell:flex-wrap">
-      <div className="flex min-w-0 items-center gap-2 overflow-hidden @max-[159px]/cell:flex-wrap">
+      {/* Above the right-hand controls, so their hit areas (the view toggle's
+          grows leftward) never cover a title badge that is a button. */}
+      <div className="relative z-[2] flex min-w-0 items-center gap-2 overflow-hidden @max-[159px]/cell:flex-wrap">
         {title ? (
           <h3
             style={{
@@ -862,6 +864,15 @@ export function FloatingEdit({
 }
 
 // ─── ViewModeToggle (carousel ⇄ list) ─────────────────────────────────
+// The two halves of the 22px pill touch, so each one's 44px hit area grows
+// outward only: the start half to its left, the end half to its right. The
+// header's title side and a link before the pill ("Activity history") sit a
+// layer above it.
+const VIEW_MODE_HIT_AREA = {
+  start: 'relative touch-target-y after:left-auto after:right-0 after:w-11',
+  end: 'relative touch-target-y after:w-11',
+} as const;
+
 export function ViewModeToggle({
   value,
   onChange,
@@ -921,9 +932,7 @@ function ViewModeButton({
       type="button"
       aria-label={label}
       aria-pressed={active}
-      // A taller hit area than the 22px pill; the width stays, since the two
-      // halves touch.
-      className="relative touch-target-y"
+      className={VIEW_MODE_HIT_AREA[corner]}
       onClick={(e) => {
         e.stopPropagation();
         onClick();

@@ -92,7 +92,8 @@ export function Sidebar() {
       // Collapsed, the icon is all there is; the tooltip gives no name.
       aria-label={sidebarCollapsed ? 'Search' : undefined}
       className={cn(
-        'w-full relative flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground',
+        // 44px rows on touch screens (a tablet's icon rail), as for the links.
+        'w-full relative flex items-center gap-3 rounded-md px-3 py-2 pointer-coarse:min-h-11 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground',
         sidebarCollapsed && 'justify-center px-2'
       )}
     >
@@ -119,8 +120,9 @@ export function Sidebar() {
         prefetch={null}
         aria-label={sidebarCollapsed ? label : undefined}
         className={cn(
-          // Shorter rows on short screens so more of the list fits above the footer.
-          'relative flex items-center gap-3 rounded-md px-3 py-2 [@media(max-height:960px)]:py-1.5 text-sm font-medium transition-colors',
+          // Shorter rows on short screens so more of the list fits above the
+          // footer, but never under 44px on a touch screen (a tablet's rail).
+          'relative flex items-center gap-3 rounded-md px-3 py-2 [@media(max-height:960px)]:py-1.5 pointer-coarse:min-h-11 text-sm font-medium transition-colors',
           isActive
             ? 'bg-primary/10 text-primary'
             : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',

@@ -6,8 +6,7 @@ import { HeroImage } from '@/components/media/hero-image';
 import { FadeInImage } from '@/components/media/fade-in-image';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { WatchlistButton } from '@/components/watchlist/watchlist-button';
-import { ScheduledAlertButton } from '@/components/scheduled-alerts/scheduled-alert-dialog';
+import { PosterQuickActions } from '@/components/media/poster-quick-actions';
 import { QuickContextMenu } from '@/components/ui/quick-context-menu';
 import { useCan, useMe, hasCapability } from '@/components/permission-provider';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
@@ -216,22 +215,13 @@ export function MediaPoster({
             <Check className="h-3 w-3 text-green-400" strokeWidth={3} />
           </div>
         ) : (
-          <>
-          {canWatchlist && showPosterOverlayActions && (
-            <WatchlistButton
-              draft={draft}
-              variant="icon"
-              className="inline-flex h-5 w-5 items-center justify-center rounded-md bg-background/60 backdrop-blur-md text-foreground hover:bg-background/80"
-            />
-          )}
-          {canSchedule && showPosterOverlayActions && (
-          <ScheduledAlertButton
-            draft={draft}
-            variant="icon"
-            className="h-5 w-5"
+          <PosterQuickActions
+            watchlistDraft={draft}
+            scheduleDraft={draft}
+            watchlist={canWatchlist && showPosterOverlayActions}
+            schedule={canSchedule && showPosterOverlayActions}
+            buttonClassName="inline-flex h-5 w-5 items-center justify-center rounded-md bg-background/60 backdrop-blur-md text-foreground hover:bg-background/80"
           />
-          )}
-          </>
         )}
       </div>
       {!item.library?.exists && canRequest && (

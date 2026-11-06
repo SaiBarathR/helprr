@@ -361,6 +361,12 @@ interface ButtonProps {
   draft: ScheduledAlertDraft;
   variant?: 'icon' | 'button';
   className?: string;
+  /**
+   * The icon's 44px hit area: `full` (default) grows it both ways; `height`
+   * grows only its height, for spots where a wider area would reach a
+   * neighbour (the poster pair on a mouse).
+   */
+  hitArea?: 'full' | 'height';
   onSaved?: () => void;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
@@ -370,6 +376,7 @@ export function ScheduledAlertButton({
   draft,
   variant = 'icon',
   className,
+  hitArea = 'full',
   onSaved,
   open: controlledOpen,
   onOpenChange,
@@ -396,8 +403,10 @@ export function ScheduledAlertButton({
             'flex items-center justify-center rounded-full bg-background/55 backdrop-blur-md text-foreground hover:bg-background/80 transition-colors',
             'h-9 w-9',
             className,
-            // Taller hit area only: on posters it sits beside the watchlist button.
-            'relative touch-target-y',
+            // After the watchlist button the shared touch-target rule grows
+            // this area rightward, so it never covers that button.
+            'relative',
+            hitArea === 'height' ? 'touch-target-y' : 'touch-target',
           )}
         >
           <Bell className="h-3.5 w-3.5" />

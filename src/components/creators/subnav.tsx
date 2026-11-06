@@ -30,7 +30,9 @@ export function CreatorSubNav({ active }: { active: 'feed' | 'streamers' | 'queu
             aria-label={label}
             aria-current={isActive ? 'page' : undefined}
             className={cn(
-              'inline-flex items-center gap-1.5 rounded-md px-2.5 sm:px-3 py-1.5 text-sm font-medium transition-colors',
+              // 44px wide when only the icon shows (phones); the hit area
+              // adds the height, since the segments sit edge to edge.
+              'relative inline-flex min-w-11 items-center justify-center gap-1.5 rounded-md px-2.5 sm:px-3 py-1.5 text-sm font-medium transition-colors touch-target-y',
               isActive
                 ? 'bg-[var(--hpr-amber)] text-[var(--hpr-ink)] shadow-sm'
                 : 'text-muted-foreground hover:bg-accent hover:text-foreground',

@@ -273,10 +273,13 @@ export function ActivityHistoryWidget({
   ) : null;
   // Shortcut straight to the full history page (sits left of the view-mode switcher)
   // so history is reachable from the dashboard without going via the Activity page.
+  // Its hit area grows leftward (not rightward like the header's other links) and
+  // sits above the switcher's, which grows leftward over this icon.
   const historyNode = (
     <Link
       href="/activity/history"
       aria-label="Activity history"
+      className="z-[2] after:left-auto! after:right-0!"
       onClick={(e) => e.stopPropagation()}
       style={{ display: 'inline-flex', alignItems: 'center', color: 'inherit', marginRight: 4 }}
     >
