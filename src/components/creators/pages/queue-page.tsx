@@ -77,7 +77,8 @@ const WAITING = new Set(['QUEUED', 'RETRY_WAIT', 'BLOCKED']);
 const DONE_SHOWN = 20;
 
 const SECTIONS = [
-  { id: 'active', label: 'Downloading' },
+  // Re-encodes and deletes run here too, so not "Downloading".
+  { id: 'active', label: 'In progress' },
   { id: 'waiting', label: 'Waiting' },
   { id: 'failed', label: 'Failed' },
   { id: 'done', label: 'Done' },
@@ -109,6 +110,15 @@ function diskSize(bytes: number): string {
   return tb >= 1 ? `${tb.toFixed(1)} TB` : gb(bytes);
 }
 
+/** What cancelling a job stops, in the words the menu and the dialog use (as `jobLabel` names them). */
+const CANCEL_NOUNS: Record<string, string> = {
+  REENCODE: 're-encode',
+  DELETE_FILES: 'delete',
+  DELETE_ORIGINAL: 'delete',
+  RESTORE_ORIGINAL: 'restore',
+};
+const cancelNoun = (job: Job) => CANCEL_NOUNS[job.kind] ?? 'download';
+
 function JobRow({ job, onCancel, onRetry }: { job: Job; onCancel?: () => void; onRetry?: () => void }) {
   const platform = useCreatorPlatform();
   const video = job.video;
@@ -138,7 +148,7 @@ function JobRow({ job, onCancel, onRetry }: { job: Job; onCancel?: () => void; o
       id: 'job',
       actions: [
         ...(onRetry ? [{ id: 'retry', label: 'Retry', icon: <RotateCcw className="h-4 w-4" />, onSelect: onRetry }] : []),
-        ...(onCancel ? [{ id: 'cancel', label: 'Cancel download', icon: <X className="h-4 w-4" />, destructive: true, onSelect: onCancel }] : []),
+        ...(onCancel ? [{ id: 'cancel', label: `Cancel ${cancelNoun(job)}`, icon: <X className="h-4 w-4" />, destructive: true, onSelect: onCancel }] : []),
       ],
     },
   ];
@@ -402,9 +412,9 @@ export function CreatorQueuePage() {
       <ConfirmDialog
         open={cancelling !== null}
         onOpenChange={(open) => { if (!open) setCancelling(null); }}
-        title="Cancel this download?"
+        title={`Cancel this ${cancelling ? cancelNoun(cancelling) : 'download'}?`}
         description={cancelling?.video?.title}
-        confirmLabel="Cancel download"
+        confirmLabel={`Cancel ${cancelling ? cancelNoun(cancelling) : 'download'}`}
         cancelLabel="Keep"
         destructive
         busy={act.isPending}
