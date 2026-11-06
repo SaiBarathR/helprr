@@ -2,6 +2,9 @@
 
 import { canGoBackInApp, useAppRouter as useRouter } from '@/components/layout/navigation-provider';
 import { ChevronLeft } from 'lucide-react';
+import { useMe, hasCapability } from '@/components/permission-provider';
+import { NAV_ITEMS, getActiveNavHref, navItemAllowed, resolveDefaultPageHref } from '@/lib/nav-config';
+import { useUIStore } from '@/lib/store';
 import { cn } from '@/lib/utils';
 
 interface PageHeaderProps {
@@ -9,7 +12,11 @@ interface PageHeaderProps {
   subtitle?: React.ReactNode;
   showBack?: boolean;
   onBack?: () => void;
-  /** Where Back goes when there is no earlier page in this tab or app window (e.g. a deep link). */
+  /**
+   * Where Back goes when there is no earlier page in this tab or app window (e.g. a deep link).
+   * Defaults to the page's nav section (`/movies/1/files` -> `/movies`) when the user may open it,
+   * else the user's default page.
+   */
   backHref?: string;
   rightContent?: React.ReactNode;
   className?: string;
@@ -17,9 +24,18 @@ interface PageHeaderProps {
 
 export function PageHeader({ title, subtitle, showBack = true, onBack, backHref, rightContent, className }: PageHeaderProps) {
   const router = useRouter();
+  const me = useMe();
   const goBack = () => {
-    if (backHref && !canGoBackInApp()) router.push(backHref);
-    else router.back();
+    if (canGoBackInApp()) return router.back();
+    if (backHref) return router.push(backHref);
+    // Some detail pages admit more capabilities than their section's own page
+    // (e.g. /discover/movie/1 with only movies.view), so only offer sections the user can open.
+    const { pathname } = window.location;
+    const allowed = NAV_ITEMS.filter((item) => navItemAllowed(item, (cap) => hasCapability(me, cap), me));
+    const section = getActiveNavHref(allowed, pathname);
+    if (section && section !== pathname) return router.push(section);
+    const { defaultPage, navOrder, disabledNavItems } = useUIStore.getState();
+    router.push(resolveDefaultPageHref({ defaultPage, navOrder, disabledNavItems }));
   };
 
   return (

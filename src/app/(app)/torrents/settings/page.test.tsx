@@ -11,7 +11,7 @@ const mocks = vi.hoisted(() => ({
   ui: { hasHydrated: true, torrentsView: 'auto', setTorrentsView: vi.fn() },
   handleAuthError: vi.fn(),
 }));
-vi.mock('@/components/permission-provider', () => ({ useCan: (cap: string) => mocks.caps.has(cap) }));
+vi.mock('@/components/permission-provider', () => ({ useCan: (cap: string) => mocks.caps.has(cap), useMe: () => null }));
 vi.mock('@/components/layout/navigation-provider', () => ({ useAppRouter: () => ({ back: vi.fn(), push: vi.fn() }) }));
 vi.mock('@/lib/client-refresh-settings', () => ({ getRefreshIntervalMs: vi.fn().mockResolvedValue(60_000) }));
 vi.mock('@/lib/store', () => ({ useUIStore: (select: (state: typeof mocks.ui) => unknown) => select(mocks.ui) }));
