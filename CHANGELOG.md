@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.14.0] - 2026-11-06
+
+### Added
+
+- **Phone controls in the Jellyfin player**: large back, play and forward buttons in the
+  middle of the video; double-tap the left or right side to skip, and keep tapping to
+  skip further; a screen lock; fullscreen turns a wide video to landscape (Android); a
+  taller seek bar for fingers. A tap on the video shows or hides the controls instead of
+  pausing it.
+- **Skip lengths**: skip back and skip forward can be set separately (5 to 60 seconds,
+  10 by default) in the player's settings or in Settings → Preferences → Player. They
+  are saved with your preferences and included in settings export and import.
+- The player has a Next episode button whenever there is a next item, a Fill option, and
+  one Audio & subtitles panel.
+- **YouTube downloads waiting to start** show when they will start, on the Queue and on
+  the video page, and you can start one now from Download.
+
+### Fixed
+
+- A re-encode showed 0% for its whole run. The Queue and the file page now show its real
+  progress and the time left.
+- Video pages called any job "Downloading"; they now use the Queue's words (Waiting,
+  Queued, Downloading, Retrying soon, Disk full).
+- Quick repeated skips while a video is transcoding add up instead of losing a step.
+- Double tap works on iPhone, and a tap that brings up the controls no longer presses
+  the button under your finger.
+- On a Discover page for a title already in your library, the buttons at the top right
+  no longer run over the title on a phone.
+
 ## [1.13.1] - 2026-11-06
 
 ### Changed
