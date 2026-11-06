@@ -1423,11 +1423,6 @@ html[data-watch-skin='cinematic']:has(.hpr-watch) {
 [class*='text-destructive']:not([class*='text-destructive-foreground']) {
   --destructive: var(--destructive-text);
 }
-/* White on the light-glass rose is 3.4:1, so fills that carry white text take
-   Apple's deeper system red. */
-html[data-glass][data-glass-scheme='light'] :is([class*='text-destructive-foreground'], [class~='bg-destructive'][class~='text-white']) {
-  --destructive: #d70015;
-}
 
 /* Wallpaper: background-attachment: fixed is broken on iOS Safari, so the
    glass backdrop lives on a fixed pseudo-element instead of the body. */
