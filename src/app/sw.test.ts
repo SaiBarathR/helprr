@@ -4,6 +4,7 @@ import type { Strategy } from 'serwist';
 
 const recorded = vi.hoisted(() => ({
   disableNavigationPreload: vi.fn(),
+  listeners: new Map<string, (event: unknown) => void>(),
   options: null as null | {
     runtimeCaching: Array<{ handler: Strategy }>;
     fallbacks: { entries: Array<{ url: string; matcher: (param: { request: Request }) => boolean }> };
@@ -59,7 +60,10 @@ const cache = {
 beforeAll(async () => {
   vi.stubEnv('NODE_ENV', 'production');
   vi.stubEnv('NEXT_PUBLIC_SHELL_CACHE_VERSION', 'build-a');
-  vi.stubGlobal('self', { __SW_MANIFEST: [], addEventListener: () => {} });
+  vi.stubGlobal('self', {
+    __SW_MANIFEST: [],
+    addEventListener: (type: string, listener: (event: unknown) => void) => { recorded.listeners.set(type, listener); },
+  });
   // sw.ts sits outside the app's TypeScript program (worker types); load it by path.
   await import(/* @vite-ignore */ path.resolve(__dirname, 'sw.ts'));
 });
@@ -272,5 +276,23 @@ describe('routine fetch failures', () => {
 
   it('leaves navigations to the offline fallback', () => {
     expect(pages().plugins.some((plugin) => 'handlerDidError' in plugin)).toBe(false);
+  });
+});
+
+describe('unhandled rejection logging', () => {
+  it.each([
+    ['no-response', Object.assign(new Error('no-response'), { name: 'no-response' }), 'debug'],
+    ['a real error', new TypeError('boom'), 'error'],
+  ])('posts %s at its own level', async (_label, reason, level) => {
+    const postMessage = vi.fn();
+    vi.stubGlobal('clients', { matchAll: async () => [{ postMessage }] });
+
+    recorded.listeners.get('unhandledrejection')!({ reason });
+    await vi.waitFor(() => expect(postMessage).toHaveBeenCalledWith({
+      type: 'helprr-sw-log',
+      level,
+      message: 'Service worker unhandled rejection',
+      metadata: { reason: String(reason) },
+    }));
   });
 });

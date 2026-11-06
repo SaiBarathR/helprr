@@ -21,6 +21,7 @@ import { cacheShellResponse, hasMatchingShellNonce, matchingShellResponse } from
 import { isImageResponseCacheable } from '@/lib/image-response-cache-policy';
 import { NOTIFICATION_SUBSCRIPTIONS_CHANGED } from '@/lib/notification-subscriptions';
 import { createUserCacheFence } from '@/lib/sw-user-cache-fence';
+import { rejectionLogLevel } from '@/lib/sw-rejection-log-level';
 
 declare global {
   interface WorkerGlobalScope extends SerwistGlobalConfig {
@@ -552,7 +553,7 @@ self.addEventListener('error', (event) => {
 });
 
 self.addEventListener('unhandledrejection', (event) => {
-  logToClients('error', 'Service worker unhandled rejection', { reason: String(event.reason) });
+  logToClients(rejectionLogLevel(event.reason), 'Service worker unhandled rejection', { reason: String(event.reason) });
 });
 
 // Clear user-scoped caches on logout so the next person to sign in on this

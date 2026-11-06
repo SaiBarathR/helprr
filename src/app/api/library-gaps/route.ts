@@ -240,8 +240,9 @@ async function buildCollectionGaps(
  * Splits the wanted/missing backlog into two sections:
  *  - overdue: monitored items already released/aired but still missing a file.
  *  - notReleased: monitored items that haven't actually released yet. Radarr's wanted/missing
- *    includes these whenever minimum availability is "Announced", and it sorts the endpoint by
- *    date descending — so future-dated movies otherwise sort to the top and bury real overdue rows.
+ *    includes these whenever minimum availability is "Announced". Newest-first (cinema date) would
+ *    put future-dated movies at the top of the one page read here and bury real overdue rows, so
+ *    Radarr is read by title (descending), the order this section has always had.
  * Both fan out over every Sonarr/Radarr instance from the same wanted/missing endpoints Activity uses.
  * A movie counts as released only when a digital/physical date has passed (in-cinemas alone does not)
  * or Radarr's own status is "released". Episodes belonging to a fully-missing season are deduped out
@@ -267,7 +268,7 @@ async function buildOverdue(
     Promise.all(
       radarrInstances.map(async ({ connection, client }) => ({
         instanceId: connection.id,
-        missing: await client.getWantedMissing(1, MAX_ITEMS_PER_SECTION).catch(() => null),
+        missing: await client.getWantedMissing(1, MAX_ITEMS_PER_SECTION, 'movieMetadata.sortTitle').catch(() => null),
       }))
     ),
   ]);

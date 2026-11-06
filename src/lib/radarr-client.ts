@@ -198,12 +198,17 @@ export class RadarrClient {
   }
 
   // Wanted
-  async getWantedMissing(page = 1, pageSize = 20): Promise<{ page: number; pageSize: number; totalRecords: number; records: RadarrMovie[] }> {
-    return this.get('/api/v3/wanted/missing', { page, pageSize, sortKey: 'date', sortDirection: 'descending' });
+  // Radarr accepts only the sort keys its wanted controllers allow-list (see docs/upstream-compatibility.md).
+  async getWantedMissing(
+    page = 1,
+    pageSize = 20,
+    sortKey: 'movieMetadata.inCinemas' | 'movieMetadata.sortTitle' = 'movieMetadata.inCinemas',
+  ): Promise<{ page: number; pageSize: number; totalRecords: number; records: RadarrMovie[] }> {
+    return this.get('/api/v3/wanted/missing', { page, pageSize, sortKey, sortDirection: 'descending' });
   }
 
   async getCutoffUnmet(page = 1, pageSize = 20): Promise<{ page: number; pageSize: number; totalRecords: number; records: RadarrMovie[] }> {
-    return this.get('/api/v3/wanted/cutoff', { page, pageSize, sortKey: 'date', sortDirection: 'descending' });
+    return this.get('/api/v3/wanted/cutoff', { page, pageSize, sortKey: 'movieMetadata.inCinemas', sortDirection: 'descending' });
   }
 
   // Calendar
