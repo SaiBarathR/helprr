@@ -3,6 +3,8 @@
 import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
 
 import { useCallback, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { PullToRefresh } from '@/components/ui/pull-to-refresh';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { CleanupDashboardTab } from './_components/cleanup-dashboard-tab';
 import { QueueCleanerTab } from './_components/queue-cleaner-tab';
@@ -15,6 +17,9 @@ export default function CleanupPage() {
   const [dirty, setDirty] = useState<{ queue: boolean; download: boolean }>({ queue: false, download: false });
   const canManage = useCan('cleanup.manage');
   const activeTab = !canManage && (tab === 'queue' || tab === 'download') ? 'dashboard' : tab;
+  const queryClient = useQueryClient();
+  // A refetch re-seeds the cleaner forms, so a tab with unsaved edits keeps them.
+  const editingUnsaved = (activeTab === 'queue' && dirty.queue) || (activeTab === 'download' && dirty.download);
 
   // Stable callbacks so the child tabs don't see a new prop identity on every
   // parent render. Without useCallback, the child useEffect that depends on
@@ -28,6 +33,10 @@ export default function CleanupPage() {
 
   return (
     <div className="pb-6 max-w-screen-2xl mx-auto animate-content-in">
+      <PullToRefresh
+        onRefresh={() => queryClient.invalidateQueries({ queryKey: ['cleanup'] })}
+        disabled={editingUnsaved}
+      />
       <h1 className="sr-only">Cleanup</h1>
       <Tabs value={activeTab} onValueChange={(v) => setTab(v as typeof tab)}>
         <div

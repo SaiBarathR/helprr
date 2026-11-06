@@ -2,7 +2,7 @@
 
 import { fetchAnilistViewer } from '@/lib/anilist-viewer';
 import { useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError, jsonFetcher } from '@/lib/query-fetch';
 import { HeroImage } from '@/components/media/hero-image';
 import Link from '@/components/ui/app-link';
@@ -11,6 +11,7 @@ import { AnimeSearchOverlay } from '@/components/anime/anime-search-overlay';
 import { HeroCarousel } from '@/components/hero-carousel';
 import { Badge } from '@/components/ui/badge';
 import { PageSpinner } from '@/components/ui/page-spinner';
+import { PullToRefresh } from '@/components/ui/pull-to-refresh';
 import { Star, Sparkles, CalendarClock, LayoutGrid } from 'lucide-react';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import { useUIStore } from '@/lib/store';
@@ -172,6 +173,7 @@ export default function AnimeHomePage() {
   const me = useMe();
   const isAdmin = me?.role === 'admin';
 
+  const queryClient = useQueryClient();
   const homeQuery = useQuery({
     queryKey: ['anime', 'home', perPage],
     queryFn: jsonFetcher<HomeData>(`/api/anime/home?perPage=${perPage}`),
@@ -316,6 +318,14 @@ export default function AnimeHomePage() {
 
   return (
     <div className="flex flex-col animate-content-in">
+      {/* The open search panel scrolls on its own; a pull there is not a page refresh. */}
+      <PullToRefresh
+        onRefresh={() => Promise.all([
+          queryClient.invalidateQueries({ queryKey: ['anime', 'home'] }),
+          queryClient.invalidateQueries({ queryKey: ['anilist'] }),
+        ])}
+        disabled={searchExpanded}
+      />
       <h1 className="sr-only">Anime</h1>
       {/* Search bar (in-place live search) + Browse — always visible, pinned on scroll */}
       <div className="page-toolbar page-toolbar-flush pb-2 mb-3 app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 flex items-center justify-between gap-2">

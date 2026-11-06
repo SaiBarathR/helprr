@@ -16,6 +16,13 @@ const mocks = vi.hoisted(() => ({
   grid: (() => ({ items: [], page: 1, totalPages: 1 })) as (url: URL) => unknown,
   sections: (): Promise<unknown> | unknown => null,
   intersect: null as null | ((entries: Array<{ isIntersecting: boolean }>) => void),
+  pullToRefresh: null as null | { onRefresh: () => unknown },
+}));
+vi.mock('@/components/ui/pull-to-refresh', () => ({
+  PullToRefresh: (props: { onRefresh: () => unknown }) => {
+    mocks.pullToRefresh = props;
+    return null;
+  },
 }));
 vi.mock('next/navigation', () => ({ useSearchParams: () => mocks.search, usePathname: () => '/discover' }));
 vi.mock('@/components/layout/navigation-provider', () => ({ useAppRouter: () => ({ push: mocks.push, replace: mocks.replace }) }));
@@ -336,5 +343,18 @@ describe('Discover home (characterization)', () => {
     await act(async () => arrive({ sections: SECTIONS }));
     await waitFor(() => expect(screen.queryByRole('status', { name: 'Loading Discover' })).toBeNull());
     expect(sectionTitles()).toContain('Trending');
+  });
+});
+
+describe('Discover home pull to refresh', () => {
+  it('refetches the carousels and layout in place', async () => {
+    renderHome();
+    await waitFor(() => expect(sectionTitles()).toContain('Popular Movies'));
+    const count = (path: string, mode?: string) => mocks.urls.filter((url) => url.pathname === path && (!mode || url.searchParams.get('mode') === mode)).length;
+    const before = { sections: count('/api/discover', 'sections'), layout: count('/api/settings/discover-layout') };
+    await act(async () => { await mocks.pullToRefresh!.onRefresh(); });
+    expect(count('/api/discover', 'sections')).toBe(before.sections + 1);
+    expect(count('/api/settings/discover-layout')).toBe(before.layout + 1);
+    expect(sectionTitles()).toContain('Popular Movies');
   });
 });

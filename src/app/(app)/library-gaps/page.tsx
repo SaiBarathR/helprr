@@ -3,7 +3,7 @@
 import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
 
 import { useState, useMemo, useCallback, useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { jsonFetcher } from '@/lib/query-fetch';
 import { queryKeys } from '@/lib/query-keys';
 import Link from '@/components/ui/app-link';
@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { PageSpinner } from '@/components/ui/page-spinner';
+import { PullToRefresh } from '@/components/ui/pull-to-refresh';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { isProtectedApiImageSrc } from '@/lib/image';
 import { cn } from '@/lib/utils';
@@ -302,6 +303,7 @@ function SectionTile({
 }
 
 export default function LibraryGapsPage() {
+  const queryClient = useQueryClient();
   const gapsQuery = useQuery({
     queryKey: queryKeys.libraryGaps(),
     queryFn: jsonFetcher<LibraryGapsResponse>('/api/library-gaps'),
@@ -416,9 +418,18 @@ export default function LibraryGapsPage() {
 
   if (loading) return <PageSpinner />;
 
+  // First child of every root div below, so a refresh that changes which one
+  // renders keeps its spinner.
+  const pullToRefresh = (
+    <PullToRefresh
+      onRefresh={() => queryClient.invalidateQueries({ queryKey: queryKeys.libraryGaps() })}
+      disabled={selectionMode}
+    />
+  );
+
   if (error || !data) {
     return (
-      <div className="py-16 text-center text-sm text-muted-foreground">Failed to load library gaps</div>
+      <div className="py-16 text-center text-sm text-muted-foreground">{pullToRefresh}Failed to load library gaps</div>
     );
   }
 
@@ -427,6 +438,7 @@ export default function LibraryGapsPage() {
   if (allComplete) {
     return (
       <div className="animate-content-in py-16 text-center text-muted-foreground">
+        {pullToRefresh}
         <CheckCircle2 className="mx-auto mb-2 h-8 w-8 opacity-40" />
         <p className="text-sm">No gaps — your library is complete</p>
       </div>
@@ -443,6 +455,7 @@ export default function LibraryGapsPage() {
 
   return (
     <div className="animate-content-in space-y-4">
+      {pullToRefresh}
       <h1 className="sr-only">Library Gaps</h1>
       <div className="page-toolbar page-toolbar-flush app-chrome-bar bg-background/95 pb-2 backdrop-blur supports-[backdrop-filter]:bg-background/80">
         <div data-scroll-restoration-key="library-gaps:tabs" className="rail-bleed flex gap-2 overflow-x-auto scrollbar-hide">

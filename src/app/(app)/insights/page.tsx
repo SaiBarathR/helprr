@@ -5,7 +5,10 @@ import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
 import * as React from 'react';
 import type { DateRange } from 'react-day-picker';
 import { Library, Download, HardDrive, MonitorPlay, ScanSearch, type LucideIcon } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useUIStore } from '@/lib/store';
+import { queryKeys } from '@/lib/query-keys';
+import { PullToRefresh } from '@/components/ui/pull-to-refresh';
 import { useCan } from '@/components/permission-provider';
 import { DateRangeSelect } from '@/components/widgets/widget-filter-controls';
 import { useInsightsResource, toDateKey, type InsightsRange } from '@/components/insights/insights-shared';
@@ -134,9 +137,18 @@ export default function InsightsPage() {
   // Permissions load async — fall back to the first offered tab until the
   // chosen one (or any) is available.
   const activeTab = tabs.includes(tab) ? tab : tabs[0];
+  const queryClient = useQueryClient();
+  const contentRef = React.useRef<HTMLDivElement>(null);
 
   return (
     <div className="flex flex-col min-h-0 animate-content-in">
+      <PullToRefresh
+        onRefresh={() => Promise.all([
+          queryClient.invalidateQueries({ queryKey: ['insights'] }),
+          queryClient.invalidateQueries({ queryKey: queryKeys.libraryGaps() }),
+        ])}
+        scrollContainerRef={contentRef}
+      />
       <div
         className="page-toolbar page-toolbar-flush pb-3 app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 flex items-center justify-between gap-3"
       >
@@ -147,7 +159,7 @@ export default function InsightsPage() {
         </div>
       </div>
 
-      <div data-scroll-restoration-key="insights-content" className="page-bleed flex-1 overflow-y-auto pt-3 pb-6 space-y-4">
+      <div ref={contentRef} data-scroll-restoration-key="insights-content" className="page-bleed flex-1 overflow-y-auto pt-3 pb-6 space-y-4">
         {tabs.length > 1 && (
           // Radix Tabs: keeps the pill styling, adds roving focus + arrow keys.
           <Tabs

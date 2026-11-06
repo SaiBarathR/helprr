@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { useUIStore } from '@/lib/store';
 import { useIsMobile } from '@/hooks/use-is-mobile';
@@ -19,6 +19,7 @@ import { WidgetAvailabilityProvider } from '@/lib/widgets/widget-availability-co
 import { LayoutSwitcher } from '@/components/widgets/layout-switcher';
 import type { WidgetInstance, WidgetService } from '@/lib/widgets/types';
 import { SetupChecklist } from '@/components/dashboard/setup-checklist';
+import { PullToRefresh } from '@/components/ui/pull-to-refresh';
 // Without Secure on plain http: a rejected cookie made the server render the other
 // layout on every refresh, and this page refreshed forever.
 import { writeDeviceCookie as setDeviceCookie } from '@/lib/client-sign-in';
@@ -161,6 +162,7 @@ function DashboardInner({ initialLayout, initialDevice, setupChecklist }: Dashbo
   const [refreshDrawerOpen, setRefreshDrawerOpen] = useState(false);
 
   const { widgets, isDirty, setWidgets } = useDashboardLayout();
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     return () => setEditMode(false);
@@ -250,6 +252,12 @@ function DashboardInner({ initialLayout, initialDevice, setupChecklist }: Dashbo
       }}
     >
       <h1 className="sr-only">Dashboard</h1>
+      {/* Every widget fetches through useWidgetData's ['widget-data', …] keys; only
+          the mounted ones refetch. Off while editing, where touches drag widgets. */}
+      <PullToRefresh
+        onRefresh={() => queryClient.invalidateQueries({ queryKey: ['widget-data'] })}
+        disabled={editMode}
+      />
       {editMode && (
         <BentoTopBar
           mobile={isMobile}
