@@ -75,7 +75,8 @@ export function AnimeScheduleCard({ entry, now }: AnimeScheduleCardProps) {
       </div>
 
       <div className="flex min-w-0 flex-1 flex-col justify-between gap-1 py-0.5">
-        <div className="min-w-0">
+        {/* pr-10 keeps the title clear of the absolute w-9 bell button at right-2. */}
+        <div className="min-w-0 pr-10">
           <p className="text-[13px] font-semibold leading-tight line-clamp-2 group-hover:text-amber-200 transition-colors">
             {media.title}
           </p>
