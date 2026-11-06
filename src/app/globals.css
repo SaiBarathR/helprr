@@ -196,6 +196,38 @@
   --header-height: env(safe-area-inset-top, 0px);
 }
 
+/* The phone tab bar (BottomNav) renders once, ahead of <main>, and takes its
+   edge from data-nav-position so the first paint already matches the saved
+   prefs. Its status-bar scrim only shows while the bar is at the bottom. */
+.app-tab-bar {
+  position: sticky;
+  top: 0;
+  border-bottom-width: 1px;
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+:root[data-nav-position="bottom"] .app-tab-bar {
+  position: fixed;
+  top: auto;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  border-top-width: 1px;
+  border-bottom-width: 0;
+  padding-top: 0;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.app-status-scrim {
+  display: none;
+}
+
+@media (max-width: 767.98px) {
+  :root[data-nav-position="bottom"] .app-status-scrim {
+    display: block;
+  }
+}
+
 @media (min-width: 768px) {
 
   :root,
@@ -1773,14 +1805,6 @@ html[data-watch-skin='cinematic']:has(.hpr-watch) [data-app-sidebar] {
    "it isn't really full screen" complaint. The Watch masthead carries an Exit
    on every viewport, so there is always a way back. */
 html[data-watch-skin='cinematic']:has(.hpr-watch) [data-app-bottom-nav] {
-  display: none;
-}
-
-/* ...and so does the command palette's edge handle, which is the same kind of
-   chrome. It is `bg-primary`, and cinematic makes primary white, so it rode
-   over the artwork on every phone Watch screen as a bright white slab. Search
-   stays reachable from the masthead. */
-html[data-watch-skin='cinematic']:has(.hpr-watch) [data-app-command-launcher] {
   display: none;
 }
 

@@ -7,7 +7,7 @@ import type { BadgeSlice } from '@/types/badges';
  * Nav count indicator. Renders nothing when the slice is empty. Shows `total`
  * (capped at 99+) in a muted pill, switching to red when there are attention
  * items. In `dot` mode it renders just a colored dot — for the collapsed
- * sidebar and the bottom-nav "More" button where there's no room for a number.
+ * sidebar, where there's no room for a number.
  */
 export function NavBadge({
   slice,

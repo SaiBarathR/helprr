@@ -1060,7 +1060,8 @@ export const useUIStore = create<UIState>()(
       watchPreviews: true,
       setWatchPreviews: (v) => set({ watchPreviews: v }),
       // Navigation
-      navPosition: 'top',
+      // New installs get the tab bar in thumb reach; a saved choice is kept.
+      navPosition: 'bottom',
       setNavPosition: (position: 'top' | 'bottom') => set({ navPosition: position }),
       navOrder: [...DEFAULT_NAV_ORDER],
       disabledNavItems: [],
