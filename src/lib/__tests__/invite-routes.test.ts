@@ -17,7 +17,14 @@ const mocks = vi.hoisted(() => {
     describePasswordLink: vi.fn(),
     redeemPasswordLink: vi.fn(),
     recordSecurityEvent: vi.fn(),
+    recordFailedLinkAttempt: vi.fn(),
     limits: {
+      enforceInviteRateLimit: vi.fn(),
+      enforceInviteFailureBackstop: vi.fn(),
+      recordInviteFailure: vi.fn(),
+    },
+    // The sign-in throttles: the invite routes must leave them alone.
+    login: {
       enforceLoginRateLimit: vi.fn(),
       enforceGlobalLoginBackstop: vi.fn(),
       enforceMalformedLoginBackstop: vi.fn(),
@@ -43,8 +50,12 @@ vi.mock('@/lib/password-links', async (importOriginal) => ({
   describePasswordLink: mocks.describePasswordLink,
   redeemPasswordLink: mocks.redeemPasswordLink,
 }));
-vi.mock('@/lib/security-audit', () => ({ recordSecurityEvent: mocks.recordSecurityEvent }));
-vi.mock('@/lib/login-rate-limit', () => ({ getClientIp: () => '203.0.113.7', ...mocks.limits }));
+vi.mock('@/lib/security-audit', () => ({
+  recordSecurityEvent: mocks.recordSecurityEvent,
+  recordFailedLinkAttempt: mocks.recordFailedLinkAttempt,
+}));
+vi.mock('@/lib/invite-rate-limit', () => mocks.limits);
+vi.mock('@/lib/login-rate-limit', () => ({ getClientIp: () => '203.0.113.7', ...mocks.login }));
 vi.mock('@/lib/api-logger', () => ({ withApiLogging: (handler: unknown) => handler }));
 vi.mock('@/lib/request-utils', () => ({ isHttpsRequest: () => false }));
 
@@ -69,7 +80,7 @@ const params = (id: string) => ({ params: Promise.resolve({ id }) });
 
 beforeEach(() => {
   vi.clearAllMocks();
-  for (const gate of Object.values(mocks.limits)) gate.mockResolvedValue(null);
+  for (const gate of [...Object.values(mocks.limits), ...Object.values(mocks.login)]) gate.mockResolvedValue(null);
   mocks.requireAdmin.mockResolvedValue({ ok: true, user: ADMIN, session: { id: 'admin-session' } });
   mocks.createSession.mockResolvedValue('session-token');
   mocks.hashPassword.mockResolvedValue('new-hash');
@@ -86,7 +97,7 @@ describe('POST /api/invite/accept', () => {
     expect(mocks.redeemPasswordLink).toHaveBeenCalledWith(TOKEN, 'new-hash');
     expect(response.cookies.get('helprr-session')?.value).toBe('session-token');
     expect(mocks.createSession).toHaveBeenCalledWith(expect.objectContaining({ userId: 'u1', role: 'member' }));
-    expect(mocks.limits.clearUsernameBackoff).toHaveBeenCalledWith('newbie');
+    expect(mocks.login.clearUsernameBackoff).toHaveBeenCalledWith('newbie');
     expect(mocks.recordSecurityEvent).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
       action: 'INVITE_ACCEPTED', actor: { id: 'u1', username: 'newbie' }, targetId: 'u1',
     }));
@@ -110,7 +121,11 @@ describe('POST /api/invite/accept', () => {
       await expect(response.json()).resolves.toEqual({ error: INVALID_LINK_MESSAGE });
       expect(response.cookies.get('helprr-session')).toBeUndefined();
     }
-    expect(mocks.limits.recordGlobalLoginFailure).toHaveBeenCalledTimes(2);
+    expect(mocks.limits.recordInviteFailure).toHaveBeenCalledTimes(2);
+    // Audited without the token, and the sign-in budget is untouched.
+    expect(mocks.recordFailedLinkAttempt).toHaveBeenCalledTimes(2);
+    for (const [, ...rest] of mocks.recordFailedLinkAttempt.mock.calls) expect(rest).toEqual([]);
+    for (const login of Object.values(mocks.login)) expect(login).not.toHaveBeenCalled();
     // The malformed token is refused before any scrypt work.
     expect(mocks.hashPassword).toHaveBeenCalledTimes(1);
     expect(mocks.createSession).not.toHaveBeenCalled();
@@ -124,10 +139,9 @@ describe('POST /api/invite/accept', () => {
   });
 
   it.each([
-    ['per-IP bucket', 'enforceLoginRateLimit'],
-    ['global failed-attempt backstop', 'enforceGlobalLoginBackstop'],
-    ['malformed-request backstop', 'enforceMalformedLoginBackstop'],
-  ] as const)('is throttled by the sign-in %s before the link is looked at', async (_name, gate) => {
+    ['per-IP bucket', 'enforceInviteRateLimit'],
+    ['failed-attempt backstop', 'enforceInviteFailureBackstop'],
+  ] as const)('is throttled by the invite %s before the link is looked at', async (_name, gate) => {
     mocks.limits[gate].mockResolvedValue(NextResponse.json({ error: 'Too many' }, { status: 429 }));
     const response = await acceptInvite(post('/api/invite/accept', { token: TOKEN, password: PASSWORD }));
     expect(response.status).toBe(429);
@@ -135,14 +149,16 @@ describe('POST /api/invite/accept', () => {
     expect(mocks.redeemPasswordLink).not.toHaveBeenCalled();
   });
 
-  it('takes JSON only, and counts other bodies as malformed', async () => {
+  it('takes JSON only, and counts other bodies as failed attempts', async () => {
     const response = await acceptInvite(new NextRequest('http://localhost/api/invite/accept', {
       method: 'POST',
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
       body: `token=${TOKEN}&password=x`,
     }));
     expect(response.status).toBe(415);
-    expect(mocks.limits.recordMalformedLoginRequest).toHaveBeenCalledTimes(1);
+    expect(mocks.limits.enforceInviteRateLimit).toHaveBeenCalledWith('203.0.113.7');
+    expect(mocks.limits.recordInviteFailure).toHaveBeenCalledTimes(1);
+    expect(mocks.login.recordMalformedLoginRequest).not.toHaveBeenCalled();
     expect(mocks.redeemPasswordLink).not.toHaveBeenCalled();
   });
 });
@@ -160,7 +176,9 @@ describe('POST /api/invite/state', () => {
     const response = await inviteState(post('/api/invite/state', { token: TOKEN }));
     expect(response.status).toBe(404);
     await expect(response.json()).resolves.toEqual({ error: INVALID_LINK_MESSAGE });
-    expect(mocks.limits.recordGlobalLoginFailure).toHaveBeenCalledTimes(1);
+    expect(mocks.limits.recordInviteFailure).toHaveBeenCalledTimes(1);
+    expect(mocks.recordFailedLinkAttempt).toHaveBeenCalledTimes(1);
+    expect(mocks.login.recordGlobalLoginFailure).not.toHaveBeenCalled();
   });
 });
 
@@ -216,6 +234,19 @@ describe('admin link routes', () => {
   ])('refuse a link for %o', async (user) => {
     mocks.db.user.findUnique.mockResolvedValue({ id: 'u1', username: 'member', passwordLink: null, ...user });
     expect((await issueLink(post('/api/users/u1/password-link', {}), params('u1'))).status).toBe(409);
+    expect(mocks.db.passwordLink.upsert).not.toHaveBeenCalled();
+  });
+
+  it('make a link only from a JSON request, so a same-site form cannot replace one', async () => {
+    mocks.db.user.findUnique.mockResolvedValue({ id: 'u1', username: 'member', status: 'active', passwordHash: 'h', passwordLink: null });
+    const form = new NextRequest('http://localhost/api/users/u1/password-link', {
+      method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: 'x=1',
+    });
+    // A byte body gets no default Content-Type.
+    const bare = new NextRequest('http://localhost/api/users/u1/password-link', { method: 'POST', body: new Uint8Array([123, 125]) });
+    expect(bare.headers.get('content-type')).toBeNull();
+    for (const request of [form, bare]) expect((await issueLink(request, params('u1'))).status).toBe(415);
+    expect(mocks.db.user.findUnique).not.toHaveBeenCalled();
     expect(mocks.db.passwordLink.upsert).not.toHaveBeenCalled();
   });
 

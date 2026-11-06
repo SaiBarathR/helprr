@@ -497,7 +497,7 @@ describe('GET /api/security-audit', () => {
     mocks.db.securityAuditEvent.count.mockResolvedValue(0);
     const response = await listSecurityAudit(req('/api/security-audit?page=3&pageSize=50&hideFailedSignIns=1', 'GET'));
     expect(response.status).toBe(200);
-    const where = { action: { not: 'LOGIN_FAILED' } };
+    const where = { action: { notIn: ['LOGIN_FAILED', 'INVITE_LINK_FAILED'] } };
     expect(mocks.db.securityAuditEvent.findMany).toHaveBeenCalledWith(expect.objectContaining({ where, skip: 100, take: 50 }));
     expect(mocks.db.securityAuditEvent.count).toHaveBeenCalledWith({ where });
   });

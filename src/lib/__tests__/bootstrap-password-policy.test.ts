@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   upsert: vi.fn(),
   update: vi.fn(),
   sessionUpdateMany: vi.fn(),
+  linkDeleteMany: vi.fn(),
   watchlistUpdateMany: vi.fn(),
   subscriptionUpdateMany: vi.fn(),
   transaction: vi.fn(),
@@ -20,6 +21,7 @@ vi.mock('@/lib/db', () => ({
       update: mocks.update,
     },
     session: { updateMany: mocks.sessionUpdateMany },
+    passwordLink: { deleteMany: mocks.linkDeleteMany },
     watchlistItem: { updateMany: mocks.watchlistUpdateMany },
     pushSubscription: { updateMany: mocks.subscriptionUpdateMany },
     $transaction: mocks.transaction,
@@ -103,6 +105,38 @@ describe('bootstrap local-password policy', () => {
       'APP_PASSWORD must be at least 15 characters',
     );
     expect(mocks.update).not.toHaveBeenCalled();
+  });
+
+  it('a forced reset also ends the admin\'s sessions and password link, in one transaction', async () => {
+    process.env.HELPRR_ADMIN_PASSWORD_RESET = 'true';
+    process.env.APP_PASSWORD = 'a-long-bootstrap-password-1';
+    mocks.findUnique.mockResolvedValue({ id: 'user-bootstrap-admin', username: 'admin', passwordHash: 'existing-hash' });
+    mocks.update.mockReturnValue('update-op');
+    mocks.linkDeleteMany.mockReturnValue('link-op');
+    mocks.sessionUpdateMany.mockReturnValueOnce('session-op');
+    mocks.transaction.mockResolvedValueOnce([{}, { count: 1 }, { count: 2 }]);
+
+    await ensureBootstrapAdmin();
+
+    expect(mocks.transaction).toHaveBeenNthCalledWith(1, ['update-op', 'link-op', 'session-op']);
+    expect(mocks.update).toHaveBeenCalledWith({ where: { id: 'user-bootstrap-admin' }, data: { passwordHash: 'new-hash' } });
+    expect(mocks.linkDeleteMany).toHaveBeenCalledWith({ where: { userId: 'user-bootstrap-admin' } });
+    // Owner-less sessions too, before the attach hands them to the admin.
+    expect(mocks.sessionUpdateMany).toHaveBeenNthCalledWith(1, {
+      where: { OR: [{ userId: 'user-bootstrap-admin' }, { userId: null }], revokedAt: null },
+      data: { revokedAt: expect.any(Date) },
+    });
+  });
+
+  it('seeding a missing hash on an upgrade leaves sessions and links alone', async () => {
+    process.env.APP_PASSWORD = 'a-long-bootstrap-password-1';
+    mocks.findUnique.mockResolvedValue({ id: 'user-bootstrap-admin', username: 'admin', passwordHash: null });
+
+    await ensureBootstrapAdmin();
+
+    expect(mocks.update).toHaveBeenCalledWith({ where: { id: 'user-bootstrap-admin' }, data: { passwordHash: 'new-hash' } });
+    expect(mocks.linkDeleteMany).not.toHaveBeenCalled();
+    expect(mocks.sessionUpdateMany).not.toHaveBeenCalledWith(expect.objectContaining({ data: { revokedAt: expect.any(Date) } }));
   });
 
   it('keeps the name an admin chose in /setup unless HELPRR_ADMIN_USERNAME is set', async () => {

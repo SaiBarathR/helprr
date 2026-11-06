@@ -20,7 +20,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   const { token, password } = input.body;
 
   // Checked before the password is hashed, so junk tokens cost no scrypt work.
-  if (!isWellFormedPasswordLinkToken(token)) return invalidLinkResponse();
+  if (!isWellFormedPasswordLinkToken(token)) return invalidLinkResponse(request);
   if (typeof password !== 'string') {
     return NextResponse.json({ error: 'Password is required' }, { status: 400 });
   }
@@ -28,7 +28,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   if (passwordError) return NextResponse.json({ error: passwordError }, { status: 400 });
 
   const user = await redeemPasswordLink(token, await hashPassword(password));
-  if (!user) return invalidLinkResponse();
+  if (!user) return invalidLinkResponse(request);
   // A forgotten password may have left the account in sign-in backoff.
   await clearUsernameBackoff(user.username);
   await recordSecurityEvent(request, {

@@ -66,8 +66,9 @@ desktop is fully supported.
   next request.
 - New/reset local passwords require 15 characters. Settings -> Users password
   changes revoke the target user's active sessions. The emergency
-  `HELPRR_ADMIN_PASSWORD_RESET=true` bootstrap reset does not; revoke those
-  sessions separately and remove the flag after one boot.
+  `HELPRR_ADMIN_PASSWORD_RESET=true` bootstrap reset also revokes the admin's
+  sessions and ends their password link, on every start while it is set; remove
+  the flag after one boot.
 - Interactive queue/download cleanup requires a short-lived, single-use preview
   token bound to user, cleaner, config, scope, and candidates. Scheduled cleanup
   uses a separate trusted path. Revalidate upstream state before deletion and
@@ -129,6 +130,12 @@ desktop is fully supported.
   `src/lib/__tests__/settings-import.integration.test.ts` against a migrated,
   disposable PostgreSQL database named exactly `helprr_import_test`
   (`SETTINGS_IMPORT_TEST_DATABASE_URL`); it is skipped without one.
+- For invite/reset-link changes, also run
+  `src/lib/__tests__/password-links.integration.test.ts` against a migrated,
+  disposable PostgreSQL database named `helprr_password_links_test` (or
+  `helprr_password_links_test_<name>`) via `PASSWORD_LINKS_TEST_DATABASE_URL`;
+  it empties the user, session and link tables and is skipped without one. CI
+  runs it.
 - Validate both Compose files for Docker/runtime changes. Manually exercise the
   affected API/UI flow and relevant admin, restricted-member, ownership,
   partial-failure, and PWA/browser cases.

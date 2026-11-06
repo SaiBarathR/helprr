@@ -1,12 +1,12 @@
 // @vitest-environment jsdom
 
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const TOKEN = 'b'.repeat(43);
 const mocks = vi.hoisted(() => ({ replace: vi.fn(), refresh: vi.fn(), complete: vi.fn() }));
 const router = { replace: mocks.replace, refresh: mocks.refresh };
-vi.mock('next/navigation', () => ({ useRouter: () => router, useParams: () => ({ token: 'b'.repeat(43) }) }));
+vi.mock('next/navigation', () => ({ useRouter: () => router }));
 vi.mock('@/lib/client-sign-in', () => ({ completeBrowserSignIn: mocks.complete, setDeviceCookieFromMatchMedia: vi.fn() }));
 
 import InvitePage from './page';
@@ -24,7 +24,8 @@ beforeEach(() => {
   vi.stubGlobal('fetch', vi.fn((url: string) => (url === '/api/invite/state' ? state() : accept())));
 });
 
-async function open() {
+async function open(hash = `#${TOKEN}`) {
+  window.history.replaceState(null, '', `/invite${hash}`);
   await act(async () => { render(<InvitePage />); });
 }
 
@@ -34,7 +35,7 @@ async function submit(password: string, again = password) {
   await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Set password and sign in' })); });
 }
 
-describe('/invite/[token]', () => {
+describe('/invite', () => {
   it('greets the invited person and signs them in with the password they choose', async () => {
     await open();
     expect(screen.getByText('Welcome, New Person')).toBeDefined();
@@ -46,6 +47,20 @@ describe('/invite/[token]', () => {
     expect(JSON.parse(init.body as string)).toEqual({ token: TOKEN, password: PASSWORD });
     expect(mocks.complete).toHaveBeenCalledTimes(1);
     expect(mocks.replace).toHaveBeenCalledWith('/');
+  });
+
+  it('reads the token from the fragment once and drops it from the address bar', async () => {
+    await open();
+    await waitFor(() => expect(window.location.hash).toBe(''));
+    expect(window.location.pathname).toBe('/invite');
+    const [, init] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toEqual({ token: TOKEN });
+  });
+
+  it('asks for the link again when the address has no token, without asking the server', async () => {
+    await open('');
+    expect(screen.getByRole('alert').textContent).toBe('Open the link from your message again. This address has no link key in it.');
+    expect(vi.mocked(fetch)).not.toHaveBeenCalled();
   });
 
   it('says only that the link does not work, for any unusable link', async () => {

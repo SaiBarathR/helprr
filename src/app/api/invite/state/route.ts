@@ -12,7 +12,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   if (!input.ok) return input.response;
 
   const link = await describePasswordLink(input.body.token);
-  if (!link) return invalidLinkResponse();
+  if (!link) return invalidLinkResponse(request);
   return NextResponse.json(link);
 }
 

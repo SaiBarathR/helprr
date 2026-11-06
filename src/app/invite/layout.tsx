@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 
-// The URL is a credential: keep it out of search indexes and Referer headers.
+// The link's token travels in the URL fragment; keep the page out of search
+// indexes and Referer headers all the same.
 export const metadata: Metadata = {
   title: 'Set your password · Helprr',
   robots: { index: false, follow: false },

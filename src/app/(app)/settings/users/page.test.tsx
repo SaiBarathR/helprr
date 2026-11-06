@@ -73,7 +73,7 @@ describe('invite and reset links', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Create and get link' }));
 
     const field = await screen.findByLabelText('Invite link for @newbie');
-    expect((field as HTMLInputElement).value).toBe(`${window.location.origin}/invite/${TOKEN}`);
+    expect((field as HTMLInputElement).value).toBe(`${window.location.origin}/invite#${TOKEN}`);
     const sent = calls.find((c) => c.url === '/api/users' && c.body)?.body;
     expect(sent).toMatchObject({ invite: true });
     expect(sent).not.toHaveProperty('password');

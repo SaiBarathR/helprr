@@ -766,6 +766,7 @@ enum SecurityAuditAction {
   RESET_LINK_CREATED // an admin made (or replaced) a password-reset link
   RESET_LINK_REVOKED
   RESET_LINK_USED // the password was set through the link; every session was revoked
+  INVITE_LINK_FAILED // an unusable invite or reset link was tried (coalesced per network and minute)
 }
 
 // Who did what to accounts, sessions, service connections and settings, and

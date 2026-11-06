@@ -255,20 +255,30 @@ makes an invite for a pending user or a reset for an active user with a local pa
 (409 for disabled and Jellyfin-only accounts). The token is 32 random bytes, returned
 once in that response (never logged), and only its SHA-256 is stored; a new link
 replaces the row, which ends the old one, and `DELETE` revokes it. A PATCH that sets a
-password or changes status also ends it. The public `/invite/<token>` page (excluded from
-the service worker's page cache) calls `POST /api/invite/state` and
-`POST /api/invite/accept`; the proxy exposes exactly those two paths and the page path of
-the token's shape. Both routes are JSON-only behind the sign-in throttles (malformed
-backstop, per-IP bucket, global backstop) and record every unusable link as a failed
-attempt, with one 404 answer for unknown, malformed, expired, used, revoked and wrong-state
-links. A link works until `expiresAt` (7 days for an invite, 24 hours for a reset) and only
+password or changes status also ends it. A link is `/invite#<token>`: the token is in
+the fragment, which browsers never send to a server. The public `/invite` page (excluded
+from the service worker's page cache, served with `Referrer-Policy: no-referrer`) reads
+`location.hash` once, replaces the URL with `/invite` (one tick later, through the router's
+`replaceState` hook) so the token leaves the address bar and the tab's Back history, and
+posts the token in a JSON body to `POST /api/invite/state` and
+`POST /api/invite/accept`; the proxy exposes exactly those three paths. Both routes are
+JSON-only behind their own throttles (`src/lib/invite-rate-limit.ts`), apart from
+sign-in's so junk links cannot lock anyone out of signing in: a 10/min per-IP bucket
+(trusted proxy only) and a global backstop of 30 failures per 15 minutes, where malformed
+bodies and unusable links both count. The per-IP bucket runs before the body is read, so
+it limits junk bodies too. The trade-off, as for sign-in's global backstop: a caller who
+keeps sending bad links can hold the invite page at 429, but never sign-in. Every unusable link gets one 404 answer (unknown,
+malformed, expired, used, revoked and wrong-state alike) and an `INVITE_LINK_FAILED`
+audit row with no token, coalesced per coarse IP and minute. A link works until `expiresAt` (7 days for an invite, 24 hours for a reset) and only
 while the user is still `pending` (invite) or `active` (reset). Accepting runs one
 transaction: a conditional user update on that status (password, `active`), a delete of the
 link matching its id and hash (single use; a race loser rolls back), and a revoke of every
 session of the user; then it signs the browser in. Making, replacing, revoking and using
 links are security audit events. `HELPRR_ADMIN_PASSWORD_RESET=true` is a separate startup recovery
-path for the bootstrap admin and does not revoke existing sessions, so suspected
-compromise also requires explicit session revocation.
+path for the bootstrap admin: in one transaction it sets the password from `APP_PASSWORD`,
+deletes the admin's password link and revokes every session of the admin (and any
+owner-less legacy session, which the startup attach would otherwise hand to the admin). It
+does this on every start while the flag is set, so remove it after one boot.
 
 Generated secrets: with the bundled Compose file, a short-lived `helprr-init`
 service (`docker/init-secrets.sh`, the app image run as root with no network) makes
@@ -506,7 +516,7 @@ upserts on a `coalesceKey` that is an HMAC under `JWT_SECRET` (or
 so repeats add to one row's `count` and a database copy cannot brute-force a
 masked name from it. The tab pages 50 rows at a time and can hide failed
 sign-ins (`hideFailedSignIns=1`) so a flood cannot bury account and connection
-changes. Only attempts that reach the credential check are recorded,
+changes; the switch also hides `INVITE_LINK_FAILED` rows. Only attempts that reach the credential check are recorded,
 so the sign-in rate limits and global backstop also bound how many rows a flood
 can write.
 

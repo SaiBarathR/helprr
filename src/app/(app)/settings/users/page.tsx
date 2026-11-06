@@ -353,7 +353,8 @@ function ExternalLinkFields({
  * once: Helprr keeps only a fingerprint of it, so a lost link is replaced.
  */
 function IssuedLinkPanel({ link, username }: { link: IssuedLink; username: string }) {
-  const url = `${window.location.origin}/invite/${link.token}`;
+  // In the fragment, which browsers never send to a server.
+  const url = `${window.location.origin}/invite#${link.token}`;
   const canShare = typeof navigator !== 'undefined' && typeof navigator.share === 'function';
 
   async function copy() {
@@ -896,7 +897,11 @@ function PasswordLinkSection({ user, isSelf }: { user: SafeUser; isSelf: boolean
 
   const issueMutation = useMutation({
     mutationFn: async () => {
-      const res = await fetch(`/api/users/${user.id}/password-link`, { method: 'POST' });
+      const res = await fetch(`/api/users/${user.id}/password-link`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+      });
       if (!res.ok) {
         const data = (await res.json().catch(() => ({}))) as { error?: string };
         throw new Error(data.error ?? 'Failed to make the link');

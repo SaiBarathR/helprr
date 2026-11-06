@@ -5,7 +5,8 @@ import type { PrismaClient } from '@prisma/client';
 // disposable database with every migration applied:
 //   PASSWORD_LINKS_TEST_DATABASE_URL=postgresql://…/helprr_password_links_test npx vitest run password-links.integration
 // The tables it uses are emptied before each test, so the database must be
-// named exactly helprr_password_links_test.
+// named helprr_password_links_test, or that name with a suffix (helprr_password_links_test_<name>)
+// for a private local copy.
 const url = process.env.PASSWORD_LINKS_TEST_DATABASE_URL;
 
 type Links = typeof import('@/lib/password-links');
@@ -15,8 +16,8 @@ describe.skipIf(!url)('password links against PostgreSQL', () => {
   let links: Links;
 
   beforeAll(async () => {
-    if (new URL(url!).pathname !== '/helprr_password_links_test') {
-      throw new Error('PASSWORD_LINKS_TEST_DATABASE_URL must name the database helprr_password_links_test');
+    if (!/^\/helprr_password_links_test(_[a-z0-9]+)?$/.test(new URL(url!).pathname)) {
+      throw new Error('PASSWORD_LINKS_TEST_DATABASE_URL must name the database helprr_password_links_test[_<name>]');
     }
     vi.stubEnv('DATABASE_URL', url!);
     ({ prisma } = await import('@/lib/db'));

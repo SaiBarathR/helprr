@@ -1,7 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Clapperboard, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -17,6 +17,8 @@ interface LinkInfo {
 }
 
 const INVALID = 'This link is invalid or has expired. Ask your admin for a new one.';
+// A reload after the page dropped the fragment, or a link cut short when pasted.
+const MISSING = 'Open the link from your message again. This address has no link key in it.';
 
 async function errorMessage(res: Response, fallback: string): Promise<string> {
   try {
@@ -30,14 +32,16 @@ async function errorMessage(res: Response, fallback: string): Promise<string> {
 
 /**
  * Where an invited person (or one given a password-reset link) chooses their
- * own password. The server decides whether the link works; every unusable
+ * own password. The link is /invite#<token>: browsers never send a fragment to
+ * a server, and the page drops it from the address bar and this tab's Back
+ * history as soon as it has read it. The server decides whether the link works; every unusable
  * link gets the same answer.
  */
 export default function InvitePage() {
   const router = useRouter();
-  const params = useParams<{ token: string }>();
-  const token = typeof params?.token === 'string' ? params.token : '';
-  const [status, setStatus] = useState<'checking' | 'ready' | 'invalid' | 'unreachable'>('checking');
+  // Read once: after that the fragment is gone from the URL.
+  const tokenRef = useRef<string | null>(null);
+  const [status, setStatus] = useState<'checking' | 'ready' | 'invalid' | 'missing' | 'unreachable'>('checking');
   const [info, setInfo] = useState<LinkInfo | null>(null);
   const [notice, setNotice] = useState('');
   const [password, setPassword] = useState('');
@@ -46,6 +50,11 @@ export default function InvitePage() {
   const [pending, setPending] = useState(false);
 
   const loadState = useCallback(() => {
+    const token = tokenRef.current;
+    if (!token) {
+      setStatus('missing');
+      return;
+    }
     void fetch('/api/invite/state', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -70,11 +79,18 @@ export default function InvitePage() {
         setNotice("Couldn't reach Helprr.");
         setStatus('unreachable');
       });
-  }, [token]);
+  }, []);
 
   useEffect(() => {
+    if (tokenRef.current === null) tokenRef.current = window.location.hash.slice(1);
+    // One tick later, so the router has hooked history.replaceState by then
+    // and keeps its own copy of the URL in step (it would put the fragment back).
+    const drop = window.location.hash
+      ? window.setTimeout(() => window.history.replaceState(null, '', '/invite'), 0)
+      : undefined;
     setDeviceCookieFromMatchMedia();
     loadState();
+    return () => window.clearTimeout(drop);
   }, [loadState]);
 
   function retry() {
@@ -99,7 +115,7 @@ export default function InvitePage() {
       const res = await fetch('/api/invite/accept', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token, password }),
+        body: JSON.stringify({ token: tokenRef.current, password }),
       });
       if (res.ok) {
         try {
@@ -155,9 +171,9 @@ export default function InvitePage() {
             <div className="flex justify-center py-6">
               <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" aria-label="Loading" />
             </div>
-          ) : status === 'invalid' ? (
+          ) : status === 'invalid' || status === 'missing' ? (
             <div className="space-y-4 text-center">
-              <p className="text-sm text-muted-foreground" role="alert">{INVALID}</p>
+              <p className="text-sm text-muted-foreground" role="alert">{status === 'missing' ? MISSING : INVALID}</p>
               <Button asChild variant="outline" className="w-full">
                 <Link href="/login">Go to sign in</Link>
               </Button>

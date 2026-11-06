@@ -1,4 +1,4 @@
-import { createHash, randomBytes, timingSafeEqual } from 'crypto';
+import { createHash, randomBytes } from 'crypto';
 import type { PasswordLinkPurpose, Prisma, User, UserStatus } from '@prisma/client';
 import { prisma } from '@/lib/db';
 
@@ -83,13 +83,11 @@ export async function revokePasswordLink(db: Prisma.TransactionClient, userId: s
 
 type LinkWithUser = Prisma.PasswordLinkGetPayload<{ include: { user: true } }>;
 
-function usable(link: LinkWithUser | null, tokenHash: string, now: Date): link is LinkWithUser {
+// The row is found by an equality lookup on the token's SHA-256. That needs no
+// constant-time compare: a timing leak could only reveal bits of a stored hash,
+// and finding a token with a chosen hash prefix is as hard as guessing a token.
+function usable(link: LinkWithUser | null, now: Date): link is LinkWithUser {
   if (!link) return false;
-  // The row was found by this hash; compare again in constant time so the
-  // decision never rests on a short-circuiting string comparison.
-  const stored = Buffer.from(link.tokenHash, 'hex');
-  const given = Buffer.from(tokenHash, 'hex');
-  if (stored.length !== given.length || !timingSafeEqual(stored, given)) return false;
   if (link.expiresAt.getTime() <= now.getTime()) return false;
   return link.user.status === STATUS_FOR_PURPOSE[link.purpose];
 }
@@ -106,7 +104,7 @@ export async function describePasswordLink(
   if (!isWellFormedPasswordLinkToken(token)) return null;
   const tokenHash = hashPasswordLinkToken(token);
   const link = await prisma.passwordLink.findUnique({ where: { tokenHash }, include: { user: true } });
-  if (!usable(link, tokenHash, now)) return null;
+  if (!usable(link, now)) return null;
   return { purpose: link.purpose, username: link.user.username, displayName: link.user.displayName };
 }
 
@@ -133,7 +131,7 @@ export async function redeemPasswordLink(
   try {
     return await prisma.$transaction(async (tx) => {
       const link = await tx.passwordLink.findUnique({ where: { tokenHash }, include: { user: true } });
-      if (!usable(link, tokenHash, now)) throw new LinkUnusableError();
+      if (!usable(link, now)) throw new LinkUnusableError();
       // User row first, as Settings -> Users and Account -> Change password
       // lock it, so concurrent changes queue instead of deadlocking. The status
       // condition makes a disable or status change that landed first win.

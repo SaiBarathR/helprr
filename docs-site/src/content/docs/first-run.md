@@ -23,8 +23,9 @@ password.
 `APP_PASSWORD` creates the admin at the first start instead. Its username is `admin`,
 or `HELPRR_ADMIN_USERNAME`. Changing `APP_PASSWORD` later does **not** change the
 password. To reset it, set `APP_PASSWORD` to the new password (at least 15 characters)
-and `HELPRR_ADMIN_PASSWORD_RESET=true`, restart Helprr, then remove the reset line. That
-does not end anyone's sessions; do that in **Settings → Sessions**.
+and `HELPRR_ADMIN_PASSWORD_RESET=true`, restart Helprr, then remove the reset line. The
+reset signs the admin out on every device and ends any reset link made for them; it does
+that again at every start until the line is removed.
 
 If `HELPRR_ADMIN_USERNAME` is set, Helprr renames the admin to it at every start, so
 leave it unset or set it to the name you chose.

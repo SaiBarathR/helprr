@@ -4,6 +4,7 @@ import { requireAdmin } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { issuePasswordLink, passwordLinkPurposeFor, revokePasswordLink } from '@/lib/password-links';
 import { recordSecurityEvent } from '@/lib/security-audit';
+import { boundedBodyErrorResponse, readBoundedJson } from '@/lib/server/bounded-body';
 
 /**
  * Make a new invite link (pending user) or password-reset link (active local
@@ -16,6 +17,14 @@ async function postHandler(
 ): Promise<NextResponse> {
   const admin = await requireAdmin();
   if (!admin.ok) return admin.response;
+  // JSON only (the body itself is unused), so a same-site form cannot replace a link.
+  try {
+    await readBoundedJson<unknown>(request, 1024);
+  } catch (error) {
+    const response = boundedBodyErrorResponse(error);
+    if (!response) throw error;
+    return response;
+  }
 
   const { id } = await params;
   const user = await prisma.user.findUnique({

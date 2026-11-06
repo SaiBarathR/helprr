@@ -74,6 +74,17 @@ jobs:
           DATABASE_URL: postgresql://postgres:ci-migration-password@localhost:5432/helprr_migration_test
           TWITCH_QUEUE_TEST_DATABASE_URL: postgresql://postgres:ci-migration-password@localhost:5432/helprr_migration_test
 
+      # Single use under concurrent requests needs real PostgreSQL row locks. Its own
+      # database: the test empties the User, Session and PasswordLink tables.
+      - name: Test password links
+        run: |
+          psql -h localhost -U postgres -d postgres -c 'CREATE DATABASE helprr_password_links_test'
+          DATABASE_URL="$PASSWORD_LINKS_TEST_DATABASE_URL" npx prisma migrate deploy
+          npx vitest run src/lib/__tests__/password-links.integration.test.ts
+        env:
+          PGPASSWORD: ci-migration-password
+          PASSWORD_LINKS_TEST_DATABASE_URL: postgresql://postgres:ci-migration-password@localhost:5432/helprr_password_links_test
+
       - name: Build
         run: npm run build
         env:
