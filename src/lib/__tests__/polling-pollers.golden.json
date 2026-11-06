@@ -123,10 +123,10 @@
      "tags": [
       "kids"
      ],
-     "redirect": "/activity?tab=queue&source=sonarr",
+     "redirect": "/activity?tab=failed&source=sonarr&focus=HASH13",
      "state": "failedPending"
     },
-    "url": "/activity?tab=queue&source=sonarr"
+    "url": "/activity?tab=failed&source=sonarr&focus=HASH13"
    }
   },
   {
@@ -328,10 +328,10 @@
      "tags": [
       "kids"
      ],
-     "redirect": "/activity?tab=queue&source=radarr",
+     "redirect": "/activity?tab=failed&source=radarr&focus=HASH13",
      "state": "failedPending"
     },
-    "url": "/activity?tab=queue&source=radarr"
+    "url": "/activity?tab=failed&source=radarr&focus=HASH13"
    }
   },
   {
@@ -534,10 +534,10 @@
      "tags": [
       "jazz"
      ],
-     "redirect": "/activity?tab=queue&source=lidarr",
+     "redirect": "/activity?tab=failed&source=lidarr&focus=HASH13",
      "state": "failedPending"
     },
-    "url": "/activity?tab=queue&source=lidarr"
+    "url": "/activity?tab=failed&source=lidarr&focus=HASH13"
    }
   },
   {
@@ -1326,10 +1326,10 @@
      "tags": [
       "kids"
      ],
-     "redirect": "/activity?tab=queue&source=sonarr",
+     "redirect": "/activity?tab=failed&source=sonarr&focus=HASH13",
      "state": "failedPending"
     },
-    "url": "/activity?tab=queue&source=sonarr"
+    "url": "/activity?tab=failed&source=sonarr&focus=HASH13"
    }
   },
   {
@@ -1514,10 +1514,10 @@
      "tags": [
       "kids"
      ],
-     "redirect": "/activity?tab=queue&source=radarr",
+     "redirect": "/activity?tab=failed&source=radarr&focus=HASH13",
      "state": "failedPending"
     },
-    "url": "/activity?tab=queue&source=radarr"
+    "url": "/activity?tab=failed&source=radarr&focus=HASH13"
    }
   },
   {

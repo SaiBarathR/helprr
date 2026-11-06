@@ -7,7 +7,7 @@
 //
 // There is no "importFailed" state — older code that checked for that string
 // was dead. We classify each queue item into a coarse bucket that downstream
-// callers (notifications, the Activity "Failed" tab, the Queue Cleaner) all
+// callers (notifications, the Activity "Needs import" tab, the Queue Cleaner) all
 // agree on, so symptoms surfaced in one place line up with actions in another.
 export type QueueIssue = 'import' | 'download' | null;
 

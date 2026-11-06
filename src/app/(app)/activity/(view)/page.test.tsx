@@ -52,7 +52,7 @@ const BLOCKED = {
 };
 type QueueFixture = { trackedDownloadState?: string; trackedDownloadStatus?: string; [key: string]: unknown };
 let queueRecords: QueueFixture[] = QUEUE;
-// The Queue tab pages each instance's queue; the Failed tab asks for the whole queue's stuck imports.
+// The Queue tab pages each instance's queue; the Needs import tab asks for the whole queue's stuck imports.
 function queueResponse(url: string): Response | null {
   const params = new URL(url, 'http://localhost').searchParams;
   if (!url.startsWith('/api/activity/queue?')) return null;
@@ -136,7 +136,7 @@ describe('Activity tab view', () => {
   it('restores the saved tab and filters when a link returns to plain Activity', async () => {
     useUIStore.setState({ activityTab: 'queue', activityFilterBy: ['radarr'] });
     await visit('tab=failed&source=sonarr');
-    expect(activeTab()).toBe('Failed');
+    expect(activeTab()).toBe('Needs import');
     expect(filterBar()?.textContent).toContain('Sonarr');
 
     await visit('');
@@ -149,14 +149,14 @@ describe('Activity tab view', () => {
     await visit('');
     expect(activeTab()).toBe('Queue');
     await visit('tab=failed&source=sonarr');
-    expect(activeTab()).toBe('Failed');
+    expect(activeTab()).toBe('Needs import');
     expect(useUIStore.getState().activityTab).toBe('queue');
   });
 
   it.each(['source=sonarr', 'source=all'])('keeps a tab change temporary in a link view (%s)', async (source) => {
     await visit(`tab=queue&${source}`);
-    await selectTab('Failed');
-    expect(activeTab()).toBe('Failed');
+    await selectTab('Needs import');
+    expect(activeTab()).toBe('Needs import');
     expect(new URLSearchParams(window.location.search).get('tab')).toBe('failed');
     expect(useUIStore.getState().activityTab).toBe('queue');
 
@@ -166,24 +166,24 @@ describe('Activity tab view', () => {
 
   it('saves a tab change on a plain visit and resumes it on return', async () => {
     await visit('');
-    await selectTab('Failed');
-    expect(activeTab()).toBe('Failed');
+    await selectTab('Needs import');
+    expect(activeTab()).toBe('Needs import');
     expect(useUIStore.getState().activityTab).toBe('failed');
 
     await visit('tab=queue&source=sonarr');
     expect(activeTab()).toBe('Queue');
     await visit('');
-    expect(activeTab()).toBe('Failed');
+    expect(activeTab()).toBe('Needs import');
   });
 
   it('uses the saved tab when the URL tab is invalid', async () => {
     useUIStore.setState({ activityTab: 'failed' });
     await visit('tab=invalid');
-    expect(activeTab()).toBe('Failed');
+    expect(activeTab()).toBe('Needs import');
     await visit('tab=queue');
     expect(activeTab()).toBe('Queue');
     await visit('tab=invalid');
-    expect(activeTab()).toBe('Failed');
+    expect(activeTab()).toBe('Needs import');
   });
 
   it('waits for hydration before resuming the saved tab', async () => {
@@ -191,15 +191,15 @@ describe('Activity tab view', () => {
     await visit('');
     expect(activeTab()).toBe('Queue');
     await act(async () => useUIStore.setState({ hasHydrated: true }));
-    expect(activeTab()).toBe('Failed');
+    expect(activeTab()).toBe('Needs import');
   });
 
   it('keeps an in-page tab change through late hydration', async () => {
     useUIStore.setState({ hasHydrated: false, activityTab: 'queue' });
     await visit('source=sonarr');
-    await selectTab('Failed');
+    await selectTab('Needs import');
     await act(async () => useUIStore.setState({ hasHydrated: true }));
-    expect(activeTab()).toBe('Failed');
+    expect(activeTab()).toBe('Needs import');
     expect(useUIStore.getState().activityTab).toBe('queue');
   });
 });
@@ -307,7 +307,7 @@ describe('Activity source filter', () => {
     await waitFor(() => expect(text()).toContain('2 Tasks'));
     await act(async () => button('Remove Sonarr filter')!.click());
     // useSearchParams still holds the link as it was opened.
-    const failedTab = [...document.querySelectorAll('[role="tab"]')].find((t) => t.textContent?.includes('Failed'))!;
+    const failedTab = [...document.querySelectorAll('[role="tab"]')].find((t) => t.textContent?.includes('Needs import'))!;
     await act(async () => failedTab.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 })));
     const params = new URLSearchParams(window.location.search);
     expect(params.get('tab')).toBe('failed');
@@ -401,7 +401,7 @@ describe('Activity manual import from the queue', () => {
     expect(params.has('seriesId')).toBe(false);
   });
 
-  it('does not repeat a download\'s own name in its Failed-tab reason', async () => {
+  it('does not repeat a download\'s own name in its Needs import reason', async () => {
     const name = '[grp] Some Show 3rd Season (BD 1080p)';
     queueRecords = [{
       id: 4, title: name, source: 'sonarr', instanceId: 'son-1', downloadId: 'D', size: 100, sizeleft: 0,
@@ -474,13 +474,13 @@ describe('Activity queue beyond its first page', () => {
     expect(button('Load more')).toBeUndefined();
   });
 
-  it('finds a stuck import on the Failed tab however far down the queue it is', async () => {
+  it('finds a stuck import on the Needs import tab however far down the queue it is', async () => {
     queueRecords = [...Array.from({ length: 80 }, (_, n) => download(n)), BLOCKED];
     await renderPage();
     await waitFor(() => expect(text()).toContain('50 of 81 queue items loaded'));
     expect(text()).not.toContain('Show.S01E02');
 
-    const failedTab = [...document.querySelectorAll('[role="tab"]')].find((t) => t.textContent?.includes('Failed'))!;
+    const failedTab = [...document.querySelectorAll('[role="tab"]')].find((t) => t.textContent?.includes('Needs import'))!;
     await act(async () => failedTab.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 })));
     await waitFor(() => expect(text()).toContain('Episode has a TBA title and recently aired'));
   });

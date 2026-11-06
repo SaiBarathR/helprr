@@ -68,6 +68,11 @@ export async function pollLidarr(context: CycleContext) {
         const mediaHref = getMediaHrefFromIds(metadata);
         const queueHref = '/activity?tab=queue&source=lidarr';
         const failedTabHref = '/activity?tab=failed&source=lidarr';
+        // A failed download leaves the queue once the arr handles it; its History
+        // row stays, listed under Recent failures and opened by ?focus=.
+        const downloadFailedHref = item.downloadId
+          ? `${failedTabHref}&focus=${encodeURIComponent(item.downloadId)}`
+          : failedTabHref;
 
         const prev = prevMap.get(item.id);
         const currentIssue = classifyQueueIssue(item.trackedDownloadState, item.trackedDownloadStatus);
@@ -91,8 +96,8 @@ export async function pollLidarr(context: CycleContext) {
               eventType: 'downloadFailed',
               title: instanceTitle('Album Download Failed', instanceLabel, n),
               body: downloadFailureBody(item),
-              metadata: { ...metadata, redirect: queueHref, state: item.trackedDownloadState },
-              url: queueHref,
+              metadata: { ...metadata, redirect: downloadFailedHref, state: item.trackedDownloadState },
+              url: downloadFailedHref,
             }, { service: 'lidarr', instanceId, reason: 'queue-download-failed-new', itemId: item.id });
           } else {
             const redirect = mediaHref ?? queueHref;
@@ -118,8 +123,8 @@ export async function pollLidarr(context: CycleContext) {
               eventType: 'downloadFailed',
               title: instanceTitle('Album Download Failed', instanceLabel, n),
               body: downloadFailureBody(item),
-              metadata: { ...metadata, redirect: queueHref, state: item.trackedDownloadState },
-              url: queueHref,
+              metadata: { ...metadata, redirect: downloadFailedHref, state: item.trackedDownloadState },
+              url: downloadFailedHref,
             }, { service: 'lidarr', instanceId, reason: 'queue-download-failed-transition', itemId: item.id });
           }
         }

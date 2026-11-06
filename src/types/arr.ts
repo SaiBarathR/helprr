@@ -115,6 +115,8 @@ export interface HistoryItem {
   qualityCutoffNotMet: boolean;
   date: string;
   eventType: string;
+  /** The download client's id for the release (shared with its queue item). */
+  downloadId?: string;
   data: Record<string, string>;
   // Sonarr-specific
   seriesId?: number;

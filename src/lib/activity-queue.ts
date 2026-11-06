@@ -202,7 +202,7 @@ export function getQueueCached(page: number, pageSize: number): Promise<QueueRes
 
 /**
  * Every queued download waiting on a manual import, from each instance's whole
- * queue: the Failed tab must find one however far down the queue it sits.
+ * queue: the Needs import tab must find one however far down the queue it sits.
  */
 export function getQueueNeedingImportCached(): Promise<QueueResult> {
   return getQueueCachedBy('needs-import', async (client, includeUnknown) => {

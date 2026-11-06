@@ -6,7 +6,7 @@ export type TabKey = 'queue' | 'failed' | 'missing' | 'cutoff';
 
 export const TABS: { key: TabKey; label: string }[] = [
   { key: 'queue', label: 'Queue' },
-  { key: 'failed', label: 'Failed' },
+  { key: 'failed', label: 'Needs import' },
   { key: 'missing', label: 'Missing' },
   { key: 'cutoff', label: 'Cutoff' },
 ];
