@@ -309,29 +309,32 @@ export default function SeriesDetailPage() {
       />
 
       <div ref={contentScrollRef} data-scroll-restoration-key="series-detail" className="flex-1 overflow-y-auto px-2 md:p-6">
-        {/* Hero: Backdrop or flat poster layout */}
-        <SeriesHero
-          series={series}
-          isAnimeSeries={isAnimeSeries}
-          anime={anime}
-          tmdbData={tmdbData}
-          poster={poster}
-          statusLabel={statusLabel}
-          statusColor={statusColor}
-          canScheduleAlert={canScheduleAlert}
-          contextGroups={seriesContextGroups}
-          open={open}
-        />
-
         {/* Phones stack these in DOM order. On wide content areas .detail-grid
             (globals.css) puts the facts beside the overview, Play and AniList
-            card and runs everything else full width. Sections keep their own
-            spacing. */}
+            card and runs everything else full width; the hero's poster and
+            title head the facts column. Sections keep their own spacing. */}
         <div className="@container">
           <div className="detail-grid detail-grid-series flex flex-col">
+            {/* Hero: Backdrop or flat poster layout */}
+            <SeriesHero
+              series={series}
+              isAnimeSeries={isAnimeSeries}
+              anime={anime}
+              tmdbData={tmdbData}
+              poster={poster}
+              statusLabel={statusLabel}
+              statusColor={statusColor}
+              canScheduleAlert={canScheduleAlert}
+              contextGroups={seriesContextGroups}
+              open={open}
+            />
+
             {/* This page stacks sections without a space-y wrapper, so the card spaces itself
-                (and adds nothing when there is no download). */}
-            <MediaDownloadProgress source="sonarr" mediaId={series.id} instanceId={instance} className="my-4 [grid-area:progress]" />
+                (and adds nothing when there is no download). The wrapper is always there so
+                the wide grid's progress row exists even without a download (globals.css). */}
+            <div className="[grid-area:progress]">
+              <MediaDownloadProgress source="sonarr" mediaId={series.id} instanceId={instance} className="my-4" />
+            </div>
 
             {isAnimeSeries && (
               <div className="pt-3 space-y-3 [grid-area:anilist]">

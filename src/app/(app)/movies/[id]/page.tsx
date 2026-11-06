@@ -592,187 +592,194 @@ export default function MovieDetailPage() {
         data-scroll-restoration-key="movie-detail"
         className="space-y-6 animate-content-in"
       >
-        {/* Hero: Backdrop or flat poster layout */}
-        {tmdbData?.backdropPath ? (
-          <div className='-mx-2 md:-mx-6'>
-            {/* Backdrop image */}
-            <div className="relative w-full h-[220px] overflow-hidden bg-muted/40">
-              <HeroImage
-                src={toCachedImageSrc(tmdbData.backdropPath, 'tmdb', { width: 1280 }) || tmdbData.backdropPath}
-                alt=""
-                fill
-                sizes="100vw"
-                className="object-cover"
-                priority
-                unoptimized
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent light:via-background/25" />
-              {/* Watchlist + schedule alert icons — top right, mirrors discover hero */}
-              <div className="absolute top-2 right-2 flex items-center gap-1.5">
-                <button
-                  type="button"
-                  aria-label="Add to watchlist"
-                  onClick={() => setShowAddWatchlist(true)}
-                  className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-background/55 backdrop-blur-md text-foreground hover:bg-background/80 shadow-md"
-                >
-                  <Bookmark className="h-3.5 w-3.5" />
-                </button>
-                {canScheduleAlert && (
-                  <button
-                    type="button"
-                    aria-label="Schedule alert"
-                    onClick={() => setShowScheduleAlert(true)}
-                    className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-background/55 backdrop-blur-md text-foreground hover:bg-background/80 shadow-md"
-                  >
-                    <Bell className="h-3.5 w-3.5" />
-                  </button>
-                )}
-              </div>
-            </div>
-            {/* Poster + info overlapping backdrop */}
-            <div className="relative -mt-[90px] px-2 md:px-6 flex gap-3.5">
-              <div className="w-[100px] shrink-0">
-                <QuickContextMenu label={`${movie.title} actions`} groups={contextActionGroups}>
-                <div className="relative aspect-[2/3] rounded-lg overflow-hidden bg-muted shadow-lg ring-1 ring-border/20">
-                  {poster ? (
-                    <FadeInImage
-                      src={poster}
-                      alt={movie.title}
-                      fill
-                      sizes="100px"
-                      className="object-cover"
-                      unoptimized={isProtectedApiImageSrc(poster)}
-                    />
-                  ) : (
-                    <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
-                      <Film className="h-8 w-8" />
-                    </div>
-                  )}
-                </div>
-                </QuickContextMenu>
-              </div>
-              <div className="flex-1 min-w-0 pt-[60px]">
-                <Badge
-                  className={`mb-1.5 text-[10px] font-bold tracking-wide uppercase px-2 py-0.5 ${
-                    movie.hasFile
-                      ? 'bg-green-500/20 text-green-400 border-green-500/30'
-                      : 'bg-red-500/20 text-red-400 border-red-500/30'
-                  }`}
-                  variant="outline"
-                >
-                  {movie.hasFile ? 'Downloaded' : 'Missing'}
-                </Badge>
-                <h1 className="text-xl font-bold leading-tight line-clamp-2">{movie.title}</h1>
-                <p className="text-sm text-muted-foreground mt-1">
-                  {[
-                    movie.year,
-                    movie.runtime > 0 ? `${movie.runtime} min` : null,
-                    movie.certification || null,
-                  ]
-                    .filter(Boolean)
-                    .join(' \u00B7 ')}
-                </p>
-                <WatchStatusInline status={movieWatch} className="mt-1.5" />
-                {ratingItems.length > 0 && (
-                  <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 mt-2">
-                    {ratingItems.map((ri) => (
-                      <div key={ri.label} className="flex items-center gap-1">
-                        <Star className={`h-3 w-3 ${ri.color}`} />
-                        <span className="text-sm font-semibold">{ri.score}</span>
-                        <span className="text-[10px] text-muted-foreground">{ri.label}</span>
-                        {ri.votes > 0 && <span className="text-[9px] text-muted-foreground/60">{formatRatingVotes(ri.votes)}</span>}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-            {tmdbData.tagline && (
-              <p className="mt-3 px-2 md:px-6 text-sm italic text-muted-foreground">&ldquo;{tmdbData.tagline}&rdquo;</p>
-            )}
-          </div>
-        ) : (
-          // pt-3 keeps the poster clear of the flush page header (matches the
-          // series no-backdrop layout).
-          <div className="flex gap-4 pt-3">
-            <div className="w-[120px] shrink-0">
-              <QuickContextMenu label={`${movie.title} actions`} groups={contextActionGroups}>
-              <div className="relative aspect-[2/3] rounded-lg overflow-hidden bg-muted">
-                {poster ? (
-                  <FadeInImage
-                    src={poster}
-                    alt={movie.title}
-                    fill
-                    sizes="120px"
-                    className="object-cover"
-                    unoptimized={isProtectedApiImageSrc(poster)}
-                  />
-                ) : (
-                  <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
-                    <Film className="h-10 w-10" />
-                  </div>
-                )}
-                <button
-                  type="button"
-                  aria-label="Add to watchlist"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    setShowAddWatchlist(true);
-                  }}
-                  className="absolute top-1.5 right-1.5 inline-flex h-7 w-7 items-center justify-center rounded-full bg-background/55 backdrop-blur-md text-foreground hover:bg-background/80 shadow-md"
-                >
-                  <Bookmark className="h-3.5 w-3.5" />
-                </button>
-              </div>
-              </QuickContextMenu>
-            </div>
-            <div className="flex-1 min-w-0 pt-1">
-              <Badge
-                className={`mb-1.5 text-[10px] font-bold tracking-wide uppercase px-2 py-0.5 ${
-                  movie.hasFile
-                    ? 'bg-green-500/20 text-green-400 border-green-500/30'
-                    : 'bg-red-500/20 text-red-400 border-red-500/30'
-                }`}
-                variant="outline"
-              >
-                {movie.hasFile ? 'Downloaded' : 'Missing'}
-              </Badge>
-              <h1 className="text-xl font-bold leading-tight line-clamp-2">{movie.title}</h1>
-              <p className="text-sm text-muted-foreground mt-1">
-                {[
-                  movie.year,
-                  movie.runtime > 0 ? `${movie.runtime} min` : null,
-                  movie.certification || null,
-                ]
-                  .filter(Boolean)
-                  .join(' \u00B7 ')}
-              </p>
-              <WatchStatusInline status={movieWatch} className="mt-1.5" />
-              {ratingItems.length > 0 && (
-                <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 mt-2">
-                  {ratingItems.map((ri) => (
-                    <div key={ri.label} className="flex items-center gap-1">
-                      <Star className={`h-3 w-3 ${ri.color}`} />
-                      <span className="text-sm font-semibold">{ri.score}</span>
-                      <span className="text-[10px] text-muted-foreground">{ri.label}</span>
-                      {ri.votes > 0 && <span className="text-[9px] text-muted-foreground/60">{formatRatingVotes(ri.votes)}</span>}
-                    </div>
-                  ))}
-                </div>
-                )}
-              </div>
-          </div>
-        )}
-
         {/* Phones stack these in DOM order. On wide content areas .detail-grid
             (globals.css) puts the facts beside the overview and actions and runs
-            everything else full width. */}
+            everything else full width; the hero's poster and title head the
+            facts column. */}
         <div className="@container">
           <div className="detail-grid detail-grid-movie flex flex-col gap-6">
+            {/* Hero: Backdrop or flat poster layout. "Split" so the poster and
+                title can open the grid's left column (globals.css). */}
+            <div className="detail-hero detail-hero-split">
+              {tmdbData?.backdropPath ? (
+                <>
+                  {/* Backdrop image */}
+                  <div className="detail-hero-banner relative -mx-2 md:-mx-6 h-[220px] overflow-hidden bg-muted/40">
+                    <HeroImage
+                      src={toCachedImageSrc(tmdbData.backdropPath, 'tmdb', { width: 1280 }) || tmdbData.backdropPath}
+                      alt=""
+                      fill
+                      sizes="100vw"
+                      className="object-cover"
+                      priority
+                      unoptimized
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent light:via-background/25" />
+                    {/* Watchlist + schedule alert icons — top right, mirrors discover hero */}
+                    <div className="absolute top-2 right-2 flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        aria-label="Add to watchlist"
+                        onClick={() => setShowAddWatchlist(true)}
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-background/55 backdrop-blur-md text-foreground hover:bg-background/80 shadow-md"
+                      >
+                        <Bookmark className="h-3.5 w-3.5" />
+                      </button>
+                      {canScheduleAlert && (
+                        <button
+                          type="button"
+                          aria-label="Schedule alert"
+                          onClick={() => setShowScheduleAlert(true)}
+                          className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-background/55 backdrop-blur-md text-foreground hover:bg-background/80 shadow-md"
+                        >
+                          <Bell className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  {/* Poster + info overlapping backdrop */}
+                  <div className="detail-hero-identity -mt-[90px]">
+                    <div className="relative flex gap-3.5">
+                      <div className="w-[100px] shrink-0">
+                        <QuickContextMenu label={`${movie.title} actions`} groups={contextActionGroups}>
+                        <div className="relative aspect-[2/3] rounded-lg overflow-hidden bg-muted shadow-lg ring-1 ring-border/20">
+                          {poster ? (
+                            <FadeInImage
+                              src={poster}
+                              alt={movie.title}
+                              fill
+                              sizes="100px"
+                              className="object-cover"
+                              unoptimized={isProtectedApiImageSrc(poster)}
+                            />
+                          ) : (
+                            <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
+                              <Film className="h-8 w-8" />
+                            </div>
+                          )}
+                        </div>
+                        </QuickContextMenu>
+                      </div>
+                      <div className="flex-1 min-w-0 pt-[60px]">
+                        <Badge
+                          className={`mb-1.5 text-[10px] font-bold tracking-wide uppercase px-2 py-0.5 ${
+                            movie.hasFile
+                              ? 'bg-green-500/20 text-green-400 border-green-500/30'
+                              : 'bg-red-500/20 text-red-400 border-red-500/30'
+                          }`}
+                          variant="outline"
+                        >
+                          {movie.hasFile ? 'Downloaded' : 'Missing'}
+                        </Badge>
+                        <h1 className="text-xl font-bold leading-tight line-clamp-2">{movie.title}</h1>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          {[
+                            movie.year,
+                            movie.runtime > 0 ? `${movie.runtime} min` : null,
+                            movie.certification || null,
+                          ]
+                            .filter(Boolean)
+                            .join(' \u00B7 ')}
+                        </p>
+                        <WatchStatusInline status={movieWatch} className="mt-1.5" />
+                        {ratingItems.length > 0 && (
+                          <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 mt-2">
+                            {ratingItems.map((ri) => (
+                              <div key={ri.label} className="flex items-center gap-1">
+                                <Star className={`h-3 w-3 ${ri.color}`} />
+                                <span className="text-sm font-semibold">{ri.score}</span>
+                                <span className="text-[10px] text-muted-foreground">{ri.label}</span>
+                                {ri.votes > 0 && <span className="text-[9px] text-muted-foreground/60">{formatRatingVotes(ri.votes)}</span>}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                  </div>
+                  {tmdbData.tagline && (
+                    <p className="mt-3 text-sm italic text-muted-foreground">&ldquo;{tmdbData.tagline}&rdquo;</p>
+                  )}
+                  </div>
+                </>
+              ) : (
+                // pt-3 keeps the poster clear of the flush page header (matches the
+                // series no-backdrop layout).
+                <div className="detail-hero-identity flex gap-4 pt-3">
+                  <div className="w-[120px] shrink-0">
+                    <QuickContextMenu label={`${movie.title} actions`} groups={contextActionGroups}>
+                    <div className="relative aspect-[2/3] rounded-lg overflow-hidden bg-muted">
+                      {poster ? (
+                        <FadeInImage
+                          src={poster}
+                          alt={movie.title}
+                          fill
+                          sizes="120px"
+                          className="object-cover"
+                          unoptimized={isProtectedApiImageSrc(poster)}
+                        />
+                      ) : (
+                        <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
+                          <Film className="h-10 w-10" />
+                        </div>
+                      )}
+                      <button
+                        type="button"
+                        aria-label="Add to watchlist"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setShowAddWatchlist(true);
+                        }}
+                        className="absolute top-1.5 right-1.5 inline-flex h-7 w-7 items-center justify-center rounded-full bg-background/55 backdrop-blur-md text-foreground hover:bg-background/80 shadow-md"
+                      >
+                        <Bookmark className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                    </QuickContextMenu>
+                  </div>
+                  <div className="flex-1 min-w-0 pt-1">
+                    <Badge
+                      className={`mb-1.5 text-[10px] font-bold tracking-wide uppercase px-2 py-0.5 ${
+                        movie.hasFile
+                          ? 'bg-green-500/20 text-green-400 border-green-500/30'
+                          : 'bg-red-500/20 text-red-400 border-red-500/30'
+                      }`}
+                      variant="outline"
+                    >
+                      {movie.hasFile ? 'Downloaded' : 'Missing'}
+                    </Badge>
+                    <h1 className="text-xl font-bold leading-tight line-clamp-2">{movie.title}</h1>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      {[
+                        movie.year,
+                        movie.runtime > 0 ? `${movie.runtime} min` : null,
+                        movie.certification || null,
+                      ]
+                        .filter(Boolean)
+                        .join(' \u00B7 ')}
+                    </p>
+                    <WatchStatusInline status={movieWatch} className="mt-1.5" />
+                    {ratingItems.length > 0 && (
+                      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 mt-2">
+                        {ratingItems.map((ri) => (
+                          <div key={ri.label} className="flex items-center gap-1">
+                            <Star className={`h-3 w-3 ${ri.color}`} />
+                            <span className="text-sm font-semibold">{ri.score}</span>
+                            <span className="text-[10px] text-muted-foreground">{ri.label}</span>
+                            {ri.votes > 0 && <span className="text-[9px] text-muted-foreground/60">{formatRatingVotes(ri.votes)}</span>}
+                          </div>
+                        ))}
+                      </div>
+                      )}
+                    </div>
+                </div>
+              )}
+            </div>
+
             <MediaDownloadProgress source="radarr" mediaId={movie.id} instanceId={instance} className="[grid-area:progress]" />
 
-            <div className="flex flex-col gap-6 [grid-area:actions]">
+            {/* With no overview the actions open the right column (globals.css). */}
+            <div className={`flex flex-col gap-6 ${movie.overview ? '[grid-area:actions]' : '[grid-area:overview]'}`}>
               {/* Straight into Helprr's own player when the title is in Jellyfin. */}
               <PlayInHelprrButton
                 imdbId={movie.imdbId}

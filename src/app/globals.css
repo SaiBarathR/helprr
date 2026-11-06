@@ -450,13 +450,24 @@ html[data-scheme='light'] :is([class*='bg-pink-400/'], [class*='bg-pink-500/']) 
   color: var(--color-pink-700);
 }
 
-/* Movie and series detail pages, below the hero. Phones stack the sections in
-   DOM order (the flex column on .detail-grid). Once the content area is wide
-   (56rem of the surrounding @container, so the sidebar counts) a short facts
-   column sits beside the overview and actions and everything else runs full
-   width. Sections place themselves with [grid-area:*]; the single 1fr row soaks
-   up any height difference so neither column gets gaps between its sections.
-   Rows are spaced with margins, not row-gap, so an absent section adds none. */
+/* Movie and series detail pages. Phones stack the sections in DOM order (the
+   flex column on .detail-grid). Once the content area is wide (56rem of the
+   surrounding @container, so the sidebar counts) a short facts column sits
+   beside the overview and actions and everything else runs full width.
+   Sections place themselves with [grid-area:*]; the single 1fr row soaks up
+   any height difference so neither column gets gaps between its sections.
+   Rows are spaced with margins, not row-gap, so an absent section adds none.
+
+   The Sonarr/Radarr hero (.detail-hero) is the grid's first section. A split
+   hero (poster layouts, not the anime one) lets its backdrop run full width
+   and its poster and title open the left column, so the right column starts
+   beside the poster rather than under an empty band. A section spanning rows
+   sizes only the rows nothing else fills, and an empty row takes a share, so:
+   on series the tall overview/Play block spans the hero, download and first
+   facts rows (its progress wrapper always renders); on movies the hero spans
+   the short overview's row and the first row of the actions, which take the
+   overview's place when there is none. YouTube and Twitch share
+   .detail-grid-movie without a hero and keep its plain layout. */
 @container (min-width: 56rem) {
   .detail-grid {
     display: grid;
@@ -482,9 +493,57 @@ html[data-scheme='light'] :is([class*='bg-pink-400/'], [class*='bg-pink-500/']) 
   }
 
   .detail-grid-series {
-    grid-template-rows: auto auto 1fr;
+    grid-template-rows: auto auto auto 1fr;
     grid-template-areas:
+      'banner banner'
       'progress progress'
+      'facts main'
+      'facts anilist'
+      'seasons seasons'
+      'info info'
+      'trailer trailer'
+      'rails rails';
+  }
+
+  .detail-hero {
+    grid-area: banner;
+  }
+
+  .detail-hero-split {
+    display: contents;
+  }
+
+  .detail-hero-banner {
+    grid-area: banner;
+  }
+
+  .detail-hero-identity {
+    grid-area: hero;
+  }
+
+  .detail-grid-movie:has(> .detail-hero-split) {
+    grid-template-rows: auto auto auto auto 1fr;
+    grid-template-areas:
+      'banner banner'
+      'hero overview'
+      'hero actions'
+      'progress actions'
+      'facts actions'
+      'cast cast'
+      'info info'
+      'rails rails';
+  }
+
+  .detail-grid-movie .detail-hero-identity {
+    margin-bottom: 1.5rem;
+  }
+
+  .detail-grid-series:has(> .detail-hero-split) {
+    grid-template-rows: auto auto auto auto 1fr;
+    grid-template-areas:
+      'banner banner'
+      'hero main'
+      'progress main'
       'facts main'
       'facts anilist'
       'seasons seasons'
