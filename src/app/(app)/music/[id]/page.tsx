@@ -674,7 +674,7 @@ export default function ArtistDetailPage() {
                           <button
                             onClick={() => handleToggleAlbumMonitored(album)}
                             disabled={albumMonitorPending === album.id}
-                            className="shrink-0 self-center min-w-[36px] min-h-[36px] flex items-center justify-center text-muted-foreground hover:text-foreground"
+                            className="relative touch-target shrink-0 self-center min-w-[36px] min-h-[36px] flex items-center justify-center text-muted-foreground hover:text-foreground"
                             aria-label={album.monitored ? 'Unmonitor album' : 'Monitor album'}
                           >
                             {albumMonitorPending === album.id ? (

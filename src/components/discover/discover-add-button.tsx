@@ -206,8 +206,10 @@ export function DiscoverAddButton({ detail, controller }: DiscoverAddButtonProps
     // wrapped the pill labels at 363px, and two pills side by side still
     // reach the slug at 363px. The pills pair up from sm, and from md
     // everything shares one row, icons first as before. The icons come first
-    // in the markup too, so desktop Tab order matches what is on screen.
-    const existingPillClass = 'inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-background/55 backdrop-blur-md text-foreground px-3 py-1.5 text-[11px] font-medium hover:bg-background/70 transition-colors';
+    // in the markup too, so desktop Tab order matches what is on screen. The
+    // pills are positioned so they paint over the alert icon's 44px hit area,
+    // which grows rightward toward them.
+    const existingPillClass = 'relative inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-background/55 backdrop-blur-md text-foreground px-3 py-1.5 text-[11px] font-medium hover:bg-background/70 transition-colors';
     return (
       <div className="absolute top-1 right-1 md:top-2 md:right-1.5 hero-meta-fade flex flex-col-reverse items-end gap-1.5 md:flex-row md:items-center">
         <div className="flex items-center gap-1.5">

@@ -339,10 +339,11 @@ function CompactFilters({
       <div className="w-px h-4 bg-border/50 mx-0.5" />
 
       {/* Monitored toggle — compact by owner preference: the calendar toolbar
-          must fit one line on mobile, so no 44px minimums here. */}
+          must fit one line on mobile, so these toggles keep their size and get
+          a 44px hit area (touch-target) instead of 44px minimums. */}
       <button
         onClick={() => setMonitoredOnly(!monitoredOnly)}
-        className={`p-1.5 rounded-md transition-colors ${monitoredOnly
+        className={`relative touch-target p-1.5 rounded-md transition-colors ${monitoredOnly
           ? 'bg-primary/15 text-primary'
           : 'text-muted-foreground hover:text-foreground hover:bg-muted'
           }`}
@@ -361,7 +362,7 @@ function CompactFilters({
 
       <button
         onClick={() => setShowScheduled(!showScheduled)}
-        className={`p-1.5 rounded-md transition-colors ${showScheduled
+        className={`relative touch-target p-1.5 rounded-md transition-colors ${showScheduled
           ? 'bg-primary/15 text-primary'
           : 'text-muted-foreground hover:text-foreground hover:bg-muted'
           }`}
@@ -375,7 +376,7 @@ function CompactFilters({
       {/* Poster/backdrop visibility (agenda + week views) */}
       <button
         onClick={() => setShowImages(!showImages)}
-        className={`p-1.5 rounded-md transition-colors ${showImages
+        className={`relative touch-target p-1.5 rounded-md transition-colors ${showImages
           ? 'bg-muted text-foreground'
           : 'text-muted-foreground hover:text-foreground hover:bg-muted'
           }`}
@@ -1544,9 +1545,6 @@ export default function CalendarPage() {
               size="icon"
               onClick={goBack}
               className="h-7 w-7 shrink-0"
-              // No extra hit area: the compact toolbar packs these against
-              // "Today", which the spill-over would cover.
-              touchTarget={false}
               aria-label="Previous period"
             >
               <ChevronLeft className="h-4 w-4" />
@@ -1556,16 +1554,16 @@ export default function CalendarPage() {
               size="icon"
               onClick={goForward}
               className="h-7 w-7 shrink-0"
-              // No extra hit area: the compact toolbar packs these against
-              // "Today", which the spill-over would cover.
-              touchTarget={false}
               aria-label="Next period"
             >
               <ChevronRight className="h-4 w-4" />
             </Button>
+            {/* Every control in this row has a hit area; each one after the
+                first grows rightward only (touch-target sibling rule), so none
+                covers the one before it. */}
             <button
               onClick={goToday}
-              className="text-[11px] font-medium text-primary hover:text-primary/80 transition-colors shrink-0 px-1"
+              className="relative touch-target text-[11px] font-medium text-primary hover:text-primary/80 transition-colors shrink-0 px-1"
             >
               Today
             </button>

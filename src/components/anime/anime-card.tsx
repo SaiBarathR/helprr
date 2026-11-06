@@ -4,10 +4,7 @@ import Link from '@/components/ui/app-link';
 import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
 import { Badge } from '@/components/ui/badge';
 import { FadeInImage } from '@/components/media/fade-in-image';
-import { WatchlistButton } from '@/components/watchlist/watchlist-button';
-import {
-  ScheduledAlertButton,
-} from '@/components/scheduled-alerts/scheduled-alert-dialog';
+import { PosterQuickActions } from '@/components/media/poster-quick-actions';
 import { QuickContextMenu, type ContextActionGroup } from '@/components/ui/quick-context-menu';
 import { useAnilistContextMenu } from '@/components/anime/anilist-context-menu';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
@@ -151,20 +148,13 @@ export function AnimeCard({
       </QuickContextMenu>
       {!item.library?.exists && (
         <div className="absolute top-1 left-1 z-10 flex items-center gap-1">
-          {canWatchlist && (
-            <WatchlistButton
-              draft={watchlistDraft}
-              variant="icon"
-              className="inline-flex h-5 w-5 items-center justify-center rounded-md bg-black/55 backdrop-blur-md text-white hover:bg-black/70"
-            />
-          )}
-          {canSchedule && (
-          <ScheduledAlertButton
-            draft={scheduleDraft}
-            variant="icon"
-            className="h-5 w-5"
+          <PosterQuickActions
+            watchlistDraft={watchlistDraft}
+            scheduleDraft={scheduleDraft}
+            watchlist={canWatchlist}
+            schedule={canSchedule}
+            buttonClassName="inline-flex h-5 w-5 items-center justify-center rounded-md bg-black/55 backdrop-blur-md text-white hover:bg-black/70"
           />
-          )}
         </div>
       )}
       {drawerNode}

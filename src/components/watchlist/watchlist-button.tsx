@@ -13,6 +13,8 @@ interface Props {
   variant?: 'button' | 'icon';
   label?: string;
   className?: string;
+  /** The icon's 44px hit area; `height` grows only its height. */
+  hitArea?: 'full' | 'height';
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
 }
@@ -23,6 +25,7 @@ export function WatchlistButton({
   variant = 'button',
   label = 'Watchlist',
   className,
+  hitArea = 'full',
   open: controlledOpen,
   onOpenChange,
 }: Props) {
@@ -44,11 +47,11 @@ export function WatchlistButton({
             e.stopPropagation();
             setOpen(true);
           }}
-          // Taller hit area only: on posters it sits beside the alert button.
           className={cn(
             className ??
               'inline-flex h-7 w-7 items-center justify-center rounded-full bg-background/80 backdrop-blur-sm text-foreground hover:bg-background border border-border/50',
-            'relative touch-target-y',
+            'relative',
+            hitArea === 'height' ? 'touch-target-y' : 'touch-target',
           )}
         >
           <Bookmark className="h-3.5 w-3.5" />
