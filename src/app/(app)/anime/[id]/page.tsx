@@ -65,9 +65,9 @@ function formatCountdown(seconds: number): string {
 }
 
 const STATUS_COLORS: Record<string, string> = {
-  CURRENT: 'bg-blue-500',
-  PLANNING: 'bg-green-500',
-  COMPLETED: 'bg-violet-500',
+  CURRENT: 'bg-[var(--hpr-blue)]',
+  PLANNING: 'bg-[var(--hpr-green)]',
+  COMPLETED: 'bg-[var(--hpr-violet)]',
   PAUSED: 'bg-yellow-500',
   DROPPED: 'bg-red-500',
 };

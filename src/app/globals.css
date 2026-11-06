@@ -557,13 +557,16 @@ html {
   /* Playback progress: its own token so the cinematic skin can paint the
      scrubber the site's red without dragging every other accent with it. */
   --hpr-seek: var(--hpr-amber);
+  /* Category colours (media types, chart series). Blue/purple/violet/pink are
+     low-chroma so they sit on warm ink beside the amber accent; Liquid Glass
+     replaces all of these with iOS system colours (dashboard-theme.ts). */
   --hpr-green: #5ac893;
   --hpr-rose: #e36a7a;
-  --hpr-blue: #6aa9ee;
-  --hpr-purple: #b48bf0;
-  --hpr-violet: #8a6bf7;
+  --hpr-blue: #82a8d3;
+  --hpr-purple: #bb90ce;
+  --hpr-violet: #877bc8;
   --hpr-cyan: #00a4dc;
-  --hpr-pink: #ec6b9e;
+  --hpr-pink: #d97da1;
   --hpr-font-body: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Segoe UI", system-ui, sans-serif;
   --hpr-font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", "Segoe UI", system-ui, sans-serif;
   --hpr-font-mono: "SF Mono", ui-monospace, "JetBrains Mono", Menlo, monospace;
