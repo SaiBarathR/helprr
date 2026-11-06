@@ -49,7 +49,7 @@ import { useQuery } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/query-keys';
 import { jsonFetcher, ensureArray } from '@/lib/query-fetch';
 import { isQueryOffline } from '@/lib/network-error';
-import { bulkFanOut, parseSeriesSearchTallies, reportBulk } from '@/lib/bulk-fan-out';
+import { bulkFanOut, itemsOnSucceededInstances, parseSeriesSearchTallies, reportBulk } from '@/lib/bulk-fan-out';
 import { useUnionTags } from '@/lib/hooks/use-reference-data';
 import { type ContextActionGroup } from '@/components/ui/quick-context-menu';
 import { MediaDeleteConfirmDialog } from '@/components/media/media-delete-confirm-dialog';
@@ -455,7 +455,7 @@ export default function SeriesPage() {
   }, [selectedSeries]);
 
   const handleBulkEdit = useCallback(async (changes: BulkEditChanges) => {
-    const { ok, fail, firstError } = await fanOutItems(selectedSeries, (instanceId, ids) =>
+    const { ok, fail, firstError, failedInstanceIds } = await fanOutItems(selectedSeries, (instanceId, ids) =>
       fetch(`/api/sonarr/editor${instanceId ? `?instanceId=${encodeURIComponent(instanceId)}` : ''}`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ids, ...changes }),
@@ -463,17 +463,23 @@ export default function SeriesPage() {
     reportBulk('Updated', ok, fail, { noun: 'series', pluralNoun: 'series', reason: firstError });
     await refetchSeries();
     if (fail === 0) exit();
-  }, [fanOutItems, selectedSeries, refetchSeries, exit]);
+    // Partial failure: the sheet stays open with only the failed instances' items selected.
+    else deselectMany(itemsOnSucceededInstances(selectedSeries, failedInstanceIds).map(keyOf));
+    return fail === 0;
+  }, [fanOutItems, selectedSeries, refetchSeries, exit, deselectMany, keyOf]);
 
   const handleOrganize = useCallback(async () => {
-    const { ok, fail, firstError } = await fanOutItems(selectedSeries, (instanceId, ids) =>
+    const { ok, fail, firstError, failedInstanceIds } = await fanOutItems(selectedSeries, (instanceId, ids) =>
       fetch(`/api/sonarr/command${instanceId ? `?instanceId=${encodeURIComponent(instanceId)}` : ''}`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: 'RenameSeries', seriesIds: ids }),
       }));
     reportBulk('Organizing', ok, fail, { noun: 'series', pluralNoun: 'series', reason: firstError });
     if (fail === 0) exit();
-  }, [fanOutItems, selectedSeries, exit]);
+    // Partial failure: the sheet stays open with only the failed instances' items selected.
+    else deselectMany(itemsOnSucceededInstances(selectedSeries, failedInstanceIds).map(keyOf));
+    return fail === 0;
+  }, [fanOutItems, selectedSeries, exit, deselectMany, keyOf]);
 
   const confirmSingleDelete = useCallback(async (deleteFiles: boolean) => {
     if (!deleteTarget || deletingTarget) return;

@@ -47,8 +47,8 @@ function renderBar(options: Partial<BulkEditSheetOptions> = {}, count = 3, itemN
     isAdmin: true,
     canChangePath: true,
     canOrganize: true,
-    onApply: vi.fn().mockResolvedValue(undefined),
-    onOrganize: vi.fn().mockResolvedValue(undefined),
+    onApply: vi.fn().mockResolvedValue(true),
+    onOrganize: vi.fn().mockResolvedValue(true),
     ...options,
   };
   render(
@@ -136,6 +136,34 @@ describe('bulk "More" sheet', () => {
     const confirm = await screen.findByRole('alertdialog', { name: 'Organize 2 movies?' });
     await userEvent.click(within(confirm).getByRole('button', { name: 'Organize' }));
     expect(bulkEdit.onOrganize).toHaveBeenCalledTimes(1);
+  });
+
+  it('closes after a full success, but stays open with its picks after a partial failure', async () => {
+    const onApply = vi.fn().mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+    renderBar({ onApply });
+    await userEvent.click(screen.getByRole('button', { name: 'More' }));
+    await pick('Series Type', 'Anime');
+    await userEvent.click(screen.getByRole('button', { name: 'Apply to 3 series' }));
+    expect(onApply).toHaveBeenCalledTimes(1);
+
+    // Partial failure: still open, pick kept, so the user can retry the failed instances.
+    const dialog = screen.getByRole('dialog', { name: 'Edit 3 series' });
+    expect(within(dialog).getByLabelText('Series Type').textContent).toContain('Anime');
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Apply to 3 series' }));
+    expect(onApply).toHaveBeenNthCalledWith(2, { seriesType: 'anime' });
+    await vi.waitFor(() => expect(screen.queryByRole('dialog', { name: 'Edit 3 series' })).toBeNull());
+  });
+
+  it('keeps the sheet open when Organize partly fails', async () => {
+    const onOrganize = vi.fn().mockResolvedValue(false);
+    renderBar({ onOrganize });
+    await userEvent.click(screen.getByRole('button', { name: 'More' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Organize files' }));
+    const confirm = await screen.findByRole('alertdialog', { name: 'Organize 3 series?' });
+    await userEvent.click(within(confirm).getByRole('button', { name: 'Organize' }));
+    expect(onOrganize).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+    expect(screen.getByRole('dialog', { name: 'Edit 3 series' })).toBeTruthy();
   });
 
   it('hides More when the user can change none of it', () => {

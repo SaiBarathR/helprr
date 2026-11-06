@@ -436,14 +436,12 @@ export function BulkActionBar({
           busy={busy === 'more'}
           onApply={(changes) =>
             run('more', async () => {
-              await bulkEdit.onApply(changes);
-              setMoreOpen(false);
+              if (await bulkEdit.onApply(changes)) setMoreOpen(false);
             })
           }
           onOrganize={() =>
             run('more', async () => {
-              await bulkEdit.onOrganize();
-              setMoreOpen(false);
+              if (await bulkEdit.onOrganize()) setMoreOpen(false);
             })
           }
         />

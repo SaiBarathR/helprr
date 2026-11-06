@@ -27,6 +27,7 @@ const mocks = vi.hoisted(() => {
     getCurrentUser: vi.fn(),
     resolveConnection: vi.fn(),
     runWithOperationAudit: vi.fn(),
+    getSonarrClient: vi.fn(),
     sonarr: arr(),
     radarr: arr(),
     lidarr: arr(),
@@ -44,7 +45,7 @@ vi.mock('@/lib/sonarr-client', () => ({ SonarrClient: class { constructor() { re
 vi.mock('@/lib/radarr-client', () => ({ RadarrClient: class { constructor() { return mocks.radarr; } } }));
 vi.mock('@/lib/lidarr-client', () => ({ LidarrClient: class { constructor() { return mocks.lidarr; } } }));
 vi.mock('@/lib/service-helpers', () => ({
-  getSonarrClient: async () => mocks.sonarr,
+  getSonarrClient: mocks.getSonarrClient,
   getRadarrClient: async () => mocks.radarr,
   getLidarrClient: async () => mocks.lidarr,
 }));
@@ -56,7 +57,8 @@ vi.mock('@/lib/api-error', () => ({
   upstreamErrorResponse: () => new Response(JSON.stringify({ error: 'upstream' }), { status: 502 }),
 }));
 
-import { parseBulkEditBody } from '@/lib/bulk-editor';
+import { CAPABILITIES } from '@/lib/capabilities';
+import { MAX_BULK_EDIT_IDS, parseBulkEditBody } from '@/lib/bulk-editor';
 import { PUT as sonarrEditor } from '@/app/api/sonarr/editor/route';
 import { PUT as radarrEditor } from '@/app/api/radarr/editor/route';
 import { PUT as lidarrEditor } from '@/app/api/lidarr/editor/route';
@@ -97,6 +99,7 @@ beforeEach(() => {
   mocks.requireUserCapability.mockResolvedValue({ ok: true, user: admin });
   mocks.resolveConnection.mockImplementation(async (_type: string, id?: string) => ({ id: id ?? 'default', url: 'http://arr', apiKey: 'k' }));
   mocks.runWithOperationAudit.mockImplementation(async (_input: unknown, op: () => Promise<unknown>) => op());
+  mocks.getSonarrClient.mockResolvedValue(mocks.sonarr);
   for (const client of [mocks.sonarr, mocks.radarr, mocks.lidarr]) {
     client.getQualityProfiles.mockResolvedValue([{ id: 1, name: 'HD' }, { id: 4, name: 'Any' }]);
     client.getMetadataProfiles.mockResolvedValue([{ id: 2, name: 'Standard' }]);
@@ -107,6 +110,17 @@ beforeEach(() => {
 });
 
 describe('parseBulkEditBody settings fields', () => {
+  it('drops duplicate ids', () => {
+    expect(parseBulkEditBody({ ids: [3, 3, 5, 3], monitored: true }, 'sonarr')).toEqual({ ids: [3, 5], monitored: true });
+  });
+
+  it('caps the ids in one request', () => {
+    const ids = Array.from({ length: MAX_BULK_EDIT_IDS }, (_, i) => i + 1);
+    expect(parseBulkEditBody({ ids, monitored: true }, 'radarr')).toMatchObject({ ids });
+    expect(parseBulkEditBody({ ids: [...ids, MAX_BULK_EDIT_IDS + 1], monitored: true }, 'radarr'))
+      .toEqual({ error: `ids must list at most ${MAX_BULK_EDIT_IDS} items` });
+  });
+
   it('accepts each service its own fields', () => {
     expect(parseBulkEditBody({
       ids: [1], qualityProfileId: 4, rootFolderPath: '/m', moveFiles: true,
@@ -226,7 +240,7 @@ describe.each(services)('PUT /api/$svc/editor settings', ({ svc, SVC, handler, c
   });
 
   it('keeps the quality profile admin-only, even with every library capability', async () => {
-    mocks.getCurrentUser.mockResolvedValue(member({ [changePath]: true }));
+    mocks.getCurrentUser.mockResolvedValue(member(Object.fromEntries(CAPABILITIES.map((cap) => [cap, true]))));
     const res = await call(handler, path, 'PUT', { ids: [3], qualityProfileId: 1 });
     expect(res.status).toBe(403);
     expect(await res.json()).toEqual({ error: 'Forbidden: only an admin can change these fields' });
@@ -284,6 +298,7 @@ describe('bulk Organize commands', () => {
   it('Sonarr RenameSeries renames a list of series', async () => {
     const res = await call(sonarrCommand as Handler, '/api/sonarr/command?instanceId=s-2', 'POST', { name: 'RenameSeries', seriesIds: [3, 5] });
     expect(res.status).toBe(200);
+    expect(mocks.getSonarrClient).toHaveBeenCalledWith('s-2');
     expect(mocks.sonarr.renameSeries).toHaveBeenCalledWith([3, 5]);
   });
 
@@ -306,7 +321,7 @@ describe('bulk Organize commands', () => {
   it('Radarr RenameMovie and Lidarr RenameArtist rename lists', async () => {
     await call(radarrCommand as Handler, '/api/radarr/command', 'POST', { name: 'RenameMovie', movieIds: [4, 4, 6] });
     expect(mocks.radarr.renameMovies).toHaveBeenCalledWith([4, 6]);
-    await call(lidarrCommand as Handler, '/api/lidarr/command', 'POST', { name: 'RenameArtist', artistIds: [8] });
+    await call(lidarrCommand as Handler, '/api/lidarr/command', 'POST', { name: 'RenameArtist', artistIds: [8, 8] });
     expect(mocks.lidarr.renameArtists).toHaveBeenCalledWith([8]);
   });
 

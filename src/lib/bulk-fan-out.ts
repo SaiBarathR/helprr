@@ -6,6 +6,8 @@ export interface BulkFanOutResult {
   ok: number;
   fail: number;
   firstError?: string;
+  /** Instances whose whole request failed, so a retry can target only those groups. */
+  failedInstanceIds: (string | undefined)[];
 }
 
 async function parseErrorFromResponse(res: Response): Promise<string | undefined> {
@@ -31,6 +33,7 @@ export async function bulkFanOut(
   let ok = 0;
   let fail = 0;
   let firstError: string | undefined;
+  const failedInstanceIds: (string | undefined)[] = [];
 
   await Promise.all([...groups].map(async ([instanceId, ids]) => {
     try {
@@ -50,16 +53,18 @@ export async function bulkFanOut(
       if (res.ok) ok += ids.length;
       else {
         fail += ids.length;
+        failedInstanceIds.push(instanceId);
         if (!firstError) firstError = await parseErrorFromResponse(res);
       }
     } catch (e) {
       handleAuthError(e);
       fail += ids.length;
+      failedInstanceIds.push(instanceId);
       if (!firstError && e instanceof Error) firstError = e.message;
     }
   }));
 
-  return { ok, fail, firstError };
+  return { ok, fail, firstError, failedInstanceIds };
 }
 
 export function reportBulk(
@@ -95,4 +100,17 @@ export async function parseSeriesSearchTallies(
     // fall through
   }
   return null;
+}
+
+/**
+ * The items whose instance request succeeded. After a partial failure, deselecting these
+ * leaves only the failed groups selected, so a retry doesn't repeat a change (or a file
+ * move) on instances where it already worked.
+ */
+export function itemsOnSucceededInstances<T extends { instanceId?: string }>(
+  items: T[],
+  failedInstanceIds: (string | undefined)[],
+): T[] {
+  const failed = new Set(failedInstanceIds);
+  return items.filter((item) => !failed.has(item.instanceId));
 }

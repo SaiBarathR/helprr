@@ -257,6 +257,8 @@ const MUTATING_COMMANDS = new Set([
   'RefreshArtist',
   'RenameFiles',
   'RenameSeries',
+  'RenameMovie',
+  'RenameArtist',
   'ManualImport',
   'RefreshMonitoredDownloads',
 ]);

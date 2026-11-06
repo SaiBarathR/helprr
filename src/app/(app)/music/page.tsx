@@ -42,7 +42,7 @@ import { useQuery } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/query-keys';
 import { jsonFetcher, ensureArray } from '@/lib/query-fetch';
 import { isQueryOffline } from '@/lib/network-error';
-import { bulkFanOut, reportBulk } from '@/lib/bulk-fan-out';
+import { bulkFanOut, itemsOnSucceededInstances, reportBulk } from '@/lib/bulk-fan-out';
 import { useUnionTags } from '@/lib/hooks/use-reference-data';
 import { type ContextActionGroup } from '@/components/ui/quick-context-menu';
 import { MediaDeleteConfirmDialog } from '@/components/media/media-delete-confirm-dialog';
@@ -422,7 +422,7 @@ export default function MusicPage() {
   }, [selectedArtists]);
 
   const handleBulkEdit = useCallback(async (changes: BulkEditChanges) => {
-    const { ok, fail, firstError } = await fanOutItems(selectedArtists, (instanceId, ids) =>
+    const { ok, fail, firstError, failedInstanceIds } = await fanOutItems(selectedArtists, (instanceId, ids) =>
       fetch(`/api/lidarr/editor${instanceId ? `?instanceId=${encodeURIComponent(instanceId)}` : ''}`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ids, ...changes }),
@@ -430,17 +430,23 @@ export default function MusicPage() {
     reportBulk('Updated', ok, fail, { noun: 'artist', pluralNoun: 'artists', reason: firstError });
     await refetchArtists();
     if (fail === 0) exit();
-  }, [fanOutItems, selectedArtists, refetchArtists, exit]);
+    // Partial failure: the sheet stays open with only the failed instances' items selected.
+    else deselectMany(itemsOnSucceededInstances(selectedArtists, failedInstanceIds).map(keyOf));
+    return fail === 0;
+  }, [fanOutItems, selectedArtists, refetchArtists, exit, deselectMany, keyOf]);
 
   const handleOrganize = useCallback(async () => {
-    const { ok, fail, firstError } = await fanOutItems(selectedArtists, (instanceId, ids) =>
+    const { ok, fail, firstError, failedInstanceIds } = await fanOutItems(selectedArtists, (instanceId, ids) =>
       fetch(`/api/lidarr/command${instanceId ? `?instanceId=${encodeURIComponent(instanceId)}` : ''}`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: 'RenameArtist', artistIds: ids }),
       }));
     reportBulk('Organizing', ok, fail, { noun: 'artist', pluralNoun: 'artists', reason: firstError });
     if (fail === 0) exit();
-  }, [fanOutItems, selectedArtists, exit]);
+    // Partial failure: the sheet stays open with only the failed instances' items selected.
+    else deselectMany(itemsOnSucceededInstances(selectedArtists, failedInstanceIds).map(keyOf));
+    return fail === 0;
+  }, [fanOutItems, selectedArtists, exit, deselectMany, keyOf]);
 
   const confirmSingleDelete = useCallback(async (deleteFiles: boolean) => {
     if (!deleteTarget || deletingTarget) return;

@@ -46,7 +46,7 @@ import { useQuery } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/query-keys';
 import { jsonFetcher, ensureArray } from '@/lib/query-fetch';
 import { isQueryOffline } from '@/lib/network-error';
-import { bulkFanOut, reportBulk } from '@/lib/bulk-fan-out';
+import { bulkFanOut, itemsOnSucceededInstances, reportBulk } from '@/lib/bulk-fan-out';
 import { useUnionTags } from '@/lib/hooks/use-reference-data';
 import { type ContextActionGroup } from '@/components/ui/quick-context-menu';
 import { MediaDeleteConfirmDialog } from '@/components/media/media-delete-confirm-dialog';
@@ -457,7 +457,7 @@ export default function MoviesPage() {
   }, [selectedMovies]);
 
   const handleBulkEdit = useCallback(async (changes: BulkEditChanges) => {
-    const { ok, fail, firstError } = await fanOutItems(selectedMovies, (instanceId, ids) =>
+    const { ok, fail, firstError, failedInstanceIds } = await fanOutItems(selectedMovies, (instanceId, ids) =>
       fetch(`/api/radarr/editor${instanceId ? `?instanceId=${encodeURIComponent(instanceId)}` : ''}`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ids, ...changes }),
@@ -465,17 +465,23 @@ export default function MoviesPage() {
     reportBulk('Updated', ok, fail, { noun: 'movie', pluralNoun: 'movies', reason: firstError });
     await refetchMovies();
     if (fail === 0) exit();
-  }, [fanOutItems, selectedMovies, refetchMovies, exit]);
+    // Partial failure: the sheet stays open with only the failed instances' items selected.
+    else deselectMany(itemsOnSucceededInstances(selectedMovies, failedInstanceIds).map(keyOf));
+    return fail === 0;
+  }, [fanOutItems, selectedMovies, refetchMovies, exit, deselectMany, keyOf]);
 
   const handleOrganize = useCallback(async () => {
-    const { ok, fail, firstError } = await fanOutItems(selectedMovies, (instanceId, ids) =>
+    const { ok, fail, firstError, failedInstanceIds } = await fanOutItems(selectedMovies, (instanceId, ids) =>
       fetch(`/api/radarr/command${instanceId ? `?instanceId=${encodeURIComponent(instanceId)}` : ''}`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: 'RenameMovie', movieIds: ids }),
       }));
     reportBulk('Organizing', ok, fail, { noun: 'movie', pluralNoun: 'movies', reason: firstError });
     if (fail === 0) exit();
-  }, [fanOutItems, selectedMovies, exit]);
+    // Partial failure: the sheet stays open with only the failed instances' items selected.
+    else deselectMany(itemsOnSucceededInstances(selectedMovies, failedInstanceIds).map(keyOf));
+    return fail === 0;
+  }, [fanOutItems, selectedMovies, exit, deselectMany, keyOf]);
 
   const confirmSingleDelete = useCallback(async (deleteFiles: boolean) => {
     if (!deleteTarget || deletingTarget) return;

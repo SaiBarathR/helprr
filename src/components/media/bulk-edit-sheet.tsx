@@ -34,11 +34,17 @@ export interface BulkEditSheetOptions {
   canChangePath: boolean;
   /** Organize (rename files) runs as an *arr command, gated like the other commands. */
   canOrganize: boolean;
-  onApply: (changes: BulkEditChanges) => Promise<void>;
-  onOrganize: () => Promise<void>;
+  /**
+   * Resolve true when every instance succeeded (the sheet closes). On false the sheet stays
+   * open with its picks, and the page has narrowed the selection to the failed instances.
+   */
+  onApply: (changes: BulkEditChanges) => Promise<boolean>;
+  onOrganize: () => Promise<boolean>;
 }
 
-interface BulkEditSheetProps extends BulkEditSheetOptions {
+interface BulkEditSheetProps extends Omit<BulkEditSheetOptions, 'onApply' | 'onOrganize'> {
+  onApply: (changes: BulkEditChanges) => Promise<void>;
+  onOrganize: () => Promise<void>;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   count: number;

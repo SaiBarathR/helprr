@@ -63,16 +63,21 @@ function isOneOf<T extends string>(values: readonly T[], value: unknown): value 
   return typeof value === 'string' && (values as readonly string[]).includes(value);
 }
 
+// Duplicates are dropped so a repeated id isn't edited (or counted in the audit) twice.
 function toPositiveIntArray(value: unknown): number[] | null {
   if (!Array.isArray(value) || value.length === 0) return null;
-  const out: number[] = [];
+  const seen = new Set<number>();
   for (const entry of value) {
     const n = Number(entry);
     if (!Number.isInteger(n) || n <= 0) return null;
-    out.push(n);
+    seen.add(n);
   }
-  return out;
+  return [...seen];
 }
+
+// Bounds one bulk edit request (and its audit row) while staying above a "select all"
+// on a large library, which the pages send as one request per instance.
+export const MAX_BULK_EDIT_IDS = 50_000;
 
 export function parseBulkEditBody(
   body: unknown,
@@ -83,6 +88,7 @@ export function parseBulkEditBody(
 
   const ids = toPositiveIntArray(b.ids);
   if (!ids) return { error: 'ids must be a non-empty array of positive integers' };
+  if (ids.length > MAX_BULK_EDIT_IDS) return { error: `ids must list at most ${MAX_BULK_EDIT_IDS} items` };
 
   const fields: BulkEditFields = { ids };
 
