@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import dynamic from 'next/dynamic';
 import { toast } from 'sonner';
-import { Bell, Check, DatabaseBackup, Plug, Smartphone, Users, X, type LucideIcon } from 'lucide-react';
+import { Bell, Check, ChevronRight, DatabaseBackup, Plug, Smartphone, Users, X, type LucideIcon } from 'lucide-react';
 import Link from '@/components/ui/app-link';
 import { useIsStandalone } from '@/hooks/use-is-standalone';
 import { isIosDevice } from '@/lib/push-availability';
@@ -12,6 +12,7 @@ import {
   MANUAL_SETUP_STEPS,
   OPTIONAL_SETUP_STEPS,
   SETUP_STEPS,
+  setupProgress,
   type SetupChecklistState,
   type SetupStep,
 } from '@/lib/setup-checklist-steps';
@@ -166,9 +167,8 @@ export function SetupChecklist({ initial, mobile }: { initial: SetupChecklistSta
     markDone('install', true);
   });
 
-  const required = SETUP_STEPS.filter((step) => !OPTIONAL_SETUP_STEPS.has(step));
-  const doneCount = required.filter((step) => state.done[step]).length;
-  if (state.hidden || doneCount === required.length) return null;
+  const progress = setupProgress(state.done);
+  if (state.hidden || progress.complete) return null;
 
   return (
     <section
@@ -185,7 +185,19 @@ export function SetupChecklist({ initial, mobile }: { initial: SetupChecklistSta
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
         <div style={{ minWidth: 0 }}>
           <Eyebrow>
-            Getting started · <span style={{ fontFamily: FONT_MONO }}>{doneCount} of {required.length}</span> done
+            Getting started ·{' '}
+            <span style={{ whiteSpace: 'nowrap' }}>
+              <span style={{ fontFamily: FONT_MONO }}>{progress.done} of {progress.total}</span> done
+            </span>
+            {/* Optional steps are ticked too, so they are counted, apart from the required ones. */}
+            {progress.optionalDone > 0 && (
+              <>
+                {' · '}
+                <span style={{ whiteSpace: 'nowrap' }}>
+                  <span style={{ fontFamily: FONT_MONO }}>+{progress.optionalDone}</span> optional
+                </span>
+              </>
+            )}
           </Eyebrow>
           <h2
             id="setup-checklist-title"
@@ -267,24 +279,28 @@ export function SetupChecklist({ initial, mobile }: { initial: SetupChecklistSta
                 }}
                 href={copy.href}
                 className="press-feedback"
-                style={{ flex: 1, minWidth: 0, display: 'block', padding: '4px 0', color: 'inherit', textDecoration: 'none' }}
+                style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', color: 'inherit', textDecoration: 'none' }}
               >
-                <span
-                  style={{
-                    display: 'block',
-                    fontSize: 13.5,
-                    fontWeight: 600,
-                    color: done ? HPR.fgSubtle : HPR.fg,
-                    textDecoration: done ? 'line-through' : 'none',
-                  }}
-                >
-                  {copy.title}
-                  {OPTIONAL_SETUP_STEPS.has(step) && (
-                    <span style={{ fontWeight: 400, color: HPR.fgSubtle }}> (optional)</span>
-                  )}
-                  <span className="sr-only">{done ? ', done' : ''}</span>
+                <span style={{ flex: 1, minWidth: 0 }}>
+                  <span
+                    style={{
+                      display: 'block',
+                      fontSize: 13.5,
+                      fontWeight: 600,
+                      color: done ? HPR.fgSubtle : HPR.fg,
+                      textDecoration: done ? 'line-through' : 'none',
+                    }}
+                  >
+                    {copy.title}
+                    {OPTIONAL_SETUP_STEPS.has(step) && (
+                      <span style={{ fontWeight: 400, color: HPR.fgSubtle }}> (optional)</span>
+                    )}
+                    <span className="sr-only">{done ? ', done' : ''}</span>
+                  </span>
+                  <span style={{ display: 'block', fontSize: 12, color: HPR.fgMute, marginTop: 1 }}>{copy.detail}</span>
                 </span>
-                <span style={{ display: 'block', fontSize: 12, color: HPR.fgMute, marginTop: 1 }}>{copy.detail}</span>
+                {/* Every step opens its settings page; the chevron says so on each row alike. */}
+                <ChevronRight size={16} aria-hidden="true" style={{ flexShrink: 0, color: HPR.fgSubtle }} />
               </Link>
               {!done && step === 'install' && !onPhone && (
                 <button

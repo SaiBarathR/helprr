@@ -71,6 +71,39 @@ describe('SetupChecklist', () => {
     expect(screen.queryByRole('button', { name: /Turn on push/ })).toBeNull();
   });
 
+  it('counts the required steps and the optional one apart, from the ticks it shows', () => {
+    const states: Array<[SetupChecklistState['done'], RegExp, number]> = [
+      [{ service: false, people: false, push: false, install: false, backup: false }, /^Getting started · 0 of 4 done$/, 0],
+      [{ service: true, people: true, push: false, install: false, backup: false }, /^Getting started · 1 of 4 done · \+1 optional$/, 2],
+      [{ service: true, people: false, push: true, install: true, backup: false }, /^Getting started · 3 of 4 done$/, 3],
+      [{ service: false, people: true, push: false, install: false, backup: false }, /^Getting started · 0 of 4 done · \+1 optional$/, 1],
+    ];
+    for (const [done, count, ticks] of states) {
+      const { unmount } = render(<SetupChecklist initial={{ hidden: false, done }} mobile />);
+      expect(screen.getByText(/^Getting started/).textContent).toMatch(count);
+      expect(screen.queryAllByRole('link', { name: /, done/ })).toHaveLength(ticks);
+      unmount();
+    }
+  });
+
+  it('gives every step the same link to its settings page, with a chevron', () => {
+    render(<SetupChecklist initial={fresh} mobile />);
+    const expected: Array<[RegExp, string]> = [
+      [/^Connect your first service/, '/settings/instances'],
+      [/^Add people/, '/settings/users'],
+      [/^Turn on push notifications/, '/settings/notifications/check'],
+      [/^Install on your phone/, '/settings/appearance#install'],
+      [/^Export a backup/, '/settings/backup'],
+    ];
+    const links = screen.getAllByRole('link');
+    expect(links).toHaveLength(expected.length);
+    expected.forEach(([name, href], index) => {
+      expect(links[index].textContent).toMatch(name);
+      expect(links[index].getAttribute('href')).toBe(href);
+      expect(links[index].querySelector('svg.lucide-chevron-right')).toBeTruthy();
+    });
+  });
+
   it('renders nothing once hidden, or once every required step is done', () => {
     const { container, rerender } = render(<SetupChecklist initial={{ ...fresh, hidden: true }} mobile />);
     expect(container.innerHTML).toBe('');
