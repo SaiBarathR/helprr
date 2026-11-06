@@ -97,7 +97,7 @@ export function useVideoActions() {
 
   const isDownloadable = (video: CreatorVideoItem) =>
     canDownload && !video.downloaded && !video.activeJob && video.availability === 'PUBLISHED';
-  // As on the video's page: a rule's YouTube download still waiting to settle opens the same sheet, to start it now.
+  // As on the video's page: a rule's YouTube download that has not started opens the same sheet, to start it now.
   const isChoosable = (video: CreatorVideoItem) =>
     isDownloadable(video) || (canDownload && platform.id === 'youtube' && canChooseDownload(video));
   const isDeletable = (video: CreatorVideoItem) => canManage && Boolean(video.fileId) && !video.activeJob;

@@ -76,17 +76,20 @@ export function startsLabel(job: { state: string; runAfter?: string | null }, no
     : `Starts ${at.toLocaleString(undefined, { month: 'short', day: 'numeric', ...time })}`;
 }
 
-/** A rule's download still waiting to settle, which a person may start now. */
-export function isWaitingRuleJob(job: { state: string; source?: string; runAfter?: string | null }, now = new Date()): boolean {
-  return job.source === 'RULE' && job.state === 'QUEUED' && Boolean(job.runAfter) && new Date(job.runAfter!) > now;
+/**
+ * A rule's download that has not started, which a person may start now. Not tied to its start
+ * time: a page left open past it would otherwise go on offering a start the server refuses.
+ */
+export function isWaitingRuleJob(job: { state: string; source?: string }): boolean {
+  return job.source === 'RULE' && job.state === 'QUEUED';
 }
 
 /**
  * Whether a person can choose a YouTube download: nothing saved or under way, or a rule's
- * download still waiting to settle, which their choices start now. Twitch's rule jobs never wait.
+ * download that has not started, which their choices start now. Twitch's rule jobs never wait.
  */
-export function canChooseDownload(video: Pick<CreatorVideoItem, 'downloaded' | 'availability' | 'activeJob'>, now = new Date()): boolean {
-  return !video.downloaded && video.availability === 'PUBLISHED' && (!video.activeJob || isWaitingRuleJob(video.activeJob, now));
+export function canChooseDownload(video: Pick<CreatorVideoItem, 'downloaded' | 'availability' | 'activeJob'>): boolean {
+  return !video.downloaded && video.availability === 'PUBLISHED' && (!video.activeJob || isWaitingRuleJob(video.activeJob));
 }
 
 /** A download job's state, in the same words and colours on the Queue and on a video's page. */

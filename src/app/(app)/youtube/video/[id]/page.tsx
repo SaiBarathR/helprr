@@ -102,7 +102,7 @@ export default function YoutubeVideoPage({ params }: { params: Promise<{ id: str
   const progress = Math.round((video.activeJob?.progress ?? 0) * 100);
   const groups = actions.groupsFor(video);
   const channelHref = `/youtube/channels/${video.creator.id}`;
-  // A rule's download still waiting to settle can be started now, with the person's own choices.
+  // A rule's download that has not started can be started now, with the person's own choices.
   const canDownload = hasCapability(me, 'youtube.download') && canChooseDownload(video);
 
   return (
@@ -206,7 +206,8 @@ export default function YoutubeVideoPage({ params }: { params: Promise<{ id: str
         </div>
       </div>
       {actions.sheet}
-      {canDownload && <YoutubeDownloadSheet video={video} open={sheetOpen} onOpenChange={setSheetOpen} />}
+      {/* Stays open if the worker starts the job meanwhile; the answer then says it is already queued. */}
+      {(canDownload || sheetOpen) && <YoutubeDownloadSheet video={video} open={sheetOpen} onOpenChange={setSheetOpen} />}
     </>
   );
 }

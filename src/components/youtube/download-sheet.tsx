@@ -185,11 +185,12 @@ function SheetBody({ video, defaults, onDone }: { video: CreatorVideoItem; defau
       });
       const data = await res.json().catch(() => null);
       if (!res.ok) throw new Error(data?.error || 'Could not queue the download');
-      return data as { startedNow?: boolean } | null;
+      return data as { created?: boolean; startedNow?: boolean } | null;
     },
     onSuccess: (data) => {
-      // A rule's download that was waiting to settle now starts with these choices.
-      toast.success(data?.startedNow ? 'Download starting' : 'Download queued');
+      // Started: a rule's waiting download took these choices. Not created: one was already under
+      // way, so these choices were not used.
+      toast.success(data?.startedNow ? 'Download starting' : data?.created === false ? 'Already in the queue' : 'Download queued');
       void queryClient.invalidateQueries({ queryKey: ['youtube'] });
       onDone();
     },

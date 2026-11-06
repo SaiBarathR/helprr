@@ -104,12 +104,12 @@ export async function enqueueDownload(
       select: { id: true },
     });
     if (active && input.startWaitingRuleJob && input.actor) {
-      const now = new Date();
-      // Only a wait no one has started: the claim takes a job once its runAfter passes.
+      // Only a rule's job no one has started: a claim moves it off QUEUED under the row lock, so a
+      // job the worker took a moment ago is left alone, whether or not its wait had passed.
       const { count } = await tx.archiveJob.updateMany({
-        where: { id: active.id, source: 'RULE', state: 'QUEUED', cancelRequested: false, runAfter: { gt: now } },
+        where: { id: active.id, source: 'RULE', state: 'QUEUED', cancelRequested: false },
         data: {
-          runAfter: now,
+          runAfter: new Date(),
           source: input.source,
           options: input.options as unknown as Prisma.InputJsonValue,
           // Audits name whoever set this running, not the rule that picked it.

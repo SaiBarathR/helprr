@@ -16,12 +16,10 @@ const store = vi.hoisted(() => ({ job: null as FakeJob | null, created: 0 }));
 
 // Applies the update's conditions the way PostgreSQL would, so a test shows which jobs really move.
 function matches(job: FakeJob, where: Record<string, unknown>): boolean {
-  const runAfter = where.runAfter as { gt: Date } | undefined;
   return job.id === where.id
     && (where.source === undefined || job.source === where.source)
     && (where.state === undefined || job.state === where.state)
-    && (where.cancelRequested === undefined || job.cancelRequested === where.cancelRequested)
-    && (!runAfter || job.runAfter > runAfter.gt);
+    && (where.cancelRequested === undefined || job.cancelRequested === where.cancelRequested);
 }
 
 const tx = vi.hoisted(() => ({
@@ -100,6 +98,12 @@ describe('a person asking for a video a rule is waiting on', () => {
     expect(store.created).toBe(0);
   });
 
+  it('also starts one whose wait has passed but the worker has not taken yet', async () => {
+    store.job = waiting({ runAfter: new Date(Date.now() - 1_000) });
+    await expect(ask()).resolves.toEqual({ jobId: 'job-1', created: false, startedNow: true });
+    expect(store.job.options).toEqual(chosen);
+  });
+
   it('takes it over under the same lock as queuing', async () => {
     store.job = waiting();
     await ask();
@@ -112,7 +116,6 @@ describe('a person asking for a video a rule is waiting on', () => {
     ['waiting to retry', { state: 'RETRY_WAIT' }],
     ['blocked on disk', { state: 'BLOCKED' }],
     ['someone else asked for', { source: 'MANUAL', requestedByUserId: 'user-2', requestedByUsername: 'alex' }],
-    ['already past its wait', { runAfter: new Date(Date.now() - 1_000) }],
     ['being cancelled', { cancelRequested: true }],
   ])('leaves a job that is %s as it is', async (_name, overrides) => {
     store.job = waiting(overrides);

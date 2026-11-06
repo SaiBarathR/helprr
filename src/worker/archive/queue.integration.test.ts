@@ -6,7 +6,7 @@ const url = process.env.TWITCH_QUEUE_TEST_DATABASE_URL;
 const prisma = url ? new PrismaClient({ datasources: { db: { url } } }) : null;
 vi.mock('@/lib/db', () => ({ get prisma() { return prisma; } }));
 
-import { enqueueDownload, DEFAULT_DOWNLOAD_OPTIONS, retryJob } from '@/lib/archive/jobs';
+import { enqueueDownload, DEFAULT_DOWNLOAD_OPTIONS, DEFAULT_YOUTUBE_OPTIONS, retryJob } from '@/lib/archive/jobs';
 import { REENCODE_NOW_PRIORITY } from '@/lib/archive/reencode-window';
 import { claimJob } from './claim';
 
@@ -189,5 +189,68 @@ describe.skipIf(!url || !url.endsWith('/helprr_migration_test'))('Twitch queue a
     expect(await claimJob(db, 'w', ['REENCODE'], ['TWITCH'])).toBeNull();
     await db.archiveJob.update({ where: { id: jobId }, data: { cancelRequested: true } });
     expect(await claimJob(db, 'w', ['DOWNLOAD'], ['TWITCH'])).toBeNull();
+  });
+
+  describe('a person starting a YouTube rule download that is waiting', () => {
+    const chosen = { ...DEFAULT_YOUTUBE_OPTIONS, quality: '2160' };
+    let youtubeVideoId: string;
+    let user: { id: string; username: string };
+    const ruleJob = (data: object = {}) => db.archiveJob.create({
+      data: {
+        platform: 'YOUTUBE', kind: 'DOWNLOAD', videoId: youtubeVideoId, source: 'RULE',
+        runAfter: new Date(Date.now() + 3 * 3_600_000), options: { ...DEFAULT_YOUTUBE_OPTIONS }, ...data,
+      },
+    });
+    const ask = (clientRequestId = 'request-0001') => enqueueDownload({
+      platform: 'YOUTUBE', videoId: youtubeVideoId, source: 'MANUAL', options: chosen,
+      actor: user, clientRequestId, startWaitingRuleJob: true,
+    });
+
+    beforeEach(async () => {
+      const channel = await db.creator.create({
+        data: { platform: 'YOUTUBE', externalId: 'yt', login: 'yt', folderName: 'yt', displayName: 'YT' },
+      });
+      const video = await db.creatorVideo.create({
+        data: { platform: 'YOUTUBE', externalId: 'yt', creatorId: channel.id, type: 'UPLOAD', title: 'T', sourceCreatedAt: new Date(), durationSeconds: 60 },
+      });
+      youtubeVideoId = video.id;
+      const row = await db.user.create({ data: { username: `y${Date.now()}`, displayName: 'Y', passwordHash: 'x' } });
+      user = { id: row.id, username: row.username };
+    });
+    afterAll(async () => {
+      await db.archiveJob.deleteMany();
+      await db.user.deleteMany({ where: { displayName: 'Y' } });
+    });
+
+    it('hands the worker that same job at once, with their choices', async () => {
+      const job = await ruleJob();
+      await expect(ask()).resolves.toEqual({ jobId: job.id, created: false, startedNow: true });
+
+      const claimed = await claimJob(db, 'w', ['DOWNLOAD'], ['YOUTUBE']);
+      expect(claimed).toMatchObject({ id: job.id, source: 'MANUAL', requestedByUserId: user.id, clientRequestId: 'request-0001' });
+      expect(claimed?.options).toMatchObject({ quality: '2160' });
+      expect(await db.archiveJob.count()).toBe(1);
+    });
+
+    it('leaves a job the worker has already taken, and says it did not start one', async () => {
+      const job = await ruleJob({ runAfter: new Date(Date.now() - 1_000) });
+      expect((await claimJob(db, 'w', ['DOWNLOAD'], ['YOUTUBE']))?.id).toBe(job.id);
+
+      await expect(ask()).resolves.toEqual({ jobId: job.id, created: false });
+      expect(await db.archiveJob.findUniqueOrThrow({ where: { id: job.id } })).toMatchObject({ source: 'RULE', options: DEFAULT_YOUTUBE_OPTIONS });
+    });
+
+    it('leaves a job being cancelled', async () => {
+      const job = await ruleJob({ cancelRequested: true });
+      await expect(ask()).resolves.toEqual({ jobId: job.id, created: false });
+      expect((await db.archiveJob.findUniqueOrThrow({ where: { id: job.id } })).source).toBe('RULE');
+    });
+
+    it('answers a repeated request with the same job and changes nothing more', async () => {
+      const job = await ruleJob();
+      await ask();
+      await expect(ask()).resolves.toEqual({ jobId: job.id, created: false });
+      expect(await db.archiveJob.count()).toBe(1);
+    });
   });
 });

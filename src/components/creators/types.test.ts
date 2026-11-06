@@ -57,14 +57,11 @@ describe('startsLabel', () => {
 });
 
 describe('isWaitingRuleJob', () => {
-  const now = new Date(2026, 10, 6, 12, 0);
-  const later = new Date(2026, 10, 6, 15, 0).toISOString();
-
-  it('is only a rule download still waiting for its time', () => {
-    expect(isWaitingRuleJob({ state: 'QUEUED', source: 'RULE', runAfter: later }, now)).toBe(true);
-    expect(isWaitingRuleJob({ state: 'QUEUED', source: 'MANUAL', runAfter: later }, now)).toBe(false);
-    expect(isWaitingRuleJob({ state: 'RUNNING', source: 'RULE', runAfter: later }, now)).toBe(false);
-    expect(isWaitingRuleJob({ state: 'QUEUED', source: 'RULE', runAfter: new Date(2026, 10, 6, 11, 0).toISOString() }, now)).toBe(false);
+  it('is only a rule download that has not started', () => {
+    expect(isWaitingRuleJob({ state: 'QUEUED', source: 'RULE' })).toBe(true);
+    expect(isWaitingRuleJob({ state: 'QUEUED', source: 'MANUAL' })).toBe(false);
+    expect(isWaitingRuleJob({ state: 'RUNNING', source: 'RULE' })).toBe(false);
+    expect(isWaitingRuleJob({ state: 'RETRY_WAIT', source: 'RULE' })).toBe(false);
   });
 });
 
@@ -94,27 +91,25 @@ describe('jobBadge', () => {
 });
 
 describe('canChooseDownload', () => {
-  const now = new Date(2026, 10, 6, 12, 0);
-  const later = new Date(2026, 10, 6, 15, 0).toISOString();
   const video = { downloaded: false, availability: 'PUBLISHED' as const, activeJob: null };
-  const job = { id: 'j', state: 'QUEUED', source: 'RULE', runAfter: later, stage: null, progress: null };
+  const job = { id: 'j', state: 'QUEUED', source: 'RULE', runAfter: new Date(Date.now() + 3_600_000).toISOString(), stage: null, progress: null };
 
   it('offers a video with nothing saved or under way', () => {
-    expect(canChooseDownload(video, now)).toBe(true);
+    expect(canChooseDownload(video)).toBe(true);
   });
 
-  it('offers a rule download still waiting, to start it now', () => {
-    expect(canChooseDownload({ ...video, activeJob: job }, now)).toBe(true);
+  it('offers a rule download that has not started, to start it now, even once its time has passed', () => {
+    expect(canChooseDownload({ ...video, activeJob: job })).toBe(true);
+    expect(canChooseDownload({ ...video, activeJob: { ...job, runAfter: new Date(Date.now() - 60_000).toISOString() } })).toBe(true);
   });
 
-  it('offers nothing for a download a person queued, one that has started, or one whose time has come', () => {
-    expect(canChooseDownload({ ...video, activeJob: { ...job, source: 'MANUAL' } }, now)).toBe(false);
-    expect(canChooseDownload({ ...video, activeJob: { ...job, state: 'RUNNING' } }, now)).toBe(false);
-    expect(canChooseDownload({ ...video, activeJob: { ...job, runAfter: new Date(2026, 10, 6, 11, 0).toISOString() } }, now)).toBe(false);
+  it('offers nothing for a download a person queued, or one that has started', () => {
+    expect(canChooseDownload({ ...video, activeJob: { ...job, source: 'MANUAL' } })).toBe(false);
+    expect(canChooseDownload({ ...video, activeJob: { ...job, state: 'RUNNING' } })).toBe(false);
   });
 
   it('offers nothing for a saved or unpublished video', () => {
-    expect(canChooseDownload({ ...video, downloaded: true }, now)).toBe(false);
-    expect(canChooseDownload({ ...video, availability: 'RECORDING' }, now)).toBe(false);
+    expect(canChooseDownload({ ...video, downloaded: true })).toBe(false);
+    expect(canChooseDownload({ ...video, availability: 'RECORDING' })).toBe(false);
   });
 });
