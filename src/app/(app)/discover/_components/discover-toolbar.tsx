@@ -39,6 +39,9 @@ export function DiscoverToolbar({
   rateLimitInfo: RateLimitInfo | null;
   rateLimitCountdown: number | null;
 }) {
+  // Search ignores the sort, so no chip claims the results while searching. The
+  // chosen sort stays saved and is shown again once the search is cleared.
+  const selectedSort = query.trim() ? null : discoverSort;
   const sortRowRef = useRef<HTMLDivElement>(null);
   const selectedSortRef = useRef<HTMLButtonElement>(null);
   const arrivedKeyRef = useRef<string | null>(null);
@@ -60,7 +63,7 @@ export function DiscoverToolbar({
     const chip = selected.getBoundingClientRect();
     if (chip.right > right) row.scrollLeft += chip.right - right;
     else if (chip.left < left) row.scrollLeft += chip.left - left;
-  }, [searchParamsKey, discoverSort]);
+  }, [searchParamsKey, selectedSort]);
 
   return (
     <div className="page-toolbar page-toolbar-flush pb-2 app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
@@ -129,13 +132,14 @@ export function DiscoverToolbar({
         {/* <p className="text-[11px] font-medium text-muted-foreground">Sort</p> */}
         <div ref={sortRowRef} data-scroll-restoration-key="discover-sort" className="rail-bleed flex items-center gap-2 overflow-x-auto scrollbar-hide">
           {SORT_OPTIONS.map((option) => {
-            const active = discoverSort === option.value;
+            const active = selectedSort === option.value;
             const Icon = option.icon;
             return (
               <button
                 key={option.value}
                 ref={active ? selectedSortRef : undefined}
                 onClick={() => handleSelectSort(option.value)}
+                aria-pressed={active}
                 className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap inline-flex items-center gap-1.5 ${
                   active ? 'bg-primary/20 text-primary border border-primary/40' : 'bg-accent/40 text-muted-foreground'
                 }`}
