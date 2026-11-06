@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Clapperboard, Loader2 } from 'lucide-react';
 import { clearUserScopedBrowserCaches, subscribeToAuthenticationBoundaries } from '@/lib/client-cache';
 import { completeBrowserSignIn, setDeviceCookieFromMatchMedia } from '@/lib/client-sign-in';
+import { SIGN_IN_HELP_URL } from '@/lib/docs-links';
 
 // Where to land after a successful login. The share-target fallback sends
 // unauthenticated users to /login?next=/share?... so the shared payload
@@ -188,6 +189,21 @@ export default function LoginPage() {
               {pending === 'local' && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Sign In
             </Button>
+            <details className="text-center text-sm text-muted-foreground">
+              <summary className="cursor-pointer">Forgot your password?</summary>
+              <p className="mt-2 text-xs">
+                Ask whoever runs Helprr to reset it in Settings → Users. If you run Helprr, see{' '}
+                <a
+                  href={SIGN_IN_HELP_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline underline-offset-2 hover:text-foreground"
+                >
+                  Recover the admin account
+                </a>
+                .
+              </p>
+            </details>
             <div className="relative">
               <div className="absolute inset-0 flex items-center">
                 <span className="w-full border-t border-border" />

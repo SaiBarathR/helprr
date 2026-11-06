@@ -24,6 +24,9 @@ export const TROUBLESHOOTING_SECTIONS = [
 /** Which address to type for an app: the same stack, this machine, another machine. */
 export const WHICH_ADDRESS_URL = 'https://saibarathr.github.io/helprr/connect/#which-address-to-use';
 
+/** How to get back in: ask an admin, or recover the admin account from the server. */
+export const SIGN_IN_HELP_URL = 'https://saibarathr.github.io/helprr/troubleshooting/#signing-in';
+
 /** The privacy statement: no telemetry, and every outbound request Helprr makes. */
 export const PRIVACY_URL = 'https://saibarathr.github.io/helprr/reference/privacy/';
 
