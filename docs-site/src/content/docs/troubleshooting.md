@@ -19,9 +19,9 @@ again.
   docker network ls --filter dangling=true
   ```
 
-  The list also has the networks of apps that are only stopped, and of networks you
-  made yourself with `docker network create` for several apps to share. Removing one of
-  those can stop that app from starting again. Remove only the ones you are sure about,
+  The list also has the networks of apps that are only stopped, and networks you made
+  yourself with `docker network create` for several apps to share. Removing one of
+  those can stop the apps that use it from starting again. Remove only the ones you are sure about,
   such as those of apps you deleted, one at a time:
 
   ```bash
@@ -33,10 +33,15 @@ again.
   `default-address-pools` setting in Docker's `daemon.json` (in Docker Desktop:
   **Settings → Docker Engine**), as
   [Docker's documentation](https://docs.docker.com/reference/cli/dockerd/) describes.
-  Choose addresses that neither your home network nor any existing Docker network uses
-  (`docker network inspect NAME` shows a network's subnet): Docker does not split a
-  network that already exists, and overlapping your home network leaves containers
-  unable to reach your devices. It applies to networks made after the change, and only once Docker restarts
+  Choose addresses that neither your home network nor any existing Docker network uses:
+  Docker does not split a network that already exists, and overlapping your home network
+  leaves containers unable to reach your devices. This lists every network's addresses:
+
+  ```bash
+  docker network inspect $(docker network ls -q) --format '{{.Name}} {{range .IPAM.Config}}{{.Subnet}} {{end}}'
+  ```
+
+  The setting applies to networks made after the change, and only once Docker restarts
   (Docker Desktop: **Apply & restart**). Restarting Docker stops every container; only
   those set to restart by themselves come back.
 

@@ -167,9 +167,10 @@ app boots without re-running old migrations. Restore with the **same or newer**
 Helprr version than the one that produced the dump.
 
 The dump holds Helprr's database only. A database user you added yourself, such as one
-a monitoring exporter signs in with, lives outside it, and so do permissions you gave it
-on Helprr's tables. Create the user again on the new install with the same name and
-password (the app that signs in still has them), and grant those permissions again. Run
+a monitoring exporter signs in with, lives outside it, and so do permissions you changed
+on Helprr's database or tables, granted or revoked. Create the user again on the new
+install with the same name and password (the app that signs in still has them), and set
+those permissions again. Run
 `docker compose exec helprr-db psql -U postgres -d helprr`, then for example:
 
 ```sql
@@ -178,4 +179,6 @@ GRANT pg_monitor TO metrics_exporter;
 -- only if it could read every table before (Helprr's tables hold API keys and
 -- password hashes); otherwise grant only the tables it had:
 GRANT SELECT ON ALL TABLES IN SCHEMA public TO metrics_exporter;
+-- and a revocation you had made, such as:
+REVOKE CONNECT ON DATABASE helprr FROM PUBLIC;
 ```
