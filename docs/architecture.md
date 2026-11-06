@@ -348,6 +348,25 @@ Public proxy exceptions must remain narrow. Liveness, readiness and the
 first-admin screen and routes are exact paths, not prefixes. Share-target handling is public at the proxy only so
 its route can preserve the incoming payload while applying its own auth check.
 
+The calendar feed (`GET /api/calendar/feed.ics`, Calendar -> Subscribe in
+Calendar) is an exact public path too: calendar apps send no session. Its
+credential is a per-user `CalendarFeedToken` (`src/lib/calendar-feed/token.ts`):
+32 random bytes sent as `?token=`, of which only the SHA-256 is stored, so the
+link is shown once when made (`POST /api/calendar/feed-token`, `calendar.view`).
+Making a new one replaces the hash and turning it off deletes the row (`DELETE`,
+own token only); both are in the security audit. A password change (own, an
+admin reset, or a reset link used) and an admin disabling the user also delete it, in the same
+transaction as the session revocation, so re-enabling an account does not bring
+an old link back; "sign out other sessions" leaves it. Every fetch re-reads the
+owner's status, role and capabilities: an unknown, replaced or malformed token, a
+disabled owner and a missing `calendar.view` all get the same bare 404. Only then
+is it rate-limited per token hash in Redis (30 per 15 minutes, failing closed
+when Redis is down), so guessed tokens never create Redis keys. The token grants only that read; `type`, `instance` and `monitored`
+query parameters narrow it the way the Calendar page's filters do and are
+validated. The window is 30 days back to 180 ahead (whole days in the app time
+zone); episodes are timed events, movie and album releases all-day. The request
+log redacts the token, but a reverse proxy's access log may keep it.
+
 ## Jellyfin Identity and Playback Credentials
 
 Helprr holds two different Jellyfin credentials per member, and the split is
@@ -541,7 +560,8 @@ Jellyfin account), first-admin setup, user create/edit/delete (an admin
 password reset with the sessions it revoked), a member linking their own
 Jellyfin account, permission changes, the self password change, session
 revocations, service connection add/edit/delete (main, external URL, YouTube,
-Twitch, AniList and the Seerr/Prowlarr import), and settings import. A row holds the actor (id not a FK, username
+Twitch, AniList and the Seerr/Prowlarr import), settings import, and a user
+making, renewing or turning off their calendar feed link. A row holds the actor (id not a FK, username
 denormalized), action, target type/id/label, the coarse IP (IPv4 /24, IPv6 /64,
 from the trusted-proxy address only), a 256-character user agent, the request
 id, and `fields`: the names of what changed (or the sign-in method, or the

@@ -109,6 +109,15 @@ describe('POST /api/invite/accept', () => {
     expect(mocks.recordSecurityEvent).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
       action: 'RESET_LINK_USED', count: 3,
     }));
+    expect(mocks.recordSecurityEvent).not.toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ action: 'CALENDAR_FEED_REVOKED' }));
+  });
+
+  it('records the calendar feed link a reset ended', async () => {
+    mocks.redeemPasswordLink.mockResolvedValue({ id: 'u1', username: 'member', role: 'member', purpose: 'reset', revokedSessions: 0, feedRevoked: true });
+    await acceptInvite(post('/api/invite/accept', { token: TOKEN, password: PASSWORD }));
+    expect(mocks.recordSecurityEvent).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      action: 'CALENDAR_FEED_REVOKED', targetId: 'u1', fields: ['password'],
+    }));
   });
 
   it('answers an unusable link and a malformed one the same way, and counts both as failures', async () => {

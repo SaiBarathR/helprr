@@ -109,7 +109,9 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
       });
       // A reset link sent earlier must not be able to override the new password.
       await tx.passwordLink.deleteMany({ where: { userId: user.id } });
-      return { ok: true as const, revoked: revoked.count };
+      // The calendar feed link is a credential too; recovery ends it with the sessions.
+      const feed = await tx.calendarFeedToken.deleteMany({ where: { userId: user.id } });
+      return { ok: true as const, revoked: revoked.count, feedRevoked: feed.count > 0 };
     });
     if (!result.ok) {
       return NextResponse.json(
@@ -127,6 +129,16 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
       // The user's other sessions, revoked with the change.
       count: result.revoked,
     });
+    if (result.feedRevoked) {
+      await recordSecurityEvent(request, {
+        actor: user,
+        action: 'CALENDAR_FEED_REVOKED',
+        targetType: 'user',
+        targetId: user.id,
+        targetLabel: user.username,
+        fields: ['password'],
+      });
+    }
     return NextResponse.json({ revokedSessions: result.revoked });
   } catch (error) {
     if (error instanceof SessionEndedError) {

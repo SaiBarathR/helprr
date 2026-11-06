@@ -21,6 +21,8 @@ export interface CalendarEvent {
   images: MediaImage[];
   releaseType?: MovieReleaseType;
   finaleType?: EpisodeFinaleType;
+  /** Episode length in minutes (the series runtime), when Sonarr knows it. */
+  runtime?: number;
   /** `service` = Sonarr/Radarr/Lidarr; `scheduled` = user alert overlay */
   origin?: 'service' | 'scheduled';
   scheduledAlertId?: string;

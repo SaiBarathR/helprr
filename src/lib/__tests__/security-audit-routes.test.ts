@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => {
       count: vi.fn(),
     },
     session: { findUnique: vi.fn(), updateMany: vi.fn() },
+    calendarFeedToken: { deleteMany: vi.fn() },
     serviceConnection: {
       findFirst: vi.fn(),
       findUnique: vi.fn(),
@@ -177,6 +178,7 @@ beforeEach(() => {
   mocks.db.securityAuditEvent.upsert.mockResolvedValue({});
   mocks.db.user.findUnique.mockResolvedValue(member);
   mocks.db.user.count.mockResolvedValue(1);
+  mocks.db.calendarFeedToken.deleteMany.mockResolvedValue({ count: 0 });
   vi.spyOn(JellyfinClient, 'authenticateByName').mockImplementation(mocks.authenticateByName);
 });
 
@@ -275,6 +277,18 @@ describe('users', () => {
     expect(events()).toEqual([expect.objectContaining({
       action: 'USER_UPDATED', targetId: 'user-1', targetLabel: 'member', fields: ['role', 'template', 'password'], count: 2,
     })]);
+    expectNoSecrets();
+  });
+
+  it('records the calendar feed link a password reset ended', async () => {
+    mocks.db.user.update.mockImplementation(async ({ data }) => ({ ...member, ...data }));
+    mocks.db.session.updateMany.mockResolvedValue({ count: 0 });
+    mocks.db.calendarFeedToken.deleteMany.mockResolvedValue({ count: 1 });
+    expect((await updateUser(req('/api/users/user-1', 'PATCH', { password: PASSWORD }), params('user-1'))).status).toBe(200);
+    expect(events()).toEqual([
+      expect.objectContaining({ action: 'USER_UPDATED', fields: ['password'] }),
+      expect.objectContaining({ action: 'CALENDAR_FEED_REVOKED', targetId: 'user-1', targetLabel: 'member', fields: ['password'] }),
+    ]);
     expectNoSecrets();
   });
 

@@ -41,6 +41,7 @@ import {
   EyeOff,
   Image as ImageIcon,
   ImageOff,
+  CalendarPlus,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -75,6 +76,7 @@ import { HeroImage } from '@/components/media/hero-image';
 import { isProtectedApiImageSrc, toCachedImageSrc, type ImageServiceHint } from '@/lib/image';
 import { PageTitle } from '@/components/layout/page-title';
 import { formatDate, formatTime } from '@/lib/date-format';
+import { CalendarFeedDialog } from '@/components/calendar/calendar-feed-dialog';
 
 /** The app behind each event type, to tell same-named instances apart. */
 const EVENT_APP = { episode: 'sonarr', movie: 'radarr', album: 'lidarr' } as const;
@@ -230,6 +232,7 @@ function CompactFilters({
   setShowScheduled,
   showImages,
   setShowImages,
+  onSubscribe,
 }: {
   typeFilter: 'all' | 'episode' | 'movie' | 'album';
   setTypeFilter: (v: 'all' | 'episode' | 'movie' | 'album') => void;
@@ -239,6 +242,7 @@ function CompactFilters({
   setShowScheduled: (v: boolean) => void;
   showImages: boolean;
   setShowImages: (v: boolean) => void;
+  onSubscribe: () => void;
 }) {
   const typeOptions = [
     { value: 'all', label: 'All types', icon: null },
@@ -389,6 +393,15 @@ function CompactFilters({
         ) : (
           <ImageOff className="h-3.5 w-3.5" />
         )}
+      </button>
+
+      <button
+        onClick={onSubscribe}
+        className="p-1.5 rounded-md transition-colors text-muted-foreground hover:text-foreground hover:bg-muted"
+        title="Subscribe in Calendar"
+        aria-label="Subscribe in Calendar"
+      >
+        <CalendarPlus className="h-3.5 w-3.5" />
       </button>
     </div>
   );
@@ -1277,6 +1290,7 @@ export default function CalendarPage() {
   const setShowScheduled = useUIStore((s) => s.setCalendarShowScheduled);
   const showImages = useUIStore((s) => s.calendarShowImages);
   const setShowImages = useUIStore((s) => s.setCalendarShowImages);
+  const [subscribeOpen, setSubscribeOpen] = useState(false);
 
   // Midnight, not the moment of mounting: a tapped day in the month view is
   // anchored to this value, and a remount the same day (Back from a title) must
@@ -1533,6 +1547,7 @@ export default function CalendarPage() {
               setShowScheduled={setShowScheduled}
               showImages={showImages}
               setShowImages={setShowImages}
+              onSubscribe={() => setSubscribeOpen(true)}
             />
           </div>
         </div>
@@ -1585,11 +1600,26 @@ export default function CalendarPage() {
               setShowScheduled={setShowScheduled}
               showImages={showImages}
               setShowImages={setShowImages}
+              onSubscribe={() => setSubscribeOpen(true)}
             />
           </div>
 
         </div>
       </div>
+
+      {/* Mounted only while open, so the one-time link leaves memory on close. */}
+      {subscribeOpen && (
+        <CalendarFeedDialog
+          open
+          onOpenChange={setSubscribeOpen}
+          filters={{
+            type: typeFilter === 'all' ? null : typeFilter,
+            instanceId: instanceFilter === 'all' ? null : instanceFilter,
+            monitoredOnly,
+          }}
+          instanceLabel={instances.find((i) => i.id === instanceFilter)?.label}
+        />
+      )}
 
       {/* On phones the instance picker is a bare icon, so name the pick here. The
           type, monitored and scheduled toggles show their own state. */}

@@ -113,6 +113,7 @@ describe('migration readiness', () => {
     expect(names).toContain('20261107160000_user_date_time_format');
     expect(names).toContain('20261107180000_move_media_audit');
     expect(names).toContain('20261107200000_mark_failed_audit');
+    expect(names).toContain('20261107190000_calendar_feed_token');
     expect(names).not.toContain('migration_lock.toml');
     expect(names).toHaveLength(30);
   });

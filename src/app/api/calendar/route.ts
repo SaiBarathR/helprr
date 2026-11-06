@@ -1,18 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSonarrClients, getRadarrClients, getLidarrClients } from '@/lib/service-helpers';
 import { requireUser, requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { getOrCreateAppSettings } from '@/lib/app-settings';
 import { startOfLocalDay, toZonedDate, getLocalDateKey } from '@/lib/timezone';
 import { getCachedJson, setCachedJson } from '@/lib/cache/json-cache';
+import { fetchServiceCalendarEvents } from '@/lib/calendar-events';
 import {
   fetchScheduledCalendarEvents,
   mergeCalendarWithScheduled,
 } from '@/lib/scheduled-alerts/calendar';
-import type {
-  CalendarEvent,
-  MovieReleaseType,
-} from '@/types';
+import type { CalendarEvent } from '@/types';
 
 const CALENDAR_CACHE_HEADERS = {
   'Cache-Control': 'private, max-age=120, stale-while-revalidate=300',
@@ -124,117 +121,8 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
       end = endDate.toISOString();
     }
 
-    const events: CalendarEvent[] = [];
-    const startMs = new Date(start!).getTime();
-    const endMs = new Date(end!).getTime();
-
-    // Fetch from every instance of Sonarr, Radarr and Lidarr in parallel, tagging
-    // each event with its instance so detail links resolve to the right one.
-    const [sonarrClients, radarrClients, lidarrClients] = await Promise.all([
-      getSonarrClients().catch(() => []),
-      getRadarrClients().catch(() => []),
-      getLidarrClients().catch(() => []),
-    ]);
-
-    // Cache only a trustworthy result: ≥1 instance answered, or nothing is configured.
-    // A transient all-instances-failed fetch must not blank the calendar for the TTL.
-    let anyOk = false;
-    await Promise.all([
-      ...sonarrClients.map(async ({ connection, client }) => {
-        try {
-          const entries = await client.getCalendar(start!, end!);
-          anyOk = true;
-          for (const ep of entries) {
-            events.push({
-              id: `sonarr-${connection.id}-${ep.id}`,
-              type: 'episode',
-              title: ep.series.title,
-              subtitle: `S${ep.seasonNumber.toString().padStart(2, '0')}E${ep.episodeNumber.toString().padStart(2, '0')} - ${ep.title}`,
-              date: ep.airDateUtc,
-              hasFile: ep.hasFile,
-              monitored: ep.monitored,
-              seriesId: ep.seriesId,
-              images: ep.series.images,
-              instanceId: connection.id,
-              instanceLabel: connection.label,
-              ...(ep.finaleType ? { finaleType: ep.finaleType } : {}),
-            });
-          }
-        } catch {
-          // Skip unreachable instance.
-        }
-      }),
-      ...radarrClients.map(async ({ connection, client }) => {
-        try {
-          const entries = await client.getCalendar(start!, end!);
-          anyOk = true;
-          for (const m of entries) {
-            const releases: Array<[MovieReleaseType, string | undefined]> = [
-              ['cinema', m.inCinemas],
-              ['physical', m.physicalRelease],
-              ['digital', m.digitalRelease],
-            ];
-            for (const [releaseType, dateStr] of releases) {
-              if (!dateStr) continue;
-              const ms = new Date(dateStr).getTime();
-              if (!Number.isFinite(ms)) continue;
-              if (ms < startMs || ms > endMs) continue;
-              events.push({
-                id: `radarr-${connection.id}-${m.id}-${releaseType}`,
-                type: 'movie',
-                title: m.title,
-                subtitle: `${m.year} - ${m.studio}`,
-                date: dateStr,
-                hasFile: m.hasFile,
-                monitored: m.monitored,
-                movieId: m.id,
-                images: m.images,
-                releaseType,
-                instanceId: connection.id,
-                instanceLabel: connection.label,
-              });
-            }
-          }
-        } catch {
-          // Skip unreachable instance.
-        }
-      }),
-      ...lidarrClients.map(async ({ connection, client }) => {
-        try {
-          const entries = await client.getCalendar(start!, end!);
-          anyOk = true;
-          for (const album of entries) {
-            if (!album.releaseDate) continue;
-            const ms = new Date(album.releaseDate).getTime();
-            if (!Number.isFinite(ms) || ms < startMs || ms > endMs) continue;
-            const stats = album.statistics;
-            const complete = !!stats && stats.totalTrackCount > 0 && stats.trackFileCount >= stats.totalTrackCount;
-            events.push({
-              id: `lidarr-${connection.id}-${album.id}`,
-              type: 'album',
-              title: album.artist?.artistName ?? album.title,
-              subtitle: album.title,
-              date: album.releaseDate,
-              hasFile: complete,
-              monitored: album.monitored,
-              artistId: album.artistId,
-              albumId: album.id,
-              images: album.images,
-              instanceId: connection.id,
-              instanceLabel: connection.label,
-            });
-          }
-        } catch {
-          // Skip unreachable instance.
-        }
-      }),
-    ]);
-
-    // Sort by date ascending
-    events.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-
-    const totalInstances = sonarrClients.length + radarrClients.length + lidarrClients.length;
-    if (anyOk || totalInstances === 0) {
+    const { events, cacheable } = await fetchServiceCalendarEvents(start!, end!);
+    if (cacheable) {
       await setCachedJson('calendar', cacheKeySeed, events, 120);
     }
 

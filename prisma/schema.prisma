@@ -63,6 +63,7 @@ model User {
   twitchLink TwitchUserLink?
   tasteProfile   UserTasteProfile?
   passwordLink   PasswordLink?
+  calendarFeedToken CalendarFeedToken?
 
   @@index([jellyfinUserId])
   @@index([status])
@@ -109,6 +110,20 @@ model ServiceConnection {
 
   @@unique([type, label])
   @@index([type])
+}
+
+// A user's read-only calendar subscription link (GET /api/calendar/feed.ics).
+// Only the SHA-256 of the high-entropy token is stored; the token itself is
+// shown once, when it is made. One per user: making a new one replaces the
+// hash, so the old link stops working. Deleted to turn the feed off, and with
+// the user.
+model CalendarFeedToken {
+  id         String    @id @default(cuid())
+  userId     String    @unique
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash  String    @unique
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime?
 }
 
 model Session {
@@ -771,6 +786,9 @@ enum SecurityAuditAction {
   RESET_LINK_REVOKED
   RESET_LINK_USED // the password was set through the link; every session was revoked
   INVITE_LINK_FAILED // an unusable invite or reset link was tried (coalesced per network and minute)
+  CALENDAR_FEED_CREATED
+  CALENDAR_FEED_ROTATED
+  CALENDAR_FEED_REVOKED
 }
 
 // Who did what to accounts, sessions, service connections and settings, and

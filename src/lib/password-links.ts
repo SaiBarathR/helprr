@@ -125,6 +125,7 @@ export async function redeemPasswordLink(
   role: User['role'];
   purpose: PasswordLinkPurpose;
   revokedSessions: number;
+  feedRevoked: boolean;
 } | null> {
   if (!isWellFormedPasswordLinkToken(token)) return null;
   const tokenHash = hashPasswordLinkToken(token);
@@ -148,12 +149,15 @@ export async function redeemPasswordLink(
         where: { userId: link.userId, revokedAt: null },
         data: { revokedAt: now },
       });
+      // The calendar feed link is a credential too; a reset ends it with the sessions.
+      const feed = await tx.calendarFeedToken.deleteMany({ where: { userId: link.userId } });
       return {
         id: link.user.id,
         username: link.user.username,
         role: link.user.role,
         purpose: link.purpose,
         revokedSessions: revoked.count,
+        feedRevoked: feed.count > 0,
       };
     });
   } catch (error) {

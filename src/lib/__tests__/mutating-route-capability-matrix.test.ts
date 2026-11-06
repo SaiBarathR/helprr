@@ -33,6 +33,8 @@ const POLICY_GROUPS: Record<string, readonly string[]> = {
   authenticated: [
     'POST /api/account/jellyfin/link',
     'DELETE /api/account/jellyfin/link',
+    // Turning off one's own calendar link needs no capability.
+    'DELETE /api/calendar/feed-token',
     'POST /api/logs/client',
     'DELETE /api/me',
     'POST /api/me/password',
@@ -86,6 +88,9 @@ const POLICY_GROUPS: Record<string, readonly string[]> = {
     'POST /api/radarr/release',
     'POST /api/sonarr/command',
     'POST /api/sonarr/release',
+  ],
+  'cap:calendar.view': [
+    'POST /api/calendar/feed-token',
   ],
   'cap:cleanup.manage': [
     'PUT /api/cleanup/download/config',
