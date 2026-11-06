@@ -9,6 +9,7 @@ import { JobCancelledError, run } from './process';
 
 const RENDER_DEVICE = '/dev/dri/renderD128';
 const NICE = 10;
+const PROGRESS_INTERVAL_MS = 5_000;
 const HW_ARGS = ['-init_hw_device', `vaapi=va:${RENDER_DEVICE}`, '-init_hw_device', 'qsv=qs@va', '-filter_hw_device', 'qs'];
 
 /** A one-frame encode: the only honest answer to whether QSV works here. */
@@ -22,6 +23,33 @@ export async function probeGpu(): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/**
+ * Reads ffmpeg's `-progress` output: one key=value a line, each block closed by a
+ * `progress=` line. Time left comes from ffmpeg's own speed, as a multiple of real time.
+ */
+export function encodeProgressReader(
+  durationSeconds: number,
+  onBlock: (progress: number, etaSeconds: number | null) => void,
+): (line: string) => void {
+  let doneSeconds = 0;
+  let speed = 0;
+  return (line) => {
+    const split = line.indexOf('=');
+    if (split < 0) return;
+    const key = line.slice(0, split);
+    const value = line.slice(split + 1).trim();
+    if (key === 'out_time_us') {
+      const micros = Number(value);
+      if (Number.isFinite(micros)) doneSeconds = Math.max(0, micros / 1_000_000);
+    } else if (key === 'speed') {
+      speed = Number.parseFloat(value) || 0;
+    } else if (key === 'progress' && durationSeconds > 0) {
+      const left = Math.max(0, durationSeconds - doneSeconds);
+      onBlock(Math.min(1, doneSeconds / durationSeconds), speed > 0 ? Math.round(left / speed) : null);
+    }
+  };
 }
 
 async function exists(file: string): Promise<boolean> {
@@ -87,11 +115,22 @@ export async function runReencode(ctx: {
   const encoded = path.join(staging, 'out.mkv');
 
   await ctx.setStage('encoding');
+  let lastWrite = 0;
+  // One write at a time: a slow database skips saves rather than queueing them.
+  let writing: Promise<unknown> | null = null;
+  const save = (progress: number, etaSeconds: number | null) => {
+    if (writing || Date.now() - lastWrite < PROGRESS_INTERVAL_MS) return;
+    lastWrite = Date.now();
+    writing = prisma.archiveJob.update({ where: { id: job.id }, data: { progress, etaSeconds } })
+      .catch(() => undefined)
+      .finally(() => { writing = null; });
+  };
+  // Each attempt reads its own ffmpeg from zero.
   const encode = (decoding: string[], filtering: string[]) => run(FFMPEG, [
-    '-y', '-v', 'error', ...HW_ARGS, ...decoding, '-i', target,
+    '-y', '-v', 'error', '-nostats', '-progress', 'pipe:1', ...HW_ARGS, ...decoding, '-i', target,
     '-map', '0:v:0', '-map', '0:a', '-map_metadata', '0', '-map_chapters', '0', ...filtering,
     '-c:v', 'hevc_qsv', '-preset', ctx.preset, '-global_quality', String(ctx.quality), '-c:a', 'copy', encoded,
-  ], { signal, nice: NICE });
+  ], { signal, nice: NICE, onStdoutLine: encodeProgressReader(before.duration, save) });
   try {
     await encode(['-hwaccel', 'qsv', '-hwaccel_output_format', 'qsv'], []);
   } catch (error) {
@@ -101,7 +140,11 @@ export async function runReencode(ctx: {
     // for the upload to the GPU fails the same way, so they stay as they are. The GPU still
     // encodes, and a stream that really changed size fails here, with the original untouched.
     await ctx.note('Hardware decoding failed, so this encode decodes in software');
+    lastWrite = 0;
     await encode(['-reinit_filter', '0'], ['-vf', 'format=nv12,hwupload=extra_hw_frames=64']);
+  } finally {
+    // A write still in flight must not land on top of the finished job.
+    await writing;
   }
 
   await ctx.setStage('validating');

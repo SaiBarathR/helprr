@@ -15,6 +15,17 @@ describe('run', () => {
     expect(message).not.toContain('signed-url');
   });
 
+  it('hands stdout to onStdoutLine and keeps it out of the error message', async () => {
+    const lines: string[] = [];
+    const failure = run('node', ['-e', "console.error('real reason'); for (let i = 0; i < 200; i++) console.log('progress=continue'); process.exit(3)"], {
+      onStdoutLine: (line) => lines.push(line),
+    });
+    const message = await failure.catch((error: Error) => error.message);
+    expect(message).toContain('real reason');
+    expect(message).not.toContain('progress=');
+    expect(lines).toHaveLength(200);
+  });
+
   it('passes arguments without a shell', async () => {
     const hostile = '$(touch /tmp/pwned); `id` | cat';
     const output = await run('node', ['-e', 'console.log(process.argv[1])', hostile], { captureStdout: true });

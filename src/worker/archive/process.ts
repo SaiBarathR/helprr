@@ -8,6 +8,8 @@ export interface RunOptions {
   cwd?: string;
   env?: NodeJS.ProcessEnv;
   onLine?: (line: string) => void;
+  /** Takes stdout instead of the kept output, so a steady progress stream cannot push the error out of it. */
+  onStdoutLine?: (line: string) => void;
   /** Return stdout in full. It stays out of error messages: yt-dlp's JSON holds signed URLs. */
   captureStdout?: boolean;
   signal?: AbortSignal;
@@ -75,6 +77,7 @@ export function run(command: string, args: readonly string[], options: RunOption
     };
     readline.createInterface({ input: child.stdout }).on('line', (line) => {
       if (options.captureStdout) stdout.push(line);
+      else if (options.onStdoutLine) options.onStdoutLine(line);
       else keep(line);
     });
     readline.createInterface({ input: child.stderr }).on('line', keep);

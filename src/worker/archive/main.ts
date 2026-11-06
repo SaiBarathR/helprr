@@ -175,7 +175,7 @@ async function runJob(job: ArchiveJob): Promise<void> {
         assertLease,
         stagingName,
       });
-      await finishJob(job, { state: 'DONE', stage: 'done', progress: 1, finishedAt: new Date(), lastError: null, errorClass: null });
+      await finishJob(job, { state: 'DONE', stage: 'done', progress: 1, etaSeconds: null, finishedAt: new Date(), lastError: null, errorClass: null });
       return;
     }
     if (job.kind === 'FORMATS' && job.videoId) {
