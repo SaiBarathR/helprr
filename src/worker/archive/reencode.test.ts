@@ -138,6 +138,24 @@ describe('runReencode', () => {
     expect(progressWrites).toEqual([[{ where: { id: 'j' }, data: { progress: 0.5, etaSeconds: 15 } }]]);
   });
 
+  it('starts the software fallback from zero, not from where the hardware attempt stopped', async () => {
+    mocks.ffmpeg
+      .mockImplementationOnce(async (_args: string[], options: RunOptions) => {
+        ['out_time_us=42000000', 'speed=3x', 'progress=continue'].forEach(options.onStdoutLine!);
+        throw new Error('ffmpeg exited with 218: Impossible to convert between the formats');
+      })
+      .mockImplementationOnce(async (args: string[], options: RunOptions) => {
+        ['out_time_us=N/A', 'speed=N/A', 'progress=continue'].forEach(options.onStdoutLine!);
+        await writeFile(output(args), 'small');
+      });
+    const { jobUpdate, start } = setup();
+
+    await start();
+
+    const progressWrites = jobUpdate.mock.calls.filter(([call]) => 'progress' in call.data).map(([call]) => call.data);
+    expect(progressWrites).toEqual([{ progress: 0.7, etaSeconds: 6 }, { progress: 0, etaSeconds: null }]);
+  });
+
   it('keeps the original and records the attempt when the encode is not worth it', async () => {
     mocks.ffmpeg.mockImplementation((args: string[]) => writeFile(output(args), 'x'.repeat(200)));
     const { update, start } = setup();

@@ -116,17 +116,19 @@ export async function runReencode(ctx: {
 
   await ctx.setStage('encoding');
   let lastWrite = 0;
+  // One write after another, so the last one waited for below is really the last.
   let lastUpdate: Promise<unknown> = Promise.resolve();
-  const onStdoutLine = encodeProgressReader(before.duration, (progress, etaSeconds) => {
+  const save = (progress: number, etaSeconds: number | null) => {
     if (Date.now() - lastWrite < PROGRESS_INTERVAL_MS) return;
     lastWrite = Date.now();
-    lastUpdate = prisma.archiveJob.update({ where: { id: job.id }, data: { progress, etaSeconds } }).catch(() => undefined);
-  });
+    lastUpdate = lastUpdate.then(() => prisma.archiveJob.update({ where: { id: job.id }, data: { progress, etaSeconds } }).catch(() => undefined));
+  };
+  // Each attempt reads its own ffmpeg from zero.
   const encode = (decoding: string[], filtering: string[]) => run(FFMPEG, [
     '-y', '-v', 'error', '-nostats', '-progress', 'pipe:1', ...HW_ARGS, ...decoding, '-i', target,
     '-map', '0:v:0', '-map', '0:a', '-map_metadata', '0', '-map_chapters', '0', ...filtering,
     '-c:v', 'hevc_qsv', '-preset', ctx.preset, '-global_quality', String(ctx.quality), '-c:a', 'copy', encoded,
-  ], { signal, nice: NICE, onStdoutLine });
+  ], { signal, nice: NICE, onStdoutLine: encodeProgressReader(before.duration, save) });
   try {
     await encode(['-hwaccel', 'qsv', '-hwaccel_output_format', 'qsv'], []);
   } catch (error) {
