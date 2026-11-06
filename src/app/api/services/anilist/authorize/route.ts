@@ -9,6 +9,7 @@ import {
   isNonEmptyString,
   resolveApiKeyForService,
 } from '@/lib/service-connection-secrets';
+import { recordSecurityEvent } from '@/lib/security-audit';
 
 const STATE_COOKIE_NAME = 'helprr-anilist-oauth-state';
 const STATE_COOKIE_MAX_AGE = 5 * 60; // 5 minutes
@@ -52,8 +53,9 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   }
 
   const existingAniList = await prisma.serviceConnection.findFirst({ where: { type: 'ANILIST' } });
+  let saved;
   if (existingAniList) {
-    await prisma.serviceConnection.update({
+    saved = await prisma.serviceConnection.update({
       where: { id: existingAniList.id },
       data: {
         url: ANILIST_GRAPHQL_URL,
@@ -62,7 +64,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
       },
     });
   } else {
-    await prisma.serviceConnection.create({
+    saved = await prisma.serviceConnection.create({
       data: {
         type: 'ANILIST',
         label: 'AniList',
@@ -70,6 +72,23 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
         apiKey: resolvedSecret,
         externalUrl: trimmedClientId,
       },
+    });
+  }
+
+  const fields = existingAniList
+    ? [
+        ...(existingAniList.externalUrl !== trimmedClientId ? ['clientId'] : []),
+        ...(existingAniList.apiKey !== resolvedSecret ? ['clientSecret'] : []),
+      ]
+    : ['clientId', 'clientSecret'];
+  if (fields.length > 0) {
+    await recordSecurityEvent(request, {
+      actor: auth.user,
+      action: existingAniList ? 'SERVICE_UPDATED' : 'SERVICE_CREATED',
+      targetType: 'service',
+      targetId: saved.id,
+      targetLabel: 'AniList',
+      fields,
     });
   }
 

@@ -13,6 +13,7 @@ import { enforceGlobalLoginBackstop, enforceLoginRateLimit, getClientIp } from '
 import { isHttpsRequest } from '@/lib/request-utils';
 import { boundedBodyErrorResponse, readBoundedJson } from '@/lib/server/bounded-body';
 import { LOGIN_BODY_MAX_BYTES } from '@/lib/server/login-input';
+import { recordSecurityEvent } from '@/lib/security-audit';
 
 const NOT_FOUND = () => NextResponse.json({ error: 'Not found' }, { status: 404 });
 
@@ -47,7 +48,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
   }
 
-  let admin: { id: string; role: 'admin' };
+  let admin: { id: string; username: string; role: 'admin' };
   try {
     const { username, password } = body as { username?: unknown; password?: unknown };
     admin = await claimFirstAdmin({ username, password });
@@ -61,6 +62,15 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     }
     throw error;
   }
+  // Nobody was signed in: the new admin created themselves.
+  await recordSecurityEvent(request, {
+    actor: admin,
+    action: 'USER_CREATED',
+    targetType: 'user',
+    targetId: admin.id,
+    targetLabel: admin.username,
+    fields: ['username', 'role', 'password'],
+  });
 
   const token = await createSession({
     userId: admin.id,

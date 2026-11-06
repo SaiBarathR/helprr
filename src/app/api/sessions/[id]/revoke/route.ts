@@ -3,6 +3,7 @@ import { prisma } from '@/lib/db';
 import { COOKIE_NAME, requireUser, revokeSession } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { isHttpsRequest } from '@/lib/request-utils';
+import { recordSecurityEvent } from '@/lib/security-audit';
 
 async function postHandler(
   request: NextRequest,
@@ -17,7 +18,7 @@ async function postHandler(
   try {
     const existing = await prisma.session.findUnique({
       where: { id },
-      select: { id: true, revokedAt: true, userId: true },
+      select: { id: true, revokedAt: true, userId: true, user: { select: { username: true } } },
     });
     // Members can only revoke their own sessions; admins can revoke anyone's.
     if (!existing || (!isAdmin && existing.userId !== auth.user.id)) {
@@ -28,6 +29,14 @@ async function postHandler(
     }
     await revokeSession(id);
     const wasCurrent = id === auth.session.id;
+    await recordSecurityEvent(request, {
+      actor: auth.user,
+      action: 'SESSION_REVOKED',
+      targetType: 'session',
+      targetId: id,
+      // Whose session it was.
+      targetLabel: existing.user?.username ?? null,
+    });
     const response = NextResponse.json({ revoked: 1, wasCurrent });
     if (wasCurrent) {
       // Clear the cookie up-front so the next navigation doesn't even

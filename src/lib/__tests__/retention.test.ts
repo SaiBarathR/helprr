@@ -4,6 +4,7 @@ import {
   FILE_OPERATION_AUDIT_RETENTION_DAYS,
   RECOMMENDATION_ACTIVITY_RETENTION_DAYS,
   RECOMMENDATION_IMPRESSION_RETENTION_DAYS,
+  SECURITY_AUDIT_RETENTION_DAYS,
   runRetentionSweep,
   type RetentionSweepOptions,
 } from '@/lib/retention';
@@ -11,7 +12,7 @@ import { SESSION_DURATION_SECONDS, SESSION_IDLE_TIMEOUT_SECONDS } from '@/lib/se
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-function databaseFixture(counts: number[] = [1, 2, 3, 4, 5, 6, 7, 8, 9]) {
+function databaseFixture(counts: number[] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]) {
   const delegates = counts.map((count) => ({
     deleteMany: vi.fn(async () => ({ count })),
   }));
@@ -26,6 +27,7 @@ function databaseFixture(counts: number[] = [1, 2, 3, 4, 5, 6, 7, 8, 9]) {
       archiveJobEvent: delegates[6],
       archiveJob: delegates[7],
       creatorVideo: delegates[8],
+      securityAuditEvent: delegates[9],
     } as unknown as NonNullable<RetentionSweepOptions['database']>,
     delegates,
   };
@@ -108,6 +110,10 @@ describe('runRetentionSweep', () => {
       twitchJobEvents: 7,
       twitchJobs: 8,
       twitchVideos: 9,
+      securityAudit: 10,
+    });
+    expect(delegates[9].deleteMany).toHaveBeenCalledWith({
+      where: { createdAt: { lt: new Date(nowMs - SECURITY_AUDIT_RETENTION_DAYS * DAY_MS) } },
     });
     expect(result.imageCache.status).toBe('completed');
   });
@@ -138,7 +144,7 @@ describe('runRetentionSweep', () => {
 
   it('falls back to 90 days for an invalid notification-retention setting', async () => {
     const nowMs = Date.UTC(2026, 6, 14, 12);
-    const { database, delegates } = databaseFixture([0, 0, 0, 0, 0, 0, 0, 0, 0]);
+    const { database, delegates } = databaseFixture([0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
 
     const result = await runRetentionSweep({
       notificationRetentionDays: Number.NaN,
@@ -166,7 +172,7 @@ describe('runRetentionSweep', () => {
   });
 
   it('reports image-cache failure without blocking successful database retention', async () => {
-    const { database } = databaseFixture([0, 0, 0, 0, 0, 0, 0, 0, 0]);
+    const { database } = databaseFixture([0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
     const result = await runRetentionSweep({
       notificationRetentionDays: 90,
       database,
@@ -179,7 +185,7 @@ describe('runRetentionSweep', () => {
   });
 
   it('rejects database failure and does not begin filesystem cleanup', async () => {
-    const { database, delegates } = databaseFixture([0, 0, 0, 0, 0, 0, 0, 0, 0]);
+    const { database, delegates } = databaseFixture([0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
     delegates[3].deleteMany.mockRejectedValueOnce(new Error('database unavailable'));
     const pruneImages = vi.fn();
 

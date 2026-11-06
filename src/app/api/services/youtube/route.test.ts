@@ -41,6 +41,8 @@ describe('saving the YouTube key', () => {
     mocks.verify.mockResolvedValue(undefined);
     mocks.stored.mockResolvedValue('not-a-real-old-key');
     mocks.existing = { id: 'connection' };
+    mocks.update.mockResolvedValue({ id: 'connection' });
+    mocks.create.mockResolvedValue({ id: 'connection' });
   });
 
   it('stores it encrypted and starts a new count for a different key', async () => {

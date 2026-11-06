@@ -107,7 +107,8 @@ describe('migration readiness', () => {
     expect(names).toContain('20261020120000_taste_profile_marked_at');
     expect(names).toContain('20261104150000_setup_checklist');
     expect(names).toContain('20261106120000_blocklist_audit');
+    expect(names).toContain('20261106174815_security_audit_events');
     expect(names).not.toContain('migration_lock.toml');
-    expect(names).toHaveLength(24);
+    expect(names).toHaveLength(25);
   });
 });

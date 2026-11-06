@@ -722,6 +722,51 @@ model FileOperationAudit {
   @@index([userId, createdAt])
 }
 
+// ==================== Security and admin audit trail ====================
+
+enum SecurityAuditAction {
+  LOGIN_SUCCEEDED
+  LOGIN_FAILED // coalesced: one row per (method, username as typed, coarse IP) per minute
+  USER_CREATED
+  USER_UPDATED
+  USER_DELETED
+  USER_PERMISSIONS_CHANGED
+  PASSWORD_CHANGED // the signed-in user changed their own password
+  SESSION_REVOKED
+  SERVICE_CREATED
+  SERVICE_UPDATED
+  SERVICE_DELETED
+  SETTINGS_IMPORTED
+}
+
+// Who did what to accounts, sessions, service connections and settings, and
+// who signed in or tried to. Written fail-soft after the action (it never
+// replaces authorization). `fields` names what changed and never holds a value
+// or a secret. Like FileOperationAudit, actorUserId is not a FK and
+// actorUsername is denormalized so the row outlives the user; both are null
+// for a failed sign-in (set for a failed self-service check). A failed
+// sign-in's targetLabel is the account name, or the typed name masked when it
+// matched no account.
+model SecurityAuditEvent {
+  id            String              @id @default(cuid())
+  actorUserId   String?
+  actorUsername String?
+  action        SecurityAuditAction
+  targetType    String // user | session | service | settings
+  targetId      String?
+  targetLabel   String?
+  fields        Json? // changed field names (or the sign-in method / imported sections); never values
+  count         Int                 @default(1) // coalesced failed sign-ins, or sessions revoked at once
+  ip            String? // coarse: IPv4 /24, IPv6 /64; null without a trusted proxy
+  userAgent     String?
+  requestId     String?
+  coalesceKey   String?             @unique // HMAC of the failed-sign-in minute bucket; null otherwise
+  createdAt     DateTime            @default(now())
+
+  @@index([createdAt])
+  @@index([action, createdAt])
+}
+
 // Manual downloads: a hand-supplied magnet or .torrent linked to a Sonarr/Radarr
 // title. In the default (ARR_MANAGED) mode Arr owns the download: Helprr adds
 // the title with searches off, pushes the release, and follows Arr's queue,

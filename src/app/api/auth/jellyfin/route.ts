@@ -18,6 +18,7 @@ import { withApiLogging } from '@/lib/api-logger';
 import { isHttpsRequest } from '@/lib/request-utils';
 import { readLoginCredentials } from '@/lib/server/login-input';
 import { storeJellyfinToken } from '@/lib/jellyfin-token';
+import { recordFailedSignIn, recordSecurityEvent } from '@/lib/security-audit';
 
 const INVALID_CREDENTIALS = 'Invalid Jellyfin username or password';
 // Distinct steering message: Jellyfin is unreachable/changed, so the user
@@ -63,6 +64,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
       // not a guess and must not throttle the user out.
       await recordUsernameFailure(username, password);
       await recordGlobalLoginFailure();
+      await recordFailedSignIn(request, { username, method: 'jellyfin' });
       return NextResponse.json({ error: INVALID_CREDENTIALS }, { status: 401 });
     }
     return NextResponse.json({ error: JELLYFIN_UNAVAILABLE }, { status: 502 });
@@ -72,9 +74,11 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   // has pre-created a Helprr account linked to this Jellyfin user. No auto-provision.
   const user = await prisma.user.findFirst({
     where: { jellyfinUserId: auth.userId, status: 'active' },
-    select: { id: true, role: true },
+    select: { id: true, username: true, role: true },
   });
   if (!user) {
+    // A real Jellyfin login Helprr refused: not a guess, so no backoff, but still an attempt.
+    await recordFailedSignIn(request, { username, method: 'jellyfin-unlinked', nameIsAccount: true });
     return NextResponse.json(
       { error: 'This Jellyfin account is not linked to a Helprr profile. Ask your admin to add you.' },
       { status: 403 }
@@ -102,6 +106,14 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
 
   const userAgent = request.headers.get('user-agent');
   const token = await createSession({ userId: user.id, role: user.role, userAgent, ip });
+  await recordSecurityEvent(request, {
+    actor: user,
+    action: 'LOGIN_SUCCEEDED',
+    targetType: 'user',
+    targetId: user.id,
+    targetLabel: user.username,
+    fields: ['jellyfin'],
+  });
 
   const response = NextResponse.json({ success: true });
   response.cookies.set(COOKIE_NAME, token, {

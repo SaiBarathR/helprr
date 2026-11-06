@@ -22,6 +22,7 @@ import {
 import { withApiLogging } from '@/lib/api-logger';
 import { isHttpsRequest } from '@/lib/request-utils';
 import { readLoginCredentials } from '@/lib/server/login-input';
+import { recordFailedSignIn, recordSecurityEvent } from '@/lib/security-audit';
 
 // Generic so a probe can't tell "no such user" from "wrong password".
 const INVALID_CREDENTIALS = 'Invalid username or password';
@@ -75,7 +76,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
 
   const user = await prisma.user.findFirst({
     where: { username, status: 'active' },
-    select: { id: true, role: true, passwordHash: true },
+    select: { id: true, username: true, role: true, passwordHash: true },
   });
 
   if (!user) {
@@ -84,12 +85,14 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     await verifyPasswordHash(password, await getDummyPasswordHash());
     await recordUsernameFailure(username, password);
     await recordGlobalLoginFailure();
+    await recordFailedSignIn(request, { username, method: 'password', user: null });
     return NextResponse.json({ error: INVALID_CREDENTIALS }, { status: 401 });
   }
 
   if (!(await verifyUserPassword(user, password))) {
     await recordUsernameFailure(username, password);
     await recordGlobalLoginFailure();
+    await recordFailedSignIn(request, { username, method: 'password', user });
     return NextResponse.json({ error: INVALID_CREDENTIALS }, { status: 401 });
   }
 
@@ -110,6 +113,14 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
 
   const userAgent = request.headers.get('user-agent');
   const token = await createSession({ userId: user.id, role: user.role, userAgent, ip });
+  await recordSecurityEvent(request, {
+    actor: user,
+    action: 'LOGIN_SUCCEEDED',
+    targetType: 'user',
+    targetId: user.id,
+    targetLabel: user.username,
+    fields: ['password'],
+  });
 
   const response = NextResponse.json({ success: true });
   response.cookies.set(COOKIE_NAME, token, {

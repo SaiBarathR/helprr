@@ -457,6 +457,34 @@ preview token is never stored. Audit
 persistence is intentionally fail-soft so an audit outage never changes the real
 upstream result; it is not a substitute for authorization.
 
+`SecurityAuditEvent` is the separate security and admin trail behind the
+admin-only **Security** tab of Operation audit (`GET /api/security-audit`).
+`src/lib/security-audit.ts` writes it, fail-soft and after the action, from
+local and Jellyfin sign-in (success and failure, including a wrong current
+password on the self password change, a Jellyfin account with no linked
+profile, and a wrong password or wrong account when a member connects their own
+Jellyfin account), first-admin setup, user create/edit/delete (an admin
+password reset with the sessions it revoked), a member linking their own
+Jellyfin account, permission changes, the self password change, session
+revocations, service connection add/edit/delete (main, external URL, YouTube,
+Twitch, AniList and the Seerr/Prowlarr import), and settings import. A row holds the actor (id not a FK, username
+denormalized), action, target type/id/label, the coarse IP (IPv4 /24, IPv6 /64,
+from the trusted-proxy address only), a 256-character user agent, the request
+id, and `fields`: the names of what changed (or the sign-in method, or the
+imported sections), never a value, hash or key. A failed sign-in has no actor
+(the signed-in user for a self-service check) and keeps the username, with the
+account as `targetId`, only when it names an active Helprr account or Jellyfin
+accepted it; any other name is masked to its first two characters and length,
+so a password typed into the username field is never stored. `recordFailedSignIn`
+upserts on a `coalesceKey` that is an HMAC under `JWT_SECRET` (or
+`APP_PASSWORD`) of (method, full normalized username, coarse IP, actor, minute),
+so repeats add to one row's `count` and a database copy cannot brute-force a
+masked name from it. The tab pages 50 rows at a time and can hide failed
+sign-ins (`hideFailedSignIns=1`) so a flood cannot bury account and connection
+changes. Only attempts that reach the credential check are recorded,
+so the sign-in rate limits and global backstop also bound how many rows a flood
+can write.
+
 Interactive queue/download cleanup follows a two-stage protocol:
 
 1. Preview computes the effective config, service scope, and exact candidate
@@ -690,7 +718,7 @@ Persistent runtime data is bounded through the relevant subsystem:
 - Notification retention follows `AppSettings.notificationHistoryRetentionDays`.
 - Cleanup history and settled scheduled-alert occurrences use bounded history
   retention.
-- Expired and idle sessions and old operation audit rows are pruned.
+- Expired and idle sessions and old operation and security audit rows are pruned.
 - Disk samples and log files use their own retention windows.
 - Image-cache retention reconciles Redis generation and metadata records with the
   files on disk and removes orphans.

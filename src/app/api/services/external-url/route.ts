@@ -3,6 +3,7 @@ import { prisma } from '@/lib/db';
 import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { clearConnectionMemo } from '@/lib/arr-instances';
+import { recordSecurityEvent, serviceTargetLabel } from '@/lib/security-audit';
 
 async function putHandler(request: NextRequest): Promise<NextResponse> {
   const auth = await requireUserCapability('settings.instances');
@@ -35,6 +36,16 @@ async function putHandler(request: NextRequest): Promise<NextResponse> {
       data: { externalUrl },
     });
     clearConnectionMemo();
+    if (existing.externalUrl !== updated.externalUrl) {
+      await recordSecurityEvent(request, {
+        actor: auth.user,
+        action: 'SERVICE_UPDATED',
+        targetType: 'service',
+        targetId: updated.id,
+        targetLabel: serviceTargetLabel(updated.type, updated.label),
+        fields: ['externalUrl'],
+      });
+    }
     return NextResponse.json({ id: updated.id, type: updated.type, externalUrl: updated.externalUrl });
   } catch (error) {
     console.error('Failed to update external URL:', error);

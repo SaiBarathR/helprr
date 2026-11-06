@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { discoverImportCandidates, importServices, type ImportItem } from '@/lib/service-import';
+import { recordSecurityEvent, serviceTargetLabel } from '@/lib/security-audit';
 
 const NO_STORE = { 'Cache-Control': 'private, no-store' };
 const MAX_ITEMS = 20;
@@ -34,7 +35,15 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   if (!admin.ok) return admin.response;
   const items = parseItems(await request.json().catch(() => null));
   if (!items) return NextResponse.json({ error: `Send 1 to ${MAX_ITEMS} apps to add.` }, { status: 400 });
-  return NextResponse.json({ results: await importServices(items) }, { headers: NO_STORE });
+  const results = await importServices(items, (connection) => recordSecurityEvent(request, {
+    actor: admin.user,
+    action: 'SERVICE_CREATED',
+    targetType: 'service',
+    targetId: connection.id,
+    targetLabel: serviceTargetLabel(connection.type, connection.label),
+    fields: ['url', 'apiKey'],
+  }));
+  return NextResponse.json({ results }, { headers: NO_STORE });
 }
 
 export const GET = withApiLogging(getHandler, 'api/services/import');

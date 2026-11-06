@@ -1,9 +1,10 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { requireUser } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
+import { recordSecurityEvent } from '@/lib/security-audit';
 
-async function postHandler(): Promise<NextResponse> {
+async function postHandler(request: NextRequest): Promise<NextResponse> {
   const auth = await requireUser();
   if (!auth.ok) return auth.response;
 
@@ -18,6 +19,16 @@ async function postHandler(): Promise<NextResponse> {
       },
       data: { revokedAt: new Date() },
     });
+    if (result.count > 0) {
+      await recordSecurityEvent(request, {
+        actor: auth.user,
+        action: 'SESSION_REVOKED',
+        targetType: 'user',
+        targetId: auth.user.id,
+        targetLabel: auth.user.username,
+        count: result.count,
+      });
+    }
     return NextResponse.json({ revoked: result.count });
   } catch (error) {
     console.error('[Sessions] revoke-others failed:', error);

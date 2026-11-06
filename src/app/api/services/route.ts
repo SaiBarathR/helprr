@@ -19,6 +19,7 @@ import { isRefusedRedirect, REDIRECT_REFUSED_MESSAGE } from '@/lib/redirect-guar
 import { clearConnectionMemo, ensureDefaultForType, isArrType } from '@/lib/arr-instances';
 import { findServiceByType } from '@/lib/settings/service-config';
 import { withDefaultScheme } from '@/lib/service-url';
+import { changedFieldNames, recordSecurityEvent, serviceTargetLabel } from '@/lib/security-audit';
 
 function getErrorInfo(error: unknown): { message?: string; code?: string | number; responseStatus?: number } {
   return {
@@ -252,6 +253,26 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
         return NextResponse.json({ error: `An instance named "${label}" already exists for this service` }, { status: 409 });
       }
       throw err;
+    }
+
+    const fields = existing
+      ? changedFieldNames(existing, connection, ['url', 'apiKey', 'username', 'label', 'externalUrl'])
+      : ['url', 'apiKey', ...(username ? ['username'] : []), ...(externalUrl ? ['externalUrl'] : [])];
+    // No headers is stored as either null or {}.
+    const headersOf = (value: unknown) =>
+      value && typeof value === 'object' && Object.keys(value).length > 0 ? JSON.stringify(value) : null;
+    if (headersOf(existing?.customHeaders) !== headersOf(connection.customHeaders)) {
+      fields.push('customHeaders');
+    }
+    if (!existing || fields.length > 0) {
+      await recordSecurityEvent(request, {
+        actor: auth.user,
+        action: existing ? 'SERVICE_UPDATED' : 'SERVICE_CREATED',
+        targetType: 'service',
+        targetId: connection.id,
+        targetLabel: serviceTargetLabel(type, connection.label),
+        fields,
+      });
     }
 
     await ensureDefaultForType(type);
