@@ -3,6 +3,7 @@ import { Sidebar } from '@/components/layout/sidebar';
 import { AppShell } from '@/components/layout/app-shell';
 import { SkipLink } from '@/components/layout/skip-link';
 import { CommandPalette } from '@/components/search/command-palette';
+import { WhatsNewOnUpdate } from '@/components/whats-new/whats-new-dialog';
 import { StandaloneLaunchRedirect } from '@/components/layout/standalone-launch-redirect';
 import { DiscoverLayoutHydrator } from '@/components/discover-layout-hydrator';
 import { PermissionProvider, type MePayload } from '@/components/permission-provider';
@@ -86,6 +87,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               <StandaloneLaunchRedirect />
               <DiscoverLayoutHydrator />
               <CommandPalette />
+              <WhatsNewOnUpdate />
               <Sidebar />
               <AppShell demo={isDemo()}>{children}</AppShell>
             </div>

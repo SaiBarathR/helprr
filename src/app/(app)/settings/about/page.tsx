@@ -1,9 +1,12 @@
 'use client';
 
+import { useState } from 'react';
 import Image from 'next/image';
 import Link from '@/components/ui/app-link';
-import { ChevronLeft, ExternalLink } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ExternalLink } from 'lucide-react';
 import { GroupedSection } from '@/components/settings/grouped-section';
+import { WhatsNewDialog } from '@/components/whats-new/whats-new-dialog';
+import type { WhatsNew } from '@/lib/whats-new';
 import { APP_VERSION, GIT_SHA } from '@/lib/app-version';
 import { PRIVACY_URL } from '@/lib/docs-links';
 
@@ -39,6 +42,24 @@ function CreditRow({ name, children }: { name: string; children: React.ReactNode
 }
 
 export default function AboutSettingsPage() {
+  const [notes, setNotes] = useState<WhatsNew | null>(null);
+  const [notesError, setNotesError] = useState(false);
+  const [notesOpen, setNotesOpen] = useState(false);
+
+  // Loaded on first open; a failed load is tried again on the next open.
+  const openNotes = () => {
+    setNotesOpen(true);
+    if (notes) return;
+    setNotesError(false);
+    fetch('/api/whats-new?current=1', { cache: 'no-store' })
+      .then((response) => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return response.json() as Promise<WhatsNew>;
+      })
+      .then(setNotes)
+      .catch(() => setNotesError(true));
+  };
+
   return (
     <div className="animate-content-in pb-12">
       <div className="px-1 pt-1 pb-2">
@@ -71,6 +92,17 @@ export default function AboutSettingsPage() {
             )}
           </div>
         </div>
+        <button
+          type="button"
+          onClick={openNotes}
+          className="grouped-row w-full text-left hover:bg-foreground/[0.03] active:bg-foreground/5 transition-colors"
+        >
+          <div className="min-w-0 flex-1 pr-3">
+            <div className="text-sm font-medium">What&apos;s new</div>
+            <div className="text-xs text-muted-foreground mt-0.5">Release notes for this version</div>
+          </div>
+          <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+        </button>
         <div className="grouped-row">
           <div className="min-w-0 flex-1 text-sm">License</div>
           <div className="shrink-0 text-sm text-muted-foreground">GPL-3.0</div>
@@ -109,6 +141,8 @@ export default function AboutSettingsPage() {
           not affiliated with or endorsed by either.
         </CreditRow>
       </GroupedSection>
+
+      <WhatsNewDialog notes={notes} error={notesError} open={notesOpen} onOpenChange={setNotesOpen} />
     </div>
   );
 }
