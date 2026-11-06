@@ -29,9 +29,13 @@ import {
   IMAGE_UPSTREAM_MAX_PIXELS,
   CACHE_LOCK_TTL_MS,
 } from '@/lib/cache/config';
-import { buildImageMetaKey, sha256Hex } from '@/lib/cache/keys';
+import { buildImageMetaKey, buildImageNegativeKey, sha256Hex } from '@/lib/cache/keys';
 import { getCacheImagesEnabled } from '@/lib/cache/state';
 import { getRedisClient } from '@/lib/redis';
+import {
+  IMAGE_NEGATIVE_CACHE_STATUSES,
+  IMAGE_NEGATIVE_CACHE_TTL_SECONDS,
+} from '@/lib/image-response-cache-policy';
 import {
   acquireScheduledImageProcessingLease,
   beginImageProcessingShutdown,
@@ -1275,6 +1279,13 @@ async function performCachedFill(
       await releaseScheduledImageProcessingLease(redis, acquired.lease);
     }
     if ('status' in fetched) {
+      if (IMAGE_NEGATIVE_CACHE_STATUSES.has(fetched.status) && !options.signal?.aborted) {
+        await redis.set(
+          buildImageNegativeKey(generation, options.cacheKey),
+          String(fetched.status),
+          { PX: IMAGE_NEGATIVE_CACHE_TTL_SECONDS * 1000 },
+        ).catch(() => undefined);
+      }
       return {
         ...fetched,
         timings: {
@@ -1526,6 +1537,13 @@ export async function fetchImageWithServerCache(
     cachedMeta = null;
   }
 
+  // A recent missing/oversized/invalid answer for this key is replayed instead
+  // of asking the upstream again. Unreadable Redis just means no entry.
+  const negativeStatus = Number(
+    await redis.get(buildImageNegativeKey(generation, cacheKey)).catch(() => null),
+  );
+  const knownUnavailable = IMAGE_NEGATIVE_CACHE_STATUSES.has(negativeStatus);
+
   if (cachedMeta && requestStartedAt < cachedMeta.staleUntil) {
     const stale = await staleResult(
       cachedMeta,
@@ -1543,23 +1561,27 @@ export async function fetchImageWithServerCache(
         host: safeHost(upstreamUrl),
         counter: 'staleResponses',
       });
-      const workKey = `cache:${generation}:${keyHash}`;
-      scheduleBackgroundRevalidation(
-        workKey,
-        redis,
-        safeHost(upstreamUrl),
-        (signal) => performCachedFill(
-          { ...normalizedOptions, signal },
+      // Keep serving the old bytes, but do not ask again for an image the
+      // upstream just said is gone or unusable.
+      if (!knownUnavailable) {
+        const workKey = `cache:${generation}:${keyHash}`;
+        scheduleBackgroundRevalidation(
+          workKey,
           redis,
-          generation,
-          keyHash,
-          metaKey,
-          cachedMeta,
-          ttlSeconds,
-          staleSeconds,
-          'background',
-        ),
-      );
+          safeHost(upstreamUrl),
+          (signal) => performCachedFill(
+            { ...normalizedOptions, signal },
+            redis,
+            generation,
+            keyHash,
+            metaKey,
+            cachedMeta,
+            ttlSeconds,
+            staleSeconds,
+            'background',
+          ),
+        );
+      }
       return stale;
     }
     await recoverMissingCacheFile(
@@ -1570,6 +1592,15 @@ export async function fetchImageWithServerCache(
       safeHost(upstreamUrl),
     );
     cachedMeta = null;
+  }
+
+  if (knownUnavailable) {
+    return {
+      status: negativeStatus,
+      body: null,
+      contentType: null,
+      cacheStatus: 'HIT',
+    };
   }
 
   await bestEffortObservation(redis, {

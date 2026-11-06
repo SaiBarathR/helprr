@@ -1,3 +1,4 @@
+import { createHash } from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { requireUserCapability } from '@/lib/auth';
@@ -6,6 +7,10 @@ import { fetchImageWithServerCache } from '@/lib/cache/image-cache';
 import { getConnectionHeaders } from '@/lib/service-connection-secrets';
 import { canUserAccessItem } from '@/lib/jellyfin-playback/item-access';
 import { withApiLogging } from '@/lib/api-logger';
+import {
+  IMAGE_NEGATIVE_CACHE_STATUSES,
+  IMAGE_NEGATIVE_CACHE_TTL_SECONDS,
+} from '@/lib/image-response-cache-policy';
 
 const ITEM_ID_RE = /^[a-f0-9-]+$/i;
 const ALLOWED_IMAGE_TYPES = new Set(['Primary', 'Backdrop', 'Banner', 'Thumb', 'Logo']);
@@ -20,7 +25,7 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
     const itemId = searchParams.get('itemId');
     const type = searchParams.get('type') || 'Primary';
     const maxWidthRaw = searchParams.get('maxWidth') || '300';
-    const qualityRaw = searchParams.get('quality') || '90';
+    const qualityRaw = searchParams.get('quality') || '80';
 
     if (!itemId || !ITEM_ID_RE.test(itemId)) {
       return NextResponse.json({ error: 'Invalid itemId' }, { status: 400 });
@@ -33,7 +38,7 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
     const maxWidthParsed = Number.parseInt(maxWidthRaw, 10);
     const qualityParsed = Number.parseInt(qualityRaw, 10);
     const maxWidth = Number.isFinite(maxWidthParsed) ? Math.min(Math.max(maxWidthParsed, 1), 2000) : 300;
-    const quality = Number.isFinite(qualityParsed) ? Math.min(Math.max(qualityParsed, 1), 100) : 90;
+    const quality = Number.isFinite(qualityParsed) ? Math.min(Math.max(qualityParsed, 1), 100) : 80;
 
     const { user } = auth;
     // jellyfin.sessions and jellyfin.stats deliberately expose server-wide
@@ -58,14 +63,16 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
     const connectionBase = new URL(connection.url);
     connectionBase.hash = '';
     const connectionBasePath = connectionBase.pathname.replace(/\/+$/, '');
+    // WebP is a fraction of the JPEG/PNG size at the same quality, keeps logo
+    // transparency, and passes the same validated-raster check.
     const url = new URL(
-      `${connectionBasePath}/Items/${encodeURIComponent(itemId)}/Images/${encodeURIComponent(type)}?maxWidth=${maxWidth}&quality=${quality}`,
+      `${connectionBasePath}/Items/${encodeURIComponent(itemId)}/Images/${encodeURIComponent(type)}?maxWidth=${maxWidth}&quality=${quality}&format=Webp`,
       `${connectionBase.origin}/`,
     );
     const connectionOrigin = connectionBase.origin;
 
     const result = await fetchImageWithServerCache({
-      cacheKey: `jellyfin:${itemId}:${type}:${maxWidth}:${quality}`,
+      cacheKey: `jellyfin:${itemId}:${type}:${maxWidth}:${quality}:webp`,
       upstreamUrl: url.toString(),
       upstreamHeaders: {
         // Custom headers first so Helprr's own token headers win; no-op unless
@@ -87,6 +94,9 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
         status: result.status,
         headers: {
           'X-Helprr-Cache': result.cacheStatus,
+          ...(IMAGE_NEGATIVE_CACHE_STATUSES.has(result.status)
+            ? { 'Cache-Control': `private, max-age=${IMAGE_NEGATIVE_CACHE_TTL_SECONDS}` }
+            : {}),
           ...(result.retryAfterSeconds
             ? { 'Retry-After': String(result.retryAfterSeconds) }
             : {}),
@@ -97,20 +107,30 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
       });
     }
 
+    // Revalidate the jellyfin.view and per-item authorization boundary on
+    // every use while still allowing the browser to retain validated bytes:
+    // the 304 below is only reached after both checks above have passed.
+    const etag = `"${createHash('sha1').update(result.body).digest('hex')}"`;
+    const headers = {
+      'Cache-Control': result.cacheStatus === 'BYPASS'
+        ? 'private, no-store'
+        : 'private, no-cache',
+      ETag: etag,
+      Vary: 'Cookie',
+      'X-Helprr-Cache': result.cacheStatus,
+      ...(result.timings
+        ? { 'Server-Timing': `helprr-queue;dur=${result.timings.queueMs}, helprr-upstream;dur=${result.timings.upstreamMs}` }
+        : {}),
+    };
+    const notModified = request.headers.get('if-none-match')
+      ?.split(',')
+      .some((candidate) => candidate.trim().replace(/^W\//, '') === etag);
+    if (notModified) {
+      return new NextResponse(null, { status: 304, headers });
+    }
+
     return new NextResponse(new Uint8Array(result.body), {
-      headers: {
-        'Content-Type': result.contentType!,
-        // Revalidate the jellyfin.view and per-item authorization boundary on
-        // every use while still allowing the browser to retain validated bytes.
-        'Cache-Control': result.cacheStatus === 'BYPASS'
-          ? 'private, no-store'
-          : 'private, no-cache',
-        Vary: 'Cookie',
-        'X-Helprr-Cache': result.cacheStatus,
-        ...(result.timings
-          ? { 'Server-Timing': `helprr-queue;dur=${result.timings.queueMs}, helprr-upstream;dur=${result.timings.upstreamMs}` }
-          : {}),
-      },
+      headers: { ...headers, 'Content-Type': result.contentType! },
     });
   } catch {
     return new NextResponse(null, { status: 500 });

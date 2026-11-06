@@ -22,11 +22,26 @@ const temporaryRoots: string[] = [];
 class CacheRedis {
   readonly values = new Map<string, string>([['helprr:cache:generation', '1']]);
   readonly hashes = new Map<string, Record<string, string>>();
+  readonly expiresAt = new Map<string, number>();
   rateCalls = 0;
   failRegister = false;
+  failingKeyPrefix: string | null = null;
+  clockMs = 0;
+
+  private live(key: string): boolean {
+    const expiry = this.expiresAt.get(key);
+    if (expiry !== undefined && expiry <= this.clockMs) {
+      this.values.delete(key);
+      this.expiresAt.delete(key);
+    }
+    return this.values.has(key);
+  }
 
   async get(key: string): Promise<string | null> {
-    return this.values.get(key) ?? null;
+    if (this.failingKeyPrefix && key.startsWith(this.failingKeyPrefix)) {
+      throw new Error('Redis read failed');
+    }
+    return this.live(key) ? this.values.get(key)! : null;
   }
 
   async set(
@@ -34,8 +49,13 @@ class CacheRedis {
     value: string,
     options?: { NX?: boolean; PX?: number },
   ): Promise<string | null> {
-    if (options?.NX && this.values.has(key)) return null;
+    if (this.failingKeyPrefix && key.startsWith(this.failingKeyPrefix)) {
+      throw new Error('Redis write failed');
+    }
+    if (options?.NX && this.live(key)) return null;
     this.values.set(key, value);
+    if (options?.PX) this.expiresAt.set(key, this.clockMs + options.PX);
+    else this.expiresAt.delete(key);
     return 'OK';
   }
 
@@ -951,6 +971,183 @@ describe('bounded upstream image validation', () => {
       cacheStatus: 'BYPASS',
     });
     expect(readdirSync(path.join(root, 'v1'))).toEqual([]);
+  });
+
+  describe('negative cache for images that will not load', () => {
+    async function setup() {
+      const root = mkdtempSync(path.join(os.tmpdir(), 'helprr-image-negative-'));
+      temporaryRoots.push(root);
+      const redis = new CacheRedis();
+      mocks.getCacheImagesEnabled.mockResolvedValue(true);
+      mocks.getRedisClient.mockResolvedValue(redis);
+      const { fetchImageWithServerCache } = await loadImageCache({
+        maxBytes: 2048,
+        cacheDir: root,
+      });
+      const options = {
+        cacheKey: 'jellyfin:missing:Backdrop:1280:80:webp',
+        upstreamUrl: 'https://images.example.com/missing.jpg',
+        requesterId: 'user-1',
+      };
+      return { redis, fetchImageWithServerCache, options };
+    }
+
+    it.each([404, 413, 415])('replays an upstream %i without refetching until the entry expires', async (status) => {
+      const { redis, fetchImageWithServerCache, options } = await setup();
+      const upstreamFetch = vi.fn(async () => new Response(null, { status }));
+      vi.stubGlobal('fetch', upstreamFetch);
+
+      await expect(fetchImageWithServerCache(options)).resolves.toMatchObject({
+        status,
+        body: null,
+        cacheStatus: 'MISS',
+      });
+      await expect(fetchImageWithServerCache(options)).resolves.toMatchObject({
+        status,
+        body: null,
+        cacheStatus: 'HIT',
+      });
+      expect(upstreamFetch).toHaveBeenCalledOnce();
+      expect(redis.rateCalls).toBe(1);
+
+      redis.clockMs += 599_999;
+      await expect(fetchImageWithServerCache(options)).resolves.toMatchObject({ cacheStatus: 'HIT' });
+      expect(upstreamFetch).toHaveBeenCalledOnce();
+
+      redis.clockMs += 1;
+      await fetchImageWithServerCache(options);
+      expect(upstreamFetch).toHaveBeenCalledTimes(2);
+    });
+
+    it.each([429, 500, 503])('does not remember an upstream %i', async (status) => {
+      const { fetchImageWithServerCache, options } = await setup();
+      const upstreamFetch = vi.fn(async () => new Response(null, { status }));
+      vi.stubGlobal('fetch', upstreamFetch);
+
+      await expect(fetchImageWithServerCache(options)).resolves.toMatchObject({ status });
+      await fetchImageWithServerCache(options);
+
+      expect(upstreamFetch).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not remember a network error, a timeout or a client abort', async () => {
+      const { fetchImageWithServerCache, options } = await setup();
+      vi.stubGlobal('fetch', vi.fn(async () => {
+        throw new TypeError('fetch failed');
+      }));
+      await expect(fetchImageWithServerCache(options)).resolves.toMatchObject({ status: 502 });
+
+      const hang = vi.fn((_url: string, init?: RequestInit) => new Promise<Response>((_, reject) => {
+        init?.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')));
+      }));
+      vi.stubGlobal('fetch', hang);
+      await expect(fetchImageWithServerCache({ ...options, timeoutMs: 20 }))
+        .resolves.toMatchObject({ status: 504 });
+
+      const controller = new AbortController();
+      const aborted = fetchImageWithServerCache({ ...options, signal: controller.signal });
+      await vi.waitFor(() => expect(hang).toHaveBeenCalledTimes(2));
+      controller.abort();
+      await expect(aborted).resolves.toMatchObject({ status: 499 });
+
+      const missing = vi.fn(async () => new Response(null, { status: 404 }));
+      vi.stubGlobal('fetch', missing);
+      await expect(fetchImageWithServerCache(options)).resolves.toMatchObject({
+        status: 404,
+        cacheStatus: 'MISS',
+      });
+      expect(missing).toHaveBeenCalledOnce();
+    });
+
+    it('does not remember a missing TMDB size when the original is only unavailable', async () => {
+      const { fetchImageWithServerCache } = await setup();
+      const upstreamFetch = vi.fn(async (url: string) => new Response(null, {
+        status: url.includes('/w500/') ? 404 : 503,
+      }));
+      vi.stubGlobal('fetch', upstreamFetch);
+      const options = {
+        cacheKey: 'tmdb-unavailable:w360:webp',
+        upstreamUrl: 'https://image.tmdb.org/t/p/original/poster.jpg',
+        requesterId: 'user-1',
+        transform: { width: 360 },
+      };
+
+      await expect(fetchImageWithServerCache(options)).resolves.toMatchObject({ status: 503 });
+      await fetchImageWithServerCache(options);
+
+      expect(upstreamFetch).toHaveBeenCalledTimes(4);
+    });
+
+    it('keeps serving stale bytes without re-asking for an image that has gone', async () => {
+      const { redis, fetchImageWithServerCache, options } = await setup();
+      const imageCache = await import('@/lib/cache/image-cache');
+      const jpeg = await fixture('jpeg');
+      const upstreamFetch = vi.fn(async () => (
+        upstreamFetch.mock.calls.length === 1
+          ? new Response(responseBody(jpeg), { headers: { 'content-type': 'image/jpeg' } })
+          : new Response(null, { status: 404 })
+      ));
+      vi.stubGlobal('fetch', upstreamFetch);
+
+      await fetchImageWithServerCache(options);
+      const metaKey = [...redis.values.keys()].find((key) => key.startsWith('helprr:cache:image:v1:'))!;
+      redis.values.set(metaKey, JSON.stringify({
+        ...JSON.parse(redis.values.get(metaKey)!),
+        expiresAt: Date.now() - 1,
+        staleUntil: Date.now() + 60_000,
+      }));
+
+      await expect(fetchImageWithServerCache(options)).resolves.toMatchObject({ cacheStatus: 'STALE' });
+      await imageCache.awaitImageCacheBackgroundWork();
+      expect(upstreamFetch).toHaveBeenCalledTimes(2);
+
+      await expect(fetchImageWithServerCache(options)).resolves.toMatchObject({
+        cacheStatus: 'STALE',
+        body: jpeg,
+      });
+      await imageCache.awaitImageCacheBackgroundWork();
+      expect(upstreamFetch).toHaveBeenCalledTimes(2);
+    });
+
+    it('falls through to the upstream when the negative entry cannot be read or written', async () => {
+      const { redis, fetchImageWithServerCache, options } = await setup();
+      redis.failingKeyPrefix = 'helprr:cache:image-negative:';
+      const upstreamFetch = vi.fn(async () => new Response(null, { status: 404 }));
+      vi.stubGlobal('fetch', upstreamFetch);
+
+      await expect(fetchImageWithServerCache(options)).resolves.toMatchObject({ status: 404 });
+      await expect(fetchImageWithServerCache(options)).resolves.toMatchObject({ status: 404 });
+
+      expect(upstreamFetch).toHaveBeenCalledTimes(2);
+    });
+
+    it('keeps today\'s uncached behaviour when Redis is unavailable', async () => {
+      mocks.getCacheImagesEnabled.mockResolvedValue(true);
+      const { fetchImageWithServerCache } = await loadImageCache({ maxBytes: 2048 });
+      const upstreamFetch = vi.fn(async () => new Response(null, { status: 404 }));
+      vi.stubGlobal('fetch', upstreamFetch);
+      const options = {
+        cacheKey: 'no-redis-missing',
+        upstreamUrl: 'https://images.example.com/missing.jpg',
+      };
+
+      await expect(fetchImageWithServerCache(options)).resolves.toMatchObject({ status: 404 });
+      await expect(fetchImageWithServerCache(options)).resolves.toMatchObject({ status: 404 });
+
+      expect(upstreamFetch).toHaveBeenCalledTimes(2);
+    });
+
+    it('is cleared by an image cache purge', async () => {
+      const { redis, fetchImageWithServerCache, options } = await setup();
+      const upstreamFetch = vi.fn(async () => new Response(null, { status: 404 }));
+      vi.stubGlobal('fetch', upstreamFetch);
+
+      await fetchImageWithServerCache(options);
+      redis.values.set('helprr:cache:generation', '2');
+      await fetchImageWithServerCache(options);
+
+      expect(upstreamFetch).toHaveBeenCalledTimes(2);
+    });
   });
 
   it('right-sizes TMDB originals without changing the logical cache key and falls back safely', async () => {
