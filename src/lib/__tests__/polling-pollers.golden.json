@@ -781,7 +781,8 @@
       "s-new",
       "s-guest",
       "s-idle"
-     ]
+     ],
+     "lastHistorySeenIds": {}
     }
    }
   },
@@ -1740,7 +1741,8 @@
       "s-new",
       "s-guest",
       "s-idle"
-     ]
+     ],
+     "lastHistorySeenIds": {}
     }
    }
   },
