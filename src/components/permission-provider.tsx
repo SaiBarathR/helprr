@@ -34,6 +34,8 @@ export interface MePayload {
    * credential playback runs on. Reads work while linked; playing needs both.
    */
   jellyfinConnected: boolean;
+  /** Whether this user has a Helprr password (false for Jellyfin-only accounts) — gates Change password. */
+  hasLocalPassword: boolean;
   /** Whether HELPRR_CUSTOM_HEADERS is enabled — gates the custom-headers editor in instance settings. */
   customHeadersEnabled: boolean;
 }

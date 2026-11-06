@@ -17,7 +17,7 @@ Anything not given is refused, including permissions added in later versions.
 ## Signing in
 
 - **With a Helprr password**, set when you create the account. It needs at least 15
-  characters.
+  characters. Each person can change it in **Settings → Account → Change password**.
 - **With Jellyfin**: **Sign in with Jellyfin** on the sign-in page uses the person's
   Jellyfin account, with Jellyfin's own password rules.
 
@@ -32,6 +32,8 @@ connected yet.
 ## Sessions
 
 **Settings → Sessions** lists where each person is signed in, and signs any of them out.
-Changing someone's password in **Settings → Users** signs them out everywhere. The
+Changing someone's password in **Settings → Users** signs them out everywhere, including
+an admin changing their own. Changing your own password in **Settings → Account** signs
+out your other devices and keeps this one signed in. The
 `HELPRR_ADMIN_PASSWORD_RESET` startup reset does not: after using it, end the old
 sessions here.

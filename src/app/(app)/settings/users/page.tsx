@@ -33,6 +33,7 @@ import {
   LOCAL_PASSWORD_MIN_LENGTH,
   localPasswordValidationError,
 } from '@/lib/password-policy';
+import { useMe } from '@/components/permission-provider';
 
 interface SafeUser {
   id: string;
@@ -456,6 +457,9 @@ function EditUserDialog({
   const [jellyfinUserId, setJellyfinUserId] = useState<string | null>(user.jellyfinUserId);
   const [seerrUserId, setSeerrUserId] = useState<string | null>(user.seerrUserId);
   const passwordError = password ? localPasswordValidationError(password) : null;
+  // A reset here revokes every session of the user, so editing yourself signs this device out too.
+  const me = useMe();
+  const isSelf = me?.id === user.id;
 
   // Permissions editor state. Seeded from the permissions query, then driven by
   // the template/toggle mutations (which return the authoritative effective set).
@@ -653,6 +657,20 @@ function EditUserDialog({
             <p className={passwordError ? 'text-xs text-destructive' : 'text-xs text-muted-foreground'}>
               {passwordError ?? `Use at least ${LOCAL_PASSWORD_MIN_LENGTH} characters; leave blank to keep the current password.`}
             </p>
+            {isSelf && (
+              <p className="text-xs text-amber-500">
+                Setting your own password here signs you out everywhere, including this device.
+                {me?.hasLocalPassword && (
+                  <>
+                    {' '}To stay signed in, use{' '}
+                    <Link href="/settings/account" className="text-primary underline-offset-2 hover:underline">
+                      Account → Change password
+                    </Link>
+                    .
+                  </>
+                )}
+              </p>
+            )}
           </div>
           <ExternalLinkFields
             jellyfinUserId={jellyfinUserId}
