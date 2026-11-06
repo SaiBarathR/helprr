@@ -4,7 +4,7 @@ import {
   pruneOrphanImageCache,
   type ImageCacheRetentionResult,
 } from '@/lib/cache/image-cache-retention';
-import { SESSION_DURATION_SECONDS } from '@/lib/session-policy';
+import { SESSION_DURATION_SECONDS, SESSION_IDLE_TIMEOUT_SECONDS } from '@/lib/session-policy';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -85,6 +85,7 @@ export async function runRetentionSweep(
     nowMs - CLEANUP_HISTORY_RETENTION_DAYS * DAY_MS,
   );
   const sessionCutoff = new Date(nowMs - SESSION_DURATION_SECONDS * 1000);
+  const sessionIdleCutoff = new Date(nowMs - SESSION_IDLE_TIMEOUT_SECONDS * 1000);
   const operationAuditCutoff = new Date(
     nowMs - FILE_OPERATION_AUDIT_RETENTION_DAYS * DAY_MS,
   );
@@ -124,9 +125,15 @@ export async function runRetentionSweep(
       },
     }),
     database.session.deleteMany({
-      // Session JWTs have a fixed lifetime from creation, so these rows can no
-      // longer authenticate regardless of lastSeenAt or revokedAt.
-      where: { createdAt: { lt: sessionCutoff } },
+      // Session JWTs have a fixed lifetime from creation, and an idle session
+      // is refused, so these rows can no longer authenticate whatever their
+      // revokedAt.
+      where: {
+        OR: [
+          { createdAt: { lt: sessionCutoff } },
+          { lastSeenAt: { lt: sessionIdleCutoff } },
+        ],
+      },
     }),
     database.fileOperationAudit.deleteMany({
       where: { createdAt: { lt: operationAuditCutoff } },

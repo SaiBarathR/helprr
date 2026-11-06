@@ -55,6 +55,8 @@ export const queryKeys = {
   notifications: () => ['notifications'] as const,
   notificationSubscriptions: () => ['notifications', 'subscriptions'] as const,
   sessions: () => ['sessions'] as const,
+  /** One person's group on Settings → Sessions; under sessions() so its invalidation reaches it. */
+  userSessions: (userId: string) => ['sessions', 'user', userId] as const,
   users: () => ['users'] as const,
 
   // ── Discover / Seerr ─────────────────────────────────────────────

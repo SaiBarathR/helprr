@@ -2,9 +2,9 @@
 
 import { useState } from 'react';
 import Link from '@/components/ui/app-link';
-import { ChevronLeft, Loader2, LogOut, Monitor, Pencil } from 'lucide-react';
+import { ChevronDown, ChevronLeft, Loader2, LogOut, Monitor, Pencil } from 'lucide-react';
 import { toast } from 'sonner';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/query-keys';
 import { jsonFetcher, ApiError } from '@/lib/query-fetch';
 import { Button } from '@/components/ui/button';
@@ -30,8 +30,20 @@ interface Session {
   ip: string | null;
   label: string | null;
   isCurrent: boolean;
+}
+
+interface SessionPage {
+  total: number;
+  sessions: Session[];
+  hasMore: boolean;
+}
+
+// One person's sessions. The server sends the first page of each group and
+// pages the rest per person, so one busy account can't bury everyone else.
+interface SessionGroup extends SessionPage {
+  userId: string;
+  ownerName: string;
   isOwn: boolean;
-  ownerName: string | null;
 }
 
 function parseUserAgent(ua: string | null): string {
@@ -60,12 +72,6 @@ function displayName(s: Session): string {
   return parseUserAgent(s.userAgent);
 }
 
-// Admins see other members' sessions too — prefix those with the owner's name.
-function sessionTitle(s: Session): string {
-  const base = !s.isOwn && s.ownerName ? `${s.ownerName} · ${displayName(s)}` : displayName(s);
-  return s.isCurrent ? `${base} · This device` : base;
-}
-
 function relativeTime(iso: string | null): string {
   if (!iso) return 'Never';
   const t = new Date(iso).getTime();
@@ -92,6 +98,123 @@ class RevokeRefusedError extends Error {
   }
 }
 
+interface SessionGroupSectionProps {
+  group: SessionGroup;
+  loadedAt: number;
+  busy: boolean;
+  onRename: (session: Session) => void;
+  onRevoke: (session: Session) => void;
+}
+
+function SessionGroupSection({ group, loadedAt, busy, onRename, onRevoke }: SessionGroupSectionProps) {
+  const query = useInfiniteQuery({
+    queryKey: queryKeys.userSessions(group.userId),
+    queryFn: ({ pageParam, signal }) =>
+      jsonFetcher<SessionPage>(
+        `/api/sessions?userId=${encodeURIComponent(group.userId)}&skip=${pageParam}`
+      )({ signal }),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, allPages) => {
+      // An empty page ends it even if the total over-reports, so "Show more"
+      // never refetches the same offset.
+      if (!lastPage.hasMore || lastPage.sessions.length === 0) return undefined;
+      return allPages.reduce((n, p) => n + p.sessions.length, 0);
+    },
+    // The list already carried this group's first page.
+    initialData: { pages: [group], pageParams: [0] },
+    initialDataUpdatedAt: loadedAt,
+  });
+  const pages = query.data?.pages ?? [group];
+  // A sign-in between pages shifts the offsets by one; drop the repeat.
+  const sessions = [...new Map(pages.flatMap((p) => p.sessions).map((s) => [s.id, s])).values()];
+  const total = pages[pages.length - 1]?.total ?? group.total;
+  const title = group.isOwn ? 'Your sessions' : group.ownerName;
+
+  return (
+    <GroupedSection title={`${title} · ${total}`}>
+      {sessions.map((s) => (
+        <QuickContextMenu
+          key={s.id}
+          label={`${displayName(s)} actions`}
+          actions={[
+            {
+              id: 'rename',
+              label: 'Rename session',
+              icon: <Pencil />,
+              disabled: busy,
+              onSelect: () => onRename(s),
+            },
+            {
+              id: 'revoke',
+              label: s.isCurrent ? 'Sign out this device' : 'Revoke session',
+              icon: <LogOut />,
+              destructive: true,
+              disabled: busy,
+              onSelect: () => onRevoke(s),
+            },
+          ]}
+        >
+          <div className="grouped-row gap-2 py-1.5 pr-2">
+            <div className="min-w-0 flex-1">
+              <div className="text-sm font-medium truncate">
+                {displayName(s)}
+                {s.isCurrent && <span className="text-primary font-normal"> · This device</span>}
+              </div>
+              <div
+                className="text-xs text-muted-foreground mt-0.5 truncate"
+                title={`Signed in ${new Date(s.createdAt).toLocaleString()}`}
+              >
+                {[
+                  `Seen ${relativeTime(s.lastSeenAt)}`,
+                  s.ip,
+                  `Signed in ${new Date(s.createdAt).toLocaleDateString()}`,
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </div>
+            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-11 w-11 shrink-0"
+              aria-label={`Rename ${displayName(s)}`}
+              onClick={() => onRename(s)}
+              disabled={busy}
+            >
+              <Pencil className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-11 w-11 shrink-0 text-destructive hover:text-destructive"
+              aria-label={s.isCurrent ? 'Sign out this device' : `Revoke ${displayName(s)}`}
+              onClick={() => onRevoke(s)}
+              disabled={busy}
+            >
+              <LogOut className="h-4 w-4" />
+            </Button>
+          </div>
+        </QuickContextMenu>
+      ))}
+      {query.hasNextPage && (
+        <button
+          type="button"
+          className="grouped-row w-full justify-center gap-2 text-sm text-primary disabled:opacity-60"
+          onClick={() => void query.fetchNextPage()}
+          disabled={query.isFetchingNextPage}
+        >
+          {query.isFetchingNextPage ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <ChevronDown className="h-4 w-4" />
+          )}
+          Show more ({sessions.length} of {total})
+        </button>
+      )}
+    </GroupedSection>
+  );
+}
+
 export default function SessionsPage() {
   const queryClient = useQueryClient();
   const [confirmTarget, setConfirmTarget] = useState<Session | null>(null);
@@ -100,13 +223,15 @@ export default function SessionsPage() {
   const [renameValue, setRenameValue] = useState('');
 
   const {
-    data: sessions = null,
+    data,
+    dataUpdatedAt,
     isError,
     error: queryError,
   } = useQuery({
     queryKey: queryKeys.sessions(),
-    queryFn: jsonFetcher<Session[]>('/api/sessions'),
+    queryFn: jsonFetcher<{ groups: SessionGroup[] }>('/api/sessions'),
   });
+  const groups = data?.groups ?? null;
   const error = isError
     ? queryError instanceof ApiError
       ? `HTTP ${queryError.status}`
@@ -203,8 +328,14 @@ export default function SessionsPage() {
   }
 
   // "Revoke all other sessions" only touches the viewer's own devices, so the
-  // count must exclude other members' rows that admins can see in the list.
-  const otherCount = (sessions ?? []).filter((s) => s.isOwn && !s.isCurrent).length;
+  // count is the viewer's own group less this session, not every row shown.
+  const ownGroup = groups?.find((g) => g.isOwn);
+  const otherCount = ownGroup ? Math.max(0, ownGroup.total - 1) : 0;
+
+  function startRename(session: Session) {
+    setRenameTarget(session);
+    setRenameValue(session.label ?? '');
+  }
 
   return (
     <div className="animate-content-in pb-12">
@@ -231,7 +362,7 @@ export default function SessionsPage() {
         </GroupedSection>
       )}
 
-      {sessions === null && !error ? (
+      {groups === null && !error ? (
         <GroupedSection>
           <div className="px-4 py-6 text-center text-sm text-muted-foreground">
             <Loader2 className="h-5 w-5 animate-spin mx-auto mb-2" />
@@ -239,81 +370,19 @@ export default function SessionsPage() {
           </div>
         </GroupedSection>
       ) : (
-        sessions?.map((s) => (
-          <QuickContextMenu
-            key={s.id}
-            label={`${sessionTitle(s)} actions`}
-            actions={[
-              {
-                id: 'rename',
-                label: 'Rename session',
-                icon: <Pencil />,
-                disabled: busy,
-                onSelect: () => {
-                  setRenameTarget(s);
-                  setRenameValue(s.label ?? '');
-                },
-              },
-              {
-                id: 'revoke',
-                label: s.isCurrent ? 'Sign out this device' : 'Revoke session',
-                icon: <LogOut />,
-                destructive: true,
-                disabled: busy,
-                onSelect: () => setConfirmTarget(s),
-              },
-            ]}
-          >
-            <div>
-              <GroupedSection title={sessionTitle(s)}>
-                <div className="grouped-row">
-                  <span className="text-sm">Signed in</span>
-                  <span className="text-sm text-muted-foreground">
-                    {new Date(s.createdAt).toLocaleString()}
-                  </span>
-                </div>
-                <div className="grouped-row">
-                  <span className="text-sm">Last seen</span>
-                  <span className="text-sm text-muted-foreground">{relativeTime(s.lastSeenAt)}</span>
-                </div>
-                {s.ip && (
-                  <div className="grouped-row">
-                    <span className="text-sm">IP</span>
-                    <span className="text-sm text-muted-foreground">{s.ip}</span>
-                  </div>
-                )}
-                <div className="px-4 py-3 flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="flex-1 h-9"
-                    onClick={() => {
-                      setRenameTarget(s);
-                      setRenameValue(s.label ?? '');
-                    }}
-                    disabled={busy}
-                  >
-                    <Pencil className="mr-2 h-4 w-4" />
-                    Rename
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="flex-1 h-9 text-destructive hover:text-destructive"
-                    onClick={() => setConfirmTarget(s)}
-                    disabled={busy}
-                  >
-                    <LogOut className="mr-2 h-4 w-4" />
-                    {s.isCurrent ? 'Sign out' : 'Revoke'}
-                  </Button>
-                </div>
-              </GroupedSection>
-            </div>
-          </QuickContextMenu>
+        groups?.map((group) => (
+          <SessionGroupSection
+            key={group.userId}
+            group={group}
+            loadedAt={dataUpdatedAt}
+            busy={busy}
+            onRename={startRename}
+            onRevoke={setConfirmTarget}
+          />
         ))
       )}
 
-      {sessions && otherCount > 0 && (
+      {groups && otherCount > 0 && (
         <GroupedSection footer="Revoked sessions are signed out on their next request.">
           <div className="px-4 py-3">
             <Button

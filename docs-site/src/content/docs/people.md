@@ -32,6 +32,9 @@ connected yet.
 ## Sessions
 
 **Settings → Sessions** lists where each person is signed in, and signs any of them out.
+Admins see one group per person, newest sign-in first, with this device at the top of
+their own list. A sign-in lasts at most 30 days, and ends sooner if the device does not
+use Helprr for 14 days; push notifications keep arriving either way.
 Changing someone's password in **Settings → Users** signs them out everywhere, including
 an admin changing their own. Changing your own password in **Settings → Account** signs
 out your other devices and keeps this one signed in. The

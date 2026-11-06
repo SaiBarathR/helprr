@@ -10,7 +10,7 @@ import { prisma } from '@/lib/db';
 import { verifyPasswordHash } from '@/lib/password';
 import { can } from '@/lib/permissions';
 import type { Capability } from '@/lib/capabilities';
-import { SESSION_DURATION_SECONDS } from '@/lib/session-policy';
+import { SESSION_DURATION_SECONDS, SESSION_IDLE_TIMEOUT_SECONDS } from '@/lib/session-policy';
 
 const SESSION_DURATION = SESSION_DURATION_SECONDS;
 const COOKIE_NAME = 'helprr-session';
@@ -100,7 +100,20 @@ const loadAndTouchSession = cache(async (sid: string): Promise<SessionRow | null
   // so treat it as invalid rather than fail-open.
   if (!session.user || session.user.status !== 'active') return null;
 
+  // Idle expiry reads the stored lastSeenAt, not this process's debounce map,
+  // so a failed touch can only end a session sooner, never keep it alive.
   const now = Date.now();
+  if (now - session.lastSeenAt.getTime() > SESSION_IDLE_TIMEOUT_SECONDS * 1000) {
+    lastSeenTouched.delete(sid);
+    // Refused either way; the revoke only records why it ended.
+    await prisma.session
+      .updateMany({ where: { id: sid, revokedAt: null }, data: { revokedAt: new Date(now) } })
+      .catch((err) => {
+        console.error('[Auth] Failed to revoke idle session:', err);
+      });
+    return null;
+  }
+
   const last = lastSeenTouched.get(sid) ?? session.lastSeenAt.getTime();
   if (now - last > LAST_SEEN_DEBOUNCE_MS) {
     lastSeenTouched.set(sid, now);
