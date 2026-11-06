@@ -8,7 +8,7 @@ import { PanelLeftClose, PanelLeft, Loader2, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { useUIStore } from '@/lib/store';
-import { getActiveNavHref, getEnabledNavItems, navItemAllowed } from '@/lib/nav-config';
+import { getActiveNavHref, getEnabledNavItems, getSidebarLayout, navItemAllowed, type NavItemDef } from '@/lib/nav-config';
 import { usePendingHref } from '@/components/layout/navigation-provider';
 import { useMe, hasCapability } from '@/components/permission-provider';
 import { useSearchPalette } from '@/components/search/search-store';
@@ -65,6 +65,7 @@ export function Sidebar() {
     [navOrder, disabledNavItems, me]
   );
 
+  const { sections, footer } = useMemo(() => getSidebarLayout(navItems), [navItems]);
   const activeHref = getActiveNavHref(navItems, pendingHref?.split('?')[0] || pathname);
 
   // The scrollbar is hidden, so fade the bottom edge while items sit below it.
@@ -107,6 +108,45 @@ export function Sidebar() {
     </button>
   );
 
+  const renderItem = ({ href, icon: Icon, label, badgeArea }: NavItemDef) => {
+    const slice = badgeArea ? counts[badgeArea] : undefined;
+    const isActive = href === activeHref;
+    const isPending = pendingHref === href;
+    const link = (
+      <Link
+        key={href}
+        href={href}
+        prefetch={null}
+        aria-label={sidebarCollapsed ? label : undefined}
+        className={cn(
+          // Shorter rows on short screens so more of the list fits above the footer.
+          'relative flex items-center gap-3 rounded-md px-3 py-2 [@media(max-height:960px)]:py-1.5 text-sm font-medium transition-colors',
+          isActive
+            ? 'bg-primary/10 text-primary'
+            : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
+          isPending && 'opacity-70',
+          sidebarCollapsed && 'justify-center px-2'
+        )}
+      >
+        {isPending ? <Loader2 className="h-4 w-4 shrink-0 animate-spin" /> : <Icon className="h-4 w-4 shrink-0" />}
+        {!sidebarCollapsed && label}
+        {!sidebarCollapsed && <NavBadge slice={slice} className="ml-auto" />}
+        {sidebarCollapsed && <NavBadge slice={slice} dot className="absolute right-1.5 top-1.5" />}
+      </Link>
+    );
+
+    if (sidebarCollapsed) {
+      return (
+        <Tooltip key={href}>
+          <TooltipTrigger asChild>{link}</TooltipTrigger>
+          <TooltipContent side="right">{label}</TooltipContent>
+        </Tooltip>
+      );
+    }
+
+    return link;
+  };
+
   return (
     <aside
       // Stable hook for the cinematic Watch skin, which hides the sidebar.
@@ -118,6 +158,7 @@ export function Sidebar() {
     >
       <nav
         ref={navRef}
+        aria-label="Main"
         className={cn('flex-1 min-h-0 overflow-y-auto no-scrollbar pt-3 pb-2 space-y-1 px-2', moreBelow && 'scroll-fade-y')}
       >
         {sidebarCollapsed ? (
@@ -129,46 +170,27 @@ export function Sidebar() {
           searchButton
         )}
 
-        {navItems.map(({ href, icon: Icon, label, badgeArea }) => {
-          const slice = badgeArea ? counts[badgeArea] : undefined;
-          const isActive = href === activeHref;
-          const isPending = pendingHref === href;
-          const link = (
-            <Link
-              key={href}
-              href={href}
-              prefetch={null}
-              aria-label={sidebarCollapsed ? label : undefined}
-              className={cn(
-                'relative flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',
-                isActive
-                  ? 'bg-primary/10 text-primary'
-                  : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
-                isPending && 'opacity-70',
-                sidebarCollapsed && 'justify-center px-2'
-              )}
-            >
-              {isPending ? <Loader2 className="h-4 w-4 shrink-0 animate-spin" /> : <Icon className="h-4 w-4 shrink-0" />}
-              {!sidebarCollapsed && label}
-              {!sidebarCollapsed && <NavBadge slice={slice} className="ml-auto" />}
-              {sidebarCollapsed && <NavBadge slice={slice} dot className="absolute right-1.5 top-1.5" />}
-            </Link>
-          );
-
-          if (sidebarCollapsed) {
-            return (
-              <Tooltip key={href}>
-                <TooltipTrigger asChild>{link}</TooltipTrigger>
-                <TooltipContent side="right">{label}</TooltipContent>
-              </Tooltip>
-            );
-          }
-
-          return link;
-        })}
+        {sections.map(({ group, label, items }, index) => (
+          <div key={group} role="group" aria-label={label} className="space-y-1">
+            {sidebarCollapsed ? (
+              index > 0 && <div aria-hidden className="mx-2 my-2 border-t border-border" />
+            ) : (
+              <div aria-hidden className="tracked-caps px-3 pt-2 pb-0.5 leading-none text-muted-foreground">
+                {label}
+              </div>
+            )}
+            {items.map(renderItem)}
+          </div>
+        ))}
       </nav>
 
-      <div className="border-t border-border p-2">
+      {/* Notifications and Settings stay in view however long the list gets. */}
+      <div className="border-t border-border p-2 space-y-1">
+        {footer.length > 0 && (
+          <nav aria-label="Pinned" className="space-y-1">
+            {footer.map(renderItem)}
+          </nav>
+        )}
         <Button
           variant="ghost"
           size="sm"

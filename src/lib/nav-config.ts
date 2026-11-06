@@ -50,12 +50,27 @@ export type NavItemId =
   | 'notifications'
   | 'settings';
 
+/** Desktop sidebar sections. Items without a group are pinned to the sidebar footer. */
+export type NavGroupId = 'overview' | 'library' | 'discover' | 'downloads' | 'media' | 'creators';
+
+export const NAV_GROUP_LABELS: Record<NavGroupId, string> = {
+  overview: 'Overview',
+  library: 'Library',
+  discover: 'Discover',
+  downloads: 'Downloads',
+  media: 'Media server',
+  creators: 'Creators',
+};
+
 export interface NavItemDef {
   id: NavItemId;
   href: string;
   icon: LucideIcon;
   label: string;
   shortLabel: string;
+  // Desktop sidebar section. Omitted only for the footer items (Notifications,
+  // Settings), which stay in view below the scrolling list.
+  group?: NavGroupId;
   pinned?: boolean;
   // When set, the item is hidden from users who lack this capability (UX only;
   // the page + its API routes enforce server-side).
@@ -72,29 +87,29 @@ export interface NavItemDef {
 
 /** Master ordered array of all navigation items — single source of truth */
 export const NAV_ITEMS: NavItemDef[] = [
-  { id: 'dashboard', href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', shortLabel: 'Dashboard', requiredCapability: 'dashboard.view' },
-  { id: 'discover', href: '/discover', icon: Compass, label: 'Discover', shortLabel: 'Discover', requiredCapability: 'discover.view' },
-  { id: 'anime', href: '/anime', icon: Sparkles, label: 'Anime', shortLabel: 'Anime', requiredCapability: 'anime.view' },
-  { id: 'movies', href: '/movies', icon: Film, label: 'Movies', shortLabel: 'Movies', requiredCapability: 'movies.view' },
-  { id: 'series', href: '/series', icon: Tv, label: 'TV Series', shortLabel: 'Series', requiredCapability: 'series.view' },
-  { id: 'music', href: '/music', icon: Disc3, label: 'Music', shortLabel: 'Music', requiredCapability: 'music.view' },
-  { id: 'watchlist', href: '/watchlist', icon: Bookmark, label: 'Watchlist', shortLabel: 'Watchlist', requiredCapability: 'watchlist.view' },
-  { id: 'requests', href: '/requests', icon: Inbox, label: 'Requests', shortLabel: 'Requests', requiredCapability: 'requests.view', badgeArea: 'requests' },
+  { id: 'dashboard', href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', shortLabel: 'Dashboard', group: 'overview', requiredCapability: 'dashboard.view' },
+  { id: 'discover', href: '/discover', icon: Compass, label: 'Discover', shortLabel: 'Discover', group: 'discover', requiredCapability: 'discover.view' },
+  { id: 'anime', href: '/anime', icon: Sparkles, label: 'Anime', shortLabel: 'Anime', group: 'discover', requiredCapability: 'anime.view' },
+  { id: 'movies', href: '/movies', icon: Film, label: 'Movies', shortLabel: 'Movies', group: 'library', requiredCapability: 'movies.view' },
+  { id: 'series', href: '/series', icon: Tv, label: 'TV Series', shortLabel: 'Series', group: 'library', requiredCapability: 'series.view' },
+  { id: 'music', href: '/music', icon: Disc3, label: 'Music', shortLabel: 'Music', group: 'library', requiredCapability: 'music.view' },
+  { id: 'watchlist', href: '/watchlist', icon: Bookmark, label: 'Watchlist', shortLabel: 'Watchlist', group: 'library', requiredCapability: 'watchlist.view' },
+  { id: 'requests', href: '/requests', icon: Inbox, label: 'Requests', shortLabel: 'Requests', group: 'discover', requiredCapability: 'requests.view', badgeArea: 'requests' },
   // Keeps the historical 'random' id so persisted nav orders / default-page
   // preferences survive the rename to Recommendations. Visible with EITHER
   // capability: a random.view-only user still reaches the Random mode.
-  { id: 'random', href: '/recommendations', icon: Popcorn, label: 'Recommendations', shortLabel: 'For You', requiredAnyCapability: ['recommendations.view', 'random.view'] },
-  { id: 'calendar', href: '/calendar', icon: CalendarDays, label: 'Calendar', shortLabel: 'Calendar', requiredCapability: 'calendar.view' },
-  { id: 'library-gaps', href: '/library-gaps', icon: LibraryBig, label: 'Library Gaps', shortLabel: 'Gaps' },
-  { id: 'torrents', href: '/torrents', icon: HardDrive, label: 'Torrents', shortLabel: 'Torrents', requiredCapability: 'torrents.view', badgeArea: 'downloads' },
-  { id: 'cleanup', href: '/cleanup', icon: Sparkle, label: 'Cleanup', shortLabel: 'Cleanup', requiredCapability: 'cleanup.view' },
-  { id: 'prowlarr', href: '/prowlarr', icon: Search, label: 'Prowlarr', shortLabel: 'Prowlarr', requiredCapability: 'prowlarr.view' },
-  { id: 'jellyfin-library', href: '/jellyfin/library', icon: Clapperboard, label: 'Watch', shortLabel: 'Watch', requiredCapability: 'jellyfin.view' },
-  { id: 'jellyfin', href: '/jellyfin', icon: MonitorPlay, label: 'Jellyfin', shortLabel: 'Jellyfin', requiredCapability: 'jellyfin.view' },
-  { id: 'twitch', href: '/twitch', icon: Twitch, label: 'Twitch', shortLabel: 'Twitch', requiredCapability: 'twitch.view', requiresConfigured: 'twitchConfigured', badgeArea: 'twitch' },
-  { id: 'youtube', href: '/youtube', icon: Youtube, label: 'YouTube', shortLabel: 'YouTube', requiredCapability: 'youtube.view', requiresConfigured: 'youtubeConfigured', badgeArea: 'youtube' },
-  { id: 'insights', href: '/insights', icon: ChartLine, label: 'Insights', shortLabel: 'Insights', requiredCapability: 'insights.view' },
-  { id: 'activity', href: '/activity', icon: Activity, label: 'Activity', shortLabel: 'Activity', requiredCapability: 'activity.view', badgeArea: 'activity' },
+  { id: 'random', href: '/recommendations', icon: Popcorn, label: 'Recommendations', shortLabel: 'For You', group: 'discover', requiredAnyCapability: ['recommendations.view', 'random.view'] },
+  { id: 'calendar', href: '/calendar', icon: CalendarDays, label: 'Calendar', shortLabel: 'Calendar', group: 'library', requiredCapability: 'calendar.view' },
+  { id: 'library-gaps', href: '/library-gaps', icon: LibraryBig, label: 'Library Gaps', shortLabel: 'Gaps', group: 'library' },
+  { id: 'torrents', href: '/torrents', icon: HardDrive, label: 'Torrents', shortLabel: 'Torrents', group: 'downloads', requiredCapability: 'torrents.view', badgeArea: 'downloads' },
+  { id: 'cleanup', href: '/cleanup', icon: Sparkle, label: 'Cleanup', shortLabel: 'Cleanup', group: 'downloads', requiredCapability: 'cleanup.view' },
+  { id: 'prowlarr', href: '/prowlarr', icon: Search, label: 'Prowlarr', shortLabel: 'Prowlarr', group: 'downloads', requiredCapability: 'prowlarr.view' },
+  { id: 'jellyfin-library', href: '/jellyfin/library', icon: Clapperboard, label: 'Watch', shortLabel: 'Watch', group: 'media', requiredCapability: 'jellyfin.view' },
+  { id: 'jellyfin', href: '/jellyfin', icon: MonitorPlay, label: 'Jellyfin', shortLabel: 'Jellyfin', group: 'media', requiredCapability: 'jellyfin.view' },
+  { id: 'twitch', href: '/twitch', icon: Twitch, label: 'Twitch', shortLabel: 'Twitch', group: 'creators', requiredCapability: 'twitch.view', requiresConfigured: 'twitchConfigured', badgeArea: 'twitch' },
+  { id: 'youtube', href: '/youtube', icon: Youtube, label: 'YouTube', shortLabel: 'YouTube', group: 'creators', requiredCapability: 'youtube.view', requiresConfigured: 'youtubeConfigured', badgeArea: 'youtube' },
+  { id: 'insights', href: '/insights', icon: ChartLine, label: 'Insights', shortLabel: 'Insights', group: 'overview', requiredCapability: 'insights.view' },
+  { id: 'activity', href: '/activity', icon: Activity, label: 'Activity', shortLabel: 'Activity', group: 'downloads', requiredCapability: 'activity.view', badgeArea: 'activity' },
   { id: 'notifications', href: '/notifications', icon: Bell, label: 'Notifications', shortLabel: 'Alerts', requiredCapability: 'notifications.view', badgeArea: 'notifications' },
   { id: 'settings', href: '/settings', icon: Settings, label: 'Settings', shortLabel: 'Settings', pinned: true },
 ];
@@ -205,6 +220,39 @@ export function getBottomNavLayout(enabledItems: NavItemDef[]) {
     tabs: enabledItems.slice(0, 4),
     moreItems: enabledItems.slice(4),
   };
+}
+
+export interface SidebarSection {
+  group: NavGroupId;
+  label: string;
+  items: NavItemDef[];
+}
+
+/**
+ * Split enabled items into the desktop sidebar's labelled sections and its
+ * always-visible footer. The input order (the user's saved order) is kept
+ * inside each section, and sections appear in the order of their first item,
+ * so moving an item to the top in Appearance also lifts its section.
+ */
+export function getSidebarLayout(enabledItems: NavItemDef[]): {
+  sections: SidebarSection[];
+  footer: NavItemDef[];
+} {
+  const sections: SidebarSection[] = [];
+  const footer: NavItemDef[] = [];
+  for (const item of enabledItems) {
+    if (!item.group) {
+      footer.push(item);
+      continue;
+    }
+    let section = sections.find((s) => s.group === item.group);
+    if (!section) {
+      section = { group: item.group, label: NAV_GROUP_LABELS[item.group], items: [] };
+      sections.push(section);
+    }
+    section.items.push(item);
+  }
+  return { sections, footer };
 }
 
 /**
