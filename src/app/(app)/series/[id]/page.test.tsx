@@ -12,7 +12,7 @@ const mocks = vi.hoisted(() => ({
   push: vi.fn(),
   toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() },
   search: 'instance=son-1',
-  routes: {} as Record<string, (init?: RequestInit, url?: URL) => Response>,
+  routes: {} as Record<string, (init?: RequestInit, url?: URL) => Response | Promise<Response>>,
   sent: [] as Array<{ method: string; path: string; body: unknown }>,
   remapOpen: false,
   remapResult: null as unknown,
@@ -311,6 +311,34 @@ describe('series detail page (characterization)', () => {
     expect(mocks.sent.map((s) => (s.body as { monitored: boolean }).monitored)).toEqual([false, true]);
     expect(mocks.sent[1].path).toBe('/api/sonarr/7?instanceId=son-1');
     expect(screen.getByRole('button', { name: 'Monitored' }).getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('runs an Undo tapped mid-write after that write, so the Undo wins', async () => {
+    const user = renderPage();
+    const toggle = await screen.findByRole('button', { name: 'Monitored' });
+    await user.click(toggle); // unmonitor → toast with Undo
+    await waitFor(() => expect(mocks.toast.success).toHaveBeenCalledWith('Unmonitored', expect.anything()));
+    const { action } = mocks.toast.success.mock.calls[0][1] as { action: { onClick: () => void } };
+    await user.click(toggle); // monitor again
+    await waitFor(() => expect(toggle.getAttribute('aria-pressed')).toBe('true'));
+
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const put = mocks.routes['PUT /api/sonarr/7'];
+    mocks.routes['PUT /api/sonarr/7'] = (init) => {
+      mocks.routes['PUT /api/sonarr/7'] = put;
+      return gate.then(() => put(init));
+    };
+    await user.click(toggle); // unmonitor, held in flight
+    await waitFor(() => expect(mocks.sent).toHaveLength(3));
+    act(() => action.onClick()); // the first toast's Undo, tapped while that write is pending
+    await act(async () => { await Promise.resolve(); });
+    expect(mocks.sent).toHaveLength(3); // waits its turn instead of racing
+
+    act(() => release());
+    await waitFor(() => expect(mocks.sent).toHaveLength(4));
+    expect(mocks.sent.map((s) => (s.body as { monitored: boolean }).monitored)).toEqual([false, true, false, true]);
+    await waitFor(() => expect(toggle.getAttribute('aria-pressed')).toBe('true'));
   });
 
   it('toggles the series and a season monitored, and applies a monitoring option', async () => {

@@ -1,11 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import type { SonarrSeries } from '@/types';
 import { queryKeys } from '@/lib/query-keys';
-import { invalidateSeries } from '@/lib/query-invalidation';
+import { invalidateSeries, patchLibraryMonitored } from '@/lib/query-invalidation';
 import { ApiError, arrMutationFetch } from '@/lib/query-fetch';
 import { handleAuthError } from '@/lib/query-client';
 import { episodesWithFileKey } from '@/lib/series-query-cache';
@@ -35,6 +35,7 @@ export function useSeriesActions({
 }) {
   const queryClient = useQueryClient();
   const [actionLoading, setActionLoading] = useState('');
+  const monitorQueue = useRef<Promise<void>>(Promise.resolve());
   const [jellyfinLoading, setJellyfinLoading] = useState(false);
   const [showMonitorEdit, setShowMonitorEdit] = useState(false);
   const [monitorOption, setMonitorOption] = useState('');
@@ -99,7 +100,17 @@ export function useSeriesActions({
     if (series) await setMonitored(series, !series.monitored);
   }
 
-  async function setMonitored(base: SonarrSeries, monitored: boolean) {
+  // Monitor writes for this series run one at a time, so an Undo tapped while
+  // another write is still in flight runs after it and its intent wins.
+  function setMonitored(fallback: SonarrSeries, monitored: boolean) {
+    const run = monitorQueue.current.then(() => putMonitored(fallback, monitored));
+    monitorQueue.current = run;
+    return run;
+  }
+
+  async function putMonitored(fallback: SonarrSeries, monitored: boolean) {
+    // Send the latest cached series when the write runs, so edits made meanwhile survive.
+    const base = queryClient.getQueryData<SonarrSeries | null>(queryKeys.detail('sonarr', seriesId, instance)) ?? fallback;
     setActionLoading('monitor');
     try {
       const res = await arrMutationFetch(instance, `/api/sonarr/${base.id}`, {
@@ -112,21 +123,11 @@ export function useSeriesActions({
         // The series object is the single shared key — writing it here reflects on
         // the season + episode views (which read the same key) automatically.
         queryClient.setQueryData(queryKeys.detail('sonarr', seriesId, instance), updated);
-        // Patch this series' monitored flag in the cached library lists
-        // (slim/full/all-instances) instead of refetching the whole library —
-        // preserves the server-resolved profile/tag labels.
-        queryClient.setQueriesData({ queryKey: queryKeys.library('sonarr') }, (prev) =>
-          Array.isArray(prev) ? prev.map((s) => (s.id === seriesId ? { ...s, monitored: updated.monitored } : s)) : prev);
+        patchLibraryMonitored(queryClient, 'sonarr', { itemId: seriesId, instanceId: instance, monitored: updated.monitored });
         if (updated.monitored) toast.success('Now monitored');
         // Unmonitoring is a library change, so a stray tap must be recoverable.
-        // Undo re-sends the latest cached series so edits made meanwhile survive.
         else toast.success('Unmonitored', {
-          action: {
-            label: 'Undo',
-            onClick: () => {
-              void setMonitored(queryClient.getQueryData<SonarrSeries | null>(queryKeys.detail('sonarr', seriesId, instance)) ?? updated, true);
-            },
-          },
+          action: { label: 'Undo', onClick: () => { void setMonitored(updated, true); } },
         });
       } else toast.error('Failed to update');
     } catch (e) { handleAuthError(e); toast.error('Failed to update'); }
