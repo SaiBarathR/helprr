@@ -39,14 +39,12 @@ it('shows saved provenance, retries, and disappears only after fresh data arrive
   }
 });
 
-it('emits safe-area padding for both landscape edges but never for the top', () => {
-  // jsdom drops env() values; inspect React's actual emitted CSS instead.
-  // This pins the CSS contract, not physical notch geometry.
+it('leaves every safe-area inset to .app-main', () => {
+  // jsdom drops env() values; inspect React's actual emitted markup instead.
   const markup = renderToStaticMarkup(<BrowseFreshnessBanner at={1700000000000} onRetry={() => {}} />);
-  expect(markup).toContain('padding-left:max(0.75rem, env(safe-area-inset-left, 0px))');
-  expect(markup).toContain('padding-right:max(0.75rem, env(safe-area-inset-right, 0px))');
   // The banner is in normal flow inside `.app-main`, which already owns the top
-  // inset. Reserving it here too left ~59px of dead space above the text on an
-  // iPhone PWA, so re-adding it is a regression, not a hardening.
-  expect(markup).not.toContain('safe-area-inset-top');
+  // inset and the landscape left/right ones. Reserving the top one here too left
+  // ~59px of dead space above the text on an iPhone PWA, and the side ones
+  // would double the landscape gutter.
+  expect(markup).not.toContain('safe-area-inset');
 });

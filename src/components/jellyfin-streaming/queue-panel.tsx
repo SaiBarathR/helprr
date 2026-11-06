@@ -103,7 +103,8 @@ export function QueuePanel({
       className={cn(
         // z-[90] keeps it over the expanded player (z-[80]); the player's own
         // chrome stays reachable underneath it rather than being covered.
-        'fixed inset-y-0 right-0 z-[90] flex w-full max-w-sm flex-col bg-[#181818] shadow-2xl',
+        // pr: the panel is the right edge, so its title, Close and rows keep off a landscape notch.
+        'fixed inset-y-0 right-0 z-[90] flex w-full max-w-sm flex-col bg-[#181818] pr-[env(safe-area-inset-right,0px)] shadow-2xl',
         // Deliberately not the app's glass material: the panel sits on a video,
         // and a frosted sheet over moving picture is unreadable.
         'border-l border-white/10',

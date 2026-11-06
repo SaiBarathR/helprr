@@ -221,6 +221,9 @@
   top: 0;
   border-bottom-width: 1px;
   padding-top: env(safe-area-inset-top, 0px);
+  /* Landscape: keep the tabs off the notch and the rounded corners. */
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
 }
 
 :root[data-nav-position="bottom"] .app-tab-bar {
@@ -320,9 +323,36 @@
   }
 }
 
+/* A phone on its side (844x390 crosses md, so it gets the sidebar layout):
+   the md top padding would make every sticky toolbar a quarter of the screen. */
+@media (min-width: 768px) and (max-height: 500px) {
+  :root {
+    --main-pad-top: 0.5rem;
+  }
+}
+
+/* The left/right safe areas (the notch, Dynamic Island and rounded corners of
+   a landscape iPhone) that <main> keeps its content clear of. They sit OUTSIDE
+   --main-pad-x on purpose: everything that bleeds to the main edge cancels
+   exactly --main-pad-x, so bleeds still line up and simply stop at the safe
+   area instead of running under the notch. At md+ the sidebar takes the left
+   inset itself (see Sidebar); the cinematic skin hides the sidebar and hands
+   it back below. */
+:root {
+  --main-inset-left: env(safe-area-inset-left, 0px);
+  --main-inset-right: env(safe-area-inset-right, 0px);
+}
+
+@media (min-width: 768px) {
+  :root {
+    --main-inset-left: 0px;
+  }
+}
+
 .app-main {
   padding-top: var(--main-pad-top);
-  padding-inline: var(--main-pad-x);
+  padding-left: calc(var(--main-pad-x) + var(--main-inset-left));
+  padding-right: calc(var(--main-pad-x) + var(--main-inset-right));
 }
 
 /* Bottom-nav mode has no top header; push at-rest content below the notch.
@@ -1818,6 +1848,11 @@ html[data-watch-skin='cinematic'] .hpr-watch:not([data-slot]) {
    ever reaching the viewport edge, which is most of what "cinematic" means. */
 html[data-watch-skin='cinematic']:has(.hpr-watch) [data-app-sidebar] {
   display: none;
+}
+
+/* With the sidebar gone, <main> clears the left safe area itself. */
+html[data-watch-skin='cinematic']:has(.hpr-watch) {
+  --main-inset-left: env(safe-area-inset-left, 0px);
 }
 
 /* ...and on a phone the app's own tab bar goes too. Cinematic is a full-screen

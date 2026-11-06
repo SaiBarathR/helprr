@@ -23,7 +23,7 @@ export function NowPlayingBar() {
     // data-now-playing-bar lets the page, toasts and floating bars clear it.
     <div
       data-now-playing-bar
-      className="fixed right-0 left-[var(--app-main-left,0px)] bottom-[var(--footer-bar-bottom)] z-40 border-t px-3 pt-2 pb-[calc(0.5rem+var(--footer-bar-inset))] app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80"
+      className="fixed right-0 left-[var(--app-main-left,0px)] bottom-[var(--footer-bar-bottom)] z-40 border-t pl-[calc(0.75rem+var(--main-inset-left))] pr-[calc(0.75rem+var(--main-inset-right))] pt-2 pb-[calc(0.5rem+var(--footer-bar-inset))] app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80"
     >
       <div className="mx-auto flex max-w-5xl items-center gap-3">
         <button

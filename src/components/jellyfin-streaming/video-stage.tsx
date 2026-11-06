@@ -555,7 +555,7 @@ export function VideoStage({ mediaContainer }: { mediaContainer: HTMLDivElement 
           !isVideo && !sheet.present && 'pointer-events-none fixed h-px w-px opacity-0',
           // Sits above the now-playing bar rather than on top of it — at
           // md:bottom-4 it used to cover Pause/Next/Repeat/Queue/Stop.
-          mini && 'fixed right-3 bottom-[calc(var(--footer-height)+var(--player-bar-height,0px)+0.75rem)] z-30 h-36 w-64 rounded-xl border shadow-2xl',
+          mini && 'fixed right-[calc(0.75rem+env(safe-area-inset-right,0px))] bottom-[calc(var(--footer-height)+var(--player-bar-height,0px)+0.75rem)] z-30 h-36 w-64 rounded-xl border shadow-2xl',
           sheet.present && 'hpr-watch-player-enter fixed inset-0 z-[80]',
         )}
       >

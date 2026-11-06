@@ -71,7 +71,7 @@ export function AppShell({ children, demo = false }: { children: React.ReactNode
         {demo && <DemoBanner />}
         <PushReenableBanner />
         {pendingHref !== null && (
-          <div className="fixed right-0 bottom-0 top-[env(safe-area-inset-top)] z-30 overflow-y-auto bg-background" style={{ left: 'var(--app-main-left, 0px)' }}>
+          <div className="fixed right-0 bottom-0 top-[env(safe-area-inset-top)] z-30 overflow-y-auto bg-background pl-[var(--main-inset-left)] pr-[var(--main-inset-right)]" style={{ left: 'var(--app-main-left, 0px)' }}>
             <NavigationLoading key={pendingHref} href={pendingHref} />
           </div>
         )}
