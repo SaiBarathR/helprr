@@ -257,7 +257,7 @@ function cloneDiscoverFilters(filters: DiscoverFiltersState): DiscoverFiltersSta
   };
 }
 
-export const STORE_VERSION = 51;
+export const STORE_VERSION = 52;
 
 // Matches the calendar backdrop's previously hardcoded Tailwind `opacity-35`.
 export const DEFAULT_CALENDAR_IMAGE_OPACITY = 35;
@@ -503,6 +503,11 @@ export function migrateUiPrefs(persisted: unknown, version: number): Record<stri
     if ('twitchFeedView' in state) state.twitchFeedView = 'grouped';
     if ('youtubeFeedView' in state) state.youtubeFeedView = 'grouped';
   }
+  if (version < 52 && state.requestsFilter === 'pending') {
+    // Pending was everyone's default; it becomes "not chosen", so the Requests
+    // page picks by role (approvers Pending, members All). Other picks stay.
+    state.requestsFilter = null;
+  }
   // The player's skip lengths arrived in version 51; a missing value takes the
   // store default. Only a present, unusable value is replaced, so a partial
   // settings import does not gain fields it never exported.
@@ -630,7 +635,8 @@ interface UIState {
   // Requests page (Seerr)
   requestsTab: RequestsTabPreference;
   setRequestsTab: (tab: RequestsTabPreference) => void;
-  requestsFilter: RequestsFilterPreference;
+  /** null = not chosen: the Requests page uses the viewer's role default. */
+  requestsFilter: RequestsFilterPreference | null;
   setRequestsFilter: (filter: RequestsFilterPreference) => void;
   /** Seerr user id to filter requests by; null = all users (admin-only UI). */
   requestsUserFilter: number | null;
@@ -997,7 +1003,7 @@ export const useUIStore = create<UIState>()(
       // Requests
       requestsTab: 'requests',
       setRequestsTab: (tab) => set({ requestsTab: tab }),
-      requestsFilter: 'pending',
+      requestsFilter: null,
       setRequestsFilter: (filter) => set({ requestsFilter: filter }),
       requestsUserFilter: null,
       setRequestsUserFilter: (userId) => set({ requestsUserFilter: userId }),

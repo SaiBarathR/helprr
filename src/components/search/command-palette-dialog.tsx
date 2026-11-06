@@ -16,7 +16,7 @@ import { useMe, hasCapability } from '@/components/permission-provider';
 import { FadeInImage } from '@/components/media/fade-in-image';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import { suggestScopes } from '@/lib/search/parse-query';
-import { resolveProviderFromAlias } from '@/lib/search/provider-defs';
+import { canUseSearchProvider, resolveProviderFromAlias } from '@/lib/search/provider-defs';
 import {
   SEARCH_MODULE_ORDER,
   isSearchModuleProvider,
@@ -40,7 +40,7 @@ const LOCAL_DEBOUNCE_MS = 280;
 const MIN_LOCAL_QUERY = 2;
 
 function providerAvailable(me: ReturnType<typeof useMe>, def: SearchProviderUiDef): boolean {
-  if (!me || !hasCapability(me, def.capability)) return false;
+  if (!me || !canUseSearchProvider(def, (cap) => hasCapability(me, cap), me.seerrConfigured)) return false;
   if (def.requiresTmdb && !me.tmdbConfigured) return false;
   if (def.requiresSeerr && !me.seerrConfigured) return false;
   return true;

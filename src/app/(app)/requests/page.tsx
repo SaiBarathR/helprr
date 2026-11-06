@@ -34,7 +34,10 @@ export default function RequestsPage() {
   const tab = canApprove ? storedTab : 'requests';
   const tabs = canApprove ? TABS : TABS.filter((t) => t.key === 'requests');
   const setTab = useUIStore((s) => s.setRequestsTab);
-  const filter = useUIStore((s) => s.requestsFilter);
+  // Until a status is picked, approvers open on Pending (their queue) and
+  // members on All, since their own Pending list is usually empty.
+  const storedFilter = useUIStore((s) => s.requestsFilter);
+  const filter = storedFilter ?? (canApprove ? 'pending' : 'all');
   const setFilter = useUIStore((s) => s.setRequestsFilter);
   const requestsUserFilter = useUIStore((s) => s.requestsUserFilter);
   const setRequestsUserFilter = useUIStore((s) => s.setRequestsUserFilter);

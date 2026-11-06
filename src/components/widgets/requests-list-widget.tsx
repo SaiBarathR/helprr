@@ -11,7 +11,10 @@ import { toast } from 'sonner';
 import { SeerrRequestModal } from '@/components/seerr/seerr-request-modal';
 import { PendingApprovalSection } from '@/components/seerr/pending-approval-section';
 import { hasCapability, useCan, useMe } from '@/components/permission-provider';
-import { TMDB_TITLE_PAGE_CAPABILITIES } from '@/lib/capabilities';
+import { TMDB_TITLE_PAGE_CAPABILITIES, type Capability } from '@/lib/capabilities';
+import { SEARCH_PROVIDER_BY_ID, canUseSearchProvider } from '@/lib/search/provider-defs';
+import { useSearchPalette } from '@/components/search/search-store';
+import { Button } from '@/components/ui/button';
 import { useBadgeActions } from '@/components/layout/badge-provider';
 import { useExternalUrls } from '@/lib/hooks/use-external-urls';
 import { useWidgetData } from '@/lib/widgets/use-widget-data';
@@ -27,7 +30,7 @@ import {
   type ContextActionGroup,
 } from '@/components/ui/quick-context-menu';
 import type { WidgetProps } from '@/lib/widgets/types';
-import { SectionHeader, EmptyState } from './bento-primitives';
+import { SectionHeader, EmptyState, HPR } from './bento-primitives';
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -69,6 +72,37 @@ export interface RequestsListWidgetProps extends WidgetProps {
    * leave off for compact dashboard cells.
    */
   unbounded?: boolean;
+}
+
+/**
+ * The next step from an empty request list: Discover for someone who can browse
+ * it, otherwise the search palette, whose TMDB scope stays open to requesters
+ * without Discover. Nothing for someone who can't request.
+ */
+function FindTitlesAction({ compact }: { compact: boolean }) {
+  const me = useMe();
+  const openSearch = useSearchPalette((s) => s.setOpen);
+  const has = (cap: Capability) => hasCapability(me, cap);
+  if (!me?.tmdbConfigured || !me.seerrConfigured || !has('requests.create')) return null;
+  if (!canUseSearchProvider(SEARCH_PROVIDER_BY_ID.tmdb, has, true)) return null;
+
+  const label = 'Find something to request';
+  const href = has('discover.view') ? '/discover' : null;
+  if (compact) {
+    const props = { className: 'bento-empty-action font-semibold', style: { color: HPR.amber } };
+    return href
+      ? <Link href={href} {...props}>{label}</Link>
+      : <button type="button" onClick={() => openSearch(true)} {...props}>{label}</button>;
+  }
+  return href ? (
+    <Button asChild variant="outline" size="sm" className="mt-1">
+      <Link href={href}>{label}</Link>
+    </Button>
+  ) : (
+    <Button variant="outline" size="sm" className="mt-1" onClick={() => openSearch(true)}>
+      {label}
+    </Button>
+  );
 }
 
 interface ListResponse {
@@ -472,6 +506,9 @@ export function RequestsListWidget({
 
   if (items.length === 0) {
     const emptyLabel = filter !== 'all' ? `No ${filter} requests in Seerr` : 'No requests in Seerr';
+    // An approver's empty status view (e.g. Pending) is a cleared queue, not a
+    // prompt to request something.
+    const showFindTitles = filter === 'all' || !canManageRequests;
     return (
       <div ref={ref} className={shellClass}>
         {header}
@@ -480,11 +517,13 @@ export function RequestsListWidget({
           <div className="flex flex-col items-center gap-2 py-12 text-center text-muted-foreground">
             <Inbox className="h-6 w-6 opacity-50" />
             <p className="text-sm">{emptyLabel}</p>
+            {showFindTitles && <FindTitlesAction compact={false} />}
           </div>
         ) : (
           <EmptyState>
             <Inbox size={18} />
             {emptyLabel}
+            {showFindTitles && <FindTitlesAction compact />}
           </EmptyState>
         )}
       </div>

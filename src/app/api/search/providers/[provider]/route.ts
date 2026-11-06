@@ -3,7 +3,7 @@ import { prisma } from '@/lib/db';
 import { requireUser } from '@/lib/auth';
 import { can } from '@/lib/permissions';
 import { withApiLogging } from '@/lib/api-logger';
-import { SEARCH_PROVIDER_BY_ID } from '@/lib/search/provider-defs';
+import { SEARCH_PROVIDER_BY_ID, canUseSearchProvider } from '@/lib/search/provider-defs';
 import { getProviderHandler } from '@/lib/search/providers/registry';
 import { withTimeout } from '@/lib/search/with-timeout';
 import type { SearchProviderId, SearchProviderResponse } from '@/lib/search/types';
@@ -43,7 +43,11 @@ async function getHandler(
   }
 
   const def = SEARCH_PROVIDER_BY_ID[rawProvider];
-  if (!can(auth.user, def.capability)) {
+  // Seerr only matters on the requester path, so count it only then.
+  const seerrConfigured = def.openToRequesters && !can(auth.user, def.capability)
+    ? (await prisma.serviceConnection.count({ where: { type: 'SEERR' } })) > 0
+    : false;
+  if (!canUseSearchProvider(def, (cap) => can(auth.user, cap), seerrConfigured)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 

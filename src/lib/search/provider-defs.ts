@@ -1,4 +1,4 @@
-import type { Capability } from '@/lib/capabilities';
+import { TMDB_TITLE_PAGE_CAPABILITIES, type Capability } from '@/lib/capabilities';
 import type { SearchProviderCost, SearchProviderId } from '@/lib/search/types';
 
 // Client-safe provider metadata (no icons — those live in components/search/registry.ts).
@@ -18,6 +18,12 @@ export interface SearchProviderDef {
   requiresTmdb?: boolean;
   /** When true, provider needs a Seerr ServiceConnection. */
   requiresSeerr?: boolean;
+  /**
+   * When true, a member without `capability` may still use the provider if they
+   * can request (with Seerr connected) and open the TMDB title pages its
+   * results link to. See canUseSearchProvider.
+   */
+  openToRequesters?: boolean;
 }
 
 export const SEARCH_PROVIDER_DEFS: SearchProviderDef[] = [
@@ -71,6 +77,7 @@ export const SEARCH_PROVIDER_DEFS: SearchProviderDef[] = [
     debounceMs: 500,
     cost: 'remote',
     requiresTmdb: true,
+    openToRequesters: true,
   },
   {
     id: 'anilist',
@@ -156,4 +163,22 @@ export function normalizeSearchAlias(raw: string): string {
 export function resolveProviderFromAlias(alias: string): SearchProviderDef | undefined {
   const id = SEARCH_ALIAS_TO_PROVIDER[normalizeSearchAlias(alias)];
   return id ? SEARCH_PROVIDER_BY_ID[id] : undefined;
+}
+
+/**
+ * Whether a user may use a provider. Shared by the palette and the server
+ * route so the two never disagree. A member who can request but not browse
+ * Discover still needs a way to find a title to request: TMDB search leads to
+ * the title pages, which carry the Request button.
+ */
+export function canUseSearchProvider(
+  def: SearchProviderDef,
+  has: (cap: Capability) => boolean,
+  seerrConfigured: boolean
+): boolean {
+  if (has(def.capability)) return true;
+  return def.openToRequesters === true
+    && seerrConfigured
+    && has('requests.create')
+    && TMDB_TITLE_PAGE_CAPABILITIES.some(has);
 }

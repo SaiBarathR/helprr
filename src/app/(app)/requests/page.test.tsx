@@ -6,13 +6,18 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 
-const mocks = vi.hoisted(() => ({ canApprove: false, tab: 'users' as 'requests' | 'users' }));
+const mocks = vi.hoisted(() => ({
+  canApprove: false,
+  tab: 'users' as 'requests' | 'users',
+  filter: null as string | null,
+  listFilter: undefined as string | undefined,
+}));
 vi.mock('@/components/permission-provider', () => ({ useCan: (cap: string) => (cap === 'requests.approve' ? mocks.canApprove : true) }));
 vi.mock('@/lib/hooks/use-external-urls', () => ({ useExternalUrls: () => ({}) }));
 vi.mock('@/lib/store', () => ({
   useUIStore: (select: (state: Record<string, unknown>) => unknown) => select({
     requestsTab: mocks.tab, setRequestsTab: vi.fn(),
-    requestsFilter: 'pending', setRequestsFilter: vi.fn(),
+    requestsFilter: mocks.filter, setRequestsFilter: vi.fn(),
     requestsUserFilter: null, setRequestsUserFilter: vi.fn(),
     requestsTypeFilter: [], setRequestsTypeFilter: vi.fn(),
     requestsSort: 'added', setRequestsSort: vi.fn(),
@@ -25,7 +30,12 @@ vi.mock('@/components/seerr/requests-filter-menu', () => ({
 }));
 vi.mock('@/components/seerr/requests-sort-menu', () => ({ RequestsSortMenu: () => null }));
 vi.mock('@/components/ui/pull-to-refresh', () => ({ PullToRefresh: () => null }));
-vi.mock('@/components/widgets/requests-list-widget', () => ({ RequestsListWidget: () => <p>requests list</p> }));
+vi.mock('@/components/widgets/requests-list-widget', () => ({
+  RequestsListWidget: ({ filter }: { filter?: string }) => {
+    mocks.listFilter = filter;
+    return <p>requests list</p>;
+  },
+}));
 vi.mock('@/components/widgets/requests-users-widget', () => ({ RequestsUsersWidget: () => <p>users list</p> }));
 
 import RequestsPage from './page';
@@ -43,6 +53,8 @@ const flush = () => act(async () => { for (let i = 0; i < 5; i += 1) await new P
 const tabs = () => [...document.querySelectorAll('[role="tab"]')].map((t) => t.textContent);
 
 beforeEach(() => {
+  mocks.filter = null;
+  mocks.listFilter = undefined;
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   fetchMock = vi.fn(async () => Response.json({ pending: 3 }));
   vi.stubGlobal('fetch', fetchMock);
@@ -84,5 +96,33 @@ describe('RequestsPage', () => {
     await flush();
     expect(tabs()).toEqual(['Requests3', 'Users']);
     expect(fetchMock).toHaveBeenCalledWith('/api/seerr/requests/count', expect.anything());
+  });
+
+  it('opens a member on All and an approver on Pending until a status is picked', async () => {
+    mocks.tab = 'requests';
+    mocks.canApprove = false;
+    render();
+    await flush();
+    expect(mocks.listFilter).toBe('all');
+
+    mocks.canApprove = true;
+    render();
+    await flush();
+    expect(mocks.listFilter).toBe('pending');
+  });
+
+  it('keeps a picked status for either role', async () => {
+    mocks.tab = 'requests';
+    mocks.filter = 'pending';
+    mocks.canApprove = false;
+    render();
+    await flush();
+    expect(mocks.listFilter).toBe('pending');
+
+    mocks.filter = 'available';
+    mocks.canApprove = true;
+    render();
+    await flush();
+    expect(mocks.listFilter).toBe('available');
   });
 });
