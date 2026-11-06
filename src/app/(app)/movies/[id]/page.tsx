@@ -776,6 +776,7 @@ export default function MovieDetailPage() {
               <PlayInHelprrButton
                 imdbId={movie.imdbId}
                 tmdbId={movie.tmdbId}
+                reserveSpace={movie.hasFile}
                 className="h-10 w-full rounded-full"
               />
 
