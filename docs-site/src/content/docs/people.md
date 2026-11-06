@@ -32,5 +32,6 @@ connected yet.
 ## Sessions
 
 **Settings → Sessions** lists where each person is signed in, and signs any of them out.
-Resetting a password does not end existing sessions: end them here when access needs to
-be removed.
+Changing someone's password in **Settings → Users** signs them out everywhere. The
+`HELPRR_ADMIN_PASSWORD_RESET` startup reset does not: after using it, end the old
+sessions here.
