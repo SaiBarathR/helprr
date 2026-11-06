@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import { Sidebar } from '@/components/layout/sidebar';
 import { AppShell } from '@/components/layout/app-shell';
+import { SkipLink } from '@/components/layout/skip-link';
 import { CommandPalette } from '@/components/search/command-palette';
 import { StandaloneLaunchRedirect } from '@/components/layout/standalone-launch-redirect';
 import { DiscoverLayoutHydrator } from '@/components/discover-layout-hydrator';
@@ -79,6 +80,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             <JellyfinStreamingRoot>
               <BadgeProvider>
             <div className="flex min-h-screen bg-background">
+              {/* Must stay the first focusable element, ahead of the sidebar. */}
+              <SkipLink />
               <StandaloneLaunchRedirect />
               <DiscoverLayoutHydrator />
               <CommandPalette />
