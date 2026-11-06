@@ -87,7 +87,7 @@ export default function YoutubeAccountPage() {
         </Link>
       </div>
       <div className="mb-4 px-4">
-        <h1 className="text-2xl font-bold">Spare account</h1>
+        <h1 className="text-2xl font-semibold">Spare account</h1>
         <p className="mt-0.5 text-sm text-muted-foreground">Only needed to save age-restricted videos. Every other video runs without it.</p>
       </div>
 

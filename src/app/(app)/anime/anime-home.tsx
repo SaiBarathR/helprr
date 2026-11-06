@@ -26,6 +26,7 @@ import type {
   AniListMediaListCollection,
   AniListMediaListEntry,
 } from '@/lib/anilist-mutations';
+import { PageTitle } from '@/components/layout/page-title';
 
 type AnimeItemWithLibrary = AniListListItem & { library?: DiscoverLibraryStatus };
 interface SeasonWindow {
@@ -326,7 +327,7 @@ export default function AnimeHomePage() {
         ])}
         disabled={searchExpanded}
       />
-      <h1 className="sr-only">Anime</h1>
+      <PageTitle>Anime</PageTitle>
       {/* Search bar (in-place live search) + Browse — always visible, pinned on scroll */}
       <div className="page-toolbar page-toolbar-flush pb-2 mb-3 app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 flex items-center justify-between gap-2">
         <AnimeSearchOverlay onExpandedChange={setSearchExpanded} />

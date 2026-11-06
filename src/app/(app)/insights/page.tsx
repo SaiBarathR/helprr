@@ -47,6 +47,7 @@ import { TechnicalBreakdownCard, type MediaAnalysisKindFilter } from '@/componen
 import { QualityScoreCard } from '@/components/insights/quality-score-card';
 import { FileExplorerCard } from '@/components/insights/file-explorer-card';
 import type { ServicesStatsResponse } from '@/types/service-stats';
+import { PageTitle } from '@/components/layout/page-title';
 
 function keyToDate(key: string): Date {
   const [y, m, d] = key.split('-').map(Number);
@@ -149,11 +150,10 @@ export default function InsightsPage() {
         ])}
         scrollContainerRef={contentRef}
       />
+      <PageTitle>Insights</PageTitle>
       <div
         className="page-toolbar page-toolbar-flush pb-3 app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 flex items-center justify-between gap-3"
       >
-        {/* Page titles stay screen-reader only, as on every other page. */}
-        <h1 className="sr-only">Insights</h1>
         <div className="w-full sm:w-56">
           <DateRangeSelect value={calendarValue} onChange={handleRangeChange} />
         </div>

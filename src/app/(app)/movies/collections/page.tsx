@@ -40,6 +40,7 @@ import { ApiError, jsonFetcher } from '@/lib/query-fetch';
 import { handleAuthError } from '@/lib/query-client';
 import { invalidateCollections } from '@/lib/query-invalidation';
 import type { CollectionSummary } from '@/types';
+import { PageTitle } from '@/components/layout/page-title';
 
 const EMPTY: CollectionSummary[] = [];
 
@@ -230,6 +231,7 @@ export default function MovieCollectionsPage() {
 
   return (
     <div className="space-y-3 animate-content-in">
+      <PageTitle>Collections</PageTitle>
       <div
         className="page-toolbar page-toolbar-flush pb-2 app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 space-y-2"
       >

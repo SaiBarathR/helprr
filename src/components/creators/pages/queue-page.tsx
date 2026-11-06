@@ -36,6 +36,7 @@ import { formatBytes } from '@/lib/format';
 import { toCachedImageSrc } from '@/lib/image';
 import { backoffRefetchInterval } from '@/lib/query-fetch';
 import { cn } from '@/lib/utils';
+import { PageTitle } from '@/components/layout/page-title';
 
 interface Job {
   id: string;
@@ -293,7 +294,7 @@ export function CreatorQueuePage() {
   return (
     <div className="space-y-3 animate-content-in">
       <PullToRefresh onRefresh={refresh} />
-      <h1 className="sr-only">Queue</h1>
+      <PageTitle>{platform.name} queue</PageTitle>
       <CreatorToolbar
         active="queue"
         actions={(

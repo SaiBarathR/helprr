@@ -73,6 +73,7 @@ import type { CalendarEvent } from '@/types';
 import { FadeInImage } from '@/components/media/fade-in-image';
 import { HeroImage } from '@/components/media/hero-image';
 import { isProtectedApiImageSrc, toCachedImageSrc, type ImageServiceHint } from '@/lib/image';
+import { PageTitle } from '@/components/layout/page-title';
 
 /** The app behind each event type, to tell same-named instances apart. */
 const EVENT_APP = { episode: 'sonarr', movie: 'radarr', album: 'lidarr' } as const;
@@ -1509,7 +1510,7 @@ export default function CalendarPage() {
       style={{ '--calendar-sticky-offset': `${stickyOffset || 96}px` } as React.CSSProperties}
     >
       <PullToRefresh onRefresh={refetch} />
-      <h1 className="sr-only">Calendar</h1>
+      <PageTitle>Calendar</PageTitle>
       <div ref={toolbarRef} className="page-toolbar page-toolbar-flush pb-2 app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 space-y-2">
         {/* Top bar: title + view tabs. Wraps so the filter cluster drops to
             its own line on narrow screens instead of overflowing. */}

@@ -10,6 +10,7 @@ import { HistoryTab } from './_components/history-tab';
 import { OverviewTab } from './_components/overview-tab';
 import { StatsTab } from './_components/stats-tab';
 import { UsersTab } from './_components/users-tab';
+import { PageTitle } from '@/components/layout/page-title';
 
 // ─── Types ───
 
@@ -43,7 +44,6 @@ export default function JellyfinPage() {
 
   return (
     <div className="flex flex-col min-h-0 animate-content-in">
-      <h1 className="sr-only">Jellyfin</h1>
       <PullToRefresh onRefresh={() => pageQueryClient.invalidateQueries({ queryKey: ['jellyfin'] })} />
       {/* Radix Tabs: same segmented look, plus roving focus + arrow-key nav. */}
       <Tabs
@@ -51,14 +51,11 @@ export default function JellyfinPage() {
         onValueChange={(v) => setTab(v as TabKey)}
         className="flex flex-1 min-h-0 flex-col gap-0"
       >
+        <PageTitle>Jellyfin</PageTitle>
         <div className="page-toolbar page-toolbar-flush pb-3 app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
-          <TabsList aria-label="Jellyfin sections" className="flex w-full h-auto bg-muted/50 p-0.5 gap-0.5">
+          <TabsList aria-label="Jellyfin sections" variant="segmented">
             {visibleTabs.map((t) => (
-              <TabsTrigger
-                key={t.key}
-                value={t.key}
-                className="flex-1 text-xs font-medium py-1.5 px-2 data-[state=active]:shadow-sm"
-              >
+              <TabsTrigger key={t.key} value={t.key}>
                 {t.label}
               </TabsTrigger>
             ))}

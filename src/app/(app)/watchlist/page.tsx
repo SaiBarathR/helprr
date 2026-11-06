@@ -70,6 +70,7 @@ import { PullToRefresh } from '@/components/ui/pull-to-refresh';
 import { QuickContextMenu, type ContextActionGroup } from '@/components/ui/quick-context-menu';
 import { useRefreshAction } from '@/lib/hooks/use-refresh-action';
 import { cn } from '@/lib/utils';
+import { PageTitle } from '@/components/layout/page-title';
 
 type MediaType = 'movie' | 'series' | 'anime';
 type Source = 'TMDB' | 'TVDB' | 'ANILIST' | 'SONARR' | 'RADARR';
@@ -700,31 +701,10 @@ export default function WatchlistPage() {
   return (
     <div className="animate-content-in pb-12">
       <PullToRefresh onRefresh={refresh} disabled={selectionMode} />
-      <h1 className="sr-only">Watchlist</h1>
+      <PageTitle>Watchlist</PageTitle>
       <div
         className="page-toolbar page-toolbar-flush space-y-2 app-chrome-bar bg-background/95 pb-2 backdrop-blur supports-[backdrop-filter]:bg-background/80"
       >
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <SearchInput
-            value={search}
-            onChange={setSearch}
-            historyKey="watchlist"
-            placeholder="Search watchlist…"
-            className="pl-9 pr-9"
-          />
-          {search && (
-            <button
-              type="button"
-              onClick={() => setSearch('')}
-              className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-muted-foreground hover:text-foreground"
-              aria-label="Clear search"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          )}
-        </div>
-
         <div className="flex items-center gap-2 flex-wrap">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -968,6 +948,26 @@ export default function WatchlistPage() {
           )}
         </div>
 
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <SearchInput
+            value={search}
+            onChange={setSearch}
+            historyKey="watchlist"
+            placeholder="Search watchlist…"
+            className="pl-9 pr-9"
+          />
+          {search && (
+            <button
+              type="button"
+              onClick={() => setSearch('')}
+              className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-muted-foreground hover:text-foreground"
+              aria-label="Clear search"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="mt-3 space-y-3">

@@ -57,6 +57,7 @@ import {
 } from '@/lib/library-filtering';
 import type { LidarrArtistListItem } from '@/types';
 import type { MediaViewMode } from '@/lib/store';
+import { PageTitle } from '@/components/layout/page-title';
 
 // Stable empty reference so memo deps don't churn before the query resolves.
 const EMPTY_ARTISTS: LidarrArtistListItem[] = [];
@@ -660,7 +661,7 @@ export default function MusicPage() {
   return (
     <div className="space-y-3 animate-content-in" style={toolbarStyle}>
       <PullToRefresh onRefresh={() => refetchArtists()} disabled={selectionMode} />
-      <h1 className="sr-only">Music</h1>
+      <PageTitle>Music</PageTitle>
       <div ref={toolbarRef} className="page-toolbar page-toolbar-flush pb-2 app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 space-y-2">
         <div className="flex items-center md:gap-2 w-full overflow-x-auto scrollbar-hide">
           <DropdownMenu>

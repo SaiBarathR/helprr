@@ -91,6 +91,8 @@ describe('Jellyfin page (characterization)', () => {
     const user = renderPage();
     expect(await screen.findByText('Session: ana watching Severance')).toBeTruthy();
     expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['Overview', 'Users', 'History', 'Stats']);
+    expect(screen.getByRole('heading', { level: 1, name: 'Jellyfin' }).className).not.toContain('sr-only');
+    expect(screen.getByRole('tablist').dataset.variant).toBe('segmented');
     expect(await screen.findByText('media-box')).toBeTruthy();
     expect(screen.getByText('v12.2.0')).toBeTruthy();
     expect(screen.getByText('Restart needed')).toBeTruthy();

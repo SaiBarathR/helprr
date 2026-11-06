@@ -63,6 +63,7 @@ import {
 import type { RadarrMovieListItem } from '@/types';
 
 import type { MediaViewMode } from '@/lib/store';
+import { PageTitle } from '@/components/layout/page-title';
 
 // Stable empty reference so memo deps don't churn before the query resolves.
 const EMPTY_MOVIES: RadarrMovieListItem[] = [];
@@ -714,7 +715,7 @@ export default function MoviesPage() {
   return (
     <div className="space-y-3 animate-content-in" style={toolbarStyle}>
       <PullToRefresh onRefresh={() => refetchMovies()} disabled={selectionMode} />
-      <h1 className="sr-only">Movies</h1>
+      <PageTitle>Movies</PageTitle>
       <div ref={toolbarRef} className="page-toolbar page-toolbar-flush pb-2 app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 space-y-2">
         <div className="flex items-center md:gap-2 w-full overflow-x-auto scrollbar-hide">
           <DropdownMenu>

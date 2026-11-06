@@ -61,6 +61,7 @@ import {
 import type { SonarrSeriesListItem } from '@/types';
 
 import type { MediaViewMode } from '@/lib/store';
+import { PageTitle } from '@/components/layout/page-title';
 
 // Stable empty reference so memo deps don't churn before the query resolves.
 const EMPTY_SERIES: SonarrSeriesListItem[] = [];
@@ -689,7 +690,7 @@ export default function SeriesPage() {
   return (
     <div className="space-y-3 animate-content-in" style={toolbarStyle}>
       <PullToRefresh onRefresh={() => refetchSeries()} disabled={selectionMode} />
-      <h1 className="sr-only">Series</h1>
+      <PageTitle>Series</PageTitle>
       <div ref={toolbarRef} className="page-toolbar page-toolbar-flush pb-2 app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 space-y-2">
         <div className="flex items-center md:gap-2 w-full overflow-x-auto scrollbar-hide">
           <DropdownMenu>

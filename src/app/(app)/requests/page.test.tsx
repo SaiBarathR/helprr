@@ -95,6 +95,9 @@ describe('RequestsPage', () => {
     render();
     await flush();
     expect(tabs()).toEqual(['Requests3', 'Users']);
+    expect(document.querySelector('h1')?.textContent).toBe('Requests');
+    expect(document.querySelector('h1')?.className).not.toContain('sr-only');
+    expect(document.querySelector<HTMLElement>('[role="tablist"]')?.dataset.variant).toBe('segmented');
     expect(fetchMock).toHaveBeenCalledWith('/api/seerr/requests/count', expect.anything());
   });
 

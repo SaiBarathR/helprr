@@ -169,12 +169,12 @@ export function TorrentsToolbar({
               <button
                 className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-accent active:bg-accent/80 transition-colors"
                 onClick={() => router.push('/torrents/settings')}
-                aria-label="Settings"
+                aria-label="qBittorrent settings"
               >
                 <Settings className="h-5 w-5" />
               </button>
             </TooltipTrigger>
-            <TooltipContent>Settings</TooltipContent>
+            <TooltipContent>qBittorrent settings</TooltipContent>
           </Tooltip>
         )}
 

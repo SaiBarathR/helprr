@@ -21,6 +21,7 @@ import { RandomWatchView } from '@/components/recommendations/random-watch';
 import { backdropSrcOf } from '@/components/recommendations/rec-card';
 import { useRecEvents } from '@/components/recommendations/use-rec-events';
 import { hasCapability, useMe } from '@/components/permission-provider';
+import { PageTitle } from '@/components/layout/page-title';
 
 type Mode = 'rails' | 'feed' | 'random';
 
@@ -206,7 +207,7 @@ function RecommendationsPageInner() {
 
   return (
     <div className="animate-content-in pb-12">
-      <h1 className="sr-only">Recommendations</h1>
+      <PageTitle>Recommendations</PageTitle>
       {/* Sticky glass mode switcher — same page-toolbar convention as the
           library pages, so the chips stay reachable mid-feed. */}
       <div className="page-toolbar page-toolbar-flush pb-2 app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">

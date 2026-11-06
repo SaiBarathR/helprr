@@ -81,7 +81,7 @@ export default function YoutubeSettingsPage() {
         </Link>
       </div>
       <div className="mb-4 px-4">
-        <h1 className="text-2xl font-bold">YouTube</h1>
+        <h1 className="text-2xl font-semibold">YouTube</h1>
         <p className="mt-0.5 text-sm text-muted-foreground">Follow channels, and save videos to watch in Jellyfin.</p>
       </div>
 

@@ -40,6 +40,8 @@ it('pull to refresh refetches the cleanup queries, but not over unsaved cleaner 
   const invalidate = vi.spyOn(client, 'invalidateQueries');
   const user = userEvent.setup();
   render(<QueryClientProvider client={client}><CleanupPage /></QueryClientProvider>);
+  expect(screen.getByRole('heading', { level: 1, name: 'Cleanup' }).className).not.toContain('sr-only');
+  expect(screen.getByRole('tablist').dataset.variant).toBe('segmented');
 
   expect(mocks.pullToRefresh!.disabled).toBe(false);
   await act(async () => { await mocks.pullToRefresh!.onRefresh(); });
