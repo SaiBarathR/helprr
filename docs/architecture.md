@@ -142,7 +142,12 @@ images continue through the no-store bypass path.
 Sonarr, Radarr, Lidarr, Prowlarr health, qBittorrent, Jellyfin, Seerr, and service reachability.
 It also drives release and scheduled alerts, activity digests, disk snapshots,
 retention, anime auto-mapping, cache warming, and qBittorrent bandwidth rules.
-One upstream failure must not cancel every other source.
+One upstream failure must not cancel every other source. Sonarr, Radarr, and
+Lidarr instances share two polling slots per cycle; an instance that fails twice
+in a row is skipped (without taking a slot) for 30 seconds, doubling to 5
+minutes from the start of the failing cycle, until it answers again or its
+connection is edited. Cache warming skips that library meanwhile. Skips still
+show as failures in the polling status, with the last error.
 
 Cleanup scheduling lives separately in `src/lib/cleanup/scheduler.ts`. Timers and
 polling singletons are stored safely across development hot reloads, and shutdown

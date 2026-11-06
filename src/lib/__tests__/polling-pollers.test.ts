@@ -186,7 +186,7 @@ function arrInstance(id: string, label: string, kind: 'sonarr' | 'radarr' | 'lid
     getHistory: vi.fn(async (page: number) => ({ records: page === 1 ? history : [] })),
     getHealth: vi.fn(async () => [{ message: `${label} indexer is down` }]),
   };
-  return { connection: { id, label, isDefault: true }, client };
+  return { connection: { id, label, isDefault: true, updatedAt: new Date(0) }, client };
 }
 
 function qbitFixture() {

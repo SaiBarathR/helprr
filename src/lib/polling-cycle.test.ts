@@ -1,5 +1,5 @@
-import { describe, expect, it, vi } from 'vitest';
-import { createPollingCycleContext } from '@/lib/polling-cycle';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { createPollingCycleContext, InstanceBackoff } from '@/lib/polling-cycle';
 
 describe('polling cycle context', () => {
   it('shares one settings result across concurrent consumers', async () => {
@@ -175,5 +175,101 @@ describe('polling cycle context', () => {
     expect(context.id).toBe('cycle-1');
     expect(context.startedAtMs).toBe(123);
     expect(context.getMetrics().sourceDurationsMs).toEqual({ pollSonarr: 4.3 });
+  });
+});
+
+describe('instance backoff', () => {
+  const down = { id: 'sonarr-down', version: 1 };
+  const fail = async () => { throw new Error('connect ETIMEDOUT'); };
+  let now = 0;
+  beforeEach(() => { now = 0; });
+
+  // One cycle starting now: a fresh context sharing the tracker, as the polling service does.
+  const cycle = (backoff: InstanceBackoff) => createPollingCycleContext(async () => ({}), {
+    instanceConcurrency: 1,
+    backoff,
+    startedAtMs: now,
+  });
+
+  it('treats one failure as a blip, then skips the instance for 30 s doubling to 5 min', async () => {
+    const backoff = new InstanceBackoff(() => now);
+    const task = vi.fn(fail);
+
+    await expect(cycle(backoff).runInstance('sonarr', task, down)).rejects.toThrow('ETIMEDOUT');
+    expect(backoff.remainingMs(down)).toBe(0);
+
+    const waits: number[] = [];
+    for (let i = 0; i < 6; i += 1) {
+      await expect(cycle(backoff).runInstance('sonarr', task, down)).rejects.toThrow('ETIMEDOUT');
+      waits.push(backoff.remainingMs(down));
+      now += backoff.remainingMs(down);
+    }
+    expect(waits).toEqual([30_000, 60_000, 120_000, 240_000, 300_000, 300_000]);
+    expect(task).toHaveBeenCalledTimes(7);
+  });
+
+  it('counts the wait from the start of the failing cycle, so the next tick is not missed', async () => {
+    const backoff = new InstanceBackoff(() => now);
+    for (let i = 0; i < 2; i += 1) {
+      const context = cycle(backoff);
+      // The call only fails when the client times out, well into the cycle.
+      await context.runInstance('sonarr', async () => { now += 29_000; return fail(); }, down).catch(() => {});
+      now = context.startedAtMs + 30_000;
+    }
+    expect(backoff.remainingMs(down)).toBe(0);
+    const task = vi.fn(async () => 'ok');
+    await expect(cycle(backoff).runInstance('sonarr', task, down)).resolves.toBe('ok');
+  });
+
+  it('skips a backed-off instance at once, without waiting for or taking a slot', async () => {
+    const backoff = new InstanceBackoff(() => now);
+    for (let i = 0; i < 2; i += 1) {
+      await cycle(backoff).runInstance('sonarr', fail, down).catch(() => {});
+    }
+    now += 10_000;
+
+    const context = cycle(backoff);
+    let releaseSlot = () => {};
+    const holder = context.runInstance('radarr', () => new Promise<void>((resolve) => { releaseSlot = resolve; }));
+    await vi.waitFor(() => expect(context.getMetrics().maxInstanceConcurrency).toBe(1));
+    const blocked = vi.fn(fail);
+
+    // The only slot is still held: a skip that queued for it would never settle here.
+    await expect(context.runInstance('sonarr', blocked, down)).rejects.toThrow(
+      'Skipped after 2 failed polls in a row (last error: connect ETIMEDOUT); next try in 20s',
+    );
+    expect(blocked).not.toHaveBeenCalled();
+    expect(context.getMetrics().instanceFailures).toBe(1);
+    releaseSlot();
+    await holder;
+  });
+
+  it('starts over after a success or an edit to the connection', async () => {
+    const backoff = new InstanceBackoff(() => now);
+    for (let i = 0; i < 3; i += 1) {
+      await cycle(backoff).runInstance('sonarr', fail, down).catch(() => {});
+      now += backoff.remainingMs(down);
+    }
+    expect(backoff.failures(down)).toBe(3);
+
+    // Edited (say, a fixed URL): polled straight away.
+    const edited = { ...down, version: 2 };
+    expect(backoff.remainingMs(edited)).toBe(0);
+    expect(backoff.failures(edited)).toBe(0);
+    await cycle(backoff).runInstance('sonarr', async () => 'ok', edited);
+
+    // After a success the next failure is a blip again.
+    await cycle(backoff).runInstance('sonarr', fail, edited).catch(() => {});
+    expect(backoff.failures(edited)).toBe(1);
+    expect(backoff.remainingMs(edited)).toBe(0);
+  });
+
+  it('never skips without a tracker or an instance', async () => {
+    const backoff = new InstanceBackoff(() => now);
+    for (let i = 0; i < 3; i += 1) {
+      await createPollingCycleContext(async () => ({})).runInstance('sonarr', fail, down).catch(() => {});
+      await cycle(backoff).runInstance('sonarr', fail).catch(() => {});
+    }
+    expect(backoff.failures(down)).toBe(0);
   });
 });
