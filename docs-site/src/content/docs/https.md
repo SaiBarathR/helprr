@@ -76,6 +76,10 @@ Each recipe uses Helprr's default port, 3050; use yours if you changed it. After
   cannot reach a `*.ts.net` or public address. Set it to Helprr's address on your
   network, such as `http://192.168.1.10:3050`, or, with the port on `127.0.0.1`, an
   address from the bullet above. Magnet links need neither.
+- **Compression**: nothing to set. Helprr gzips its pages and its data
+  (`application/json`) itself, and a proxy passes that on. A proxy that compresses on its
+  own should list `application/json` among its types too, for any answer it asks Helprr
+  for uncompressed.
 
 ## Tailscale Serve
 
