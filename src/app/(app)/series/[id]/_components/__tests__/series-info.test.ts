@@ -56,6 +56,15 @@ describe('series page formatting', () => {
     expect(rows.some((row) => row.label === 'Tags' || row.label === 'Path' || row.label === 'Root Folder')).toBe(false);
   });
 
+  it("shows Sonarr's Monitor New Seasons setting, not the series' own monitored flag", () => {
+    const newSeasons = (extra: Record<string, unknown>) => buildSeriesInfoRows({
+      series: series(extra), tmdbData: null, animeDetail: null, qualityProfileName: undefined, tagLabels: [], rootFolderPath: undefined,
+    }).find((row) => row.label === 'New Seasons')?.value;
+    expect(newSeasons({ monitored: false, monitorNewItems: 'all' })).toBe('Monitored');
+    expect(newSeasons({ monitored: true, monitorNewItems: 'none' })).toBe('Not Monitored');
+    expect(newSeasons({ monitored: true })).toBeUndefined();
+  });
+
   it('lists season details only for seasons with statistics', () => {
     const rows = buildSeasonDetailRows(series({ seasons: [
       { seasonNumber: 0, statistics: { episodeFileCount: 0, episodeCount: 0, totalEpisodeCount: 2, sizeOnDisk: 0 } },
