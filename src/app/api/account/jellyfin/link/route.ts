@@ -19,6 +19,7 @@ import {
 import { withApiLogging } from '@/lib/api-logger';
 import { readLoginCredentials } from '@/lib/server/login-input';
 import { refreshRecommendationsAfterLink } from '@/lib/recommendations/engine';
+import { recordFailedSignIn, recordSecurityEvent } from '@/lib/security-audit';
 
 /**
  * Connect the signed-in member's own Jellyfin account.
@@ -71,6 +72,8 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     if (result.reason === 'invalid_credentials') {
       await recordUsernameFailure(username, password);
       await recordGlobalLoginFailure();
+      // A wrong Jellyfin password from a signed-in session counts as a failed sign-in.
+      await recordFailedSignIn(request, { username, method: 'jellyfin', actor: auth.user });
       return NextResponse.json({ error: INVALID_CREDENTIALS }, { status: 401 });
     }
     return NextResponse.json({ error: JELLYFIN_UNAVAILABLE }, { status: 502 });
@@ -80,6 +83,12 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   // this profile is already linked to. Without this a member could authenticate
   // as somebody else and then watch, resume, and record history as them.
   if (auth.user.jellyfinUserId && auth.user.jellyfinUserId !== result.userId) {
+    await recordFailedSignIn(request, {
+      username,
+      method: 'jellyfin-wrong-account',
+      nameIsAccount: true,
+      actor: auth.user,
+    });
     return NextResponse.json({ error: WRONG_ACCOUNT }, { status: 409 });
   }
 
@@ -98,6 +107,15 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
       }
       throw error;
     }
+    // The profile can now sign in with this Jellyfin account.
+    await recordSecurityEvent(request, {
+      actor: auth.user,
+      action: 'USER_UPDATED',
+      targetType: 'user',
+      targetId: auth.user.id,
+      targetLabel: auth.user.username,
+      fields: ['jellyfinUserId'],
+    });
     // Recommendations now read this Jellyfin user's history. A failure here
     // only delays that until the profile's next rebuild, so it does not fail the link.
     await refreshRecommendationsAfterLink(auth.user.id).catch((error) =>

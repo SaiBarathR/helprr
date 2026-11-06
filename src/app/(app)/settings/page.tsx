@@ -148,7 +148,7 @@ export default function SettingsIndexPage() {
             iconBg="bg-amber-500/10"
             iconColor="text-amber-400"
             label="Operation audit"
-            subtitle="Audit log of manage edits, deletes, imports"
+            subtitle="Media edits, deletes, imports; sign-ins and account changes"
           />
         </GroupedSection>
       )}

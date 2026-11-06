@@ -8,6 +8,7 @@ import { validateImportSectionLimits } from '@/lib/settings-import/limits';
 import { runImportFollowUps, type ImportWarning } from '@/lib/settings-import/follow-ups';
 import { applySettingsImport, type ImportApplied, type ImportOutcome } from '@/lib/settings-import/run-import';
 import type { ImportRequestBody } from '@/lib/settings-import/shared';
+import { recordSecurityEvent } from '@/lib/security-audit';
 
 interface ImportResult {
   applied: ImportApplied;
@@ -100,6 +101,19 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
       { status: 500 }
     );
   }
+
+  // The sections that wrote something, by name. Service connections and user
+  // accounts are the ones an admin most needs to see were replaced.
+  const sections = Object.entries(outcome.applied)
+    .filter(([, value]) => (Array.isArray(value) ? value.length > 0 : Boolean(value)))
+    .map(([name]) => name);
+  if (outcome.discoverLayoutApplied) sections.push('discoverLayout');
+  await recordSecurityEvent(request, {
+    actor: auth.user,
+    action: 'SETTINGS_IMPORTED',
+    targetType: 'settings',
+    fields: sections,
+  });
 
   // Everything is committed. Bring this server in line with it; a step that
   // fails comes back as a warning the operator can retry

@@ -9,6 +9,7 @@ import {
 } from '@/lib/permissions';
 import { isCapability } from '@/lib/capabilities';
 import { withApiLogging } from '@/lib/api-logger';
+import { recordSecurityEvent } from '@/lib/security-audit';
 
 const TEMPLATES = new Set(['admin', 'member']);
 
@@ -77,6 +78,23 @@ async function putHandler(
   }
 
   const updated = await prisma.user.update({ where: { id }, data });
+  // The capabilities whose effective value changed, by name.
+  const before = effectiveCapabilities(user);
+  const after = effectiveCapabilities(updated);
+  const fields = [
+    ...(updated.template !== user.template ? ['template'] : []),
+    ...Object.keys(after).filter((cap) => after[cap as keyof typeof after] !== before[cap as keyof typeof before]),
+  ];
+  if (fields.length > 0) {
+    await recordSecurityEvent(request, {
+      actor: admin.user,
+      action: 'USER_PERMISSIONS_CHANGED',
+      targetType: 'user',
+      targetId: id,
+      targetLabel: updated.username,
+      fields,
+    });
+  }
   return NextResponse.json({
     template: updated.template,
     overrides: parsePermissions(updated.permissions),

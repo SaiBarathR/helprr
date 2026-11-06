@@ -14,6 +14,7 @@ import {
 } from '@/lib/login-rate-limit';
 import { boundedBodyErrorResponse, readBoundedJson } from '@/lib/server/bounded-body';
 import { withApiLogging } from '@/lib/api-logger';
+import { recordFailedSignIn, recordSecurityEvent } from '@/lib/security-audit';
 
 const BODY_MAX_BYTES = 8 * 1024;
 
@@ -77,6 +78,8 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   if (!(await verifyUserPassword(user, currentPassword))) {
     await recordUsernameFailure(user.username, currentPassword);
     await recordGlobalLoginFailure();
+    // A guess at the password from a signed-in session counts as a failed sign-in.
+    await recordFailedSignIn(request, { username: user.username, method: 'password', user, actor: user });
     // 403, not 401: the client sends every 401 to /login, and the session is fine.
     return NextResponse.json({ error: 'Current password is incorrect' }, { status: 403 });
   }
@@ -112,6 +115,16 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
         { status: 409 }
       );
     }
+    await recordSecurityEvent(request, {
+      actor: user,
+      action: 'PASSWORD_CHANGED',
+      targetType: 'user',
+      targetId: user.id,
+      targetLabel: user.username,
+      fields: ['password'],
+      // The user's other sessions, revoked with the change.
+      count: result.revoked,
+    });
     return NextResponse.json({ revokedSessions: result.revoked });
   } catch (error) {
     if (error instanceof SessionEndedError) {

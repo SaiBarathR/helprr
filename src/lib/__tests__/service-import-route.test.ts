@@ -36,7 +36,7 @@ describe('/api/services/import', () => {
   it('passes the chosen apps on', async () => {
     const items = [{ id: 'seerr:sonarr:0' }, { id: 'prowlarr:5', url: 'http://nas:8990', apiKey: 'k', label: 'Anime' }];
     expect((await post({ items })).status).toBe(200);
-    expect(mocks.importServices).toHaveBeenCalledWith(items);
+    expect(mocks.importServices).toHaveBeenCalledWith(items, expect.any(Function));
   });
 
   it.each([

@@ -29,7 +29,7 @@ beforeEach(() => {
 
 describe('claimFirstAdmin', () => {
   it('creates the admin with the bootstrap id and attaches ownerless rows', async () => {
-    expect(await claimFirstAdmin(good)).toEqual({ id: 'user-bootstrap-admin', role: 'admin' });
+    expect(await claimFirstAdmin(good)).toEqual({ id: 'user-bootstrap-admin', username: 'Owner', role: 'admin' });
     expect(mocks.create).toHaveBeenCalledWith({ data: expect.objectContaining({ id: 'user-bootstrap-admin', username: 'Owner', role: 'admin', status: 'active', passwordHash: 'scrypt$hash' }) });
     expect(mocks.attach).toHaveBeenCalled();
   });

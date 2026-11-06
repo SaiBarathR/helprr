@@ -10,6 +10,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 export const CLEANUP_HISTORY_RETENTION_DAYS = 90;
 export const FILE_OPERATION_AUDIT_RETENTION_DAYS = 365;
+export const SECURITY_AUDIT_RETENTION_DAYS = 365;
 // Recommendation events: impressions are only useful while fatigue decay can
 // still see them; clicks/plays age out after a year. Explicit feedback
 // (like/dislike/not_interested) is deliberately NOT pruned — "never show me
@@ -31,6 +32,7 @@ type RetentionDatabase = Pick<
   | 'archiveJobEvent'
   | 'archiveJob'
   | 'creatorVideo'
+  | 'securityAuditEvent'
 >;
 
 export interface RetentionCounts {
@@ -43,6 +45,7 @@ export interface RetentionCounts {
   twitchJobEvents: number;
   twitchJobs: number;
   twitchVideos: number;
+  securityAudit: number;
 }
 
 export type RetentionImageResult = ImageCacheRetentionResult | {
@@ -110,6 +113,7 @@ export async function runRetentionSweep(
     twitchJobEvents,
     twitchJobs,
     twitchVideos,
+    securityAudit,
   ] = await Promise.all([
     database.notificationHistory.deleteMany({
       where: { createdAt: { lt: notificationCutoff } },
@@ -170,6 +174,9 @@ export async function runRetentionSweep(
         lastSeenAt: { lt: new Date(nowMs - TWITCH_VIDEO_RETENTION_DAYS * DAY_MS) },
       },
     }),
+    database.securityAuditEvent.deleteMany({
+      where: { createdAt: { lt: new Date(nowMs - SECURITY_AUDIT_RETENTION_DAYS * DAY_MS) } },
+    }),
   ]);
 
   let imageCache: RetentionImageResult;
@@ -194,6 +201,7 @@ export async function runRetentionSweep(
       twitchJobEvents: twitchJobEvents.count,
       twitchJobs: twitchJobs.count,
       twitchVideos: twitchVideos.count,
+      securityAudit: securityAudit.count,
     },
     imageCache,
   };

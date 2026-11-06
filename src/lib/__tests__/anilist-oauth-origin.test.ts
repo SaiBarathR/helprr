@@ -77,6 +77,8 @@ beforeEach(() => {
   mocks.fetchViewer.mockResolvedValue({ id: 1, name: 'viewer' });
   mocks.resolveApiKeyForService.mockResolvedValue('not-a-real-secret');
   mocks.findFirst.mockResolvedValue({ id: 'anilist-1' });
+  mocks.update.mockResolvedValue({ id: 'anilist-1' });
+  mocks.create.mockResolvedValue({ id: 'anilist-1' });
   mocks.updateMany.mockResolvedValue({ count: 1 });
 });
 

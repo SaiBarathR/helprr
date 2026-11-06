@@ -262,7 +262,11 @@ async function testFailure(error: unknown, url: string): Promise<{ error: string
 }
 
 /** Tests each chosen app from Helprr, then saves it as a new instance. One at a time, so names never collide. */
-export async function importServices(items: ImportItem[]): Promise<ImportResult[]> {
+export async function importServices(
+  items: ImportItem[],
+  /** Called once per saved connection, e.g. to audit it. */
+  onCreated?: (connection: { id: string; type: ImportType; label: string }) => Promise<void>,
+): Promise<ImportResult[]> {
   const { resolved } = await resolveCandidates({ probe: false });
   const results: ImportResult[] = [];
   for (const item of items) {
@@ -307,6 +311,7 @@ export async function importServices(items: ImportItem[]): Promise<ImportResult[
       await ensureDefaultForType(candidate.type);
       clearConnectionMemo();
       await invalidateReferenceLabels(candidate.type.toLowerCase(), connection.id);
+      await onCreated?.({ id: connection.id, type: candidate.type, label });
       results.push({ id: item.id, ok: true, label });
     } catch (error) {
       const duplicate = (error as { code?: string }).code === 'P2002';

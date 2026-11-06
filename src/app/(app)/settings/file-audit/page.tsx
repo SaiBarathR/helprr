@@ -7,6 +7,9 @@ import { useQuery } from '@tanstack/react-query';
 import { jsonFetcher } from '@/lib/query-fetch';
 import { Badge } from '@/components/ui/badge';
 import { formatBytes } from '@/lib/format';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
+import { SecurityAuditList } from './security-audit-list';
 
 interface AuditRecord {
   id: string;
@@ -68,12 +71,10 @@ function timeAgo(iso: string): string {
   return Number.isNaN(d.getTime()) ? '' : formatDistanceToNow(d, { addSuffix: true });
 }
 
+type AuditTab = 'operations' | 'security';
+
 export default function FileAuditPage() {
-  const { data, isLoading, isError } = useQuery({
-    queryKey: ['file-audit'],
-    queryFn: jsonFetcher<{ records: AuditRecord[]; total: number }>('/api/file-audit'),
-  });
-  const records = data?.records ?? [];
+  const [tab, setTab] = useRouteViewState<AuditTab>('FileAuditPage:tab', 'operations');
 
   return (
     <div className="animate-content-in pb-12">
@@ -87,10 +88,35 @@ export default function FileAuditPage() {
       <div className="mb-4 px-4">
         <h1 className="text-2xl font-semibold">Operation audit</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          File edits/imports and destructive media, torrent, and queue operations. Records are kept for 365 days.
+          {tab === 'security'
+            ? 'Sign-ins, and changes to accounts, permissions, sessions, connections, and settings imports. Names what changed, never the values. Records are kept for 365 days.'
+            : 'File edits/imports and destructive media, torrent, and queue operations. Records are kept for 365 days.'}
         </p>
       </div>
 
+      <Tabs value={tab} onValueChange={(value) => setTab(value as AuditTab)} className="gap-0">
+        <div className="mb-3 px-4">
+          <TabsList aria-label="Audit logs" className="flex w-full h-auto bg-muted/50 p-0.5 gap-0.5">
+            <TabsTrigger value="operations" className="flex-1 text-xs font-medium py-1.5 px-2 data-[state=active]:shadow-sm">Operations</TabsTrigger>
+            <TabsTrigger value="security" className="flex-1 text-xs font-medium py-1.5 px-2 data-[state=active]:shadow-sm">Security</TabsTrigger>
+          </TabsList>
+        </div>
+        <TabsContent value="operations"><OperationsList /></TabsContent>
+        <TabsContent value="security"><SecurityAuditList /></TabsContent>
+      </Tabs>
+    </div>
+  );
+}
+
+function OperationsList() {
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ['file-audit'],
+    queryFn: jsonFetcher<{ records: AuditRecord[]; total: number }>('/api/file-audit'),
+  });
+  const records = data?.records ?? [];
+
+  return (
+    <>
       {isLoading ? (
         <div className="flex justify-center py-12"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
       ) : isError ? (
@@ -140,6 +166,6 @@ export default function FileAuditPage() {
           })}
         </div>
       )}
-    </div>
+    </>
   );
 }

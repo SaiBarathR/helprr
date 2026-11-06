@@ -10,6 +10,7 @@ import {
 } from '@/lib/username-policy';
 import { toSafeUser } from '@/lib/user-dto';
 import { withApiLogging } from '@/lib/api-logger';
+import { recordSecurityEvent } from '@/lib/security-audit';
 
 const ROLES = new Set(['admin', 'member']);
 const TEMPLATES = new Set(['admin', 'member']);
@@ -79,6 +80,21 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
         jellyfinUserId,
         seerrUserId,
       },
+    });
+    await recordSecurityEvent(request, {
+      actor: admin.user,
+      action: 'USER_CREATED',
+      targetType: 'user',
+      targetId: created.id,
+      targetLabel: created.username,
+      fields: [
+        'username',
+        'displayName',
+        'role',
+        ...(passwordHash ? ['password'] : []),
+        ...(jellyfinUserId ? ['jellyfinUserId'] : []),
+        ...(seerrUserId ? ['seerrUserId'] : []),
+      ],
     });
     return NextResponse.json(toSafeUser(created), { status: 201 });
   } catch (error) {

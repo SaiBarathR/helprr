@@ -213,8 +213,10 @@ export async function clearAniListTokens(): Promise<void> {
   });
 }
 
-export async function deleteAniListConnection(): Promise<void> {
-  await prisma.serviceConnection.deleteMany({ where: { type: 'ANILIST' } });
+/** True when there was a connection to remove. */
+export async function deleteAniListConnection(): Promise<boolean> {
+  const { count } = await prisma.serviceConnection.deleteMany({ where: { type: 'ANILIST' } });
+  return count > 0;
 }
 
 export async function getValidAccessToken(options: { forceRefresh?: boolean } = {}): Promise<{

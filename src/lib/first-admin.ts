@@ -80,7 +80,7 @@ export class FirstAdminInputError extends Error {
  * claims racing past the empty-table check only one insert can succeed; the other
  * hits the primary key and is told an admin already exists.
  */
-export async function claimFirstAdmin(input: { username: unknown; password: unknown }): Promise<{ id: string; role: 'admin' }> {
+export async function claimFirstAdmin(input: { username: unknown; password: unknown }): Promise<{ id: string; username: string; role: 'admin' }> {
   if (typeof input.username !== 'string') throw new FirstAdminInputError('Username is required');
   const usernameError = localUsernameValidationError(input.username);
   if (usernameError) throw new FirstAdminInputError(usernameError);
@@ -117,7 +117,7 @@ export async function claimFirstAdmin(input: { username: unknown; password: unkn
   firstAdminDone = true;
   console.log(`[Helprr] First admin created in the browser (username: ${username})`);
   await attachOwnerlessRowsToAdmin();
-  return { id: BOOTSTRAP_ADMIN_ID, role: 'admin' };
+  return { id: BOOTSTRAP_ADMIN_ID, username, role: 'admin' };
 }
 
 // The local-address rule lives in its own module so client code can use it too.

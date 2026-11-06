@@ -12,9 +12,11 @@ import { toSafeUser } from '@/lib/user-dto';
 import { parsePermissions } from '@/lib/permissions';
 import { withApiLogging } from '@/lib/api-logger';
 import { refreshRecommendationsAfterLink } from '@/lib/recommendations/engine';
+import { changedFieldNames, recordSecurityEvent } from '@/lib/security-audit';
 
 const ROLES = new Set(['admin', 'member']);
 const STATUSES = new Set(['active', 'pending', 'disabled']);
+const AUDITED_FIELDS = ['username', 'displayName', 'role', 'status', 'template', 'jellyfinUserId', 'seerrUserId'] as const;
 
 async function getHandler(
   _request: NextRequest,
@@ -132,13 +134,15 @@ async function patchHandler(
       const updated = await tx.user.update({ where: { id }, data });
       // Admin password resets do not prove possession of any existing session,
       // so revoke every live session for the target in the same transaction.
+      let revokedSessions = 0;
       if (data.passwordHash !== undefined) {
-        await tx.session.updateMany({
+        const revoked = await tx.session.updateMany({
           where: { userId: id, revokedAt: null },
           data: { revokedAt: new Date() },
         });
+        revokedSessions = revoked.count;
       }
-      return { ok: true as const, updated };
+      return { ok: true as const, updated, revokedSessions };
     });
     if (!result.ok) {
       return NextResponse.json(
@@ -154,6 +158,22 @@ async function patchHandler(
         console.error('[Users] Failed to refresh recommendations after a Jellyfin link change:', error),
       );
     }
+    const fields = changedFieldNames(existing, result.updated, AUDITED_FIELDS);
+    if (JSON.stringify(existing.permissions) !== JSON.stringify(result.updated.permissions)) fields.push('permissions');
+    // A reset password revokes the user's sessions in the same transaction.
+    if (data.passwordHash !== undefined) fields.push('password');
+    if (fields.length > 0) {
+      await recordSecurityEvent(request, {
+        actor: admin.user,
+        action: 'USER_UPDATED',
+        targetType: 'user',
+        targetId: id,
+        targetLabel: result.updated.username,
+        fields,
+        // Sessions the password reset revoked; 1 for any other change.
+        ...(data.passwordHash !== undefined ? { count: result.revokedSessions } : {}),
+      });
+    }
     return NextResponse.json(toSafeUser(result.updated));
   } catch (error) {
     if (error && typeof error === 'object' && (error as { code?: string }).code === 'P2002') {
@@ -165,7 +185,7 @@ async function patchHandler(
 }
 
 async function deleteHandler(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
   const admin = await requireAdmin();
@@ -192,6 +212,13 @@ async function deleteHandler(
   if (!ok) {
     return NextResponse.json({ error: 'Cannot delete the last active admin' }, { status: 409 });
   }
+  await recordSecurityEvent(request, {
+    actor: admin.user,
+    action: 'USER_DELETED',
+    targetType: 'user',
+    targetId: id,
+    targetLabel: existing.username,
+  });
   return NextResponse.json({ ok: true });
 }
 

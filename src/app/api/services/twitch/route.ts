@@ -5,6 +5,7 @@ import { withApiLogging } from '@/lib/api-logger';
 import { isNonEmptyString, resolveApiKeyForService } from '@/lib/service-connection-secrets';
 import { requestTwitchAppToken, TwitchCredentialsRejectedError, TWITCH_HELIX_URL } from '@/lib/twitch/helix';
 import { encryptTwitchToken } from '@/lib/twitch/token-cipher';
+import { recordSecurityEvent, serviceTargetLabel } from '@/lib/security-audit';
 
 async function postHandler(request: NextRequest): Promise<NextResponse> {
   const auth = await requireUserCapability('settings.instances');
@@ -40,19 +41,39 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     tokenExpiresAt: token.expiresAt,
   };
   const existing = await prisma.serviceConnection.findFirst({ where: { type: 'TWITCH' } });
-  if (existing) {
-    await prisma.serviceConnection.update({ where: { id: existing.id }, data });
-  } else {
-    await prisma.serviceConnection.create({ data: { type: 'TWITCH', label: 'Twitch', ...data } });
+  const saved = existing
+    ? await prisma.serviceConnection.update({ where: { id: existing.id }, data })
+    : await prisma.serviceConnection.create({ data: { type: 'TWITCH', label: 'Twitch', ...data } });
+  // The app token is refreshed on every save; only the credentials typed in count.
+  const fields = existing
+    ? [...(existing.externalUrl !== clientId ? ['clientId'] : []), ...(existing.apiKey !== clientSecret ? ['clientSecret'] : [])]
+    : ['clientId', 'clientSecret'];
+  if (fields.length > 0) {
+    await recordSecurityEvent(request, {
+      actor: auth.user,
+      action: existing ? 'SERVICE_UPDATED' : 'SERVICE_CREATED',
+      targetType: 'service',
+      targetId: saved.id,
+      targetLabel: serviceTargetLabel('TWITCH', 'Twitch'),
+      fields,
+    });
   }
   return NextResponse.json({ ok: true });
 }
 
-async function deleteHandler(): Promise<NextResponse> {
+async function deleteHandler(request: NextRequest): Promise<NextResponse> {
   const auth = await requireUserCapability('settings.instances');
   if (!auth.ok) return auth.response;
 
-  await prisma.serviceConnection.deleteMany({ where: { type: 'TWITCH' } });
+  const deleted = await prisma.serviceConnection.deleteMany({ where: { type: 'TWITCH' } });
+  if (deleted.count > 0) {
+    await recordSecurityEvent(request, {
+      actor: auth.user,
+      action: 'SERVICE_DELETED',
+      targetType: 'service',
+      targetLabel: serviceTargetLabel('TWITCH', 'Twitch'),
+    });
+  }
   return NextResponse.json({ ok: true });
 }
 

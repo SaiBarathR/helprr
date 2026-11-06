@@ -98,7 +98,7 @@ describe('session revocation routes', () => {
   });
 
   it('revokes only the caller own non-current sessions in bulk', async () => {
-    const response = await revokeOthers();
+    const response = await revokeOthers(request());
 
     expect(response.status).toBe(200);
     expect(mocks.updateMany).toHaveBeenCalledWith({
