@@ -159,4 +159,63 @@ describe('seeking a progressive transcode', () => {
     });
     expect(h.requests.at(-1)?.startTimeTicks).toBe(120 * 10_000_000);
   });
+
+  it('keeps a run of skips still gathering when a track change restarts the stream', async () => {
+    const h = await mountPlayback({ progressive: true });
+    harness = h;
+    await h.act(async () => { await h.playback().playItem(ITEM); });
+    await timeupdate(h, 100);
+    const before = h.requests.length;
+
+    await h.act(async () => {
+      h.playback().skip(10);
+      h.playback().skip(10);
+      // Inside the run's window: the restart takes the run with it.
+      await h.playback().setAudioStream(2);
+      for (let i = 0; i < 10; i += 1) await flush();
+      await new Promise((resolve) => setTimeout(resolve, 450));
+      for (let i = 0; i < 10; i += 1) await flush();
+    });
+    // One restart, at where the run was landing, with the new track; the run's
+    // own timer does not fire a second one.
+    expect(h.requests.length).toBe(before + 1);
+    expect(h.requests.at(-1)?.startTimeTicks).toBe(120 * 10_000_000);
+    expect(h.requests.at(-1)?.audioStreamIndex).toBe(2);
+  });
+
+  it('restarts at a seek\'s target when a track change overtakes it in flight', async () => {
+    const h = await mountPlayback({ progressive: true });
+    harness = h;
+    await h.act(async () => { await h.playback().playItem(ITEM); });
+    await timeupdate(h, 100);
+
+    await h.act(async () => {
+      // The seek's restart is still stopping the old stream (no flush).
+      h.playback().seek(600);
+      await h.playback().setAudioStream(2);
+      for (let i = 0; i < 10; i += 1) await flush();
+    });
+    expect(h.requests.at(-1)?.startTimeTicks).toBe(600 * 10_000_000);
+    expect(h.requests.at(-1)?.audioStreamIndex).toBe(2);
+  });
+
+  it('keeps the skip when a second track change supersedes the first while it attaches', async () => {
+    const h = await mountPlayback({ progressive: true });
+    harness = h;
+    await h.act(async () => { await h.playback().playItem(ITEM); });
+    await timeupdate(h, 100);
+
+    h.holdStreamInfo();
+    await h.act(async () => { h.playback().skip(10); });
+    const first = h.playback().setAudioStream(2);
+    await h.act(async () => { for (let i = 0; i < 10; i += 1) await flush(); });
+    const second = h.playback().setAudioStream(3);
+    await h.act(async () => {
+      h.releaseStreamInfo();
+      await Promise.all([first, second]);
+      for (let i = 0; i < 10; i += 1) await flush();
+    });
+    expect(h.requests.at(-1)?.startTimeTicks).toBe(110 * 10_000_000);
+    expect(h.requests.at(-1)?.audioStreamIndex).toBe(3);
+  });
 });
