@@ -3,13 +3,17 @@
 import { useState } from 'react';
 import Link from '@/components/ui/app-link';
 import { toast } from 'sonner';
-import { ChevronLeft, Loader2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import { GroupedSection } from '@/components/settings/grouped-section';
 import { JellyfinConnection } from '@/components/settings/jellyfin-connection';
+import { ChangePasswordDrawer } from '@/components/settings/change-password-drawer';
+import { useMe } from '@/components/permission-provider';
 import { endSessionInThisBrowser, requestSessionLogout } from '@/lib/client-cache';
 
 export default function AccountSettingsPage() {
+  const me = useMe();
   const [signingOut, setSigningOut] = useState(false);
+  const [changingPassword, setChangingPassword] = useState(false);
   async function handleSignOut() {
     setSigningOut(true);
     try {
@@ -44,6 +48,39 @@ export default function AccountSettingsPage() {
       <div className="px-4 mb-4">
         <h1 className="text-2xl font-semibold">Account</h1>
       </div>
+
+      {me && (
+        <GroupedSection>
+          <div className="grouped-row gap-3">
+            <div className="min-w-0">
+              <div className="text-[15px] font-medium truncate">{me.name}</div>
+              {me.username && (
+                <div className="text-xs text-muted-foreground truncate">@{me.username}</div>
+              )}
+            </div>
+            <span className="text-xs text-muted-foreground capitalize shrink-0">{me.role}</span>
+          </div>
+          {/* Jellyfin-only accounts have no Helprr password to change. */}
+          {me.hasLocalPassword && (
+            <button
+              type="button"
+              onClick={() => setChangingPassword(true)}
+              className="grouped-row w-full text-left hover:bg-foreground/[0.03] active:bg-foreground/5 transition-colors"
+            >
+              <span className="text-sm font-medium">Change password</span>
+              <ChevronRight className="h-4 w-4 text-muted-foreground" />
+            </button>
+          )}
+        </GroupedSection>
+      )}
+
+      {me?.hasLocalPassword && (
+        <ChangePasswordDrawer
+          open={changingPassword}
+          onOpenChange={setChangingPassword}
+          username={me.username ?? ''}
+        />
+      )}
 
       <JellyfinConnection />
 

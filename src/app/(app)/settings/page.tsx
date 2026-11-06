@@ -259,7 +259,7 @@ export default function SettingsIndexPage() {
           iconBg="bg-red-500/10"
           iconColor="text-red-400"
           label="Account"
-          subtitle="Sign out"
+          subtitle={me?.hasLocalPassword ? 'Profile, password and sign out' : 'Profile and sign out'}
         />
       </GroupedSection>
 

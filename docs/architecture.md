@@ -233,7 +233,12 @@ proxy gives one, and to ten claims a minute per process. On boot the bootstrap
 admin is renamed to `HELPRR_ADMIN_USERNAME` only when that variable is set, so a
 name chosen at `/setup` survives a later `APP_PASSWORD` reset. An admin password change through Settings ->
 Users updates the hash and revokes all active sessions for the target in one
-transaction. `HELPRR_ADMIN_PASSWORD_RESET=true` is a separate startup recovery
+transaction. A user's own change through Settings -> Account (`POST /api/me/password`)
+checks the current password behind the same IP, per-username and global throttles as
+sign-in (a wrong one counts as a failed sign-in and returns 403, since the client sends
+every 401 to Login), then writes the hash and revokes every other session of that user in
+one transaction; the current session stays valid without a new cookie. Accounts without
+a local password (Jellyfin-only) get 409. `HELPRR_ADMIN_PASSWORD_RESET=true` is a separate startup recovery
 path for the bootstrap admin and does not revoke existing sessions, so suspected
 compromise also requires explicit session revocation.
 

@@ -35,6 +35,7 @@ const me: MePayload = {
   twitchConfigured: false,
       youtubeConfigured: false,
   jellyfinConnected: true,
+  hasLocalPassword: true,
   customHeadersEnabled: false,
 };
 
