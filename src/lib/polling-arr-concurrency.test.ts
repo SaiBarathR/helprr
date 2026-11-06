@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { createPollingCycleContext } from '@/lib/polling-cycle';
+import { createPollingCycleContext, InstanceBackoff } from '@/lib/polling-cycle';
 
 const mocks = vi.hoisted(() => ({
   getSonarrClients: vi.fn(),
@@ -68,15 +68,15 @@ type InternalPollingService = {
   pollLidarr: (context: ReturnType<typeof cycleContext>) => Promise<void>;
 };
 
-function cycleContext() {
+function cycleContext(backoff?: InstanceBackoff) {
   return createPollingCycleContext(
     async () => ({ notificationGroupingEnabled: false }),
-    { instanceConcurrency: 2 },
+    { instanceConcurrency: 2, backoff, startedAtMs: 0 },
   );
 }
 
 function connection(id: string) {
-  return { id, label: id, isDefault: true };
+  return { id, label: id, isDefault: true, updatedAt: new Date(0) };
 }
 
 function queue(totalRecords: number, records: unknown[] = []) {
@@ -323,5 +323,31 @@ describe('Arr polling concurrency', () => {
     await jobReports.run(report, () => service.pollSonarr(cycleContext()));
 
     expect(report.failure).toBe('tags unavailable');
+  });
+
+  it.each([
+    ['sonarr', 'pollSonarr', mocks.getSonarrClients],
+    ['radarr', 'pollRadarr', mocks.getRadarrClients],
+    ['lidarr', 'pollLidarr', mocks.getLidarrClients],
+  ] as const)('stops calling a %s instance that keeps failing, for a while', async (kind, poll, getClients) => {
+    const getQueue = vi.fn(async () => { throw new Error('connect ETIMEDOUT'); });
+    const client = { getTags: async () => [], getQueue, getHistory: async () => history(), getHealth: async () => [] };
+    getClients.mockResolvedValue([{ connection: connection(`${kind}-1`), client }]);
+    const service = new PollingService() as unknown as InternalPollingService;
+    const backoff = new InstanceBackoff(() => 0);
+    const reports: JobReport[] = [];
+
+    for (let i = 0; i < 3; i += 1) {
+      const report: JobReport = { failure: null, skipped: false };
+      reports.push(report);
+      await jobReports.run(report, () => service[poll](cycleContext(backoff)));
+    }
+
+    expect(getQueue).toHaveBeenCalledTimes(2);
+    expect(reports.map((report) => report.failure)).toEqual([
+      'connect ETIMEDOUT',
+      'connect ETIMEDOUT',
+      'Skipped after 2 failed polls in a row (last error: connect ETIMEDOUT); next try in 30s',
+    ]);
   });
 });

@@ -245,7 +245,7 @@ export async function pollSonarr(context: CycleContext) {
         healthHash,
       }, { scope: 'polling' });
       return counts;
-    }).catch((error) => {
+    }, { id: instanceId, version: connection.updatedAt.getTime() }).catch((error) => {
       noteJobFailure(error);
       logger.warn('Sonarr instance poll failed', { instanceId, error: errorMessage(error) }, { scope: 'polling' });
       return counts;

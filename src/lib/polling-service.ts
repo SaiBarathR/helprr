@@ -11,7 +11,7 @@ import { parseBandwidthSchedule } from '@/lib/bandwidth-scheduler/parse';
 import { pickActiveRule } from '@/lib/bandwidth-scheduler/active-rule';
 import { logger, redact } from '@/lib/logger';
 import { jobReports, noteJobFailure, noteJobSkipped, type JobReport } from '@/lib/polling-job-report';
-import { createPollingCycleContext } from '@/lib/polling-cycle';
+import { createPollingCycleContext, InstanceBackoff } from '@/lib/polling-cycle';
 import { refreshScheduledAlertOccurrences, checkScheduledAlerts } from '@/lib/scheduled-alerts/delivery';
 import { getCachedTaggedLibrary } from '@/lib/cache/tagged-library';
 import { runRetentionSweep } from '@/lib/retention';
@@ -67,22 +67,19 @@ type AnimeAutoMapRun = {
  */
 async function warmLibrary<C, T extends object>(
   scope: string,
-  getInstances: () => Promise<Array<{ connection: { id: string; label: string }; client: C }>>,
+  getInstances: () => Promise<Array<{ connection: { id: string; label: string; updatedAt: Date }; client: C }>>,
   fetchOne: (client: C) => Promise<T[]>,
+  backoff: InstanceBackoff,
 ): Promise<void> {
-  let configured = 0;
-  const result = await getCachedTaggedLibrary({
-    scope,
-    cacheKeySeed: 'all',
-    getInstances: async () => {
-      const instances = await getInstances();
-      configured = instances.length;
-      return instances;
-    },
-    fetchOne,
-  });
-  // A load this warm joined (or a cache hit) never asked for the instances.
-  if (!result.complete && (configured || (await getInstances()).length) > 0) {
+  // An instance the polls are skipping would only wait out its timeout, and a
+  // load missing it is never cached, so this warm could not succeed anyway.
+  const instances = await getInstances();
+  const skipped = instances.find(({ connection }) =>
+    backoff.remainingMs({ id: connection.id, version: connection.updatedAt.getTime() }) > 0);
+  if (skipped) throw new Error(`${scope}: ${skipped.connection.label} is skipped after repeated failures`);
+  const result = await getCachedTaggedLibrary({ scope, cacheKeySeed: 'all', getInstances, fetchOne });
+  // Counted here: a load this warm joined (or a cache hit) never asks for them.
+  if (!result.complete && instances.length > 0) {
     throw new Error(`${scope}: an instance did not answer`);
   }
 }
@@ -171,6 +168,8 @@ export class PollingService {
   private sourceStartedAt = new Map<string, string>();
   private sourceHealth = new Map<string, Omit<PollingSourceHealth, 'source' | 'runningSince'>>();
   private lastCycle: PollingHealth['lastCycle'] = null;
+  // Skips an Arr instance that keeps failing so it stops holding a shared slot.
+  private instanceBackoff = new InstanceBackoff();
   // Epoch ms of the last retention sweep. The poll loop runs every ~30s but
   // the sweep is throttled to once/day; 0 = run on first cycle.
   private lastRetentionPruneAt = 0;
@@ -262,6 +261,7 @@ export class PollingService {
       const startedAt = performance.now();
       const context = createPollingCycleContext(getOrCreateAppSettings, {
         instanceConcurrency: 2,
+        backoff: this.instanceBackoff,
       });
       const reports = new Map<string, JobReport>();
       const sourceTask = (
@@ -708,9 +708,9 @@ export class PollingService {
     // allSettled + per-scope logging: one failing scope must not abort or mask
     // the other warmups.
     const warms = [
-      { scope: 'sonarr', run: () => warmLibrary('sonarr', getSonarrClients, (c) => c.getSeries()) },
-      { scope: 'radarr', run: () => warmLibrary('radarr', getRadarrClients, (c) => c.getMovies()) },
-      { scope: 'lidarr', run: () => warmLibrary('lidarr', getLidarrClients, (c) => c.getArtists()) },
+      { scope: 'sonarr', run: () => warmLibrary('sonarr', getSonarrClients, (c) => c.getSeries(), this.instanceBackoff) },
+      { scope: 'radarr', run: () => warmLibrary('radarr', getRadarrClients, (c) => c.getMovies(), this.instanceBackoff) },
+      { scope: 'lidarr', run: () => warmLibrary('lidarr', getLidarrClients, (c) => c.getArtists(), this.instanceBackoff) },
     ] as const;
     const results = await Promise.allSettled(warms.map((w) => w.run()));
     results.forEach((result, i) => {

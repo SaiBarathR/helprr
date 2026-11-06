@@ -197,7 +197,7 @@ export async function pollLidarr(context: CycleContext) {
         queueCount: currentSnapshots.length,
       }, { scope: 'polling' });
       return counts;
-    }).catch((error) => {
+    }, { id: instanceId, version: connection.updatedAt.getTime() }).catch((error) => {
       noteJobFailure(error);
       logger.warn('Lidarr instance poll failed', { instanceId, error: errorMessage(error) }, { scope: 'polling' });
       return counts;

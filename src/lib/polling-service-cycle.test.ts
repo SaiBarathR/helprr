@@ -29,7 +29,12 @@ vi.mock('@/lib/db', () => ({
     notificationHistory: { findFirst: mocks.findHistory },
     appSettings: { update: mocks.updateSettings },
     user: { findMany: vi.fn(async () => []) },
-    pollingState: { findMany: mocks.findStates, upsert: mocks.upsertState, update: mocks.updateState },
+    pollingState: {
+      findMany: mocks.findStates,
+      upsert: mocks.upsertState,
+      update: mocks.updateState,
+      findUnique: vi.fn(async () => ({ lastQueueIds: [], lastHistoryDate: null, lastHistoryId: null, lastHistorySeenIds: [] })),
+    },
   },
 }));
 
@@ -295,7 +300,7 @@ describe('cache warming health', () => {
     const internal = stubCycle(service);
     internal.warmCaches = (PollingService.prototype as unknown as { warmCaches: () => Promise<void> }).warmCaches.bind(service);
     const services = await import('@/lib/service-helpers');
-    vi.spyOn(services, 'getSonarrClients').mockResolvedValue([{ connection: { id: 's1', label: 'Sonarr' }, client: {} }] as never);
+    vi.spyOn(services, 'getSonarrClients').mockResolvedValue([{ connection: { id: 's1', label: 'Sonarr', updatedAt: new Date(0) }, client: {} }] as never);
     // Sonarr has one configured instance, which failed: the loader still fulfills,
     // incomplete. Radarr and Lidarr have none, which is not a failure.
     mocks.loadLibrary.mockImplementation(async (opts: { getInstances: () => Promise<unknown[]> }) => {
@@ -312,13 +317,48 @@ describe('cache warming health', () => {
   });
 });
 
+describe('an Arr instance that keeps failing', () => {
+  it('is skipped by later cycles, cache warming included, and still shows as failing', async () => {
+    const service = new PollingService();
+    const internal = stubCycle(service);
+    const proto = PollingService.prototype as unknown as Record<string, (...args: unknown[]) => Promise<void>>;
+    internal.pollSonarr = proto.pollSonarr.bind(service);
+    internal.warmCaches = proto.warmCaches.bind(service);
+    const getQueue = vi.fn(async () => { throw new Error('connect ETIMEDOUT'); });
+    const getSeries = vi.fn(async () => { throw new Error('connect ETIMEDOUT'); });
+    const services = await import('@/lib/service-helpers');
+    vi.spyOn(services, 'getSonarrClients').mockResolvedValue([{
+      connection: { id: 's1', label: 'Sonarr', updatedAt: new Date(0) },
+      client: { getTags: async () => [], getQueue, getSeries },
+    }] as never);
+    vi.spyOn(services, 'getRadarrClients').mockResolvedValue([] as never);
+    vi.spyOn(services, 'getLidarrClients').mockResolvedValue([] as never);
+    mocks.loadLibrary.mockImplementation(async (opts: { getInstances: () => Promise<Array<{ client: unknown }>>; fetchOne: (client: unknown) => Promise<unknown> }) => {
+      const instances = await opts.getInstances();
+      await Promise.allSettled(instances.map((instance) => opts.fetchOne(instance.client)));
+      return { items: [], cached: false, available: false, complete: false };
+    });
+
+    for (let i = 0; i < 3; i += 1) await internal.poll();
+
+    // Two failed polls, then skipped; the warm stops once the polls skip it.
+    expect(getQueue).toHaveBeenCalledTimes(2);
+    expect(getSeries).toHaveBeenCalledOnce();
+    const health = (source: string) => service.getHealth().sources.find((entry) => entry.source === source);
+    expect(health('pollSonarr')?.lastError).toMatch(
+      /^Skipped after 2 failed polls in a row \(last error: connect ETIMEDOUT\); next try in \d+s$/,
+    );
+    expect(health('warmCaches')?.lastError).toBe('sonarr: Sonarr is skipped after repeated failures');
+  });
+});
+
 describe('cache warming that joins a load already running', () => {
   it('still counts a configured instance that did not answer', async () => {
     const service = new PollingService();
     const internal = stubCycle(service);
     internal.warmCaches = (PollingService.prototype as unknown as { warmCaches: () => Promise<void> }).warmCaches.bind(service);
     const services = await import('@/lib/service-helpers');
-    vi.spyOn(services, 'getSonarrClients').mockResolvedValue([{ connection: { id: 's1', label: 'Sonarr' }, client: {} }] as never);
+    vi.spyOn(services, 'getSonarrClients').mockResolvedValue([{ connection: { id: 's1', label: 'Sonarr', updatedAt: new Date(0) }, client: {} }] as never);
     vi.spyOn(services, 'getRadarrClients').mockResolvedValue([] as never);
     vi.spyOn(services, 'getLidarrClients').mockResolvedValue([] as never);
     // Joined an in-flight load: the loader never asks this warm for instances.

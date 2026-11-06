@@ -230,7 +230,7 @@ export async function pollRadarr(context: CycleContext) {
         healthHash,
       }, { scope: 'polling' });
       return counts;
-    }).catch((error) => {
+    }, { id: instanceId, version: connection.updatedAt.getTime() }).catch((error) => {
       noteJobFailure(error);
       logger.warn('Radarr instance poll failed', { instanceId, error: errorMessage(error) }, { scope: 'polling' });
       return counts;
