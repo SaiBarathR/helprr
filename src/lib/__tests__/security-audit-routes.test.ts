@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => {
   const db = {
+    $executeRaw: vi.fn(async () => 1),
     user: {
       findFirst: vi.fn(),
       findUnique: vi.fn(),
@@ -288,6 +289,8 @@ describe('users', () => {
     mocks.db.user.findUnique.mockResolvedValue({ ...member, role: 'admin' });
     mocks.db.user.count.mockResolvedValue(0);
     expect((await updateUser(req('/api/users/user-1', 'PATCH', { role: 'member' }), params('user-1'))).status).toBe(409);
+    // Demoting an admin counts the rest under the last-admin guard lock.
+    expect(mocks.db.$executeRaw).toHaveBeenCalledTimes(1);
     expect(events()).toEqual([]);
   });
 

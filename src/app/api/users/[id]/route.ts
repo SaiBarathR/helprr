@@ -13,6 +13,7 @@ import { parsePermissions } from '@/lib/permissions';
 import { withApiLogging } from '@/lib/api-logger';
 import { refreshRecommendationsAfterLink } from '@/lib/recommendations/engine';
 import { changedFieldNames, recordSecurityEvent } from '@/lib/security-audit';
+import { deleteUserUnlessLastAdmin, lockActiveAdminGuard } from '@/lib/user-deletion';
 
 const ROLES = new Set(['admin', 'member']);
 const STATUSES = new Set(['active', 'pending', 'disabled']);
@@ -126,6 +127,7 @@ async function patchHandler(
     // demotions can't both pass the guard and leave zero active admins.
     const result = await prisma.$transaction(async (tx) => {
       if (losingAdmin) {
+        await lockActiveAdminGuard(tx);
         const remaining = await tx.user.count({
           where: { role: 'admin', status: 'active', NOT: { id } },
         });
@@ -212,20 +214,7 @@ async function deleteHandler(
   const existing = await prisma.user.findUnique({ where: { id } });
   if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-  // Re-check the admin count and delete in one transaction so the last active
-  // admin can't be removed by two concurrent requests racing the guard.
-  const ok = await prisma.$transaction(async (tx) => {
-    if (existing.role === 'admin' && existing.status === 'active') {
-      const remaining = await tx.user.count({
-        where: { role: 'admin', status: 'active', NOT: { id } },
-      });
-      if (remaining === 0) return false;
-    }
-    // Cascade (schema onDelete: Cascade) drops their sessions, watchlist, push
-    // subscriptions, AniList link, and settings with them.
-    await tx.user.delete({ where: { id } });
-    return true;
-  });
+  const ok = await prisma.$transaction((tx) => deleteUserUnlessLastAdmin(tx, existing));
   if (!ok) {
     return NextResponse.json({ error: 'Cannot delete the last active admin' }, { status: 409 });
   }

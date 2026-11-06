@@ -34,6 +34,7 @@ const POLICY_GROUPS: Record<string, readonly string[]> = {
     'POST /api/account/jellyfin/link',
     'DELETE /api/account/jellyfin/link',
     'POST /api/logs/client',
+    'DELETE /api/me',
     'POST /api/me/password',
     'PATCH /api/me/settings',
     'POST /api/notifications/subscription/check',
@@ -555,7 +556,7 @@ describe('mutating API route capability matrix', () => {
   const assignments = policyAssignments();
 
   it('explicitly assigns every mutating handler exactly once', () => {
-    expect(handlers.size).toBe(241);
+    expect(handlers.size).toBe(242);
     expect([...assignments.keys()].sort()).toEqual([...handlers.keys()].sort());
   });
 
