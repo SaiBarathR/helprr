@@ -8,23 +8,30 @@ description: What Helprr's messages mean, and what to do about each one.
 ### all predefined address pools have been fully subnetted
 
 `docker compose up` stops with this when Docker has no room for another network. Each
-Compose app gets its own network, and Docker's default settings have room for about 30,
-so a computer that already runs many apps runs out. Helprr has not started; its
-volumes may already exist, which is fine. Fix it and run the same command again.
+Compose app gets at least one network of its own, and Docker's default settings have
+room for about 30, so a computer that already runs many apps runs out. Helprr has not
+started; its volumes may already exist, which is fine. Fix it and run the same command
+again.
 
-- Remove the networks no container uses (an app you stopped keeps its network until it
-  is removed):
+- Remove the networks no container uses. First look at what that would remove:
+  `docker network ls` lists them, and `docker network inspect NAME` shows whether any
+  container is on one. Then:
 
   ```bash
   docker network prune
   ```
 
-  It asks before it removes anything. An app whose network it removed
-  makes a new one the next time it starts.
-- If every network is in use, give Docker more, smaller networks: add a
-  `default-address-pools` setting to Docker's `daemon.json` and restart Docker, as
-  [Docker's documentation](https://docs.docker.com/reference/cli/dockerd/)
-  describes. Restarting Docker restarts every container on the computer.
+  It asks before it removes anything. A network an app's Compose file made comes back
+  the next time that app starts. A network you made yourself with
+  `docker network create`, such as one several apps share, is removed too if nothing is
+  on it right now, and you must create it again by hand.
+- If every network is in use, give Docker more, smaller networks with the
+  `default-address-pools` setting in Docker's `daemon.json` (in Docker Desktop:
+  **Settings → Docker Engine**), as
+  [Docker's documentation](https://docs.docker.com/reference/cli/dockerd/) describes.
+  Choose addresses your home network does not use, or containers cannot reach your
+  devices. It applies to networks made after the change. Restarting Docker stops every
+  container; only those set to restart by themselves come back.
 
 ## Connecting an app
 
