@@ -40,6 +40,25 @@ interface DashboardClientProps {
 }
 
 
+const REFRESHED_FOR_KEY = 'helprr-dashboard-refreshed-for';
+
+function readRefreshedFor(): string | null {
+  try {
+    return sessionStorage.getItem(REFRESHED_FOR_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function writeRefreshedFor(device: 'desktop' | 'mobile' | null): void {
+  try {
+    if (device) sessionStorage.setItem(REFRESHED_FOR_KEY, device);
+    else sessionStorage.removeItem(REFRESHED_FOR_KEY);
+  } catch {
+    // Storage blocked: the in-memory ref still guards this page load.
+  }
+}
+
 function FullPageSpinner() {
   return (
     <div
@@ -106,21 +125,32 @@ function DashboardInner({ initialLayout, initialDevice, setupChecklist }: Dashbo
   // layout rather than refresh forever.
   const refreshedFor = useRef<'desktop' | 'mobile' | null>(null);
 
-  // Sync the cookie + reload when the detected device disagrees with what the
-  // server rendered. matchMedia is null on first render (server-safe default),
-  // so we wait until React commits before deciding.
+  // Sync the cookie + reload when the device disagrees with what the server
+  // rendered. The hydration pass reports desktop (useIsMobile's server
+  // snapshot), so read the media query itself; detectedDevice only re-runs
+  // this when the breakpoint is crossed.
   useEffect(() => {
-    if (detectedDevice === initialDevice || refreshedFor.current === detectedDevice) {
+    const device = window.matchMedia('(max-width: 768px)').matches ? 'mobile' : 'desktop';
+    setDeviceCookie(device);
+    const askedFor = refreshedFor.current;
+    if (device === initialDevice) writeRefreshedFor(null);
+    // Offline, a failed refresh falls back to a full page load, which would
+    // land here again; the stored device also stops a repeat across page loads.
+    if (
+      device === initialDevice
+      || (askedFor !== device && (readRefreshedFor() === device || !navigator.onLine))
+    ) {
       // After a refresh triggered by the mismatch branch, the effect re-runs
       // here with matched devices — clear the spinner so the page becomes
       // interactive again.
       setReloading(false);
-      setDeviceCookie(detectedDevice);
       return;
     }
-    refreshedFor.current = detectedDevice;
+    // This page already asked for this device: keep the spinner until it lands.
+    if (askedFor === device) return;
+    refreshedFor.current = device;
+    writeRefreshedFor(device);
     setReloading(true);
-    setDeviceCookie(detectedDevice);
     router.refresh();
   }, [detectedDevice, initialDevice, router]);
 
