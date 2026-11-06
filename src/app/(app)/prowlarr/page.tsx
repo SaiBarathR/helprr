@@ -8,7 +8,7 @@ import { useRestorableInfiniteQuery as useInfiniteQuery } from '@/lib/hooks/use-
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { jsonFetcher, ensureArray, ApiError } from '@/lib/query-fetch';
-import { isOfflineError } from '@/lib/network-error';
+import { isQueryOffline } from '@/lib/network-error';
 import { Button } from '@/components/ui/button';
 import { PullToRefresh } from '@/components/ui/pull-to-refresh';
 import { Badge } from '@/components/ui/badge';
@@ -269,8 +269,8 @@ function IndexersTab({ actions, onOpen }: { actions: IndexerActions; onOpen: (id
     );
   }
 
-  if (indexersQuery.isError) {
-    const offline = isOfflineError(indexersQuery.error);
+  const offline = isQueryOffline(indexersQuery);
+  if (offline || indexersQuery.isError) {
     return (
       <div className="rounded-xl bg-card p-8 text-center text-muted-foreground">
         <p>{offline ? "You're offline" : 'Failed to load indexers'}</p>

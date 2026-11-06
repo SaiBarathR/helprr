@@ -42,6 +42,7 @@ import { getListViewState, setListViewState } from '@/lib/media-list-cache';
 import { useQuery } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/query-keys';
 import { jsonFetcher, ensureArray } from '@/lib/query-fetch';
+import { isQueryOffline } from '@/lib/network-error';
 import { bulkFanOut, parseSeriesSearchTallies, reportBulk } from '@/lib/bulk-fan-out';
 import { useUnionTags } from '@/lib/hooks/use-reference-data';
 import { type ContextActionGroup } from '@/components/ui/quick-context-menu';
@@ -183,6 +184,8 @@ export default function SeriesPage() {
     data: seriesData,
     isLoading: loading,
     isError,
+    error,
+    fetchStatus,
     refetch: refetchSeries,
   } = useQuery({
     queryKey: queryKeys.library('sonarr'),
@@ -191,6 +194,7 @@ export default function SeriesPage() {
     select: ensureArray,
   });
   const series = seriesData ?? EMPTY_SERIES;
+  const offline = isQueryOffline({ isError, error, fetchStatus, data: seriesData });
   // Quality-profile / tag names are resolved per-instance server-side (item.qualityProfileName,
   // item.tagLabels). The bulk-tag picker still needs the union of every connected instance's
   // tags as suggestions, so fetch those per instance and merge — but only once selection mode
@@ -890,11 +894,12 @@ export default function SeriesPage() {
 
         if (filtered.length === 0) {
           // Distinguish a fetch failure (nothing cached) from a genuinely empty
-          // library — the former offers Retry, not "add a connection".
-          if (isError && series.length === 0) {
+          // library — the former offers Retry, not "add a connection". Offline,
+          // a first load pauses instead of failing, so it has no error.
+          if ((isError || offline) && series.length === 0) {
             return (
               <div className="text-center py-12 text-muted-foreground">
-                <p>Couldn&apos;t load your library — check the connection.</p>
+                <p>{offline ? "You're offline" : "Couldn't load your library — check the connection."}</p>
                 <button
                   onClick={() => void refetchSeries()}
                   className="mt-3 inline-flex items-center justify-center rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-accent active:bg-accent/80 transition-colors"

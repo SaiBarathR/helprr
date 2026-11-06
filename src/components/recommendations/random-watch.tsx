@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { jsonFetcher } from '@/lib/query-fetch';
-import { isOfflineError } from '@/lib/network-error';
+import { isQueryOffline } from '@/lib/network-error';
 import { HeroImage } from '@/components/media/hero-image';
 import { FadeInImage } from '@/components/media/fade-in-image';
 import Link from '@/components/ui/app-link';
@@ -44,14 +44,14 @@ export function RandomWatchView() {
   const pick = rollQuery.data?.pick ?? null;
   const poolSize = rollQuery.data?.poolSize ?? null;
   const loading = rollQuery.isFetching;
-  const offline = rollQuery.isError && isOfflineError(rollQuery.error);
-  const error = rollQuery.isError
-    ? offline
-      ? "You're offline"
-      : rollQuery.error instanceof Error
+  const offline = isQueryOffline(rollQuery);
+  const error = offline
+    ? "You're offline"
+    : rollQuery.isError
+      ? rollQuery.error instanceof Error
         ? rollQuery.error.message
         : 'Failed to fetch a pick'
-    : null;
+      : null;
 
   const poster = pick?.posterUrl
     ? toCachedImageSrc(pick.posterUrl, pick.mediaType === 'movie' ? 'radarr' : 'sonarr') ?? pick.posterUrl

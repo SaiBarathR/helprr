@@ -4,7 +4,7 @@
 // smaller modules (Workstream 15).
 import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, onlineManager } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
@@ -525,5 +525,19 @@ describe('torrents page (characterization)', () => {
     expect(await screen.findByText("You're offline")).toBeTruthy();
     expect(screen.getByText('Torrents load again when the connection returns.')).toBeTruthy();
     expect(screen.queryByText('Make sure qBittorrent is configured in Settings.')).toBeNull();
+  });
+
+  it('says the device is offline, not "No torrents yet", while the first load is paused offline', async () => {
+    onlineManager.setOnline(false);
+    try {
+      const { client } = renderPage();
+      expect(await screen.findByText("You're offline")).toBeTruthy();
+      expect(screen.getByText('Torrents load again when the connection returns.')).toBeTruthy();
+      expect(screen.queryByText(/No torrents/)).toBeNull();
+      expect(mocks.asked.some((path) => path.startsWith('/api/qbittorrent/summary'))).toBe(false);
+      client.clear();
+    } finally {
+      onlineManager.setOnline(true);
+    }
   });
 });
