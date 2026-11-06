@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 
 import type { ReactNode } from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
@@ -57,7 +58,12 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllGlobals());
 
-const renderSheet = (item: HistoryRecord) => render(<HistoryEventDrawer item={item} onClose={() => {}} />);
+// The sheet's actions refresh the Activity queries, so it renders inside a query client.
+const renderSheet = (item: HistoryRecord, onClose = () => {}) => render(
+  <QueryClientProvider client={new QueryClient()}>
+    <HistoryEventDrawer item={item} onClose={onClose} />
+  </QueryClientProvider>,
+);
 
 describe('history event sheet: failed downloads', () => {
   it('leads with why the download failed', () => {
@@ -151,5 +157,51 @@ describe('history event sheet: failed downloads', () => {
     expect(screen.queryByRole('button', { name: 'Interactive search' })).toBeNull();
     expect(screen.getByRole('link', { name: 'Open episode' }).getAttribute('href'))
       .toBe('/series/5/season/2/episode/301?instance=son-1');
+  });
+});
+
+describe('history event sheet: mark as failed', () => {
+  const grabbed = (extra: Partial<HistoryRecord> = {}) =>
+    sonarrEvent({ id: 41, eventType: 'grabbed', data: { indexer: 'Nyaa' }, downloadId: 'ABC', ...extra });
+
+  it('fails a grabbed download on its own instance after a confirm', async () => {
+    const onClose = vi.fn();
+    renderSheet(grabbed(), onClose);
+    await userEvent.click(screen.getByRole('button', { name: 'Mark as failed' }));
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(screen.getByText('Sonarr will blocklist this release and search for another one.')).toBeTruthy();
+
+    await userEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Mark as failed' }));
+    await waitFor(() => expect(mocks.toast.success).toHaveBeenCalledWith('Marked as failed'));
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe('/api/activity/history/41/failed');
+    expect(init?.method).toBe('POST');
+    expect(JSON.parse(String(init?.body))).toEqual({ source: 'sonarr', instanceId: 'son-1' });
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it('offers it on an import of a download, saying the files stay', async () => {
+    renderSheet(grabbed({ eventType: 'downloadFolderImported' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Mark as failed' }));
+    expect(screen.getByText(/Files already imported stay in the library\./)).toBeTruthy();
+  });
+
+  it('offers it on nothing else: a failure, a manual import without a download, or an event without its instance', () => {
+    for (const item of [
+      sonarrEvent(),
+      grabbed({ eventType: 'downloadFolderImported', downloadId: undefined }),
+      grabbed({ eventType: 'episodeFileDeleted' }),
+      grabbed({ instanceId: undefined }),
+    ]) {
+      const { unmount } = renderSheet(item);
+      expect(screen.queryByRole('button', { name: 'Mark as failed' })).toBeNull();
+      unmount();
+    }
+  });
+
+  it('is hidden from a member without activity.manage', () => {
+    mocks.canManage = false;
+    renderSheet(grabbed());
+    expect(screen.queryByRole('button', { name: 'Mark as failed' })).toBeNull();
   });
 });

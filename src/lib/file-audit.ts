@@ -66,7 +66,7 @@ export interface OperationAuditInput {
   service: Extract<ServiceType, 'SONARR' | 'RADARR' | 'LIDARR' | 'QBITTORRENT' | 'TWITCH'>;
   instanceId?: string | null;
   operation: FileOperation;
-  targetType: 'series' | 'movie' | 'artist' | 'album' | 'torrent' | 'queue' | 'blocklist' | 'twitch-video';
+  targetType: 'series' | 'movie' | 'artist' | 'album' | 'torrent' | 'queue' | 'blocklist' | 'history' | 'twitch-video';
   /** Numeric upstream target id. Torrent hashes are recorded in details instead. */
   targetId?: number | null;
   targetTitle: string;

@@ -7,6 +7,8 @@ import { useAppRouter as useRouter } from '@/components/layout/navigation-provid
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
+import { Checkbox } from '@/components/ui/checkbox';
+import { FloatingActionBar } from '@/components/ui/floating-action-bar';
 import { ListSkeleton } from '@/components/ui/list-skeleton';
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
 import { SwipeRow } from '@/components/ui/swipe-row';
@@ -21,6 +23,7 @@ import {
   Layers,
   ExternalLink,
   Info,
+  ListChecks,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { toast } from 'sonner';
@@ -37,7 +40,7 @@ import { useBadgeActions } from '@/components/layout/badge-provider';
 import { RemoveQueueDialog, type RemoveQueueOptions } from '../../_components/remove-queue-dialog';
 import { compareActivityQueueItems } from '@/lib/activity-queue-sort';
 import type { ActivitySortDirectionPreference } from '@/lib/store';
-import { QUEUE_PAGE_SIZE, QUEUE_QUERY_KEY, QueuePage, QueueRecord, RemoveTarget, appNameFor, canManualImport, downloadSiblings, episodeLabel, formatBytes, getQueueCustomFormats, getQueueItemQuality, getQueueMediaHref, groupQueueByDownload, manualImportHref, packNoun, queueRecordKey, queueRemovalDelta, statusColor, statusLabel, uniqueQueueRecords } from './queue-records';
+import { QUEUE_PAGE_SIZE, QUEUE_QUERY_KEY, QueuePage, QueueRecord, RemoveTarget, appNameFor, canManualImport, downloadSiblings, episodeLabel, formatBytes, getQueueCustomFormats, getQueueItemQuality, getQueueMediaHref, groupQueueByDownload, isPendingRelease, manualImportHref, packNoun, queueRecordKey, queueRemovalBatches, queueRemovalDelta, statusColor, statusLabel, uniqueQueueRecords } from './queue-records';
 import { ManualImportStrip, TabErrorState } from './shared';
 import { SortKey } from './view-state';
 
@@ -75,6 +78,11 @@ export function QueueTab({
   const [removing, setRemoving] = useState(false);
   // The queue record or season-pack group the remove dialog is currently confirming.
   const [removeTarget, setRemoveTarget] = useState<RemoveTarget | null>(null);
+  // Select mode: whole downloads (group keys) picked for one bulk removal.
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(() => new Set());
+  const [bulkRemoveOpen, setBulkRemoveOpen] = useState(false);
+  const [grabbingKey, setGrabbingKey] = useState<string | null>(null);
   const [refreshIntervalMs, setRefreshIntervalMs] = useState(5000);
   // Season-pack groups start collapsed; keyed by group key (stable across polls
   // since it derives from the download id), so an open group stays open on refetch.
@@ -147,6 +155,106 @@ export function QueueTab({
   useEffect(() => {
     onCountChange(sorted.length);
   }, [sorted.length, onCountChange]);
+
+  // Only visible downloads count: a filter change drops hidden ones from the removal.
+  const selectedGroups = sorted.filter((group) => selectedKeys.has(group.key));
+  const selectedDownloads = `${selectedGroups.length} download${selectedGroups.length === 1 ? '' : 's'}`;
+  const exitSelection = () => {
+    setSelectionMode(false);
+    setSelectedKeys(new Set());
+  };
+  const toggleSelected = (key: string) =>
+    setSelectedKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+
+  async function grabNow(item: QueueRecord) {
+    setGrabbingKey(queueRecordKey(item));
+    try {
+      const res = await fetch(`/api/activity/queue/${item.id}/grab`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ source: item.source, instanceId: item.instanceId }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || 'Failed to grab');
+      }
+      toast.success('Sent to the download client');
+      setSelectedItem(null);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to grab');
+    } finally {
+      setGrabbingKey(null);
+      void invalidateActivity(queryClient);
+    }
+  }
+
+  // Removes every record of the selected downloads, in requests of up to 1000 ids per instance.
+  async function executeBulkRemoval(opts: RemoveQueueOptions) {
+    const groupCount = selectedGroups.length;
+    const items = selectedGroups.flatMap((group) => group.items);
+    if (items.length === 0) return;
+
+    setRemoving(true);
+    await queryClient.cancelQueries({ queryKey: QUEUE_QUERY_KEY });
+    const snapshot = queryClient.getQueryData<InfiniteData<QueuePage>>(QUEUE_QUERY_KEY);
+    if (snapshot) {
+      const removeIds = new Set(items.map(queueRecordKey));
+      queryClient.setQueryData<InfiniteData<QueuePage>>(QUEUE_QUERY_KEY, {
+        ...snapshot,
+        pages: snapshot.pages.map((page) => ({
+          ...page,
+          records: (page.records ?? []).filter((rec) => !removeIds.has(queueRecordKey(rec))),
+        })),
+      });
+    }
+    try {
+      const removed: QueueRecord[] = [];
+      let failed = 0;
+      await Promise.all(queueRemovalBatches(items).map(async ({ source, instanceId, chunks }) => {
+        // One instance's chunks go one after another, so a download split across two
+        // chunks never reaches that instance twice at once.
+        for (const chunk of chunks) {
+          const res = await fetch('/api/activity/queue', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              source,
+              instanceId,
+              ids: chunk.map((item) => item.id),
+              removeFromClient: opts.method === 'removeFromClient',
+              changeCategory: opts.method === 'changeCategory',
+              blocklist: opts.blocklist,
+              skipRedownload: opts.skipRedownload,
+            }),
+          }).catch(() => null);
+          if (res?.ok) removed.push(...chunk);
+          else failed += 1;
+        }
+      }));
+      // Nudge the badge for the requests that succeeded; the badge poll reconciles the rest.
+      const delta = queueRemovalDelta(removed);
+      if (delta.count > 0) adjustBadge('activity', -delta.count, -delta.attention);
+      if (failed === 0) {
+        toast.success(groupCount === 1 ? 'Removed from queue' : `Removed ${groupCount} downloads from queue`);
+      } else {
+        // The refetch below shows what was removed: a failed request may have removed some items.
+        if (snapshot) queryClient.setQueryData(QUEUE_QUERY_KEY, snapshot);
+        toast.error(removed.length > 0
+          ? 'Some downloads could not be removed. They may have been partly removed.'
+          : 'Failed to remove');
+      }
+    } finally {
+      setRemoving(false);
+      setBulkRemoveOpen(false);
+      exitSelection();
+      void invalidateActivity(queryClient);
+    }
+  }
 
   async function executeRemoval(opts: RemoveQueueOptions) {
     const target = removeTarget;
@@ -262,8 +370,23 @@ export function QueueTab({
           Live updates paused — retrying…
         </div>
       )}
-      <div className="space-y-2 animate-list-in">
+      {canManageActivity && (
+        <div className="flex justify-end pb-2">
+          <Button
+            variant={selectionMode ? 'default' : 'ghost'}
+            size="sm"
+            className="h-7"
+            onClick={() => (selectionMode ? exitSelection() : setSelectionMode(true))}
+            aria-pressed={selectionMode}
+          >
+            <ListChecks className="h-4 w-4" />
+            {selectionMode ? 'Done' : 'Select'}
+          </Button>
+        </div>
+      )}
+      <div className={`space-y-2 animate-list-in ${selectionMode ? 'pb-20' : ''}`}>
         {sorted.map((group) => {
+          const selected = selectedKeys.has(group.key);
           const { rep } = group;
           const progress = rep.size > 0 ? ((rep.size - rep.sizeleft) / rep.size) * 100 : 0;
           const qualityName = getQueueItemQuality(rep);
@@ -275,6 +398,7 @@ export function QueueTab({
               <SwipeRow
                 key={group.key}
                 className="rounded-xl"
+                disabled={selectionMode}
                 rightAction={canManageActivity ? {
                   label: 'Remove',
                   icon: <Trash2 className="h-4 w-4" />,
@@ -285,6 +409,7 @@ export function QueueTab({
                 <div className="rounded-xl bg-muted/30 overflow-hidden">
                   <QuickContextMenu
                     label={`Actions for ${rep.title}`}
+                    disabled={selectionMode}
                     groups={[
                       {
                         id: 'navigation',
@@ -311,6 +436,14 @@ export function QueueTab({
                               onSelect: () => router.push(manualImportHref(rep)),
                             }]
                             : []),
+                          ...(canManageActivity && isPendingRelease(rep)
+                            ? [{
+                              id: 'grab-now',
+                              label: 'Grab now',
+                              icon: <Download className="h-4 w-4" />,
+                              onSelect: () => void grabNow(rep),
+                            }]
+                            : []),
                         ],
                       },
                       {
@@ -328,10 +461,12 @@ export function QueueTab({
                     ]}
                   >
                     <button
-                      onClick={() => setSelectedItem(rep)}
+                      onClick={() => (selectionMode ? toggleSelected(group.key) : setSelectedItem(rep))}
+                      aria-pressed={selectionMode ? selected : undefined}
                       className="w-full text-left p-3 space-y-2 active:bg-muted/50 transition-colors"
                     >
                       <div className="flex items-start justify-between gap-2">
+                        {selectionMode && <Checkbox checked={selected} tabIndex={-1} aria-hidden className="mt-0.5 pointer-events-none" />}
                         <div className="min-w-0 flex-1">
                           <p className="text-sm font-medium truncate">{rep.title}</p>
                           <div className="flex items-center gap-1.5 mt-1 flex-wrap">
@@ -379,7 +514,7 @@ export function QueueTab({
                       </div>
                     </button>
                   </QuickContextMenu>
-                  {canManageActivity && canManualImport(rep) && (
+                  {canManageActivity && canManualImport(rep) && !selectionMode && (
                     <ManualImportStrip item={rep} onImport={() => router.push(manualImportHref(rep))} />
                   )}
                 </div>
@@ -416,6 +551,7 @@ export function QueueTab({
             <SwipeRow
               key={group.key}
               className="rounded-xl"
+              disabled={selectionMode}
               rightAction={canManageActivity ? {
                 label: 'Remove',
                 icon: <Trash2 className="h-4 w-4" />,
@@ -427,6 +563,7 @@ export function QueueTab({
                 <div className="flex items-stretch">
                   <QuickContextMenu
                     label={`Actions for ${packTitle}`}
+                    disabled={selectionMode}
                     groups={[
                       {
                         id: 'navigation',
@@ -476,11 +613,13 @@ export function QueueTab({
                     ]}
                   >
                     <button
-                      onClick={() => toggleExpand(group.key)}
-                      aria-expanded={open}
+                      onClick={() => (selectionMode ? toggleSelected(group.key) : toggleExpand(group.key))}
+                      aria-expanded={selectionMode ? undefined : open}
+                      aria-pressed={selectionMode ? selected : undefined}
                       className="min-w-0 flex-1 text-left p-3 space-y-2 active:bg-muted/50 transition-colors"
                     >
                       <div className="flex items-start justify-between gap-2">
+                        {selectionMode && <Checkbox checked={selected} tabIndex={-1} aria-hidden className="mt-0.5 pointer-events-none" />}
                         <div className="min-w-0 flex-1">
                           <p className="text-sm font-medium truncate">{packTitle}</p>
                           <div className="flex items-center gap-1.5 mt-1 flex-wrap">
@@ -533,7 +672,7 @@ export function QueueTab({
                       </div>
                     </button>
                   </QuickContextMenu>
-                  {canManageActivity && (
+                  {canManageActivity && !selectionMode && (
                     <button
                       onClick={() => setRemoveTarget({ kind: 'pack', group })}
                       aria-label="Remove pack from queue"
@@ -544,11 +683,11 @@ export function QueueTab({
                   )}
                 </div>
 
-                {canManageActivity && packImportItem && (
+                {canManageActivity && packImportItem && !selectionMode && (
                   <ManualImportStrip item={packImportItem} onImport={() => router.push(manualImportHref(packImportItem))} />
                 )}
 
-                {open && (
+                {open && !selectionMode && (
                   <div className="border-t border-border/40 divide-y divide-border/30">
                     {episodes.map((ep) => {
                       const label = episodeLabel(ep);
@@ -711,6 +850,19 @@ export function QueueTab({
                     <Progress value={progress} className="h-2" />
                   </div>
 
+                  {canManageActivity && isPendingRelease(selectedItem) && (
+                    <Button
+                      className="w-full"
+                      onClick={() => void grabNow(selectedItem)}
+                      disabled={grabbingKey === queueRecordKey(selectedItem)}
+                    >
+                      {grabbingKey === queueRecordKey(selectedItem)
+                        ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        : <Download className="mr-2 h-4 w-4" />}
+                      Grab now
+                    </Button>
+                  )}
+
                   {canManageActivity && selectedImportItem && (
                     <Button
                       className="w-full"
@@ -777,6 +929,35 @@ export function QueueTab({
         canChangeCategory={!!removeRep?.downloadClientHasPostImportCategory}
         busy={removing}
         onConfirm={executeRemoval}
+      />
+
+      {selectionMode && (
+        <FloatingActionBar className="p-2">
+          <span className="flex-1 px-2 text-sm text-muted-foreground">{selectedGroups.length} selected</span>
+          <Button variant="ghost" className="h-11" onClick={exitSelection}>Cancel</Button>
+          <Button
+            variant="destructive"
+            className="h-11"
+            disabled={selectedGroups.length === 0}
+            onClick={() => setBulkRemoveOpen(true)}
+          >
+            <Trash2 className="mr-2 h-4 w-4" />
+            Remove
+          </Button>
+        </FloatingActionBar>
+      )}
+
+      <RemoveQueueDialog
+        open={bulkRemoveOpen}
+        onOpenChange={setBulkRemoveOpen}
+        title={selectedDownloads}
+        description={`Are you sure you want to remove ${selectedDownloads} from the queue?`}
+        appName={new Intl.ListFormat('en', { type: 'conjunction' }).format(
+          [...new Set(selectedGroups.map((group) => appNameFor(group.rep.source)))],
+        )}
+        canChangeCategory={selectedGroups.length > 0 && selectedGroups.every((group) => !!group.rep.downloadClientHasPostImportCategory)}
+        busy={removing}
+        onConfirm={executeBulkRemoval}
       />
     </>
   );

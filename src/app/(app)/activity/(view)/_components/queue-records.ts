@@ -89,6 +89,11 @@ export function needsManualImport(item: QueueItem): boolean {
   return classifyQueueIssue(item.trackedDownloadState, item.trackedDownloadStatus) === 'import';
 }
 
+/** A release the *arr is holding back (delay profile, or no download client to send it to), as its own queue does. */
+export function isPendingRelease(item: QueueItem): boolean {
+  return item.status === 'delay' || item.status === 'downloadClientUnavailable';
+}
+
 /** Needs an import the import page can do: it handles Sonarr and Radarr only. */
 export function canManualImport(item: QueueItem & { source?: string }): boolean {
   return (item.source === 'sonarr' || item.source === 'radarr') && needsManualImport(item);
@@ -118,7 +123,7 @@ export function groupQueueByDownload(items: QueueRecord[]): QueueGroup[] {
   for (const item of items) {
     const key = item.downloadId
       ? `dl-${item.source}-${item.instanceId ?? ''}-${item.downloadId}`
-      : `solo-${item.source}-${item.id}`;
+      : `solo-${item.source}-${item.instanceId ?? ''}-${item.id}`;
     let bucket = groups.get(key);
     if (!bucket) {
       bucket = [];
@@ -204,4 +209,30 @@ export function queueRemovalDelta(items: QueueRecord[]): { count: number; attent
       (it) => classifyQueueIssue(it.trackedDownloadState, it.trackedDownloadStatus) !== null,
     ).length,
   };
+}
+
+// The bulk-remove route takes at most this many ids per request.
+export const QUEUE_REMOVAL_BATCH_SIZE = 1000;
+
+/**
+ * Bulk-remove requests: queue ids are per instance, so one entry per instance, its
+ * records in chunks of at most QUEUE_REMOVAL_BATCH_SIZE.
+ */
+export function queueRemovalBatches(items: QueueRecord[]): Array<{ source: string; instanceId: string; chunks: QueueRecord[][] }> {
+  const perInstance = new Map<string, { source: string; instanceId: string; items: QueueRecord[] }>();
+  for (const item of items) {
+    const source = item.source ?? '';
+    const instanceId = item.instanceId ?? '';
+    const key = `${source}|${instanceId}`;
+    const group = perInstance.get(key) ?? { source, instanceId, items: [] };
+    group.items.push(item);
+    perInstance.set(key, group);
+  }
+  return [...perInstance.values()].map(({ source, instanceId, items: records }) => {
+    const chunks: QueueRecord[][] = [];
+    for (let start = 0; start < records.length; start += QUEUE_REMOVAL_BATCH_SIZE) {
+      chunks.push(records.slice(start, start + QUEUE_REMOVAL_BATCH_SIZE));
+    }
+    return { source, instanceId, chunks };
+  });
 }
