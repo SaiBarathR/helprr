@@ -12,7 +12,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { ArrowUpDown, Bookmark, Filter, Layers, Plus, Search as SearchIcon } from 'lucide-react';
+import { ArrowUpDown, Eye, EyeOff, Filter, Layers, Plus, Search as SearchIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { Skeleton } from '@/components/ui/skeleton';
 import { SearchBar } from '@/components/media/search-bar';
@@ -377,7 +377,7 @@ export default function MovieCollectionsPage() {
                       ? [{
                           id: 'toggle-monitoring',
                           label: c.monitored ? 'Unmonitor collection' : 'Monitor collection',
-                          icon: <Bookmark className="h-4 w-4" />,
+                          icon: c.monitored ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />,
                           pending: isActionPending(c, 'monitor'),
                           onSelect: () => toggleCollectionMonitoring(c),
                         }]

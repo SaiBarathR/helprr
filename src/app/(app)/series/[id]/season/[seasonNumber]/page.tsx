@@ -17,7 +17,7 @@ import { Button } from '@/components/ui/button';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { ScheduledAlertDialog } from '@/components/scheduled-alerts/scheduled-alert-dialog';
 import {
-  Bell, Bookmark, BookmarkCheck, MoreHorizontal, Search, RefreshCw, Trash2, Loader2, Star,
+  Bell, Eye, EyeOff, MoreHorizontal, Search, RefreshCw, Trash2, Loader2, Star,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
@@ -310,7 +310,7 @@ export default function SeasonDetailPage() {
     {
       id: 'activity',
       actions: [
-        ...(canEditMonitoring ? [{ id: 'monitor', label: isSeasonMonitored ? 'Unmonitor season' : 'Monitor season', icon: <Bookmark className="h-4 w-4" />, onSelect: () => { void handleToggleSeasonMonitor(); }, disabled: actionLoading === 'monitor' }] : []),
+        ...(canEditMonitoring ? [{ id: 'monitor', label: isSeasonMonitored ? 'Unmonitor season' : 'Monitor season', icon: isSeasonMonitored ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />, onSelect: () => { void handleToggleSeasonMonitor(); }, disabled: actionLoading === 'monitor' }] : []),
         ...(canManageActivity ? [
           { id: 'refresh', label: 'Refresh', icon: <RefreshCw className="h-4 w-4" />, onSelect: () => { void handleRefresh(); }, disabled: !!actionLoading },
           { id: 'search', label: 'Automatic Search', icon: <Search className="h-4 w-4" />, onSelect: () => { void handleAutomaticSearch(); }, disabled: !!actionLoading },
@@ -346,13 +346,14 @@ export default function SeasonDetailPage() {
                 className="min-w-[44px] min-h-[44px] flex items-center justify-center text-primary"
                 aria-label="Monitored"
                 aria-pressed={isSeasonMonitored}
+                title={isSeasonMonitored ? 'Monitored' : 'Not monitored'}
               >
                 {actionLoading === 'monitor' ? (
                   <Loader2 className="h-5 w-5 animate-spin" />
                 ) : isSeasonMonitored ? (
-                  <BookmarkCheck className="h-5 w-5" />
+                  <Eye className="h-5 w-5" />
                 ) : (
-                  <Bookmark className="h-5 w-5" />
+                  <EyeOff className="h-5 w-5" />
                 )}
               </button>
             )}
@@ -451,7 +452,7 @@ export default function SeasonDetailPage() {
           const episodeHref = `/series/${id}/season/${seasonNumber}/episode/${ep.id}${instance ? `?instance=${instance}` : ''}`;
           const episodeActions = [
             { id: 'open', label: 'Open episode', href: episodeHref },
-            ...(canEditMonitoring ? [{ id: 'monitor', label: ep.monitored ? 'Unmonitor episode' : 'Monitor episode', icon: <Bookmark className="h-4 w-4" />, onSelect: () => { void handleToggleEpisodeMonitor(ep.id, !ep.monitored); } }] : []),
+            ...(canEditMonitoring ? [{ id: 'monitor', label: ep.monitored ? 'Unmonitor episode' : 'Monitor episode', icon: ep.monitored ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />, onSelect: () => { void handleToggleEpisodeMonitor(ep.id, !ep.monitored); } }] : []),
             ...(canManageActivity ? [{
               id: 'interactive',
               label: 'Interactive search…',
@@ -549,7 +550,7 @@ export default function SeasonDetailPage() {
             </Link>
             </QuickContextMenu>
 
-              {/* Monitor bookmark */}
+              {/* Monitor toggle */}
               {canEditMonitoring && (
                 <button
                   aria-label={`${ep.monitored ? 'Unmonitor' : 'Monitor'} episode: ${ep.title || `Episode ${ep.episodeNumber}`}`}
@@ -561,9 +562,9 @@ export default function SeasonDetailPage() {
                   className="relative min-w-[36px] min-h-[36px] flex items-center justify-center shrink-0 self-center"
                 >
                   {ep.monitored ? (
-                    <BookmarkCheck className="h-4 w-4 text-primary" />
+                    <Eye className="h-4 w-4 text-primary" />
                   ) : (
-                    <Bookmark className="h-4 w-4 text-muted-foreground" />
+                    <EyeOff className="h-4 w-4 text-muted-foreground" />
                   )}
                 </button>
               )}

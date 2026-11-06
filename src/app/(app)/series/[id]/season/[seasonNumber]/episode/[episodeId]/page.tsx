@@ -17,7 +17,7 @@ import { Button } from '@/components/ui/button';
 import { PageSpinner } from '@/components/ui/page-spinner';
 import { ScheduledAlertDialog } from '@/components/scheduled-alerts/scheduled-alert-dialog';
 import {
-  Bell, Bookmark, BookmarkCheck, MoreHorizontal, Search, RefreshCw, Trash2, Loader2, Info,
+  Bell, Eye, EyeOff, MoreHorizontal, Search, RefreshCw, Trash2, Loader2, Info,
   ExternalLink, Star, Check, RotateCcw,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -342,7 +342,7 @@ export default function EpisodeDetailPage() {
     {
       id: 'state',
       actions: [
-        ...(canEditMonitoring ? [{ id: 'monitor', label: episode.monitored ? 'Unmonitor episode' : 'Monitor episode', icon: episode.monitored ? <Bookmark className="h-4 w-4" /> : <BookmarkCheck className="h-4 w-4" />, onSelect: () => { void handleToggleMonitor(); }, disabled: actionLoading === 'monitor' }] : []),
+        ...(canEditMonitoring ? [{ id: 'monitor', label: episode.monitored ? 'Unmonitor episode' : 'Monitor episode', icon: episode.monitored ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />, onSelect: () => { void handleToggleMonitor(); }, disabled: actionLoading === 'monitor' }] : []),
         ...(canSetWatched && epWatch ? [{ id: 'watched', label: epWatch.played ? 'Mark as unwatched' : 'Mark as watched', icon: epWatch.played ? <RotateCcw className="h-4 w-4" /> : <Check className="h-4 w-4" />, onSelect: () => { void setWatched({ jellyfinItemId: epWatch.jellyfinItemId, played: !epWatch.played, seriesId: jellyfinSeriesId ?? undefined }); }, disabled: isWriting }] : []),
         ...(canManageActivity ? [
           { id: 'search', label: 'Automatic Search', icon: <Search className="h-4 w-4" />, onSelect: () => { void handleAutomaticSearch(); }, disabled: !!actionLoading },
@@ -392,13 +392,14 @@ export default function EpisodeDetailPage() {
                 className="min-w-[44px] min-h-[44px] flex items-center justify-center text-primary"
                 aria-label="Monitored"
                 aria-pressed={episode.monitored}
+                title={episode.monitored ? 'Monitored' : 'Not monitored'}
               >
                 {actionLoading === 'monitor' ? (
                   <Loader2 className="h-5 w-5 animate-spin" />
                 ) : episode.monitored ? (
-                  <BookmarkCheck className="h-5 w-5" />
+                  <Eye className="h-5 w-5" />
                 ) : (
-                  <Bookmark className="h-5 w-5" />
+                  <EyeOff className="h-5 w-5" />
                 )}
               </button>
             )}

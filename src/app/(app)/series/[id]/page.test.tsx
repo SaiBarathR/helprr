@@ -296,10 +296,27 @@ describe('series detail page (characterization)', () => {
     expect(screen.queryByText('Root Folder', { exact: true })).toBeTruthy();
   });
 
+  it('shows the monitored toggle as an eye, and undoes an unmonitor from its toast', async () => {
+    const user = renderPage();
+    const toggle = await screen.findByRole('button', { name: 'Monitored' });
+    expect(toggle.getAttribute('title')).toBe('Monitored');
+    expect(toggle.querySelector('svg.lucide-eye')).toBeTruthy();
+    await user.click(toggle);
+    await waitFor(() => expect(mocks.toast.success).toHaveBeenCalledWith('Unmonitored', expect.objectContaining({ action: expect.objectContaining({ label: 'Undo' }) })));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Monitored' }).querySelector('svg.lucide-eye-off')).toBeTruthy());
+
+    const { action } = mocks.toast.success.mock.calls[0][1] as { action: { onClick: () => void } };
+    act(() => action.onClick());
+    await waitFor(() => expect(mocks.toast.success).toHaveBeenCalledWith('Now monitored'));
+    expect(mocks.sent.map((s) => (s.body as { monitored: boolean }).monitored)).toEqual([false, true]);
+    expect(mocks.sent[1].path).toBe('/api/sonarr/7?instanceId=son-1');
+    expect(screen.getByRole('button', { name: 'Monitored' }).getAttribute('aria-pressed')).toBe('true');
+  });
+
   it('toggles the series and a season monitored, and applies a monitoring option', async () => {
     const user = renderPage();
     await user.click(await screen.findByRole('button', { name: 'Monitored' }));
-    await waitFor(() => expect(mocks.toast.success).toHaveBeenCalledWith('Unmonitored'));
+    await waitFor(() => expect(mocks.toast.success).toHaveBeenCalledWith('Unmonitored', expect.anything()));
     expect(mocks.sent[0]).toEqual({ method: 'PUT', path: '/api/sonarr/7?instanceId=son-1', body: expect.objectContaining({ id: 7, monitored: false }) });
 
     await user.click(screen.getByRole('button', { name: 'Season 2 monitored' }));

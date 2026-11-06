@@ -30,8 +30,6 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import {
-  Bookmark,
-  BookmarkCheck,
   MoreHorizontal,
   Search,
   RefreshCw,
@@ -381,13 +379,14 @@ export default function ArtistDetailPage() {
                 className="min-w-[44px] min-h-[44px] flex items-center justify-center text-primary"
                 aria-label="Monitored"
                 aria-pressed={artist.monitored}
+                title={artist.monitored ? 'Monitored' : 'Not monitored'}
               >
                 {actionLoading === 'monitor' ? (
                   <Loader2 className="h-5 w-5 animate-spin" />
                 ) : artist.monitored ? (
-                  <BookmarkCheck className="h-5 w-5 fill-primary" />
+                  <Eye className="h-5 w-5" />
                 ) : (
-                  <Bookmark className="h-5 w-5" />
+                  <EyeOff className="h-5 w-5" />
                 )}
               </button>
             )}

@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import { FadeInImage } from '@/components/media/fade-in-image';
 import Link from '@/components/ui/app-link';
-import { Check, Plus, Search, Loader2, Film, Bookmark } from 'lucide-react';
+import { Check, Plus, Search, Loader2, Film, Bookmark, Eye, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -259,7 +259,7 @@ export function CollectionDetailDrawer({ collection, multiInstance, onClose }: P
               <div className="flex flex-wrap items-center gap-2 pb-3">
                 {canMonitor && (
                   <label className="inline-flex items-center gap-2 rounded-lg border border-border bg-card/60 px-3 py-1.5 text-sm">
-                    <Bookmark className={cn('h-4 w-4', monitored ? 'fill-[var(--hpr-amber)] text-[var(--hpr-amber)]' : 'text-muted-foreground')} />
+                    {monitored ? <Eye className="h-4 w-4 text-[var(--hpr-amber)]" /> : <EyeOff className="h-4 w-4 text-muted-foreground" />}
                     <span className="select-none">Monitored</span>
                     <Switch checked={monitored} disabled={monitorPending} onCheckedChange={toggleMonitor} aria-label="Monitor collection" />
                   </label>

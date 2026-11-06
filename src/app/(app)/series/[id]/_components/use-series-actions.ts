@@ -96,13 +96,16 @@ export function useSeriesActions({
   }
 
   async function handleToggleMonitored() {
-    if (!series) return;
+    if (series) await setMonitored(series, !series.monitored);
+  }
+
+  async function setMonitored(base: SonarrSeries, monitored: boolean) {
     setActionLoading('monitor');
     try {
-      const res = await arrMutationFetch(instance, `/api/sonarr/${series.id}`, {
+      const res = await arrMutationFetch(instance, `/api/sonarr/${base.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...series, monitored: !series.monitored }),
+        body: JSON.stringify({ ...base, monitored }),
       });
       if (res.ok) {
         const updated: SonarrSeries = await res.json();
@@ -114,8 +117,18 @@ export function useSeriesActions({
         // preserves the server-resolved profile/tag labels.
         queryClient.setQueriesData({ queryKey: queryKeys.library('sonarr') }, (prev) =>
           Array.isArray(prev) ? prev.map((s) => (s.id === seriesId ? { ...s, monitored: updated.monitored } : s)) : prev);
-        toast.success(updated.monitored ? 'Now monitored' : 'Unmonitored');
-      }
+        if (updated.monitored) toast.success('Now monitored');
+        // Unmonitoring is a library change, so a stray tap must be recoverable.
+        // Undo re-sends the latest cached series so edits made meanwhile survive.
+        else toast.success('Unmonitored', {
+          action: {
+            label: 'Undo',
+            onClick: () => {
+              void setMonitored(queryClient.getQueryData<SonarrSeries | null>(queryKeys.detail('sonarr', seriesId, instance)) ?? updated, true);
+            },
+          },
+        });
+      } else toast.error('Failed to update');
     } catch (e) { handleAuthError(e); toast.error('Failed to update'); }
     finally { setActionLoading(''); }
   }

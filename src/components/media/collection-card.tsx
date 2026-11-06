@@ -1,7 +1,7 @@
 'use client';
 
 import { memo } from 'react';
-import { Layers, Check, Bookmark } from 'lucide-react';
+import { Layers, Check, Eye } from 'lucide-react';
 import type { CollectionSummary } from '@/types';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import { cn } from '@/lib/utils';
@@ -48,10 +48,10 @@ export const CollectionCard = memo(function CollectionCard({
 
           <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/15 to-transparent" />
 
-          {/* Monitored bookmark — top-left */}
+          {/* Monitored indicator — top-left */}
           {collection.monitored && (
             <div className="absolute top-1.5 left-1.5">
-              <Bookmark className="h-4 w-4 fill-[var(--hpr-amber)] text-[var(--hpr-amber)] drop-shadow" />
+              <Eye className="h-4 w-4 text-[var(--hpr-amber)] drop-shadow" />
             </div>
           )}
 

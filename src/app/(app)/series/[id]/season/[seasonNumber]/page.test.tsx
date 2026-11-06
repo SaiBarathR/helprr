@@ -125,7 +125,7 @@ describe('season page episode search buttons', () => {
     await waitFor(() => expect(document.body.textContent).toContain('Open episode'));
   });
 
-  it('names the episode on each bookmark', async () => {
+  it('names the episode on each monitor toggle', async () => {
     await renderPage();
     expect(button('Unmonitor episode: Home')).toBeDefined();
     expect(button('Unmonitor episode: Curiouser and Curiouser!')).toBeDefined();
