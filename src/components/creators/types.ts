@@ -20,7 +20,15 @@ export interface CreatorVideoItem {
   downloaded: boolean;
   fileId: string | null;
   jellyfinItemId: string | null;
-  activeJob: { id: string; state: string; stage: string | null; chosenFormat?: string | null; progress: number | null } | null;
+  activeJob: {
+    id: string;
+    state: string;
+    source?: string;
+    runAfter?: string;
+    stage: string | null;
+    chosenFormat?: string | null;
+    progress: number | null;
+  } | null;
 }
 
 export interface CreatorVideoPage {
@@ -55,6 +63,49 @@ export function formatGb(gb: number): string {
 /** The worker reports stages in lower case: "reading metadata". */
 export function stageLabel(stage: string): string {
   return stage.charAt(0).toUpperCase() + stage.slice(1);
+}
+
+/** When a queued job that is waiting for its time will start, in the viewer's own clock. Null once it may start. */
+export function startsLabel(job: { state: string; runAfter?: string | null }, now = new Date()): string | null {
+  if (job.state !== 'QUEUED' || !job.runAfter) return null;
+  const at = new Date(job.runAfter);
+  if (!(at > now)) return null;
+  const time: Intl.DateTimeFormatOptions = { hour: 'numeric', minute: '2-digit' };
+  return at.toDateString() === now.toDateString()
+    ? `Starts ${at.toLocaleTimeString(undefined, time)}`
+    : `Starts ${at.toLocaleString(undefined, { month: 'short', day: 'numeric', ...time })}`;
+}
+
+/**
+ * A rule's download that has not started, which a person may start now. Not tied to its start
+ * time: a page left open past it would otherwise go on offering a start the server refuses.
+ */
+export function isWaitingRuleJob(job: { state: string; source?: string }): boolean {
+  return job.source === 'RULE' && job.state === 'QUEUED';
+}
+
+/**
+ * Whether a person can choose a YouTube download: nothing saved or under way, or a rule's
+ * download that has not started, which their choices start now. Twitch's rule jobs never wait.
+ */
+export function canChooseDownload(video: Pick<CreatorVideoItem, 'downloaded' | 'availability' | 'activeJob'>): boolean {
+  return !video.downloaded && video.availability === 'PUBLISHED' && (!video.activeJob || isWaitingRuleJob(video.activeJob));
+}
+
+/** A download job's state, in the same words and colours on the Queue and on a video's page. */
+export const JOB_STATE_BADGES: Record<string, { label: string; className: string }> = {
+  RUNNING: { label: 'Downloading', className: 'bg-primary/15 text-primary' },
+  QUEUED: { label: 'Queued', className: '' },
+  RETRY_WAIT: { label: 'Retrying soon', className: 'bg-amber-500/15 text-amber-400' },
+  BLOCKED: { label: 'Disk full', className: 'bg-amber-500/15 text-amber-400' },
+  FAILED: { label: 'Failed', className: 'bg-red-500/15 text-red-400' },
+  DONE: { label: 'Done', className: 'bg-green-500/15 text-green-400' },
+};
+
+/** A job that has not started says so: a queued one still waiting for its time is Waiting. */
+export function jobBadge(job: { state: string; runAfter?: string | null }, now = new Date()): { label: string; className: string } {
+  const badge = JOB_STATE_BADGES[job.state] ?? { label: job.state.toLowerCase(), className: '' };
+  return startsLabel(job, now) ? { ...badge, label: 'Waiting' } : badge;
 }
 
 /** The name of a file's picture: 1280×640 is a 720p video, whatever its height says. */

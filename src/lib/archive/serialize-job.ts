@@ -19,6 +19,7 @@ export const JOB_SELECT = {
   cancelRequested: true,
   requestedByUserId: true,
   createdAt: true,
+  runAfter: true,
   startedAt: true,
   finishedAt: true,
   video: {

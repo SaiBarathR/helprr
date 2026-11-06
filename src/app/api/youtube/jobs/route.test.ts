@@ -78,6 +78,34 @@ describe('queuing a YouTube download', () => {
     });
   });
 
+  it('starts a rule download that is still waiting, and says so', async () => {
+    mocks.enqueue.mockResolvedValue({ jobId: 'j', created: false, startedNow: true });
+    const response = await post({ videoId: 'v', options: { quality: '2160' } });
+    expect(mocks.enqueue.mock.calls[0][0]).toMatchObject({
+      startWaitingRuleJob: true,
+      source: 'MANUAL',
+      actor: { id: 'u', username: 'admin' },
+      options: { quality: '2160' },
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ jobId: 'j', created: false, startedNow: true });
+  });
+
+  it('tells a download already under way apart from one it started', async () => {
+    mocks.enqueue.mockResolvedValue({ jobId: 'j', created: false });
+    const response = await post({ videoId: 'v' });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ jobId: 'j', created: false });
+  });
+
+  it('starts nothing for someone who may not download', async () => {
+    const { requireUserCapability } = await import('@/lib/auth');
+    vi.mocked(requireUserCapability).mockResolvedValueOnce({ ok: false, response: Response.json({ error: 'Forbidden' }, { status: 403 }) } as never);
+    expect((await post({ videoId: 'v' })).status).toBe(403);
+    expect(requireUserCapability).toHaveBeenCalledWith('youtube.download');
+    expect(mocks.enqueue).not.toHaveBeenCalled();
+  });
+
   it('takes a real choice', async () => {
     await post({ videoId: 'v', options: { quality: '2160', codec: 'av1', sponsorblock: 'remove', keepForever: true } });
     expect(mocks.enqueue.mock.calls[0][0].options).toMatchObject({ quality: '2160', codec: 'av1', sponsorblock: 'remove', keepForever: true });

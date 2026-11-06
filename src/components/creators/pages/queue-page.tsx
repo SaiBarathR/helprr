@@ -30,7 +30,7 @@ import { QuickContextMenu, type ContextActionGroup } from '@/components/ui/quick
 import { SwipeRow, type SwipeAction } from '@/components/ui/swipe-row';
 import { ActionsMenu } from '@/components/creators/actions-menu';
 import { ToolbarButton, toolbarButtonClass, CreatorToolbar } from '@/components/creators/toolbar';
-import { formatDuration, stageLabel } from '@/components/creators/types';
+import { formatDuration, JOB_STATE_BADGES, stageLabel, startsLabel } from '@/components/creators/types';
 import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
 import { formatBytes } from '@/lib/format';
 import { toCachedImageSrc } from '@/lib/image';
@@ -50,6 +50,7 @@ interface Job {
   bytesDone: number | null;
   bytesTotal: number | null;
   errorClass: string | null;
+  runAfter?: string;
   video: {
     id: string;
     externalId: string;
@@ -82,15 +83,6 @@ const SECTIONS = [
   { id: 'done', label: 'Done' },
 ] as const;
 
-const STATE_BADGES: Record<string, { label: string; className: string }> = {
-  RUNNING: { label: 'Downloading', className: 'bg-primary/15 text-primary' },
-  QUEUED: { label: 'Queued', className: '' },
-  RETRY_WAIT: { label: 'Retrying soon', className: 'bg-amber-500/15 text-amber-400' },
-  BLOCKED: { label: 'Disk full', className: 'bg-amber-500/15 text-amber-400' },
-  FAILED: { label: 'Failed', className: 'bg-red-500/15 text-red-400' },
-  DONE: { label: 'Done', className: 'bg-green-500/15 text-green-400' },
-};
-
 const errorLabels = (name: string): Record<string, string> => ({
   auth: `${name} refused access`,
   subOnly: 'Subscribers only',
@@ -121,7 +113,7 @@ function JobRow({ job, onCancel, onRetry }: { job: Job; onCancel?: () => void; o
   const platform = useCreatorPlatform();
   const video = job.video;
   const progress = Math.round((job.progress ?? 0) * 100);
-  const badge = STATE_BADGES[job.state] ?? { label: job.state.toLowerCase(), className: '' };
+  const badge = JOB_STATE_BADGES[job.state] ?? { label: job.state.toLowerCase(), className: '' };
   const thumbnail = toCachedImageSrc(video?.thumbnailUrl, undefined, { width: 240 });
   const running = job.state === 'RUNNING';
   const subtitle = job.state === 'FAILED'
@@ -165,7 +157,7 @@ function JobRow({ job, onCancel, onRetry }: { job: Job; onCancel?: () => void; o
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm font-medium">{video?.title ?? 'Video'}</span>
         <span className="mt-1 flex min-w-0 items-center gap-1.5">
-          <Badge variant="secondary" className={cn('shrink-0 px-1.5 py-0 text-[10px]', badge.className)}>{running && job.stage ? stageLabel(job.stage) : badge.label}</Badge>
+          <Badge variant="secondary" className={cn('shrink-0 px-1.5 py-0 text-[10px]', badge.className)}>{running && job.stage ? stageLabel(job.stage) : startsLabel(job) ?? badge.label}</Badge>
           <span className="min-w-0 truncate text-[11px] text-muted-foreground">{subtitle}</span>
         </span>
         {running && (

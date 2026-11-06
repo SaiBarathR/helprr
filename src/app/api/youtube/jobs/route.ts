@@ -120,6 +120,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     trace: { ...trace, reason: 'manual' },
     actor: { id: auth.user.id, username: auth.user.username },
     clientRequestId: body.clientRequestId as string | undefined,
+    startWaitingRuleJob: true,
   });
   return NextResponse.json(result, { status: result.created ? 201 : 200 });
 }
