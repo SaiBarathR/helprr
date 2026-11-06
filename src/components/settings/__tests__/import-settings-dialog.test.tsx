@@ -6,6 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('sonner', () => ({ toast: { warning: vi.fn(), success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
 vi.mock('@/components/permission-provider', () => ({ useMe: () => ({ role: 'admin' }) }));
+const settingsFetch = vi.hoisted(() => ({ forgetAppSettingsFetch: vi.fn() }));
+vi.mock('@/lib/app-settings-fetch', () => settingsFetch);
 const store = vi.hoisted(() => ({ applyImportedUiPrefs: vi.fn(), setDiscoverLayout: vi.fn() }));
 vi.mock('@/lib/store', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/store')>()),
@@ -71,6 +73,7 @@ beforeEach(() => {
   current = { queue: off, download: off };
   imports = [];
   configRead = 'ok';
+  settingsFetch.forgetAppSettingsFetch.mockClear();
   vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
     const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200 });
     if (url.endsWith('/config') && configRead === 'fails') return new Response(null, { status: 503 });
@@ -96,6 +99,14 @@ beforeEach(() => {
 afterEach(async () => {
   await act(async () => root.unmount());
   vi.unstubAllGlobals();
+});
+
+it('drops the shared settings read after an import, so the next read sees the imported values', async () => {
+  await open(exportFile(off, off));
+  expect(settingsFetch.forgetAppSettingsFetch).not.toHaveBeenCalled();
+  await click('Apply selected');
+  await vi.waitFor(() => expect(settingsFetch.forgetAppSettingsFetch).toHaveBeenCalled());
+  expect(imports).toHaveLength(1);
 });
 
 describe('importing a cleanup section', () => {

@@ -4,7 +4,7 @@ import { useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { ApiError } from '@/lib/query-fetch';
-import { fetchAppSettings } from '@/lib/app-settings-fetch';
+import { fetchAppSettings, forgetAppSettingsFetch } from '@/lib/app-settings-fetch';
 import { normalizeRegionCode } from '@/lib/region';
 
 export interface AppSettingsState {
@@ -161,6 +161,8 @@ export function useAppSettings(): UseAppSettingsResult {
     onSuccess: ({ state }) => {
       qc.setQueryData(SETTINGS_KEY, state);
     },
+    // A read shared from before the save must not answer reads after it.
+    onSettled: () => forgetAppSettingsFetch(),
   });
 
   const update = useCallback<UseAppSettingsResult['update']>(
