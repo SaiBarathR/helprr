@@ -105,6 +105,22 @@ describe('Login page', () => {
     expect(mocks.clearUserScopedBrowserCaches).not.toHaveBeenCalled();
   });
 
+  it('tells someone who forgot their password how to get back in', async () => {
+    meAnswers(Promise.resolve(new Response(null, { status: 401 })));
+    await openLogin();
+    const details = container.querySelector('details')!;
+    const summary = details.querySelector('summary')!;
+    expect(summary.textContent).toBe('Forgot your password?');
+    expect(details.open).toBe(false);
+    act(() => summary.click());
+    expect(details.open).toBe(true);
+    expect(details.textContent).toContain('Ask whoever runs Helprr to reset it in Settings → Users.');
+    const link = details.querySelector('a')!;
+    expect(link.textContent).toBe('Recover the admin account');
+    expect(link.getAttribute('href')).toBe('https://saibarathr.github.io/helprr/troubleshooting/#signing-in');
+    expect(link.getAttribute('rel')).toBe('noopener noreferrer');
+  });
+
   describe('a brand-new install', () => {
     function answers(setupState: Promise<Response>) {
       vi.stubGlobal('fetch', vi.fn((url: string) => (
