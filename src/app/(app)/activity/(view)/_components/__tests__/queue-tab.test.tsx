@@ -9,12 +9,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   canManage: true,
   toast: { success: vi.fn(), error: vi.fn() },
+  adjustBadge: vi.fn(),
 }));
 vi.mock('@/components/layout/navigation-provider', () => ({ useAppRouter: () => ({ push: vi.fn() }) }));
 vi.mock('@/components/permission-provider', () => ({
   useCan: (cap: string) => cap !== 'activity.manage' || mocks.canManage,
 }));
-vi.mock('@/components/layout/badge-provider', () => ({ useBadgeActions: () => ({ adjustBadge: vi.fn() }) }));
+vi.mock('@/components/layout/badge-provider', () => ({ useBadgeActions: () => ({ adjustBadge: mocks.adjustBadge }) }));
 vi.mock('@/lib/client-refresh-settings', () => ({ getRefreshIntervalMs: vi.fn().mockResolvedValue(60_000) }));
 vi.mock('sonner', () => ({ toast: mocks.toast }));
 // The detail sheet's content renders only for a selected item, so a pass-through drawer shows it inline.
@@ -47,6 +48,7 @@ beforeEach(() => {
   mocks.canManage = true;
   mocks.toast.success.mockClear();
   mocks.toast.error.mockClear();
+  mocks.adjustBadge.mockClear();
   fetchMock.mockClear();
   window.sessionStorage.clear();
   resetRouteViewStateForTests();
@@ -110,9 +112,10 @@ describe('Queue tab: bulk remove', () => {
     expect(bodies).toContainEqual({ source: 'sonarr', instanceId: 'son-1', ids: expect.arrayContaining([1, 2, 3]), ...options });
     expect(bodies).toContainEqual({ source: 'radarr', instanceId: 'rad-1', ids: [4], ...options });
     expect(bodies.find((b) => b.source === 'sonarr').ids).toHaveLength(3);
+    expect(mocks.adjustBadge).toHaveBeenCalledWith('activity', -4, -0);
   });
 
-  it('says when an instance could not remove its downloads', async () => {
+  it('says when an instance could not remove its downloads and counts only the instance that did', async () => {
     fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url.startsWith('/api/activity/queue?')) return Response.json({ records: QUEUE, totalRecords: QUEUE.length });
       if (init?.method === 'DELETE' && String(init.body).includes('rad-1')) return Response.json({ error: 'no' }, { status: 500 });
@@ -124,7 +127,11 @@ describe('Queue tab: bulk remove', () => {
     await userEvent.click(screen.getByText('Movie.2026'));
     await userEvent.click(screen.getByRole('button', { name: 'Remove' }));
     await userEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Remove' }));
-    await waitFor(() => expect(mocks.toast.error).toHaveBeenCalledWith('Some downloads could not be removed'));
+    await waitFor(() => expect(mocks.toast.error).toHaveBeenCalledWith(
+      'Some downloads could not be removed. They may have been partly removed.',
+    ));
+    expect(mocks.adjustBadge).toHaveBeenCalledTimes(1);
+    expect(mocks.adjustBadge).toHaveBeenCalledWith('activity', -1, -0);
   });
 });
 

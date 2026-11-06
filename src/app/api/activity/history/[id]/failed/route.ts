@@ -10,6 +10,8 @@ import { asJsonObject, parseArrId, resolveActivityArrTarget } from '@/lib/activi
 // ── POST /api/activity/history/[id]/failed ──────────────────────────────────
 // Body: { source, instanceId }. Marks the download behind a history event failed:
 // the *arr blocklists the release and searches for another. Audited.
+// Any numeric id of that instance is forwarded: the *arrs have no history get-by-id
+// to check the event type first, so only the UI limits this to grabs and imports.
 async function postHandler(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },

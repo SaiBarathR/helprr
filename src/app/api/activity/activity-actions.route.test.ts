@@ -4,6 +4,8 @@ import { NextRequest, NextResponse } from 'next/server';
 const mocks = vi.hoisted(() => ({
   requireUserCapability: vi.fn(),
   runWithOperationAudit: vi.fn(),
+  recordOperationAudit: vi.fn(),
+  fetchAllQueueRecords: vi.fn(),
   bumpQueueCacheVersion: vi.fn(),
   listConnections: vi.fn(),
   getSonarrClient: vi.fn(),
@@ -21,9 +23,13 @@ vi.mock('@/lib/service-helpers', () => ({
   getRadarrClient: mocks.getRadarrClient,
   getLidarrClient: mocks.getLidarrClient,
 }));
-vi.mock('@/lib/file-audit', () => ({ runWithOperationAudit: mocks.runWithOperationAudit }));
+vi.mock('@/lib/file-audit', () => ({
+  runWithOperationAudit: mocks.runWithOperationAudit,
+  recordOperationAudit: mocks.recordOperationAudit,
+}));
 vi.mock('@/lib/activity-queue', () => ({
   bumpQueueCacheVersion: mocks.bumpQueueCacheVersion,
+  fetchAllQueueRecords: mocks.fetchAllQueueRecords,
   getQueueCached: vi.fn(),
   getQueueNeedingImportCached: vi.fn(),
 }));
@@ -55,6 +61,8 @@ beforeEach(() => {
   mocks.getSonarrClient.mockResolvedValue(mocks.sonarr);
   mocks.getRadarrClient.mockResolvedValue(mocks.radarr);
   mocks.getLidarrClient.mockResolvedValue(mocks.lidarr);
+  // The re-read after a bulk removal: an empty queue, so every id was removed.
+  mocks.fetchAllQueueRecords.mockResolvedValue({ records: [], totalRecords: 0 });
   for (const client of [mocks.sonarr, mocks.radarr, mocks.lidarr]) {
     client.markHistoryFailed.mockResolvedValue(undefined);
     client.grabQueueItem.mockResolvedValue(undefined);
@@ -89,6 +97,7 @@ describe.each(actions)('%s', (_name, call) => {
     }
     expect(mocks.getSonarrClient).not.toHaveBeenCalled();
     expect(mocks.runWithOperationAudit).not.toHaveBeenCalled();
+    expect(mocks.recordOperationAudit).not.toHaveBeenCalled();
   });
 
   it('acts on the named instance', async () => {
@@ -121,10 +130,21 @@ describe('POST /api/activity/history/[id]/failed', () => {
   it('rejects a non-numeric id', async () => {
     const res = await markFailed(
       request('POST', '/api/activity/history/x/failed', { source: 'sonarr', instanceId: 'son-1' }),
-      idParams('-1'),
+      idParams('x'),
     );
     expect(res.status).toBe(400);
     expect(mocks.sonarr.markHistoryFailed).not.toHaveBeenCalled();
+  });
+
+  it('forwards any numeric history id: the *arrs have no get-by-id to check its event type', async () => {
+    // The UI offers the action only on grabs and imports; upstream decides what a
+    // "failed" mark means for any other event.
+    const res = await markFailed(
+      request('POST', '/api/activity/history/987654/failed', { source: 'sonarr', instanceId: 'son-1' }),
+      idParams('987654'),
+    );
+    expect(res.status).toBe(200);
+    expect(mocks.sonarr.markHistoryFailed).toHaveBeenCalledWith(987654);
   });
 
   it('reports an upstream failure without its detail', async () => {
@@ -173,8 +193,10 @@ describe('DELETE /api/activity/queue', () => {
     expect(res.status).toBe(200);
     const options = { removeFromClient: true, blocklist: true, skipRedownload: false, changeCategory: false };
     expect(mocks.sonarr.deleteQueueBulk).toHaveBeenCalledWith([3, 4], options);
-    expect(mocks.runWithOperationAudit).toHaveBeenCalledTimes(1);
-    expect(mocks.runWithOperationAudit).toHaveBeenCalledWith(expect.objectContaining({
+    // The re-read sees unmatched (unknown) items too: they can be selected and removed.
+    expect(mocks.fetchAllQueueRecords).toHaveBeenCalledWith(mocks.sonarr, true);
+    expect(mocks.recordOperationAudit).toHaveBeenCalledTimes(1);
+    expect(mocks.recordOperationAudit).toHaveBeenCalledWith(expect.objectContaining({
       user,
       service: 'SONARR',
       instanceId: 'son-1',
@@ -183,8 +205,21 @@ describe('DELETE /api/activity/queue', () => {
       targetId: null,
       itemCount: 2,
       filesDeleted: true,
-      details: { source: 'sonarr', queueIds: [3, 4], ...options },
-    }), expect.any(Function));
+      success: true,
+      details: { source: 'sonarr', queueIds: [3, 4], ...options, removedIds: [3, 4], remainingIds: [] },
+    }));
+  });
+
+  it('counts only what the queue no longer lists when upstream leaves an id in place', async () => {
+    mocks.fetchAllQueueRecords.mockResolvedValueOnce({ records: [{ id: 4 }, { id: 99 }], totalRecords: 2 });
+    const res = await bulkRemove(request('DELETE', '/api/activity/queue', { source: 'lidarr', instanceId: 'lid-1', ids: [3, 4] }));
+    expect(res.status).toBe(200);
+    expect(mocks.fetchAllQueueRecords).toHaveBeenCalledWith(mocks.lidarr, false);
+    expect(mocks.recordOperationAudit).toHaveBeenCalledWith(expect.objectContaining({
+      success: true,
+      itemCount: 1,
+      details: expect.objectContaining({ removedIds: [3], remainingIds: [4] }),
+    }));
   });
 
   it('rejects bad ids and non-boolean options', async () => {
@@ -203,15 +238,57 @@ describe('DELETE /api/activity/queue', () => {
     expect(mocks.sonarr.deleteQueueBulk).not.toHaveBeenCalled();
   });
 
-  it('records a failed upstream removal, answers 500 and still drops the cached queue', async () => {
+  it('records what a failed removal did remove, answers 500 and still drops the cached queue', async () => {
     mocks.sonarr.deleteQueueBulk.mockRejectedValueOnce(new Error('boom'));
-    const res = await bulkRemove(request('DELETE', '/api/activity/queue', { source: 'sonarr', instanceId: 'son-1', ids: [3] }));
+    mocks.fetchAllQueueRecords.mockResolvedValueOnce({ records: [{ id: 5 }], totalRecords: 1 });
+    const res = await bulkRemove(request('DELETE', '/api/activity/queue', { source: 'sonarr', instanceId: 'son-1', ids: [3, 4, 5] }));
     expect(res.status).toBe(500);
     // Upstream removes item by item, so a failure may follow some removals.
     expect(mocks.bumpQueueCacheVersion).toHaveBeenCalled();
-    expect(mocks.runWithOperationAudit).toHaveBeenCalledWith(
-      expect.objectContaining({ targetId: 3, filesDeleted: false }),
-      expect.any(Function),
-    );
+    expect(mocks.recordOperationAudit).toHaveBeenCalledTimes(1);
+    expect(mocks.recordOperationAudit).toHaveBeenCalledWith(expect.objectContaining({
+      success: false,
+      errorMessage: 'boom',
+      itemCount: 2,
+      filesDeleted: false,
+      details: expect.objectContaining({ queueIds: [3, 4, 5], removedIds: [3, 4], remainingIds: [5] }),
+    }));
+  });
+
+  it('records the outcome as unknown when the queue cannot be read again', async () => {
+    mocks.sonarr.deleteQueueBulk.mockRejectedValueOnce(new Error('boom'));
+    mocks.fetchAllQueueRecords.mockRejectedValueOnce(new Error('timeout'));
+    const res = await bulkRemove(request('DELETE', '/api/activity/queue', { source: 'sonarr', instanceId: 'son-1', ids: [3] }));
+    expect(res.status).toBe(500);
+    const [[row]] = mocks.recordOperationAudit.mock.calls;
+    expect(row).toMatchObject({ success: false, targetId: 3, itemCount: 1, details: { queueIds: [3], outcome: 'partial-unknown' } });
+    expect(row.details).not.toHaveProperty('removedIds');
+    expect(mocks.bumpQueueCacheVersion).toHaveBeenCalled();
+  });
+
+  it('gives up on a re-read that hangs and records the outcome as unknown', async () => {
+    vi.useFakeTimers();
+    try {
+      mocks.fetchAllQueueRecords.mockReturnValueOnce(new Promise(() => {}));
+      const pending = bulkRemove(request('DELETE', '/api/activity/queue', { source: 'sonarr', instanceId: 'son-1', ids: [3] }));
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect((await pending).status).toBe(200);
+      expect(mocks.recordOperationAudit).toHaveBeenCalledWith(expect.objectContaining({
+        details: expect.objectContaining({ outcome: 'partial-unknown' }),
+      }));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('treats a capped re-read as unknown, not as removed', async () => {
+    mocks.fetchAllQueueRecords.mockResolvedValueOnce({ records: [], totalRecords: 20_000 });
+    const res = await bulkRemove(request('DELETE', '/api/activity/queue', { source: 'radarr', instanceId: 'rad-1', ids: [3, 4] }));
+    expect(res.status).toBe(200);
+    expect(mocks.recordOperationAudit).toHaveBeenCalledWith(expect.objectContaining({
+      success: true,
+      itemCount: 2,
+      details: expect.objectContaining({ outcome: 'partial-unknown' }),
+    }));
   });
 });

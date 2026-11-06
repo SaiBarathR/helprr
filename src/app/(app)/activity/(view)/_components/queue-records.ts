@@ -211,16 +211,28 @@ export function queueRemovalDelta(items: QueueRecord[]): { count: number; attent
   };
 }
 
-/** One bulk-remove request per instance: queue ids are per instance. */
-export function queueRemovalBatches(items: QueueRecord[]): Array<{ source: string; instanceId: string; ids: number[] }> {
-  const batches = new Map<string, { source: string; instanceId: string; ids: number[] }>();
+// The bulk-remove route takes at most this many ids per request.
+export const QUEUE_REMOVAL_BATCH_SIZE = 1000;
+
+/**
+ * Bulk-remove requests: queue ids are per instance, so one entry per instance, its
+ * records in chunks of at most QUEUE_REMOVAL_BATCH_SIZE.
+ */
+export function queueRemovalBatches(items: QueueRecord[]): Array<{ source: string; instanceId: string; chunks: QueueRecord[][] }> {
+  const perInstance = new Map<string, { source: string; instanceId: string; items: QueueRecord[] }>();
   for (const item of items) {
     const source = item.source ?? '';
     const instanceId = item.instanceId ?? '';
     const key = `${source}|${instanceId}`;
-    const batch = batches.get(key) ?? { source, instanceId, ids: [] };
-    batch.ids.push(item.id);
-    batches.set(key, batch);
+    const group = perInstance.get(key) ?? { source, instanceId, items: [] };
+    group.items.push(item);
+    perInstance.set(key, group);
   }
-  return [...batches.values()];
+  return [...perInstance.values()].map(({ source, instanceId, items: records }) => {
+    const chunks: QueueRecord[][] = [];
+    for (let start = 0; start < records.length; start += QUEUE_REMOVAL_BATCH_SIZE) {
+      chunks.push(records.slice(start, start + QUEUE_REMOVAL_BATCH_SIZE));
+    }
+    return { source, instanceId, chunks };
+  });
 }

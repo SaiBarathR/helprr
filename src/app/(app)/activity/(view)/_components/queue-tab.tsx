@@ -193,12 +193,11 @@ export function QueueTab({
     }
   }
 
-  // Removes every record of the selected downloads, one request per instance.
+  // Removes every record of the selected downloads, in requests of up to 1000 ids per instance.
   async function executeBulkRemoval(opts: RemoveQueueOptions) {
     const groupCount = selectedGroups.length;
     const items = selectedGroups.flatMap((group) => group.items);
     if (items.length === 0) return;
-    const delta = queueRemovalDelta(items);
 
     setRemoving(true);
     await queryClient.cancelQueries({ queryKey: QUEUE_QUERY_KEY });
@@ -214,27 +213,40 @@ export function QueueTab({
       });
     }
     try {
-      const results = await Promise.all(queueRemovalBatches(items).map(async (batch) => {
-        const res = await fetch('/api/activity/queue', {
-          method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            ...batch,
-            removeFromClient: opts.method === 'removeFromClient',
-            changeCategory: opts.method === 'changeCategory',
-            blocklist: opts.blocklist,
-            skipRedownload: opts.skipRedownload,
-          }),
-        }).catch(() => null);
-        return !!res?.ok;
+      const removed: QueueRecord[] = [];
+      let failed = 0;
+      await Promise.all(queueRemovalBatches(items).map(async ({ source, instanceId, chunks }) => {
+        // One instance's chunks go one after another, so a download split across two
+        // chunks never reaches that instance twice at once.
+        for (const chunk of chunks) {
+          const res = await fetch('/api/activity/queue', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              source,
+              instanceId,
+              ids: chunk.map((item) => item.id),
+              removeFromClient: opts.method === 'removeFromClient',
+              changeCategory: opts.method === 'changeCategory',
+              blocklist: opts.blocklist,
+              skipRedownload: opts.skipRedownload,
+            }),
+          }).catch(() => null);
+          if (res?.ok) removed.push(...chunk);
+          else failed += 1;
+        }
       }));
-      if (results.every(Boolean)) {
+      // Nudge the badge for the requests that succeeded; the badge poll reconciles the rest.
+      const delta = queueRemovalDelta(removed);
+      if (delta.count > 0) adjustBadge('activity', -delta.count, -delta.attention);
+      if (failed === 0) {
         toast.success(groupCount === 1 ? 'Removed from queue' : `Removed ${groupCount} downloads from queue`);
-        adjustBadge('activity', -delta.count, -delta.attention);
       } else {
-        // The refetch below shows what an instance that did answer removed.
+        // The refetch below shows what was removed: a failed request may have removed some items.
         if (snapshot) queryClient.setQueryData(QUEUE_QUERY_KEY, snapshot);
-        toast.error(results.some(Boolean) ? 'Some downloads could not be removed' : 'Failed to remove');
+        toast.error(removed.length > 0
+          ? 'Some downloads could not be removed. They may have been partly removed.'
+          : 'Failed to remove');
       }
     } finally {
       setRemoving(false);

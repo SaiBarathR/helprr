@@ -13,6 +13,7 @@ import {
   manualImportHref,
   packNoun,
   queueRecordKey,
+  QUEUE_REMOVAL_BATCH_SIZE,
   queueRemovalBatches,
   queueRemovalDelta,
   statusColor,
@@ -150,13 +151,26 @@ describe('isPendingRelease', () => {
 });
 
 describe('queueRemovalBatches', () => {
-  it('groups ids per source and instance', () => {
-    const rec = (id: number, source: string, instanceId: string) => ({ id, source, instanceId }) as QueueRecord;
-    expect(queueRemovalBatches([rec(1, 'sonarr', 's1'), rec(2, 'radarr', 'r1'), rec(3, 'sonarr', 's1'), rec(1, 'sonarr', 's2')])).toEqual([
-      { source: 'sonarr', instanceId: 's1', ids: [1, 3] },
-      { source: 'radarr', instanceId: 'r1', ids: [2] },
-      { source: 'sonarr', instanceId: 's2', ids: [1] },
+  const rec = (id: number, source: string, instanceId: string) => ({ id, source, instanceId }) as QueueRecord;
+  const ids = (chunk: QueueRecord[]) => chunk.map((item) => item.id);
+
+  it('groups records per source and instance', () => {
+    const batches = queueRemovalBatches([rec(1, 'sonarr', 's1'), rec(2, 'radarr', 'r1'), rec(3, 'sonarr', 's1'), rec(1, 'sonarr', 's2')]);
+    expect(batches.map((batch) => [batch.source, batch.instanceId, batch.chunks.map(ids)])).toEqual([
+      ['sonarr', 's1', [[1, 3]]],
+      ['radarr', 'r1', [[2]]],
+      ['sonarr', 's2', [[1]]],
     ]);
+  });
+
+  it('splits an instance with more than the route accepts into chunks of 1000', () => {
+    const many = Array.from({ length: 2001 }, (_, i) => rec(i, 'sonarr', 's1'));
+    const batches = queueRemovalBatches([...many, rec(7, 'radarr', 'r1')]);
+    expect(QUEUE_REMOVAL_BATCH_SIZE).toBe(1000);
+    expect(batches.map((batch) => [batch.instanceId, batch.chunks.map((chunk) => chunk.length)])).toEqual([
+      ['s1', [1000, 1000, 1]], ['r1', [1]],
+    ]);
+    expect(batches[0].chunks.flatMap(ids)).toEqual(many.map((item) => item.id));
   });
 });
 

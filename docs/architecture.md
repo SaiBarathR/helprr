@@ -482,12 +482,21 @@ were to be moved; success means the *arr accepted the change and queued any move
 that the move finished; it needs the service's `changePath` capability, and the folder must
 be one of that instance's root folders),
 removing several queue items from Activity's Select mode (`REMOVE_QUEUE`: one
-row per request and instance, the queue ids and removal options in its details)
-and marking a grabbed or imported history event failed (`MARK_FAILED`, which
-blocklists the release and searches again). Those two, and Grab now on a delayed
-queue item, also require an explicitly named instance of that service. These
-interactive removals are a user's direct action, like the single queue Remove,
-not a cleaner run, so they take no cleanup preview token.
+row per request and instance, the queue ids and removal options in its details;
+the client sends at most 1000 ids per request, one request at a time per
+instance. The *arr removes item by item and skips ids it no longer has, so after
+the call, failed or not, the route reads that instance's queue again (at most
+10 s) and records `remainingIds` (still listed) and `removedIds` (no longer
+listed, so it includes ids already gone before the call), with the item count as
+`removedIds`, or `outcome: 'partial-unknown'` when the queue cannot be read in
+full in time) and marking a grabbed or imported history event failed
+(`MARK_FAILED`, which blocklists the release and searches again; the *arrs have
+no history get-by-id, so the route forwards any numeric event id of that
+instance and only the UI limits it to grabs and imports). Those two, and Grab now
+on a delayed queue item, also require an explicitly named instance of that
+service. Grab now is not audited: it releases a download early and removes
+nothing. These interactive removals are a user's direct action, like the single
+queue Remove, not a cleaner run, so they take no cleanup preview token.
 The bulk editor's other settings (quality and
 metadata profile, series type, season folder, monitor-new, minimum availability) are
 admin-only, as on the single-item edit, and profile ids are checked against the
