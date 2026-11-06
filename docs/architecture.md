@@ -706,7 +706,18 @@ user identifiers are excluded.
 full transform decode; pass-through `/api/jellyfin/image` keeps the separate
 full-decode validation. TMDB URLs are right-sized server-side without changing
 the logical cache key. The PWA caches only non-stale `/api/image` responses for
-a fixed seven days from fetch and never caches Jellyfin artwork.
+a fixed seven days from fetch and never caches Jellyfin artwork. Jellyfin artwork
+is requested from Jellyfin as WebP (default quality 80) and served
+`private, no-cache` with a strong ETag of the bytes, so the browser revalidates
+each use and gets an empty 304 only after both authorization checks pass.
+
+An upstream 404, 413 or 415 is remembered in Redis for ten minutes per cache key
+and generation (`helprr:cache:image-negative:*`), and both routes send that
+answer as `private, max-age=600`, so a broken image is not refetched upstream on
+every render; a browser can therefore keep showing it for up to about twenty
+minutes. Stale bytes are still served meanwhile, without a background refresh.
+Outages, timeouts and rate limits are never remembered, and without Redis every
+request goes upstream as before.
 
 When adding a new history or audit table, define and test its retention behavior
 instead of leaving it unbounded.

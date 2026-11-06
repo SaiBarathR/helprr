@@ -195,6 +195,22 @@ describe('Lidarr image proxy', () => {
     );
   });
 
+  it('lets the browser reuse a missing image answer briefly but never an outage', async () => {
+    mocks.fetchImageWithServerCache.mockResolvedValueOnce({
+      status: 404, body: null, contentType: null, cacheStatus: 'HIT',
+    });
+    const missing = await GET(imageRequest('https://images.lidarr.audio/cover/artist.jpg'));
+    expect(missing.status).toBe(404);
+    expect(missing.headers.get('cache-control')).toBe('private, max-age=600');
+
+    mocks.fetchImageWithServerCache.mockResolvedValueOnce({
+      status: 504, body: null, contentType: null, cacheStatus: 'MISS',
+    });
+    const timeout = await GET(imageRequest('https://images.lidarr.audio/cover/artist.jpg'));
+    expect(timeout.status).toBe(504);
+    expect(timeout.headers.get('cache-control') ?? '').not.toContain('max-age');
+  });
+
   it('does not change existing Radarr media-cover behavior', async () => {
     const src = 'http://radarr.internal:7878/MediaCover/3/poster.jpg?lastWrite=321';
 

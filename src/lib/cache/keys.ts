@@ -28,6 +28,10 @@ export function buildImageMetaKey(generation: number, keySeed: string): string {
   return `helprr:cache:image:v${generation}:${sha256Hex(keySeed)}`;
 }
 
+export function buildImageNegativeKey(generation: number, keySeed: string): string {
+  return `helprr:cache:image-negative:v${generation}:${sha256Hex(keySeed)}`;
+}
+
 export function buildImageIndexKey(generation: number): string {
   return `helprr:cache:image-index:v${generation}`;
 }

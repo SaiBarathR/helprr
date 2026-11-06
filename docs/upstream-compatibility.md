@@ -243,6 +243,10 @@ were compared with Helprr's client and media proxies. See also the
   initially overwritten progress, so concurrent same-account players are not
   qualified by this run. Token revocation was covered by regression tests rather
   than revoking the user's live credentials.
+- Artwork format, 2026-11-06, Jellyfin `12.4.0`: `/Items/{id}/Images/Backdrop`
+  with `maxWidth=1280&quality=80&format=Webp` returned real `image/webp` bytes
+  (16.8 KB, against 100 KB JPEG at Helprr's former quality 90). Helprr's image
+  proxy now always asks for WebP; Jellyfin `10.11` was not re-checked for this.
 - No Live TV tuner was available, so empty channel/program/recording responses
   only qualify listing contracts. Physical iPhone/PWA playback, alternate episode
   versions, book reading, server restart/shutdown, task execution and device

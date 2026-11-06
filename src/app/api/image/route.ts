@@ -6,6 +6,10 @@ import { fetchImageWithServerCache } from '@/lib/cache/image-cache';
 import { getConnectionHeaders } from '@/lib/service-connection-secrets';
 import { toAuthenticatedLidarrImageUrl } from '@/lib/lidarr-image';
 import { withApiLogging } from '@/lib/api-logger';
+import {
+  IMAGE_NEGATIVE_CACHE_STATUSES,
+  IMAGE_NEGATIVE_CACHE_TTL_SECONDS,
+} from '@/lib/image-response-cache-policy';
 
 type ServiceHint = 'tmdb' | 'radarr' | 'sonarr' | 'anilist' | 'lidarr';
 
@@ -329,6 +333,9 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
         status: result.status,
         headers: {
           'X-Helprr-Cache': result.cacheStatus,
+          ...(IMAGE_NEGATIVE_CACHE_STATUSES.has(result.status)
+            ? { 'Cache-Control': `private, max-age=${IMAGE_NEGATIVE_CACHE_TTL_SECONDS}` }
+            : {}),
           ...(result.retryAfterSeconds
             ? { 'Retry-After': String(result.retryAfterSeconds) }
             : {}),
