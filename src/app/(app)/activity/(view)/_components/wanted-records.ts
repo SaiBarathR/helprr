@@ -18,6 +18,7 @@ export interface WantedRecord {
   added?: string;
   monitored?: boolean;
   // Radarr movie fields
+  status?: string;
   isAvailable?: boolean;
   inCinemas?: string;
   digitalRelease?: string;
@@ -35,18 +36,45 @@ export function wantedRecordKey(record: WantedRecord): string {
   return `${record.source}-${record.instanceId ?? 'default'}-${record.id}`;
 }
 
-/**
- * A film Radarr does not consider available yet (before its minimum
- * availability): listed as wanted, but not something that is out to download.
- */
-export function isNotReleased(record: WantedRecord): boolean {
-  return record.source === 'radarr' && record.isAvailable === false;
-}
-
 function validDate(value: string | undefined): Date | null {
   if (!value) return null;
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? null : date;
+}
+
+type FilmRelease = { label: 'In cinemas' | 'Digital release' | 'Physical release'; date: Date };
+
+/**
+ * A film's known releases, oldest first, split into those that have happened
+ * and those still to come. The one place the Missing tab decides whether a
+ * film is out: the "Not released yet" group and the row's date both read it.
+ */
+function filmReleases(record: WantedRecord, now: number): { past: FilmRelease[]; future: FilmRelease[] } {
+  const releases = ([
+    ['In cinemas', record.inCinemas],
+    ['Digital release', record.digitalRelease],
+    ['Physical release', record.physicalRelease],
+  ] as const)
+    .map(([label, value]) => ({ label, date: validDate(value) }))
+    .filter((r): r is FilmRelease => r.date !== null)
+    .sort((a, b) => a.date.getTime() - b.date.getTime());
+  return {
+    past: releases.filter((r) => r.date.getTime() <= now),
+    future: releases.filter((r) => r.date.getTime() > now),
+  };
+}
+
+/**
+ * A Radarr film that is not out anywhere yet: none of its cinema, digital or
+ * physical dates has passed (with no dates at all: Radarr's status says it is
+ * only announced). Radarr's own isAvailable is not used: with minimum
+ * availability "announced" it is true for films years from release.
+ */
+export function isNotReleased(record: WantedRecord, now = Date.now()): boolean {
+  if (record.source !== 'radarr') return false;
+  const { past, future } = filmReleases(record, now);
+  if (past.length > 0) return false;
+  return future.length > 0 || record.status === 'announced' || record.status === 'tba';
 }
 
 /**
@@ -64,21 +92,9 @@ export function wantedDate(record: WantedRecord, now = Date.now()): { label: str
     return date && { label: date.getTime() > now ? 'Releases' : 'Released', date };
   }
 
-  const releases = ([
-    ['In cinemas', record.inCinemas],
-    ['Digital release', record.digitalRelease],
-    ['Physical release', record.physicalRelease],
-  ] as const)
-    .map(([label, value]) => ({ label, date: validDate(value) }))
-    .filter((r): r is { label: 'In cinemas' | 'Digital release' | 'Physical release'; date: Date } => r.date !== null)
-    .sort((a, b) => a.date.getTime() - b.date.getTime());
-  const past = releases.filter((r) => r.date.getTime() <= now);
-  const future = releases.filter((r) => r.date.getTime() > now);
-  const pick = isNotReleased(record)
-    // Not out yet: the next release, else the last one there was.
-    ? future[0] ?? past.at(-1)
-    // Out: the first home release, else the cinema release.
-    : past.find((r) => r.label !== 'In cinemas') ?? past[0] ?? future[0];
+  const { past, future } = filmReleases(record, now);
+  // Out: the first home release, else the cinema release. Not out yet: the next release.
+  const pick = past.find((r) => r.label !== 'In cinemas') ?? past[0] ?? future[0];
   if (pick) return pick;
   const added = validDate(record.added);
   return added && { label: 'Added', date: added };

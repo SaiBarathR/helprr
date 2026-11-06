@@ -27,7 +27,10 @@ const RECORDS = [
   { id: 11, source: 'sonarr', mediaType: 'episode', instanceId: 'son-1', seriesId: 5, seasonNumber: 1, episodeNumber: 8, title: 'Ep 8', series: { id: 5, title: 'Classroom' }, airDateUtc: ago(9 * YEAR) },
   { id: 12, source: 'sonarr', mediaType: 'episode', instanceId: 'son-2', seriesId: 6, seasonNumber: 2, episodeNumber: 1, title: 'Ep 1', series: { id: 6, title: 'Other Show' }, airDateUtc: ago(YEAR) },
   { id: 21, source: 'radarr', mediaType: 'movie', instanceId: 'rad-1', title: 'Out Film', year: 2024, isAvailable: true, digitalRelease: ago(2 * YEAR), added: ago(YEAR / 4) },
-  { id: 22, source: 'radarr', mediaType: 'movie', instanceId: 'rad-1', title: 'Secret Wars', year: 2027, isAvailable: false, inCinemas: ahead(YEAR), added: ago(YEAR) },
+  // Minimum availability "announced": Radarr says available though it is a year out.
+  { id: 22, source: 'radarr', mediaType: 'movie', instanceId: 'rad-1', title: 'Secret Wars', year: 2027, status: 'announced', minimumAvailability: 'announced', isAvailable: true, inCinemas: ahead(YEAR), added: ago(YEAR) },
+  // In cinemas, home release still to come: Radarr says unavailable, but it is out.
+  { id: 23, source: 'radarr', mediaType: 'movie', instanceId: 'rad-1', title: 'Cinema Film', year: 2026, status: 'inCinemas', minimumAvailability: 'released', isAvailable: false, inCinemas: ago(YEAR / 4), added: ago(YEAR / 2) },
 ];
 const INSTANCES = [
   { id: 'son-1', label: 'main', type: 'SONARR' },
@@ -78,6 +81,8 @@ describe('WantedTab', () => {
     renderTab();
     await screen.findByText(/Classroom - S01E08/);
     expect(screen.queryByText('Secret Wars (2027)')).toBeNull();
+    expect(screen.getByText('Cinema Film (2026)')).toBeTruthy();
+    expect(screen.getByText(/^In cinemas 3 months ago$/)).toBeTruthy();
     await userEvent.click(screen.getByRole('button', { name: 'Not released yet (1)' }));
     expect(screen.getByText('Secret Wars (2027)')).toBeTruthy();
     expect(screen.getByText(/^In cinemas in /)).toBeTruthy();
