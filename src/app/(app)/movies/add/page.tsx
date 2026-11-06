@@ -30,6 +30,7 @@ import type { RadarrLookupResult } from '@/types';
 import { useQualityProfiles, useRootFolders } from '@/lib/hooks/use-reference-data';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import { resolveAddPageInstance } from '@/lib/add-page-instances';
+import { pickRememberedOption, readAddDefaults, saveAddDefaults } from '@/lib/add-defaults';
 
 function AddMoviePageContent() {
   const router = useRouter();
@@ -91,6 +92,12 @@ function AddMoviePageContent() {
     setProfileId('');
     setRootFolder('');
     setSelectedTags([]);
+    // The monitor choice isn't instance-local, so it only changes when this
+    // instance has a remembered one.
+    const rememberedMonitor = readAddDefaults('radarr', instanceId).monitor;
+    if (rememberedMonitor === 'movieOnly' || rememberedMonitor === 'movieAndCollection' || rememberedMonitor === 'none') {
+      setMonitor(rememberedMonitor);
+    }
   }
 
   // Auto-select the prefilled result once the lookup resolves.
@@ -106,15 +113,16 @@ function AddMoviePageContent() {
     toast.error('Search failed');
   }, [lookupQuery.isError, lookupQuery.error]);
 
-  // Default the profile / root-folder selection to the first option when the
-  // instance's reference data arrives. Keep a still-valid user choice on a
-  // background refetch; re-default only when the current value is missing from
-  // the fresh list (e.g. after switching instances).
+  // Default the profile / root-folder selection when the instance's reference
+  // data arrives: the last one used on this instance while it still exists,
+  // else the first option. Keep a still-valid user choice on a background
+  // refetch; re-default only when the current value is missing from the fresh
+  // list (e.g. after switching instances).
   if (profiles.length > 0 && !(profileId && profiles.some((p) => String(p.id) === profileId))) {
-    setProfileId(String(profiles[0].id));
+    setProfileId(pickRememberedOption(profiles.map((p) => String(p.id)), readAddDefaults('radarr', instanceId).profileId)!);
   }
   if (rootFolders.length > 0 && !(rootFolder && rootFolders.some((f) => f.path === rootFolder))) {
-    setRootFolder(rootFolders[0].path);
+    setRootFolder(pickRememberedOption(rootFolders.map((f) => f.path), readAddDefaults('radarr', instanceId).rootFolder)!);
   }
 
   function handleSearch(e: React.FormEvent) {
@@ -132,7 +140,14 @@ function AddMoviePageContent() {
   }
 
   const addMutation = useMutation({
-    mutationFn: async (payload: { title: string; [k: string]: unknown }) => {
+    mutationFn: async (payload: {
+      title: string;
+      instanceId?: string;
+      qualityProfileId: number;
+      rootFolderPath: string;
+      addOptions: { monitor: string; [k: string]: unknown };
+      [k: string]: unknown;
+    }) => {
       const res = await fetch('/api/radarr', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -146,6 +161,11 @@ function AddMoviePageContent() {
     },
     onSuccess: (movie, payload) => {
       invalidateMovies(queryClient);
+      saveAddDefaults('radarr', payload.instanceId, {
+        profileId: String(payload.qualityProfileId),
+        rootFolder: payload.rootFolderPath,
+        monitor: payload.addOptions.monitor,
+      });
       toast.success(`${payload.title} added`);
       router.push(`/movies/${movie.id}${instanceId ? `?instance=${instanceId}` : ''}`);
     },

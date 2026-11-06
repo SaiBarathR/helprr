@@ -34,6 +34,7 @@ import {
 } from '@/lib/hooks/use-reference-data';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import { resolveAddPageInstance } from '@/lib/add-page-instances';
+import { pickRememberedOption, readAddDefaults, saveAddDefaults } from '@/lib/add-defaults';
 
 const MONITOR_OPTIONS = [
   { value: 'all', label: 'All Albums' },
@@ -119,6 +120,10 @@ function AddArtistPageContent() {
     setMetadataProfileId('');
     setRootFolder('');
     setSelectedTags([]);
+    // The monitor choice isn't instance-local, so it only changes when this
+    // instance has a remembered one.
+    const rememberedMonitor = readAddDefaults('lidarr', instanceId).monitor;
+    if (rememberedMonitor && MONITOR_OPTIONS.some((o) => o.value === rememberedMonitor)) setMonitor(rememberedMonitor);
   }
 
   // Keep the selected artist identity across an instance switch, but replace
@@ -128,17 +133,18 @@ function AddArtistPageContent() {
     setTargetForeignArtistId(null);
   }
 
-  // Default the profile / metadata-profile / root-folder selection to the first
-  // option when the instance's reference data arrives. Keep a still-valid user
-  // choice on a background refetch; re-default only when it's missing now.
+  // Default the profile / metadata-profile / root-folder selection when the
+  // instance's reference data arrives: the last one used on this instance while
+  // it still exists, else the first option. Keep a still-valid user choice on a
+  // background refetch; re-default only when it's missing now.
   if (profiles.length > 0 && !(profileId && profiles.some((p) => String(p.id) === profileId))) {
-    setProfileId(String(profiles[0].id));
+    setProfileId(pickRememberedOption(profiles.map((p) => String(p.id)), readAddDefaults('lidarr', instanceId).profileId)!);
   }
   if (metadataProfiles.length > 0 && !(metadataProfileId && metadataProfiles.some((p) => String(p.id) === metadataProfileId))) {
-    setMetadataProfileId(String(metadataProfiles[0].id));
+    setMetadataProfileId(pickRememberedOption(metadataProfiles.map((p) => String(p.id)), readAddDefaults('lidarr', instanceId).metadataProfileId)!);
   }
   if (rootFolders.length > 0 && !(rootFolder && rootFolders.some((f) => f.path === rootFolder))) {
-    setRootFolder(rootFolders[0].path);
+    setRootFolder(pickRememberedOption(rootFolders.map((f) => f.path), readAddDefaults('lidarr', instanceId).rootFolder)!);
   }
 
   function handleSearch(e: React.FormEvent) {
@@ -156,7 +162,15 @@ function AddArtistPageContent() {
   }
 
   const addMutation = useMutation({
-    mutationFn: async (payload: { artistName: string; [k: string]: unknown }) => {
+    mutationFn: async (payload: {
+      artistName: string;
+      instanceId?: string;
+      qualityProfileId: number;
+      metadataProfileId: number;
+      rootFolderPath: string;
+      addOptions: { monitor: string; [k: string]: unknown };
+      [k: string]: unknown;
+    }) => {
       const res = await fetch('/api/lidarr', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -170,6 +184,12 @@ function AddArtistPageContent() {
     },
     onSuccess: (artist, payload) => {
       invalidateMusic(queryClient);
+      saveAddDefaults('lidarr', payload.instanceId, {
+        profileId: String(payload.qualityProfileId),
+        metadataProfileId: String(payload.metadataProfileId),
+        rootFolder: payload.rootFolderPath,
+        monitor: payload.addOptions.monitor,
+      });
       toast.success(`${payload.artistName} added`);
       router.push(`/music/${artist.id}${instanceId ? `?instance=${instanceId}` : ''}`);
     },
