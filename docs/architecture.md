@@ -155,7 +155,10 @@ Helprr uses a signed `helprr-session` JWT containing a database session id. The
 JWT's user/role fields are hints only. Authoritative checks in `src/lib/auth.ts`
 reload the database `Session` and related `User`; revoked sessions, expired
 fixed-lifetime sessions, ownerless sessions, and pending/disabled users fail
-closed.
+closed. A session whose stored `lastSeenAt` is older than the 14-day idle
+timeout (`src/lib/session-policy.ts`) is refused and revoked on that request.
+`lastSeenAt` is written at most once every five minutes per session, so normal
+requests do not each write to the database.
 
 This database reload means role, status, and capability changes take effect on
 the next request without waiting for the 30-day JWT to expire. The proxy in
@@ -686,7 +689,7 @@ Persistent runtime data is bounded through the relevant subsystem:
 - Notification retention follows `AppSettings.notificationHistoryRetentionDays`.
 - Cleanup history and settled scheduled-alert occurrences use bounded history
   retention.
-- Expired sessions and old operation audit rows are pruned.
+- Expired and idle sessions and old operation audit rows are pruned.
 - Disk samples and log files use their own retention windows.
 - Image-cache retention reconciles Redis generation and metadata records with the
   files on disk and removes orphans.

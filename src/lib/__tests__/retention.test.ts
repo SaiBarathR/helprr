@@ -7,7 +7,7 @@ import {
   runRetentionSweep,
   type RetentionSweepOptions,
 } from '@/lib/retention';
-import { SESSION_DURATION_SECONDS } from '@/lib/session-policy';
+import { SESSION_DURATION_SECONDS, SESSION_IDLE_TIMEOUT_SECONDS } from '@/lib/session-policy';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -71,7 +71,10 @@ describe('runRetentionSweep', () => {
     });
     expect(delegates[3].deleteMany).toHaveBeenCalledWith({
       where: {
-        createdAt: { lt: new Date(nowMs - SESSION_DURATION_SECONDS * 1000) },
+        OR: [
+          { createdAt: { lt: new Date(nowMs - SESSION_DURATION_SECONDS * 1000) } },
+          { lastSeenAt: { lt: new Date(nowMs - SESSION_IDLE_TIMEOUT_SECONDS * 1000) } },
+        ],
       },
     });
     expect(delegates[4].deleteMany).toHaveBeenCalledWith({
