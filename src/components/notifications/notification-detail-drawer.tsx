@@ -12,6 +12,7 @@ import { ArrowUpRight } from 'lucide-react';
 import { formatDistanceToNowSafe } from '@/lib/format';
 import { FONT_MONO, HPR } from '@/components/widgets/bento-primitives';
 import { EventIcon, getEventLabel, getEventHprColor } from './event-visuals';
+import { formatDateTime } from '@/lib/date-format';
 
 export interface GroupedNotificationItem {
   body: string;
@@ -104,7 +105,7 @@ export function NotificationDetailDrawer({ notification, onClose, onGoTo, canGoT
           </div>
           {notification && (
             <div className="text-[11px]" style={{ color: HPR.fgMute, fontFamily: FONT_MONO }}>
-              {formatDistanceToNowSafe(notification.createdAt)} · {new Date(notification.createdAt).toLocaleString()}
+              {formatDistanceToNowSafe(notification.createdAt)} · {formatDateTime(notification.createdAt)}
             </div>
           )}
         </DrawerHeader>
@@ -187,7 +188,7 @@ export function NotificationDetailDrawer({ notification, onClose, onGoTo, canGoT
             <Field label="Status" value={notification ? (notification.read ? 'Read' : 'Unread') : null} />
             <Field
               label="Received"
-              value={notification ? new Date(notification.createdAt).toLocaleString() : null}
+              value={notification ? formatDateTime(notification.createdAt) : null}
             />
           </div>
         </div>

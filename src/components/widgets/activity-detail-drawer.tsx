@@ -12,6 +12,7 @@ import { formatBytes, formatDistanceToNowShort } from '@/lib/format';
 import { toCachedImageSrc } from '@/lib/image';
 import type { MediaImage } from '@/types';
 import { FONT_MONO, HPR } from './bento-primitives';
+import { formatDateTime } from '@/lib/date-format';
 
 export interface ActivityDetailRecord {
   id: number;
@@ -182,7 +183,7 @@ export function ActivityDetailDrawer({ record, onClose }: Props) {
           </div>
           <div className="text-[11px]" style={{ color: HPR.fgMute, fontFamily: FONT_MONO }}>
             {record ? formatDistanceToNowShort(record.date) : ''}
-            {record ? ` · ${new Date(record.date).toLocaleString()}` : ''}
+            {record ? ` · ${formatDateTime(record.date)}` : ''}
           </div>
         </DrawerHeader>
 

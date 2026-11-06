@@ -21,7 +21,8 @@ import {
   ExternalLink, Star, Check, RotateCcw,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { format, formatDistanceToNow } from 'date-fns';
+import { formatDistanceToNow } from 'date-fns';
+import { formatDate, formatDateTime, formatTime } from '@/lib/date-format';
 import type { EpisodeWithFile, HistoryItem, SonarrEpisodeFile, SonarrSeries, DiscoverSeasonDetailResponse } from '@/types';
 import { toCachedImageSrc } from '@/lib/image';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -539,8 +540,8 @@ export default function EpisodeDetailPage() {
             <span className="text-muted-foreground/40">|</span>
             <span>
               {episode.airDateUtc
-                ? format(new Date(episode.airDateUtc), "MMM d, yyyy 'at' h:mm a")
-                : format(new Date(episode.airDate), 'MMM d, yyyy')}
+                ? `${formatDate(new Date(episode.airDateUtc))} at ${formatTime(new Date(episode.airDateUtc))}`
+                : formatDate(new Date(episode.airDate))}
             </span>
           </>
         )}
@@ -746,7 +747,7 @@ export default function EpisodeDetailPage() {
             <DrawerTitle>{selectedHistoryItem ? eventTypeLabel(selectedHistoryItem.eventType) : ''}</DrawerTitle>
             <DrawerDescription>
               {selectedHistoryItem?.date
-                ? format(new Date(selectedHistoryItem.date), 'MMM d, yyyy h:mm a')
+                ? formatDateTime(new Date(selectedHistoryItem.date))
                 : ''}
             </DrawerDescription>
           </DrawerHeader>
@@ -762,7 +763,7 @@ export default function EpisodeDetailPage() {
                 <div className="flex justify-between items-center gap-4 px-4 py-2.5">
                   <span className="shrink-0 text-xs text-muted-foreground uppercase tracking-wide">Date</span>
                   <span className="min-w-0 text-right text-sm [overflow-wrap:anywhere]">
-                    {format(new Date(selectedHistoryItem.date), 'MMM d, yyyy h:mm a')}
+                    {formatDateTime(new Date(selectedHistoryItem.date))}
                   </span>
                 </div>
                 <div className="flex justify-between items-center gap-4 px-4 py-2.5">

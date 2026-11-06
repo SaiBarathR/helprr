@@ -20,7 +20,7 @@ import {
   Bell, Eye, EyeOff, MoreHorizontal, Search, RefreshCw, Trash2, Loader2, Star,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { format } from 'date-fns';
+import { formatDate, formatTime } from '@/lib/date-format';
 import type { SonarrSeries, SonarrEpisode, DiscoverSeasonDetailResponse } from '@/types';
 import { toCachedImageSrc } from '@/lib/image';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -529,8 +529,8 @@ export default function SeasonDetailPage() {
                   {(ep.airDateUtc || ep.airDate) && (
                     <span className="text-xs text-muted-foreground">
                       {ep.airDateUtc
-                        ? format(new Date(ep.airDateUtc), "MMM d, yyyy 'at' h:mm a")
-                        : format(new Date(ep.airDate), 'MMM d, yyyy')}
+                        ? `${formatDate(new Date(ep.airDateUtc))} at ${formatTime(new Date(ep.airDateUtc))}`
+                        : formatDate(new Date(ep.airDate))}
                     </span>
                   )}
                   {tmdbEp && tmdbEp.runtime && (

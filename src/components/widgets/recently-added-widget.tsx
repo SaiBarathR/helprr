@@ -24,6 +24,7 @@ import {
   toneFromString,
 } from './bento-primitives';
 import { useDashboardLayout } from './dashboard-layout-context';
+import { formatDate } from '@/lib/date-format';
 
 interface RecentItem {
   id: string;
@@ -38,9 +39,7 @@ interface RecentItem {
 function formatShortDate(dateStr: string): string {
   const d = new Date(dateStr);
   if (!Number.isFinite(d.getTime())) return '';
-  const month = d.toLocaleString('en-US', { month: 'short' });
-  const day = d.getDate();
-  return `${month} ${day}`;
+  return formatDate(d, { month: 'short', day: 'numeric' });
 }
 
 async function fetchRecent(limit: number, signal?: AbortSignal): Promise<RecentItem[]> {

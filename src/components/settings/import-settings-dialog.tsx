@@ -46,6 +46,7 @@ import { toAutoRunMode, type AutoRunMode } from '@/lib/cleanup/types';
 import { jsonFetcher } from '@/lib/query-fetch';
 import { forgetAppSettingsFetch } from '@/lib/app-settings-fetch';
 import { queryKeys } from '@/lib/query-keys';
+import { formatDateTime } from '@/lib/date-format';
 
 interface ImportSettingsDialogProps {
   open: boolean;
@@ -582,7 +583,7 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
             <div className="flex items-center gap-2 rounded-md border bg-muted/40 px-3 py-2">
               <FileJson className="h-4 w-4 text-muted-foreground" />
               <div className="text-xs text-muted-foreground">
-                Exported {new Date(parsed.payload.exportedAt).toLocaleString()}
+                Exported {formatDateTime(parsed.payload.exportedAt)}
                 {parsed.payload.includesSecrets && ' · contains secrets'}
                 {parsed.payload.zustandVersion !== STORE_VERSION && ` · migrated from v${parsed.payload.zustandVersion}`}
               </div>

@@ -12,6 +12,7 @@ import {
 import { Check, Compass, Film, Filter, Tv } from 'lucide-react';
 import { SORT_OPTIONS, formatWait, type RateLimitInfo } from './discover-data';
 import type { DiscoverView } from './link-view';
+import { formatTime } from '@/lib/date-format';
 
 /** Discover's toolbar: search, content type, advanced filters, the sort pills, and the TMDB rate-limit banner. */
 export function DiscoverToolbar({
@@ -159,7 +160,7 @@ export function DiscoverToolbar({
             {rateLimitCountdown != null
               ? `Please wait ${formatWait(rateLimitCountdown)} before retrying.`
               : rateLimitInfo.retryAt
-                ? `Please retry around ${new Date(rateLimitInfo.retryAt).toLocaleTimeString()}.`
+                ? `Please retry around ${formatTime(rateLimitInfo.retryAt)}.`
                 : `${rateLimitInfo.message}. Please wait and try again.`}
           </p>
         </div>

@@ -17,7 +17,8 @@ import { PageSpinner } from '@/components/ui/page-spinner';
 import { QuickContextMenu } from '@/components/ui/quick-context-menu';
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
 import { Copy, Info, ListChecks, Loader2, Trash2 } from 'lucide-react';
-import { format, formatDistanceToNow } from 'date-fns';
+import { formatDistanceToNow } from 'date-fns';
+import { formatDateTime } from '@/lib/date-format';
 import { toast } from 'sonner';
 import { InstanceFilter, type InstanceOption, withAppName } from '@/components/instance-filter';
 import { ActiveFilterBar, type ActiveFilter } from '@/components/ui/active-filter-bar';
@@ -434,7 +435,7 @@ function BlocklistDrawer({
                   <InfoRow label="Protocol" value={item.protocol || '-'} />
                   <InfoRow
                     label="Date"
-                    value={date && !Number.isNaN(date.getTime()) ? `${format(date, 'PPp')} (${timeAgo(item.date)})` : '-'}
+                    value={date && !Number.isNaN(date.getTime()) ? `${formatDateTime(date)} (${timeAgo(item.date)})` : '-'}
                   />
                   <InfoRow label="Instance" value={withAppName(item.instanceLabel, item.source)} />
                 </div>

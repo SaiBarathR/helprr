@@ -21,6 +21,7 @@ import {
   toSafeImageCacheDiagnostics,
 } from '@/lib/cache/image-cache-support';
 import { parseUsage, type CacheUsageStats } from './parse-usage';
+import { formatDateTime } from '@/lib/date-format';
 
 function formatBytes(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';
@@ -320,7 +321,7 @@ export default function StorageSettingsPage() {
               <div className="grouped-row">
                 <span className="text-sm">Last purged</span>
                 <span className="text-sm text-muted-foreground">
-                  {new Date(cacheLastPurgedAt).toLocaleString()}
+                  {formatDateTime(cacheLastPurgedAt)}
                 </span>
               </div>
             )}
@@ -374,7 +375,7 @@ export default function StorageSettingsPage() {
           <div className="grouped-row">
             <span className="text-sm">Oldest entry</span>
             <span className="text-sm text-muted-foreground">
-              {new Date(cleanupSummary.oldestAt).toLocaleString()}
+              {formatDateTime(cleanupSummary.oldestAt)}
             </span>
           </div>
         )}
@@ -435,7 +436,7 @@ export default function StorageSettingsPage() {
         title={`Delete cleanup history older than ${olderThanDays} day${olderThanDays === '1' ? '' : 's'}?`}
         description={
           // eslint-disable-next-line react-hooks/purity -- show the rolling cleanup-history cutoff for the current retention input
-          `Rows created before ${new Date(Date.now() - Math.max(1, Number(olderThanDays) || 0) * 86_400_000).toLocaleString()} will be permanently deleted. This cannot be undone.`
+          `Rows created before ${formatDateTime(Date.now() - Math.max(1, Number(olderThanDays) || 0) * 86_400_000)} will be permanently deleted. This cannot be undone.`
         }
         confirmLabel="Yes, delete"
         cancelLabel="Cancel"

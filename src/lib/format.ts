@@ -1,4 +1,5 @@
 import { formatDistanceToNow } from 'date-fns';
+import { formatTime } from '@/lib/date-format';
 
 function parseDateSafe(input: string): Date | null {
   const date = new Date(input);
@@ -20,12 +21,9 @@ export function formatCurrency(value: number | null): string | null {
   return `$${value.toLocaleString()}`;
 }
 
-// 0-23 hour-of-day → 12-hour clock label (e.g. 23 → "11:00 PM").
+// 0-23 hour-of-day → clock label in the user's time format (e.g. 23 → "11:00 PM" / "23:00").
 export function hourLabel(h: number): string {
-  if (h === 0) return '12:00 AM';
-  if (h < 12) return `${h}:00 AM`;
-  if (h === 12) return '12:00 PM';
-  return `${h - 12}:00 PM`;
+  return formatTime(new Date(2000, 0, 1, h));
 }
 
 export function formatDistanceToNowSafe(input: string, fallback = 'unknown'): string {

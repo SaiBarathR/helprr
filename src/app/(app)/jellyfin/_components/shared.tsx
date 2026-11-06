@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import type { CustomHistoryItem } from '@/types/jellyfin';
 import { formatDurationSeconds } from '@/lib/jellyfin-helpers';
+import { formatDateTime } from "@/lib/date-format";
 
 // ─── Helpers ───
 
@@ -24,16 +25,7 @@ export function todayStr(): string {
 
 function formatDateCreated(dateStr: string): string {
   // DateCreated is UTC e.g. "2026-02-20 19:11:07.0338097"
-  try {
-    const date = new Date(dateStr);
-    return new Intl.DateTimeFormat("en-US", {
-      dateStyle: "medium",
-      timeStyle: "short",
-    }).format(date)
-  } catch (error) {
-    console.error("Failed to parse date:", error);
-    return dateStr;
-  }
+  return formatDateTime(dateStr) || dateStr;
 }
 
 export const MAX_DAYS = 18250;

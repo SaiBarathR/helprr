@@ -16,6 +16,7 @@ import { PageControls } from '@/components/ui/page-controls';
 import { useVisibleInterval } from '@/lib/hooks/use-visible-interval';
 import { backoffRefetchInterval } from '@/lib/query-fetch';
 import { useCan } from '@/components/permission-provider';
+import { formatDateTime } from '@/lib/date-format';
 
 const STRIKES_PAGE_SIZE = 30;
 
@@ -378,7 +379,7 @@ export function CleanupDashboardTab({ onNavigate }: { onNavigate: (target: 'queu
                       </TooltipContent>
                     </Tooltip>
                     <div className="text-xs text-muted-foreground">
-                      {s.strikeType}{s.ruleName ? ` · ${s.ruleName}` : ''} · {new Date(s.lastSeenAt).toLocaleString()}
+                      {s.strikeType}{s.ruleName ? ` · ${s.ruleName}` : ''} · {formatDateTime(s.lastSeenAt)}
                     </div>
                   </div>
                   <Badge

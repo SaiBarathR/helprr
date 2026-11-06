@@ -36,7 +36,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { getImageUrl } from '@/components/media/media-card';
-import { format } from 'date-fns';
+import { formatDate } from '@/lib/date-format';
 import type { LidarrAlbum, LidarrTrack, LidarrTrackFile } from '@/types';
 import { isProtectedApiImageSrc } from '@/lib/image';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -271,7 +271,7 @@ export default function AlbumDetailPage() {
   const complete = !!stats && stats.totalTrackCount > 0 && stats.trackFileCount >= stats.totalTrackCount;
 
   const infoRows: { label: string; value: string }[] = [
-    ...(album.releaseDate ? [{ label: 'Released', value: format(new Date(album.releaseDate), 'MMM d, yyyy') }] : []),
+    ...(album.releaseDate ? [{ label: 'Released', value: formatDate(new Date(album.releaseDate)) }] : []),
     { label: 'Type', value: [album.albumType, ...(album.secondaryTypes ?? [])].filter(Boolean).join(', ') },
     ...(labels.length ? [{ label: 'Label', value: labels.join(', ') }] : []),
     ...(countries.length ? [{ label: 'Country', value: countries.join(', ') }] : []),

@@ -158,8 +158,8 @@ export default function SettingsIndexPage() {
     {
       group: 'you',
       show: true,
-      keywords: ['general', 'timezone', 'time zone', 'polling', 'refresh', 'where to watch', 'region', 'widgets', 'player', 'subtitles', 'skip'],
-      row: { href: '/settings/preferences', icon: Sliders, iconBg: 'bg-sky-500/10', iconColor: 'text-sky-400', label: 'Preferences', subtitle: 'Timezone, polling, refresh intervals' },
+      keywords: ['general', 'timezone', 'time zone', 'date format', 'time format', '12-hour', '24-hour', 'polling', 'refresh', 'where to watch', 'region', 'widgets', 'player', 'subtitles', 'skip'],
+      row: { href: '/settings/preferences', icon: Sliders, iconBg: 'bg-sky-500/10', iconColor: 'text-sky-400', label: 'Preferences', subtitle: 'Timezone, date & time format, polling' },
     },
     {
       group: 'you',

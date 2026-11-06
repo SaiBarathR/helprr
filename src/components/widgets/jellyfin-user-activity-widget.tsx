@@ -17,6 +17,7 @@ import { useWidgetFilter } from './use-widget-filter';
 import { DaysPill, JELLYFIN_DAYS_OPTIONS, MAX_DAYS } from './widget-filter-controls';
 import { SectionHeader, HPR, EmptyState } from './bento-primitives';
 import { formatDurationSeconds } from '@/lib/jellyfin-helpers';
+import { formatDateTime } from '@/lib/date-format';
 
 interface Filters {
   days: number;
@@ -56,11 +57,7 @@ function toDateStr(d: Date): string {
 }
 
 function formatDateCreated(dateStr: string): string {
-  try {
-    return new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(dateStr));
-  } catch {
-    return dateStr;
-  }
+  return formatDateTime(dateStr) || dateStr;
 }
 
 // The Playback Reporting plugin returns verbose durations ("2 weeks 1 day

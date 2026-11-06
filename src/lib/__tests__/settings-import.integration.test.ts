@@ -440,6 +440,27 @@ describe.skipIf(!url)('settings import against PostgreSQL', () => {
     expect(await prisma.youtubeSettings.count()).toBe(0);
   });
 
+  it("restores a user's date and time format, treating unknown or missing values as automatic", async () => {
+    const doc = fullDocument();
+    doc.users.accounts[0].settings = {
+      timeZone: null, upcomingNotifyMode: null, activityDigestMode: null,
+      quietHoursEnabled: false, quietHoursStart: null, quietHoursEnd: null,
+      timeFormat: '24h', dateFormat: 'bogus',
+    } as never;
+    await runImport.applySettingsImport(doc as never, IMPORTER_ID);
+    expect(await prisma.userSettings.findUnique({ where: { userId: 'member-1' }, select: { timeFormat: true, dateFormat: true } }))
+      .toEqual({ timeFormat: '24h', dateFormat: null });
+
+    // An export from before the preference existed resets it to automatic.
+    doc.users.accounts[0].settings = {
+      timeZone: null, upcomingNotifyMode: null, activityDigestMode: null,
+      quietHoursEnabled: false, quietHoursStart: null, quietHoursEnd: null,
+    } as never;
+    await runImport.applySettingsImport(doc as never, IMPORTER_ID);
+    expect(await prisma.userSettings.findUnique({ where: { userId: 'member-1' }, select: { timeFormat: true, dateFormat: true } }))
+      .toEqual({ timeFormat: null, dateFormat: null });
+  });
+
   it("leaves an existing user's taste profile to be rebuilt, since their links may have changed", async () => {
     const built = new Date('2026-10-20T00:00:00.000Z');
     for (const [id, username] of [['member-1', 'member'], ['other-1', 'other']]) {

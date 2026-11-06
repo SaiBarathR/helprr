@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import type { CustomHistoryItem } from '@/types/jellyfin';
 import { CustomHistoryRow, PluginNotice, toDateStr } from './shared';
+import { formatDate } from '@/lib/date-format';
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Tab 3: HISTORY (uses submit_custom_query — single API call)
@@ -123,8 +124,8 @@ export function HistoryTab() {
 
   if (!pluginAvailable) return <PluginNotice />;
 
-  const fromStr = dateRange.from ? dateRange.from.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '';
-  const toStr = dateRange.to ? dateRange.to.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : fromStr;
+  const fromStr = dateRange.from ? formatDate(dateRange.from, { month: 'short', day: 'numeric' }) : '';
+  const toStr = dateRange.to ? formatDate(dateRange.to, { month: 'short', day: 'numeric' }) : fromStr;
   const rangeLabel = fromStr === toStr ? fromStr : `${fromStr} — ${toStr}`;
   // hasNextPage, not items.length < total: getNextPageParam stops on an empty
   // page even when `total` over-reports, and the button must disappear with it.

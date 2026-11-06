@@ -1,4 +1,5 @@
 import type { JellyfinItem, JellyfinTranscodingInfo, JellyfinTaskTrigger } from '@/types/jellyfin';
+import { formatDateTime as formatDisplayDateTime } from '@/lib/date-format';
 
 export function ticksToMinutes(ticks: number): string {
   const totalMinutes = Math.floor(ticks / 600000000);
@@ -166,13 +167,7 @@ export function timeAgo(dateStr: string): string {
 
 /** Absolute date+time for detail views, e.g. "Jun 8, 2026, 3:22 PM". */
 export function formatDateTime(dateStr: string): string {
-  try {
-    return new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeStyle: 'short' }).format(
-      new Date(dateStr),
-    );
-  } catch {
-    return dateStr;
-  }
+  return formatDisplayDateTime(dateStr) || dateStr;
 }
 
 export function taskRunDuration(start: string, end: string): string {

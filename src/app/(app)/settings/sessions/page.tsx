@@ -21,6 +21,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { endSessionInThisBrowser } from '@/lib/client-cache';
 import { Label } from '@/components/ui/label';
+import { formatDate, formatDateTime } from '@/lib/date-format';
 
 interface Session {
   id: string;
@@ -77,7 +78,7 @@ function relativeTime(iso: string | null): string {
   const t = new Date(iso).getTime();
   if (!Number.isFinite(t)) return 'Never';
   const diff = Date.now() - t;
-  if (diff < 0) return new Date(iso).toLocaleString();
+  if (diff < 0) return formatDateTime(iso);
   const sec = Math.floor(diff / 1000);
   if (sec < 60) return `${sec}s ago`;
   const min = Math.floor(sec / 60);
@@ -86,7 +87,7 @@ function relativeTime(iso: string | null): string {
   if (hr < 24) return `${hr}h ago`;
   const day = Math.floor(hr / 24);
   if (day < 30) return `${day}d ago`;
-  return new Date(iso).toLocaleDateString();
+  return formatDate(iso);
 }
 
 const REVOKE_TIMEOUT_MS = 5_000;
@@ -162,12 +163,12 @@ function SessionGroupSection({ group, loadedAt, busy, onRename, onRevoke }: Sess
               </div>
               <div
                 className="text-xs text-muted-foreground mt-0.5 truncate"
-                title={`Signed in ${new Date(s.createdAt).toLocaleString()}`}
+                title={`Signed in ${formatDateTime(s.createdAt)}`}
               >
                 {[
                   `Seen ${relativeTime(s.lastSeenAt)}`,
                   s.ip,
-                  `Signed in ${new Date(s.createdAt).toLocaleDateString()}`,
+                  `Signed in ${formatDate(s.createdAt)}`,
                 ]
                   .filter(Boolean)
                   .join(' · ')}

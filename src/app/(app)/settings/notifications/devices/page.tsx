@@ -15,6 +15,7 @@ import {
   syncRemovedNotificationDevices,
 } from '@/lib/notification-subscription-cache';
 import type { NotificationDeviceSummary as Device } from '@/lib/notification-subscriptions';
+import { formatDate, formatDateTime } from '@/lib/date-format';
 
 function djb2Hash(s: string): string {
   let h = 5381;
@@ -40,7 +41,7 @@ function relativeTime(iso: string | null): string {
   const t = new Date(iso).getTime();
   if (!Number.isFinite(t)) return 'Never';
   const diff = Date.now() - t;
-  if (diff < 0) return new Date(iso).toLocaleString();
+  if (diff < 0) return formatDateTime(iso);
   const sec = Math.floor(diff / 1000);
   if (sec < 60) return `${sec}s ago`;
   const min = Math.floor(sec / 60);
@@ -49,7 +50,7 @@ function relativeTime(iso: string | null): string {
   if (hr < 24) return `${hr}h ago`;
   const day = Math.floor(hr / 24);
   if (day < 30) return `${day}d ago`;
-  return new Date(iso).toLocaleDateString();
+  return formatDate(iso);
 }
 
 export default function NotificationDevicesPage() {
@@ -210,7 +211,7 @@ export default function NotificationDevicesPage() {
               <div className="grouped-row">
                 <span className="text-sm">Subscribed</span>
                 <span className="text-sm text-muted-foreground">
-                  {new Date(d.createdAt).toLocaleString()}
+                  {formatDateTime(d.createdAt)}
                 </span>
               </div>
               <div className="grouped-row">

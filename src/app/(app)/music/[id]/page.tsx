@@ -46,7 +46,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { getImageUrl } from '@/components/media/media-card';
-import { format } from 'date-fns';
+import { formatDate } from '@/lib/date-format';
 import type { LidarrArtist, LidarrAlbum } from '@/types';
 import { isProtectedApiImageSrc } from '@/lib/image';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -328,7 +328,7 @@ export default function ArtistDetailPage() {
     ...(stats && stats.sizeOnDisk > 0 ? [{ label: 'Size on Disk', value: formatBytes(stats.sizeOnDisk) }] : []),
     ...(artistTags.length > 0 ? [{ label: 'Tags', value: artistTags.map((t) => t.label).join(', ') }] : []),
     ...(artist.path ? [{ label: 'Path', value: artist.path }] : []),
-    ...(artist.added ? [{ label: 'Added', value: format(new Date(artist.added), 'MMM d, yyyy') }] : []),
+    ...(artist.added ? [{ label: 'Added', value: formatDate(new Date(artist.added)) }] : []),
   ];
 
   const complete = !!stats && stats.totalTrackCount > 0 && stats.trackFileCount >= stats.totalTrackCount;

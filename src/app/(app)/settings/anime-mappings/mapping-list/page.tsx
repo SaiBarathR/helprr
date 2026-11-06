@@ -21,6 +21,7 @@ import type {
   AdminAnimeMappingsResponse,
   SeriesAniListMappingState,
 } from '@/types/anilist';
+import { formatDate, formatDateTime } from '@/lib/date-format';
 
 const STATE_META: Record<SeriesAniListMappingState, { label: string; className: string }> = {
   AUTO_MATCH: { label: 'Auto', className: 'bg-emerald-500/15 text-emerald-400' },
@@ -43,7 +44,7 @@ function relativeTime(iso: string): string {
   const t = new Date(iso).getTime();
   if (!Number.isFinite(t)) return '';
   const diff = Date.now() - t;
-  if (diff < 0) return new Date(iso).toLocaleString();
+  if (diff < 0) return formatDateTime(iso);
   const sec = Math.floor(diff / 1000);
   if (sec < 60) return `${sec}s ago`;
   const min = Math.floor(sec / 60);
@@ -52,7 +53,7 @@ function relativeTime(iso: string): string {
   if (hr < 24) return `${hr}h ago`;
   const day = Math.floor(hr / 24);
   if (day < 30) return `${day}d ago`;
-  return new Date(iso).toLocaleDateString();
+  return formatDate(iso);
 }
 
 function entryLabel(entry: AdminAnimeMappingRow['entries'][number]): string {

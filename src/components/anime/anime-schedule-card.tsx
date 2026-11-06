@@ -7,6 +7,7 @@ import { ScheduledAlertButton } from '@/components/scheduled-alerts/scheduled-al
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import type { AniListScheduleEntry } from '@/types/anilist';
 import type { DiscoverLibraryStatus } from '@/types';
+import { formatTime as formatDisplayTime } from '@/lib/date-format';
 
 interface AnimeScheduleCardProps {
   entry: AniListScheduleEntry & { library?: DiscoverLibraryStatus };
@@ -14,10 +15,7 @@ interface AnimeScheduleCardProps {
 }
 
 function formatTime(unixSeconds: number): string {
-  return new Date(unixSeconds * 1000).toLocaleTimeString(undefined, {
-    hour: 'numeric',
-    minute: '2-digit',
-  });
+  return formatDisplayTime(unixSeconds * 1000);
 }
 
 function formatFormatLabel(format: string | null): string | null {

@@ -50,7 +50,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { getImageUrl } from '@/components/media/media-card';
-import { format } from 'date-fns';
+import { formatDate } from '@/lib/date-format';
 import type { RadarrMovie, RadarrCredit, DiscoverMovieFullDetail } from '@/types';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import { crewRolePriority } from '@/lib/crew-priority';
@@ -398,17 +398,17 @@ export default function MovieDetailPage() {
     ...(movie.path ? [{ label: 'Path', value: movie.path }] : []),
     ...(rootFolder ? [{ label: 'Root Folder', value: rootFolder }] : []),
     ...(movie.inCinemas
-      ? [{ label: 'In Cinemas', value: format(new Date(movie.inCinemas), 'MMM d, yyyy') }]
+      ? [{ label: 'In Cinemas', value: formatDate(new Date(movie.inCinemas)) }]
       : []),
     ...(movie.digitalRelease
-      ? [{ label: 'Digital Release', value: format(new Date(movie.digitalRelease), 'MMM d, yyyy') }]
+      ? [{ label: 'Digital Release', value: formatDate(new Date(movie.digitalRelease)) }]
       : []),
     ...(movie.physicalRelease
-      ? [{ label: 'Physical Release', value: format(new Date(movie.physicalRelease), 'MMM d, yyyy') }]
+      ? [{ label: 'Physical Release', value: formatDate(new Date(movie.physicalRelease)) }]
       : []),
     {
       label: 'Added',
-      value: movie.added ? format(new Date(movie.added), 'MMM d, yyyy') : 'Unknown',
+      value: movie.added ? formatDate(new Date(movie.added)) : 'Unknown',
     },
   ];
 

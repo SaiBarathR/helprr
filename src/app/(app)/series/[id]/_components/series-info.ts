@@ -1,4 +1,4 @@
-import { format } from 'date-fns';
+import { formatDate, formatTime } from '@/lib/date-format';
 import { formatBytes } from '@/lib/format';
 import { formatFuzzyDate } from '@/lib/anilist-helpers';
 import { formatLanguageCode, formatRegionCodes } from '@/lib/media-locale';
@@ -29,7 +29,7 @@ export function seriesStatusBadge(series: SonarrSeries): { label: string; classN
 /** Sonarr's next airing, formatted, or null. */
 export function formatNextAiring(series: SonarrSeries): string | null {
   return series.nextAiring
-    ? format(new Date(series.nextAiring), "MMM d, yyyy 'at' h:mm a")
+    ? `${formatDate(new Date(series.nextAiring))} at ${formatTime(new Date(series.nextAiring))}`
     : null;
 }
 
@@ -75,7 +75,7 @@ export function buildSeriesInfoRows({
     if (!animeDetail?.nextAiringEpisode) return null;
     const airDate = new Date(animeDetail.nextAiringEpisode.airingAt * 1000);
     const airDateText = Number.isFinite(airDate.getTime())
-      ? format(airDate, "MMM d, yyyy 'at' h:mm a")
+      ? `${formatDate(airDate)} at ${formatTime(airDate)}`
       : null;
     return [
       `Episode ${animeDetail.nextAiringEpisode.episode}`,
@@ -124,7 +124,7 @@ export function buildSeriesInfoRows({
     ...statisticsRows,
     {
       label: 'Added',
-      value: series.added ? format(new Date(series.added), 'MMM d, yyyy') : 'Unknown',
+      value: series.added ? formatDate(new Date(series.added)) : 'Unknown',
     },
   ];
 }

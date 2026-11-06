@@ -1,4 +1,5 @@
 import { qualityLabel, qualityOf } from '@/lib/youtube/formats';
+import { formatDateTime, formatTime } from '@/lib/date-format';
 
 export interface CreatorVideoItem {
   id: string;
@@ -70,10 +71,9 @@ export function startsLabel(job: { state: string; runAfter?: string | null }, no
   if (job.state !== 'QUEUED' || !job.runAfter) return null;
   const at = new Date(job.runAfter);
   if (!(at > now)) return null;
-  const time: Intl.DateTimeFormatOptions = { hour: 'numeric', minute: '2-digit' };
   return at.toDateString() === now.toDateString()
-    ? `Starts ${at.toLocaleTimeString(undefined, time)}`
-    : `Starts ${at.toLocaleString(undefined, { month: 'short', day: 'numeric', ...time })}`;
+    ? `Starts ${formatTime(at)}`
+    : `Starts ${formatDateTime(at, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}`;
 }
 
 /**

@@ -39,6 +39,7 @@ import type { CleanupHistoryFiltersState } from '@/lib/store';
 import { jsonOk } from '@/lib/http';
 import { resolveCleanupHistoryOutcomeStatus } from '@/lib/cleanup/history-status';
 import { QuickContextMenu } from '@/components/ui/quick-context-menu';
+import { formatDate, formatDateTime } from '@/lib/date-format';
 
 interface HistoryRow {
   id: string;
@@ -247,8 +248,8 @@ export function CleanupHistoryTab() {
     if (!filters.dateFrom && !filters.dateTo) return 'Any time';
     const parsedFrom = filters.dateFrom ? parseIsoDate(filters.dateFrom) : undefined;
     const parsedTo = filters.dateTo ? parseIsoDate(filters.dateTo) : undefined;
-    const fromStr = parsedFrom ? format(parsedFrom, 'MMM d, yyyy') : '…';
-    const toStr = parsedTo ? format(parsedTo, 'MMM d, yyyy') : 'now';
+    const fromStr = parsedFrom ? formatDate(parsedFrom) : '…';
+    const toStr = parsedTo ? formatDate(parsedTo) : 'now';
     return fromStr === toStr ? fromStr : `${fromStr} → ${toStr}`;
   }, [filters.dateFrom, filters.dateTo]);
 
@@ -659,7 +660,7 @@ function HistoryRowCard({
         <span>via: {row.triggeredBy}</span>
         {row.actorUsername && <span className="break-all">by: {row.actorUsername}</span>}
         {row.previewId && <span>preview: {row.previewId.slice(0, 8)}</span>}
-        <span className="ml-auto whitespace-nowrap">{new Date(row.createdAt).toLocaleString()}</span>
+        <span className="ml-auto whitespace-nowrap">{formatDateTime(row.createdAt)}</span>
       </div>
       {row.errorMessage && (
         <div className="text-xs text-destructive break-words">
@@ -703,7 +704,7 @@ function HistoryDetailDrawer({
           <DrawerTitle>History detail</DrawerTitle>
           {row && (
             <DrawerDescription>
-              {new Date(row.createdAt).toLocaleString()}
+              {formatDateTime(row.createdAt)}
             </DrawerDescription>
           )}
         </DrawerHeader>

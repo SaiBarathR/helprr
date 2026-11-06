@@ -15,6 +15,7 @@ import {
 import { GroupedSection } from '@/components/settings/grouped-section';
 import { SubtitleAppearanceSection } from '@/components/settings/subtitle-appearance-section';
 import { PlayerSection } from '@/components/settings/player-section';
+import { DateTimeFormatSection } from '@/components/settings/date-time-format-section';
 import { hasCapability, useMe } from '@/components/permission-provider';
 import { useAppSettings } from '@/lib/hooks/use-app-settings';
 import { useDebouncedCommit } from '@/lib/hooks/use-debounced-commit';
@@ -193,6 +194,8 @@ export default function PreferencesPage() {
           </Select>
         </div>
       </GroupedSection>
+
+      <DateTimeFormatSection />
 
       <GroupedSection
         title="Where to Watch"
