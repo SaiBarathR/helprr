@@ -1841,7 +1841,8 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
   }, [cancelPendingSkip, seek, startItem]);
 
   const restartWith = useCallback(async (patch: PlayOptions) => {
-    // Restarts at the position, which already shows a gathering skip run.
+    // Read before it is dropped: the run's target is where this restart goes.
+    const pending = pendingSkipRef.current;
     cancelPendingSkip();
     const current = streamRef.current;
     const nextItem = queueRef.current[indexRef.current];
@@ -1856,8 +1857,16 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     // change made while a previous restart is still attaching would read the
     // transient zero and send the viewer back to the beginning. Switching
     // subtitles twice in a row hit this exactly.
-    const startTimeTicks = positionToReport(mediaRef.current, current, reachedStartRef.current)
-      || secondsToTicks(positionRef.current);
+    // While a run of skips gathers, or a seek or restart is still on its way
+    // in, the clock already shows where the viewer is going (the outgoing
+    // element's time updates are ignored then) and the element is still where
+    // they were, so the clock wins: otherwise a track change inside that
+    // window dropped the skip, or the seek it overtook.
+    const attached = lastRequestRef.current?.attached === true
+      && lastRequestRef.current.token === startTokenRef.current;
+    const startTimeTicks = (pending?.itemId === current.item.Id || !attached)
+      ? secondsToTicks(positionRef.current)
+      : positionToReport(mediaRef.current, current, reachedStartRef.current) || secondsToTicks(positionRef.current);
     // Carried for the same reason as the position: changing a track restarts
     // the stream, and a restart plays, so switching audio while paused resumed
     // playback. Read from the latch rather than the element — see
