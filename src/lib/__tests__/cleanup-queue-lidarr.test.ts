@@ -160,7 +160,7 @@ describe('queue cleaner with Lidarr', () => {
 
     expect(lidarr.deleteQueueItem).not.toHaveBeenCalled();
     expect(mocks.auditCreate).not.toHaveBeenCalled();
-    expect(result.outcomes).toEqual([expect.objectContaining({ status: 'stale', action: 'skipped' })]);
+    expect(result.outcomes).toEqual([expect.objectContaining({ status: 'stale', action: 'skipped', message: 'Cleanup action or linked queue scope changed after preview' })]);
     expect(removalRows()).toEqual([expect.objectContaining({ outcomeStatus: 'stale', action: 'skipped', previewId: 'preview-1' })]);
   });
 
@@ -178,7 +178,7 @@ describe('queue cleaner with Lidarr', () => {
 
     expect(lidarr.deleteQueueItem).not.toHaveBeenCalled();
     expect(mocks.auditCreate).not.toHaveBeenCalled();
-    expect(result.outcomes).toEqual([expect.objectContaining({ status: 'failed', action: 'failed' })]);
+    expect(result.outcomes).toEqual([expect.objectContaining({ status: 'failed', action: 'failed', message: 'Could not revalidate all configured Arr queues' })]);
   });
 
   it('refuses a preview once a Lidarr connection changes', async () => {
@@ -243,15 +243,56 @@ describe('queue cleaner with Lidarr', () => {
     expect(result.outcomes).toEqual([expect.objectContaining({ status: 'succeeded' })]);
   });
 
-  it('strikes a failed Lidarr import and skips one with no album unless configured to process it', async () => {
+  it.each([
+    ['importFailed', 'warning'],
+    ['downloadFailed', 'warning'],
+    ['downloadFailedPending', 'warning'],
+    ['importBlocked', 'warning'],
+  ])('strikes a failed Lidarr import in its %s state', async (trackedDownloadState, trackedDownloadStatus) => {
     qbitWithTorrent();
     mocks.stallFindMany.mockResolvedValue([]);
     mocks.configFindUnique.mockResolvedValue({ ...baseConfig, failedImport: { ...failedImportDefaults, maxStrikes: 3 } });
     mocks.strikeFindMany.mockResolvedValue([strikeRecord('failedImport', null, 2)]);
-    mocks.getLidarrClients.mockResolvedValue(listsLidarr({ id: 'lidarr-2', items: [albumQueue({ trackedDownloadState: 'importBlocked', trackedDownloadStatus: 'warning' })] }));
-    expect((await preview()).decisions).toEqual([expect.objectContaining({ strikeType: 'failedImport', linked: expect.objectContaining({ source: 'lidarr', instanceId: 'lidarr-2' }) })]);
+    mocks.getLidarrClients.mockResolvedValue(listsLidarr({ id: 'lidarr-2', items: [albumQueue({ trackedDownloadState, trackedDownloadStatus })] }));
+    expect((await preview()).decisions).toEqual([expect.objectContaining({ strikeType: 'failedImport', strikeCount: 3, linked: expect.objectContaining({ source: 'lidarr', instanceId: 'lidarr-2' }) })]);
+  });
 
-    mocks.getLidarrClients.mockResolvedValue(listsLidarr({ id: 'lidarr-2', items: [albumQueue({ trackedDownloadState: 'importBlocked', trackedDownloadStatus: 'warning', albumId: undefined, album: undefined })] }));
-    expect((await preview()).decisions).toEqual([]);
+  it('skips a failed Lidarr import with no album unless configured to process it', async () => {
+    qbitWithTorrent();
+    mocks.stallFindMany.mockResolvedValue([]);
+    mocks.strikeFindMany.mockResolvedValue([strikeRecord('failedImport', null, 2)]);
+    mocks.getLidarrClients.mockResolvedValue(listsLidarr({ id: 'lidarr-2', items: [albumQueue({ trackedDownloadState: 'importFailed', trackedDownloadStatus: 'warning', albumId: undefined, album: undefined })] }));
+    mocks.configFindUnique.mockResolvedValue({ ...baseConfig, failedImport: { ...failedImportDefaults, maxStrikes: 3 } });
+    expect(await preview()).toMatchObject({ decisions: [], pendingStrikes: [] });
+
+    mocks.configFindUnique.mockResolvedValue({ ...baseConfig, processNoContentId: true, failedImport: { ...failedImportDefaults, maxStrikes: 3 } });
+    expect((await preview()).decisions).toEqual([expect.objectContaining({ strikeType: 'failedImport', linked: expect.objectContaining({ source: 'lidarr', contentId: null }) })]);
+  });
+
+  it('re-searches every album a multi-album torrent queued and succeeds when Lidarr already dropped the second item', async () => {
+    const qbit = qbitWithTorrent();
+    const second = albumQueue({ id: 78, albumId: 32, album: { id: 32, title: 'Second Album' } as QueueItem['album'] });
+    mocks.getLidarrClients.mockResolvedValue(listsLidarr({ id: 'lidarr-2', items: [albumQueue(), second] }));
+    // Removing the first item takes the whole download, so the second is
+    // already gone from the queue and its own delete is refused.
+    let downloadRemoved = false;
+    const lidarr = {
+      deleteQueueItem: vi.fn(async (id: number, options: { removeFromClient: boolean }) => {
+        if (downloadRemoved) throw new Error('Lidarr API error: 404 Not Found');
+        downloadRemoved = true;
+        if (options.removeFromClient) qbit.removed = true;
+      }),
+      getQueue: vi.fn(async () => (downloadRemoved ? { records: [], totalRecords: 0 } : { records: [albumQueue(), second], totalRecords: 2 })),
+      searchAlbums: vi.fn().mockResolvedValue({ id: 1 }),
+    };
+    mocks.getLidarrClient.mockResolvedValue(lidarr);
+    mocks.strikeFindMany.mockResolvedValueOnce([strikeRecord('stall', 'stall-a', 2)]).mockResolvedValue([strikeRecord('stall', 'stall-a', 3)]);
+
+    const result = await runQueueCleanerCycle({ dryRun: false, triggeredBy: 'auto', actor: scheduler });
+
+    expect(lidarr.deleteQueueItem.mock.calls.map(([id, options]) => [id, options.removeFromClient])).toEqual([[77, true], [78, false]]);
+    expect(lidarr.searchAlbums).toHaveBeenCalledWith([31, 32]);
+    expect(result.outcomes).toEqual([expect.objectContaining({ status: 'succeeded', action: 'removedFromClient', reSearched: true })]);
+    expect(auditRows().map((row) => [row.mediaId, row.success])).toEqual([[77, true], [78, true]]);
   });
 });

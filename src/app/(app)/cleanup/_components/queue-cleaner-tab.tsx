@@ -387,7 +387,7 @@ export function QueueCleanerTab({ onDirtyChange }: Props) {
             <div className="grouped-row">
               <div>
                 <Label>Process downloads without content ID</Label>
-                <p className="text-xs text-muted-foreground mt-0.5">Affects Failed Import only. Off (recommended) skips queue items that aren&apos;t linked to a series/movie.</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Affects Failed Import only. Off (recommended) skips queue items that aren&apos;t linked to a series/movie/album.</p>
               </div>
               <Switch aria-label="Process downloads without content ID" checked={cfg.processNoContentId} onCheckedChange={(v) => setCfg({ ...cfg, processNoContentId: v })} />
             </div>

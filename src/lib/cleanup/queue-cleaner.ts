@@ -383,9 +383,10 @@ export async function runQueueCleanerCycle(opts: RunOptions): Promise<QueueEvalu
         } else {
           // Original check was `tds === 'importFailed' || tds === 'downloadFailed'`
           // — neither string is a valid Sonarr/Radarr v3 trackedDownloadState,
-          // so this rule has been a no-op. classifyQueueIssue returns
-          // 'import' for importBlocked / importPending+warning and 'download'
-          // for failed / failedPending, which matches the original intent
+          // so this rule had been a no-op for them. classifyQueueIssue returns
+          // 'import' for importBlocked / importFailed (Lidarr) /
+          // importPending+warning and 'download' for the failed states of
+          // either naming, which matches the original intent
           // (both kinds of terminal failure) plus the TBA-stuck importPending
           // case the user explicitly opted into when they raised maxStrikes.
           const issue = classifyQueueIssue(
