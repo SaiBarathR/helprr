@@ -136,6 +136,9 @@ docker compose exec -T helprr-db pg_restore --exit-on-error --file=/dev/null < "
   docker compose up -d --no-build
 ```
 
+A database user you added yourself stays, but permissions you gave it on Helprr's tables
+are not in the dump: grant them again after the restore.
+
 ## Move to a new machine, or recover from a lost one
 
 Restore onto a fresh host:
@@ -162,5 +165,12 @@ app boots without re-running old migrations. Restore with the **same or newer**
 Helprr version than the one that produced the dump.
 
 The dump holds Helprr's database only. A database user you added yourself, such as one
-a monitoring exporter signs in with, lives outside it: create it again on the new
-install (`docker compose exec helprr-db psql -U postgres`).
+a monitoring exporter signs in with, lives outside it, and so do permissions you gave it
+on Helprr's tables. Create the user again on the new install with the same name and
+password (the app that signs in still has them), and grant those permissions again. Run
+`docker compose exec helprr-db psql -U postgres`, then for example:
+
+```sql
+CREATE ROLE metrics_exporter LOGIN PASSWORD 'the same password';
+GRANT pg_monitor TO metrics_exporter;
+```
