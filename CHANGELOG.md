@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.13.1] - 2026-11-06
+
+### Changed
+
+- **Creator feeds look like YouTube's**: on YouTube and Twitch, the grid fits the screen,
+  one video across on a phone and three or more on a laptop (was six), with larger titles,
+  channel avatars and view counts, and sharper thumbnails.
+- The installer and `setup-env.sh` work properly on a Mac: the installer prints the
+  Mac's address on your network (Wi-Fi when a VPN is on), and both notice a port that is
+  already taken, such as AirPlay's port 5000. Their Docker messages name Docker Desktop
+  and OrbStack.
+
+### Fixed
+
+- YouTube channel art was missing in Watch (the item page, the cinematic view, and the
+  Continue Watching, Next Up and Latest in YouTube rows): the files are PNG with a
+  `.jpg` name, which the image proxy refused. It now goes by the image itself, and still
+  refuses anything that is not an image.
+- A series with no backdrop of its own uses its parent's, or its poster, instead of a
+  broken image.
+
+### Documentation
+
+- New guides for Windows (Docker Desktop) and Mac (OrbStack or Docker Desktop).
+- Troubleshooting: Docker running out of network addresses.
+- Backup: database users you added yourself, and their permissions, are not in the
+  backup.
+
 ## [1.13.0] - 2026-11-06
 
 Setting Helprr up for the first time is now much easier. Existing installs need no
