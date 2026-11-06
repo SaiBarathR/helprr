@@ -31,6 +31,13 @@ describe('GET /api/search/providers/[provider]', () => {
     expect(mocks.handler).toHaveBeenCalled();
   });
 
+  it('lets a Discover holder search TMDB on an install without Seerr', async () => {
+    mocks.caps = { 'discover.view': true };
+    mocks.connections = new Set(['TMDB']);
+    expect((await search('tmdb')).status).toBe(200);
+    expect(mocks.handler).toHaveBeenCalled();
+  });
+
   it('refuses that member when Seerr is not connected, and anyone who cannot request', async () => {
     mocks.caps = { 'requests.create': true, 'series.view': true };
     mocks.connections = new Set(['TMDB']);
