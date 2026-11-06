@@ -116,6 +116,7 @@ export function LibraryGapsCard() {
     ? ([
         ['TV', completeness.tv],
         ['Movies', completeness.movies],
+        ['Music', completeness.music ?? { owned: 0, total: 0 }],
       ] as const).filter(([, s]) => s.total > 0)
     : [];
 

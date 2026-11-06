@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getSonarrClients, getRadarrClients } from '@/lib/service-helpers';
+import { getSonarrClients, getRadarrClients, getLidarrClients } from '@/lib/service-helpers';
 import { requireUserCapability } from '@/lib/auth';
 import { can } from '@/lib/permissions';
 import { withApiLogging } from '@/lib/api-logger';
@@ -29,6 +29,8 @@ const LIBRARY_GAPS_CACHE_HEADERS = {
 // (and its Search button commands) the instance the gap actually lives on.
 type SonarrInstance = Awaited<ReturnType<typeof getSonarrClients>>[number];
 type RadarrInstance = Awaited<ReturnType<typeof getRadarrClients>>[number];
+type LidarrInstance = Awaited<ReturnType<typeof getLidarrClients>>[number];
+type UnitTally = { owned: number; total: number };
 
 const MAX_ITEMS_PER_SECTION = 50;
 
@@ -399,6 +401,47 @@ async function buildOverdue(
   };
 }
 
+// Music tally: owned track files over Lidarr's trackCount (tracks of monitored, released albums —
+// the same denominator Lidarr uses for percentOfTracks) across monitored artists. Keyed by
+// MusicBrainz id so an artist on overlapping Lidarr instances isn't double-counted.
+// null when no instance is configured; error when every configured instance failed.
+async function buildMusicStats(
+  lidarrInstances: LidarrInstance[]
+): Promise<{ stats: UnitTally | null; error: boolean }> {
+  if (lidarrInstances.length === 0) return { stats: null, error: false };
+  const perInstance = await Promise.all(
+    lidarrInstances.map(({ client }) => client.getArtists().catch(() => null))
+  );
+  if (perInstance.every((artists) => artists === null)) return { stats: null, error: true };
+  const byArtist = new Map<string, UnitTally>();
+  for (const artists of perInstance) {
+    for (const artist of artists ?? []) {
+      if (!artist.monitored || !artist.foreignArtistId) continue;
+      const prev = byArtist.get(artist.foreignArtistId);
+      byArtist.set(artist.foreignArtistId, {
+        owned: Math.max(prev?.owned ?? 0, artist.statistics?.trackFileCount ?? 0),
+        total: Math.max(prev?.total ?? 0, artist.statistics?.trackCount ?? 0),
+      });
+    }
+  }
+  let owned = 0;
+  let total = 0;
+  for (const tally of byArtist.values()) {
+    owned += tally.owned;
+    total += tally.total;
+  }
+  return { stats: { owned, total }, error: false };
+}
+
+// The cached payload is shared by every viewer, so the music tally is dropped per request for a
+// viewer without music access. It is not part of the blended percent, so nothing else changes.
+function forViewer(response: LibraryGapsResponse, canViewMusic: boolean): LibraryGapsResponse {
+  if (canViewMusic || !response.completeness?.music) return response;
+  const completeness = { ...response.completeness };
+  delete completeness.music;
+  return { ...response, completeness };
+}
+
 async function getHandler(): Promise<NextResponse> {
   // Surfaces both libraries' gaps, so require read access to both.
   const auth = await requireUserCapability('series.view');
@@ -411,13 +454,15 @@ async function getHandler(): Promise<NextResponse> {
   // layout tree, so seed the cache-busting token explicitly for this worker.
   setImageCacheGeneration(await getCacheGeneration());
 
+  const canViewMusic = can(auth.user, 'music.view');
   const cached = await getCachedLibraryGaps();
-  if (cached) return NextResponse.json(cached, { headers: LIBRARY_GAPS_CACHE_HEADERS });
+  if (cached) return NextResponse.json(forViewer(cached, canViewMusic), { headers: LIBRARY_GAPS_CACHE_HEADERS });
 
   try {
-    const [sonarrInstances, radarrInstances] = await Promise.all([
+    const [sonarrInstances, radarrInstances, lidarrInstances] = await Promise.all([
       getSonarrClients().catch(() => [] as SonarrInstance[]),
       getRadarrClients().catch(() => [] as RadarrInstance[]),
+      getLidarrClients().catch(() => [] as LidarrInstance[]),
     ]);
 
     // Missing-seasons + upcoming, unioned across every Sonarr instance. Per-instance
@@ -471,9 +516,10 @@ async function getHandler(): Promise<NextResponse> {
     const sonarrAvailable = sonarrInstances.length > 0 && sonarrAnyOk;
     const sonarrError = sonarrInstances.length > 0 && !sonarrAnyOk;
 
-    const [{ section: collectionGaps, movieStats }, { overdue, notReleased }] = await Promise.all([
+    const [{ section: collectionGaps, movieStats }, { overdue, notReleased }, music] = await Promise.all([
       buildCollectionGaps(radarrInstances),
       buildOverdue(sonarrInstances, radarrInstances, missingKeys),
+      buildMusicStats(lidarrInstances),
     ]);
 
     const ownedUnits = tvOwned + movieStats.owned;
@@ -486,6 +532,7 @@ async function getHandler(): Promise<NextResponse> {
             totalUnits,
             tv: { owned: tvOwned, total: tvTotal },
             movies: { owned: movieStats.owned, total: movieStats.total },
+            ...(music.stats ? { music: music.stats } : {}),
           }
         : undefined;
 
@@ -503,11 +550,11 @@ async function getHandler(): Promise<NextResponse> {
     };
 
     // Cache only fully-healthy responses so transient failures self-heal on the next load.
-    if (response.sections.every((s) => !s.error)) {
+    if (response.sections.every((s) => !s.error) && !music.error) {
       await setCachedLibraryGaps(response);
     }
 
-    return NextResponse.json(response, { headers: LIBRARY_GAPS_CACHE_HEADERS });
+    return NextResponse.json(forViewer(response, canViewMusic), { headers: LIBRARY_GAPS_CACHE_HEADERS });
   } catch (error) {
     console.error('Failed to fetch library gaps:', error);
     return NextResponse.json({ error: 'Failed to fetch library gaps' }, { status: 500 });
