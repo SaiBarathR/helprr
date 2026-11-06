@@ -19,6 +19,7 @@ import { PlaylistsSection } from '@/components/youtube/playlists-section';
 import { CreatorAvatar } from '@/components/creators/creator-avatar';
 import { useCreatorPlatform } from '@/components/creators/platform';
 import { ToolbarButton, CreatorToolbar } from '@/components/creators/toolbar';
+import { showUnfollowNotice, turnOffAutoDownload, type UnfollowResult } from '@/components/creators/unfollow-notice';
 import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
 import { PageTitle } from '@/components/layout/page-title';
 
@@ -164,13 +165,20 @@ export function CreatorsPage() {
   });
 
   const unsubscribe = useMutation({
-    mutationFn: async (id: string) => {
+    mutationFn: async ({ id }: Subscription) => {
       const res = await fetch(`${platform.api}/subscriptions/${id}`, { method: 'DELETE' });
       if (!res.ok) throw new Error('Could not unsubscribe');
+      return (await res.json().catch(() => null)) as UnfollowResult | null;
     },
-    onSuccess: () => {
+    onSuccess: (result, { creator }) => {
       setLeaving(null);
       void refresh();
+      showUnfollowNotice({
+        done: platform.unfollowedLabel,
+        name: creator.displayName,
+        result,
+        turnOff: canManage ? () => turnOffAutoDownload(platform.id, creator.id) : undefined,
+      });
     },
     onError: (error) => toast.error(error.message),
   });
@@ -240,7 +248,7 @@ export function CreatorsPage() {
         confirmLabel={platform.unfollowLabel}
         destructive
         busy={unsubscribe.isPending}
-        onConfirm={() => { if (leaving) unsubscribe.mutate(leaving.id); }}
+        onConfirm={() => { if (leaving) unsubscribe.mutate(leaving); }}
       />
     </div>
   );

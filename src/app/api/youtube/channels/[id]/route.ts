@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { prisma } from '@/lib/db';
+import { can } from '@/lib/permissions';
 import { YOUTUBE } from '@/lib/youtube/platform';
 
 async function getHandler(
@@ -18,16 +19,20 @@ async function getHandler(
       id: true, login: true, displayName: true, description: true, profileImageUrl: true, offlineImageUrl: true,
       isLive: true, liveTitle: true,
       subscriptions: { where: { userId: auth.user.id }, select: { id: true, notifyNewVods: true } },
+      _count: { select: { subscriptions: true } },
     },
   });
   if (!channel) return NextResponse.json({ error: 'Channel not found' }, { status: 404 });
 
   // The channel page hides a tab with nothing in it: WAN Show only has Live.
   const counts = await prisma.creatorVideo.groupBy({ by: ['type'], where: { creatorId: id }, _count: true });
-  const { subscriptions, ...rest } = channel;
+  const { subscriptions, _count, ...rest } = channel;
+  // Who follows is for whoever sets the rules: it decides whether they still run.
+  const followers = can(auth.user, 'youtube.manage') ? { followers: _count.subscriptions } : {};
   return NextResponse.json({
     ...rest,
     subscription: subscriptions[0] ?? null,
+    ...followers,
     videoCounts: Object.fromEntries(counts.map((row) => [row.type, row._count])),
   });
 }

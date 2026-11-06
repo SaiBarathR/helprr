@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
+import { creatorFollowersLeft } from '@/lib/archive/followers';
 import { prisma } from '@/lib/db';
+import { can } from '@/lib/permissions';
 import { YOUTUBE } from '@/lib/youtube/platform';
 
 type RouteContext = { params: Promise<{ id: string }> };
@@ -28,11 +30,12 @@ async function deleteHandler(_request: NextRequest, { params }: RouteContext): P
   if (!auth.ok) return auth.response;
 
   const { id } = await params;
-  const { count } = await prisma.creatorSubscription.deleteMany({
-    where: { id, userId: auth.user.id, creator: { platform: YOUTUBE } },
-  });
+  const where = { id, userId: auth.user.id, creator: { platform: YOUTUBE } };
+  const subscription = await prisma.creatorSubscription.findFirst({ where, select: { creatorId: true } });
+  if (!subscription) return NextResponse.json({ error: 'Subscription not found' }, { status: 404 });
+  const { count } = await prisma.creatorSubscription.deleteMany({ where });
   if (count === 0) return NextResponse.json({ error: 'Subscription not found' }, { status: 404 });
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, ...await creatorFollowersLeft(YOUTUBE, subscription.creatorId, can(auth.user, 'youtube.manage')) });
 }
 
 export const PATCH = withApiLogging(patchHandler, 'api/youtube/subscriptions/[id]');

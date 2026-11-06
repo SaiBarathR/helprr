@@ -19,6 +19,7 @@ export interface CreatorPlatform {
   creatorsLabel: string;
   followLabel: string;
   unfollowLabel: string;
+  unfollowedLabel: string;
   recordingLabel: string;
   canDownload: Capability;
   canManage: Capability;
@@ -48,6 +49,7 @@ const PLATFORMS: Record<CreatorPlatform['id'], CreatorPlatform> = {
     creatorsLabel: 'Streamers',
     followLabel: 'Subscribe',
     unfollowLabel: 'Unsubscribe',
+    unfollowedLabel: 'Unsubscribed',
     recordingLabel: 'Recording',
     canDownload: 'twitch.download',
     canManage: 'twitch.manage',
@@ -81,6 +83,7 @@ const PLATFORMS: Record<CreatorPlatform['id'], CreatorPlatform> = {
     creatorsLabel: 'Channels',
     followLabel: 'Follow',
     unfollowLabel: 'Unfollow',
+    unfollowedLabel: 'Unfollowed',
     recordingLabel: 'Live',
     canDownload: 'youtube.download',
     canManage: 'youtube.manage',

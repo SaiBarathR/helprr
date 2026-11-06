@@ -11,6 +11,7 @@ import { PullToRefresh } from '@/components/ui/pull-to-refresh';
 import type { ContextActionGroup } from '@/components/ui/quick-context-menu';
 import { ActionsMenu } from '@/components/creators/actions-menu';
 import { ClampedText } from '@/components/creators/clamped-text';
+import { followedBy, showUnfollowNotice, type UnfollowResult } from '@/components/creators/unfollow-notice';
 import type { CreatorVideoPage } from '@/components/creators/types';
 import { useFeedLayout } from '@/components/creators/use-feed-view';
 import { useVideoActions } from '@/components/creators/use-video-actions';
@@ -29,6 +30,8 @@ interface Playlist {
   description: string | null;
   itemCount: number;
   subscription: { id: string; notifyNewVideos: boolean } | null;
+  /** Only sent to someone who can change the rules. */
+  followers?: number;
 }
 
 export default function YoutubePlaylistPage({ params }: { params: Promise<{ id: string }> }) {
@@ -77,8 +80,12 @@ export default function YoutubePlaylistPage({ params }: { params: Promise<{ id: 
     mutationFn: async () => {
       const res = await fetch(`/api/youtube/playlist-subscriptions/${playlist?.subscription?.id}`, { method: 'DELETE' });
       if (!res.ok) throw new Error('Could not unfollow');
+      return (await res.json().catch(() => null)) as UnfollowResult | null;
     },
-    onSuccess: () => void refresh(),
+    onSuccess: (result) => {
+      void refresh();
+      if (playlist) showUnfollowNotice({ done: 'Unfollowed', name: playlist.title, result });
+    },
     onError: (error) => toast.error(error.message),
   });
 
@@ -143,7 +150,11 @@ export default function YoutubePlaylistPage({ params }: { params: Promise<{ id: 
           <div className="pt-2">
             <h1 className="text-xl font-bold leading-tight">{playlist.title}</h1>
             <p className="mt-0.5 truncate text-sm text-muted-foreground">
-              {[playlist.ownerName, `${playlist.itemCount} ${playlist.itemCount === 1 ? 'video' : 'videos'}`].filter(Boolean).join(' · ')}
+              {[
+                playlist.ownerName,
+                `${playlist.itemCount} ${playlist.itemCount === 1 ? 'video' : 'videos'}`,
+                playlist.followers !== undefined && followedBy(playlist.followers),
+              ].filter(Boolean).join(' · ')}
             </p>
           </div>
         )}

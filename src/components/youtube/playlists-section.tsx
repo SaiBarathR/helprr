@@ -9,6 +9,7 @@ import { FadeInImage } from '@/components/media/fade-in-image';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { QuickContextMenu, type ContextActionGroup } from '@/components/ui/quick-context-menu';
 import { SwipeRow } from '@/components/ui/swipe-row';
+import { showUnfollowNotice, type UnfollowResult } from '@/components/creators/unfollow-notice';
 import { toCachedImageSrc } from '@/lib/image';
 
 interface PlaylistSubscription {
@@ -108,13 +109,15 @@ export function PlaylistsSection() {
     onError: (error) => toast.error(error.message),
   });
   const unfollow = useMutation({
-    mutationFn: async (id: string) => {
+    mutationFn: async ({ id }: PlaylistSubscription) => {
       const res = await fetch(`/api/youtube/playlist-subscriptions/${id}`, { method: 'DELETE' });
       if (!res.ok) throw new Error('Could not unfollow');
+      return (await res.json().catch(() => null)) as UnfollowResult | null;
     },
-    onSuccess: () => {
+    onSuccess: (result, { playlist }) => {
       setLeaving(null);
       void queryClient.invalidateQueries({ queryKey: ['youtube'] });
+      showUnfollowNotice({ done: 'Unfollowed', name: playlist.title, result });
     },
     onError: (error) => toast.error(error.message),
   });
@@ -141,7 +144,7 @@ export function PlaylistsSection() {
         confirmLabel="Unfollow"
         destructive
         busy={unfollow.isPending}
-        onConfirm={() => { if (leaving) unfollow.mutate(leaving.id); }}
+        onConfirm={() => { if (leaving) unfollow.mutate(leaving); }}
       />
     </section>
   );
