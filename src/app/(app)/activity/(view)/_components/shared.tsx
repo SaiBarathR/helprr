@@ -21,7 +21,7 @@ export function TabErrorState({ message, onRetry }: { message: string; onRetry: 
 }
 
 /**
- * The Failed tab's Import action, on a queue card that needs one: the reason
+ * The Needs import tab's Import action, on a queue card that needs one: the reason
  * the *arr gave and a button, so the import starts from the queue itself.
  */
 export function ManualImportStrip({ item, onImport }: { item: QueueItem; onImport: () => void }) {

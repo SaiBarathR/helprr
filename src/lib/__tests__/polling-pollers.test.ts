@@ -179,7 +179,7 @@ function arrInstance(id: string, label: string, kind: 'sonarr' | 'radarr' | 'lid
         queueItem(11, 'importPending', 'warning', { statusMessages: [{ title: 'x', messages: ['', 'No files found are eligible for import'] }] }),
         queueItem(9, 'failedPending', 'warning', { errorMessage: 'legacy item' }),
         queueItem(12, 'downloading'),
-        queueItem(13, 'failedPending', 'warning', { errorMessage: 'Tracker said no' }),
+        queueItem(13, 'failedPending', 'warning', { errorMessage: 'Tracker said no', downloadId: 'HASH13' }),
       ],
     },
     getTags: vi.fn(async () => [{ id: 1, label: 'kids' }, { id: 2, label: 'jazz' }]),

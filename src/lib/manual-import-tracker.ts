@@ -72,7 +72,7 @@ export function usePendingImports(): PendingImports {
 /**
  * Queue records as the user should see them: a download being imported reads
  * as importing, so it no longer counts as needing attention and drops out of
- * the Failed tab until the import is over.
+ * the Needs import tab until the import is over.
  */
 export function applyPendingImports<T extends QueueRecordIdentity & {
   trackedDownloadState?: string;

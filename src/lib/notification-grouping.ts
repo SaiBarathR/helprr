@@ -151,7 +151,10 @@ function buildGroupedNotification(group: Entry[]): {
   const remaining = count - representedCount;
   const body = shown.join(' · ') + (remaining > 0 ? ` · …and ${remaining} more` : '');
 
-  const redirect = sharedParentHref(group) ?? tabRedirect(source, eventType);
+  // Failures always open the Needs import tab, where they are listed with what
+  // to do next, even when every item shares one series or movie.
+  const isFailure = eventType === 'downloadFailed' || eventType === 'importFailed';
+  const redirect = (isFailure ? null : sharedParentHref(group)) ?? tabRedirect(source, eventType);
 
   const items: GroupedItem[] = group.slice(0, ITEM_CAP).map((e) => {
     const md = e.event.metadata ?? {};

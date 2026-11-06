@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -15,17 +16,138 @@ import { applyPendingImports, usePendingImports } from '@/lib/manual-import-trac
 import { useCan } from '@/components/permission-provider';
 import { canManualImport, getQueueMediaHref, manualImportHref, needsManualImport, statusLabel } from './queue-records';
 import { TabErrorState } from './shared';
+import { HistoryEventDrawer, HistoryEventRow, type HistoryRecord } from './history-event';
+
+const RECENT_FAILURE_DAYS = 7;
+
+// History's failed events for the selected sources/instance, one bounded page
+// (the newest 50) per request; the 7-day cutoff is applied here. Sonarr/Radarr
+// filter by event upstream, but Lidarr can't, so finding its failures pages
+// through its whole history: it's asked only when chosen (a Lidarr push links
+// with ?source=lidarr) or its instance is.
+function recentFailureUrls(filterBy: string[], instanceFilter: string): string[] {
+  const base = { page: '1', pageSize: '50', eventType: 'failed' };
+  if (instanceFilter !== 'all') {
+    return [`/api/activity/history?${new URLSearchParams({ ...base, instanceId: instanceFilter })}`];
+  }
+  const sources = filterBy.length > 0 ? filterBy : ['sonarr', 'radarr'];
+  return sources.map((source) => `/api/activity/history?${new URLSearchParams({ ...base, source })}`);
+}
+
+function SectionHeading({ children }: { children: ReactNode }) {
+  return <h2 className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-2">{children}</h2>;
+}
 
 /**
- * Render the Failed Imports tab: list queue items that failed import and offer a manual import action.
- *
- * Shows loading skeletons while fetching; if no failed imports are found it renders an empty-state message;
- * otherwise it renders each failed item with its messages and an Import button that navigates to the manual import page.
+ * The last week's failed downloads, as the History page shows them. A
+ * downloadFailed push links here with ?focus=<downloadId>, which opens that
+ * failure's detail sheet once it has loaded.
+ */
+function RecentFailures({ filterBy, instanceFilter }: { filterBy: string[]; instanceFilter: string }) {
+  const focusId = useSearchParams().get('focus');
+  const [selected, setSelected] = useState<HistoryRecord | null>(null);
+  const [handledFocusId, setHandledFocusId] = useState<string | null>(null);
+  const urls = recentFailureUrls(filterBy, instanceFilter);
+  const failuresQuery = useQuery({
+    queryKey: ['activity', 'history', 'recent-failures', urls],
+    queryFn: async ({ signal }) => {
+      type Page = { records?: HistoryRecord[]; partial?: boolean; truncated?: boolean };
+      const pages = await Promise.all(urls.map((url) => jsonFetcher<Page>(url)({ signal })));
+      const since = Date.now() - RECENT_FAILURE_DAYS * 24 * 60 * 60 * 1000;
+      const records = pages
+        .flatMap((page) => page.records ?? [])
+        .filter((r) => Date.parse(r.date) >= since)
+        .sort((a, b) => Date.parse(b.date) - Date.parse(a.date));
+      return { records, incomplete: pages.some((page) => page.partial || page.truncated) };
+    },
+  });
+  const failures = useMemo(
+    () => (failuresQuery.data?.records ?? []).filter(
+      (r) => filterBy.length === 0 || (r.source !== undefined && filterBy.includes(r.source)),
+    ),
+    [failuresQuery.data, filterBy],
+  );
+
+  // One-shot per focus id, on fresh data: open the pushed failure if it's
+  // listed, else give up.
+  if (focusId && handledFocusId !== focusId && failuresQuery.isSuccess && !failuresQuery.isFetching) {
+    setHandledFocusId(focusId);
+    const match = failures.find((r) => r.downloadId === focusId);
+    if (match) setSelected(match);
+  }
+
+  // Drop a handled focus from the URL, so coming back to this tab (another tab
+  // and back, or Back from a link in the sheet) doesn't open the sheet again.
+  useEffect(() => {
+    if (!handledFocusId) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('focus') !== handledFocusId) return;
+    params.delete('focus');
+    const query = params.toString();
+    window.history.replaceState(null, '', query ? `/activity?${query}` : '/activity');
+  }, [handledFocusId]);
+
+  let content: ReactNode;
+  if (failuresQuery.isLoading) {
+    content = <ListSkeleton count={2} />;
+  } else if (failuresQuery.isError) {
+    content = <TabErrorState message="Couldn't load recent failures" onRetry={() => failuresQuery.refetch()} />;
+  } else if (failures.length === 0) {
+    content = <p className="py-4 text-center text-sm text-muted-foreground">No failed downloads in the last {RECENT_FAILURE_DAYS} days</p>;
+  } else {
+    content = (
+      <div className="space-y-1 animate-list-in">
+        {failures.map((item, i) => (
+          <HistoryEventRow
+            key={`${item.source}-${item.instanceId ?? ''}-${item.id}-${i}`}
+            item={item}
+            onSelect={() => setSelected(item)}
+          />
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <section>
+      <SectionHeading>Recent failures</SectionHeading>
+      {content}
+      {failuresQuery.data?.incomplete && (
+        <p className="px-3 py-2 text-center text-xs text-amber-400">
+          Some history couldn&apos;t be checked, so this list may be incomplete.
+        </p>
+      )}
+      <HistoryEventDrawer item={selected} onClose={() => setSelected(null)} />
+    </section>
+  );
+}
+
+/**
+ * Render the Needs import tab (URL value `failed`, kept for existing links): the last week's failed
+ * downloads from History, then the queue items that need a manual import.
  *
  * @param filterBy - Selected sources to apply (`'sonarr'`, `'radarr'`, `'lidarr'`); an empty array means all sources.
- * @returns The tab content JSX: loading skeletons, empty-state, or a list of failed import items with Import actions
+ * @returns The tab content JSX: the Recent failures and Needs import sections
  */
 export function FailedImportsTab({ filterBy, instanceFilter }: { filterBy: string[]; instanceFilter: string }) {
+  return (
+    <div className="space-y-5">
+      <RecentFailures filterBy={filterBy} instanceFilter={instanceFilter} />
+      <section>
+        <SectionHeading>Needs import</SectionHeading>
+        <NeedsImportList filterBy={filterBy} instanceFilter={instanceFilter} />
+      </section>
+    </div>
+  );
+}
+
+/**
+ * The queue items that failed import, each with a manual import action.
+ *
+ * Shows loading skeletons while fetching; if nothing needs an import it renders an empty-state message;
+ * otherwise it renders each item with its messages and an Import button that navigates to the manual import page.
+ */
+function NeedsImportList({ filterBy, instanceFilter }: { filterBy: string[]; instanceFilter: string }) {
   const router = useRouter();
   const canManageActivity = useCan('activity.manage');
   const pendingImports = usePendingImports();
@@ -75,9 +197,9 @@ export function FailedImportsTab({ filterBy, instanceFilter }: { filterBy: strin
       return <TabErrorState message="Couldn't load failed imports" onRetry={() => queueQuery.refetch()} />;
     }
     return (
-      <div className="text-center py-16 text-muted-foreground">
+      <div className="text-center py-8 text-muted-foreground">
         <FileWarning className="h-8 w-8 mx-auto mb-2 opacity-40" />
-        <p className="text-sm">No failed imports</p>
+        <p className="text-sm">Nothing needs a manual import</p>
       </div>
     );
   }

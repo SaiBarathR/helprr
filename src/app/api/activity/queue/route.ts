@@ -30,7 +30,7 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
 
   try {
     const { searchParams } = new URL(request.url);
-    // The Failed tab: downloads waiting on a manual import, from the whole queue.
+    // The Needs import tab: downloads waiting on a manual import, from the whole queue.
     if (searchParams.get('view') === 'needs-import') {
       return NextResponse.json(await getQueueNeedingImportCached(), { headers: QUEUE_CACHE_HEADERS });
     }

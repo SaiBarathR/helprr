@@ -2,36 +2,25 @@
 
 import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
 
-import { useEffect, useMemo, useState, type JSX } from 'react';
-import Link from '@/components/ui/app-link';
+import { useEffect, useMemo, useState } from 'react';
 import { useRestorableInfiniteQuery as useInfiniteQuery } from '@/lib/hooks/use-restorable-infinite-query';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { jsonFetcher } from '@/lib/query-fetch';
 import { queryKeys } from '@/lib/query-keys';
 import { PageHeader } from '@/components/layout/page-header';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { QuickContextMenu } from '@/components/ui/quick-context-menu';
 import { PageSpinner } from '@/components/ui/page-spinner';
-import {
-  Drawer,
-  DrawerContent,
-  DrawerHeader,
-  DrawerTitle,
-} from '@/components/ui/drawer';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Copy, ExternalLink, Filter, Info, Loader2, ChevronRight } from 'lucide-react';
-import { formatDistanceToNow } from 'date-fns';
+import { Filter, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
-import type { HistoryItem } from '@/types';
 import { InstanceFilter, type InstanceOption, withAppName } from '@/components/instance-filter';
 import { ActiveFilterBar, FilterDot, filterButtonLabel, type ActiveFilter } from '@/components/ui/active-filter-bar';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { HistoryEventDrawer, HistoryEventRow, type HistoryRecord } from '../_components/history-event';
 
 // --- Event type config ---
 
@@ -52,72 +41,6 @@ const EVENT_FILTERS: EventFilterOption[] = [
   { key: 'ignored', label: 'Ignored' },
 ];
 
-type DrawerMode = 'basic' | 'detailed';
-
-// --- Event styling ---
-
-function eventColor(eventType: string) {
-  switch (eventType) {
-    case 'grabbed':
-      return 'bg-purple-500/10 text-purple-400 border-purple-500/20';
-    case 'downloadFolderImported':
-    case 'episodeFileImported':
-    case 'movieFileImported':
-    case 'trackFileImported':
-    case 'imported':
-      return 'bg-green-500/10 text-green-400 border-green-500/20';
-    case 'downloadFailed':
-    case 'albumImportIncomplete':
-    case 'failed':
-      return 'bg-red-500/10 text-red-400 border-red-500/20';
-    case 'downloadIgnored':
-    case 'ignored':
-      return 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20';
-    case 'episodeFileDeleted':
-    case 'movieFileDeleted':
-    case 'trackFileDeleted':
-    case 'deleted':
-      return 'bg-orange-500/10 text-orange-400 border-orange-500/20';
-    case 'renamed':
-    case 'episodeFileRenamed':
-    case 'movieFileRenamed':
-    case 'trackFileRenamed':
-      return 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20';
-    default:
-      return 'bg-blue-500/10 text-blue-400 border-blue-500/20';
-  }
-}
-
-function eventLabel(eventType: string) {
-  switch (eventType) {
-    case 'grabbed': return 'GRABBED';
-    case 'downloadFolderImported':
-    case 'episodeFileImported':
-    case 'movieFileImported':
-    case 'trackFileImported':
-    case 'imported':
-      return 'IMPORTED';
-    case 'downloadFailed':
-    case 'albumImportIncomplete':
-    case 'failed':
-      return 'FAILED';
-    case 'downloadIgnored':
-    case 'ignored':
-      return 'IGNORED';
-    case 'episodeFileDeleted':
-    case 'movieFileDeleted':
-    case 'trackFileDeleted':
-    case 'deleted':
-      return 'DELETED';
-    case 'renamed':
-    case 'episodeFileRenamed':
-    case 'movieFileRenamed':
-    case 'trackFileRenamed':
-      return 'RENAMED';
-    default: return eventType.toUpperCase();
-  }
-}
-
 /**
  * Renders the History page UI including event and instance filters, a paginated list of history events, and a detail drawer for a selected event.
  *
@@ -126,38 +49,12 @@ function eventLabel(eventType: string) {
  * @returns The React element for the History page.
  */
 
-type HistoryRecord = HistoryItem & { source?: string };
 type HistoryResponse = {
   records?: HistoryRecord[];
   totalRecords?: number;
   hasMore?: boolean;
   truncated?: boolean;
 };
-
-function getHistoryMediaHref(item: HistoryRecord): string | null {
-  const q = item.instanceId ? `?instance=${item.instanceId}` : '';
-  const seriesId = item.seriesId ?? item.series?.id;
-  if (seriesId) {
-    const episode = item.episode;
-    return episode
-      ? `/series/${seriesId}/season/${episode.seasonNumber}/episode/${episode.id}${q}`
-      : `/series/${seriesId}${q}`;
-  }
-  const movieId = item.movieId ?? item.movie?.id;
-  if (movieId) return `/movies/${movieId}${q}`;
-  const albumId = item.albumId ?? item.album?.id;
-  if (albumId) return `/music/album/${albumId}${q}`;
-  return null;
-}
-
-async function copyHistoryText(value: string, label: string) {
-  try {
-    await navigator.clipboard.writeText(value);
-    toast.success(`${label} copied`);
-  } catch {
-    toast.error('Copy failed');
-  }
-}
 
 function buildHistoryUrl(p: number, eventFilter: EventFilterKey, instanceFilter: string) {
   const params = new URLSearchParams({ page: String(p), pageSize: '20' });
@@ -170,7 +67,6 @@ export default function HistoryPage() {
   const [eventFilter, setEventFilter] = useRouteViewState<EventFilterKey>('eventFilter', 'all');
   const [instanceFilter, setInstanceFilter] = useRouteViewState<string>('instanceFilter', 'all');
   const [selectedItem, setSelectedItem] = useState<HistoryRecord | null>(null);
-  const [drawerMode, setDrawerMode] = useState<DrawerMode>('basic');
 
   // Infinite list: the filters live in the query key, so changing them swaps the
   // key and refetches from page 1 (no manual reset). "Load more" → fetchNextPage,
@@ -302,98 +198,13 @@ export default function HistoryPage() {
           </div>
         ) : (
           <div className="space-y-1 animate-list-in">
-            {history.map((item, i) => {
-              const mediaHref = getHistoryMediaHref(item);
-              return (
-              <QuickContextMenu
+            {history.map((item, i) => (
+              <HistoryEventRow
                 key={`${item.source}-${item.instanceId ?? ''}-${item.id}-${i}`}
-                label={`Actions for ${item.sourceTitle}`}
-                groups={[
-                  {
-                    id: 'navigation',
-                    actions: [
-                      {
-                        id: 'view-details',
-                        label: 'View details',
-                        icon: <Info className="h-4 w-4" />,
-                        onSelect: () => {
-                          setDrawerMode('basic');
-                          setSelectedItem(item);
-                        },
-                      },
-                      ...(mediaHref
-                        ? [{
-                            id: 'open-media',
-                            label: 'Open related media',
-                            icon: <ExternalLink className="h-4 w-4" />,
-                            href: mediaHref,
-                          }]
-                        : []),
-                    ],
-                  },
-                  {
-                    id: 'copy',
-                    actions: [{
-                      id: 'copy-source-title',
-                      label: 'Copy source title',
-                      icon: <Copy className="h-4 w-4" />,
-                      onSelect: () => void copyHistoryText(item.sourceTitle, 'Source title'),
-                    }],
-                  },
-                ]}
-              >
-              <button
-                onClick={() => {
-                  setDrawerMode('basic');
-                  setSelectedItem(item);
-                }}
-                className="-mx-2 w-[calc(100%+1rem)] text-left flex items-start gap-3 py-2.5 px-2 rounded-lg hover:bg-muted/50 active:bg-muted/50 transition-colors md:-mx-3 md:w-[calc(100%+1.5rem)] md:px-3"
-              >
-                <div className="flex-1 min-w-0 space-y-1">
-                  {/* Status label */}
-                  <Badge
-                    variant="secondary"
-                    className={`text-[9px] px-1.5 py-0 font-semibold ${eventColor(item.eventType)}`}
-                  >
-                    {eventLabel(item.eventType)}
-                  </Badge>
-
-                  {/* Filename: up to two lines (the drawer has the full name) */}
-                  <p className="text-sm leading-snug break-words line-clamp-2">
-                    {item.sourceTitle}
-                  </p>
-
-                  {/* Metadata row */}
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    {item.quality?.quality?.name && (
-                      <Badge variant="outline" className="text-[9px] px-1.5 py-0">
-                        {item.quality.quality.name}
-                      </Badge>
-                    )}
-                    {item.data?.droppedPath && (
-                      <Badge variant="outline" className="text-[9px] px-1.5 py-0">
-                        {item.data.indexer || item.data.downloadClient || ''}
-                      </Badge>
-                    )}
-                    {!item.data?.droppedPath && item.data?.indexer && (
-                      <Badge variant="outline" className="text-[9px] px-1.5 py-0">
-                        {item.data.indexer}
-                      </Badge>
-                    )}
-                    <Badge variant="outline" className="text-[9px] px-1.5 py-0">
-                      {item.source}
-                    </Badge>
-                  </div>
-                </div>
-
-                {/* Time ago */}
-                <span className="text-[10px] text-muted-foreground shrink-0 mt-1 tabular-nums">
-                  {formatDistanceToNow(new Date(item.date), { addSuffix: true })}
-                </span>
-              </button>
-              </QuickContextMenu>
-              );
-            })}
+                item={item}
+                onSelect={() => setSelectedItem(item)}
+              />
+            ))}
 
             {/* Load more */}
             {hasNextPage && (
@@ -417,324 +228,7 @@ export default function HistoryPage() {
       </div>
 
       {/* History item detail drawer */}
-      <Drawer
-        open={!!selectedItem}
-        onOpenChange={(open) => {
-          if (!open) {
-            setSelectedItem(null);
-            setDrawerMode('basic');
-          }
-        }}
-      >
-        <DrawerContent className="max-h-[85vh]">
-          {selectedItem && (
-            <>
-              <DrawerHeader className="text-left">
-                <Badge
-                  variant="secondary"
-                  className={`w-fit text-[10px] px-2 py-0.5 font-semibold ${eventColor(selectedItem.eventType)}`}
-                >
-                  {eventLabel(selectedItem.eventType)}
-                </Badge>
-                <DrawerTitle className="text-sm break-all leading-snug mt-1">
-                  {selectedItem.sourceTitle}
-                </DrawerTitle>
-                <p className="text-xs text-muted-foreground">
-                  {drawerMode === 'basic' ? (
-                    (() => {
-                      const parts: string[] = [];
-                      const qualityName = selectedItem.quality?.quality?.name;
-                      if (qualityName) parts.push(qualityName);
-                      if (selectedItem.data?.size) parts.push(formatBytes(Number(selectedItem.data.size)));
-                      return parts.join(' · ');
-                    })()
-                  ) : (
-                    <>
-                      {(selectedItem.source || 'unknown').toUpperCase()} ·{' '}
-                      {formatDistanceToNow(new Date(selectedItem.date), { addSuffix: true })}
-                    </>
-                  )}
-                </p>
-              </DrawerHeader>
-
-              <div className="px-4 pb-3">
-                {/* Radix Tabs: segmented look + roving focus / arrow-key nav. */}
-                <Tabs
-                  value={drawerMode}
-                  onValueChange={(v) => setDrawerMode(v as 'basic' | 'detailed')}
-                  className="gap-0"
-                >
-                  <TabsList className="flex w-full h-auto bg-muted/50 p-0.5 gap-0.5" aria-label="Detail level">
-                    <TabsTrigger value="basic" className="flex-1 text-xs font-medium py-1.5 px-2 data-[state=active]:shadow-sm">
-                      Basic
-                    </TabsTrigger>
-                    <TabsTrigger value="detailed" className="flex-1 text-xs font-medium py-1.5 px-2 data-[state=active]:shadow-sm">
-                      Detailed
-                    </TabsTrigger>
-                  </TabsList>
-                </Tabs>
-              </div>
-
-              {drawerMode === 'basic' ? (
-                <div className="px-4 space-y-4 pb-6 overflow-y-auto flex-1 min-h-0">
-                  {/* Tags row */}
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <Badge variant="outline" className="text-[10px]">
-                      {selectedItem.source?.toUpperCase()}
-                    </Badge>
-                    {selectedItem.data?.indexer && (
-                      <Badge variant="outline" className="text-[10px]">
-                        {selectedItem.data.indexer}
-                      </Badge>
-                    )}
-                    {selectedItem.data?.releaseGroup && (
-                      <Badge variant="outline" className="text-[10px]">
-                        {selectedItem.data.releaseGroup}
-                      </Badge>
-                    )}
-                  </div>
-
-                  {/* Series / Movie info */}
-                  {selectedItem.series && (() => {
-                    const ep = selectedItem.episode;
-                    const seriesId = selectedItem.seriesId || selectedItem.series.id;
-                    const q = selectedItem.instanceId ? `?instance=${selectedItem.instanceId}` : '';
-                    const href = seriesId && ep
-                      ? `/series/${seriesId}/season/${ep.seasonNumber}/episode/${ep.id}${q}`
-                      : seriesId
-                        ? `/series/${seriesId}${q}`
-                        : null;
-                    const content = (
-                      <>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium">{selectedItem.series.title}</p>
-                          {ep && (
-                            <p className="text-xs text-muted-foreground mt-0.5">
-                              S{String(ep.seasonNumber).padStart(2, '0')}
-                              E{String(ep.episodeNumber).padStart(2, '0')} - {ep.title}
-                            </p>
-                          )}
-                        </div>
-                        {href && <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />}
-                      </>
-                    );
-                    return href ? (
-                      <Link href={href} className="flex items-center gap-2 rounded-lg bg-muted/30 p-3 hover:bg-muted/50 transition-colors">
-                        {content}
-                      </Link>
-                    ) : (
-                      <div className="flex items-center gap-2 rounded-lg bg-muted/30 p-3">{content}</div>
-                    );
-                  })()}
-                  {selectedItem.movie && (() => {
-                    const movieId = selectedItem.movieId || selectedItem.movie.id;
-                    const q = selectedItem.instanceId ? `?instance=${selectedItem.instanceId}` : '';
-                    const href = movieId ? `/movies/${movieId}${q}` : null;
-                    const content = (
-                      <>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium">{selectedItem.movie.title}</p>
-                          <p className="text-xs text-muted-foreground mt-0.5">{selectedItem.movie.year}</p>
-                        </div>
-                        {href && <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />}
-                      </>
-                    );
-                    return href ? (
-                      <Link href={href} className="flex items-center gap-2 rounded-lg bg-muted/30 p-3 hover:bg-muted/50 transition-colors">
-                        {content}
-                      </Link>
-                    ) : (
-                      <div className="flex items-center gap-2 rounded-lg bg-muted/30 p-3">{content}</div>
-                    );
-                  })()}
-                  {selectedItem.album && (() => {
-                    const albumId = selectedItem.albumId || selectedItem.album.id;
-                    const q = selectedItem.instanceId ? `?instance=${selectedItem.instanceId}` : '';
-                    const href = albumId ? `/music/album/${albumId}${q}` : null;
-                    const content = (
-                      <>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium">{selectedItem.album.title}</p>
-                          {selectedItem.artist?.artistName && (
-                            <p className="text-xs text-muted-foreground mt-0.5">{selectedItem.artist.artistName}</p>
-                          )}
-                        </div>
-                        {href && <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />}
-                      </>
-                    );
-                    return href ? (
-                      <Link href={href} className="flex items-center gap-2 rounded-lg bg-muted/30 p-3 hover:bg-muted/50 transition-colors">
-                        {content}
-                      </Link>
-                    ) : (
-                      <div className="flex items-center gap-2 rounded-lg bg-muted/30 p-3">{content}</div>
-                    );
-                  })()}
-
-                  {/* Information section */}
-                  <div>
-                    <h3 className="font-semibold text-sm mb-2">Information</h3>
-                    <div className="space-y-0 rounded-lg border divide-y">
-                      <InfoRow label="Event" value={eventLabel(selectedItem.eventType)} />
-                      <InfoRow label="Quality" value={selectedItem.quality?.quality?.name || '-'} />
-                      {selectedItem.data?.indexer && (
-                        <InfoRow label="Indexer" value={selectedItem.data.indexer} />
-                      )}
-                      {selectedItem.data?.downloadClient && (
-                        <InfoRow label="Client" value={selectedItem.data.downloadClient} />
-                      )}
-                      {selectedItem.data?.protocol && (
-                        <InfoRow label="Protocol" value={selectedItem.data.protocol} />
-                      )}
-                      {selectedItem.data?.releaseGroup && (
-                        <InfoRow label="Release Group" value={selectedItem.data.releaseGroup} />
-                      )}
-                      {selectedItem.data?.nzbInfoUrl && (
-                        <InfoRow label="NZB Info" value={selectedItem.data.nzbInfoUrl} />
-                      )}
-                      {selectedItem.data?.size && (
-                        <InfoRow label="Size" value={formatBytes(Number(selectedItem.data.size))} />
-                      )}
-                      <InfoRow
-                        label="Date"
-                        value={formatDistanceToNow(new Date(selectedItem.date), { addSuffix: true })}
-                      />
-                      <InfoRow label="Source" value={selectedItem.source || '-'} />
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="px-4 pb-6 overflow-y-auto flex-1 min-h-0">
-                  <div className="space-y-2">
-                    {Object.entries(selectedItem).map(([key, value]) => (
-                      <RecursiveField key={key} name={key} value={value} depth={0} ancestors={[]} />
-                    ))}
-                  </div>
-                </div>
-              )}
-            </>
-          )}
-        </DrawerContent>
-      </Drawer>
+      <HistoryEventDrawer item={selectedItem} onClose={() => setSelectedItem(null)} />
     </div>
   );
-}
-
-// --- Helpers ---
-
-function RecursiveField({
-  name,
-  value,
-  depth,
-  ancestors,
-}: {
-  name: string;
-  value: unknown;
-  depth: number;
-  ancestors: object[];
-}): JSX.Element | null {
-
-  const valueType = typeof value;
-  const isObject = valueType === 'object' && value !== null;
-  const hasName = name.trim().length > 0;
-  const displayName = hasName ? name : 'Item';
-
-  if (!isObject) {
-    return (
-      <div className="rounded-md border bg-muted/20 px-2 py-1.5">
-        <div className={`flex items-start gap-2 ${hasName ? '' : 'justify-end'}`}>
-          {hasName && (
-            <span className="text-[11px] font-mono text-muted-foreground min-w-[110px] break-all">{name}</span>
-          )}
-          <div className={`text-[11px] break-all flex-1 ${hasName ? 'text-right' : 'text-left'}`}>
-            <PrimitiveValue value={value} />
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  const obj = value as object;
-  if (ancestors.includes(obj)) {
-    return (
-      <div className="rounded-md border bg-muted/20 px-2 py-1.5">
-        <div className={`flex items-start gap-2 ${hasName ? '' : 'justify-end'}`}>
-          {hasName && (
-            <span className="text-[11px] font-mono text-muted-foreground min-w-[110px] break-all">{name}</span>
-          )}
-          <span className={`text-[11px] text-orange-400 break-all flex-1 ${hasName ? 'text-right' : 'text-left'}`}>
-            [Circular]
-          </span>
-        </div>
-      </div>
-    );
-  }
-
-  const nextAncestors = [...ancestors, obj];
-  const entries: Array<[string, unknown]> = Array.isArray(value)
-    ? (value as unknown[]).map((item, index) => [String(index), item])
-    : Object.entries(value as Record<string, unknown>);
-  const openByDefault = depth < 1;
-
-  return (
-    <details open={openByDefault} className="rounded-md border bg-muted/20">
-      <summary className="cursor-pointer px-2 py-1.5 text-[11px] font-mono text-muted-foreground break-all">
-        {displayName}
-      </summary>
-      <div className="border-t px-2 py-2 space-y-2">
-        {entries.length === 0 ? (
-          <div className="text-[11px] text-muted-foreground italic">
-            {Array.isArray(value) ? '[]' : '{}'}
-          </div>
-        ) : (
-          entries.map(([childKey, childValue]) => (
-            <RecursiveField
-              key={`${name}.${childKey}`}
-              name={Array.isArray(value) ? '' : childKey}
-              value={childValue}
-              depth={depth + 1}
-              ancestors={nextAncestors}
-            />
-          ))
-        )}
-      </div>
-    </details>
-  );
-}
-
-function InfoRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-center justify-between px-3 py-2">
-      <span className="text-xs text-muted-foreground">{label}</span>
-      <span className="text-xs text-right max-w-[60%] break-words">{value}</span>
-    </div>
-  );
-}
-
-function formatBytes(bytes: number) {
-  if (!bytes || bytes === 0) return '0 B';
-  const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-}
-
-function PrimitiveValue({ value }: { value: unknown }) {
-  if (value === null) return <span className="italic text-muted-foreground">null</span>;
-  if (value === undefined) return <span className="italic text-muted-foreground">undefined</span>;
-  if (typeof value === 'boolean') return <span>{value ? 'true' : 'false'}</span>;
-  if (typeof value === 'number') return <span>{Number.isFinite(value) ? String(value) : 'NaN'}</span>;
-  if (typeof value === 'bigint') return <span>{value.toString()}</span>;
-  if (typeof value === 'string') {
-    if (!value) return <span className="italic text-muted-foreground">{'""'}</span>;
-    if (/^https?:\/\//i.test(value)) {
-      return (
-        <a href={value} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline break-all">
-          {value}
-        </a>
-      );
-    }
-    return <span>{value}</span>;
-  }
-  return <span>{String(value)}</span>;
 }

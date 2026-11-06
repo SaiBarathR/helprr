@@ -70,6 +70,11 @@ export async function pollRadarr(context: CycleContext) {
         const mediaHref = getMediaHrefFromIds(metadata);
         const queueHref = '/activity?tab=queue&source=radarr';
         const failedTabHref = '/activity?tab=failed&source=radarr';
+        // A failed download leaves the queue once the arr handles it; its History
+        // row stays, listed under Recent failures and opened by ?focus=.
+        const downloadFailedHref = item.downloadId
+          ? `${failedTabHref}&focus=${encodeURIComponent(item.downloadId)}`
+          : failedTabHref;
 
         const prev = prevMap.get(item.id);
         const currentIssue = classifyQueueIssue(item.trackedDownloadState, item.trackedDownloadStatus);
@@ -93,7 +98,7 @@ export async function pollRadarr(context: CycleContext) {
             }, { service: 'radarr', instanceId, reason: 'queue-import-blocked-new', itemId: item.id });
           } else if (currentIssue === 'download') {
             downloadFailedCount++;
-            const redirect = queueHref;
+            const redirect = downloadFailedHref;
             collector.add({
               eventType: 'downloadFailed',
               title: instanceTitle('Movie Download Failed', instanceLabel, n),
@@ -124,7 +129,7 @@ export async function pollRadarr(context: CycleContext) {
             }, { service: 'radarr', instanceId, reason: 'queue-import-blocked-transition', itemId: item.id });
           } else if (currentIssue === 'download') {
             downloadFailedCount++;
-            const redirect = queueHref;
+            const redirect = downloadFailedHref;
             collector.add({
               eventType: 'downloadFailed',
               title: instanceTitle('Movie Download Failed', instanceLabel, n),
