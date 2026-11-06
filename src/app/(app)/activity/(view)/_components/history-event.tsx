@@ -3,6 +3,7 @@
 import { useState, type JSX } from 'react';
 import Link from '@/components/ui/app-link';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { QuickContextMenu } from '@/components/ui/quick-context-menu';
 import {
   Drawer,
@@ -10,11 +11,16 @@ import {
   DrawerHeader,
   DrawerTitle,
 } from '@/components/ui/drawer';
-import { Copy, ExternalLink, Info, ChevronRight } from 'lucide-react';
+import { AlertTriangle, Copy, ExternalLink, Info, ChevronRight, Loader2, RotateCw, Search } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { toast } from 'sonner';
 import type { HistoryItem } from '@/types';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useAppRouter } from '@/components/layout/navigation-provider';
+import { useCan } from '@/components/permission-provider';
+import { arrInteractiveSearchHref } from '@/lib/arr-edit-href';
+import { arrMutationFetch } from '@/lib/query-fetch';
+import { handleAuthError } from '@/lib/query-client';
 
 // A history event's row and detail sheet, shared by the History page and the
 // Needs import tab's Recent failures, so a failure looks and opens the same in both.
@@ -101,6 +107,59 @@ function getHistoryMediaHref(item: HistoryRecord): string | null {
   const albumId = item.albumId ?? item.album?.id;
   if (albumId) return `/music/album/${albumId}${q}`;
   return null;
+}
+
+type FailedEventSearch = {
+  path: string;
+  body: { name: string } & Record<string, unknown>;
+  interactiveHref: string | null;
+};
+
+// Search again sends the same command the push Retry action does (one episode,
+// movie or album) to the event's own instance.
+function getFailedEventSearch(item: HistoryRecord): FailedEventSearch | null {
+  if (item.source === 'sonarr') {
+    const episodeId = item.episodeId ?? item.episode?.id;
+    if (!episodeId) return null;
+    const seriesId = item.seriesId ?? item.series?.id;
+    const ep = item.episode;
+    // Titled as the episode page titles its interactive search.
+    const title = ep
+      ? `${item.series?.title ?? item.sourceTitle} - S${String(ep.seasonNumber).padStart(2, '0')}E${String(ep.episodeNumber).padStart(2, '0')} - ${ep.title || 'TBA'}`
+      : item.sourceTitle;
+    return {
+      path: '/api/sonarr/command',
+      body: { name: 'EpisodeSearch', episodeIds: [episodeId] },
+      interactiveHref: seriesId && ep
+        ? arrInteractiveSearchHref({ kind: 'episode', seriesId, seasonNumber: ep.seasonNumber, episodeId }, title, item.instanceId)
+        : null,
+    };
+  }
+  if (item.source === 'radarr') {
+    const movieId = item.movieId ?? item.movie?.id;
+    if (!movieId) return null;
+    return {
+      path: '/api/radarr/command',
+      body: { name: 'MoviesSearch', movieIds: [movieId] },
+      interactiveHref: arrInteractiveSearchHref({ kind: 'movie', movieId }, item.movie?.title ?? item.sourceTitle, item.instanceId),
+    };
+  }
+  if (item.source === 'lidarr') {
+    const albumId = item.albumId ?? item.album?.id;
+    if (!albumId) return null;
+    return {
+      path: '/api/lidarr/command',
+      body: { name: 'AlbumSearch', albumIds: [albumId] },
+      interactiveHref: arrInteractiveSearchHref({ kind: 'album', albumId }, item.album?.title ?? item.sourceTitle, item.instanceId),
+    };
+  }
+  return null;
+}
+
+function getHistoryMediaLabel(item: HistoryRecord): string {
+  if (item.seriesId ?? item.series?.id) return item.episode ? 'Open episode' : 'Open series';
+  if (item.movieId ?? item.movie?.id) return 'Open movie';
+  return 'Open album';
 }
 
 async function copyHistoryText(value: string, label: string) {
@@ -202,6 +261,9 @@ export function HistoryEventRow({ item, onSelect }: { item: HistoryRecord; onSel
 /** The detail sheet for a history event (Basic summary, or every field under Detailed). */
 export function HistoryEventDrawer({ item, onClose }: { item: HistoryRecord | null; onClose: () => void }) {
   const [mode, setMode] = useState<DrawerMode>('basic');
+  // Held here, not in the panel, so a search still running stays pending when the
+  // panel remounts (switching to Detailed and back, or reopening the event).
+  const [searchingKey, setSearchingKey] = useState<string | null>(null);
 
   return (
     <Drawer
@@ -264,6 +326,19 @@ export function HistoryEventDrawer({ item, onClose }: { item: HistoryRecord | nu
 
             {mode === 'basic' ? (
               <div className="px-4 space-y-4 pb-6 overflow-y-auto flex-1 min-h-0">
+                {/* Download failures only: Lidarr's albumImportIncomplete has no message, and its
+                    download is still waiting for a manual import, so searching again is wrong for it. */}
+                {(item.eventType === 'downloadFailed' || item.eventType === 'failed') && (() => {
+                  const key = `${item.source}-${item.instanceId}-${item.id}`;
+                  return (
+                    <FailedEventPanel
+                      item={item}
+                      searching={searchingKey === key}
+                      onSearchingChange={(on) => setSearchingKey((current) => (on ? key : current === key ? null : current))}
+                    />
+                  );
+                })()}
+
                 {/* Tags row */}
                 <div className="flex items-center gap-2 flex-wrap">
                   <Badge variant="outline" className="text-[10px]">
@@ -403,6 +478,77 @@ export function HistoryEventDrawer({ item, onClose }: { item: HistoryRecord | nu
         )}
       </DrawerContent>
     </Drawer>
+  );
+}
+
+/** A failed event's reason, and the ways to recover: search again, pick a release, or open the media. */
+function FailedEventPanel({
+  item,
+  searching,
+  onSearchingChange,
+}: {
+  item: HistoryRecord;
+  searching: boolean;
+  onSearchingChange: (searching: boolean) => void;
+}) {
+  const canSearch = useCan('activity.manage');
+  const router = useAppRouter();
+  const reason = item.data?.message;
+  const search = canSearch ? getFailedEventSearch(item) : null;
+  const interactiveHref = search?.interactiveHref;
+  const mediaHref = getHistoryMediaHref(item);
+
+  async function searchAgain() {
+    if (!search) return;
+    onSearchingChange(true);
+    try {
+      const res = await arrMutationFetch(item.instanceId, search.path, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(search.body),
+      });
+      if (!res.ok) throw new Error(`${search.body.name} → ${res.status}`);
+      toast.success('Search started');
+    } catch (e) { handleAuthError(e); toast.error('Search failed'); }
+    finally { onSearchingChange(false); }
+  }
+
+  return (
+    <div className="space-y-3">
+      {reason && (
+        <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-3">
+          <p className="flex items-center gap-1.5 text-xs font-semibold text-destructive">
+            <AlertTriangle className="h-3.5 w-3.5" />
+            Why it failed
+          </p>
+          <p className="mt-1 text-sm break-words">{reason}</p>
+        </div>
+      )}
+      {(search || mediaHref) && (
+        <div className="flex flex-wrap gap-2">
+          {search && (
+            <Button onClick={() => void searchAgain()} disabled={searching} aria-busy={searching}>
+              {searching ? <Loader2 className="animate-spin" /> : <RotateCw />}
+              Search again
+            </Button>
+          )}
+          {interactiveHref && (
+            <Button variant="outline" onClick={() => router.push(interactiveHref)}>
+              <Search />
+              Interactive search
+            </Button>
+          )}
+          {mediaHref && (
+            <Button variant="outline" asChild>
+              <Link href={mediaHref}>
+                <ExternalLink />
+                {getHistoryMediaLabel(item)}
+              </Link>
+            </Button>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
