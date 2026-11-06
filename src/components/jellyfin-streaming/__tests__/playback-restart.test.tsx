@@ -121,3 +121,66 @@ describe('restart keeps the viewer\'s paused intent', () => {
     expect(lastStartReport(h)?.isPaused).toBe(true);
   });
 });
+
+/**
+ * Where a restart starts while an earlier start is still on its way in. The
+ * outgoing element is then still where the viewer was, and the clock can read
+ * zero (a fresh element) or the previous title, so neither is the answer by
+ * itself: these keep a resumed title at its resume point.
+ */
+describe('where a restart starts while another is still coming in', () => {
+  const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+  const RESUME = 1200 * 10_000_000;
+
+  describe.each([{ label: 'direct play', hls: false }, { label: 'HLS', hls: true }])('$label', ({ hls }) => {
+    it('keeps the resume point through two quick track changes while it loads', async () => {
+      const h = await mountPlayback({ hls });
+      harness = h;
+      await h.act(async () => { await h.playback().playItem(ITEM, { startTimeTicks: RESUME }); });
+      h.holdStreamInfo();
+      const first = h.playback().setAudioStream(2);
+      await h.act(async () => { for (let i = 0; i < 10; i += 1) await flush(); });
+      const second = h.playback().setAudioStream(3);
+      await h.act(async () => {
+        h.releaseStreamInfo();
+        await Promise.all([first, second]);
+        for (let i = 0; i < 10; i += 1) await flush();
+      });
+      expect(h.requests.at(-1)?.startTimeTicks).toBe(RESUME);
+      expect(h.requests.at(-1)?.audioStreamIndex).toBe(3);
+    });
+  });
+
+  it('keeps the resume point when a change overtakes another still stopping, after a fresh element read zero', async () => {
+    const h = await mountPlayback({ hls: true });
+    harness = h;
+    await h.act(async () => { await h.playback().playItem(ITEM, { startTimeTicks: RESUME }); });
+    // The fresh HLS element reads zero, and says so, before it reaches the start.
+    await h.act(() => { h.element().currentTime = 0; h.element().dispatchEvent(new Event('timeupdate')); });
+    await h.act(async () => {
+      void h.playback().setAudioStream(2);
+      await h.playback().setAudioStream(3);
+      for (let i = 0; i < 10; i += 1) await flush();
+    });
+    expect(h.requests.at(-1)?.startTimeTicks).toBe(RESUME);
+  });
+
+  it('restarts from the resume point after a failed track change', async () => {
+    const h = await mountPlayback({ hls: true });
+    harness = h;
+    await h.act(async () => { await h.playback().playItem(ITEM, { startTimeTicks: RESUME }); });
+    await h.act(() => { h.element().currentTime = 0; h.element().dispatchEvent(new Event('timeupdate')); });
+    h.failStreamInfoFor(ITEM.Id);
+    await h.act(async () => {
+      await h.playback().setAudioStream(2);
+      for (let i = 0; i < 10; i += 1) await flush();
+    });
+    h.restoreStreamInfoFor(ITEM.Id);
+    await h.act(async () => {
+      await h.playback().setAudioStream(3);
+      for (let i = 0; i < 10; i += 1) await flush();
+    });
+    expect(h.requests.at(-1)?.startTimeTicks).toBe(RESUME);
+    expect(h.requests.at(-1)?.audioStreamIndex).toBe(3);
+  });
+});

@@ -1062,7 +1062,10 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     last.retryTicks = last.attached && reachedStartRef.current && current && current.item.Id === last.itemId
       ? positionToReport(mediaRef.current, current, true) || secondsToTicks(positionRef.current)
       : last.request.startTimeTicks;
-  }, []);
+    // The clock holds it too: a track change made from the error restarts from
+    // the clock, and a failed stream's element may have last said zero.
+    if (last.retryTicks !== undefined) setPositionSeconds(ticksToSeconds(last.retryTicks));
+  }, [setPositionSeconds]);
 
   const failPlayback = useCallback(async (fallbackMessage: string) => {
     noteRetryPosition();
@@ -1857,16 +1860,23 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
     // change made while a previous restart is still attaching would read the
     // transient zero and send the viewer back to the beginning. Switching
     // subtitles twice in a row hit this exactly.
-    // While a run of skips gathers, or a seek or restart is still on its way
-    // in, the clock already shows where the viewer is going (the outgoing
-    // element's time updates are ignored then) and the element is still where
-    // they were, so the clock wins: otherwise a track change inside that
-    // window dropped the skip, or the seek it overtook.
-    const attached = lastRequestRef.current?.attached === true
-      && lastRequestRef.current.token === startTokenRef.current;
-    const startTimeTicks = (pending?.itemId === current.item.Id || !attached)
-      ? secondsToTicks(positionRef.current)
-      : positionToReport(mediaRef.current, current, reachedStartRef.current) || secondsToTicks(positionRef.current);
+    // The outgoing element is still where the viewer was while a move is on
+    // its way in, so it only answers once the newest start has attached:
+    // - a run of skips gathering, or a seek or restart still stopping the old
+    //   stream (its claim not yet made into a request): the clock, which each
+    //   of them set to where they are going;
+    // - a start of this title asked for but not attached: what it asked for.
+    //   Not the clock, which may still read zero, or the previous title.
+    // Otherwise a track change inside that window dropped the skip or the seek.
+    const last = lastRequestRef.current;
+    const claimed = last?.token === startTokenRef.current;
+    let startTimeTicks: number;
+    if (pending?.itemId === current.item.Id || !claimed) startTimeTicks = secondsToTicks(positionRef.current);
+    else if (!last.attached && last.itemId === current.item.Id) startTimeTicks = last.request.startTimeTicks ?? secondsToTicks(positionRef.current);
+    else startTimeTicks = positionToReport(mediaRef.current, current, reachedStartRef.current) || secondsToTicks(positionRef.current);
+    // As `seek` does: a change that overtakes this one, while it is still
+    // stopping the old stream, starts from here too.
+    setPositionSeconds(ticksToSeconds(startTimeTicks));
     // Carried for the same reason as the position: changing a track restarts
     // the stream, and a restart plays, so switching audio while paused resumed
     // playback. Read from the latch rather than the element — see
@@ -1897,7 +1907,7 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
       enableDirectStream: patch.enableDirectStream,
       startPaused: wasPaused,
     }, stillCurrent, current.playSessionId);
-  }, [cancelPendingSkip, maxBitrate, startItem]);
+  }, [cancelPendingSkip, maxBitrate, setPositionSeconds, startItem]);
 
   // Published for the burn-in fallback in applySubtitleTrack, which sits above
   // this and so cannot depend on it directly.
