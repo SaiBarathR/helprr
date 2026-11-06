@@ -8,7 +8,9 @@ vi.mock('@tanstack/react-query', () => ({
   useQuery: ({ queryKey }: { queryKey: string[] }) => ({
     data: queryKey[1] === 'system'
       ? { ServerName: 'Jellyfin', Version: '12', HasPendingRestart: true }
-      : queryKey[1] === 'tasks' || queryKey[1] === 'devices' ? {} : null,
+      : queryKey[1] === 'resume'
+        ? [{ Id: 'movie-1', Name: 'Arrival', Type: 'Movie', ImageTags: { Primary: 'tag' } }]
+        : queryKey[1] === 'tasks' || queryKey[1] === 'devices' ? {} : null,
   }),
 }));
 vi.mock('@/lib/hooks/use-external-urls', () => ({ useExternalUrls: () => ({}) }));
@@ -22,4 +24,11 @@ it('gives the restart badge a readable light-theme foreground', () => {
   const badge = screen.getByText('Restart needed');
   expect(badge.className).toContain('text-amber-500');
   expect(badge.className).toContain('light:text-amber-700');
+});
+
+it('requests Continue Watching posters at the image route\'s shared quality', () => {
+  render(<OverviewTab />);
+  const src = screen.getByRole('img', { name: 'Arrival' }).getAttribute('src');
+  expect(src).toContain('/api/jellyfin/image?itemId=movie-1&type=Primary&maxWidth=220');
+  expect(src).toMatch(/[?&]quality=80(&|$)/);
 });

@@ -186,12 +186,12 @@ export default function SeriesEditPage() {
         <div className="grouped-section">
           <p className="grouped-section-title">Monitoring</p>
           <div className="grouped-section-content">
-            <div className="grouped-row">
+            <div className="grouped-row gap-3">
               <Label htmlFor="monitor-new-items" className="text-sm shrink-0">
                 Monitor New Seasons
               </Label>
               <Select value={monitorNewItems} onValueChange={(v) => setMonitorNewItems(v as 'all' | 'none')}>
-                <SelectTrigger id="monitor-new-items" className="w-[180px] border-0 bg-transparent text-right">
+                <SelectTrigger id="monitor-new-items" className="w-[180px] min-w-0 border-0 bg-transparent text-right">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
