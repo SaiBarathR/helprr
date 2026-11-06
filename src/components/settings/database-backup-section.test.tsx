@@ -39,13 +39,13 @@ describe('DatabaseBackupSection', () => {
     expect((await screen.findByText(/12 days ago/)).className).toContain('amber');
   });
 
-  it('says when none was recorded', async () => {
+  it('says in amber when none was recorded', async () => {
     show(new Response(JSON.stringify({ lastBackupAt: null })));
-    expect(await screen.findByText('None recorded')).toBeTruthy();
+    expect((await screen.findByText('None recorded')).className).toContain('amber');
   });
 
   it('says it cannot tell when the read fails', async () => {
     show(new Response('{}', { status: 500 }));
-    expect(await screen.findByText('Unavailable')).toBeTruthy();
+    expect((await screen.findByText('Unavailable')).className).not.toContain('amber');
   });
 });

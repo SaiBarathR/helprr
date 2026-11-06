@@ -831,7 +831,8 @@ volume). After a dump is validated and its secrets are saved, the script records
 the time in `AppSettings.lastDatabaseBackupAt` with one `UPDATE` through the same
 container; that write is best effort and never fails the backup. The admin-only
 `/api/admin/database-backup` reads it for **Settings -> Backup & Restore** (amber
-after seven days), and a recorded backup ticks the setup checklist's backup step.
+when none is recorded or it is over seven days old; `GET /api/settings` leaves it
+out), and a recorded backup ticks the setup checklist's backup step.
 Backups made another way are not seen. The settings export is not a backup and no
 longer ticks that step.
 

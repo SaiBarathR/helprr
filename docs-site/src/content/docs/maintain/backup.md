@@ -24,8 +24,8 @@ Run it before every update and on a schedule:
 ```
 
 Each backup it makes is recorded in Helprr: **Settings → Backup & Restore** shows admins
-when the last one was, in amber once it is more than a week old. Backups made any other
-way are not shown there.
+when the last one was, in amber when there is none or it is more than a week old. Backups
+made any other way are not shown there.
 
 To run it on a schedule, add a line like this to the crontab of the user that runs
 Docker (`crontab -e`), with your Helprr folder in place of the example; it backs up every

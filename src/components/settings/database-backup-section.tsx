@@ -9,7 +9,7 @@ import { formatDistanceToNowSafe } from '@/lib/format';
 import { BACKUP_GUIDE_URL } from '@/lib/docs-links';
 import { cn } from '@/lib/utils';
 
-/** A recorded backup older than this is shown in amber. */
+/** A recorded backup older than this is shown in amber, as is none at all. */
 const STALE_MS = 7 * 24 * 60 * 60 * 1000;
 
 const FOOTER =
@@ -22,8 +22,8 @@ export function DatabaseBackupSection() {
     queryFn: jsonFetcher<{ lastBackupAt: string | null }>('/api/admin/database-backup'),
   });
   const last = data?.lastBackupAt ?? null;
-  // Judged at the time of the read, not of this render.
-  const stale = last !== null && dataUpdatedAt - Date.parse(last) > STALE_MS;
+  // None, or an old one; judged at the time of the read, not of this render.
+  const stale = data !== undefined && (last === null || dataUpdatedAt - Date.parse(last) > STALE_MS);
 
   return (
     <GroupedSection title="Database" footer={FOOTER}>

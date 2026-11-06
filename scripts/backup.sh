@@ -201,6 +201,8 @@ fi
 # and the backup above is complete either way. Credentials stay in the container.
 if recorded=$(compose exec -T "$db_service" sh -ceu '
   export PGPASSWORD="$POSTGRES_PASSWORD"
+  # Never wait long on a locked settings row: the backup is already complete.
+  export PGOPTIONS="-c lock_timeout=5s -c statement_timeout=10s"
   exec psql --username="$POSTGRES_USER" --dbname="$POSTGRES_DB" \
     --no-psqlrc --quiet --tuples-only --no-align --set=ON_ERROR_STOP=1 \
     --command="UPDATE \"AppSettings\" SET \"lastDatabaseBackupAt\" = now() AT TIME ZONE '\''UTC'\'' WHERE \"id\" = '\''singleton'\'' RETURNING 1"
