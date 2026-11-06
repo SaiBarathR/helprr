@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import Link from '@/components/ui/app-link';
 import { AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { reloadForChunkLoadError } from '@/lib/chunk-load-recovery';
 
 /**
  * Shared body for per-segment error.tsx boundaries: same look as the app-level
@@ -23,7 +24,13 @@ export function SegmentError({
 }) {
   useEffect(() => {
     console.error('[App] Unhandled page error:', error);
+    reloadForChunkLoadError(error, { automatic: true });
   }, [error]);
+
+  // Retrying a stale-deploy chunk re-imports the same missing file; reload instead.
+  const retry = () => {
+    if (!reloadForChunkLoadError(error)) reset();
+  };
 
   return (
     <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4 p-6 text-center">
@@ -38,7 +45,7 @@ export function SegmentError({
         )}
       </div>
       <div className="flex items-center gap-2">
-        <Button onClick={reset}>Try again</Button>
+        <Button onClick={retry}>Try again</Button>
         <Button variant="outline" asChild>
           <Link href={backHref}>{backLabel}</Link>
         </Button>
