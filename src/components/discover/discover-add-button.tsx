@@ -201,55 +201,63 @@ export function DiscoverAddButton({ detail, controller }: DiscoverAddButtonProps
   if (detail.addTarget.exists) {
     const targetService = detail.addTarget.service === 'radarr' ? 'Radarr' : 'Sonarr';
     const type: 'movie' | 'series' = detail.addTarget.service === 'radarr' ? 'movie' : 'series';
+    // Stacked on a phone, one pill per row and the icons under them: in one
+    // row the four controls ran over the hero's "Film" slug at 412px and
+    // wrapped the pill labels at 363px, and two pills side by side still
+    // reach the slug at 363px. The pills pair up from sm, and from md
+    // everything shares one row, icons first as before. The icons come first
+    // in the markup too, so desktop Tab order matches what is on screen.
+    const existingPillClass = 'inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-background/55 backdrop-blur-md text-foreground px-3 py-1.5 text-[11px] font-medium hover:bg-background/70 transition-colors';
     return (
-      <div className="absolute top-1 right-1 md:top-2 md:right-1.5 hero-meta-fade flex items-center gap-1.5">
-        <WatchlistButton
-          draft={watchlistDraft}
-          variant="icon"
-          className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-background/55 backdrop-blur-md text-foreground hover:bg-background/70"
-          open={watchlistOpen}
-          onOpenChange={setWatchlistOpen}
-        />
-        {canSchedule && (
-          <ScheduledAlertButton
+      <div className="absolute top-1 right-1 md:top-2 md:right-1.5 hero-meta-fade flex flex-col-reverse items-end gap-1.5 md:flex-row md:items-center">
+        <div className="flex items-center gap-1.5">
+          <WatchlistButton
             draft={watchlistDraft}
             variant="icon"
-            className="h-7 w-7"
-            open={scheduleOpen}
-            onOpenChange={setScheduleOpen}
+            className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-background/55 backdrop-blur-md text-foreground hover:bg-background/70"
+            open={watchlistOpen}
+            onOpenChange={setWatchlistOpen}
           />
-        )}
-        <OpenInInstances
-          type={type}
-          instances={instances}
-          label={`Open in ${targetService}`}
-          className="inline-flex items-center gap-1.5 rounded-full bg-background/55 backdrop-blur-md text-foreground px-3 py-1.5 text-[11px] font-medium hover:bg-background/70 transition-colors"
-        />
-        {missingInstances.length === 1 && (
-          <Link
-            href={missingInstances[0].href}
-            className="inline-flex items-center gap-1.5 rounded-full bg-background/55 backdrop-blur-md text-foreground px-3 py-1.5 text-[11px] font-medium hover:bg-background/70 transition-colors"
-          >
-            <Plus className="h-3.5 w-3.5" strokeWidth={2.5} />
-            Add to {missingInstances[0].label}
-          </Link>
-        )}
-        {missingInstances.length > 1 && (
-          <DropdownMenu>
-            <DropdownMenuTrigger className="inline-flex items-center gap-1.5 rounded-full bg-background/55 backdrop-blur-md text-foreground px-3 py-1.5 text-[11px] font-medium hover:bg-background/70 transition-colors">
+          {canSchedule && (
+            <ScheduledAlertButton
+              draft={watchlistDraft}
+              variant="icon"
+              className="h-7 w-7"
+              open={scheduleOpen}
+              onOpenChange={setScheduleOpen}
+            />
+          )}
+        </div>
+        <div className="flex flex-col items-end gap-1.5 sm:flex-row sm:items-center">
+          <OpenInInstances
+            type={type}
+            instances={instances}
+            label={`Open in ${targetService}`}
+            className={existingPillClass}
+          />
+          {missingInstances.length === 1 && (
+            <Link href={missingInstances[0].href} className={existingPillClass}>
               <Plus className="h-3.5 w-3.5" strokeWidth={2.5} />
-              Add to another
-              <ChevronDown className="h-3 w-3" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              {missingInstances.map((instance) => (
-                <DropdownMenuItem key={instance.id} asChild>
-                  <Link href={instance.href}>{instance.label}</Link>
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
+              Add to {missingInstances[0].label}
+            </Link>
+          )}
+          {missingInstances.length > 1 && (
+            <DropdownMenu>
+              <DropdownMenuTrigger className={existingPillClass}>
+                <Plus className="h-3.5 w-3.5" strokeWidth={2.5} />
+                Add to another
+                <ChevronDown className="h-3 w-3" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {missingInstances.map((instance) => (
+                  <DropdownMenuItem key={instance.id} asChild>
+                    <Link href={instance.href}>{instance.label}</Link>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+        </div>
       </div>
     );
   }
