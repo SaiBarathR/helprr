@@ -24,6 +24,12 @@ async function postHandler(request: NextRequest) {
       case 'MoviesSearch':
         result = await client.searchMovie(body.movieIds);
         break;
+      case 'MissingMoviesSearch':
+        result = await client.searchWanted('missing');
+        break;
+      case 'CutoffUnmetMoviesSearch':
+        result = await client.searchWanted('cutoff');
+        break;
       case 'RefreshMovie':
         result = await client.refreshMovie(body.movieId);
         break;

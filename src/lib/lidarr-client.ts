@@ -369,6 +369,13 @@ export class LidarrClient {
     return this.post<CommandResponse>('/api/v1/command', { name: 'AlbumSearch', albumIds });
   }
 
+  /** Search every monitored album on Wanted → Missing (`missing`) or Cutoff Unmet (`cutoff`). */
+  async searchWanted(type: 'missing' | 'cutoff'): Promise<CommandResponse> {
+    return this.post<CommandResponse>('/api/v1/command', {
+      name: type === 'missing' ? 'MissingAlbumSearch' : 'CutoffUnmetAlbumSearch',
+    });
+  }
+
   async refreshArtist(artistId: number): Promise<CommandResponse> {
     return this.post<CommandResponse>('/api/v1/command', { name: 'RefreshArtist', artistId });
   }

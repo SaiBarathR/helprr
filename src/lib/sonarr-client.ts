@@ -220,6 +220,13 @@ export class SonarrClient {
     });
   }
 
+  /** Search every monitored episode on Wanted → Missing (`missing`) or Cutoff Unmet (`cutoff`). */
+  async searchWanted(type: 'missing' | 'cutoff'): Promise<CommandResponse> {
+    return this.post<CommandResponse>('/api/v3/command', {
+      name: type === 'missing' ? 'MissingEpisodeSearch' : 'CutoffUnmetEpisodeSearch',
+    });
+  }
+
   async searchSeason(seriesId: number, seasonNumber: number): Promise<CommandResponse> {
     return this.post<CommandResponse>('/api/v3/command', {
       name: 'SeasonSearch',

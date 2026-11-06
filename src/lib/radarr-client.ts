@@ -372,6 +372,13 @@ export class RadarrClient {
     });
   }
 
+  /** Search every monitored movie on Wanted → Missing (`missing`) or Cutoff Unmet (`cutoff`). */
+  async searchWanted(type: 'missing' | 'cutoff'): Promise<CommandResponse> {
+    return this.post<CommandResponse>('/api/v3/command', {
+      name: type === 'missing' ? 'MissingMoviesSearch' : 'CutoffUnmetMoviesSearch',
+    });
+  }
+
   async refreshMovie(movieId: number): Promise<CommandResponse> {
     return this.post<CommandResponse>('/api/v3/command', {
       name: 'RefreshMovie',
