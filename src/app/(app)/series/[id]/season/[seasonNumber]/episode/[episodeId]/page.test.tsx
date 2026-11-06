@@ -16,7 +16,7 @@ vi.mock('next/navigation', () => ({
 vi.mock('@/components/layout/navigation-provider', () => ({
   useAppRouter: () => ({ push: mocks.push, replace: vi.fn(), back: vi.fn() }),
 }));
-vi.mock('@/components/permission-provider', () => ({ useCan: () => true }));
+vi.mock('@/components/permission-provider', () => ({ useCan: () => true, useMe: () => null }));
 vi.mock('sonner', () => ({ toast: mocks.toast }));
 vi.mock('@/components/jellyfin/use-series-episode-watch', () => ({
   useSeriesEpisodeWatch: () => ({ episodes: {}, jellyfinSeriesId: null }),

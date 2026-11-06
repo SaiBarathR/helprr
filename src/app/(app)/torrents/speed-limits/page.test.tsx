@@ -10,7 +10,7 @@ const mocks = vi.hoisted(() => ({
   router: { back: vi.fn(), push: vi.fn() },
   toast: { success: vi.fn(), error: vi.fn() },
 }));
-vi.mock('@/components/permission-provider', () => ({ useCan: (cap: string) => mocks.caps.has(cap) }));
+vi.mock('@/components/permission-provider', () => ({ useCan: (cap: string) => mocks.caps.has(cap), useMe: () => null }));
 vi.mock('@/components/layout/navigation-provider', () => ({ useAppRouter: () => mocks.router }));
 vi.mock('sonner', () => ({ toast: mocks.toast }));
 import BulkSpeedLimitsPage from './page';

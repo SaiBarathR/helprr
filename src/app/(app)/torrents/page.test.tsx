@@ -20,7 +20,7 @@ const mocks = vi.hoisted(() => ({
   action: (() => Response.json({ success: true })) as (body: Record<string, unknown>) => Response,
 }));
 vi.mock('@/components/layout/navigation-provider', () => ({ useAppRouter: () => ({ push: mocks.push, replace: vi.fn(), back: vi.fn() }) }));
-vi.mock('@/components/permission-provider', () => ({ useCan: (cap: string) => mocks.caps.has(cap) }));
+vi.mock('@/components/permission-provider', () => ({ useCan: (cap: string) => mocks.caps.has(cap), useMe: () => null }));
 vi.mock('@/components/layout/badge-provider', () => ({ useBadgeActions: () => ({ adjustBadge: mocks.adjustBadge }) }));
 vi.mock('sonner', () => ({ toast: mocks.toast }));
 vi.mock('@/lib/client-refresh-settings', () => ({ getRefreshIntervalMs: vi.fn(async () => 60_000) }));

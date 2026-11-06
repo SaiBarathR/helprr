@@ -12,7 +12,7 @@ const mocks = vi.hoisted(() => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }));
 vi.mock('next/navigation', () => ({ useParams: () => ({ hash: 'abc' }) }));
-vi.mock('@/components/permission-provider', () => ({ useCan: (cap: string) => mocks.caps.has(cap) }));
+vi.mock('@/components/permission-provider', () => ({ useCan: (cap: string) => mocks.caps.has(cap), useMe: () => null }));
 vi.mock('@/components/layout/navigation-provider', () => ({ useAppRouter: () => mocks.router }));
 vi.mock('sonner', () => ({ toast: mocks.toast }));
 import RenameTorrentPage from './page';

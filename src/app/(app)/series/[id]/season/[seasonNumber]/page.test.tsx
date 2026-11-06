@@ -17,7 +17,7 @@ vi.mock('next/navigation', () => ({
 vi.mock('@/components/layout/navigation-provider', () => ({
   useAppRouter: () => ({ push: mocks.push, replace: vi.fn(), back: vi.fn() }),
 }));
-vi.mock('@/components/permission-provider', () => ({ useCan: (cap: string) => mocks.caps.has(cap) }));
+vi.mock('@/components/permission-provider', () => ({ useCan: (cap: string) => mocks.caps.has(cap), useMe: () => null }));
 vi.mock('sonner', () => ({ toast: mocks.toast }));
 vi.mock('@/components/jellyfin/use-series-episode-watch', () => ({ useSeriesEpisodeWatch: () => ({ episodes: {} }) }));
 vi.mock('@/components/scheduled-alerts/scheduled-alert-dialog', () => ({ ScheduledAlertDialog: () => null }));
