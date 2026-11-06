@@ -80,6 +80,8 @@ export interface SearchProviderResult {
   provider: SearchProviderId;
   badge?: string;
   score?: number;
+  /** TMDB identity, so the palette can mark titles the user already requested. */
+  tmdb?: { mediaType: 'movie' | 'tv'; id: number };
 }
 
 export interface SearchProviderRateLimit {
