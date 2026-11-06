@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from 'vitest';
+import type { JellyfinItem } from '@/types/jellyfin';
 import { ITEM, mountPlayback, type Harness } from './playback-restart-harness';
 
 /**
@@ -182,5 +183,32 @@ describe('where a restart starts while another is still coming in', () => {
     });
     expect(h.requests.at(-1)?.startTimeTicks).toBe(RESUME);
     expect(h.requests.at(-1)?.audioStreamIndex).toBe(3);
+  });
+
+  it('restarts from the resume point after the stream itself fails', async () => {
+    const h = await mountPlayback({ hls: true });
+    harness = h;
+    await h.act(async () => { await h.playback().playItem(ITEM, { startTimeTicks: RESUME }); });
+    // Direct play fails on the element and falls back to a transcode at RESUME.
+    await h.act(async () => { h.element().dispatchEvent(new Event('error')); for (let i = 0; i < 10; i += 1) await flush(); });
+    expect(h.requests.at(-1)?.startTimeTicks).toBe(RESUME);
+    // Its fresh element reads zero, then the transcode fails too.
+    await h.act(() => { h.element().currentTime = 0; h.element().dispatchEvent(new Event('timeupdate')); });
+    await h.act(async () => { h.element().dispatchEvent(new Event('error')); for (let i = 0; i < 10; i += 1) await flush(); });
+
+    await h.act(async () => { await h.playback().setAudioStream(3); for (let i = 0; i < 10; i += 1) await flush(); });
+    expect(h.requests.at(-1)?.audioStreamIndex).toBe(3);
+    expect(h.requests.at(-1)?.startTimeTicks).toBe(RESUME);
+  });
+
+  it('reports the outgoing title where it was when a pick of another title fails', async () => {
+    const h = await mountPlayback({ hls: true });
+    harness = h;
+    const other = { ...ITEM, Id: 'item-2', Name: 'Other' } as JellyfinItem;
+    await h.act(async () => { await h.playback().playItem(ITEM, { startTimeTicks: 0 }); });
+    h.failStreamInfoFor(other.Id);
+    await h.act(async () => { await h.playback().playItem(other, { startTimeTicks: RESUME }); for (let i = 0; i < 10; i += 1) await flush(); });
+    // Not the other title's resume point, which Jellyfin would save as this one's.
+    expect(h.reports.filter((report) => report.event === 'stopped').at(-1)?.positionTicks).toBe(0);
   });
 });

@@ -1063,8 +1063,11 @@ export function JellyfinPlaybackProvider({ children }: { children: ReactNode }) 
       ? positionToReport(mediaRef.current, current, true) || secondsToTicks(positionRef.current)
       : last.request.startTimeTicks;
     // The clock holds it too: a track change made from the error restarts from
-    // the clock, and a failed stream's element may have last said zero.
-    if (last.retryTicks !== undefined) setPositionSeconds(ticksToSeconds(last.retryTicks));
+    // the clock, and a failed stream's element may have last said zero. Only
+    // when the player holds this title: a failed pick of another one leaves
+    // the outgoing title playing, and its Stopped report falls back to the
+    // clock, so it would be saved at the new title's resume point.
+    if (last.retryTicks !== undefined && current?.item.Id === last.itemId) setPositionSeconds(ticksToSeconds(last.retryTicks));
   }, [setPositionSeconds]);
 
   const failPlayback = useCallback(async (fallbackMessage: string) => {
