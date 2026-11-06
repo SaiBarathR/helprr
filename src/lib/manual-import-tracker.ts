@@ -14,7 +14,7 @@ import { invalidateActivity } from '@/lib/query-invalidation';
 // then on shows what the *arr says. A fully imported download is gone; a partly
 // imported one (Sonarr finishes the command either way) is back with its reason.
 
-type ImportService = 'sonarr' | 'radarr';
+type ImportService = 'sonarr' | 'radarr' | 'lidarr';
 
 interface QueueRecordIdentity {
   source?: string;

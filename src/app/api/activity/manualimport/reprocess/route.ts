@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSonarrClient, getRadarrClient } from '@/lib/service-helpers';
+import { getSonarrClient, getRadarrClient, getLidarrClient } from '@/lib/service-helpers';
 import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { readJsonBody } from '@/lib/bulk-editor';
@@ -14,9 +14,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 // ── POST /api/activity/manualimport/reprocess ───────────────────────────────
 // Asks the *arr to re-evaluate a download's scanned files after the user gave
-// them the series or movie the *arr could not match on its own. It answers with
-// the season, episodes and rejections for that choice, as its own manual import
-// dialog does. Non-destructive (no disk changes), so no audit: the import
+// them the series, movie or album the *arr could not match on its own. It answers
+// with the season and episodes (or release and tracks) and rejections for that
+// choice, as its own manual import dialog does. Non-destructive (no disk changes), so no audit: the import
 // itself still goes through POST /api/activity/manualimport.
 async function postHandler(request: NextRequest): Promise<NextResponse> {
   const auth = await requireUserCapability('activity.manage');
@@ -28,8 +28,8 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ error: 'Expected a JSON object' }, { status: 400 });
     }
     const { source, items } = json.body;
-    if (source !== 'sonarr' && source !== 'radarr') {
-      return NextResponse.json({ error: 'source is required and must be "sonarr" or "radarr"' }, { status: 400 });
+    if (source !== 'sonarr' && source !== 'radarr' && source !== 'lidarr') {
+      return NextResponse.json({ error: 'source is required and must be "sonarr", "radarr" or "lidarr"' }, { status: 400 });
     }
     if (!Array.isArray(items) || items.length === 0 || items.length > MAX_ITEMS || !items.every(isRecord)) {
       return NextResponse.json({ error: `items must be an array of 1 to ${MAX_ITEMS} objects` }, { status: 400 });
@@ -37,7 +37,9 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     const instanceId = request.nextUrl.searchParams.get('instanceId')
       ?? (typeof json.body.instanceId === 'string' ? json.body.instanceId : undefined);
 
-    const client = source === 'sonarr' ? await getSonarrClient(instanceId) : await getRadarrClient(instanceId);
+    const client = source === 'lidarr'
+      ? await getLidarrClient(instanceId)
+      : source === 'sonarr' ? await getSonarrClient(instanceId) : await getRadarrClient(instanceId);
     return NextResponse.json(await client.reprocessManualImport(items));
   } catch (error) {
     return upstreamErrorResponse(error, 'Failed to match the files');

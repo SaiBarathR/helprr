@@ -20,6 +20,7 @@ import { pollCommand } from '@/lib/arr-command';
 import { trackManualImport } from '@/lib/manual-import-tracker';
 import type { ManualImportItem, RadarrMovie, SonarrEpisode, SonarrSeries } from '@/types';
 import { SearchInput } from '@/components/media/search-input';
+import { LidarrManualImport } from './_components/lidarr-manual-import';
 
 // The *arr returns scanned files in no particular order; list them by path, as
 // its own manual import dialog does, so a season reads episode 1, 2, 3…
@@ -46,9 +47,14 @@ type MediaOption = { id: number; title: string; year?: number };
 export default function ManualImportPage() {
   return (
     <Suspense fallback={<PageSpinner />}>
-      <ManualImportContent />
+      <ManualImportForSource />
     </Suspense>
   );
+}
+
+// Lidarr matches files to albums and tracks, not series and episodes, so it has its own screen.
+function ManualImportForSource() {
+  return useSearchParams().get('source') === 'lidarr' ? <LidarrManualImport /> : <ManualImportContent />;
 }
 
 /**

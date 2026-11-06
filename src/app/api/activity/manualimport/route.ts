@@ -1,12 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSonarrClient, getRadarrClient } from '@/lib/service-helpers';
+import { isAxiosError } from 'axios';
+import { getSonarrClient, getRadarrClient, getLidarrClient } from '@/lib/service-helpers';
 import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { recordOperationAudit } from '@/lib/file-audit';
-import { coercePositiveInt, sanitizeTitle } from '@/lib/manage-files-guard';
+import { checkOwnership, coercePositiveInt, coercePositiveIntArray, hasValidQuality, sanitizeTitle } from '@/lib/manage-files-guard';
+import type { LidarrClient } from '@/lib/lidarr-client';
+import type { ArrQualityModel, ManualImportItem } from '@/types';
 
 // One download's files; far above any real pack, and bounds a hostile body.
 const MAX_FILES = 1000;
+
+type Source = 'sonarr' | 'radarr' | 'lidarr';
+const SOURCES: readonly string[] = ['sonarr', 'radarr', 'lidarr'];
 
 interface SubmittedFile extends Record<string, unknown> {
   path: string;
@@ -20,15 +26,81 @@ function isSubmittedFile(value: unknown): value is SubmittedFile {
     && typeof file.downloadId === 'string' && file.downloadId !== '';
 }
 
+// A Lidarr file names its artist, album, release and tracks. Lidarr's import
+// trusts these ids as given, so they are taken only as positive integers here
+// and checked against Lidarr's own album before anything is moved.
+interface LidarrImportFile {
+  path: string;
+  downloadId: string;
+  artistId: number;
+  albumId: number;
+  albumReleaseId: number;
+  trackIds: number[];
+  quality?: ArrQualityModel;
+  releaseGroup?: string;
+  indexerFlags?: number;
+  disableReleaseSwitching?: boolean;
+}
+
+function parseLidarrFile(file: SubmittedFile): LidarrImportFile | null {
+  const artistId = coercePositiveInt(file.artistId);
+  const albumId = coercePositiveInt(file.albumId);
+  const albumReleaseId = coercePositiveInt(file.albumReleaseId);
+  const trackIds = coercePositiveIntArray(file.trackIds);
+  if (!artistId || !albumId || !albumReleaseId || !trackIds) return null;
+  const parsed: LidarrImportFile = { path: file.path, downloadId: file.downloadId, artistId, albumId, albumReleaseId, trackIds };
+  if (file.quality !== undefined) parsed.quality = file.quality as ArrQualityModel;
+  if (typeof file.releaseGroup === 'string') parsed.releaseGroup = file.releaseGroup;
+  if (Number.isInteger(file.indexerFlags) && (file.indexerFlags as number) >= 0) parsed.indexerFlags = file.indexerFlags as number;
+  if (typeof file.disableReleaseSwitching === 'boolean') parsed.disableReleaseSwitching = file.disableReleaseSwitching;
+  return parsed;
+}
+
 /**
- * Retrieve manual import data for a download from Sonarr or Radarr.
+ * Why the files can't go where they say, or null when they can: each album must
+ * be the named artist's, on one of its releases, and the tracks that release's.
+ * Without it a request could file a download under any album.
+ */
+async function lidarrOwnershipError(client: LidarrClient, files: LidarrImportFile[]): Promise<string | null> {
+  const albumIds = [...new Set(files.map((file) => file.albumId))];
+  // A few albums at a time, so a discography doesn't fire every read at once.
+  for (let i = 0; i < albumIds.length; i += 5) {
+    const albums = await Promise.all(albumIds.slice(i, i + 5).map((id) => client.getAlbumById(id).catch((error) => {
+      if (isAxiosError(error) && error.response?.status === 404) return id;
+      throw error;
+    })));
+    for (const album of albums) {
+      if (typeof album === 'number') return `Lidarr no longer has album ${album}`;
+      const albumFiles = files.filter((file) => file.albumId === album.id);
+      if (albumFiles.some((file) => file.artistId !== album.artistId)) {
+        return `Album ${album.id} is not by the artist given for its files`;
+      }
+      // Lidarr imports an album on one release; files on another would end up on tracks it doesn't use.
+      const releaseIds = [...new Set(albumFiles.map((file) => file.albumReleaseId))];
+      if (releaseIds.length > 1) return `Files of album ${album.id} must be on one release`;
+      for (const releaseId of releaseIds) {
+        if (!(album.releases ?? []).some((release) => release.id === releaseId)) {
+          return `Release ${releaseId} is not a release of album ${album.id}`;
+        }
+        const tracks = await client.getReleaseTracks(releaseId);
+        const requested = [...new Set(albumFiles.filter((file) => file.albumReleaseId === releaseId).flatMap((file) => file.trackIds))];
+        const owned = checkOwnership(requested, tracks);
+        if (!owned.ok) return `Track id(s) not on release ${releaseId}: ${owned.missing.join(', ')}`;
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Retrieve manual import data for a download from Sonarr, Radarr or Lidarr.
  *
  * Reads `downloadId` and `source` from the request query string, validates them,
  * and returns the manual import data from the corresponding service.
  *
  * @param request - Incoming HTTP request; expects query params:
  *   - `downloadId`: identifier of the download to look up (required)
- *   - `source`: either `"sonarr"` or `"radarr"` (required)
+ *   - `source`: `"sonarr"`, `"radarr"` or `"lidarr"` (required)
  * @returns The JSON HTTP response containing the manual import data on success;
  *   a JSON error message with status 400 when parameters are invalid;
  *   or a JSON error message with status 500 on internal failure.
@@ -40,7 +112,7 @@ async function getHandler(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const downloadId = searchParams.get('downloadId');
-    const source = searchParams.get('source') as 'sonarr' | 'radarr';
+    const source = searchParams.get('source') as Source;
     const instanceId = searchParams.get('instanceId') ?? undefined;
 
     if (!downloadId) {
@@ -50,14 +122,17 @@ async function getHandler(request: NextRequest) {
       );
     }
 
-    if (!source || !['sonarr', 'radarr'].includes(source)) {
+    if (!source || !SOURCES.includes(source)) {
       return NextResponse.json(
-        { error: 'source parameter is required and must be "sonarr" or "radarr"' },
+        { error: 'source parameter is required and must be "sonarr", "radarr" or "lidarr"' },
         { status: 400 }
       );
     }
 
-    if (source === 'sonarr') {
+    if (source === 'lidarr') {
+      const lidarr = await getLidarrClient(instanceId);
+      return NextResponse.json(await lidarr.getManualImport(downloadId));
+    } else if (source === 'sonarr') {
       const sonarr = await getSonarrClient(instanceId);
       const result = await sonarr.getManualImport(downloadId);
       return NextResponse.json(result);
@@ -90,9 +165,9 @@ async function postHandler(request: NextRequest) {
     const instanceId = new URL(request.url).searchParams.get('instanceId')
       ?? (typeof body.instanceId === 'string' ? body.instanceId : undefined);
 
-    if (!source || !['sonarr', 'radarr'].includes(source)) {
+    if (!source || !SOURCES.includes(source)) {
       return NextResponse.json(
-        { error: 'source is required and must be "sonarr" or "radarr"' },
+        { error: 'source is required and must be "sonarr", "radarr" or "lidarr"' },
         { status: 400 }
       );
     }
@@ -116,12 +191,22 @@ async function postHandler(request: NextRequest) {
     }
 
     const isSonarr = source === 'sonarr';
-    const client = isSonarr ? await getSonarrClient(instanceId) : await getRadarrClient(instanceId);
+    const isLidarr = source === 'lidarr';
+    const lidarrFiles = isLidarr ? files.map(parseLidarrFile) : [];
+    if (lidarrFiles.some((file) => file === null)) {
+      return NextResponse.json(
+        { error: 'Each file needs an artistId, albumId, albumReleaseId and trackIds' },
+        { status: 400 }
+      );
+    }
+    const lidarr = isLidarr ? await getLidarrClient(instanceId) : null;
+    const client = lidarr ?? (isSonarr ? await getSonarrClient(instanceId) : await getRadarrClient(instanceId));
 
     // Path guard: ask the *arr again which files this download holds, and take
     // only those. Without it a request could name any file the *arr can reach
     // and have it moved into the library.
-    const listed = new Set((await client.getManualImport(downloadId)).map((file) => file.path));
+    const scanned: ManualImportItem[] = await client.getManualImport(downloadId);
+    const listed = new Set(scanned.map((file) => file.path));
     if (files.some((file) => !listed.has(file.path))) {
       return NextResponse.json(
         { error: 'Some files are no longer part of this download. Reload and try again.' },
@@ -129,26 +214,41 @@ async function postHandler(request: NextRequest) {
       );
     }
 
+    if (lidarr) {
+      const ownershipError = await lidarrOwnershipError(lidarr, lidarrFiles as LidarrImportFile[]);
+      if (ownershipError) return NextResponse.json({ error: ownershipError }, { status: 400 });
+    }
+
     let command: { id?: number } | null = null;
     let errorMessage: string | null = null;
     const startedAt = new Date();
     try {
-      command = await client.submitManualImport(files);
+      if (lidarr) {
+        // Only the fields Lidarr's import reads. Lidarr needs a quality on every
+        // file; the scan always has one, so it fills a missing one in.
+        const qualityByPath = new Map(scanned.map((file) => [file.path, file.quality]));
+        command = await lidarr.submitManualImport((lidarrFiles as LidarrImportFile[]).map((file) => ({
+          ...file,
+          quality: hasValidQuality(file.quality) ? file.quality : qualityByPath.get(file.path),
+        })), 'auto');
+      } else {
+        command = await client.submitManualImport(files);
+      }
     } catch (error) {
       errorMessage = (error instanceof Error && error.message) || 'Failed to submit import';
     }
     // Queued means the *arr answered with a command to follow.
     const queued = command?.id != null && !errorMessage;
 
-    // A pack can span several series, so the row names one only when all files agree.
-    const mediaIds = [...new Set(files.map((file) => coercePositiveInt(isSonarr ? file.seriesId : file.movieId)))];
+    // A pack can span several series (or albums), so the row names one only when all files agree.
+    const mediaIds = [...new Set(files.map((file) => coercePositiveInt(isLidarr ? file.albumId : isSonarr ? file.seriesId : file.movieId)))];
     await recordOperationAudit({
       user: auth.user,
       startedAt,
-      service: isSonarr ? 'SONARR' : 'RADARR',
+      service: isLidarr ? 'LIDARR' : isSonarr ? 'SONARR' : 'RADARR',
       instanceId,
       operation: 'IMPORT',
-      targetType: isSonarr ? 'series' : 'movie',
+      targetType: isLidarr ? 'album' : isSonarr ? 'series' : 'movie',
       targetId: mediaIds.length === 1 ? mediaIds[0] : null,
       targetTitle: sanitizeTitle(body.title) ?? `Download ${downloadId.slice(0, 40)}`,
       itemCount: files.length,
