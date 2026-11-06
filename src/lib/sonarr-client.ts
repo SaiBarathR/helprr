@@ -324,11 +324,11 @@ export class SonarrClient {
 
   // Wanted
   async getWantedMissing(page = 1, pageSize = 20): Promise<{ page: number; pageSize: number; totalRecords: number; records: SonarrEpisode[] }> {
-    return this.get('/api/v3/wanted/missing', { page, pageSize, sortKey: 'airDateUtc', sortDirection: 'descending', includeSeries: true });
+    return this.get('/api/v3/wanted/missing', { page, pageSize, sortKey: 'episodes.airDateUtc', sortDirection: 'descending', includeSeries: true });
   }
 
   async getCutoffUnmet(page = 1, pageSize = 20): Promise<{ page: number; pageSize: number; totalRecords: number; records: SonarrEpisode[] }> {
-    return this.get('/api/v3/wanted/cutoff', { page, pageSize, sortKey: 'airDateUtc', sortDirection: 'descending', includeSeries: true });
+    return this.get('/api/v3/wanted/cutoff', { page, pageSize, sortKey: 'episodes.airDateUtc', sortDirection: 'descending', includeSeries: true });
   }
 
   // Calendar
