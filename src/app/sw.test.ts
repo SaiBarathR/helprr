@@ -245,3 +245,32 @@ describe('worker updates', () => {
     expect(recorded.options).not.toHaveProperty('navigationPreload', true);
   });
 });
+
+describe('routine fetch failures', () => {
+  const handlerFor = (route: string) => {
+    const runtimeCaching = recorded.options!.runtimeCaching as Array<{ handler: Strategy; matcher: unknown }>;
+    if (route !== 'cross-origin') return runtimeCaching.find((entry) => entry.handler.cacheName === route)!.handler;
+    const request = new Request('https://s4.anilist.co/avatar.png');
+    return runtimeCaching.find((entry) => typeof entry.matcher === 'function'
+      && entry.matcher({ request, sameOrigin: false, url: new URL(request.url) }))!.handler;
+  };
+
+  it.each([
+    ['api-images', 'https://helprr.test/api/image?url=poster&v=1'],
+    ['next-image-assets', 'https://helprr.test/_next/image?url=%2Fposter.png&w=64&q=75'],
+    ['static-image-assets', 'https://helprr.test/icons/icon-192.png'],
+    ['cross-origin', 'https://s4.anilist.co/avatar.png'],
+  ])('answers a failed %s fetch with a network error instead of rejecting', async (route, url) => {
+    const event = new NavigationEvent();
+    event.request = new Request(url);
+    vi.mocked(fetch).mockRejectedValue(new TypeError('Failed to fetch'));
+
+    const response = await handlerFor(route).handle({ request: event.request, event: event as never });
+    await Promise.all(event.pending);
+    expect(response.type).toBe('error');
+  });
+
+  it('leaves navigations to the offline fallback', () => {
+    expect(pages().plugins.some((plugin) => 'handlerDidError' in plugin)).toBe(false);
+  });
+});

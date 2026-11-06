@@ -54,6 +54,16 @@ const browseSnapshots: SerwistPlugin = {
   },
 };
 
+// A failed image or cross-origin fetch is routine (the server restarting, a
+// phone dropping signal, a third-party avatar host). On those routes, answer
+// with a network error, which the page sees exactly as it did the strategy's
+// rejection, so it is not reported as an unhandled rejection by the listener
+// below. Having a handlerDidError plugin keeps Serwist's offline-page fallback
+// off these routes, which serve images and cross-origin requests.
+const networkErrorOnFailure: SerwistPlugin = {
+  handlerDidError: async () => Response.error(),
+};
+
 const shellVersion = process.env.NEXT_PUBLIC_SHELL_CACHE_VERSION ?? '';
 
 const matchingBuildShell: SerwistPlugin = {
@@ -132,6 +142,7 @@ const runtimeCaching: RuntimeCaching[] =
               // A Redis/accounting bypass is returned with no-store and must
               // remain uncached even though the image bytes were validated.
               cacheValidatedImageResponses,
+              networkErrorOnFailure,
               new ExpirationPlugin({
                 maxEntries: 750,
                 maxAgeSeconds: 7 * 24 * 60 * 60,
@@ -201,6 +212,7 @@ const runtimeCaching: RuntimeCaching[] =
           handler: new StaleWhileRevalidate({
             cacheName: 'next-image-assets',
             plugins: [
+              networkErrorOnFailure,
               new ExpirationPlugin({
                 maxEntries: 96,
                 maxAgeSeconds: 24 * 60 * 60,
@@ -215,6 +227,7 @@ const runtimeCaching: RuntimeCaching[] =
           handler: new StaleWhileRevalidate({
             cacheName: 'static-image-assets',
             plugins: [
+              networkErrorOnFailure,
               new ExpirationPlugin({
                 maxEntries: 96,
                 maxAgeSeconds: 30 * 24 * 60 * 60,
@@ -240,7 +253,7 @@ const runtimeCaching: RuntimeCaching[] =
         {
           matcher: ({ sameOrigin }) => !sameOrigin,
           method: 'GET',
-          handler: new NetworkOnly(),
+          handler: new NetworkOnly({ plugins: [networkErrorOnFailure] }),
         },
         {
           matcher: /.*/i,

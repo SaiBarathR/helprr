@@ -7,6 +7,10 @@ const withSerwist = withSerwistInit({
   swSrc: 'src/app/sw.ts',
   swDest: 'public/sw.js',
   disable: process.env.NODE_ENV === 'development',
+  // src/components/sw-register.tsx registers the worker (and /sw-push.js in
+  // development). Serwist's registration ran as well, and rejected unhandled
+  // where a browser's register() resolves to nothing.
+  register: false,
   // Serwist reloads the page on every `online` event by default, so a network
   // blip (Wi-Fi to cellular) ended playback and dropped unsaved forms. The app
   // refetches its own queries on reconnect (refreshAfterReconnect), and the
