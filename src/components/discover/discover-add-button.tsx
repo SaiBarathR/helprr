@@ -55,7 +55,6 @@ function buildAddPageHref(detail: DiscoverDetail, instanceId?: string): string {
 
 export interface DiscoverAddController {
   href: string | null;
-  service: 'Radarr' | 'Sonarr';
   seerrMediaType: 'movie' | 'tv';
   canAddDirectly: boolean;
   canRequest: boolean;
@@ -92,7 +91,6 @@ export function useDiscoverAddController(detail: DiscoverDetail): DiscoverAddCon
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [requestOpen, setRequestOpen] = useState(false);
   const href = buildAddHref(detail);
-  const service = detail.mediaType === 'movie' ? 'Radarr' as const : 'Sonarr' as const;
   const seerrMediaType = detail.mediaType === 'movie' ? 'movie' as const : 'tv' as const;
   // Admins can add directly (Radarr/Sonarr); anyone with requests.create can
   // also request via Seerr when it's configured. Members only get Request.
@@ -145,13 +143,13 @@ export function useDiscoverAddController(detail: DiscoverDetail): DiscoverAddCon
         ? instances.map((instance) => ({
             id: `open-${instance.instanceId || instance.id}`,
             label: instances.length > 1 && instance.instanceLabel
-              ? `Open in ${targetService} · ${instance.instanceLabel}`
-              : `Open in ${targetService}`,
+              ? `Open in library · ${instance.instanceLabel}`
+              : 'Open in library',
             icon: <Check className="h-4 w-4" />,
             href: `${type === 'movie' ? '/movies' : '/series'}/${instance.id}${instance.instanceId ? `?instance=${instance.instanceId}` : ''}`,
           }))
         : [
-            ...(canAddDirectly && href ? [{ id: 'add', label: `Add to ${service}`, icon: <Plus className="h-4 w-4" />, href }] : []),
+            ...(canAddDirectly && href ? [{ id: 'add', label: 'Add to library', icon: <Plus className="h-4 w-4" />, href }] : []),
             ...(canRequest ? [{ id: 'request', label: requested ? 'Requested' : 'Request', icon: requested ? <Check className="h-4 w-4" /> : <Inbox className="h-4 w-4" />, onSelect: () => setRequestOpen(true), disabled: requested }] : []),
           ],
     },
@@ -159,7 +157,6 @@ export function useDiscoverAddController(detail: DiscoverDetail): DiscoverAddCon
 
   return {
     href,
-    service,
     seerrMediaType,
     canAddDirectly,
     canRequest,
@@ -181,7 +178,6 @@ export function useDiscoverAddController(detail: DiscoverDetail): DiscoverAddCon
 export function DiscoverAddButton({ detail, controller }: DiscoverAddButtonProps) {
   const {
     href,
-    service,
     seerrMediaType,
     canAddDirectly,
     canRequest,
@@ -199,7 +195,6 @@ export function DiscoverAddButton({ detail, controller }: DiscoverAddButtonProps
   if (!href) return null;
 
   if (detail.addTarget.exists) {
-    const targetService = detail.addTarget.service === 'radarr' ? 'Radarr' : 'Sonarr';
     const type: 'movie' | 'series' = detail.addTarget.service === 'radarr' ? 'movie' : 'series';
     // Stacked on a phone, one pill per row and the icons under them: in one
     // row the four controls ran over the hero's "Film" slug at 412px and
@@ -232,7 +227,7 @@ export function DiscoverAddButton({ detail, controller }: DiscoverAddButtonProps
           <OpenInInstances
             type={type}
             instances={instances}
-            label={`Open in ${targetService}`}
+            label="Open in library"
             className={existingPillClass}
           />
           {missingInstances.length === 1 && (
@@ -269,9 +264,9 @@ export function DiscoverAddButton({ detail, controller }: DiscoverAddButtonProps
     <div className="absolute top-1 right-1 md:top-2 md:right-2 hero-meta-fade flex flex-col items-end gap-1.5 md:flex-row md:items-center">
       <div className="flex items-center gap-1.5">
         {canAddDirectly && (
-          <Link href={href} className={pillClass} aria-label={`Add to ${service}`}>
+          <Link href={href} className={pillClass}>
             <Plus className="h-3.5 w-3.5" strokeWidth={2.5} />
-            <span className="tracking-widest">{service}</span>
+            Add to library
           </Link>
         )}
         {canRequest && (

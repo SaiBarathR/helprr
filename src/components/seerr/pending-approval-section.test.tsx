@@ -49,9 +49,9 @@ const rows = [
   seerrUserId: null, createdAt: '2026-10-20T00:00:00.000Z', requester: null,
 }));
 
-function renderSection() {
+function renderSection(onCountChange?: (count: number) => void) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  render(<QueryClientProvider client={client}><PendingApprovalSection /></QueryClientProvider>);
+  render(<QueryClientProvider client={client}><PendingApprovalSection onCountChange={onCountChange} /></QueryClientProvider>);
 }
 
 const menuItems = async (title: string) => {
@@ -102,5 +102,15 @@ describe('PendingApprovalSection Open in Helprr', () => {
       ['Approve…', null],
       ['Decline', null],
     ]);
+  });
+});
+
+describe('PendingApprovalSection row count', () => {
+  it('tells the requests list how many rows wait for approval', async () => {
+    mocks.me = { role: 'admin', tmdbConfigured: true, capabilities: {} };
+    const onCountChange = vi.fn();
+    renderSection(onCountChange);
+    await screen.findByText('Whalefall (2026)');
+    expect(onCountChange).toHaveBeenLastCalledWith(2);
   });
 });

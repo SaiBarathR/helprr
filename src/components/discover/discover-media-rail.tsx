@@ -56,7 +56,7 @@ function DiscoverRailCard({
           href: libraryHref,
         }] : canAdd ? [{
           id: 'add',
-          label: `Add to ${item.mediaType === 'movie' ? 'Radarr' : 'Sonarr'}`,
+          label: 'Add to library',
           icon: <Plus />,
           href: addHref,
         }] : []),

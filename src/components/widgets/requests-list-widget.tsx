@@ -379,6 +379,8 @@ export function RequestsListWidget({
   // Approve/edit open the full Seerr modal (overrides, seasons, Request As).
   const [modal, setModal] = useState<{ req: EnrichedSeerrRequest; mode: 'approve' | 'edit' } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<EnrichedSeerrRequest | null>(null);
+  // Rows in Helprr's own Pending approval section, which renders above this list.
+  const [approvalCount, setApprovalCount] = useState(0);
   // Only approvers see request-management actions (approve/decline/edit/retry/delete).
   const canManageRequests = useCan('requests.approve');
   // A title not in the library yet, or in a library section this user can't
@@ -457,7 +459,7 @@ export function RequestsListWidget({
   // list in every state — including when there are no Seerr requests yet — and
   // returns null when there are none. Approving here refreshes the Seerr list.
   const pendingNode = (
-    <PendingApprovalSection onChanged={refresh} grid={unbounded} contextMenuDisabled={editMode} />
+    <PendingApprovalSection onChanged={refresh} onCountChange={setApprovalCount} grid={unbounded} contextMenuDisabled={editMode} />
   );
 
   // Shell: fills the bento cell height in widget mode (inner list scrolls);
@@ -505,7 +507,13 @@ export function RequestsListWidget({
   }
 
   if (items.length === 0) {
-    const emptyLabel = filter !== 'all' ? `No ${filter} requests in Seerr` : 'No requests in Seerr';
+    // Helprr's own Pending approval cards sit above this list, so beside them
+    // the empty all/pending list says "other" rather than nothing at all.
+    const emptyLabel = filter === 'all'
+      ? (approvalCount > 0 ? 'No other requests' : 'No requests yet')
+      : filter === 'pending' && approvalCount > 0
+        ? 'No other pending requests'
+        : `No ${filter} requests`;
     // An approver's empty status view (e.g. Pending) is a cleared queue, not a
     // prompt to request something.
     const showFindTitles = filter === 'all' || !canManageRequests;

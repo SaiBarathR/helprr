@@ -30,8 +30,7 @@ export function AnimeAddButton({ title, format, tvdbId, tmdbId, library, library
 
   if (library?.exists && library.id) {
     const type: 'movie' | 'series' = library.type === 'movie' ? 'movie' : 'series';
-    // Same wording as the Discover hero and the anime page's own links.
-    const targetService = type === 'movie' ? 'Radarr' : 'Sonarr';
+    // Same wording as the Discover hero.
     // The matched title may live in more than one instance; fall back to the
     // top-level fields when the (always-populated) instances list is absent.
     const instances = library.instances?.length
@@ -42,13 +41,12 @@ export function AnimeAddButton({ title, format, tvdbId, tmdbId, library, library
       <OpenInInstances
         type={type}
         instances={instances}
-        label={`Open in ${targetService}`}
+        label="Open in library"
         className="inline-flex items-center gap-1.5 rounded-full bg-background/55 backdrop-blur-md text-foreground px-3 py-1.5 text-[11px] font-medium hover:bg-background/70 transition-colors"
       />
     );
   }
 
-  const service = isMovie ? 'Radarr' : 'Sonarr';
   const seerrMediaType: 'movie' | 'tv' = isMovie ? 'movie' : 'tv';
   // Direct add (Radarr/Sonarr) needs the service available + the add capability;
   // requesting via Seerr only needs a TMDB id + requests.create when Seerr is set up.
@@ -70,9 +68,9 @@ export function AnimeAddButton({ title, format, tvdbId, tmdbId, library, library
   return (
     <div className="flex items-center gap-1.5">
       {canAddDirectly && (
-        <Link href={href} className={pillClass} aria-label={`Add to ${service}`}>
+        <Link href={href} className={pillClass}>
           <Plus className="h-3.5 w-3.5" strokeWidth={2.5} />
-          <span className="tracking-widest">{service}</span>
+          Add to library
         </Link>
       )}
       {canRequest && tmdbId != null && (

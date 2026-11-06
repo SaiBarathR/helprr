@@ -161,7 +161,7 @@ export function MediaPoster({
             href: libraryHref,
           }] : !item.library?.exists && canAdd ? [{
             id: 'add',
-            label: `Add to ${item.mediaType === 'movie' ? 'Radarr' : 'Sonarr'}`,
+            label: 'Add to library',
             icon: <Plus />,
             href: addHref,
           }] : []),
