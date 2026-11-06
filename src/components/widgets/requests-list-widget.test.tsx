@@ -7,7 +7,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import type { EnrichedSeerrRequest } from '@/types/seerr';
 
 const mocks = vi.hoisted(() => ({
-  me: null as { role: string; tmdbConfigured: boolean; capabilities: Record<string, boolean> } | null,
+  me: null as { role: string; tmdbConfigured: boolean; seerrConfigured?: boolean; capabilities: Record<string, boolean> } | null,
   results: [] as unknown[],
   pendingApproval: false,
 }));
@@ -37,6 +37,7 @@ vi.mock('@/components/ui/app-link', () => ({ default: ({ children, ...props }: {
 vi.mock('@/components/media/fade-in-image', () => ({ FadeInImage: () => null }));
 
 import { RequestsListWidget } from './requests-list-widget';
+import { useSearchPalette } from '@/components/search/search-store';
 
 function request(overrides: Partial<EnrichedSeerrRequest> & Pick<EnrichedSeerrRequest, 'id' | 'type'>, title: string, helprr: EnrichedSeerrRequest['enriched']['helprr'] = null) {
   return {
@@ -91,6 +92,55 @@ describe('RequestsListWidget empty Seerr results', () => {
     mocks.results = [];
     render(<RequestsListWidget refreshInterval={0} filter="all" unbounded />);
     expect(screen.getByText('No requests in Seerr')).toBeTruthy();
+  });
+});
+
+describe('RequestsListWidget empty state next step', () => {
+  const member = (capabilities: Record<string, boolean>) => ({ role: 'member', tmdbConfigured: true, seerrConfigured: true, capabilities });
+
+  it.each([false, true])('sends someone who can browse Discover there (unbounded=%s)', (unbounded) => {
+    mocks.results = [];
+    mocks.me = member({ 'requests.create': true, 'discover.view': true });
+    render(<RequestsListWidget refreshInterval={0} filter="all" unbounded={unbounded} />);
+    expect(screen.getByRole('link', { name: 'Find something to request' }).getAttribute('href')).toBe('/discover');
+  });
+
+  it.each([false, true])('opens search for a requester without Discover, never a Discover link (unbounded=%s)', async (unbounded) => {
+    mocks.results = [];
+    mocks.me = member({ 'requests.create': true, 'movies.view': true });
+    useSearchPalette.setState({ open: false });
+    render(<RequestsListWidget refreshInterval={0} filter="all" unbounded={unbounded} />);
+    expect(screen.queryByRole('link', { name: 'Find something to request' })).toBeNull();
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Find something to request' }));
+    expect(useSearchPalette.getState().open).toBe(true);
+  });
+
+  it("leaves an approver's cleared Pending queue without it, but not a member's", () => {
+    mocks.results = [];
+    mocks.me = { ...member({}), role: 'admin' };
+    const { unmount } = render(<RequestsListWidget refreshInterval={0} filter="pending" unbounded />);
+    expect(screen.queryByText('Find something to request')).toBeNull();
+    unmount();
+
+    mocks.me = member({ 'requests.create': true, 'discover.view': true });
+    render(<RequestsListWidget refreshInterval={0} filter="pending" unbounded />);
+    expect(screen.getByRole('link', { name: 'Find something to request' })).toBeTruthy();
+  });
+
+  it('offers no next step to someone who cannot request, or has nowhere to find a title', () => {
+    mocks.results = [];
+    for (const me of [
+      member({ 'discover.view': true }),
+      member({ 'requests.create': true }),
+      { ...member({ 'requests.create': true, 'discover.view': true }), seerrConfigured: false },
+      { ...member({ 'requests.create': true, 'discover.view': true }), tmdbConfigured: false },
+    ]) {
+      mocks.me = me;
+      const { unmount } = render(<RequestsListWidget refreshInterval={0} filter="all" unbounded />);
+      expect(screen.getByText('No requests in Seerr')).toBeTruthy();
+      expect(screen.queryByText('Find something to request')).toBeNull();
+      unmount();
+    }
   });
 });
 

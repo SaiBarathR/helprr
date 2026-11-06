@@ -550,4 +550,12 @@ describe('Activity: wanted tabs, sorting and refresh', () => {
     expect(posts().map(([url]) => url).sort()).toEqual(['/api/radarr/command?instanceId=rad-1', '/api/sonarr/command?instanceId=son-1']);
     for (const [, init] of posts()) expect(JSON.parse((init as RequestInit).body as string)).toEqual({ name: 'RefreshMonitoredDownloads' });
   });
+
+  it('points an empty queue at recent history', async () => {
+    queueRecords = [];
+    await renderPage();
+    await waitFor(() => expect(text()).toContain('No items in queue'));
+    const link = [...document.querySelectorAll('a')].find((a) => a.textContent === 'See recent history');
+    expect(link?.getAttribute('href')).toBe('/activity/history');
+  });
 });

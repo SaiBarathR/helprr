@@ -572,6 +572,14 @@ html {
   }
 }
 
+/* The empty state's next-step link needs room under icon + message; a short
+   cell drops it rather than clipping it (the header's "View all" remains). */
+@container bento-empty (max-height: 80px) {
+  .bento-empty > .bento-empty-action {
+    display: none;
+  }
+}
+
 /* ── Bento Dashboard tokens (--hpr-*) ───────────────────────────────────
    Scoped to the dashboard via the .dashboard-bento class. Theme inspector
    rewrites these vars live; other pages keep the existing OKLch tokens. */

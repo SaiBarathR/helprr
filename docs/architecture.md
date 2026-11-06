@@ -191,7 +191,11 @@ person and collection pages, and their routes, accept any capability in
 `TMDB_TITLE_PAGE_CAPABILITIES` (Discover, Movies, Series, Recommendations,
 Watchlist); Anime detail pages accept `ANIME_DETAIL_PAGE_CAPABILITIES`. The
 Discover and Anime home pages, the Anime schedule and explore pages, and their
-list routes need `discover.view` / `anime.view` themselves.
+list routes need `discover.view` / `anime.view` themselves. The global
+search's TMDB scope also needs `discover.view`, except for a member who can
+create requests (with Seerr connected) and open the title pages: TMDB search is
+their only way to find a title to request. `canUseSearchProvider` holds that
+rule for both the palette and the provider route.
 
 Stored service API keys and custom header values never leave the server; the
 settings API returns a mask. A mask sent back means "keep the stored value", and

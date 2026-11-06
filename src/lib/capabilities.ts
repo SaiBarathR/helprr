@@ -30,7 +30,7 @@ export const CAPABILITY_GROUPS = [
     items: [
       { cap: 'dashboard.view', label: 'View dashboard' },
       { cap: 'dashboard.customize', label: 'Customize dashboard layout' },
-      { cap: 'discover.view', label: 'Browse Discover' },
+      { cap: 'discover.view', label: 'Browse Discover (requesters can still search TMDB)' },
       { cap: 'anime.view', label: 'Browse Anime' },
       { cap: 'movies.view', label: 'View movies' },
       { cap: 'movies.add', label: 'Add movies to library' },

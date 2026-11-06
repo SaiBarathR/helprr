@@ -420,6 +420,19 @@ describe('torrents page (characterization)', () => {
     expect(mocks.push.mock.calls.map(([path]) => path)).toEqual(['/torrents/aaa/rename', '/torrents/settings', '/torrents/linked', '/torrents/add']);
   });
 
+  it('points an empty client at Add, only for someone who may add', async () => {
+    mocks.summary = () => full([]);
+    const { user } = renderPage();
+    await user.click(await screen.findByRole('button', { name: 'Add torrent' }));
+    expect(mocks.push).toHaveBeenCalledWith('/torrents/add');
+    cleanup();
+
+    mocks.caps = new Set();
+    renderPage();
+    await screen.findByText('No torrents yet.');
+    expect(screen.queryByRole('button', { name: 'Add torrent' })).toBeNull();
+  });
+
   it('offers no actions to someone who may only look', async () => {
     mocks.caps = new Set();
     const { user } = renderPage();

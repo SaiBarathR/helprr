@@ -546,6 +546,12 @@ export default function TorrentsPage() {
               Clear search & filters
             </Button>
           )}
+          {/* An empty client: point at the toolbar's Add for those who may add. */}
+          {!search.trim() && filter.length === 0 && canAddTorrents && (
+            <Button variant="outline" size="sm" className="mt-3" onClick={() => router.push('/torrents/add')}>
+              Add torrent
+            </Button>
+          )}
         </div>
       ) : (
         <div className="space-y-0">

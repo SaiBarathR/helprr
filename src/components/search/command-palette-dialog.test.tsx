@@ -47,6 +47,11 @@ const MEMBER_NO_DISCOVER: MePayload = {
   capabilities: { 'movies.view': true, 'series.view': true, 'anime.view': true },
 };
 
+const MEMBER_REQUESTER_NO_DISCOVER: MePayload = {
+  ...MEMBER_NO_DISCOVER,
+  capabilities: { 'movies.view': true, 'series.view': true, 'requests.create': true },
+};
+
 const MEMBER_LIBRARY_ONLY: MePayload = {
   ...MEMBER_NO_DISCOVER,
   capabilities: { 'movies.view': true, 'series.view': true },
@@ -194,6 +199,27 @@ describe('CommandPaletteDialog remote search', () => {
     expect(within(group).getAllByRole('option').map((o) => o.textContent)).toEqual([
       expect.stringContaining('Search AniList for “dune”'),
     ]);
+    expect(screen.queryByRole('option', { name: /TMDB/ })).toBeNull();
+  });
+
+  it('offers TMDB to a member who can request but not browse Discover, so they can find a title', async () => {
+    renderPalette(MEMBER_REQUESTER_NO_DISCOVER);
+    const user = await typeQuery('pluribus');
+
+    const group = await screen.findByRole('group', { name: 'Try searching in' });
+    expect(within(group).getAllByRole('option').map((o) => o.textContent)).toEqual([
+      expect.stringContaining('Search TMDB for “pluribus”'),
+    ]);
+    await user.click(within(group).getByRole('option', { name: /Search TMDB/ }));
+    await screen.findByRole('option', { name: /Dune: Prophecy/ });
+    expect(fetchMock).toHaveBeenCalledWith('/api/search/providers/tmdb?q=pluribus&limit=20', expect.anything());
+  });
+
+  it('keeps TMDB from that member when Seerr is not connected', async () => {
+    renderPalette({ ...MEMBER_REQUESTER_NO_DISCOVER, seerrConfigured: false });
+    await typeQuery('pluribus');
+
+    await screen.findByText(/No library matches found/);
     expect(screen.queryByRole('option', { name: /TMDB/ })).toBeNull();
   });
 
