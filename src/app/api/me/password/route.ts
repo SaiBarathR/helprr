@@ -107,6 +107,8 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
         where: { userId: user.id, revokedAt: null, NOT: { id: session.id } },
         data: { revokedAt: new Date() },
       });
+      // A reset link sent earlier must not be able to override the new password.
+      await tx.passwordLink.deleteMany({ where: { userId: user.id } });
       return { ok: true as const, revoked: revoked.count };
     });
     if (!result.ok) {

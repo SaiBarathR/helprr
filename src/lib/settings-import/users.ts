@@ -180,6 +180,11 @@ export async function applyUsersInTxn(
           data: { revokedAt: new Date() },
         });
       }
+      // As in Settings -> Users: a restored password or status ends an
+      // outstanding invite or reset link.
+      if ((passwordHash && passwordHash !== target.passwordHash) || status !== target.status) {
+        await tx.passwordLink.deleteMany({ where: { userId: target.id } });
+      }
     } else {
       const created = await tx.user.create({
         data: { ...(exportedId ? { id: exportedId } : {}), ...baseData },

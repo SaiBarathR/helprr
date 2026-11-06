@@ -131,10 +131,17 @@ async function patchHandler(
         });
         if (remaining === 0) return { ok: false as const };
       }
-      const updated = await tx.user.update({ where: { id }, data });
+      // A status change applies only to the status the admin saw, so an invite
+      // accepted meanwhile is not turned back to pending (or a disable undone).
+      const statusChanges = data.status !== undefined && data.status !== existing.status;
+      const updated = await tx.user.update({
+        where: statusChanges ? { id, status: existing.status } : { id },
+        data,
+      });
       // Admin password resets do not prove possession of any existing session,
       // so revoke every live session for the target in the same transaction.
       let revokedSessions = 0;
+      let endedLink = false;
       if (data.passwordHash !== undefined) {
         const revoked = await tx.session.updateMany({
           where: { userId: id, revokedAt: null },
@@ -142,7 +149,12 @@ async function patchHandler(
         });
         revokedSessions = revoked.count;
       }
-      return { ok: true as const, updated, revokedSessions };
+      // A password set here, or any status change, ends an outstanding invite
+      // or reset link, so an old link can't later override the admin's choice.
+      if (data.passwordHash !== undefined || statusChanges) {
+        endedLink = (await tx.passwordLink.deleteMany({ where: { userId: id } })).count > 0;
+      }
+      return { ok: true as const, updated, revokedSessions, endedLink };
     });
     if (!result.ok) {
       return NextResponse.json(
@@ -162,6 +174,7 @@ async function patchHandler(
     if (JSON.stringify(existing.permissions) !== JSON.stringify(result.updated.permissions)) fields.push('permissions');
     // A reset password revokes the user's sessions in the same transaction.
     if (data.passwordHash !== undefined) fields.push('password');
+    if (result.endedLink) fields.push('passwordLink');
     if (fields.length > 0) {
       await recordSecurityEvent(request, {
         actor: admin.user,
@@ -178,6 +191,10 @@ async function patchHandler(
   } catch (error) {
     if (error && typeof error === 'object' && (error as { code?: string }).code === 'P2002') {
       return NextResponse.json({ error: 'Username or Jellyfin link already in use' }, { status: 409 });
+    }
+    // P2025: the status changed after it was read (the status condition above).
+    if (error && typeof error === 'object' && (error as { code?: string }).code === 'P2025') {
+      return NextResponse.json({ error: 'This user changed while saving. Reload and try again.' }, { status: 409 });
     }
     console.error('[Users] update failed:', error);
     return NextResponse.json({ error: 'Failed to update user' }, { status: 500 });

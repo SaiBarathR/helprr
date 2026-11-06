@@ -62,9 +62,30 @@ model User {
   playlistSubscriptions CreatorPlaylistSubscription[]
   twitchLink TwitchUserLink?
   tasteProfile   UserTasteProfile?
+  passwordLink   PasswordLink?
 
   @@index([jellyfinUserId])
   @@index([status])
+}
+
+enum PasswordLinkPurpose {
+  invite
+  reset
+}
+
+// A single-use link an admin hands to someone so they set their own local
+// password: an invite activates a pending user, a reset replaces an active
+// user's password and revokes their sessions. One per user; issuing a new one
+// replaces the old. Only the SHA-256 of the token is stored.
+model PasswordLink {
+  id          String              @id @default(cuid())
+  userId      String              @unique
+  user        User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  purpose     PasswordLinkPurpose
+  tokenHash   String              @unique
+  expiresAt   DateTime
+  createdById String?
+  createdAt   DateTime            @default(now())
 }
 
 model ServiceConnection {
@@ -738,6 +759,14 @@ enum SecurityAuditAction {
   SERVICE_UPDATED
   SERVICE_DELETED
   SETTINGS_IMPORTED
+  INVITE_CREATED // an admin made an invite link for a pending user (on create or later)
+  INVITE_REGENERATED // a new invite link replaced the old one
+  INVITE_REVOKED
+  INVITE_ACCEPTED // the invited person set their password; the account became active
+  RESET_LINK_CREATED // an admin made (or replaced) a password-reset link
+  RESET_LINK_REVOKED
+  RESET_LINK_USED // the password was set through the link; every session was revoked
+  INVITE_LINK_FAILED // an unusable invite or reset link was tried (coalesced per network and minute)
 }
 
 // Who did what to accounts, sessions, service connections and settings, and

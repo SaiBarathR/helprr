@@ -125,7 +125,10 @@ export function ClientLogCapture() {
         source,
         metadata: {
           args: rest.map((item) => redact(item)),
-          page: window.location.href,
+          // The invite page's fragment is a credential until the page drops it.
+          page: window.location.pathname === '/invite'
+            ? `${window.location.origin}/invite`
+            : window.location.href,
           userAgent: navigator.userAgent,
         },
       });

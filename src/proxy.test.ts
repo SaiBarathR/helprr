@@ -106,4 +106,36 @@ describe('proxy pass-through', () => {
   it.each(['/sw.js.map', '/manifest.json/extra'])('does not stretch those exact paths to %s', async (path) => {
     expect((await proxy(new NextRequest(`https://helprr.test${path}`))).status).toBe(307);
   });
+
+  it.each(['/api/invite/state', '/api/invite/accept', '/invite'])(
+    'exposes the invite route %s without a session, with the CSP',
+    async (path) => {
+      const response = await proxy(new NextRequest(`https://helprr.test${path}`));
+      expect(response.status).toBe(200);
+      expect(response.headers.get('x-middleware-next')).toBe('1');
+      expect(response.headers.get('content-security-policy')).toContain("frame-ancestors 'none'");
+      expect(jwtVerify).not.toHaveBeenCalled();
+    },
+  );
+
+  it('sends no Referer from the invite page, and leaves other pages on the default policy', async () => {
+    const invite = await proxy(new NextRequest(`https://helprr.test/invite#${'a'.repeat(43)}`));
+    expect(invite.status).toBe(200);
+    expect(invite.headers.get('referrer-policy')).toBe('no-referrer');
+    const login = await proxy(new NextRequest('https://helprr.test/login'));
+    expect(login.headers.get('referrer-policy')).toBe('strict-origin-when-cross-origin');
+  });
+
+  it.each([
+    '/invite/', `/invite/${'a'.repeat(43)}`, '/invite/short', '/invites', '/invite.json',
+    '/%69nvite', '/invite%2F', `/invite%2F${'a'.repeat(43)}`, '/Invite',
+  ])('keeps other paths near /invite behind sign-in (%s)', async (path) => {
+    const response = await proxy(new NextRequest(`https://helprr.test${path}`));
+    expect(response.status).toBe(307);
+  });
+
+  it.each(['/api/invite', '/api/invite/other', '/api/invite/accept/x'])('keeps %s behind sign-in', async (path) => {
+    const response = await proxy(new NextRequest(`https://helprr.test${path}`));
+    expect(response.status).toBe(401);
+  });
 });

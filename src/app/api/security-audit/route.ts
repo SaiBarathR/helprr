@@ -8,7 +8,8 @@ import { parsePageParams } from '@/lib/pagination';
 
 // Admin-only viewer for the security and admin audit trail. The coalescing key
 // is internal and stays on the server. `hideFailedSignIns=1` drops LOGIN_FAILED
-// rows, so a flood of guesses cannot push account and connection changes off the list.
+// and INVITE_LINK_FAILED rows, so a flood of guesses cannot push account and
+// connection changes off the list.
 async function getHandler(request: NextRequest): Promise<NextResponse> {
   const admin = await requireAdmin();
   if (!admin.ok) return admin.response;
@@ -17,7 +18,7 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
     const sp = request.nextUrl.searchParams;
     const { page, pageSize } = parsePageParams(sp, { defaultSize: 50, maxSize: 100 });
     const where: Prisma.SecurityAuditEventWhereInput = sp.get('hideFailedSignIns') === '1'
-      ? { action: { not: 'LOGIN_FAILED' } }
+      ? { action: { notIn: ['LOGIN_FAILED', 'INVITE_LINK_FAILED'] } }
       : {};
 
     const [records, total] = await Promise.all([

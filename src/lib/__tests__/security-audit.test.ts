@@ -21,6 +21,7 @@ import {
   changedFieldNames,
   coarseIp,
   maskUsername,
+  recordFailedLinkAttempt,
   recordFailedSignIn,
   recordSecurityEvent,
   serviceTargetLabel,
@@ -253,6 +254,48 @@ describe('recordFailedSignIn', () => {
     await expect(recordFailedSignIn(request(), { username: 'alice', method: 'password', user: null })).resolves.toBeUndefined();
     mocks.findUser.mockRejectedValue(new Error('db down'));
     await expect(recordFailedSignIn(request(), { username: 'alice', method: 'jellyfin' })).resolves.toBeUndefined();
+  });
+});
+
+describe('recordFailedLinkAttempt', () => {
+  const minute = Date.UTC(2026, 10, 6, 12, 0, 0);
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.clientIp.mockReturnValue('203.0.113.77');
+    mocks.upsert.mockResolvedValue({});
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  function keyOf(call: number): string {
+    return mocks.upsert.mock.calls[call][0].where.coalesceKey;
+  }
+
+  it('keeps one row per network and minute, with no actor, target or token', async () => {
+    await recordFailedLinkAttempt(request(), minute + 1_000);
+    await recordFailedLinkAttempt(request(), minute + 59_000);
+    await recordFailedLinkAttempt(request(), minute + 60_000);
+    mocks.clientIp.mockReturnValue('198.51.100.1');
+    await recordFailedLinkAttempt(request(), minute);
+
+    const args = mocks.upsert.mock.calls[0][0];
+    expect(args.update).toEqual({ count: { increment: 1 } });
+    expect(args.create).toMatchObject({
+      actorUserId: null,
+      action: 'INVITE_LINK_FAILED',
+      targetType: 'user',
+      targetId: null,
+      targetLabel: null,
+      ip: '203.0.113.0/24',
+    });
+    expect(keyOf(1)).toBe(keyOf(0));
+    expect(new Set([keyOf(0), keyOf(2), keyOf(3)]).size).toBe(3);
+  });
+
+  it('is fail-soft', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    mocks.upsert.mockRejectedValue(new Error('db down'));
+    await expect(recordFailedLinkAttempt(request())).resolves.toBeUndefined();
   });
 });
 

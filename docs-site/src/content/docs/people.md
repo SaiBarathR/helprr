@@ -16,8 +16,19 @@ Anything not given is refused, including permissions added in later versions.
 
 ## Signing in
 
-- **With a Helprr password**, set when you create the account. It needs at least 15
-  characters. Each person can change it in **Settings → Account → Change password**.
+- **With a Helprr password**. It needs at least 15 characters. By default **Add** makes
+  an invite link: send it to the person, and they open it and choose their own password.
+  Until then the account is pending and cannot sign in. Turn **Invite link** off to set
+  the password yourself, or for a Jellyfin-only account. Each person can change their
+  password in **Settings → Account → Change password**.
+- **Invite and reset links** work once. An invite lasts 7 days and a password-reset link
+  24 hours. Helprr shows a link only when it is made, so if one gets lost, open the person
+  in **Settings → Users** and make a new one; that ends the old link. **Revoke** ends it
+  without a new one, and so does changing their status or setting their password there.
+  A reset link is for someone who forgot their password: using it signs them out
+  everywhere. A link looks like `https://helprr.example/invite#…`: the part after `#`
+  is the key, and browsers never send that part to a server, so it does not end up in
+  proxy or server logs. The page removes it from the address bar as soon as it opens.
 - **With Jellyfin**: **Sign in with Jellyfin** on the sign-in page uses the person's
   Jellyfin account, with Jellyfin's own password rules.
 
@@ -38,5 +49,5 @@ use Helprr for 14 days; push notifications keep arriving either way.
 Changing someone's password in **Settings → Users** signs them out everywhere, including
 an admin changing their own. Changing your own password in **Settings → Account** signs
 out your other devices and keeps this one signed in. The
-`HELPRR_ADMIN_PASSWORD_RESET` startup reset does not: after using it, end the old
-sessions here.
+`HELPRR_ADMIN_PASSWORD_RESET` startup reset signs the admin out everywhere too, and ends
+any reset link made for them.

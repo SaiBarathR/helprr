@@ -21,7 +21,15 @@ type SecurityAction =
   | 'SERVICE_CREATED'
   | 'SERVICE_UPDATED'
   | 'SERVICE_DELETED'
-  | 'SETTINGS_IMPORTED';
+  | 'SETTINGS_IMPORTED'
+  | 'INVITE_CREATED'
+  | 'INVITE_REGENERATED'
+  | 'INVITE_REVOKED'
+  | 'INVITE_ACCEPTED'
+  | 'RESET_LINK_CREATED'
+  | 'RESET_LINK_REVOKED'
+  | 'RESET_LINK_USED'
+  | 'INVITE_LINK_FAILED';
 
 export interface SecurityAuditRecord {
   id: string;
@@ -51,6 +59,14 @@ const ACTION_BADGE: Record<SecurityAction, { label: string; variant: 'default' |
   SERVICE_UPDATED: { label: 'CONNECTION EDIT', variant: 'secondary' },
   SERVICE_DELETED: { label: 'CONNECTION DELETE', variant: 'destructive' },
   SETTINGS_IMPORTED: { label: 'SETTINGS IMPORT', variant: 'default' },
+  INVITE_CREATED: { label: 'INVITE LINK', variant: 'default' },
+  INVITE_REGENERATED: { label: 'NEW INVITE LINK', variant: 'secondary' },
+  INVITE_REVOKED: { label: 'INVITE REVOKED', variant: 'secondary' },
+  INVITE_ACCEPTED: { label: 'INVITE ACCEPTED', variant: 'default' },
+  RESET_LINK_CREATED: { label: 'RESET LINK', variant: 'secondary' },
+  RESET_LINK_REVOKED: { label: 'RESET LINK REVOKED', variant: 'secondary' },
+  RESET_LINK_USED: { label: 'PASSWORD RESET', variant: 'secondary' },
+  INVITE_LINK_FAILED: { label: 'LINK FAILED', variant: 'destructive' },
 };
 
 const SIGN_IN_METHOD: Record<string, string> = {
@@ -77,6 +93,7 @@ function plural(count: number, noun: string): string {
 
 function title(record: SecurityAuditRecord): string {
   if (record.action === 'SETTINGS_IMPORTED') return 'Settings backup';
+  if (record.action === 'INVITE_LINK_FAILED') return 'Invite or reset link';
   if (record.action === 'SESSION_REVOKED' && record.targetType === 'session') {
     return record.targetLabel ? `A session of ${record.targetLabel}` : 'A session';
   }
@@ -100,6 +117,12 @@ function summary(record: SecurityAuditRecord): string {
       break;
     case 'SESSION_REVOKED':
       if (record.targetType === 'user') parts.push(`${plural(record.count, 'other session')} signed out`);
+      break;
+    case 'RESET_LINK_USED':
+      parts.push(`${plural(record.count, 'session')} signed out`);
+      break;
+    case 'INVITE_LINK_FAILED':
+      parts.push(`${plural(record.count, 'attempt')} with a link that does not work`);
       break;
     default:
       if (record.fields?.length) parts.push(record.fields.join(', '));
@@ -145,7 +168,7 @@ export function SecurityAuditList() {
   return (
     <>
       <label className="mx-4 mb-3 flex min-h-[44px] items-center justify-between gap-3 text-sm">
-        Hide failed sign-ins
+        Hide failed sign-ins and links
         <Switch checked={hideFailedSignIns} onCheckedChange={setHideFailedSignIns} />
       </label>
       {query.isLoading ? (
@@ -154,7 +177,7 @@ export function SecurityAuditList() {
         <p className="px-4 py-10 text-center text-sm text-destructive">Failed to load the security log.</p>
       ) : records.length === 0 ? (
         <p className="px-4 py-10 text-center text-sm text-muted-foreground">
-          {hideFailedSignIns ? 'No security events other than failed sign-ins.' : 'No security events recorded yet.'}
+          {hideFailedSignIns ? 'No security events other than failed sign-ins and links.' : 'No security events recorded yet.'}
         </p>
       ) : (
         <div className="space-y-2 px-4">

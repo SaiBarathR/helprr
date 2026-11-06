@@ -1,4 +1,4 @@
-import { createHmac } from 'crypto';
+import { createHash, createHmac } from 'crypto';
 import { isIP } from 'net';
 import type { NextRequest } from 'next/server';
 import { Prisma, type SecurityAuditAction } from '@prisma/client';
@@ -184,6 +184,40 @@ export async function recordFailedSignIn(request: NextRequest, input: FailedSign
         targetId: user?.id ?? null,
         targetLabel,
         fields: [input.method],
+        ...meta,
+        requestId: currentRequestContext()?.requestId ?? null,
+        coalesceKey,
+      },
+    });
+  } catch (error) {
+    logWriteFailure(error);
+  }
+}
+
+/**
+ * Record a try of an invite or reset link that could not be used. Nothing
+ * about the token is kept: tries from one network in the same minute add to
+ * one row's count, like failed sign-ins. Never throws.
+ */
+export async function recordFailedLinkAttempt(request: NextRequest, nowMs = Date.now()): Promise<void> {
+  try {
+    const meta = requestMeta(request);
+    const minute = Math.floor(nowMs / COALESCE_WINDOW_MS);
+    // A plain hash is enough: the key holds nothing that is not on the row.
+    const coalesceKey = createHash('sha256')
+      .update(JSON.stringify(['security-audit:INVITE_LINK_FAILED', minute, meta.ip]))
+      .digest('hex');
+    await prisma.securityAuditEvent.upsert({
+      where: { coalesceKey },
+      update: { count: { increment: 1 } },
+      create: {
+        actorUserId: null,
+        actorUsername: null,
+        action: 'INVITE_LINK_FAILED',
+        targetType: 'user',
+        targetId: null,
+        targetLabel: null,
+        fields: Prisma.JsonNull,
         ...meta,
         requestId: currentRequestContext()?.requestId ?? null,
         coalesceKey,

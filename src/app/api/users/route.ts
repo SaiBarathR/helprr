@@ -11,6 +11,7 @@ import {
 import { toSafeUser } from '@/lib/user-dto';
 import { withApiLogging } from '@/lib/api-logger';
 import { recordSecurityEvent } from '@/lib/security-audit';
+import { issuePasswordLink, type IssuedPasswordLink } from '@/lib/password-links';
 
 const ROLES = new Set(['admin', 'member']);
 const TEMPLATES = new Set(['admin', 'member']);
@@ -19,8 +20,14 @@ async function getHandler(): Promise<NextResponse> {
   const admin = await requireAdmin();
   if (!admin.ok) return admin.response;
 
-  const users = await prisma.user.findMany({ orderBy: { createdAt: 'asc' } });
-  return NextResponse.json(users.map(toSafeUser));
+  const users = await prisma.user.findMany({
+    orderBy: { createdAt: 'asc' },
+    include: { passwordLink: { select: { purpose: true, expiresAt: true } } },
+  });
+  return NextResponse.json(users.map(({ passwordLink, ...user }) => ({
+    ...toSafeUser(user),
+    passwordLink,
+  })));
 }
 
 async function postHandler(request: NextRequest): Promise<NextResponse> {
@@ -39,6 +46,8 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     : '';
   const displayName = typeof body.displayName === 'string' ? body.displayName.trim() : '';
   const password = typeof body.password === 'string' ? body.password : '';
+  // Invite: a pending account with no password, and a link for the person to choose one.
+  const invite = body.invite === true;
   const role = typeof body.role === 'string' && ROLES.has(body.role) ? body.role : 'member';
   const template =
     typeof body.template === 'string' && TEMPLATES.has(body.template) ? body.template : role;
@@ -54,8 +63,14 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: usernameError }, { status: 400 });
   }
   if (!displayName) return NextResponse.json({ error: 'Display name is required' }, { status: 400 });
-  // A local password OR a Jellyfin link is required, else the account can never sign in.
-  if (!password && !jellyfinUserId) {
+  if (invite && password) {
+    return NextResponse.json(
+      { error: 'An invited user chooses their own password; leave the password blank' },
+      { status: 400 }
+    );
+  }
+  // A local password, an invite, or a Jellyfin link is required, else the account can never sign in.
+  if (!password && !invite && !jellyfinUserId) {
     return NextResponse.json(
       { error: 'Provide a password or link a Jellyfin account so the user can sign in' },
       { status: 400 }
@@ -69,17 +84,23 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   const passwordHash = password ? await hashPassword(password) : null;
 
   try {
-    const created = await prisma.user.create({
-      data: {
-        username,
-        displayName,
-        passwordHash,
-        role: role as User['role'],
-        status: 'active',
-        template,
-        jellyfinUserId,
-        seerrUserId,
-      },
+    const { created, link } = await prisma.$transaction(async (tx) => {
+      const created = await tx.user.create({
+        data: {
+          username,
+          displayName,
+          passwordHash,
+          role: role as User['role'],
+          status: invite ? 'pending' : 'active',
+          template,
+          jellyfinUserId,
+          seerrUserId,
+        },
+      });
+      const link: IssuedPasswordLink | null = invite
+        ? await issuePasswordLink(tx, { userId: created.id, purpose: 'invite', createdById: admin.user.id })
+        : null;
+      return { created, link };
     });
     await recordSecurityEvent(request, {
       actor: admin.user,
@@ -96,7 +117,24 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
         ...(seerrUserId ? ['seerrUserId'] : []),
       ],
     });
-    return NextResponse.json(toSafeUser(created), { status: 201 });
+    if (link) {
+      await recordSecurityEvent(request, {
+        actor: admin.user,
+        action: 'INVITE_CREATED',
+        targetType: 'user',
+        targetId: created.id,
+        targetLabel: created.username,
+      });
+    }
+    return NextResponse.json(
+      {
+        ...toSafeUser(created),
+        passwordLink: link ? { purpose: link.purpose, expiresAt: link.expiresAt } : null,
+        // The invite token is in this response only; the database keeps its hash.
+        ...(link ? { linkToken: link.token } : {}),
+      },
+      { status: 201 }
+    );
   } catch (error) {
     // Unique violations on username / jellyfinUserId.
     if (error && typeof error === 'object' && (error as { code?: string }).code === 'P2002') {
