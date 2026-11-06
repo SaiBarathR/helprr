@@ -233,7 +233,7 @@ export function OverviewTab() {
   }
 
   return (
-    <div className="space-y-5">
+    <div className="readable-column-wide space-y-5">
 
       {sessions.length > 0 && (
         <div>
