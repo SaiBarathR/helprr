@@ -642,7 +642,8 @@ handover can still need a force-quit; later updates take over on their own.
 Development disables the Serwist build and registers `public/sw-push.js`, a
 lightweight push-only worker that avoids production precache URLs and Fast
 Refresh loops. `src/components/sw-register.tsx` selects the worker by
-environment.
+environment and is the only registration: Serwist's own is off
+(`register: false`).
 
 VAPID is runtime configuration. `VAPID_PUBLIC_KEY` is served by
 `/api/push/public-key`; the legacy `NEXT_PUBLIC_VAPID_PUBLIC_KEY` remains a
