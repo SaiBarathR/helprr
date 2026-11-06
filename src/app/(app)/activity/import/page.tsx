@@ -417,7 +417,7 @@ function ManualImportContent() {
   if (view === 'media') {
     return (
       <div
-        className="fixed inset-y-0 right-0 left-[var(--app-main-left,0px)] z-50 flex flex-col bg-background px-[var(--main-pad-x)] pt-[calc(env(safe-area-inset-top)+var(--main-pad-top))]"
+        className="fixed inset-y-0 right-0 left-[var(--app-main-left,0px)] z-50 flex flex-col bg-background pl-[calc(var(--main-pad-x)+var(--main-inset-left))] pr-[calc(var(--main-pad-x)+var(--main-inset-right))] pt-[calc(env(safe-area-inset-top)+var(--main-pad-top))]"
         style={{ '--header-height': '0px' } as React.CSSProperties}
       >
         <PageHeader
@@ -488,7 +488,7 @@ function ManualImportContent() {
     // which come later in the document, stay above it; its header pins at 0.
     return (
       <div
-        className="fixed inset-y-0 right-0 left-[var(--app-main-left,0px)] z-50 flex flex-col bg-background px-[var(--main-pad-x)] pt-[calc(env(safe-area-inset-top)+var(--main-pad-top))]"
+        className="fixed inset-y-0 right-0 left-[var(--app-main-left,0px)] z-50 flex flex-col bg-background pl-[calc(var(--main-pad-x)+var(--main-inset-left))] pr-[calc(var(--main-pad-x)+var(--main-inset-right))] pt-[calc(env(safe-area-inset-top)+var(--main-pad-top))]"
         style={{ '--header-height': '0px' } as React.CSSProperties}
       >
         {/* Header */}

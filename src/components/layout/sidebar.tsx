@@ -151,9 +151,11 @@ export function Sidebar() {
     <aside
       // Stable hook for the cinematic Watch skin, which hides the sidebar.
       data-app-sidebar
+      // On a landscape iPhone the sidebar is the left edge, so it takes the left
+      // safe area (the notch) as extra width, and keeps off the home indicator.
       className={cn(
-        'hidden md:flex flex-col border-r border-border bg-card app-chrome-bar h-screen sticky top-0 transition-all duration-200',
-        sidebarCollapsed ? 'w-16' : 'w-56'
+        'hidden md:flex flex-col border-r border-border bg-card app-chrome-bar h-screen sticky top-0 transition-all duration-200 pl-[env(safe-area-inset-left,0px)] pb-[env(safe-area-inset-bottom,0px)]',
+        sidebarCollapsed ? 'w-[calc(4rem+env(safe-area-inset-left,0px))]' : 'w-[calc(14rem+env(safe-area-inset-left,0px))]'
       )}
     >
       <nav

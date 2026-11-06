@@ -240,7 +240,9 @@ function DashboardInner({ initialLayout, initialDevice, setupChecklist }: Dashbo
         // bootstrap script (root layout) and kept in sync by ThemeApplier. Not
         // pinned inline here, so the bento doesn't override them with stale
         // pre-hydration defaults — first paint already uses the persisted theme.
-        margin: isMobile ? '-0.5rem -0.5rem -1rem' : '-1.5rem',
+        // Cancels <main>'s padding from its variables: a landscape phone uses a
+        // smaller top padding than the md 1.5rem.
+        margin: isMobile ? '-0.5rem -0.5rem -1rem' : 'calc(-1 * var(--main-pad-top)) calc(-1 * var(--main-pad-x)) -1.5rem',
         // The bottom padding lets the last row scroll clear of the floating
         // Edit button (48px at 16px/30px above the tab bar, lifted over the
         // mini player when it is up) instead of resting under it.

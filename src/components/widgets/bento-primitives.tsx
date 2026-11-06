@@ -824,7 +824,7 @@ export function FloatingEdit({
         // floating bars; a fixed offset sat on the iPhone tab bar. The mini
         // video player shares this corner, so step over it too.
         bottom: `calc(var(--footer-height) + var(--player-bar-height, 0px) + var(--mini-player-clearance, 0px) + ${mobile ? 16 : 30}px)`,
-        right: edit ? (mobile ? "40%" : "40%") : mobile ? 50 : 36,
+        right: edit ? (mobile ? "40%" : "40%") : `calc(${mobile ? 50 : 36}px + env(safe-area-inset-right, 0px))`,
         width: 48 ,
         height: 48 ,
         minHeight: mobile ? undefined : 42,

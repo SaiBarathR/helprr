@@ -192,7 +192,7 @@ export function AnimeSearchOverlay({
         createPortal(
           <div
             ref={panelRef}
-            style={{ position: 'fixed', top: panelTop, left: panelLeft, right: 0, bottom: 0, zIndex: 40 }}
+            style={{ position: 'fixed', top: panelTop, left: panelLeft, right: 0, bottom: 0, zIndex: 40, paddingRight: 'var(--main-inset-right)' }}
             className="overflow-y-auto bg-background"
             aria-label="Anime search results"
           >

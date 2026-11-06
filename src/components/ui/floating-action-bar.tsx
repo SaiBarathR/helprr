@@ -18,7 +18,7 @@ export function FloatingActionBar({ className, children }: { className?: string;
     <>
       <div aria-hidden className="h-24" />
       {typeof document !== 'undefined' && createPortal(
-        <div data-floating-action-bar className="pointer-events-none fixed right-0 left-[var(--app-main-left,0px)] bottom-[calc(var(--footer-height)+var(--player-bar-height,0px)+0.5rem)] z-40 px-2 md:bottom-[calc(var(--footer-height)+var(--player-bar-height,0px)+0.75rem)] md:px-6">
+        <div data-floating-action-bar className="pointer-events-none fixed right-0 left-[var(--app-main-left,0px)] bottom-[calc(var(--footer-height)+var(--player-bar-height,0px)+0.5rem)] z-40 pl-[calc(0.5rem+var(--main-inset-left))] pr-[calc(0.5rem+var(--main-inset-right))] md:bottom-[calc(var(--footer-height)+var(--player-bar-height,0px)+0.75rem)] md:pl-[calc(1.5rem+var(--main-inset-left))] md:pr-[calc(1.5rem+var(--main-inset-right))]">
           <div
             className={cn(
               'pointer-events-auto mx-auto flex max-w-3xl items-center gap-2 rounded-xl border app-chrome-bar bg-background/95 px-3 py-2 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-background/80',
