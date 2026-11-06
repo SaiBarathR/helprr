@@ -110,8 +110,14 @@ function diskSize(bytes: number): string {
   return tb >= 1 ? `${tb.toFixed(1)} TB` : gb(bytes);
 }
 
-/** What cancelling a job stops, in the words the menu and the dialog use. */
-const cancelNoun = (job: Job) => (job.kind === 'REENCODE' ? 're-encode' : 'download');
+/** What cancelling a job stops, in the words the menu and the dialog use (as `jobLabel` names them). */
+const CANCEL_NOUNS: Record<string, string> = {
+  REENCODE: 're-encode',
+  DELETE_FILES: 'delete',
+  DELETE_ORIGINAL: 'delete',
+  RESTORE_ORIGINAL: 'restore',
+};
+const cancelNoun = (job: Job) => CANCEL_NOUNS[job.kind] ?? 'download';
 
 function JobRow({ job, onCancel, onRetry }: { job: Job; onCancel?: () => void; onRetry?: () => void }) {
   const platform = useCreatorPlatform();
