@@ -8,10 +8,14 @@ const mocks = vi.hoisted(() => {
   const tx = {
     user: {
       count: vi.fn(),
+      create: vi.fn(),
       update: vi.fn(),
     },
     session: {
       updateMany: vi.fn(),
+    },
+    passwordLink: {
+      deleteMany: vi.fn(),
     },
   };
   return {
@@ -84,6 +88,8 @@ describe('user local-password boundaries', () => {
     mocks.tx.user.count.mockResolvedValue(1);
     mocks.tx.user.update.mockImplementation(async ({ data }) => ({ ...existingUser, ...data }));
     mocks.tx.session.updateMany.mockResolvedValue({ count: 2 });
+    mocks.tx.user.create.mockImplementation((args) => mocks.userCreate(args));
+    mocks.tx.passwordLink.deleteMany.mockResolvedValue({ count: 0 });
     mocks.transaction.mockImplementation(async (callback) => callback(mocks.tx));
   });
 
@@ -228,5 +234,32 @@ describe('user local-password boundaries', () => {
       data: { role: 'admin', template: 'admin', permissions: {} },
     });
     expect(mocks.tx.session.updateMany).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['a password set by the admin', { password: 'a'.repeat(15) }],
+    ['a status change', { status: 'disabled' }],
+  ])('ends an outstanding invite or reset link on %s', async (_name, body) => {
+    expect((await updateUser(jsonRequest('/api/users/user-1', 'PATCH', body), params)).status).toBe(200);
+    expect(mocks.tx.passwordLink.deleteMany).toHaveBeenCalledWith({ where: { userId: 'user-1' } });
+  });
+
+  it('keeps the link through other edits', async () => {
+    expect((await updateUser(jsonRequest('/api/users/user-1', 'PATCH', { displayName: 'Renamed', status: 'active' }), params)).status).toBe(200);
+    expect(mocks.tx.passwordLink.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it('applies a status change only to the status the admin saw', async () => {
+    mocks.userFindUnique.mockResolvedValue({ ...existingUser, status: 'pending' });
+    // The invite was accepted meanwhile: the row is no longer pending.
+    mocks.tx.user.update.mockRejectedValue(Object.assign(new Error('not found'), { code: 'P2025' }));
+
+    const response = await updateUser(jsonRequest('/api/users/user-1', 'PATCH', { status: 'disabled' }), params);
+
+    expect(response.status).toBe(409);
+    expect(mocks.tx.user.update).toHaveBeenCalledWith({
+      where: { id: 'user-1', status: 'pending' },
+      data: { status: 'disabled' },
+    });
   });
 });

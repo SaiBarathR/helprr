@@ -41,3 +41,65 @@ describe('editing a user', () => {
     await waitFor(() => expect(screen.getByRole('switch', { name: 'Add movies to library' }).getAttribute('aria-checked')).toBe('true'));
   });
 });
+
+describe('invite and reset links', () => {
+  const TOKEN = 'c'.repeat(43);
+  const expiresAt = '2026-11-14T12:00:00.000Z';
+
+  function renderPage() {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<QueryClientProvider client={client}><UsersAdminPage /></QueryClientProvider>);
+  }
+
+  it('creates an invited user and shows the link once', async () => {
+    const calls: Array<{ url: string; body?: unknown }> = [];
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      calls.push({ url, body: init?.body ? JSON.parse(init.body as string) : undefined });
+      if (url === '/api/users' && init?.method === 'POST') {
+        return new Response(JSON.stringify({
+          ...member, id: 'u3', username: 'newbie', status: 'pending', hasPassword: false,
+          passwordLink: { purpose: 'invite', expiresAt }, linkToken: TOKEN,
+        }), { status: 201 });
+      }
+      if (url === '/api/users') return new Response(JSON.stringify([member]));
+      return new Response(JSON.stringify([]));
+    }));
+    renderPage();
+    await userEvent.click(await screen.findByRole('button', { name: 'Add' }));
+    await userEvent.type(screen.getByLabelText('Username'), 'newbie');
+    await userEvent.type(screen.getByLabelText('Display name'), 'New');
+    // Invite is the default, so there is no password to invent.
+    expect(screen.queryByLabelText('Password')).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: 'Create and get link' }));
+
+    const field = await screen.findByLabelText('Invite link for @newbie');
+    expect((field as HTMLInputElement).value).toBe(`${window.location.origin}/invite/${TOKEN}`);
+    const sent = calls.find((c) => c.url === '/api/users' && c.body)?.body;
+    expect(sent).toMatchObject({ invite: true });
+    expect(sent).not.toHaveProperty('password');
+  });
+
+  it('makes and revokes a reset link for an active local user', async () => {
+    const local = { ...member, hasPassword: true, passwordLink: null };
+    const methods: string[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === '/api/users/u2/password-link') {
+        methods.push(init?.method ?? 'GET');
+        return init?.method === 'POST'
+          ? new Response(JSON.stringify({ token: TOKEN, purpose: 'reset', expiresAt }), { status: 201 })
+          : new Response(JSON.stringify({ revoked: true }));
+      }
+      if (url === '/api/users') return new Response(JSON.stringify([local]));
+      if (url === '/api/users/u2/permissions') return new Response(JSON.stringify(mocks.permissions));
+      return new Response(JSON.stringify([]));
+    }));
+    renderPage();
+    await userEvent.click(await screen.findByRole('button', { name: /Iso/ }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Make link' }));
+
+    expect(((await screen.findByLabelText('Password reset link for @iso')) as HTMLInputElement).value).toContain(TOKEN);
+    await userEvent.click(screen.getByRole('button', { name: 'Revoke' }));
+    await waitFor(() => expect(screen.queryByLabelText('Password reset link for @iso')).toBeNull());
+    expect(methods).toEqual(['POST', 'DELETE']);
+  });
+});

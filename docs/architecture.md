@@ -245,7 +245,28 @@ checks the current password behind the same IP, per-username and global throttle
 sign-in (a wrong one counts as a failed sign-in and returns 403, since the client sends
 every 401 to Login), then writes the hash and revokes every other session of that user in
 one transaction; the current session stays valid without a new cookie. Accounts without
-a local password (Jellyfin-only) get 409. `HELPRR_ADMIN_PASSWORD_RESET=true` is a separate startup recovery
+a local password (Jellyfin-only) get 409.
+
+Invite and password-reset links (`src/lib/password-links.ts`, table `PasswordLink`,
+one row per user) let a person set their own local password. An admin makes one in
+Settings -> Users: creating a user with `invite: true` makes a `pending` user with no
+password plus an invite in one transaction, and `POST /api/users/[id]/password-link`
+makes an invite for a pending user or a reset for an active user with a local password
+(409 for disabled and Jellyfin-only accounts). The token is 32 random bytes, returned
+once in that response (never logged), and only its SHA-256 is stored; a new link
+replaces the row, which ends the old one, and `DELETE` revokes it. A PATCH that sets a
+password or changes status also ends it. The public `/invite/<token>` page (excluded from
+the service worker's page cache) calls `POST /api/invite/state` and
+`POST /api/invite/accept`; the proxy exposes exactly those two paths and the page path of
+the token's shape. Both routes are JSON-only behind the sign-in throttles (malformed
+backstop, per-IP bucket, global backstop) and record every unusable link as a failed
+attempt, with one 404 answer for unknown, malformed, expired, used, revoked and wrong-state
+links. A link works until `expiresAt` (7 days for an invite, 24 hours for a reset) and only
+while the user is still `pending` (invite) or `active` (reset). Accepting runs one
+transaction: a conditional user update on that status (password, `active`), a delete of the
+link matching its id and hash (single use; a race loser rolls back), and a revoke of every
+session of the user; then it signs the browser in. Making, replacing, revoking and using
+links are security audit events. `HELPRR_ADMIN_PASSWORD_RESET=true` is a separate startup recovery
 path for the bootstrap admin and does not revoke existing sessions, so suspected
 compromise also requires explicit session revocation.
 

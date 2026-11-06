@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import Link from '@/components/ui/app-link';
-import { ChevronLeft, Loader2, Pencil, Plus, Trash2 } from 'lucide-react';
+import { ChevronLeft, Copy, Link2, Loader2, Pencil, Plus, Share, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/query-keys';
@@ -48,6 +48,15 @@ interface SafeUser {
   hasJellyfinLink: boolean;
   hasJellyfinConnection: boolean;
   createdAt: string;
+  /** The outstanding invite or reset link, if any; its token is never sent again. */
+  passwordLink: { purpose: 'invite' | 'reset'; expiresAt: string } | null;
+}
+
+/** A link just made: the only time its token is known to the browser. */
+interface IssuedLink {
+  token: string;
+  purpose: 'invite' | 'reset';
+  expiresAt: string;
 }
 
 interface ExternalUser {
@@ -56,6 +65,20 @@ interface ExternalUser {
 }
 
 const NONE = '__none__';
+
+function formatExpiry(iso: string): string {
+  return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+}
+
+function linkIsLive(link: SafeUser['passwordLink']): boolean {
+  return link !== null && new Date(link.expiresAt).getTime() > Date.now();
+}
+
+function linkSummary(link: SafeUser['passwordLink']): string {
+  if (!link) return '';
+  const name = link.purpose === 'invite' ? 'invite' : 'reset link';
+  return linkIsLive(link) ? ` · ${name} out` : ` · ${name} expired`;
+}
 
 export default function UsersAdminPage() {
   const queryClient = useQueryClient();
@@ -172,6 +195,7 @@ export default function UsersAdminPage() {
                   <div className="text-xs text-muted-foreground mt-0.5 capitalize">
                     {u.role}
                     {u.status !== 'active' ? ` · ${u.status}` : ''}
+                    {linkSummary(u.passwordLink)}
                     {u.hasJellyfinLink ? ' · Jellyfin linked' : ''}
                     {u.hasJellyfinLink && !u.hasJellyfinConnection ? ' · not connected (cannot watch)' : ''}
                   </div>
@@ -199,7 +223,8 @@ export default function UsersAdminPage() {
 
       {editing && (
         <EditUserDialog
-          user={editing}
+          // The list's copy, so a link made or revoked here shows at once.
+          user={users?.find((u) => u.id === editing.id) ?? editing}
           onClose={() => setEditing(null)}
           onSaved={() => {
             void queryClient.invalidateQueries({ queryKey: queryKeys.users() });
@@ -323,6 +348,58 @@ function ExternalLinkFields({
   );
 }
 
+/**
+ * A freshly made invite or reset link, with ways to pass it on. It is shown
+ * once: Helprr keeps only a fingerprint of it, so a lost link is replaced.
+ */
+function IssuedLinkPanel({ link, username }: { link: IssuedLink; username: string }) {
+  const url = `${window.location.origin}/invite/${link.token}`;
+  const canShare = typeof navigator !== 'undefined' && typeof navigator.share === 'function';
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(url);
+      toast.success('Link copied');
+    } catch {
+      toast.error('Could not copy. Select the link and copy it.');
+    }
+  }
+
+  async function share() {
+    try {
+      await navigator.share({ title: 'Helprr', url });
+    } catch {
+      // Dismissed, or the share sheet failed: the link is still on screen.
+    }
+  }
+
+  return (
+    <div className="space-y-2 rounded-lg border border-border p-3">
+      <Label htmlFor="issued-link">
+        {link.purpose === 'invite' ? `Invite link for @${username}` : `Password reset link for @${username}`}
+      </Label>
+      <Input id="issued-link" value={url} readOnly onFocus={(e) => e.currentTarget.select()} />
+      <div className="flex gap-2">
+        <Button type="button" size="sm" variant="outline" onClick={() => void copy()}>
+          <Copy className="mr-2 h-4 w-4" />
+          Copy
+        </Button>
+        {canShare && (
+          <Button type="button" size="sm" variant="outline" onClick={() => void share()}>
+            <Share className="mr-2 h-4 w-4" />
+            Share
+          </Button>
+        )}
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Works once, until {formatExpiry(link.expiresAt)}.
+        {link.purpose === 'reset' && ' Using it signs them out everywhere.'}
+        {' '}Send it only to them. It is shown only now; if it gets lost, make a new one.
+      </p>
+    </div>
+  );
+}
+
 function CreateUserDialog({
   onClose,
   onCreated,
@@ -332,11 +409,14 @@ function CreateUserDialog({
 }) {
   const [username, setUsername] = useState('');
   const [displayName, setDisplayName] = useState('');
+  // Default: the person chooses their own password from a link.
+  const [invite, setInvite] = useState(true);
+  const [issued, setIssued] = useState<{ link: IssuedLink; username: string } | null>(null);
   const [password, setPassword] = useState('');
   const [role, setRole] = useState<'admin' | 'member'>('member');
   const [jellyfinUserId, setJellyfinUserId] = useState<string | null>(null);
   const [seerrUserId, setSeerrUserId] = useState<string | null>(null);
-  const passwordError = password ? localPasswordValidationError(password) : null;
+  const passwordError = !invite && password ? localPasswordValidationError(password) : null;
 
   const createMutation = useMutation({
     mutationFn: async () => {
@@ -346,7 +426,8 @@ function CreateUserDialog({
         body: JSON.stringify({
           username,
           displayName,
-          password: password || undefined,
+          password: invite ? undefined : password || undefined,
+          invite,
           role,
           template: role,
           jellyfinUserId,
@@ -357,9 +438,18 @@ function CreateUserDialog({
         const data = (await res.json().catch(() => ({}))) as { error?: string };
         throw new Error(data.error ?? 'Failed to create user');
       }
+      return (await res.json()) as SafeUser & { linkToken?: string };
     },
-    onSuccess: () => {
+    onSuccess: (created) => {
       toast.success('User created');
+      if (created.linkToken && created.passwordLink) {
+        // Stay open on the link; closing the dialog refreshes the list.
+        setIssued({
+          link: { token: created.linkToken, ...created.passwordLink },
+          username: created.username,
+        });
+        return;
+      }
       onCreated();
     },
     onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to create user'),
@@ -372,6 +462,25 @@ function CreateUserDialog({
       return;
     }
     createMutation.mutate();
+  }
+
+  if (issued) {
+    return (
+      <Dialog open onOpenChange={(o) => !o && onCreated()}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Send the invite</DialogTitle>
+          </DialogHeader>
+          <IssuedLinkPanel link={issued.link} username={issued.username} />
+          <p className="text-xs text-muted-foreground">
+            Until they use it, the account is pending and cannot sign in.
+          </p>
+          <DialogFooter>
+            <Button onClick={onCreated}>Done</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    );
   }
 
   return (
@@ -389,21 +498,33 @@ function CreateUserDialog({
             <Label htmlFor="cu-name">Display name</Label>
             <Input id="cu-name" value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="cu-pw">Password</Label>
-            <Input
-              id="cu-pw"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Leave blank for Jellyfin-only sign in"
-              minLength={LOCAL_PASSWORD_MIN_LENGTH}
-              autoComplete="new-password"
-            />
-            <p className={passwordError ? 'text-xs text-destructive' : 'text-xs text-muted-foreground'}>
-              {passwordError ?? `Use at least ${LOCAL_PASSWORD_MIN_LENGTH} characters, or leave blank for Jellyfin-only sign in.`}
-            </p>
+          <div className="flex items-start justify-between gap-3">
+            <div className="space-y-1">
+              <Label htmlFor="cu-invite">Invite link</Label>
+              <p className="text-xs text-muted-foreground">
+                They open a link and choose their own password. Turn off to set one yourself, or for
+                Jellyfin-only sign in.
+              </p>
+            </div>
+            <Switch id="cu-invite" checked={invite} onCheckedChange={setInvite} />
           </div>
+          {!invite && (
+            <div className="space-y-2">
+              <Label htmlFor="cu-pw">Password</Label>
+              <Input
+                id="cu-pw"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Leave blank for Jellyfin-only sign in"
+                minLength={LOCAL_PASSWORD_MIN_LENGTH}
+                autoComplete="new-password"
+              />
+              <p className={passwordError ? 'text-xs text-destructive' : 'text-xs text-muted-foreground'}>
+                {passwordError ?? `Use at least ${LOCAL_PASSWORD_MIN_LENGTH} characters, or leave blank for Jellyfin-only sign in.`}
+              </p>
+            </div>
+          )}
           <div className="space-y-2">
             <Label>Role</Label>
             <Select value={role} onValueChange={(v) => setRole(v as 'admin' | 'member')}>
@@ -429,7 +550,7 @@ function CreateUserDialog({
           </Button>
           <Button onClick={submit} disabled={busy || passwordError !== null}>
             {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Create
+            {invite ? 'Create and get link' : 'Create'}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -457,6 +578,7 @@ function EditUserDialog({
   const [jellyfinUserId, setJellyfinUserId] = useState<string | null>(user.jellyfinUserId);
   const [seerrUserId, setSeerrUserId] = useState<string | null>(user.seerrUserId);
   const passwordError = password ? localPasswordValidationError(password) : null;
+  const [linkSectionKey, setLinkSectionKey] = useState(0);
   // A reset here revokes every session of the user, so editing yourself signs this device out too.
   const me = useMe();
   const isSelf = me?.id === user.id;
@@ -498,7 +620,9 @@ function EditUserDialog({
           username,
           displayName,
           role,
-          status,
+          // Only a status the admin picked: the dialog's copy may be stale (an
+          // invite accepted since it opened), and the server refuses a stale one.
+          status: status !== user.status ? status : undefined,
           jellyfinUserId,
           seerrUserId,
           password: password || undefined,
@@ -511,6 +635,8 @@ function EditUserDialog({
     },
     onSuccess: () => {
       toast.success('Saved');
+      // A saved password or status ends any link; drop one still on screen.
+      if (password || status !== user.status) setLinkSectionKey((key) => key + 1);
       setPassword('');
       onSaved();
       // Role change realigns template/overrides server-side; reload the editor.
@@ -684,6 +810,8 @@ function EditUserDialog({
           </Button>
         </div>
 
+        <PasswordLinkSection key={linkSectionKey} user={user} isSelf={isSelf} />
+
         <div className="mt-4 border-t border-border pt-4 space-y-3">
           <div className="flex items-center justify-between">
             <Label>Permissions</Label>
@@ -753,5 +881,89 @@ function EditUserDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/**
+ * Invite link for a pending user, password-reset link for an active local one.
+ * Uses the saved user, not the unsaved form: the server decides which link
+ * applies, and a saved status or password change ends any link.
+ */
+function PasswordLinkSection({ user, isSelf }: { user: SafeUser; isSelf: boolean }) {
+  const queryClient = useQueryClient();
+  const [issued, setIssued] = useState<IssuedLink | null>(null);
+  const purpose = user.status === 'pending' ? 'invite' : user.status === 'active' && user.hasPassword ? 'reset' : null;
+
+  const issueMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/users/${user.id}/password-link`, { method: 'POST' });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(data.error ?? 'Failed to make the link');
+      }
+      return (await res.json()) as IssuedLink;
+    },
+    onSuccess: (link) => {
+      setIssued(link);
+      void queryClient.invalidateQueries({ queryKey: queryKeys.users() });
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to make the link'),
+  });
+
+  const revokeMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/users/${user.id}/password-link`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('Failed to revoke the link');
+    },
+    onSuccess: () => {
+      setIssued(null);
+      toast.success('Link revoked');
+      void queryClient.invalidateQueries({ queryKey: queryKeys.users() });
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to revoke the link'),
+  });
+
+  if (!purpose) return null;
+  const busy = issueMutation.isPending || revokeMutation.isPending;
+  const outstanding = user.passwordLink;
+  const label = purpose === 'invite' ? 'Invite link' : 'Password reset link';
+
+  return (
+    <div className="mt-4 border-t border-border pt-4 space-y-3">
+      <div className="space-y-1">
+        <Label>{label}</Label>
+        <p className="text-xs text-muted-foreground">
+          {outstanding
+            ? linkIsLive(outstanding)
+              ? `A link is out until ${formatExpiry(outstanding.expiresAt)}. Making a new one ends it.`
+              : 'The last link expired.'
+            : purpose === 'invite'
+              ? 'They choose their own password from the link, then the account becomes active.'
+              : 'They choose a new password from the link; it signs them out everywhere.'}
+        </p>
+        {isSelf && purpose === 'reset' && (
+          <p className="text-xs text-amber-500">Using a reset link for yourself signs out this device too.</p>
+        )}
+      </div>
+      {issued && <IssuedLinkPanel link={issued} username={user.username} />}
+      <div className="flex gap-2">
+        <Button type="button" size="sm" variant="outline" onClick={() => issueMutation.mutate()} disabled={busy}>
+          {issueMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Link2 className="mr-2 h-4 w-4" />}
+          {outstanding || issued ? 'New link' : 'Make link'}
+        </Button>
+        {(outstanding || issued) && (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="text-destructive hover:text-destructive"
+            onClick={() => revokeMutation.mutate()}
+            disabled={busy}
+          >
+            Revoke
+          </Button>
+        )}
+      </div>
+    </div>
   );
 }

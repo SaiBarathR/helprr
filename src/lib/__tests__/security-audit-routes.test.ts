@@ -24,6 +24,7 @@ const mocks = vi.hoisted(() => {
       delete: vi.fn(),
     },
     securityAuditEvent: { create: vi.fn(), upsert: vi.fn(), findMany: vi.fn(), count: vi.fn() },
+    passwordLink: { deleteMany: vi.fn(async () => ({ count: 0 })) },
   };
   return {
     db,

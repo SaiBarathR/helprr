@@ -175,9 +175,10 @@ const runtimeCaching: RuntimeCaching[] =
           // HTML document navigations → SWR so the installed PWA cold-opens the
           // last-seen shell instantly (and offline). The data inside is fetched
           // separately and every API/RSC call independently re-auths, so a revoked
-          // session at worst sees a stale shell for one navigation.
+          // session at worst sees a stale shell for one navigation. Invite pages
+          // are left out: their URL is a credential and must not be kept.
           matcher: ({ request, sameOrigin, url: { pathname } }) =>
-            sameOrigin && !pathname.startsWith('/api/') && request.mode === 'navigate',
+            sameOrigin && !pathname.startsWith('/api/') && !pathname.startsWith('/invite/') && request.mode === 'navigate',
           method: 'GET',
           handler: new StaleWhileRevalidate({
             cacheName: 'pages',

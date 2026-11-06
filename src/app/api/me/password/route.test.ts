@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   hashPassword: vi.fn(),
   sessionUpdateMany: vi.fn(),
   userUpdateMany: vi.fn(),
+  passwordLinkDeleteMany: vi.fn(),
   enforceLoginRateLimit: vi.fn(),
   enforceUsernameBackoff: vi.fn(),
   enforceGlobalLoginBackstop: vi.fn(),
@@ -25,6 +26,7 @@ vi.mock('@/lib/db', () => {
   const tx = {
     session: { updateMany: (args: unknown) => (mocks.order.push('session'), mocks.sessionUpdateMany(args)) },
     user: { updateMany: (args: unknown) => (mocks.order.push('user'), mocks.userUpdateMany(args)) },
+    passwordLink: { deleteMany: (args: unknown) => (mocks.order.push('link'), mocks.passwordLinkDeleteMany(args)) },
   };
   return { prisma: { $transaction: (fn: (t: typeof tx) => unknown) => fn(tx) } };
 });
@@ -69,6 +71,7 @@ beforeEach(() => {
   mocks.hashPassword.mockResolvedValue('new-hash');
   mocks.sessionUpdateMany.mockResolvedValue({ count: 1 });
   mocks.userUpdateMany.mockResolvedValue({ count: 1 });
+  mocks.passwordLinkDeleteMany.mockResolvedValue({ count: 0 });
   for (const gate of [mocks.enforceLoginRateLimit, mocks.enforceUsernameBackoff, mocks.enforceGlobalLoginBackstop]) {
     gate.mockResolvedValue(null);
   }
@@ -107,7 +110,9 @@ describe('POST /api/me/password', () => {
     expect(res.headers.get('set-cookie')).toBeNull();
     expect(mocks.clearUsernameBackoff).toHaveBeenCalledWith('member');
     // User row before sessions, like Settings -> Users, so concurrent writes can't deadlock.
-    expect(mocks.order).toEqual(['user', 'session', 'session']);
+    expect(mocks.order).toEqual(['user', 'session', 'session', 'link']);
+    // An outstanding reset link can no longer override the new password.
+    expect(mocks.passwordLinkDeleteMany).toHaveBeenCalledWith({ where: { userId: 'user-1' } });
     expect(mocks.enforceLoginRateLimit).toHaveBeenCalledWith('10.0.0.5');
   });
 

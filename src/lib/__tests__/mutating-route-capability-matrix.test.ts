@@ -23,6 +23,9 @@ const POLICY_GROUPS: Record<string, readonly string[]> = {
     'POST /api/auth/login',
     // Only while no user exists and APP_PASSWORD is unset; same-origin JSON, rate-limited.
     'POST /api/setup/admin',
+    // The single-use link token is the credential; rate-limited like sign-in.
+    'POST /api/invite/state',
+    'POST /api/invite/accept',
   ],
   'optional-session': [
     'POST /api/auth/logout',
@@ -61,6 +64,8 @@ const POLICY_GROUPS: Record<string, readonly string[]> = {
     'PATCH /api/users/[id]',
     'DELETE /api/users/[id]',
     'POST /api/users',
+    'POST /api/users/[id]/password-link',
+    'DELETE /api/users/[id]/password-link',
   ],
   'cap:activity.manage': [
     'POST /api/manual-downloads/[id]/cancel',
@@ -550,7 +555,7 @@ describe('mutating API route capability matrix', () => {
   const assignments = policyAssignments();
 
   it('explicitly assigns every mutating handler exactly once', () => {
-    expect(handlers.size).toBe(237);
+    expect(handlers.size).toBe(241);
     expect([...assignments.keys()].sort()).toEqual([...handlers.keys()].sort());
   });
 

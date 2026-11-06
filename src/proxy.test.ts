@@ -106,4 +106,28 @@ describe('proxy pass-through', () => {
   it.each(['/sw.js.map', '/manifest.json/extra'])('does not stretch those exact paths to %s', async (path) => {
     expect((await proxy(new NextRequest(`https://helprr.test${path}`))).status).toBe(307);
   });
+
+  it.each(['/api/invite/state', '/api/invite/accept', `/invite/${'a'.repeat(43)}`])(
+    'exposes the invite route %s without a session, with the CSP',
+    async (path) => {
+      const response = await proxy(new NextRequest(`https://helprr.test${path}`));
+      expect(response.status).toBe(200);
+      expect(response.headers.get('x-middleware-next')).toBe('1');
+      expect(response.headers.get('content-security-policy')).toContain("frame-ancestors 'none'");
+      expect(jwtVerify).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['/invite', '/invite/short', `/invite/${'a'.repeat(43)}/more`, `/invites/${'a'.repeat(43)}`])(
+    'keeps other paths under /invite behind sign-in (%s)',
+    async (path) => {
+      const response = await proxy(new NextRequest(`https://helprr.test${path}`));
+      expect(response.status).toBe(307);
+    },
+  );
+
+  it.each(['/api/invite', '/api/invite/other', '/api/invite/accept/x'])('keeps %s behind sign-in', async (path) => {
+    const response = await proxy(new NextRequest(`https://helprr.test${path}`));
+    expect(response.status).toBe(401);
+  });
 });

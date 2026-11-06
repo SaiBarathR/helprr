@@ -21,7 +21,14 @@ type SecurityAction =
   | 'SERVICE_CREATED'
   | 'SERVICE_UPDATED'
   | 'SERVICE_DELETED'
-  | 'SETTINGS_IMPORTED';
+  | 'SETTINGS_IMPORTED'
+  | 'INVITE_CREATED'
+  | 'INVITE_REGENERATED'
+  | 'INVITE_REVOKED'
+  | 'INVITE_ACCEPTED'
+  | 'RESET_LINK_CREATED'
+  | 'RESET_LINK_REVOKED'
+  | 'RESET_LINK_USED';
 
 export interface SecurityAuditRecord {
   id: string;
@@ -51,6 +58,13 @@ const ACTION_BADGE: Record<SecurityAction, { label: string; variant: 'default' |
   SERVICE_UPDATED: { label: 'CONNECTION EDIT', variant: 'secondary' },
   SERVICE_DELETED: { label: 'CONNECTION DELETE', variant: 'destructive' },
   SETTINGS_IMPORTED: { label: 'SETTINGS IMPORT', variant: 'default' },
+  INVITE_CREATED: { label: 'INVITE LINK', variant: 'default' },
+  INVITE_REGENERATED: { label: 'NEW INVITE LINK', variant: 'secondary' },
+  INVITE_REVOKED: { label: 'INVITE REVOKED', variant: 'secondary' },
+  INVITE_ACCEPTED: { label: 'INVITE ACCEPTED', variant: 'default' },
+  RESET_LINK_CREATED: { label: 'RESET LINK', variant: 'secondary' },
+  RESET_LINK_REVOKED: { label: 'RESET LINK REVOKED', variant: 'secondary' },
+  RESET_LINK_USED: { label: 'PASSWORD RESET', variant: 'secondary' },
 };
 
 const SIGN_IN_METHOD: Record<string, string> = {
@@ -100,6 +114,9 @@ function summary(record: SecurityAuditRecord): string {
       break;
     case 'SESSION_REVOKED':
       if (record.targetType === 'user') parts.push(`${plural(record.count, 'other session')} signed out`);
+      break;
+    case 'RESET_LINK_USED':
+      parts.push(`${plural(record.count, 'session')} signed out`);
       break;
     default:
       if (record.fields?.length) parts.push(record.fields.join(', '));

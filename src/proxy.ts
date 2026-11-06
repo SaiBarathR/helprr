@@ -13,7 +13,15 @@ const PUBLIC_PATHS = ['/login', '/api/auth/login', '/api/auth/jellyfin', '/api/m
 // installs on /login too; redirecting offline.html would precache login HTML.
 // Match exactly so neighboring paths do not become silently exposed.
 // The first-admin screen and its routes: they check for themselves that no user exists yet.
-const PUBLIC_EXACT_PATHS = ['/api/health', '/api/ready', '/offline.html', '/setup', '/api/setup/state', '/api/setup/admin'];
+// The invite routes: the single-use link token in the body is the credential.
+const PUBLIC_EXACT_PATHS = [
+  '/api/health', '/api/ready', '/offline.html', '/setup', '/api/setup/state', '/api/setup/admin',
+  '/api/invite/state', '/api/invite/accept',
+];
+// The invite page, /invite/<token>: the token in the path is checked by the
+// routes above, never by the page. Matched by shape so nothing else under
+// /invite becomes public.
+const INVITE_PAGE_PATH = /^\/invite\/[A-Za-z0-9_-]{43}$/;
 const IS_DEV = process.env.NODE_ENV === 'development';
 
 const SECURITY_HEADERS: Record<string, string> = {
@@ -91,7 +99,11 @@ export async function proxy(request: NextRequest) {
     );
 
   // Allow public paths
-  if (PUBLIC_PATHS.some(p => pathname.startsWith(p)) || PUBLIC_EXACT_PATHS.includes(pathname)) {
+  if (
+    PUBLIC_PATHS.some(p => pathname.startsWith(p))
+    || PUBLIC_EXACT_PATHS.includes(pathname)
+    || INVITE_PAGE_PATH.test(pathname)
+  ) {
     return pass();
   }
 
