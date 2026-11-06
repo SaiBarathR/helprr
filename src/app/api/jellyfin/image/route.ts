@@ -77,6 +77,9 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
       signal: request.signal,
       // Only follow redirects that stay on the configured Jellyfin server.
       isRedirectTargetAllowed: (target) => target.origin === connectionOrigin,
+      // Jellyfin labels an unresized image by its file extension, and channel
+      // art saved as fanart.jpg is often a PNG.
+      ignoreDeclaredType: true,
     });
 
     if (!result.body) {

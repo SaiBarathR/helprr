@@ -64,6 +64,13 @@ export interface FetchCachedImageOptions {
    * When omitted, redirects are not followed at all.
    */
   isRedirectTargetAllowed?: (target: URL) => boolean;
+  /**
+   * The upstream names the type after the file's extension rather than its
+   * bytes: Jellyfin serves a PNG saved as `fanart.jpg` as image/jpeg. The
+   * header is then treated as absent; the decoded format still decides the
+   * response type and anything that is not a supported raster is refused.
+   */
+  ignoreDeclaredType?: boolean;
 }
 
 export interface FetchCachedImageResult {
@@ -438,7 +445,7 @@ async function fetchUpstreamImage(
   headers?: HeadersInit,
   isRedirectTargetAllowed?: (target: URL) => boolean,
   timeoutMs = IMAGE_UPSTREAM_FETCH_TIMEOUT_MS,
-  options: { signal?: AbortSignal; requireFullDecode: boolean } = {
+  options: { signal?: AbortSignal; requireFullDecode: boolean; ignoreDeclaredType?: boolean } = {
     requireFullDecode: true,
   },
 ): Promise<ValidatedUpstreamResult> {
@@ -522,7 +529,9 @@ async function fetchUpstreamImage(
         bounded.body,
         // This CDN labels uploaded JPEGs image/png, so its header says nothing.
         // Treated as absent: the decoded format still decides the response type.
-        currentUrl.hostname === 'static-cdn.jtvnw.net' ? null : response.headers.get('content-type'),
+        options.ignoreDeclaredType || currentUrl.hostname === 'static-cdn.jtvnw.net'
+          ? null
+          : response.headers.get('content-type'),
         options.requireFullDecode,
       );
       if (!validated) {
@@ -724,6 +733,7 @@ async function fetchAndTransform(
       {
         signal: options.signal,
         requireFullDecode: !options.transform,
+        ignoreDeclaredType: options.ignoreDeclaredType,
       },
     );
     upstreamMs += Math.max(0, Date.now() - upstreamStartedAt);

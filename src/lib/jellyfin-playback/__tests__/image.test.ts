@@ -80,8 +80,18 @@ describe('jellyfinBackdropUrl', () => {
     expect(jellyfinBackdropUrl({ Id: 'a', SeriesId: 's' })).toContain('itemId=s');
   });
 
+  it('borrows the ancestor Jellyfin names as having a backdrop', () => {
+    expect(jellyfinBackdropUrl({ Id: 'a', SeriesId: 's', ParentBackdropItemId: 'p', ParentBackdropImageTags: ['t'] }))
+      .toContain('itemId=p');
+  });
+
   it('returns null rather than a url that is certain to 404', () => {
     expect(jellyfinBackdropUrl({ Id: 'a' })).toBeNull();
+  });
+
+  it('does not ask a series library folder for a backdrop it does not have', () => {
+    const series = { Id: 'series', Type: 'Series', ParentId: 'library' };
+    expect(jellyfinBackdropUrl(series)).toBeNull();
   });
 
   it('honours a narrower width so the hero can mount several layers', () => {

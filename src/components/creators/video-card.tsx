@@ -10,6 +10,7 @@ import { SwipeRow } from '@/components/ui/swipe-row';
 import { toCachedImageSrc } from '@/lib/image';
 import { cn } from '@/lib/utils';
 import { ActionsMenu } from './actions-menu';
+import { CreatorAvatar } from './creator-avatar';
 import { daysUntil, formatDuration, type CreatorVideoItem } from './types';
 import type { VideoActions } from './use-video-actions';
 import { useCreatorPlatform, type CreatorPlatform } from './platform';
@@ -20,6 +21,7 @@ export interface VideoSelection {
 }
 
 const IMAGE_CHIP = 'rounded bg-black/55 px-1 py-0.5 text-[10px] font-medium leading-none text-white';
+const VIEWS = new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 });
 
 function expiryLabel(iso: string | null): { text: string; urgent: boolean } | null {
   const days = daysUntil(iso);
@@ -66,15 +68,25 @@ function metaLine(video: CreatorVideoItem, showStreamer: boolean, platform: Crea
   return [
     platform.cardTypeLabel(video.type),
     showStreamer ? video.creator.displayName : null,
+    video.viewCount > 0 ? `${VIEWS.format(video.viewCount)} views` : null,
     age,
   ].filter(Boolean).join(' · ');
 }
 
 function VideoTile({ video, showStreamer, actions, selection, onSelect }: CardProps) {
   const platform = useCreatorPlatform();
-  const title = <span className="mt-1.5 line-clamp-2 text-xs font-medium leading-snug">{video.title}</span>;
-  const meta = <span className="mt-0.5 block truncate pr-6 text-[11px] text-muted-foreground">{metaLine(video, showStreamer, platform)}</span>;
-  const sizes = '(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw';
+  // The YouTube layout: the channel's avatar beside the title, wherever the
+  // channel is not already named by the page or row around the card.
+  const text = (
+    <span className="mt-2.5 flex gap-3">
+      {showStreamer && <CreatorAvatar url={video.creator.profileImageUrl} size={36} />}
+      <span className="min-w-0 flex-1 pr-6">
+        <span className="line-clamp-2 text-sm font-medium leading-snug sm:text-[15px]">{video.title}</span>
+        <span className="mt-1 block truncate text-xs text-muted-foreground">{metaLine(video, showStreamer, platform)}</span>
+      </span>
+    </span>
+  );
+  const sizes = '(max-width: 500px) 100vw, (max-width: 1280px) 50vw, 33vw';
 
   if (selection) {
     return (
@@ -91,8 +103,7 @@ function VideoTile({ video, showStreamer, actions, selection, onSelect }: CardPr
           className={cn('rounded-xl shadow-sm', selection.selected && 'ring-2 ring-primary ring-offset-2 ring-offset-background')}
         />
         <SelectionCheck selected={selection.selected} className="absolute left-1.5 top-1.5 z-10" />
-        {title}
-        {meta}
+        {text}
       </button>
     );
   }
@@ -103,15 +114,17 @@ function VideoTile({ video, showStreamer, actions, selection, onSelect }: CardPr
       <QuickContextMenu label={`${video.title} actions`} groups={groups}>
         <Link href={`${platform.videoPath}/${video.id}`} className="press-feedback block">
           <Thumbnail video={video} sizes={sizes} className="rounded-xl shadow-sm" />
-          {title}
-          {meta}
+          {text}
         </Link>
       </QuickContextMenu>
-      <ActionsMenu
-        label={`Actions for ${video.title}`}
-        groups={groups}
-        className="touch-target absolute -bottom-1.5 -right-1.5 flex h-7 w-7 items-center justify-center text-muted-foreground"
-      />
+      {/* A box the thumbnail's size, so the menu sits beside the title whatever the card's width. */}
+      <span className="pointer-events-none absolute inset-x-0 top-0 aspect-video">
+        <ActionsMenu
+          label={`Actions for ${video.title}`}
+          groups={groups}
+          className="touch-target pointer-events-auto absolute -right-1.5 top-full mt-1.5 flex h-7 w-7 items-center justify-center text-muted-foreground"
+        />
+      </span>
     </div>
   );
 }

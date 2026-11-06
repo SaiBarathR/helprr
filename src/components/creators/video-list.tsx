@@ -7,14 +7,17 @@ import { cn } from '@/lib/utils';
 import type { CreatorVideoItem } from './types';
 
 const LIST_ROW_HEIGHT = 93;
-const GRID_GAP = 12;
-const GRID_TEXT_HEIGHT = 66;
+const GRID_GAP = 16;
+const GRID_TEXT_HEIGHT = 92;
+/** Narrowest a tile gets before the row drops a column: YouTube's own spacing. */
+const MIN_TILE_WIDTH = 360;
+/** A phone shows one video across, as the YouTube app does. */
+const SINGLE_COLUMN_BELOW = 500;
 
-function columnsFor(width: number): number {
-  if (width >= 1280) return 6;
-  if (width >= 1000) return 5;
-  if (width >= 740) return 4;
-  return width >= 520 ? 3 : 2;
+export function columnsFor(width: number): number {
+  if (width < SINGLE_COLUMN_BELOW) return 1;
+  const fit = Math.floor((width + GRID_GAP) / (MIN_TILE_WIDTH + GRID_GAP));
+  return Math.min(6, Math.max(2, fit));
 }
 
 /** Only the rows near the viewport are rendered, so a long feed costs a phone nothing. */
@@ -72,14 +75,14 @@ export function CreatorVideoList({ videos, layout, renderVideo }: {
           key={item.key}
           data-index={item.index}
           ref={virtualizer.measureElement}
-          className={cn('absolute inset-x-0 top-0', isList ? 'border-b border-border/50 last:border-b-0' : 'pb-4')}
+          className={cn('absolute inset-x-0 top-0', isList ? 'border-b border-border/50 last:border-b-0' : 'pb-6')}
           style={{ transform: `translateY(${item.start - scrollMargin}px)` }}
         >
           {isList ? (
             // Rows are keyed by position, so an open menu must not follow it to another video.
             <Fragment key={rows[item.index][0].id}>{renderVideo(rows[item.index][0])}</Fragment>
           ) : (
-            <div className="grid gap-x-3" style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>
+            <div className="grid gap-x-4" style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>
               {rows[item.index].map((video) => <div key={video.id} className="min-w-0">{renderVideo(video)}</div>)}
             </div>
           )}
@@ -92,12 +95,17 @@ export function CreatorVideoList({ videos, layout, renderVideo }: {
 export function CreatorVideoSkeleton() {
   return (
     <div role="status" aria-live="polite" aria-label="Loading videos">
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5" aria-hidden="true">
+      <div className="grid grid-cols-1 gap-x-4 gap-y-6 min-[500px]:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4" aria-hidden="true">
         {Array.from({ length: 12 }, (_, index) => (
-          <div key={index} className="space-y-1.5">
+          <div key={index} className="space-y-2.5">
             <Skeleton className="aspect-video w-full rounded-xl" />
-            <Skeleton className="h-3 w-3/4" />
-            <Skeleton className="h-2.5 w-1/2" />
+            <div className="flex gap-3">
+              <Skeleton className="h-9 w-9 shrink-0 rounded-full" />
+              <div className="flex-1 space-y-1.5">
+                <Skeleton className="h-3.5 w-3/4" />
+                <Skeleton className="h-3 w-1/2" />
+              </div>
+            </div>
           </div>
         ))}
       </div>
