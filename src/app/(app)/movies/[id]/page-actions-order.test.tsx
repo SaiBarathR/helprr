@@ -6,7 +6,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
-  inJellyfin: true,
+  inJellyfin: true as boolean | 'pending',
   movie: {} as Record<string, unknown>,
 }));
 vi.mock('next/navigation', () => ({
@@ -65,7 +65,10 @@ beforeEach(() => {
     if (pathname === '/api/radarr/5') return Response.json(mocks.movie);
     if (pathname === '/api/radarr/credit') return Response.json([credit(1, 'cast'), credit(2, 'crew')]);
     // The Play button renders only once Jellyfin has the title.
-    if (pathname === '/api/jellyfin/lookup') return Response.json(mocks.inJellyfin ? { itemId: 'jf-5' } : {});
+    if (pathname === '/api/jellyfin/lookup') {
+      if (mocks.inJellyfin === 'pending') return new Promise<Response>(() => {});
+      return Response.json(mocks.inJellyfin ? { itemId: 'jf-5' } : {});
+    }
     return Response.json({}, { status: 404 });
   }));
 });
@@ -73,7 +76,7 @@ afterEach(() => vi.unstubAllGlobals());
 
 function renderPage() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  render(<QueryClientProvider client={client}><MovieDetailPage /></QueryClientProvider>);
+  return render(<QueryClientProvider client={client}><MovieDetailPage /></QueryClientProvider>);
 }
 
 const precedes = (a: Element, b: Element) => Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
@@ -105,5 +108,21 @@ describe('movie detail action order', () => {
       expect(precedes(button, overview)).toBe(true);
       expect(precedes(button, cast)).toBe(true);
     }
+  });
+
+  it('holds Play\'s place above Files while the lookup is pending, only for a downloaded movie', async () => {
+    mocks.inJellyfin = 'pending';
+    mocks.movie = movie(true);
+    const { unmount } = renderPage();
+    const files = await screen.findByRole('button', { name: /Files & information/ });
+    const slot = document.querySelector('[data-slot="skeleton"].rounded-full');
+    expect(slot).toBeTruthy();
+    expect(precedes(slot!, files)).toBe(true);
+    unmount();
+
+    mocks.movie = movie(false);
+    renderPage();
+    await screen.findByRole('button', { name: 'Automatic' });
+    expect(document.querySelector('[data-slot="skeleton"].rounded-full')).toBeNull();
   });
 });
