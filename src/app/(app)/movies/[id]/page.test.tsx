@@ -16,7 +16,7 @@ vi.mock('next/navigation', () => ({
   usePathname: () => '/movies/5',
 }));
 vi.mock('@/components/layout/navigation-provider', () => ({ useAppRouter: () => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn() }) }));
-vi.mock('@/components/permission-provider', () => ({ useCan: (cap: string) => cap === 'movies.editMonitoring' }));
+vi.mock('@/components/permission-provider', () => ({ useCan: (cap: string) => cap === 'movies.editMonitoring', useMe: () => null }));
 vi.mock('sonner', () => ({ toast: mocks.toast }));
 vi.mock('@/lib/hooks/use-external-urls', () => ({ useExternalUrls: () => ({}), useExternalUrlResolver: () => () => undefined }));
 vi.mock('@/lib/hooks/use-reference-data', () => ({ useQualityProfiles: () => ({ data: [] }), useTags: () => ({ data: [] }) }));

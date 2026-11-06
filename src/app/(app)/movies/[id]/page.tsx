@@ -771,6 +771,54 @@ export default function MovieDetailPage() {
           <div className="detail-grid detail-grid-movie flex flex-col gap-6">
             <MediaDownloadProgress source="radarr" mediaId={movie.id} instanceId={instance} className="[grid-area:progress]" />
 
+            <div className="flex flex-col gap-6 [grid-area:actions]">
+              {/* Straight into Helprr's own player when the title is in Jellyfin. */}
+              <PlayInHelprrButton
+                imdbId={movie.imdbId}
+                tmdbId={movie.tmdbId}
+                className="h-10 w-full rounded-full"
+              />
+
+              {/* Pill buttons */}
+              <div className="flex gap-3 empty:hidden">
+                {canManageActivity && (
+                  <Button
+                    onClick={handleSearch}
+                    disabled={!!actionLoading}
+                    className="flex-1 rounded-full h-10"
+                    variant="secondary"
+                  >
+                    {actionLoading === 'search' ? (
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    ) : (
+                      <Search className="h-4 w-4 mr-2" />
+                    )}
+                    Automatic
+                  </Button>
+                )}
+                {canManageActivity && (
+                  <Button
+                    onClick={() => router.push(arrInteractiveSearchHref({ kind: 'movie', movieId: movie.id }, movie.title, instance))}
+                    className="flex-1 rounded-full h-10"
+                    variant="secondary"
+                  >
+                    <Search className="h-4 w-4 mr-2" />
+                    Interactive
+                  </Button>
+                )}
+              </div>
+              <div>
+                <Button
+                  onClick={() => router.push(`/movies/${movie.id}/files${instance ? `?instance=${instance}` : ''}`)}
+                  className="w-full rounded-full h-10"
+                  variant="secondary"
+                >
+                  <FileText className="h-4 w-4 mr-2" />
+                  Files &amp; information
+                </Button>
+              </div>
+            </div>
+
             {/* Metadata rows - borderless key-value */}
             {metadataRows.length > 0 && (
               <div className="[grid-area:facts]">
@@ -815,54 +863,6 @@ export default function MovieDetailPage() {
                 <MovieCreditsSection credits={credits} movieId={movieId} instance={instance} />
               </div>
             )}
-
-            <div className="flex flex-col gap-6 [grid-area:actions]">
-              {/* Straight into Helprr's own player when the title is in Jellyfin. */}
-              <PlayInHelprrButton
-                imdbId={movie.imdbId}
-                tmdbId={movie.tmdbId}
-                className="h-10 w-full rounded-full"
-              />
-
-              {/* Pill buttons */}
-              <div className="flex gap-3">
-                {canManageActivity && (
-                  <Button
-                    onClick={handleSearch}
-                    disabled={!!actionLoading}
-                    className="flex-1 rounded-full h-10"
-                    variant="secondary"
-                  >
-                    {actionLoading === 'search' ? (
-                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                    ) : (
-                      <Search className="h-4 w-4 mr-2" />
-                    )}
-                    Automatic
-                  </Button>
-                )}
-                {canManageActivity && (
-                  <Button
-                    onClick={() => router.push(arrInteractiveSearchHref({ kind: 'movie', movieId: movie.id }, movie.title, instance))}
-                    className="flex-1 rounded-full h-10"
-                    variant="secondary"
-                  >
-                    <Search className="h-4 w-4 mr-2" />
-                    Interactive
-                  </Button>
-                )}
-              </div>
-              <div>
-                <Button
-                  onClick={() => router.push(`/movies/${movie.id}/files${instance ? `?instance=${instance}` : ''}`)}
-                  className="w-full rounded-full h-10"
-                  variant="secondary"
-                >
-                  <FileText className="h-4 w-4 mr-2" />
-                  Files &amp; information
-                </Button>
-              </div>
-            </div>
 
             {/* Information section */}
             <div className="[grid-area:info]">
