@@ -49,9 +49,9 @@ const video: CreatorVideoItem = {
 const saved = { ...video, downloaded: true, fileId: 'file-1', jellyfinItemId: 'item-1' };
 const downloading = { ...video, activeJob: { id: 'job-1', state: 'RUNNING', stage: null, progress: 0.4 } };
 
-function setup() {
+function setup(platform: 'twitch' | 'youtube' = 'twitch') {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}><CreatorPlatformProvider platform="twitch">{children}</CreatorPlatformProvider></QueryClientProvider>;
+  const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}><CreatorPlatformProvider platform={platform}>{children}</CreatorPlatformProvider></QueryClientProvider>;
   return { client, ...renderHook(() => useVideoActions(), { wrapper }) };
 }
 
@@ -84,6 +84,30 @@ describe('useVideoActions', () => {
     rerender();
     expect(ids(result.current.groupsFor(video))).not.toContain('quick');
     expect(result.current.swipeFor(video).leftAction).toBeUndefined();
+  });
+
+  it('offers the Download sheet, as the video page does, for a YouTube rule download still waiting', () => {
+    mocks.capabilities = { 'youtube.view': true, 'youtube.download': true };
+    const { result, rerender } = setup('youtube');
+    const runAfter = new Date(Date.now() + 60 * 60_000).toISOString();
+    const waiting = { ...video, activeJob: { id: 'job-2', state: 'QUEUED', source: 'RULE', runAfter, stage: null, progress: null } };
+    expect(ids(result.current.groupsFor(waiting))).toContain('download');
+    // Quick download and the swipe stay for a video with nothing under way.
+    expect(ids(result.current.groupsFor(waiting))).not.toContain('quick');
+    expect(result.current.swipeFor(waiting).leftAction).toBeUndefined();
+
+    expect(ids(result.current.groupsFor({ ...waiting, activeJob: { ...waiting.activeJob, source: 'MANUAL' } }))).not.toContain('download');
+    expect(ids(result.current.groupsFor({ ...waiting, activeJob: { ...waiting.activeJob, state: 'RUNNING' } }))).not.toContain('download');
+
+    mocks.capabilities = { 'youtube.view': true };
+    rerender();
+    expect(ids(result.current.groupsFor(waiting))).not.toContain('download');
+  });
+
+  it('never offers a Twitch download that is under way, waiting or not', () => {
+    const runAfter = new Date(Date.now() + 60 * 60_000).toISOString();
+    const { result } = setup();
+    expect(ids(result.current.groupsFor({ ...video, activeJob: { id: 'job-2', state: 'QUEUED', source: 'RULE', runAfter, stage: null, progress: null } }))).not.toContain('download');
   });
 
   it('only offers deleting a settled file to a manager', () => {

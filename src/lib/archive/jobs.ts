@@ -74,10 +74,14 @@ export interface EnqueueInput {
   runAfter?: Date;
   actor?: { id: string; username: string } | null;
   clientRequestId?: string;
+  /** A person asking: a rule's download still waiting to settle starts now, with their choices. */
+  startWaitingRuleJob?: boolean;
 }
 
 /** The one way a download is queued. At most one active download per video, checked and created under a lock. */
-export async function enqueueDownload(input: EnqueueInput): Promise<{ jobId: string; created: boolean }> {
+export async function enqueueDownload(
+  input: EnqueueInput,
+): Promise<{ jobId: string; created: boolean; startedNow?: boolean }> {
   return prisma.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`twitch-download:${input.videoId}`}))`;
 
@@ -99,6 +103,23 @@ export async function enqueueDownload(input: EnqueueInput): Promise<{ jobId: str
       where: { videoId: input.videoId, kind: 'DOWNLOAD', state: { in: ACTIVE_JOB_STATES } },
       select: { id: true },
     });
+    if (active && input.startWaitingRuleJob && input.actor) {
+      const now = new Date();
+      // Only a wait no one has started: the claim takes a job once its runAfter passes.
+      const { count } = await tx.archiveJob.updateMany({
+        where: { id: active.id, source: 'RULE', state: 'QUEUED', cancelRequested: false, runAfter: { gt: now } },
+        data: {
+          runAfter: now,
+          source: input.source,
+          options: input.options as unknown as Prisma.InputJsonValue,
+          // Audits name whoever set this running, not the rule that picked it.
+          requestedByUserId: input.actor.id,
+          requestedByUsername: input.actor.username,
+          clientRequestId: input.clientRequestId,
+        },
+      });
+      if (count > 0) return { jobId: active.id, created: false, startedNow: true };
+    }
     if (active) return { jobId: active.id, created: false };
 
     const job = await tx.archiveJob.create({

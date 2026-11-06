@@ -185,9 +185,11 @@ function SheetBody({ video, defaults, onDone }: { video: CreatorVideoItem; defau
       });
       const data = await res.json().catch(() => null);
       if (!res.ok) throw new Error(data?.error || 'Could not queue the download');
+      return data as { startedNow?: boolean } | null;
     },
-    onSuccess: () => {
-      toast.success('Download queued');
+    onSuccess: (data) => {
+      // A rule's download that was waiting to settle now starts with these choices.
+      toast.success(data?.startedNow ? 'Download starting' : 'Download queued');
       void queryClient.invalidateQueries({ queryKey: ['youtube'] });
       onDone();
     },

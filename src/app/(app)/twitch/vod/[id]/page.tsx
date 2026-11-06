@@ -20,7 +20,7 @@ import { ActionsMenu } from '@/components/creators/actions-menu';
 import { ClampedText } from '@/components/creators/clamped-text';
 import { DownloadSheet } from '@/components/twitch/download-sheet';
 import { CreatorAvatar } from '@/components/creators/creator-avatar';
-import { daysUntil, formatDuration, stageLabel, VIDEO_TYPE_LABELS, type CreatorVideoItem } from '@/components/creators/types';
+import { daysUntil, formatDuration, jobBadge, stageLabel, startsLabel, VIDEO_TYPE_LABELS, type CreatorVideoItem } from '@/components/creators/types';
 import { useVideoActions } from '@/components/creators/use-video-actions';
 import { toCachedImageSrc } from '@/lib/image';
 import { cn } from '@/lib/utils';
@@ -68,8 +68,9 @@ function FactRow({ label, value }: { label: string; value: React.ReactNode }) {
   );
 }
 
-function statusOf(video: VideoDetail): { label: string; className: string } {
-  if (video.activeJob) return { label: 'Downloading', className: 'bg-primary/15 text-primary border-primary/30' };
+function statusOf(video: VideoDetail): { label: string; className: string; variant?: 'secondary' } {
+  // A job that has not started is not Downloading: the same words and colours as the Queue.
+  if (video.activeJob) return { ...jobBadge(video.activeJob), variant: 'secondary' };
   if (video.downloaded) return { label: 'Downloaded', className: 'bg-green-500/20 text-green-400 border-green-500/30' };
   if (video.availability === 'RECORDING') return { label: 'Recording', className: 'bg-red-500/20 text-red-400 border-red-500/30' };
   return { label: 'Not downloaded', className: 'bg-foreground/10 text-muted-foreground border-border' };
@@ -166,7 +167,7 @@ export default function TwitchVodPage({ params }: { params: Promise<{ id: string
               </Link>
             </QuickContextMenu>
             <div className="min-w-0 flex-1">
-              <Badge variant="outline" className={cn('mb-1.5 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide', status.className)}>
+              <Badge variant={status.variant ?? 'outline'} className={cn('mb-1.5 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide', status.className)}>
                 {status.label}
               </Badge>
               <h1 className="line-clamp-3 text-xl font-bold leading-tight">{video.title}</h1>
@@ -184,7 +185,7 @@ export default function TwitchVodPage({ params }: { params: Promise<{ id: string
               <Link href="/twitch/queue" className="block rounded-xl border border-primary/20 bg-primary/[0.04] px-3 py-2.5 [grid-area:progress]">
                 <span className="flex items-center gap-2 text-sm font-medium">
                   <Download className="h-4 w-4 shrink-0 text-primary" />
-                  <span className="min-w-0 flex-1 truncate">{video.activeJob.stage ? stageLabel(video.activeJob.stage) : 'In the queue'}</span>
+                  <span className="min-w-0 flex-1 truncate">{video.activeJob.stage ? stageLabel(video.activeJob.stage) : startsLabel(video.activeJob) ?? 'In the queue'}</span>
                   <span className="text-xs tabular-nums text-muted-foreground">{progress}%</span>
                   <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
                 </span>

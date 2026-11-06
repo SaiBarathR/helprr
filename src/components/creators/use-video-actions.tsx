@@ -12,7 +12,7 @@ import type { SwipeAction } from '@/components/ui/swipe-row';
 import { DownloadSheet } from '@/components/twitch/download-sheet';
 import { YoutubeDownloadSheet } from '@/components/youtube/download-sheet';
 import type { FeedGroupPage } from './feed-groups';
-import type { CreatorVideoItem, CreatorVideoPage } from './types';
+import { canChooseDownload, type CreatorVideoItem, type CreatorVideoPage } from './types';
 import { useCreatorPlatform } from './platform';
 
 async function post(url: string, body: unknown) {
@@ -97,6 +97,9 @@ export function useVideoActions() {
 
   const isDownloadable = (video: CreatorVideoItem) =>
     canDownload && !video.downloaded && !video.activeJob && video.availability === 'PUBLISHED';
+  // As on the video's page: a rule's YouTube download still waiting to settle opens the same sheet, to start it now.
+  const isChoosable = (video: CreatorVideoItem) =>
+    isDownloadable(video) || (canDownload && platform.id === 'youtube' && canChooseDownload(video));
   const isDeletable = (video: CreatorVideoItem) => canManage && Boolean(video.fileId) && !video.activeJob;
 
   const groupsFor = (video: CreatorVideoItem, onSelect?: () => void): ContextActionGroup[] => [
@@ -115,12 +118,14 @@ export function useVideoActions() {
     },
     {
       id: 'download',
-      actions: isDownloadable(video)
-        ? [
-            { id: 'download', label: 'Download…', icon: <Download className="h-4 w-4" />, onSelect: () => setSheetVideo(video) },
-            { id: 'quick', label: 'Quick download', icon: <Zap className="h-4 w-4" />, onSelect: () => quick.mutate(video) },
-          ]
-        : [],
+      actions: [
+        ...(isChoosable(video)
+          ? [{ id: 'download', label: 'Download…', icon: <Download className="h-4 w-4" />, onSelect: () => setSheetVideo(video) }]
+          : []),
+        ...(isDownloadable(video)
+          ? [{ id: 'quick', label: 'Quick download', icon: <Zap className="h-4 w-4" />, onSelect: () => quick.mutate(video) }]
+          : []),
+      ],
     },
     {
       id: 'state',
