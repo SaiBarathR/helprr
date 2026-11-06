@@ -141,7 +141,7 @@ $name = "helprr-20261106-120000"
 & {
   if (!(Get-Command docker -ErrorAction SilentlyContinue)) { throw "Docker is not found. Start Docker Desktop, then open a new PowerShell window." }
   if (!(Test-Path "backups\$name.dump") -or !(Test-Path "backups\$name.secrets.tar")) { throw "backups\$name.dump or backups\$name.secrets.tar is missing." }
-  docker run --rm -v "${PWD}\backups:/backups" postgres:16-alpine sh -c "pg_restore --list '/backups/$name.dump' > /dev/null && tar -tf '/backups/$name.secrets.tar' > /dev/null"
+  docker run --rm -v "${PWD}\backups:/backups" postgres:16-alpine sh -c "pg_restore --exit-on-error --file=/dev/null '/backups/$name.dump' && tar -tf '/backups/$name.secrets.tar' > /dev/null"
   if ($LASTEXITCODE) { throw "The backup cannot be read. Do not go on with it." }
   "The backup reads in full."
 }
