@@ -25,13 +25,14 @@ Podman and rootless Docker are not tested. Podman before 5.3 rejects the Compose
 | --- | --- |
 | Your own files and steps, from three questions | [Your setup, step by step](/helprr/install/configurator/) |
 | To look around first, with fake apps and nothing to set up | [Try the demo](/helprr/install/demo/) |
-| The quickest install on a Linux machine | [One command](/helprr/install/one-command/) |
+| The quickest install on Linux or a Mac | [One command](/helprr/install/one-command/) |
 | To install from Portainer's web pages | [Portainer](/helprr/install/portainer/) |
 | To install from CasaOS's dashboard | [CasaOS](/helprr/install/casaos/) |
 | To install and update from Runtipi's app store | [Runtipi](/helprr/install/runtipi/) |
 | To install on TrueNAS, with snapshots for backups | [TrueNAS](/helprr/install/truenas/) |
 | To install on Proxmox VE, in a container of its own | [Proxmox VE](/helprr/install/proxmox/) |
 | To install on a Windows PC, with Docker Desktop | [Windows](/helprr/install/windows/) |
+| To install on a Mac, with OrbStack or Docker Desktop | [Mac](/helprr/install/macos/) |
 | To paste a Compose file into another web form | [Only the Compose file](/helprr/install/compose-only/) |
 | To see and choose every step | [Step by step](/helprr/install/manual/) |
 
