@@ -29,6 +29,7 @@ beforeEach(() => {
   localStorage.clear();
   sessionStorage.clear();
   vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} unobserve() {} });
+  vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener() {}, removeEventListener() {} }));
   vi.stubGlobal('fetch', vi.fn(async () => Response.json([])));
 });
 

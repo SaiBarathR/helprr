@@ -1,10 +1,10 @@
 'use client';
 
 import {
-  DropdownMenuCheckboxItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-} from '@/components/ui/dropdown-menu';
+  ResponsiveMenuCheckboxItem,
+  ResponsiveMenuLabel,
+  ResponsiveMenuSeparator,
+} from '@/components/ui/responsive-menu';
 
 export interface FilterOption {
   id: string;
@@ -21,17 +21,16 @@ export function FilterGroup({ label, options, value, onChange, separated = true 
 }) {
   return (
     <>
-      {separated && <DropdownMenuSeparator />}
-      <DropdownMenuLabel>{label}</DropdownMenuLabel>
+      {separated && <ResponsiveMenuSeparator />}
+      <ResponsiveMenuLabel>{label}</ResponsiveMenuLabel>
       {options.map((option) => (
-        <DropdownMenuCheckboxItem
+        <ResponsiveMenuCheckboxItem
           key={option.id}
           checked={value === option.id}
           onCheckedChange={() => onChange(option.id)}
-          onSelect={(event) => event.preventDefault()}
         >
           {option.label}
-        </DropdownMenuCheckboxItem>
+        </ResponsiveMenuCheckboxItem>
       ))}
     </>
   );

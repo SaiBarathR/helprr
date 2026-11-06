@@ -1,15 +1,11 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import Link from '@/components/ui/app-link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { Loader2, MoreHorizontal, Search, SlidersHorizontal } from 'lucide-react';
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover';
+import { ResponsiveMenu, ResponsiveMenuItem } from '@/components/ui/responsive-menu';
 import { useUIStore } from '@/lib/store';
 import { getActiveNavHref, getEnabledNavItems, getBottomNavLayout, navItemAllowed } from '@/lib/nav-config';
 import { usePendingHref } from '@/components/layout/navigation-provider';
@@ -25,8 +21,6 @@ export function BottomNav() {
   const [moreOpen, setMoreOpen] = useState(false);
   const navOrder = useUIStore((s) => s.navOrder);
   const disabledNavItems = useUIStore((s) => s.disabledNavItems);
-  const navPosition = useUIStore((s) => s.navPosition);
-  const isBottom = navPosition === 'bottom';
   const me = useMe();
   const counts = useBadgeCounts();
   const openSearch = useSearchPalette((state) => state.setOpen);
@@ -62,23 +56,6 @@ export function BottomNav() {
     },
     [moreItems, counts],
   );
-
-  // The More list hides its scrollbar, so fade its bottom edge while rows sit
-  // below it, as the sidebar does. It mounts with the popover, hence state.
-  // Its rows give up 4px each before it scrolls at all (see below).
-  const [moreList, setMoreList] = useState<HTMLDivElement | null>(null);
-  const [moreBelow, setMoreBelow] = useState(false);
-  useEffect(() => {
-    if (!moreList) return;
-    const update = () => setMoreBelow(moreList.scrollHeight - moreList.scrollTop - moreList.clientHeight > 1);
-    const observer = new ResizeObserver(update);
-    observer.observe(moreList);
-    moreList.addEventListener('scroll', update, { passive: true });
-    return () => {
-      observer.disconnect();
-      moreList.removeEventListener('scroll', update);
-    };
-  }, [moreList, moreItems.length]);
 
   return (
     <nav
@@ -117,8 +94,11 @@ export function BottomNav() {
         })}
 
         {moreItems.length > 0 && (
-          <Popover open={moreOpen} onOpenChange={setMoreOpen}>
-            <PopoverTrigger asChild>
+          <ResponsiveMenu
+            title="More"
+            open={moreOpen}
+            onOpenChange={setMoreOpen}
+            trigger={(
               <button
                 className={cn(
                   'flex flex-col items-center justify-center gap-0.5 flex-1 h-full min-h-[48px] text-[11px] font-medium transition-colors',
@@ -131,27 +111,29 @@ export function BottomNav() {
                 </span>
                 More
               </button>
-            </PopoverTrigger>
-            <PopoverContent
-              side={isBottom ? 'top' : 'bottom'}
-              align="end"
-              sideOffset={8}
-              collisionPadding={8}
-              // PopoverContent keeps clear of the status bar and home
-              // indicator and caps its height to the room left.
-              className="flex w-56 flex-col p-2"
-            >
-              <div
-                ref={setMoreList}
-                className={cn('flex min-h-0 flex-col space-y-0.5 overflow-y-auto overscroll-contain no-scrollbar', moreBelow && 'scroll-fade-y')}
-              >
-                {moreItems.map(({ href, icon: Icon, label, badgeArea }) => {
-                  const slice = badgeArea ? counts[badgeArea] : undefined;
-                  const isActive = href === activeHref;
-                  const isPending = pendingHref === href;
-                  return (
+            )}
+            footer={(
+              <ResponsiveMenuItem>
+                <Link
+                  href="/settings/appearance#navigation"
+                  prefetch={null}
+                  onClick={() => setMoreOpen(false)}
+                  className="flex min-h-11 items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent"
+                >
+                  <SlidersHorizontal className="h-5 w-5 shrink-0" />
+                  Customize tabs
+                </Link>
+              </ResponsiveMenuItem>
+            )}
+          >
+            <div className="space-y-0.5">
+              {moreItems.map(({ href, icon: Icon, label, badgeArea }) => {
+                const slice = badgeArea ? counts[badgeArea] : undefined;
+                const isActive = href === activeHref;
+                const isPending = pendingHref === href;
+                return (
+                  <ResponsiveMenuItem key={href}>
                     <Link
-                      key={href}
                       href={href}
                       prefetch={null}
                       onClick={(event) => {
@@ -161,9 +143,7 @@ export function BottomNav() {
                         setMoreOpen(false);
                       }}
                       className={cn(
-                        // 44px tall, shrinking to 40px when that is what keeps
-                        // the last row on screen instead of behind a scroll.
-                        'flex basis-11 items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium transition-colors min-h-10',
+                        'flex min-h-11 items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium transition-colors',
                         isActive
                           ? 'bg-primary/10 text-primary'
                           : 'text-foreground hover:bg-accent',
@@ -174,22 +154,11 @@ export function BottomNav() {
                       {label}
                       <NavBadge slice={slice} className="ml-auto" />
                     </Link>
-                  );
-                })}
-              </div>
-              <div className="mt-1 shrink-0 border-t border-border pt-1">
-                <Link
-                  href="/settings/appearance#navigation"
-                  prefetch={null}
-                  onClick={() => setMoreOpen(false)}
-                  className="flex min-h-11 items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent"
-                >
-                  <SlidersHorizontal className="h-5 w-5 shrink-0" />
-                  Customize tabs
-                </Link>
-              </div>
-            </PopoverContent>
-          </Popover>
+                  </ResponsiveMenuItem>
+                );
+              })}
+            </div>
+          </ResponsiveMenu>
         )}
 
         {/* Phone search: the sidebar's search and its shortcut hint are md+ only. */}
