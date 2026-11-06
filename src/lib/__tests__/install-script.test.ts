@@ -218,12 +218,12 @@ describe('install.sh, the paths a terminal or a real start would take', () => {
   });
 
   // macOS: netstat -l lists no listeners there, and hostname has no -I.
-  const mac = (netstatState: string) => ({
+  const mac = (netstatState: string, { route = 'en0', addresses = { en0: '192.168.0.20' } as Record<string, string> } = {}) => ({
     uname: 'echo Darwin',
     netstat: `[ "$*" = "-an -p tcp" ] || exit 2; printf 'tcp4  0  0  *.3050  *.*  ${netstatState}\\ntcp46  0  0  *.5000  *.*  LISTEN\\n'`,
     hostname: 'exit 1',
-    route: '[ "$*" = "-n get default" ] && printf "   route to: default\\n  interface: en0\\n"',
-    ipconfig: '[ "$*" = "getifaddr en0" ] && echo 192.168.0.20',
+    route: route ? `[ "$*" = "-n get default" ] && printf "   route to: default\\n  interface: ${route}\\n"` : 'echo "route: writing to routing socket: not in table" >&2; exit 1',
+    ipconfig: ['[ "$1" = getifaddr ] || exit 2', 'case "$2" in', ...Object.entries(addresses).map(([i, a]) => `  ${i}) echo ${a} ;;`), '  *) exit 1 ;;', 'esac'].join('\n'),
   });
 
   it('on a Mac, finds a port that is taken with netstat -an', () => {
@@ -241,6 +241,19 @@ describe('install.sh, the paths a terminal or a real start would take', () => {
     expect(result.stderr).toBe('');
     expect(result.status).toBe(0);
     expect(result.stdout).toContain('Open http://192.168.0.20:3050 and create your admin account.');
+  });
+
+  it.each([
+    ['behind a VPN, Wi-Fi', { route: 'utun4', addresses: { utun4: '100.101.102.103', en0: '192.168.0.20' } }, 'Open http://192.168.0.20:3050 and create your admin account.'],
+    ['offline, this Mac', { route: '', addresses: {} }, 'Open http://localhost:3050 and create your admin account.'],
+    ['with a public address, this Mac', { route: 'en0', addresses: { en0: '203.0.113.7' } }, 'Open http://localhost:3050 on this Mac and create your admin account.'],
+  ])('on a Mac %s is the address to open', (_, network, line) => {
+    const work = tempDir('helprr-install-');
+    const result = run(['--yes', '--no-start', '--asset-base', `file://${release()}`], pathWith(stubs({ docker: goodDocker, ...mac('ESTABLISHED', network) })), work);
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain(line);
+    expect(result.stdout).toContain('Helprr needs an https:// address');
+    expect(result.stdout).not.toContain('ssh -L');
   });
 
   it('refuses a port that is taken before writing anything, and explains a rerun after a failed start', () => {

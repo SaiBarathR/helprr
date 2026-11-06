@@ -17,8 +17,9 @@ Twitch and YouTube worker were not tested on a Mac.*
 Install [OrbStack](https://orbstack.dev/) or
 [Docker Desktop for Mac](https://www.docker.com/products/docker-desktop/), and open it
 once. Either gives you the `docker` command Helprr needs. Turn on its setting to start
-when you log in (in Docker Desktop: **Settings → General → Start Docker Desktop when you
-sign in to your computer**), or Helprr does not come back after the Mac restarts.
+when you log in (OrbStack: **Start at login** in its settings; Docker Desktop:
+**Settings → General → Start Docker Desktop when you sign in to your computer**), or
+Helprr does not come back after the Mac restarts.
 
 Helprr runs only while the Mac is awake and Docker is running. For a Mac that serves
 Helprr to your phone all day, stop it from sleeping while it is plugged in (in
@@ -33,17 +34,20 @@ curl -fsSL https://github.com/SaiBarathR/helprr/releases/latest/download/install
 ```
 
 It works as on Linux: see [One command](/helprr/install/one-command/) for its options
-and what it does. Ports 5000 and 7000 are used by the Mac's AirPlay Receiver, so do not
-choose either with `--port`.
+and what it does. While the Mac's AirPlay Receiver is on (it is by default), it uses
+ports 5000 and 7000, so do not choose either with `--port`.
 
 ## 3. Open Helprr
 
 On the Mac, open `http://localhost:3050` and [create your admin](/helprr/first-run/).
-On your phone, use the Mac's address on your network, which this shows:
+On your phone, use the Mac's address on your network. The installer prints it; it is
+also under **System Settings → Wi-Fi → Details** (or **Network**, for a cable), or:
 
 ```bash
-ipconfig getifaddr "$(route -n get default | awk '/interface:/ { print $2 }')"
+ipconfig getifaddr en0
 ```
+
+(`en0` is usually Wi-Fi, or the first network port; try `en1` if it prints nothing.)
 
 For push notifications Helprr needs an `https://` address; see
 [Phone and push](/helprr/phone-and-push/) and [HTTPS](/helprr/https/).
