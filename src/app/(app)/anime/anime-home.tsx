@@ -363,7 +363,7 @@ export default function AnimeHomePage() {
           {/* Hero Banner */}
           {heroItems.length > 0 && (
             <HeroCarousel
-              className="-mx-2 -mt-3 h-[280px]"
+              className="-mt-3 h-[280px]"
               slides={heroItems.map((anime, i) => (
                 <HeroBanner key={anime.id} anime={anime} priority={i === 0} />
               ))}
