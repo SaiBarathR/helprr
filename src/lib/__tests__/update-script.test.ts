@@ -43,6 +43,7 @@ case " $* " in
     printf 'PGDMP'
     ;;
   *" pg_restore --list "*) cat >/dev/null ;;
+  *" psql "*) printf '1\\n' ;;
   *" config --services "*) printf 'helprr\\nhelprr-db\\n%s\\n' "\${FAKE_SERVICES:-}" ;;
   *" pull helprr-twitch-worker "*) [ "\${FAKE_WORKER_FAILURE:-}" != 1 ] || exit 45 ;;
   *" up -d --no-build --no-deps helprr-twitch-worker "*) ;;
@@ -106,6 +107,7 @@ describe('update.sh', () => {
     const steps = result.log.split('\n').filter(Boolean).map((line) => {
       if (line.includes('pg_dump')) return 'dump';
       if (line.includes('pg_restore --list')) return 'validate';
+      if (line.includes(' psql ')) return 'record';
       if (line.includes(' pull helprr')) return 'pull';
       if (line.includes(' up -d --no-build --no-deps helprr')) return 'up';
       if (line.includes(' ps -q helprr')) return 'ps';
@@ -115,8 +117,9 @@ describe('update.sh', () => {
       if (line.includes('config --services')) return 'services';
       return line;
     });
-    // backup.sh asks for the services (to save generated secrets), update.sh before and after the app.
-    expect(steps).toEqual(['dump', 'validate', 'services', 'pull', 'services', 'up', 'ps', 'inspect', 'inspect', 'sleep', 'inspect', 'sleep', 'inspect', 'ready', 'services']);
+    // backup.sh asks for the services (to save generated secrets) and records the backup
+    // time; update.sh asks for the services before and after the app.
+    expect(steps).toEqual(['dump', 'validate', 'services', 'record', 'pull', 'services', 'up', 'ps', 'inspect', 'inspect', 'sleep', 'inspect', 'sleep', 'inspect', 'ready', 'services']);
     // Plain `docker compose` in the install directory, so overrides apply as they do by hand.
     expect(result.log).toMatch(/^compose pull helprr$/m);
     expect(result.log).toMatch(/^compose up -d --no-build --no-deps helprr$/m);

@@ -27,6 +27,9 @@ export const WHICH_ADDRESS_URL = 'https://saibarathr.github.io/helprr/connect/#w
 /** How to get back in: ask an admin, or recover the admin account from the server. */
 export const SIGN_IN_HELP_URL = 'https://saibarathr.github.io/helprr/troubleshooting/#signing-in';
 
+/** Backing up the database (backup.sh), keeping a copy off the host, and restoring. */
+export const BACKUP_GUIDE_URL = 'https://saibarathr.github.io/helprr/maintain/backup/';
+
 /** The privacy statement: no telemetry, and every outbound request Helprr makes. */
 export const PRIVACY_URL = 'https://saibarathr.github.io/helprr/reference/privacy/';
 

@@ -24,6 +24,7 @@ describe.skipIf(!url)('setup checklist against PostgreSQL', () => {
   });
   beforeEach(async () => {
     await prisma.$executeRawUnsafe('TRUNCATE "User", "ServiceConnection" CASCADE');
+    await prisma.appSettings.updateMany({ data: { lastDatabaseBackupAt: null } });
     adminId = (await prisma.user.create({ data: { username: 'owner', displayName: 'Owner', role: 'admin' } })).id;
   });
   afterAll(async () => {
@@ -90,6 +91,17 @@ describe.skipIf(!url)('setup checklist against PostgreSQL', () => {
     expect(state.done.install).toBe(true);
     await checklist.restoreSetupChecklist(adminId);
     expect((await checklist.getSetupChecklist(adminId)).hidden).toBe(false);
+  });
+
+  it('ticks the backup for every admin once backup.sh has recorded a database backup', async () => {
+    const other = await prisma.user.create({ data: { username: 'second', displayName: 'Second', role: 'admin' } });
+    await prisma.appSettings.upsert({
+      where: { id: 'singleton' },
+      update: { lastDatabaseBackupAt: new Date() },
+      create: { id: 'singleton', lastDatabaseBackupAt: new Date() },
+    });
+    expect((await checklist.getSetupChecklist(adminId)).done.backup).toBe(true);
+    expect((await checklist.getSetupChecklist(other.id)).done.backup).toBe(true);
   });
 
   it('keeps each admin\'s marks to themselves', async () => {

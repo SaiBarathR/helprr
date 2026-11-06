@@ -7,11 +7,16 @@ import type { ImportWarning } from '@/lib/settings-import/follow-up-tasks';
 
 const mocks = vi.hoisted(() => ({
   onImported: null as null | ((warnings: ImportWarning[]) => void),
+  role: 'member' as 'admin' | 'member',
 }));
 
 vi.mock('sonner', () => ({ toast: { warning: vi.fn(), success: vi.fn(), error: vi.fn() } }));
 vi.mock('@/components/ui/app-link', () => ({
   default: ({ children }: { children: ReactNode }) => <a>{children}</a>,
+}));
+vi.mock('@/components/permission-provider', () => ({ useMe: () => ({ role: mocks.role }) }));
+vi.mock('@/components/settings/database-backup-section', () => ({
+  DatabaseBackupSection: () => <div>Database backup section</div>,
 }));
 vi.mock('@/components/settings/export-settings-dialog', () => ({ ExportSettingsDialog: () => null }));
 vi.mock('@/components/settings/import-settings-dialog', () => ({
@@ -30,6 +35,7 @@ let root: Root;
 let container: HTMLElement;
 
 beforeEach(async () => {
+  mocks.role = 'member';
   sessionStorage.clear();
   container = document.createElement('div');
   document.body.appendChild(container);
@@ -63,5 +69,20 @@ describe('backup page after an import', () => {
 
     expect(reloadsScheduled(setTimeoutSpy)).toBe(0);
     expect(container.textContent).toContain('Schedulers did not restart.');
+  });
+});
+
+describe('backup page sections', () => {
+  it('shows an admin the database backup apart from the settings export', async () => {
+    mocks.role = 'admin';
+    await act(async () => root.render(<BackupSettingsPage />));
+    expect(container.textContent).toContain('Database backup section');
+    expect(container.textContent).toContain('Settings export');
+    expect(container.textContent).toContain('Not a database backup');
+  });
+
+  it('leaves the database out for a member with the backup capability', () => {
+    expect(container.textContent).not.toContain('Database backup section');
+    expect(container.textContent).toContain('Not a database backup');
   });
 });

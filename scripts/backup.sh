@@ -195,6 +195,21 @@ if compose config --services 2>/dev/null | grep -qx helprr-init; then
   printf 'Saved the generated secrets: %s\n' "$secrets_file"
 fi
 
+# Record the time of this backup so Settings → Backup & Restore can show it. Best
+# effort: a database whose Helprr release predates the column (update.sh backs up
+# before it pulls the new release) or that has no settings row yet is left as it is,
+# and the backup above is complete either way. Credentials stay in the container.
+if recorded=$(compose exec -T "$db_service" sh -ceu '
+  export PGPASSWORD="$POSTGRES_PASSWORD"
+  exec psql --username="$POSTGRES_USER" --dbname="$POSTGRES_DB" \
+    --no-psqlrc --quiet --tuples-only --no-align --set=ON_ERROR_STOP=1 \
+    --command="UPDATE \"AppSettings\" SET \"lastDatabaseBackupAt\" = now() AT TIME ZONE '\''UTC'\'' WHERE \"id\" = '\''singleton'\'' RETURNING 1"
+' 2>/dev/null) && [ "$recorded" = 1 ]; then
+  printf 'Recorded the backup time in Helprr (Settings → Backup & Restore).\n'
+else
+  printf 'Note: Helprr could not record the backup time; Settings shows it after a backup made once Helprr is updated and running.\n' >&2
+fi
+
 # Prune only this helper's own dumps, oldest first: the timestamped names sort in
 # creation order. Only dumps older than this run's timestamp are removed, so two
 # runs at once never delete each other's newer dump (even if this run's own file

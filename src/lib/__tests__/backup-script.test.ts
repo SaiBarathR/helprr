@@ -51,6 +51,10 @@ case " $* " in
     [ "\${FAKE_VERIFY_FAILURE:-}" != 1 ] || exit 42
     ;;
   *" config --services "*) printf '%s\\n' "\${FAKE_SERVICES:-helprr}" ;;
+  *" psql "*)
+    [ "\${FAKE_RECORD_FAILURE:-}" != 1 ] || { echo 'ERROR:  column "lastDatabaseBackupAt" does not exist' >&2; exit 3; }
+    printf '%s\\n' "\${FAKE_RECORDED_ROWS-1}"
+    ;;
   *" run --rm --no-deps -T --entrypoint tar helprr-init "*)
     [ "\${FAKE_SECRETS_FAILURE:-}" != 1 ] || exit 47
     tar -cf - -C "\$FAKE_SECRETS_DIR" .
@@ -424,6 +428,55 @@ for a in "$@"; do case "$a" in *-${'20260701'}-000000.dump) /bin/rm -f "$a" "\${
       expect(result.status).toBe(0);
       expect(existsSync(path.join(dir, 'helprr-pre-upgrade-20260101-000000.secrets.tar'))).toBe(false);
       expect(existsSync(path.join(dir, 'helprr-pre-upgrade-20260714-120000.secrets.tar'))).toBe(true);
+    });
+  });
+  describe('recording the backup time for Settings', () => {
+    it('records it in the database only after the dump is validated', () => {
+      const { root, fakeBin, dockerLog } = createFixture();
+      const result = runBackup(root, fakeBin);
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain('Recorded the backup time in Helprr');
+      const commands = readFileSync(dockerLog, 'utf8');
+      expect(commands).toContain('exec -T helprr-db');
+      expect(commands).toContain('UPDATE \\"AppSettings\\" SET \\"lastDatabaseBackupAt\\"');
+      expect(commands.indexOf('pg_restore --list')).toBeLessThan(commands.indexOf(' psql '));
+      expect(commands).not.toContain('stable-secret');
+    });
+
+    it('keeps the backup and exits 0 when the database cannot record it', () => {
+      for (const env of [{ FAKE_RECORD_FAILURE: '1' }, { FAKE_RECORDED_ROWS: '' }]) {
+        const { root, fakeBin } = createFixture();
+        const result = runBackup(root, fakeBin, [], env);
+        expect(result.status).toBe(0);
+        expect(result.stderr).toContain('Helprr could not record the backup time');
+        // The database's own error text stays out of the output.
+        expect(result.stderr).not.toContain('does not exist');
+        expect(result.stdout).not.toContain('Recorded the backup time');
+        expect(backupFiles(path.join(root, 'backups/stable'))).toHaveLength(1);
+      }
+    });
+
+    it('records nothing when the backup fails', () => {
+      for (const env of [{ FAKE_DUMP_FAILURE: '1' }, { FAKE_VERIFY_FAILURE: '1' }]) {
+        const { root, fakeBin, dockerLog } = createFixture();
+        expect(runBackup(root, fakeBin, [], env).status).toBe(1);
+        expect(readFileSync(dockerLog, 'utf8')).not.toContain(' psql ');
+      }
+    });
+
+    it('records nothing when the generated secrets cannot be saved', () => {
+      const { root, fakeBin, dockerLog } = createFixture();
+      expect(runBackup(root, fakeBin, [], { FAKE_SERVICES: 'helprr-init', FAKE_SECRETS_FAILURE: '1' }).status).toBe(1);
+      expect(readFileSync(dockerLog, 'utf8')).not.toContain(' psql ');
+    });
+
+    it('uses the development database in dev mode', () => {
+      const { root, fakeBin, dockerLog } = createFixture();
+      expect(runBackup(root, fakeBin, ['--dev']).status).toBe(0);
+      const commands = readFileSync(dockerLog, 'utf8');
+      // One log entry per Docker call; each starts with "compose".
+      const psqlCall = `\n${commands}`.split('\ncompose ').find((call) => call.includes(' psql ')) ?? '';
+      expect(psqlCall.split('\n')[0]).toMatch(/docker-compose\.dev\.yml exec -T helprr-dev-db sh -ceu $/);
     });
   });
 });

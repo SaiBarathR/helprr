@@ -46,8 +46,8 @@ const STEP_COPY: Record<SetupStep, { title: string; detail: string; href: string
     manualLabel: 'Done',
   },
   backup: {
-    title: 'Export a backup',
-    detail: 'Save your connections and settings to a file.',
+    title: 'Back up the database',
+    detail: 'Run backup.sh on the server, on a schedule.',
     href: '/settings/backup',
     icon: DatabaseBackup,
     manualLabel: 'Done',

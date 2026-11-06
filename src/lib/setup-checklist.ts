@@ -4,13 +4,13 @@ import { setupProgress, type SetupChecklistState, type SetupStep } from '@/lib/s
 
 /**
  * The admin's setup checklist on the dashboard: each step's state comes from the
- * server's own data where it can; the rest are marked done by the admin (or, for
- * the backup, by exporting one).
+ * server's own data where it can; the rest are marked done by the admin (the backup
+ * also by scripts/backup.sh, which records each database backup it makes).
  */
 export * from '@/lib/setup-checklist-steps';
 
 export async function getSetupChecklist(userId: string): Promise<SetupChecklistState> {
-  const [settings, services, people, pushDevices] = await Promise.all([
+  const [settings, services, people, pushDevices, appSettings] = await Promise.all([
     prisma.userSettings.findUnique({
       where: { userId },
       select: { setupChecklistDismissedAt: true, setupStepsDone: true },
@@ -18,6 +18,7 @@ export async function getSetupChecklist(userId: string): Promise<SetupChecklistS
     prisma.serviceConnection.count(),
     prisma.user.count(),
     prisma.pushSubscription.count({ where: { userId, revokedAt: null } }),
+    prisma.appSettings.findUnique({ where: { id: 'singleton' }, select: { lastDatabaseBackupAt: true } }),
   ]);
   const marked = new Set(settings?.setupStepsDone ?? []);
   const done: Record<SetupStep, boolean> = {
@@ -27,7 +28,7 @@ export async function getSetupChecklist(userId: string): Promise<SetupChecklistS
     // The server cannot tell a phone from a Mac (Safari on macOS uses Apple's push
     // service too): opening Helprr as an installed app on a phone marks it instead.
     install: marked.has('install'),
-    backup: marked.has('backup'),
+    backup: marked.has('backup') || Boolean(appSettings?.lastDatabaseBackupAt),
   };
   return { hidden: Boolean(settings?.setupChecklistDismissedAt) || setupProgress(done).complete, done };
 }
