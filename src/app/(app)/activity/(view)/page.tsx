@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import { PullToRefresh } from '@/components/ui/pull-to-refresh';
+import { PageTitle } from '@/components/layout/page-title';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useRefreshAction } from '@/lib/hooks/use-refresh-action';
 import {
@@ -261,165 +262,157 @@ export default function ActivityPage() {
   return (
     <div className="flex flex-col min-h-0 animate-content-in">
       <PullToRefresh onRefresh={handleRefreshActivity} scrollContainerRef={contentScrollRef} />
-      <div className="page-toolbar page-toolbar-flush flex items-center app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
-        {/* Top bar — page name stays sr-only; toolbar space is for controls. */}
-        <h1 className="sr-only">Activity</h1>
-        <div className="flex items-center justify-between pt-2 md:pt-0 pb-2 md:pb-1 w-full">
-          <div className="flex items-center md:gap-1 gap-2">
-            {/* Filter */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="relative md:h-11 md:w-11 w-7 h-7"
-                  aria-label={filterButtonLabel('Filter and sort', activeFilters.length > 0)}
-                >
-                  <SlidersHorizontal className="h-4 w-4" />
-                  <FilterDot active={activeFilters.length > 0} />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuLabel>Sources</DropdownMenuLabel>
-                <DropdownMenuCheckboxItem
-                  checked={sources.length === 0}
-                  onCheckedChange={() => updateSources([])}
-                  onSelect={(e) => e.preventDefault()}
-                >
-                  All
-                </DropdownMenuCheckboxItem>
-                {FILTER_OPTIONS.filter((opt) => opt.key !== 'all').map((opt) => (
-                  <DropdownMenuCheckboxItem
-                    key={opt.key}
-                    checked={sources.includes(opt.key)}
-                    onCheckedChange={() => updateSources(
-                      sources.includes(opt.key)
-                        ? sources.filter((s) => s !== opt.key)
-                        : [...sources, opt.key]
-                    )}
-                    onSelect={(e) => e.preventDefault()}
-                  >
-                    {opt.label}
-                  </DropdownMenuCheckboxItem>
-                ))}
-                {/* Instance sub-filter, folded into this same dropdown to save mobile width. */}
-                {instanceOptions.length > 1 && (
-                  <>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuLabel>Instance</DropdownMenuLabel>
-                    <DropdownMenuCheckboxItem
-                      checked={instanceFilter === 'all'}
-                      onCheckedChange={() => updateInstance('all')}
-                      onSelect={(e) => e.preventDefault()}
-                    >
-                      All instances
-                    </DropdownMenuCheckboxItem>
-                    {instanceOptions.map((inst) => (
-                      <DropdownMenuCheckboxItem
-                        key={inst.id}
-                        checked={instanceFilter === inst.id}
-                        onCheckedChange={() => updateInstance(inst.id)}
-                        onSelect={(e) => e.preventDefault()}
-                      >
-                        {inst.label}
-                      </DropdownMenuCheckboxItem>
-                    ))}
-                  </>
-                )}
-                {availableSortOptions.length > 0 && (
-                  <>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuLabel>Sort by</DropdownMenuLabel>
-                    <DropdownMenuRadioGroup
-                      value={sortBy}
-                    >
-                      {availableSortOptions.map((opt) => {
-                        const selected = sortBy === opt.key;
-                        const DirectionIcon = sortDirection === 'asc' ? ArrowUp : ArrowDown;
-                        return (
-                          <DropdownMenuRadioItem
-                            key={opt.key}
-                            value={opt.key}
-                            aria-label={
-                              selected
-                                ? `${opt.label}, ${sortDirection === 'asc' ? 'ascending' : 'descending'}. Select again to reverse.`
-                                : opt.label
-                            }
-                            onSelect={(e) => {
-                              e.preventDefault();
-                              handleSortSelect(opt.key);
-                            }}
-                          >
-                            {opt.label}
-                            {selected && <DirectionIcon className="ml-auto h-3.5 w-3.5" />}
-                          </DropdownMenuRadioItem>
-                        );
-                      })}
-                    </DropdownMenuRadioGroup>
-                  </>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
-
-            {/* History */}
-            <Button
-              variant="ghost"
-              size="icon"
-              className="md:h-11 md:w-11 w-7 h-7"
-              onClick={() => router.push('/activity/history')}
-              aria-label="History"
-            >
-              <Clock className="h-4 w-4" />
-            </Button>
-
-            {/* Blocklist */}
-            <Button
-              variant="ghost"
-              size="icon"
-              className="md:h-11 md:w-11 w-7 h-7"
-              onClick={() => router.push('/activity/blocklist')}
-              aria-label="Blocklist"
-            >
-              <Ban className="h-4 w-4" />
-            </Button>
-
-            {/* Refresh */}
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="md:h-11 md:w-11 w-7 h-7"
-                  onClick={handleRefreshActivity}
-                  disabled={refreshing}
-                  aria-label="Refresh"
-                >
-                  {refreshing ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <RefreshCw className="h-4 w-4" />
-                  )}
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Refresh</TooltipContent>
-            </Tooltip>
-          </div>
-        </div>
-
+      <PageTitle>Activity</PageTitle>
+      <div className="page-toolbar page-toolbar-flush flex flex-wrap items-center gap-2 pb-2 app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
         {/* Segmented control tabs — Radix for tab semantics + arrow-key nav */}
-        <Tabs value={tab} onValueChange={(v) => isTabKey(v) && handleTabChange(v)} className="gap-0">
-          <TabsList className="flex w-full h-auto bg-muted/50 p-0.5 gap-0.5">
+        <Tabs value={tab} onValueChange={(v) => isTabKey(v) && handleTabChange(v)} className="flex-1 gap-0 sm:flex-none">
+          <TabsList variant="segmented">
             {TABS.map((t) => (
-              <TabsTrigger
-                key={t.key}
-                value={t.key}
-                className="flex-1 text-xs font-medium py-1.5 px-2 data-[state=active]:shadow-sm"
-              >
+              <TabsTrigger key={t.key} value={t.key}>
                 {t.label}
               </TabsTrigger>
             ))}
           </TabsList>
         </Tabs>
+
+        <div className="ml-auto flex items-center md:gap-1 gap-2">
+          {/* Filter */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="relative md:h-11 md:w-11 w-7 h-7"
+                aria-label={filterButtonLabel('Filter and sort', activeFilters.length > 0)}
+              >
+                <SlidersHorizontal className="h-4 w-4" />
+                <FilterDot active={activeFilters.length > 0} />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuLabel>Sources</DropdownMenuLabel>
+              <DropdownMenuCheckboxItem
+                checked={sources.length === 0}
+                onCheckedChange={() => updateSources([])}
+                onSelect={(e) => e.preventDefault()}
+              >
+                All
+              </DropdownMenuCheckboxItem>
+              {FILTER_OPTIONS.filter((opt) => opt.key !== 'all').map((opt) => (
+                <DropdownMenuCheckboxItem
+                  key={opt.key}
+                  checked={sources.includes(opt.key)}
+                  onCheckedChange={() => updateSources(
+                    sources.includes(opt.key)
+                      ? sources.filter((s) => s !== opt.key)
+                      : [...sources, opt.key]
+                  )}
+                  onSelect={(e) => e.preventDefault()}
+                >
+                  {opt.label}
+                </DropdownMenuCheckboxItem>
+              ))}
+              {/* Instance sub-filter, folded into this same dropdown to save mobile width. */}
+              {instanceOptions.length > 1 && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuLabel>Instance</DropdownMenuLabel>
+                  <DropdownMenuCheckboxItem
+                    checked={instanceFilter === 'all'}
+                    onCheckedChange={() => updateInstance('all')}
+                    onSelect={(e) => e.preventDefault()}
+                  >
+                    All instances
+                  </DropdownMenuCheckboxItem>
+                  {instanceOptions.map((inst) => (
+                    <DropdownMenuCheckboxItem
+                      key={inst.id}
+                      checked={instanceFilter === inst.id}
+                      onCheckedChange={() => updateInstance(inst.id)}
+                      onSelect={(e) => e.preventDefault()}
+                    >
+                      {inst.label}
+                    </DropdownMenuCheckboxItem>
+                  ))}
+                </>
+              )}
+              {availableSortOptions.length > 0 && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuLabel>Sort by</DropdownMenuLabel>
+                  <DropdownMenuRadioGroup
+                    value={sortBy}
+                  >
+                    {availableSortOptions.map((opt) => {
+                      const selected = sortBy === opt.key;
+                      const DirectionIcon = sortDirection === 'asc' ? ArrowUp : ArrowDown;
+                      return (
+                        <DropdownMenuRadioItem
+                          key={opt.key}
+                          value={opt.key}
+                          aria-label={
+                            selected
+                              ? `${opt.label}, ${sortDirection === 'asc' ? 'ascending' : 'descending'}. Select again to reverse.`
+                              : opt.label
+                          }
+                          onSelect={(e) => {
+                            e.preventDefault();
+                            handleSortSelect(opt.key);
+                          }}
+                        >
+                          {opt.label}
+                          {selected && <DirectionIcon className="ml-auto h-3.5 w-3.5" />}
+                        </DropdownMenuRadioItem>
+                      );
+                    })}
+                  </DropdownMenuRadioGroup>
+                </>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          {/* History and Blocklist keep their words: touch screens get no tooltips. */}
+          <Button
+            variant="ghost"
+            size="sm"
+            className="md:h-11 h-7"
+            onClick={() => router.push('/activity/history')}
+          >
+            <Clock className="h-4 w-4" />
+            History
+          </Button>
+
+          <Button
+            variant="ghost"
+            size="sm"
+            className="md:h-11 h-7"
+            onClick={() => router.push('/activity/blocklist')}
+          >
+            <Ban className="h-4 w-4" />
+            Blocklist
+          </Button>
+
+          {/* Refresh */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="md:h-11 md:w-11 w-7 h-7"
+                onClick={handleRefreshActivity}
+                disabled={refreshing}
+                aria-label="Refresh"
+              >
+                {refreshing ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-4 w-4" />
+                )}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Refresh</TooltipContent>
+          </Tooltip>
+        </div>
       </div>
 
       <ActiveFilterBar filters={activeFilters} onClearAll={clearFilters} className="pt-2" />

@@ -374,7 +374,7 @@ export default function AnimeLibraryPage() {
             </span>
           )}
           <div className="min-w-0">
-            <p className="tracked-caps text-muted-foreground">My AniList</p>
+            <h1 className="tracked-caps text-muted-foreground">My AniList</h1>
             <p className="font-display font-semibold text-lg leading-tight truncate">
               {viewer.user?.name}
             </p>

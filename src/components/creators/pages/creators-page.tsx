@@ -20,6 +20,7 @@ import { CreatorAvatar } from '@/components/creators/creator-avatar';
 import { useCreatorPlatform } from '@/components/creators/platform';
 import { ToolbarButton, CreatorToolbar } from '@/components/creators/toolbar';
 import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
+import { PageTitle } from '@/components/layout/page-title';
 
 interface Subscription {
   id: string;
@@ -177,7 +178,7 @@ export function CreatorsPage() {
   return (
     <div className="space-y-3 animate-content-in">
       <PullToRefresh onRefresh={refresh} />
-      <h1 className="sr-only">{platform.creatorsLabel}</h1>
+      <PageTitle>{platform.creatorsLabel}</PageTitle>
       <CreatorToolbar
         active="streamers"
         actions={(

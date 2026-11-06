@@ -27,6 +27,7 @@ import { useVideoSelection } from '@/components/creators/use-video-selection';
 import { useRestorableInfiniteQuery } from '@/lib/hooks/use-restorable-infinite-query';
 import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
 import { toCachedImageSrc } from '@/lib/image';
+import { PageTitle } from '@/components/layout/page-title';
 
 const PAGE_SIZE = 30;
 const VIEW_MODES = { grouped: 'grouped', grid: 'posters', list: 'overview' } as const;
@@ -205,7 +206,7 @@ export function CreatorFeedPage() {
   return (
     <div className="space-y-3 animate-content-in">
       <PullToRefresh onRefresh={refresh} disabled={selection.active} />
-      <h1 className="sr-only">{platform.name}</h1>
+      <PageTitle>{platform.name}</PageTitle>
       <CreatorToolbar
         active="feed"
         actions={(

@@ -33,6 +33,7 @@ import type {
 } from '@/types';
 import { searchUnits } from '@/lib/library-gaps';
 import { QuickContextMenu, type ContextAction } from '@/components/ui/quick-context-menu';
+import { PageTitle } from '@/components/layout/page-title';
 
 const SECTION_META: Record<LibraryGapSectionId, { title: string; icon: LucideIcon; service: string }> = {
   missingSeasons: { title: 'Missing Seasons', icon: Tv, service: 'Sonarr' },
@@ -456,7 +457,7 @@ export default function LibraryGapsPage() {
   return (
     <div className="animate-content-in space-y-4">
       {pullToRefresh}
-      <h1 className="sr-only">Library Gaps</h1>
+      <PageTitle>Library Gaps</PageTitle>
       <div className="page-toolbar page-toolbar-flush app-chrome-bar bg-background/95 pb-2 backdrop-blur supports-[backdrop-filter]:bg-background/80">
         <div data-scroll-restoration-key="library-gaps:tabs" className="rail-bleed flex gap-2 overflow-x-auto scrollbar-hide">
           {data.sections.map((section) => (

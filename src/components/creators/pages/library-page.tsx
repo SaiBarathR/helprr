@@ -24,6 +24,7 @@ import { formatBytes } from '@/lib/format';
 import { useRestorableInfiniteQuery } from '@/lib/hooks/use-restorable-infinite-query';
 import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
 import { cn } from '@/lib/utils';
+import { PageTitle } from '@/components/layout/page-title';
 
 const PAGE_SIZE = 30;
 const DELETED = 'deleted';
@@ -185,7 +186,7 @@ export function CreatorLibraryPage() {
   return (
     <div className="space-y-3 animate-content-in">
       <PullToRefresh onRefresh={refresh} />
-      <h1 className="sr-only">{platform.name} library</h1>
+      <PageTitle>{platform.name} library</PageTitle>
       <CreatorToolbar
         active="library"
         actions={(

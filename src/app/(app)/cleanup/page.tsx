@@ -11,6 +11,7 @@ import { QueueCleanerTab } from './_components/queue-cleaner-tab';
 import { DownloadCleanerTab } from './_components/download-cleaner-tab';
 import { CleanupHistoryTab } from './_components/cleanup-history-tab';
 import { useCan } from '@/components/permission-provider';
+import { PageTitle } from '@/components/layout/page-title';
 
 export default function CleanupPage() {
   const [tab, setTab] = useRouteViewState<'dashboard' | 'queue' | 'download' | 'history'>('CleanupPage:tab', 'dashboard');
@@ -37,15 +38,15 @@ export default function CleanupPage() {
         onRefresh={() => queryClient.invalidateQueries({ queryKey: ['cleanup'] })}
         disabled={editingUnsaved}
       />
-      <h1 className="sr-only">Cleanup</h1>
+      <PageTitle>Cleanup</PageTitle>
       <Tabs value={activeTab} onValueChange={(v) => setTab(v as typeof tab)}>
         <div
           className="page-toolbar page-toolbar-flush mb-4 app-chrome-bar bg-background/95 pb-2 backdrop-blur supports-[backdrop-filter]:bg-background/80"
         >
-          <TabsList data-scroll-restoration-key="cleanup:tabs" className="w-full no-scrollbar overflow-x-auto">
-          <TabsTrigger value="dashboard" className="flex-1 min-w-0">Dashboard</TabsTrigger>
+          <TabsList variant="segmented" data-scroll-restoration-key="cleanup:tabs" className="no-scrollbar overflow-x-auto">
+          <TabsTrigger value="dashboard" className="min-w-0">Dashboard</TabsTrigger>
           {canManage && (
-            <TabsTrigger value="queue" className="flex-1 min-w-0 relative">
+            <TabsTrigger value="queue" className="min-w-0">
               Queue
               {dirty.queue && (
                 <span
@@ -56,7 +57,7 @@ export default function CleanupPage() {
             </TabsTrigger>
           )}
           {canManage && (
-            <TabsTrigger value="download" className="flex-1 min-w-0 relative">
+            <TabsTrigger value="download" className="min-w-0">
               Download
               {dirty.download && (
                 <span
@@ -66,7 +67,7 @@ export default function CleanupPage() {
               )}
             </TabsTrigger>
           )}
-          <TabsTrigger value="history" className="flex-1 min-w-0">History</TabsTrigger>
+          <TabsTrigger value="history" className="min-w-0">History</TabsTrigger>
           </TabsList>
         </div>
 

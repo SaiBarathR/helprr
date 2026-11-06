@@ -39,6 +39,7 @@ import { TorrentsBulkBar } from './_components/torrents-bulk-bar';
 import { TorrentDetailDrawer } from './_components/torrent-detail-drawer';
 import { TorrentDeleteDrawer } from './_components/torrent-delete-drawer';
 import { TorrentCategoryDrawer } from './_components/torrent-category-drawer';
+import { PageTitle } from '@/components/layout/page-title';
 
 
 // --- Main page ---
@@ -474,7 +475,7 @@ export default function TorrentsPage() {
   return (
     <div className="space-y-3 animate-content-in" style={toolbarStyle}>
       <PullToRefresh onRefresh={() => refetchSummary()} />
-      <h1 className="sr-only">Torrents</h1>
+      <PageTitle>Torrents</PageTitle>
       <TorrentsToolbar
         ref={toolbarRef}
         menuFilters={menuFilters}

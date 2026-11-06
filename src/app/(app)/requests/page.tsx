@@ -18,6 +18,7 @@ import { PullToRefresh } from '@/components/ui/pull-to-refresh';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useRefreshAction } from '@/lib/hooks/use-refresh-action';
 import type { SeerrRequestCount, SeerrUserSummary } from '@/types/seerr';
+import { PageTitle } from '@/components/layout/page-title';
 
 const TABS = [
   { key: 'requests' as const, label: 'Requests' },
@@ -91,7 +92,7 @@ export default function RequestsPage() {
   return (
     <div className="animate-content-in">
       <PullToRefresh onRefresh={handleRefresh} />
-      <h1 className="sr-only">Requests</h1>
+      <PageTitle>Requests</PageTitle>
       <div
         className="page-toolbar page-toolbar-flush flex items-center gap-1.5 app-chrome-bar bg-background/95 pb-2 backdrop-blur supports-[backdrop-filter]:bg-background/80"
       >
@@ -101,13 +102,9 @@ export default function RequestsPage() {
           onValueChange={(v) => setTab(v as (typeof TABS)[number]['key'])}
           className="flex-1 gap-0 sm:flex-none"
         >
-          <TabsList className="flex w-full h-auto bg-muted/50 p-0.5 gap-0.5 sm:w-fit">
+          <TabsList variant="segmented">
             {tabs.map((t) => (
-              <TabsTrigger
-                key={t.key}
-                value={t.key}
-                className="flex-1 gap-1.5 px-3 py-1 text-xs font-medium data-[state=active]:shadow-sm sm:flex-none"
-              >
+              <TabsTrigger key={t.key} value={t.key}>
                 {t.label}
                 {t.key === 'requests' && pendingBadge > 0 ? (
                   <span className="rounded-full bg-amber-500/15 px-1.5 text-[10px] font-semibold tabular-nums text-amber-500">

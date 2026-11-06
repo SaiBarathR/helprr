@@ -5,7 +5,7 @@ import Link from '@/components/ui/app-link';
 import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
 import { format, subDays } from 'date-fns';
 import type { DateRange } from 'react-day-picker';
-import { PageHeader } from '@/components/layout/page-header';
+import { PageTitle } from '@/components/layout/page-title';
 import { Button } from '@/components/ui/button';
 import { SearchInput } from '@/components/media/search-input';
 import {
@@ -609,47 +609,44 @@ export default function NotificationsPage() {
       <PullToRefresh
         onRefresh={() => Promise.all([notificationsQuery.refetch(), refreshBadges()])}
       />
-      <PageHeader
-        showBack={false}
-        title="History"
-        rightContent={
-          <div className="flex items-center gap-1">
-            {hasCapability(me, 'scheduledAlerts.view') && (
-              <Link
-                href="/notifications/scheduled"
-                className="min-w-[44px] min-h-[44px] flex items-center justify-center text-primary"
-                aria-label="Scheduled alerts"
-              >
-                <CalendarClock className="h-5 w-5" />
-              </Link>
-            )}
-            <button
-              type="button"
-              onClick={() => setFilterDrawerOpen(true)}
-              className="min-w-[44px] min-h-[44px] flex items-center justify-center text-primary relative"
-              aria-label={filterButtonLabel('Filter notifications', drawerFilters.length > 0)}
-            >
-              <SlidersHorizontal className="h-5 w-5" />
-              <FilterDot active={drawerFilters.length > 0} />
-            </button>
+      <PageTitle>Notifications</PageTitle>
+      <div className="page-toolbar page-toolbar-flush app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+        <div className="flex items-center justify-end gap-1">
+          {hasCapability(me, 'scheduledAlerts.view') && (
             <Link
-              href="/settings/notifications"
+              href="/notifications/scheduled"
               className="min-w-[44px] min-h-[44px] flex items-center justify-center text-primary"
-              aria-label="Notification preferences"
+              aria-label="Scheduled alerts"
             >
-              <Settings2 className="h-5 w-5" />
+              <CalendarClock className="h-5 w-5" />
             </Link>
-            <button
-              onClick={markAllRead}
-              disabled={markingAll}
-              className="min-w-[44px] min-h-[44px] flex items-center justify-center text-primary"
-              aria-label="Mark all as read"
-            >
-              {markingAll ? <Loader2 className="h-5 w-5 animate-spin" /> : <Check className="h-5 w-5" />}
-            </button>
-          </div>
-        }
-      />
+          )}
+          <button
+            type="button"
+            onClick={() => setFilterDrawerOpen(true)}
+            className="min-w-[44px] min-h-[44px] flex items-center justify-center text-primary relative"
+            aria-label={filterButtonLabel('Filter notifications', drawerFilters.length > 0)}
+          >
+            <SlidersHorizontal className="h-5 w-5" />
+            <FilterDot active={drawerFilters.length > 0} />
+          </button>
+          <Link
+            href="/settings/notifications"
+            className="min-w-[44px] min-h-[44px] flex items-center justify-center text-primary"
+            aria-label="Notification preferences"
+          >
+            <Settings2 className="h-5 w-5" />
+          </Link>
+          <button
+            onClick={markAllRead}
+            disabled={markingAll}
+            className="min-w-[44px] min-h-[44px] flex items-center justify-center text-primary"
+            aria-label="Mark all as read"
+          >
+            {markingAll ? <Loader2 className="h-5 w-5 animate-spin" /> : <Check className="h-5 w-5" />}
+          </button>
+        </div>
+      </div>
 
       <div className="relative">
         <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />

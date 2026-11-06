@@ -24,6 +24,7 @@ import { PullToRefresh } from '@/components/ui/pull-to-refresh';
 // layout on every refresh, and this page refreshed forever.
 import { writeDeviceCookie as setDeviceCookie } from '@/lib/client-sign-in';
 import type { SetupChecklistState } from '@/lib/setup-checklist-steps';
+import { PageTitle } from '@/components/layout/page-title';
 
 export interface InitialDashboardLayout {
   id: string;
@@ -251,7 +252,7 @@ function DashboardInner({ initialLayout, initialDevice, setupChecklist }: Dashbo
           : '100%',
       }}
     >
-      <h1 className="sr-only">Dashboard</h1>
+      <PageTitle>Dashboard</PageTitle>
       {/* Every widget fetches through useWidgetData's ['widget-data', …] keys; only
           the mounted ones refetch. Off while editing, where touches drag widgets. */}
       <PullToRefresh

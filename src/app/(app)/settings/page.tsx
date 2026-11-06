@@ -29,6 +29,7 @@ import { CategoryRow } from '@/components/settings/category-row';
 import { Input } from '@/components/ui/input';
 import { useMe, hasCapability } from '@/components/permission-provider';
 import type { UpdateCheckResult } from '@/lib/update-check';
+import { PageTitle } from '@/components/layout/page-title';
 
 interface ServiceCount {
   configured: number;
@@ -234,7 +235,7 @@ export default function SettingsIndexPage() {
 
   return (
     <div className="animate-content-in pb-12">
-      <h1 className="sr-only">Settings</h1>
+      <PageTitle className="px-4 mb-4">Settings</PageTitle>
       <div className="relative mb-6">
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <Input

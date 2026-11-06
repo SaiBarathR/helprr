@@ -37,6 +37,7 @@ import { DiscoverHomeSections } from './_components/discover-home-sections';
 import { DiscoverResults } from './_components/discover-results';
 import { DiscoverFilterSheet } from './_components/discover-filter-sheet';
 import { PullToRefresh } from '@/components/ui/pull-to-refresh';
+import { PageTitle } from '@/components/layout/page-title';
 
 
 export default function DiscoverPage() {
@@ -430,7 +431,7 @@ export default function DiscoverPage() {
   return (
     <div className="space-y-4 animate-content-in">
       <PullToRefresh onRefresh={() => queryClient.invalidateQueries({ queryKey: ['discover'] })} />
-      <h1 className="sr-only">Discover</h1>
+      <PageTitle>Discover</PageTitle>
       <DiscoverToolbar
         searchParamsKey={searchParamsKey}
         query={query}

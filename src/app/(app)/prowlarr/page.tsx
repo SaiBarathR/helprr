@@ -82,6 +82,7 @@ import {
   type ProwlarrHostStat,
 } from '@/lib/prowlarr-client';
 import type { HealthCheck } from '@/types/arr';
+import { PageTitle } from '@/components/layout/page-title';
 
 /**
  * Format an ISO 8601 timestamp into a localized short time string.
@@ -1395,16 +1396,16 @@ export default function ProwlarrPage() {
         </DialogContent>
       </Dialog>
 
+      <PageTitle>Prowlarr</PageTitle>
       {/* Tabs */}
       <Tabs defaultValue="indexers">
-        <h1 className="sr-only">Prowlarr</h1>
         <div className="page-toolbar page-toolbar-flush pb-2 app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
-          <TabsList className="w-full">
-            <TabsTrigger value="indexers" className="flex-1">Indexers</TabsTrigger>
-            <TabsTrigger value="stats" className="flex-1">Stats</TabsTrigger>
-            <TabsTrigger value="history" className="flex-1">History</TabsTrigger>
-            {canManage && <TabsTrigger value="search" className="flex-1">Search</TabsTrigger>}
-            <TabsTrigger value="apps" className="flex-1">Apps</TabsTrigger>
+          <TabsList variant="segmented">
+            <TabsTrigger value="indexers">Indexers</TabsTrigger>
+            <TabsTrigger value="stats">Stats</TabsTrigger>
+            <TabsTrigger value="history">History</TabsTrigger>
+            {canManage && <TabsTrigger value="search">Search</TabsTrigger>}
+            <TabsTrigger value="apps">Apps</TabsTrigger>
           </TabsList>
         </div>
 

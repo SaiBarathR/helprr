@@ -44,6 +44,7 @@ import {
 } from 'lucide-react';
 import type { AniListListItem, AniListMediaFormat, AniListMediaSeason, AniListPageInfo } from '@/types/anilist';
 import type { DiscoverLibraryStatus } from '@/types';
+import { PageTitle } from '@/components/layout/page-title';
 
 type AnimeItemWithLibrary = AniListListItem & { library?: DiscoverLibraryStatus };
 
@@ -352,6 +353,7 @@ export default function AnimePage() {
         <ChevronLeft className="h-4 w-4" />
         Anime
       </Link>
+      <PageTitle>Browse</PageTitle>
 
       {/* Sticky search + sort/filter toolbar */}
       <div className="page-toolbar pt-1 pb-2 app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 space-y-1">

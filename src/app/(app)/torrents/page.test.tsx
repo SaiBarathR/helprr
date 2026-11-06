@@ -272,6 +272,15 @@ describe('torrents page (characterization)', () => {
     expect(mocks.asked[0]).toBe('/api/qbittorrent/summary?view=delta');
   });
 
+  it('shows the page title and names every icon in its toolbar', async () => {
+    renderPage();
+    expect(screen.getByRole('heading', { level: 1, name: 'Torrents' }).className).not.toContain('sr-only');
+    const toolbar = document.querySelector<HTMLElement>('.page-toolbar')!;
+    const icons = [...toolbar.querySelectorAll('button')].filter((b) => !b.textContent?.trim());
+    expect(icons.length).toBeGreaterThan(0);
+    for (const icon of icons) expect(icon.getAttribute('aria-label')).toBeTruthy();
+  });
+
   it('filters by state and by search, and says so when nothing matches', async () => {
     const { user } = renderPage();
     await waitFor(() => expect(names()).toHaveLength(3));
@@ -414,7 +423,7 @@ describe('torrents page (characterization)', () => {
     expect(mocks.sent.find((sent) => sent.path === '/api/qbittorrent/transfer/limits')?.body).toEqual({ action: 'toggleSpeedLimitsMode' });
 
     await user.click(actionsFor('Alpha.Movie').getByRole('button', { name: 'Rename' }));
-    await user.click(screen.getByRole('button', { name: 'Settings' }));
+    await user.click(screen.getByRole('button', { name: 'qBittorrent settings' }));
     await user.click(screen.getByRole('button', { name: 'Linked downloads' }));
     await user.click(screen.getByRole('button', { name: 'Add Torrent' }));
     expect(mocks.push.mock.calls.map(([path]) => path)).toEqual(['/torrents/aaa/rename', '/torrents/settings', '/torrents/linked', '/torrents/add']);
@@ -440,7 +449,7 @@ describe('torrents page (characterization)', () => {
     expect(actionsFor('Alpha.Movie').queryByRole('button', { name: 'Start' })).toBeNull();
     expect(actionsFor('Alpha.Movie').queryByRole('button', { name: /Delete/ })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Torrent actions' })).toBeNull();
-    for (const name of ['Alternative Speed Limits', 'Settings', 'Linked downloads', 'Add Torrent']) expect(screen.queryByRole('button', { name })).toBeNull();
+    for (const name of ['Alternative Speed Limits', 'qBittorrent settings', 'Linked downloads', 'Add Torrent']) expect(screen.queryByRole('button', { name })).toBeNull();
     await user.click(screen.getByRole('checkbox', { name: 'Select Alpha.Movie' }));
     expect(screen.queryByRole('button', { name: 'Stop' })).toBeNull();
     expect(screen.getByRole('button', { name: 'Clear' })).toBeTruthy();

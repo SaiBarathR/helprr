@@ -559,3 +559,23 @@ describe('Activity: wanted tabs, sorting and refresh', () => {
     expect(link?.getAttribute('href')).toBe('/activity/history');
   });
 });
+
+describe('Activity toolbar', () => {
+  it('shows the page title, then the section tabs, then named actions', async () => {
+    await renderPage();
+    const title = document.querySelector('h1')!;
+    expect(title.textContent).toBe('Activity');
+    expect(title.className).not.toContain('sr-only');
+
+    const toolbar = document.querySelector('.page-toolbar')!;
+    const tablist = toolbar.querySelector<HTMLElement>('[role="tablist"]')!;
+    expect(tablist.dataset.variant).toBe('segmented');
+    const actions = [...toolbar.querySelectorAll('button:not([role="tab"])')];
+    // History and Blocklist show their words (no tooltips on touch); the icon-only ones are labelled.
+    expect(actions.map((b) => b.getAttribute('aria-label') ?? b.textContent?.trim())).toEqual(['Filter and sort', 'History', 'Blocklist', 'Refresh']);
+    expect(actions.filter((b) => !b.getAttribute('aria-label')).map((b) => b.textContent?.trim())).toEqual(['History', 'Blocklist']);
+    for (const action of actions) {
+      expect(tablist.compareDocumentPosition(action) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    }
+  });
+});
