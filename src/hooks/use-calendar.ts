@@ -12,7 +12,8 @@ interface UseCalendarReturn {
   events: CalendarEvent[];
   loading: boolean;
   error: string | null;
-  refetch: () => void;
+  /** Reloads the current range without flagging `loading`, so the views stay up. */
+  refetch: () => Promise<void>;
 }
 
 export function useCalendar({ start, end, type, includeScheduled }: UseCalendarParams): UseCalendarReturn {
@@ -27,12 +28,12 @@ export function useCalendar({ start, end, type, includeScheduled }: UseCalendarP
   // request is newest supersedes the in-flight one (a stale month can't win).
   const abortRef = useRef<AbortController | null>(null);
 
-  const fetchEvents = useCallback(async () => {
+  const fetchEvents = useCallback(async (background = false) => {
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
     const signal = controller.signal;
-    setLoading(true);
+    if (!background) setLoading(true);
     setError(null);
 
     try {
@@ -73,9 +74,7 @@ export function useCalendar({ start, end, type, includeScheduled }: UseCalendarP
     return () => abortRef.current?.abort();
   }, [fetchEvents]);
 
-  const refetch = useCallback(() => {
-    void fetchEvents();
-  }, [fetchEvents]);
+  const refetch = useCallback(() => fetchEvents(true), [fetchEvents]);
 
   return { events, loading, error, refetch };
 }

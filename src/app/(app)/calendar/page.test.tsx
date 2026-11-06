@@ -5,7 +5,11 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 
 const route = vi.hoisted(() => ({ pathname: '/calendar', loading: false }));
-const calendar = vi.hoisted(() => ({ loading: false }));
+const calendar = vi.hoisted(() => ({
+  loading: false,
+  refetch: (() => Promise.resolve()) as () => Promise<void>,
+  pullToRefresh: null as null | { onRefresh: () => unknown },
+}));
 vi.mock('next/navigation', () => ({
   usePathname: () => route.pathname,
   useSearchParams: () => new URLSearchParams(),
@@ -18,7 +22,14 @@ vi.mock('@/hooks/use-calendar', () => ({
     }],
     loading: calendar.loading,
     error: null,
+    refetch: calendar.refetch,
   }),
+}));
+vi.mock('@/components/ui/pull-to-refresh', () => ({
+  PullToRefresh: (props: { onRefresh: () => unknown }) => {
+    calendar.pullToRefresh = props;
+    return null;
+  },
 }));
 vi.mock('@/components/ui/app-link', () => ({
   default: (props: ComponentProps<'a'>) => <a {...props} />,
@@ -274,4 +285,12 @@ it('marks the active scheduled-alerts toggle with the theme primary, not a fixed
     expect(toggle.className).toContain('text-primary');
     expect(toggle.className).not.toMatch(/violet/);
   }
+});
+
+it('refetches the shown range on pull to refresh', async () => {
+  const refetch = vi.fn(() => Promise.resolve());
+  calendar.refetch = refetch;
+  render(<CalendarPage />);
+  await act(async () => { await calendar.pullToRefresh!.onRefresh(); });
+  expect(refetch).toHaveBeenCalledTimes(1);
 });

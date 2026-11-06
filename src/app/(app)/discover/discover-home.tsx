@@ -4,6 +4,7 @@ import { useRouteViewState } from '@/lib/hooks/use-route-view-state';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
+import { useQueryClient } from '@tanstack/react-query';
 import Image from 'next/image';
 import Link from '@/components/ui/app-link';
 import { useAppRouter as useRouter } from '@/components/layout/navigation-provider';
@@ -35,6 +36,7 @@ import { DiscoverToolbar } from './_components/discover-toolbar';
 import { DiscoverHomeSections } from './_components/discover-home-sections';
 import { DiscoverResults } from './_components/discover-results';
 import { DiscoverFilterSheet } from './_components/discover-filter-sheet';
+import { PullToRefresh } from '@/components/ui/pull-to-refresh';
 
 
 export default function DiscoverPage() {
@@ -120,6 +122,7 @@ export default function DiscoverPage() {
   const [carouselItemLimit] = useState(computeCarouselItemLimit);
 
   const router = useRouter();
+  const queryClient = useQueryClient();
 
   const hasAdvancedFilters = useMemo(() => !isDefaultFilters(discoverFilters), [discoverFilters]);
   const activeAdvancedFilterCount = useMemo(
@@ -426,6 +429,7 @@ export default function DiscoverPage() {
 
   return (
     <div className="space-y-4 animate-content-in">
+      <PullToRefresh onRefresh={() => queryClient.invalidateQueries({ queryKey: ['discover'] })} />
       <h1 className="sr-only">Discover</h1>
       <DiscoverToolbar
         searchParamsKey={searchParamsKey}

@@ -32,6 +32,7 @@ vi.mock('@tanstack/react-query', () => ({
     failureReason: null,
   }),
   useQueries: () => [],
+  useQueryClient: () => ({ invalidateQueries: () => Promise.resolve() }),
 }));
 vi.mock('@/lib/hooks/use-restorable-infinite-query', () => ({
   useRestorableInfiniteQuery: ({ queryKey }: { queryKey: readonly unknown[] }) => {

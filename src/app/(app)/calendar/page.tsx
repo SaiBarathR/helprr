@@ -46,6 +46,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { PageSpinner } from '@/components/ui/page-spinner';
+import { PullToRefresh } from '@/components/ui/pull-to-refresh';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
@@ -1374,7 +1375,7 @@ export default function CalendarPage() {
     }
   }, [calendarView, currentDate]);
 
-  const { events, loading, error } = useCalendar({
+  const { events, loading, error, refetch } = useCalendar({
     start,
     end,
     type: typeFilter !== 'all' ? typeFilter : undefined,
@@ -1507,6 +1508,7 @@ export default function CalendarPage() {
       className="space-y-3 animate-content-in"
       style={{ '--calendar-sticky-offset': `${stickyOffset || 96}px` } as React.CSSProperties}
     >
+      <PullToRefresh onRefresh={refetch} />
       <h1 className="sr-only">Calendar</h1>
       <div ref={toolbarRef} className="page-toolbar page-toolbar-flush pb-2 app-chrome-bar bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 space-y-2">
         {/* Top bar: title + view tabs. Wraps so the filter cluster drops to

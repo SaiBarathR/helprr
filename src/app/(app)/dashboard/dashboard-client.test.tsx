@@ -9,10 +9,23 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => {
   const refresh = vi.fn();
   // Stable, as the app's router is: a new object per render would re-run the effect.
-  return { isMobile: false, refresh, router: { refresh } };
+  return {
+    isMobile: false, editMode: false, refresh, router: { refresh },
+    widgetFetch: vi.fn(async () => 1),
+    pullToRefresh: null as null | { onRefresh: () => unknown; disabled?: boolean },
+  };
 });
 vi.mock('@/components/layout/navigation-provider', () => ({ useAppRouter: () => mocks.router }));
-vi.mock('@/components/widgets/widget-grid', () => ({ WidgetGrid: () => <div data-testid="grid" /> }));
+// One real widget data consumer, so a refresh is seen to reach the widgets.
+vi.mock('@/components/widgets/widget-grid', async () => {
+  const { useWidgetData } = await import('@/lib/widgets/use-widget-data');
+  return {
+    WidgetGrid: () => {
+      useWidgetData({ fetchFn: mocks.widgetFetch, refreshInterval: 60_000, cacheKey: 'probe' });
+      return <div data-testid="grid" />;
+    },
+  };
+});
 vi.mock('next/dynamic', () => ({ default: () => () => null }));
 vi.mock('@/components/widgets/bento-primitives', () => ({ BentoTopBar: () => null, FloatingEdit: () => null, HPR: { ink: '#000', hairline2: '#111', amber: '#f90' } }));
 vi.mock('@/components/widgets/dashboard-layout-context', () => ({
@@ -21,7 +34,13 @@ vi.mock('@/components/widgets/dashboard-layout-context', () => ({
 }));
 vi.mock('@/lib/widgets/widget-availability-context', () => ({ WidgetAvailabilityProvider: ({ children }: { children: React.ReactNode }) => children }));
 vi.mock('@/components/widgets/layout-switcher', () => ({ LayoutSwitcher: () => null }));
-vi.mock('@/lib/store', () => ({ useUIStore: (select: (s: Record<string, unknown>) => unknown) => select({ dashboardEditMode: false, setDashboardEditMode: () => {} }) }));
+vi.mock('@/lib/store', () => ({ useUIStore: (select: (s: Record<string, unknown>) => unknown) => select({ dashboardEditMode: mocks.editMode, setDashboardEditMode: () => {} }) }));
+vi.mock('@/components/ui/pull-to-refresh', () => ({
+  PullToRefresh: (props: { onRefresh: () => unknown; disabled?: boolean }) => {
+    mocks.pullToRefresh = props;
+    return null;
+  },
+}));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 import { DashboardClient } from './dashboard-client';
@@ -40,6 +59,7 @@ const showsGrid = () => document.querySelector('[data-testid="grid"]') !== null;
 beforeEach(() => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   mocks.refresh.mockClear();
+  mocks.editMode = false;
   // The real useIsMobile reads this; one object, as the hook caches it.
   const query = { get matches() { return mocks.isMobile; }, addEventListener() {}, removeEventListener() {} };
   vi.stubGlobal('matchMedia', () => query);
@@ -139,5 +159,25 @@ describe('DashboardClient heading', () => {
     expect(headings).toHaveLength(1);
     expect(headings[0].textContent).toBe('Dashboard');
     expect(headings[0].className).toContain('sr-only');
+  });
+});
+
+describe('DashboardClient pull to refresh', () => {
+  it('refetches the widget queries, not the whole page', async () => {
+    mocks.isMobile = true;
+    render('mobile');
+    await vi.waitFor(() => expect(client.isFetching()).toBe(0));
+    const before = mocks.widgetFetch.mock.calls.length;
+    await act(async () => { await mocks.pullToRefresh!.onRefresh(); });
+    expect(mocks.widgetFetch).toHaveBeenCalledTimes(before + 1);
+    expect(mocks.refresh).not.toHaveBeenCalled();
+    expect(mocks.pullToRefresh!.disabled).toBe(false);
+  });
+
+  it('is off while editing, where touches drag widgets', () => {
+    mocks.isMobile = true;
+    mocks.editMode = true;
+    render('mobile');
+    expect(mocks.pullToRefresh!.disabled).toBe(true);
   });
 });

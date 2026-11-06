@@ -49,10 +49,24 @@ export function isPullToRefreshAtTop(
 }
 
 /**
+ * True when the touch starts inside an element that has scrolled down (an
+ * inner list, a widget body, a fixed overlay panel). A downward drag there
+ * scrolls that element back up; it is not a pull on the page. A few pixels of
+ * stray offset (a rail nudged by its 1px vertical overflow) and clipped
+ * wrappers moved by focus don't count, or they would block every pull on them.
+ */
+export function startsInScrolledElement(target: EventTarget | null): boolean {
+  for (let node = target instanceof Element ? target : null; node; node = node.parentElement) {
+    if (node.scrollTop > 2 && /auto|scroll/.test(getComputedStyle(node).overflowY)) return true;
+  }
+  return false;
+}
+
+/**
  * Pull-to-refresh for document-scrolled pages, or a provided scroll container.
- * Engages only when the document and optional target are both at the top and
- * the gesture starts as a downward drag, on coarse-pointer (touch) devices
- * only.
+ * Engages only when the document and optional target are both at the top, the
+ * touch is not inside a scrolled-down inner element, and the gesture starts as
+ * a mostly downward drag, on coarse-pointer (touch) devices only.
  */
 export function usePullToRefresh({
   onRefresh,
@@ -70,6 +84,7 @@ export function usePullToRefresh({
   const disabledRef = useRef(disabled);
   const refreshingRef = useRef(refreshing);
   const startYRef = useRef<number | null>(null);
+  const startXRef = useRef(0);
   const engagedRef = useRef(false);
   // touchend reads the latest distance without re-binding listeners on each move.
   const distanceRef = useRef(0);
@@ -116,7 +131,9 @@ export function usePullToRefresh({
       if (e.touches.length !== 1) return;
       if (isModalLayerOpen()) return;
       if (!isAtTop()) return;
+      if (startsInScrolledElement(e.target)) return;
       startYRef.current = e.touches[0].clientY;
+      startXRef.current = e.touches[0].clientX;
       engagedRef.current = false;
     };
 
@@ -135,6 +152,12 @@ export function usePullToRefresh({
         return;
       }
       if (!engagedRef.current && delta < ENGAGE_SLOP) return;
+      // A mostly sideways start is a rail scroll or a row swipe, not a pull:
+      // leave the whole gesture to it.
+      if (!engagedRef.current && Math.abs(e.touches[0].clientX - startXRef.current) >= delta) {
+        reset();
+        return;
+      }
       engagedRef.current = true;
       // Own the gesture so the page doesn't rubber-band/scroll under it.
       if (e.cancelable) e.preventDefault();
