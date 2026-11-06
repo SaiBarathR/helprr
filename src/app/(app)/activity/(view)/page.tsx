@@ -22,6 +22,7 @@ import {
   Loader2,
   RefreshCw,
   Clock,
+  Ban,
   SlidersHorizontal,
   ArrowDown,
   ArrowUp,
@@ -369,6 +370,17 @@ export default function ActivityPage() {
               aria-label="History"
             >
               <Clock className="h-4 w-4" />
+            </Button>
+
+            {/* Blocklist */}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="md:h-11 md:w-11 w-7 h-7"
+              onClick={() => router.push('/activity/blocklist')}
+              aria-label="Blocklist"
+            >
+              <Ban className="h-4 w-4" />
             </Button>
 
             {/* Refresh */}

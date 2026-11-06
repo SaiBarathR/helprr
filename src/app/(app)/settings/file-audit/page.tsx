@@ -13,7 +13,7 @@ interface AuditRecord {
   username: string;
   service: 'SONARR' | 'RADARR' | 'LIDARR' | 'QBITTORRENT';
   instanceId: string | null;
-  operation: 'EDIT' | 'DELETE' | 'IMPORT' | 'DELETE_MEDIA' | 'DELETE_TORRENT' | 'REMOVE_QUEUE';
+  operation: 'EDIT' | 'DELETE' | 'IMPORT' | 'DELETE_MEDIA' | 'DELETE_TORRENT' | 'REMOVE_QUEUE' | 'REMOVE_BLOCKLIST';
   mediaType: string;
   mediaId: number | null;
   mediaTitle: string;
@@ -33,6 +33,7 @@ const OP_VARIANT: Record<AuditRecord['operation'], 'default' | 'secondary' | 'de
   DELETE_MEDIA: 'destructive',
   DELETE_TORRENT: 'destructive',
   REMOVE_QUEUE: 'destructive',
+  REMOVE_BLOCKLIST: 'secondary',
 };
 
 const OP_LABEL: Record<AuditRecord['operation'], string> = {
@@ -42,6 +43,7 @@ const OP_LABEL: Record<AuditRecord['operation'], string> = {
   DELETE_MEDIA: 'MEDIA DELETE',
   DELETE_TORRENT: 'TORRENT DELETE',
   REMOVE_QUEUE: 'QUEUE REMOVE',
+  REMOVE_BLOCKLIST: 'BLOCKLIST REMOVE',
 };
 
 function serviceLabel(service: AuditRecord['service']): string {
@@ -57,6 +59,7 @@ function countLabel(record: AuditRecord): string {
   }
   if (record.operation === 'DELETE_TORRENT') return `${count} torrent${count === 1 ? '' : 's'}`;
   if (record.operation === 'REMOVE_QUEUE') return `${count} queue item${count === 1 ? '' : 's'}`;
+  if (record.operation === 'REMOVE_BLOCKLIST') return `${count} blocklist entr${count === 1 ? 'y' : 'ies'}`;
   return `${count} file${count === 1 ? '' : 's'}`;
 }
 
