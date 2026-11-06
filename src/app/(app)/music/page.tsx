@@ -40,6 +40,7 @@ import { getListViewState, setListViewState } from '@/lib/media-list-cache';
 import { useQuery } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/query-keys';
 import { jsonFetcher, ensureArray } from '@/lib/query-fetch';
+import { isQueryOffline } from '@/lib/network-error';
 import { bulkFanOut, reportBulk } from '@/lib/bulk-fan-out';
 import { useUnionTags } from '@/lib/hooks/use-reference-data';
 import { type ContextActionGroup } from '@/components/ui/quick-context-menu';
@@ -165,6 +166,8 @@ export default function MusicPage() {
     data: artistsData,
     isLoading: loading,
     isError,
+    error,
+    fetchStatus,
     refetch: refetchArtists,
   } = useQuery({
     queryKey: queryKeys.library('lidarr'),
@@ -173,6 +176,7 @@ export default function MusicPage() {
     select: ensureArray,
   });
   const artists = artistsData ?? EMPTY_ARTISTS;
+  const offline = isQueryOffline({ isError, error, fetchStatus, data: artistsData });
   // Quality-profile / metadata-profile / tag names are resolved per-instance server-side
   // (item.qualityProfileName, item.metadataProfileName, item.tagLabels). The bulk-tag picker
   // still needs the union of every connected instance's tags as suggestions.
@@ -834,11 +838,12 @@ export default function MusicPage() {
 
         if (filtered.length === 0) {
           // Distinguish a fetch failure (nothing cached) from a genuinely empty
-          // library — the former offers Retry, not "add a connection".
-          if (isError && artists.length === 0) {
+          // library — the former offers Retry, not "add a connection". Offline,
+          // a first load pauses instead of failing, so it has no error.
+          if ((isError || offline) && artists.length === 0) {
             return (
               <div className="text-center py-12 text-muted-foreground">
-                <p>Couldn&apos;t load your library — check the connection.</p>
+                <p>{offline ? "You're offline" : "Couldn't load your library — check the connection."}</p>
                 <button
                   onClick={() => void refetchArtists()}
                   className="mt-3 inline-flex items-center justify-center rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-accent active:bg-accent/80 transition-colors"

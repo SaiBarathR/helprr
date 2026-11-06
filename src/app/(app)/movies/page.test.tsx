@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { act, cleanup, render, screen } from '@testing-library/react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, onlineManager } from '@tanstack/react-query';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { queryKeys } from '@/lib/query-keys';
@@ -68,5 +68,32 @@ it('supplies the measured Movies toolbar height to its sticky table and updates 
   toolbarHeight = 176;
   act(() => notifyToolbarResize());
   expect(toolbar.parentElement?.style.getPropertyValue('--page-toolbar-height')).toBe('176px');
+  client.clear();
+});
+
+function renderEmptyPage() {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(<QueryClientProvider client={client}><TooltipProvider><MoviesPage /></TooltipProvider></QueryClientProvider>);
+  return client;
+}
+
+it('says the device is offline, not to add a connection, while the first load is paused offline', async () => {
+  onlineManager.setOnline(false);
+  try {
+    const client = renderEmptyPage();
+    expect(await screen.findByText("You're offline")).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
+    expect(screen.queryByText('No movies found. Add your Radarr connection in Settings.')).toBeNull();
+    expect(fetch).not.toHaveBeenCalled();
+    client.clear();
+  } finally {
+    onlineManager.setOnline(true);
+  }
+});
+
+it('still points to Settings when an online load returns no movies', async () => {
+  const client = renderEmptyPage();
+  expect(await screen.findByText('No movies found. Add your Radarr connection in Settings.')).toBeTruthy();
+  expect(screen.queryByText("You're offline")).toBeNull();
   client.clear();
 });

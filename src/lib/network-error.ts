@@ -1,3 +1,5 @@
+import type { FetchStatus } from '@tanstack/react-query';
+
 /** A request that never got a response: the device is offline, or on Wi-Fi with no route to Helprr. */
 export class OfflineError extends Error {
   constructor(cause: unknown) {
@@ -26,4 +28,15 @@ export async function fetchOrOffline(input: RequestInfo | URL, init?: RequestIni
 export function isOfflineError(error: unknown): boolean {
   if (typeof navigator !== 'undefined' && navigator.onLine === false) return true;
   return error instanceof OfflineError;
+}
+
+/**
+ * Whether a query has nothing to show because the device is offline. While
+ * offline, TanStack pauses a fetch (fetchStatus 'paused') instead of failing
+ * it, so a query that never loaded has no error and no data, and a page would
+ * otherwise show its empty state ("Add your connection in Settings").
+ */
+export function isQueryOffline(query: { isError: boolean; error: unknown; fetchStatus: FetchStatus; data: unknown }): boolean {
+  if (query.isError) return isOfflineError(query.error);
+  return query.fetchStatus === 'paused' && query.data === undefined;
 }
