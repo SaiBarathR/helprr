@@ -531,7 +531,7 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
             where its action row and tabs belong was the loudest non-Netflix
             block on the screen. They stay reachable, just at the foot. */}
         {!stacked && (infoRows.length > 0 || hasMediaDetail) && (
-          <div className="grid gap-3 md:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             {/* Both panels are omitted entirely when empty — an outlined box
                 with nothing in it reads as a loading failure. */}
             {infoRows.length > 0 && (
@@ -570,7 +570,7 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
                   <label className="flex flex-col gap-1 text-xs text-muted-foreground">
                     Audio
                     <select
-                      className="h-9 rounded-md border bg-background px-2 text-sm text-foreground"
+                      className="h-9 w-full min-w-0 rounded-md border bg-background px-2 text-sm text-foreground"
                       value={audioIndex ?? ''}
                       onChange={(event) => setAudioIndex(event.target.value === '' ? null : Number(event.target.value))}
                     >
@@ -585,7 +585,7 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
                   <label className="flex flex-col gap-1 text-xs text-muted-foreground">
                     Subtitles
                     <select
-                      className="h-9 rounded-md border bg-background px-2 text-sm text-foreground"
+                      className="h-9 w-full min-w-0 rounded-md border bg-background px-2 text-sm text-foreground"
                       value={subtitleIndex ?? ''}
                       onChange={(event) => setSubtitleIndex(event.target.value === '' ? null : Number(event.target.value))}
                     >
@@ -674,7 +674,7 @@ export default function JellyfinItemPage({ params }: { params: Promise<{ itemId:
                 ? `More from ${item.SeasonName ?? 'this season'}`
                 : 'Episodes'}
             </h2>
-            <div className="grid gap-2 lg:grid-cols-2 2xl:grid-cols-3">
+            <div className="grid grid-cols-1 gap-2 lg:grid-cols-2 2xl:grid-cols-3">
               {query.data.episodes.map((episode) => {
                 const still = jellyfinCardImage(episode, 320, 'landscape');
                 const progress = episode.UserData?.PlayedPercentage;
