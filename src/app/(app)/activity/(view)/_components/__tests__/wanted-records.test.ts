@@ -35,13 +35,17 @@ describe('wantedDate', () => {
   });
 
   it('shows a film that is not out yet by its next release', () => {
-    expect(label(movie({ isAvailable: false, inCinemas: '2026-10-01T00:00:00Z', digitalRelease: '2027-01-15T00:00:00Z' })))
-      .toBe('Digital release 2027-01-15');
-    expect(label(movie({ isAvailable: false, inCinemas: '2026-10-01T00:00:00Z' }))).toBe('In cinemas 2026-10-01');
+    expect(label(movie({ status: 'announced', inCinemas: '2027-06-10T00:00:00Z', digitalRelease: '2027-09-01T00:00:00Z' })))
+      .toBe('In cinemas 2027-06-10');
+  });
+
+  it('shows a film in cinemas with a home release still to come by its cinema date', () => {
+    expect(label(movie({ isAvailable: false, inCinemas: '2026-07-15T00:00:00Z', digitalRelease: '2026-11-17T00:00:00Z' })))
+      .toBe('In cinemas 2026-07-15');
   });
 
   it('falls back to the added date, labelled, when a film has no release dates', () => {
-    expect(label(movie({ isAvailable: false }))).toBe('Added 2026-02-01');
+    expect(label(movie({ status: 'announced', isAvailable: false }))).toBe('Added 2026-02-01');
   });
 
   it('shows nothing for a record with no usable date', () => {
@@ -49,12 +53,33 @@ describe('wantedDate', () => {
   });
 });
 
+// Shaped like real Radarr /api/v3/wanted/missing rows. With minimum availability
+// "announced" Radarr reports isAvailable: true for films years from release.
 describe('isNotReleased', () => {
-  it('is only a Radarr film Radarr does not count as available', () => {
-    expect(isNotReleased(movie({ isAvailable: false }))).toBe(true);
-    expect(isNotReleased(movie({ isAvailable: true }))).toBe(false);
-    expect(isNotReleased(movie())).toBe(false);
-    expect(isNotReleased(episode({ isAvailable: false }))).toBe(false);
+  it('holds a future film back even when Radarr counts it as available', () => {
+    const secretWars = movie({ title: 'Avengers: Secret Wars', year: 2027, status: 'announced', isAvailable: true, inCinemas: '2027-12-15T00:00:00Z' });
+    expect(isNotReleased(secretWars, NOW)).toBe(true);
+  });
+
+  it('holds back a future film Radarr counts as unavailable', () => {
+    expect(isNotReleased(movie({ status: 'announced', isAvailable: false, inCinemas: '2027-06-16T00:00:00Z' }), NOW)).toBe(true);
+  });
+
+  it('lists a film that is already in cinemas, whatever Radarr says about availability', () => {
+    expect(isNotReleased(movie({ status: 'inCinemas', isAvailable: true, inCinemas: '2026-08-07T00:00:00Z' }), NOW)).toBe(false);
+    expect(isNotReleased(movie({ status: 'inCinemas', isAvailable: false, inCinemas: '2026-07-15T00:00:00Z', digitalRelease: '2026-11-17T00:00:00Z' }), NOW)).toBe(false);
+  });
+
+  it('holds back an announced film with no dates, but not a released or unknown one', () => {
+    expect(isNotReleased(movie({ status: 'announced', isAvailable: true }), NOW)).toBe(true);
+    expect(isNotReleased(movie({ status: 'tba' }), NOW)).toBe(true);
+    expect(isNotReleased(movie({ status: 'released', isAvailable: true }), NOW)).toBe(false);
+    expect(isNotReleased(movie(), NOW)).toBe(false);
+  });
+
+  it('never holds back episodes or albums', () => {
+    expect(isNotReleased(episode({ airDateUtc: '2027-01-01T00:00:00Z' }), NOW)).toBe(false);
+    expect(isNotReleased(album({ releaseDate: '2027-01-01T00:00:00Z' }), NOW)).toBe(false);
   });
 });
 

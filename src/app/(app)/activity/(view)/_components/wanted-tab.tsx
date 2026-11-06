@@ -125,10 +125,10 @@ export function WantedTab({ type, filterBy, instanceFilter }: { type: 'missing' 
     });
   }, [wantedQuery.data]);
   const totalRecords = wantedQuery.data?.pages.at(-1)?.totalRecords ?? 0;
-  // Films Radarr doesn't count as available yet sit in their own group on
-  // Missing, folded away, so the list reads as what is actually out and missing.
-  const notReleased = type === 'missing' ? records.filter(isNotReleased) : [];
-  const listed = notReleased.length > 0 ? records.filter((r) => !isNotReleased(r)) : records;
+  // Films that are not out anywhere yet sit in their own group on Missing,
+  // folded away, so the list reads as what is actually out and missing.
+  const notReleased = type === 'missing' ? records.filter((r) => isNotReleased(r)) : [];
+  const listed = notReleased.length > 0 ? records.filter((r) => !notReleased.includes(r)) : records;
   const selectedRecords = records.filter((r) => selectedKeys.has(wantedRecordKey(r)));
 
   // Same connection list (and query key) as the page's instance filter.
@@ -419,7 +419,7 @@ export function WantedTab({ type, filterBy, instanceFilter }: { type: 'missing' 
           </button>
           {showNotReleased && (
             <>
-              <p className="px-3 pb-1 text-xs text-muted-foreground">Films Radarr does not count as available yet.</p>
+              <p className="px-3 pb-1 text-xs text-muted-foreground">Films with no cinema, digital or physical release yet.</p>
               {notReleased.map(renderRow)}
             </>
           )}
