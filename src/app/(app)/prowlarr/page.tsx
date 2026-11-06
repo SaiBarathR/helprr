@@ -8,6 +8,7 @@ import { useRestorableInfiniteQuery as useInfiniteQuery } from '@/lib/hooks/use-
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { jsonFetcher, ensureArray, ApiError } from '@/lib/query-fetch';
+import { isOfflineError } from '@/lib/network-error';
 import { Button } from '@/components/ui/button';
 import { PullToRefresh } from '@/components/ui/pull-to-refresh';
 import { Badge } from '@/components/ui/badge';
@@ -269,10 +270,13 @@ function IndexersTab({ actions, onOpen }: { actions: IndexerActions; onOpen: (id
   }
 
   if (indexersQuery.isError) {
+    const offline = isOfflineError(indexersQuery.error);
     return (
       <div className="rounded-xl bg-card p-8 text-center text-muted-foreground">
-        <p>Failed to load indexers</p>
-        <p className="text-sm mt-2">Make sure Prowlarr is configured in Settings.</p>
+        <p>{offline ? "You're offline" : 'Failed to load indexers'}</p>
+        <p className="text-sm mt-2">
+          {offline ? 'Indexers load again when the connection returns.' : 'Make sure Prowlarr is configured in Settings.'}
+        </p>
       </div>
     );
   }

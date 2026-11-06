@@ -5,6 +5,7 @@ import { applyTorrentDelta, type TorrentDeltaResponse } from '@/lib/qbittorrent-
 import { useRefreshAction } from '@/lib/hooks/use-refresh-action';
 import { getRefreshIntervalMs } from '@/lib/client-refresh-settings';
 import { backoffRefetchInterval } from '@/lib/query-fetch';
+import { fetchOrOffline, isOfflineError } from '@/lib/network-error';
 import type { QBittorrentTorrent, QBittorrentSummaryResponse, QBittorrentTransferInfo } from '@/types';
 import type { TorrentsFilterPreference as FilterType } from '@/lib/store';
 import { mergeTorrents, type PendingFieldOverride } from './torrent-list';
@@ -36,7 +37,7 @@ export function useTorrentsSummary(filter: FilterType[], hasHydrated: boolean) {
       params.set('view', 'delta');
       if (previous) params.set('cursor', previous.cursor);
       const qs = params.toString();
-      const res = await fetch(qs ? `/api/qbittorrent/summary?${qs}` : '/api/qbittorrent/summary', { signal });
+      const res = await fetchOrOffline(qs ? `/api/qbittorrent/summary?${qs}` : '/api/qbittorrent/summary', { signal });
       if (!res.ok) throw new Error('Failed to fetch');
       const data = (await res.json()) as TorrentDeltaResponse & { error?: string };
       if (data.error) throw new Error(data.error);
@@ -135,10 +136,13 @@ export function useTorrentsSummary(filter: FilterType[], hasHydrated: boolean) {
   // that gap — treat it as loading to avoid a brief "No torrents found" flash.
   const loading = !hasHydrated || summaryQuery.isLoading;
   const { refreshing, refresh } = useRefreshAction(refetchSummary);
+  const offline = summaryQuery.isError && isOfflineError(summaryQuery.error);
   const error = summaryQuery.isError
-    ? summaryQuery.error instanceof Error
-      ? summaryQuery.error.message
-      : 'Failed to fetch torrents'
+    ? offline
+      ? "You're offline"
+      : summaryQuery.error instanceof Error
+        ? summaryQuery.error.message
+        : 'Failed to fetch torrents'
     : null;
 
   useEffect(() => {
@@ -164,5 +168,6 @@ export function useTorrentsSummary(filter: FilterType[], hasHydrated: boolean) {
     refreshing,
     refresh,
     error,
+    offline,
   };
 }

@@ -618,6 +618,9 @@ preserving streaming and fast cached starts. A mismatched navigation response,
 including navigation preload, is retried once with a plain fetch; if that fails
 or still mismatches, the worker returns the precached `/offline.html`. The retry
 is served directly; subsequent background revalidation can refill the cache.
+`/offline.html` (also the fallback for a never-visited route) reloads itself
+every 10 seconds with a meta refresh so it leaves on its own once the connection
+returns; it cannot use a script because it is served with the nonce CSP.
 Navigation preload is off, and the worker turns it off on activate because the
 flag lives on the registration: after a cache hit WebKit cancels the preload and
 the worker's wait on `preloadResponse` never settles, which kept the previous
