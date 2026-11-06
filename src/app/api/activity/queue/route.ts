@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
-import { getQueueCached, getQueueNeedingImportCached } from '@/lib/activity-queue';
+import { upstreamErrorResponse } from '@/lib/api-error';
+import { readJsonBody } from '@/lib/bulk-editor';
+import { runWithOperationAudit } from '@/lib/file-audit';
+import { asJsonObject, resolveActivityArrTarget } from '@/lib/activity-arr-target';
+import { bumpQueueCacheVersion, getQueueCached, getQueueNeedingImportCached } from '@/lib/activity-queue';
 import { parsePageParams } from '@/lib/pagination';
 import { resolveConnection } from '@/lib/arr-instances';
 import {
@@ -77,4 +81,75 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
   }
 }
 
+// A selection can hold every loaded queue record; also bounds a hostile body.
+const QUEUE_BULK_MAX_IDS = 1000;
+const QUEUE_REMOVE_OPTIONS = ['removeFromClient', 'blocklist', 'skipRedownload', 'changeCategory'] as const;
+
+// ── DELETE /api/activity/queue ──────────────────────────────────────────────
+// Body: { source, instanceId, ids, removeFromClient?, blocklist?, skipRedownload?,
+// changeCategory? }. Removes several of one instance's queue items with the single
+// Remove dialog's options. Audited as one REMOVE_QUEUE row per request.
+async function deleteHandler(request: NextRequest): Promise<NextResponse> {
+  const auth = await requireUserCapability('activity.manage');
+  if (!auth.ok) return auth.response;
+
+  try {
+    const body = asJsonObject(await readJsonBody(request));
+    if (!body) return NextResponse.json({ error: 'Expected a JSON object' }, { status: 400 });
+    const { ids } = body;
+    if (
+      !Array.isArray(ids)
+      || ids.length === 0
+      || ids.length > QUEUE_BULK_MAX_IDS
+      || !ids.every((id) => Number.isSafeInteger(id) && id >= 0 && id <= 2_147_483_647)
+    ) {
+      return NextResponse.json(
+        { error: `ids must be an array of 1 to ${QUEUE_BULK_MAX_IDS} queue item ids` },
+        { status: 400 },
+      );
+    }
+    if (QUEUE_REMOVE_OPTIONS.some((key) => body[key] !== undefined && typeof body[key] !== 'boolean')) {
+      return NextResponse.json({ error: 'Removal options must be booleans' }, { status: 400 });
+    }
+    const options = {
+      removeFromClient: body.removeFromClient === true,
+      blocklist: body.blocklist === true,
+      skipRedownload: body.skipRedownload === true,
+      changeCategory: body.changeCategory === true,
+    };
+    const uniqueIds = [...new Set(ids as number[])];
+
+    const resolved = await resolveActivityArrTarget(body.source, body.instanceId);
+    if (!resolved.ok) return resolved.response;
+    const { source, service, appName, instanceId, client } = resolved.target;
+
+    const single = uniqueIds.length === 1;
+    try {
+      await runWithOperationAudit({
+        user: auth.user,
+        service,
+        instanceId,
+        operation: 'REMOVE_QUEUE',
+        targetType: 'queue',
+        targetId: single ? uniqueIds[0] : null,
+        targetTitle: single
+          ? `${appName} queue item #${uniqueIds[0]}`
+          : `${uniqueIds.length} ${appName} queue items`,
+        itemCount: uniqueIds.length,
+        filesDeleted: options.removeFromClient,
+        details: { source, queueIds: uniqueIds, ...options },
+      }, () => client.deleteQueueBulk(uniqueIds, options));
+    } finally {
+      // As for a single removal: no cached page may resurrect a removed row. Also on
+      // failure, since upstream removes item by item and may have removed some.
+      await bumpQueueCacheVersion();
+    }
+    // Upstream skips ids it no longer has, so this is what was asked for, not removed.
+    return NextResponse.json({ success: true, requested: uniqueIds.length });
+  } catch (error) {
+    return upstreamErrorResponse(error, 'Failed to remove queue items');
+  }
+}
+
 export const GET = withApiLogging(getHandler, 'api/activity/queue');
+export const DELETE = withApiLogging(deleteHandler, 'api/activity/queue');

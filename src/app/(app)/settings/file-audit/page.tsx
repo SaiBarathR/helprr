@@ -16,7 +16,7 @@ interface AuditRecord {
   username: string;
   service: 'SONARR' | 'RADARR' | 'LIDARR' | 'QBITTORRENT';
   instanceId: string | null;
-  operation: 'EDIT' | 'DELETE' | 'IMPORT' | 'DELETE_MEDIA' | 'DELETE_TORRENT' | 'REMOVE_QUEUE' | 'REMOVE_BLOCKLIST' | 'MOVE_MEDIA';
+  operation: 'EDIT' | 'DELETE' | 'IMPORT' | 'DELETE_MEDIA' | 'DELETE_TORRENT' | 'REMOVE_QUEUE' | 'REMOVE_BLOCKLIST' | 'MOVE_MEDIA' | 'MARK_FAILED';
   mediaType: string;
   mediaId: number | null;
   mediaTitle: string;
@@ -38,6 +38,7 @@ const OP_VARIANT: Record<AuditRecord['operation'], 'default' | 'secondary' | 'de
   REMOVE_QUEUE: 'destructive',
   REMOVE_BLOCKLIST: 'secondary',
   MOVE_MEDIA: 'default',
+  MARK_FAILED: 'destructive',
 };
 
 const OP_LABEL: Record<AuditRecord['operation'], string> = {
@@ -49,6 +50,7 @@ const OP_LABEL: Record<AuditRecord['operation'], string> = {
   REMOVE_QUEUE: 'QUEUE REMOVE',
   REMOVE_BLOCKLIST: 'BLOCKLIST REMOVE',
   MOVE_MEDIA: 'ROOT FOLDER',
+  MARK_FAILED: 'MARKED FAILED',
 };
 
 function serviceLabel(service: AuditRecord['service']): string {
@@ -65,6 +67,7 @@ function countLabel(record: AuditRecord): string {
   if (record.operation === 'DELETE_TORRENT') return `${count} torrent${count === 1 ? '' : 's'}`;
   if (record.operation === 'REMOVE_QUEUE') return `${count} queue item${count === 1 ? '' : 's'}`;
   if (record.operation === 'REMOVE_BLOCKLIST') return `${count} blocklist entr${count === 1 ? 'y' : 'ies'}`;
+  if (record.operation === 'MARK_FAILED') return `${count} download${count === 1 ? '' : 's'}`;
   return `${count} file${count === 1 ? '' : 's'}`;
 }
 

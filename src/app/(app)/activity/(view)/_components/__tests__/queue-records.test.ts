@@ -9,9 +9,11 @@ import {
   getQueueItemQuality,
   getQueueMediaHref,
   groupQueueByDownload,
+  isPendingRelease,
   manualImportHref,
   packNoun,
   queueRecordKey,
+  queueRemovalBatches,
   queueRemovalDelta,
   statusColor,
   statusLabel,
@@ -135,5 +137,34 @@ describe('queue record grouping', () => {
       record({ trackedDownloadState: 'failed' }),
       record({ trackedDownloadState: 'importPending', trackedDownloadStatus: 'ok' }),
     ])).toEqual({ count: 4, attention: 2 });
+  });
+});
+
+describe('isPendingRelease', () => {
+  it('is a release the *arr holds back, as its own queue offers Grab for', () => {
+    expect(isPendingRelease({ status: 'delay' } as QueueRecord)).toBe(true);
+    expect(isPendingRelease({ status: 'downloadClientUnavailable' } as QueueRecord)).toBe(true);
+    expect(isPendingRelease({ status: 'downloading' } as QueueRecord)).toBe(false);
+    expect(isPendingRelease({ status: 'queued' } as QueueRecord)).toBe(false);
+  });
+});
+
+describe('queueRemovalBatches', () => {
+  it('groups ids per source and instance', () => {
+    const rec = (id: number, source: string, instanceId: string) => ({ id, source, instanceId }) as QueueRecord;
+    expect(queueRemovalBatches([rec(1, 'sonarr', 's1'), rec(2, 'radarr', 'r1'), rec(3, 'sonarr', 's1'), rec(1, 'sonarr', 's2')])).toEqual([
+      { source: 'sonarr', instanceId: 's1', ids: [1, 3] },
+      { source: 'radarr', instanceId: 'r1', ids: [2] },
+      { source: 'sonarr', instanceId: 's2', ids: [1] },
+    ]);
+  });
+});
+
+describe('groupQueueByDownload: records without a download id', () => {
+  it('keeps the same queue id on two instances apart, so one selection never removes both', () => {
+    const pending = (instanceId: string) => ({ id: 77, source: 'radarr', instanceId, downloadId: '' }) as QueueRecord;
+    const groups = groupQueueByDownload([pending('rad-1080'), pending('rad-4k')]);
+    expect(groups).toHaveLength(2);
+    expect(groups.map((group) => group.items.length)).toEqual([1, 1]);
   });
 });

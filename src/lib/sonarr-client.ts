@@ -372,6 +372,25 @@ export class SonarrClient {
     await this.delete(`/api/v3/queue/${id}`, params);
   }
 
+  // Removes several queue items: the ids go in the body, the options in the query.
+  // Every option is sent because the bulk call removes from the client by default.
+  async deleteQueueBulk(ids: number[], options: DeleteQueueOptions = {}): Promise<void> {
+    await this.client.delete('/api/v3/queue/bulk', {
+      data: { ids },
+      params: {
+        removeFromClient: options.removeFromClient ?? false,
+        blocklist: options.blocklist ?? false,
+        skipRedownload: options.skipRedownload ?? false,
+        changeCategory: options.changeCategory ?? false,
+      },
+    });
+  }
+
+  // Sends a delayed (pending) release to the download client now.
+  async grabQueueItem(id: number): Promise<void> {
+    await this.post(`/api/v3/queue/grab/${id}`);
+  }
+
   // Blocklist — releases the *arr will not grab again. Removing an entry lets
   // the release be grabbed again; the bulk call carries its ids in the body.
   async getBlocklist(page: number = 1, pageSize: number = 20): Promise<BlocklistResponse> {
@@ -392,6 +411,12 @@ export class SonarrClient {
   }
 
   // History
+  // Marks the download behind a history event failed: the release is blocklisted
+  // and the *arr searches for another one.
+  async markHistoryFailed(id: number): Promise<void> {
+    await this.post(`/api/v3/history/failed/${id}`);
+  }
+
   async getHistory(
     page: number = 1,
     pageSize: number = 20,

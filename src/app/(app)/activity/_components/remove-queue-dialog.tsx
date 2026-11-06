@@ -36,6 +36,8 @@ interface RemoveQueueDialogProps {
   onOpenChange: (open: boolean) => void;
   /** Release title shown in the header/body. */
   title: string;
+  /** Replaces the "remove '{title}'" question, e.g. for several downloads. */
+  description?: string;
   /** Display name of the *arr app driving the queue (Sonarr/Radarr/Lidarr) — used in hint copy. */
   appName: string;
   /** Whether the download client has a Post-Import Category configured (gates "Change Category"). */
@@ -48,6 +50,7 @@ export function RemoveQueueDialog({
   open,
   onOpenChange,
   title,
+  description,
   appName,
   canChangeCategory,
   busy,
@@ -87,7 +90,7 @@ export function RemoveQueueDialog({
         <DialogHeader>
           <DialogTitle className="text-base break-words">Remove - {title}</DialogTitle>
           <DialogDescription>
-            Are you sure you want to remove &lsquo;{title}&rsquo; from the queue?
+            {description ?? <>Are you sure you want to remove &lsquo;{title}&rsquo; from the queue?</>}
           </DialogDescription>
         </DialogHeader>
 
