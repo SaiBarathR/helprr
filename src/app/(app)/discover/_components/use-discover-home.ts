@@ -10,8 +10,9 @@ export function useDiscoverHome(discoverContentType: 'all' | 'movie' | 'show', c
   // Sections, filters meta and layout config (replaces fetchSections /
   // fetchFiltersMeta / fetchLayoutConfig + the mount effect). 60s staleTime keeps
   // carousels warm across navigation; layout config is cross-device server state
-  // so it refetches on mount (staleTime 0). discoverFetch surfaces TMDB 429s as
-  // RateLimitError (drives the banner below) instead of an error screen.
+  // so it refetches on mount unless fetched under 5s ago, e.g. by the app's
+  // layout hydrator on the same load (layout saves invalidate it). discoverFetch surfaces
+  // TMDB 429s as RateLimitError (drives the banner below) instead of an error screen.
   const sectionsQuery = useQuery({
     queryKey: queryKeys.discover('sections', { perSectionLimit: carouselItemLimit }),
     queryFn: ({ signal }) =>
@@ -30,7 +31,7 @@ export function useDiscoverHome(discoverContentType: 'all' | 'movie' | 'show', c
     queryKey: queryKeys.discover('layout'),
     queryFn: ({ signal }) => discoverFetch<unknown>('/api/settings/discover-layout', signal),
     select: (data: unknown) => validateDiscoverLayout(data),
-    staleTime: 0,
+    staleTime: 5_000,
     retry: false,
   });
 

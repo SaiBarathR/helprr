@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, renderHook, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 
@@ -16,7 +16,7 @@ import { useAnilistContextMenu } from '@/components/anime/anilist-context-menu';
 import { TwitchConnectionCard } from '@/components/settings/twitch-connection-card';
 import { YoutubeConnectionCard } from '@/components/settings/youtube-connection-card';
 import { useDiscoverHome } from '@/app/(app)/discover/_components/use-discover-home';
-import { fetchAppSettings } from '@/lib/app-settings-fetch';
+import { fetchAppSettings, forgetAppSettingsFetch } from '@/lib/app-settings-fetch';
 import { ensureArray, jsonFetcher } from '@/lib/query-fetch';
 import { queryKeys } from '@/lib/query-keys';
 import { getRefreshIntervalMs } from '@/lib/client-refresh-settings';
@@ -32,24 +32,35 @@ const BODIES: Record<string, unknown> = {
 };
 
 let fetchMock: ReturnType<typeof vi.fn>;
+// GETs only, so a settings save is not counted as a read.
 const callsTo = (path: string) =>
-  fetchMock.mock.calls.filter(([url]) => String(url).split('?')[0] === path).length;
+  fetchMock.mock.calls.filter(
+    ([url, init]) => String(url).split('?')[0] === path && (init?.method ?? 'GET') === 'GET',
+  ).length;
+let serverSettings: Record<string, unknown>;
 
 let queryClient: QueryClient;
 const wrap = (children: ReactNode) =>
   render(<QueryClientProvider client={queryClient}>{children}</QueryClientProvider>);
 
 beforeEach(() => {
+  forgetAppSettingsFetch();
+  // Only Date is faked, so the reuse windows can be stepped past.
+  vi.useFakeTimers({ toFake: ['Date'] });
   queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  serverSettings = { ...(BODIES['/api/settings'] as Record<string, unknown>) };
   // Responses resolve on a later tick, so every consumer mounts while the first request is in flight.
-  fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+  fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     await new Promise((resolve) => setTimeout(resolve, 10));
-    const body = BODIES[String(input).split('?')[0]] ?? {};
+    const path = String(input).split('?')[0];
+    if (path === '/api/settings' && init?.method === 'PUT') Object.assign(serverSettings, JSON.parse(String(init.body)));
+    const body = path === '/api/settings' ? serverSettings : (BODIES[path] ?? {});
     return new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } });
   });
   vi.stubGlobal('fetch', fetchMock);
 });
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllGlobals();
   queryClient.clear();
 });
@@ -67,10 +78,43 @@ it('loads /api/settings once for the log capture, the settings query and the ref
   expect(await interval).toBe(7000);
   expect(await screen.findByText('activity 7')).toBeTruthy();
   expect(callsTo('/api/settings')).toBe(1);
+});
 
-  // Nothing is kept once the request settles: the next read goes to the server.
-  await fetchAppSettings();
+it('does not reuse a failed /api/settings read', async () => {
+  fetchMock.mockResolvedValueOnce(new Response(null, { status: 503 }));
+  await expect(fetchAppSettings()).rejects.toThrow();
+  expect(await getRefreshIntervalMs('activityRefreshIntervalSecs')).toBe(7000);
   expect(callsTo('/api/settings')).toBe(2);
+});
+
+it('reuses a just-finished /api/settings read for a later consumer, and reads again after a save or a few seconds', async () => {
+  // The layout's log capture loads first and its request finishes...
+  render(<ClientLogCapture />);
+  await waitFor(() => expect(callsTo('/api/settings')).toBe(1));
+  await fetchAppSettings();
+
+  // ...then the page's readers mount: they reuse that answer.
+  expect(await getRefreshIntervalMs('activityRefreshIntervalSecs')).toBe(7000);
+  wrap(<SettingsConsumer />);
+  expect(await screen.findByText('activity 7')).toBeTruthy();
+  expect(callsTo('/api/settings')).toBe(1);
+
+  // A save is visible to the very next read.
+  const { result } = renderHook(() => useAppSettings(), {
+    wrapper: ({ children }) => <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>,
+  });
+  await act(async () => {
+    await result.current.update({ activityRefreshIntervalSecs: 9 }, { toast: false });
+  });
+  expect(await getRefreshIntervalMs('activityRefreshIntervalSecs')).toBe(9000);
+  expect(callsTo('/api/settings')).toBe(2);
+
+  // Reused for a few seconds only.
+  expect(await getRefreshIntervalMs('activityRefreshIntervalSecs')).toBe(9000);
+  expect(callsTo('/api/settings')).toBe(2);
+  vi.setSystemTime(Date.now() + 3_001);
+  await fetchAppSettings();
+  expect(callsTo('/api/settings')).toBe(3);
 });
 
 it('loads /api/services once for the Instances list and both connection cards', async () => {
@@ -97,6 +141,27 @@ it('loads the Discover layout once for the app hydrator and the Discover home', 
   expect(await screen.findByText('layout ready')).toBeTruthy();
   await waitFor(() => expect(useUIStore.getState().discoverLayout?.sections[0]?.id).toBe('trending'));
   expect(callsTo('/api/settings/discover-layout')).toBe(1);
+});
+
+it('reuses the hydrator\'s just-finished Discover layout for the Discover home, and refetches on a later open', async () => {
+  useUIStore.getState().setDiscoverLayout(null);
+  function DiscoverHome() {
+    const { layoutConfig } = useDiscoverHome('all', 10);
+    return <p>{layoutConfig ? 'layout ready' : 'loading'}</p>;
+  }
+  wrap(<DiscoverLayoutHydrator />);
+  await waitFor(() => expect(useUIStore.getState().discoverLayout?.sections[0]?.id).toBe('trending'));
+
+  // Opened on the same load, after the hydrator's request finished.
+  const first = wrap(<DiscoverHome />);
+  expect(await screen.findByText('layout ready')).toBeTruthy();
+  expect(callsTo('/api/settings/discover-layout')).toBe(1);
+  first.unmount();
+
+  // A later open reads the layout again (it can change on another device).
+  vi.setSystemTime(Date.now() + 5_001);
+  wrap(<DiscoverHome />);
+  await waitFor(() => expect(callsTo('/api/settings/discover-layout')).toBe(2));
 });
 
 it('loads the AniList viewer once for the status panel and the context menu', async () => {

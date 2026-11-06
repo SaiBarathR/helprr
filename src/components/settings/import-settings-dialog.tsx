@@ -44,6 +44,7 @@ import {
 } from '@/app/(app)/cleanup/_components/auto-cleanup-confirm';
 import { toAutoRunMode, type AutoRunMode } from '@/lib/cleanup/types';
 import { jsonFetcher } from '@/lib/query-fetch';
+import { forgetAppSettingsFetch } from '@/lib/app-settings-fetch';
 import { queryKeys } from '@/lib/query-keys';
 
 interface ImportSettingsDialogProps {
@@ -524,6 +525,8 @@ export function ImportSettingsDialog({ open, onOpenChange, onImported }: ImportS
     } catch (err) {
       toast.error((err as Error)?.message || 'Import failed');
     } finally {
+      // Even on a failed request: the server may have saved part of it.
+      forgetAppSettingsFetch();
       setImporting(false);
     }
   }

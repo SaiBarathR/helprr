@@ -10,8 +10,8 @@ import { discoverFetch } from '@/app/(app)/discover/_components/discover-data';
 export function DiscoverLayoutHydrator() {
   // Same query as the Discover home (useDiscoverHome), so opening /discover
   // first shares this request instead of sending a second one. Infinity: this
-  // observer loads once per app start (the Discover home still refetches on
-  // mount); layout saves invalidate the key.
+  // observer loads once per app start (the Discover home refetches on mount
+  // once the data is over 5s old); layout saves invalidate the key.
   const { data: validated } = useQuery({
     queryKey: queryKeys.discover('layout'),
     queryFn: ({ signal }) => discoverFetch<unknown>('/api/settings/discover-layout', signal),
