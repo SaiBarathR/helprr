@@ -1,11 +1,6 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
-import {
-  OPTIONAL_SETUP_STEPS,
-  SETUP_STEPS,
-  type SetupChecklistState,
-  type SetupStep,
-} from '@/lib/setup-checklist-steps';
+import { setupProgress, type SetupChecklistState, type SetupStep } from '@/lib/setup-checklist-steps';
 
 /**
  * The admin's setup checklist on the dashboard: each step's state comes from the
@@ -34,8 +29,7 @@ export async function getSetupChecklist(userId: string): Promise<SetupChecklistS
     install: marked.has('install'),
     backup: marked.has('backup'),
   };
-  const complete = SETUP_STEPS.every((step) => done[step] || OPTIONAL_SETUP_STEPS.has(step));
-  return { hidden: Boolean(settings?.setupChecklistDismissedAt) || complete, done };
+  return { hidden: Boolean(settings?.setupChecklistDismissedAt) || setupProgress(done).complete, done };
 }
 
 // Two first writes for a user race on the unique userId: the loser updates instead.
