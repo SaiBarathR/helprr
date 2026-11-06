@@ -3,6 +3,41 @@ title: Troubleshooting
 description: What Helprr's messages mean, and what to do about each one.
 ---
 
+## Starting Helprr
+
+### all predefined address pools have been fully subnetted
+
+`docker compose up` stops with this when Docker has no room for another network. Each
+Compose app gets at least one network of its own, and Docker's default settings have
+room for about 30, so a computer that already runs many apps runs out. Helprr has not
+started; its volumes may already exist, which is fine. Fix it and run the same command
+again.
+
+- Remove the networks no container uses, running or stopped. First see which those are:
+
+  ```bash
+  docker network ls --filter dangling=true
+  ```
+
+  Then remove them:
+
+  ```bash
+  docker network prune
+  ```
+
+  It asks before it removes anything. A network an app's Compose file made comes back
+  the next time that app starts. A network you made yourself with
+  `docker network create`, such as one several apps share, is removed too if it is in
+  that list, and you must create it again by hand.
+- If every network is in use, give Docker more, smaller networks with the
+  `default-address-pools` setting in Docker's `daemon.json` (in Docker Desktop:
+  **Settings → Docker Engine**), as
+  [Docker's documentation](https://docs.docker.com/reference/cli/dockerd/) describes.
+  Choose addresses your home network does not use, or containers cannot reach your
+  devices. It applies to networks made after the change, and only once Docker restarts
+  (Docker Desktop: **Apply & restart**). Restarting Docker stops every container; only
+  those set to restart by themselves come back.
+
 ## Connecting an app
 
 When **Test** fails, Helprr says why in plain words and links to the matching section
