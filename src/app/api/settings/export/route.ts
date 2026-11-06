@@ -12,6 +12,7 @@ import {
   type ExportedAppSettings,
   type ExportedCleanup,
   type ExportedTwitch,
+  type ExportedYoutube,
   type ExportedDashboardLayout,
   type ExportedDashboardLayouts,
   type ExportedNotificationDevice,
@@ -32,6 +33,7 @@ import { STORE_VERSION } from '@/lib/store';
 import { loadQueueCleanerConfig, loadStallRules, loadSlowRules } from '@/lib/cleanup/queue-cleaner';
 import { loadDownloadCleanerConfig, loadSeedingRules } from '@/lib/cleanup/download-cleaner';
 import { TWITCH } from '@/lib/twitch/platform';
+import { YOUTUBE } from '@/lib/youtube/platform';
 
 interface ExportRequestBody {
   appSettings?: boolean;
@@ -40,6 +42,7 @@ interface ExportRequestBody {
   notificationPrefs?: boolean;
   cleanup?: boolean;
   twitch?: boolean;
+  youtube?: boolean;
   dashboardLayouts?: boolean;
   watchlist?: boolean;
   scheduledAlerts?: boolean;
@@ -139,6 +142,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   const wantNotificationPrefs = body.notificationPrefs === true;
   const wantCleanup = body.cleanup === true;
   const wantTwitch = body.twitch === true;
+  const wantYoutube = body.youtube === true;
   const wantDashboardLayouts = body.dashboardLayouts === true;
   const wantWatchlist = body.watchlist === true;
   const wantScheduledAlerts = body.scheduledAlerts === true;
@@ -161,6 +165,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     wantNotificationPrefs ||
     wantCleanup ||
     wantTwitch ||
+    wantYoutube ||
     wantDashboardLayouts ||
     wantAnimeMappings ||
     wantUsers ||
@@ -339,6 +344,47 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
         })),
       };
       payload.twitch = twitch;
+    }
+
+    if (wantYoutube) {
+      const [settings, subscriptions, playlists] = await Promise.all([
+        prisma.youtubeSettings.findUnique({ where: { id: 'singleton' } }),
+        prisma.creatorSubscription.findMany({
+          where: { userId: exporter.id, creator: { platform: YOUTUBE } },
+          select: { notifyNewVods: true, creator: { include: { policy: true } } },
+        }),
+        prisma.creatorPlaylistSubscription.findMany({
+          where: { userId: exporter.id, playlist: { platform: YOUTUBE } },
+          select: { notifyNewVideos: true, playlist: { select: { externalId: true, title: true } } },
+        }),
+      ]);
+      // Named one by one: the row also holds the spare account's cookies, which never leave.
+      const youtube: ExportedYoutube = {
+        settings: settings
+          ? {
+              autoDownloadEnabled: settings.autoDownloadEnabled,
+              defaultPolicy: settings.defaultPolicy,
+              typePolicies: settings.typePolicies,
+              jellyfinLibraryPath: settings.jellyfinLibraryPath,
+              pollVideosSecs: settings.pollVideosSecs,
+            }
+          : undefined,
+        subscriptions: subscriptions.map(({ notifyNewVods, creator: channel }) => ({
+          channelId: channel.externalId,
+          login: channel.login,
+          folderName: channel.folderName,
+          displayName: channel.displayName,
+          notifyNewVods,
+          policy: channel.policy?.policy,
+          typePolicies: channel.policy?.typePolicies,
+        })),
+        playlists: playlists.map(({ notifyNewVideos, playlist }) => ({
+          playlistId: playlist.externalId,
+          title: playlist.title,
+          notifyNewVideos,
+        })),
+      };
+      payload.youtube = youtube;
     }
 
     if (wantDashboardLayouts) {

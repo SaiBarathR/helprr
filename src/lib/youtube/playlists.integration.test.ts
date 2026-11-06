@@ -125,6 +125,15 @@ describe.skipIf(!url || !url.endsWith('/helprr_migration_test'))('syncing a play
     expect((await row('sssssssssss')).notifiedAt).toEqual(LATER);
   });
 
+  it("records a followed channel's older videos as told on the list's first sweep, so its own sweep does not announce them", async () => {
+    listed = [video('fffffffffff', FOLLOWED), video('sssssssssss', STRANGER)];
+
+    await followPlaylist(userId, LIST);
+
+    expect((await row('fffffffffff')).notifiedAt).not.toBeNull();
+    expect((await row('sssssssssss')).notifiedAt).not.toBeNull();
+  });
+
   it('uses the stored video when a channel already found it, so one video stays one row', async () => {
     const channel = await db.creator.findFirstOrThrow({ where: { externalId: FOLLOWED } });
     const existing = await db.creatorVideo.create({

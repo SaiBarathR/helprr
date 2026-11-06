@@ -142,10 +142,29 @@ describe('hostile settings imports', () => {
     expect(mocks.transaction).not.toHaveBeenCalled();
   });
 
+  it('rejects more YouTube follows than the section limit before database work', async () => {
+    const raw = JSON.stringify({ youtube: { playlists: Array(2_001).fill({}) } });
+
+    const response = await importSettings(request(raw));
+
+    expect(response.status).toBe(400);
+    expect((await response.json()).error).toBe('YouTube playlists exceed the import limit of 2000');
+    expect(mocks.transaction).not.toHaveBeenCalled();
+  });
+
   it('prevents a backup-capable member from importing global sections', async () => {
     mocks.requireUserCapability.mockResolvedValue({ ok: true, user: { ...admin, id: 'member-id', role: 'member', template: 'member' } });
 
     const response = await importSettings(request(JSON.stringify({ appSettings: { logLevel: 'debug' } })));
+
+    expect(response.status).toBe(403);
+    expect(mocks.transaction).not.toHaveBeenCalled();
+  });
+
+  it('prevents a backup-capable member from importing the YouTube section', async () => {
+    mocks.requireUserCapability.mockResolvedValue({ ok: true, user: { ...admin, id: 'member-id', role: 'member', template: 'member' } });
+
+    const response = await importSettings(request(JSON.stringify({ youtube: { settings: { autoDownloadEnabled: true } } })));
 
     expect(response.status).toBe(403);
     expect(mocks.transaction).not.toHaveBeenCalled();

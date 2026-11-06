@@ -1,4 +1,4 @@
-import type { YoutubeSettings } from '@prisma/client';
+import type { Prisma, YoutubeSettings } from '@prisma/client';
 import { ACTIVE_JOB_STATES } from '@/lib/archive/jobs';
 import { enqueueFileDelete, retentionReason } from '@/lib/archive/retention';
 import { prisma } from '@/lib/db';
@@ -141,11 +141,14 @@ export async function sweepWatchedVideos(now = new Date()): Promise<void> {
 
 /** Anything already queued was decided under the old rules, so none of it may run. */
 export async function invalidateQueuedCleanup(): Promise<void> {
-  await prisma.$transaction([
-    prisma.youtubeSettings.updateMany({ data: { cleanupGeneration: { increment: 1 } } }),
-    prisma.archiveJob.updateMany({
-      where: { platform: YOUTUBE, kind: 'DELETE_FILES', state: 'QUEUED', requestedByUsername: CLEANUP_ACTOR },
-      data: { state: 'CANCELLED', stage: 'cancelled', finishedAt: new Date() },
-    }),
-  ]);
+  await prisma.$transaction((tx) => invalidateQueuedCleanupInTxn(tx));
+}
+
+/** The same, inside a transaction the caller already holds (a settings import). */
+export async function invalidateQueuedCleanupInTxn(tx: Prisma.TransactionClient): Promise<void> {
+  await tx.youtubeSettings.updateMany({ data: { cleanupGeneration: { increment: 1 } } });
+  await tx.archiveJob.updateMany({
+    where: { platform: YOUTUBE, kind: 'DELETE_FILES', state: 'QUEUED', requestedByUsername: CLEANUP_ACTOR },
+    data: { state: 'CANCELLED', stage: 'cancelled', finishedAt: new Date() },
+  });
 }

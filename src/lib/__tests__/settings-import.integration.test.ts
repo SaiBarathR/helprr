@@ -10,6 +10,14 @@ const url = process.env.SETTINGS_IMPORT_TEST_DATABASE_URL;
 
 type RunImport = typeof import('@/lib/settings-import/run-import');
 
+// Only the export route asks; the import is called directly.
+vi.mock('@/lib/auth', () => ({
+  requireUserCapability: vi.fn(async () => ({
+    ok: true,
+    user: { id: 'importer-admin', username: 'importer', displayName: 'Importer', role: 'admin', status: 'active', template: 'admin', permissions: {} },
+  })),
+}));
+
 const IMPORTER_ID = 'importer-admin';
 const ENDPOINT = 'https://fcm.googleapis.com/fcm/send/import-test';
 const future = () => new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString();
@@ -42,6 +50,11 @@ function mapping(i: number, entries = 1) {
   };
 }
 
+const CHANNEL = 'UCaaaaaaaaaaaaaaaaaaaaaa';
+const PLAYLIST = 'PLbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
+const channelId = (i: number) => `UC${String(i).padStart(22, '0')}`;
+const playlistId = (i: number) => `PL${String(i).padStart(32, '0')}`;
+
 /** Every section a full admin export can carry, small. */
 function fullDocument() {
   return {
@@ -66,6 +79,11 @@ function fullDocument() {
     scheduledAlerts: { alerts: [alert(1), alert(2, 'absolute')] },
     watchlist: { items: [watchlistItem(1), watchlistItem(2, [])], tags: [{ name: 'favourites', color: '#ff0000' }] },
     animeMappings: { mappings: [mapping(1, 2)] },
+    youtube: {
+      settings: { autoDownloadEnabled: true, pollVideosSecs: 900 },
+      subscriptions: [{ channelId: CHANNEL, login: 'somebody', folderName: 'somebody', displayName: 'Somebody', notifyNewVods: true }],
+      playlists: [{ playlistId: PLAYLIST, title: 'Mix', notifyNewVideos: true }],
+    },
     users: {
       accounts: [{
         id: 'member-1', username: 'member', displayName: 'Member', role: 'member', status: 'active', template: 'member',
@@ -90,12 +108,13 @@ describe.skipIf(!url)('settings import against PostgreSQL', () => {
 
   /** Rows the import writes, per table, beyond what reset() seeds. */
   async function written() {
-    const [appSettings, services, prefs, stall, layouts, alerts, watchlist, mappings, users] = await Promise.all([
+    const [appSettings, services, prefs, stall, layouts, alerts, watchlist, mappings, users, youtube] = await Promise.all([
       prisma.appSettings.count(), prisma.serviceConnection.count(), prisma.notificationPreference.count(),
       prisma.stallRule.count(), prisma.dashboardLayout.count(), prisma.scheduledAlert.count(),
       prisma.watchlistItem.count(), prisma.aniListSeriesMapping.count(), prisma.user.count(),
+      prisma.creatorPlaylistSubscription.count(),
     ]);
-    return { appSettings, services, prefs, stall, layouts, alerts, watchlist, mappings, users: users - 1 };
+    return { appSettings, services, prefs, stall, layouts, alerts, watchlist, mappings, users: users - 1, youtube };
   }
 
   beforeAll(async () => {
@@ -118,9 +137,10 @@ describe.skipIf(!url)('settings import against PostgreSQL', () => {
     expect(first.applied).toMatchObject({
       appSettings: true, services: ['SONARR', 'QBITTORRENT'], notificationRules: 1, cleanup: true,
       dashboardLayouts: 1, watchlistItems: 2, scheduledAlerts: 2, animeMappings: 1, users: 1,
+      youtubeSubscriptions: 1, youtubePlaylists: 1,
     });
     const after = await written();
-    expect(after).toEqual({ appSettings: 1, services: 2, prefs: 1, stall: 1, layouts: 1, alerts: 3, watchlist: 3, mappings: 1, users: 1 });
+    expect(after).toEqual({ appSettings: 1, services: 2, prefs: 1, stall: 1, layouts: 1, alerts: 3, watchlist: 3, mappings: 1, users: 1, youtube: 1 });
     expect(await prisma.aniListSeriesMappingEntry.count()).toBe(2);
     expect(await prisma.scheduledAlertOccurrence.count()).toBe(1);
     expect(first.followUps.alertIds).toHaveLength(2);
@@ -164,6 +184,180 @@ describe.skipIf(!url)('settings import against PostgreSQL', () => {
     await runImport.applySettingsImport(doc as never, IMPORTER_ID);
     expect(await prisma.creatorSubscription.count()).toBe(1);
   });
+
+  it('round-trips YouTube settings, rules and follows through export and import, without the cookies or the cleanup viewer', async () => {
+    const { validateImportFile } = await import('@/lib/settings-export');
+    const { POST: exportSettings } = await import('@/app/api/settings/export/route');
+    const { NextRequest } = await import('next/server');
+    await prisma.youtubeSettings.create({
+      data: {
+        id: 'singleton', autoDownloadEnabled: true, defaultPolicy: { quality: '1080p' }, typePolicies: { SHORT: { autoDownload: false } },
+        jellyfinLibraryPath: '/media/youtube', jellyfinLibraryItemId: 'jf-lib', pollVideosSecs: 1800,
+        cookies: 'enc:v1:cookie-secret', autoCleanupEnabled: true, cleanupJellyfinUserId: 'jf-viewer', cleanupConnectionId: 'conn-1',
+      },
+    });
+    const channel = await prisma.creator.create({
+      data: { platform: 'YOUTUBE', externalId: CHANNEL, login: 'somebody', folderName: 'somebody-aaaaaa', displayName: 'Somebody', baselinedAt: new Date() },
+    });
+    await prisma.creatorPolicy.create({ data: { creatorId: channel.id, policy: { keepLatest: 5 }, typePolicies: { UPLOAD: { quality: '720p' } } } });
+    await prisma.creatorSubscription.create({ data: { userId: IMPORTER_ID, creatorId: channel.id, notifyNewVods: false } });
+    const playlist = await prisma.creatorPlaylist.create({ data: { platform: 'YOUTUBE', externalId: PLAYLIST, title: 'Mix', baselinedAt: new Date() } });
+    await prisma.creatorPlaylistSubscription.create({ data: { userId: IMPORTER_ID, playlistId: playlist.id, notifyNewVideos: false } });
+
+    const response = await exportSettings(new NextRequest('http://localhost/api/settings/export', {
+      method: 'POST',
+      body: JSON.stringify({ youtube: true, includeSecrets: true }),
+      headers: { 'content-type': 'application/json' },
+    }));
+    expect(response.status).toBe(200);
+    const text = await response.text();
+    expect(text).not.toContain('cookie-secret');
+    expect(text).not.toContain('jf-viewer');
+    const file = validateImportFile(JSON.parse(text));
+    if (!file.ok) throw new Error(file.error);
+
+    await reset();
+    const outcome = await runImport.applySettingsImport({ youtube: file.payload.youtube } as never, IMPORTER_ID);
+
+    expect(outcome.applied).toMatchObject({ youtubeSubscriptions: 1, youtubePlaylists: 1 });
+    expect(outcome.skipped).toEqual([]);
+    expect(await prisma.youtubeSettings.findUniqueOrThrow({ where: { id: 'singleton' } })).toMatchObject({
+      autoDownloadEnabled: true, defaultPolicy: { quality: '1080p' }, typePolicies: { SHORT: { autoDownload: false } },
+      jellyfinLibraryPath: '/media/youtube', pollVideosSecs: 1800,
+      cookies: null, autoCleanupEnabled: false, cleanupJellyfinUserId: null, cleanupConnectionId: null,
+    });
+    const restored = await prisma.creator.findUniqueOrThrow({
+      where: { platform_externalId: { platform: 'YOUTUBE', externalId: CHANNEL } },
+      include: { policy: true, subscriptions: true },
+    });
+    // The folder the files already live in, and a silent first sweep.
+    expect(restored).toMatchObject({ login: 'somebody', folderName: 'somebody-aaaaaa', displayName: 'Somebody', baselinedAt: null });
+    expect(restored.subscriptions).toMatchObject([{ userId: IMPORTER_ID, notifyNewVods: false }]);
+    expect(restored.policy).toMatchObject({ policy: { keepLatest: 5 }, typePolicies: { UPLOAD: { quality: '720p' } } });
+    const list = await prisma.creatorPlaylist.findUniqueOrThrow({
+      where: { platform_externalId: { platform: 'YOUTUBE', externalId: PLAYLIST } },
+      include: { subscriptions: true },
+    });
+    expect(list).toMatchObject({ title: 'Mix', baselinedAt: null });
+    expect(list.subscriptions).toMatchObject([{ userId: IMPORTER_ID, notifyNewVideos: false }]);
+
+    await runImport.applySettingsImport({ youtube: file.payload.youtube } as never, IMPORTER_ID);
+    expect(await prisma.creator.count()).toBe(1);
+    expect(await prisma.creatorSubscription.count()).toBe(1);
+    expect(await prisma.creatorPlaylistSubscription.count()).toBe(1);
+  });
+
+  it('holds a hostile YouTube section to what following by hand allows', async () => {
+    // Another channel already has the folder the file names.
+    await prisma.creator.create({ data: { platform: 'YOUTUBE', externalId: channelId(9), login: 'taken', folderName: 'taken', displayName: 'Taken' } });
+    // Known but unwatched: what it published meanwhile is history, not news.
+    const unwatched = await prisma.creator.create({
+      data: { platform: 'YOUTUBE', externalId: channelId(2), login: 'quiet', folderName: 'quiet', displayName: 'Quiet', baselinedAt: new Date(), nextVideosCheckAt: new Date() },
+    });
+    await prisma.creatorVideo.create({
+      data: { platform: 'YOUTUBE', externalId: 'aaaaaaaaaaa', creatorId: unwatched.id, type: 'UPLOAD', title: 'Old', sourceCreatedAt: new Date(), durationSeconds: 60 },
+    });
+    await prisma.youtubeSettings.create({ data: { id: 'singleton', cookies: 'enc:v1:keep-me', cleanupGeneration: 4 } });
+    const job = await prisma.archiveJob.create({ data: { platform: 'YOUTUBE', kind: 'DELETE_FILES', requestedByUsername: 'Automatic cleanup' } });
+
+    const outcome = await runImport.applySettingsImport({
+      youtube: {
+        settings: {
+          autoDownloadEnabled: 'yes', defaultPolicy: { quality: '720p', evil: true }, jellyfinLibraryPath: '/media/../etc',
+          pollVideosSecs: 5, cookies: 'plain-cookies', autoCleanupEnabled: true, cleanupJellyfinUserId: 'someone',
+        },
+        subscriptions: [
+          { channelId: '../../etc', login: 'x', folderName: 'x' },
+          { channelId: channelId(1), login: 'Evil Handle!', folderName: '../../etc', displayName: 'x'.repeat(500) },
+          { channelId: channelId(3), login: 'taken', folderName: 'taken' },
+          { channelId: channelId(2), login: 'quiet', folderName: 'quiet' },
+        ],
+        playlists: [
+          { playlistId: 'not a playlist', title: 'Bad' },
+          { playlistId: playlistId(1), title: 'y'.repeat(500), notifyNewVideos: 'no' },
+        ],
+      },
+    } as never, IMPORTER_ID);
+
+    expect(outcome.applied).toMatchObject({ youtubeSubscriptions: 3, youtubePlaylists: 1 });
+    expect(outcome.skipped).toEqual(['YouTube: subscription with an invalid channel', 'YouTube: playlist with an invalid id']);
+    expect(await prisma.youtubeSettings.findUniqueOrThrow({ where: { id: 'singleton' } })).toMatchObject({
+      autoDownloadEnabled: false, jellyfinLibraryPath: null, pollVideosSecs: 600,
+      cookies: 'enc:v1:keep-me', autoCleanupEnabled: false, cleanupJellyfinUserId: null, cleanupGeneration: 5,
+    });
+    expect((await prisma.youtubeSettings.findUniqueOrThrow({ where: { id: 'singleton' } })).defaultPolicy).toEqual({ quality: '720p' });
+    const folder = async (i: number) => (await prisma.creator.findUniqueOrThrow({
+      where: { platform_externalId: { platform: 'YOUTUBE', externalId: channelId(i) } },
+    }));
+    // An unsafe folder or handle falls back to the channel id, and a taken folder gets the suffix.
+    expect(await folder(1)).toMatchObject({ login: channelId(1), folderName: channelId(1).toLowerCase(), displayName: 'x'.repeat(100) });
+    expect((await folder(3)).folderName).toBe(`taken-${channelId(3).slice(-6)}`);
+    expect(await folder(2)).toMatchObject({ folderName: 'quiet', baselinedAt: null, nextVideosCheckAt: null });
+    expect((await prisma.creatorVideo.findFirstOrThrow({ where: { creatorId: unwatched.id } })).notifiedAt).not.toBeNull();
+    const list = await prisma.creatorPlaylist.findFirstOrThrow({ include: { subscriptions: true } });
+    expect(list.title).toHaveLength(200);
+    expect(list.subscriptions).toMatchObject([{ notifyNewVideos: true }]);
+    // A cleanup delete queued under the old rules must not run.
+    expect((await prisma.archiveJob.findUniqueOrThrow({ where: { id: job.id } })).state).toBe('CANCELLED');
+  });
+
+  it("keeps this install's YouTube settings when the file has none, and its library id while the path is the same", async () => {
+    await prisma.youtubeSettings.create({
+      data: { id: 'singleton', autoDownloadEnabled: true, pollVideosSecs: 1200, jellyfinLibraryPath: '/media/youtube', jellyfinLibraryItemId: 'jf-lib' },
+    });
+    const settings = () => prisma.youtubeSettings.findUniqueOrThrow({ where: { id: 'singleton' } });
+
+    await runImport.applySettingsImport({ youtube: { subscriptions: [], playlists: [] } } as never, IMPORTER_ID);
+    expect(await settings()).toMatchObject({ autoDownloadEnabled: true, pollVideosSecs: 1200, jellyfinLibraryItemId: 'jf-lib' });
+
+    await runImport.applySettingsImport({ youtube: { settings: { jellyfinLibraryPath: '/media/youtube' } } } as never, IMPORTER_ID);
+    expect(await settings()).toMatchObject({ autoDownloadEnabled: false, jellyfinLibraryItemId: 'jf-lib' });
+
+    // That id names the library at the old path.
+    await runImport.applySettingsImport({ youtube: { settings: { jellyfinLibraryPath: '/media/other' } } } as never, IMPORTER_ID);
+    expect(await settings()).toMatchObject({ jellyfinLibraryPath: '/media/other', jellyfinLibraryItemId: null });
+  });
+
+  it('leaves YouTube alone when an older export without the section is imported', async () => {
+    const { validateImportFile } = await import('@/lib/settings-export');
+    await prisma.youtubeSettings.create({ data: { id: 'singleton', autoDownloadEnabled: true, pollVideosSecs: 1200, cleanupGeneration: 2 } });
+    const older: Partial<ReturnType<typeof fullDocument>> = fullDocument();
+    delete older.youtube;
+    const file = validateImportFile({ kind: 'helprr-settings-export', version: 2, zustandVersion: 0, ...older });
+    if (!file.ok) throw new Error(file.error);
+
+    const outcome = await runImport.applySettingsImport(file.payload as never, IMPORTER_ID);
+
+    expect(outcome.applied).toMatchObject({ users: 1, youtubeSubscriptions: 0, youtubePlaylists: 0 });
+    expect(await prisma.youtubeSettings.findUniqueOrThrow({ where: { id: 'singleton' } })).toMatchObject({
+      autoDownloadEnabled: true, pollVideosSecs: 1200, cleanupGeneration: 2,
+    });
+  });
+
+  it('imports as many YouTube follows as the section limits allow within the transaction timeout', async () => {
+    const { IMPORT_SECTION_LIMITS, validateImportSectionLimits } = await import('@/lib/settings-import/limits');
+    const doc = {
+      youtube: {
+        subscriptions: Array.from({ length: IMPORT_SECTION_LIMITS.youtubeChannels }, (_, i) => ({
+          channelId: channelId(i), login: `channel${i}`, folderName: `channel${i}`, displayName: `Channel ${i}`, notifyNewVods: true,
+          policy: { keepLatest: 5 },
+        })),
+        playlists: Array.from({ length: IMPORT_SECTION_LIMITS.youtubePlaylists }, (_, i) => ({ playlistId: playlistId(i), title: `List ${i}`, notifyNewVideos: true })),
+      },
+    };
+    expect(validateImportSectionLimits(doc as never)).toBeNull();
+
+    const started = performance.now();
+    const outcome = await runImport.applySettingsImport(doc as never, IMPORTER_ID);
+    const firstMs = performance.now() - started;
+    const again = performance.now();
+    await runImport.applySettingsImport(doc as never, IMPORTER_ID);
+    console.log(`[benchmark] YouTube follows at the limits: ${Math.round(firstMs)} ms created, ${Math.round(performance.now() - again)} ms re-imported`);
+
+    expect(outcome.applied).toMatchObject({
+      youtubeSubscriptions: IMPORT_SECTION_LIMITS.youtubeChannels, youtubePlaylists: IMPORT_SECTION_LIMITS.youtubePlaylists,
+    });
+  }, 180_000);
 
   it('keeps what one upsert per row did: merged tags, kept values, first alert, replaced entries', async () => {
     const tagLinks = async () => Number((await prisma.$queryRaw<{ n: bigint }[]>`SELECT count(*) AS n FROM "_WatchlistItemTags"`)[0].n);
@@ -229,6 +423,7 @@ describe.skipIf(!url)('settings import against PostgreSQL', () => {
     ['services', () => import('@/lib/settings-import/services'), 'applyServiceConnectionInTxn'],
     ['notifications', () => import('@/lib/settings-import/notifications'), 'applyNotificationDeviceInTxn'],
     ['cleanup', () => import('@/lib/settings-import/cleanup'), 'applyCleanupInTxn'],
+    ['youtube', () => import('@/lib/settings-import/youtube'), 'applyYoutubeInTxn'],
     ['layouts', () => import('@/lib/settings-import/layouts'), 'applyDashboardLayoutsInTxn'],
     ['alerts', () => import('@/lib/settings-import/alerts'), 'applyPreparedScheduledAlerts'],
     ['watchlist', () => import('@/lib/settings-import/watchlist'), 'applyPreparedWatchlist'],
@@ -240,7 +435,9 @@ describe.skipIf(!url)('settings import against PostgreSQL', () => {
 
     await expect(runImport.applySettingsImport(fullDocument() as never, IMPORTER_ID)).rejects.toThrow('injected failure');
 
-    expect(await written()).toEqual({ appSettings: 0, services: 0, prefs: 0, stall: 0, layouts: 0, alerts: 0, watchlist: 0, mappings: 0, users: 0 });
+    expect(await written()).toEqual({ appSettings: 0, services: 0, prefs: 0, stall: 0, layouts: 0, alerts: 0, watchlist: 0, mappings: 0, users: 0, youtube: 0 });
+    expect(await prisma.creator.count()).toBe(0);
+    expect(await prisma.youtubeSettings.count()).toBe(0);
   });
 
   it("leaves an existing user's taste profile to be rebuilt, since their links may have changed", async () => {
