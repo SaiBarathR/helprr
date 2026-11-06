@@ -2,7 +2,15 @@ import { prisma } from '@/lib/db';
 import type { Prisma } from '@prisma/client';
 import { logger } from '@/lib/logger';
 import type { QBittorrentTorrent, QueueItem } from '@/types';
-import { getQBittorrentClient, getSonarrClient, getRadarrClient, getSonarrClients, getRadarrClients } from '@/lib/service-helpers';
+import {
+  getQBittorrentClient,
+  getSonarrClient,
+  getRadarrClient,
+  getLidarrClient,
+  getSonarrClients,
+  getRadarrClients,
+  getLidarrClients,
+} from '@/lib/service-helpers';
 import { notifyEvent } from '@/lib/notification-service';
 import { recordOperationAudit } from '@/lib/file-audit';
 import { classifyQueueIssue } from '@/lib/queue-state';
@@ -163,52 +171,64 @@ export async function loadSlowRules(): Promise<SlowRuleShape[]> {
   }));
 }
 
+type ArrQueueInstance = { instanceId: string; instanceLabel: string; queue: QueueItem[] };
+
 async function loadArrQueues(): Promise<{
-  sonarr: Array<{ instanceId: string; instanceLabel: string; queue: QueueItem[] }>;
-  radarr: Array<{ instanceId: string; instanceLabel: string; queue: QueueItem[] }>;
+  sonarr: ArrQueueInstance[];
+  radarr: ArrQueueInstance[];
+  lidarr: ArrQueueInstance[];
   complete: boolean;
 }> {
-  const sonarr: Array<{ instanceId: string; instanceLabel: string; queue: QueueItem[] }> = [];
-  const radarr: Array<{ instanceId: string; instanceLabel: string; queue: QueueItem[] }> = [];
-  let complete = true;
-  for (const { connection, client } of await getSonarrClients()) {
-    try {
-      const records = await fetchFullQueue((page, pageSize) => client.getQueue(page, pageSize));
-      if (records === null) {
-        logger.error('Sonarr queue could not be read completely; skipping instance this cycle (fail-safe)', { instanceId: connection.id, maxItems: QUEUE_PAGE_SIZE * MAX_QUEUE_PAGES }, { scope: LOG });
-        complete = false;
-        continue;
-      }
-      sonarr.push({
-        instanceId: connection.id,
-        instanceLabel: connection.label,
-        queue: records.map((i) => ({ ...i, source: 'sonarr' as const })),
-      });
-    } catch (err) {
-      complete = false;
-      if (!isMissingConfigError(err)) logger.warn('Sonarr queue fetch failed', { instanceId: connection.id, err: String(err) }, { scope: LOG });
-    }
-  }
-  for (const { connection, client } of await getRadarrClients()) {
-    try {
-      const records = await fetchFullQueue((page, pageSize) => client.getQueue(page, pageSize));
-      if (records === null) {
-        logger.error('Radarr queue could not be read completely; skipping instance this cycle (fail-safe)', { instanceId: connection.id, maxItems: QUEUE_PAGE_SIZE * MAX_QUEUE_PAGES }, { scope: LOG });
-        complete = false;
-        continue;
-      }
-      radarr.push({
-        instanceId: connection.id,
-        instanceLabel: connection.label,
-        queue: records.map((i) => ({ ...i, source: 'radarr' as const })),
-      });
-    } catch (err) {
-      complete = false;
-      if (!isMissingConfigError(err)) logger.warn('Radarr queue fetch failed', { instanceId: connection.id, err: String(err) }, { scope: LOG });
-    }
-  }
-  return { sonarr, radarr, complete };
+  const sonarr = await loadSourceQueues('sonarr', 'Sonarr', await getSonarrClients());
+  const radarr = await loadSourceQueues('radarr', 'Radarr', await getRadarrClients());
+  const lidarr = await loadSourceQueues('lidarr', 'Lidarr', await getLidarrClients());
+  return {
+    sonarr: sonarr.instances,
+    radarr: radarr.instances,
+    lidarr: lidarr.instances,
+    complete: sonarr.complete && radarr.complete && lidarr.complete,
+  };
 }
+
+// Every configured instance of one Arr, read in full. An instance whose queue
+// cannot be read completely makes the result incomplete, which aborts the
+// cycle: a torrent it holds would otherwise look unlinked.
+async function loadSourceQueues(
+  source: LinkedArr['source'],
+  name: string,
+  instances: Awaited<ReturnType<typeof getSonarrClients | typeof getRadarrClients | typeof getLidarrClients>>,
+): Promise<{ instances: ArrQueueInstance[]; complete: boolean }> {
+  const loaded: ArrQueueInstance[] = [];
+  let complete = true;
+  for (const { connection, client } of instances) {
+    try {
+      const records = await fetchFullQueue((page, pageSize) => client.getQueue(page, pageSize));
+      if (records === null) {
+        logger.error(`${name} queue could not be read completely; skipping instance this cycle (fail-safe)`, { instanceId: connection.id, maxItems: QUEUE_PAGE_SIZE * MAX_QUEUE_PAGES }, { scope: LOG });
+        complete = false;
+        continue;
+      }
+      loaded.push({
+        instanceId: connection.id,
+        instanceLabel: connection.label,
+        queue: records.map((i) => ({ ...i, source })),
+      });
+    } catch (err) {
+      complete = false;
+      if (!isMissingConfigError(err)) logger.warn(`${name} queue fetch failed`, { instanceId: connection.id, err: String(err) }, { scope: LOG });
+    }
+  }
+  return { instances: loaded, complete };
+}
+
+// The client for the exact instance a queue link came from.
+function getArrClient(link: LinkedArr) {
+  if (link.source === 'sonarr') return getSonarrClient(link.instanceId);
+  if (link.source === 'radarr') return getRadarrClient(link.instanceId);
+  return getLidarrClient(link.instanceId);
+}
+
+const ARR_AUDIT_SERVICE = { sonarr: 'SONARR', radarr: 'RADARR', lidarr: 'LIDARR' } as const;
 
 function isMissingConfigError(err: unknown): boolean {
   return err instanceof Error && err.message.includes('is not configured');
@@ -263,7 +283,7 @@ export async function runQueueCleanerCycle(opts: RunOptions): Promise<QueueEvalu
     return emptyResult(opts, noCandidatesBinding, ['qBittorrent torrent listing failed — nothing was evaluated']);
   }
 
-  const [{ sonarr: sonarrInstances, radarr: radarrInstances, complete: arrQueuesComplete }, loadedStrikes] = await Promise.all([
+  const [{ sonarr: sonarrInstances, radarr: radarrInstances, lidarr: lidarrInstances, complete: arrQueuesComplete }, loadedStrikes] = await Promise.all([
     loadArrQueues(),
     loadActiveStrikes(),
   ]);
@@ -271,11 +291,11 @@ export async function runQueueCleanerCycle(opts: RunOptions): Promise<QueueEvalu
   if (!arrQueuesComplete) {
     logger.error('Queue cleaner aborted because at least one configured Arr queue could not be read completely', {}, { scope: LOG });
     if (opts.expectedBinding) assertExecutionBinding(opts.expectedBinding, noCandidatesBinding);
-    return emptyResult(opts, noCandidatesBinding, ['At least one Sonarr/Radarr queue could not be read — cycle aborted as a safety measure']);
+    return emptyResult(opts, noCandidatesBinding, ['At least one Sonarr/Radarr/Lidarr queue could not be read — cycle aborted as a safety measure']);
   }
 
   const trackerDomains = await batchFetchTrackerDomains(qbit, torrents);
-  const correlation = buildCorrelationIndex(sonarrInstances, radarrInstances);
+  const correlation = buildCorrelationIndex(sonarrInstances, radarrInstances, lidarrInstances);
 
   const journal = new StrikeJournal();
   // Strikes counted for an earlier copy of a torrent still listed now: clear
@@ -851,7 +871,7 @@ async function revalidateQueueDecision(
     if (!queues.complete) {
       return { ok: false, status: 'failed', message: 'Could not revalidate all configured Arr queues', errorMessage: 'At least one Arr queue was unavailable' };
     }
-    const correlation = buildCorrelationIndex(queues.sonarr, queues.radarr);
+    const correlation = buildCorrelationIndex(queues.sonarr, queues.radarr, queues.lidarr);
     const links = correlation.byHash.get(torrent.hash.toLowerCase()) ?? [];
     const linked = links.find((link) => link.source === 'sonarr') ?? links[0] ?? null;
     const activeStrikes = strikesForCurrentTorrents(await loadActiveStrikes(), [torrent]);
@@ -1162,9 +1182,7 @@ async function inspectQbit(hash: string): Promise<{ state: 'present' | 'absent' 
 
 async function inspectQueueLink(link: LinkedArr): Promise<{ state: 'present' | 'absent' | 'unknown'; errorMessage?: string }> {
   try {
-    const client = link.source === 'sonarr'
-      ? await getSonarrClient(link.instanceId)
-      : await getRadarrClient(link.instanceId);
+    const client = await getArrClient(link);
     const records = await fetchFullQueue((page, pageSize) => client.getQueue(page, pageSize));
     if (records === null) return { state: 'unknown', errorMessage: 'Queue could not be read completely' };
     return { state: records.some((record) => record.id === link.queueItem.id) ? 'present' : 'absent' };
@@ -1211,9 +1229,19 @@ async function triggerQueueResearch(d: QueueDecision): Promise<{ reSearched: boo
       if (issued === 0) {
         return { reSearched: false, target: null };
       }
-    } else {
+    } else if (d.linked.source === 'radarr') {
       const client = await getRadarrClient(d.linked.instanceId);
       await client.searchMovie([d.linked.contentId]);
+    } else {
+      // A torrent can hold several albums: search each one this instance queued for it.
+      const client = await getLidarrClient(d.linked.instanceId);
+      const albumIds = new Set<number>();
+      for (const link of d.linkedAll ?? [d.linked]) {
+        if (link.source === 'lidarr' && link.instanceId === d.linked.instanceId && typeof link.contentId === 'number') {
+          albumIds.add(link.contentId);
+        }
+      }
+      await client.searchAlbums([...albumIds]);
     }
     return {
       reSearched: true,
@@ -1277,9 +1305,7 @@ export async function executeQueueCleanerRemoval(
       let callError: string | undefined;
       const startedAt = new Date();
       try {
-        const client = link.source === 'sonarr'
-          ? await getSonarrClient(link.instanceId)
-          : await getRadarrClient(link.instanceId);
+        const client = await getArrClient(link);
         await client.deleteQueueItem(link.queueItem.id, options);
       } catch (error) {
         callError = formatError(error);
@@ -1301,7 +1327,7 @@ export async function executeQueueCleanerRemoval(
       const reached = after.state === 'absent' && (!clientAfter || clientAfter.state === 'absent');
       await recordOperationAudit({
         user: run.actor,
-        service: link.source === 'sonarr' ? 'SONARR' : 'RADARR',
+        service: ARR_AUDIT_SERVICE[link.source],
         instanceId: link.instanceId,
         operation: 'REMOVE_QUEUE',
         targetType: 'queue',
@@ -1378,7 +1404,7 @@ export async function executeQueueCleanerRemoval(
       ...(qbitAfter.errorMessage ? { errorMessage: qbitAfter.errorMessage } : {}),
     });
   }
-  const arrTargets = targets.filter((target) => target.target === 'sonarr' || target.target === 'radarr');
+  const arrTargets = targets.filter((target) => target.target === 'sonarr' || target.target === 'radarr' || target.target === 'lidarr');
   const allArrAbsent = arrTargets.length > 0 && arrTargets.every((target) => target.after === 'absent');
   const anyArrAbsent = arrTargets.some((target) => target.after === 'absent');
   const anyUnknown = targets.some((target) => target.after === 'unknown');

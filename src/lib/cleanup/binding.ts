@@ -90,7 +90,7 @@ export function downloadConfigFingerprint(
 
 export async function cleanupScopeFingerprint(): Promise<string> {
   const connections = await prisma.serviceConnection.findMany({
-    where: { type: { in: ['QBITTORRENT', 'SONARR', 'RADARR'] } },
+    where: { type: { in: ['QBITTORRENT', 'SONARR', 'RADARR', 'LIDARR'] } },
     select: { id: true, type: true, isDefault: true, updatedAt: true },
     orderBy: [{ type: 'asc' }, { id: 'asc' }],
   });

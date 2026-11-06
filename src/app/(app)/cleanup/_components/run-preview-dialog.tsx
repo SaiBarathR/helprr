@@ -102,7 +102,7 @@ export function RunPreviewDialog(props: Props) {
                 <div>
                   {hasDeleteSourceFiles && <div>One or more rules will delete files from disk (not just remove from qBittorrent).</div>}
                   {hasDeletePrivate && <div>One or more rules will delete private torrents — this can affect your tracker H&amp;R standing.</div>}
-                  {hasQueueDataDeletes && <div>Queue removals also delete the downloaded data (via Sonarr/Radarr &quot;remove from client&quot; or qBittorrent delete).</div>}
+                  {hasQueueDataDeletes && <div>Queue removals also delete the downloaded data (via Sonarr/Radarr/Lidarr &quot;remove from client&quot; or qBittorrent delete).</div>}
                 </div>
               </div>
             )}

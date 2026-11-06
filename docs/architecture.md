@@ -539,6 +539,13 @@ at the same time. Every upstream call carries its own timeout, so a cycle always
 settles; the watchdog only logs one that runs past five minutes, and that
 cleaner's next cycle stays blocked until it does.
 
+The Queue Cleaner links each torrent, by hash, to the queue items of every
+configured Sonarr, Radarr and Lidarr instance; a removal goes through each
+instance that queued it, with that instance's id, and a re-search asks Sonarr
+for the episodes or seasons, Radarr for the movie and Lidarr for the albums.
+A queue that cannot be read completely aborts the cycle, and a check before
+removal refuses the item.
+
 Cleanup evaluation fails closed on missing upstream data: a torrent whose
 tracker lookup failed is skipped whenever the ignore list or a tracker-scoped
 rule is configured; a torrent whose `private` flag is absent (qBittorrent < 5)

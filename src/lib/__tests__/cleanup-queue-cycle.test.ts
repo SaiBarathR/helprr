@@ -22,6 +22,7 @@ vi.mock('@/lib/service-helpers', () => ({
   getQBittorrentClient: mocks.getQBittorrentClient, getSonarrClients: mocks.getSonarrClients,
   getRadarrClients: mocks.getRadarrClients, getSonarrClient: mocks.getSonarrClient,
   getRadarrClient: mocks.getRadarrClient,
+  getLidarrClients: vi.fn().mockResolvedValue([]), getLidarrClient: vi.fn(),
 }));
 
 import { runQueueCleanerCycle } from '@/lib/cleanup/queue-cleaner';
