@@ -69,7 +69,7 @@ import { DiscoverWatchProvidersSection } from '@/components/discover/discover-wa
 import { RenamePreviewDialog } from '@/components/media/rename-preview-dialog';
 import { WatchlistAddDialog } from '@/components/watchlist/watchlist-add-dialog';
 import { ScheduledAlertDialog } from '@/components/scheduled-alerts/scheduled-alert-dialog';
-import { useCan } from '@/components/permission-provider';
+import { useCan, useMe } from '@/components/permission-provider';
 import {
   hasWatchLookupIdentity,
   useWatchLookup,
@@ -128,7 +128,7 @@ export default function MovieDetailPage() {
   const radarrExternalUrl = useExternalUrlResolver()('RADARR', instance);
   const [jellyfinLoading, setJellyfinLoading] = useState(false);
   // TMDB enrichment, fetched once the movie (and its tmdbId) is known.
-  const { data: tmdbData = null } = useQuery({
+  const tmdbQuery = useQuery({
     // Shares queryKeys.discoverDetail('movie', tmdbId) with /discover/movie/[id],
     // so use the same throwing jsonFetcher — caching `null` here would otherwise
     // surface as a false "not found" on the discover page reading the shared slot.
@@ -138,6 +138,13 @@ export default function MovieDetailPage() {
     enabled: !!movie?.tmdbId,
     staleTime: 30 * 60_000,
   });
+  const tmdbData = tmdbQuery.data ?? null;
+  // Hold the backdrop's space while the first TMDB request is out, so the page
+  // does not jump down when the backdrop arrives. Not without TMDB, and not
+  // through a retry, so a failure falls back to the flat layout quickly.
+  const tmdbConfigured = useMe()?.tmdbConfigured === true;
+  const showBackdropHero = !!tmdbData?.backdropPath
+    || (tmdbConfigured && tmdbQuery.isLoading && tmdbQuery.failureCount === 0);
 
   const canEditMonitoring = useCan('movies.editMonitoring');
   const canEditTags = useCan('movies.editTags');
@@ -601,19 +608,21 @@ export default function MovieDetailPage() {
             {/* Hero: Backdrop or flat poster layout. "Split" so the poster and
                 title can open the grid's left column (globals.css). */}
             <div className="detail-hero detail-hero-split">
-              {tmdbData?.backdropPath ? (
+              {showBackdropHero ? (
                 <>
                   {/* Backdrop image */}
                   <div className="detail-hero-banner relative -mx-2 md:-mx-6 h-[220px] overflow-hidden bg-muted/40">
-                    <HeroImage
-                      src={toCachedImageSrc(tmdbData.backdropPath, 'tmdb', { width: 1280 }) || tmdbData.backdropPath}
-                      alt=""
-                      fill
-                      sizes="100vw"
-                      className="object-cover"
-                      priority
-                      unoptimized
-                    />
+                    {tmdbData?.backdropPath && (
+                      <HeroImage
+                        src={toCachedImageSrc(tmdbData.backdropPath, 'tmdb', { width: 1280 }) || tmdbData.backdropPath}
+                        alt=""
+                        fill
+                        sizes="100vw"
+                        className="object-cover"
+                        priority
+                        unoptimized
+                      />
+                    )}
                     <div className="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent light:via-background/25" />
                     {/* Watchlist + schedule alert icons — top right, mirrors discover hero */}
                     <div className="absolute top-2 right-2 flex items-center gap-1.5">
@@ -696,7 +705,7 @@ export default function MovieDetailPage() {
                         )}
                       </div>
                   </div>
-                  {tmdbData.tagline && (
+                  {tmdbData?.tagline && (
                     <p className="mt-3 text-sm italic text-muted-foreground">&ldquo;{tmdbData.tagline}&rdquo;</p>
                   )}
                   </div>

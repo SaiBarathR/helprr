@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   sent: [] as Array<{ method: string; path: string; body: { monitored: boolean } }>,
   // When set, PUT responses wait for it, so a write can be held in flight.
   gate: null as Promise<void> | null,
+  tmdbConfigured: true,
 }));
 vi.mock('next/navigation', () => ({
   useParams: () => ({ id: '5' }),
@@ -18,7 +19,7 @@ vi.mock('next/navigation', () => ({
   usePathname: () => '/movies/5',
 }));
 vi.mock('@/components/layout/navigation-provider', () => ({ useAppRouter: () => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn() }) }));
-vi.mock('@/components/permission-provider', () => ({ useCan: (cap: string) => cap === 'movies.editMonitoring', useMe: () => null }));
+vi.mock('@/components/permission-provider', () => ({ useCan: (cap: string) => cap === 'movies.editMonitoring', useMe: () => ({ tmdbConfigured: mocks.tmdbConfigured }) }));
 vi.mock('sonner', () => ({ toast: mocks.toast }));
 vi.mock('@/lib/hooks/use-external-urls', () => ({ useExternalUrls: () => ({}), useExternalUrlResolver: () => () => undefined }));
 vi.mock('@/lib/hooks/use-reference-data', () => ({ useQualityProfiles: () => ({ data: [] }), useTags: () => ({ data: [] }) }));
@@ -56,6 +57,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.sent = [];
   mocks.gate = null;
+  mocks.tmdbConfigured = true;
   vi.stubGlobal('fetch', vi.fn(async (input: string, init?: RequestInit) => {
     const url = new URL(String(input), 'http://helprr.test');
     const method = init?.method ?? 'GET';
@@ -150,5 +152,53 @@ describe('movie detail monitored toggle', () => {
     await waitFor(() => expect(mocks.toast.success).toHaveBeenCalledWith('Unmonitored', expect.anything()));
     expect(client.getQueryData<Array<{ instanceId: string; monitored: boolean }>>(queryKeys.library('radarr'))!
       .map((m) => [m.instanceId, m.monitored])).toEqual([['rad-1', false], ['rad-2', true]]);
+  });
+});
+
+describe('movie detail hero', () => {
+  const backdrop = () => document.querySelector('.h-\\[220px\\]');
+  function serveTmdb(respond: () => Promise<Response>) {
+    vi.stubGlobal('fetch', vi.fn(async (input: string) => {
+      const url = new URL(String(input), 'http://helprr.test');
+      if (url.pathname === '/api/radarr/5') return Response.json({ ...movie, tmdbId: 438631 });
+      if (url.pathname === '/api/discover/movie/438631') return respond();
+      return Response.json([]);
+    }));
+  }
+  const tmdbMovie = { backdropPath: 'https://image.tmdb.org/t/p/original/dune.jpg', tagline: 'It begins.', videos: [], recommendations: [], similar: [], productionCompanies: [] };
+
+  it('holds the backdrop space while TMDB loads, so the page does not jump when it arrives (gap plan X1)', async () => {
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    serveTmdb(async () => { await held; return Response.json(tmdbMovie); });
+    renderPage();
+    await screen.findByRole('button', { name: 'Monitored' });
+    expect(backdrop()).toBeTruthy();
+    expect(backdrop()!.querySelector('img')).toBeNull();
+
+    release();
+    await waitFor(() => expect(backdrop()!.querySelector('img')).toBeTruthy());
+    expect(screen.getByText('“It begins.”')).toBeTruthy();
+  });
+
+  it('falls back to the flat poster layout when the TMDB request fails', async () => {
+    serveTmdb(async () => Response.json({ error: 'Not found' }, { status: 404 }));
+    renderPage();
+    await screen.findByRole('button', { name: 'Monitored' });
+    await waitFor(() => expect(backdrop()).toBeNull());
+  });
+
+  it('holds no space without TMDB set up', async () => {
+    mocks.tmdbConfigured = false;
+    serveTmdb(() => new Promise<Response>(() => {}));
+    renderPage();
+    await screen.findByRole('button', { name: 'Monitored' });
+    expect(backdrop()).toBeNull();
+  });
+
+  it('keeps the flat poster layout for a movie without a TMDB id', async () => {
+    renderPage();
+    await screen.findByRole('button', { name: 'Monitored' });
+    expect(backdrop()).toBeNull();
   });
 });

@@ -275,7 +275,7 @@ export function HistoryEventDrawer({ item, onClose }: { item: HistoryRecord | nu
         }
       }}
     >
-      <DrawerContent className="max-h-[85vh]">
+      <DrawerContent>
         {item && (
           <>
             <DrawerHeader className="text-left">

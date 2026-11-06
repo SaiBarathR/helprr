@@ -12,6 +12,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
+import { Drawer, DrawerContent, DrawerFooter, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
 import {
   Select,
   SelectContent,
@@ -23,6 +24,7 @@ import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { useMe } from '@/components/permission-provider';
+import { useIsMobile } from '@/hooks/use-is-mobile';
 import { readAddDefaults, saveAddDefaults } from '@/lib/add-defaults';
 import { SEERR_MEDIA_STATUS, type SeerrMediaStatus, type SeerrServiceData, type SeerrSeasonInfo } from '@/types/seerr';
 
@@ -93,6 +95,8 @@ export function SeerrRequestModal({
   onDone,
 }: SeerrRequestModalProps) {
   const me = useMe();
+  // A bottom drawer on phones, like Helprr's other sheets; a dialog on wider screens.
+  const isMobile = useIsMobile();
   const isAdmin = me?.role === 'admin';
   const isTv = mediaType === 'tv';
   const service = isTv ? 'sonarr' : 'radarr';
@@ -295,167 +299,195 @@ export function SeerrRequestModal({
 
   const availableTagOptions = (serviceData?.tags ?? []).filter((t) => !tags.includes(t.id));
 
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[88vh] overflow-y-auto sm:max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>
-            {TITLES[mode](mediaType)}
-            <span className="block text-base font-normal text-muted-foreground">{title}</span>
-          </DialogTitle>
-        </DialogHeader>
-
-        {loading ? (
-          <div className="py-10 text-center">
-            <Loader2 className="h-6 w-6 animate-spin mx-auto" />
+  const heading = (
+    <>
+      {TITLES[mode](mediaType)}
+      <span className="block text-base font-normal text-muted-foreground">{title}</span>
+    </>
+  );
+  const body = loading ? (
+    <div className="py-10 text-center">
+      <Loader2 className="h-6 w-6 animate-spin mx-auto" />
+    </div>
+  ) : (
+    <div className="space-y-5">
+      {isTv && seasonsInfo.length > 0 && (
+        <div className="rounded-lg border border-border overflow-hidden">
+          <div className="grid grid-cols-[auto_1fr_auto_auto] items-center gap-3 bg-muted/40 px-3 py-2 text-xs font-medium text-muted-foreground">
+            <Switch checked={allSelected} onCheckedChange={toggleAll} aria-label="Select all seasons" />
+            <span>SEASON</span>
+            <span># EPISODES</span>
+            <span className="text-right">STATUS</span>
           </div>
-        ) : (
-          <div className="space-y-5">
-            {isTv && seasonsInfo.length > 0 && (
-              <div className="rounded-lg border border-border overflow-hidden">
-                <div className="grid grid-cols-[auto_1fr_auto_auto] items-center gap-3 bg-muted/40 px-3 py-2 text-xs font-medium text-muted-foreground">
-                  <Switch checked={allSelected} onCheckedChange={toggleAll} aria-label="Select all seasons" />
-                  <span>SEASON</span>
-                  <span># EPISODES</span>
-                  <span className="text-right">STATUS</span>
-                </div>
-                {seasonsInfo.map((s) => {
-                  const available = s.status === SEERR_MEDIA_STATUS.AVAILABLE;
-                  return (
-                    <div
-                      key={s.seasonNumber}
-                      className="grid grid-cols-[auto_1fr_auto_auto] items-center gap-3 border-t border-border px-3 py-2.5 text-sm"
-                    >
-                      <Switch
-                        checked={selectedSeasons.has(s.seasonNumber)}
-                        onCheckedChange={() => toggleSeason(s.seasonNumber)}
-                        disabled={available}
-                        aria-label={`Season ${s.seasonNumber}`}
-                      />
-                      <span>Season {s.seasonNumber}</span>
-                      <span className="text-muted-foreground">{s.episodeCount}</span>
-                      <span className="text-right">
-                        <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary">
-                          {statusLabel(s.status)}
-                        </span>
-                      </span>
-                    </div>
-                  );
-                })}
+          {seasonsInfo.map((s) => {
+            const available = s.status === SEERR_MEDIA_STATUS.AVAILABLE;
+            return (
+              <div
+                key={s.seasonNumber}
+                className="grid grid-cols-[auto_1fr_auto_auto] items-center gap-3 border-t border-border px-3 py-2.5 text-sm"
+              >
+                <Switch
+                  checked={selectedSeasons.has(s.seasonNumber)}
+                  onCheckedChange={() => toggleSeason(s.seasonNumber)}
+                  disabled={available}
+                  aria-label={`Season ${s.seasonNumber}`}
+                />
+                <span>Season {s.seasonNumber}</span>
+                <span className="text-muted-foreground">{s.episodeCount}</span>
+                <span className="text-right">
+                  <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary">
+                    {statusLabel(s.status)}
+                  </span>
+                </span>
               </div>
-            )}
+            );
+          })}
+        </div>
+      )}
 
-            <div className="space-y-4">
-              <p className="text-sm font-semibold">Advanced</p>
+      <div className="space-y-4">
+        <p className="text-sm font-semibold">Advanced</p>
 
-              {(serviceData?.profiles.length ?? 0) > 0 && (
-                <div className="space-y-1.5">
-                  <Label>Quality Profile</Label>
-                  <Select
-                    value={profileId != null ? String(profileId) : undefined}
-                    onValueChange={(v) => setProfileId(Number(v))}
+        {(serviceData?.profiles.length ?? 0) > 0 && (
+          <div className="space-y-1.5">
+            <Label>Quality Profile</Label>
+            <Select
+              value={profileId != null ? String(profileId) : undefined}
+              onValueChange={(v) => setProfileId(Number(v))}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Default" />
+              </SelectTrigger>
+              <SelectContent>
+                {serviceData?.profiles.map((p) => (
+                  <SelectItem key={p.id} value={String(p.id)}>
+                    {p.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+
+        {(serviceData?.rootFolders.length ?? 0) > 1 && (
+          <div className="space-y-1.5">
+            <Label>Root Folder</Label>
+            <Select value={rootFolder ?? undefined} onValueChange={(v) => setRootFolder(v)}>
+              <SelectTrigger>
+                <SelectValue placeholder="Default" />
+              </SelectTrigger>
+              <SelectContent>
+                {serviceData?.rootFolders.map((r) => (
+                  <SelectItem key={r.id} value={r.path}>
+                    {r.path}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+
+        {(serviceData?.tags.length ?? 0) > 0 && (
+          <div className="space-y-1.5">
+            <Label>Tags</Label>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {tags.map((id) => {
+                const t = serviceData?.tags.find((x) => x.id === id);
+                if (!t) return null;
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => toggleTag(id)}
+                    className="inline-flex items-center gap-1 rounded-md bg-primary/10 px-2 py-1 text-xs text-primary"
                   >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Default" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {serviceData?.profiles.map((p) => (
-                        <SelectItem key={p.id} value={String(p.id)}>
-                          {p.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-
-              {(serviceData?.rootFolders.length ?? 0) > 1 && (
-                <div className="space-y-1.5">
-                  <Label>Root Folder</Label>
-                  <Select value={rootFolder ?? undefined} onValueChange={(v) => setRootFolder(v)}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Default" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {serviceData?.rootFolders.map((r) => (
-                        <SelectItem key={r.id} value={r.path}>
-                          {r.path}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-
-              {(serviceData?.tags.length ?? 0) > 0 && (
-                <div className="space-y-1.5">
-                  <Label>Tags</Label>
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    {tags.map((id) => {
-                      const t = serviceData?.tags.find((x) => x.id === id);
-                      if (!t) return null;
-                      return (
-                        <button
-                          key={id}
-                          type="button"
-                          onClick={() => toggleTag(id)}
-                          className="inline-flex items-center gap-1 rounded-md bg-primary/10 px-2 py-1 text-xs text-primary"
-                        >
-                          {t.label}
-                          <X className="h-3 w-3" />
-                        </button>
-                      );
-                    })}
-                    {availableTagOptions.length > 0 && (
-                      <Select value="" onValueChange={(v) => toggleTag(Number(v))}>
-                        <SelectTrigger className="h-7 w-auto gap-1 px-2 text-xs">
-                          <SelectValue placeholder="+ Add tag" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {availableTagOptions.map((t) => (
-                            <SelectItem key={t.id} value={String(t.id)}>
-                              {t.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {isAdmin && users.length > 0 && (
-                <div className="space-y-1.5">
-                  <Label>Request As</Label>
-                  <Select
-                    value={requestAs != null ? String(requestAs) : undefined}
-                    onValueChange={(v) => setRequestAs(Number(v))}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select user" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {users.map((u) => (
-                        <SelectItem key={u.id} value={String(u.id)}>
-                          {u.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                    {t.label}
+                    <X className="h-3 w-3" />
+                  </button>
+                );
+              })}
+              {availableTagOptions.length > 0 && (
+                <Select value="" onValueChange={(v) => toggleTag(Number(v))}>
+                  <SelectTrigger className="h-7 w-auto gap-1 px-2 text-xs">
+                    <SelectValue placeholder="+ Add tag" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableTagOptions.map((t) => (
+                      <SelectItem key={t.id} value={String(t.id)}>
+                        {t.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               )}
             </div>
           </div>
         )}
 
+        {isAdmin && users.length > 0 && (
+          <div className="space-y-1.5">
+            <Label>Request As</Label>
+            <Select
+              value={requestAs != null ? String(requestAs) : undefined}
+              onValueChange={(v) => setRequestAs(Number(v))}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select user" />
+              </SelectTrigger>
+              <SelectContent>
+                {users.map((u) => (
+                  <SelectItem key={u.id} value={String(u.id)}>
+                    {u.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+  const cancelButton = (
+    <Button variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>
+      {mode === 'create' ? 'Cancel' : 'Close'}
+    </Button>
+  );
+  const submitButton = (
+    <Button onClick={submit} disabled={!canSubmit}>
+      {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+      {submitLabel}
+    </Button>
+  );
+
+  if (isMobile) {
+    return (
+      <Drawer open={open} onOpenChange={onOpenChange}>
+        <DrawerContent>
+          <DrawerHeader className="text-left">
+            <DrawerTitle>{heading}</DrawerTitle>
+          </DrawerHeader>
+          <div className="flex-1 min-h-0 overflow-y-auto px-4">{body}</div>
+          <DrawerFooter>
+            {submitButton}
+            {cancelButton}
+          </DrawerFooter>
+        </DrawerContent>
+      </Drawer>
+    );
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[88vh] overflow-y-auto sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>{heading}</DialogTitle>
+        </DialogHeader>
+
+        {body}
+
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>
-            {mode === 'create' ? 'Cancel' : 'Close'}
-          </Button>
-          <Button onClick={submit} disabled={!canSubmit}>
-            {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            {submitLabel}
-          </Button>
+          {cancelButton}
+          {submitButton}
         </DialogFooter>
       </DialogContent>
     </Dialog>
