@@ -20,16 +20,16 @@ vi.mock('./env', () => ({
 }));
 vi.mock('./process', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./process')>()),
-  run: vi.fn(async (command: string, args: string[]) => {
-    if (command === 'ffmpeg') return mocks.ffmpeg(args);
+  run: vi.fn(async (command: string, args: string[], options?: RunOptions) => {
+    if (command === 'ffmpeg') return mocks.ffmpeg(args, options);
     const file = args[args.length - 1];
     const codec = file.endsWith('out.mkv') ? 'hevc' : 'h264';
     return JSON.stringify({ streams: [{ codec_name: codec }], format: { duration: '60' } });
   }),
 }));
 
-import { JobCancelledError } from './process';
-import { runReencode } from './reencode';
+import { JobCancelledError, type RunOptions } from './process';
+import { encodeProgressReader, runReencode } from './reencode';
 
 const library = (relative: string) => path.join(mocks.dirs.library, relative);
 const output = (args: string[]) => args[args.length - 1];
@@ -43,6 +43,7 @@ function setup() {
     },
     archiveJob: { update: vi.fn().mockResolvedValue({}) },
   };
+  const jobUpdate = prisma.archiveJob.update;
   const note = vi.fn().mockResolvedValue(undefined);
   const start = () => runReencode({
     prisma: prisma as unknown as PrismaClient,
@@ -56,7 +57,7 @@ function setup() {
     assertLease: vi.fn().mockResolvedValue(undefined),
     stagingName: 'stage',
   });
-  return { update, note, start };
+  return { update, jobUpdate, note, start };
 }
 
 beforeEach(async () => {
@@ -119,6 +120,24 @@ describe('runReencode', () => {
     expect(update).not.toHaveBeenCalled();
   });
 
+  it('saves progress and time left while it encodes, at most every few seconds', async () => {
+    mocks.ffmpeg.mockImplementation(async (args: string[], options: RunOptions) => {
+      for (const line of ['out_time_us=30000000', 'speed=2x', 'progress=continue', 'out_time_us=45000000', 'progress=continue']) {
+        options.onStdoutLine!(line);
+      }
+      await writeFile(output(args), 'small');
+    });
+    const { jobUpdate, start } = setup();
+
+    await start();
+
+    const args: string[] = mocks.ffmpeg.mock.calls[0][0];
+    expect(args.slice(args.indexOf('-progress'), args.indexOf('-progress') + 2)).toEqual(['-progress', 'pipe:1']);
+    expect(args).toContain('-nostats');
+    const progressWrites = jobUpdate.mock.calls.filter(([call]) => 'progress' in call.data);
+    expect(progressWrites).toEqual([[{ where: { id: 'j' }, data: { progress: 0.5, etaSeconds: 15 } }]]);
+  });
+
   it('keeps the original and records the attempt when the encode is not worth it', async () => {
     mocks.ffmpeg.mockImplementation((args: string[]) => writeFile(output(args), 'x'.repeat(200)));
     const { update, start } = setup();
@@ -128,5 +147,29 @@ describe('runReencode', () => {
     expect(await readFile(library('a/x.mkv'), 'utf8')).toBe('the original, which is fairly large');
     await expect(stat(library('.originals/a/x.mkv'))).rejects.toThrow();
     expect(update.mock.calls[0][0].data).toEqual({ reencodeSkippedAt: expect.any(Date), reencodeSkippedBytes: BigInt(200) });
+  });
+});
+
+describe('encodeProgressReader', () => {
+  const read = (duration: number, lines: string[]) => {
+    const blocks: Array<[number, number | null]> = [];
+    const onLine = encodeProgressReader(duration, (progress, eta) => blocks.push([progress, eta]));
+    lines.forEach(onLine);
+    return blocks;
+  };
+
+  it('reports once a block, as a share of the duration', () => {
+    expect(read(100, ['frame=10', 'out_time_us=25000000', 'speed= 5x', 'progress=continue', 'out_time_us=100000000', 'speed=5x', 'progress=end']))
+      .toEqual([[0.25, 15], [1, 0]]);
+  });
+
+  it('starts at zero before ffmpeg knows its position or speed', () => {
+    expect(read(100, ['out_time_us=N/A', 'speed=N/A', 'progress=continue'])).toEqual([[0, null]]);
+    expect(read(100, ['out_time_us=-23000', 'progress=continue'])).toEqual([[0, null]]);
+  });
+
+  it('never passes 100%, and says nothing without a duration', () => {
+    expect(read(10, ['out_time_us=12000000', 'progress=continue'])).toEqual([[1, null]]);
+    expect(read(0, ['out_time_us=12000000', 'progress=continue'])).toEqual([]);
   });
 });
