@@ -94,8 +94,9 @@ export function CreatorVideoList({ videos, layout, renderVideo }: {
 
 export function CreatorVideoSkeleton() {
   return (
-    <div role="status" aria-live="polite" aria-label="Loading videos">
-      <div className="grid grid-cols-1 gap-x-4 gap-y-6 min-[500px]:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4" aria-hidden="true">
+    // Container queries, matching columnsFor, so the real list does not reflow it.
+    <div role="status" aria-live="polite" aria-label="Loading videos" className="@container">
+      <div className="grid grid-cols-1 gap-x-4 gap-y-6 @[500px]:grid-cols-2 @[1112px]:grid-cols-3 @[1488px]:grid-cols-4" aria-hidden="true">
         {Array.from({ length: 12 }, (_, index) => (
           <div key={index} className="space-y-2.5">
             <Skeleton className="aspect-video w-full rounded-xl" />

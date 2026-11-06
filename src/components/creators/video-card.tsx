@@ -21,6 +21,8 @@ export interface VideoSelection {
 }
 
 const IMAGE_CHIP = 'rounded bg-black/55 px-1 py-0.5 text-[10px] font-medium leading-none text-white';
+/** A tile can fill a phone's width; this stays sharp there without tripling a rail's bytes. */
+const TILE_IMAGE_WIDTH = 960;
 const VIEWS = new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 });
 
 function expiryLabel(iso: string | null): { text: string; urgent: boolean } | null {
@@ -29,8 +31,8 @@ function expiryLabel(iso: string | null): { text: string; urgent: boolean } | nu
   return { text: days <= 0 ? 'Today' : `${days}d left`, urgent: days <= 3 };
 }
 
-function Thumbnail({ video, sizes, className }: { video: CreatorVideoItem; sizes: string; className?: string }) {
-  const src = toCachedImageSrc(video.thumbnailUrl, undefined, { width: 640 });
+function Thumbnail({ video, sizes, width = 640, className }: { video: CreatorVideoItem; sizes: string; width?: number; className?: string }) {
+  const src = toCachedImageSrc(video.thumbnailUrl, undefined, { width });
   const expiry = expiryLabel(video.estimatedExpiresAt);
   const muted = (video.mutedSegments?.length ?? 0) > 0;
   const recording = video.availability === 'RECORDING';
@@ -100,6 +102,7 @@ function VideoTile({ video, showStreamer, actions, selection, onSelect }: CardPr
         <Thumbnail
           video={video}
           sizes={sizes}
+          width={TILE_IMAGE_WIDTH}
           className={cn('rounded-xl shadow-sm', selection.selected && 'ring-2 ring-primary ring-offset-2 ring-offset-background')}
         />
         <SelectionCheck selected={selection.selected} className="absolute left-1.5 top-1.5 z-10" />
@@ -113,7 +116,7 @@ function VideoTile({ video, showStreamer, actions, selection, onSelect }: CardPr
     <div className="group relative min-w-0">
       <QuickContextMenu label={`${video.title} actions`} groups={groups}>
         <Link href={`${platform.videoPath}/${video.id}`} className="press-feedback block">
-          <Thumbnail video={video} sizes={sizes} className="rounded-xl shadow-sm" />
+          <Thumbnail video={video} sizes={sizes} width={TILE_IMAGE_WIDTH} className="rounded-xl shadow-sm" />
           {text}
         </Link>
       </QuickContextMenu>
