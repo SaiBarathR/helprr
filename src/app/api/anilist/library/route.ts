@@ -3,6 +3,7 @@ import { requireAdmin } from '@/lib/auth';
 import { AniListReauthRequiredError, loadAniListConnection } from '@/lib/anilist-oauth';
 import {
   fetchMediaListCollection,
+  MEDIA_LIST_COLLECTION_CACHE_ENDPOINT,
   type AniListMediaListCollection,
   type AniListMediaListStatus,
   type AniListMediaType,
@@ -48,7 +49,7 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
   try {
     const userId = conn.anilistUserId;
     const collection = await getAnilistJsonWithCache<AniListMediaListCollection>({
-      endpoint: 'mediaListCollection',
+      endpoint: MEDIA_LIST_COLLECTION_CACHE_ENDPOINT,
       params: { userId, type, status: status ?? null },
       policy: { ttlSeconds: 5 * 60, staleSeconds: 30 * 60 },
       fetcher: () => fetchMediaListCollection({ userId, type, status }),

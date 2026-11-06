@@ -1,5 +1,4 @@
 import { gqlRequestAuthenticated } from '@/lib/anilist-auth-client';
-import { MEDIA_LIST_FRAGMENT } from '@/lib/anilist-client';
 
 export type AniListMediaListStatus =
   | 'CURRENT'
@@ -94,6 +93,13 @@ const VIEWER_QUERY = `
   }
 `;
 
+// Every library page, rail, widget and recommendation signal reads only
+// AniListListMediaSummary, so the collection selects exactly those media
+// fields. The full MEDIA_LIST_FRAGMENT (tags, links, studios) made a 988-entry
+// list ~3.5 MB. Bump the cache endpoint whenever this selection changes, so
+// Redis never serves the old shape.
+export const MEDIA_LIST_COLLECTION_CACHE_ENDPOINT = 'mediaListCollection:v2';
+
 const MEDIA_LIST_COLLECTION_QUERY = `
   query ($userId: Int!, $type: MediaType!, $status: MediaListStatus) {
     MediaListCollection(userId: $userId, type: $type, status: $status) {
@@ -112,9 +118,19 @@ const MEDIA_LIST_COLLECTION_QUERY = `
           completedAt { year month day }
           updatedAt
           media {
-            ${MEDIA_LIST_FRAGMENT}
+            id
+            title { romaji english native }
+            coverImage { extraLarge large medium color }
+            bannerImage
+            format
+            status
+            episodes
             chapters
             volumes
+            averageScore
+            popularity
+            genres
+            seasonYear
           }
         }
       }

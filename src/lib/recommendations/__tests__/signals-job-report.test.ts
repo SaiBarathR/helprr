@@ -8,7 +8,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('@/lib/db', () => ({ prisma: { userAniListLink: { findUnique: mocks.findLink } } }));
 vi.mock('@/lib/anilist-oauth', () => ({ loadAniListConnection: vi.fn(async () => null) }));
-vi.mock('@/lib/anilist-mutations', () => ({ fetchMediaListCollection: vi.fn() }));
+vi.mock('@/lib/anilist-mutations', () => ({ fetchMediaListCollection: vi.fn(), MEDIA_LIST_COLLECTION_CACHE_ENDPOINT: 'mediaListCollection:v2' }));
 vi.mock('@/lib/cache/anilist-api-cache', () => ({ getAnilistJsonWithCache: mocks.readAniList }));
 vi.mock('@/lib/service-helpers', () => ({
   getJellyfinUserContext: mocks.jellyfinContext,
