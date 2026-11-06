@@ -6,6 +6,18 @@ import { logger } from '@/lib/logger';
 import { noteJobFailure } from '@/lib/polling-job-report';
 import { notifyAndLog } from './shared';
 
+// A resume, reconnect or second device opens a new Jellyfin session for the
+// same playback. Push again for a user and item only after the item has not
+// been seen playing for this long.
+const PLAYBACK_REPEAT_COOLDOWN_MS = 45 * 60 * 1000;
+
+// Jellyfin has no history cursor, so its {"userId:itemId": lastSeenPlayingMs} map
+// lives in pollingState.lastHistorySeenIds. lastQueueIds stays the plain
+// session-id list, which is what older versions read after a rollback.
+function readRecentPlayback(raw: unknown): Record<string, number> {
+  return raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, number>) : {};
+}
+
 export async function pollJellyfin() {
   const connection = await getDefaultConnection('JELLYFIN');
   if (!connection) return;
@@ -31,6 +43,15 @@ export async function pollJellyfin() {
     const sessions = await client.getActiveSessions();
     const currentSessionIds = sessions.map((s) => s.Id);
     const prevSessionIds = (state.lastQueueIds as string[]) || [];
+    const now = Date.now();
+    const playbackKey = (s: (typeof sessions)[number]) =>
+      s.UserId && s.NowPlayingItem?.Id ? `${s.UserId}:${s.NowPlayingItem.Id}` : null;
+
+    // Drop expired entries so the saved state stays small.
+    const recentPlayback: Record<string, number> = {};
+    for (const [key, seenAt] of Object.entries(readRecentPlayback(state.lastHistorySeenIds))) {
+      if (typeof seenAt === 'number' && seenAt <= now && now - seenAt < PLAYBACK_REPEAT_COOLDOWN_MS) recentPlayback[key] = seenAt;
+    }
 
     const newSessions = sessions.filter((s) => !prevSessionIds.includes(s.Id));
     logger.debug('Jellyfin sessions polled', {
@@ -39,7 +60,20 @@ export async function pollJellyfin() {
       newSessionCount: newSessions.length,
     }, { scope: 'polling' });
 
-    const startedSessions = newSessions.filter((s) => s.NowPlayingItem);
+    const startedSessions = newSessions.filter((s) => {
+      if (!s.NowPlayingItem) return false;
+      const key = playbackKey(s);
+      if (!key) return true;
+      if (key in recentPlayback) return false;
+      recentPlayback[key] = now; // a second new session for it this cycle stays quiet
+      return true;
+    });
+    // Everything still playing counts as seen now, so a long playback that
+    // reconnects later is not treated as a new start.
+    for (const s of sessions) {
+      const key = playbackKey(s);
+      if (key) recentPlayback[key] = now;
+    }
 
     // Map the streaming Jellyfin users to Helprr accounts (batched, once per
     // cycle) so playback pushes are user-aware: the history row is stamped to
@@ -81,13 +115,16 @@ export async function pollJellyfin() {
         const title = item.SeriesName
           ? `${item.SeriesName} - ${item.Name}`
           : item.Name;
+        // Songs, audiobooks and radio channels report MediaType 'Audio'.
+        const isAudio = item.MediaType === 'Audio' || item.Type === 'Audio' || item.Type === 'AudioBook';
+        const verb = isAudio ? 'is listening to' : 'is watching';
         const ownerId = session.UserId
           ? ownerByJellyfinId.get(session.UserId) ?? null
           : null;
         await notifyAndLog({
           eventType: 'jellyfinPlaybackStart',
           title: 'Playback Started',
-          body: `${session.UserName} is watching ${title}`,
+          body: `${session.UserName} ${verb} ${title}`,
           metadata: {
             source: 'jellyfin',
             sessionId: session.Id,
@@ -109,6 +146,7 @@ export async function pollJellyfin() {
       where: { serviceConnectionId: connection.id },
       data: {
         lastQueueIds: currentSessionIds,
+        lastHistorySeenIds: recentPlayback,
       },
     });
     logger.debug('Jellyfin polling state updated', {
