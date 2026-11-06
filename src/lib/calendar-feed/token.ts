@@ -19,6 +19,19 @@ const TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 export const FEED_RATE_LIMIT_MAX = 30;
 export const FEED_RATE_LIMIT_WINDOW_SECONDS = 15 * 60;
 const RATE_LIMIT_KEY_PREFIX = 'calendar-feed:rate:';
+// Fetches with a well-formed token that opens no feed, per client IP (trusted
+// proxy only, like sign-in). A revoked link still polled by a few calendar apps
+// stays far below this; a client guessing tokens is held at 429 for the window.
+export const FEED_MISS_MAX = 30;
+export const FEED_MISS_WINDOW_SECONDS = 15 * 60;
+const MISS_KEY_PREFIX = 'calendar-feed:misses:';
+// INCR, starting the window on the first hit; returns the count and the time left.
+const COUNT_SCRIPT = `local count = redis.call('INCR', KEYS[1])
+if count == 1 then
+  redis.call('EXPIRE', KEYS[1], ARGV[1])
+end
+local ttl = redis.call('TTL', KEYS[1])
+return {tostring(count), tostring(ttl)}`;
 // lastUsedAt is shown to the owner; a write per fetch is not needed for that.
 const LAST_USED_DEBOUNCE_MS = 10 * 60 * 1000;
 
@@ -41,21 +54,40 @@ export function isWellFormedFeedToken(token: string | null): token is string {
  */
 export async function takeFeedRateLimit(tokenHash: string): Promise<number> {
   const redis = await getRedisClient();
-  const result = await redis.eval(
-    `local count = redis.call('INCR', KEYS[1])
-if count == 1 then
-  redis.call('EXPIRE', KEYS[1], ARGV[1])
-end
-local ttl = redis.call('TTL', KEYS[1])
-return {tostring(count), tostring(ttl)}`,
-    { keys: [`${RATE_LIMIT_KEY_PREFIX}${tokenHash}`], arguments: [String(FEED_RATE_LIMIT_WINDOW_SECONDS)] },
-  );
+  const result = await redis.eval(COUNT_SCRIPT, {
+    keys: [`${RATE_LIMIT_KEY_PREFIX}${tokenHash}`],
+    arguments: [String(FEED_RATE_LIMIT_WINDOW_SECONDS)],
+  });
   const values = Array.isArray(result) ? result : [];
   const count = Number(values[0]);
   const ttl = Number(values[1]);
   if (!Number.isFinite(count)) throw new Error('Unexpected Redis result for calendar feed rate limit');
   if (count <= FEED_RATE_LIMIT_MAX) return 0;
   return Number.isFinite(ttl) && ttl > 0 ? ttl : FEED_RATE_LIMIT_WINDOW_SECONDS;
+}
+
+/**
+ * Seconds this client IP must wait after too many fetches that opened no feed,
+ * 0 when it may try. Read-only, so retrying while refused does not extend the
+ * window. Throws when Redis is unreachable, so the caller can fail closed.
+ */
+export async function feedMissRetryAfter(ip: string): Promise<number> {
+  const redis = await getRedisClient();
+  const key = `${MISS_KEY_PREFIX}${ip}`;
+  const [raw, ttl] = await Promise.all([redis.get(key), redis.ttl(key)]);
+  const misses = raw ? Number(raw) : 0;
+  if (!Number.isFinite(misses) || misses < FEED_MISS_MAX) return 0;
+  return ttl > 0 ? ttl : FEED_MISS_WINDOW_SECONDS;
+}
+
+/** Count one fetch that opened no feed against its client IP. Best-effort: a Redis error is logged, not surfaced. */
+export async function recordFeedMiss(ip: string): Promise<void> {
+  try {
+    const redis = await getRedisClient();
+    await redis.eval(COUNT_SCRIPT, { keys: [`${MISS_KEY_PREFIX}${ip}`], arguments: [String(FEED_MISS_WINDOW_SECONDS)] });
+  } catch (error) {
+    console.error(`[CalendarFeed] Failed to record a miss: ${error instanceof Error ? error.name : 'unknown error'}`);
+  }
 }
 
 /**

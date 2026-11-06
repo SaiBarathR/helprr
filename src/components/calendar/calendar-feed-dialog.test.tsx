@@ -14,7 +14,7 @@ const FILTERS = { type: 'episode' as const, instanceId: 'hd', monitoredOnly: tru
 
 afterEach(() => vi.unstubAllGlobals());
 
-function mount(status: { active: boolean; createdAt: string | null; lastUsedAt: string | null }) {
+function mount(status: { active: boolean; createdAt: string | null; lastUsedAt: string | null; origin?: string | null }) {
   const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
     if (init?.method === 'POST') return new Response(JSON.stringify({ token: TOKEN, createdAt: '2026-11-07T00:00:00Z' }));
     return new Response(JSON.stringify(status));
@@ -53,9 +53,19 @@ describe('CalendarFeedDialog', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Make link' }));
     const input = (await screen.findByLabelText('Calendar link')) as HTMLInputElement;
     expect(input.value).toBe(`${window.location.origin}/api/calendar/feed.ics?token=${TOKEN}&type=episode&instance=hd&monitored=1`);
-    const add = screen.getByRole('link', { name: 'Add to Calendar' });
+    const add = screen.getByRole('link', { name: 'Open in Calendar app' });
     expect(add.getAttribute('href')).toBe(input.value.replace(/^https?:/, 'webcal:'));
     expect(fetchMock).toHaveBeenCalledWith('/api/calendar/feed-token', { method: 'POST' });
+  });
+
+  it('builds the link from the configured origin rather than the address the page is on', async () => {
+    mount({ active: false, createdAt: null, lastUsedAt: null, origin: 'https://helprr.example' });
+    await userEvent.click(await screen.findByRole('button', { name: 'Make link' }));
+    const input = (await screen.findByLabelText('Calendar link')) as HTMLInputElement;
+    expect(input.value.startsWith('https://helprr.example/api/calendar/feed.ics?token=')).toBe(true);
+    expect(screen.getByRole('link', { name: 'Open in Calendar app' }).getAttribute('href')).toBe(
+      input.value.replace(/^https:/, 'webcal:'),
+    );
   });
 
   it('asks before replacing a link that is on, since the old one stops working', async () => {

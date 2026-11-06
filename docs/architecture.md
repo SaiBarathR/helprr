@@ -290,7 +290,7 @@ link matching its id and hash (single use; a race loser rolls back), and a revok
 session of the user; then it signs the browser in. Making, replacing, revoking and using
 links are security audit events. `HELPRR_ADMIN_PASSWORD_RESET=true` is a separate startup recovery
 path for the bootstrap admin: in one transaction it sets the password from `APP_PASSWORD`,
-deletes the admin's password link and revokes every session of the admin (and any
+deletes the admin's password link and calendar feed link and revokes every session of the admin (and any
 owner-less legacy session, which the startup attach would otherwise hand to the admin). It
 does this on every start while the flag is set, so remove it after one boot.
 
@@ -355,13 +355,24 @@ credential is a per-user `CalendarFeedToken` (`src/lib/calendar-feed/token.ts`):
 link is shown once when made (`POST /api/calendar/feed-token`, `calendar.view`).
 Making a new one replaces the hash and turning it off deletes the row (`DELETE`,
 own token only); both are in the security audit. A password change (own, an
-admin reset, or a reset link used) and an admin disabling the user also delete it, in the same
-transaction as the session revocation, so re-enabling an account does not bring
-an old link back; "sign out other sessions" leaves it. Every fetch re-reads the
+admin reset, a reset link used, or the `HELPRR_ADMIN_PASSWORD_RESET` startup
+reset), an admin disabling the user, and a settings import that restores a
+different password hash or status also delete it, in the same transaction as the
+user update, so re-enabling an account does not bring an old link back. Taking
+`calendar.view` away (Settings -> Users permissions, or an import) deletes it
+too, so giving it back does not either. "Sign out other sessions" leaves it. Every fetch re-reads the
 owner's status, role and capabilities: an unknown, replaced or malformed token, a
 disabled owner and a missing `calendar.view` all get the same bare 404. Only then
 is it rate-limited per token hash in Redis (30 per 15 minutes, failing closed
-when Redis is down), so guessed tokens never create Redis keys. The token grants only that read; `type`, `instance` and `monitored`
+when Redis is down), so guessed tokens never create per-token keys. Behind a
+trusted proxy (the sign-in client IP), a well-formed token that opens no feed
+also counts against the client IP: after about 30 in 15 minutes that IP gets 429
+for any token until the window ends. The cap is checked before the lookup and
+counted after it, so a burst of parallel requests can overshoot it; reading it
+fails closed (503) and refused requests do not extend the window, while counting
+a miss is best-effort. There is no global backstop, so one client cannot lock
+everyone's feeds, provided `TRUSTED_PROXY_HOPS` matches the proxies in front:
+with too few hops every visitor shares the proxy's address and its cap. The token grants only that read; `type`, `instance` and `monitored`
 query parameters narrow it the way the Calendar page's filters do and are
 validated. The window is 30 days back to 180 ahead (whole days in the app time
 zone); episodes are timed events, movie and album releases all-day. The request

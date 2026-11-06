@@ -117,8 +117,20 @@ describe('GET /api/calendar/feed-token', () => {
   it('says whether a link is on, without any token material', async () => {
     mocks.findUnique.mockResolvedValue({ createdAt: new Date('2026-11-01T00:00:00Z'), lastUsedAt: null });
     const body = await (await GET()).json();
-    expect(body).toEqual({ active: true, createdAt: '2026-11-01T00:00:00.000Z', lastUsedAt: null });
+    expect(body).toEqual({ active: true, createdAt: '2026-11-01T00:00:00.000Z', lastUsedAt: null, origin: null });
     expect(mocks.findUnique.mock.calls[0][0].select).toEqual({ createdAt: true, lastUsedAt: true });
+  });
+
+  it('gives the configured APP_ORIGIN for the link, and null for a malformed one', async () => {
+    mocks.findUnique.mockResolvedValue(null);
+    vi.stubEnv('APP_ORIGIN', ' https://helprr.example ');
+    try {
+      expect((await (await GET()).json()).origin).toBe('https://helprr.example');
+      vi.stubEnv('APP_ORIGIN', 'https://helprr.example/path');
+      expect((await (await GET()).json()).origin).toBeNull();
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it('refuses a user without calendar.view', async () => {

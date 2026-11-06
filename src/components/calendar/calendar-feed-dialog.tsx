@@ -22,6 +22,8 @@ interface FeedStatus {
   active: boolean;
   createdAt: string | null;
   lastUsedAt: string | null;
+  /** The configured APP_ORIGIN, or null to use the address this page is on. */
+  origin?: string | null;
 }
 
 const STATUS_KEY = ['calendar-feed-token'] as const;
@@ -33,7 +35,10 @@ function ago(iso: string | null): string | null {
   return Number.isNaN(date.getTime()) ? null : formatDistanceToNow(date, { addSuffix: true });
 }
 
-/** The feed URL for this origin, and its webcal:// twin for Apple Calendar. */
+/**
+ * The feed URL for this origin, and its webcal:// twin. The https link is the
+ * one to share: some calendar apps fetch a webcal:// link over plain http.
+ */
 export function feedUrls(origin: string, token: string, filters: FeedFilters): { https: string; webcal: string } {
   const https = `${origin}/api/calendar/feed.ics?${feedQuery(token, filters)}`;
   return { https, webcal: https.replace(/^https?:/, 'webcal:') };
@@ -67,7 +72,9 @@ export function CalendarFeedDialog({
   const [confirm, setConfirm] = useState<'renew' | 'off' | null>(null);
 
   const active = status.data?.active ?? false;
-  const urls = token ? feedUrls(window.location.origin, token, filters) : null;
+  // The configured public origin when there is one, so a link made on a LAN
+  // http address does not hand calendar apps an http link.
+  const urls = token ? feedUrls(status.data?.origin || window.location.origin, token, filters) : null;
   const shows = [
     filters.type ? TYPE_LABEL[filters.type] : 'Episodes, movies and music',
     filters.instanceId ? (instanceLabel ?? 'One instance') : null,
@@ -152,20 +159,22 @@ export function CalendarFeedDialog({
                 className="font-mono text-xs"
               />
               <div className="flex flex-col gap-2 sm:flex-row">
-                <Button asChild className="flex-1">
-                  <a href={urls.webcal}>
-                    <CalendarPlus className="mr-2 h-4 w-4" />
-                    Add to Calendar
-                  </a>
-                </Button>
-                <Button type="button" variant="outline" className="flex-1" onClick={copy}>
+                <Button type="button" className="flex-1" onClick={copy}>
                   <Copy className="mr-2 h-4 w-4" />
                   Copy link
                 </Button>
+                <Button asChild variant="outline" className="flex-1">
+                  <a href={urls.webcal}>
+                    <CalendarPlus className="mr-2 h-4 w-4" />
+                    Open in Calendar app
+                  </a>
+                </Button>
               </div>
               <p className="text-xs text-muted-foreground">
-                Keep this link private: anyone who has it can see your calendar. It is shown only now. For
-                Google Calendar, copy it into “From URL”.
+                Keep this link private: anyone who has it can see your calendar. It is shown only now. Paste it
+                into your calendar app&apos;s subscribe option (in Google Calendar, “From URL”). “Open in
+                Calendar app” uses a webcal:// link, which some apps fetch over plain http; if yours does, use the
+                copied link instead.
               </p>
             </div>
           ) : active ? (

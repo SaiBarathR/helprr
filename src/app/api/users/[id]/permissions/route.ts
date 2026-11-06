@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { requireAdmin } from '@/lib/auth';
 import {
+  can,
   parsePermissions,
   effectiveCapabilities,
   deltaFromTemplate,
@@ -77,7 +78,14 @@ async function putHandler(
     );
   }
 
-  const updated = await prisma.user.update({ where: { id }, data });
+  // Losing calendar.view also ends the calendar feed link, so giving the
+  // capability back later does not bring an old link back.
+  const { updated, feedRevoked } = await prisma.$transaction(async (tx) => {
+    const updated = await tx.user.update({ where: { id }, data });
+    const feedRevoked = !can(updated, 'calendar.view')
+      && (await tx.calendarFeedToken.deleteMany({ where: { userId: id } })).count > 0;
+    return { updated, feedRevoked };
+  });
   // The capabilities whose effective value changed, by name.
   const before = effectiveCapabilities(user);
   const after = effectiveCapabilities(updated);
@@ -93,6 +101,16 @@ async function putHandler(
       targetId: id,
       targetLabel: updated.username,
       fields,
+    });
+  }
+  if (feedRevoked) {
+    await recordSecurityEvent(request, {
+      actor: admin.user,
+      action: 'CALENDAR_FEED_REVOKED',
+      targetType: 'user',
+      targetId: id,
+      targetLabel: updated.username,
+      fields: ['calendar.view'],
     });
   }
   return NextResponse.json({

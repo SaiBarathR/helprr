@@ -7,10 +7,13 @@ import { applyFeedFilters, parseFeedFilters } from '@/lib/calendar-feed/filters'
 import { buildCalendarFeed } from '@/lib/calendar-feed/ics';
 import {
   authorizeFeedToken,
+  feedMissRetryAfter,
   hashFeedToken,
   isWellFormedFeedToken,
+  recordFeedMiss,
   takeFeedRateLimit,
 } from '@/lib/calendar-feed/token';
+import { getClientIp } from '@/lib/login-rate-limit';
 import { startOfLocalDay, toZonedDate } from '@/lib/timezone';
 import type { CalendarEvent } from '@/types';
 
@@ -18,7 +21,8 @@ import type { CalendarEvent } from '@/types';
 // in the proxy by exact path: calendar apps send no session, so the per-user
 // feed token in ?token= is the credential. It is checked on every fetch, along
 // with the owner's status and calendar.view, and every refusal is the same 404.
-// The token is redacted from the request log.
+// A client IP (trusted proxy only) with too many refused tokens gets 429 for
+// any token until its window ends. The token is redacted from the request log.
 
 const PAST_DAYS = 30;
 const FUTURE_DAYS = 180;
@@ -39,8 +43,22 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
   if (!isWellFormedFeedToken(token)) return notFound();
   const tokenHash = hashFeedToken(token);
 
+  const ip = getClientIp(request);
+  if (ip !== undefined) {
+    let missWait: number;
+    try {
+      missWait = await feedMissRetryAfter(ip);
+    } catch {
+      return textResponse('Calendar feed unavailable', 503);
+    }
+    if (missWait > 0) return textResponse('Too many requests', 429, { 'Retry-After': String(missWait) });
+  }
+
   const user = await authorizeFeedToken(tokenHash);
-  if (!user) return notFound();
+  if (!user) {
+    if (ip !== undefined) await recordFeedMiss(ip);
+    return notFound();
+  }
 
   // Only a live token gets a bucket, so random guesses cannot fill Redis with keys.
   let retryAfter: number;

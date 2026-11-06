@@ -3,6 +3,7 @@ import { prisma } from '@/lib/db';
 import { requireUser, requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { generateFeedToken, hashFeedToken } from '@/lib/calendar-feed/token';
+import { parseBareOrigin } from '@/lib/request-utils';
 import { recordSecurityEvent } from '@/lib/security-audit';
 
 // The signed-in user's own calendar feed link. Only the token's hash is kept,
@@ -10,7 +11,11 @@ import { recordSecurityEvent } from '@/lib/security-audit';
 // person makes a new one, which stops the old one working. Bodies are never
 // logged.
 
-/** Whether a feed link is on, and when it was made and last fetched. */
+/**
+ * Whether a feed link is on, when it was made and last fetched, and the
+ * configured APP_ORIGIN (null when unset), so a link made from a LAN http
+ * address still points at the public https one.
+ */
 async function getHandler(): Promise<NextResponse> {
   const auth = await requireUserCapability('calendar.view');
   if (!auth.ok) return auth.response;
@@ -23,6 +28,8 @@ async function getHandler(): Promise<NextResponse> {
     active: Boolean(row),
     createdAt: row?.createdAt.toISOString() ?? null,
     lastUsedAt: row?.lastUsedAt?.toISOString() ?? null,
+    // https only in production, as for every other use of APP_ORIGIN.
+    origin: parseBareOrigin(process.env.APP_ORIGIN?.trim() ?? '', process.env.NODE_ENV === 'production'),
   });
 }
 

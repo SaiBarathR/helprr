@@ -6,6 +6,8 @@ const mocks = vi.hoisted(() => ({
   findUnique: vi.fn(),
   updateMany: vi.fn(),
   evalScript: vi.fn(),
+  redisGet: vi.fn(),
+  redisTtl: vi.fn(),
   getRedisClient: vi.fn(),
   fetchEvents: vi.fn(),
   getCachedJson: vi.fn(),
@@ -58,8 +60,8 @@ function feedRow(user: Record<string, unknown> = {}) {
   };
 }
 
-function get(query: string) {
-  return GET(new NextRequest(`http://localhost/api/calendar/feed.ics${query}`));
+function get(query: string, headers: Record<string, string> = {}) {
+  return GET(new NextRequest(`http://localhost/api/calendar/feed.ics${query}`, { headers }));
 }
 
 function uids(text: string): string[] {
@@ -68,8 +70,11 @@ function uids(text: string): string[] {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mocks.getRedisClient.mockResolvedValue({ eval: mocks.evalScript });
+  vi.unstubAllEnvs();
+  mocks.getRedisClient.mockResolvedValue({ eval: mocks.evalScript, get: mocks.redisGet, ttl: mocks.redisTtl });
   mocks.evalScript.mockResolvedValue(['1', '900']);
+  mocks.redisGet.mockResolvedValue(null);
+  mocks.redisTtl.mockResolvedValue(-2);
   mocks.updateMany.mockResolvedValue({ count: 1 });
   mocks.findUnique.mockResolvedValue(feedRow());
   mocks.getCachedJson.mockResolvedValue(null);
@@ -135,10 +140,65 @@ describe('GET /api/calendar/feed.ics', () => {
     expect(mocks.evalScript.mock.calls[0][1]).toMatchObject({ keys: [`calendar-feed:rate:${hashFeedToken(TOKEN)}`] });
   });
 
-  it('gives an unknown token no rate-limit bucket', async () => {
+  it('gives an unknown token no rate-limit bucket (and, without a trusted proxy, no per-IP count)', async () => {
     mocks.findUnique.mockResolvedValue(null);
     expect((await get(`?token=${TOKEN}`)).status).toBe(404);
     expect(mocks.evalScript).not.toHaveBeenCalled();
+  });
+
+  describe('per-IP refused tokens, behind a trusted proxy', () => {
+    const FROM = { 'x-forwarded-for': '203.0.113.7' };
+    beforeEach(() => vi.stubEnv('TRUST_FORWARDED_PROTO', 'true'));
+
+    it('counts a refused token against the client IP and still answers the same 404', async () => {
+      mocks.findUnique.mockResolvedValue(null);
+      const res = await get(`?token=${TOKEN}`, FROM);
+      expect(res.status).toBe(404);
+      expect(await res.text()).toBe('Not found');
+      expect(mocks.redisGet).toHaveBeenCalledWith('calendar-feed:misses:203.0.113.7');
+      expect(mocks.evalScript).toHaveBeenCalledTimes(1);
+      expect(mocks.evalScript.mock.calls[0][1]).toMatchObject({ keys: ['calendar-feed:misses:203.0.113.7'], arguments: ['900'] });
+    });
+
+    it('does not count a token that opens a feed', async () => {
+      expect((await get(`?token=${TOKEN}`, FROM)).status).toBe(200);
+      expect(mocks.evalScript).toHaveBeenCalledTimes(1);
+      expect(mocks.evalScript.mock.calls[0][1]).toMatchObject({ keys: [`calendar-feed:rate:${hashFeedToken(TOKEN)}`] });
+    });
+
+    it('holds a client at the cap at 429 for any token, without a lookup or extending the window', async () => {
+      mocks.redisGet.mockResolvedValue('30');
+      mocks.redisTtl.mockResolvedValue(420);
+      const res = await get(`?token=${TOKEN}`, FROM);
+      expect(res.status).toBe(429);
+      expect(res.headers.get('retry-after')).toBe('420');
+      expect(mocks.findUnique).not.toHaveBeenCalled();
+      expect(mocks.evalScript).not.toHaveBeenCalled();
+    });
+
+    it('lets a client under the cap through', async () => {
+      mocks.redisGet.mockResolvedValue('29');
+      expect((await get(`?token=${TOKEN}`, FROM)).status).toBe(200);
+    });
+
+    it('does not count a malformed token, which never reaches the database', async () => {
+      expect((await get('?token=not-a-token', FROM)).status).toBe(404);
+      expect(mocks.getRedisClient).not.toHaveBeenCalled();
+    });
+
+    it('fails closed when the per-IP count cannot be read', async () => {
+      mocks.getRedisClient.mockRejectedValue(new Error('down'));
+      expect((await get(`?token=${TOKEN}`, FROM)).status).toBe(503);
+      expect(mocks.findUnique).not.toHaveBeenCalled();
+    });
+
+    it('still answers 404 when the miss cannot be recorded', async () => {
+      mocks.findUnique.mockResolvedValue(null);
+      mocks.evalScript.mockRejectedValue(new Error('down'));
+      const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+      expect((await get(`?token=${TOKEN}`, FROM)).status).toBe(404);
+      expect(error).toHaveBeenCalledWith('[CalendarFeed] Failed to record a miss: Error');
+    });
   });
 
   it('fails closed when the rate limiter is unreachable', async () => {

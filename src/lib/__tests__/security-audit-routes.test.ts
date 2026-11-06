@@ -333,6 +333,25 @@ describe('users', () => {
     })]);
   });
 
+  it('ends and records the calendar feed link when calendar.view is taken away, and keeps it otherwise', async () => {
+    mocks.db.user.update.mockImplementation(async ({ data }) => ({ ...member, ...data }));
+    await putPermissions(req('/api/users/user-1/permissions', 'PUT', { permissions: { 'settings.instances': true } }), params('user-1'));
+    expect(mocks.db.calendarFeedToken.deleteMany).not.toHaveBeenCalled();
+
+    mocks.db.securityAuditEvent.create.mockClear();
+    mocks.db.calendarFeedToken.deleteMany.mockResolvedValue({ count: 1 });
+    const response = await putPermissions(
+      req('/api/users/user-1/permissions', 'PUT', { permissions: { 'calendar.view': false } }),
+      params('user-1'),
+    );
+    expect(response.status).toBe(200);
+    expect(mocks.db.calendarFeedToken.deleteMany).toHaveBeenCalledWith({ where: { userId: 'user-1' } });
+    expect(events()).toEqual([
+      expect.objectContaining({ action: 'USER_PERMISSIONS_CHANGED', fields: ['calendar.view'] }),
+      expect.objectContaining({ action: 'CALENDAR_FEED_REVOKED', targetId: 'user-1', targetLabel: 'member', fields: ['calendar.view'] }),
+    ]);
+  });
+
   it('records a self password change with the sessions it signed out', async () => {
     mocks.requireUser.mockResolvedValue({ ok: true, user: { ...member }, session: { id: 'session-1' } });
     mocks.verifyUserPassword.mockResolvedValue(true);

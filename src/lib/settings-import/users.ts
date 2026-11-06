@@ -5,7 +5,7 @@ import { BOOTSTRAP_ADMIN_ID } from '@/lib/bootstrap-admin';
 import { lockActiveAdminGuard } from '@/lib/user-deletion';
 import { isValidTimeZone } from '@/lib/timezone';
 import { parseDateFormat, parseTimeFormat } from '@/lib/date-format';
-import { parsePermissions } from '@/lib/permissions';
+import { can, parsePermissions } from '@/lib/permissions';
 import {
   USER_ROLE_VALUES,
   USER_STATUS_VALUES,
@@ -187,9 +187,14 @@ export async function applyUsersInTxn(
         });
       }
       // As in Settings -> Users: a restored password or status ends an
-      // outstanding invite or reset link.
-      if ((passwordHash && passwordHash !== target.passwordHash) || status !== target.status) {
+      // outstanding invite or reset link, and the calendar feed link. So does
+      // losing calendar.view, so granting it back does not revive an old link.
+      const resetsCredentials = (passwordHash && passwordHash !== target.passwordHash) || status !== target.status;
+      if (resetsCredentials) {
         await tx.passwordLink.deleteMany({ where: { userId: target.id } });
+      }
+      if (resetsCredentials || !can({ role: role as UserRole, template, permissions }, 'calendar.view')) {
+        await tx.calendarFeedToken.deleteMany({ where: { userId: target.id } });
       }
     } else {
       const created = await tx.user.create({

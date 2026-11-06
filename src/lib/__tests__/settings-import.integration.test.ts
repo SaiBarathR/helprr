@@ -485,6 +485,29 @@ describe.skipIf(!url)('settings import against PostgreSQL', () => {
     expect(outcome.followUps.recommendationUserIds).toEqual(['member-1']);
   });
 
+  it("ends an existing user's calendar feed link when the import changes their status, and keeps it otherwise", async () => {
+    await prisma.user.create({ data: { id: 'member-1', username: 'member', displayName: 'Member', role: 'member', template: 'member' } });
+    await prisma.calendarFeedToken.create({ data: { userId: 'member-1', tokenHash: 'a'.repeat(64) } });
+
+    await runImport.applySettingsImport(fullDocument() as never, IMPORTER_ID);
+    expect(await prisma.calendarFeedToken.count({ where: { userId: 'member-1' } })).toBe(1);
+
+    const doc = fullDocument();
+    doc.users.accounts[0].status = 'disabled';
+    await runImport.applySettingsImport(doc as never, IMPORTER_ID);
+    expect(await prisma.calendarFeedToken.count({ where: { userId: 'member-1' } })).toBe(0);
+  });
+
+  it("ends an existing user's calendar feed link when the import takes calendar.view away", async () => {
+    await prisma.user.create({ data: { id: 'member-1', username: 'member', displayName: 'Member', role: 'member', template: 'member' } });
+    await prisma.calendarFeedToken.create({ data: { userId: 'member-1', tokenHash: 'a'.repeat(64) } });
+
+    const doc = fullDocument();
+    doc.users.accounts[0].permissions = { 'calendar.view': false } as never;
+    await runImport.applySettingsImport(doc as never, IMPORTER_ID);
+    expect(await prisma.calendarFeedToken.count({ where: { userId: 'member-1' } })).toBe(0);
+  });
+
   it('imports as many user accounts as the document limits allow within the transaction timeout', async () => {
     const { validateSettingsImportComplexity } = await import('@/lib/settings-import-validation');
     const account = (i: number) => ({

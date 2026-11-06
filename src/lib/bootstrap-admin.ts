@@ -22,7 +22,8 @@ export const BOOTSTRAP_ADMIN_ID = 'user-bootstrap-admin';
  *   later set through the app is never clobbered on reboot.
  * - HELPRR_ADMIN_PASSWORD_RESET=true: force a re-hash from APP_PASSWORD, for
  *   shell-access recovery when the in-app password was lost. It also signs the
- *   admin out everywhere and ends their outstanding password link.
+ *   admin out everywhere and ends their outstanding password link and calendar
+ *   feed link.
  */
 export async function ensureBootstrapAdmin(): Promise<void> {
   const appPassword = process.env.APP_PASSWORD;
@@ -80,21 +81,23 @@ export async function ensureBootstrapAdmin(): Promise<void> {
     await attachOwnerlessRowsToAdmin();
   } else if (forceReset) {
     const passwordHash = await hashPassword(appPassword);
-    // Recovery: whoever knew the old password may still hold a session or an
-    // unused reset link, so end both with the new password, in one transaction.
+    // Recovery: whoever knew the old password may still hold a session, an
+    // unused reset link or the calendar feed link, so end them all with the new
+    // password, in one transaction.
     // Owner-less sessions are revoked too: the attach below would otherwise
     // hand them to the admin.
     const now = new Date();
-    const [, links, sessions] = await prisma.$transaction([
+    const [, links, sessions, feeds] = await prisma.$transaction([
       prisma.user.update({ where: { id: BOOTSTRAP_ADMIN_ID }, data: { passwordHash } }),
       prisma.passwordLink.deleteMany({ where: { userId: BOOTSTRAP_ADMIN_ID } }),
       prisma.session.updateMany({
         where: { OR: [{ userId: BOOTSTRAP_ADMIN_ID }, { userId: null }], revokedAt: null },
         data: { revokedAt: now },
       }),
+      prisma.calendarFeedToken.deleteMany({ where: { userId: BOOTSTRAP_ADMIN_ID } }),
     ]);
     console.log(
-      `[Helprr] Bootstrap admin password reset from APP_PASSWORD (HELPRR_ADMIN_PASSWORD_RESET); signed out ${sessions.count} session(s), ended ${links.count} link(s). Remove HELPRR_ADMIN_PASSWORD_RESET now: while it is set, every start does this again.`
+      `[Helprr] Bootstrap admin password reset from APP_PASSWORD (HELPRR_ADMIN_PASSWORD_RESET); signed out ${sessions.count} session(s), ended ${links.count} link(s) and ${feeds.count} calendar feed link(s). Remove HELPRR_ADMIN_PASSWORD_RESET now: while it is set, every start does this again.`
     );
     await attachOwnerlessRowsToAdmin();
   } else if (!existing.passwordHash) {
