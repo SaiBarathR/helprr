@@ -17,7 +17,8 @@ describe('run', () => {
 
   it('hands stdout to onStdoutLine and keeps it out of the error message', async () => {
     const lines: string[] = [];
-    const failure = run('node', ['-e', "console.error('real reason'); for (let i = 0; i < 200; i++) console.log('progress=continue'); process.exit(3)"], {
+    // exitCode, not exit(): exit() can drop stdout still in the pipe, and did under load.
+    const failure = run('node', ['-e', "console.error('real reason'); for (let i = 0; i < 200; i++) console.log('progress=continue'); process.exitCode = 3"], {
       onStdoutLine: (line) => lines.push(line),
     });
     const message = await failure.catch((error: Error) => error.message);
