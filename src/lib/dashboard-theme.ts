@@ -170,6 +170,10 @@ export const DEFAULT_LIQUID_GLASS = true;
  * Apple system palettes for Liquid Glass mode (iOS systemBackground /
  * label / separator conventions). The accent slot stays `--hpr-amber`
  * because --primary/--ring alias it in globals.css.
+ *
+ * Secondary (fgMute) and tertiary (fgSubtle) label alphas are raised above
+ * Apple's 0.6 / 0.3 so both reach WCAG AA (4.5:1) as text on every glass
+ * background, including small data labels; glass-contrast.test.ts checks it.
  */
 export const GLASS_PALETTES: Record<GlassScheme, PaletteTokens> = {
   light: {
@@ -180,8 +184,8 @@ export const GLASS_PALETTES: Record<GlassScheme, PaletteTokens> = {
     hairline: 'rgba(60,60,67,0.12)',
     hairline2: 'rgba(60,60,67,0.29)',
     fg: '#000000',
-    fgMute: 'rgba(60,60,67,0.60)',
-    fgSubtle: 'rgba(60,60,67,0.30)',
+    fgMute: 'rgba(60,60,67,0.85)',
+    fgSubtle: 'rgba(60,60,67,0.75)',
   },
   dark: {
     ink: '#000000',
@@ -192,25 +196,29 @@ export const GLASS_PALETTES: Record<GlassScheme, PaletteTokens> = {
     hairline2: 'rgba(84,84,88,0.60)',
     fg: '#FFFFFF',
     fgMute: 'rgba(235,235,245,0.60)',
-    fgSubtle: 'rgba(235,235,245,0.30)',
+    fgSubtle: 'rgba(235,235,245,0.55)',
   },
 };
 
+/** Light values are the iOS system colors darkened (same OKLCH hue) until they
+ *  reach 4.5:1 as text on the light surfaces; Apple's own light tints are
+ *  2-4:1 on #F2F2F7. Dark values are Apple's unchanged. */
 export const GLASS_TINT: Record<GlassScheme, string> = {
-  light: '#007AFF',
+  light: '#0261CD',
   dark: '#0A84FF',
 };
 
-/** iOS system colors for the chart/status vars that are otherwise static in globals.css. */
+/** iOS system colors for the chart/status vars that are otherwise static in
+ *  globals.css; light ones darkened for text contrast like GLASS_TINT. */
 const GLASS_CHART_COLORS: Record<GlassScheme, Record<string, string>> = {
   light: {
-    '--hpr-green': '#34C759',
-    '--hpr-rose': '#FF3B30',
-    '--hpr-blue': '#007AFF',
-    '--hpr-purple': '#AF52DE',
+    '--hpr-green': '#02762B',
+    '--hpr-rose': '#CD0207',
+    '--hpr-blue': '#0261CD',
+    '--hpr-purple': '#9637C3',
     '--hpr-violet': '#5856D6',
-    '--hpr-cyan': '#32ADE6',
-    '--hpr-pink': '#FF2D55',
+    '--hpr-cyan': '#016D96',
+    '--hpr-pink': '#CC013B',
   },
   dark: {
     '--hpr-green': '#30D158',
@@ -246,9 +254,14 @@ const round3 = (n: number) => Math.round(n * 1000) / 1000;
 
 /**
  * Glass material vars from intensity 0-100. Anchored on Apple's UIBlurEffect
- * regular material (~blur 30px + saturate 180%): 0 = fully transparent,
- * 100 = fully frosted. Values stay in vars so CSS fallbacks
+ * regular material (~blur 30px + saturate 180%): 0 = clearest, 100 = fully
+ * frosted. Values stay in vars so CSS fallbacks
  * (prefers-reduced-transparency / no backdrop-filter support) can ignore them.
+ *
+ * Chrome bars (--hpr-glass-bg) and sheets/overlays (--hpr-glass-bg-strong)
+ * carry text over whatever scrolls behind them, so from the default
+ * intensity up they stay opaque enough for AA text over a black or white
+ * poster; below it the user has asked for a clearer material.
  */
 function glassMaterialVars(scheme: GlassScheme, intensity: number): Record<string, string> {
   const t = Math.min(100, Math.max(0, intensity)) / 100;
@@ -259,8 +272,8 @@ function glassMaterialVars(scheme: GlassScheme, intensity: number): Record<strin
   return {
     '--hpr-glass-blur': `${Math.round(36 * t)}px`,
     '--hpr-glass-saturate': String(round3(1 + 0.8 * t)),
-    '--hpr-glass-bg': `rgba(${bgBase},${round3(0.85 * t)})`,
-    '--hpr-glass-bg-strong': `rgba(${bgBase},${round3(Math.max(0.55, 0.85 * t))})`,
+    '--hpr-glass-bg': `rgba(${bgBase},${round3(Math.min(0.97, 0.55 + 0.67 * t))})`,
+    '--hpr-glass-bg-strong': `rgba(${bgBase},${round3(Math.min(0.97, 0.7 + 0.5 * t))})`,
     '--hpr-glass-fill': `rgba(${fillBase},${round3(0.45 + 0.5 * t)})`,
     '--hpr-glass-border': light
       ? `rgba(60,60,67,${round3(0.1 + 0.12 * t)})`
