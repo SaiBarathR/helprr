@@ -12,6 +12,7 @@ import type { QueueItem } from '@/types';
 import { getRefreshIntervalMs } from '@/lib/client-refresh-settings';
 import { useQuery } from '@tanstack/react-query';
 import { jsonFetcher, backoffRefetchInterval } from '@/lib/query-fetch';
+import { queryKeys } from '@/lib/query-keys';
 import { applyPendingImports, usePendingImports } from '@/lib/manual-import-tracker';
 import { useCan } from '@/components/permission-provider';
 import { canManualImport, getQueueMediaHref, manualImportHref, needsManualImport, statusLabel } from './queue-records';
@@ -51,16 +52,29 @@ function RecentFailures({ filterBy, instanceFilter }: { filterBy: string[]; inst
   const failuresQuery = useQuery({
     queryKey: ['activity', 'history', 'recent-failures', urls],
     queryFn: async ({ signal }) => {
-      type Page = { records?: HistoryRecord[]; partial?: boolean; truncated?: boolean };
-      const pages = await Promise.all(urls.map((url) => jsonFetcher<Page>(url)({ signal })));
+      type Page = { records?: HistoryRecord[]; partial?: boolean };
+      const results = await Promise.allSettled(urls.map((url) => jsonFetcher<Page>(url)({ signal })));
+      const pages = results.flatMap((r) => (r.status === 'fulfilled' ? [r.value] : []));
+      // One app being down mustn't hide the others' failures.
+      if (pages.length === 0) throw (results[0] as PromiseRejectedResult).reason;
       const since = Date.now() - RECENT_FAILURE_DAYS * 24 * 60 * 60 * 1000;
       const records = pages
         .flatMap((page) => page.records ?? [])
         .filter((r) => Date.parse(r.date) >= since)
         .sort((a, b) => Date.parse(b.date) - Date.parse(a.date));
-      return { records, incomplete: pages.some((page) => page.partial || page.truncated) };
+      return { records, incomplete: pages.length < results.length || pages.some((page) => page.partial) };
     },
+    // A pushed failure may be newer than cached data: look again before giving up on it.
+    refetchOnMount: focusId ? 'always' : true,
   });
+  // Lidarr is left out unless chosen (see recentFailureUrls), so say so when it's set up.
+  const { data: hasLidarr = false } = useQuery({
+    queryKey: queryKeys.arrInstances(),
+    queryFn: jsonFetcher<Array<{ type: string }>>('/api/instances'),
+    select: (conns) => Array.isArray(conns) && conns.some((c) => c.type === 'LIDARR'),
+    staleTime: 5 * 60_000,
+  });
+  const lidarrSkipped = hasLidarr && filterBy.length === 0 && instanceFilter === 'all';
   const failures = useMemo(
     () => (failuresQuery.data?.records ?? []).filter(
       (r) => filterBy.length === 0 || (r.source !== undefined && filterBy.includes(r.source)),
@@ -70,7 +84,7 @@ function RecentFailures({ filterBy, instanceFilter }: { filterBy: string[]; inst
 
   // One-shot per focus id, on fresh data: open the pushed failure if it's
   // listed, else give up.
-  if (focusId && handledFocusId !== focusId && failuresQuery.isSuccess && !failuresQuery.isFetching) {
+  if (focusId && handledFocusId !== focusId && failuresQuery.isFetchedAfterMount && !failuresQuery.isFetching) {
     setHandledFocusId(focusId);
     const match = failures.find((r) => r.downloadId === focusId);
     if (match) setSelected(match);
@@ -115,6 +129,11 @@ function RecentFailures({ filterBy, instanceFilter }: { filterBy: string[]; inst
       {failuresQuery.data?.incomplete && (
         <p className="px-3 py-2 text-center text-xs text-amber-400">
           Some history couldn&apos;t be checked, so this list may be incomplete.
+        </p>
+      )}
+      {lidarrSkipped && (
+        <p className="px-3 py-2 text-center text-xs text-muted-foreground">
+          Lidarr failures show when Lidarr is chosen in the filter.
         </p>
       )}
       <HistoryEventDrawer item={selected} onClose={() => setSelected(null)} />

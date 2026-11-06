@@ -27,10 +27,14 @@ const failure = (id: number, title: string, ageMs: number, extra: Record<string,
 
 let historyRecords: { source: string; instanceId: string }[] = [];
 let historyPartial = false;
+let downSource: string | null = null;
+let instances: unknown = {};
 // Scoped by ?source / ?instanceId, as the history route is.
 const fetchMock = vi.fn(async (url: string) => {
+  if (url === '/api/instances') return Response.json(instances);
   if (url.startsWith('/api/activity/history?')) {
     const params = new URL(url, 'http://x').searchParams;
+    if (downSource && params.get('source') === downSource) return Response.json({ error: 'Failed to fetch history' }, { status: 502 });
     const records = historyRecords.filter((r) => (!params.has('source') || r.source === params.get('source'))
       && (!params.has('instanceId') || r.instanceId === params.get('instanceId')));
     return Response.json({ records, partial: historyPartial });
@@ -43,6 +47,8 @@ beforeEach(() => {
   mocks.search = new URLSearchParams();
   historyRecords = [];
   historyPartial = false;
+  downSource = null;
+  instances = {};
   fetchMock.mockClear();
   window.history.replaceState(null, '', '/activity');
   vi.stubGlobal('fetch', fetchMock);
@@ -110,10 +116,26 @@ describe('Needs import tab: Recent failures', () => {
 
   it('opens nothing when the pushed failure is not listed', async () => {
     mocks.search = new URLSearchParams('tab=failed&source=sonarr&focus=GONE');
+    window.history.replaceState(null, '', '/activity?tab=failed&source=sonarr&focus=GONE');
     historyRecords = [failure(1, 'Other.Release', DAY, { downloadId: 'HASH1' })];
     renderTab({ filterBy: ['sonarr'] });
     await screen.findByText('Other.Release');
+    await waitFor(() => expect(window.location.search).toBe('?tab=failed&source=sonarr'));
     expect(screen.queryByText('Information')).toBeNull();
+  });
+
+  it("still lists one app's failures when another app is down", async () => {
+    downSource = 'radarr';
+    historyRecords = [failure(1, 'Show.S01E01', DAY)];
+    renderTab();
+    expect(await screen.findByText('Show.S01E01')).toBeTruthy();
+    expect(screen.getByText(/this list may be incomplete/)).toBeTruthy();
+  });
+
+  it('says Lidarr is left out of the unfiltered list when it is set up', async () => {
+    instances = [{ id: 'lid-1', label: 'main', type: 'LIDARR' }];
+    renderTab();
+    expect(await screen.findByText('Lidarr failures show when Lidarr is chosen in the filter.')).toBeTruthy();
   });
 
   it('asks Sonarr and Radarr by default, and Lidarr or one instance only when chosen', async () => {
