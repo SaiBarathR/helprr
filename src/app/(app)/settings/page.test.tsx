@@ -74,7 +74,7 @@ describe('Settings index', () => {
     expect(linkHrefs()).toEqual([
       '/settings/status',
       '/settings/preferences', '/settings/notifications', '/settings/appearance', '/settings/sessions', '/settings/account',
-      '/settings/about',
+      '/settings/tips', '/settings/about',
     ]);
     expect(headings()).toEqual(['Server', 'You']);
   });
@@ -105,6 +105,18 @@ describe('Settings index', () => {
     await user.clear(search);
     await user.type(search, 'subtitles');
     expect(linkHrefs()).toEqual(['/settings/preferences']);
+  });
+
+  it('finds Tips & gestures by gesture, search and Siri keywords', async () => {
+    const user = userEvent.setup();
+    renderPage(MEMBER);
+    const search = screen.getByRole('searchbox', { name: 'Search settings' });
+
+    for (const term of ['long-press', 'swipe', '⌘K', 'siri']) {
+      await user.clear(search);
+      await user.type(search, term);
+      expect(linkHrefs()).toEqual(['/settings/tips']);
+    }
   });
 
   it('does not let a member find admin rows by keyword', async () => {

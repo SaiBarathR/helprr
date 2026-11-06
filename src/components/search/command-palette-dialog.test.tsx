@@ -245,3 +245,22 @@ describe('CommandPaletteDialog remote search', () => {
     expect(old.textContent).not.toMatch(/Requested|In library/);
   });
 });
+
+describe('CommandPaletteDialog scope hint', () => {
+  it('shows the scope hint in the footer until a scope is chosen', async () => {
+    localResults = [DUNE_LOCAL];
+    renderPalette(ADMIN);
+    expect(screen.getByText(/to search one place/).textContent).toBe('Type tm, ani… to search one place');
+
+    const user = await typeQuery('dune');
+    await user.click(await screen.findByRole('option', { name: /Search TMDB for “dune”/ }));
+
+    expect(screen.queryByText(/to search one place/)).toBeNull();
+  });
+
+  it('names only scopes the person can use', () => {
+    renderPalette(MEMBER_LIBRARY_ONLY);
+
+    expect(screen.getByText(/to search one place/).textContent).toBe('Type ser, mov… to search one place');
+  });
+});

@@ -18,6 +18,7 @@ import {
   Terminal,
   Twitch, Youtube,
   Info,
+  Lightbulb,
   Search,
 } from 'lucide-react';
 import { useState, type ComponentProps } from 'react';
@@ -221,6 +222,15 @@ export default function SettingsIndexPage() {
       show: canViewLogs,
       keywords: ['server logs', 'errors', 'debug'],
       row: { href: '/logs', icon: Terminal, iconBg: 'bg-blue-500/10', iconColor: 'text-blue-400', label: 'Logs', subtitle: 'View, search, and download server logs' },
+    },
+    {
+      group: 'about',
+      show: true,
+      keywords: [
+        'help', 'gestures', 'long-press', 'press and hold', 'right-click', 'swipe', 'pull to refresh',
+        'search', 'scopes', 'tm', 'ani', 'tor', 'cmd+k', '⌘k', 'ctrl+k', 'keyboard', 'shortcuts', 'siri', 'automation',
+      ],
+      row: { href: '/settings/tips', icon: Lightbulb, iconBg: 'bg-amber-500/10', iconColor: 'text-amber-400', label: 'Tips & gestures', subtitle: 'Long-press, swipe, search scopes, Siri Shortcuts' },
     },
     {
       group: 'about',
