@@ -317,8 +317,10 @@ export async function requireCapability(cap: Capability): Promise<NextResponse |
 
 export async function revokeSession(sid: string): Promise<void> {
   lastSeenTouched.delete(sid);
-  await prisma.session.update({
-    where: { id: sid },
+  // updateMany: a row retention already deleted (idle past the timeout) or one
+  // revoked meanwhile counts as revoked, so sign-out never fails on a dead session.
+  await prisma.session.updateMany({
+    where: { id: sid, revokedAt: null },
     data: { revokedAt: new Date() },
   });
 }

@@ -25,7 +25,7 @@ vi.mock('@/lib/db', () => ({
   },
 }));
 
-import { requireUser } from '@/lib/auth';
+import { requireUser, revokeSession } from '@/lib/auth';
 import { SESSION_IDLE_TIMEOUT_SECONDS } from '@/lib/session-policy';
 
 const NOW = new Date('2026-11-06T12:00:00Z').getTime();
@@ -88,6 +88,24 @@ describe('session idle expiry', () => {
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.response.status).toBe(401);
     error.mockRestore();
+  });
+
+  it('accepts a session idle for exactly the timeout and rejects one a millisecond past it', async () => {
+    useSession('boundary', new Date(NOW - IDLE_MS));
+    expect((await requireUser()).ok).toBe(true);
+
+    useSession('past-boundary', new Date(NOW - IDLE_MS - 1));
+    expect((await requireUser()).ok).toBe(false);
+  });
+
+  it('revokeSession treats a session retention already removed as revoked', async () => {
+    mocks.sessionUpdateMany.mockResolvedValue({ count: 0 });
+
+    await expect(revokeSession('swept')).resolves.toBeUndefined();
+    expect(mocks.sessionUpdateMany).toHaveBeenCalledWith({
+      where: { id: 'swept', revokedAt: null },
+      data: { revokedAt: expect.any(Date) },
+    });
   });
 
   it('accepts a session used just inside the idle window and extends it', async () => {
