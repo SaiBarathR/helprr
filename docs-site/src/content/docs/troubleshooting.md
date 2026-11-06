@@ -13,28 +13,30 @@ room for about 30, so a computer that already runs many apps runs out. Helprr ha
 started; its volumes may already exist, which is fine. Fix it and run the same command
 again.
 
-- Remove the networks no container uses, running or stopped. First see which those are:
+- Remove networks you no longer need. This lists the ones no running container uses:
 
   ```bash
   docker network ls --filter dangling=true
   ```
 
-  Then remove them:
+  The list also has the networks of apps that are only stopped, and of networks you
+  made yourself with `docker network create` for several apps to share. Removing one of
+  those can stop that app from starting again. Remove only the ones you are sure about,
+  such as those of apps you deleted, one at a time:
 
   ```bash
-  docker network prune
+  docker network rm NAME
   ```
 
-  It asks before it removes anything. A network an app's Compose file made comes back
-  the next time that app starts. A network you made yourself with
-  `docker network create`, such as one several apps share, is removed too if it is in
-  that list, and you must create it again by hand.
+  Avoid `docker network prune`: it removes the whole list at once.
 - If every network is in use, give Docker more, smaller networks with the
   `default-address-pools` setting in Docker's `daemon.json` (in Docker Desktop:
   **Settings → Docker Engine**), as
   [Docker's documentation](https://docs.docker.com/reference/cli/dockerd/) describes.
-  Choose addresses your home network does not use, or containers cannot reach your
-  devices. It applies to networks made after the change, and only once Docker restarts
+  Choose addresses that neither your home network nor any existing Docker network uses
+  (`docker network inspect NAME` shows a network's subnet): Docker does not split a
+  network that already exists, and overlapping your home network leaves containers
+  unable to reach your devices. It applies to networks made after the change, and only once Docker restarts
   (Docker Desktop: **Apply & restart**). Restarting Docker stops every container; only
   those set to restart by themselves come back.
 

@@ -136,8 +136,9 @@ docker compose exec -T helprr-db pg_restore --exit-on-error --file=/dev/null < "
   docker compose up -d --no-build
 ```
 
-A database user you added yourself stays, but permissions you gave it on Helprr's tables
-are not in the dump: grant them again after the restore, as in the example under
+A database user you added yourself stays, but permissions you changed on Helprr's
+database or tables, granted or revoked, are not in the dump: note them before you
+restore, and set them again right after it, as in the example under
 [Move to a new machine](#move-to-a-new-machine-or-recover-from-a-lost-one).
 
 ## Move to a new machine, or recover from a lost one
@@ -174,6 +175,7 @@ password (the app that signs in still has them), and grant those permissions aga
 ```sql
 CREATE ROLE metrics_exporter LOGIN PASSWORD 'the same password';
 GRANT pg_monitor TO metrics_exporter;
--- only if you had given it access to Helprr's tables:
+-- only if it could read every table before (Helprr's tables hold API keys and
+-- password hashes); otherwise grant only the tables it had:
 GRANT SELECT ON ALL TABLES IN SCHEMA public TO metrics_exporter;
 ```
