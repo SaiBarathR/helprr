@@ -244,11 +244,13 @@ export interface CorrelationIndex {
   byHash: Map<string, LinkedArr[]>;
   sonarrPresent: boolean;
   radarrPresent: boolean;
+  lidarrPresent: boolean;
 }
 
 export function buildCorrelationIndex(
   sonarr: Array<{ instanceId: string; instanceLabel: string; queue: QueueItem[] }>,
   radarr: Array<{ instanceId: string; instanceLabel: string; queue: QueueItem[] }>,
+  lidarr: Array<{ instanceId: string; instanceLabel: string; queue: QueueItem[] }>,
 ): CorrelationIndex {
   const byHash = new Map<string, LinkedArr[]>();
   const add = (link: LinkedArr) => {
@@ -282,10 +284,24 @@ export function buildCorrelationIndex(
       });
     }
   }
+  for (const inst of lidarr) {
+    for (const item of inst.queue) {
+      add({
+        source: 'lidarr',
+        instanceId: inst.instanceId,
+        instanceLabel: inst.instanceLabel,
+        queueItem: { ...item, source: 'lidarr' },
+        // The album is what Lidarr searches for again after a removal.
+        contentId: item.albumId ?? item.album?.id ?? null,
+        title: item.album?.title ?? item.title ?? '',
+      });
+    }
+  }
   return {
     byHash,
     sonarrPresent: sonarr.length > 0,
     radarrPresent: radarr.length > 0,
+    lidarrPresent: lidarr.length > 0,
   };
 }
 

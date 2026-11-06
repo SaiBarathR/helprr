@@ -194,6 +194,9 @@ week on the builds named with them.
     real history, not against a live removal.
   - Radarr's unmatched-download listing and movie chooser, which are covered by
     tests only: there was no unmatched movie download to try.
+  - Queue Cleaner removals on Lidarr (`DELETE /api/v1/queue/{id}` with
+    `removeFromClient`, `blocklist` and `changeCategory`, then `AlbumSearch`),
+    added 2026-11-07 and covered by tests only.
   - Prowlarr and Seerr beyond the reads above.
   - On Jellyfin `12.2.0`: token revocation, which means revoking a live member
     token; Live TV in Safari on macOS (Safari was run only on the iOS

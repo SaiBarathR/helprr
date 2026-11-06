@@ -325,7 +325,7 @@ export function CleanupDashboardTab({ onNavigate }: { onNavigate: (target: 'queu
               <div className="min-w-0 flex-1">
                 <div className="font-medium">Queue Cleaner</div>
                 <div className="text-xs text-muted-foreground">
-                  Preview decisions before applying. Removes files from qBittorrent and (if configured) blocklists in Sonarr/Radarr.
+                  Preview decisions before applying. Removes files from qBittorrent and (if configured) blocklists in Sonarr/Radarr/Lidarr.
                 </div>
               </div>
               <Button size="sm" onClick={startQueueDryRun} disabled={!status?.queue.enabled} className="ml-auto shrink-0">
@@ -407,7 +407,7 @@ export function CleanupDashboardTab({ onNavigate }: { onNavigate: (target: 'queu
         <div className="text-xs text-muted-foreground flex items-start gap-2 px-1">
           <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
           <span>
-            Cleaners only act on torrents managed in qBittorrent. Make sure qBittorrent (and optionally Sonarr/Radarr) are configured in Settings before enabling auto-run.
+            Cleaners only act on torrents managed in qBittorrent. Make sure qBittorrent (and optionally Sonarr/Radarr/Lidarr) are configured in Settings before enabling auto-run.
           </span>
         </div>
 
@@ -441,7 +441,7 @@ export function CleanupDashboardTab({ onNavigate }: { onNavigate: (target: 'queu
           open={queuePreview.confirmGate}
           onOpenChange={(o) => setQueuePreview((p) => ({ ...p, confirmGate: o }))}
           title={`Remove ${queuePreview.decisions.length} torrents?`}
-          description="This will remove the torrents listed in the preview from qBittorrent (and blocklist/re-search via Sonarr/Radarr where applicable). This cannot be undone."
+          description="This will remove the torrents listed in the preview from qBittorrent (and blocklist/re-search via Sonarr/Radarr/Lidarr where applicable). This cannot be undone."
           confirmLabel="Yes, remove them"
           cancelLabel="Cancel"
           destructive

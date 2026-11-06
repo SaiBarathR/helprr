@@ -28,6 +28,8 @@ vi.mock('@/lib/service-helpers', () => ({
   getRadarrClient: mocks.getRadarrClient,
   getSonarrClients: vi.fn(),
   getRadarrClients: vi.fn(),
+  getLidarrClient: vi.fn(),
+  getLidarrClients: vi.fn(),
 }));
 
 import { executeDownloadCleanerRemoval } from '@/lib/cleanup/download-cleaner';

@@ -127,11 +127,11 @@ export interface DownloadCleanerConfigShape {
 }
 
 export interface LinkedArr {
-  source: 'sonarr' | 'radarr';
+  source: 'sonarr' | 'radarr' | 'lidarr';
   instanceId: string;
   instanceLabel: string;
   queueItem: QueueItem;
-  contentId: number | null; // seriesId or movieId
+  contentId: number | null; // seriesId, movieId or albumId
   title: string;
 }
 
@@ -206,7 +206,7 @@ export interface DownloadEvaluationResult {
 export type CleanupOutcomeStatus = 'succeeded' | 'partial' | 'failed' | 'stale' | 'skipped';
 
 export interface CleanupTargetOutcome {
-  target: 'qbittorrent' | 'sonarr' | 'radarr' | 'reSearch';
+  target: 'qbittorrent' | 'sonarr' | 'radarr' | 'lidarr' | 'reSearch';
   instanceId?: string;
   queueItemId?: number;
   attempted: boolean;
@@ -236,7 +236,7 @@ export interface QueueCandidateBinding {
   maxStrikes: number;
   options: QueueDecision['options'];
   links: Array<{
-    source: 'sonarr' | 'radarr';
+    source: LinkedArr['source'];
     instanceId: string;
     queueItemId: number;
   }>;

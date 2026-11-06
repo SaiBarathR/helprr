@@ -379,7 +379,7 @@ export function QueueCleanerTab({ onDirtyChange }: Props) {
             <div className="grouped-row">
               <div>
                 <Label>Re-search after removal</Label>
-                <p className="text-xs text-muted-foreground mt-0.5">When linked to Sonarr/Radarr, blocklist and trigger a new search.</p>
+                <p className="text-xs text-muted-foreground mt-0.5">When linked to Sonarr, Radarr or Lidarr, blocklist and trigger a new search.</p>
               </div>
               <Switch aria-label="Re-search after removal" checked={cfg.reSearchAfterRemoval} onCheckedChange={(v) => setCfg({ ...cfg, reSearchAfterRemoval: v })} />
             </div>
@@ -387,7 +387,7 @@ export function QueueCleanerTab({ onDirtyChange }: Props) {
             <div className="grouped-row">
               <div>
                 <Label>Process downloads without content ID</Label>
-                <p className="text-xs text-muted-foreground mt-0.5">Affects Failed Import only. Off (recommended) skips queue items that aren&apos;t linked to a series/movie.</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Affects Failed Import only. Off (recommended) skips queue items that aren&apos;t linked to a series/movie/album.</p>
               </div>
               <Switch aria-label="Process downloads without content ID" checked={cfg.processNoContentId} onCheckedChange={(v) => setCfg({ ...cfg, processNoContentId: v })} />
             </div>
@@ -588,7 +588,7 @@ function FailedImportSection({ cfg, setCfg }: { cfg: QueueCleanerConfigShape; se
 
         <div className="grouped-row grouped-row-stacked gap-2">
           <Label>Patterns</Label>
-          <p className="text-xs text-muted-foreground -mt-1">Type and press Enter to add. Substring match against Sonarr/Radarr status messages (case-insensitive); commas are allowed inside a pattern.</p>
+          <p className="text-xs text-muted-foreground -mt-1">Type and press Enter to add. Substring match against Sonarr/Radarr/Lidarr status messages (case-insensitive); commas are allowed inside a pattern.</p>
           <TokenInput
             value={fi.patterns}
             onChange={(next) => set({ patterns: next })}
@@ -608,7 +608,7 @@ function FailedImportSection({ cfg, setCfg }: { cfg: QueueCleanerConfigShape; se
         <div className="grouped-row">
           <div>
             <Label>Change category (instead of delete)</Label>
-            <p className="text-xs text-muted-foreground mt-0.5">Tell Sonarr/Radarr to move the queue item to its post-import category. Not compatible with &quot;Delete private torrents&quot;.</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Tell Sonarr/Radarr/Lidarr to move the queue item to its post-import category. Not compatible with &quot;Delete private torrents&quot;.</p>
           </div>
           <Switch aria-label="Change category instead of delete"
             checked={fi.changeCategory}
