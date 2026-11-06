@@ -31,7 +31,8 @@ import {
 } from '@/components/ui/dropdown-menu';
 import {
   Bookmark,
-  BookmarkCheck,
+  Eye,
+  EyeOff,
   Bell,
   MoreHorizontal,
   Search,
@@ -251,13 +252,16 @@ export default function MovieDetailPage() {
   }
 
   async function handleToggleMonitored() {
-    if (!movie) return;
+    if (movie) await setMonitored(movie, !movie.monitored);
+  }
+
+  async function setMonitored(base: RadarrMovie, monitored: boolean) {
     setActionLoading('monitor');
     try {
-      const res = await arrMutationFetch(instance, `/api/radarr/${movie.id}`, {
+      const res = await arrMutationFetch(instance, `/api/radarr/${base.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...movie, monitored: !movie.monitored }),
+        body: JSON.stringify({ ...base, monitored }),
       });
       if (res.ok) {
         const updated = await res.json();
@@ -267,8 +271,18 @@ export default function MovieDetailPage() {
         // preserves the server-resolved profile/tag labels.
         queryClient.setQueriesData({ queryKey: queryKeys.library('radarr') }, (prev) =>
           Array.isArray(prev) ? prev.map((m) => (m.id === movieId ? { ...m, monitored: updated.monitored } : m)) : prev);
-        toast.success(updated.monitored ? 'Now monitored' : 'Unmonitored');
-      }
+        if (updated.monitored) toast.success('Now monitored');
+        // Unmonitoring is a library change, so a stray tap must be recoverable.
+        // Undo re-sends the latest cached movie so edits made meanwhile survive.
+        else toast.success('Unmonitored', {
+          action: {
+            label: 'Undo',
+            onClick: () => {
+              void setMonitored(queryClient.getQueryData<RadarrMovie | null>(queryKeys.detail('radarr', movieId, instance)) ?? updated, true);
+            },
+          },
+        });
+      } else toast.error('Failed to update');
     } catch (e) { handleAuthError(e); toast.error('Failed to update'); }
     finally { setActionLoading(''); }
   }
@@ -404,7 +418,7 @@ export default function MovieDetailPage() {
         ...(watchedContextAction ? [watchedContextAction] : []),
         ...(canEditMonitoring ? [{
           id: 'monitor', label: movie.monitored ? 'Unmonitor' : 'Monitor',
-          icon: movie.monitored ? <Bookmark className="h-4 w-4" /> : <BookmarkCheck className="h-4 w-4" />,
+          icon: movie.monitored ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />,
           onSelect: () => { void handleToggleMonitored(); }, disabled: actionLoading === 'monitor',
         }] : []),
         ...(canManageActivity ? [
@@ -441,7 +455,7 @@ export default function MovieDetailPage() {
         title={movie.title}
         rightContent={
           <>
-            {/* Bookmark / Monitored toggle */}
+            {/* Monitored toggle */}
             {canEditMonitoring && (
               <button
                 onClick={handleToggleMonitored}
@@ -449,13 +463,14 @@ export default function MovieDetailPage() {
                 className="min-w-[44px] min-h-[44px] flex items-center justify-center text-primary"
                 aria-label="Monitored"
                 aria-pressed={movie.monitored}
+                title={movie.monitored ? 'Monitored' : 'Not monitored'}
               >
                 {actionLoading === 'monitor' ? (
                   <Loader2 className="h-5 w-5 animate-spin" />
                 ) : movie.monitored ? (
-                  <BookmarkCheck className="h-5 w-5 fill-primary" />
+                  <Eye className="h-5 w-5" />
                 ) : (
-                  <Bookmark className="h-5 w-5" />
+                  <EyeOff className="h-5 w-5" />
                 )}
               </button>
             )}

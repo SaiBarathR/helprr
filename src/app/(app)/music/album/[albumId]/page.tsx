@@ -20,8 +20,8 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import {
-  Bookmark,
-  BookmarkCheck,
+  Eye,
+  EyeOff,
   MoreHorizontal,
   Search,
   Loader2,
@@ -291,7 +291,7 @@ export default function AlbumDetailPage() {
         ...(canEditMonitoring ? [{
           id: 'monitor',
           label: album.monitored ? 'Unmonitor album' : 'Monitor album',
-          icon: album.monitored ? <BookmarkCheck className="h-4 w-4" /> : <Bookmark className="h-4 w-4" />,
+          icon: album.monitored ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />,
           onSelect: () => { void handleToggleMonitored(); },
           disabled: actionLoading === 'monitor',
         }] : []),
@@ -337,13 +337,14 @@ export default function AlbumDetailPage() {
                 className="min-w-[44px] min-h-[44px] flex items-center justify-center text-primary"
                 aria-label="Monitored"
                 aria-pressed={album.monitored}
+                title={album.monitored ? 'Monitored' : 'Not monitored'}
               >
                 {actionLoading === 'monitor' ? (
                   <Loader2 className="h-5 w-5 animate-spin" />
                 ) : album.monitored ? (
-                  <BookmarkCheck className="h-5 w-5 fill-primary" />
+                  <Eye className="h-5 w-5" />
                 ) : (
-                  <Bookmark className="h-5 w-5" />
+                  <EyeOff className="h-5 w-5" />
                 )}
               </button>
             )}

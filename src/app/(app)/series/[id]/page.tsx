@@ -12,8 +12,8 @@ import { PageHeader } from '@/components/layout/page-header';
 import { AniListRemapDrawer } from '@/components/anime/anilist-remap-drawer';
 import { getImageUrl } from '@/components/media/media-card';
 import {
-  Bookmark, RefreshCw, Search, ExternalLink,
-  Pencil, Trash2, Tv, Eye, FileEdit, Sparkles, TriangleAlert, FileStack,
+  RefreshCw, Search, ExternalLink,
+  Pencil, Trash2, Tv, Eye, EyeOff, FileEdit, Sparkles, TriangleAlert, FileStack,
 } from 'lucide-react';
 import type { SonarrSeries, SonarrEpisode, DiscoverTvFullDetail } from '@/types';
 import { useQuery } from '@tanstack/react-query';
@@ -250,7 +250,7 @@ export default function SeriesDetailPage() {
       id: 'activity',
       actions: [
         ...(watchedContextAction ? [watchedContextAction] : []),
-        ...(canEditMonitoring ? [{ id: 'monitor-toggle', label: series.monitored ? 'Unmonitor' : 'Monitor', icon: <Bookmark className="h-4 w-4" />, onSelect: () => { void actions.toggleMonitored(); }, disabled: actions.actionLoading === 'monitor' }, { id: 'monitor-options', label: 'Monitoring options…', icon: <Eye className="h-4 w-4" />, onSelect: () => actions.setShowMonitorEdit(true) }] : []),
+        ...(canEditMonitoring ? [{ id: 'monitor-toggle', label: series.monitored ? 'Unmonitor' : 'Monitor', icon: series.monitored ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />, onSelect: () => { void actions.toggleMonitored(); }, disabled: actions.actionLoading === 'monitor' }, { id: 'monitor-options', label: 'Monitoring options…', icon: <Eye className="h-4 w-4" />, onSelect: () => actions.setShowMonitorEdit(true) }] : []),
         ...(canManageActivity ? [
           { id: 'refresh', label: 'Refresh', icon: <RefreshCw className="h-4 w-4" />, onSelect: () => { void actions.refresh(); }, disabled: actions.actionLoading === 'refresh' },
           { id: 'search', label: 'Search Monitored', icon: <Search className="h-4 w-4" />, onSelect: () => { void actions.searchAll(); }, disabled: actions.actionLoading === 'search' },

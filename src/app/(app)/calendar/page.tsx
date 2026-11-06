@@ -36,7 +36,6 @@ import {
   Tv,
   Film,
   Disc3,
-  Bookmark,
   Bell,
   Eye,
   EyeOff,
@@ -617,7 +616,7 @@ function AgendaEventRow({ row, showImages }: { row: AgendaRow; showImages: boole
             </div>
 
             {event.monitored && (
-              <Bookmark className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground/50" />
+              <Eye className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground/50" />
             )}
           </div>
         </Link>
@@ -749,7 +748,7 @@ function MonthEventItem({ event, showImages }: { event: CalendarEvent; showImage
             </div>
             <div className="flex items-center gap-3 pt-0.5 text-[11px] text-muted-foreground">
               <span className="inline-flex items-center gap-1">
-                <Bookmark className={`h-3 w-3 ${event.monitored ? 'text-primary' : ''}`} />
+                {event.monitored ? <Eye className="h-3 w-3 text-primary" /> : <EyeOff className="h-3 w-3" />}
                 {event.monitored ? 'Monitored' : 'Not monitored'}
               </span>
               <span className={event.hasFile ? 'text-green-500' : ''}>

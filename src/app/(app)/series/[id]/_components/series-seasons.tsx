@@ -6,7 +6,7 @@ import { useAppRouter } from '@/components/layout/navigation-provider';
 import { Button } from '@/components/ui/button';
 import { ErrorState } from '@/components/ui/error-state';
 import { QuickContextMenu } from '@/components/ui/quick-context-menu';
-import { Bookmark, Search, ChevronDown, ChevronUp, ChevronRight, Star, Check } from 'lucide-react';
+import { Eye, EyeOff, Search, ChevronDown, ChevronUp, ChevronRight, Star, Check } from 'lucide-react';
 import type { DiscoverTvFullDetail, SonarrEpisode, SonarrSeries } from '@/types';
 import type { EpisodeWatchStatus } from '@/types/watch-status';
 import { toCachedImageSrc } from '@/lib/image';
@@ -94,7 +94,7 @@ export function SeriesSeasons({
           const seasonHref = `/series/${routeId}/season/${sn}${instance ? `?instance=${instance}` : ''}`;
           const seasonActions = [
             { id: 'open', label: 'Open season', href: seasonHref },
-            ...(canEditMonitoring ? [{ id: 'monitor', label: isMonitored ? 'Unmonitor season' : 'Monitor season', icon: <Bookmark className="h-4 w-4" />, onSelect: () => { void onToggleSeasonMonitor(sn, !isMonitored); } }] : []),
+            ...(canEditMonitoring ? [{ id: 'monitor', label: isMonitored ? 'Unmonitor season' : 'Monitor season', icon: isMonitored ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />, onSelect: () => { void onToggleSeasonMonitor(sn, !isMonitored); } }] : []),
             ...(canManageActivity ? [{
               id: 'interactive',
               label: 'Interactive search…',
@@ -170,9 +170,9 @@ export function SeriesSeasons({
                     aria-pressed={isMonitored}
                   >
                     {isMonitored ? (
-                      <Bookmark className="h-5 w-5 fill-current text-foreground" />
+                      <Eye className="h-5 w-5 text-foreground" />
                     ) : (
-                      <Bookmark className="h-5 w-5 text-muted-foreground" />
+                      <EyeOff className="h-5 w-5 text-muted-foreground" />
                     )}
                   </button>
                 )}

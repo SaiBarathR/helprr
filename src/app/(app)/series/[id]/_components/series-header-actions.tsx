@@ -8,7 +8,7 @@ import {
 import { MarkWatchedMenuItem } from '@/components/jellyfin/mark-watched-button';
 import {
   Bookmark, Bell, MoreHorizontal, RefreshCw, Search, ExternalLink,
-  Pencil, Trash2, Loader2, Tv, Eye, FileEdit, Sparkles, FileStack,
+  Pencil, Trash2, Loader2, Tv, Eye, EyeOff, FileEdit, Sparkles, FileStack,
 } from 'lucide-react';
 import type { SonarrSeries } from '@/types';
 import type { WatchStatus } from '@/types/watch-status';
@@ -50,7 +50,7 @@ export function SeriesHeaderActions({
       {refreshing && (
         <RefreshCw className="h-4 w-4 animate-spin text-muted-foreground mr-1" />
       )}
-      {/* Bookmark / Monitor toggle — monitoring changes are admin-gated */}
+      {/* Monitor toggle — monitoring changes are admin-gated */}
       {canEditMonitoring && (
         <button
           onClick={actions.toggleMonitored}
@@ -58,13 +58,14 @@ export function SeriesHeaderActions({
           className="min-w-[44px] min-h-[44px] flex items-center justify-center text-primary"
           aria-label="Monitored"
           aria-pressed={series.monitored}
+          title={series.monitored ? 'Monitored' : 'Not monitored'}
         >
           {actionLoading === 'monitor' ? (
             <Loader2 className="h-5 w-5 animate-spin" />
           ) : series.monitored ? (
-            <Bookmark className="h-5 w-5 fill-current" />
+            <Eye className="h-5 w-5" />
           ) : (
-            <Bookmark className="h-5 w-5" />
+            <EyeOff className="h-5 w-5" />
           )}
         </button>
       )}
