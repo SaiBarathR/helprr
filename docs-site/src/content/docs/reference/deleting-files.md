@@ -23,8 +23,10 @@ history for 90 days:
   countdown presses **Delete now**. Titles on anyone's watchlist, with an open
   or recent request, tagged with the keep tag, still downloading, or watched in
   the last N days are always protected, and Delete now checks all of that again
-  first: if Jellyfin, Seerr or Sonarr/Radarr cannot be read, or anything
-  changed since the preview, nothing is deleted. Everyone who can see a library
+  first, and skips anything someone is playing at that moment: if Jellyfin,
+  Seerr or Sonarr/Radarr cannot be read, or anything changed since the
+  preview, nothing is deleted. Delete now needs Seerr connected, and the
+  Jellyfin connection must be an API key or an administrator account. Everyone who can see a library
   sees its Leaving soon shelf (Dashboard, Movies, Series) and can press
   **Keep**, which adds the keep tag in Sonarr/Radarr and is recorded in the
   operation audit. Each deleted title gets a Cleanup History row and an

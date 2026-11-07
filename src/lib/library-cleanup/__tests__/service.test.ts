@@ -13,6 +13,9 @@ const mocks = vi.hoisted(() => ({
   sonarr: { deleteSeries: vi.fn(), getSeriesById: vi.fn() },
   users: vi.fn(),
   create: vi.fn(),
+  sessions: vi.fn(),
+  deletedIds: new Set<number>(),
+  movieExtra: (() => ({})) as (id: number) => Record<string, unknown>,
 }));
 
 vi.mock('../inputs', async (importOriginal) => ({
@@ -65,6 +68,7 @@ vi.mock('@/lib/file-audit', async (importOriginal) => {
 vi.mock('@/lib/service-helpers', () => ({
   getRadarrClient: vi.fn(async () => mocks.radarr),
   getSonarrClient: vi.fn(async () => mocks.sonarr),
+  getJellyfinClientContext: vi.fn(async () => ({ client: { getSessions: mocks.sessions } })),
 }));
 vi.mock('@/lib/cleanup/binding', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/cleanup/binding')>()),
@@ -81,6 +85,7 @@ import {
   withLibraryDeletionLock,
   LibraryDeletionBusyError,
   LeavingSoonClaimedError,
+  processingMediaType,
 } from '../service';
 import { LibraryCleanupUnavailableError } from '../inputs';
 import { StaleCleanupPreviewError } from '@/lib/cleanup/binding';
@@ -95,7 +100,7 @@ function facts(arrId: number, overrides: Partial<TitleFacts> = {}): TitleFacts {
     title: `Movie ${arrId}`, year: 2001, tmdbId: arrId, tvdbId: null, imdbId: null, posterUrl: null,
     sizeBytes: 4e9, added: new Date(NOW - 400 * DAY).toISOString(), rating: null, keepTagged: false,
     inJellyfin: true, lastWatchedAt: null, watchedWithoutDate: false, watchlistUserIds: [], openRequest: false,
-    latestRequestAt: null, requestedBy: [], requesterUserIds: [], downloading: false, ...overrides,
+    latestRequestAt: null, requestedBy: [], requesterUserIds: [], downloading: false, jellyfinIds: [`jf-${arrId}`], ...overrides,
   };
 }
 
@@ -108,16 +113,28 @@ function row(arrId: number, dueInDays = -1) {
   };
 }
 
+function notFound() {
+  return new AxiosError('nf', '404', undefined, undefined,
+    { status: 404, data: {}, statusText: 'Not Found', headers: {}, config: { headers: new AxiosHeaders() } });
+}
+
 function gathers(titles: TitleFacts[], keepTagIds: Array<[string, number | null]> = [['radarr-1', 4]]) {
-  mocks.gather.mockResolvedValue({ titles, keepTagIds: new Map(keepTagIds), warnings: [] });
+  mocks.gather.mockResolvedValue({ titles, keepTagIds: new Map(keepTagIds), seerrConnected: true, warnings: [] });
 }
 
 beforeEach(() => {
   vi.resetAllMocks();
   mocks.rows = [row(1), row(2), row(3, 5)];
   gathers([facts(1), facts(2), facts(3)]);
-  mocks.radarr.deleteMovie.mockResolvedValue(undefined);
-  mocks.radarr.getMovieById.mockImplementation(async (id: number) => ({ id, tmdbId: id, tags: [] }));
+  // Radarr as a little state machine: a deleted movie answers 404 afterwards.
+  mocks.deletedIds = new Set();
+  mocks.movieExtra = () => ({});
+  mocks.radarr.deleteMovie.mockImplementation(async (id: number) => { mocks.deletedIds.add(id); });
+  mocks.radarr.getMovieById.mockImplementation(async (id: number) => {
+    if (mocks.deletedIds.has(id)) throw notFound();
+    return { id, tmdbId: id, tags: [], ...mocks.movieExtra(id) };
+  });
+  mocks.sessions.mockResolvedValue([]);
   mocks.create.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({ id: `new-${data.arrId}`, ...data }));
 });
 
@@ -180,7 +197,8 @@ describe('library deletion', () => {
 
   it('skips a title someone kept during the run (Keep claimed it first)', async () => {
     const { binding } = await previewLibraryDeletion(false, NOW);
-    mocks.radarr.deleteMovie.mockImplementationOnce(async () => {
+    mocks.radarr.deleteMovie.mockImplementationOnce(async (id: number) => {
+      mocks.deletedIds.add(id);
       // Keep on title 2 lands while title 1 is being deleted.
       mocks.rows = mocks.rows.filter((r) => r.id !== 'ls-2');
     });
@@ -200,14 +218,76 @@ describe('library deletion', () => {
     expect(mocks.rows.some((r) => r.id === 'ls-1')).toBe(true);
   });
 
-  it('counts a failed call as deleted when the arr no longer has the title', async () => {
+  it('does not claim a title gone after a FAILED call as removed by Helprr', async () => {
     const { binding } = await previewLibraryDeletion(false, NOW);
     mocks.radarr.deleteMovie.mockRejectedValueOnce(new Error('socket hang up'));
     // The last look before the call finds it; the check after the failed call does not.
-    mocks.radarr.getMovieById.mockResolvedValueOnce({ id: 1, tmdbId: 1, tags: [] }).mockRejectedValueOnce(new AxiosError('nf', '404', undefined, undefined,
-      { status: 404, data: {}, statusText: 'Not Found', headers: {}, config: { headers: new AxiosHeaders() } }));
+    mocks.radarr.getMovieById.mockResolvedValueOnce({ id: 1, tmdbId: 1, tags: [] }).mockRejectedValueOnce(notFound());
     const result = await executeLibraryDeletion(binding, 'p', admin, NOW);
-    expect(result).toMatchObject({ deleted: 2, failed: 0 });
+    expect(result).toMatchObject({ deleted: 1, failed: 0, skipped: 1 });
+    expect(result.results[0]).toMatchObject({ outcome: 'skipped', message: 'Already gone from Sonarr/Radarr (not by Helprr)' });
+    expect(mocks.audit).toHaveBeenCalledWith(expect.objectContaining({ targetId: 1, success: false, details: expect.objectContaining({ after: 'absent' }) }));
+    expect(mocks.history.mock.calls[0][0].data).toMatchObject({ action: 'skipped', filesDeleted: false, reason: 'Already gone from Sonarr/Radarr (not by Helprr)' });
+    expect(mocks.rows.some((r) => r.id === 'ls-1')).toBe(false);
+  });
+
+  it.each<[string, () => void, string]>([
+    ['the arr still lists it', () => mocks.radarr.deleteMovie.mockImplementationOnce(async () => {}), 'Sonarr/Radarr accepted the delete but still lists the title'],
+    ['the check afterwards fails', () => mocks.radarr.getMovieById
+      .mockResolvedValueOnce({ id: 1, tmdbId: 1, tags: [] }).mockRejectedValueOnce(new Error('timeout')), 'Could not confirm the title is gone'],
+  ])('records success only once the title is confirmed gone: %s', async (_name, arrange, message) => {
+    const { binding } = await previewLibraryDeletion(false, NOW);
+    arrange();
+    const result = await executeLibraryDeletion(binding, 'p', admin, NOW);
+    expect(result.results[0]).toMatchObject({ outcome: 'failed', message });
+    expect(mocks.audit).toHaveBeenCalledWith(expect.objectContaining({ targetId: 1, success: false, errorMessage: message }));
+    expect(mocks.history.mock.calls[0][0].data).toMatchObject({ action: 'failed', outcomeStatus: 'failed' });
+    expect(mocks.rows.some((r) => r.id === 'ls-1')).toBe(true);
+  });
+
+  it.each<[string, unknown[]]>([
+    ['by Jellyfin item id', [{ NowPlayingItem: { Id: 'jf-1', Type: 'Movie' } }]],
+    ['by provider id', [{ NowPlayingItem: { Id: 'other-copy', Type: 'Movie', ProviderIds: { Tmdb: '1' } } }]],
+  ])('skips and puts back a title someone is playing right now (%s)', async (_name, sessions) => {
+    const { binding } = await previewLibraryDeletion(false, NOW);
+    mocks.sessions.mockResolvedValue(sessions);
+    const result = await executeLibraryDeletion(binding, 'p', admin, NOW);
+    expect(result).toMatchObject({ deleted: 1, skipped: 1 });
+    expect(mocks.radarr.deleteMovie).not.toHaveBeenCalledWith(1, true, false);
+    expect(mocks.rows.some((r) => r.id === 'ls-1')).toBe(true);
+  });
+
+  it('skips and puts back every title when Jellyfin sessions cannot be read', async () => {
+    const { binding } = await previewLibraryDeletion(false, NOW);
+    mocks.sessions.mockRejectedValue(new Error('Jellyfin down'));
+    const result = await executeLibraryDeletion(binding, 'p', admin, NOW);
+    expect(result).toMatchObject({ deleted: 0, skipped: 2 });
+    expect(mocks.radarr.deleteMovie).not.toHaveBeenCalled();
+    expect(mocks.rows.map((r) => r.id).sort()).toEqual(['ls-1', 'ls-2', 'ls-3']);
+  });
+
+  it('refuses Delete now when Seerr is not connected, but still lets the admin mark titles', async () => {
+    mocks.gather.mockResolvedValue({ titles: [facts(1), facts(2)], keepTagIds: new Map([['radarr-1', 4]]), seerrConnected: false, warnings: ['Seerr is not connected'] });
+    await expect(previewLibraryDeletion(false, NOW)).rejects.toThrow(/Seerr is not connected.*Nothing was deleted/);
+    mocks.rows = [];
+    const marked = await markLeavingSoon(admin, 'movie', ['RADARR:radarr-1:1'], NOW);
+    expect(marked.marked).toHaveLength(1);
+  });
+
+  it('marks a title as being processed while its delete runs, so Keep can say so', async () => {
+    const { binding } = await previewLibraryDeletion(false, NOW);
+    let during: string | undefined;
+    let keepError: unknown;
+    mocks.radarr.deleteMovie.mockImplementationOnce(async (id: number) => {
+      during = processingMediaType('ls-1');
+      keepError = await keepLeavingSoonItem(row(1) as never, admin).catch((e) => e);
+      mocks.deletedIds.add(id);
+    });
+    await executeLibraryDeletion(binding, 'p', admin, NOW);
+    expect(during).toBe('movie');
+    expect(keepError).toBeInstanceOf(LeavingSoonClaimedError);
+    expect((keepError as Error).message).toBe('Being processed, try again in a moment.');
+    expect(processingMediaType('ls-1')).toBeUndefined();
   });
 
   it('clears titles already gone from the arr without calling delete', async () => {
@@ -242,7 +322,7 @@ describe('library deletion', () => {
 
   it('stops at the last look: a keep tag added in the arr since the run started', async () => {
     const { binding } = await previewLibraryDeletion(false, NOW);
-    mocks.radarr.getMovieById.mockImplementation(async (id: number) => ({ id, tmdbId: id, tags: id === 2 ? [4] : [] }));
+    mocks.movieExtra = (id) => (id === 2 ? { tags: [4] } : {});
     const result = await executeLibraryDeletion(binding, 'p', admin, NOW);
     expect(result).toMatchObject({ deleted: 1, skipped: 1 });
     expect(mocks.radarr.deleteMovie).toHaveBeenCalledTimes(1);
@@ -253,7 +333,7 @@ describe('library deletion', () => {
     gathers([facts(1), facts(2), facts(3)], [['radarr-1', null]]);
     const { binding } = await previewLibraryDeletion(false, NOW);
     mocks.radarr.getTags.mockResolvedValue([{ id: 8, label: 'keep' }]);
-    mocks.radarr.getMovieById.mockImplementation(async (id: number) => ({ id, tmdbId: id, tags: id === 1 ? [8] : [] }));
+    mocks.movieExtra = (id) => (id === 1 ? { tags: [8] } : {});
     const result = await executeLibraryDeletion(binding, 'p', admin, NOW);
     expect(result).toMatchObject({ deleted: 1, skipped: 1 });
     expect(mocks.radarr.deleteMovie).toHaveBeenCalledWith(2, true, false);
@@ -261,7 +341,7 @@ describe('library deletion', () => {
 
   it('stops at the last look: a different title under the id puts the title back', async () => {
     const { binding } = await previewLibraryDeletion(false, NOW);
-    mocks.radarr.getMovieById.mockImplementation(async (id: number) => ({ id, tmdbId: id === 2 ? 555 : id, tags: [] }));
+    mocks.movieExtra = (id) => (id === 2 ? { tmdbId: 555 } : {});
     const result = await executeLibraryDeletion(binding, 'p', admin, NOW);
     expect(result).toMatchObject({ deleted: 1, skipped: 1 });
     expect(mocks.rows.some((r) => r.id === 'ls-2')).toBe(true);
@@ -326,7 +406,10 @@ describe('keep', () => {
     mocks.radarr.getTags.mockResolvedValue([{ id: 4, label: 'keep' }]);
     mocks.radarr.movieEditor.mockRejectedValue(new Error('Radarr down'));
     await expect(keepLeavingSoonItem(row(1) as never, admin)).rejects.toThrow('Radarr down');
+    // Audited as a failed Keep, and the title is back on the list.
+    expect(mocks.audit).toHaveBeenCalledTimes(1);
     expect(mocks.audit).toHaveBeenCalledWith(expect.objectContaining({ operation: 'KEEP_MEDIA', success: false }));
+    expect(processingMediaType('ls-1')).toBeUndefined();
     expect(mocks.rows.some((r) => r.id === 'ls-1')).toBe(true);
   });
 });

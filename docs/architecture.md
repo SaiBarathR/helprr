@@ -807,15 +807,21 @@ shelf (`GET /api/leaving-soon`) lists only the types the caller may view, and
 title's type. Keep and Delete now both claim the `LeavingSoonItem` row
 (`deleteMany` by id, count 1) before calling the arr, so only one of them acts;
 Keep then adds the configured keep tag through the arr's editor (`KEEP_MEDIA`
-audit row), puts the row back when the arr call fails, and answers 409 when a
-run holds the title. Changing the keep tag stops protecting titles kept with
+audit row; a failed tag write is a failed `KEEP_MEDIA` row), puts the row back
+when the arr call fails, and answers 409 "Being processed, try again in a
+moment" while a run (or another Keep) holds the title, to someone who may view
+its type. Changing the keep tag stops protecting titles kept with
 the old one.
 
 - **Inputs** (`inputs.ts`), gathered fresh for every preview, mark and delete,
   fail closed with `LibraryCleanupUnavailableError` (503) when any configured
   Radarr/Sonarr instance (titles, tags, the complete queue), Jellyfin or Seerr
-  cannot be read completely. Seerr not being connected is a warning (Helprr's
-  pending requests still count); Jellyfin not being connected blocks. For
+  cannot be read completely. The Jellyfin connection must have administrator
+  access (`/ScheduledTasks` answers: an API key or an admin account), since a
+  user token sees only its own sessions and users. Seerr not being connected is
+  a warning for the preview and marking (Helprr's pending requests still count),
+  but Delete now refuses without it (owner decision pending); Jellyfin not
+  being connected blocks. For
   **every** Jellyfin user Helprr reads the library as that user sees it (the
   provider-id index is their union), everything marked played or partly
   watched, and every item
@@ -828,11 +834,16 @@ the old one.
   protected.
 - **Exclusions** (`evaluate.ts`, always on): keep tag, any watchlist (TMDB/TVDB,
   library-id saves on any instance, AniList via mapping or any name the arr
-  knows the title by), an open Seerr or Helprr request or one created in the
+  knows the title by; a TMDB/TVDB save the title has no such id for matches by
+  name, and one with no usable name protects it), an open Seerr or Helprr
+  request or one created in the
   last N days, in the queue, watched in the last N days, a play without a date,
   not matched in Jellyfin, no files. For a marked title the window starts at the
   earlier of `markedAt` and N days ago, so a watch or request during the
-  countdown always protects it.
+  countdown always protects it. A request that cannot be compared by id (a
+  series Sonarr knows by no TMDB id, a request Seerr knows by TMDB id only)
+  matches by name, looked up in Seerr when needed; one whose name is unknown
+  protects every title it cannot be told apart from.
 - **Delete now** reuses the cleanup preview-token store with cleaner
   `library`; the binding holds the settings fingerprint, the arr connections,
   the import-list choice and the ready titles. Execution re-gathers everything
@@ -840,9 +851,13 @@ the old one.
   A title whose instance is no longer connected, or whose arr id now carries
   other provider ids than when it was marked, is never deleted. Right before
   each call the run claims the row (a Keep that got there first wins) and
-  re-reads that one title: a keep tag added in the arr, or other provider ids,
-  stop it. A failed call is checked against the arr (404 means it is gone) and
-  otherwise puts the row back. Every attempted
+  re-reads that one title: a keep tag added in the arr (the tag list is re-read
+  when the tag did not exist at the start), or other provider ids, stop it; so
+  does one `/Sessions` read showing anyone playing it (by Jellyfin item or
+  provider id), and an unreadable session list. Success is recorded only when
+  the call succeeded and a re-read answers 404; a title gone after a failed
+  call is recorded as "already gone (not by Helprr)", never as removed with
+  files. Anything else puts the row back. Every attempted
   title writes one `DELETE_MEDIA` audit row and one `CleanupHistory` row
   (`cleaner: library`, `removedFromLibrary` / `failed` / `skipped`); titles
   already absent from the arr leave the list with a `skipped` row. One run per

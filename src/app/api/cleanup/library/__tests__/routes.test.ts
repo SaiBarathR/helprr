@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
     executeLibraryDeletion: vi.fn(),
     listLeavingSoon: vi.fn(),
     keepLeavingSoonItem: vi.fn(),
+    processingMediaType: vi.fn(),
   },
   save: vi.fn(),
   consume: vi.fn(),
@@ -179,6 +180,18 @@ describe('Leaving soon shelf and Keep', () => {
     const { LeavingSoonClaimedError } = await import('@/lib/library-cleanup/service');
     mocks.service.keepLeavingSoonItem.mockRejectedValue(new LeavingSoonClaimedError());
     expect((await keep.POST(req('/x', 'POST'), keepCtx('ls1'))).status).toBe(409);
+  });
+
+  it('says "being processed" (409) while Delete now holds a title the caller may view, and 404 otherwise', async () => {
+    mocks.findItem.mockResolvedValue(null);
+    mocks.service.processingMediaType.mockReturnValue('series');
+    mocks.user = member();
+    const res = await keep.POST(req('/x', 'POST'), keepCtx('ls1'));
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: 'Being processed, try again in a moment.' });
+    mocks.user = member({ 'series.view': false });
+    expect((await keep.POST(req('/x', 'POST'), keepCtx('ls1'))).status).toBe(404);
+    expect(mocks.service.keepLeavingSoonItem).not.toHaveBeenCalled();
   });
 
   it('reports an arr failure and leaves the title listed', async () => {

@@ -16,6 +16,7 @@ import { getConnectionHeaders } from '@/lib/service-connection-secrets';
 import { fetchFullQueue } from '@/lib/cleanup/queue-pagination';
 import { loadAnilistIdsBySeries } from '@/lib/anilist-series-mapping';
 import { watchlistItemMatches } from '@/lib/polling/watchlist-available';
+import { getCachedSeerrMediaDetail } from '@/lib/seerr-helpers';
 import { SEERR_MEDIA_STATUS, SEERR_REQUEST_STATUS, type SeerrRequest } from '@/types/seerr';
 import type { JellyfinItem, JellyfinItemsResponse } from '@/types/jellyfin';
 import type { MediaImage, QueueResponse, RadarrMovie, SonarrSeries } from '@/types';
@@ -33,6 +34,8 @@ export interface GatheredFacts {
   titles: TitleFacts[];
   /** Per instance read: the keep tag's id there (null when the tag does not exist yet). */
   keepTagIds: Map<string, number | null>;
+  /** False when no Seerr connection exists (Delete now refuses then). */
+  seerrConnected: boolean;
   /** Non-blocking notes, e.g. Seerr is not connected so no requests were checked. */
   warnings: string[];
 }
@@ -274,6 +277,18 @@ async function readJellyfin(mediaType: LibraryMediaType, now: number): Promise<{
   }
   const { client, connection } = context;
   const headers = getConnectionHeaders(connection);
+  let admin: boolean;
+  try {
+    admin = await client.hasAdminAccess();
+  } catch (error) {
+    fail('Jellyfin', error);
+  }
+  if (!admin) {
+    // A non-admin token lists only its own user and sessions: other people's plays would be missed.
+    throw new LibraryCleanupUnavailableError(
+      'The Jellyfin connection is not an administrator, so other people’s watch history cannot be read. Use an API key or an admin account for the Jellyfin connection. Nothing was changed.',
+    );
+  }
   try {
     const libraryType = mediaType === 'movie' ? 'Movie' : 'Series';
     const playType = mediaType === 'movie' ? 'Movie' : 'Episode';
@@ -323,24 +338,28 @@ function jellyfinIdsFor(t: ArrTitle['facts'], byProvider: Map<string, string[]>)
 
 // ── Requests ────────────────────────────────────────────────────────────────
 
-interface RequestState {
+interface RequestRecord {
+  tmdbId: number | null;
+  tvdbId: number | null;
+  /** The requested title's name, when known; null means "could be any title". */
+  title: string | null;
   open: boolean;
-  latestAt: Date | null;
-  requestedBy: Set<string>;
-  helprrUserIds: Set<string>;
+  at: Date | null;
+  name: string;
+  helprrUserId: string | null;
 }
 
 const SEERR_PAGE = 100;
 const MAX_SEERR_PAGES = 200;
 
-async function readSeerrRequests(warnings: string[]): Promise<SeerrRequest[]> {
+async function readSeerrRequests(warnings: string[]): Promise<{ client: Awaited<ReturnType<typeof getSeerrClient>> | null; requests: SeerrRequest[] }> {
   let client: Awaited<ReturnType<typeof getSeerrClient>>;
   try {
     client = await getSeerrClient();
   } catch (error) {
     if (error instanceof ConfigurationError) {
-      warnings.push('Seerr is not connected, so only requests made in Helprr were checked.');
-      return [];
+      warnings.push('Seerr is not connected, so only requests made in Helprr were checked. Delete now needs Seerr.');
+      return { client: null, requests: [] };
     }
     fail('Seerr', error);
   }
@@ -352,10 +371,10 @@ async function readSeerrRequests(warnings: string[]): Promise<SeerrRequest[]> {
       if (!response || !Array.isArray(response.results)) fail('Seerr requests');
       for (const request of response.results) all.set(request.id, request);
       const total = response.pageInfo?.results;
-      if (typeof total === 'number' && all.size >= total) return [...all.values()];
+      if (typeof total === 'number' && all.size >= total) return { client, requests: [...all.values()] };
       if (response.results.length < SEERR_PAGE) {
         if (typeof total === 'number' && all.size < total) fail('Seerr requests (incomplete)');
-        return [...all.values()];
+        return { client, requests: [...all.values()] };
       }
     }
   } catch (error) {
@@ -370,42 +389,31 @@ function requesterName(request: SeerrRequest): string {
   return by?.displayName || by?.username || by?.jellyfinUsername || by?.email || `Seerr user ${by?.id ?? '?'}`;
 }
 
-async function readRequests(mediaType: LibraryMediaType, warnings: string[]): Promise<Map<string, RequestState>> {
+/**
+ * Every request for this library type, open or not. `titlesWithoutTmdb` says
+ * whether some library title has no TMDB id: a request Seerr knows only by
+ * TMDB id cannot be compared with it by id, so its name is looked up.
+ */
+async function readRequests(mediaType: LibraryMediaType, warnings: string[], titlesWithoutTmdb: boolean): Promise<{
+  records: RequestRecord[];
+  seerrConnected: boolean;
+}> {
   const seerrType = mediaType === 'movie' ? 'movie' : 'tv';
   const [seerr, pending, linkedUsers] = await Promise.all([
     readSeerrRequests(warnings),
     prisma.pendingRequest.findMany({
       where: { mediaType: seerrType },
-      select: { tmdbId: true, createdAt: true, userId: true, user: { select: { displayName: true } } },
+      select: { tmdbId: true, title: true, createdAt: true, userId: true, user: { select: { displayName: true } } },
     }),
     prisma.user.findMany({ where: { seerrUserId: { not: null } }, select: { id: true, seerrUserId: true } }),
   ]);
   const userBySeerrId = new Map(linkedUsers.map((u) => [u.seerrUserId!, u.id]));
-  const map = new Map<string, RequestState>();
-  const stateFor = (key: string) => {
-    let state = map.get(key);
-    if (!state) {
-      state = { open: false, latestAt: null, requestedBy: new Set(), helprrUserIds: new Set() };
-      map.set(key, state);
-    }
-    return state;
-  };
-  const note = (keys: string[], open: boolean, at: Date | null, name: string, helprrUserId: string | null) => {
-    for (const key of keys) {
-      const state = stateFor(key);
-      state.open ||= open;
-      if (at && Number.isFinite(at.getTime()) && (!state.latestAt || at > state.latestAt)) state.latestAt = at;
-      state.requestedBy.add(name);
-      if (helprrUserId) state.helprrUserIds.add(helprrUserId);
-    }
-  };
+  const records: RequestRecord[] = [];
 
-  for (const request of seerr) {
+  for (const request of seerr.requests) {
     if (request.type !== seerrType || !request.media) continue;
-    const keys = [
-      positive(request.media.tmdbId) ? `tmdb:${request.media.tmdbId}` : null,
-      positive(request.media.tvdbId) ? `tvdb:${request.media.tvdbId}` : null,
-    ].filter((key): key is string => key !== null);
+    const tmdbId = positive(request.media.tmdbId);
+    const tvdbId = positive(request.media.tvdbId);
     // Declined and completed requests are finished, and so is an approved one Seerr
     // shows fully available (in the quality asked for). One waiting for approval is
     // always open. A partly available series stays open: someone is still waiting.
@@ -413,19 +421,47 @@ async function readRequests(mediaType: LibraryMediaType, warnings: string[]): Pr
     const finished = request.status === SEERR_REQUEST_STATUS.DECLINED
       || request.status === SEERR_REQUEST_STATUS.COMPLETED
       || (request.status !== SEERR_REQUEST_STATUS.PENDING_APPROVAL && available);
-    const helprrUser = request.requestedBy ? userBySeerrId.get(String(request.requestedBy.id)) ?? null : null;
-    note(keys, !finished, request.createdAt ? new Date(request.createdAt) : null, requesterName(request), helprrUser);
+    let title: string | null = null;
+    if (titlesWithoutTmdb && tmdbId && !tvdbId && seerr.client) {
+      // A failed lookup leaves the name unknown, which protects every title it cannot be told apart from.
+      const detail = await getCachedSeerrMediaDetail(seerr.client, seerrType, tmdbId);
+      title = detail?.name || detail?.title || null;
+    }
+    records.push({
+      tmdbId,
+      tvdbId,
+      title,
+      open: !finished,
+      at: request.createdAt ? new Date(request.createdAt) : null,
+      name: requesterName(request),
+      helprrUserId: request.requestedBy ? userBySeerrId.get(String(request.requestedBy.id)) ?? null : null,
+    });
   }
   // Helprr's own requests waiting to be sent to Seerr are open by definition.
   for (const request of pending) {
-    note([`tmdb:${request.tmdbId}`], true, request.createdAt, request.user?.displayName ?? 'A Helprr user', request.userId);
+    records.push({
+      tmdbId: positive(request.tmdbId),
+      tvdbId: null,
+      title: request.title?.trim() || null,
+      open: true,
+      at: request.createdAt,
+      name: request.user?.displayName ?? 'A Helprr user',
+      helprrUserId: request.userId,
+    });
   }
-  return map;
+  return { records, seerrConnected: seerr.client !== null };
 }
 
-function requestKeys(t: ArrTitle['facts']): string[] {
-  return [t.tmdbId ? `tmdb:${t.tmdbId}` : null, t.tvdbId ? `tvdb:${t.tvdbId}` : null]
-    .filter((key): key is string => key !== null);
+/**
+ * Whether a request is for this title. By id when both sides have one to
+ * compare; otherwise by name, and a request with no known name is assumed to
+ * be for it (fail closed: it can only keep a title).
+ */
+function requestIsFor(r: RequestRecord & { loose: string | null }, t: ArrTitle['facts'], names: Set<string>): boolean {
+  const byTmdb = r.tmdbId !== null && t.tmdbId !== null;
+  const byTvdb = r.tvdbId !== null && t.tvdbId !== null;
+  if (byTmdb || byTvdb) return (byTmdb && r.tmdbId === t.tmdbId) || (byTvdb && r.tvdbId === t.tvdbId);
+  return r.loose === null || names.has(r.loose);
 }
 
 // ── Watchlists ──────────────────────────────────────────────────────────────
@@ -446,11 +482,15 @@ async function readWatchlists(mediaType: LibraryMediaType, arrTitles: ArrTitle[]
     const anilistIds = anilistBySeries.get(`${t.instanceId}:${t.arrId}`) ?? [];
     const loose = new Set(names.map(looseTitle).filter(Boolean));
     for (const item of items) {
+      // A TMDB/TVDB save the title has no such id for cannot be compared by id:
+      // match by name instead, and a save with no usable name keeps the title.
+      const idUncomparable = (item.source === 'TMDB' && t.tmdbId === null) || (item.source === 'TVDB' && t.tvdbId === null);
+      const byName = () => !looseTitle(item.title) || loose.has(looseTitle(item.title));
       const hit = item.source === 'ANILIST'
         // An AniList save matches its mapped Sonarr series, or any name the arr knows
         // the title by (AniList movies have no mapping). Errs towards keeping.
         ? anilistIds.includes(Number(item.externalId)) || loose.has(looseTitle(item.title))
-        : watchlistItemMatches(item, {
+        : idUncomparable ? byName() : watchlistItemMatches(item, {
           kind: t.mediaType,
           instanceId: t.instanceId,
           arrId: t.arrId,
@@ -476,11 +516,13 @@ export async function gatherLibraryFacts(mediaType: LibraryMediaType, keepTag: s
   const arrTitles = await readArrTitles(mediaType, keepTag, keepTagIds);
   const [jellyfin, requests] = await Promise.all([
     readJellyfin(mediaType, now),
-    readRequests(mediaType, warnings),
+    readRequests(mediaType, warnings, arrTitles.some((t) => t.facts.tmdbId === null)),
   ]);
+  const records = requests.records.map((r) => ({ ...r, loose: r.title ? looseTitle(r.title) || null : null }));
   const facts = arrTitles.map((t) => t.facts);
   const watchlists = await readWatchlists(mediaType, arrTitles);
 
+  const namesByKey = new Map(arrTitles.map((t) => [titleKey(t.facts), new Set(t.names.map(looseTitle).filter(Boolean))]));
   const titles = facts.map((t): TitleFacts => {
     const jellyfinIds = jellyfinIdsFor(t, jellyfin.byProvider);
     let lastWatchedAt: Date | null = null;
@@ -491,21 +533,23 @@ export async function gatherLibraryFacts(mediaType: LibraryMediaType, keepTag: s
       if (play.lastWatchedAt && (!lastWatchedAt || play.lastWatchedAt > lastWatchedAt)) lastWatchedAt = play.lastWatchedAt;
       watchedWithoutDate ||= play.watchedWithoutDate;
     }
-    const requestStates = requestKeys(t).map((key) => requests.get(key)).filter((s): s is RequestState => Boolean(s));
-    const latestRequestAt = requestStates.reduce<Date | null>(
-      (latest, s) => (s.latestAt && (!latest || s.latestAt > latest) ? s.latestAt : latest), null,
+    const names = namesByKey.get(titleKey(t)) ?? new Set<string>();
+    const mine = records.filter((r) => requestIsFor(r, t, names));
+    const latestRequestAt = mine.reduce<Date | null>(
+      (latest, r) => (r.at && Number.isFinite(r.at.getTime()) && (!latest || r.at > latest) ? r.at : latest), null,
     );
     return {
       ...t,
       inJellyfin: jellyfinIds.length > 0,
+      jellyfinIds,
       lastWatchedAt,
       watchedWithoutDate,
       watchlistUserIds: [...(watchlists.get(titleKey(t)) ?? [])],
-      openRequest: requestStates.some((s) => s.open),
+      openRequest: mine.some((r) => r.open),
       latestRequestAt,
-      requestedBy: [...new Set(requestStates.flatMap((s) => [...s.requestedBy]))],
-      requesterUserIds: [...new Set(requestStates.flatMap((s) => [...s.helprrUserIds]))],
+      requestedBy: [...new Set(mine.map((r) => r.name))],
+      requesterUserIds: [...new Set(mine.map((r) => r.helprrUserId).filter((id): id is string => id !== null))],
     };
   });
-  return { titles, keepTagIds, warnings };
+  return { titles, keepTagIds, seerrConnected: requests.seerrConnected, warnings };
 }

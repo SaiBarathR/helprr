@@ -28,6 +28,8 @@ export interface TitleFacts {
   keepTagged: boolean;
   /** Whether any Jellyfin item matched the title by provider id. */
   inJellyfin: boolean;
+  /** The Jellyfin items that matched (to spot it playing right before a delete). */
+  jellyfinIds?: string[];
   /** Latest play by any Jellyfin user, or null. */
   lastWatchedAt: Date | null;
   /** Someone played it but Jellyfin has no date for that play. */

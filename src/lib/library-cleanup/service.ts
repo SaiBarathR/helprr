@@ -13,7 +13,7 @@ import { logger } from '@/lib/logger';
 import { can } from '@/lib/permissions';
 import { notifyEvent } from '@/lib/notification-service';
 import { recordOperationAudit, runWithOperationAudit, type AuditActor } from '@/lib/file-audit';
-import { getRadarrClient, getSonarrClient } from '@/lib/service-helpers';
+import { getJellyfinClientContext, getRadarrClient, getSonarrClient } from '@/lib/service-helpers';
 import { invalidateTaggedLibrary } from '@/lib/cache/tagged-library';
 import { sha256Hex, stableStringify } from '@/lib/cache/keys';
 import {
@@ -30,7 +30,7 @@ import {
   type LibraryMediaType,
 } from './config';
 import { evaluateTitle, exclusionsFor, titleKey, type TitleFacts } from './evaluate';
-import { gatherLibraryFacts } from './inputs';
+import { gatherLibraryFacts, LibraryCleanupUnavailableError } from './inputs';
 
 const LOG = 'library-cleanup';
 export const MAX_MARK_ITEMS = 500;
@@ -223,7 +223,7 @@ async function notifyMarked(item: LeavingSoonItem, facts: TitleFacts): Promise<v
  */
 export class LeavingSoonClaimedError extends Error {
   constructor() {
-    super('This title is already being kept or deleted.');
+    super('Being processed, try again in a moment.');
     this.name = 'LeavingSoonClaimedError';
   }
 }
@@ -234,11 +234,15 @@ export async function keepLeavingSoonItem(item: LeavingSoonItem, actor: AuditAct
   const client = item.service === 'RADARR' ? await getRadarrClient(item.instanceId) : await getSonarrClient(item.instanceId);
   // Claim first, so a Delete now running at the same moment cannot also take it.
   if (!await claimRow(item.id)) throw new LeavingSoonClaimedError();
+  processing.set(item.id, item.mediaType as LibraryMediaType);
   try {
+    // A failed tag write is audited as a failed KEEP and the title goes back on the list.
     await tagKeep(item, actor, keepTag, client);
   } catch (error) {
     await restoreRow(item);
     throw error;
+  } finally {
+    processing.delete(item.id);
   }
   await invalidateTaggedLibrary(item.service === 'RADARR' ? 'radarr' : 'sonarr', item.instanceId);
 }
@@ -350,6 +354,12 @@ async function evaluateDue(addImportListExclusion: boolean, now: number): Promis
     const ofType = due.filter((item) => item.mediaType === mediaType);
     if (ofType.length === 0) continue;
     const gathered = await gatherLibraryFacts(mediaType, settings.keepTag, now);
+    if (!gathered.seerrConnected) {
+      // Without Seerr an open request cannot be ruled out, so nothing may be deleted.
+      throw new LibraryCleanupUnavailableError(
+        'Seerr is not connected, so open requests cannot be checked. Delete now needs Seerr: connect it in Settings. Nothing was deleted.',
+      );
+    }
     warnings.push(...gathered.warnings);
     const byKey = new Map(gathered.titles.map((t) => [titleKey(t), t]));
     const rule = ruleFor(settings, mediaType);
@@ -431,16 +441,43 @@ export async function withLibraryDeletionLock<T>(run: () => Promise<T>): Promise
   }
 }
 
-/** True when the arr answers 404 for the title, i.e. it is gone. */
-async function isGone(item: LeavingSoonItem): Promise<boolean> {
+/** What the arr shows for the title now: a 404 is absent; any other error is unknown. */
+async function readState(item: LeavingSoonItem): Promise<'present' | 'absent' | 'unknown'> {
   try {
     if (item.service === 'RADARR') await (await getRadarrClient(item.instanceId)).getMovieById(item.arrId);
     else await (await getSonarrClient(item.instanceId)).getSeriesById(item.arrId);
-    return false;
+    return 'present';
   } catch (error) {
-    return isAxiosError(error) && error.response?.status === 404;
+    return isAxiosError(error) && error.response?.status === 404 ? 'absent' : 'unknown';
   }
 }
+
+/** Whether anyone is playing the title in Jellyfin right now (by Jellyfin item or provider id). */
+async function playingNow(facts: TitleFacts): Promise<boolean> {
+  const { client } = await getJellyfinClientContext();
+  const sessions = await client.getSessions();
+  if (!Array.isArray(sessions)) throw new Error('Jellyfin sessions could not be read');
+  const ids = new Set(facts.jellyfinIds ?? []);
+  return sessions.some((session) => {
+    const playing = session.NowPlayingItem;
+    if (!playing) return false;
+    if (ids.has(playing.Id) || (playing.SeriesId && ids.has(playing.SeriesId))) return true;
+    if (facts.mediaType !== 'movie' || playing.Type !== 'Movie') return false;
+    const p = playing.ProviderIds ?? {};
+    return (facts.tmdbId !== null && p.Tmdb === String(facts.tmdbId))
+      || (facts.imdbId !== null && p.Imdb?.toLowerCase() === facts.imdbId.toLowerCase());
+  });
+}
+
+// Titles a Delete now run holds right now, with their type, so Keep can say
+// "being processed" (to someone who may view that type) instead of "not found".
+const processing = new Map<string, LibraryMediaType>();
+
+export function processingMediaType(id: string): LibraryMediaType | undefined {
+  return processing.get(id);
+}
+
+const ALREADY_GONE = 'Already gone from Sonarr/Radarr (not by Helprr)';
 
 function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -506,12 +543,29 @@ async function deleteOne(
   actor: AuditActor,
   previewId: string,
 ): Promise<DeletionItemResult> {
-  // Claim the title. If someone pressed Keep while this run was going, they hold it: their choice wins.
+  // Claim the title. If someone pressed Keep while this run was going, they hold it and it is
+  // left alone. Whether their Keep goes through is their own audit row, not this one.
   if (!await claimRow(item.id)) {
-    await writeHistory(item, 'skipped', 'Kept while the run was going', actor, previewId, null);
-    return skippedResult(item, 'Kept while the run was going');
+    const message = 'Not deleted: someone pressed Keep while the run was going';
+    await writeHistory(item, 'skipped', message, actor, previewId, null);
+    return skippedResult(item, message);
   }
+  processing.set(item.id, item.mediaType as LibraryMediaType);
+  try {
+    return await deleteClaimed(item, facts, keepTagId, addImportListExclusion, actor, previewId);
+  } finally {
+    processing.delete(item.id);
+  }
+}
 
+async function deleteClaimed(
+  item: LeavingSoonItem,
+  facts: TitleFacts,
+  keepTagId: number | null,
+  addImportListExclusion: boolean,
+  actor: AuditActor,
+  previewId: string,
+): Promise<DeletionItemResult> {
   // A last look at this one title right before the call: a keep tag added in
   // Sonarr/Radarr since the run started, or a different title under the id, stops it.
   let current: { tags?: number[]; tmdbId?: number; tvdbId?: number; imdbId?: string };
@@ -521,8 +575,8 @@ async function deleteOne(
       : await (await getSonarrClient(item.instanceId)).getSeriesById(item.arrId);
   } catch (error) {
     if (isAxiosError(error) && error.response?.status === 404) {
-      await writeHistory(item, 'skipped', 'No longer in Sonarr/Radarr', actor, previewId, null);
-      return skippedResult(item, 'No longer in Sonarr/Radarr');
+      await writeHistory(item, 'skipped', ALREADY_GONE, actor, previewId, null);
+      return skippedResult(item, ALREADY_GONE);
     }
     await restoreRow(item);
     await writeHistory(item, 'skipped', 'Could not re-read the title', actor, previewId, errorText(error));
@@ -551,6 +605,18 @@ async function deleteOne(
     await writeHistory(item, 'skipped', 'A different title has this id now', actor, previewId, null);
     return skippedResult(item, 'A different title has this id now');
   }
+  // One cheap look at what Jellyfin is playing: never delete what someone is watching.
+  try {
+    if (await playingNow(facts)) {
+      await restoreRow(item);
+      await writeHistory(item, 'skipped', 'Someone is watching it right now', actor, previewId, null);
+      return skippedResult(item, 'Someone is watching it right now');
+    }
+  } catch (error) {
+    await restoreRow(item);
+    await writeHistory(item, 'skipped', 'Could not check what Jellyfin is playing', actor, previewId, errorText(error));
+    return skippedResult(item, 'Could not check what Jellyfin is playing');
+  }
 
   const reasons = Array.isArray(item.reasons) ? (item.reasons as string[]).join(', ') : '';
   const startedAt = new Date();
@@ -564,8 +630,14 @@ async function deleteOne(
   } catch (error) {
     errorMessage = errorText(error);
   }
-  // A failed call may still have deleted it (a lost answer): decide from what the arr shows now.
-  const deleted = errorMessage === null || await isGone(item);
+  // Decide from what the arr shows afterwards. Success needs the call to succeed AND the
+  // title to be gone. A title gone after a failed call was not shown to be removed by Helprr.
+  const after = await readState(item);
+  const deleted = errorMessage === null && after === 'absent';
+  const goneAnyway = errorMessage !== null && after === 'absent';
+  const failure = deleted || goneAnyway ? null : errorMessage ?? (after === 'present'
+    ? 'Sonarr/Radarr accepted the delete but still lists the title'
+    : 'Could not confirm the title is gone');
   await recordOperationAudit({
     user: actor,
     service: item.service === 'RADARR' ? 'RADARR' : 'SONARR',
@@ -587,18 +659,23 @@ async function deleteOne(
       lastWatchedAt: facts.lastWatchedAt?.toISOString() ?? null,
       reasons: item.reasons,
       callError: errorMessage,
+      after,
     },
     startedAt,
     success: deleted,
-    errorMessage: deleted ? null : errorMessage,
+    errorMessage: deleted ? null : goneAnyway ? `${errorMessage} (the title is gone, but not confirmed as removed by Helprr)` : failure,
   });
   if (deleted) {
     await writeHistory(item, 'deleted', reasons || 'Leaving soon countdown ended', actor, previewId, null);
     return { id: item.id, title: item.title, outcome: 'deleted' };
   }
+  if (goneAnyway) {
+    await writeHistory(item, 'skipped', ALREADY_GONE, actor, previewId, errorMessage);
+    return skippedResult(item, ALREADY_GONE);
+  }
   await restoreRow(item);
-  await writeHistory(item, 'failed', reasons || 'Leaving soon countdown ended', actor, previewId, errorMessage);
-  return { id: item.id, title: item.title, outcome: 'failed', message: errorMessage ?? undefined };
+  await writeHistory(item, 'failed', reasons || 'Leaving soon countdown ended', actor, previewId, failure);
+  return { id: item.id, title: item.title, outcome: 'failed', message: failure ?? undefined };
 }
 
 /**
@@ -624,8 +701,8 @@ export async function executeLibraryDeletion(
   // Titles already removed outside Helprr leave the list (the arr was read in full, so absent is gone).
   for (const item of current.gone) {
     await prisma.leavingSoonItem.deleteMany({ where: { id: item.id } });
-    await writeHistory(item, 'skipped', 'No longer in Sonarr/Radarr', actor, previewId, null);
-    results.push({ id: item.id, title: item.title, outcome: 'skipped', message: 'No longer in Sonarr/Radarr' });
+    await writeHistory(item, 'skipped', ALREADY_GONE, actor, previewId, null);
+    results.push({ id: item.id, title: item.title, outcome: 'skipped', message: ALREADY_GONE });
   }
   const touched = new Set(current.ready.map(({ item }) => `${item.service}:${item.instanceId}`));
   for (const key of touched) {

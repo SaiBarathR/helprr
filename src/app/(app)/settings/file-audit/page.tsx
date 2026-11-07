@@ -52,7 +52,7 @@ const OP_LABEL: Record<AuditRecord['operation'], string> = {
   REMOVE_BLOCKLIST: 'BLOCKLIST REMOVE',
   MOVE_MEDIA: 'ROOT FOLDER',
   MARK_FAILED: 'MARKED FAILED',
-  KEEP_MEDIA: 'KEPT',
+  KEEP_MEDIA: 'KEEP',
 };
 
 function serviceLabel(service: AuditRecord['service']): string {

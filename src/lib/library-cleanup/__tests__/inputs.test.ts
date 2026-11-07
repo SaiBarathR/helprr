@@ -4,7 +4,8 @@ import { ConfigurationError } from '@/lib/config-error';
 const mocks = vi.hoisted(() => ({
   radarr: { getMovies: vi.fn(), getTags: vi.fn(), getQueue: vi.fn() },
   sonarr: { getSeries: vi.fn(), getTags: vi.fn(), getQueue: vi.fn() },
-  jellyfin: { getUsers: vi.fn(), getSessions: vi.fn() },
+  jellyfin: { getUsers: vi.fn(), getSessions: vi.fn(), hasAdminAccess: vi.fn() },
+  mediaDetail: vi.fn(),
   // The library every user sees, unless a user has their own entry.
   library: vi.fn(),
   userLibrary: {} as Record<string, unknown[]>,
@@ -60,6 +61,7 @@ vi.mock('@/lib/db', () => ({
   },
 }));
 vi.mock('@/lib/anilist-series-mapping', () => ({ loadAnilistIdsBySeries: mocks.anilist }));
+vi.mock('@/lib/seerr-helpers', () => ({ getCachedSeerrMediaDetail: mocks.mediaDetail }));
 
 import { gatherLibraryFacts, LibraryCleanupUnavailableError } from '../inputs';
 
@@ -75,6 +77,8 @@ beforeEach(() => {
   mocks.plays = {};
   mocks.userLibrary = {};
   mocks.jellyfin.getSessions.mockResolvedValue([]);
+  mocks.jellyfin.hasAdminAccess.mockResolvedValue(true);
+  mocks.mediaDetail.mockResolvedValue(null);
   mocks.getRadarrClients.mockResolvedValue([{ connection: radarrConnection, client: mocks.radarr }]);
   mocks.getSonarrClients.mockResolvedValue([{ connection: sonarrConnection, client: mocks.sonarr }]);
   mocks.radarr.getMovies.mockResolvedValue([movie(1, 101), movie(2, 102, { tags: [7] }), movie(3, 103)]);
@@ -153,9 +157,10 @@ describe('gatherLibraryFacts', () => {
 
   it('warns but continues when Seerr is not connected', async () => {
     mocks.getSeerrClient.mockRejectedValue(new ConfigurationError('Seerr is not configured.'));
-    const { titles, warnings } = await gatherLibraryFacts('movie', 'keep');
+    const { titles, warnings, seerrConnected } = await gatherLibraryFacts('movie', 'keep');
     expect(titles).toHaveLength(3);
     expect(warnings[0]).toMatch(/Seerr is not connected/);
+    expect(seerrConnected).toBe(false);
   });
 
   describe('fails closed', () => {
@@ -170,6 +175,8 @@ describe('gatherLibraryFacts', () => {
       ['Jellyfin has no users', () => mocks.jellyfin.getUsers.mockResolvedValue([])],
       ['Jellyfin library truncated', () => mocks.library.mockReturnValue({ Items: [], TotalRecordCount: 10 })],
       ['Jellyfin sessions unreadable', () => mocks.jellyfin.getSessions.mockRejectedValue(new Error('401'))],
+      ['Jellyfin connection not an administrator', () => mocks.jellyfin.hasAdminAccess.mockResolvedValue(false)],
+      ['Jellyfin admin check failing', () => mocks.jellyfin.hasAdminAccess.mockRejectedValue(new Error('500'))],
       ['Seerr unreachable', () => mocks.seerr.listRequests.mockRejectedValue(new Error('502'))],
       ['Seerr truncated', () => mocks.seerr.listRequests.mockResolvedValue({ pageInfo: { results: 300 }, results: [] })],
       ['Seerr returns junk', () => mocks.seerr.listRequests.mockResolvedValue({ html: '<login>' })],
@@ -254,5 +261,65 @@ describe('gatherLibraryFacts', () => {
     mocks.plays['jf-b'] = { IsResumable: [{ Id: 'm3', UserData: { PlaybackPositionTicks: 9, PlayCount: 1, LastPlayedDate: '2026-11-01T00:00:00Z' } }] };
     const { titles } = await gatherLibraryFacts('movie', 'keep');
     expect(titles.find((t) => t.arrId === 3)!.lastWatchedAt?.toISOString()).toBe('2026-11-01T00:00:00.000Z');
+  });
+
+  it('says plainly when the Jellyfin connection is not an administrator', async () => {
+    mocks.jellyfin.hasAdminAccess.mockResolvedValue(false);
+    await expect(gatherLibraryFacts('movie', 'keep')).rejects.toThrow(/not an administrator/);
+  });
+
+  describe('a series Sonarr knows by no TMDB id', () => {
+    function show(extra: Record<string, unknown> = {}) {
+      return { id: 9, title: 'The Great Show', year: 2010, tvdbId: 900, tmdbId: undefined, imdbId: '', added: '2020-01-01T00:00:00Z', tags: [], images: [], ratings: { value: 0, votes: 0 }, statistics: { sizeOnDisk: 1e10 }, alternateTitles: [{ title: 'Great Show (UK)' }], ...extra };
+    }
+    beforeEach(() => {
+      mocks.sonarr.getSeries.mockResolvedValue([show()]);
+      mocks.sonarr.getTags.mockResolvedValue([]);
+      mocks.sonarr.getQueue.mockResolvedValue({ records: [], totalRecords: 0 });
+      mocks.library.mockReturnValue({ Items: [{ Id: 's9', ProviderIds: { Tvdb: '900' } }], TotalRecordCount: 1 });
+    });
+
+    it.each<[string, string, boolean]>([
+      ['the same name', 'the great show!', true],
+      ['an alternate name', 'Great Show UK', true],
+      ['another name', 'A Different Show', false],
+      ['no usable name', '  ', true],
+    ])('matches a TMDB watchlist save from Discover by %s', async (_name, title, protectedByIt) => {
+      mocks.watchlist.mockResolvedValue([{ userId: 'u1', source: 'TMDB', externalId: '555', mediaType: 'series', title }]);
+      const { titles } = await gatherLibraryFacts('series', 'keep');
+      expect(titles[0].watchlistUserIds).toEqual(protectedByIt ? ['u1'] : []);
+    });
+
+    it.each<[string, string | null, boolean]>([
+      ['the same name', 'The Great Show', true],
+      ['another name', 'Something Else', false],
+      ['no name at all', null, true],
+    ])('matches a Helprr pending request (TMDB only) with %s', async (_name, title, open) => {
+      mocks.pending.mockResolvedValue([{ tmdbId: 555, title, createdAt: new Date('2025-01-01'), userId: 'u9', user: { displayName: 'Cy' } }]);
+      const { titles } = await gatherLibraryFacts('series', 'keep');
+      expect(titles[0].openRequest).toBe(open);
+    });
+
+    it('looks up the name of a Seerr request known only by TMDB id, and protects when it cannot', async () => {
+      mocks.seerr.listRequests.mockResolvedValue({
+        pageInfo: { results: 1 },
+        results: [{ id: 3, type: 'tv', status: 2, createdAt: '2024-01-01T00:00:00Z', media: { tmdbId: 555, tvdbId: null, status: 3 }, requestedBy: { id: 1, displayName: 'Ana' } }],
+      });
+      mocks.mediaDetail.mockResolvedValue({ name: 'Something Else' });
+      expect((await gatherLibraryFacts('series', 'keep')).titles[0].openRequest).toBe(false);
+      mocks.mediaDetail.mockResolvedValue({ name: 'The Great Show' });
+      expect((await gatherLibraryFacts('series', 'keep')).titles[0]).toMatchObject({ openRequest: true, requestedBy: ['Ana'] });
+      mocks.mediaDetail.mockResolvedValue(null);
+      expect((await gatherLibraryFacts('series', 'keep')).titles[0].openRequest).toBe(true);
+    });
+
+    it('still compares by TVDB id when both sides have one', async () => {
+      mocks.seerr.listRequests.mockResolvedValue({
+        pageInfo: { results: 1 },
+        results: [{ id: 4, type: 'tv', status: 2, createdAt: '2024-01-01T00:00:00Z', media: { tmdbId: 555, tvdbId: 901, status: 3 }, requestedBy: { id: 1 } }],
+      });
+      expect((await gatherLibraryFacts('series', 'keep')).titles[0].openRequest).toBe(false);
+      expect(mocks.mediaDetail).not.toHaveBeenCalled();
+    });
   });
 });
