@@ -8,7 +8,7 @@ import { toast } from 'sonner';
 import { Switch } from '@/components/ui/switch';
 import { Input } from '@/components/ui/input';
 import { GroupedSection } from '@/components/settings/grouped-section';
-import { EVENT_GROUPS, EVENT_META } from '@/lib/notification-events';
+import { EVENT_GROUPS, EVENT_META, eventEnabledByDefault } from '@/lib/notification-events';
 import { ADMIN_ONLY_EVENT_TYPES, EVENT_TYPE_TO_CAPABILITY } from '@/lib/capabilities';
 import { useMe, hasCapability } from '@/components/permission-provider';
 import { WatchingWindowRow } from '@/components/notifications/watching-window-row';
@@ -257,7 +257,7 @@ export function EventTypePrefs({ subscriptionEndpoint }: EventTypePrefsProps) {
           {visibleTypes.map((eventType) => {
             const meta = EVENT_META[eventType];
             const pref = preferences.find((p) => p.eventType === eventType);
-            const checked = pref?.enabled ?? true;
+            const checked = pref?.enabled ?? eventEnabledByDefault(eventType);
             const canFilter = FILTERABLE_EVENTS.has(eventType);
             const canMuteUsers = MUTE_FILTERABLE_EVENTS.has(eventType);
             const isExpanded = expanded.has(eventType);

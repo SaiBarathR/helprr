@@ -1,9 +1,13 @@
 import type { RandomPick } from './library';
+import type { RandomRuntime } from '@/lib/random-watch-filters';
 
 /** The Random filters a Tonight pick was started with. */
 export interface TonightFilters {
   type: 'movie' | 'series' | 'any';
   watch: 'all' | 'unwatched';
+  /** Absent on picks started before the genre and length filters. */
+  genres?: string[];
+  runtime?: RandomRuntime;
 }
 
 export interface TonightTitle extends RandomPick {

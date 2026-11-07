@@ -167,3 +167,34 @@ describe('notification writes that fail after sending', () => {
     expect((await inJob(() => notifyEvent({ eventType: 'grabbed', title: 'Title', body: 'Body' }))).failure).toBe('count write failed');
   });
 });
+
+// A Tonight pick invite reaches a device only once its owner turns it on.
+describe('events that start off', () => {
+  const device = (name: string, preferences: { eventType: string; enabled: boolean }[]) => ({
+    ...subscription,
+    id: name,
+    endpoint: `${subscription.endpoint}-${name}`,
+    consecutiveFailures: 0,
+    lastFailedAt: null,
+    lastSucceededAt: null,
+    preferences,
+    user: { id: `user-${name}`, role: 'admin', template: 'admin', permissions: {}, settings: null },
+  });
+  const sentTo = () => mocks.sendNotification.mock.calls.map(([target]) => (target as { endpoint: string }).endpoint);
+
+  it('skips a device with no saved choice for a default-off event, and sends where it was turned on', async () => {
+    mocks.findMany.mockResolvedValueOnce([
+      device('unset', []),
+      device('on', [{ eventType: 'tonightPickInvite', enabled: true }]),
+      device('off', [{ eventType: 'tonightPickInvite', enabled: false }]),
+    ]);
+    await notifyEvent({ eventType: 'tonightPickInvite', title: 'Pick', body: 'Body' });
+    expect(sentTo()).toEqual([`${subscription.endpoint}-on`]);
+  });
+
+  it('still sends other events to a device with no saved choice', async () => {
+    mocks.findMany.mockResolvedValueOnce([device('unset', [])]);
+    await notifyEvent({ eventType: 'grabbed', title: 'Grabbed', body: 'Body' });
+    expect(sentTo()).toEqual([`${subscription.endpoint}-unset`]);
+  });
+});

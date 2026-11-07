@@ -123,14 +123,16 @@ export function Sidebar() {
           // Shorter rows on short screens so the whole list fits above the
           // footer at 1440x900, but never under 44px on a touch screen (a tablet's rail).
           'relative flex items-center gap-3 rounded-md px-3 py-2 [@media(max-height:960px)]:py-1 pointer-coarse:min-h-11 text-sm font-medium transition-colors',
+          // In dark Liquid Glass only the icon takes the blue tint; the label
+          // stays white. Light Glass and other themes keep a tinted label.
           isActive
-            ? 'bg-primary/10 text-primary'
+            ? 'bg-primary/10 text-primary [html[data-glass][data-scheme=dark]_&]:text-foreground'
             : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
           isPending && 'opacity-70',
           sidebarCollapsed && 'justify-center px-2'
         )}
       >
-        {isPending ? <Loader2 className="h-4 w-4 shrink-0 animate-spin" /> : <Icon className="h-4 w-4 shrink-0" />}
+        {isPending ? <Loader2 className="h-4 w-4 shrink-0 animate-spin" /> : <Icon className={cn('h-4 w-4 shrink-0', isActive && 'text-primary')} />}
         {!sidebarCollapsed && label}
         {!sidebarCollapsed && <NavBadge slice={slice} className="ml-auto" />}
         {sidebarCollapsed && <NavBadge slice={slice} dot className="absolute right-1.5 top-1.5" />}
@@ -174,8 +176,8 @@ export function Sidebar() {
           searchButton
         )}
 
-        {/* The saved order, with a plain divider where one group ends. */}
-        {sections.map(({ items }, index) => (
+        {/* The saved order, with a plain divider after the phone's four tabs. */}
+        {sections.map((items, index) => (
           <div key={items[0].href} className="space-y-1">
             {index > 0 && <div aria-hidden className="mx-2 my-1 border-t border-border" />}
             {items.map(renderItem)}

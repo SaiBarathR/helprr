@@ -59,3 +59,13 @@ describe('EventTypePrefs seeding', () => {
     await waitFor(() => expect(grabbed().getAttribute('aria-checked')).toBe('false'));
   });
 });
+
+describe('EventTypePrefs defaults', () => {
+  it('shows a Tonight pick invite with no saved row as off, and other events as on', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<QueryClientProvider client={client}><EventTypePrefs subscriptionEndpoint="https://push.example/c" /></QueryClientProvider>);
+    await waitFor(() => expect(seeded()).toBe(true));
+    expect(screen.getByRole('switch', { name: 'Tonight Pick Invite' }).getAttribute('aria-checked')).toBe('false');
+    expect(screen.getByRole('switch', { name: 'Media Imported' }).getAttribute('aria-checked')).toBe('true');
+  });
+});

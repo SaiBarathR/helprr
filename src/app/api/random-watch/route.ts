@@ -12,6 +12,7 @@ import {
   type TaggedMovie,
   type TaggedSeries,
 } from '@/lib/random-watch-pool';
+import { isRandomRuntime, matchesRandomFilters, parseRandomGenres, poolGenres, type RandomPoolFilters } from '@/lib/random-watch-filters';
 import type { RandomPick } from '@/types';
 
 type RandomType = 'movie' | 'series' | 'any';
@@ -34,6 +35,14 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
   const url = new URL(request.url);
   const raw = url.searchParams.get('type') ?? 'any';
   const type: RandomType = VALID_TYPES.has(raw as RandomType) ? (raw as RandomType) : 'any';
+
+  // Unknown values are ignored, as for type and watch. Series have no length
+  // preset of their own: the page hides it when only series are wanted.
+  const rawRuntime = url.searchParams.get('runtime');
+  const filters: RandomPoolFilters = {
+    genres: parseRandomGenres(url.searchParams.getAll('genre')) ?? [],
+    runtime: type !== 'series' && isRandomRuntime(rawRuntime) ? rawRuntime : 'any',
+  };
 
   const rawWatch = url.searchParams.get('watch') ?? 'all';
   let watch: WatchScope = VALID_WATCH.has(rawWatch as WatchScope) ? (rawWatch as WatchScope) : 'all';
@@ -71,12 +80,18 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
       ? series.filter((s) => isEligibleUnwatched(watchMap, 'sonarr', s.instanceId, s.id))
       : series;
 
-  const pool: RandomPick[] = [...filteredMovies.map(pickMovie), ...filteredSeries.map(pickSeries)];
+  // The genre picker lists what this type and watch filter can offer, so a
+  // genre already chosen never removes the others from the list.
+  const genres = poolGenres([...filteredMovies, ...filteredSeries]);
+  const pool: RandomPick[] = [
+    ...filteredMovies.filter((m) => matchesRandomFilters(m, filters)).map(pickMovie),
+    ...filteredSeries.filter((s) => matchesRandomFilters(s, filters)).map(pickSeries),
+  ];
   if (pool.length === 0) {
-    return NextResponse.json({ pick: null, poolSize: 0 }, RANDOM_RESPONSE_OPTIONS);
+    return NextResponse.json({ pick: null, poolSize: 0, genres }, RANDOM_RESPONSE_OPTIONS);
   }
   const pick = pool[Math.floor(Math.random() * pool.length)];
-  return NextResponse.json({ pick, poolSize: pool.length }, RANDOM_RESPONSE_OPTIONS);
+  return NextResponse.json({ pick, poolSize: pool.length, genres }, RANDOM_RESPONSE_OPTIONS);
 }
 
 export const GET = withApiLogging(getHandler, 'api/random-watch');

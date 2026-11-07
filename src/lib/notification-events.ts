@@ -361,6 +361,15 @@ export const EVENT_GROUPS: { id: NotificationEventGroupId; title: string; types:
 export const WATCHING_EPISODE_DAYS_DEFAULT = 14;
 export const WATCHING_EPISODE_DAY_OPTIONS = [0, 7, 14, 30, 60, 90] as const;
 
+// Events a device or channel gets only once its owner turns them on: an invite
+// to pick together is too easy to send for everyone to hear it unasked (owner,
+// 2026-11-07). A missing preference row reads as this default.
+const DEFAULT_OFF_EVENT_TYPES: ReadonlySet<string> = new Set<NotificationEventType>(['tonightPickInvite']);
+
+export function eventEnabledByDefault(eventType: string): boolean {
+  return !DEFAULT_OFF_EVENT_TYPES.has(eventType);
+}
+
 export function isKnownEventType(value: string): value is NotificationEventType {
   return (EVENT_TYPES as readonly string[]).includes(value);
 }
@@ -370,7 +379,7 @@ export async function ensureNotificationPreferences(subscriptionId: string): Pro
     data: EVENT_TYPES.map((eventType) => ({
       subscriptionId,
       eventType,
-      enabled: true,
+      enabled: eventEnabledByDefault(eventType),
     })),
     skipDuplicates: true,
   });

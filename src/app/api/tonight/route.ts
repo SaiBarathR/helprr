@@ -14,6 +14,7 @@ import {
   tonightView,
 } from '@/lib/tonight-pick';
 import { tonightUnavailable } from '@/lib/tonight-pick-access';
+import { isRandomRuntime, parseRandomGenres } from '@/lib/random-watch-filters';
 import type { TonightFilters } from '@/types/tonight';
 
 const TYPES: ReadonlySet<string> = new Set(['movie', 'series', 'any']);
@@ -33,7 +34,17 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   if (typeof body.type !== 'string' || !TYPES.has(body.type) || typeof body.watch !== 'string' || !WATCH.has(body.watch)) {
     return NextResponse.json({ error: 'Invalid filters' }, { status: 400 });
   }
-  const filters: TonightFilters = { type: body.type as TonightFilters['type'], watch: body.watch as TonightFilters['watch'] };
+  const genres = body.genres === undefined ? [] : parseRandomGenres(body.genres);
+  if (!genres || (body.runtime !== undefined && !isRandomRuntime(body.runtime))) {
+    return NextResponse.json({ error: 'Invalid filters' }, { status: 400 });
+  }
+  const filters: TonightFilters = {
+    type: body.type as TonightFilters['type'],
+    watch: body.watch as TonightFilters['watch'],
+    genres,
+    // As on Random, a series-only pick has no length preset.
+    runtime: body.type !== 'series' && isRandomRuntime(body.runtime) ? body.runtime : 'any',
+  };
   const inviteeIds = Array.isArray(body.inviteeIds)
     ? [...new Set(body.inviteeIds.filter((v): v is string => typeof v === 'string'))]
     : [];

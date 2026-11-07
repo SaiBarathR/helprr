@@ -13,7 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { EVENT_GROUPS, EVENT_META } from '@/lib/notification-events';
+import { EVENT_GROUPS, EVENT_META, eventEnabledByDefault } from '@/lib/notification-events';
 import {
   CHANNEL_CATALOG,
   CHANNEL_TYPES,
@@ -55,7 +55,7 @@ export function ChannelForm({ initial, availableEvents, submitLabel, onSubmit, o
   const [config, setConfig] = useState<Record<string, string>>(initial ? { ...initial.config } : defaultConfig('ntfy'));
   const [secrets, setSecrets] = useState<Record<string, string>>({});
   const [removed, setRemoved] = useState<Set<string>>(new Set());
-  const [events, setEvents] = useState<Set<string>>(new Set(initial?.events ?? availableEvents));
+  const [events, setEvents] = useState<Set<string>>(new Set(initial?.events ?? availableEvents.filter(eventEnabledByDefault)));
   const [showEvents, setShowEvents] = useState(false);
   const [saving, setSaving] = useState(false);
   const meta = CHANNEL_CATALOG[type];

@@ -9,7 +9,7 @@ import { isQueryOffline } from '@/lib/network-error';
 import { HeroImage } from '@/components/media/hero-image';
 import { FadeInImage } from '@/components/media/fade-in-image';
 import Link from '@/components/ui/app-link';
-import { Clock, Dices, Film, Loader2, RefreshCw, Sparkles, Star, Tv, Users } from 'lucide-react';
+import { Clock, Dices, Film, Loader2, RefreshCw, SlidersHorizontal, Sparkles, Star, Tv, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { hasCapability, useMe } from '@/components/permission-provider';
@@ -17,6 +17,14 @@ import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import type { RandomPick, RandomWatchFilterType as FilterType } from '@/types';
 import { QuickContextMenu, type ContextAction } from '@/components/ui/quick-context-menu';
 import { isTonightSessionId } from '@/lib/tonight-pick-id';
+import { useUIStore } from '@/lib/store';
+import { MAX_RANDOM_GENRES, normalizeRandomWatchPrefs, RANDOM_RUNTIME_LABELS, RANDOM_RUNTIMES, type RandomRuntime } from '@/lib/random-watch-filters';
+import {
+  ResponsiveMenu,
+  ResponsiveMenuCheckboxItem,
+  ResponsiveMenuLabel,
+  ResponsiveMenuSeparator,
+} from '@/components/ui/responsive-menu';
 import { TONIGHT_LAST_KEY, TonightPick } from './tonight/tonight-pick';
 import { TonightStartSheet } from './tonight/tonight-start-sheet';
 
@@ -47,10 +55,28 @@ export function RandomWatchView() {
   const me = useMe();
   const canFilterUnwatched = me?.jellyfinLinked === true && hasCapability(me, 'jellyfin.view');
 
-  const [type, setType] = useState<FilterType>('any');
-  const [unwatchedOnly, setUnwatchedOnly] = useState(false);
+  // This device's last choices (the UI store), read defensively: an imported
+  // settings file may carry anything.
+  const savedFilters = useUIStore((s) => s.randomFilters);
+  // Roll once the saved choice is read, not first with the defaults.
+  const hasHydrated = useUIStore((s) => s.hasHydrated);
+  const setRandomFilters = useUIStore((s) => s.setRandomFilters);
+  const { type, unwatched: unwatchedOnly, genres, runtime: savedRuntime } = useMemo(
+    () => normalizeRandomWatchPrefs(savedFilters),
+    [savedFilters]
+  );
+  const setType = (next: FilterType) => setRandomFilters({ type: next });
+  const setUnwatchedOnly = (next: boolean) => setRandomFilters({ unwatched: next });
+  const toggleGenre = (genre: string) => {
+    if (genres.includes(genre)) setRandomFilters({ genres: genres.filter((g) => g !== genre) });
+    else if (genres.length < MAX_RANDOM_GENRES) setRandomFilters({ genres: [...genres, genre] });
+  };
 
   const watch: WatchFilter = canFilterUnwatched && unwatchedOnly ? 'unwatched' : 'all';
+  // A series is matched by its episode length, so a length preset means
+  // little when only series are wanted: it is hidden and set aside there.
+  const runtime: RandomRuntime = type === 'series' ? 'any' : savedRuntime;
+  const activeFilterCount = genres.length + (runtime === 'any' ? 0 : 1);
 
   // A Tonight pick opens over Random from ?tonight=<id> (the push and the copied link).
   const searchParams = useSearchParams();
@@ -65,22 +91,35 @@ export function RandomWatchView() {
   };
   const closeTonight = () => router.replace('/recommendations?mode=random', { scroll: false });
 
-  const apiUrl = useMemo(
-    () => `/api/random-watch?type=${type}&watch=${watch}`,
-    [type, watch]
-  );
+  const apiUrl = useMemo(() => {
+    const params = new URLSearchParams({ type, watch });
+    if (runtime !== 'any') params.set('runtime', runtime);
+    for (const genre of genres) params.append('genre', genre);
+    return `/api/random-watch?${params}`;
+  }, [type, watch, runtime, genres]);
 
   // Each fetch returns a fresh random pick; gcTime:0 so we never reuse a stale
   // one. Changing filters (new key) or refetching (manual reroll) rolls again.
   const rollQuery = useQuery({
-    queryKey: ['random-watch', type, watch],
-    queryFn: jsonFetcher<{ pick: RandomPick | null; poolSize: number }>(apiUrl),
+    queryKey: ['random-watch', type, watch, runtime, genres],
+    queryFn: jsonFetcher<{ pick: RandomPick | null; poolSize: number; genres?: string[] }>(apiUrl),
     staleTime: 0,
     gcTime: 0,
+    enabled: hasHydrated,
   });
   const pick = rollQuery.data?.pick ?? null;
   const poolSize = rollQuery.data?.poolSize ?? null;
-  const loading = rollQuery.isFetching;
+
+  // The library's genres for this type, kept while the next roll loads; a
+  // chosen genre the pool no longer has stays listed so it can be cleared.
+  const fetchedGenres = rollQuery.data?.genres;
+  const [poolGenreList, setPoolGenreList] = useState<string[]>([]);
+  if (fetchedGenres && fetchedGenres !== poolGenreList) setPoolGenreList(fetchedGenres);
+  const genreOptions = useMemo(
+    () => [...new Set([...poolGenreList, ...genres])].sort((a, b) => a.localeCompare(b)),
+    [poolGenreList, genres]
+  );
+  const loading = rollQuery.isFetching || !hasHydrated;
   const offline = isQueryOffline(rollQuery);
   const error = offline
     ? "You're offline"
@@ -119,7 +158,7 @@ export function RandomWatchView() {
         <TonightStartSheet
           open={tonightSheetOpen}
           onOpenChange={setTonightSheetOpen}
-          filters={{ type, watch }}
+          filters={{ type, watch, genres, runtime }}
           onStarted={openTonight}
         />
         {tonightId && <TonightPick key={tonightId} id={tonightId} onClose={closeTonight} onOpenPick={openTonight} />}
@@ -158,6 +197,46 @@ export function RandomWatchView() {
               />
             </label>
           )}
+          <ResponsiveMenu
+            title="Filters"
+            trigger={(
+              <button
+                type="button"
+                className={`touch-target inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-semibold ${activeFilterCount > 0
+                  ? 'border border-primary/40 bg-primary/20 text-primary'
+                  : 'bg-accent/40 text-muted-foreground'
+                  }`}
+              >
+                <SlidersHorizontal className="h-3.5 w-3.5" />
+                {activeFilterCount > 0 ? `Filters · ${activeFilterCount}` : 'Filters'}
+              </button>
+            )}
+          >
+            {type !== 'series' && (
+              <>
+                <ResponsiveMenuLabel>Length</ResponsiveMenuLabel>
+                {RANDOM_RUNTIMES.map((preset) => (
+                  <ResponsiveMenuCheckboxItem
+                    key={preset}
+                    checked={runtime === preset}
+                    onCheckedChange={() => setRandomFilters({ runtime: preset })}
+                  >
+                    {RANDOM_RUNTIME_LABELS[preset]}
+                  </ResponsiveMenuCheckboxItem>
+                ))}
+                <ResponsiveMenuSeparator />
+              </>
+            )}
+            <ResponsiveMenuLabel>Genres</ResponsiveMenuLabel>
+            <ResponsiveMenuCheckboxItem checked={genres.length === 0} onCheckedChange={() => setRandomFilters({ genres: [] })}>
+              Any genre
+            </ResponsiveMenuCheckboxItem>
+            {genreOptions.map((genre) => (
+              <ResponsiveMenuCheckboxItem key={genre} checked={genres.includes(genre)} onCheckedChange={() => toggleGenre(genre)}>
+                {genre}
+              </ResponsiveMenuCheckboxItem>
+            ))}
+          </ResponsiveMenu>
           <button
             type="button"
             onClick={() => (lastTonightId ? openTonight(lastTonightId) : setTonightSheetOpen(true))}
@@ -203,9 +282,11 @@ export function RandomWatchView() {
               <>
                 <p className="text-sm">Nothing downloaded matches this filter.</p>
                 <p className="text-xs">
-                  {watch === 'unwatched'
-                    ? 'Try turning off Unwatched only, or mark something unwatched in Jellyfin.'
-                    : 'Configure Sonarr/Radarr in Settings and download a few items first.'}
+                  {activeFilterCount > 0
+                    ? 'Try other genres or another length.'
+                    : watch === 'unwatched'
+                      ? 'Try turning off Unwatched only, or mark something unwatched in Jellyfin.'
+                      : 'Configure Sonarr/Radarr in Settings and download a few items first.'}
                 </p>
               </>
             )}

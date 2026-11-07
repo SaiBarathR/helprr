@@ -48,7 +48,8 @@ export type UiPrefCategoryId =
   | 'interaction'
   | 'watch'
   | 'playback'
-  | 'search';
+  | 'search'
+  | 'random';
 
 export const UI_PREF_CATEGORY_LABELS: Record<UiPrefCategoryId, string> = {
   navigation: 'Navigation',
@@ -67,6 +68,7 @@ export const UI_PREF_CATEGORY_LABELS: Record<UiPrefCategoryId, string> = {
   watch: 'Watch skin',
   playback: 'Playback & subtitles',
   search: 'Search history',
+  random: 'Random filters',
 };
 
 // Every key in store.ts PERSISTED_KEYS must appear in exactly one category here,
@@ -109,6 +111,7 @@ export const UI_PREF_CATEGORY_FIELDS: Record<UiPrefCategoryId, readonly string[]
   watch: ['watchSkin', 'watchPreviews'],
   playback: ['subtitleAppearance', 'playerSkipBackSeconds', 'playerSkipForwardSeconds'],
   search: ['searchHistory'],
+  random: ['randomFilters'],
 };
 
 export const UI_PREF_CATEGORY_IDS: readonly UiPrefCategoryId[] = Object.keys(
