@@ -4,9 +4,9 @@
 import type { RandomWatchFilterType } from '@/types';
 
 /**
- * Length presets. A movie is matched by its runtime; a series by Sonarr's
- * episode length, so "Under 90 min" keeps nearly every show and the longer
- * presets leave shows out. Unknown lengths match only "any".
+ * Length presets, for movies only: a movie is matched by its runtime, and an
+ * unknown runtime matches only "any". Series ignore the length (an episode's
+ * length says little about a show).
  */
 export type RandomRuntime = 'any' | 'under90' | '90to120' | 'over120';
 
@@ -57,10 +57,11 @@ function runtimeMatches(runtime: number | null | undefined, preset: RandomRuntim
 export function matchesRandomFilters(
   item: { genres?: string[] | null; runtime?: number | null },
   filters: Partial<RandomPoolFilters>,
+  mediaType: 'movie' | 'series',
 ): boolean {
   const wanted = filters.genres ?? [];
   if (wanted.length > 0 && !(item.genres ?? []).some((genre) => wanted.includes(genre))) return false;
-  return runtimeMatches(item.runtime, filters.runtime ?? 'any');
+  return mediaType === 'series' || runtimeMatches(item.runtime, filters.runtime ?? 'any');
 }
 
 /** Every genre in the pool, sorted, for the genre picker. */

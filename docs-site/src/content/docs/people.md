@@ -14,6 +14,14 @@ Each person gets their own account in **Settings → Users**. Helprr has two tem
 For each person you can switch single permissions on or off on top of their template.
 Anything not given is refused, including permissions added in later versions.
 
+Giving someone admin asks you to confirm it is you: adding an admin, making someone
+admin, setting another admin's password or Jellyfin account, and making a reset or invite
+link for another admin need your current password, plus a code from your authenticator
+app (or a recovery code) while your two-step sign-in is on. **Settings → Users** asks for
+them right there. Making someone admin ends any invite or reset link they had. Members
+are unchanged. An admin who signs in only with Jellyfin sets a Helprr password in
+**Settings → Account** first.
+
 ## Signing in
 
 - **With a Helprr password**. It needs at least 15 characters. By default **Add** makes

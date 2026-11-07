@@ -14,6 +14,7 @@ import { withApiLogging } from '@/lib/api-logger';
 import { refreshRecommendationsAfterLink } from '@/lib/recommendations/engine';
 import { changedFieldNames, recordSecurityEvent } from '@/lib/security-audit';
 import { deleteUserUnlessLastAdmin, lockActiveAdminGuard } from '@/lib/user-deletion';
+import { confirmAdminStepUp } from '@/lib/server/confirm-password';
 
 const ROLES = new Set(['admin', 'member']);
 const STATUSES = new Set(['active', 'pending', 'disabled']);
@@ -106,6 +107,22 @@ async function patchHandler(
     if (passwordError) {
       return NextResponse.json({ error: passwordError }, { status: 400 });
     }
+  }
+
+  // Making someone admin, or setting another admin's password or Jellyfin link
+  // (a way into their account, as a reset link is), needs the acting admin's
+  // password (and code), not just a session.
+  const promoting = data.role === 'admin' && existing.role !== 'admin';
+  const intoOtherAdmin = existing.role === 'admin' && existing.id !== admin.user.id && (
+    (typeof body.password === 'string' && body.password.length > 0)
+    || (data.jellyfinUserId !== undefined && data.jellyfinUserId !== existing.jellyfinUserId)
+  );
+  if (promoting || intoOtherAdmin) {
+    const stepUp = await confirmAdminStepUp(request, admin.user, body, promoting ? 'make-admin' : 'admin-credentials');
+    if (stepUp) return stepUp;
+  }
+
+  if (typeof body.password === 'string' && body.password) {
     data.passwordHash = await hashPassword(body.password);
   }
 
@@ -135,9 +152,16 @@ async function patchHandler(
       }
       // A status change applies only to the status the admin saw, so an invite
       // accepted meanwhile is not turned back to pending (or a disable undone).
+      // A role, password or Jellyfin change applies only to the role it saw, as
+      // whether it needed the step-up above depends on it.
       const statusChanges = data.status !== undefined && data.status !== existing.status;
+      const roleDecides = data.role !== undefined || data.passwordHash !== undefined || data.jellyfinUserId !== undefined;
       const updated = await tx.user.update({
-        where: statusChanges ? { id, status: existing.status } : { id },
+        where: {
+          id,
+          ...(statusChanges ? { status: existing.status } : {}),
+          ...(roleDecides ? { role: existing.role } : {}),
+        },
         data,
       });
       // Admin password resets do not prove possession of any existing session,
@@ -153,7 +177,8 @@ async function patchHandler(
       }
       // A password set here, or any status change, ends an outstanding invite
       // or reset link, so an old link can't later override the admin's choice.
-      if (data.passwordHash !== undefined || statusChanges) {
+      // Making someone admin ends it too: it was made without the step-up.
+      if (data.passwordHash !== undefined || statusChanges || promoting) {
         endedLink = (await tx.passwordLink.deleteMany({ where: { userId: id } })).count > 0;
       }
       // A reset or a disable also ends the calendar feed link, so re-enabling
@@ -231,7 +256,7 @@ async function patchHandler(
     if (error && typeof error === 'object' && (error as { code?: string }).code === 'P2002') {
       return NextResponse.json({ error: 'Username or Jellyfin link already in use' }, { status: 409 });
     }
-    // P2025: the status changed after it was read (the status condition above).
+    // P2025: the status or role changed after it was read (the conditions above).
     if (error && typeof error === 'object' && (error as { code?: string }).code === 'P2025') {
       return NextResponse.json({ error: 'This user changed while saving. Reload and try again.' }, { status: 409 });
     }

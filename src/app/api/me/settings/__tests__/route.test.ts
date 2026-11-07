@@ -10,10 +10,11 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@/lib/auth', () => ({ requireUser: mocks.requireUser }));
 vi.mock('@/lib/api-logger', () => ({ withApiLogging: (handler: unknown) => handler }));
 vi.mock('@/lib/db', () => ({ prisma: { userSettings: { findUnique: mocks.findUnique, upsert: mocks.upsert } } }));
+vi.mock('@/lib/app-settings', () => ({ getOrCreateAppSettings: async () => ({ timeZone: 'Europe/London' }) }));
 
 import { GET, PATCH } from '@/app/api/me/settings/route';
 
-const STORED = { quietHoursEnabled: false, quietHoursStart: null, quietHoursEnd: null, timeFormat: null, dateFormat: null, watchingEpisodeDays: 14 };
+const STORED = { quietHoursEnabled: false, quietHoursStart: null, quietHoursEnd: null, timeFormat: null, dateFormat: null, watchingEpisodeDays: 14, timeZone: null };
 
 function patch(body: unknown) {
   return PATCH(new NextRequest('http://localhost/api/me/settings', {
@@ -40,6 +41,8 @@ describe('/api/me/settings date and time format', () => {
       dateFormat: 'auto',
       watchingEpisodeDays: 14,
       jellyfinLinked: false,
+      timeZone: null,
+      serverTimeZone: 'Europe/London',
     });
   });
 
@@ -83,6 +86,43 @@ describe('/api/me/settings date and time format', () => {
   it('requires a session', async () => {
     mocks.requireUser.mockResolvedValue({ ok: false, response: new Response(null, { status: 401 }) });
     expect((await patch({ timeFormat: '24h' })).status).toBe(401);
+    expect(mocks.upsert).not.toHaveBeenCalled();
+  });
+});
+
+describe('/api/me/settings your time zone', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.requireUser.mockResolvedValue({ ok: true, user: { id: 'user-1' }, session: {} });
+  });
+
+  it("reports yours, and the server's for \"Same as the server\"", async () => {
+    mocks.findUnique.mockResolvedValue({ ...STORED, timeZone: 'Asia/Kolkata' });
+    expect(await (await GET()).json()).toMatchObject({ timeZone: 'Asia/Kolkata', serverTimeZone: 'Europe/London' });
+  });
+
+  it('saves a time zone name for the signed-in user only', async () => {
+    mocks.upsert.mockResolvedValue({ ...STORED, timeZone: 'America/New_York' });
+    const res = await patch({ timeZone: 'America/New_York' });
+    expect(res.status).toBe(200);
+    expect(mocks.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      where: { userId: 'user-1' },
+      update: { timeZone: 'America/New_York' },
+      create: { userId: 'user-1', timeZone: 'America/New_York' },
+    }));
+    expect(await res.json()).toMatchObject({ timeZone: 'America/New_York' });
+  });
+
+  it('saves null for "Same as the server"', async () => {
+    mocks.upsert.mockResolvedValue(STORED);
+    expect((await patch({ timeZone: null })).status).toBe(200);
+    expect(mocks.upsert).toHaveBeenCalledWith(expect.objectContaining({ update: { timeZone: null } }));
+  });
+
+  it('rejects anything that is not a time zone, without writing', async () => {
+    for (const timeZone of ['Mars/Olympus', '', ' UTC', '+05:30', '-0800', 'x'.repeat(65), 5, true, {}]) {
+      expect((await patch({ timeZone })).status).toBe(400);
+    }
     expect(mocks.upsert).not.toHaveBeenCalled();
   });
 });

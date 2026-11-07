@@ -11,11 +11,21 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('@/lib/auth', () => ({ requireAdmin: mocks.requireAdmin }));
 vi.mock('@/lib/api-logger', () => ({ withApiLogging: (handler: unknown) => handler }));
+// Giving admin needs the acting admin's password (and code); its own tests cover that.
+vi.mock('@/lib/server/confirm-password', async (original) => ({
+  ...(await original<typeof import('@/lib/server/confirm-password')>()),
+  confirmAdminStepUp: async () => null,
+}));
 vi.mock('@/lib/recommendations/engine', () => ({ refreshRecommendationsAfterLink: mocks.refreshRecommendations }));
 vi.mock('@/lib/db', () => ({
   prisma: {
     user: { findUnique: mocks.userFindUnique },
-    $transaction: async (callback: (tx: unknown) => unknown) => callback({ user: { update: mocks.txUserUpdate, count: vi.fn() }, apiToken: { deleteMany: mocks.txApiTokenDeleteMany } }),
+    $transaction: async (callback: (tx: unknown) => unknown) => callback({
+      user: { update: mocks.txUserUpdate, count: vi.fn() },
+      apiToken: { deleteMany: mocks.txApiTokenDeleteMany },
+      // Making someone admin ends their outstanding link.
+      passwordLink: { deleteMany: async () => ({ count: 0 }) },
+    }),
   },
 }));
 

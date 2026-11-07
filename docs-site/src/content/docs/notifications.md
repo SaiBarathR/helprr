@@ -12,7 +12,9 @@ inbox. It also keeps alerts coming when push on a phone goes quiet.
 Each person adds their own channels and picks which events go to each one, from the
 events they already receive. Channels follow that person's quiet hours, and grouped
 bursts arrive as one message, the same as push. Service down and restored, health
-warnings and security alerts still come through during quiet hours.
+warnings and security alerts still come through during quiet hours. Quiet hours, the
+calendar feed and other times worked out for you follow **Your time zone** in
+**Settings → Preferences** (by default the same as the server's).
 
 **Send test** sends a test message to one channel and says how it went. When a channel
 keeps failing, Helprr waits longer between tries (5 minutes, doubling up to 6 hours)

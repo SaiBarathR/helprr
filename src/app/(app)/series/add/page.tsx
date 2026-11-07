@@ -30,7 +30,14 @@ import type { SonarrLookupResult } from '@/types';
 import { useQualityProfiles, useRootFolders, useSeerrAddDefaults } from '@/lib/hooks/use-reference-data';
 import { isProtectedApiImageSrc, toCachedImageSrc } from '@/lib/image';
 import { resolveAddPageInstance } from '@/lib/add-page-instances';
-import { pickRememberedOption, readAddDefaults, saveAddDefaults } from '@/lib/add-defaults';
+import { pickRememberedOption, readAddDefaults, saveAddDefaults, type AddDefaultsScope } from '@/lib/add-defaults';
+
+// Anime keeps its own remembered profile and folder. Standard and daily share
+// the instance's first key, which so keeps every choice remembered before
+// anime had its own. The monitor option stays in that key for every type.
+function profileFolderScope(seriesType: string): AddDefaultsScope {
+  return seriesType === 'anime' ? 'sonarr-anime' : 'sonarr';
+}
 
 const MONITOR_OPTIONS = [
   { value: 'all', label: 'All Episodes' },
@@ -141,32 +148,33 @@ function AddSeriesPageContent() {
   // usable remembered value, wait for Seerr's answer before defaulting. Keep a
   // still-valid user choice on a background refetch; re-default only when the
   // current value is missing from the fresh list (e.g. after switching instances).
-  const remembered = readAddDefaults('sonarr', instanceId);
+  const rememberedFor = (type: string) => readAddDefaults(profileFolderScope(type), instanceId);
+  const remembered = rememberedFor(seriesType);
   const profileIds = profiles.map((p) => String(p.id));
   const folderPaths = rootFolders.map((f) => f.path);
   // An anime series starts from Seerr's anime profile and folder.
   const seerrPickFor = (type: string) => (type === 'anime' ? seerrDefaults.data?.anime : seerrDefaults.data);
   const seerrPick = seerrPickFor(seriesType);
-  // Switching the series type moves a profile or folder that is still Seerr's
-  // pick for the old type to the new type's; one remembered or chosen stays.
+  // Switching to or from anime takes the new type's remembered profile or
+  // folder. Without one, a value the page picked for the old type (its
+  // remembered one or Seerr's) moves to Seerr's for the new type; one chosen
+  // by hand stays. Standard and daily share theirs, so between them nothing moves.
   const [prevSeriesType, setPrevSeriesType] = useState(seriesType);
   if (seriesType !== prevSeriesType) {
     setPrevSeriesType(seriesType);
+  }
+  if (profileFolderScope(seriesType) !== profileFolderScope(prevSeriesType)) {
     const oldPick = seerrPickFor(prevSeriesType);
-    if (
-      !(remembered.profileId !== undefined && profileIds.includes(remembered.profileId))
-      && profileId && profileId === oldPick?.profileId
-      && seerrPick?.profileId && profileIds.includes(seerrPick.profileId)
-    ) {
-      setProfileId(seerrPick.profileId);
-    }
-    if (
-      !(remembered.rootFolder !== undefined && folderPaths.includes(remembered.rootFolder))
-      && rootFolder && rootFolder === oldPick?.rootFolder
-      && seerrPick?.rootFolder && folderPaths.includes(seerrPick.rootFolder)
-    ) {
-      setRootFolder(seerrPick.rootFolder);
-    }
+    const oldRemembered = rememberedFor(prevSeriesType);
+    const next = (current: string, options: string[], picked: Array<string | null | undefined>, own: string | undefined, seerr: string | null | undefined) => {
+      if (own !== undefined && options.includes(own)) return own;
+      if (current && picked.includes(current) && seerr && options.includes(seerr)) return seerr;
+      return current;
+    };
+    const nextProfile = next(profileId, profileIds, [oldRemembered.profileId, oldPick?.profileId], remembered.profileId, seerrPick?.profileId);
+    if (nextProfile !== profileId) setProfileId(nextProfile);
+    const nextFolder = next(rootFolder, folderPaths, [oldRemembered.rootFolder, oldPick?.rootFolder], remembered.rootFolder, seerrPick?.rootFolder);
+    if (nextFolder !== rootFolder) setRootFolder(nextFolder);
   }
   if (
     profiles.length > 0
@@ -208,6 +216,7 @@ function AddSeriesPageContent() {
       instanceId?: string;
       qualityProfileId: number;
       rootFolderPath: string;
+      seriesType: string;
       addOptions: { monitor: string; [k: string]: unknown };
       [k: string]: unknown;
     }) => {
@@ -224,11 +233,15 @@ function AddSeriesPageContent() {
     },
     onSuccess: (s, payload) => {
       invalidateSeries(queryClient);
-      saveAddDefaults('sonarr', payload.instanceId, {
-        profileId: String(payload.qualityProfileId),
-        rootFolder: payload.rootFolderPath,
-        monitor: payload.addOptions.monitor,
-      });
+      const scope = profileFolderScope(payload.seriesType);
+      const profileFolder = { profileId: String(payload.qualityProfileId), rootFolder: payload.rootFolderPath };
+      if (scope === 'sonarr') {
+        saveAddDefaults('sonarr', payload.instanceId, { ...profileFolder, monitor: payload.addOptions.monitor });
+      } else {
+        saveAddDefaults(scope, payload.instanceId, profileFolder);
+        // The monitor option is shared; the standard profile and folder stay as they were.
+        saveAddDefaults('sonarr', payload.instanceId, { ...readAddDefaults('sonarr', payload.instanceId), monitor: payload.addOptions.monitor });
+      }
       toast.success(`${payload.title} added`);
       router.push(`/series/${s.id}${instanceId ? `?instance=${instanceId}` : ''}`);
     },

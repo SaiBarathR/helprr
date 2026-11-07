@@ -44,8 +44,9 @@ describe('GET /api/random-watch filters', () => {
     expect((await roll('type=any&watch=all&genre=Comedy&genre=Animation')).poolSize).toBe(3);
     const long = await roll('type=movie&watch=all&runtime=over120');
     expect(long).toMatchObject({ poolSize: 1, pick: { id: 2 } });
-    // A series is matched by its episode length.
+    // The length is for movies only: the 24-minute series stays in with any length.
     expect((await roll('type=any&watch=all&runtime=under90')).poolSize).toBe(2);
+    expect((await roll('type=any&watch=all&runtime=over120')).poolSize).toBe(2);
   });
 
   it('ignores a length on a series-only roll and an unknown length', async () => {

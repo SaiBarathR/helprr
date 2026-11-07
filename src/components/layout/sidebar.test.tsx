@@ -87,7 +87,7 @@ describe('Sidebar active item', () => {
     mocks.collapsed = false;
     await render();
     const active = document.querySelector('aside a[href="/dashboard"]')!;
-    expect([...active.classList]).toEqual(expect.arrayContaining(['text-primary', '[html[data-glass][data-scheme=dark]_&]:text-foreground']));
+    expect([...active.classList]).toEqual(expect.arrayContaining(['text-[color:var(--hpr-tab-label,var(--primary))]', '[html[data-glass][data-scheme=dark]_&]:text-foreground']));
     expect(active.querySelector('svg')!.classList).toContain('text-primary');
     expect(document.querySelector('aside a[href="/movies"] svg')!.classList).not.toContain('text-primary');
   });

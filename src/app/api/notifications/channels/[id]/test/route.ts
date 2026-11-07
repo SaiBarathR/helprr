@@ -5,6 +5,8 @@ import { withApiLogging } from '@/lib/api-logger';
 import { upstreamErrorResponse } from '@/lib/api-error';
 import { configuredAppOrigin } from '@/lib/request-utils';
 import { deliverToChannel } from '@/lib/notification-channels/dispatch';
+import { getUserTimeZone } from '@/lib/app-settings';
+import { formatInTimeZone } from '@/lib/timezone';
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -42,10 +44,12 @@ async function postHandler(_request: NextRequest, { params }: RouteContext): Pro
     if (!channel) return NextResponse.json({ error: 'Not found' }, { status: 404 });
     const now = new Date();
     const origin = configuredAppOrigin();
+    // In the channel owner's time zone, not the server process's.
+    const timeZone = await getUserTimeZone(auth.user.id);
     const result = await deliverToChannel(channel, {
       eventType: 'test',
       title: 'Helprr test notification',
-      body: `Test sent at ${now.toLocaleTimeString()}`,
+      body: `Test sent at ${formatInTimeZone(now, timeZone, { hour: 'numeric', minute: '2-digit', second: '2-digit' })}`,
       link: origin ? `${origin}/notifications` : null,
       path: '/notifications',
       metadata: { source: 'test' },

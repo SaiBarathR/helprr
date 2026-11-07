@@ -17,8 +17,10 @@ import type { BadgeSlice } from '@/types/badges';
 
 // With Liquid Glass's blue tint only the active icon takes the accent: as a
 // small label the tint is under AA on the bar and the More sheet in both
-// schemes (glass-contrast.test.ts). Other themes keep a tinted label.
+// schemes (glass-contrast.test.ts). Other themes tint the label through
+// --hpr-tab-label, which is the text colour for the cyan accent (dashboard-theme.ts).
 const GLASS_ACTIVE_LABEL = '[html[data-glass]_&]:text-foreground';
+const ACTIVE_LABEL = 'text-[color:var(--hpr-tab-label,var(--primary))]';
 
 export function BottomNav() {
   const pathname = usePathname();
@@ -84,7 +86,7 @@ export function BottomNav() {
                 prefetch={null}
                 className={cn(
                   'flex flex-col items-center justify-center gap-0.5 flex-1 h-full min-h-11 text-[11px] font-medium transition-colors',
-                  isActive ? cn('text-primary', GLASS_ACTIVE_LABEL) : 'text-muted-foreground',
+                  isActive ? cn(ACTIVE_LABEL, GLASS_ACTIVE_LABEL) : 'text-muted-foreground',
                   isPending && 'opacity-70'
                 )}
               >
@@ -110,7 +112,7 @@ export function BottomNav() {
                 <button
                   className={cn(
                     'flex flex-col items-center justify-center gap-0.5 flex-1 h-full min-h-11 text-[11px] font-medium transition-colors',
-                    isMoreActive ? cn('text-primary', GLASS_ACTIVE_LABEL) : 'text-muted-foreground'
+                    isMoreActive ? cn(ACTIVE_LABEL, GLASS_ACTIVE_LABEL) : 'text-muted-foreground'
                   )}
                 >
                   <span className="relative">
@@ -153,7 +155,7 @@ export function BottomNav() {
                         className={cn(
                           'flex min-h-11 items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium transition-colors',
                           isActive
-                            ? cn('bg-primary/10 text-primary', GLASS_ACTIVE_LABEL)
+                            ? cn('bg-primary/10', ACTIVE_LABEL, GLASS_ACTIVE_LABEL)
                             : 'text-foreground hover:bg-accent',
                           isPending && 'opacity-70'
                         )}

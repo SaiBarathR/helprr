@@ -13,10 +13,11 @@ import {
   enforceGlobalLoginBackstop,
   recordGlobalLoginFailure,
 } from '@/lib/login-rate-limit';
-import { recordFailedSignIn } from '@/lib/security-audit';
+import { recordFailedSignIn, recordSecurityEvent } from '@/lib/security-audit';
 import {
   clearMfaAttempts,
   consumeSecondFactor,
+  isTotpEnabled,
   mfaLockedResponse,
   secondFactorKind,
   startMfaAttempt,
@@ -93,4 +94,70 @@ export async function confirmPasswordAndSecondFactor(
   await clearMfaAttempts(user.id);
   await clearUsernameBackoff(user.username);
   return { ok: true, factor };
+}
+
+type StepUpUser = Pick<User, 'id' | 'username' | 'passwordHash' | 'totpSecret' | 'totpEnabledAt' | 'totpLastUsedStep'>;
+
+/**
+ * The acting admin's current password, plus a code (or a recovery code) when
+ * their own two-step sign-in is on, for a step that hands out admin: creating
+ * an admin, making someone admin, or a way into another admin's account. A
+ * signed-in session alone must not be able to take one. The same checks,
+ * throttles, code cap and failed sign-in records as turning two-step sign-in
+ * off. Null when confirmed. Missing factors are a 403 with `needsStepUp` (and
+ * `needsCode`), so the page can ask for them; an admin with no Helprr password
+ * (Jellyfin-only) is refused, closed. `step` names the action in the audit
+ * row of a used recovery code.
+ */
+export async function confirmAdminStepUp(
+  request: NextRequest,
+  admin: StepUpUser,
+  body: unknown,
+  step: string,
+): Promise<NextResponse | null> {
+  const needsCode = isTotpEnabled(admin);
+  if (!admin.passwordHash) {
+    return NextResponse.json(
+      { error: 'This needs your Helprr password, and your account has none. Set one in Settings → Account first.' },
+      { status: 403 },
+    );
+  }
+  const { currentPassword, code } = (body && typeof body === 'object' && !Array.isArray(body) ? body : {}) as {
+    currentPassword?: unknown;
+    code?: unknown;
+  };
+  const missingPassword = typeof currentPassword !== 'string' || currentPassword.length === 0;
+  const missingCode = needsCode && (typeof code !== 'string' || code.trim().length === 0 || code.length > 64);
+  if (missingPassword || missingCode) {
+    return NextResponse.json(
+      {
+        error: needsCode
+          ? 'Giving admin access needs your current password and a code from your authenticator app (or a recovery code).'
+          : 'Giving admin access needs your current password.',
+        needsStepUp: true,
+        needsCode,
+      },
+      { status: 403 },
+    );
+  }
+
+  if (needsCode) {
+    const confirmed = await confirmPasswordAndSecondFactor(request, admin, currentPassword, code as string);
+    if (!confirmed.ok) return confirmed.response;
+    if (confirmed.factor === 'recovery-code') {
+      await recordSecurityEvent(request, {
+        actor: admin,
+        action: 'MFA_RECOVERY_CODE_USED',
+        targetType: 'user',
+        targetId: admin.id,
+        targetLabel: admin.username,
+        fields: [step],
+      });
+    }
+    return null;
+  }
+  const passwordError = await confirmCurrentPassword(request, admin, currentPassword);
+  if (passwordError) return passwordError;
+  await clearUsernameBackoff(admin.username);
+  return null;
 }

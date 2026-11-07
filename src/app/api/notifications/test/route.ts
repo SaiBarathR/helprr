@@ -6,6 +6,8 @@ import { notifyEvent } from '@/lib/notification-service';
 import { withApiLogging } from '@/lib/api-logger';
 import { getRedisClient } from '@/lib/redis';
 import { upstreamErrorResponse } from '@/lib/api-error';
+import { getUserTimeZone } from '@/lib/app-settings';
+import { formatInTimeZone } from '@/lib/timezone';
 
 const TEST_WINDOW_MS = 60_000;
 const TEST_MAX_ATTEMPTS = 10;
@@ -57,10 +59,12 @@ async function postHandler(): Promise<NextResponse> {
 
   try {
     const now = new Date();
+    // In the requester's own time zone, not the server process's.
+    const timeZone = await getUserTimeZone(user.id);
     const sent = await notifyEvent({
       eventType: 'test',
       title: 'Helprr Test Notification',
-      body: `Test sent at ${now.toLocaleTimeString()}`,
+      body: `Test sent at ${formatInTimeZone(now, timeZone, { hour: 'numeric', minute: '2-digit', second: '2-digit' })}`,
       // include a unique id so the per-item tag (eventType-id) is different
       // for every press — otherwise rapid presses collapse into one banner
       metadata: { source: 'test', id: now.getTime() },

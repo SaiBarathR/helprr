@@ -73,8 +73,8 @@ export function RandomWatchView() {
   };
 
   const watch: WatchFilter = canFilterUnwatched && unwatchedOnly ? 'unwatched' : 'all';
-  // A series is matched by its episode length, so a length preset means
-  // little when only series are wanted: it is hidden and set aside there.
+  // The length is for movies only, so it is hidden and set aside when only
+  // series are wanted.
   const runtime: RandomRuntime = type === 'series' ? 'any' : savedRuntime;
   const activeFilterCount = genres.length + (runtime === 'any' ? 0 : 1);
 
@@ -214,7 +214,7 @@ export function RandomWatchView() {
           >
             {type !== 'series' && (
               <>
-                <ResponsiveMenuLabel>Length</ResponsiveMenuLabel>
+                <ResponsiveMenuLabel>Movie length</ResponsiveMenuLabel>
                 {RANDOM_RUNTIMES.map((preset) => (
                   <ResponsiveMenuCheckboxItem
                     key={preset}

@@ -345,3 +345,111 @@ describe('API tokens in the editor', () => {
     expect(await screen.findByText(/These don.t work: “Make personal API tokens” is off for them/)).toBeDefined();
   });
 });
+
+describe('giving admin asks for your password, and a code while your two-step sign-in is on', () => {
+  const me = { ...member, id: 'me', username: 'boss', displayName: 'Boss', role: 'admin', hasPassword: true, passwordLink: null };
+
+  function renderPage() {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<QueryClientProvider client={client}><UsersAdminPage /></QueryClientProvider>);
+  }
+
+  function stubUsers(list: unknown[], sent: Array<{ url: string; body: unknown }>) {
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      if (init?.method === 'POST' || init?.method === 'PATCH') {
+        sent.push({ url, body: JSON.parse(init.body as string) });
+        if (url.endsWith('/password-link')) {
+          return new Response(JSON.stringify({ token: 'c'.repeat(43), purpose: 'reset', expiresAt: '2026-11-08T12:00:00.000Z' }), { status: 201 });
+        }
+        return new Response(JSON.stringify({ ...member, id: 'u3' }), { status: url === '/api/users' ? 201 : 200 });
+      }
+      if (url === '/api/users') return new Response(JSON.stringify(list));
+      if (url.endsWith('/permissions')) return new Response(JSON.stringify(mocks.permissions));
+      return new Response(JSON.stringify([]));
+    }));
+  }
+
+  it('adds an admin only with your password and code, and a member with neither', async () => {
+    mocks.me = { id: 'me' };
+    const sent: Array<{ url: string; body: unknown }> = [];
+    stubUsers([{ ...me, twoStepEnabled: true }, member], sent);
+    renderPage();
+    await userEvent.click(await screen.findByRole('button', { name: 'Add' }));
+    await userEvent.type(screen.getByLabelText('Username'), 'newbie');
+    await userEvent.type(screen.getByLabelText('Display name'), 'New');
+    expect(screen.queryByLabelText('Your current password')).toBeNull();
+
+    await userEvent.click(screen.getAllByRole('combobox')[0]);
+    await userEvent.click(await screen.findByRole('option', { name: 'Admin' }));
+    const create = screen.getByRole('button', { name: 'Create and get link' });
+    expect(create.hasAttribute('disabled')).toBe(true);
+    await userEvent.type(screen.getByLabelText('Your current password'), 'my password');
+    expect(create.hasAttribute('disabled')).toBe(true);
+    await userEvent.type(screen.getByLabelText('Authenticator or recovery code'), ' 123456 ');
+    await userEvent.click(create);
+    await waitFor(() => expect(sent).toHaveLength(1));
+    expect(sent[0].body).toMatchObject({ role: 'admin', currentPassword: 'my password', code: '123456' });
+  });
+
+  it('makes a member admin with your password alone while your two-step sign-in is off', async () => {
+    mocks.me = { id: 'me' };
+    const sent: Array<{ url: string; body: unknown }> = [];
+    stubUsers([{ ...me, twoStepEnabled: false }, { ...member, hasPassword: true, passwordLink: null }], sent);
+    renderPage();
+    await userEvent.click(await screen.findByRole('button', { name: /Iso/ }));
+    expect(screen.queryByLabelText('Your current password')).toBeNull();
+    await userEvent.click(screen.getAllByRole('combobox')[0]);
+    await userEvent.click(await screen.findByRole('option', { name: 'Admin' }));
+    expect(screen.queryByLabelText('Authenticator or recovery code')).toBeNull();
+    const save = screen.getByRole('button', { name: 'Save details' });
+    expect(save.hasAttribute('disabled')).toBe(true);
+    await userEvent.type(screen.getByLabelText('Your current password'), 'my password');
+    await userEvent.click(save);
+    await waitFor(() => expect(sent).toHaveLength(1));
+    expect(sent[0]).toMatchObject({ url: '/api/users/u2', body: { role: 'admin', currentPassword: 'my password' } });
+    expect(sent[0].body).not.toHaveProperty('code');
+  });
+
+  it("asks before another admin's reset link, but not before a member's edit", async () => {
+    mocks.me = { id: 'me' };
+    const sent: Array<{ url: string; body: unknown }> = [];
+    const other = { ...member, role: 'admin', hasPassword: true, passwordLink: null, twoStepEnabled: false };
+    stubUsers([{ ...me, twoStepEnabled: true }, other], sent);
+    renderPage();
+    await userEvent.click(await screen.findByRole('button', { name: /Iso/ }));
+    const make = await screen.findByRole('button', { name: 'Make link' });
+    expect(make.hasAttribute('disabled')).toBe(true);
+    await userEvent.type(screen.getByLabelText('Your current password'), 'my password');
+    await userEvent.type(screen.getByLabelText('Authenticator or recovery code'), '123456');
+    await userEvent.click(make);
+    await screen.findByLabelText('Password reset link for @iso');
+    expect(sent).toEqual([{ url: '/api/users/u2/password-link', body: { currentPassword: 'my password', code: '123456' } }]);
+  });
+
+  it('shows the fields when the server asks, though the list said member (made admin elsewhere)', async () => {
+    mocks.me = { id: 'me' };
+    const sent: unknown[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === '/api/users/u2/password-link' && init?.method === 'POST') {
+        const body = JSON.parse(init.body as string);
+        sent.push(body);
+        if (!body.currentPassword) {
+          return new Response(JSON.stringify({ error: 'Giving admin access needs your current password.', needsStepUp: true, needsCode: false }), { status: 403 });
+        }
+        return new Response(JSON.stringify({ token: 'c'.repeat(43), purpose: 'reset', expiresAt: '2026-11-08T12:00:00.000Z' }), { status: 201 });
+      }
+      if (url === '/api/users') return new Response(JSON.stringify([{ ...me, twoStepEnabled: false }, { ...member, hasPassword: true, passwordLink: null }]));
+      if (url.endsWith('/permissions')) return new Response(JSON.stringify(mocks.permissions));
+      return new Response(JSON.stringify([]));
+    }));
+    renderPage();
+    await userEvent.click(await screen.findByRole('button', { name: /Iso/ }));
+    expect(screen.queryByLabelText('Your current password')).toBeNull();
+    await userEvent.click(await screen.findByRole('button', { name: 'Make link' }));
+    await userEvent.type(await screen.findByLabelText('Your current password'), 'my password');
+    expect(screen.queryByLabelText('Authenticator or recovery code')).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: 'Make link' }));
+    await screen.findByLabelText('Password reset link for @iso');
+    expect(sent).toEqual([{}, { currentPassword: 'my password' }]);
+  });
+});

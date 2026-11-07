@@ -13,6 +13,7 @@ import { withApiLogging } from '@/lib/api-logger';
 import { recordSecurityEvent } from '@/lib/security-audit';
 import { issuePasswordLink, type IssuedPasswordLink } from '@/lib/password-links';
 import { configuredAppOrigin, INVALID_APP_ORIGIN_LINK_ERROR, isAppOriginInvalid } from '@/lib/request-utils';
+import { confirmAdminStepUp } from '@/lib/server/confirm-password';
 
 const ROLES = new Set(['admin', 'member']);
 const TEMPLATES = new Set(['admin', 'member']);
@@ -85,6 +86,12 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   // An invite link on the wrong address would not reach the person: make no user.
   if (invite && isAppOriginInvalid()) {
     return NextResponse.json({ error: INVALID_APP_ORIGIN_LINK_ERROR }, { status: 500 });
+  }
+
+  // A new admin needs the acting admin's password (and code), not just a session.
+  if (role === 'admin') {
+    const stepUp = await confirmAdminStepUp(request, admin.user, body, 'create-admin');
+    if (stepUp) return stepUp;
   }
 
   const passwordHash = password ? await hashPassword(password) : null;

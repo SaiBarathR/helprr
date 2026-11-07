@@ -118,7 +118,7 @@ describe('Random genre and length filters', () => {
     renderView();
     await user.click(screen.getByRole('button', { name: 'Pick together' }));
     const sheet = within(await screen.findByRole('dialog'));
-    expect(sheet.getByText(/Movies and series · Under 90 min · Comedy\./)).toBeDefined();
+    expect(sheet.getByText(/Movies and series · Under 90 min \(movies\) · Comedy\./)).toBeDefined();
     await user.click(await sheet.findByRole('checkbox', { name: 'Invite Mum' }));
     await user.click(sheet.getByRole('button', { name: /Start/ }));
     await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => url === '/api/tonight')).toBe(true));

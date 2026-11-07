@@ -37,6 +37,11 @@ const mocks = vi.hoisted(() => {
 vi.mock('@/lib/auth', () => ({ requireAdmin: mocks.requireAdmin }));
 vi.mock('@/lib/password', () => ({ hashPassword: mocks.hashPassword }));
 vi.mock('@/lib/api-logger', () => ({ withApiLogging: (handler: unknown) => handler }));
+// Giving admin needs the acting admin's password (and code); its own tests cover that.
+vi.mock('@/lib/server/confirm-password', async (original) => ({
+  ...(await original<typeof import('@/lib/server/confirm-password')>()),
+  confirmAdminStepUp: async () => null,
+}));
 vi.mock('@/lib/db', () => ({
   prisma: {
     user: {
@@ -221,7 +226,8 @@ describe('user local-password boundaries', () => {
 
     expect(response.status).toBe(200);
     expect(mocks.tx.user.update).toHaveBeenCalledWith({
-      where: { id: 'user-1' },
+      // Only for the role it read: whether it needed the admin step-up depends on it.
+      where: { id: 'user-1', role: 'member' },
       data: { passwordHash: 'new-hash' },
     });
     expect(mocks.tx.session.updateMany).toHaveBeenCalledWith({
@@ -251,7 +257,7 @@ describe('user local-password boundaries', () => {
 
     expect(response.status).toBe(200);
     expect(mocks.tx.user.update).toHaveBeenCalledWith({
-      where: { id: 'user-1' },
+      where: { id: 'user-1', role: 'member' },
       data: { role: 'admin', template: 'admin', permissions: {} },
     });
     expect(mocks.tx.session.updateMany).not.toHaveBeenCalled();

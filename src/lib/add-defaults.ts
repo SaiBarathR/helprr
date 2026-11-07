@@ -7,7 +7,8 @@
  * Seerr server) it was saved for, and only while that instance still lists it.
  */
 
-export type AddDefaultsScope = 'sonarr' | 'radarr' | 'lidarr' | 'seerr-sonarr' | 'seerr-radarr';
+// 'sonarr-anime': Add Series' profile and folder for anime ('sonarr' holds standard's and the monitor option).
+export type AddDefaultsScope = 'sonarr' | 'sonarr-anime' | 'radarr' | 'lidarr' | 'seerr-sonarr' | 'seerr-radarr';
 
 export interface AddDefaults {
   profileId?: string;

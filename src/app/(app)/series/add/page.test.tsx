@@ -225,3 +225,86 @@ describe("add series page with Seerr's default", () => {
     expect(screen.getByDisplayValue('/tv')).toBeTruthy();
   });
 });
+
+describe('add series page remembers anime and standard separately', () => {
+  const key = (scope: string) => `helprr-add-defaults:${scope}:son-2`;
+  const read = (scope: string) => JSON.parse(localStorage.getItem(key(scope)) ?? 'null');
+  const seriesTypeSelect = () => screen.getAllByRole('combobox').find((select) =>
+    Array.from((select as HTMLSelectElement).options, (o) => o.value).includes('anime')) as HTMLSelectElement;
+
+  it('keeps a choice remembered before as the standard one: an anime add does not start from it', async () => {
+    localStorage.setItem(key('sonarr'), JSON.stringify({ profileId: '7', rootFolder: '/tv-kids', monitor: 'future' }));
+    nav.search = 'term=Show&tvdbId=1&seriesType=anime';
+    renderPage();
+    await screen.findByText('Monitor New Seasons');
+    await waitFor(() => expect(screen.getByDisplayValue('HD')).toBeTruthy());
+    expect(screen.getByDisplayValue('/tv')).toBeTruthy();
+    // The monitor option is shared by every type.
+    expect(screen.getByDisplayValue('Future Episodes')).toBeTruthy();
+  });
+
+  it("saves an anime add under anime, leaving standard's profile and folder", async () => {
+    localStorage.setItem(key('sonarr'), JSON.stringify({ profileId: '4', rootFolder: '/tv', monitor: 'future' }));
+    nav.search = 'term=Show&tvdbId=1&seriesType=anime';
+    renderPage();
+    await screen.findByText('Monitor New Seasons');
+    await waitFor(() => expect(screen.getByDisplayValue('HD')).toBeTruthy());
+    fireEvent.change(screen.getByDisplayValue('HD'), { target: { value: '7' } });
+    fireEvent.change(screen.getByDisplayValue('/tv'), { target: { value: '/tv-kids' } });
+    fireEvent.change(screen.getByDisplayValue('Future Episodes'), { target: { value: 'pilot' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add Series' }));
+    await waitFor(() => expect(posts).toHaveLength(1));
+    expect(posts[0]).toEqual(expect.objectContaining({ seriesType: 'anime', qualityProfileId: 7, rootFolderPath: '/tv-kids' }));
+    await waitFor(() => expect(read('sonarr-anime')).toEqual({ profileId: '7', rootFolder: '/tv-kids' }));
+    expect(read('sonarr')).toEqual({ profileId: '4', rootFolder: '/tv', monitor: 'pilot' });
+  });
+
+  it("switching the series type takes that type's remembered profile and folder", async () => {
+    localStorage.setItem(key('sonarr'), JSON.stringify({ profileId: '4', rootFolder: '/tv' }));
+    localStorage.setItem(key('sonarr-anime'), JSON.stringify({ profileId: '7', rootFolder: '/tv-kids' }));
+    renderPage();
+    await screen.findByText('Monitor New Seasons');
+    await waitFor(() => expect(screen.getByDisplayValue('HD')).toBeTruthy());
+    expect(screen.getByDisplayValue('/tv')).toBeTruthy();
+
+    fireEvent.change(seriesTypeSelect(), { target: { value: 'anime' } });
+    await waitFor(() => expect(screen.getByDisplayValue('4k Max OTT Quality')).toBeTruthy());
+    expect(screen.getByDisplayValue('/tv-kids')).toBeTruthy();
+
+    fireEvent.change(seriesTypeSelect(), { target: { value: 'standard' } });
+    await waitFor(() => expect(screen.getByDisplayValue('HD')).toBeTruthy());
+    expect(screen.getByDisplayValue('/tv')).toBeTruthy();
+
+    // Daily shares standard's.
+    fireEvent.change(seriesTypeSelect(), { target: { value: 'daily' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add Series' }));
+    await waitFor(() => expect(posts).toHaveLength(1));
+    expect(posts[0]).toEqual(expect.objectContaining({ seriesType: 'daily', qualityProfileId: 4, rootFolderPath: '/tv' }));
+  });
+
+  it('a standard add saves under standard and leaves anime alone', async () => {
+    localStorage.setItem(key('sonarr-anime'), JSON.stringify({ profileId: '7', rootFolder: '/tv-kids' }));
+    renderPage();
+    await screen.findByText('Monitor New Seasons');
+    await waitFor(() => expect(screen.getByDisplayValue('HD')).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: 'Add Series' }));
+    await waitFor(() => expect(posts).toHaveLength(1));
+    await waitFor(() => expect(read('sonarr')).toEqual({ profileId: '4', rootFolder: '/tv', monitor: 'all' }));
+    expect(read('sonarr-anime')).toEqual({ profileId: '7', rootFolder: '/tv-kids' });
+  });
+
+  it('keeps a profile and folder chosen by hand when switching between Standard and Daily', async () => {
+    localStorage.setItem(key('sonarr'), JSON.stringify({ profileId: '4', rootFolder: '/tv' }));
+    renderPage();
+    await screen.findByText('Monitor New Seasons');
+    await waitFor(() => expect(screen.getByDisplayValue('HD')).toBeTruthy());
+    fireEvent.change(screen.getByDisplayValue('HD'), { target: { value: '7' } });
+    fireEvent.change(screen.getByDisplayValue('/tv'), { target: { value: '/tv-kids' } });
+    fireEvent.change(seriesTypeSelect(), { target: { value: 'daily' } });
+    expect(screen.getByDisplayValue('4k Max OTT Quality')).toBeTruthy();
+    expect(screen.getByDisplayValue('/tv-kids')).toBeTruthy();
+    fireEvent.change(seriesTypeSelect(), { target: { value: 'standard' } });
+    expect(screen.getByDisplayValue('4k Max OTT Quality')).toBeTruthy();
+    expect(screen.getByDisplayValue('/tv-kids')).toBeTruthy();
+  });
+});

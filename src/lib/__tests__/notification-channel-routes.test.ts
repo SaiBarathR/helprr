@@ -27,6 +27,8 @@ vi.mock('@/lib/db', () => ({
   },
 }));
 vi.mock('@/lib/notification-channels/dispatch', () => ({ deliverToChannel: mocks.deliver }));
+// The test's "sent at" time is in the caller's own time zone.
+vi.mock('@/lib/app-settings', () => ({ getUserTimeZone: async () => 'UTC' }));
 
 import { GET, POST } from '@/app/api/notifications/channels/route';
 import { DELETE, PATCH } from '@/app/api/notifications/channels/[id]/route';
