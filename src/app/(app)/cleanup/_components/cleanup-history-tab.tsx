@@ -114,6 +114,7 @@ const QUICK_RANGES: { label: string; days: number }[] = [
 const CLEANER_OPTIONS = [
   { value: 'queue', label: 'Queue' },
   { value: 'download', label: 'Download' },
+  { value: 'library', label: 'Library' },
 ];
 
 const STRIKE_TYPE_OPTIONS = [
@@ -130,6 +131,7 @@ const ACTION_OPTIONS = [
   { value: 'categoryChanged', label: 'Category changed' },
   { value: 'skipped', label: 'Skipped' },
   { value: 'dryRunPreview', label: 'Dry-run preview' },
+  { value: 'removedFromLibrary', label: 'Deleted from library', destructive: true },
   { value: 'failed', label: 'Failed', destructive: true },
 ];
 

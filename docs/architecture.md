@@ -796,6 +796,45 @@ its `CleanupHistory` row is written. If that row cannot be written the failure i
 logged and the outcome stands, so a torrent that was removed is never reported as
 a failed removal.
 
+## Library cleanup ("Leaving soon")
+
+`src/lib/library-cleanup/` removes whole library titles nobody watches. It never
+deletes on its own: preview → mark Leaving soon → countdown → an admin's
+explicit, token-bound **Delete now**. Rules, preview, marking and deletion are
+admin-role only (`requireAdmin`; `cleanup.manage` alone is not enough). The
+shelf (`GET /api/leaving-soon`) lists only the types the caller may view, and
+**Keep** (`POST /api/leaving-soon/[id]/keep`) needs view access to the stored
+title's type; it adds the configured keep tag through the arr's editor
+(`KEEP_MEDIA` audit row) before removing the `LeavingSoonItem`, so a failed tag
+leaves the title listed.
+
+- **Inputs** (`inputs.ts`), gathered fresh for every preview, mark and delete,
+  fail closed with `LibraryCleanupUnavailableError` (503) when any configured
+  Radarr/Sonarr instance (titles, tags, the complete queue), Jellyfin or Seerr
+  cannot be read completely. Seerr not being connected is a warning (Helprr's
+  pending requests still count); Jellyfin not being connected blocks. Plays are
+  read for **every** Jellyfin user (`Filters=IsPlayed` and `IsResumable`;
+  series from their episodes, since series items carry no `LastPlayedDate`)
+  and matched by provider id to every matching Jellyfin item.
+- **Exclusions** (`evaluate.ts`, always on): keep tag, any watchlist (TMDB/TVDB,
+  library-id saves on any instance, AniList via mapping or title), an open Seerr
+  or Helprr request or one created in the last N days, in the queue, watched in
+  the last N days, a play without a date, not matched in Jellyfin, no files.
+- **Delete now** reuses the cleanup preview-token store with cleaner
+  `library`; the binding holds the settings fingerprint, the arr connections,
+  the import-list choice and the ready titles. Execution re-gathers everything
+  and refuses the whole run (409, nothing deleted) when the ready set differs;
+  right before each call it re-reads the item so a Keep during the run wins. A
+  failed call is checked against the arr (404 means it is gone). Every attempted
+  title writes one `DELETE_MEDIA` audit row and one `CleanupHistory` row
+  (`cleaner: library`, `removedFromLibrary` / `failed` / `skipped`); titles
+  already absent from the arr leave the list with a `skipped` row. One run per
+  process at a time.
+- Marking can push the title's past requesters (`leavingSoon`, gated by
+  `notify.requests` and view access; watchlisted titles cannot be marked).
+  Settings travel in the settings export's `cleanup.libraryConfig`; marked
+  titles do not.
+
 ## Manual Downloads (Sonarr/Radarr)
 
 Add Torrent can send a magnet or `.torrent` to Sonarr or Radarr for one title

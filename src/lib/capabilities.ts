@@ -249,6 +249,7 @@ export const EVENT_TYPE_TO_CAPABILITY: Record<NotificationEventType, Capability>
   requestAvailable: 'notify.requests',
   requestDeclined: 'notify.requests',
   requestFailed: 'notify.requests',
+  leavingSoon: 'notify.requests',
   activityDigest: 'notify.digests',
   twitchVodNew: 'notify.twitch',
   twitchVodExpiring: 'notify.twitch',

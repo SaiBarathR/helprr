@@ -11,17 +11,20 @@ import { CleanupDashboardTab } from './_components/cleanup-dashboard-tab';
 import { QueueCleanerTab } from './_components/queue-cleaner-tab';
 import { DownloadCleanerTab } from './_components/download-cleaner-tab';
 import { CleanupHistoryTab } from './_components/cleanup-history-tab';
-import { useCan } from '@/components/permission-provider';
+import { LibraryCleanupTab } from './_components/library-cleanup-tab';
+import { useCan, useMe } from '@/components/permission-provider';
 import { PageTitle } from '@/components/layout/page-title';
 
 export default function CleanupPage() {
-  const [tab, setTab] = useRouteViewState<'dashboard' | 'queue' | 'download' | 'history'>('CleanupPage:tab', 'dashboard');
-  const [dirty, setDirty] = useState<{ queue: boolean; download: boolean }>({ queue: false, download: false });
+  const [tab, setTab] = useRouteViewState<'dashboard' | 'queue' | 'download' | 'library' | 'history'>('CleanupPage:tab', 'dashboard');
+  const [dirty, setDirty] = useState<{ queue: boolean; download: boolean; library: boolean }>({ queue: false, download: false, library: false });
   const canManage = useCan('cleanup.manage');
-  const activeTab = !canManage && (tab === 'queue' || tab === 'download') ? 'dashboard' : tab;
+  // Library cleanup deletes whole titles: its rules and Delete now are admin-only (the API enforces it).
+  const isAdmin = useMe()?.role === 'admin';
+  const activeTab = (!canManage && (tab === 'queue' || tab === 'download')) || (!isAdmin && tab === 'library') ? 'dashboard' : tab;
   const queryClient = useQueryClient();
   // A refetch can re-seed the cleaner forms, so a pull over unsaved edits asks first.
-  const editingUnsaved = (activeTab === 'queue' && dirty.queue) || (activeTab === 'download' && dirty.download);
+  const editingUnsaved = (activeTab === 'queue' && dirty.queue) || (activeTab === 'download' && dirty.download) || (activeTab === 'library' && dirty.library);
   const [confirmRefresh, setConfirmRefresh] = useState(false);
   const refresh = () => queryClient.invalidateQueries({ queryKey: ['cleanup'] });
 
@@ -33,6 +36,9 @@ export default function CleanupPage() {
   }, []);
   const onDownloadDirty = useCallback((d: boolean) => {
     setDirty((prev) => (prev.download === d ? prev : { ...prev, download: d }));
+  }, []);
+  const onLibraryDirty = useCallback((d: boolean) => {
+    setDirty((prev) => (prev.library === d ? prev : { ...prev, library: d }));
   }, []);
 
   return (
@@ -78,6 +84,17 @@ export default function CleanupPage() {
               )}
             </TabsTrigger>
           )}
+          {isAdmin && (
+            <TabsTrigger value="library" className="min-w-0">
+              Library
+              {dirty.library && (
+                <span
+                  aria-label="Unsaved changes"
+                  className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-amber-500"
+                />
+              )}
+            </TabsTrigger>
+          )}
           <TabsTrigger value="history" className="min-w-0">History</TabsTrigger>
           </TabsList>
         </div>
@@ -93,6 +110,11 @@ export default function CleanupPage() {
         {canManage && (
           <TabsContent value="download" className="readable-column-wide">
             <DownloadCleanerTab onDirtyChange={onDownloadDirty} />
+          </TabsContent>
+        )}
+        {isAdmin && (
+          <TabsContent value="library" className="readable-column-wide">
+            <LibraryCleanupTab onDirtyChange={onLibraryDirty} />
           </TabsContent>
         )}
         <TabsContent value="history" className="readable-column-wide">

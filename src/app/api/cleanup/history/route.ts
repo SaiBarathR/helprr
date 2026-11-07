@@ -5,7 +5,7 @@ import { requireUserCapability } from '@/lib/auth';
 import { withApiLogging } from '@/lib/api-logger';
 import { parsePageParams } from '@/lib/pagination';
 
-const VALID_CLEANER = new Set(['queue', 'download']);
+const VALID_CLEANER = new Set(['queue', 'download', 'library']);
 const VALID_STRIKE_TYPE = new Set(['stall', 'slow', 'failedImport', 'downloadingMetadata']);
 const VALID_ACTION = new Set<string>(Object.values(CleanupAction));
 

@@ -33,6 +33,7 @@ import { EVENT_TYPES, type NotificationEventType } from '@/lib/notification-even
 import { STORE_VERSION } from '@/lib/store';
 import { loadQueueCleanerConfig, loadStallRules, loadSlowRules } from '@/lib/cleanup/queue-cleaner';
 import { loadDownloadCleanerConfig, loadSeedingRules } from '@/lib/cleanup/download-cleaner';
+import { loadLibraryCleanupSettings } from '@/lib/library-cleanup/config';
 import { TWITCH } from '@/lib/twitch/platform';
 import { YOUTUBE } from '@/lib/youtube/platform';
 
@@ -289,12 +290,13 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
     }
 
     if (wantCleanup) {
-      const [queueConfig, downloadConfig, stallRules, slowRules, seedingRules] = await Promise.all([
+      const [queueConfig, downloadConfig, stallRules, slowRules, seedingRules, libraryConfig] = await Promise.all([
         loadQueueCleanerConfig(),
         loadDownloadCleanerConfig(),
         loadStallRules(),
         loadSlowRules(),
         loadSeedingRules(),
+        loadLibraryCleanupSettings(),
       ]);
       const cleanup: ExportedCleanup = {
         queueConfig,
@@ -302,6 +304,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
         stallRules,
         slowRules,
         seedingRules: seedingRules.filter((r) => !r.isSystem),
+        libraryConfig,
       };
       payload.cleanup = cleanup;
     }

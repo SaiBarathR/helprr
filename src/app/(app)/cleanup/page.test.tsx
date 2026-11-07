@@ -8,6 +8,7 @@ import { beforeEach, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   pullToRefresh: null as null | { onRefresh: () => unknown; disabled?: boolean },
+  role: 'admin' as 'admin' | 'member',
 }));
 vi.mock('@/components/ui/pull-to-refresh', () => ({
   PullToRefresh: (props: { onRefresh: () => unknown; disabled?: boolean }) => {
@@ -15,7 +16,8 @@ vi.mock('@/components/ui/pull-to-refresh', () => ({
     return null;
   },
 }));
-vi.mock('@/components/permission-provider', () => ({ useCan: () => true }));
+vi.mock('@/components/permission-provider', () => ({ useCan: () => true, useMe: () => ({ role: mocks.role }) }));
+vi.mock('./_components/library-cleanup-tab', () => ({ LibraryCleanupTab: () => <p>Library tab</p> }));
 vi.mock('./_components/cleanup-dashboard-tab', () => ({ CleanupDashboardTab: () => <p>Dashboard tab</p> }));
 vi.mock('./_components/download-cleaner-tab', () => ({ DownloadCleanerTab: () => null }));
 vi.mock('./_components/cleanup-history-tab', () => ({ CleanupHistoryTab: () => null }));
@@ -31,6 +33,7 @@ import CleanupPage from './page';
 import { resetRouteViewStateForTests } from '@/lib/hooks/use-route-view-state';
 
 beforeEach(() => {
+  mocks.role = 'admin';
   resetRouteViewStateForTests();
   sessionStorage.clear();
 });
@@ -65,4 +68,18 @@ it('pull to refresh refetches the cleanup queries, and asks first over unsaved c
   await user.click(await screen.findByRole('button', { name: 'Refresh' }));
   expect(invalidate).toHaveBeenCalledWith({ queryKey: ['cleanup'] });
   expect(screen.queryByRole('alertdialog')).toBeNull();
+});
+
+it('shows the Library tab to admins only, even when a member may manage cleanup', async () => {
+  const user = userEvent.setup();
+  const { unmount } = render(<QueryClientProvider client={new QueryClient()}><CleanupPage /></QueryClientProvider>);
+  await user.click(screen.getByRole('tab', { name: /Library/ }));
+  expect(await screen.findByText('Library tab')).toBeTruthy();
+  unmount();
+
+  mocks.role = 'member';
+  render(<QueryClientProvider client={new QueryClient()}><CleanupPage /></QueryClientProvider>);
+  expect(screen.queryByRole('tab', { name: /Library/ })).toBeNull();
+  // A remembered Library tab falls back to the dashboard.
+  expect(screen.getByText('Dashboard tab')).toBeTruthy();
 });

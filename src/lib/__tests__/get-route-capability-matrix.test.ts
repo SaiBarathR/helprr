@@ -29,6 +29,7 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
     'GET /api/anilist/list-entry',
     'GET /api/anilist/viewer',
     'GET /api/anime/automap/status',
+    'GET /api/cleanup/library/config',
     'GET /api/file-audit',
     'GET /api/security-audit',
     'GET /api/services/import',
@@ -356,6 +357,10 @@ const POLICY_GROUPS: Readonly<Record<string, readonly string[]>> = {
   ],
   'any:dashboard.view|settings.dashboardRefresh': [
     'GET /api/dashboard-layouts',
+  ],
+  // The Leaving soon shelf, filtered to the library types the caller may view.
+  'any:movies.view|series.view': [
+    'GET /api/leaving-soon',
   ],
   'any:movies.view|movies.add': [
     'GET /api/radarr/qualityprofiles',

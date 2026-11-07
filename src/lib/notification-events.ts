@@ -10,7 +10,7 @@ export const EVENT_TYPES = [
   'watchlistReminder', 'watchlistAvailable', 'watchingNewEpisode',
   'scheduledAlert',
   'requestCreated', 'requestApproved', 'requestAvailable',
-  'requestDeclined', 'requestFailed',
+  'requestDeclined', 'requestFailed', 'leavingSoon',
   'activityDigest',
   'twitchVodNew', 'twitchVodExpiring', 'twitchDownloadComplete',
   'twitchDownloadFailed', 'twitchWorkerIssue',
@@ -189,6 +189,12 @@ export const EVENT_META: Record<NotificationEventType, NotificationEventMeta> = 
     description: 'A Seerr request failed to fulfil',
     iconName: 'AlertTriangle', colorClass: 'bg-red-500/10 text-red-500',
   },
+  leavingSoon: {
+    type: 'leavingSoon', group: 'requests',
+    label: 'Leaving Soon',
+    description: 'When a title you requested is marked Leaving soon by library cleanup',
+    iconName: 'Clock', colorClass: 'bg-amber-500/10 text-amber-400',
+  },
   activityDigest: {
     type: 'activityDigest', group: 'digests',
     label: 'Activity Digest',
@@ -320,6 +326,7 @@ export const EVENT_GROUPS: { id: NotificationEventGroupId; title: string; types:
       'requestAvailable',
       'requestDeclined',
       'requestFailed',
+      'leavingSoon',
     ],
   },
   {

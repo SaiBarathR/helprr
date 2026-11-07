@@ -124,7 +124,8 @@ describe('migration readiness', () => {
     expect(names).toContain('20261108040000_api_tokens');
     expect(names).toContain('20261108050000_notification_channels');
     expect(names).toContain('20261108055000_watching_episode_alerts');
+    expect(names).toContain('20261108060000_library_cleanup_leaving_soon');
     expect(names).not.toContain('migration_lock.toml');
-    expect(names).toHaveLength(41);
+    expect(names).toHaveLength(42);
   });
 });

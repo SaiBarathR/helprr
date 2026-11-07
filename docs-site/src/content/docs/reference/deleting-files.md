@@ -15,6 +15,20 @@ history for 90 days:
 - **Cleanup** (queue, download, and seeding rules) — can remove downloads from
   qBittorrent *including their files* when a rule says so. Disabled by
   default; supports dry-run previews, and automatic mode is opt-in per cleaner.
+- **Library cleanup** (Cleanup → Library, admins only) — deletes whole movies
+  and series *with their files*, never on its own. An admin previews what a
+  rule matches (not watched by anyone on Jellyfin in N days, added more than M
+  days ago, optionally a minimum size or a rating cut-off), marks titles
+  **Leaving soon** with a countdown (14 days by default), and only after the
+  countdown presses **Delete now**. Titles on anyone's watchlist, with an open
+  or recent request, tagged with the keep tag, still downloading, or watched in
+  the last N days are always protected, and Delete now checks all of that again
+  first: if Jellyfin, Seerr or Sonarr/Radarr cannot be read, or anything
+  changed since the preview, nothing is deleted. Everyone who can see a library
+  sees its Leaving soon shelf (Dashboard, Movies, Series) and can press
+  **Keep**, which adds the keep tag in Sonarr/Radarr and is recorded in the
+  operation audit. Each deleted title gets a Cleanup History row and an
+  operation-audit row.
 - **Delete movie / series / artist / album** — every confirmation, on the
   library lists (single item or bulk selection) and on the movie, series,
   artist and album pages, offers an optional "also delete files" choice (off by
