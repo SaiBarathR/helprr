@@ -842,7 +842,8 @@ the old one.
   earlier of `markedAt` and N days ago, so a watch or request during the
   countdown always protects it. A request that cannot be compared by id (a
   series Sonarr knows by no TMDB id, a request Seerr knows by TMDB id only)
-  matches by name, looked up in Seerr when needed; one whose name is unknown
+  by the TVDB id or name in Seerr's TV details when needed, else by name (with
+  a trailing "(2024)"/"(US)" or year ignored on both sides); one whose name is unknown
   protects every title it cannot be told apart from.
 - **Delete now** reuses the cleanup preview-token store with cleaner
   `library`; the binding holds the settings fingerprint, the arr connections,
@@ -855,9 +856,11 @@ the old one.
   when the tag did not exist at the start), or other provider ids, stop it; so
   does one `/Sessions` read showing anyone playing it (by Jellyfin item or
   provider id), and an unreadable session list. Success is recorded only when
-  the call succeeded and a re-read answers 404; a title gone after a failed
-  call is recorded as "already gone (not by Helprr)", never as removed with
-  files. Anything else puts the row back. Every attempted
+  the call succeeded and a re-read answers 404 (Sonarr/Radarr may still be
+  removing the files then); a title gone after a failed call is recorded as
+  "not confirmed as removed by Helprr", never as removed with files, and one
+  already absent before the call as "this run did not delete it". Anything else
+  puts the row back. Every attempted
   title writes one `DELETE_MEDIA` audit row and one `CleanupHistory` row
   (`cleaner: library`, `removedFromLibrary` / `failed` / `skipped`); titles
   already absent from the arr leave the list with a `skipped` row. One run per

@@ -234,7 +234,7 @@ export async function keepLeavingSoonItem(item: LeavingSoonItem, actor: AuditAct
   const client = item.service === 'RADARR' ? await getRadarrClient(item.instanceId) : await getSonarrClient(item.instanceId);
   // Claim first, so a Delete now running at the same moment cannot also take it.
   if (!await claimRow(item.id)) throw new LeavingSoonClaimedError();
-  processing.set(item.id, item.mediaType as LibraryMediaType);
+  const release = hold(item);
   try {
     // A failed tag write is audited as a failed KEEP and the title goes back on the list.
     await tagKeep(item, actor, keepTag, client);
@@ -242,7 +242,7 @@ export async function keepLeavingSoonItem(item: LeavingSoonItem, actor: AuditAct
     await restoreRow(item);
     throw error;
   } finally {
-    processing.delete(item.id);
+    release();
   }
   await invalidateTaggedLibrary(item.service === 'RADARR' ? 'radarr' : 'sonarr', item.instanceId);
 }
@@ -471,13 +471,24 @@ async function playingNow(facts: TitleFacts): Promise<boolean> {
 
 // Titles a Delete now run holds right now, with their type, so Keep can say
 // "being processed" (to someone who may view that type) instead of "not found".
-const processing = new Map<string, LibraryMediaType>();
+const processing = new Map<string, { type: LibraryMediaType; owner: symbol }>();
 
 export function processingMediaType(id: string): LibraryMediaType | undefined {
-  return processing.get(id);
+  return processing.get(id)?.type;
 }
 
-const ALREADY_GONE = 'Already gone from Sonarr/Radarr (not by Helprr)';
+/** Marks a held title; the returned release only clears this holder's own entry. */
+function hold(item: LeavingSoonItem): () => void {
+  const owner = Symbol(item.id);
+  processing.set(item.id, { type: item.mediaType as LibraryMediaType, owner });
+  return () => {
+    if (processing.get(item.id)?.owner === owner) processing.delete(item.id);
+  };
+}
+
+// Neutral on purpose: an earlier run's delete whose answer was lost looks the same.
+const ALREADY_GONE = 'No longer in Sonarr/Radarr; this run did not delete it';
+const GONE_AFTER_FAILED_CALL = 'Gone after a failed delete call; not confirmed as removed by Helprr';
 
 function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -550,11 +561,11 @@ async function deleteOne(
     await writeHistory(item, 'skipped', message, actor, previewId, null);
     return skippedResult(item, message);
   }
-  processing.set(item.id, item.mediaType as LibraryMediaType);
+  const release = hold(item);
   try {
     return await deleteClaimed(item, facts, keepTagId, addImportListExclusion, actor, previewId);
   } finally {
-    processing.delete(item.id);
+    release();
   }
 }
 
@@ -663,15 +674,15 @@ async function deleteClaimed(
     },
     startedAt,
     success: deleted,
-    errorMessage: deleted ? null : goneAnyway ? `${errorMessage} (the title is gone, but not confirmed as removed by Helprr)` : failure,
+    errorMessage: deleted ? null : goneAnyway ? `${errorMessage} (${GONE_AFTER_FAILED_CALL})` : failure,
   });
   if (deleted) {
     await writeHistory(item, 'deleted', reasons || 'Leaving soon countdown ended', actor, previewId, null);
     return { id: item.id, title: item.title, outcome: 'deleted' };
   }
   if (goneAnyway) {
-    await writeHistory(item, 'skipped', ALREADY_GONE, actor, previewId, errorMessage);
-    return skippedResult(item, ALREADY_GONE);
+    await writeHistory(item, 'skipped', GONE_AFTER_FAILED_CALL, actor, previewId, errorMessage);
+    return skippedResult(item, GONE_AFTER_FAILED_CALL);
   }
   await restoreRow(item);
   await writeHistory(item, 'failed', reasons || 'Leaving soon countdown ended', actor, previewId, failure);

@@ -225,9 +225,9 @@ describe('library deletion', () => {
     mocks.radarr.getMovieById.mockResolvedValueOnce({ id: 1, tmdbId: 1, tags: [] }).mockRejectedValueOnce(notFound());
     const result = await executeLibraryDeletion(binding, 'p', admin, NOW);
     expect(result).toMatchObject({ deleted: 1, failed: 0, skipped: 1 });
-    expect(result.results[0]).toMatchObject({ outcome: 'skipped', message: 'Already gone from Sonarr/Radarr (not by Helprr)' });
+    expect(result.results[0]).toMatchObject({ outcome: 'skipped', message: 'Gone after a failed delete call; not confirmed as removed by Helprr' });
     expect(mocks.audit).toHaveBeenCalledWith(expect.objectContaining({ targetId: 1, success: false, details: expect.objectContaining({ after: 'absent' }) }));
-    expect(mocks.history.mock.calls[0][0].data).toMatchObject({ action: 'skipped', filesDeleted: false, reason: 'Already gone from Sonarr/Radarr (not by Helprr)' });
+    expect(mocks.history.mock.calls[0][0].data).toMatchObject({ action: 'skipped', filesDeleted: false, reason: 'Gone after a failed delete call; not confirmed as removed by Helprr' });
     expect(mocks.rows.some((r) => r.id === 'ls-1')).toBe(false);
   });
 

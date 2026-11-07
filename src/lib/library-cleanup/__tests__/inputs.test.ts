@@ -279,6 +279,26 @@ describe('gatherLibraryFacts', () => {
       mocks.library.mockReturnValue({ Items: [{ Id: 's9', ProviderIds: { Tvdb: '900' } }], TotalRecordCount: 1 });
     });
 
+    it('matches names that differ only by a year or country suffix', async () => {
+      mocks.sonarr.getSeries.mockResolvedValue([show({ title: 'Shōgun (2024)', alternateTitles: [] })]);
+      mocks.watchlist.mockResolvedValue([{ userId: 'u1', source: 'TMDB', externalId: '126308', mediaType: 'series', title: 'Shōgun' }]);
+      mocks.pending.mockResolvedValue([{ tmdbId: 126308, title: 'Shogun 2024', createdAt: new Date('2025-01-01'), userId: 'u9', user: { displayName: 'Cy' } }]);
+      const { titles } = await gatherLibraryFacts('series', 'keep');
+      expect(titles[0]).toMatchObject({ watchlistUserIds: ['u1'], openRequest: true });
+    });
+
+    it('compares a TMDB-only Seerr request by the TVDB id its details give', async () => {
+      mocks.seerr.listRequests.mockResolvedValue({
+        pageInfo: { results: 1 },
+        results: [{ id: 5, type: 'tv', status: 2, createdAt: '2024-01-01T00:00:00Z', media: { tmdbId: 555, tvdbId: null, status: 3 }, requestedBy: { id: 1 } }],
+      });
+      // Same name, but the TVDB id says it is another show.
+      mocks.mediaDetail.mockResolvedValue({ name: 'The Great Show', externalIds: { tvdbId: 901 } });
+      expect((await gatherLibraryFacts('series', 'keep')).titles[0].openRequest).toBe(false);
+      mocks.mediaDetail.mockResolvedValue({ name: 'Other name', externalIds: { tvdbId: 900 } });
+      expect((await gatherLibraryFacts('series', 'keep')).titles[0].openRequest).toBe(true);
+    });
+
     it.each<[string, string, boolean]>([
       ['the same name', 'the great show!', true],
       ['an alternate name', 'Great Show UK', true],

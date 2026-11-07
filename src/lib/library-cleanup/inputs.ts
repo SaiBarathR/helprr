@@ -286,7 +286,7 @@ async function readJellyfin(mediaType: LibraryMediaType, now: number): Promise<{
   if (!admin) {
     // A non-admin token lists only its own user and sessions: other people's plays would be missed.
     throw new LibraryCleanupUnavailableError(
-      'The Jellyfin connection is not an administrator, so other people’s watch history cannot be read. Use an API key or an admin account for the Jellyfin connection. Nothing was changed.',
+      'The Jellyfin connection is not an administrator (or Jellyfin refused its key), so other people’s watch history cannot be read. Use an API key or an admin account for the Jellyfin connection. Nothing was changed.',
     );
   }
   try {
@@ -422,14 +422,17 @@ async function readRequests(mediaType: LibraryMediaType, warnings: string[], tit
       || request.status === SEERR_REQUEST_STATUS.COMPLETED
       || (request.status !== SEERR_REQUEST_STATUS.PENDING_APPROVAL && available);
     let title: string | null = null;
+    let detailTvdbId: number | null = null;
     if (titlesWithoutTmdb && tmdbId && !tvdbId && seerr.client) {
-      // A failed lookup leaves the name unknown, which protects every title it cannot be told apart from.
+      // The TV details carry the TVDB id (compared by id then) and the name. A failed
+      // lookup leaves both unknown, which protects every title it cannot be told apart from.
       const detail = await getCachedSeerrMediaDetail(seerr.client, seerrType, tmdbId);
+      detailTvdbId = positive((detail as { externalIds?: { tvdbId?: unknown } } | null)?.externalIds?.tvdbId);
       title = detail?.name || detail?.title || null;
     }
     records.push({
       tmdbId,
-      tvdbId,
+      tvdbId: tvdbId ?? detailTvdbId,
       title,
       open: !finished,
       at: request.createdAt ? new Date(request.createdAt) : null,
@@ -457,11 +460,11 @@ async function readRequests(mediaType: LibraryMediaType, warnings: string[], tit
  * compare; otherwise by name, and a request with no known name is assumed to
  * be for it (fail closed: it can only keep a title).
  */
-function requestIsFor(r: RequestRecord & { loose: string | null }, t: ArrTitle['facts'], names: Set<string>): boolean {
+function requestIsFor(r: RequestRecord & { loose: string[] | null }, t: ArrTitle['facts'], names: Set<string>): boolean {
   const byTmdb = r.tmdbId !== null && t.tmdbId !== null;
   const byTvdb = r.tvdbId !== null && t.tvdbId !== null;
   if (byTmdb || byTvdb) return (byTmdb && r.tmdbId === t.tmdbId) || (byTvdb && r.tvdbId === t.tvdbId);
-  return r.loose === null || names.has(r.loose);
+  return r.loose === null || r.loose.some((form) => names.has(form));
 }
 
 // ── Watchlists ──────────────────────────────────────────────────────────────
@@ -469,6 +472,15 @@ function requestIsFor(r: RequestRecord & { loose: string | null }, t: ArrTitle['
 /** Loose title form: case, accents, punctuation and spacing ignored. */
 function looseTitle(value: string): string {
   return value.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
+}
+
+/**
+ * Every loose form of a name: as is, and without a trailing "(2024)" / "(US)"
+ * or year, which TVDB and TMDB add or leave off ("Shōgun (2024)" vs "Shōgun").
+ */
+function looseForms(value: string): string[] {
+  const forms = [value, value.replace(/\s*\([^()]*\)\s*$/, ''), value.replace(/\s+(19|20)\d{2}\s*$/, '')];
+  return [...new Set(forms.map(looseTitle).filter(Boolean))];
 }
 
 async function readWatchlists(mediaType: LibraryMediaType, arrTitles: ArrTitle[]): Promise<Map<string, Set<string>>> {
@@ -480,16 +492,17 @@ async function readWatchlists(mediaType: LibraryMediaType, arrTitles: ArrTitle[]
   const out = new Map<string, Set<string>>();
   for (const { facts: t, names } of arrTitles) {
     const anilistIds = anilistBySeries.get(`${t.instanceId}:${t.arrId}`) ?? [];
-    const loose = new Set(names.map(looseTitle).filter(Boolean));
+    const loose = new Set(names.flatMap(looseForms));
     for (const item of items) {
       // A TMDB/TVDB save the title has no such id for cannot be compared by id:
       // match by name instead, and a save with no usable name keeps the title.
       const idUncomparable = (item.source === 'TMDB' && t.tmdbId === null) || (item.source === 'TVDB' && t.tvdbId === null);
-      const byName = () => !looseTitle(item.title) || loose.has(looseTitle(item.title));
+      const itemForms = looseForms(item.title);
+      const byName = () => itemForms.length === 0 || itemForms.some((form) => loose.has(form));
       const hit = item.source === 'ANILIST'
         // An AniList save matches its mapped Sonarr series, or any name the arr knows
         // the title by (AniList movies have no mapping). Errs towards keeping.
-        ? anilistIds.includes(Number(item.externalId)) || loose.has(looseTitle(item.title))
+        ? anilistIds.includes(Number(item.externalId)) || itemForms.some((form) => loose.has(form))
         : idUncomparable ? byName() : watchlistItemMatches(item, {
           kind: t.mediaType,
           instanceId: t.instanceId,
@@ -518,11 +531,14 @@ export async function gatherLibraryFacts(mediaType: LibraryMediaType, keepTag: s
     readJellyfin(mediaType, now),
     readRequests(mediaType, warnings, arrTitles.some((t) => t.facts.tmdbId === null)),
   ]);
-  const records = requests.records.map((r) => ({ ...r, loose: r.title ? looseTitle(r.title) || null : null }));
+  const records = requests.records.map((r) => {
+    const forms = r.title ? looseForms(r.title) : [];
+    return { ...r, loose: forms.length > 0 ? forms : null };
+  });
   const facts = arrTitles.map((t) => t.facts);
   const watchlists = await readWatchlists(mediaType, arrTitles);
 
-  const namesByKey = new Map(arrTitles.map((t) => [titleKey(t.facts), new Set(t.names.map(looseTitle).filter(Boolean))]));
+  const namesByKey = new Map(arrTitles.map((t) => [titleKey(t.facts), new Set(t.names.flatMap(looseForms))]));
   const titles = facts.map((t): TitleFacts => {
     const jellyfinIds = jellyfinIdsFor(t, jellyfin.byProvider);
     let lastWatchedAt: Date | null = null;
