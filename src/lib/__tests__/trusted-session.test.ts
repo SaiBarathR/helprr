@@ -36,6 +36,8 @@ import { trustedSessionStillVouched } from '@/lib/trusted-session';
 
 const SECRET = 'proxy-secret-0123456789abcdefghijklmnop';
 const ENV = { HELPRR_TRUSTED_AUTH_HEADER: 'Remote-User', HELPRR_TRUSTED_AUTH_SECRET: SECRET, JWT_SECRET: JWT };
+// What the proxy adds to every request it forwards.
+const PROXY = { 'X-Helprr-Proxy-Secret': SECRET };
 const ACTIVE_SESSION = {
   id: 'session-1',
   lastSeenAt: new Date(),
@@ -58,7 +60,7 @@ async function tokenFor(trustedUsername?: string): Promise<string> {
 }
 
 function pageRequest(token: string, headers: Record<string, string> = {}, path = '/movies'): NextRequest {
-  return new NextRequest(`http://localhost${path}`, { headers: { cookie: `helprr-session=${token}`, ...headers } });
+  return new NextRequest(`http://localhost${path}`, { headers: { cookie: `helprr-session=${token}`, ...PROXY, ...headers } });
 }
 
 beforeEach(() => {
@@ -75,8 +77,13 @@ afterEach(() => {
 });
 
 describe('trustedSessionStillVouched', () => {
-  const headers = (values: Record<string, string>) => new Headers(values);
+  const headers = (values: Record<string, string>) => new Headers({ ...PROXY, ...values });
   const claims = (tu: unknown, ts: unknown = stamp()) => ({ tu, ts });
+
+  it('needs the proxy secret on every request, so a copied cookie used around the proxy is refused', () => {
+    expect(trustedSessionStillVouched(claims('Alice'), new Headers({ 'Remote-User': 'Alice' }), ENV)).toBe(false);
+    expect(trustedSessionStillVouched(claims('Alice'), new Headers({ 'Remote-User': 'Alice', 'X-Helprr-Proxy-Secret': 'wrong' }), ENV)).toBe(false);
+  });
 
   it('leaves every other session alone', () => {
     expect(trustedSessionStillVouched({ sid: 's' }, headers({}), {})).toBe(true);
@@ -159,7 +166,7 @@ describe('the request proxy', () => {
 describe('server auth', () => {
   async function asRequest(token: string, headerValues: Record<string, string>) {
     mocks.cookies.mockResolvedValue({ get: () => ({ value: token }) });
-    mocks.headers.mockResolvedValue(new Headers(headerValues));
+    mocks.headers.mockResolvedValue(new Headers({ ...PROXY, ...headerValues }));
     return requireUser();
   }
 

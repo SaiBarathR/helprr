@@ -81,7 +81,8 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   if (!username) return json({ error: NO_NAME }, 403);
 
   // From here the proxy has vouched for the name, so nobody is guessing: the
-  // per-name backoff (a password-guessing defense) neither applies nor grows.
+  // per-name backoff (a password-guessing defense) doesn't apply, and a
+  // successful sign-in clears it, as a password sign-in would.
   // The name must match exactly, as at password sign-in: a case-insensitive
   // match would let a proxy's "Admin" in as Helprr's "admin". A disabled or
   // pending account is refused, and nothing is ever created.

@@ -214,6 +214,12 @@ Two things are required, or anyone can sign in as anyone:
   [What Helprr needs from it](#what-helprr-needs-from-it)). The secret travels in plain
   HTTP between the proxy and Helprr.
 
+- **Every proxy route that adds the secret header must also run the proxy's sign-in.**
+  A second router or `location` (for `/api`, say) that skips the sign-in but still adds
+  the secret would pass a visitor's own `Remote-User` through, and anyone could sign in
+  as anyone. A route without the sign-in must not add the secret, and must still strip
+  the user header.
+
 Make the proxy ask for its sign-in on every Helprr address: a rule that lets some paths
 through without it (Authelia's `bypass`, for example) sends those requests with no user,
 and Helprr then treats a session made this way as signed out.
