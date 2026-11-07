@@ -32,12 +32,14 @@ import { cn } from '@/lib/utils';
 import { TabErrorState } from './shared';
 import {
   isNotReleased,
+  searchAllOutcome,
   searchAllRequests,
   searchAllTargets,
   selectedSearchRequests,
   wantedDate,
   wantedRecordKey,
   type SearchRequest,
+  type SearchResult,
   type WantedInstance,
   type WantedRecord,
 } from './wanted-records';
@@ -46,16 +48,22 @@ import {
 
 const SOURCE_BY_TYPE: Record<string, WantedInstance['source']> = { SONARR: 'sonarr', RADARR: 'radarr', LIDARR: 'lidarr' };
 
-/** Send each command; resolves to how many items the accepted and the refused ones covered. */
-async function sendSearches(requests: SearchRequest[]): Promise<{ ok: number; fail: number }> {
-  const results = await Promise.all(requests.map(async ({ url, body, count }) => {
+/** Send each command; resolves to whether each was accepted, with its answer. */
+async function sendSearchRequests(requests: SearchRequest[]): Promise<Array<SearchResult & { count: number }>> {
+  return Promise.all(requests.map(async ({ url, body, count }) => {
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     }).catch(() => null);
-    return { ok: !!res?.ok, count };
+    const data: unknown = res?.ok ? await res.json().catch(() => null) : null;
+    return { ok: !!res?.ok, count, data };
   }));
+}
+
+/** Send each command; resolves to how many items the accepted and the refused ones covered. */
+async function sendSearches(requests: SearchRequest[]): Promise<{ ok: number; fail: number }> {
+  const results = await sendSearchRequests(requests);
   return results.reduce(
     (sum, r) => (r.ok ? { ...sum, ok: sum.ok + r.count } : { ...sum, fail: sum.fail + r.count }),
     { ok: 0, fail: 0 },
@@ -202,9 +210,8 @@ export function WantedTab({ type, filterBy, instanceFilter }: { type: 'missing' 
   async function searchAll() {
     setBulkSearching(true);
     try {
-      const { ok, fail } = await sendSearches(searchAllRequests(type, searchAllInstances));
-      if (fail === 0) toast.success(`Searching for every ${listName} item`);
-      else toast.error(ok > 0 ? `Search started on ${ok} of ${ok + fail} instances` : 'Search failed');
+      const { tone, message } = searchAllOutcome(listName, await sendSearchRequests(searchAllRequests(type, searchAllInstances)));
+      toast[tone](message);
       setConfirmSearchAll(false);
     } finally {
       setBulkSearching(false);

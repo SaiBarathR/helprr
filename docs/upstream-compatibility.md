@@ -477,7 +477,11 @@ availability check, so Radarr's own `MissingMoviesSearch` would search those
 films too. Helprr's `/api/radarr/command` therefore answers `MissingMoviesSearch`
 by reading `/api/v3/wanted/missing` (monitored films, 500 a page), keeping the
 films that are out, leaving out those in the queue, and sending `MoviesSearch`
-with at most 100 `movieIds` per command; the confirm says so. Read from the
+with at most 100 `movieIds` per command; the confirm says so. A batch Radarr refuses
+does not undo the others: the answer gives how many films were queued and how many
+could not be (the request fails only when none were), and one `radarr` log entry
+names the user, the queued and not-queued film ids and the command ids. With no
+released film missing, no command is sent and the answer says so. Read from the
 Sonarr v5-develop, Radarr and Lidarr develop sources on 2026-11-06; the oldest-first
 order was checked read-only against the Radarr on the test host on 2026-11-07.
 

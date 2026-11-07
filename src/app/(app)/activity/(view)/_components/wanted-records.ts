@@ -113,6 +113,42 @@ export function searchAllTargets(
     && (instanceFilter === 'all' || instance.id === instanceFilter));
 }
 
+export type SearchResult = { ok: boolean; data?: unknown };
+export type SearchAllOutcome = { tone: 'success' | 'info' | 'warning' | 'error'; message: string };
+
+/** Radarr's Missing answer: how many released films it found, queued and could not queue. */
+function filmSearch(data: unknown): { movieCount: number; queued: number; notQueued: number } | null {
+  if (!data || typeof data !== 'object') return null;
+  const { movieCount, queued, notQueued } = data as Record<string, unknown>;
+  return typeof movieCount === 'number' && typeof queued === 'number' && typeof notQueued === 'number'
+    ? { movieCount, queued, notQueued }
+    : null;
+}
+
+const films = (n: number) => (n === 1 ? '1 film' : `${n} films`);
+
+/** The toast for a Search all, one result per instance it was sent to. */
+export function searchAllOutcome(listName: string, results: SearchResult[]): SearchAllOutcome {
+  const accepted = results.filter((r) => r.ok);
+  const failed = results.length - accepted.length;
+  if (accepted.length === 0) return { tone: 'error', message: 'Search failed' };
+  const instancesNote = failed > 0 ? ` Search failed on ${failed} of ${results.length} instances.` : '';
+
+  const filmResults = accepted.map((r) => filmSearch(r.data)).filter((f) => f !== null);
+  const queued = filmResults.reduce((sum, f) => sum + f.queued, 0);
+  const notQueued = filmResults.reduce((sum, f) => sum + f.notQueued, 0);
+  if (notQueued > 0) {
+    return { tone: 'warning', message: `Searching ${films(queued)}; ${notQueued} could not be queued.${instancesNote}` };
+  }
+  // Every instance that answered was a Radarr with nothing out to search.
+  if (filmResults.length === accepted.length && queued === 0) {
+    return { tone: failed > 0 ? 'error' : 'info', message: `No released films are missing.${instancesNote}` };
+  }
+  return failed === 0
+    ? { tone: 'success', message: `Searching for every ${listName} item` }
+    : { tone: 'error', message: `Search started on ${accepted.length} of ${results.length} instances` };
+}
+
 /** One "search everything on this list" command per instance. */
 export function searchAllRequests(type: WantedType, targets: WantedInstance[]): SearchRequest[] {
   return targets.map(({ id, source }) => ({

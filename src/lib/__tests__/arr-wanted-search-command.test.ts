@@ -12,7 +12,9 @@ const mocks = vi.hoisted(() => ({
   auth: vi.fn(),
   getClient: vi.fn(),
   client: { searchWanted: vi.fn(), getWantedMissing: vi.fn(), getQueue: vi.fn(), searchMovie: vi.fn() },
+  logInfo: vi.fn(),
 }));
+vi.mock('@/lib/logger', () => ({ logger: { info: mocks.logInfo, warn: vi.fn(), error: vi.fn(), debug: vi.fn() } }));
 vi.mock('@/lib/auth', () => ({ requireUserCapability: mocks.auth }));
 vi.mock('@/lib/api-logger', () => ({ withApiLogging: (fn: unknown) => fn }));
 vi.mock('@/lib/service-helpers', () => ({
@@ -34,7 +36,7 @@ const post = (handler: Handler, service: string, name: string) =>
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mocks.auth.mockResolvedValue({ ok: true, user: { id: 'admin', role: 'admin' } });
+  mocks.auth.mockResolvedValue({ ok: true, user: { id: 'admin', username: 'admin', role: 'admin' } });
   mocks.getClient.mockResolvedValue(mocks.client);
   mocks.client.searchWanted.mockResolvedValue({ id: 1, status: 'queued' });
   mocks.client.getQueue.mockResolvedValue({ records: [] });
@@ -91,7 +93,10 @@ describe('/api/radarr/command MissingMoviesSearch', () => {
     expect(mocks.client.searchWanted).not.toHaveBeenCalled();
     expect(mocks.client.searchMovie).toHaveBeenCalledTimes(1);
     expect(mocks.client.searchMovie).toHaveBeenCalledWith([1, 3]);
-    expect(await res.json()).toMatchObject({ movieCount: 2 });
+    expect(await res.json()).toMatchObject({ movieCount: 2, queued: 2, notQueued: 0 });
+    expect(mocks.logInfo).toHaveBeenCalledWith('Radarr Search all on Missing', {
+      userId: 'admin', username: 'admin', instanceId: 'inst-2', queuedMovieIds: [1, 3], commandIds: [1], notQueuedMovieIds: [],
+    }, { scope: 'radarr' });
   });
 
   it('reads every page and sends at most 100 films per command', async () => {
@@ -120,6 +125,34 @@ describe('/api/radarr/command MissingMoviesSearch', () => {
     const res = await post(radarrCommand as Handler, 'radarr', 'MissingMoviesSearch');
     expect(res.status).toBe(200);
     expect(mocks.client.searchMovie).not.toHaveBeenCalled();
-    expect(await res.json()).toMatchObject({ movieCount: 0, commands: [] });
+    expect(await res.json()).toEqual({ movieCount: 0, queued: 0, notQueued: 0, commands: [], message: 'No released films are missing' });
+  });
+
+  it('reports a partial result, and logs what was queued, when a later batch is refused', async () => {
+    const all = Array.from({ length: 250 }, (_, i) => film(i + 1, { inCinemas: past }));
+    mocks.client.getWantedMissing.mockResolvedValue({ totalRecords: all.length, records: all });
+    mocks.client.searchMovie
+      .mockResolvedValueOnce({ id: 70, status: 'queued' })
+      .mockRejectedValueOnce(new Error('Radarr answered 500'))
+      .mockResolvedValueOnce({ id: 72, status: 'queued' });
+
+    const res = await post(radarrCommand as Handler, 'radarr', 'MissingMoviesSearch');
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ movieCount: 250, queued: 150, notQueued: 100 });
+    const logged = mocks.logInfo.mock.calls[0][1];
+    expect(logged.commandIds).toEqual([70, 72]);
+    expect(logged.queuedMovieIds).toEqual([...all.slice(0, 100), ...all.slice(200)].map((f) => f.id));
+    expect(logged.notQueuedMovieIds).toEqual(all.slice(100, 200).map((f) => f.id));
+  });
+
+  it('fails, after logging, when Radarr queued none of the batches', async () => {
+    mocks.client.getWantedMissing.mockResolvedValue({ totalRecords: 1, records: [film(1, { inCinemas: past })] });
+    mocks.client.searchMovie.mockRejectedValue(new Error('Radarr answered 500'));
+
+    const res = await post(radarrCommand as Handler, 'radarr', 'MissingMoviesSearch');
+
+    expect(res.ok).toBe(false);
+    expect(mocks.logInfo.mock.calls[0][1]).toMatchObject({ queuedMovieIds: [], notQueuedMovieIds: [1] });
   });
 });
