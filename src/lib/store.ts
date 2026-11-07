@@ -257,7 +257,7 @@ function cloneDiscoverFilters(filters: DiscoverFiltersState): DiscoverFiltersSta
   };
 }
 
-export const STORE_VERSION = 52;
+export const STORE_VERSION = 53;
 
 // Matches the calendar backdrop's previously hardcoded Tailwind `opacity-35`.
 export const DEFAULT_CALENDAR_IMAGE_OPACITY = 35;
@@ -729,6 +729,9 @@ interface UIState {
   // Haptic feedback on touch gestures (swipe actions, pull-to-refresh)
   hapticsEnabled: boolean;
   setHapticsEnabled: (v: boolean) => void;
+  // One-time gesture tips the user has closed (see components/ui/gesture-tip.tsx)
+  dismissedTips: string[];
+  dismissTip: (id: string) => void;
   // Jellyfin subtitle appearance (text subtitles only; libass owns ASS styling)
   subtitleAppearance: SubtitleAppearance;
   setSubtitleAppearance: (patch: Partial<SubtitleAppearance>) => void;
@@ -837,6 +840,7 @@ const PERSISTED_KEYS = [
   'glassMode',
   'glassIntensity',
   'hapticsEnabled',
+  'dismissedTips',
   'subtitleAppearance',
   'playerSkipBackSeconds',
   'playerSkipForwardSeconds',
@@ -858,6 +862,7 @@ const ARRAY_PERSISTED_KEYS: ReadonlySet<string> = new Set([
   'disabledNavItems',
   'animeCarouselOrder',
   'disabledAnimeCarousels',
+  'dismissedTips',
 ]);
 
 // Keys whose persisted shape is a VisibleFieldsByMode object ({ posters, overview,
@@ -1160,6 +1165,10 @@ export const useUIStore = create<UIState>()(
       // Haptics
       hapticsEnabled: true,
       setHapticsEnabled: (v) => set({ hapticsEnabled: v }),
+      // Gesture tips
+      dismissedTips: [],
+      dismissTip: (id) =>
+        set((state) => (state.dismissedTips.includes(id) ? {} : { dismissedTips: [...state.dismissedTips, id] })),
       // Jellyfin subtitle appearance
       subtitleAppearance: { ...DEFAULT_SUBTITLE_APPEARANCE },
       setSubtitleAppearance: (patch) =>

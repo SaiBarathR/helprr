@@ -28,6 +28,7 @@ import {
 } from '@/components/ui/active-filter-bar';
 import { withAppName } from '@/components/instance-filter';
 import { PullToRefresh } from '@/components/ui/pull-to-refresh';
+import { GestureTip, useGestureTipVisible } from '@/components/ui/gesture-tip';
 import {
   ResponsiveMenu,
   ResponsiveMenuCheckboxItem,
@@ -216,6 +217,10 @@ export default function SeriesPage() {
   const [viewportWidth, setViewportWidth] = useState(1280);
   const [containerWidth, setContainerWidth] = useState(0);
   const [contentOffsetTop, setContentOffsetTop] = useState(0);
+  // Only when the press-and-hold menu has actions beyond Open (Select needs canBulk;
+  // selection mode turns the menu off). The tip sits above the virtualized list,
+  // so showing or closing it moves the list.
+  const longPressTipVisible = useGestureTipVisible('long-press') && canBulk && !selectionMode;
   const [deleteTarget, setDeleteTarget] = useState<SonarrSeriesListItem | null>(null);
   const [renameTarget, setRenameTarget] = useState<{
     title: string;
@@ -291,7 +296,7 @@ export default function SeriesPage() {
       observer.disconnect();
       window.removeEventListener('resize', measure);
     };
-  }, [viewMode, posterSize, loading, series.length, search, filter, watchFilter, instanceFilter]);
+  }, [viewMode, posterSize, loading, series.length, search, filter, watchFilter, instanceFilter, longPressTipVisible]);
 
   useEffect(() => {
     persistViewState(search);
@@ -925,6 +930,7 @@ export default function SeriesPage() {
       {/* Below the sticky toolbar, so it can't push over sticky table headers;
           the filter button's dot stays in view. */}
       <ActiveFilterBar filters={activeFilters} onClearAll={clearFilters} />
+      {filtered.length > 0 && longPressTipVisible && <GestureTip id="long-press" />}
 
       {(() => {
         if (loading && series.length === 0) {

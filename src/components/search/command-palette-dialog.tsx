@@ -89,6 +89,9 @@ export function CommandPaletteDialog() {
     [availableProviders]
   );
 
+  // Footer hint: name the remote sources (tm, ani) when the user has them.
+  const hintScopes = (remoteProviders.length > 0 ? remoteProviders : availableProviders).slice(0, 2);
+
   // With no library match, skip the library scopes that were just searched;
   // provider order already puts the remote sources first.
   const fallbackProviders = useMemo(
@@ -412,9 +415,24 @@ export function CommandPaletteDialog() {
                 </CommandGroup>
               )}
             </CommandList>
+            {!activeScope && hintScopes.length > 0 && (
+              <p className="border-t border-border px-3 py-2 text-xs text-muted-foreground">
+                Type {hintScopes.map((def, i) => (
+                  <span key={def.id}>{i > 0 && ', '}<ScopeKbd>{def.alias}</ScopeKbd></span>
+                ))}… to search one place
+              </p>
+            )}
           </Command>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function ScopeKbd({ children }: { children: string }) {
+  return (
+    <kbd className="rounded border border-border bg-muted px-1 py-0.5 text-[10px] font-mono text-muted-foreground">
+      {children}
+    </kbd>
   );
 }
 
@@ -437,9 +455,7 @@ function ScopeHelpItem({
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <span className="font-medium">{def.label}</span>
-          <kbd className="rounded border border-border bg-muted px-1 py-0.5 text-[10px] font-mono text-muted-foreground">
-            {def.alias}
-          </kbd>
+          <ScopeKbd>{def.alias}</ScopeKbd>
         </div>
         <div className="truncate text-xs text-muted-foreground">{hint ?? def.description}</div>
       </div>
