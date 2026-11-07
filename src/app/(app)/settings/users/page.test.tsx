@@ -237,6 +237,48 @@ describe('two-step sign-in', () => {
     expect(await screen.findByText(/signs them out everywhere and turns off two-step sign-in/)).toBeDefined();
   });
 
+  it('asks for your password and a code before making your own reset link while your two-step sign-in is on', async () => {
+    mocks.me = { id: 'u2' };
+    const sent: unknown[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === '/api/users/u2/password-link' && init?.method === 'POST') {
+        sent.push(JSON.parse(init.body as string));
+        return new Response(JSON.stringify({ token: 'c'.repeat(43), purpose: 'reset', expiresAt: '2026-11-08T12:00:00.000Z' }), { status: 201 });
+      }
+      if (url === '/api/users') return new Response(JSON.stringify([{ ...member, hasPassword: true, passwordLink: null, twoStepEnabled: true }]));
+      if (url === '/api/users/u2/permissions') return new Response(JSON.stringify(mocks.permissions));
+      return new Response(JSON.stringify([]));
+    }));
+    renderPage();
+    await userEvent.click(await screen.findByRole('button', { name: /Iso/ }));
+    const make = await screen.findByRole('button', { name: 'Make link' });
+    expect(make.hasAttribute('disabled')).toBe(true);
+    await userEvent.type(screen.getByLabelText('Your current password'), 'my password');
+    await userEvent.type(screen.getByLabelText('Authenticator or recovery code'), '123456');
+    await userEvent.click(make);
+    await screen.findByLabelText('Password reset link for @iso');
+    expect(sent).toEqual([{ currentPassword: 'my password', code: '123456' }]);
+  });
+
+  it("asks for nothing extra on someone else's reset link", async () => {
+    const sent: unknown[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === '/api/users/u2/password-link' && init?.method === 'POST') {
+        sent.push(JSON.parse(init.body as string));
+        return new Response(JSON.stringify({ token: 'c'.repeat(43), purpose: 'reset', expiresAt: '2026-11-08T12:00:00.000Z' }), { status: 201 });
+      }
+      if (url === '/api/users') return new Response(JSON.stringify([{ ...member, hasPassword: true, passwordLink: null, twoStepEnabled: true }]));
+      if (url === '/api/users/u2/permissions') return new Response(JSON.stringify(mocks.permissions));
+      return new Response(JSON.stringify([]));
+    }));
+    renderPage();
+    await userEvent.click(await screen.findByRole('button', { name: /Iso/ }));
+    expect(screen.queryByLabelText('Your current password')).toBeNull();
+    await userEvent.click(await screen.findByRole('button', { name: 'Make link' }));
+    await screen.findByLabelText('Password reset link for @iso');
+    expect(sent).toEqual([{}]);
+  });
+
   it('offers no turn-off for your own account', async () => {
     mocks.me = { id: 'u2' };
     vi.stubGlobal('fetch', vi.fn(async (url: string) => {

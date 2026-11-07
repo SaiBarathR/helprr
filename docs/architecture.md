@@ -334,9 +334,15 @@ or none when that account is gone, and the owner as the target; the row's networ
 user agent are those of whoever used the link). An admin can turn off another
 user's two-step sign-in (`DELETE /api/users/[id]/totp`), which ends every session of that
 user in the same transaction; that route refuses their own, which needs the password and a
-code. A reset link an admin makes for themselves also removes it, so an admin session alone
-can (it takes a new password, ends every session and alerts admins); that is the owner's
-accepted trade-off for an admin who lost their phone. Turning it on can
+code. A reset link an admin makes for their own account also removes it when used, so
+while their two-step sign-in is on, `POST /api/users/[id]/password-link` for themselves
+needs `currentPassword` and `code` (an authenticator or recovery code), checked by
+`confirmPasswordAndSecondFactor` (`src/lib/server/confirm-password.ts`), the same check and
+throttles as turning it off: the sign-in throttles, the hourly code cap, a wrong one counted
+as a failed sign-in, a recovery code used up (`MFA_RECOVERY_CODE_USED`, `reset-link`).
+Without both it is 403 (`needsSecondFactor`), so a stolen session alone cannot remove the
+second factor. Links for other people need neither (lead decision 2026-11-07, conservative;
+the owner can relax it). Turning it on can
 also end the user's other sessions (`signOutOtherDevices`). Ten
 80-bit recovery codes are stored as SHA-256 (`RecoveryCode`, deleted on use) and still work
 after a `JWT_SECRET` change, when the secret no longer decrypts. Setup needs the current

@@ -923,22 +923,31 @@ function PasswordLinkSection({ user, isSelf }: { user: SafeUser; isSelf: boolean
   const queryClient = useQueryClient();
   const [issued, setIssued] = useState<IssuedLink | null>(null);
   const purpose = user.status === 'pending' ? 'invite' : user.status === 'active' && user.hasPassword ? 'reset' : null;
+  // Your own reset link while your two-step sign-in is on turns it off, so the
+  // server asks for your password and a code (also when this list was stale).
+  const [serverAsked, setServerAsked] = useState(false);
+  const needsFactors = isSelf && purpose === 'reset' && (user.twoStepEnabled || serverAsked);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [code, setCode] = useState('');
 
   const issueMutation = useMutation({
     mutationFn: async () => {
       const res = await fetch(`/api/users/${user.id}/password-link`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: '{}',
+        body: needsFactors ? JSON.stringify({ currentPassword, code: code.trim() }) : '{}',
       });
       if (!res.ok) {
-        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        const data = (await res.json().catch(() => ({}))) as { error?: string; needsSecondFactor?: boolean };
+        if (data.needsSecondFactor === true) setServerAsked(true);
         throw new Error(data.error ?? 'Failed to make the link');
       }
       return (await res.json()) as IssuedLink;
     },
     onSuccess: (link) => {
       setIssued(link);
+      setCurrentPassword('');
+      setCode('');
       void queryClient.invalidateQueries({ queryKey: queryKeys.users() });
     },
     onError: (err) => toast.error(err instanceof Error ? err.message : 'Failed to make the link'),
@@ -981,9 +990,42 @@ function PasswordLinkSection({ user, isSelf }: { user: SafeUser; isSelf: boolean
           <p className="text-xs text-amber-500">Using a reset link for yourself signs out this device too.</p>
         )}
       </div>
+      {needsFactors && (
+        <div className="space-y-2">
+          <p className="text-xs text-muted-foreground">
+            Your two-step sign-in is on, and the link turns it off. Confirm it is you first.
+          </p>
+          <Input
+            type="password"
+            aria-label="Your current password"
+            placeholder="Current password"
+            autoComplete="current-password"
+            value={currentPassword}
+            onChange={(e) => setCurrentPassword(e.target.value)}
+          />
+          <Input
+            type="text"
+            aria-label="Authenticator or recovery code"
+            placeholder="Code or recovery code"
+            autoComplete="one-time-code"
+            autoCapitalize="characters"
+            autoCorrect="off"
+            spellCheck={false}
+            maxLength={24}
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+          />
+        </div>
+      )}
       {issued && <IssuedLinkPanel link={issued} username={user.username} />}
       <div className="flex gap-2">
-        <Button type="button" size="sm" variant="outline" onClick={() => issueMutation.mutate()} disabled={busy}>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={() => issueMutation.mutate()}
+          disabled={busy || (needsFactors && (currentPassword.length === 0 || code.trim().length === 0))}
+        >
           {issueMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Link2 className="mr-2 h-4 w-4" />}
           {outstanding || issued ? 'New link' : 'Make link'}
         </Button>

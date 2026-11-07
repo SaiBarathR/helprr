@@ -24,7 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - An admin's own password-reset link turns their two-step sign-in off too, as it does for
-  everyone else (when the link was made after two-step sign-in was turned on).
+  everyone else (when the link was made after two-step sign-in was turned on). Making that
+  link while two-step sign-in is on asks for the admin's password and a code first.
 - Settings → Users shows *two-step off* as well as *two-step on* for accounts with a
   Helprr password. The security log records the role a new user was given ("made
   admin"), and names the admin who made the reset link that turned two-step sign-in off.
