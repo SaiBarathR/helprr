@@ -22,6 +22,8 @@ const PUBLIC_EXACT_PATHS = [
   '/api/health', '/api/ready', '/offline.html', '/setup', '/api/setup/state', '/api/setup/admin',
   '/api/invite/state', '/api/invite/accept',
   '/api/calendar/feed.ics',
+  // Trusted-header sign-in: the route checks the proxy's secret header itself.
+  '/api/auth/trusted',
 ];
 const IS_DEV = process.env.NODE_ENV === 'development';
 

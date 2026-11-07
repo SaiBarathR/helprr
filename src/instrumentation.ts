@@ -22,6 +22,15 @@ export async function register() {
     const { initializeServerLogging, configureLogger } = await import('@/lib/logger');
     initializeServerLogging();
 
+    // A bad trusted-header setting turns that sign-in off; it never stops startup.
+    const { getTrustedAuthConfig, trustedAuthConfigProblem } = await import('@/lib/trusted-auth');
+    const trustedAuthProblem = trustedAuthConfigProblem();
+    if (trustedAuthProblem) {
+      console.warn(`[Helprr] Trusted-header sign-in is off: ${trustedAuthProblem}. Secret values were not logged.`);
+    } else if (getTrustedAuthConfig()) {
+      console.info(`[Helprr] Trusted-header sign-in is on, reading ${process.env.HELPRR_TRUSTED_AUTH_HEADER?.trim()}.`);
+    }
+
     const { getJwtSecret } = await import('@/lib/jwt-secret');
     const { registerShutdownHandlers } = await import('@/lib/shutdown');
 

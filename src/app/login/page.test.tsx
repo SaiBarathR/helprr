@@ -210,6 +210,55 @@ describe('Login page', () => {
     });
   });
 
+  describe('trusted-header sign-in', () => {
+    function answers(trusted: { enabled: boolean; post?: () => Response }) {
+      const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+        if (url !== '/api/auth/trusted') return Response.json({ error: 'Unauthorized' }, { status: 401 });
+        if (init?.method === 'POST') return trusted.post!();
+        return Response.json({ enabled: trusted.enabled });
+      });
+      vi.stubGlobal('fetch', fetchMock);
+      return fetchMock;
+    }
+
+    const posts = (fetchMock: ReturnType<typeof answers>) =>
+      fetchMock.mock.calls.filter(([url, init]) => url === '/api/auth/trusted' && init?.method === 'POST');
+
+    it('signs straight in once through the proxy when the server has it on', async () => {
+      const fetchMock = answers({ enabled: true, post: () => Response.json({ success: true }) });
+      await openLogin();
+      const calls = posts(fetchMock);
+      expect(calls).toHaveLength(1);
+      expect(calls[0][1]).toMatchObject({ headers: { 'Content-Type': 'application/json' } });
+      expect(mocks.clearUserScopedBrowserCaches).toHaveBeenCalled();
+      expect(mocks.replace).toHaveBeenCalledWith('/');
+    });
+
+    it('never tries when the server has it off', async () => {
+      const fetchMock = answers({ enabled: false });
+      await openLogin();
+      expect(posts(fetchMock)).toHaveLength(0);
+      expect(mocks.replace).not.toHaveBeenCalled();
+    });
+
+    it('shows the normal form, with no error, when not reached through the proxy', async () => {
+      answers({ enabled: true, post: () => Response.json({ error: 'not from the proxy' }, { status: 401 }) });
+      await openLogin();
+      expect(mocks.replace).not.toHaveBeenCalled();
+      expect(container.textContent).toContain('Sign in to continue');
+      expect(container.textContent).not.toContain('not from the proxy');
+      expect(container.querySelector('button[type="submit"]')?.hasAttribute('disabled')).toBe(false);
+    });
+
+    it('says why when the proxy named no Helprr account, and keeps the form', async () => {
+      answers({ enabled: true, post: () => Response.json({ error: 'Your sign-in proxy named no active Helprr account.' }, { status: 403 }) });
+      await openLogin();
+      expect(mocks.replace).not.toHaveBeenCalled();
+      expect(container.textContent).toContain('Your sign-in proxy named no active Helprr account.');
+      expect(container.querySelector('input[type="password"]')).not.toBeNull();
+    });
+  });
+
   describe('a brand-new install', () => {
     function answers(setupState: Promise<Response>) {
       vi.stubGlobal('fetch', vi.fn((url: string) => (

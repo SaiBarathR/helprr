@@ -193,6 +193,116 @@ from a private address: Helprr answers through the proxy host, and a sent
 `X-Forwarded-For` and `X-Forwarded-Proto` are passed on. The Let's Encrypt step needs a
 real domain and was not part of the test.*
 
+## Sign in once, at the proxy
+
+A proxy that asks for its own sign-in (Authelia, Authentik, Cloudflare Access) can also
+sign you in to Helprr, so you sign in once. The proxy names the signed-in user in a
+header, and sends a secret in a second header that proves the request came through it.
+Helprr signs in the existing, active Helprr account with that username (an exact match
+first, otherwise the one account whose name differs only in case). It never creates an
+account: add each person in **Settings → Users** first, with the same username they
+have at the proxy. A disabled account, or one whose invite is not accepted yet, is
+refused.
+
+Two things are required, or anyone can sign in as anyone:
+
+- **The proxy must strip any client-sent copy of both headers.** It must set the user
+  header only from its own sign-in, and replace (not add to) the secret header. Each
+  example below does.
+- **Helprr's port must not be reachable except through the proxy.** Put the proxy on
+  the same machine or Docker network, and the port on `127.0.0.1` (see
+  [What Helprr needs from it](#what-helprr-needs-from-it)). The secret travels in plain
+  HTTP between the proxy and Helprr.
+
+Then, in `.env`, with a secret from `openssl rand -hex 32`:
+
+```sh
+HELPRR_TRUSTED_AUTH_HEADER=Remote-User
+HELPRR_TRUSTED_AUTH_SECRET=paste-the-generated-value
+# Optional; this is the default:
+# HELPRR_TRUSTED_AUTH_SECRET_HEADER=X-Helprr-Proxy-Secret
+```
+
+Restart Helprr. The log says `Trusted-header sign-in is on`, or why it is off. Opening
+Helprr through the proxy then goes straight in; Helprr's own sign-in page is still there
+for anyone who reaches it some other way.
+
+- **Two-step sign-in is skipped** for this sign-in: the proxy's own sign-in is the second
+  factor, so turn on two-step sign-in at the proxy.
+- **Signing out of Helprr does not sign you out of the proxy**, and Helprr's sign-in page
+  then signs you straight back in. Sign out at the proxy instead.
+- Sign-ins show in **Settings → Operation audit → Security** as *through the sign-in proxy*. A
+  request with the user header but a wrong secret is recorded and counts toward the
+  sign-in limits, like a wrong password.
+
+The examples use Authelia's `Remote-User` header; Authentik's proxy outpost sends
+`X-authentik-username`. Replace `the-secret` with your `HELPRR_TRUSTED_AUTH_SECRET`.
+
+**Caddy** with Authelia (`forward_auth` replaces the copied header with Authelia's
+answer; the `request_header` lines drop a sent copy first anyway):
+
+```caddy
+helprr.example.com {
+  request_header -Remote-User
+  request_header -X-Helprr-Proxy-Secret
+  forward_auth authelia:9091 {
+    uri /api/authz/forward-auth
+    copy_headers Remote-User
+  }
+  reverse_proxy localhost:3050 {
+    header_up X-Helprr-Proxy-Secret "the-secret"
+  }
+}
+```
+
+**Traefik** with Authelia, in a dynamic configuration file (`forwardAuth` removes a sent
+`Remote-User` and sets Authelia's; `customRequestHeaders` replaces a sent secret):
+
+```yaml
+http:
+  middlewares:
+    authelia:
+      forwardAuth:
+        address: http://authelia:9091/api/authz/forward-auth
+        authResponseHeaders:
+          - Remote-User
+    helprr-proxy-secret:
+      headers:
+        customRequestHeaders:
+          X-Helprr-Proxy-Secret: "the-secret"
+  routers:
+    helprr:
+      rule: Host(`helprr.example.com`)
+      middlewares: [authelia, helprr-proxy-secret]
+      service: helprr
+  services:
+    helprr:
+      loadBalancer:
+        servers:
+          - url: http://helprr:3050
+```
+
+**nginx** with Authelia, using the `auth_request` locations from
+[Authelia's nginx guide](https://www.authelia.com/integration/proxies/nginx/)
+(`proxy_set_header` replaces a header a visitor sent under the same name):
+
+```nginx
+location / {
+  auth_request /internal/authelia/authz;
+  auth_request_set $user $upstream_http_remote_user;
+  proxy_set_header Remote-User $user;
+  proxy_set_header X-Helprr-Proxy-Secret "the-secret";
+  proxy_pass http://127.0.0.1:3050;
+}
+```
+
+Nginx Proxy Manager can take the same lines under a proxy host's **Advanced** tab.
+Cloudflare Access sends no username header Helprr can trust on its own, so it is not one
+of the proxies this works with yet.
+
+*Not yet tested with a real proxy: the examples follow each proxy's documentation as of
+2026-11-07, and Helprr's side is covered by its automated tests.*
+
 ## Keep it private
 
 Anyone who can reach Helprr's address can try to sign in. Tailscale keeps it to your own
